@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ApiError, api } from '../lib/api'
-import { buttonClasses, cardClasses, inputClasses, labelClasses } from '../components/ui'
+import { buttonClasses, cardClasses, inputClasses, labelClasses } from '@featherbase/shop-floor'
 
 // EDS-2: the Data Source browser — introspect a source, pick tables, reflect
 // them into bound Tables. Admin tooling (System Manager only server-side),
@@ -34,11 +34,27 @@ interface IntrospectResult {
   tables: Candidate[]
 }
 
-export default function SourceBrowser({ name }: { name: string }) {
-  const [schema, setSchema] = useState('')
+// `connect` (`<schema>.<table>`, or a bare table) opens the screen with that
+// table's schema loaded and the table chosen (#796); the user still names it
+// and connects it.
+function connectTarget(connect: string | undefined): { schema: string; key: string } | null {
+  if (!connect) return null
+  const dot = connect.lastIndexOf('.')
+  return { schema: dot > 0 ? connect.slice(0, dot) : '', key: connect }
+}
+
+export default function SourceBrowser({ name, connect }: { name: string; connect?: string }) {
+  const target = connectTarget(connect)
+  const [schema, setSchema] = useState(target?.schema ?? '')
   const [prefix, setPrefix] = useState('')
   const [module, setModule] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  // The asked-for table is chosen once its row has loaded, and only if it can
+  // be connected; a table that can't keeps its reason on screen.
+  const [pending, setPending] = useState<string | null>(target?.key ?? null)
+  // The name each selected table will have, keyed like `selected`; a table
+  // with no entry keeps its proposed name.
+  const [names, setNames] = useState<Record<string, string>>({})
   const [testResult, setTestResult] = useState<string | null>(null)
   const [reflectResult, setReflectResult] = useState<
     | { created: { table: string; name: string }[]; skipped: { table: string; reason: string }[] }
@@ -46,7 +62,7 @@ export default function SourceBrowser({ name }: { name: string }) {
   >(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [loadKey, setLoadKey] = useState(0)
+  const [loadKey, setLoadKey] = useState(target ? 1 : 0)
 
   const encoded = encodeURIComponent(name)
   const introspect = useQuery({
@@ -59,6 +75,13 @@ export default function SourceBrowser({ name }: { name: string }) {
         }${prefix ? `${schema ? '&' : '?'}prefix=${encodeURIComponent(prefix)}` : ''}`,
       ),
   })
+
+  useEffect(() => {
+    if (!pending || !introspect.data) return
+    const t = introspect.data.tables.find((c) => (c.schema ? `${c.schema}.${c.table}` : c.table) === pending)
+    if (t?.bindable && !t.already_reflected) setSelected((prev) => new Set(prev).add(pending))
+    setPending(null)
+  }, [pending, introspect.data])
 
   function referenceTarget(column: Candidate['columns'][number]) {
     const fk = column.references
@@ -97,12 +120,14 @@ export default function SourceBrowser({ name }: { name: string }) {
         {
           schema: schema || undefined,
           tables: [...selected],
+          names: Object.fromEntries([...selected].flatMap((k) => (names[k]?.trim() ? [[k, names[k].trim()]] : []))),
           module: module || undefined,
           prefix: prefix || undefined,
         },
       )
       setReflectResult(r)
       setSelected(new Set())
+      setNames({})
       setLoadKey((k) => k + 1)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Reflect failed')
@@ -120,7 +145,7 @@ export default function SourceBrowser({ name }: { name: string }) {
           <Link to="/featherbase/admin" className="hover:text-ink">Home</Link>
           {' / '}
           <Link
-            to="/featherbase/admin/$table/$name"
+            to="/featherbase/admin/table/$table/row/$name"
             params={{ table: 'Data Source', name }}
             search={{ prefill: undefined }}
             className="hover:text-ink"
@@ -206,7 +231,7 @@ export default function SourceBrowser({ name }: { name: string }) {
                 <span key={c.name}>
                   {i > 0 && ', '}
                   <Link
-                    to="/featherbase/admin/$table"
+                    to="/featherbase/admin/table/$table"
                     params={{ table: c.name }}
                     search={{ filters: undefined }}
                     className="text-action hover:underline"
@@ -304,7 +329,7 @@ export default function SourceBrowser({ name }: { name: string }) {
                     <td className="px-3 py-2 text-xs">
                       {t.already_reflected ? (
                         <Link
-                          to="/featherbase/admin/$table"
+                          to="/featherbase/admin/table/$table"
                           params={{ table: t.already_reflected }}
                           search={{ filters: undefined }}
                           className="text-action hover:underline"
@@ -312,7 +337,12 @@ export default function SourceBrowser({ name }: { name: string }) {
                           {t.already_reflected}
                         </Link>
                       ) : t.bindable ? (
-                        t.proposed_name
+                        <input
+                          className={inputClasses('w-56')}
+                          aria-label={`Name for ${key}`}
+                          value={names[key] ?? t.proposed_name}
+                          onChange={(e) => setNames((prev) => ({ ...prev, [key]: e.target.value }))}
+                        />
                       ) : (
                         <span className="text-negative">{t.reason}</span>
                       )}

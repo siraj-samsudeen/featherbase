@@ -34,18 +34,18 @@ interface Landing {
  *  that no installed app with pages of its own owns (#659: tableAccessFor's
  *  `admin` is the rule).
  *  The same facts /api/whoami's capabilities draw the shell from. */
-async function canUseAdmin(person: string): Promise<boolean> {
+export async function canUseAdmin(person: string): Promise<boolean> {
   const roles = await getRoles(person)
   if (person === 'Administrator' || roles.includes('System Manager')) return true
   return (await tableAccessFor(person, roles)).admin
 }
 
 /** Can this person open the app an address opens. Until an app named
- *  feather_dash is installed (#671), Feather Dash's interim gate is today's
+ *  dash is installed (#671), Dash's interim gate is today's
  *  report gate (design D8); an installed app is open to whoever its catalog
  *  lists, and to no one while it is disabled or not loaded here. */
-async function canOpenApp(person: string, app: string): Promise<boolean> {
-  if (app === 'feather_dash' && !(await isInstalled(app))) return (await getRoles(person)).includes(VIEWER_ROLE)
+export async function canOpenApp(person: string, app: string): Promise<boolean> {
+  if (app === 'dash' && !(await isInstalled(app))) return (await getRoles(person)).includes(VIEWER_ROLE)
   return (await appCatalog(person)).some((entry) => entry.name === app)
 }
 
@@ -85,7 +85,7 @@ export async function landingAfterSignIn(session: SignedInSession, host: string,
   // No list (development and test), or a host the list does not name: that
   // host is served as one address holding everything, as before #488, so a
   // report viewer opens the report right here.
-  if (!here && (await canOpenApp(person, 'feather_dash'))) return { landing: appRoot('feather_dash', await isInstalled('feather_dash')) }
+  if (!here && (await canOpenApp(person, 'dash'))) return { landing: appRoot('dash', await isInstalled('dash')) }
 
   // #659: no Admin and no address handed them on, but an app they can open
   // through a role of their own is served right here (the Admin address

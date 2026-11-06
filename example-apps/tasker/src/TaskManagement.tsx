@@ -1,8 +1,17 @@
+import { TASK_STATES } from './task-states'
+import { Recurrence } from './RecurrenceControls'
+import { Subtasks } from './Subtasks'
+import { Attention } from './Attention'
+import { Discussion } from './Discussion'
+import { Button, cardClasses, buttonClasses } from '@featherbase/shop-floor'
 import { createElement, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ApiError, api, getSessionUser, listResource } from './api'
+import { rowHref } from '../../../packages/shared/src/app-routes'
+import { fmtDateTime } from '@featherbase/shop-floor'
+import { ApiError, api, getSessionUser, listAllResources } from './api'
 import { listVisiblePeople, PEOPLE_LIMITED_NOTICE, type PersonOption } from './people'
 import { Markdown } from './Markdown'
+import { describeHistoryValue } from './history'
 import { ProjectDescription } from './ProjectDescription'
 import { TaskActions } from './TaskActions'
 import {
@@ -23,6 +32,10 @@ type DetailMode = 'compact' | 'inspector' | 'focus'
 interface Task {
   row_id: string
   task_title: string
+  shared: boolean
+  created_by: string
+  parent_task: string | null
+  recurrence: string | null
   description: string | null
   task_state: string
   is_done: boolean
@@ -41,6 +54,7 @@ interface Project {
 }
 
 interface TaskComment {
+  author_name?: string
   ref_name: string
   content: string
   created_by: string
@@ -48,6 +62,7 @@ interface TaskComment {
 }
 
 interface TaskVersion {
+  author_name?: string
   ref_name: string
   data: { changed?: [string, unknown, unknown][] } | null
   created_by: string
@@ -57,6 +72,10 @@ interface TaskVersion {
 const TASK_FIELDS = [
   'row_id',
   'task_title',
+  'shared',
+  'created_by',
+  'parent_task',
+  'recurrence',
   'description',
   'task_state',
   'is_done',
@@ -68,7 +87,7 @@ const TASK_FIELDS = [
   'updated_at',
 ]
 
-const STATES = ['Not started', 'In progress', 'Blocked', 'On hold', 'Done', 'Cancelled']
+const STATES = TASK_STATES
 const FOCUS_SETTINGS = 'Task Management Focus'
 const PROJECT_SETTINGS = 'tasker.projects'
 const PREFERENCE_SETTINGS = 'tasker.preferences'
@@ -118,15 +137,17 @@ export function peopleWithTaskResponsibility(
   return people
 }
 
+function personName(person?: PersonOption) { return person?.full_name || 'Former member' }
+
 export function TaskManagementPage() {
   const queryClient = useQueryClient()
   const me = getSessionUser()?.row_id ?? ''
-  const [view, setView] = useState<View>(() => hashSavedViewId() ? 'views' : 'inbox')
+  const [view, setView] = useState<View>(() => hashSavedViewId() ? 'views' : 'work')
   const [capture, setCapture] = useState('')
   const [projectName, setProjectName] = useState('')
   const [projectTask, setProjectTask] = useState('')
   const [selectedProject, setSelectedProject] = useState('')
-  const [personalOwner, setPersonalOwner] = useState(me)
+  const personalOwner = me
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [creatingProject, setCreatingProject] = useState(false)
@@ -152,7 +173,7 @@ export function TaskManagementPage() {
   const tasks = useQuery({
     queryKey: ['task-management', 'tasks'],
     queryFn: () =>
-      listResource<Task>('tasker.task', {
+      listAllResources<Task>('tasker.task', {
         fields: TASK_FIELDS,
         order_by: 'created_at asc',
         limit_page_length: 500,
@@ -161,7 +182,7 @@ export function TaskManagementPage() {
   const projects = useQuery({
     queryKey: ['task-management', 'projects'],
     queryFn: () =>
-      listResource<Project>('tasker.project', {
+      listAllResources<Project>('tasker.project', {
         fields: ['row_id', 'project_name', 'description', 'updated_at'],
         order_by: 'project_name asc',
         limit_page_length: 200,
@@ -170,13 +191,7 @@ export function TaskManagementPage() {
   const users = useQuery({
     queryKey: ['task-management', 'users'],
     queryFn: () =>
-      // Person ids are opaque (`psn_…`): list and show names. A user without
-      // Person read gets a limited list, not an error (#437).
-      listVisiblePeople(() => listResource<PersonOption>('Person', {
-        fields: ['row_id', 'full_name'],
-        order_by: 'full_name asc',
-        limit_page_length: 200,
-      })),
+      listVisiblePeople(() => api.get<{ data: PersonOption[] }>('/api/table_members/tasker.discussion')),
   })
   const focus = useQuery({
     queryKey: ['task-management', 'focus'],
@@ -206,7 +221,7 @@ export function TaskManagementPage() {
   const comments = useQuery({
     queryKey: ['task-management', 'comments'],
     queryFn: () =>
-      listResource<TaskComment>('Comment', {
+      listAllResources<TaskComment>('Comment', {
         filters: [['ref_table', '=', 'tasker.task']],
         fields: ['ref_name', 'content', 'created_by', 'created_at'],
         order_by: 'created_at asc',
@@ -214,26 +229,34 @@ export function TaskManagementPage() {
       }),
   })
 
-  const allTasks = tasks.data?.data ?? []
+  const storedTasks = tasks.data?.data ?? []
+  const parentsById = new Map(storedTasks.map(task => [task.row_id, task]))
+  const allTasks = storedTasks.map(task => {
+    const parent = task.parent_task && parentsById.get(task.parent_task)
+    return parent ? { ...task, project: parent.project, shared: parent.shared } : task
+  })
+  const openChildren = new Map<string, number>()
+  for (const task of allTasks) if (task.parent_task && !['Done', 'Cancelled'].includes(task.task_state))
+    openChildren.set(task.parent_task, (openChildren.get(task.parent_task) ?? 0) + 1)
   const byId = new Map(allTasks.map((task) => [task.row_id, task]))
   const latestExplanation = new Map<string, string>()
   for (const comment of comments.data?.data ?? [])
     latestExplanation.set(comment.ref_name, comment.content)
   const focusIds = (focus.data?.settings?.task_ids ?? []).filter((id) => byId.has(id))
   const focusSet = new Set(focusIds)
-  const inbox = allTasks.filter((task) => !task.project && !task.personal_tasks_owner)
+  const inbox = allTasks.filter((task) => !task.parent_task && !task.shared && !task.project && !task.personal_tasks_owner)
   const focused = focusIds.map((id) => byId.get(id)!)
   const myWork = [
     ...focused,
     ...allTasks.filter((task) => task.assigned_to === me && !focusSet.has(task.row_id)),
   ]
-  const projectRows = allTasks.filter((task) => task.project === selectedProject)
-  const personalRows = allTasks.filter((task) => task.personal_tasks_owner === personalOwner)
+  const projectRows = allTasks.filter((task) => !task.parent_task && task.project === selectedProject)
+  const personalRows = allTasks.filter((task) => !task.shared && task.personal_tasks_owner === personalOwner)
   const allProjects = projects.data?.data ?? []
   const projectById = new Map(allProjects.map((project) => [project.row_id, project]))
   const projectTaskCounts = new Map(allProjects.map((project) => [
     project.row_id,
-    allTasks.filter((task) => task.project === project.row_id).length,
+    allTasks.filter((task) => !task.parent_task && task.project === project.row_id).length,
   ]))
   const starredProjectIds = (projectPreferences.data?.settings?.project_ids ?? []).filter((id) => projectById.has(id))
   const starredProjectSet = new Set(starredProjectIds)
@@ -241,7 +264,7 @@ export function TaskManagementPage() {
   const people = peopleWithTaskResponsibility(users.data?.people ?? [], allTasks, me)
   const savedViews = parseSavedTaskViews(savedViewPreferences.data?.settings)
   const activeSavedView = savedViews.find((savedView) => savedView.id === activeSavedViewId)
-  const activeTogetherTasks = allTasks.filter((task) => !['Done', 'Cancelled'].includes(task.task_state))
+  const activeTogetherTasks = allTasks.filter((task) => task.shared && !['Done', 'Cancelled'].includes(task.task_state))
 
   function copySetup(setup: TaskViewSetup): TaskViewSetup {
     return {
@@ -517,7 +540,7 @@ export function TaskManagementPage() {
       id: 'personal',
       label: 'Personal tasks',
       icon: 'personal',
-      count: allTasks.filter((task) => task.personal_tasks_owner === me).length,
+      count: allTasks.filter((task) => !task.shared && task.personal_tasks_owner === me).length,
     },
   ]
   const filteredInbox = filterTasks(inbox, taskViewSetup)
@@ -566,7 +589,7 @@ export function TaskManagementPage() {
     <div className="tasker-shell" data-view={view} data-testid="task-management-page">
       {createElement('featherbase-sidebar', { className: 'tasker-sidebar', 'aria-label': 'Task views' }, <>
         {primaryTabs.map((tab) => (
-          <button
+          <Button
             key={tab.id}
             type="button"
             onClick={() => leaveSavedView(tab.id)}
@@ -576,47 +599,45 @@ export function TaskManagementPage() {
             <TaskerIcon name={tab.icon} />
             <span>{tab.label}</span>
             {tab.count != null && <span className="tasker-count">{tab.count}</span>}
-          </button>
+          </Button>
         ))}
-        <button type="button" onClick={() => leaveSavedView('views')} aria-current={view === 'views' ? 'page' : undefined} className="tasker-nav-item tasker-nav-views">
+        <Button type="button" onClick={() => leaveSavedView('views')} aria-current={view === 'views' ? 'page' : undefined} className="tasker-nav-item tasker-nav-views">
           <TaskerIcon name="views" />
           <span>Views</span>
           {savedViews.length > 0 && <span className="tasker-count">{savedViews.length}</span>}
-        </button>
-        <button type="button" onClick={() => leaveSavedView('projects', '')} aria-current={view === 'projects' && !selectedProject ? 'page' : undefined} className="tasker-nav-item tasker-nav-projects">
+        </Button>
+        <Button type="button" onClick={() => leaveSavedView('projects', '')} aria-current={view === 'projects' && !selectedProject ? 'page' : undefined} className="tasker-nav-item tasker-nav-projects">
           <TaskerIcon name="projects" />
           <span>Projects</span>
-        </button>
+        </Button>
           {allProjects.map((project) => (
-              <button key={project.row_id} type="button" data-depth="1" className="tasker-sidebar-project-name" aria-label={project.project_name} aria-current={view === 'projects' && selectedProject === project.row_id ? 'page' : undefined} onClick={() => leaveSavedView('projects', project.row_id)}>
+              <Button key={project.row_id} type="button" data-depth="1" className="tasker-sidebar-project-name" aria-label={project.project_name} aria-current={view === 'projects' && selectedProject === project.row_id ? 'page' : undefined} onClick={() => leaveSavedView('projects', project.row_id)}>
                 <span>{project.project_name}</span>
                 <span className="tasker-count">{projectTaskCounts.get(project.row_id)!}</span>
-              </button>
+              </Button>
           ))}
       </>)}
       <main className="tasker-main">
       {starredProjectIds.length > 0 && (
         <div className="tasker-project-tabs" aria-label="Starred projects">
           {starredProjectIds.map((id) => (
-            <button key={id} type="button" aria-current={view === 'projects' && selectedProject === id ? 'page' : undefined}
+            <Button key={id} type="button" aria-current={view === 'projects' && selectedProject === id ? 'page' : undefined}
               onClick={() => leaveSavedView('projects', id)}>
               {projectById.get(id)?.project_name}
-            </button>
+            </Button>
           ))}
         </div>
       )}
       {tasks.error && <p role="alert" className="mb-4">{tasks.error.message} · <a href="/featherbase/admin">Back to Featherbase</a></p>}
-      {error && <p role="alert" className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-      {users.data?.limited && <p role="status" className="mb-4 rounded-md px-3 py-2 text-sm text-[var(--color-ink-muted)]">{PEOPLE_LIMITED_NOTICE}</p>}
+      {error && <p role="alert" className="mb-4 rounded-md bg-negative-tint px-3 py-2 pointer-fine:text-sm text-negative">{error}</p>}
+      {users.data?.limited && <p role="status" className="mb-4 rounded-md px-3 py-2 pointer-fine:text-sm text-[var(--color-ink-muted)]">{PEOPLE_LIMITED_NOTICE}</p>}
       {selectedTask && detailMode === 'compact' && (
         <div className="tasker-compact-detail">
           <TaskDetail id={selectedTask} mode={detailMode} onMode={setDetailMode} onSaved={refresh} people={people} projects={allProjects} onCompleted={actionCompleted} />
         </div>
       )}
 
-      {view === 'inbox' && (
-        <section aria-labelledby="inbox-heading">
-          <SectionTitle id="inbox-heading" title="Inbox" hint="Capture first. Decide where it belongs when you are ready." />
+      {(view === 'work' || view === 'inbox') && (
           <form
             className="tasker-composer"
             onSubmit={async (event) => {
@@ -625,23 +646,30 @@ export function TaskManagementPage() {
               try {
                 await createTask(title)
                 setCapture('')
+                setView('inbox')
               } catch { /* message is shown above */ }
             }}
           >
             <label className="sr-only" htmlFor="quick-capture">Quick capture</label>
             <input
-              id="quick-capture"
+              id="quick-capture" readOnly={saving}
               value={capture}
               onChange={(event) => setCapture(event.target.value)}
-              placeholder="What do you need to remember?"
-              className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm outline-none focus:border-[var(--color-brand)] focus:ring-2 focus:ring-[var(--color-brand)]/15"
-              autoFocus
+              placeholder="Capture a private task, just for you…"
+              className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 pointer-fine:text-sm outline-none focus:border-[var(--color-action)] focus:ring-2 focus:ring-[var(--color-action)]/15"
+              autoFocus={view === 'inbox'}
             />
-            <button className="fc-btn-primary" disabled={saving || !capture.trim()}>Add</button>
+            <Button type="submit" variant="primary"  disabled={saving || !capture.trim()}>Add</Button>
           </form>
+      )}
+
+      {view === 'inbox' && (
+        <section aria-labelledby="inbox-heading">
+          <SectionTitle id="inbox-heading" title="Inbox" hint="Capture first. Decide where it belongs when you are ready." />
+
           {toolbarFor(inbox, filteredInbox, { kind: 'inbox' }, 'Inbox', true)}
           {filteredInbox.length
-            ? <TaskList tasks={filteredInbox} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
+            ? <TaskList openChildren={openChildren} tasks={filteredInbox} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
             : <NoTaskMatches total={inbox.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
         </section>
       )}
@@ -649,10 +677,14 @@ export function TaskManagementPage() {
       {view === 'work' && (
         <section aria-labelledby="work-heading">
           <SectionTitle id="work-heading" title="My Work" hint="Your private focus order, followed by work assigned to you" />
+          <Attention tasks={allTasks} onOpen={(id, question) => { void setDetailMode('inspector'); location.hash = `task=${encodeURIComponent(id)}&question=${encodeURIComponent(question)}` }} />
           {toolbarFor(myWork, filteredMyWork, { kind: 'work' }, 'My Work', true)}
-          {filteredMyWork.length
-            ? <TaskList tasks={filteredMyWork} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} onMove={moveFocus} />
-            : <NoTaskMatches total={myWork.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
+          <h3 className="mt-5 mb-3 font-semibold">My Focus</h3>
+          {filteredMyWork.filter(task => focusSet.has(task.row_id)).length === 0 && <p className="text-ink-muted text-sm">Choose Focus on a task to keep it here.</p>}
+          <TaskList openChildren={openChildren} tasks={filteredMyWork.filter(task => focusSet.has(task.row_id))} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} onMove={moveFocus} />
+          <h3 className="mt-5 mb-3 font-semibold">Also assigned to me</h3>
+          <TaskList openChildren={openChildren} tasks={filteredMyWork.filter(task => !focusSet.has(task.row_id))} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
+          {!filteredMyWork.length && <NoTaskMatches total={myWork.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
         </section>
       )}
 
@@ -664,8 +696,8 @@ export function TaskManagementPage() {
             const rows = filteredTogether.filter((task) => task.assigned_to === owner)
             if (!rows.length) return null
             return <div key={owner ?? 'unassigned'} className="mb-7">
-              <h3 className="mb-2 text-sm font-semibold">{owner ?? 'Unassigned'} <span className="font-normal text-[var(--color-ink-muted)]">{rows.length}</span></h3>
-              <TaskList tasks={rows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
+              <h3 className="mb-2 pointer-fine:text-sm font-semibold">{owner ? personName(people.find(person => person.row_id === owner)) : 'Unassigned'} <span className="font-normal text-[var(--color-ink-muted)]">{rows.length}</span></h3>
+              <TaskList openChildren={openChildren} tasks={rows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
             </div>
           })}
           {!filteredTogether.length && <NoTaskMatches total={activeTogetherTasks.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
@@ -687,12 +719,12 @@ export function TaskManagementPage() {
                 <ProjectDescription key={selectedProject} project={projectById.get(selectedProject)!} onSaved={refresh} />
                 <form className="tasker-composer" onSubmit={async (event) => { event.preventDefault(); const title = projectTask; try { await createTask(title, { project: selectedProject }); setProjectTask('') } catch { /* shown above */ } }}>
                   <label className="sr-only" htmlFor="project-task">Add task to project</label>
-                  <input id="project-task" value={projectTask} onChange={(event) => setProjectTask(event.target.value)} placeholder="Add a task, then press Enter" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" autoFocus />
-                  <button className="fc-btn-primary" disabled={saving || !projectTask.trim()}>Add</button>
+                  <input id="project-task" readOnly={saving} value={projectTask} onChange={(event) => setProjectTask(event.target.value)} placeholder="Add a task, then press Enter" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 pointer-fine:text-sm" autoFocus />
+                  <Button type="submit" variant="primary"  disabled={saving || !projectTask.trim()}>Add</Button>
                 </form>
                 {toolbarFor(projectRows, filteredProjectRows, { kind: 'project', projectId: selectedProject }, 'This project', false)}
                 {filteredProjectRows.length
-                  ? <TaskList tasks={filteredProjectRows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
+                  ? <TaskList openChildren={openChildren} tasks={filteredProjectRows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
                   : <NoTaskMatches total={projectRows.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
               </>
             ) : <>
@@ -701,19 +733,19 @@ export function TaskManagementPage() {
                 <label htmlFor="project-name">New project</label>
                 <div>
                   <input id="project-name" value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="Project name" />
-                  <button className="fc-btn-primary" disabled={creatingProject || !projectName.trim()}>Create project</button>
+                  <Button type="submit" variant="primary"  disabled={creatingProject || !projectName.trim()}>Create project</Button>
                 </div>
               </form>
               <div className="tasker-project-directory" aria-label="All projects">
                 {allProjects.map((project) => (
-                  <button key={project.row_id} type="button" aria-label={`Open project ${project.project_name}`} onClick={() => setSelectedProject(project.row_id)} className="tasker-project-directory-item">
+                  <Button key={project.row_id} type="button" aria-label={`Open project ${project.project_name}`} onClick={() => setSelectedProject(project.row_id)} className="tasker-project-directory-item">
                     <span className="tasker-project-directory-icon" aria-hidden="true"><TaskerIcon name="projects" /></span>
                     <span>
                       <strong>{project.project_name}</strong>
                       <small>{projectTaskCounts.get(project.row_id)!} {projectTaskCounts.get(project.row_id)! === 1 ? 'task' : 'tasks'}</small>
                     </span>
                     <span aria-hidden="true">›</span>
-                  </button>
+                  </Button>
                 ))}
                 {!allProjects.length && <Empty text="No projects yet. Create the first one above." />}
               </div>
@@ -723,19 +755,15 @@ export function TaskManagementPage() {
 
       {view === 'personal' && (
         <section aria-labelledby="personal-heading">
-          <SectionTitle id="personal-heading" title="Personal tasks" hint="Team-visible individual task lists" />
-          <label className="mb-4 flex items-center gap-2 text-xs text-[var(--color-ink-muted)]">
-            Show tasks for
-            <select aria-label="Personal tasks owner" value={personalOwner} onChange={(event) => setPersonalOwner(event.target.value)} className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-sm text-[var(--color-ink)]">{people.map((user) => <option key={user.row_id}>{user.row_id}</option>)}</select>
-          </label>
-          <form className="fc-card mb-5 flex gap-2 p-3" onSubmit={async (event) => { event.preventDefault(); const title = capture; try { await createTask(title, { personal_tasks_owner: personalOwner }); setCapture('') } catch { /* shown above */ } }}>
+          <SectionTitle id="personal-heading" title="Personal tasks" hint="Your personal tasks are visible only to you" />
+          <form className={cardClasses("mb-5 flex gap-2 p-3")} onSubmit={async (event) => { event.preventDefault(); const title = capture; try { await createTask(title, { personal_tasks_owner: personalOwner }); setCapture('') } catch { /* shown above */ } }}>
             <label className="sr-only" htmlFor="personal-capture">Add personal task</label>
-            <input id="personal-capture" value={capture} onChange={(event) => setCapture(event.target.value)} placeholder="Add a personal task" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" autoFocus />
-            <button className="fc-btn-primary" disabled={saving || !capture.trim()}>Add</button>
+            <input id="personal-capture" readOnly={saving} value={capture} onChange={(event) => setCapture(event.target.value)} placeholder="Add a personal task" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 pointer-fine:text-sm" autoFocus />
+            <Button type="submit" variant="primary"  disabled={saving || !capture.trim()}>Add</Button>
           </form>
           {toolbarFor(personalRows, filteredPersonalRows, { kind: 'personal', owner: personalOwner }, `${personalOwner}'s Personal tasks`, true)}
           {filteredPersonalRows.length
-            ? <TaskList tasks={filteredPersonalRows} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
+            ? <TaskList openChildren={openChildren} tasks={filteredPersonalRows} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
             : <NoTaskMatches total={personalRows.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
         </section>
       )}
@@ -761,12 +789,12 @@ export function TaskManagementPage() {
                 const rows = filteredSavedViewTasks.filter((task) => task.assigned_to === owner)
                 if (!rows.length) return null
                 return <div key={owner ?? 'unassigned'} className="mb-7">
-                  <h3 className="mb-2 text-sm font-semibold">{owner ?? 'Unassigned'} <span className="font-normal text-[var(--color-ink-muted)]">{rows.length}</span></h3>
-                  <TaskList tasks={rows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} savedViewId={activeSavedView.id} />
+                  <h3 className="mb-2 pointer-fine:text-sm font-semibold">{owner ? personName(people.find(person => person.row_id === owner)) : 'Unassigned'} <span className="font-normal text-[var(--color-ink-muted)]">{rows.length}</span></h3>
+                  <TaskList openChildren={openChildren} tasks={rows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} savedViewId={activeSavedView.id} />
                 </div>
               })}
             </> : filteredSavedViewTasks.length
-              ? <TaskList tasks={filteredSavedViewTasks} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} savedViewId={activeSavedView.id} />
+              ? <TaskList openChildren={openChildren} tasks={filteredSavedViewTasks} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} savedViewId={activeSavedView.id} />
               : null}
             {!filteredSavedViewTasks.length && <NoTaskMatches total={savedViewBaseTasks.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
           </> : <>
@@ -810,7 +838,7 @@ function scopeLabel(scope: SavedTaskViewScope, projects: Map<string, Project>): 
 function savedViewUnavailableReason(
   savedView: SavedTaskView,
   projects: Map<string, Project>,
-  people: { row_id: string }[],
+  people: PersonOption[],
 ): string | null {
   if (savedView.scope.kind === 'project' && !projects.has(savedView.scope.projectId)) return 'Project unavailable'
   if (savedView.scope.kind === 'personal') {
@@ -845,7 +873,7 @@ function TaskViewToolbar({
   onSetup: (setup: TaskViewSetup) => void
   total: number
   matched: number
-  people: { row_id: string }[]
+  people: PersonOption[]
   projects: Project[]
   showProjects: boolean
   builtInCriterion?: string
@@ -886,7 +914,7 @@ function TaskViewToolbar({
   for (const state of setup.filters.states)
     chips.push({ key: `state:${state}`, label: state, remove: () => removeFilter('states', state) })
   for (const person of setup.filters.responsiblePeople)
-    chips.push({ key: `person:${person}`, label: person === UNASSIGNED ? 'Unassigned' : person, remove: () => removeFilter('responsiblePeople', person) })
+    chips.push({ key: `person:${person}`, label: person === UNASSIGNED ? 'Unassigned' : personName(people.find(candidate => candidate.row_id === person)), remove: () => removeFilter('responsiblePeople', person) })
   for (const urgency of setup.filters.urgencies)
     chips.push({ key: `urgency:${urgency}`, label: urgency === 'urgent' ? 'Urgent' : 'Not urgent', remove: () => removeFilter('urgencies', urgency) })
   for (const projectId of setup.filters.projects)
@@ -931,25 +959,23 @@ function TaskViewToolbar({
           placeholder="Search tasks"
         />
       </label>
-      <button
+      <Button
         ref={filterButton}
         type="button"
-        className="fc-btn tasker-filter-button"
+        className="tasker-filter-button"
         aria-expanded={filtersOpen}
         aria-controls="tasker-filter-controls"
         onClick={() => setFiltersOpen((open) => !open)}
       >
         Filter{chips.filter((chip) => chip.remove).length ? ` (${chips.filter((chip) => chip.remove).length})` : ''}
-      </button>
+      </Button>
       {activeSavedView && dirty && <>
-        <button type="button" className="fc-btn" onClick={async () => {
-          try { await onUpdate(activeSavedView) } catch { /* parent shows the failure */ }
-        }}>Update view</button>
-        <button type="button" className="fc-btn" onClick={onReset}>Reset</button>
+        <Button type="button"  onClick={() => void onUpdate(activeSavedView)}>Update view</Button>
+        <Button type="button"  onClick={onReset}>Reset</Button>
       </>}
-      <button type="button" className="fc-btn" onClick={() => setSavingAsNew((open) => !open)}>
+      <Button type="button"  onClick={() => setSavingAsNew((open) => !open)}>
         {activeSavedView ? 'Save as new' : 'Save view'}
-      </button>
+      </Button>
     </div>
     {filtersOpen && <TaskFilterControls
       filters={setup.filters}
@@ -963,7 +989,7 @@ function TaskViewToolbar({
     {(chips.length > 0 || setup.search || total > 0) && <div className="tasker-active-criteria">
       <div className="tasker-filter-chips">
         {chips.map((chip) => chip.remove
-          ? <button key={chip.key} type="button" onClick={chip.remove} aria-label={`Remove ${chip.label} filter`}>{chip.label} <span aria-hidden="true">×</span></button>
+          ? <Button key={chip.key} type="button" onClick={chip.remove} aria-label={`Remove ${chip.label} filter`}>{chip.label} <span aria-hidden="true">×</span></Button>
           : <span key={chip.key}>{chip.label}</span>)}
       </div>
       <span className="tasker-match-count" aria-live="polite">{matched} of {total} {total === 1 ? 'task' : 'tasks'}</span>
@@ -978,8 +1004,8 @@ function TaskViewToolbar({
         {currentScope.kind !== 'all' && <label><input type="radio" name="view-scope" checked={scopeKind === 'all'} onChange={() => setScopeKind('all')} /> Across all tasks</label>}
       </fieldset>
       <div>
-        <button className="fc-btn-primary" disabled={!name.trim()}>Save private view</button>
-        <button type="button" className="fc-btn" onClick={() => { setSavingAsNew(false); setName('') }}>Cancel</button>
+        <Button type="submit" variant="primary"  disabled={!name.trim()}>Save private view</Button>
+        <Button type="button"  onClick={() => { setSavingAsNew(false); setName('') }}>Cancel</Button>
       </div>
       <p>Only you can see this saved view. Tasks are not changed.</p>
     </form>}
@@ -988,7 +1014,7 @@ function TaskViewToolbar({
 
 function TaskFilterControls({ filters, people, projects, showProjects, onFilters, onClear, onClose }: {
   filters: TaskViewFilters
-  people: { row_id: string }[]
+  people: PersonOption[]
   projects: Project[]
   showProjects: boolean
   onFilters: (filters: TaskViewFilters) => void
@@ -1009,26 +1035,26 @@ function TaskFilterControls({ filters, people, projects, showProjects, onFilters
   }
 
   return <div className="tasker-filter-layer">
-    <button type="button" className="tasker-filter-backdrop" aria-label="Close filters" onClick={onClose} />
+    <Button type="button" className="tasker-filter-backdrop" aria-label="Close filters" onClick={onClose} />
     <div id="tasker-filter-controls" className="tasker-filter-popover" role="dialog" aria-label="Filter tasks" onKeyDown={(event) => {
       if (event.key === 'Escape') {
         event.stopPropagation()
         onClose()
       }
     }}>
-      <div className="tasker-filter-heading"><strong>Filters</strong><button type="button" aria-label="Close filters" onClick={onClose}>×</button></div>
+      <div className="tasker-filter-heading"><strong>Filters</strong><Button type="button" aria-label="Close filters" onClick={onClose}>×</Button></div>
       <FilterGroup label="State" values={STATES} selected={filters.states} onToggle={(value) => toggle('states', value)} firstControl={firstControl} />
-      <FilterGroup label="Responsible person" values={[UNASSIGNED, ...people.map((person) => person.row_id)]} labels={new Map([[UNASSIGNED, 'Unassigned']])} selected={filters.responsiblePeople} onToggle={(value) => toggle('responsiblePeople', value)} />
+      <FilterGroup label="Responsible person" values={[UNASSIGNED, ...people.map((person) => person.row_id)]} labels={new Map([[UNASSIGNED, 'Unassigned'], ...people.map(person => [person.row_id, personName(person)] as [string, string])])} selected={filters.responsiblePeople} onToggle={(value) => toggle('responsiblePeople', value)} />
       <FilterGroup label="Urgency" values={['urgent', 'not_urgent']} labels={new Map([['urgent', 'Urgent'], ['not_urgent', 'Not urgent']])} selected={filters.urgencies} onToggle={(value) => toggle('urgencies', value as TaskViewFilters['urgencies'][number])} />
       {showProjects && <FilterGroup label="Project" values={projects.map((project) => project.row_id)} labels={new Map(projects.map((project) => [project.row_id, project.project_name]))} selected={filters.projects} onToggle={(value) => toggle('projects', value)} />}
-      <div className="tasker-filter-actions"><button type="button" onClick={onClear}>Clear all</button><button type="button" className="fc-btn-primary" onClick={onClose}>Close</button></div>
+      <div className="tasker-filter-actions"><Button type="button" onClick={onClear}>Clear all</Button><Button type="button" variant="primary"  onClick={onClose}>Close</Button></div>
     </div>
   </div>
 }
 
 function FilterGroup({ label, values, labels = new Map(), selected, onToggle, firstControl }: {
   label: string
-  values: string[]
+  values: readonly string[]
   labels?: Map<string, string>
   selected: readonly string[]
   onToggle: (value: string) => void
@@ -1045,12 +1071,12 @@ function FilterGroup({ label, values, labels = new Map(), selected, onToggle, fi
 
 function NoTaskMatches({ total, setup, onSetup }: { total: number; setup: TaskViewSetup; onSetup: (setup: TaskViewSetup) => void }) {
   if (total === 0) return <Empty text="Nothing here yet." />
-  return <div className="fc-card tasker-no-matches">
+  return <div className={cardClasses("tasker-no-matches")}>
     <strong>No tasks match this search and filters</strong>
     <p>0 of {total} tasks. Your criteria are still applied.</p>
     <div>
-      {setup.search && <button type="button" className="fc-btn" onClick={() => onSetup({ ...setup, search: '' })}>Clear search</button>}
-      <button type="button" className="fc-btn" onClick={() => onSetup({ ...setup, filters: emptyTaskViewSetup().filters })}>Clear all filters</button>
+      {setup.search && <Button type="button"  onClick={() => onSetup({ ...setup, search: '' })}>Clear search</Button>}
+      <Button type="button"  onClick={() => onSetup({ ...setup, filters: emptyTaskViewSetup().filters })}>Clear all filters</Button>
     </div>
   </div>
 }
@@ -1058,7 +1084,7 @@ function NoTaskMatches({ total, setup, onSetup }: { total: number; setup: TaskVi
 function SavedViewDirectory({ savedViews, projects, people, onOpen, onRename, onDelete }: {
   savedViews: SavedTaskView[]
   projects: Map<string, Project>
-  people: { row_id: string }[]
+  people: PersonOption[]
   onOpen: (savedView: SavedTaskView) => void
   onRename: (savedView: SavedTaskView, name: string) => Promise<void>
   onDelete: (savedView: SavedTaskView) => Promise<void>
@@ -1079,21 +1105,19 @@ function SavedViewDirectory({ savedViews, projects, people, onOpen, onRename, on
         }}>
           <label className="sr-only" htmlFor={`rename-view-${savedView.id}`}>Rename saved view</label>
           <input id={`rename-view-${savedView.id}`} autoFocus value={name} onChange={(event) => setName(event.target.value)} />
-          <button className="fc-btn-primary" disabled={!name.trim()}>Save</button>
-          <button type="button" className="fc-btn" onClick={() => setRenaming(null)}>Cancel</button>
+          <Button type="submit" variant="primary"  disabled={!name.trim()}>Save</Button>
+          <Button type="button"  onClick={() => setRenaming(null)}>Cancel</Button>
         </form> : <>
-          <button type="button" className="tasker-saved-view-open" onClick={() => onOpen(savedView)}>
+          <Button type="button" className="tasker-saved-view-open" onClick={() => onOpen(savedView)}>
             <strong>{savedView.name}</strong>
             <span>{scopeLabel(savedView.scope, projects)}</span>
             {unavailable && <em>{unavailable}</em>}
-          </button>
+          </Button>
           <div className="tasker-saved-view-actions">
-            <button type="button" className="fc-btn" onClick={() => { setRenaming(savedView.id); setName(savedView.name) }}>Rename</button>
-            <button type="button" className="fc-btn" onClick={async () => {
-              if (window.confirm(`Delete private saved view “${savedView.name}”?`)) {
-                try { await onDelete(savedView) } catch { /* parent shows the failure */ }
-              }
-            }}>Delete</button>
+            <Button type="button"  onClick={() => { setRenaming(savedView.id); setName(savedView.name) }}>Rename</Button>
+            <Button type="button"  onClick={() => {
+              if (window.confirm(`Delete private saved view “${savedView.name}”?`)) void onDelete(savedView)
+            }}>Delete</Button>
           </div>
         </>}
       </article>
@@ -1120,18 +1144,18 @@ function ProjectHeading({ project, starred, onRename, onToggleStar, onMoveStar }
   }}>
     <label className="sr-only" htmlFor="rename-project">Project name</label>
     <input id="rename-project" aria-label="Rename project" autoFocus value={draft.project_name} onChange={(event) => setDraft({ ...draft, project_name: event.target.value })} className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] px-3 py-2 text-base font-semibold" />
-    <button className="fc-btn-primary" disabled={!draft.project_name.trim()}>Save</button>
-    <button type="button" className="fc-btn" onClick={() => setDraft(null)}>Cancel</button>
+    <Button type="submit" variant="primary"  disabled={!draft.project_name.trim()}>Save</Button>
+    <Button type="button"  onClick={() => setDraft(null)}>Cancel</Button>
   </form>
   return <div className="mb-3 flex items-start justify-between gap-3">
     <SectionTitle title={project.project_name} hint="Tasks begin unassigned; someone can take responsibility when work starts" />
     <div className="tasker-project-heading-actions">
-      <button type="button" className="fc-btn" onClick={() => void onToggleStar()}>{starred ? '★ Starred tab' : '☆ Add to tabs'}</button>
+      <Button type="button"  onClick={() => void onToggleStar()}>{starred ? '★ Starred tab' : '☆ Add to tabs'}</Button>
       {starred && <>
-        <button type="button" className="fc-btn" aria-label={`Move project ${project.project_name} tab left`} onClick={() => void onMoveStar(-1)}>←</button>
-        <button type="button" className="fc-btn" aria-label={`Move project ${project.project_name} tab right`} onClick={() => void onMoveStar(1)}>→</button>
+        <Button type="button"  aria-label={`Move project ${project.project_name} tab left`} onClick={() => void onMoveStar(-1)}>←</Button>
+        <Button type="button"  aria-label={`Move project ${project.project_name} tab right`} onClick={() => void onMoveStar(1)}>→</Button>
       </>}
-      <button type="button" className="fc-btn" onClick={() => setDraft({ ...project })}>Rename</button>
+      <Button type="button"  onClick={() => setDraft({ ...project })}>Rename</Button>
     </div>
   </div>
 }
@@ -1141,7 +1165,7 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
   mode: DetailMode
   onMode: (mode: DetailMode) => Promise<void>
   onSaved: () => Promise<void>
-  people: { row_id: string }[]
+  people: PersonOption[]
   projects: Project[]
   onCompleted: (projectId?: string) => Promise<void>
 }) {
@@ -1150,6 +1174,19 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
     queryFn: () => api.get<Task & { description: string }>(`/api/table/tasker.task/${encodeURIComponent(id)}`),
     retry: false,
   })
+  const parent = useQuery({ queryKey: ['task-management', 'parent', task.data?.parent_task],
+    enabled: Boolean(task.data?.parent_task),
+    queryFn: () => api.get<Task>(`/api/table/tasker.task/${encodeURIComponent(task.data!.parent_task!)}`),
+  })
+  const effectiveShared = Boolean(task.data?.parent_task ? parent.data?.shared : task.data?.shared)
+  const childProgress = useQuery({ queryKey: ['task-management', 'subtasks', id], enabled: Boolean(task.data && !task.data.parent_task),
+    queryFn: () => listAllResources<{ row_id: string; task_title: string; task_state: string | null; assigned_to: string | null; updated_at: string }>('tasker.task', {
+      fields: ['row_id', 'task_title', 'task_state', 'assigned_to', 'updated_at'], filters: [['parent_task', '=', id]], order_by: 'created_at asc', limit_page_length: 200,
+    }),
+  })
+  const unfinishedChildren = (childProgress.data?.data ?? []).filter(child => !['Done', 'Cancelled'].includes(String(child.task_state)))
+  const completionBlocked = Boolean(!task.data?.is_done && !task.data?.parent_task && (childProgress.isPending || childProgress.error || unfinishedChildren.length))
+
   const taskActivity = useQuery({
     queryKey: ['task-management', 'detail-activity', id],
     queryFn: () => api.get<{ comments: TaskComment[]; versions: TaskVersion[] }>(
@@ -1157,7 +1194,6 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
     ),
   })
   const [draft, setDraft] = useState<{ task_title: string; description: string; updated_at: string } | null>(null)
-  const [comment, setComment] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const editButton = useRef<HTMLButtonElement>(null)
@@ -1177,12 +1213,12 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
   }
   useEffect(() => {
     setDraft(null)
-    setComment('')
     setError('')
   }, [id])
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null
-    detail.current?.querySelector<HTMLElement>('a, button')?.focus()
+    if (!new URLSearchParams(location.hash.slice(1)).has('question'))
+      detail.current?.querySelector<HTMLElement>('a, button')?.focus()
     return () => { if (previous?.isConnected) previous.focus() }
   }, [id, mode])
   useEffect(() => {
@@ -1199,11 +1235,10 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
   }, [mode])
 
   const activity = [
-    ...(taskActivity.data?.comments ?? []).map((entry) => ({ kind: 'comment' as const, at: entry.created_at, who: entry.created_by, content: entry.content })),
-    ...(taskActivity.data?.versions ?? []).map((entry) => ({ kind: 'version' as const, at: entry.created_at, who: entry.created_by, changes: entry.data?.changed ?? [] })),
+    ...(taskActivity.data?.comments ?? []).map((entry) => ({ kind: 'comment' as const, at: entry.created_at, who: entry.author_name ?? 'Unknown person', content: entry.content })),
+    ...(taskActivity.data?.versions ?? []).map((entry) => ({ kind: 'version' as const, at: entry.created_at, who: entry.author_name ?? 'Unknown person', changes: entry.data?.changed ?? [] })),
   ].sort((left, right) => new Date(left.at).getTime() - new Date(right.at).getTime())
   const latestActivity = activity.at(-1)
-  const formatValue = (value: unknown) => value == null || value === '' ? 'empty' : String(value)
 
   return <section ref={detail} className="tasker-detail" aria-label="Task detail content" onKeyDown={(event) => {
     if (event.key === 'Escape') {
@@ -1219,42 +1254,43 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
     }
   }}>
     <div className="tasker-detail-toolbar">
-      <a href={sameDocumentHash(hashSavedViewId() ? savedViewHash(hashSavedViewId()!) : '#')} className="fc-btn" autoFocus>Close</a>
+      <a href={sameDocumentHash(hashSavedViewId() ? savedViewHash(hashSavedViewId()!) : '#')} className={buttonClasses({ className: "" })} autoFocus>Close</a>
       <div className="tasker-mode-switch" aria-label="Task detail view">
         {([['compact', 'Compact'], ['inspector', 'Inspector'], ['focus', 'Focus']] as [DetailMode, string][]).map(([value, label]) =>
-          <button key={value} type="button" aria-pressed={mode === value} onClick={() => void onMode(value)}>{label}</button>)}
+          <Button key={value} type="button" aria-pressed={mode === value} onClick={() => void onMode(value)}>{label}</Button>)}
       </div>
     </div>
     <h2 className="my-5 text-xl font-semibold">{task.data?.task_title ?? 'Task details'}</h2>
-    {task.error && <p role="alert">{task.error.message}</p>}
+    {task.error && <p role="alert">{task.error.message} <Button disabled={task.isFetching} onClick={() => void task.refetch()}>Try again</Button></p>}
     {task.isPending && <p role="status">Loading task…</p>}
     {error && <p role="alert">{error}</p>}
     <TaskActions key={id} task={task.data ?? { row_id: id, updated_at: '' }} disabled={!task.data || Boolean(task.error) || saving || Boolean(draft)} onCompleted={onCompleted} />
     {task.data && !task.error && <>
       <fieldset className="tasker-detail-controls" disabled={saving || Boolean(draft)}>
         <legend className="sr-only">Task workflow</legend>
-        <label>State<select aria-label="Task state" value={task.data.task_state} onChange={(event) => void patch({ task_state: event.target.value }, task.data.updated_at)}>{STATES.map(state => <option key={state}>{state}</option>)}</select></label>
+        <label>State<select aria-label="Task state" value={task.data.task_state} onChange={(event) => void patch({ task_state: event.target.value }, task.data.updated_at)}>{STATES.map(state => <option key={state} disabled={state === 'Done' && completionBlocked}>{state}</option>)}</select></label>
         <label>Responsibility<select aria-label="Task responsibility" value={task.data.assigned_to ?? ''} onChange={(event) => void patch({ assigned_to: event.target.value || null }, task.data.updated_at)}>
-          <option value="">Unassigned</option>{people.map(user => <option key={user.row_id}>{user.row_id}</option>)}
+          <option value="">Unassigned</option>{people.filter(user => effectiveShared || user.row_id === me).map(user => <option key={user.row_id} value={user.row_id}>{personName(user)}</option>)}
         </select></label>
-        <label>Destination<select aria-label="Task destination" value={task.data.personal_tasks_owner ? `personal:${task.data.personal_tasks_owner}` : task.data.project ? `project:${task.data.project}` : ''} onChange={(event) => {
+        <label>Destination<select disabled={Boolean(task.data.parent_task)} aria-label="Task destination" value={!effectiveShared && task.data.personal_tasks_owner ? `personal:${task.data.personal_tasks_owner}` : task.data.project ? `project:${task.data.project}` : ''} onChange={(event) => {
           const [kind, value] = event.target.value.split(':', 2)
           void patch(kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null }, task.data.updated_at)
-        }}><option value="">Inbox</option>{projects.map(project => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}
-          {people.map(user => <option key={user.row_id} value={`personal:${user.row_id}`}>Personal: {user.row_id}</option>)}
+        }}><option value="" disabled={effectiveShared}>{effectiveShared ? 'Shared work' : 'Inbox'}</option>{projects.map(project => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}
+          {!effectiveShared && !task.data.parent_task && people.filter(user => user.row_id === me).map(user => <option key={user.row_id} value={`personal:${user.row_id}`}>Personal: {personName(user)}</option>)}
         </select></label>
         <div className="tasker-detail-signals">
-          {!task.data.assigned_to && <button type="button" className="fc-btn" onClick={() => void patch({ assigned_to: me }, task.data.updated_at)}>Take it</button>}
-          <button type="button" className="fc-btn" aria-pressed={task.data.urgent} onClick={() => void patch({ urgent: !task.data.urgent }, task.data.updated_at)}>{task.data.urgent ? 'Urgent' : 'Not urgent'}</button>
-          <button type="button" className="fc-btn" onClick={() => void patch({ is_done: !task.data.is_done }, task.data.updated_at)}>{task.data.is_done ? 'Undo Done' : 'Mark Done'}</button>
+          {!task.data.assigned_to && <Button type="button"  onClick={() => void patch({ assigned_to: me }, task.data.updated_at)}>Take it</Button>}
+          <Button type="button"  aria-pressed={task.data.urgent} onClick={() => void patch({ urgent: !task.data.urgent }, task.data.updated_at)}>{task.data.urgent ? 'Urgent' : 'Not urgent'}</Button>
+          <Button type="button" disabled={completionBlocked} onClick={() => void patch({ is_done: !task.data.is_done }, task.data.updated_at)}>{task.data.is_done ? 'Undo Done' : 'Mark Done'}</Button>
         </div>
       </fieldset>
+      {completionBlocked && <p className="mt-3 text-sm text-ink-muted">{unfinishedChildren.length ? 'Finish or cancel the open subtasks before marking this task Done.' : childProgress.error ? 'Subtasks could not be checked. Reopen this task to try again.' : 'Checking subtasks…'}</p>}
       {mode === 'compact' ? <div className="tasker-compact-summary">
         <Markdown>{task.data.description || 'No description yet.'}</Markdown>
-        {latestActivity && <p className="mt-3 border-l-2 border-[var(--color-border)] pl-3 text-xs text-[var(--color-ink-muted)]">
+        {latestActivity && <p className="mt-3 border-l-2 border-[var(--color-border)] pl-3 pointer-fine:text-xs text-[var(--color-ink-muted)]">
           Latest: {latestActivity.kind === 'comment' ? latestActivity.content : 'Task fields changed'}
         </p>}
-        <p className="mt-3 text-xs text-[var(--color-ink-muted)]">Open Inspector to edit or join the discussion.</p>
+        <p className="mt-3 pointer-fine:text-xs text-[var(--color-ink-muted)]">Open Inspector to edit or join the discussion.</p>
       </div> : <>
       {draft ? <form className="tasker-description-editor" onSubmit={async (event) => {
         // Keep the draft's original revision even if another action refetches this row.
@@ -1264,64 +1300,52 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
             ...draft, task_title: draft.task_title.trim(),
           })
           queryClient.setQueryData(['task-management', 'detail', id], saved)
-          cancelDraft()
           await onSaved()
           await queryClient.invalidateQueries({ queryKey: ['task-management', 'detail-activity', id] })
+          cancelDraft()
         } catch (error) { setError(error instanceof Error ? error.message : 'Could not save') }
         finally { setSaving(false) }
       }}>
-        <label className="block text-sm mb-3">Task title
+        <label className="block pointer-fine:text-sm mb-3">Task title
           <input autoFocus className="mt-2 w-full rounded border border-[var(--color-border)] p-3"
             disabled={saving} value={draft.task_title}
             onChange={(event) => setDraft({ ...draft, task_title: event.target.value })} />
         </label>
-        <label className="block text-sm">Description
+        <label className="block pointer-fine:text-sm">Description
           <textarea className="mt-2 w-full rounded border border-[var(--color-border)] p-3" rows={4} disabled={saving}
             value={draft.description}
             onChange={(event) => setDraft({ ...draft, description: event.target.value })} />
         </label>
         <div className="mt-3 flex gap-2">
-          <button className="fc-btn-primary" disabled={saving || !draft?.task_title.trim()}>Save task</button>
-          <button type="button" className="fc-btn" disabled={saving || !draft} onClick={cancelDraft}>Cancel changes</button>
+          <Button type="submit" variant="primary"  disabled={saving || !draft?.task_title.trim()}>Save task</Button>
+          <Button type="button"  disabled={saving || !draft} onClick={cancelDraft}>Cancel changes</Button>
         </div>
       </form> : <div className="tasker-description-read">
         <div className="tasker-description-heading"><h3>Description</h3>
-          <button ref={editButton} type="button" className="fc-btn" onClick={() => setDraft({ task_title: task.data.task_title, description: task.data.description ?? '', updated_at: task.data.updated_at })}>Edit task</button>
+          <Button ref={editButton} type="button"  onClick={() => setDraft({ task_title: task.data.task_title, description: task.data.description ?? '', updated_at: task.data.updated_at })}>Edit task</Button>
         </div>
         <Markdown>{task.data.description || 'No description yet. Add context when it helps.'}</Markdown>
       </div>}
 
+      {task.data.parent_task && <a className="text-action underline" href={sameDocumentHash(`#task=${encodeURIComponent(task.data.parent_task)}`)}>Open parent task</a>}
+      {!task.data.parent_task && <Subtasks taskId={id} shared={task.data.shared} creator={task.data.created_by} parentState={task.data.task_state} onOpen={childId => { location.hash = `task=${encodeURIComponent(childId)}` }} />}
+      {!task.data.parent_task && <Recurrence task={task.data} onSaved={onSaved} />}
+      <p className="mt-4 text-sm text-ink-muted">{effectiveShared ? 'Shared with your team' : 'Only you can see this task'}</p>
+      <Discussion key={id} taskId={id} shared={effectiveShared} />
       <div className="mt-7 border-t border-[var(--color-border)] pt-5">
-        <h3 className="mb-3 text-sm font-semibold">Discussion and history</h3>
+        <h3 className="mb-3 pointer-fine:text-sm font-semibold">Activity history</h3>
         {taskActivity.error && <p role="alert">Could not load discussion and history: {taskActivity.error.message}</p>}
-        <form className="mb-5 flex gap-2" onSubmit={async (event) => {
-          event.preventDefault()
-          const content = comment.trim()
-          setSaving(true); setError('')
-          try {
-            await api.post('/api/save_row', { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: id, content } })
-            setComment('')
-            await Promise.all([
-              queryClient.invalidateQueries({ queryKey: ['task-management', 'detail-activity', id] }),
-              queryClient.invalidateQueries({ queryKey: ['task-management', 'comments'] }),
-            ])
-          } catch (error) { setError(error instanceof Error ? error.message : 'Could not add comment') }
-          finally { setSaving(false) }
-        }}>
-          <label className="sr-only" htmlFor={`task-comment-${id}`}>Add comment</label>
-          <input id={`task-comment-${id}`} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Add a comment" className="min-w-0 flex-1 rounded border border-[var(--color-border)] px-3 py-2 text-sm" />
-          <button className="fc-btn-primary" disabled={saving || !comment.trim()}>Comment</button>
-        </form>
-        {!activity.length && <p className="text-xs text-[var(--color-ink-faint)]">No discussion or changes yet.</p>}
+
+        {!activity.length && <p className="pointer-fine:text-xs text-[var(--color-ink-subtle)]">No discussion or changes yet.</p>}
         <ol className="space-y-4" data-testid="task-activity">
-          {activity.map((entry, index) => <li key={`${entry.kind}-${entry.at}-${index}`} className="border-l-2 border-[var(--color-border)] pl-3 text-sm">
-            <p className="text-xs text-[var(--color-ink-muted)]"><strong className="text-[var(--color-ink)]">{entry.who}</strong> {entry.kind === 'comment' ? 'commented' : 'edited'} · {new Date(entry.at).toLocaleString()}</p>
+          {activity.map((entry, index) => <li key={`${entry.kind}-${entry.at}-${index}`} className="border-l-2 border-[var(--color-border)] pl-3 pointer-fine:text-sm">
+            <p className="pointer-fine:text-xs text-[var(--color-ink-muted)]"><strong className="text-[var(--color-ink)]">{entry.who}</strong> {entry.kind === 'comment' ? 'commented' : 'edited'} · {fmtDateTime(new Date(entry.at))}</p>
             {entry.kind === 'comment'
               ? <p className="mt-1 whitespace-pre-wrap">{entry.content}</p>
-              : <ul className="mt-1 text-xs text-[var(--color-ink-muted)]">{entry.changes.length ? entry.changes.map(([field, from, to], changeIndex) => <li key={changeIndex}><strong>{field.replaceAll('_', ' ')}</strong>: {formatValue(from)} → {formatValue(to)}</li>) : <li>Task updated</li>}</ul>}
+              : <ul className="mt-1 pointer-fine:text-xs text-[var(--color-ink-muted)]">{entry.changes.length ? entry.changes.map(([field, from, to], changeIndex) => <li key={changeIndex}><strong>{field.replaceAll('_', ' ')}</strong>: {describeHistoryValue(field, from, { people, projects })} → {describeHistoryValue(field, to, { people, projects })}</li>) : <li>Task updated</li>}</ul>}
           </li>)}
         </ol>
-        <a className="mt-6 block text-xs text-[var(--color-brand)]" href={`/featherbase/admin/tasker.task/${encodeURIComponent(id)}`}>Attachments and advanced fields in Featherbase ↗</a>
+        <a className="mt-6 block pointer-fine:text-xs text-[var(--color-action)]" href={rowHref('tasker.task', id)}>Attachments and advanced fields in Featherbase ↗</a>
       </div>
       </>}
     </>}
@@ -1329,11 +1353,12 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
 }
 
 function Empty({ text }: { text: string }) {
-  return <div className="fc-card border-dashed px-4 py-10 text-center text-sm text-[var(--color-ink-muted)]">{text}</div>
+  return <div className={cardClasses("border-dashed px-4 py-10 text-center text-sm text-[var(--color-ink-muted)]")}>{text}</div>
 }
 
-function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch, onFocus, onMove, savedViewId }: {
+function TaskList({ tasks, openChildren, users, projects, focusSet, me, explanations, onPatch, onFocus, onMove, savedViewId }: {
   tasks: Task[]
+  openChildren: Map<string, number>
   users: { row_id: string; full_name?: string | null }[]
   projects: Project[]
   focusSet: Set<string>
@@ -1379,15 +1404,15 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
     const inactive = ['Blocked', 'On hold', 'Cancelled'].includes(task.task_state)
     return (
       <article key={task.row_id} className={`tasker-task-row ${task.is_done ? 'is-done' : ''}`}>
-        <input aria-label={`Mark ${task.task_title} done`} type="checkbox" checked={Boolean(task.is_done)} onChange={(event) => void onPatch(task, { is_done: event.target.checked })} className="tasker-task-checkbox" />
+        <input aria-label={`Mark ${task.task_title} done`} type="checkbox" disabled={!task.is_done && Boolean(openChildren.get(task.row_id))} title={openChildren.get(task.row_id) ? 'Finish or cancel the subtasks first' : undefined} checked={Boolean(task.is_done)} onChange={(event) => void onPatch(task, { is_done: event.target.checked })} className="tasker-task-checkbox" />
         <div className="tasker-task-copy">
           <a href={sameDocumentHash(savedViewId ? savedViewHash(savedViewId, task.row_id) : `#task=${encodeURIComponent(task.row_id)}`)} className={task.is_done ? 'line-through' : ''}>{task.task_title}</a>
           {explaining === task.row_id && (
             <form className="tasker-explanation-form" onSubmit={(event) => { event.preventDefault(); void addExplanation(task) }}>
               <label className="sr-only" htmlFor={`explain-${task.row_id}`}>Optional explanation</label>
-              <input id={`explain-${task.row_id}`} value={explanation} onChange={(event) => setExplanation(event.target.value)} placeholder="Optional explanation" autoFocus className="min-w-0 flex-1 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 text-xs" />
-              <button className="fc-btn-primary" disabled={posting}>Save note</button>
-              <button type="button" className="fc-btn" onClick={() => { setExplanation(''); setExplaining(null) }}>Skip</button>
+              <input id={`explain-${task.row_id}`} value={explanation} onChange={(event) => setExplanation(event.target.value)} placeholder="Optional explanation" autoFocus className="min-w-0 flex-1 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 pointer-fine:text-xs" />
+              <Button type="submit" variant="primary"  disabled={posting}>Save note</Button>
+              <Button type="button"  onClick={() => { setExplanation(''); setExplaining(null) }}>Skip</Button>
             </form>
           )}
           {explaining !== task.row_id && inactive && explanations.get(task.row_id) && (
@@ -1396,16 +1421,16 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
         </div>
         <div className="tasker-task-metadata">
           <select data-state={task.task_state} aria-label={`State for ${task.task_title}`} value={task.task_state ?? 'Not started'} onChange={(event) => { const taskState = event.target.value; void onPatch(task, { task_state: taskState }); if (['Blocked', 'On hold', 'Cancelled'].includes(taskState)) { setExplaining(task.row_id); setExplanation('') } }}>{STATES.map((state) => <option key={state}>{state}</option>)}</select>
-          <select aria-label={`Destination for ${task.task_title}`} value={task.personal_tasks_owner ? `personal:${task.personal_tasks_owner}` : task.project ? `project:${task.project}` : ''} onChange={(event) => { const [kind, value] = event.target.value.split(':', 2); void onPatch(task, kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null }) }}><option value="">Inbox</option><optgroup label="Projects">{projects.map((project) => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}</optgroup><optgroup label="Personal tasks">{users.map((user) => <option key={user.row_id} value={`personal:${user.row_id}`}>{user.full_name || user.row_id}</option>)}</optgroup></select>
+          <select aria-label={`Destination for ${task.task_title}`} disabled={Boolean(task.parent_task)} value={!task.shared && task.personal_tasks_owner ? `personal:${task.personal_tasks_owner}` : task.project ? `project:${task.project}` : ''} onChange={(event) => { const [kind, value] = event.target.value.split(':', 2); void onPatch(task, kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null }) }}><option value="" disabled={task.shared}>{task.shared ? 'Shared work' : 'Inbox'}</option><optgroup label="Projects">{projects.map((project) => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}</optgroup><optgroup label="Personal tasks">{!task.shared && users.filter(user => user.row_id === me).map((user) => <option key={user.row_id} value={`personal:${user.row_id}`}>{personName(user)}</option>)}</optgroup></select>
           <div className="tasker-responsibility">
-            <select aria-label={`Assign ${task.task_title}`} value={task.assigned_to ?? ''} onChange={(event) => void onPatch(task, { assigned_to: event.target.value || null })}><option value="">Unassigned</option>{users.map((user) => <option key={user.row_id} value={user.row_id}>{user.full_name || user.row_id}</option>)}</select>
-            {!task.assigned_to && me && <button type="button" onClick={() => void onPatch(task, { assigned_to: me })} className="tasker-take-button">Take it</button>}
+            <select aria-label={`Assign ${task.task_title}`} value={task.assigned_to ?? ''} onChange={(event) => void onPatch(task, { assigned_to: event.target.value || null })}><option value="">Unassigned</option>{users.filter(user => task.shared || user.row_id === me).map((user) => <option key={user.row_id} value={user.row_id}>{personName(user)}</option>)}</select>
+            {!task.assigned_to && me && <Button type="button" onClick={() => void onPatch(task, { assigned_to: me })} className="tasker-take-button">Take it</Button>}
           </div>
         </div>
         <div className="tasker-task-signals">
-          <button type="button" aria-label={`${task.urgent ? 'Remove urgent flag from' : 'Mark urgent'} ${task.task_title}`} aria-pressed={task.urgent} title="Urgent is visible to the team" onClick={() => void onPatch(task, { urgent: !task.urgent })} className={`tasker-urgent ${task.urgent ? 'is-urgent' : ''}`}>{task.urgent && <span aria-hidden="true" />}{task.urgent ? 'Urgent' : 'Not urgent'}</button>
-          <button type="button" aria-label={`${focused ? 'Remove from' : 'Add to'} My Focus: ${task.task_title}`} title="My Focus is private to you" onClick={() => void onFocus(task.row_id)} className={`tasker-focus-star ${focused ? 'is-focused' : ''}`}>{focused ? '★' : '☆'} <span>Focus</span></button>
-          {onMove && focused && <div className="tasker-focus-order"><button type="button" aria-label={`Move ${task.task_title} up`} onClick={() => void onMove(task.row_id, -1)}>↑</button><button type="button" aria-label={`Move ${task.task_title} down`} onClick={() => void onMove(task.row_id, 1)}>↓</button></div>}
+          <Button type="button" aria-label={`${task.urgent ? 'Remove urgent flag from' : 'Mark urgent'} ${task.task_title}`} aria-pressed={task.urgent} title="Urgent is visible to the team" onClick={() => void onPatch(task, { urgent: !task.urgent })} className={`tasker-urgent ${task.urgent ? 'is-urgent' : ''}`}>{task.urgent && <span aria-hidden="true" />}{task.urgent ? 'Urgent' : 'Not urgent'}</Button>
+          <Button type="button" aria-label={`${focused ? 'Remove from' : 'Add to'} My Focus: ${task.task_title}`} title="My Focus is private to you" onClick={() => void onFocus(task.row_id)} className={`tasker-focus-star ${focused ? 'is-focused' : ''}`}>{focused ? '★' : '☆'} <span>Focus</span></Button>
+          {onMove && focused && <div className="tasker-focus-order"><Button type="button" aria-label={`Move ${task.task_title} up`} onClick={() => void onMove(task.row_id, -1)}>↑</Button><Button type="button" aria-label={`Move ${task.task_title} down`} onClick={() => void onMove(task.row_id, 1)}>↓</Button></div>}
         </div>
       </article>
     )

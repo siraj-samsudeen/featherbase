@@ -3,6 +3,7 @@ import { AppError } from './errors'
 import { activeApps } from './app-lifecycle'
 import { isActingSystemActor } from './system-actor'
 import { asNameList, declaresOwnPages } from './installed-app-ledger'
+import { admittedToTable } from './mandatory-access'
 
 // PERM-001: role resolution for a principal — a person or a service account
 // (person-rename R2). Every enabled principal implicitly holds 'All';
@@ -18,7 +19,17 @@ export async function getRoles(principal: string): Promise<string[]> {
   const rows = await sql`
     with held as (
       select role from has_role
-      where parent = ${principal} and parenttype in ('Person', 'Service Account'))
+      where parent = ${principal} and parenttype in ('Person', 'Service Account')
+      -- #923: a person (never a service account) also holds the roles
+      -- System Settings gives everyone who signs in, one per line.
+      union
+      -- Only a role that still exists, and never a platform role, whatever
+      -- the stored text says.
+      select ro.row_id from single_value s, regexp_split_to_table(s.value, E'\n') r
+      join role ro on ro.row_id = btrim(r)
+      where s.table_name = 'System Settings' and s.field = 'everyone_roles'
+        and ro.row_id not in ${sql(PLATFORM_ROLES)}
+        and exists (select 1 from person where row_id = ${principal}))
     select role, null as app from held
     union all
     select distinct b.app_role as role, b.app from app_role_binding b
@@ -77,6 +88,7 @@ export async function permissionScope(
   table: string,
   action: PermAction,
 ): Promise<PermScope> {
+  if (!(await admittedToTable(user, table))) return 'none'
   if (user === 'Administrator') return 'all'
   const roles = await getRoles(user)
   if (roles.includes('System Manager')) return 'all'
@@ -157,7 +169,8 @@ export async function assertPermission(
  * at its own root owns: its installation declares pages of its own
  * (declaresOwnPages, read from the installed_app row, so it never depends on
  * the app's files loading). Such an
- * app's Tables (enabled or not) are reached through the app: every reader of
+ * app's Tables and its contributed grants on core Tables are reached through
+ * the app: every reader of
  * an app reads its entry Table, so counting them would hand the Admin to
  * everyone who can open an app. An app without pages of its own is used
  * through the Admin, so its Tables still count. App Tables are still listed
@@ -170,7 +183,8 @@ export async function tableAccessFor(
   const rows = await sql`
     select p.ref_table, p.role, p.can_read, p.owner_app,
       -- #432: a grant never makes a system-written Table creatable.
-      (p.can_create and not d.system_written) as can_create,
+      -- #905: nor an archived one.
+      (p.can_create and not d.system_written and d.archived_at is null) as can_create,
       (p.can_read or p.can_write or p.can_create or p.can_delete
         or p.can_submit or p.can_cancel or p.can_amend) as any_action
     from permission p
@@ -181,11 +195,11 @@ export async function tableAccessFor(
   )
   const names = (pick: (r: (typeof active)[number]) => boolean) =>
     [...new Set(active.filter(pick).map((r) => r.ref_table as string))].sort()
-  const appTables = await tablesOfAppsWithOwnPages()
+  const ownPages = await appsWithOwnPages()
   const shared = await sql`
     select distinct share_table from share
     where (person = ${principal} or service_account = ${principal}) and read = true`
-  const ownGrant = active.some((r) => r.role !== 'All' && !appTables.has(String(r.ref_table)))
+  const ownGrant = active.some((r) => r.role !== 'All' && !ownPages.tables.has(String(r.ref_table)) && (r.owner_app == null || !ownPages.names.has(String(r.owner_app))))
   return {
     readable: names((r) => r.can_read),
     // Read through a role of the principal's own, never only through All: an
@@ -193,15 +207,18 @@ export async function tableAccessFor(
     readableByOwnRole: names((r) => r.can_read && r.role !== 'All'),
     creatable: names((r) => r.can_create),
     ownGrant,
-    admin: ownGrant || shared.some((r) => !appTables.has(String(r.share_table))),
+    admin: ownGrant || shared.some((r) => !ownPages.tables.has(String(r.share_table))),
   }
 }
 
-/** #659: the Tables of installed apps that declare pages of their own,
- *  enabled or not, loaded here or not, read through the ledger's one decoder. */
-async function tablesOfAppsWithOwnPages(): Promise<Set<string>> {
-  const rows = await sql`select tables, runtime_package, manifest from installed_app`
-  return new Set(rows.filter(declaresOwnPages).flatMap((r) => asNameList(r.tables)))
+/** #659: installation declarations remain authoritative when code is missing
+ *  or disabled. Both owned Tables and contributed grants belong in the app. */
+async function appsWithOwnPages(): Promise<{ names: Set<string>; tables: Set<string> }> {
+  const rows = (await sql`select name, tables, runtime_package, manifest from installed_app`).filter(declaresOwnPages)
+  return {
+    names: new Set(rows.map((row) => String(row.name))),
+    tables: new Set(rows.flatMap((row) => asNameList(row.tables))),
+  }
 }
 
 /** Administrator, or a principal of either kind holding System Manager. */

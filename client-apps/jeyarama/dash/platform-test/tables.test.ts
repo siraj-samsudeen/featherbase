@@ -54,4 +54,88 @@ describe('the org chart Tables on save', () => {
     await expectApiError(save(admin, 'job_assignment', {
       person: person.user, job: 'Team Leader', store: '9901', starts_on: '2026-07-01' }), { status: 417 })
   })
+
+  test('a Cluster Manager without a cluster is refused', async ({ admin, createUser }) => {
+    await install(admin)
+    const person = await createUser({ email: 'p-102@example.test' })
+    await expectApiError(save(admin, 'job_assignment', {
+      person: person.user, job: 'Cluster Manager', store: '9901', starts_on: '2026-07-01' }), { status: 417, message: expect.stringMatching(/needs the cluster/) })
+  })
+
+  test('a job assignment is Primary and takes all of the time unless told otherwise, with its designation beside the job', async ({ admin, createUser }) => {
+    await install(admin)
+    const person = await createUser({ email: 'p-103@example.test' })
+    const title = await save(admin, 'designation', { title: 'Store Manager - Grade 1' })
+    const row = await save(admin, 'job_assignment', { person: person.user, job: 'Store Manager', designation: title.row_id, store: '9901', starts_on: '2026-07-01' })
+    expect(row).toMatchObject({ assignment_type: 'Primary', designation: title.row_id })
+    expect(Number(row.percentage)).toBe(100)
+  })
+
+  test('a designation is in the list once, whatever its spacing or case', async ({ admin }) => {
+    await install(admin)
+    const title = await save(admin, 'designation', { title: 'Assistant Manager' })
+    expect(title.title_key).toBe('assistant manager')
+    await expectApiError(save(admin, 'designation', { title: ' assistant  MANAGER' }), { status: 417, message: expect.stringMatching(/Duplicate/) })
+    const alias = await save(admin, 'designation_alias', { source: 'hr', alias: 'ASST MGR', designation: title.row_id })
+    expect(alias.alias_key).toBe('hr/asst mgr')
+  })
+
+  test('a section approved for more people than its maximum is refused', async ({ admin }) => {
+    await install(admin)
+    const section = await save(admin, 'section', { store: '9901', section_name: 'Formal Shirts', approved_headcount_min: 15, approved_headcount_max: 19 })
+    expect([Number(section.approved_headcount_min), Number(section.approved_headcount_max)]).toEqual([15, 19])
+    await expectApiError(save(admin, 'section', { store: '9901', section_name: 'Cookware', approved_headcount_min: 8, approved_headcount_max: 7 }),
+      { status: 417, message: expect.stringMatching(/maximum is at least its minimum/) })
+  })
+})
+
+describe('employment on save', () => {
+  async function employee(admin: TestClient, createUser: (o: { email: string }) => Promise<{ user: string }>, n: string) {
+    const person = await createUser({ email: `emp-${n}@example.test` })
+    return save(admin, 'employee', { person: person.user, name: `Made-up Person ${n}` })
+  }
+
+  test('a rejoin is a new stint, which may carry a new number', async ({ admin, createUser }) => {
+    await install(admin)
+    const one = await employee(admin, createUser, '201')
+    await save(admin, 'employment', { employee: one.row_id, legal_company: 'DEMO-CO', employee_number: 'DEMO-0201', joined_on: '2024-10-09', left_on: '2026-01-22', leaving_reason: 'Resigned' })
+    const rejoin = await save(admin, 'employment', { employee: one.row_id, legal_company: 'DEMO-CO', employee_number: 'DEMO-0299', joined_on: '2026-02-04' })
+    expect(rejoin.left_on).toBeNull()
+  })
+
+  test('a stint that overlaps another at the same company is refused', async ({ admin, createUser }) => {
+    await install(admin)
+    const one = await employee(admin, createUser, '202')
+    await save(admin, 'employment', { employee: one.row_id, legal_company: 'DEMO-CO', employee_number: 'DEMO-0202', joined_on: '2024-10-09' })
+    await expectApiError(save(admin, 'employment', { employee: one.row_id, legal_company: 'DEMO-CO', employee_number: 'DEMO-0202', joined_on: '2026-02-04' }),
+      { status: 417, message: expect.stringMatching(/overlaps the person's stint at DEMO-CO from 09-Oct-2024, still current/) })
+    const other = await save(admin, 'employment', { employee: one.row_id, legal_company: 'DEMO-CO2', employee_number: 'X-1', joined_on: '2026-02-04' })
+    expect(other.legal_company).toBe('DEMO-CO2')
+  })
+
+  test('one company\'s employee number never names two people', async ({ admin, createUser }) => {
+    await install(admin)
+    const [one, two] = [await employee(admin, createUser, '203'), await employee(admin, createUser, '204')]
+    await save(admin, 'employment', { employee: one.row_id, legal_company: 'DEMO-CO', employee_number: 'DEMO-0203', joined_on: '2024-10-09' })
+    await expectApiError(save(admin, 'employment', { employee: two.row_id, legal_company: 'DEMO-CO', employee_number: 'DEMO-0203', joined_on: '2025-01-01' }),
+      { status: 417, message: expect.stringMatching(/already belongs to another person/) })
+  })
+
+  test('a partial update is checked against the stored dates', async ({ admin, createUser }) => {
+    await install(admin)
+    const one = await employee(admin, createUser, '206')
+    const first = await save(admin, 'employment', { employee: one.row_id, legal_company: 'DEMO-CO', employee_number: 'DEMO-0206', joined_on: '2024-10-09', left_on: '2026-01-22' })
+    await save(admin, 'employment', { employee: one.row_id, legal_company: 'DEMO-CO', employee_number: 'DEMO-0206', joined_on: '2026-02-04' })
+    const edited = await save(admin, 'employment', { row_id: first.row_id, updated_at: first.updated_at, leaving_reason: 'Resigned' })
+    expect(edited.leaving_reason).toBe('Resigned')
+    await expectApiError(save(admin, 'employment', { row_id: first.row_id, updated_at: edited.updated_at, left_on: '2024-01-01' }),
+      { status: 417, message: expect.stringMatching(/left_on must come after joined_on/) })
+  })
+
+  test('an end on or before the start is refused', async ({ admin, createUser }) => {
+    await install(admin)
+    const one = await employee(admin, createUser, '205')
+    await expectApiError(save(admin, 'employment', { employee: one.row_id, legal_company: 'DEMO-CO', employee_number: 'DEMO-0205', joined_on: '2026-01-01', left_on: '2026-01-01' }),
+      { status: 417, message: expect.stringMatching(/left_on must come after joined_on/) })
+  })
 })

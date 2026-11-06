@@ -2,6 +2,7 @@
 // events, or computed-style/DOM-identity checks — none of which any Session
 // verb expresses — so each stays as one named step operating on the raw
 // `page`; `session.visit` carries the first plain navigation into it.
+import { tableSlug } from 'shared'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import * as XLSX from 'xlsx'
@@ -30,7 +31,7 @@ test('Table collision describes four destinations without changing Enter precede
     await expect(page.getByTestId('awesomebar-doc').filter({ hasText: /Table definition/ }).first()).toBeVisible()
     await capture(page, 'awesomebar-destinations')
     await input.press('Enter')
-    await expect(page).toHaveURL(/\/admin\/Table$/)
+    await expect(page).toHaveURL(/\/featherbase\/admin\/table\/table$/)
     await expect(page.getByTestId('list-view')).toBeVisible()
   })
 })
@@ -77,6 +78,10 @@ test('source preview distinguishes bound, selected, wrong-schema and wrong-key F
     target('public', 'warehouses', 'Warehouse'), target('public', 'legacy', 'Legacy Latest'),
   ]
   let failLoad = false
+  // Source routing reads metadata before the separately mocked introspection.
+  await page.route('**/api/table/Data%20Source/preview', (route) => route.fulfill({
+    json: { name: 'preview', engine: 'postgres', access: 'read_only' },
+  }))
   await page.route('**/api/table/Data%20Source/preview:introspect*', (route) => failLoad
     ? route.fulfill({ status: 500, json: { error: { type: 'TestFailure', message: 'Preview unavailable' } } })
     : route.fulfill({ json: { source: 'preview', engine: 'postgres', access: 'read_only', tables } }))
@@ -165,7 +170,7 @@ test('a rejected latest theme choice returns the rendered choice to the confirme
 
 test('generated controls are reachable by labels in a browser, including child rows and error/saved states', async ({ session, request }) => {
   const row = await ensureFormFixtures(request, await adminAuth(request))
-  await session.visit(`/admin/${encodeURIComponent(FORM_DT)}/${row}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(FORM_DT))}/row/${row}`)
   await session.step('generated controls are reachable by label, including child rows and error/saved states', async ({ page }) => {
   await expect(page.getByLabel('Title', { exact: true })).toHaveValue('form fixture')
   await expect(page.getByLabel('Done', { exact: true })).toBeChecked()
@@ -195,7 +200,7 @@ test('visible attachment actions identify their fields and keyboard activation o
       { column_name: 'photo', column_type: 'Attach Image', label: 'Photo' },
     ],
   })
-  await session.visit('/admin/Accessible%20Attachments/new')
+  await session.visit('/featherbase/admin/table/accessible-attachments/new')
   await session.step('attachment actions identify their fields; keyboard activation opens the right chooser', async ({ page }) => {
   for (const [field, label, kind, key] of [
     ['invoice', 'Invoice', 'file', 'Enter'],
@@ -236,7 +241,9 @@ for (const persisted of [false, true]) {
       expect(response.status()).toBe(201)
       rowId = (await response.json()).row_id
     }
-    await session.visit(`/admin/Identity%20Form/${rowId}`)
+    await session.visit(persisted
+      ? `/featherbase/admin/table/identity-form/row/${encodeURIComponent(rowId)}`
+      : '/featherbase/admin/table/identity-form/new')
     await session.step('child rows keep their actual DOM nodes and IDs across edit, reorder, and removal', async ({ page }) => {
     if (!persisted) {
       for (const grid of ['items', 'items', 'extras']) await page.getByTestId(`add-row-${grid}`).click()

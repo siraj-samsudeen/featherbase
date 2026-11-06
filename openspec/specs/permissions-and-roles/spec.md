@@ -331,11 +331,11 @@ the app, which keeps working for them as before, and signing in takes them to it
 An app without pages of its own is used through the administration, so its
 tables still count, as do grants on the instance's own tables.
 
-#### Scenario: A store manager who only uses Feather Dash
+#### Scenario: A store manager who only uses Dash
 
-- **WHEN** a store manager whose only grant is to read Feather Dash's own tables
-  opens Feather Dash
-- **THEN** Feather Dash opens with their figures, and nothing offers them the
+- **WHEN** a store manager whose only grant is to read Dash's own tables
+  opens Dash
+- **THEN** Dash opens with their figures, and nothing offers them the
   administration
 - **AND** if they type an administration address, they are told they have no
   access there
@@ -344,7 +344,7 @@ tables still count, as do grants on the instance's own tables.
 
 - **WHEN** the same manager is also given a grant to read one of the instance's
   own tables
-- **THEN** they can open the administration, where Feather Dash's tables are
+- **THEN** they can open the administration, where Dash's tables are
   listed beside that one
 
 #### Scenario: A clerk of an app without pages of its own
@@ -367,3 +367,46 @@ change it afterwards.
   order titled "Planner order"
 - **THEN** the order is saved with that title
 - **AND** a later change to it is refused
+
+### Requirement: Roles given at creation are in a person's history
+
+Creating a person with roles SHALL record one history entry naming who created them and the roles they were given. That entry alone SHALL NOT keep the person from being deleted, and SHALL go with them. A later change to the person SHALL still keep them from being deleted.
+
+#### Scenario: A person created with a role shows it in Activity
+
+- **WHEN** an administrator creates a person with the role "Rh Clerk"
+- **THEN** the person's Activity shows the administrator created them, with "Roles: ∅ → Rh Clerk"
+
+#### Scenario: A person with only their creation entry can still be deleted
+
+- **WHEN** a person created with a role, and not changed since, is deleted
+- **THEN** the person and their roles are removed, and no history is left behind
+
+### Requirement: Roles given to everyone who signs in
+
+A System Manager SHALL be able to name, in System Settings, roles that every person holds without adding them to each Person. Only a System Manager SHALL change them, each SHALL be an existing role other than a platform role, and an instance settings file SHALL NOT carry them.
+
+#### Scenario: A newcomer holds the role everyone holds
+
+- **WHEN** System Settings gives "Tasker Member" to everyone who signs in and a person with no roles of their own signs in
+- **THEN** they can do what Tasker Member may do
+
+#### Scenario: Someone who signs in later holds it too, and a service account does not
+
+- **WHEN** a person signs in for the first time after the setting names "Tasker Member"
+- **THEN** they hold Tasker Member, and a service account still doesn't
+
+#### Scenario: Removing the role takes it only from those who held it that way
+
+- **WHEN** "Tasker Member" is removed from the setting
+- **THEN** a person who held it only through the setting no longer holds it, and a person given it directly still does
+
+#### Scenario: A platform role cannot be given to everyone
+
+- **WHEN** a System Manager names System Manager in the setting
+- **THEN** the save is refused with "System Manager cannot be given to everyone"
+
+#### Scenario: A person's pages say where the role comes from
+
+- **WHEN** a System Manager opens the access page or the Person form of someone holding a role only through the setting
+- **THEN** the access page says "everyone who signs in holds it (System Settings)", and the Person form says "Everyone who signs in also holds Tasker Member, set in System Settings."

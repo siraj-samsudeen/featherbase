@@ -1,17 +1,24 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink, useNavigate } from '@tanstack/react-router'
-import { INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, tableSchemaToZod, zodFieldErrors } from 'shared'
+import { choiceLabel, idFromColumn, tableHref, namingColumn, INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, rowDisplayTitle, tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { pickerFor } from '../lib/pickers'
+import { changeOverride, overrideControl } from '../lib/metadata-override-editor'
 import { principalLabel, usePrincipalName, isOpaqueId } from '../lib/people'
 import { RowTitle } from '../lib/row-titles'
+import { UNSEEN_ROW, useLinkTitle } from '../lib/relations'
+import { useRowCapabilities } from '../lib/row-capabilities'
+import { useIsSystemManager, useWhoAmI } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
 import { useClientScripts, type Frm } from '../lib/client-scripts'
 import { useI18n } from '../lib/i18n'
 import { Attachments } from './Attachments'
+import {
+  ArrangeBar, BookkeepingLine, FieldGroupView, UnlinkedNote, ValueField, arrangeFields, unlinkedSourceTable, useFormArrangement,
+} from './FormArrangement'
 import { Assignments } from './Assignments'
 import { Tags } from './Tags'
 import { Comments } from './Comments'
@@ -19,12 +26,20 @@ import { PersonSignInMethods } from './PersonSignInMethods'
 import { PersonIdentifiers } from './PersonIdentifiers'
 import { IdentifierSystemDefaults } from './IdentifierSystemDefaults'
 import { ActivityTimeline } from './ActivityTimeline'
+import { ActionDisclosure } from './ActionDisclosure'
+import { RetireDialog, RetiredBadge, RetiredNotice, reactivateRow } from './RowRetirement'
+import { PurgeDialog } from './PurgeDialog'
 import { WorkflowActions } from './WorkflowActions'
-import { ConnectionsPanel, RelatedTabs } from './ConnectionsPanel'
-import { usePeek } from './Peek'
+import { RowConnections } from './RowPane'
+import { RowMap } from './RowMap'
+import { RowTree } from './RowTree'
+import { useNavigation } from '../lib/navigation'
 import { GlossaryHelp } from './GlossaryHelp'
+import { ReadingPresentation } from './ReadingPresentation'
+import { ChangeRecord } from './ChangeRecord'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
-import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from './ui'
+import { ArchivedBanner } from './ArchiveTable'
+import { ContentTabs, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
 
 type Row = Record<string, unknown>
 
@@ -52,6 +67,9 @@ function parseTypedJson(columns: ColumnDef[], values: Row, typed: ReadonlySet<st
   return { values: out, errors }
 }
 
+const VIEW_TAB = { form: 'Form', map: 'Map', tree: 'Tree' } as const
+const TAB_VIEW: Record<string, 'form' | 'map' | 'tree' | undefined> = { Form: 'form', Map: 'map', Tree: 'tree' }
+
 // UI-004/UI-005: ONE form component renders and saves every Table from
 // its metadata. Layout columns group into sections/columns (UI-008 refines).
 // `prefill` (#100) seeds a NEW row's initial values — how "+ New Attendance"
@@ -60,16 +78,24 @@ export function FormView({
   table,
   name,
   prefill,
+  isNew = false,
 }: {
   table: string
   name: string
   prefill?: Row
+  isNew?: boolean
 }) {
-  const isNew = name === 'new'
   const meta = useMeta(table)
+  const describedTable = useMeta(name, table === 'Table' && !isNew)
+  const storage = table === 'Table' && !isNew ? describedTable.data?.storage_identity : null
+  const [storageCopy, setStorageCopy] = useState('')
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { t } = useI18n()
+  const formSettings = useSettings()
+  // #795: how this person arranges this Table's rows. A Table its builder
+  // laid out in sections keeps that order until they pick another.
+  const arrangement = useFormArrangement(table, Boolean(meta.data?.columns.some((c) => c.column_type === 'Section Break')))
 
   const doc = useQuery({
     queryKey: ['doc', table, name],
@@ -77,6 +103,8 @@ export function FormView({
     queryFn: () =>
       api.get<Row>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`),
   })
+  const access = useRowCapabilities(table, name, !isNew && doc.isSuccess, doc.data?.updated_at)
+  const session = useWhoAmI()
 
   // #465 D5: the fields the instance settings file set are read-only here,
   // each with a sentence saying where it is changed instead.
@@ -99,19 +127,40 @@ export function FormView({
   // top of it instead of racing it. Route-level keying on the prefill
   // string remounts this component when the prefill changes.
   const [values, setValues] = useState<Row>(() => (isNew && prefill ? { ...prefill } : {}))
+  const editingOverride = table === 'Metadata Override'
+  const overrideTarget = useMeta(editingOverride ? String(values.table_name ?? '') : '')
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [banner, setBanner] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
+  const [recordActionsOpen, setRecordActionsOpen] = useState(false)
   // TLC-J2 (docs/specs/0007-table-lifecycle.md): removing the row you are
   // looking at. Deletion existed only in the list's bulk bar, so removing one
   // row meant going back, finding it again and ticking a checkbox (#252).
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  // #859: the server said Retire is the way out of a refused delete.
+  const [deleteOffersRetire, setDeleteOffersRetire] = useState(false)
+  const [retiring, setRetiring] = useState(false)
+  const [purging, setPurging] = useState(false)
   const [staleBanner, setStaleBanner] = useState(false)
   const [scriptError, setScriptError] = useState<string | null>(null)
+  // #910 / #800: the row's areas. Form, Map and Tree are part of the path,
+  // so a step brings back the view it showed.
+  const nav = useNavigation()
+  const rowNav = nav?.step.screen === 'row' && nav.step.table === table && nav.step.row === name ? nav : null
+  const pathView = rowNav?.step.view
+  const [area, setLocalArea] = useState<string>(VIEW_TAB[pathView ?? 'form'])
+  useEffect(() => { if (pathView) setLocalArea(VIEW_TAB[pathView]) }, [pathView])
+  const setArea = (tab: string) => {
+    setLocalArea(tab)
+    const view = TAB_VIEW[tab]
+    // Always written: a quick Form-then-Tree must end on Tree even before
+    // the first address change lands.
+    if (rowNav && view) rowNav.replace({ ...rowNav.step, view })
+  }
 
   // CUST-003: client scripts registered for this Table. valuesRef mirrors the
   // live values so a script handler always sees current column values.
@@ -181,7 +230,7 @@ export function FormView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientScripts.handlers, values, rowLoaded, rowKey])
 
-  if (meta.isLoading || (!isNew && doc.isLoading))
+  if (meta.isLoading || (!isNew && (doc.isLoading || access.isLoading)))
     return <p className="text-sm text-ink-subtle">Loading…</p>
   if (meta.isError || (!isNew && doc.isError))
     return <p className="text-sm text-negative">Cannot load {table} {name}</p>
@@ -213,13 +262,16 @@ export function FormView({
   function setField(fieldname: string, value: unknown) {
     // A value set here (by a client script, say) is a value, not typed text.
     typedJson.current.delete(fieldname)
-    const next = { ...valuesRef.current, [fieldname]: value }
+    const next = editingOverride
+      ? changeOverride(valuesRef.current, fieldname, value)
+      : { ...valuesRef.current, [fieldname]: value }
     valuesRef.current = next
     setValues(next)
-    setErrors((e) => {
-      const { [fieldname]: _drop, ...rest } = e
-      return rest
-    })
+    // A grid's cell errors (`lines.0.customer`) are keyed by row position,
+    // so any change to the grid drops them with the grid's own (#832 review).
+    setErrors((e) => Object.fromEntries(
+      Object.entries(e).filter(([key]) => key !== fieldname && !key.startsWith(`${fieldname}.`)),
+    ))
     // CUST-003: fire the field's change handler with the updated doc.
     fireHandler(fieldname, next)
   }
@@ -231,7 +283,9 @@ export function FormView({
   const sourceReadOnly = isSourceReadOnly(m)
   // #432: also read-only when the platform alone writes the rows — the form
   // opens for reading, with no Save, Delete or Rename, for everyone.
-  const rowsReadOnly = isRowsReadOnly(m)
+  const rowsReadOnly = isRowsReadOnly(m) || (isNew
+    ? !(session.data?.capabilities.manage || session.data?.capabilities.creatable.includes(table))
+    : !access.data?.write)
   const boundSource = m.data_source ?? null
   // #324: rows named by whoever creates them ('prompt') need that name typed
   // in on the new-row form; every other naming rule assigns the ID itself.
@@ -240,6 +294,12 @@ export function FormView({
   // it is open. A new row has nothing at the source to overwrite.
   const uncheckedSaves = Boolean(boundSource) && !isNew && !rowsReadOnly && !m.external_modified
   const asksRowId = isNew && m.id_pattern === 'prompt' && !rowsReadOnly
+  const renamable = !isNew && !boundSource && access.data?.rename && !rowManaged && !isOpaqueId(name)
+  // #858: a row named after its own column keeps its id when that column
+  // changes; the form says so and offers Rename to the id the rule gives now.
+  const naming = namingColumn(m.id_pattern)
+  const idNow = naming && rowLoaded ? idFromColumn(naming.prefix, values[naming.column]) : null
+  const idOutOfStep = renamable && idNow !== null && idNow !== name ? idNow : null
 
   async function runAction(action: 'submit' | 'cancel' | 'amend') {
     setBanner(null)
@@ -250,7 +310,7 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       if (action === 'amend') {
-        navigate({ to: '/featherbase/admin/$table/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
+        navigate({ to: '/featherbase/admin/table/$table/row/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
       } else {
         setBanner('Done')
       }
@@ -270,7 +330,7 @@ export function FormView({
       )
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       setRenaming(false)
-      navigate({ to: '/featherbase/admin/$table/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
+      navigate({ to: '/featherbase/admin/table/$table/row/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
     } catch (err) {
       setBanner(err instanceof ApiError ? err.message : 'Rename failed')
     }
@@ -284,6 +344,7 @@ export function FormView({
   async function deleteRow() {
     setDeleteBusy(true)
     setDeleteError(null)
+    setDeleteOffersRetire(false)
     try {
       // Echo the stamp the form actually loaded. Source-bound rows with a
       // mapped revision require it, as do local rows owned by an installed
@@ -296,10 +357,13 @@ export function FormView({
       )
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
+      // #898: its title goes too, so recents stop offering the row.
+      queryClient.setQueryData(['row-title', table, name], null)
       await refreshWaitingAfterSave(queryClient, table)
-      navigate({ to: '/featherbase/admin/$table', params: { table }, search: { filters: undefined } })
+      navigate({ to: '/featherbase/admin/table/$table', params: { table }, search: { filters: undefined } })
     } catch (err) {
       setDeleteError(err instanceof ApiError ? err.message : 'Delete failed')
+      setDeleteOffersRetire(err instanceof ApiError && err.fields?.retire === 'available')
       setDeleteBusy(false)
     }
   }
@@ -310,10 +374,12 @@ export function FormView({
     fireHandler('before_save', valuesRef.current)
     // UI-009/META-013: the client validates with the SAME metadata-generated
     // zod schema the server uses — invalid forms never reach the network.
-    const schema = tableSchemaToZod(m.columns)
+    const schema = tableSchemaToZod(m.columns, { sourceLimitsLength: Boolean(m.data_source) })
     const json = parseTypedJson(m.columns, valuesRef.current, typedJson.current)
     const result = schema.safeParse(json.values)
     const fieldErrors = { ...(result.success ? {} : zodFieldErrors(result.error)), ...json.errors }
+    if (editingOverride && valuesRef.current.column_name === undefined)
+      fieldErrors.column_name = 'Choose a column or Whole Table'
     if (asksRowId && !String(valuesRef.current[ROW_ID_FIELD.column_name] ?? '').trim())
       fieldErrors[ROW_ID_FIELD.column_name] = 'Row ID is required'
     if (Object.keys(fieldErrors).length) {
@@ -343,6 +409,11 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       await queryClient.invalidateQueries({ queryKey: ['activity', table, name] })
+      if (editingOverride) {
+        await queryClient.invalidateQueries({ queryKey: ['meta', String(saved.table_name)] })
+        if (typeof baseline.table_name === 'string' && baseline.table_name !== saved.table_name)
+          await queryClient.invalidateQueries({ queryKey: ['meta', baseline.table_name] })
+      }
       await refreshWaitingAfterSave(queryClient, table)
       // #414: a person's name is cached per id for the heading, breadcrumb
       // and Recent; a save may have changed it.
@@ -350,7 +421,7 @@ export function FormView({
       if (!isNew) await queryClient.invalidateQueries({ queryKey: ['row-title', table, name] })
       if (isNew) {
         navigate({
-          to: '/featherbase/admin/$table/$name',
+          to: '/featherbase/admin/table/$table/row/$name',
           params: { table, name: String(saved.row_id) },
           search: { prefill: undefined },
         })
@@ -375,13 +446,97 @@ export function FormView({
   }
   if (asksRowId) sections[0].unshift(ROW_ID_FIELD)
 
+  // One field: on a row the user can only read, its value shown by type
+  // (#795); otherwise the control that edits it.
+  const control = (stored: ColumnDef) => {
+    const { field: f, value } = editingOverride
+      ? overrideControl(stored, values, overrideTarget.data)
+      : { field: stored, value: values[stored.column_name] }
+    return rowsReadOnly && !isNew ? (
+      <ValueField key={f.column_name} field={f} value={value} meta={m} settings={formSettings} columns={arrangement.columns} />
+    ) : (
+      <FieldControl key={f.column_name}
+        field={rowsReadOnly || (submittable && status !== 'draft') || managedFields.has(f.column_name) ? { ...f, read_only: true } : f}
+        managedHint={managedFields.has(f.column_name) ? managed.data?.hint : undefined}
+        value={value} error={errors[f.column_name]} errors={errors}
+        onChange={(v) => {
+          setField(f.column_name, v)
+          if (f.column_type === 'JSON') typedJson.current.add(f.column_name)
+        }}
+        meta={m} values={values} setField={setField}
+      />
+    )
+  }
+
+  const work = <div className="flex flex-col gap-6 lg:flex-row">
+    {/* Its columns follow its own width (a form beside the pane is narrow). */}
+    <div className={`@container min-w-0 flex-1 ${arrangement.columns === 1 && !isNew ? 'max-w-2xl' : 'max-w-3xl'}`}>
+      {!isNew && (
+        <ArrangeBar mode={arrangement.mode} columns={arrangement.columns}
+          onMode={arrangement.setMode} onColumns={arrangement.setColumns} />
+      )}
+      {!isNew && !arrangement.ready ? (
+        <p className="text-sm text-ink-subtle">Loading…</p>
+      ) : !isNew && arrangement.mode !== 'source' ? (() => {
+        const { groups, bookkeeping } = arrangeFields(
+          sections.flat(), baseline as Row, m, arrangement.mode, rowsReadOnly)
+        return (
+          <div className={cardClasses('mb-4 p-5')} data-testid="form-arranged" data-arrangement={arrangement.mode}>
+            {groups.map((g) => (
+              <FieldGroupView key={`${arrangement.mode}-${g.key}`} group={g} columns={arrangement.columns}>{control}</FieldGroupView>
+            ))}
+            {!rowsReadOnly && (
+              <FieldGroupView group={{ key: 'bookkeeping', fields: bookkeeping }} columns={arrangement.columns}>{control}</FieldGroupView>
+            )}
+            <BookkeepingLine fields={rowsReadOnly ? bookkeeping : []} values={baseline as Row} settings={formSettings} />
+          </div>
+        )
+      })() : (
+        <div data-arrangement={isNew ? undefined : 'source'}>
+          {sections.map((fields, si) => (
+            <div
+              key={si}
+              data-testid={`form-section-${si}`}
+              className={cardClasses(`mb-4 grid grid-cols-1 gap-4 p-5 ${arrangement.columns === 2 || isNew ? '@2xl:grid-cols-2' : ''}`)}
+            >
+              {fields.map((f) =>
+                f.column_type === 'Column Break' ? (
+                  arrangement.columns === 2 || isNew ? <div key={f.column_name} className="hidden @2xl:block" /> : null
+                ) : (
+                  control(f)
+                ),
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+    {/* Only the Tables with panels of their own give the form a side column. */}
+    {!isNew && (table === 'Person' || table === 'Identifier System') && <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
+      {/* person-identities: the one platform Table whose rows sign in. */}
+      {table === 'Person' && <PersonIdentifiers person={name} replacedBy={(values.replaced_by as string | null | undefined) ?? null} />}
+      {table === 'Person' && <PersonSignInMethods user={name} />}
+      {/* #628: what this person can see, and why. */}
+      {table === 'Person' && (
+        <RouterLink to="/featherbase/account/access/$person" params={{ person: name }} className="text-sm text-action hover:underline" data-testid="person-access-explanation">
+          What they can see
+        </RouterLink>
+      )}
+      {table === 'Identifier System' && <IdentifierSystemDefaults systemKey={name} />}
+    </aside>}
+  </div>
+  const reading = !isNew && rowsReadOnly ? m.reading_presentation : null
+  // #825: a Version row reads as the change it records; its fields fold away.
+  const changeRecord = !isNew && table === 'Version'
+  const RawDetails = reading || changeRecord ? 'details' : 'div'
+
   return (
     <div data-testid="form-view" className="min-w-0 max-w-5xl [overflow-wrap:anywhere]">
       <nav className="mb-2 flex flex-wrap items-center gap-x-1 text-xs text-ink-muted" data-testid="breadcrumbs">
         <RouterLink to="/featherbase/admin" className={touchLinkClasses('hover:underline')}>Admin</RouterLink>
         <span aria-hidden="true">/</span>
         <RouterLink
-          to="/featherbase/admin/$table"
+          to="/featherbase/admin/table/$table"
           params={{ table }}
           search={{ filters: undefined }}
           className={touchLinkClasses('hover:underline')}
@@ -391,6 +546,7 @@ export function FormView({
         <span aria-hidden="true">/</span>
         <span className="min-w-0 text-ink">{isNew ? 'New' : <RowTitle table={table} rowId={name} />}</span>
       </nav>
+      <ArchivedBanner table={table} meta={meta.data} canUnarchive={false} />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0 max-w-full">
           <h1 className="text-xl font-semibold text-ink">
@@ -417,6 +573,7 @@ export function FormView({
             <RouterLink
               to="/featherbase/admin/source/$name"
               params={{ name }}
+              search={{ database: undefined, schema: undefined, connect: undefined }}
               data-testid="form-source-browser"
               className={buttonClasses()}
             >
@@ -438,6 +595,8 @@ export function FormView({
               {status === 'submitted' ? 'Submitted' : status === 'cancelled' ? 'Cancelled' : 'Draft'}
             </span>
           )}
+          {!isNew && baseline.retired_at != null && <RetiredBadge />}
+          {!isNew && <ActionDisclosure label="Record actions" open={recordActionsOpen} onOpenChange={setRecordActionsOpen}>
           {!isNew && (
             <RouterLink
               to="/featherbase/print/$table/$name"
@@ -449,20 +608,8 @@ export function FormView({
               Print
             </RouterLink>
           )}
-          {/* #100 pattern 6: walk this row's relational neighborhood. */}
-          {!isNew && m.kind !== 'settings' && (
-            <RouterLink
-              to="/featherbase/admin/map/$table/$name"
-              params={{ table, name }}
-              search={{ trail: undefined }}
-              data-testid="form-map"
-              className={buttonClasses()}
-            >
-              Map
-            </RouterLink>
-          )}
           {/* A bound row's pk belongs to the source — never renameable here. */}
-          {!isNew && !renaming && !boundSource && !rowsReadOnly && !rowManaged && !isOpaqueId(name) && (
+          {renamable && !renaming && (
             <button
               onClick={() => {
                 setRenameValue(name)
@@ -490,19 +637,66 @@ export function FormView({
               </button>
             </span>
           )}
+          {/* #859: take the row out of use, keeping it and its history
+              (the delete right), or put it back (the write right). */}
+          {!isNew && access.data?.retire && !rowManaged && (
+            <button
+              onClick={() => {
+                setRecordActionsOpen(false)
+                setRetiring(true)
+              }}
+              data-testid="form-retire"
+              className={buttonClasses()}
+            >
+              {t('Retire')}
+            </button>
+          )}
+          {!isNew && access.data?.reactivate && !rowManaged && (
+            <button
+              onClick={async () => {
+                setRecordActionsOpen(false)
+                setBanner(null)
+                suppressStaleUntil.current = Date.now() + 2000
+                try {
+                  await reactivateRow(queryClient, table, name)
+                  setBanner('Done')
+                } catch (err) {
+                  setBanner(err instanceof ApiError ? err.message : 'Reactivate failed')
+                }
+              }}
+              data-testid="form-reactivate"
+              className={buttonClasses()}
+            >
+              {t('Reactivate')}
+            </button>
+          )}
+          {/* #859: a System Manager's way out of the history rule. */}
+          {!isNew && access.data?.purge && !rowManaged && (
+            <button
+              onClick={() => {
+                setRecordActionsOpen(false)
+                setPurging(true)
+              }}
+              data-testid="form-purge"
+              className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}
+            >
+              {t('Delete permanently')}
+            </button>
+          )}
           {/* TLC-J2.1: the row I am looking at is the row I can remove.
               Absent where rows are not deletable at all — a settings table's
               single row and a sub-table's rows (both refused by the server,
               so an affordance here would only ever produce an error), and a
               read-only source, which owns its rows. */}
           {!isNew &&
-            !rowsReadOnly &&
+            access.data?.delete &&
             !rowManaged &&
             m.kind !== 'settings' &&
             m.kind !== 'sub_table' && (
               <button
                 onClick={() => {
                   setDeleteError(null)
+                  setDeleteOffersRetire(false)
                   setConfirmingDelete(true)
                 }}
                 data-testid="form-delete"
@@ -511,17 +705,18 @@ export function FormView({
                 {t('Delete')}
               </button>
             )}
+          </ActionDisclosure>}
           {!rowsReadOnly && (
             <button
               onClick={save}
-              disabled={saving || !dirty || (submittable && status !== 'draft')}
+              disabled={saving || !dirty || (submittable && status !== 'draft') || (editingOverride && !overrideTarget.data)}
               data-testid="form-save"
               className={buttonClasses({ variant: 'primary', className: 'disabled:opacity-40' })}
             >
               {saving ? t('Saving…') : t('Save')}
             </button>
           )}
-          {submittable && status === 'draft' && !dirty && (
+          {submittable && access.data?.submit && status === 'draft' && !dirty && (
             <button
               onClick={() => runAction('submit')}
               data-testid="form-submit"
@@ -530,7 +725,7 @@ export function FormView({
               Submit
             </button>
           )}
-          {submittable && status === 'submitted' && (
+          {submittable && access.data?.cancel && status === 'submitted' && (
             <button
               onClick={() => runAction('cancel')}
               data-testid="form-cancel"
@@ -539,7 +734,7 @@ export function FormView({
               Cancel
             </button>
           )}
-          {submittable && status === 'cancelled' && (
+          {submittable && access.data?.amend && status === 'cancelled' && (
             <button
               onClick={() => runAction('amend')}
               data-testid="form-amend"
@@ -550,6 +745,35 @@ export function FormView({
           )}
         </div>
       </div>
+      {!isNew && <RowConnections table={table} row={name} values={doc.data} />}
+      {storage && (
+        <section aria-label="Storage" data-testid="table-storage" className={cardClasses('mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 p-3 text-sm')}>
+          <span className="font-medium">Storage</span>
+          <dl className="flex flex-wrap gap-x-6 gap-y-2">
+            {Object.entries({
+              ...(storage.data_source ? { 'Data Source': storage.data_source } : {}),
+              Schema: storage.schema || '(none)', Relation: storage.relation, 'Row key': storage.row_key.join(', '),
+              ...(storage.discriminator ? { 'Table discriminator': storage.discriminator.table_name } : {}),
+            }).map(([label, value]) => (
+              <div key={label} className="flex flex-wrap items-baseline gap-2">
+                <dt className="text-ink-muted">{label}</dt>
+                <dd><code className="select-text break-all text-ink">{value}</code></dd>
+              </div>
+            ))}
+          </dl>
+          <button className={buttonClasses({ className: 'ml-auto' })} onClick={async () => {
+            try {
+              await navigator.clipboard.writeText([
+                ...(storage.data_source ? [`Data Source: ${storage.data_source}`] : []),
+                `Schema: ${storage.schema}`, `Relation: ${storage.relation}`, `Row key: ${storage.row_key.join(', ')}`,
+                ...(storage.discriminator ? [`table_name: ${storage.discriminator.table_name}`] : []),
+              ].join('\n'))
+              setStorageCopy('Copied')
+            } catch { setStorageCopy('Copy unavailable. Select the storage text to copy it.') }
+          }}>Copy storage</button>
+          <span role="status" className="text-xs text-ink-muted">{storageCopy}</span>
+        </section>
+      )}
       {/* TLC-J2.2 / TLC-R4: a real dialog that NAMES the row. Deliberately
           the same shape as the table-level confirmation in ListView (DEL-J1.2)
           — labelled, aria-modal, Escape-dismissable, destructive action on the
@@ -564,7 +788,7 @@ export function FormView({
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-row-title"
-            className={cardClasses('w-full max-w-md p-4')}
+            className={cardClasses('w-full max-w-lg p-4')}
             data-testid="delete-row-dialog"
             onClick={(e) => e.stopPropagation()}
           >
@@ -582,7 +806,33 @@ export function FormView({
                 {deleteError}
               </p>
             )}
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-wrap justify-end gap-2 [&>button]:whitespace-nowrap">
+              {deleteError && access.data?.purge && (
+                <button
+                  onClick={() => {
+                    setConfirmingDelete(false)
+                    setPurging(true)
+                  }}
+                  disabled={deleteBusy}
+                  className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}
+                  data-testid="delete-row-purge-instead"
+                >
+                  Delete permanently
+                </button>
+              )}
+              {deleteOffersRetire && access.data?.retire && (
+                <button
+                  onClick={() => {
+                    setConfirmingDelete(false)
+                    setRetiring(true)
+                  }}
+                  disabled={deleteBusy}
+                  className={buttonClasses({ variant: 'primary' })}
+                  data-testid="delete-row-retire-instead"
+                >
+                  Retire instead
+                </button>
+              )}
               <button
                 autoFocus
                 onClick={() => setConfirmingDelete(false)}
@@ -592,18 +842,42 @@ export function FormView({
               >
                 Cancel
               </button>
-              <button
+              {/* A refusal with a way out would only be refused again; a failed
+                  request (say, offline) can still be retried from here. */}
+              {!deleteOffersRetire && <button
                 onClick={deleteRow}
                 disabled={deleteBusy}
                 className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint disabled:opacity-40' })}
                 data-testid="delete-row-confirm"
               >
                 {deleteBusy ? 'Deleting…' : 'Delete'}
-              </button>
+              </button>}
             </div>
           </div>
         </div>
       )}
+      {purging && (
+        <PurgeDialog
+          table={table}
+          ids={[name]}
+          onClose={() => setPurging(false)}
+          onDone={() => {
+            setPurging(false)
+            queryClient.setQueryData(['row-title', table, name], null)
+            navigate({ to: '/featherbase/admin/table/$table', params: { table }, search: { filters: undefined } })
+          }}
+        />
+      )}
+      {retiring && (
+        <RetireDialog
+          table={table}
+          name={name}
+          // The person's own retire is not someone else's change (RT-002).
+          onSubmit={() => { suppressStaleUntil.current = Date.now() + 2000 }}
+          onClose={() => setRetiring(false)}
+        />
+      )}
+      {!isNew && <RetiredNotice row={baseline} />}
       {banner && (
         <p
           className={`mb-3 text-sm ${banner === 'Saved' || banner === 'Done' ? 'text-positive' : 'text-negative'}`}
@@ -612,6 +886,7 @@ export function FormView({
           {banner}
         </p>
       )}
+      {!isNew && access.isError && <p role="alert" className="mb-3 text-sm text-negative">Available operations could not be checked. Reload to retry.</p>}
       {scriptError && (
         <div
           className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-caution/40 bg-caution-tint px-3 py-2 text-sm text-caution"
@@ -633,6 +908,29 @@ export function FormView({
           edit are not detected. Saving replaces what is there.
         </p>
       )}
+      {idOutOfStep && naming && (
+        <p
+          role="note"
+          className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-caution/40 bg-caution-tint px-3 py-2 text-sm text-ink"
+          data-testid="form-id-out-of-step"
+        >
+          <span>
+            This row keeps the id {name}. Its {m.columns.find((c) => c.column_name === naming.column)?.label || naming.column} now
+            gives {idOutOfStep}.
+          </span>
+          <button
+            onClick={() => {
+              setRenameValue(idOutOfStep)
+              setRenaming(true)
+              setRecordActionsOpen(true)
+            }}
+            data-testid="form-id-rename"
+            className={buttonClasses()}
+          >
+            Rename to {idOutOfStep}
+          </button>
+        </p>
+      )}
       {staleBanner && (
         <div
           className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-caution/40 bg-caution-tint px-3 py-2 text-sm"
@@ -644,6 +942,7 @@ export function FormView({
           <button
             onClick={async () => {
               await queryClient.invalidateQueries({ queryKey: ['doc', table, name] })
+              await queryClient.invalidateQueries({ queryKey: ['row-capabilities'] })
               setStaleBanner(false)
             }}
             data-testid="stale-refresh"
@@ -653,57 +952,43 @@ export function FormView({
           </button>
         </div>
       )}
-      <div className="flex flex-col gap-6 lg:flex-row">
-        <div className="min-w-0 max-w-3xl flex-1">
-          {sections.map((fields, si) => (
-            <div
-              key={si}
-              data-testid={`form-section-${si}`}
-              className={cardClasses('mb-4 grid grid-cols-1 gap-4 p-5 md:grid-cols-2')}
-            >
-              {fields.map((f) =>
-                f.column_type === 'Column Break' ? (
-                  <div key={f.column_name} className="hidden md:block" />
-                ) : (
-                  <FieldControl
-                    key={f.column_name}
-                    field={
-                      rowsReadOnly || (submittable && status !== 'draft') || managedFields.has(f.column_name)
-                        ? { ...f, read_only: true }
-                        : f
-                    }
-                    managedHint={managedFields.has(f.column_name) ? managed.data?.hint : undefined}
-                    value={values[f.column_name]}
-                    error={errors[f.column_name]}
-                    onChange={(v) => {
-                      setField(f.column_name, v)
-                      if (f.column_type === 'JSON') typedJson.current.add(f.column_name)
-                    }}
-                    meta={m}
-                    values={values}
-                    setField={setField}
-                  />
-                ),
-              )}
-            </div>
-          ))}
-        </div>
-        {!isNew && (
-          <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
-            {/* person-identities: the one platform Table whose rows sign in. */}
-            {table === 'Person' && <PersonIdentifiers person={name} replacedBy={(values.replaced_by as string | null | undefined) ?? null} />}
-            {table === 'Person' && <PersonSignInMethods user={name} />}
-            {table === 'Identifier System' && <IdentifierSystemDefaults systemKey={name} />}
-            <ConnectionsPanel table={table} name={name} />
-            <Assignments table={table} name={name} />
-            <Tags table={table} name={name} />
-            <Attachments table={table} name={name} />
-            <Comments table={table} name={name} />
-            <ActivityTimeline table={table} name={name} />
-          </aside>
-        )}
-      </div>
-      {!isNew && m.kind === 'table' && <RelatedTabs table={table} name={name} />}
+      {editingOverride && Boolean(values.table_name) && !overrideTarget.data && (
+        <p role="status" className="mb-4 text-sm text-ink-muted">
+          {overrideTarget.isError ? 'Cannot load the selected Table. Choose another Table or try again.' : 'Loading the selected Table…'}
+        </p>
+      )}
+      {editingOverride && !isNew && typeof baseline.table_name === 'string' && (
+        <RouterLink
+          to="/featherbase/admin/table/$table"
+          params={{ table: baseline.table_name }}
+          search={{ filters: undefined }}
+          className={touchLinkClasses('mb-4 inline-flex text-sm text-accent hover:underline')}
+        >
+          Open Table: {baseline.table_name}
+        </RouterLink>
+      )}
+      {reading && <ReadingPresentation presentation={reading} meta={m} values={values} />}
+      {changeRecord && <ChangeRecord values={values} />}
+      <RawDetails data-testid={reading || changeRecord ? 'raw-details' : undefined}>
+      {(reading || changeRecord) && <summary className="mb-4 cursor-pointer rounded-md px-1 py-2 text-sm font-medium text-ink-muted focus-visible:outline-2 focus-visible:outline-accent">{t(changeRecord ? 'Raw JSON' : 'Raw details')}</summary>}
+      {isNew ? work : <ContentTabs label="Record workspace" value={area} onChange={setArea} tabs={[
+        { id: 'Form', label: 'Form', content: work },
+        { id: 'Map', label: 'Map', content: <RowMap table={table} name={name} /> },
+        { id: 'Tree', label: 'Tree', content: <RowTree table={table} name={name} /> },
+        { id: 'Collaboration', label: 'Collaboration', content: <>
+          <p className="mb-4 text-sm text-ink-muted">People, tags and files for this record. Disabled features show existing content read-only.</p>
+          <div className="grid max-w-5xl grid-cols-1 items-start gap-4 lg:grid-cols-3">
+            <Assignments table={table} name={name} readOnly={!m.enable_assignments || !access.data?.assign} />
+            <Tags table={table} name={name} readOnly={!m.enable_tags || !access.data?.tag} />
+            <Attachments table={table} name={name} readOnly={!m.enable_files} canUpload={Boolean(access.data?.upload)} />
+          </div>
+        </> },
+        { id: 'Activity', label: 'Activity', content: <div className="max-w-3xl space-y-4">
+          <ActivityTimeline table={table} name={name} />
+          {m.enable_discussion && access.data?.comment && <Comments table={table} name={name} />}
+        </div> },
+      ]} />}
+      </RawDetails>
     </div>
   )
 }
@@ -719,6 +1004,8 @@ const ROW_ID_FIELD = {
   description: 'Rows in this table take the ID you type here. It must not already be in use.',
 } as ColumnDef
 
+export { unlinkedSourceTable }
+
 function FieldControl({
   field,
   value,
@@ -728,10 +1015,14 @@ function FieldControl({
   values,
   setField,
   managedHint,
+  errors,
 }: {
   field: ColumnDef
   value: unknown
   error?: string
+  /** Every field's error, keyed as the server names them; a grid of nested
+   *  rows shows its cells' (`lines.0.customer`) in place (#832). */
+  errors?: Record<string, string>
   onChange: (value: unknown) => void
   meta: TableMeta
   values: Row
@@ -780,7 +1071,14 @@ function FieldControl({
       {withFileName(t(managedHint))}
     </p>
   ) : null
-  const describedBy = [hintText ? hintId : null, managedHint ? managedId : null].filter(Boolean).join(' ')
+  // #796: a column whose source foreign key has no connected table to link
+  // to says so, and offers a System Manager the table to connect.
+  const unlinkedTarget = unlinkedSourceTable(field, meta)
+  const unlinkedId = `${controlId}-unlinked`
+  const unlinkedNote = <UnlinkedNote id={unlinkedId} field={field} meta={meta} />
+  const describedBy = [hintText ? hintId : null, managedHint ? managedId : null, unlinkedTarget ? unlinkedId : null]
+    .filter(Boolean)
+    .join(' ')
   const common = {
     id: controlId,
     'aria-labelledby': labelId,
@@ -793,11 +1091,13 @@ function FieldControl({
 
   const wide = ['Text', 'Long Text', 'JSON', 'Sub-table'].includes(field.column_type)
   const wrap = (control: React.ReactNode) => (
-    <div className={`min-w-0 ${wide ? 'md:col-span-2' : ''}`}>
+    <div className={`min-w-0 ${wide ? '@2xl:col-span-2' : ''}`} data-form-field={field.column_name} data-label={field.label ?? field.column_name}>
       {label}
       {control}
       {hint}
       {managedNote}
+      {unlinkedNote}
+      {meta.name === 'Person' && field.column_name === 'roles' && <EveryoneRolesNote />}
       {preview}
       {err}
     </div>
@@ -832,7 +1132,7 @@ function FieldControl({
             .filter(Boolean)
             .map((o) => (
               <option key={o} value={o}>
-                {o}
+                {choiceLabel(o, field.choice_labels, t)}
               </option>
             ))}
         </select>,
@@ -898,18 +1198,48 @@ function FieldControl({
           field={field}
           rows={(values[field.column_name] as Row[] | undefined) ?? []}
           onChange={(rows) => setField(field.column_name, rows)}
+          errors={errors}
         />,
       )
-    case 'Reference':
+    case 'Reference': {
+      // #881: a link to a row of any Table takes its Table from the row's own
+      // Table column, chosen first; a Table column offers only the Tables its
+      // row column allows, and choosing another Table clears the row.
+      if (field.table_column) {
+        const chosen = values[field.table_column]
+        if (chosen == null || chosen === '')
+          return wrap(
+            <input type="text" className={base} {...common} disabled value="" placeholder="Choose its Table first" />,
+          )
+        return wrap(
+          <LinkControl
+            key={String(chosen)}
+            field={{ ...field, reference_table: String(chosen) }}
+            value={value}
+            onChange={onChange}
+            className={base}
+            common={common}
+            anyTable
+          />,
+        )
+      }
+      const bound = field.reference_table === 'Table'
+        ? meta.columns.filter((c) => c.table_column === field.column_name)
+        : []
       return wrap(
         <LinkControl
           field={field}
           value={value}
-          onChange={onChange}
+          onChange={bound.length ? (next) => {
+            if (next !== value) for (const row of bound) setField(row.column_name, null)
+            onChange(next)
+          } : onChange}
           className={base}
           common={common}
+          extraFilters={bound.length ? anyTableFilters(bound) : undefined}
         />,
       )
+    }
     case 'Attach':
     case 'Attach Image':
       return wrap(
@@ -957,20 +1287,57 @@ function toLocalDatetime(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+const CHILD_CELL_CLASSES = 'w-full rounded border border-transparent px-1 py-0.5 hover:border-border focus:border-border-control'
+
 // Minimal child grid: renders child rows with editable cells. Full add/
 // delete/reorder verification is UI-007.
+/** A Sub-table cell that links to a row: of its fixed Table, or (#881) of the
+ *  Table the row's own Table cell names. A Table cell that row cells take
+ *  their Table from offers only the Tables they allow, and changing it clears
+ *  them. */
+function ChildLinkCell({ column, columns, row, setCell, common }: {
+  column: ColumnDef
+  columns: ColumnDef[]
+  row: Row
+  setCell: (changes: Record<string, unknown>) => void
+  common: Record<string, unknown>
+}) {
+  const value = row[column.column_name]
+  if (column.table_column) {
+    const chosen = row[column.table_column]
+    if (chosen == null || chosen === '')
+      return <input type="text" className={CHILD_CELL_CLASSES} {...common} disabled value="" placeholder="Choose its Table first" />
+    return (
+      <LinkControl key={String(chosen)} field={{ ...column, reference_table: String(chosen) }} value={value}
+        onChange={(next) => setCell({ [column.column_name]: next })} className={CHILD_CELL_CLASSES} common={common} floating anyTable />
+    )
+  }
+  const bound = column.reference_table === 'Table' ? columns.filter((c) => c.table_column === column.column_name) : []
+  return (
+    <LinkControl field={column} value={value}
+      onChange={(next) => setCell({
+        [column.column_name]: next,
+        ...(next !== value ? Object.fromEntries(bound.map((c) => [c.column_name, null])) : {}),
+      })}
+      className={CHILD_CELL_CLASSES} common={common} floating
+      extraFilters={bound.length ? anyTableFilters(bound) : undefined} />
+  )
+}
+
 function ChildGrid({
   id,
   labelledBy,
   field,
   rows,
   onChange,
+  errors = {},
 }: {
   id: string
   labelledBy: string
   field: ColumnDef
   rows: Row[]
   onChange: (rows: Row[]) => void
+  errors?: Record<string, string>
 }) {
   const childMeta = useMeta(field.row_table ?? '')
   const { t } = useI18n()
@@ -992,13 +1359,19 @@ function ChildGrid({
   const cols = childMeta.data.columns.filter(
     (f) => !NO_COLUMN_TYPES.has(f.column_type) && !f.hidden,
   )
-  function setCell(i: number, columnName: string, value: unknown) {
+  function setCell(i: number, columnName: string | Record<string, unknown>, value?: unknown) {
+    const changes = typeof columnName === 'string' ? { [columnName]: value } : columnName
     onChange(rows.map((row, j) => {
       if (j !== i) return row
-      const edited = { ...row, [columnName]: value }
+      const edited = { ...row, ...changes }
       if (row.row_id == null) draftKeys.current.set(edited, rowKey(row))
       return edited
     }))
+  }
+  function cellInvalid(i: number, row: Row, c: ColumnDef) {
+    return errors[`${field.column_name}.${i}.${c.column_name}`]
+      ? { 'aria-invalid': true, 'aria-describedby': `${id}-${rowKey(row)}-${c.column_name}-error` }
+      : {}
   }
   function move(i: number, dir: -1 | 1) {
     const j = i + dir
@@ -1025,6 +1398,25 @@ function ChildGrid({
             <tr key={rowKey(row)} className="border-b border-border last:border-0">
               {cols.map((c) => (
                 <td key={c.column_name} className="px-1 py-1">
+                  {c.column_type === 'Reference' ? (
+                    // #832: a link cell is picked from the linked Table's rows,
+                    // with the form's own link picker; its list floats above
+                    // the grid's scrolling frame instead of being cut by it.
+                    // #881: a link to a row of any Table waits for its row's
+                    // Table, as on the form.
+                    <ChildLinkCell
+                      column={c}
+                      columns={cols}
+                      row={row}
+                      setCell={(changes) => setCell(i, changes)}
+                      common={{
+                        id: `${id}-${rowKey(row)}-${c.column_name}`,
+                        'aria-label': `${t(field.label ?? field.column_name)}, ${t(c.label ?? c.column_name)}, row ${i + 1}`,
+                        'data-childfield': c.column_name,
+                        ...cellInvalid(i, row, c),
+                      }}
+                    />
+                  ) : (
                   <label className={c.column_type === 'Check' ? 'inline-flex size-control cursor-pointer items-center justify-center' : 'block'}>
                   <input
                     id={`${id}-${rowKey(row)}-${c.column_name}`}
@@ -1033,10 +1425,17 @@ function ChildGrid({
                     checked={c.column_type === 'Check' ? Boolean(row[c.column_name]) : undefined}
                     value={c.column_type === 'Check' ? undefined : String(row[c.column_name] ?? '')}
                     onChange={(e) => setCell(i, c.column_name, c.column_type === 'Check' ? e.target.checked : e.target.value)}
-                    className={c.column_type === 'Check' ? 'size-4 pointer-coarse:size-5' : 'w-full rounded border border-transparent px-1 py-0.5 hover:border-border focus:border-border-control'}
+                    className={c.column_type === 'Check' ? 'size-4 pointer-coarse:size-5' : CHILD_CELL_CLASSES}
                     data-childfield={c.column_name}
+                    {...cellInvalid(i, row, c)}
                   />
                   </label>
+                  )}
+                  {errors[`${field.column_name}.${i}.${c.column_name}`] && (
+                    <p id={`${id}-${rowKey(row)}-${c.column_name}-error`} className="mt-0.5 px-1 text-xs text-negative" data-testid={`error-${field.column_name}-${i}-${c.column_name}`}>
+                      {errors[`${field.column_name}.${i}.${c.column_name}`]}
+                    </p>
+                  )}
                 </td>
               ))}
               <td className="whitespace-nowrap px-1 text-center">
@@ -1078,22 +1477,65 @@ function ChildGrid({
 }
 
 
+/** The target Table's title column, when it is one of its columns the
+ *  caller may read: a column above the caller's readable levels can be
+ *  neither searched nor shown, and a title that is the row key itself (a
+ *  Table named by its id) is already what row_id shows. */
+function readableTitleColumn(meta: TableMeta | undefined): string | undefined {
+  const title = meta?.title_column
+  const column = title ? meta.columns.find((c) => c.column_name === title) : undefined
+  if (!column || (meta?.readable_tiers && !meta.readable_tiers.includes(column.tier))) return undefined
+  return column.column_name
+}
+
+/** What a Table column of a link to a row of any Table offers: stored Tables
+ *  only, and of those only the ones its row columns allow, when they list any. */
+function anyTableFilters(rows: ColumnDef[]): unknown[] {
+  const lists = rows.map((row) => (row.choices ?? '').split('\n').map((name) => name.trim()).filter(Boolean))
+  const allowed = lists.some((list) => !list.length) ? null : [...new Set(lists.flat())]
+  return [['kind', '=', 'table'], ...(allowed ? [['row_id', 'in', allowed]] : [])]
+}
+
 // UI-006: debounced autocomplete over the permission-filtered list API.
-function LinkControl({
+export function LinkControl({
   field,
   value,
   onChange,
   className,
   common,
+  forFilter = false,
+  floating = false,
+  extraFilters = [],
+  anyTable = false,
 }: {
   field: ColumnDef
   value: unknown
   onChange: (value: unknown) => void
   className: string
   common: Record<string, unknown>
+  /** A list filter: it only picks existing rows, never creates one. */
+  forFilter?: boolean
+  /** Inside a scrolling frame (a grid of nested rows): the list is placed
+   *  over the page under the box, so the frame cannot cut it off. */
+  floating?: boolean
+  /** Filters every search carries besides the picker's own (#881). */
+  extraFilters?: unknown[]
+  /** A link to a row of any Table: a row of a Table the person can't read
+   *  is shown as "<Table> (no access)", and is not a place to go (#881). */
+  anyTable?: boolean
 }) {
   const target = field.reference_table ?? ''
-  const picker = pickerFor(target)
+  const box = useRef<HTMLInputElement>(null)
+  const [place, setPlace] = useState<{ top: number; left: number; width: number } | null>(null)
+  // #793: a Table with no picker of its own is searched and shown by its
+  // title column, never by its row id — only when the caller may read that
+  // column; otherwise it stays searched and shown by row id.
+  const targetMeta = useMeta(target)
+  const own = pickerFor(target)
+  const title = readableTitleColumn(targetMeta.data)
+  const picker = own.labelField === null && own.searchField === 'row_id' && !own.peopleSearch && title
+    ? { ...own, searchField: title, labelField: title }
+    : own
   const [query, setQuery] = useState<string | null>(null) // null = not searching
   const [open, setOpen] = useState(false)
   const [options, setOptions] = useState<{ value: string; label: string }[]>([])
@@ -1104,33 +1546,63 @@ function LinkControl({
     queryFn: () => api.get<Record<string, unknown>>(`/api/table/${encodeURIComponent(target)}/${encodeURIComponent(String(value))}`),
   })
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const peek = usePeek()
+  const blurTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const searchVersion = useRef(0)
+  useEffect(() => () => {
+    clearTimeout(timer.current)
+    clearTimeout(blurTimer.current)
+    searchVersion.current++
+  }, [])
+  // #910: a set reference is a place you can go — ◎ shows the row in the
+  // drill pane, ↗ navigates to its form. Hidden while searching.
+  const nav = useNavigation()
   const navigate = useNavigate()
-  // #100 pattern 1: a set reference is a place you can GO — ◎ peeks at the
-  // row in a slide-over, ↗ navigates to its form. Hidden while searching.
-  const hasValue = Boolean(value) && query === null
+  // A filter has its own clear control and stays a filter: no pane or open.
+  const hasValue = Boolean(value) && query === null && !forFilter && !(anyTable && targetMeta.isError)
+
+  // The floating list is placed once, under the box; scrolling or resizing
+  // would leave it behind, so either closes it.
+  useEffect(() => {
+    if (!floating || !open) return
+    const close = () => setOpen(false)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [floating, open])
+
+  function openList() {
+    const rect = floating ? box.current?.getBoundingClientRect() : undefined
+    setPlace(rect ? { top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 224) } : null)
+    setOpen(true)
+  }
 
   function search(q: string) {
+    const version = ++searchVersion.current
     clearTimeout(timer.current)
     timer.current = setTimeout(async () => {
       try {
         if (picker.peopleSearch) {
           // Name, @username, address or employee code — never the id.
           const res = await api.get<{ people: { row_id: string; label: string }[] }>(`/api/people/pick?q=${encodeURIComponent(q)}`)
+          if (version !== searchVersion.current) return
           setOptions(res.people.map((p) => ({ value: p.row_id, label: p.label })))
-          setOpen(true)
+          openList()
           return
         }
         const label = picker.labelField
         const res = await listResource<Record<string, unknown> & { row_id: string }>(target, {
-          filters: [...picker.filters, ...(q ? [[picker.searchField, 'like', `%${q}%`]] : [])],
+          filters: [...picker.filters, ...extraFilters, ...(q ? [[picker.searchField, 'like', `%${q}%`]] : [])],
           fields: label ? ['row_id', label] : ['row_id'],
           limit_page_length: 10,
         })
+        if (version !== searchVersion.current) return
         setOptions(res.data.map((r) => ({ value: r.row_id, label: label ? String(r[label] ?? '') || r.row_id : r.row_id })))
-        setOpen(true)
+        openList()
       } catch {
-        setOptions([])
+        if (version === searchVersion.current) setOptions([])
       }
     }, 150)
   }
@@ -1139,37 +1611,68 @@ function LinkControl({
   const valueLabel = picker.peopleSearch
     ? value ? principalLabel(String(value), principalName, principalName === null) : null
     : picker.labelField && current.data ? String(current.data[picker.labelField] ?? '') || null : null
-  const shown = query ?? valueLabel ?? String(value ?? '')
+  // #881: the Table is the reader's only clue; the row's name stays private.
+  const noAccess = anyTable && Boolean(value) && targetMeta.isError
+  // #910 D3: a row the viewer cannot read is named neutrally, never by its id,
+  // and offers no way to it.
+  const linked = useLinkTitle(!picker.peopleSearch && value && target ? target : undefined, value ? String(value) : undefined)
+  const unseen = !picker.peopleSearch && Boolean(value) && !noAccess && linked.state === 'unreadable'
+  const shown = query ?? (noAccess ? `${target} (no access)` : null) ?? (unseen ? UNSEEN_ROW : valueLabel ?? String(value ?? ''))
+
+  // A link the person cannot see is not theirs to change: neutral words, no
+  // box and no picker, and the stored link is saved as it was.
+  if (unseen && !forFilter)
+    return (
+      <div id={typeof common.id === 'string' ? common.id : undefined} aria-label={typeof common['aria-label'] === 'string' ? common['aria-label'] : undefined}
+        className="flex min-h-9 items-center text-sm italic text-ink-muted" data-testid={`link-unseen-${field.column_name}`}>
+        {UNSEEN_ROW}
+      </div>
+    )
 
   return (
     <div className="relative">
       <input
+        ref={box}
         type="text"
         role="combobox"
         aria-expanded={open}
-        placeholder={`Reference: ${target}`}
+        placeholder={forFilter ? `Filter ${field.label ?? field.column_name}…` : `Reference: ${target}`}
         value={shown}
         onFocus={() => search(query ?? (picker.labelField ? '' : shown))}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onBlur={() => {
+          // A search still waiting must not reopen the list on a cell left behind.
+          clearTimeout(timer.current)
+          searchVersion.current++
+          clearTimeout(blurTimer.current)
+          blurTimer.current = setTimeout(() => {
+            setOpen(false)
+            // A filter shows only what it filters by, and a grid cell what will
+            // be saved: text typed but never picked goes.
+            if (forFilter || floating) setQuery(null)
+          }, 150)
+        }}
         onChange={(e) => {
           setQuery(e.target.value)
+          // In a grid, emptying the cell removes the link (Codex on #874);
+          // other typed text still has to be picked.
+          if (floating && e.target.value === '') onChange(null)
           search(e.target.value)
         }}
-        className={`${className} ${hasValue ? 'pr-14' : ''}`}
+        className={`${className} ${hasValue && !unseen ? 'pr-14' : ''}`}
         {...common}
       />
-      {hasValue && (
+      {hasValue && !unseen && (
         <span className="absolute inset-y-0 right-2 flex items-center gap-0.5">
-          {peek.available && (
+          {nav && (
             <button
               type="button"
               tabIndex={-1}
               onMouseDown={(e) => {
                 e.preventDefault()
-                peek.push({ kind: 'record', table: target, name: String(value) })
+                nav.push({ ...nav.step, pane: { table: target, row: String(value) } })
               }}
-              title={`Peek at ${target} ${String(value)}`}
-              data-testid={`link-peek-${field.column_name}`}
+              title="Show in the pane"
+              data-testid={`link-pane-${field.column_name}`}
               className="rounded px-1 text-sm text-ink-subtle hover:text-action"
             >
               ◎
@@ -1181,12 +1684,12 @@ function LinkControl({
             onMouseDown={(e) => {
               e.preventDefault()
               navigate({
-                to: '/featherbase/admin/$table/$name',
+                to: '/featherbase/admin/table/$table/row/$name',
                 params: { table: target, name: String(value) },
                 search: { prefill: undefined },
               })
             }}
-            title={`Open ${target} ${String(value)}`}
+            title="Open row page"
             data-testid={`link-open-${field.column_name}`}
             className="rounded px-1 text-sm text-ink-subtle hover:text-action"
           >
@@ -1196,7 +1699,8 @@ function LinkControl({
       )}
       {open && (
         <div
-          className="absolute z-10 mt-1 w-full rounded-md border border-border bg-surface shadow-lg"
+          className={place ? 'fixed z-30 rounded-md border border-border bg-surface shadow-lg' : 'absolute z-10 mt-1 w-full rounded-md border border-border bg-surface shadow-lg'}
+          style={place ?? undefined}
           data-testid={`link-options-${field.column_name}`}
         >
           {options.map((o) => (
@@ -1217,15 +1721,18 @@ function LinkControl({
           {!options.length && (
             <p className="px-3 py-1.5 text-sm text-ink-subtle">No matches</p>
           )}
-          <RouterLink
-            to="/featherbase/admin/$table/$name"
-            params={{ table: target, name: 'new' }}
-            search={{ prefill: undefined }}
-            className="block border-t border-border px-3 py-1.5 text-sm text-ink-muted hover:bg-subtle"
-            data-testid="link-create-new"
-          >
-            + Create new {target}
-          </RouterLink>
+          {/* A Table column of a link to any Table picks among Tables; it never makes one (#881). */}
+          {!forFilter && !extraFilters.length && (
+            <RouterLink
+              to="/featherbase/admin/table/$table/new"
+              params={{ table: target }}
+              search={{ prefill: undefined }}
+              className="block border-t border-border px-3 py-1.5 text-sm text-ink-muted hover:bg-subtle"
+              data-testid="link-create-new"
+            >
+              + Create new {target}
+            </RouterLink>
+          )}
         </div>
       )}
     </div>
@@ -1341,5 +1848,25 @@ function AttachControl({
         <p className="mt-1 text-xs text-negative">{uploadError}</p>
       )}
     </div>
+  )
+}
+
+// #923: the roles System Settings gives everyone who signs in are held by this
+// person too, though they are not in the list above. A System Manager, who can
+// change both, sees them named here.
+function EveryoneRolesNote() {
+  const isManager = useIsSystemManager()
+  const { data } = useQuery({
+    queryKey: ['doc', 'System Settings', 'System Settings'],
+    enabled: isManager,
+    queryFn: () => api.get<{ everyone_roles?: string | null }>('/api/table/System%20Settings/System%20Settings'),
+  })
+  const roles = String(data?.everyone_roles ?? '').split('\n').map((r) => r.trim()).filter(Boolean)
+  if (!roles.length) return null
+  return (
+    <p className="mt-1 text-xs text-ink-muted" data-testid="everyone-roles-note">
+      Everyone who signs in also holds {roles.join(', ')}, set in{' '}
+      <RouterLink to={tableHref('System Settings')} className="text-action hover:underline">System Settings</RouterLink>.
+    </p>
   )
 }

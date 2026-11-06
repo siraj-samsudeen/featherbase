@@ -311,6 +311,7 @@ describe('UPS-R1: the import boundary learns update', () => {
     expect(await admin.post(PATH, { key_column: 'zone', rows, dry_run: true })).toEqual({
       dry_run: true, valid: 2, updated: 1, inserted: 1, failed: [],
       actions: ['update', 'insert'], fields_updated: 1, fields_kept: 0, tracks_changes: true,
+      changed: 1, unchanged: 0, rows_kept: 0, conflicts: 0, retired: 0,
     })
     expect(await importState()).toEqual(before)
   })
@@ -330,6 +331,7 @@ describe('UPS-R1: the import boundary learns update', () => {
     expect(await admin.post(PATH, { ...body, dry_run: true })).toEqual({
       dry_run: true, valid: 2, updated: 1, inserted: 1, failed,
       actions: ['update', 'fail', 'fail', 'insert'], fields_updated: 1, fields_kept: 0,
+      changed: 1, unchanged: 0, rows_kept: 0, conflicts: 0, retired: 0,
       tracks_changes: true,
     })
     expect(await importState()).toEqual(before)
@@ -678,6 +680,11 @@ describe('UPS-R5: the key is remembered per Table', () => {
   test('UPS-R5: a keyed run stores its key and choice; a keyless run records updated 0 and no key configuration', async ({
     admin,
   }) => {
+    // #979: one test is one transaction, so now() dates every import alike.
+    // Date the later runs forward so "the latest" has one answer.
+    const dateForward = (minutes: number, isThisRun: ReturnType<typeof sql>) =>
+      sql`update featherbase.import_log set created_at = created_at + ${minutes} * interval '1 minute'
+          where ref_table = ${DT} and ${isThisRun}`
     await setup(admin)
     await seed(admin)
     await admin.post(PATH, {
@@ -686,7 +693,9 @@ describe('UPS-R5: the key is remembered per Table', () => {
       columns: ['zone', 'pop'],
       rows: [{ zone: 'Alpha', pop: 1 }],
     })
+    await dateForward(1, sql`key_column is not null`)
     await admin.post(PATH, { rows: [{ zone: 'Later keyless', pop: 2 }] })
+    await dateForward(2, sql`key_column is null and inserted = 1`)
 
     const logs = await admin.get<{ data: Record<string, unknown>[] }>(
       `/api/table/${encodeURIComponent('Import Log')}?fields=${encodeURIComponent(
@@ -696,12 +705,16 @@ describe('UPS-R5: the key is remembered per Table', () => {
       )}&order_by=${encodeURIComponent('created_at desc')}`,
     )
     expect(logs.data.length).toBe(3) // seed request + keyed run + keyless run
-    // Latest row (the keyless run) records the truthful zero count but no
-    // match-key configuration…
-    expect(logs.data[0].updated).not.toBeNull()
-    expect(logs.data[0].updated).toBe(0)
-    expect(logs.data[0].key_column).toBeNull()
-    expect(logs.data[0].empty_cells).toBeNull()
+    // A keyless run records the truthful zero count but no match-key
+    // configuration… (the runs share one created_at in a test transaction,
+    // so they are picked by what they hold, not by their order)
+    const keyless = logs.data.filter((l) => l.key_column == null)
+    expect(keyless).toHaveLength(2)
+    for (const log of keyless) {
+      expect(log.updated).not.toBeNull()
+      expect(log.updated).toBe(0)
+      expect(log.empty_cells).toBeNull()
+    }
     // …and the wizard's lookup — newest row WITH a key — still finds the
     // remembered pair, so a keyless run never erases the suggestion.
     const remembered = logs.data.find((l) => l.key_column != null)
@@ -816,5 +829,214 @@ describe('Add new rows or update the ones that match: the rehearsal', () => {
       [1, true],
       [2, true],
     ])
+  })
+})
+
+describe('#851 permission-safe matching suggestions', () => {
+  for (const [label, options, message] of [
+    ['a non-boolean analysis flag', { analyze_keys: 'true', columns: ['zone'] }, 'analyze_keys must be a boolean'],
+    ['missing columns', {}, 'columns must be an array of column names'],
+    ['null columns', { columns: null }, 'columns must be an array of column names'],
+    ['non-array columns', { columns: 'zone' }, 'columns must be an array of column names'],
+    ['a non-string column', { columns: ['zone', 7] }, 'columns must be an array of column names'],
+    ['an unknown column', { columns: ['zone', 'missing_column'] }, `${DT} has no column missing_column`],
+  ] as const) {
+    test(`analysis rejects ${label} without changing import state`, async ({ admin }) => {
+      await setup(admin)
+      await seed(admin)
+      const before = await importState()
+      const response = await admin.fetch(PATH, {
+        method: 'POST',
+        body: JSON.stringify({ analyze_keys: true, ...options, rows: [{ zone: 'Alpha', pop: 13 }] }),
+      })
+      expect(response.status).toBe(417)
+      expect(await response.json()).toEqual({ error: { type: 'ValidationError', message } })
+      expect(await importState()).toEqual(before)
+    })
+  }
+
+  test('analysis reports normalized full and partial coverage without importing', async ({ admin }) => {
+    await setup(admin)
+    await seed(admin)
+    const before = await importState()
+    const analyze = (rows: Record<string, unknown>[], columns = ['zone', 'pop']) =>
+      admin.post<{ key_candidates: { column: string; matched: number; complete: boolean; can_match: boolean }[] }>(PATH, {
+        analyze_keys: true, rows, columns,
+      })
+    const full = await analyze([{ zone: ' Alpha ', pop: 12000 }, { zone: 'Bravo', pop: 8400 }])
+    expect(full.key_candidates).toEqual([
+      { column: 'zone', matched: 2, complete: true, can_match: true },
+      { column: 'pop', matched: 2, complete: true, can_match: true },
+    ])
+    const partial = await analyze([{ zone: 'Alpha' }, { zone: 'New' }], ['zone'])
+    expect(partial.key_candidates).toEqual([{ column: 'zone', matched: 1, complete: false, can_match: true }])
+    expect(await importState()).toEqual(before)
+  })
+
+  test('analysis offers only editable matching columns', async ({ admin }) => {
+    await setup(admin, { columns: [
+      { column_name: 'zone', column_type: 'Data' },
+      { column_name: 'pop', column_type: 'Int', read_only: true },
+      { column_name: 'section', column_type: 'Section Break' },
+    ] })
+    await admin.post(PATH, { rows: [{ row_id: 'A', zone: 'Alpha' }] })
+    const before = await importState()
+    expect(await admin.post(PATH, {
+      analyze_keys: true, columns: ['pop', 'section', 'row_id', 'zone'],
+      rows: [{ row_id: 'A', zone: 'Alpha', pop: 13 }],
+    })).toEqual({ key_candidates: [
+      { column: 'row_id', matched: 1, complete: true, can_match: true },
+      { column: 'zone', matched: 1, complete: true, can_match: true },
+    ] })
+    expect(await importState()).toEqual(before)
+  })
+
+  test('analysis refuses a failed row read instead of reporting no overlap', async ({ admin }) => {
+    await setup(admin)
+    await seed(admin)
+    const before = await importState()
+    // Inject a database read failure without substituting the permission or
+    // document code: keys remain readable, but loading a complete row fails.
+    await sql`alter table featherbase.upsert_target rename to upsert_analysis_backing`
+    await sql`create view featherbase.upsert_target as select row_id, created_by, updated_at, zone,
+      1 / (pop - pop) as pop from featherbase.upsert_analysis_backing`
+    await sql`savepoint analysis_read_fault`
+    try {
+      const response = await admin.fetch(PATH, { method: 'POST', body: JSON.stringify({
+        analyze_keys: true, columns: ['zone'], rows: [{ zone: 'Alpha' }],
+      }) })
+      expect(response.status).toBe(500)
+      expect(await response.json()).toEqual({ error: { type: 'InternalError', message: 'Internal server error' } })
+    } finally {
+      await sql`rollback to savepoint analysis_read_fault`
+      await sql`release savepoint analysis_read_fault`
+      await sql`drop view featherbase.upsert_target`
+      await sql`alter table featherbase.upsert_analysis_backing rename to upsert_target`
+    }
+    expect(await importState()).toEqual(before)
+  })
+
+  test('readable overlap survives a refusal to write matched rows', async ({ admin, createUser }) => {
+    await setup(admin)
+    await seed(admin)
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: DT, role: ROLE, can_read: true, can_create: true, can_write: false,
+    } })
+    const user = await createUser({ roles: [ROLE] })
+    const readable = await user.get<{ data: { zone: string }[] }>(
+      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["zone"]')}&order_by=zone%20asc`,
+    )
+    expect(readable.data).toEqual([{ zone: 'Alpha' }, { zone: 'Bravo' }])
+    const before = await importState()
+    const response = await user.fetch(PATH, { method: 'POST', body: JSON.stringify({
+      analyze_keys: true, columns: ['zone'], rows: [{ zone: 'Alpha' }, { zone: 'Bravo' }],
+    }) })
+    expect(response.status).toBe(201)
+    expect(await response.json()).toEqual({ key_candidates: [
+      { column: 'zone', matched: 2, complete: true, can_match: false },
+    ] })
+    const keyed = await user.fetch(PATH, { method: 'POST', body: JSON.stringify({
+      key_column: 'zone', rows: [{ zone: 'Alpha', pop: 1 }],
+    }) })
+    expect(keyed.status).toBe(403)
+    expect(await importState()).toEqual(before)
+  })
+
+  test('read-all coverage survives own-row-only write scope', async ({ admin, createUser }) => {
+    await setup(admin)
+    await seed(admin)
+    const writer = `${ROLE} Writer`
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: writer } })
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: DT, role: ROLE, can_read: true, can_create: true,
+    } })
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: DT, role: writer, can_write: true, own_rows_only: true,
+    } })
+    const user = await createUser({ roles: [ROLE, writer] })
+    const response = await user.fetch(PATH, { method: 'POST', body: JSON.stringify({
+      analyze_keys: true, columns: ['zone'], rows: [{ zone: 'Alpha' }, { zone: 'Bravo' }],
+    }) })
+    expect(response.status).toBe(201)
+    expect(await response.json()).toEqual({ key_candidates: [
+      { column: 'zone', matched: 2, complete: true, can_match: false },
+    ] })
+  })
+
+  test('analysis excludes blank, repeated and ambiguous candidates', async ({ admin }) => {
+    await setup(admin)
+    await admin.post(PATH, { rows: [{ zone: 'Twin', pop: 1 }, { zone: 'Twin ', pop: 2 }] })
+    for (const rows of [[{ zone: 'Twin' }], [{ zone: 'New' }, { zone: ' New ' }], [{ zone: 'New' }, {}]]) {
+      const report = await admin.post<{ key_candidates: unknown[] }>(PATH, { analyze_keys: true, columns: ['zone'], rows })
+      expect(report.key_candidates).toEqual([])
+    }
+  })
+
+  test('analysis cannot advertise a column outside the reader tier', async ({ admin, createUser }) => {
+    await setup(admin, { columns: [
+      { column_name: 'zone', column_type: 'Data', tier: 'restricted' },
+      { column_name: 'pop', column_type: 'Int' },
+    ] })
+    await admin.post(PATH, { rows: [{ zone: 'Alpha', pop: 12000 }] })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: DT, role: ROLE, can_read: true, can_write: true, can_create: true,
+    } })
+    const user = await createUser({ roles: [ROLE] })
+    const response = await user.fetch(PATH, { method: 'POST', body: JSON.stringify({
+      analyze_keys: true, columns: ['zone'], rows: [{ zone: 'Alpha' }],
+    }) })
+    expect(response.status).toBe(201)
+    expect(await response.json()).toEqual({ key_candidates: [] })
+  })
+
+  test('a readable restricted key needs its own write-tier grant', async ({ admin, createUser }) => {
+    await setup(admin, { columns: [
+      { column_name: 'zone', column_type: 'Data', tier: 'restricted' },
+      { column_name: 'pop', column_type: 'Int' },
+    ] })
+    await admin.post(PATH, { rows: [{ zone: 'Alpha', pop: 12000 }, { zone: 'Bravo', pop: 8400 }] })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: DT, role: ROLE, tier: 'basic', can_read: true, can_write: true, can_create: true,
+    } })
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: DT, role: ROLE, tier: 'restricted', can_read: true, can_write: false,
+    } })
+    const user = await createUser({ roles: [ROLE] })
+    const before = await importState()
+    const report = await user.post(PATH, {
+      analyze_keys: true, columns: ['zone', 'pop'], rows: [{ zone: 'Alpha', pop: 12000 }, { zone: 'Bravo', pop: 8400 }],
+    })
+    expect(report).toEqual({ key_candidates: [
+      { column: 'zone', matched: 2, complete: true, can_match: false },
+      { column: 'pop', matched: 2, complete: true, can_match: true },
+    ] })
+    expect(await importState()).toEqual(before)
+  })
+
+  test('analysis does not disclose overlap with another person’s rows', async ({ admin, createUser }) => {
+    await setup(admin)
+    await seed(admin)
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    const writer = `${ROLE} Writer`
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: writer } })
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: DT, role: ROLE, can_read: true, can_create: true, own_rows_only: true,
+    } })
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: DT, role: writer, can_write: true, own_rows_only: false,
+    } })
+    const user = await createUser({ roles: [ROLE, writer] })
+    await user.post(PATH, { rows: [{ zone: 'Mine', pop: 1 }] })
+    const mine = await user.post(PATH, { analyze_keys: true, columns: ['zone'], rows: [{ zone: 'Mine' }] })
+    expect(mine).toEqual({ key_candidates: [{ column: 'zone', matched: 1, complete: true, can_match: true }] })
+    const response = await user.fetch(PATH, { method: 'POST', body: JSON.stringify({
+      analyze_keys: true, columns: ['zone'], rows: [{ zone: 'Alpha' }],
+    }) })
+    expect(response.status).toBe(201)
+    expect(await response.json()).toEqual({ key_candidates: [] })
   })
 })

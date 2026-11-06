@@ -4,6 +4,7 @@
 // in apps/server/test/saved-views.test.ts; this file proves what the person
 // sees and can do on the list.
 
+import { tableSlug } from 'shared'
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { getToken } from '../src/lib/api'
@@ -37,7 +38,7 @@ async function seed(admin: Admin, table: string) {
 
 async function open(admin: Admin, table: string, filters?: unknown) {
   const search = filters ? `?filters=${enc(JSON.stringify(filters))}` : ''
-  await renderApp(`/featherbase/admin/${enc(table)}${search}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(table))}${search}`, admin)
   await screen.findByTestId('list-view', {}, { timeout: 8000 })
 }
 
@@ -51,7 +52,8 @@ test('Reopen a saved view: opening it applies its filters in place of the ones a
 
   await waitFor(() => expect(cellTexts()).toEqual(['Open', 'Open']))
   expect(screen.getAllByTestId('filter-chip')).toHaveLength(1)
-  expect(screen.getByTestId('filter-chip')).toHaveTextContent('stage = Open')
+  // #792: a filter names its column as the list's heading does.
+  expect(screen.getByTestId('filter-chip')).toHaveTextContent('Stage = Open')
   expect(screen.getByTestId('saved-view-chip')).toHaveAttribute('aria-pressed', 'true')
 })
 

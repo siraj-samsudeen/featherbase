@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
-import { buttonClasses, cardClasses, inputClasses, pillClasses, touchTargetClasses } from './ui'
+import { buttonClasses, cardClasses, inputClasses, pillClasses, touchTargetClasses } from '@featherbase/shop-floor'
 
 // UI-017: free-form tags on a row.
-export function Tags({ table, name }: { table: string; name: string }) {
+export function Tags({ table, name, readOnly = false }: { table: string; name: string; readOnly?: boolean }) {
   const queryClient = useQueryClient()
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -40,11 +40,14 @@ export function Tags({ table, name }: { table: string; name: string }) {
     }
   }
 
+  if (readOnly && tags.data?.tags.length === 0) return null
+
   return (
     <div className={cardClasses('p-4')} data-testid="tags-panel">
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+      <div className="mb-2 text-xs font-semibold text-ink-subtle">
         Tags
       </div>
+      {tags.isError && <p role="alert" className="text-sm text-negative">Tags could not be read.</p>}
       <div className="mb-2 flex flex-wrap gap-2" data-testid="tag-list">
         {tags.data?.tags.length === 0 && (
           <span className="text-xs text-ink-subtle">No tags</span>
@@ -56,17 +59,17 @@ export function Tags({ table, name }: { table: string; name: string }) {
             data-testid="tag-chip"
           >
             {t}
-            <button
+            {!readOnly && <button
               onClick={() => remove(t)}
               aria-label={`Remove ${t}`}
               className={touchTargetClasses('ml-1 text-action hover:text-negative')}
             >
               ×
-            </button>
+            </button>}
           </span>
         ))}
       </div>
-      <div className="flex items-center gap-1">
+      {!readOnly && <div className="flex items-center gap-1">
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -78,7 +81,7 @@ export function Tags({ table, name }: { table: string; name: string }) {
         <button onClick={add} disabled={!draft.trim()} className={buttonClasses({ className: 'disabled:opacity-40' })} data-testid="tag-add">
           Add
         </button>
-      </div>
+      </div>}
       {error && (
         <p className="mt-1 text-xs text-negative" data-testid="tag-error">
           {error}

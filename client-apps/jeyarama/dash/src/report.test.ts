@@ -45,6 +45,41 @@ describe('the period', () => {
   it('is the month to date', () => {
     expect(periodOf('2026-10-15')).toEqual({ period_start: '2026-10-01', period_end: '2026-10-15' })
   })
+
+  // #750
+  it.each([
+    ['2026-11-01', '2026-10-01', '2026-10-31'],
+    ['2027-01-15', '2026-12-01', '2026-12-31'],
+    ['2028-03-31', '2028-02-01', '2028-02-29'],
+    ['2026-10-31', '2026-09-01', '2026-09-30'],
+  ])('on %s, last month is %s to %s', (today, start, end) => {
+    expect(periodOf(today, 'last')).toEqual({ period_start: start, period_end: end })
+  })
+})
+
+describe('a report of last month (#750)', () => {
+  const sarees = [place('9901 / Section: Sarees', '9901', ['010101001', '010303001'])]
+  const sept = (code: string) => row(code, { period_start: '2026-09-01', data_through: '2026-09-30' })
+
+  it('is ready from a copy of last month', () => {
+    const report = buildReport({ store: '9901', places: sarees, answer: { at: AT, rows: [sept('010101001')] }, today: TODAY, choice: 'last' })
+    expect([report.state, report.month, report.period_start, report.period_end]).toEqual(['ready', 'last', '2026-09-01', '2026-09-30'])
+  })
+
+  it("is not yet arrived from a copy of the month before last", () => {
+    const august = row('010101001', { period_start: '2026-08-01', data_through: '2026-08-31' })
+    expect(buildReport({ store: '9901', places: sarees, answer: { at: AT, rows: [august] }, today: TODAY, choice: 'last' }).state).toBe('no_data_yet')
+  })
+
+  it("never reads this month's copy as last month", () => {
+    expect(buildReport({ store: '9901', places: sarees, answer: { at: AT, rows: [row('010101001')] }, today: TODAY, choice: 'last' }).state).toBe('no_data_yet')
+  })
+
+  it("gives the Dive last month's period, which v14 caps its anchor day at", () => {
+    const answer = { at: AT, rows: [sept('010101001')] }
+    const report = buildReport({ store: '9901', places: sarees, answer, today: TODAY, choice: 'last' })
+    expect(initialState(report, answer, sarees, TODAY, { compress: s => s })).toMatchObject({ period_start: '2026-09-01', period_end: '2026-09-30' })
+  })
 })
 
 describe('the report for one store', () => {
@@ -189,9 +224,8 @@ describe("the Dive's initial state", () => {
   const sarees = [place('9901 / Section: Sarees', '9901', ['010101001', '010303001'])]
   const answer = { at: AT, rows: [row('010101001')] }
   const report = buildReport({ store: '9901', places: sarees, answer, today: TODAY })
-  // The default is the legacy shape: the server asks for the compact one only for a pinned Dive
-  // known to read it (`stateFormat`, #4453).
-  const state = (r: Report, a: CachedAnswer, places: Place[]) => initialState(r, a, places, TODAY, { compress: gzipBase64 })
+  // The app always sends the compact shape (#937); the legacy one is kept for the Dive's harness (#4453).
+  const state = (r: Report, a: CachedAnswer, places: Place[]) => initialState(r, a, places, TODAY, { compress: gzipBase64, format: 'legacy' })
   const compact = (r: Report, a: CachedAnswer, places: Place[]) => initialState(r, a, places, TODAY, { compress: gzipBase64, format: 'compact' })
 
   it("carries a section reader's store, subcategories, sections and period, as the Dive reads them", () => {
@@ -219,16 +253,20 @@ describe("the Dive's initial state", () => {
     })
   })
 
-  // The legacy shape is 0.8.0's: a Dive that predates v12 reads a missing material_groups as
-  // "every store", so it is never left out unless the instance says the Dive reads the compact one.
-  describe('for a whole-store reader, in the legacy shape (the default)', () => {
+  it('is the compact shape unless asked otherwise', () => {
+    expect(initialState(whole, all, places, TODAY, { compress: gzipBase64 })).toEqual(compact(whole, all, places))
+  })
+
+  // The legacy shape is 0.8.0's, kept for the Dive's harness: a Dive that predates v12 reads a
+  // missing material_groups as "every store".
+  describe('for a whole-store reader, in the legacy shape', () => {
     it("lists every subcategory of the store the reader's places and the cache know, as 0.8.0 did", () => {
       expect(state(whole, all, places).material_groups).toEqual(['010101001', '010101003', '010404001', '010909001'])
     })
 
     it('adds the subcategories the warehouse names when nothing is cached', () => {
       const none = buildReport({ store: '9901', places, answer: null, today: TODAY })
-      expect(initialState(none, null, places, TODAY, { compress: gzipBase64, storeCodes: ['010909001'] }).material_groups)
+      expect(initialState(none, null, places, TODAY, { compress: gzipBase64, format: 'legacy', storeCodes: ['010909001'] }).material_groups)
         .toEqual(['010101001', '010101003', '010404001', '010909001'])
     })
 
@@ -374,7 +412,7 @@ describe("the Dive's cache at real scale", () => {
     const { rows, sections } = store('1505', 1514)
     const places = [place('1505', '1505'), ...sections]
     const answer = { at: AT, rows }
-    const s = initialState(buildReport({ store: '1505', places, answer, today: TODAY }), answer, places, TODAY, { compress: gzipBase64 })
+    const s = initialState(buildReport({ store: '1505', places, answer, today: TODAY }), answer, places, TODAY, { compress: gzipBase64, format: 'legacy' })
     expect([s.material_groups?.length, rungOf(s)]).toEqual([1514, 'none'])
   })
 

@@ -1,15 +1,15 @@
 import { randomUUID } from 'node:crypto'
-import { planImport, saveImportedRow } from '../import-corrections'
+import { observeUnchangedRows, planImport, saveImportedRow } from '../import-corrections'
 import { getDoc } from '../document'
 import { createHash } from 'node:crypto'
 import { quoteIdent } from '../sql-identifier'
 import { AppError } from '../errors'
 import { checkRowForInsert, saveDoc, saveSystemRow, validateRowForUpdate } from '../document'
 import { ROW_KEY, getMeta, type TableMeta } from '../meta'
-import { assertDocPermission, assertPermission, permissionScope } from '../permissions'
-import { registerCollectionAction } from '../actions'
+import { assertDocPermission, assertPermission, permissionScope, permittedTiers } from '../permissions'
+import { registerCollectionAction, type CollectionActionContext } from '../actions'
 import { sql } from '../db'
-import { tableRelation, quoteRelation } from '../table-engine'
+import { canRetire, tableRelation, quoteRelation } from '../table-engine'
 
 // IMP-005: bulk import — POST /api/table/:table:import { rows: [...] }.
 // The first real collection-action registrant (#61 left the registry empty on
@@ -41,6 +41,8 @@ interface Resolution {
   row_id?: string
   updated_at?: Date
   created_by?: string
+  // #859: the matched row is retired. The update leaves it retired.
+  retired?: boolean
   // fail: why, phrased for the per-row report.
   message?: string
 }
@@ -90,17 +92,18 @@ async function resolveRows(
     if (k) counts.set(k, (counts.get(k) ?? 0) + 1)
   }
   const wanted = [...counts.keys()]
-  const matches = new Map<string, { row_id: string; updated_at: Date; created_by: string }[]>()
+  const matches = new Map<string, { row_id: string; updated_at: Date; created_by: string; retired: boolean }[]>()
   if (wanted.length) {
     const tbl = await tableRelation(meta.name)
     const key = sql(meta.row_key)
+    const retired = canRetire(meta) ? sql`retired_at is not null` : sql`false`
     const found =
       keyColumn === ROW_KEY
         ? await sql`
-            select ${key} as row_id, ${key} as k, updated_at, created_by
+            select ${key} as row_id, ${key} as k, updated_at, created_by, ${retired} as retired
             from ${sql(tbl)} where ${key} = any(${wanted})`
         : await sql`
-            select ${key} as row_id, ${sql.unsafe(storedKey(keyColumn))} as k, updated_at, created_by
+            select ${key} as row_id, ${sql.unsafe(storedKey(keyColumn))} as k, updated_at, created_by, ${retired} as retired
             from ${sql(tbl)} where ${sql.unsafe(storedKey(keyColumn))} = any(${wanted})`
     for (const r of found) {
       const k = String(r.k)
@@ -109,6 +112,7 @@ async function resolveRows(
         row_id: String(r.row_id),
         updated_at: r.updated_at as Date,
         created_by: String(r.created_by),
+        retired: r.retired === true,
       })
     }
   }
@@ -138,6 +142,7 @@ async function resolveRows(
         row_id: hit[0].row_id,
         updated_at: hit[0].updated_at,
         created_by: hit[0].created_by,
+        retired: hit[0].retired,
       } satisfies Resolution
     return { action: 'insert' } satisfies Resolution
   })
@@ -243,7 +248,21 @@ registerCollectionAction('import', {
     "({ updated, inserted, failed, run_id }); empty_cells 'keep'|'clear' picks what " +
     'an empty mapped cell does to a matched row. ' +
     'With dry_run: true, reports per-row actions and writes nothing.',
-  handler: async ({ table, args, user }) => {
+  handler: async (context) => {
+    const result = await importRows(context)
+    if (!context.args.dry_run && 'changed' in result) {
+      const { changed, unchanged, ...response } = result
+      return response
+    }
+    return result
+  },
+})
+
+// Only trusted server callers supply managedColumns or skipUnchanged. The
+// registered HTTP handler above deliberately forwards context alone, never
+// caller args here. #971: skipUnchanged leaves a row that would change nothing
+// unsaved, so it runs no automations and its last-updated time stays.
+export async function importRows({ table, args, user }: CollectionActionContext, managedColumns: readonly string[] = [], opts: { skipUnchanged?: boolean } = {}) {
     const rows = args.rows
     if (!Array.isArray(rows) || rows.length === 0)
       throw new AppError('ValidationError', 'Expected { rows: [...] } with at least one row')
@@ -261,6 +280,54 @@ registerCollectionAction('import', {
         'ValidationError',
         `${table} is bound to data source ${meta.data_source}; bulk import is not supported on bound Tables yet`,
       )
+
+    if (args.analyze_keys != null && typeof args.analyze_keys !== 'boolean')
+      throw new AppError('ValidationError', 'analyze_keys must be a boolean')
+    // Analysis must return before upsert setup: no index, save or Import Log.
+    if (args.analyze_keys) {
+      if (!Array.isArray(args.columns) || args.columns.some((c) => typeof c !== 'string'))
+        throw new AppError('ValidationError', 'columns must be an array of column names')
+      const columns = [...new Set(args.columns as string[])]
+      for (const column of columns)
+        if (column !== ROW_KEY && !meta.columns.some((c) => c.column_name === column))
+          throw new AppError('ValidationError', `${meta.name} has no column ${column}`)
+      const readTiers = await permittedTiers(user.row_id, table, 'read')
+      const writeTiers = await permittedTiers(user.row_id, table, 'write')
+      const key_candidates: { column: string; matched: number; complete: boolean; can_match: boolean }[] = []
+      for (const column of columns) {
+        const definition = meta.columns.find((c) => c.column_name === column)
+        if (definition && (definition.read_only || ['Section Break', 'Column Break', 'Sub-table'].includes(definition.column_type))) continue
+        const tier = definition?.tier ?? 'basic'
+        if (!readTiers.has(tier)) continue
+        const matches = await resolveRows(meta, rows, column)
+        // A single blank, duplicate or ambiguous key invalidates the column.
+        if (matches.some((r) => r.action === 'fail')) continue
+        try {
+          for (const match of matches) {
+            if (match.action !== 'update') continue
+            // getDoc includes own-row, reference-scope and attached-row gates.
+            await getDoc(table, match.row_id!, user.row_id)
+          }
+        } catch (err) {
+          if (err instanceof AppError && err.type === 'PermissionError') continue
+          throw err
+        }
+        // Readable overlap still matters to an append-only caller. Whether
+        // this key can authorize an upsert is a separate permission fact.
+        let can_match = writeTiers.has(tier)
+        if (can_match) {
+          try {
+            await assertRunPermitted(user.row_id, table, matches)
+          } catch (err) {
+            if (err instanceof AppError && err.type === 'PermissionError') can_match = false
+            else throw err
+          }
+        }
+        const matched = matches.filter((r) => r.action === 'update').length
+        key_candidates.push({ column, matched, complete: matched === rows.length, can_match })
+      }
+      return { key_candidates }
+    }
 
     const upsert = parseUpsertArgs(meta, args)
     // #145 (ruled 2026-08-11): the match key gets its index the first time a
@@ -282,6 +349,10 @@ registerCollectionAction('import', {
       const actions: RowAction[] = []
       let fieldsUpdated = 0
       let fieldsKept = 0
+      let changed = 0
+      let unchanged = 0
+      let rowsKept = 0
+      let conflicts = 0
       const seenNames = new Set<string>()
       for (const [index, row] of rows.entries()) {
         if (typeof row !== 'object' || row === null || Array.isArray(row)) {
@@ -304,14 +375,17 @@ registerCollectionAction('import', {
             const current = await getDoc(table, resolution.row_id!, user.row_id)
             const plan = await planImport(meta, current, updateValues(row as Record<string, unknown>, upsert!, resolution), user.row_id)
             fieldsUpdated += plan.fields_updated
-            fieldsKept += plan.conflicts.length
+            fieldsKept += plan.fields_kept
+            if (plan.fields_updated > 0) changed++
+            else unchanged++
+            if (plan.fields_kept > 0) rowsKept++
+            conflicts += plan.conflicts.length
             actions.push('update')
             continue
           }
-          const name = String((row as Record<string, unknown>)[ROW_KEY] ?? '').trim()
+          const name = await checkRowForInsert(meta, row as Record<string, unknown>)
           if (name && seenNames.has(name))
             throw new AppError('ConflictError', `Duplicate name ${name} within the import`)
-          await checkRowForInsert(meta, row as Record<string, unknown>)
           if (name) seenNames.add(name)
           actions.push('insert')
         } catch (err) {
@@ -323,14 +397,21 @@ registerCollectionAction('import', {
           actions.push('fail')
         }
       }
-      if (!resolutions) return { dry_run: true, valid: rows.length - failed.length, failed, fields_updated: 0, fields_kept: 0, tracks_changes: meta.track_changes }
+      if (!resolutions) return { dry_run: true, valid: rows.length - failed.length, failed, changed: 0, unchanged: 0, rows_kept: 0, conflicts: 0, fields_updated: 0, fields_kept: 0, tracks_changes: meta.track_changes }
       return {
         dry_run: true,
         valid: rows.length - failed.length,
         updated: actions.filter((a) => a === 'update').length,
+        // #859: matched rows that are retired; the import updates them and
+        // they stay retired.
+        retired: resolutions.filter((r, i) => actions[i] === 'update' && r.retired).length,
         inserted: actions.filter((a) => a === 'insert').length,
         failed,
         actions,
+        changed,
+        unchanged,
+        rows_kept: rowsKept,
+        conflicts,
         fields_updated: fieldsUpdated,
         fields_kept: fieldsKept,
         tracks_changes: meta.track_changes,
@@ -341,10 +422,17 @@ registerCollectionAction('import', {
     const runId = typeof context.run_id === 'string' && context.run_id ? context.run_id.slice(0, 140) : randomUUID()
     let inserted = 0
     let updated = 0
+    let changed = 0
     const failed: FailedRow[] = []
     // RVT-R1 (spec 0005): record every row this part writes — id, action,
     // and the updated_at stamp the write left — so the run is revertable.
     const touched: TouchedRow[] = []
+    // Only a keyed run skips, so it has resolutions.
+    const unchanged = opts.skipUnchanged
+      ? await observeUnchangedRows(meta, rows.flatMap((row, index) => resolutions![index].action === 'update'
+        ? [{ row_id: resolutions![index].row_id!, values: updateValues(row as Record<string, unknown>, upsert!, resolutions![index]) }]
+        : []), user.row_id, runId)
+      : new Set<string>()
     for (const [index, row] of rows.entries()) {
       if (typeof row !== 'object' || row === null || Array.isArray(row)) {
         failed.push({ index, message: 'row must be an object' })
@@ -361,11 +449,17 @@ registerCollectionAction('import', {
           // Validate the incoming payload before protected fields are removed,
           // exactly as the check step does. A conflict cannot legitimize bad data.
           checkRowForUpdate(meta, record, resolution, upsert!)
-          const { saved, version } = await saveImportedRow(meta, updateValues(record, upsert!, resolution), user.row_id, runId, true)
+          if (unchanged.has(resolution.row_id!)) {
+            updated++
+            touched.push({ row_id: resolution.row_id!, action: 'updated', stamp: stampOf(resolution.updated_at) })
+            continue
+          }
+          const { saved, version, changed: rowChanged } = await saveImportedRow(meta, updateValues(record, upsert!, resolution), user.row_id, runId, true, managedColumns)
           updated++
+          if (rowChanged) changed++
           touched.push({ row_id: String(saved.row_id), action: 'updated', stamp: stampOf(saved.updated_at), ...(version ? { version } : {}) })
         } else {
-          const { saved } = await saveImportedRow(meta, row as Record<string, unknown>, user.row_id, runId, false)
+          const { saved } = await saveImportedRow(meta, row as Record<string, unknown>, user.row_id, runId, false, managedColumns)
           inserted++
           touched.push({
             row_id: String(saved[ROW_KEY]),
@@ -382,12 +476,19 @@ registerCollectionAction('import', {
         })
       }
     }
+    // A hook on a row saved above may have written a row already judged
+    // unchanged: as its own save would have, that row fails on its old stamp.
+    if (unchanged.size && (inserted || updated > unchanged.size)) {
+      const after = new Map((await sql`select ${sql(meta.row_key)} as row_id, updated_at from ${sql(await tableRelation(table))} where ${sql(meta.row_key)} = any(${[...unchanged]})`).map(r => [String(r.row_id), stampOf(r.updated_at)]))
+      for (const [index, resolution] of resolutions!.entries())
+        if (resolution.action === 'update' && unchanged.has(resolution.row_id!) && after.get(resolution.row_id!) !== stampOf(resolution.updated_at))
+          failed.push({ index, message: 'The row changed while this import ran' })
+    }
     await writeImportLog(table, user.row_id, { inserted, updated, upsert }, failed, { ...context, run_id: runId }, touched)
     // #687: every writing run names its run ID, so the caller can undo it.
     if (!upsert) return { inserted, failed, run_id: runId }
-    return { updated, inserted, failed, run_id: runId }
-  },
-})
+    return { updated, changed, unchanged: updated - changed, inserted, failed, run_id: runId }
+}
 
 // RVT-R1: the record of one written row. `version` names the version row an
 // update produced (its before-values are the revert's restore source); an
@@ -435,7 +536,7 @@ function checkRowForUpdate(
 // UPS-R5: a keyed run also records its key_column and empty_cells choice —
 // that stored pair is what the wizard later offers back as the visible
 // "as last time" suggestion. A run with no key stores nothing (nulls).
-async function writeImportLog(
+export async function writeImportLog(
   table: string,
   user: string,
   counts: { inserted: number; updated: number; upsert: UpsertArgs | null },

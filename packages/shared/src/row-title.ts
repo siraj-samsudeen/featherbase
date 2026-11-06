@@ -28,8 +28,8 @@ function cap(v: string): string {
 /**
  * The row's display title. A title column of `row_id` means "show the id",
  * the migrated default, so it counts as none. Without a title column: a
- * name-like first value stands alone; a leading code is paired with the first
- * name-like value after it ("1517 · Kurti Z"); only codes → the first two;
+ * name-like first value stands alone; a leading code follows the first
+ * name-like value after it ("Kurti Z · 1517", #910 D5: name first); only codes → the first two;
  * nothing at all → "<Table> · <key parts>".
  */
 export function rowDisplayTitle(meta: TitleMeta, row: Record<string, unknown>, rowId: string): string {
@@ -37,6 +37,13 @@ export function rowDisplayTitle(meta: TitleMeta, row: Record<string, unknown>, r
   if (titleColumn) {
     const v = String(row[titleColumn] ?? '').trim()
     if (v) return cap(v)
+  }
+  // Settings on one Table otherwise all read as the Table's name. Use only
+  // readable, visible columns: row-title callers may pass a scoped metadata set.
+  if (meta.name === 'Metadata Override'
+    && ['table_name', 'column_name', 'property'].every(name => meta.columns.some(c => c.column_name === name && !c.hidden))
+    && row.table_name && row.property) {
+    return cap([row.table_name, row.column_name || 'Whole Table', row.property].join(SEPARATOR))
   }
   const values = meta.columns
     .filter((c) => VALUE_TYPES.has(c.column_type) && !c.hidden && c.column_name !== 'row_id')
@@ -46,7 +53,7 @@ export function rowDisplayTitle(meta: TitleMeta, row: Record<string, unknown>, r
     const [first, ...rest] = values
     if (hasLetter(first)) return cap(first)
     const name = rest.find(hasLetter)
-    return cap(name ? `${first}${SEPARATOR}${name}` : values.slice(0, 2).join(SEPARATOR))
+    return cap(name ? `${name}${SEPARATOR}${first}` : values.slice(0, 2).join(SEPARATOR))
   }
   return cap([meta.name, ...rowId.split('|').filter(Boolean)].join(SEPARATOR))
 }

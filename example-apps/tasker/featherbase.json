@@ -1,39 +1,687 @@
 {
-  "manifestVersion": 1, "platformVersion": "2026-10",
-  "name": "tasker", "title": "Tasker",
-  "server": "dist/server.mjs", "client": "dist/client", "entryTable": "tasker.task",
-  "actions": {"version": 2, "operations": {
-    "promote": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
-    "delete_accidental": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
-  }, "tables": ["tasker.task", "tasker.project"]},
-  "migrations": [{"id": "project_description", "fromVersion": "0.0.1", "toVersion": "2.0.0", "operations": [
-    {"kind": "addColumn", "table": "tasker.project", "column": {"column_name": "description", "label": "Description", "column_type": "Text"}}
-  ]}, {"id": "explicit_action_policies", "fromVersion": "2.0.0", "toVersion": "2.1.0", "operations": []},
-  {"id": "runtime_host_shell", "fromVersion": "2.1.0", "toVersion": "2.2.0", "operations": []},
-  {"id": "withdraw_everyone_person_read", "fromVersion": "2.2.0", "toVersion": "2.3.0", "operations": []},
-  {"id": "dev_tool_upgrade", "fromVersion": "2.3.0", "toVersion": "2.3.1", "operations": []},
-  {"id": "coverage_tooling", "fromVersion": "2.3.1", "toVersion": "2.3.2", "operations": []},
-  {"id": "shared_app_navigation", "fromVersion": "2.3.2", "toVersion": "2.3.3", "operations": []}],
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "tasker",
+  "title": "Tasker",
+  "server": "dist/server.mjs",
+  "client": "dist/client",
+  "entryTable": "tasker.task",
+  "actions": {
+    "version": 2,
+    "operations": {
+      "promote": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "delete_accidental": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "start_recurrence": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "pause_recurrence": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "resume_recurrence": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      }
+    },
+    "tables": [
+      "tasker.task",
+      "tasker.project",
+      "tasker.recurrence"
+    ]
+  },
+  "migrations": [
+    {
+      "id": "project_description",
+      "fromVersion": "0.0.1",
+      "toVersion": "2.0.0",
+      "operations": [
+        {
+          "kind": "addColumn",
+          "table": "tasker.project",
+          "column": {
+            "column_name": "description",
+            "label": "Description",
+            "column_type": "Text"
+          }
+        }
+      ]
+    },
+    {
+      "id": "explicit_action_policies",
+      "fromVersion": "2.0.0",
+      "toVersion": "2.1.0",
+      "operations": []
+    },
+    {
+      "id": "runtime_host_shell",
+      "fromVersion": "2.1.0",
+      "toVersion": "2.2.0",
+      "operations": []
+    },
+    {
+      "id": "withdraw_everyone_person_read",
+      "fromVersion": "2.2.0",
+      "toVersion": "2.3.0",
+      "operations": []
+    },
+    {
+      "id": "dev_tool_upgrade",
+      "fromVersion": "2.3.0",
+      "toVersion": "2.3.1",
+      "operations": []
+    },
+    {
+      "id": "coverage_tooling",
+      "fromVersion": "2.3.1",
+      "toVersion": "2.3.2",
+      "operations": []
+    },
+    {
+      "id": "shared_app_navigation",
+      "fromVersion": "2.3.2",
+      "toVersion": "2.3.3",
+      "operations": []
+    },
+    {
+      "id": "revive_tasker",
+      "fromVersion": "2.3.3",
+      "toVersion": "3.0.0",
+      "operations": [
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "tasker.discussion",
+            "label": "Task discussion",
+            "module": "Tasker",
+            "id_pattern": "DISC-.#####",
+            "title_column": "body",
+            "access_policy": {
+              "version": 1,
+              "roles": [
+                "Tasker Member"
+              ],
+              "inherit_column": "task"
+            },
+            "columns": [
+              {
+                "column_name": "task",
+                "label": "Task",
+                "column_type": "Reference",
+                "reference_table": "tasker.task",
+                "reqd": true
+              },
+              {
+                "column_name": "kind",
+                "label": "Kind",
+                "column_type": "Choice",
+                "choices": "Update\nQuestion\nReply",
+                "default_value": "Update",
+                "reqd": true
+              },
+              {
+                "column_name": "body",
+                "label": "Message",
+                "column_type": "Text",
+                "reqd": true
+              },
+              {
+                "column_name": "parent_message",
+                "label": "In reply to",
+                "column_type": "Reference",
+                "reference_table": "tasker.discussion"
+              },
+              {
+                "column_name": "reply_needed_from",
+                "label": "Reply needed from",
+                "column_type": "Reference",
+                "reference_table": "Person"
+              },
+              {
+                "column_name": "resolved",
+                "label": "Resolved",
+                "column_type": "Check",
+                "default_value": "0"
+              },
+              {
+                "column_name": "reply_cycle",
+                "label": "Reply cycle",
+                "column_type": "Int",
+                "default_value": "0",
+                "hidden": true
+              }
+            ]
+          }
+        },
+        {
+          "kind": "addAccessPolicy",
+          "table": "tasker.project",
+          "policy": {
+            "version": 1,
+            "roles": [
+              "Tasker Member"
+            ]
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "shared",
+            "label": "Shared with team",
+            "column_type": "Check",
+            "hidden": true
+          },
+          "backfill": true
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "parent_task",
+            "label": "Parent task",
+            "column_type": "Reference",
+            "reference_table": "tasker.task",
+            "hidden": true
+          }
+        },
+        {
+          "kind": "addAccessPolicy",
+          "table": "tasker.task",
+          "policy": {
+            "version": 1,
+            "roles": [
+              "Tasker Member"
+            ],
+            "shared_column": "shared",
+            "inherit_column": "parent_task"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "recurrence",
+            "label": "Recurring series",
+            "column_type": "Data",
+            "hidden": true
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "occurrence_key",
+            "label": "Occurrence key",
+            "column_type": "Data",
+            "unique": true,
+            "hidden": true
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "completed_at",
+            "label": "Completed at",
+            "column_type": "Datetime",
+            "hidden": true
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "tasker.recurrence",
+            "label": "Recurring task",
+            "module": "Tasker",
+            "id_pattern": "REPEAT-.#####",
+            "access_policy": {
+              "version": 1,
+              "roles": [
+                "Tasker Member"
+              ],
+              "shared_column": "shared"
+            },
+            "columns": [
+              {
+                "column_name": "schedule_mode",
+                "label": "Repeats",
+                "column_type": "Choice",
+                "choices": "daily\nweekly\nmonthly\nafter_completion",
+                "reqd": true
+              },
+              {
+                "column_name": "interval",
+                "label": "Every",
+                "column_type": "Int",
+                "default_value": "1",
+                "reqd": true
+              },
+              {
+                "column_name": "anchor_date",
+                "label": "First scheduled date",
+                "column_type": "Date",
+                "reqd": true
+              },
+              {
+                "column_name": "paused",
+                "label": "Paused",
+                "column_type": "Check",
+                "default_value": "0"
+              },
+              {
+                "column_name": "active_task",
+                "label": "Active task",
+                "column_type": "Reference",
+                "reference_table": "tasker.task"
+              },
+              {
+                "column_name": "next_at",
+                "label": "Next occurrence",
+                "column_type": "Datetime"
+              },
+              {
+                "column_name": "snapshot",
+                "label": "Recurring instructions",
+                "column_type": "Long Text",
+                "reqd": true,
+                "hidden": true
+              },
+              {
+                "column_name": "shared",
+                "label": "Shared with team",
+                "column_type": "Check",
+                "hidden": true,
+                "default_value": "0"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "readable_history_and_unread",
+      "fromVersion": "3.0.0",
+      "toVersion": "3.0.1",
+      "operations": []
+    },
+    {
+      "id": "release_notes",
+      "fromVersion": "3.0.1",
+      "toVersion": "3.0.2",
+      "operations": []
+    }
+  ],
+  "releaseNotes": [
+    {
+      "version": "3.0.2",
+      "changes": [
+        "Admin → Apps shows what changed in each Tasker version (#938)"
+      ]
+    },
+    {
+      "version": "3.0.1",
+      "changes": [
+        "Activity history names people and projects instead of record ids (#563)",
+        "Your own questions and messages never show as unread to you (#563)"
+      ]
+    },
+    {
+      "version": "3.0.0",
+      "changes": [
+        "Tasker returns as a product app: only members can open it (#563)",
+        "Quick capture goes to a private Inbox; shared projects are for the team (#563)",
+        "My Work puts conversations that need you first, then your Focus (#563)",
+        "Assignable subtasks, questions with replies, and recurring tasks (#563)"
+      ]
+    }
+  ],
   "tables": [
-    {"name": "tasker.project", "label": "Project", "module": "Tasker", "id_pattern": "TPROJ-.####", "title_column": "project_name",
-      "columns": [{"column_name": "project_name", "label": "Project name", "column_type": "Data", "reqd": true, "in_list_view": true},
-        {"column_name": "description", "label": "Description", "column_type": "Text"}]},
-    {"name": "tasker.task", "label": "Task", "module": "Tasker", "id_pattern": "TASK-.#####", "title_column": "task_title",
+    {
+      "name": "tasker.project",
+      "label": "Project",
+      "module": "Tasker",
+      "id_pattern": "TPROJ-.####",
+      "title_column": "project_name",
       "columns": [
-        {"column_name": "task_title", "label": "Task", "column_type": "Data", "reqd": true, "in_list_view": true},
-        {"column_name": "description", "label": "Description", "column_type": "Text"},
-        {"column_name": "task_state", "label": "State", "column_type": "Choice", "choices": "Not started\nIn progress\nBlocked\nOn hold\nDone\nCancelled", "default_value": "Not started", "in_list_view": true},
-        {"column_name": "is_done", "label": "Done", "column_type": "Check", "default_value": "0", "in_list_view": true},
-        {"column_name": "urgent", "label": "Urgent", "column_type": "Check", "default_value": "0", "in_list_view": true},
-        {"column_name": "project", "label": "Project", "column_type": "Reference", "reference_table": "tasker.project", "in_list_view": true},
-        {"column_name": "personal_tasks_owner", "label": "Personal tasks owner", "column_type": "Reference", "reference_table": "Person"},
-        {"column_name": "assigned_to", "label": "Assigned to", "column_type": "Reference", "reference_table": "Person", "in_list_view": true},
-        {"column_name": "state_before_done", "label": "State before done", "column_type": "Data", "hidden": true}
-      ]}
+        {
+          "column_name": "project_name",
+          "label": "Project name",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "description",
+          "label": "Description",
+          "column_type": "Text"
+        }
+      ],
+      "access_policy": {
+        "version": 1,
+        "roles": [
+          "Tasker Member"
+        ]
+      }
+    },
+    {
+      "name": "tasker.task",
+      "label": "Task",
+      "module": "Tasker",
+      "id_pattern": "TASK-.#####",
+      "title_column": "task_title",
+      "columns": [
+        {
+          "column_name": "task_title",
+          "label": "Task",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "description",
+          "label": "Description",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "task_state",
+          "label": "State",
+          "column_type": "Choice",
+          "choices": "Not started\nIn progress\nBlocked\nOn hold\nDone\nCancelled",
+          "default_value": "Not started",
+          "in_list_view": true
+        },
+        {
+          "column_name": "is_done",
+          "label": "Done",
+          "column_type": "Check",
+          "default_value": "0",
+          "in_list_view": true
+        },
+        {
+          "column_name": "urgent",
+          "label": "Urgent",
+          "column_type": "Check",
+          "default_value": "0",
+          "in_list_view": true
+        },
+        {
+          "column_name": "project",
+          "label": "Project",
+          "column_type": "Reference",
+          "reference_table": "tasker.project",
+          "in_list_view": true
+        },
+        {
+          "column_name": "personal_tasks_owner",
+          "label": "Personal tasks owner",
+          "column_type": "Reference",
+          "reference_table": "Person"
+        },
+        {
+          "column_name": "assigned_to",
+          "label": "Assigned to",
+          "column_type": "Reference",
+          "reference_table": "Person",
+          "in_list_view": true
+        },
+        {
+          "column_name": "state_before_done",
+          "label": "State before done",
+          "column_type": "Data",
+          "hidden": true
+        },
+        {
+          "column_name": "shared",
+          "label": "Shared with team",
+          "column_type": "Check",
+          "hidden": true
+        },
+        {
+          "column_name": "parent_task",
+          "label": "Parent task",
+          "column_type": "Reference",
+          "reference_table": "tasker.task",
+          "hidden": true
+        },
+        {
+          "column_name": "recurrence",
+          "label": "Recurring series",
+          "column_type": "Data",
+          "hidden": true
+        },
+        {
+          "column_name": "occurrence_key",
+          "label": "Occurrence key",
+          "column_type": "Data",
+          "unique": true,
+          "hidden": true
+        },
+        {
+          "column_name": "completed_at",
+          "label": "Completed at",
+          "column_type": "Datetime",
+          "hidden": true
+        }
+      ],
+      "access_policy": {
+        "version": 1,
+        "roles": [
+          "Tasker Member"
+        ],
+        "shared_column": "shared",
+        "inherit_column": "parent_task"
+      }
+    },
+    {
+      "name": "tasker.discussion",
+      "label": "Task discussion",
+      "module": "Tasker",
+      "id_pattern": "DISC-.#####",
+      "title_column": "body",
+      "access_policy": {
+        "version": 1,
+        "roles": [
+          "Tasker Member"
+        ],
+        "inherit_column": "task"
+      },
+      "columns": [
+        {
+          "column_name": "task",
+          "label": "Task",
+          "column_type": "Reference",
+          "reference_table": "tasker.task",
+          "reqd": true
+        },
+        {
+          "column_name": "kind",
+          "label": "Kind",
+          "column_type": "Choice",
+          "choices": "Update\nQuestion\nReply",
+          "default_value": "Update",
+          "reqd": true
+        },
+        {
+          "column_name": "body",
+          "label": "Message",
+          "column_type": "Text",
+          "reqd": true
+        },
+        {
+          "column_name": "parent_message",
+          "label": "In reply to",
+          "column_type": "Reference",
+          "reference_table": "tasker.discussion"
+        },
+        {
+          "column_name": "reply_needed_from",
+          "label": "Reply needed from",
+          "column_type": "Reference",
+          "reference_table": "Person"
+        },
+        {
+          "column_name": "resolved",
+          "label": "Resolved",
+          "column_type": "Check",
+          "default_value": "0"
+        },
+        {
+          "column_name": "reply_cycle",
+          "label": "Reply cycle",
+          "column_type": "Int",
+          "default_value": "0",
+          "hidden": true
+        }
+      ]
+    },
+    {
+      "name": "tasker.recurrence",
+      "label": "Recurring task",
+      "module": "Tasker",
+      "id_pattern": "REPEAT-.#####",
+      "access_policy": {
+        "version": 1,
+        "roles": [
+          "Tasker Member"
+        ],
+        "shared_column": "shared"
+      },
+      "columns": [
+        {
+          "column_name": "schedule_mode",
+          "label": "Repeats",
+          "column_type": "Choice",
+          "choices": "daily\nweekly\nmonthly\nafter_completion",
+          "reqd": true
+        },
+        {
+          "column_name": "interval",
+          "label": "Every",
+          "column_type": "Int",
+          "default_value": "1",
+          "reqd": true
+        },
+        {
+          "column_name": "anchor_date",
+          "label": "First scheduled date",
+          "column_type": "Date",
+          "reqd": true
+        },
+        {
+          "column_name": "paused",
+          "label": "Paused",
+          "column_type": "Check",
+          "default_value": "0"
+        },
+        {
+          "column_name": "active_task",
+          "label": "Active task",
+          "column_type": "Reference",
+          "reference_table": "tasker.task"
+        },
+        {
+          "column_name": "next_at",
+          "label": "Next occurrence",
+          "column_type": "Datetime"
+        },
+        {
+          "column_name": "snapshot",
+          "label": "Recurring instructions",
+          "column_type": "Long Text",
+          "reqd": true,
+          "hidden": true
+        },
+        {
+          "column_name": "shared",
+          "label": "Shared with team",
+          "column_type": "Check",
+          "hidden": true,
+          "default_value": "0"
+        }
+      ]
+    }
   ],
   "permissions": [
-    {"table": "tasker.project", "role": "All", "can_read": true, "can_write": true, "can_create": true, "can_delete": true},
-    {"table": "tasker.task", "role": "All", "can_read": true, "can_write": true, "can_create": true, "can_delete": true},
-    {"table": "Comment", "role": "All", "can_read": true, "can_write": true, "can_create": true}
+    {
+      "table": "tasker.project",
+      "role": "Tasker Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true,
+      "can_delete": true
+    },
+    {
+      "table": "tasker.task",
+      "role": "Tasker Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true,
+      "can_delete": true
+    },
+    {
+      "table": "Comment",
+      "role": "Tasker Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "tasker.discussion",
+      "role": "Tasker Member",
+      "can_read": true,
+      "can_create": true,
+      "can_write": true
+    },
+    {
+      "table": "tasker.recurrence",
+      "role": "Tasker Member",
+      "can_create": true,
+      "can_read": true,
+      "can_write": true
+    }
+  ],
+  "roles": [
+    "Tasker Member"
+  ],
+  "jobs": [
+    {
+      "name": "repeat_tasks",
+      "cadence": "every minute",
+      "description": "Create the next due task occurrence for each active recurring series",
+      "documents": {
+        "owner_table": "tasker.recurrence",
+        "tables": [
+          "tasker.recurrence",
+          "tasker.task"
+        ]
+      }
+    }
   ]
 }

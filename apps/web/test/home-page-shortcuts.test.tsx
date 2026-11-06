@@ -32,7 +32,7 @@ test('a report shortcut opens that report, and an address shortcut opens its add
   await seedHomePage(admin)
   const r = await renderApp('/featherbase/admin/home/hps-sales', admin)
   await user.click(await screen.findByTestId('shortcut-Weekly', {}, { timeout: 8000 }))
-  await waitFor(() => expect(pathOf(r)).toBe('/featherbase/admin/Report/Hps Weekly'))
+  await waitFor(() => expect(pathOf(r)).toBe('/featherbase/admin/table/report/row/Hps Weekly'))
 
   const back = await renderApp('/featherbase/admin/home/hps-sales', admin)
   await user.click(await screen.findByTestId('shortcut-All tables', {}, { timeout: 8000 }))

@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto'
 import { quoteIdent } from './sql-identifier'
 import { z } from 'zod'
+import { accessPolicySchema } from './access-policy'
 import { AppError } from './errors'
 import { sql, withTransaction } from './db'
 import { provisionApp } from './app-lifecycle'
-import { tableSchemaToZod } from 'shared'
-import { changeColumnType, columnSchema, createTable, deleteTable, isSafeTypeChange, pgType, quoteRelation, renameColumn, renameTable, STANDARD_COLUMNS, storedRelation, tableDefSchema, updateTable, type TableDef } from './table-engine'
+import { namingColumn, renameNamingColumn, tableSchemaToZod } from 'shared'
+import { changeColumnType, columnSchema, createTable, deleteTable, isLinkTypeChange, isSafeTypeChange, pgType, quoteRelation, renameColumn, renameTable, RESERVED_COLUMNS, storedRelation, tableDefSchema, updateTable, type TableDef } from './table-engine'
 import { ensureHomePageForTable } from './home-pages'
 import { COLUMN_TYPE_VALUES, defaultValueFor, invalidateMeta, physicalRowKey } from './meta'
 
@@ -36,23 +37,27 @@ const fill = z.union([z.string(), z.number(), z.boolean()])
 const alterable = z.object({
   label: z.string().min(1).nullable(),
   choices: z.string().nullable(),
+  choice_labels: z.record(z.string(), z.string()).nullable(),
   reqd: z.boolean().nullable(),
   unique: z.boolean().nullable(),
   default_value: z.string().nullable(),
   hidden: z.boolean().nullable(),
   description: z.string().nullable(),
   column_type: z.enum(COLUMN_TYPE_VALUES),
+  // #911: named only when a text column becomes a link, or a link text.
+  reference_table: z.string().nullable(),
 }).partial().strict()
 // What only changes what people read: a step naming nothing else writes the
 // definition and no row (#663).
-const DISPLAY_ONLY = new Set(['label', 'description', 'hidden'])
+const DISPLAY_ONLY = new Set(['label', 'description', 'hidden', 'choice_labels'])
 const displayOnly = (to: z.infer<typeof alterable>) => Object.keys(to).every(key => DISPLAY_ONLY.has(key))
 
 // #651: every operation carries what it removes or replaces (a dropped Table
 // or column as it stood, an altered column's `from`), so a history replays
 // backward from the final declaration as well as forward from the installed
 // one.
-const operationSchema = z.discriminatedUnion('kind', [
+export const operationSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('addAccessPolicy'), table: z.string(), policy: accessPolicySchema }).strict(),
   z.object({ kind: z.literal('addTable'), table: tableDefSchema }).strict(),
   z.object({ kind: z.literal('dropTable'), table: tableDefSchema, destructive: z.boolean().optional() }).strict(),
   z.object({ kind: z.literal('addColumn'), table: z.string(), column, position: z.number().int().min(1).optional(), backfill: fill.optional() }).strict(),
@@ -74,6 +79,17 @@ export const migrationSchema = z.object({
     const from = Object.keys(op.from).sort().join(',')
     if (!from || from !== Object.keys(op.to).sort().join(','))
       ctx.addIssue({ code: 'custom', path: ['operations', index], message: 'alterColumn names the same properties in from and to' })
+    // #911: a link's Table is named only as a text column becomes a link.
+    const linking = Boolean(op.from.column_type && op.to.column_type && isLinkTypeChange(op.from.column_type, op.to.column_type))
+    if ('reference_table' in op.to && !linking)
+      ctx.addIssue({ code: 'custom', path: ['operations', index, 'to', 'reference_table'],
+        message: "a link's Table changes only when a text column becomes a link" })
+    if (linking && !('reference_table' in op.to))
+      ctx.addIssue({ code: 'custom', path: ['operations', index, 'to'], message: 'a change between text and link names the Table it links to and from' })
+    else if (linking && op.to.column_type === 'Reference' && !op.to.reference_table)
+      ctx.addIssue({ code: 'custom', path: ['operations', index, 'to', 'reference_table'], message: 'a link needs the Table it links to' })
+    else if (linking && op.to.column_type === 'Data' && op.to.reference_table !== null)
+      ctx.addIssue({ code: 'custom', path: ['operations', index, 'to', 'reference_table'], message: 'text links to no Table: reference_table is null' })
     if (op.backfill !== undefined && displayOnly(op.to))
       ctx.addIssue({ code: 'custom', path: ['operations', index, 'backfill'],
         message: 'alterColumn changes only what people read (label, description, hidden), so it takes no backfill' })
@@ -129,7 +145,7 @@ function renameLinks(state: TableDef[], from: string, to: string) {
 function renameColumnIn(table: TableDef, from: string, to: string) {
   columnIn(table, from, `renameColumn ${table.name}.${from}`).column_name = to
   if (table.title_column === from) table.title_column = to
-  if (table.id_pattern === `field:${from}`) table.id_pattern = `field:${to}`
+  table.id_pattern = renameNamingColumn(table.id_pattern, from, to)
 }
 function setProperties(target: Column, values: Alterable) {
   for (const [key, value] of Object.entries(values)) {
@@ -143,7 +159,7 @@ function setProperties(target: Column, values: Alterable) {
 // Links to platform Tables are checked by the engine when the step runs.
 function checkColumns(app: string, state: TableDef[], table: TableDef, columns: Column[], what: string) {
   for (const c of columns) {
-    if ((STANDARD_COLUMNS as readonly string[]).includes(c.column_name)) refuse(`${what}: ${c.column_name} is a standard column name`)
+    if (RESERVED_COLUMNS.includes(c.column_name)) refuse(`${what}: ${c.column_name} is a standard column name`)
     if (c.column_type === 'Choice' && !c.choices) refuse(`${what}: Choice column ${c.column_name} needs choices`)
     if (c.column_type === 'Reference' && !c.reference_table) refuse(`${what}: link column ${c.column_name} needs reference_table`)
     if (c.column_type === 'Reference' && c.reference_table!.startsWith(`${app}.`) && c.reference_table !== table.name &&
@@ -156,6 +172,18 @@ function checkColumns(app: string, state: TableDef[], table: TableDef, columns: 
 
 function forward(app: string, state: TableDef[], op: Operation) {
   switch (op.kind) {
+    case 'addAccessPolicy': {
+      mustOwn(app, op.table)
+      const table = tableIn(state, op.table, 'addAccessPolicy')
+      if (table.access_policy) refuse('The Table already has mandatory access')
+      if (table.data_source || (table.kind && table.kind !== 'table')) refuse('Mandatory access requires a local collection')
+      for (const [name, type] of [[op.policy.shared_column, 'Check'], [op.policy.inherit_column, 'Reference']])
+        if (name && !table.columns.some(c => c.column_name === name && c.column_type === type))
+          refuse(`Mandatory access column ${name} must be ${type}`)
+      table.access_policy = structuredClone(op.policy)
+      return
+    }
+
     case 'addTable': {
       const what = `addTable ${op.table.name}`
       mustOwn(app, op.table.name)
@@ -204,6 +232,8 @@ function forward(app: string, state: TableDef[], op: Operation) {
       const toType = op.to.column_type
       if (fromType && toType && fromType !== toType && !isSafeTypeChange(fromType, toType))
         refuse(`${what}: ${fromType} to ${toType} is not a safe conversion; add a new column, copy the data, then drop the old one`)
+      if (fromType && toType && isLinkTypeChange(fromType, toType) && target.table_column)
+        refuse(`${what}: a link to a row of any Table does not turn into text`)
       setProperties(target, op.to)
       checkColumns(app, state, table, [target], what)
       if (target.unique && op.backfill !== undefined) refuse(`${what}: a unique column cannot be backfilled with one value`)
@@ -214,7 +244,7 @@ function forward(app: string, state: TableDef[], op: Operation) {
       mustOwn(app, op.table)
       const table = tableIn(state, op.table, what)
       columnIn(table, op.from, what)
-      if ((STANDARD_COLUMNS as readonly string[]).includes(op.to)) refuse(`${what}: ${op.to} is a standard column name`)
+      if (RESERVED_COLUMNS.includes(op.to)) refuse(`${what}: ${op.to} is a standard column name`)
       if (table.columns.some(c => c.column_name === op.to)) refuse(`${what}: ${op.table} already has a column ${op.to}`)
       renameColumnIn(table, op.from, op.to)
       return
@@ -228,7 +258,7 @@ function forward(app: string, state: TableDef[], op: Operation) {
       const index = table.columns.indexOf(columnIn(table, name, what))
       if (!same(table.columns[index], op.column)) refuse(`${what} must declare the column as it stood before the drop`)
       if (op.position !== undefined && op.position !== index + 1) refuse(`${what}: the column stood at position ${index + 1}, not ${op.position}`)
-      if (table.title_column === name || table.id_pattern === `field:${name}`) refuse(`${what}: it is the Table's title column or names its rows`)
+      if (table.title_column === name || namingColumn(table.id_pattern)?.column === name) refuse(`${what}: it is the Table's title column or names its rows`)
       if (name === 'amended_from' && table.is_submittable) refuse(`${what}: a submittable Table keeps amended_from`)
       if (table.columns.length === 1) refuse(`${what}: a Table keeps at least one column`)
       table.columns.splice(index, 1)
@@ -247,6 +277,13 @@ function forward(app: string, state: TableDef[], op: Operation) {
 
 function backward(state: TableDef[], op: Operation) {
   switch (op.kind) {
+    case 'addAccessPolicy': {
+      const table = tableIn(state, op.table, 'addAccessPolicy')
+      if (!same(table.access_policy, op.policy)) refuse('Mandatory access does not match the declared policy')
+      delete table.access_policy
+      return
+    }
+
     case 'addTable': {
       const table = tableIn(state, op.table.name, `addTable ${op.table.name}`)
       if (!same(table, op.table)) refuse(`addTable ${op.table.name} does not match the Table as declared after it`)
@@ -411,7 +448,7 @@ export async function countLosses(owner: string, migrations: PackageMigration[],
 async function definition(name: string): Promise<TableDef> {
   const [table] = await sql`select * from table_def where name = ${name}`
   const columns = await sql`select * from column_def where parent = ${name} order by position`
-  return tableDefSchema.parse({ ...table, columns })
+  return tableDefSchema.parse({ ...table, access_policy: table.access_policy ?? undefined, columns })
 }
 
 async function owned(name: string, owner: string, what: string): Promise<Stored> {
@@ -447,6 +484,14 @@ async function writeFill(found: Stored, table: string, column: Column, value: un
 
 async function applyOperation(owner: string, op: Operation, actor: string, base: Omit<Loss, 'table'>, ownsClient: boolean): Promise<Loss | null> {
   switch (op.kind) {
+    case 'addAccessPolicy': {
+      await owned(op.table, owner, 'addAccessPolicy')
+      const def = await definition(op.table)
+      if (def.access_policy) refuse('The Table already has mandatory access')
+      await updateTable(op.table, { ...def, access_policy: op.policy })
+      return null
+    }
+
     case 'addTable': {
       const meta = await createTable(op.table, owner)
       await sql`update installed_app set tables = tables || ${sql.json([meta.name])} where name = ${owner}`
@@ -495,7 +540,7 @@ async function applyOperation(owner: string, op: Operation, actor: string, base:
         await updateTable(op.table, def, clearing)
         return null
       }
-      if (op.to.column_type) await changeColumnType(op.table, op.column, op.to.column_type)
+      if (op.to.column_type) await changeColumnType(op.table, op.column, op.to.column_type, { reference_table: op.to.reference_table })
       found = await owned(op.table, owner, what)
       let loss: Loss | null = null
       if (narrowsChoices(op)) {

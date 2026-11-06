@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, listResource } from '../lib/api'
 import { listColumns, useMeta } from '../lib/meta'
+import { listFields } from '../lib/list-view-columns'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { stepKey, useStepOptions, type Step } from '../lib/explore-steps'
 import { adminPageTitle } from 'shared'
-import { usePeek } from '../components/Peek'
-import { cardClasses, inputClasses, pillClasses, touchTargetClasses } from '../components/ui'
-import { fmtCount, fmtShowing } from '../lib/inr'
+import { useNavigation } from '../lib/navigation'
+import { cardClasses, inputClasses, pillClasses, touchTargetClasses } from '@featherbase/shop-floor'
+import { fmtCount, fmtShowing } from '@featherbase/shop-floor'
+import { LinkedTitle } from '../lib/row-name'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
@@ -85,6 +87,12 @@ export function ExploreView({
     queryKey: ['navigable-tables'],
     queryFn: () => api.get<{ tables: string[] }>('/api/navigable_tables'),
   })
+  // Narrows the Start-from list: every word typed must appear in the name.
+  const [rootSearch, setRootSearch] = useState('')
+  const shownTables = useMemo(() => {
+    const words = rootSearch.toLowerCase().split(/\s+/).filter(Boolean)
+    return (tables.data?.tables ?? []).filter((t) => words.every((w) => t.toLowerCase().includes(w)))
+  }, [tables.data, rootSearch])
 
   const [step2, setStep2] = useState<Step | null>(null)
   const [step3, setStep3] = useState<Step | null>(null)
@@ -142,7 +150,23 @@ export function ExploreView({
       </p>
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-0.5">
-          <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+          <span className="text-xs font-semibold text-ink-subtle">
+            Find a table
+          </span>
+          <input
+            type="search"
+            value={rootSearch}
+            onChange={(e) => setRootSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && shownTables[0]) changeRoot(shownTables[0])
+            }}
+            placeholder="Type to narrow…"
+            data-testid="explore-root-search"
+            className={inputClasses('w-48')}
+          />
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-xs font-semibold text-ink-subtle">
             Start from
           </span>
           <select
@@ -151,8 +175,12 @@ export function ExploreView({
             data-testid="explore-root"
             className={inputClasses('w-56')}
           >
-            <option value="">Pick a table…</option>
-            {(tables.data?.tables ?? []).map((t) => (
+            <option value="">
+              {rootSearch ? `${shownTables.length} matching table${shownTables.length === 1 ? '' : 's'}` : 'Pick a table…'}
+            </option>
+            {/* the picked table stays listed while a search hides it */}
+            {root && !shownTables.includes(root) && <option value={root}>{root}</option>}
+            {shownTables.map((t) => (
               <option key={t} value={t}>
                 {t}
               </option>
@@ -264,7 +292,7 @@ function StepPicker({
   const { options } = useStepOptions(table)
   return (
     <label className="flex flex-col gap-0.5">
-      <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+      <span className="text-xs font-semibold text-ink-subtle">
         {label}
       </span>
       <select
@@ -338,12 +366,14 @@ function Pane({
 }) {
   const meta = useMeta(table)
   const settings = useSettings()
-  const peek = usePeek()
+  // #910: opening a row shows it in the drill pane beside Explore.
+  const nav = useNavigation()
+  const openPane = nav ? (row: string) => nav.push({ ...nav.step, pane: { table, row } }) : undefined
   const columns = useMemo(() => (meta.data ? listColumns(meta.data) : []), [meta.data])
   // Headline: hash-named tables (sub-tables, mostly) lead with their first
   // real column instead of an opaque row id.
   const displayColumns = useMemo(
-    () => (meta.data?.id_pattern === 'hash' && columns.length > 1 ? columns.slice(1) : columns),
+    () => (meta.data?.id_pattern === 'hash' && columns.length > 1 && columns[0].column_name === 'row_id' ? columns.slice(1) : columns),
     [meta.data, columns],
   )
   // Σ prefers money over measures: Currency, then Float, then Int.
@@ -361,7 +391,7 @@ function Pane({
     queryFn: () =>
       listResource(table, {
         filters,
-        fields: columns.map((c) => c.column_name),
+        fields: listFields(columns),
         limit_page_length: PANE_LIMIT,
       }),
   })
@@ -405,13 +435,9 @@ function Pane({
             selected={selected.has(String(r.row_id))}
             onToggle={() => {
               if (onToggle) onToggle(String(r.row_id))
-              else if (peek.available) peek.push({ kind: 'record', table, name: String(r.row_id) })
+              else openPane?.(String(r.row_id))
             }}
-            onPeek={
-              peek.available
-                ? () => peek.push({ kind: 'record', table, name: String(r.row_id) })
-                : undefined
-            }
+            onOpenPane={openPane ? () => openPane(String(r.row_id)) : undefined}
           />
         ))}
         {!rows.length && (
@@ -433,20 +459,30 @@ function Pane({
   )
 }
 
+type CardColumn = { column_name: string; label: string; column_type: string; reference_table?: string | null }
+
+/** A card cell as a person reads it: a link shows its row's title, not its id. */
+function cellText(c: CardColumn, row: Row, settings: Settings) {
+  const value = row[c.column_name]
+  if (c.column_type === 'Reference' && c.reference_table && value != null && value !== '')
+    return <LinkedTitle table={c.reference_table} rowId={String(value)} />
+  return formatValue(c.column_type, value, settings)
+}
+
 function PaneRow({
   row,
   columns,
   settings,
   selected,
   onToggle,
-  onPeek,
+  onOpenPane,
 }: {
   row: Row
-  columns: { column_name: string; label: string; column_type: string }[]
+  columns: CardColumn[]
   settings: Settings
   selected: boolean
   onToggle: () => void
-  onPeek?: () => void
+  onOpenPane?: () => void
 }) {
   const [first, ...rest] = columns
   return (
@@ -469,15 +505,15 @@ function PaneRow({
     >
       <div className="flex items-center justify-between gap-2">
         <span className="truncate text-sm font-medium text-ink">
-          {formatValue(first.column_type, row[first.column_name], settings) || String(row.row_id)}
+          {cellText(first, row, settings) || String(row.row_id)}
         </span>
-        {onPeek && (
+        {onOpenPane && (
           <button
             onClick={(e) => {
               e.stopPropagation()
-              onPeek()
+              onOpenPane()
             }}
-            title="Peek"
+            title="Show in the pane"
             className="invisible text-ink-subtle hover:text-action group-hover:visible"
           >
             ◎
@@ -488,7 +524,7 @@ function PaneRow({
         <div className="flex flex-wrap gap-x-3 text-xs text-ink-muted">
           {rest.slice(0, 3).map((c) => (
             <span key={c.column_name} className="truncate">
-              {formatValue(c.column_type, row[c.column_name], settings) || '—'}
+              {cellText(c, row, settings) || '—'}
             </span>
           ))}
         </div>

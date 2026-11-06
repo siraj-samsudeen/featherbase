@@ -36,7 +36,7 @@ succeeded or failed.
 
 ### Requirement: A saved data source keeps its health visible
 
-Once a data source is saved, a builder SHALL be able to see whether it's
+Once a Postgres or MySQL data source is saved, a builder SHALL be able to see whether it's
 currently healthy, when it last succeeded, and — if it's failing — which
 step is failing and how many connected tables are affected, and retest or
 update its password from the same place at any time.
@@ -50,8 +50,8 @@ update its password from the same place at any time.
 
 ### Requirement: A successful test also reports what the account can do
 
-A fully successful test SHALL also report whether the database account behind
-it can only read, or can also write; if it can write while the data source is
+A fully successful test of a Postgres or MySQL data source SHALL also report
+whether the database account behind it can only read, or can also write; if it can write while the data source is
 marked read-only in Featherbase, the builder SHALL be told plainly that
 Featherbase's read-only setting doesn't change what the account itself is
 allowed to do at the data source.

@@ -7,8 +7,9 @@
 import { sql, withTransaction } from './db'
 import { AppError } from './errors'
 import { saveDoc } from './document'
+import { runAsSystemActor } from './system-actor'
+import { signInActor } from 'shared'
 import { writeThroughIdentity } from './person-identifiers'
-import { alertNewArrival, isMockProvider } from './waiting-for-access'
 import { INVALID_CREDENTIALS, burnPasswordCheck, findPasswordAccount, issueSession, verifyPassword, type IssuedSession } from './auth'
 import {
   KINDS,
@@ -244,7 +245,7 @@ function starterName(v: VerifiedIdentity, email: string | null): string | null {
   return (shown || email || '').split('@')[0] || null
 }
 
-async function newPerson(method: SignInMethod, v: VerifiedIdentity, opts: { testMode?: boolean } = {}): Promise<Found> {
+async function newPerson(method: SignInMethod, v: VerifiedIdentity): Promise<Found> {
   const kind = KINDS[method.kind]
   let admitted = false
   let reason = 'rule is refuse'
@@ -270,12 +271,14 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity, opts: { test
       if (taken) throw new AppError('AuthenticationError', ADDRESS_IN_USE)
       // An opaque, permanent id (minted by the Person Table's id pattern) —
       // the address is contact data, not the anchor.
-      const created = await saveDoc(
+      // #829: recorded as created by the sign-in, not by an administrator.
+      const actor = signInActor(method.kind)
+      const created = await runAsSystemActor(actor, () => saveDoc(
         'Person',
         { email, full_name: starterName(v, email), enabled: true, roles: [] },
-        'Administrator',
+        actor,
         'insert',
-      )
+      ))
       const id = newIdentityId()
       await sql`insert into sign_in_identity ${sql({
         id,
@@ -293,9 +296,6 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity, opts: { test
       await auditIdentity(String(created.row_id), 'linked', String(created.row_id), method.key, id)
       return { user: String(created.row_id), identity: id }
     })
-    // #429: tell System Managers someone is waiting — never for a test-mode
-    // or mock-provider sign-in, which would mail real people. Never throws.
-    if (!opts.testMode && !isMockProvider(method)) await alertNewArrival(found.user, method)
     return found
   } catch (err) {
     // Two first sign-ins with one subject: the loser signs in as the winner.
@@ -310,7 +310,7 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity, opts: { test
 /** Resolve a verified outside identity to a person: linked subject, then a
  *  one-time invite, then a person marked as expecting it (#473), then the
  *  method's rule. Never by email match alone. */
-export async function resolveVerified(method: SignInMethod, v: VerifiedIdentity, opts: { testMode?: boolean } = {}): Promise<Found> {
+export async function resolveVerified(method: SignInMethod, v: VerifiedIdentity): Promise<Found> {
   if (!v.subject) throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
   const linked = await linkedBySubject(method, v.subject)
   if (linked) return assertLinkStillAdmitted(method, v, linked)
@@ -320,7 +320,7 @@ export async function resolveVerified(method: SignInMethod, v: VerifiedIdentity,
   if (expected) return expected
   // A concurrent claim may have linked it a moment ago.
   const raced = await linkedBySubject(method, v.subject)
-  return raced ? assertLinkStillAdmitted(method, v, raced) : newPerson(method, v, opts)
+  return raced ? assertLinkStillAdmitted(method, v, raced) : newPerson(method, v)
 }
 
 /** The shared tail of every sign-in. `found` is the person a candidate-first
@@ -340,7 +340,7 @@ export async function completeSignIn(
     if (found) await disableLeaver(found.user, method.key)
     throw leftError(method)
   }
-  const person = found ?? (await resolveVerified(method, v, { testMode: opts.testMode }))
+  const person = found ?? (await resolveVerified(method, v))
   await assertEligible(method, person.user)
   if (person.identity)
     await touchIdentity(person.identity, {

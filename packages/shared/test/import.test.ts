@@ -8,6 +8,7 @@ import {
   combineOverlap,
   COMBINE_JOIN_SEPARATOR,
   idPatternFor,
+  choiceOptions,
   inferChoices,
   inferColumnType,
   inferTableDef,
@@ -226,6 +227,29 @@ describe('IMP-003: tableNameFromFile', () => {
     ['2026 report.csv', 'Report'],
   ])('%j -> %j', (file, expected) => {
     expect(tableNameFromFile(file)).toBe(expected)
+  })
+})
+
+describe('a column made a Choice by hand: choiceOptions', () => {
+  test('takes every distinct value, past what inference would call a Choice', () => {
+    const values = Array.from({ length: 40 }, (_, i) => `S${String(i % 20).padStart(2, '0')}`)
+    expect(inferChoices(values)).toBeNull()
+    expect(choiceOptions(values)).toHaveLength(20)
+    expect(choiceOptions(values)[0]).toBe('S00')
+  })
+  test('matches what will be sent: trimmed, numbers as text, blanks left out', () => {
+    expect(choiceOptions([' b', 'b ', 2, 2, '', '  ', null, undefined])).toEqual(['2', 'b'])
+    const options = choiceOptions([' b', 2])
+    for (const [value] of coerceRows([{ column_name: 'c', column_type: 'Choice' }], [[' b'], [2]]).map((r) => Object.values(r.values)))
+      expect(options).toContain(value)
+  })
+  test('a date is an option in the form it is sent', () => {
+    const day = new Date(2026, 10, 5)
+    const [sent] = coerceRows([{ column_name: 'c', column_type: 'Choice' }], [[day]]).map((r) => r.values.c)
+    expect(choiceOptions([day])).toEqual([sent])
+  })
+  test('leaves out a value holding a line break, since options are one per line', () => {
+    expect(choiceOptions(['a', 'b\nc'])).toEqual(['a'])
   })
 })
 

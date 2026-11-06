@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { PrincipalName } from '../lib/people'
 import { adminPageTitle } from 'shared'
-import { Button, Notice, Select, TextInput } from '../components/ui'
+import { Button, Notice, Select, TextInput } from '@featherbase/shop-floor'
 
 // person-resolution D3: find a person by an exact identifier — the employee
 // code HR mails for a joiner, a correction or a leaver (docs/DEPLOY.md). The
@@ -70,14 +70,14 @@ export function FindPerson() {
       {found && found.length === 0 && (
         <p className="text-sm text-ink-muted" data-testid="find-person-none">
           No exact match among the people you can see. Use the full value, e.g. name@example.com or RR-0101. To search by name, use the{' '}
-          <Link to="/featherbase/admin/$table" params={{ table: 'Person' }} search={{ filters: undefined }} className="text-action hover:underline">Person list</Link>.
+          <Link to="/featherbase/admin/table/$table" params={{ table: 'Person' }} search={{ filters: undefined }} className="text-action hover:underline">Person list</Link>.
         </p>
       )}
       {found && found.length > 0 && (
         <ul className="space-y-1" data-testid="find-person-results">
           {found.map((f) => (
             <li key={`${f.person_id}-${f.assigner}-${String(f.current)}-${String(f.pending_invite)}`} className="text-sm">
-              <Link to="/featherbase/admin/$table/$name" params={{ table: 'Person', name: f.resolved_to }} search={{ prefill: undefined }} className="font-medium text-action hover:underline">
+              <Link to="/featherbase/admin/table/$table/row/$name" params={{ table: 'Person', name: f.resolved_to }} search={{ prefill: undefined }} className="font-medium text-action hover:underline">
                 <PrincipalName id={f.resolved_to} />
               </Link>
               <span className="text-sm text-ink-muted">

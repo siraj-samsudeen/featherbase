@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
+import { adminPageTitle } from 'shared'
 import { useShellTables, type TableSummary } from '../lib/session'
-import { cardClasses, touchRowClasses } from '../components/ui'
+import { cardClasses, touchRowClasses } from '@featherbase/shop-floor'
 
 // #80: with the sidebar flipped to Home Pages, this page keeps EVERY table
 // reachable — it is the sidebar's "All tables" entry. Same curation as the
@@ -33,7 +34,13 @@ export function AllTablesPage() {
 
   const byModule = new Map<string, TableSummary[]>()
   const systemTables: TableSummary[] = []
+  // #905: archived Tables stay reachable here, under their own group.
+  const archivedTables: TableSummary[] = []
   for (const dt of tables ?? []) {
+    if (dt.archived) {
+      archivedTables.push(dt)
+      continue
+    }
     if (dt.system) {
       systemTables.push(dt)
       continue
@@ -48,7 +55,7 @@ export function AllTablesPage() {
 
   return (
     <div className="max-w-3xl" data-testid="all-tables-page">
-      <h1 className="mb-2 text-lg font-semibold text-ink">All tables</h1>
+      <h1 className="mb-2 text-lg font-semibold text-ink">{adminPageTitle('all-tables')}</h1>
       <nav className={cardClasses('px-3 py-2')} data-testid="table-nav">
         {tables === undefined && (
           <p className="px-2 py-1 text-xs text-ink-subtle">Loading…</p>
@@ -61,7 +68,7 @@ export function AllTablesPage() {
             {(byModule.get(mod) ?? []).map((dt) => (
               <Link
                 key={dt.row_id}
-                to="/featherbase/admin/$table"
+                to="/featherbase/admin/table/$table"
                 params={{ table: dt.row_id }}
                 search={{ filters: undefined }}
                 className={linkClass}
@@ -99,7 +106,7 @@ export function AllTablesPage() {
               systemTables.map((dt) => (
                 <Link
                   key={dt.row_id}
-                  to="/featherbase/admin/$table"
+                  to="/featherbase/admin/table/$table"
                   params={{ table: dt.row_id }}
                   search={{ filters: undefined }}
                   className={linkClass}
@@ -109,6 +116,25 @@ export function AllTablesPage() {
                 </Link>
               ))}
           </>
+        )}
+        {archivedTables.length > 0 && (
+          <div data-testid="archived-group">
+            <div className="px-2 pt-4 pb-1 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+              Archived tables
+            </div>
+            {archivedTables.map((dt) => (
+              <Link
+                key={dt.row_id}
+                to="/featherbase/admin/table/$table"
+                params={{ table: dt.row_id }}
+                search={{ filters: undefined }}
+                className={linkClass}
+                activeProps={{ className: activeClass }}
+              >
+                {dt.row_id}
+              </Link>
+            ))}
+          </div>
         )}
       </nav>
     </div>

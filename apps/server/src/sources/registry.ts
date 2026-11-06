@@ -19,6 +19,7 @@ const DRIVERS: Record<SourceEngine, SourceDriver> = {
   postgres: postgresDriver,
   mysql: mysqlDriver,
   duckdb: duckdbDriver,
+  motherduck: duckdbDriver,
   'csv-folder': csvFolderDriver,
 }
 
@@ -44,6 +45,19 @@ function parseAllowlist(raw: unknown): string[] | null {
   return entries.length ? entries : null
 }
 
+export function allowlistQualificationGuidance(engine: string, raw: unknown): string | null {
+  const format = engine === 'postgres' ? 'schema.table'
+    : engine === 'mysql' ? 'database.table'
+    : engine === 'duckdb' || engine === 'motherduck' ? 'catalog.schema.table'
+    : null
+  if (!format) return null
+  const requiredParts = format.split('.').length
+  // Only check qualification depth, not SQL identifier syntax: literal
+  // dotted names still match exactly as stored at runtime.
+  const incomplete = parseAllowlist(raw)?.some((entry) => entry.split('.').length < requiredParts)
+  return incomplete ? `Use ${format} for every table restriction` : null
+}
+
 export async function getSource(name: string): Promise<SourceConfig> {
   const cached = cache.get(name)
   if (cached) return cached
@@ -58,14 +72,15 @@ export async function getSource(name: string): Promise<SourceConfig> {
     url_env: (row.url_env as string | null) || null,
     root_path: (row.root_path as string | null) || null,
     default_schema: (row.default_schema as string | null) || null,
-    access: row.access === 'read_write' ? 'read_write' : 'read_only',
+    // #969: a MotherDuck source is view-only in code, whatever a row says.
+    access: engine !== 'motherduck' && row.access === 'read_write' ? 'read_write' : 'read_only',
     pool_max: Math.min(Math.max(Number(row.pool_max ?? 5) || 5, 1), 20),
     statement_timeout_ms: Math.min(
       Math.max(Number(row.statement_timeout_ms ?? 10000) || 10000, 100),
       60000,
     ),
     allowlist: parseAllowlist(row.table_allowlist),
-    read_scaling_token: row.read_scaling_token === true,
+    databases: Array.isArray(row.databases) ? (row.databases as SourceConfig['databases']) : [],
   }
   cache.set(name, cfg)
   return cfg
@@ -92,11 +107,13 @@ export function resolveUrl(cfg: SourceConfig): string {
 export function assertAllowed(cfg: SourceConfig, schema: string, table: string): void {
   if (!cfg.allowlist) return
   const qualified = schema ? `${schema}.${table}` : table
-  if (!cfg.allowlist.includes(qualified))
+  if (!cfg.allowlist.includes(qualified)) {
+    const guidance = allowlistQualificationGuidance(cfg.engine, cfg.allowlist.join('\n'))
     throw new AppError(
       'PermissionError',
-      `Table ${qualified} is not in the allowlist of data source ${cfg.name}`,
+      `Table ${qualified} is not in the allowlist of data source ${cfg.name}${guidance ? `. ${guidance}` : ''}`,
     )
+  }
 }
 
 // EDS-1: Test Connection. Stamps conn_status/last_checked_at/last_error on

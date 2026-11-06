@@ -1,6 +1,7 @@
 // Board, Calendar and Timeline views (spec: board-calendar-and-timeline-views). The drag
 // gestures run here with the pointer's landing place stubbed (jsdom has no layout), so what
 // is under test is what the page writes back to the server and what it shows afterwards.
+import { tableSlug } from 'shared'
 import { afterEach } from 'vitest'
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { test, expect, renderApp } from './pg-test'
@@ -46,7 +47,7 @@ async function seedBoard(admin: Admin) {
 
 test('Board: one column per choice, each with its cards and a count', async ({ admin }) => {
   await seedBoard(admin)
-  await renderApp(`/featherbase/admin/${enc(BOARD)}/view/kanban`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(BOARD)}/view/kanban`, admin)
   await screen.findByTestId('kanban-view')
   await waitFor(() => expect(screen.getAllByTestId('kanban-card')).toHaveLength(3))
   expect(screen.getByTestId('kanban-count-Open')).toHaveTextContent('2')
@@ -57,7 +58,7 @@ test('Board: one column per choice, each with its cards and a count', async ({ a
 
 test('Board: dragging a card into another column sets the row\'s value to that column', async ({ admin }) => {
   await seedBoard(admin)
-  await renderApp(`/featherbase/admin/${enc(BOARD)}/view/kanban`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(BOARD)}/view/kanban`, admin)
   await waitFor(() => expect(screen.getAllByTestId('kanban-card')).toHaveLength(3))
   const card = document.querySelector('[data-card="d1"]') as HTMLElement
   fireEvent.pointerDown(card)
@@ -70,7 +71,7 @@ test('Board: dragging a card into another column sets the row\'s value to that c
 
 test('Board: dropping a card back where it started changes nothing', async ({ admin }) => {
   await seedBoard(admin)
-  await renderApp(`/featherbase/admin/${enc(BOARD)}/view/kanban`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(BOARD)}/view/kanban`, admin)
   await waitFor(() => expect(screen.getAllByTestId('kanban-card')).toHaveLength(3))
   const before = (await rowOf(admin, BOARD, 'd1')).updated_at
   fireEvent.pointerDown(document.querySelector('[data-card="d1"]') as HTMLElement)
@@ -82,14 +83,14 @@ test('Board: dropping a card back where it started changes nothing', async ({ ad
 
 test('Board: a table with no choice column says there is nothing to group by', async ({ admin }) => {
   await admin.post('/api/table_def', { name: PLAIN, columns: [{ column_name: 'title', column_type: 'Data' }] })
-  await renderApp(`/featherbase/admin/${enc(PLAIN)}/view/kanban`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(PLAIN)}/view/kanban`, admin)
   expect(await screen.findByTestId('kanban-no-select')).toHaveTextContent('no Choice column')
 })
 
 test('Board: a row whose value is not one of the choices still shows, in a column of its own', async ({ admin }) => {
   await seedBoard(admin)
   await admin.post('/api/save_row', { table: BOARD, row: { row_id: 'd4', title: 'Odd Deal', stage: '' } })
-  await renderApp(`/featherbase/admin/${enc(BOARD)}/view/kanban`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(BOARD)}/view/kanban`, admin)
   await waitFor(() => expect(screen.getAllByTestId('kanban-card')).toHaveLength(4))
   expect(within(screen.getByTestId('kanban-column-empty')).getByText('Odd Deal')).toBeInTheDocument()
 })
@@ -116,7 +117,7 @@ test('Calendar: a row shows on the day its date falls on, and dragging it to ano
   await seedSchedule(admin)
   await admin.post('/api/save_row', { table: SCHED, row: { row_id: 's1', title: 'Kickoff', start_date: thisMonth(3), end_date: thisMonth(9) } })
   await admin.post('/api/save_row', { table: SCHED, row: { row_id: 'undated', title: 'Not scheduled' } })
-  await renderApp(`/featherbase/admin/${enc(SCHED)}/view/calendar`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(SCHED)}/view/calendar`, admin)
   const from = await screen.findByTestId(`cal-cell-${thisMonth(3)}`)
   await waitFor(() => expect(within(from).getByText('Kickoff')).toBeInTheDocument())
   expect(screen.queryByText('Not scheduled')).not.toBeInTheDocument()
@@ -136,13 +137,13 @@ test('Calendar: a row shows on the day its date falls on, and dragging it to ano
 
 test('Calendar: months can be paged, and a table with no date column says so', async ({ admin }) => {
   await admin.post('/api/table_def', { name: PLAIN, columns: [{ column_name: 'title', column_type: 'Data' }] })
-  await renderApp(`/featherbase/admin/${enc(PLAIN)}/view/calendar`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(PLAIN)}/view/calendar`, admin)
   expect(await screen.findByTestId('calendar-no-date')).toHaveTextContent('no Date column')
 })
 
 test('Calendar: next and previous month page the grid', async ({ admin }) => {
   await seedSchedule(admin)
-  await renderApp(`/featherbase/admin/${enc(SCHED)}/view/calendar`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(SCHED)}/view/calendar`, admin)
   const month = await screen.findByTestId('cal-month')
   const first = month.textContent
   fireEvent.click(screen.getByTestId('cal-next'))
@@ -158,7 +159,7 @@ test('Calendar: the next month shows the rows dated in it', async ({ admin }) =>
   const nextDay = `${next.getFullYear()}-${pad(next.getMonth() + 1)}-20`
   await admin.post('/api/save_row', { table: SCHED, row: { row_id: 'n1', title: 'Stocktake', start_date: nextDay, end_date: nextDay } })
   await admin.post('/api/save_row', { table: SCHED, row: { row_id: 'n2', title: 'Kickoff', start_date: thisMonth(15), end_date: thisMonth(15) } })
-  await renderApp(`/featherbase/admin/${enc(SCHED)}/view/calendar`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(SCHED)}/view/calendar`, admin)
   await waitFor(() => expect(within(screen.getByTestId(`cal-cell-${thisMonth(15)}`)).getByText('Kickoff')).toBeInTheDocument())
   expect(screen.queryByText('Stocktake')).not.toBeInTheDocument()
   const first = screen.getByTestId('cal-month').textContent
@@ -175,7 +176,7 @@ test('Timeline: each row is a bar from its first date to its second; a row missi
   await admin.post('/api/save_row', { table: SCHED, row: { row_id: 't1', title: 'Design', start_date: '2026-03-02', end_date: '2026-03-05' } })
   await admin.post('/api/save_row', { table: SCHED, row: { row_id: 't2', title: 'Undated', start_date: '2026-03-02' } })
   await admin.post('/api/save_row', { table: SCHED, row: { row_id: 'reversed', title: 'Reversed dates', start_date: '2026-03-04', end_date: '2026-03-01' } })
-  await renderApp(`/featherbase/admin/${enc(SCHED)}/view/gantt`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(SCHED)}/view/gantt`, admin)
   const bar = await screen.findByTestId('gantt-bar-t1')
   expect(bar).toHaveAttribute('data-start', '2026-03-02')
   expect(bar).toHaveAttribute('data-end', '2026-03-05')
@@ -188,7 +189,7 @@ test('Timeline: each row is a bar from its first date to its second; a row missi
 test('Timeline: dragging a bar\'s end three days later moves the row\'s second date, never before the first', async ({ admin }) => {
   await seedSchedule(admin)
   await admin.post('/api/save_row', { table: SCHED, row: { row_id: 't1', title: 'Design', start_date: '2026-03-02', end_date: '2026-03-05' } })
-  await renderApp(`/featherbase/admin/${enc(SCHED)}/view/gantt`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(SCHED)}/view/gantt`, admin)
   const handle = await screen.findByTestId('gantt-resize-t1')
   const before = await rowOf(admin, SCHED, 't1')
   pointer(screen.getByTestId('gantt-view'), 'pointerup')
@@ -210,7 +211,7 @@ test('Timeline: dragging a bar\'s end three days later moves the row\'s second d
 
 test('Timeline: a table without two date columns says so', async ({ admin }) => {
   await admin.post('/api/table_def', { name: PLAIN, columns: [{ column_name: 'due', column_type: 'Date' }] })
-  await renderApp(`/featherbase/admin/${enc(PLAIN)}/view/gantt`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(PLAIN)}/view/gantt`, admin)
   expect(await screen.findByTestId('gantt-no-dates')).toHaveTextContent('two Date columns')
 })
 
@@ -224,7 +225,7 @@ test('Board: with two choice columns the user picks which one the board follows'
     ],
   })
   await admin.post('/api/save_row', { table: BOARD, row: { row_id: 'd1', title: 'Deal One', stage: 'Open', priority: 'High' } })
-  await renderApp(`/featherbase/admin/${enc(BOARD)}/view/kanban`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(BOARD)}/view/kanban`, admin)
   await screen.findByTestId('kanban-column-Open')
   fireEvent.change(screen.getByTestId('kanban-groupby'), { target: { value: 'priority' } })
   await waitFor(() => expect(within(screen.getByTestId('kanban-column-High')).getByText('Deal One')).toBeInTheDocument())

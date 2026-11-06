@@ -1,10 +1,10 @@
-# Feather Dash
+# Dash
 
-Feather Dash is a client app built for JeyaRama on Featherbase: the store
+Dash is a client app built for JeyaRama on Featherbase: the store
 staff's month-to-date sales-against-target report, the store org chart that
 decides who sees which sections, and the scope provider that turns the org
-chart into each reader's places. Its app id is `feather_dash`, so its Tables are
-`feather_dash.*`.
+chart into each reader's places. Its app id is `dash`, so its Tables are
+`dash.*`.
 
 It lives in featherbase's `client-apps/` (ADR 0014). Platform and app share
 one commit, so a platform change and the app change that needs it are one PR.
@@ -26,10 +26,10 @@ read answers a `heading` for it). Readers never see internal codes: the quick
 view names subcategories without their codes, and the store picker names
 stores without plant codes. `sales_to_date` carries the month's target and
 actual quantities for the Dive's cache, and the page tells the Dive its own
-origin for the ready message. The compact whole-store state follows the pinned
-Dive (`COMPACT_DIVES` in `src/server.ts`), which lists the Sales Target Dive at
-v13 only; every other pin gets the plain scope keys (see "Turning on the
-compact state"). The history behind these is in the client's
+origin for the ready message. The page opens the Dive's latest saved version:
+no version is pinned anywhere, so saving a Dive on MotherDuck releases it
+(#937). The app always sends the compact state, which the Sales Target Dive
+reads from v13. The history behind these is in the client's
 repository (data-warehouse #4486, #4531, #4453).
 
 ## Layout
@@ -75,8 +75,8 @@ The platform tests run inside `apps/server`'s own test harness, against a test
 database of your own (the harness migrates it and empties its job queue):
 
 ```sh
-createdb -h 127.0.0.1 -U postgres feather_dash_platform_test
-export DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/feather_dash_platform_test
+createdb -h 127.0.0.1 -U postgres dash_platform_test
+export DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/dash_platform_test
 (cd ../../../apps/server && NODE_ENV=test pnpm migrate)
 npm run test:platform              # or: npm run test:platform -- provider.test.ts
 ```
@@ -103,7 +103,7 @@ module on every save. There is no image and no second checkout.
    It prints where to go and how to sign in. Set `API_PORT`, `WEB_PORT` or
    `DATABASE_URL` for ports and a database of your own (`.env.example`).
 
-2. **Open** `http://localhost:5173/feather_dash/` and sign in as
+2. **Open** `http://localhost:5173/dash/` and sign in as
    `Administrator` (development password `admin`).
 
 3. **Start the watchers** here, and leave them running: `npm run dev`.
@@ -111,7 +111,7 @@ module on every save. There is no image and no second checkout.
 | You edit | What happens | What you do |
 |---|---|---|
 | the client (`src/*.tsx`, `src/style.css`, `index.html`) | Vite rebuilds `dist/client`; the platform reads the client from disk on every request. | Refresh the browser. |
-| the server module (`src/server.ts`) | esbuild rebuilds `dist/server.mjs` and the dev server restarts. The platform fingerprints the app folder, so the installed app no longer matches it: the server log warns `App feather_dash version … is installed and enabled, but this server does not have it`. | `DATABASE_URL=… npm run dev:repin` re-pins the dev database's install to the folder and restarts the server. |
+| the server module (`src/server.ts`) | esbuild rebuilds `dist/server.mjs` and the dev server restarts. The platform fingerprints the app folder, so the installed app no longer matches it: the server log warns `App dash version … is installed and enabled, but this server does not have it`. | `DATABASE_URL=… npm run dev:repin` re-pins the dev database's install to the folder and restarts the server. |
 | `featherbase.json` | A manifest change is a schema change. | Recreate the dev database and install again. `dev:repin` refuses a changed manifest. |
 
 The same warning follows any restart once the client was rebuilt since the
@@ -143,7 +143,7 @@ at the repository root.
 
 ## What the manifest declares
 
-- **`feather_dash.store_rollout`**, the entry Table and the per-store live
+- **`dash.store_rollout`**, the entry Table and the per-store live
   switch: a store with a row live on or before today uses the new org chart.
   It is marked `decides_scope`, so only a System Manager writes it; the three
   app roles read it, because the platform opens an app only for people who can
@@ -189,8 +189,7 @@ at the repository root.
     included; a person whose codes are all unshared gets what those codes
     derive plus their explicit rows; a person with no code gets their explicit
     rows (`fromIdentifiers` in `src/provider.ts`). Live stores are unaffected.
-- **Roles:** Feather Dash Reader, Feather Dash Section Editor, Feather Dash
-  Section Reviewer. `roleDefaults` is empty; part 4 adds the stand-in binding.
+- **Roles:** Dash Reader, Dash Section Editor, Dash Section Reviewer. `roleDefaults` is empty; part 4 adds the stand-in binding.
 - **The cached dataset, `sales_to_date`**, on the instance's `motherduck` Data
   Source (which must be marked "Read-scaling token"): one row per store and
   subcategory, month to date in India Standard Time, with target, sales, the
@@ -215,9 +214,20 @@ at the repository root.
   with only `period_start`, `data_through` and `targets_available`, limited
   to the reader the same way. It tells a month that hasn't arrived from a
   section that sold nothing, whose figures are empty either way.
-- **The reads** (`POST /api/app_reads/feather_dash/<read>` with
+- **Last month's datasets, `sales_last_month` and `sales_last_month_meta`**
+  (#750): the same queries, columns, filters and guards over last month whole
+  (its first day to its last, the data running to its last day with actuals).
+  They are separate datasets, so each refresh holds one `period_start` and the
+  guards still compare within it.
+- **The month picker** in the bar (`months` → `?month=this|last`, labelled
+  "This month · Nov'26" and "Last month · Oct'26"). The value is the choice,
+  not the month, so an address keeps meaning "last month". `report` and
+  `embed_session` take `{ month }` (`this` when missing) and read that month's
+  datasets. The Dive caps its anchor day at `period_end` (Sales Target Dive
+  v14, data-warehouse#4630), so it shows last month as it shows this month.
+- **The reads** (`POST /api/app_reads/dash/<read>` with
   `{"payload":{…}}` and the header `X-Featherbase-App-Version:
-  feather_dash@<version>`, which the client sends):
+  dash@<version>`, which the client sends):
   - `me` → `{ user }`;
   - `stores` → the reader's stores for the bar's picker, whose labels the
     platform's bar draws (the single-store label too):
@@ -235,8 +245,7 @@ at the repository root.
     (`whyLine` in `src/page.ts`), and leaves it out when none is known;
   - `embed_session` `{ store, app_origin }` (outbound) → `{ frame }` (the Dive's address),
     `{ not_set_up: true }` or `{ unreachable: true }`. It reads only the cached
-    copies, and nothing live except, in the legacy state with nothing
-    cached, a whole-store reader's subcategories. The Dive's
+    copies, never anything live. The Dive's
     `initial_state` carries `plant_code`, `whole_store`, `period_start`,
     `period_end`, `app_origin` (the page's own origin, which the page sends,
     when it is a plain `http(s)` origin: the target of the Dive's ready
@@ -244,21 +253,12 @@ at the repository root.
     - **Scope.** `whole_store` is worked out from the reader's places, never
       from the request. A section reader gets `material_groups` and
       `section_by_material_group`, and the Dive limits every query to them. A
-      whole-store reader's keys follow the pinned Dive (`dive_id` and
-      `dive_version`):
-      - **compact**, only for a Dive and version listed in `COMPACT_DIVES`
-        (`src/server.ts`; the Sales Target Dive at v13): no
-        `material_groups` or `section_by_material_group`; the Dive filters
-        on the store alone, and the sections come as `sections: { <name>:
-        [codes] }`;
-      - **legacy**, for any other pin (an older version, another Dive, a
-        version that is not plain digits): the plain scope keys, the full
-        `material_groups` (the places', the cache's and, with nothing cached,
-        the warehouse's subcategories) and `section_by_material_group`. A
-        Dive before v13 does not read the compact state (one before v12
-        reads a missing `material_groups` as "every store"), so no setting
-        can give it the compact state. A later version that
-        keeps the format is added to `COMPACT_DIVES` in a new app version.
+      whole-store reader gets no `material_groups` or
+      `section_by_material_group`: the Dive filters on the store alone, and
+      the sections come as `sections: { <name>: [codes] }`. (The older shape,
+      with the full `material_groups`, is kept in `src/report.ts` as
+      `format: 'legacy'` for the Dive's test harness, data-warehouse#4453;
+      this app never sends it.)
     - **`cached`, version 1:** `{ v: 1, refreshed_at, data_through, q, cols }`
       or the same with `z` in place of `cols` (the columns as JSON, gzipped,
       base64). `cols` is `{ c, n, t, a, tq?, aq? }`, one array per field: codes
@@ -272,43 +272,31 @@ at the repository root.
       made-up data (random-letter names, which compress worse than real
       ones), in the compact state a whole-store reader keeps quantities up to
       about 1,600 subcategories and gets a value-only cache up to about
-      2,200; in the legacy state the full list leaves room for a cache only
-      up to about 600 subcategories. A section reader always gets the plain
-      cache.
+      2,200. A section reader always gets the plain cache.
     - **Too large to embed.** MotherDuck refuses an `initial_state` past
       64 KB. A state past `EMBED_STATE_LIMIT_BYTES` (63,000: under 64 KB
       whether a kilobyte is 1,000 or 1,024 bytes) is never sent and never
       trimmed: `embed_session` answers `{ too_large: true }`, the page shows
       the quick view with "This store is too large for the interactive
       report yet. Showing the cached table.", and the server logs
-      `feather_dash_embed_state_too_large` naming the store (no person). In
-      the legacy state that starts at about 1,525 subcategories (made-up
-      data, 40 sections). The platform pinned here has no app-facing
+      `dash_embed_state_too_large` naming the store (no person). The platform pinned here has no app-facing
       Instance health check, so the log line is the operator's signal.
   The last three are `person_scope` reads for the three app roles.
 - **The Dive's settings** (optional: without them the page shows the quick
-  view): `dive_id`, `dive_version`, `embed_service_account`, and
+  view): `dive_id`, `embed_service_account`, and
   `dive_ready_signal` (`on` once the Dive posts `{ type:
-  "feather-dash:dive-ready" }` to the page when it has drawn, B7; until then
+  "dash:dive-ready" }` to the page when it has drawn, B7; until then
   the frame's `load` counts as ready); the secret
   `MOTHERDUCK_TOKEN` (every read answers "not set up" while it is missing);
   `frameOrigins: ["https://embed-motherduck.com"]`.
 
-## Turning on the compact state
+## Releasing a Dive
 
-The app lists a Dive version in `COMPACT_DIVES` only once that version is
-published: listing one early could name an older Dive, which reads a missing
-`material_groups` as every store. On any other pin, a whole-store reader of a
-store over about 600 subcategories gets no cache, and one over about 1,525 gets
-the cached table instead of the Dive.
-
-1. Done: the cached-first Sales Target Dive is published as v13 (v12 is an
-   older wording-only version, not compact-aware).
-2. Done: 0.10.1 adds `'9022f10f-be83-4fba-a729-5399c18d150e': [13]` to
-   `COMPACT_DIVES` (featherbase#712).
-3. Pin `dive_version=13` on dev only, with 0.10.1 deployed.
-4. Check the real embed on dev (cached, then live, and whether the ready
-   message arrives); only then set `dive_ready_signal=on`.
+Save the new version on MotherDuck; the next reader sees it. Nothing in this
+app or its settings names a version. Before saving, check the version still
+reads the state this app sends (the harness in data-warehouse#4453), then
+check the real embed on dev (cached, then live, and whether the ready message
+arrives); only then set `dive_ready_signal=on`.
 
 ## The coverage comparison
 
@@ -328,7 +316,7 @@ are empty and the comparison is accepted. Use the repository's Node 26.13.0 LTS 
 
 **Known interim on an app address.** Until featherbase's cut-over retires
 today's Sales Target page (design D8, B9), the platform routes an address that
-opens `feather_dash` to that page (`INTERIM_APPS` in featherbase's
+opens `dash` to that page (`INTERIM_APPS` in featherbase's
 `packages/shared/src/app-routes.ts`). The app itself is served at
-`/feather_dash/` on the Admin address, and on a dev machine with
+`/dash/` on the Admin address, and on a dev machine with
 `INSTANCE_ADDRESSES` unset.

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { LIST_COLUMNS_ON_CREATE, coerceRows, idPatternFor, inferTableDef, seriesPrefix, tableNameFromFile } from 'shared'
+import { DEFAULT_ID_PATTERN, LIST_COLUMNS_ON_CREATE, coerceRows, inferTableDef, seriesPrefix, tableNameFromFile } from 'shared'
 import { ApiError, api } from '../lib/api'
+import { describeFieldErrors } from '../lib/table-refusal'
 import { NamingControl } from '../components/NamingControl'
 import { ColumnCards } from '../components/ColumnCards'
 import { PasteColumns, type PastedColumn } from '../components/PasteColumns'
@@ -22,8 +23,8 @@ import {
   parseWorkbook,
 } from '../lib/parse-file'
 import { sendImportRun } from '../lib/import-run'
-import { buttonClasses, cardClasses, iconButtonClasses, inputClasses, labelClasses, touchRowClasses, touchTargetClasses } from '../components/ui'
-import { fmtCount, fmtDate, fmtDay } from '../lib/inr'
+import { buttonClasses, cardClasses, iconButtonClasses, inputClasses, labelClasses, touchRowClasses, touchTargetClasses } from '@featherbase/shop-floor'
+import { fmtCount, fmtDate, fmtDay } from '@featherbase/shop-floor'
 
 // #738: a grid tick's label is its thumb-sized target at phone width, under a
 // mouse too (a touch screen gets that from the base stylesheet).
@@ -46,44 +47,6 @@ function keptColumns(columns: BuilderColumn[]): KeptColumn[] {
   return columns
     .map((c, sourceIndex) => ({ ...c, sourceIndex }))
     .filter((c) => c.column_name.trim())
-}
-
-const COLUMN_PATH = /^columns\.(\d+)(?:\..+)?$/
-
-// Paths that are not a column are already plain field names; give them the
-// user's word for the control rather than the payload key.
-const TOP_LEVEL_LABEL: Record<string, string> = {
-  name: 'Table name',
-  module: 'Module',
-  id_pattern: 'Row ID',
-  columns: 'Columns',
-  system: 'Table',
-}
-
-// The user's mental model must never straddle two numbering schemes
-// (2026-08-11 owner directive): a server path like `columns.0.column_name`
-// is translated to the grid row it came from and named by the label the
-// user typed. Returns the per-row errors to mark inline, plus sentences
-// for the banner.
-function describeFieldErrors(
-  fields: Record<string, string>,
-  kept: KeptColumn[],
-): { rows: Record<number, string>; parts: string[] } {
-  const rows: Record<number, string> = {}
-  const parts: string[] = []
-  for (const [path, message] of Object.entries(fields)) {
-    const match = COLUMN_PATH.exec(path)
-    const col = match ? kept[Number(match[1])] : undefined
-    if (!col) {
-      const label = TOP_LEVEL_LABEL[path] ?? (path.includes('.') ? null : path)
-      parts.push(label ? `${label}: ${message}` : message)
-      continue
-    }
-    const who = col.label.trim() || col.column_name.trim()
-    rows[col.sourceIndex] = rows[col.sourceIndex] ? `${rows[col.sourceIndex]}; ${message}` : message
-    parts.push(`Column “${who}”: ${message}`)
-  }
-  return { rows, parts }
 }
 
 interface ImportedFile {
@@ -135,7 +98,7 @@ export function TableBuilder() {
   const queryClient = useQueryClient()
   const fileInput = useRef<HTMLInputElement>(null)
   const [name, setName] = useState('')
-  // null = follow the Table name (ZONE-.###); a string = the user chose.
+  // null = the default, plain numbers 1, 2, 3 (#855); a string = the user chose.
   const [namingOverride, setNamingOverride] = useState<string | null>(null)
   // #74: user tables get a real module (default "Custom"). Omitting it used
   // to let the server default the table into 'Core', mis-filing it among the
@@ -242,7 +205,7 @@ export function TableBuilder() {
 
   // Before a name is typed there is no prefix to derive, but the control should
   // still open on "series" — that is the default we want for imports.
-  const idPattern = namingOverride ?? (name.trim() ? idPatternFor(name) : '.###')
+  const idPattern = namingOverride ?? DEFAULT_ID_PATTERN
 
   async function loadFile(file: File) {
     setError(null)
@@ -363,7 +326,7 @@ export function TableBuilder() {
       // #80: the new table auto-appears on its module's home page — refresh
       // the sidebar so that happens without a reload.
       await queryClient.invalidateQueries({ queryKey: ['home-pages'] })
-      navigate({ to: '/featherbase/admin/$table', params: { table: name }, search: { filters: undefined } })
+      navigate({ to: '/featherbase/admin/table/$table', params: { table: name }, search: { filters: undefined } })
     } catch (err) {
       setProgress(null)
       if (err instanceof ApiError && err.fields) {

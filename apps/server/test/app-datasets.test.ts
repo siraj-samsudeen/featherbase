@@ -16,6 +16,7 @@ import postgres from 'postgres'
 import { makeClient, type CreateUserFn, type TestClient } from 'feather-testing-postgres'
 import { afterAll, beforeAll, beforeEach, describe, expect } from 'vitest'
 import { test as pgTest } from './pg-test'
+import { committedTest as pgCommittedTest } from './pg-test-shared'
 import { EXTERNAL_DATABASE_URL } from './external-database'
 import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packages'
 import { invalidateSources } from '../src/sources/registry'
@@ -41,6 +42,10 @@ const pinned = (client: TestClient) => makeClient({ request: (path, init) => cli
   ...init, headers: { 'X-Featherbase-App-Version': 'datasetproof@1.0.0', ...init?.headers },
 }) }, client.token, client.user)
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
+  admin: async ({ admin }, use) => use(pinned(admin)),
+  createUser: async ({ createUser }, use) => use(async options => pinned(await createUser(options))),
+})
+const committedTest = pgCommittedTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(pinned(admin)),
   createUser: async ({ createUser }, use) => use(async options => pinned(await createUser(options))),
 })
@@ -563,18 +568,18 @@ describe('a cached dataset read', () => {
     expect(state?.missing).toEqual(['data source datasetproof-missing'])
   })
 
-  // A MotherDuck connection cannot be opened read-only; only a read-scaling
-  // token keeps it so, and the platform cannot see which token it holds. The
-  // address below is never dialled: the refusal comes first.
-  test('a MotherDuck source not marked as holding a read-scaling token cannot back a dataset', async ({ admin, createUser }) => {
-    const { reader, app } = await setup(admin, createUser, { source: false })
-    await admin.post('/api/table/Data%20Source', { row_id: 'datasetproof-warehouse', engine: 'duckdb', url_env: 'B4_MOTHERDUCK_URL', access: 'read_only' })
-    await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
-    app.hooks.run = (context: Context) => context.datasets.active('sales')
-    await withNamedVariable('B4_MOTHERDUCK_URL', 'md:never_dialled', async () => {
-      await expectApiError(reader.post(read + 'inside', { payload: {} }), { status: 409, type: 'NotSetUpError' })
+  // #969: a MotherDuck source is read-only whatever its token, so no flag is
+  // asked for; the setup names the instance's one token when it is missing.
+  test('a MotherDuck source can back a dataset, and its setup asks only for the token', async ({ admin, createUser }) => {
+    await setup(admin, createUser, { source: false })
+    await admin.post('/api/table/Data%20Source', { row_id: 'datasetproof-warehouse', engine: 'motherduck', databases: [{ name: 'gold' }] })
+    await withNamedVariable('MOTHERDUCK_TOKEN', undefined, async () => {
       expect((await appSetupState()).find(({ app }) => app === 'datasetproof')?.missing)
-        .toEqual(['read-only data source datasetproof-warehouse', 'data source datasetproof-missing'])
+        .toEqual(['secret MOTHERDUCK_TOKEN', 'data source datasetproof-missing'])
+    })
+    await withNamedVariable('MOTHERDUCK_TOKEN', 'made-up-token', async () => {
+      expect((await appSetupState()).find(({ app }) => app === 'datasetproof')?.missing)
+        .toEqual(['data source datasetproof-missing'])
     })
   })
 
@@ -719,7 +724,7 @@ describe('an outbound read', () => {
     await expectApiError(reader.post(read + 'outside', { payload: {} }), { status: 417, message: expect.stringMatching(/transaction has closed/) })
   })
 
-  test('while its handler waits on an outside call, a save and an app lifecycle change both complete', async ({ admin, createUser }) => {
+  committedTest('while its handler waits on an outside call, a save and an app lifecycle change both complete', async ({ admin, createUser }) => {
     const { reader, app } = await setup(admin, createUser)
     await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
     const call = stall()
@@ -734,7 +739,7 @@ describe('an outbound read', () => {
   })
 
   // The lifecycle lock's pool holds ten connections.
-  test('ten outbound handlers waiting at once do not hold up an ordinary read', async ({ admin, createUser }) => {
+  committedTest('ten outbound handlers waiting at once do not hold up an ordinary read', async ({ admin, createUser }) => {
     const { reader, app } = await setup(admin, createUser)
     await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
     const calls = Array.from({ length: 10 }, stall)
@@ -753,7 +758,7 @@ describe('an outbound read', () => {
 
   const nothing = async () => {}
   const view = async (context: Context) => { await context.recordView({ dataset: 'sales' }) }
-  test.for([
+  committedTest.for([
     ['its answer', nothing, nothing],
     ['its view record', nothing, view],
     // The view is held until the answer, and written only if the app still serves it then.

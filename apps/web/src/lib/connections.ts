@@ -23,14 +23,21 @@ export interface Backlink {
   via: string | null
 }
 
-export function useConnections(table: string, name: string, enabled = true) {
-  return useQuery({
+/** The one query for a row's counted backlinks. */
+export function connectionsQuery(table: string, name: string) {
+  return {
     queryKey: ['connections', table, name],
-    enabled: enabled && Boolean(table) && Boolean(name) && name !== 'new',
     queryFn: () =>
       api.get<{ connections: Connection[] }>(
         `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}:connections`,
       ),
+  }
+}
+
+export function useConnections(table: string, name: string, enabled = true) {
+  return useQuery({
+    ...connectionsQuery(table, name),
+    enabled: enabled && Boolean(table) && Boolean(name) && name !== 'new',
   })
 }
 
@@ -44,10 +51,9 @@ export function useBacklinks(table: string, enabled = true) {
   })
 }
 
-// The display label for a connection/backlink group. The via-sub-table case
-// reads "Purchase Order · via PO Line"; a second Reference column into the
-// same table disambiguates as "Employee · reports_to".
+// Include the Reference column even on the first path so multiple direct or
+// via-sub-table relationships to the same Table remain distinguishable.
 export function connectionLabel(c: { table: string; column: string; via: string | null }): string {
-  if (c.via) return `${c.table} · via ${c.via}`
-  return c.table
+  if (c.via) return `${c.table} · via ${c.via} / ${c.column}`
+  return `${c.table} · ${c.column}`
 }

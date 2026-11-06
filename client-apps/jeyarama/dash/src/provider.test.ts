@@ -32,12 +32,12 @@ function documents(tables: Record<string, Row[]>, reads: string[] = []) {
 function instance(jobs: Row[], extra: Record<string, Row[]> = {}): Record<string, Row[]> {
   const org = chart(jobs)
   return {
-    'feather_dash.store_rollout': [{ row_id: '9901', store: '9901', live_since: '2026-10-01' }],
-    'feather_dash.store_floor': org.floors,
-    'feather_dash.department': org.departments,
-    'feather_dash.section': org.sections,
-    'feather_dash.section_subcategory': org.placements,
-    'feather_dash.job_assignment': org.jobs,
+    'dash.store_rollout': [{ row_id: '9901', store: '9901', live_since: '2026-10-01' }],
+    'dash.store_floor': org.floors,
+    'dash.department': org.departments,
+    'dash.section': org.sections,
+    'dash.section_subcategory': org.placements,
+    'dash.job_assignment': org.jobs,
     'Section Merchandise Map': [
       { store_code: '9902', material_group: '010404001', mch_subcategory: 'Belts', section_name: 'Accessories' },
       { store_code: '9902', material_group: '010404002', mch_subcategory: 'Wallets', section_name: 'Accessories' },
@@ -58,13 +58,15 @@ describe('the org_chart scope provider', () => {
       label: '9901 / Section: Sarees',
       filters: { store: ['9901'], subcategory: ['010101001', '010303001'] },
       basis: 'team_leader',
+      reasons: [{ text: 'Team Leader job assignment', since: '2026-07-01' }],
       confirmation: { store: { '9901': 'confirmed' }, subcategory: { '010101001': 'confirmed', '010303001': 'confirmed' } },
     }])
   })
 
   it("gives a live store's Store Manager the store itself, with no narrower filter", async () => {
     const [store] = await provide(instance([job('psn_101', 'Store Manager')]), 'psn_101')
-    expect(store).toEqual({ label: '9901', filters: { store: ['9901'] }, basis: 'store_manager', confirmation: { store: { '9901': 'confirmed' } } })
+    expect(store).toEqual({ label: '9901', filters: { store: ['9901'] }, basis: 'store_manager',
+      reasons: [{ text: 'Store Manager job assignment', since: '2026-07-01' }], confirmation: { store: { '9901': 'confirmed' } } })
   })
 
   it("gives a live store's Store Manager each section of the store as a place too, so a report can group by section", async () => {
@@ -96,6 +98,17 @@ describe('the org_chart scope provider', () => {
     expect((await provide(instance(rows))).map(p => [p.label, p.basis])).toEqual([['9901 / Section: Silk Sarees', 'acting_section_staff, team_leader']])
   })
 
+  // featherbase#628: the platform's "What can this person see" page shows why
+  // each place is given, from the job assignments that give it.
+  it('gives each place the job assignments behind it as reasons, with their days', async () => {
+    const rows = [{ ...job('psn_103', 'Team Leader', { section: 's-silk' }), ends_on: '2026-12-31' },
+      { ...job('psn_103', 'Staff', { section: 's-silk' }), acting: true, starts_on: '2026-08-06' }]
+    expect((await provide(instance(rows))).map(p => p.reasons)).toEqual([[
+      { text: 'Acting Staff job assignment', since: '2026-08-06' },
+      { text: 'Team Leader job assignment', since: '2026-07-01', until: '2026-12-31' },
+    ]])
+  })
+
   it('lists places by label, whatever order the rows come in', async () => {
     const rows = [job('psn_107', 'Department Manager', { department: 'd-ethnic' }), job('psn_107', 'Department Manager', { department: 'd-bridal' })]
     expect((await provide(instance(rows), 'psn_107')).map(p => p.label)).toEqual(['9901 / Section: Lehenga', '9901 / Section: Sarees', '9901 / Section: Silk Sarees'])
@@ -103,13 +116,14 @@ describe('the org_chart scope provider', () => {
 
   it('leaves out a place whose sections own no subcategory on the date', async () => {
     const tables = instance([job('psn_103', 'Team Leader', { section: 's-silk' })])
-    tables['feather_dash.section_subcategory'] = []
+    tables['dash.section_subcategory'] = []
     expect(await provide(tables)).toEqual([])
   })
 
   it('uses the old rules for a store not yet live, marked assumed, one place per section of the merchandise map', async () => {
     expect(await provide(instance([]), 'psn_120', ['EMP-0120'])).toEqual([{
       label: '9902 / Section: Accessories', filters: { store: ['9902'], subcategory: ['010404001', '010404002'] }, basis: 'store_manager',
+      reasons: [{ text: 'Store Manager, by the old rules' }],
       confirmation: { store: { '9902': 'assumed' }, subcategory: { '010404001': 'assumed', '010404002': 'assumed' } },
     }])
   })
@@ -125,7 +139,7 @@ describe('the org_chart scope provider', () => {
 
   it('keeps a store on the old rules until its live date arrives', async () => {
     const tables = instance([job('psn_103', 'Team Leader', { section: 's-sarees' })])
-    tables['feather_dash.store_rollout'] = [{ row_id: '9901', store: '9901', live_since: '2026-10-16' }]
+    tables['dash.store_rollout'] = [{ row_id: '9901', store: '9901', live_since: '2026-10-16' }]
     expect(await provide(tables)).toEqual([])
   })
 
@@ -206,7 +220,7 @@ describe('the org_chart scope provider', () => {
 
   it('gives nothing from a section whose store code is padded, as the comparison does', async () => {
     const tables = instance([job('psn_103', 'Team Leader', { section: 's-sarees' })])
-    tables['feather_dash.section'] = tables['feather_dash.section'].map(s => s.row_id === 's-sarees' ? { ...s, store: ' 9901 ' } : s)
+    tables['dash.section'] = tables['dash.section'].map(s => s.row_id === 's-sarees' ? { ...s, store: ' 9901 ' } : s)
     expect(await provide(tables)).toEqual([])
   })
 

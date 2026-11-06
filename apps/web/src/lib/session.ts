@@ -12,6 +12,7 @@ export interface Capabilities {
   own_grant: boolean // holds a Table grant of their own (not only a shared row)
   tables: string[] // Tables the person can read (empty for a System Manager: they read the Table list)
   creatable: string[] // Tables the person can add rows to
+  archived: string[] // #905: archived Tables the person can read: listed apart, never offered in a picker
 }
 
 /** An installed app the person can open (#671). */
@@ -85,12 +86,24 @@ export function useCapabilities(): Capabilities | undefined {
   return useWhoAmI().data?.capabilities
 }
 
+/**
+ * #861: whether this person may read a Table, so a page does not ask for rows
+ * their role cannot read. Undefined until the server has said. Display only:
+ * the server still checks every read.
+ */
+export function useCanReadTable(table: string): boolean | undefined {
+  const caps = useCapabilities()
+  return caps && (caps.manage || caps.tables.includes(table))
+}
+
 export interface TableSummary {
   row_id: string
   module: string
   system: boolean
   // #432: no "New" anywhere for a Table only the platform writes.
   system_written?: boolean
+  // #905: archived: listed under Archived, never offered in a picker.
+  archived?: boolean
 }
 
 /**
@@ -113,6 +126,12 @@ export function useShellTables(): TableSummary[] | undefined {
       }),
   })
   if (!caps) return undefined
-  if (manage) return list.data?.data
-  return caps.tables.map((row_id) => ({ row_id, module: '', system: false }))
+  const archived = new Set(caps.archived ?? [])
+  if (manage) return list.data?.data.map((t) => ({ ...t, archived: archived.has(t.row_id) }))
+  return caps.tables.map((row_id) => ({ row_id, module: '', system: false, archived: archived.has(row_id) }))
+}
+
+/** #905: the Tables a picker may offer: the shell's list without archived ones. */
+export function usePickableTables(): TableSummary[] | undefined {
+  return useShellTables()?.filter((t) => !t.archived)
 }

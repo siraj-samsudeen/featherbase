@@ -2,6 +2,7 @@
 // and export cover every matching row, and it says when rows are left out.
 // URL.createObjectURL is a browser API jsdom lacks; the spy hands back the
 // exported Blob so the test reads what the person would download.
+import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, vi } from 'vitest'
@@ -62,7 +63,7 @@ const groupHeader = (value: string) => {
 }
 
 async function openReport(admin: Admin) {
-  await renderApp(`/featherbase/admin/${ENC}/view/report`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/view/report`, admin)
   await screen.findByTestId('report-view', {}, { timeout: 8000 })
   await waitFor(() => expect(screen.getAllByTestId('report-row')).toHaveLength(500), { timeout: 8000 })
 }
@@ -94,20 +95,34 @@ test('the export has every matching row and the same totals', async ({ admin }) 
   await seed(admin)
   const blobs = captureDownloads()
   await openReport(admin)
-  await userEvent.selectOptions(screen.getByTestId('report-groupby'), 'region')
-  await waitFor(() =>
-    expect(within(groupHeader('South')).getByTestId('group-count')).toHaveTextContent('(201)'),
-  )
-  await userEvent.click(screen.getByTestId('export-csv'))
-  await waitFor(() => expect(blobs).toHaveLength(1))
-  const lines = (await textOf(blobs[0])).split('\n')
-  expect(lines).toHaveLength(1 + 2 + 501 + 1)
-  // Every row once: 501 distinct names under the two group lines.
-  const names = lines.slice(1, -1).filter((l) => !/^(North|South) \(/.test(l)).map((l) => l.split(',')[0])
-  expect(new Set(names).size).toBe(501)
-  expect(lines[1]).toBe('North (300),,600')
-  expect(lines[302]).toBe('South (201),,603')
-  expect(lines.at(-1)).toBe('Total (501),,1203')
+  // Summary and row-page requests are independent: exporting before the
+  // grouped page arrives must not mistake its pending state for zero rows.
+  const realFetch = globalThis.fetch
+  let releaseRows!: () => void
+  const rowGate = new Promise<void>((resolve) => { releaseRows = resolve })
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (new URL(String(input), 'http://localhost').searchParams.get('order_by') === 'region asc')
+      await rowGate
+    return realFetch(input, init)
+  })
+  try {
+    await userEvent.selectOptions(screen.getByTestId('report-groupby'), 'region')
+    await waitFor(() =>
+      expect(within(groupHeader('South')).getByTestId('group-count')).toHaveTextContent('(201)'),
+    )
+    await userEvent.click(screen.getByTestId('export-csv'))
+    await waitFor(() => expect(blobs).toHaveLength(1))
+    const lines = (await textOf(blobs[0])).split('\n')
+    expect(lines).toHaveLength(1 + 2 + 501 + 1)
+    // Every row once: 501 distinct names under the two group lines.
+    const names = lines.slice(1, -1).filter((l) => !/^(North|South) \(/.test(l)).map((l) => l.split(',')[0])
+    expect(new Set(names).size).toBe(501)
+    expect(lines[1]).toBe('North (300),,600')
+    expect(lines[302]).toBe('South (201),,603')
+    expect(lines.at(-1)).toBe('Total (501),,1203')
+  } finally {
+    releaseRows()
+  }
 
   // Ungrouped export reads pages by id but must restore newest-change-first
   // order. Put the lexically last id first by date: sorting by id would fail.
@@ -135,7 +150,7 @@ test('check values and absent text retain their meaning in the report and CSV', 
   await admin.post('/api/save_row', { table: T, row: { row_id: 'ready', ready: true } })
   await admin.post('/api/save_row', { table: T, row: { row_id: 'waiting', ready: false, notes: 'Pending' } })
   const blobs = captureDownloads()
-  await renderApp(`/featherbase/admin/${ENC}/view/report`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/view/report`, admin)
   await screen.findByText('Pending')
   expect(screen.getByText('✓')).toBeInTheDocument()
   expect(screen.getByText('—')).toBeInTheDocument()
@@ -152,7 +167,7 @@ test('a summary that fits on the page says nothing about rows left out', async (
     columns: [{ column_name: 'amount', column_type: 'Int', label: 'Amount', in_list_view: true }],
   })
   await admin.post('/api/save_row', { table: T, row: { amount: 5 } })
-  await renderApp(`/featherbase/admin/${ENC}/view/report`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/view/report`, admin)
   await waitFor(() => expect(screen.getByTestId('grand-sum-amount')).toHaveTextContent('5'))
   expect(screen.queryByTestId('report-shown-note')).not.toBeInTheDocument()
 })
@@ -175,7 +190,7 @@ test('without server totals, the summary says its totals cover only the rows lis
     const reflected = await admin.post<{ created: { name: string }[] }>('/api/table/Data%20Source/report-fallback:reflect', { schema: 'sales.main', tables: ['sales'] })
     expect(reflected.created).toHaveLength(1)
     const blobs = captureDownloads()
-    await renderApp(`/featherbase/admin/${encodeURIComponent(reflected.created[0].name)}/view/report`, admin)
+    await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(reflected.created[0].name))}/view/report`, admin)
     await waitFor(() => expect(screen.getAllByTestId('report-row')).toHaveLength(500))
     await waitFor(() => expect(screen.getByTestId('report-shown-note')).toHaveTextContent(
       'Showing the first 500 of 501 rows. The counts and totals cover only these 500; the export has all 501.',
@@ -229,7 +244,7 @@ test('a blank and a missing value are one empty group, with all its rows listed'
   // use server counts and sums, not coincidentally equal page-local values.
   await sql`insert into featherbase.rpt_totals_sale (row_id, area, amount)
     select 'report-extra-' || n, 'A', 2 from generate_series(1, 498) n`
-  await renderApp(`/featherbase/admin/${ENC}/view/report`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/view/report`, admin)
   await screen.findByTestId('report-view', {}, { timeout: 8000 })
   await userEvent.selectOptions(screen.getByTestId('report-groupby'), 'area')
   await waitFor(() => expect(within(groupHeader('(empty)')).getByTestId('group-count')).toHaveTextContent('(2)'))

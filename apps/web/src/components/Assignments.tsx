@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, listResource } from '../lib/api'
+import { useCanReadTable } from '../lib/session'
 import { ShownName } from '../lib/people'
-import { buttonClasses, cardClasses, inputClasses } from './ui'
+import { buttonClasses, cardClasses, inputClasses } from '@featherbase/shop-floor'
 
 interface ToDoRow {
   row_id: string
@@ -12,13 +13,16 @@ interface ToDoRow {
 
 // EML-006 / UI-017: assign this row to a user. Creates a ToDo in their
 // list and notifies them.
-export function Assignments({ table, name }: { table: string; name: string }) {
+export function Assignments({ table, name, readOnly = false }: { table: string; name: string; readOnly?: boolean }) {
   const queryClient = useQueryClient()
   const [assignTo, setAssignTo] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // #861: only ask for ToDo rows when this person's role may read them.
+  const canRead = useCanReadTable('ToDo')
   const todos = useQuery({
+    enabled: canRead === true,
     queryKey: ['assignments', table, name],
     queryFn: () =>
       listResource<ToDoRow>('ToDo', {
@@ -48,11 +52,15 @@ export function Assignments({ table, name }: { table: string; name: string }) {
     }
   }
 
+  if (readOnly && canRead === false) return null
+  if (readOnly && todos.data?.data.length === 0) return null
+
   return (
     <div className={cardClasses('p-4')} data-testid="assignments-panel">
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
-        Assigned To
+      <div className="mb-2 text-xs font-semibold text-ink-subtle">
+        Assigned to
       </div>
+      {todos.isError && <p role="alert" className="text-sm text-negative">Assignments could not be read.</p>}
       <ul className="mb-2 space-y-1">
         {todos.data?.data.length === 0 && (
           <li className="text-xs text-ink-subtle">No one assigned</li>
@@ -63,7 +71,7 @@ export function Assignments({ table, name }: { table: string; name: string }) {
           </li>
         ))}
       </ul>
-      <div className="flex items-center gap-1">
+      {!readOnly && <div className="flex items-center gap-1">
         <input
           value={assignTo}
           onChange={(e) => setAssignTo(e.target.value)}
@@ -80,7 +88,7 @@ export function Assignments({ table, name }: { table: string; name: string }) {
         >
           Assign
         </button>
-      </div>
+      </div>}
       {error && (
         <p className="mt-1 text-xs text-negative" data-testid="assign-error">
           {error}

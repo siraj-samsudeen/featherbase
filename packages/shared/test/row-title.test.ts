@@ -14,6 +14,18 @@ const merchMap = {
   ],
 }
 
+test('metadata adjustments are distinguished by their target and setting', () => {
+  const meta = { name: 'Metadata Override', columns: [
+    { column_name: 'table_name', column_type: 'Reference' },
+    { column_name: 'column_name', column_type: 'Data' },
+    { column_name: 'property', column_type: 'Data' },
+  ] }
+  const row = { table_name: 'Shelf', column_name: 'floor', property: 'hidden' }
+  expect(rowDisplayTitle(meta, row, 'hash')).toBe('Shelf · floor · hidden')
+  expect(rowDisplayTitle(meta, { ...row, column_name: null }, 'hash')).toBe('Shelf · Whole Table · hidden')
+  expect(rowDisplayTitle({ ...meta, columns: meta.columns.filter(c => c.column_name !== 'property') }, row, 'hash')).not.toContain('hidden')
+})
+
 test('a Table with a title column shows that column', () => {
   const meta = { ...merchMap, title_column: 'section_name' }
   expect(rowDisplayTitle(meta, { store_code: '1517', mch_subcategory: 'Tops', section_name: '  Kurti  ' }, '1517|040802006')).toBe('Kurti')
@@ -31,9 +43,9 @@ test('titles keep 80 characters and truncate longer values with an ellipsis', ()
   expect(rowDisplayTitle(meta, { section_name: 'A'.repeat(81) }, 'unused')).toBe(`${'A'.repeat(79)}…`)
 })
 
-test('with no title column, a leading code is paired with the first name-like value', () => {
+test('with no title column, a leading code follows the first name-like value (D5, name first)', () => {
   const row = { store_code: '1517', material_group: '040802006', mch_subcategory: 'Kurti Z', section_name: 'Kurti' }
-  expect(rowDisplayTitle(merchMap, row, '1517|040802006')).toBe('1517 · Kurti Z')
+  expect(rowDisplayTitle(merchMap, row, '1517|040802006')).toBe('Kurti Z · 1517')
 })
 
 test('with no title column, a name-like first value stands alone', () => {
@@ -56,7 +68,7 @@ test('readable values from supported column types become titles', () => {
 
 test('a row id shown as the title counts as no title column', () => {
   const row = { row_id: '1517|040802006', store_code: ' 1517 ', material_group: '040802006', mch_subcategory: ' Kurti Z ' }
-  expect(rowDisplayTitle({ ...merchMap, title_column: 'row_id' }, row, '1517|040802006')).toBe('1517 · Kurti Z')
+  expect(rowDisplayTitle({ ...merchMap, title_column: 'row_id' }, row, '1517|040802006')).toBe('Kurti Z · 1517')
 })
 
 test('hidden, layout and opaque-id values are skipped', () => {

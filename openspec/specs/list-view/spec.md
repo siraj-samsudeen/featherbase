@@ -40,7 +40,7 @@ the same heading again SHALL reverse the order.
 The user SHALL be able to add a filter on any column that holds a value, and
 every filter added SHALL narrow the list further; each filter in use is
 shown and can be removed on its own. A few of the list's own columns also
-carry a quick filter box above the list, for the filters used most.
+carry a quick filter above the list, for the filters used most.
 
 #### Scenario: Add and remove a filter
 
@@ -101,7 +101,8 @@ Then Remarks still shows
 
 Above a table's list, the user SHALL see the rows and filter combinations
 they most recently opened from that table, each reachable in one click. The
-trail is private to them.
+trail is private to them. Only rows that still exist, and that the user can
+read, are offered.
 
 #### Scenario: Return to a recent filter
 
@@ -109,6 +110,12 @@ trail is private to them.
   and later comes back to the table's list
 - **THEN** that row and that filter appear as recent, and clicking the filter
   applies it again
+
+#### Scenario: A deleted row is no longer offered
+
+- **WHEN** the user opened the rows "Aisle bin" and "Corner bin", deleted
+  "Corner bin", and comes back to the table's list
+- **THEN** "Aisle bin" appears as recent and "Corner bin" does not
 
 ### Requirement: Act on many rows at once
 
@@ -241,15 +248,23 @@ the list will open the old way next time.
 
 ### Requirement: A list shows the table's list columns
 
-A table's list SHALL show the row ID followed by the table's list columns, the columns chosen
-for everyone to see. The table's other columns are on each row's form.
+A table's list SHALL lead with each row's title (the value that names it, such
+as a customer's name), followed by the table's list columns, the columns
+chosen for everyone to see. A table that names no title column, such as
+Section Mapping, leads with the row ID instead. Every list of a table's rows,
+such as one opened on the relationship map, leads the same way. The table's
+other columns are on each row's form.
+
+#### Scenario: The customers list leads with their names
+
+```gherkin
+Given the user is a System Manager
+And orders from the customers "Globex Ltd" and "Initech"
+When the user opens the customers list
+Then the user sees the list led by "Globex Ltd" and "Initech", without their row IDs
+```
 
 #### Scenario: Section Mapping shows its seven list columns
-
-- **GIVEN** the table "Section Mapping" whose list columns are Section, MCH, Floor, Zone, Rack, Owner and Category
-- **WHEN** the user opens its list
-- **THEN** the user sees the row ID and those seven columns
-- **AND** Remarks shows only on a row's form
 
 ```gherkin
 Given the table "Section Mapping" whose list columns are Section, MCH, Floor, Zone, Rack, Owner and Category
@@ -259,10 +274,6 @@ And Remarks shows only on a row's form
 ```
 
 #### Scenario: A table with no list columns shows its first two
-
-- **GIVEN** a table with no list columns
-- **WHEN** the user opens its list
-- **THEN** the user sees the row ID and the table's first two columns
 
 ```gherkin
 Given a table with no list columns
@@ -274,14 +285,9 @@ Then the user sees the row ID and the table's first two columns
 
 The user SHALL be able to switch any column they may read on or off in their own view of a
 list, and see which of them are the table's list columns. The change is only for them, on that
-table.
+table. The column a list leads with always stays.
 
 #### Scenario: Remarks shows only for me
-
-- **GIVEN** the table "Section Mapping" with Remarks not in its list
-- **WHEN** the user switches on Remarks
-- **THEN** the user's list shows Remarks
-- **AND** a colleague's list of "Section Mapping" does not show Remarks
 
 ```gherkin
 Given the table "Section Mapping" with Remarks not in its list
@@ -292,14 +298,19 @@ And a colleague's list of "Section Mapping" does not show Remarks
 
 #### Scenario: Every column off leaves the row ID
 
-- **GIVEN** the list of "Section Mapping"
-- **WHEN** the user switches off every column
-- **THEN** the user's list still shows each row's ID
-
 ```gherkin
 Given the list of "Section Mapping"
 When the user switches off every column
 Then the user's list still shows each row's ID
+```
+
+#### Scenario: Every column off leaves each customer's name
+
+```gherkin
+Given the user is a System Manager
+And orders from the customers "Globex Ltd" and "Initech"
+When the user switches off every column of the customers list
+Then the user sees the list led by "Globex Ltd" and "Initech", without their row IDs
 ```
 
 ### Requirement: A System Manager can make their view everyone's default
@@ -333,4 +344,142 @@ Given a colleague has switched off Floor and switched on Notes in the list of "S
 When a System Manager makes a default that includes Floor and leaves out Notes
 Then the colleague's list still shows Notes
 And the colleague's list still does not show Floor
+```
+
+### Requirement: Filter a list by a linked row's name
+
+A list's quick filter for a column that links to another table's rows SHALL
+let the user type part of a linked row's name and pick that row; the list
+then shows only the rows linked to it. The filter only picks rows that exist;
+it never offers to create one.
+
+#### Scenario: Only Globex Ltd's orders show
+
+```gherkin
+Given the user is a System Manager
+And orders from the customers "Globex Ltd" and "Initech"
+When the user types "Glo" into the orders list's quick customer filter and picks "Globex Ltd"
+Then the user sees only the orders from "Globex Ltd"
+```
+
+#### Scenario: The customer filter offers no new customer
+
+```gherkin
+Given the user is a System Manager
+And orders from the customers "Globex Ltd" and "Initech"
+When the user types "Glo" into the orders list's quick customer filter
+Then the user is offered "Globex Ltd" and no way to create a customer
+```
+
+### Requirement: A picked link filter reads by the row's name
+
+Once a linked row is picked, its quick filter SHALL show that row's name, not
+its id, and so SHALL the filter as shown in use and in the list's recent
+filters.
+
+#### Scenario: The customer filter reads "Globex Ltd"
+
+```gherkin
+Given the user is a System Manager
+And orders from the customers "Globex Ltd" and "Initech"
+When the user opens a link to the orders list filtered to the customer "Globex Ltd"
+Then the user sees the quick customer filter reading "Globex Ltd"
+```
+
+#### Scenario: The filter in use names Globex Ltd
+
+```gherkin
+Given the user is a System Manager
+And orders from the customers "Globex Ltd" and "Initech"
+When the user opens a link to the orders list filtered to the customer "Globex Ltd"
+Then the user sees the filter in use reading "Customer = Globex Ltd"
+```
+
+#### Scenario: The recent filter names Globex Ltd
+
+```gherkin
+Given the user is a System Manager
+And orders from the customers "Globex Ltd" and "Initech"
+And the orders list filtered to the customer "Globex Ltd"
+When the user comes back to the whole orders list
+Then the user sees a recent filter reading "Customer = Globex Ltd"
+```
+
+### Requirement: A picked link filter clears in one click
+
+One click SHALL clear a picked link filter and bring every row back.
+
+#### Scenario: Both customers' orders show again
+
+```gherkin
+Given the user is a System Manager
+And orders from the customers "Globex Ltd" and "Initech"
+And the orders list filtered to the customer "Globex Ltd"
+When the user clears the quick customer filter
+Then the user sees the orders from both "Globex Ltd" and "Initech"
+```
+
+### Requirement: A filter names its column as the list does
+
+A filter, as shown in use and in the list's recent filters, SHALL name its
+column the way the list's heading does, not by the column's internal name.
+
+#### Scenario: The filter in use names the Item column
+
+```gherkin
+Given the user is a System Manager
+And orders from the customers "Globex Ltd" and "Initech"
+When the user opens a link to the orders list filtered to the item "Widgets"
+Then the user sees the filter in use reading "Item = Widgets"
+```
+
+### Requirement: A link in a list reads as the linked row's name
+
+A list cell that links to another table's row SHALL show that row's title,
+not its id, and open that row. A linked row the user may not read keeps its
+id.
+
+#### Scenario: The Widgets order's customer reads "Globex Ltd"
+
+```gherkin
+Given the user is a System Manager
+And orders from the customers "Globex Ltd" and "Initech"
+When the user opens the orders list
+Then the user sees the customer of the order "Widgets" as "Globex Ltd"
+```
+
+#### Scenario: Globex Ltd opens from an order
+
+```gherkin
+Given the user is a System Manager
+And orders from the customers "Globex Ltd" and "Initech"
+When the user opens the orders list and clicks the customer of the order "Widgets"
+Then the user sees the customer "Globex Ltd"
+```
+
+### Requirement: A row with no name is never a blank
+
+A row whose title is blank SHALL lead its own list by its id. Where it is
+shown as a link or in a filter, it SHALL read the way other screens show an
+untitled row: a few of its own values, or else its table and id. It is never
+a blank.
+
+#### Scenario: A nameless customer is listed by its id
+
+```gherkin
+Given the user is a System Manager
+And orders from the customers "Globex Ltd" and "Initech"
+And a customer "cust-3" with no name, with the order "Bolts"
+When the user opens the customers list
+Then the user sees the customer "cust-3" listed by its id
+```
+
+#### Scenario: A nameless customer's order reads its id
+
+```gherkin
+Given the user is a System Manager
+And orders from the customers "Globex Ltd" and "Initech"
+And a customer "cust-3" with no name, with the order "Bolts"
+When the user opens the orders list
+Then the user sees the customer of the order "Bolts" read by its id "cust-3"
 ```

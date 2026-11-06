@@ -21,6 +21,7 @@ export const actions = {
   async probe(context) {
     const { payload, documents } = context
     if (payload.operation === 'shape') return Object.keys(context).sort()
+    if (payload.operation === 'roles') return context.roles
     if (payload.operation === 'escape') { escapedDocuments = documents; return true }
     if (payload.operation === 'unawaited') {
       void documents.create('actionproof.destination', { title: 'Must roll back' }).catch(() => {})

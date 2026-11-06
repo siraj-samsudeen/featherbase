@@ -4,6 +4,8 @@ import { getDoc } from '../document'
 import { countDocs, type Filter } from '../query'
 import { permissionScope } from '../permissions'
 import { registerCollectionAction, registerRowAction } from '../actions'
+import { sql } from '../db'
+import { anyTableBacklinks } from '../any-table-link'
 
 // Relational navigation (#100, pattern 1): every table that points at this
 // row, with a permission-scoped count and a ready-to-use ListView filter.
@@ -85,6 +87,22 @@ registerRowAction('connections', {
           system_written: (await getMeta(bl.table)).system_written === true,
         })
       }
+    }
+    // #881: rows that link here through a link to a row of any Table, named
+    // by its Table column and its row column together.
+    for (const link of await anyTableBacklinks(sql, table)) {
+      if ((await permissionScope(user.row_id, link.table, 'read')) === 'none') continue
+      const filters: Filter[] = link.via
+        ? [[ROW_KEY, 'related', { via: link.via, column: link.column, table, filters: [[ROW_KEY, '=', name]] }]]
+        : [[link.table_column, '=', table], [link.column, '=', name]]
+      connections.push({
+        table: link.table,
+        column: link.column,
+        via: link.via,
+        count: await countDocs(link.table, filters, user.row_id),
+        filters,
+        system_written: (await getMeta(link.table)).system_written === true,
+      })
     }
     return { connections }
   },

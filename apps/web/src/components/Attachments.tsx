@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, listResource } from '../lib/api'
-import { cardClasses, iconButtonClasses, touchLinkClasses, touchRowClasses } from './ui'
+import { useCanReadTable } from '../lib/session'
+import { useRowCapabilities } from '../lib/row-capabilities'
+import { cardClasses, iconButtonClasses, touchLinkClasses, touchRowClasses } from '@featherbase/shop-floor'
 
 interface FileRow {
   row_id: string
@@ -15,13 +17,16 @@ interface FileRow {
 // FILE-002: attachments panel — File rows linked to this row via
 // ref_table/ref_name. Upload goes through /api/upload_file; deleting the
 // File row also removes the storage object (server on_trash hook).
-export function Attachments({ table, name }: { table: string; name: string }) {
+export function Attachments({ table, name, readOnly = false, canUpload = true }: { table: string; name: string; readOnly?: boolean; canUpload?: boolean }) {
   const queryClient = useQueryClient()
   const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // #861: only ask for File rows when this person's role may read them.
+  const canRead = useCanReadTable('File')
   const files = useQuery({
+    enabled: canRead === true,
     queryKey: ['attachments', table, name],
     queryFn: () =>
       listResource<FileRow>('File', {
@@ -67,13 +72,17 @@ export function Attachments({ table, name }: { table: string; name: string }) {
   // same-origin, so the HttpOnly `sid` cookie authenticates it.
   const href = (f: FileRow) => f.file_url
 
+  // Nothing to show to someone who can neither read the files nor attach one.
+  if (canRead === false && (readOnly || !canUpload)) return null
+  if (readOnly && files.data?.data.length === 0) return null
+
   return (
     <div className={cardClasses('min-w-0 p-4 [overflow-wrap:anywhere]')} data-testid="attachments-panel">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+        <span className="text-xs font-semibold text-ink-subtle">
           Attachments
         </span>
-        <button
+        {!readOnly && canUpload && <><button
           onClick={() => inputRef.current?.click()}
           disabled={busy}
           data-testid="attach-file"
@@ -90,8 +99,9 @@ export function Attachments({ table, name }: { table: string; name: string }) {
             const f = e.target.files?.[0]
             if (f) upload(f)
           }}
-        />
+        /></>}
       </div>
+      {files.isError && <p role="alert" className="text-sm text-negative">Attachments could not be read.</p>}
       {error && (
         <p className="mb-2 text-xs text-negative" data-testid="attach-error">
           {error}
@@ -123,17 +133,23 @@ export function Attachments({ table, name }: { table: string; name: string }) {
               ) : null}
               <span className="min-w-0">{f.file_name}</span>
             </a>
-            <button
-              aria-label={`Remove ${f.file_name}`}
-              onClick={() => remove(f.row_id)}
-              data-testid="attachment-delete"
-              className={iconButtonClasses('hover:text-negative')}
-            >
-              ×
-            </button>
+            {!readOnly && <RemoveAttachment file={f} remove={remove} />}
           </li>
         ))}
       </ul>
     </div>
   )
+}
+
+// File deletion has its own row ownership grant, independent of upload or
+// parent-row write permission. Never infer it from either of those controls.
+function RemoveAttachment({ file, remove }: { file: FileRow; remove: (name: string) => Promise<void> }) {
+  const access = useRowCapabilities('File', file.row_id)
+  if (!access.data?.delete) return null
+  return <button
+    aria-label={`Remove ${file.file_name}`}
+    onClick={() => remove(file.row_id)}
+    data-testid="attachment-delete"
+    className={iconButtonClasses('hover:text-negative')}
+  >×</button>
 }

@@ -16,14 +16,15 @@
 // not fold together and never will; the user says that one, which is the
 // whole point of the screen.
 import { useMemo, useState } from 'react'
-import { Link, useParams } from '@tanstack/react-router'
+import { Link } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { coerceRows, sanitizeColumnName } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { type TableMeta } from '../lib/meta'
+import { useCapabilities } from '../lib/session'
 import { sendImportRun, type ImportFailure } from '../lib/import-run'
-import { buttonClasses, cardClasses, inputClasses, labelClasses } from '../components/ui'
-import { fmtCount } from '../lib/inr'
+import { buttonClasses, cardClasses, inputClasses, labelClasses } from '@featherbase/shop-floor'
+import { fmtCount } from '@featherbase/shop-floor'
 
 // Columns a merge can carry: real storage, and not the platform's own.
 const SKIP_TYPES = ['Section Break', 'Column Break', 'Sub-table']
@@ -56,8 +57,7 @@ interface Outcome {
   runId: string
 }
 
-export function TableMerge() {
-  const { table: source } = useParams({ strict: false }) as { table: string }
+export function TableMerge({ table: source }: { table: string }) {
   const queryClient = useQueryClient()
   const [target, setTarget] = useState('')
   // Source column name -> target column name, or '' for "leave it behind".
@@ -67,6 +67,7 @@ export function TableMerge() {
   const [error, setError] = useState<string | null>(null)
   const [outcome, setOutcome] = useState<Outcome | null>(null)
 
+  const archived = useCapabilities()?.archived ?? []
   const tables = useQuery({
     queryKey: ['tables'],
     queryFn: () => listResource<{ row_id: string }>('Table', { limit_page_length: 500 }),
@@ -214,14 +215,15 @@ export function TableMerge() {
 
   const candidates = (tables.data?.data ?? [])
     .map((t) => t.row_id)
-    .filter((name) => name !== source)
+    // #905: never into an archived Table: it takes no rows.
+    .filter((name) => name !== source && !archived.includes(name))
 
   return (
     <div data-testid="table-merge" className="max-w-4xl">
       <h1 className="mb-1 text-xl font-semibold text-ink">
         Merge{' '}
         <Link
-          to="/featherbase/admin/$table"
+          to="/featherbase/admin/table/$table"
           params={{ table: source }}
           search={{ filters: undefined }}
           className="underline"
@@ -325,7 +327,7 @@ export function TableMerge() {
             <p className="mt-1 text-xs text-ink-muted">
               Missing a column on {target}?{' '}
               <Link
-                to="/featherbase/admin/$table/columns"
+                to="/featherbase/admin/table/$table/columns"
                 params={{ table: target }}
                 className="underline"
                 data-testid="tm-add-column-link"
@@ -353,7 +355,7 @@ export function TableMerge() {
           <span className={outcome.failed.length ? 'text-negative' : 'text-positive'}>
             Merged {fmtCount(outcome.inserted)} rows into{' '}
             <Link
-              to="/featherbase/admin/$table"
+              to="/featherbase/admin/table/$table"
               params={{ table: target }}
               search={{ filters: undefined }}
               className="underline"
@@ -377,7 +379,7 @@ export function TableMerge() {
             </Link>{' '}
             from {target}&apos;s import history, or{' '}
             <Link
-              to="/featherbase/admin/$table/columns"
+              to="/featherbase/admin/table/$table/columns"
               params={{ table: source }}
               className="underline"
             >

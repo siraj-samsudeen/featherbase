@@ -37,7 +37,7 @@ describe('API-001/API-002: generic REST resource', () => {
       `/api/table/${encodeURIComponent(DT)}`,
       { title: 'proj-a', stars: 1 },
     )
-    expect(created.row_id).toMatch(/^[0-9a-f]{10}$/)
+    expect(created.row_id).toMatch(/^[1-9][0-9]*$/) // #855: new Tables number rows 1, 2, 3
 
     // READ one
     const one = await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${created.row_id}`)
@@ -143,7 +143,7 @@ describe('JSON command validation at the HTTP boundary', () => {
     ['POST', '/api/people/Administrator/identities', 'Expected { method }'],
     ['POST', '/api/access_tokens', 'Expected { label }'],
     ['POST', '/api/service_accounts', 'Expected { label }'],
-    ['PATCH', '/api/service_accounts/missing', 'Expected { enabled }'],
+    ['PATCH', '/api/service_accounts/missing', 'Expected either { label } or { enabled }'],
     ['POST', '/api/service_accounts/missing/roles', 'Expected { roles: [...] }'],
     ['POST', '/api/access_log', 'Expected { table }'],
     ['POST', '/api/dashboard/count', 'Expected { table }'],

@@ -22,7 +22,7 @@ repo="$(cd "$app_dir/../../.." && pwd)"
 server="$repo/apps/server"
 [[ -f "$app_dir/dist/server.mjs" ]] || { echo "!! build the app first: npm run build" >&2; exit 1; }
 coverage_args=()
-target="$server/test/feather-dash-platform-$$"
+target="$server/test/dash-platform-$$"
 trap 'rm -rf "$target"' EXIT
 mkdir -p "$target/app"
 cp "$app_dir"/platform-test/*.ts "$app_dir"/platform-test/*.mjs "$target/"
@@ -33,5 +33,5 @@ if [[ "${DASH_BACKEND_COVERAGE:-}" = 1 ]]; then
   coverage_args=(--config "$app_dir/vitest.backend.config.ts")
 fi
 cd "$server"
-FEATHER_DASH_DIR="$target/app" ALLOW_MOCK_OAUTH=1 PSQLRC=/dev/null \
+DASH_DIR="$target/app" ALLOW_MOCK_OAUTH=1 PSQLRC=/dev/null \
   node_modules/.bin/vitest run "${coverage_args[@]}" $(if (($#)); then for name in "$@"; do echo "test/$(basename "$target")/$name"; done; else echo "test/$(basename "$target")"; fi)

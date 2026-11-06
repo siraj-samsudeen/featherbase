@@ -1,11 +1,12 @@
 import { randomBytes } from 'node:crypto'
+import { rowHref } from 'shared'
 import { sql, withTransaction } from './db'
 import { AppError } from './errors'
 import { getMeta, invalidateMeta, physicalRowKey } from './meta'
 import { tableRelation, quoteRelation } from './table-engine'
 import { getRoles } from './permissions'
 import { getDoc } from './document'
-import { assertNotSystemWritten } from './system-written'
+import { assertNotSystemWritten, assertRowsWritable } from './system-written'
 import { assertDirectWriteAllowed, assertSecurityWriter } from './security-tables'
 import { assertFieldNotManaged, holdManagedSet } from './managed-settings'
 import { queueEmail } from './email'
@@ -206,7 +207,7 @@ export async function applyWorkflowAction(
   user: string,
 ): Promise<Record<string, unknown>> {
   // #432/#437: a workflow step writes the row directly, so both gates apply here too.
-  assertNotSystemWritten(await getMeta(table), 'changed')
+  assertRowsWritable(await getMeta(table), 'changed')
   await assertSecurityWriter(table, user)
   const wf = await getActiveWorkflow(table)
   if (!wf) throw new AppError('ValidationError', `No active workflow for ${table}`)
@@ -340,7 +341,7 @@ async function notifyPendingApprovers(
   if (approvers.length === 0) return
 
   const actions = outgoing.map((t) => t.action).join(', ')
-  const link = `/featherbase/admin/${encodeURIComponent(table)}/${encodeURIComponent(name)}`
+  const link = rowHref(table, name)
   const subject = `Approval required: ${table} ${name}`
   const body =
     `${table} ${name} has entered the "${state}" state and is awaiting your action.\n\n` +

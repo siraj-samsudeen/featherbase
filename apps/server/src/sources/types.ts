@@ -4,7 +4,7 @@
 // instead of the control database. Drivers receive source-column names only;
 // the column_name<->source_column mapping is the dispatcher's job.
 
-export type SourceEngine = 'postgres' | 'mysql' | 'duckdb' | 'csv-folder'
+export type SourceEngine = 'postgres' | 'mysql' | 'duckdb' | 'motherduck' | 'csv-folder'
 export type SourceAccess = 'read_only' | 'read_write'
 
 // Hard per-engine write capability (mirrors each driver's `writable` flag,
@@ -15,6 +15,7 @@ export const ENGINE_WRITABLE: Record<SourceEngine, boolean> = {
   postgres: true,
   mysql: true,
   duckdb: false,
+  motherduck: false,
   'csv-folder': true,
 }
 
@@ -32,9 +33,8 @@ export interface SourceConfig {
   statement_timeout_ms: number
   // Newline-separated "schema.table" entries; null = everything allowed.
   allowlist: string[] | null
-  // #625: the administrator says the token is a MotherDuck read-scaling
-  // (read-only) token, so an app's dataset query may run on it.
-  read_scaling_token?: boolean
+  // #772: a MotherDuck source attaches only these databases.
+  databases: { name: string; owner?: string }[]
 }
 
 // EDS-6: the shape of a write the data source refused for a constraint
@@ -76,13 +76,19 @@ export interface Binding {
   columns: { column_name: string; source_column: string; column_type: string }[]
 }
 
-export interface SourceFilter {
+export type SourceFilter = {
   column: string // source column name, already validated against the binding
   // 'in_or_null' is internal-only (never accepted from callers): Data Scope
   // narrowing on Reference columns, matching the native scopedWhere's
   // "(col is null or col in ...)" semantics.
   op: '=' | '!=' | '>' | '<' | '>=' | '<=' | 'like' | 'not like' | 'in' | 'not in' | 'in_or_null'
   value: unknown
+} | {
+  column: string
+  // Internal, authorized direct Reference membership. Only PostgreSQL can
+  // receive this shape; the dispatcher rejects other engines/boundaries.
+  op: 'related'
+  value: { binding: Binding; filters: SourceFilter[] }
 }
 
 export interface ListSpec {

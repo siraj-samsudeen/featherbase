@@ -1,7 +1,7 @@
 import { AppError } from '../errors'
 import { datasetQueryText } from './dataset-query'
-import { datasetSourceReadOnly } from './read-only'
 import { readNamedVariable } from '../env'
+import { instanceToken, openSourceSession } from './motherduck'
 import type {
   Binding,
   IntrospectedTable,
@@ -11,11 +11,11 @@ import type {
   SourceFilter,
   SourceRow,
 } from './types'
+import { orderClause } from './order'
 
 // M3: the duckdb/MotherDuck driver — strictly read-only (the warehouse
-// browser). The connection string comes from the env var named by url_env:
-// either a MotherDuck URL (md:?motherduck_token=... — the recommended shape,
-// with a read-scaling token) or a local .duckdb file path (used by tests).
+// browser). A MotherDuck source uses the instance's MOTHERDUCK_TOKEN; a duckdb
+// source is a local .duckdb file, its path in the env var named by url_env.
 // @duckdb/node-api 1.5.6-r.2 (DuckDB 1.5.6) passed real MotherDuck connection,
 // introspection and read-only warehouse query checks on 1-Nov-2026 (#747).
 //
@@ -34,9 +34,26 @@ function loadDuckdb(): Promise<DuckDBModule> {
 
 interface InstanceEntry {
   instance: import('@duckdb/node-api').DuckDBInstance
-  url: string
+  close?: () => void
+  secret?: string
 }
-const instances = new Map<string, Promise<InstanceEntry>>()
+interface CachedInstance {
+  key: string
+  ready: Promise<InstanceEntry>
+  readers: number
+  retired: boolean
+}
+const instances = new Map<string, CachedInstance>()
+
+function closeUnused(entry: CachedInstance) {
+  if (entry.retired && entry.readers === 0)
+    void entry.ready.then(e => e.close ? e.close() : e.instance.closeSync()).catch(() => {})
+}
+
+function retire(entry: CachedInstance) {
+  entry.retired = true
+  closeUnused(entry)
+}
 
 function requireUrl(cfg: SourceConfig): string {
   if (!cfg.url_env)
@@ -55,39 +72,74 @@ function requireUrl(cfg: SourceConfig): string {
 // DuckDB's READ_ONLY access mode: browsing, testing the connection and an
 // app's dataset query share it, and any write (nextval included) is refused.
 // One instance per file, one setting, so DuckDB never meets the same file
-// opened twice with different settings. MotherDuck (`md:`) cannot be opened
-// read-only; its guarantee is a read-scaling token (read-only.ts).
-const isMotherDuck = (url: string) => url.startsWith('md:')
-
-async function instanceFor(cfg: SourceConfig): Promise<InstanceEntry> {
+// opened twice with different settings.
+//
+// #969: a MotherDuck address cannot be opened read-only, so it is refused here:
+// the only way to MotherDuck is a motherduck source, whose session attaches its
+// databases read-only (ADR 0020).
+function localFile(cfg: SourceConfig): string {
   const url = requireUrl(cfg)
-  const cached = await instances.get(cfg.name)?.catch(() => null)
-  if (cached && cached.url === url) return cached
-  const entry = (async () => {
-    const { DuckDBInstance } = await loadDuckdb()
-    const instance = await DuckDBInstance.create(url, isMotherDuck(url) ? undefined : { access_mode: 'READ_ONLY' })
-    return { instance, url }
-  })()
-  instances.set(cfg.name, entry)
-  return entry
+  if (/^\s*(md|motherduck):/i.test(url))
+    throw new AppError('ValidationError', `Data source ${cfg.name} is a DuckDB file source, but ${cfg.url_env} holds a MotherDuck address. Use a MotherDuck source, which reads MOTHERDUCK_TOKEN.`)
+  return url
 }
 
-function wrapError(cfg: SourceConfig, err: unknown): never {
+// #969: the session key is the token plus the chosen databases, so a new token
+// or new databases open a fresh session.
+function motherDuckCredentials(cfg: SourceConfig): { token: string; key: string } {
+  // Without this, Test Connection would pass and every table read would then fail.
+  if (!cfg.databases.length)
+    throw new AppError('ValidationError', `Data source ${cfg.name} reads no database yet; name the databases it reads`)
+  const token = instanceToken()
+  return { token, key: `${token}|${JSON.stringify(cfg.databases.map((d) => d.name))}` }
+}
+
+async function instanceFor(cfg: SourceConfig): Promise<InstanceEntry & { release(): void }> {
+  const credentials = cfg.engine === 'motherduck' ? motherDuckCredentials(cfg) : null
+  const key = credentials?.key ?? localFile(cfg)
+  let cached = instances.get(cfg.name)
+  // No await between observing the key and publishing the in-flight open.
+  // Replaced sessions drain their readers instead of closing live connections.
+  if (!cached || cached.key !== key) {
+    if (cached) retire(cached)
+    const ready = credentials
+      ? openSourceSession(credentials.token, cfg.databases).then(session => ({ instance: session.instance, secret: credentials.token, close: () => session.close() }))
+      : loadDuckdb().then(async ({ DuckDBInstance }) => ({ instance: await DuckDBInstance.create(key, { access_mode: 'READ_ONLY' }), secret: key }))
+    cached = { key, ready, readers: 0, retired: false }
+    instances.set(cfg.name, cached)
+  }
+  const lease = cached
+  lease.readers++
+  const release = () => { lease.readers--; closeUnused(lease) }
+  try { return { ...await lease.ready, release } }
+  catch (error) {
+    release()
+    // An old failed open must never evict a newer replacement.
+    if (instances.get(cfg.name) === lease) {
+      instances.delete(cfg.name)
+      retire(lease)
+    }
+    wrapError(cfg, error, credentials?.token)
+  }
+}
+
+function wrapError(cfg: SourceConfig, err: unknown, secret?: string): never {
   if (err instanceof AppError) throw err
   const message = err instanceof Error ? err.message : String(err)
-  const secret = cfg.url_env ? readNamedVariable(cfg.url_env) : undefined
+  secret ??= cfg.url_env ? readNamedVariable(cfg.url_env) : undefined
   throw new AppError(
     'DataSourceError',
-    `Data source ${cfg.name} failed: ${secret ? message.split(secret).join(`$${cfg.url_env}`) : message}`,
+    `Data source ${cfg.name} failed: ${secret ? message.split(secret).join(cfg.engine === 'motherduck' ? '[token]' : `$${cfg.url_env}`) : message}`,
   )
 }
 
 // JSON-safe rows: getRowObjectsJson() renders BIGINT/DECIMAL as strings and
 // DATE/TIMESTAMP as ISO-ish strings — exactly what the read-only Admin needs.
-async function run(cfg: SourceConfig, text: string, params: unknown[]): Promise<SourceRow[]> {
+export async function run(cfg: SourceConfig, text: string, params: unknown[]): Promise<SourceRow[]> {
+  let lease: Awaited<ReturnType<typeof instanceFor>> | undefined
   try {
-    const { instance } = await instanceFor(cfg)
-    const conn = await instance.connect()
+    lease = await instanceFor(cfg)
+    const conn = await lease.instance.connect()
     try {
       const reader = await conn.runAndReadAll(text, params as never[])
       return reader.getRowObjectsJson() as SourceRow[]
@@ -95,13 +147,35 @@ async function run(cfg: SourceConfig, text: string, params: unknown[]): Promise<
       conn.closeSync()
     }
   } catch (err) {
-    wrapError(cfg, err)
-  }
+    return wrapError(cfg, err, lease?.secret)
+  } finally { lease?.release() }
+}
+
+/** One source observation, fetched in native chunks instead of materializing
+ * the whole warehouse in JavaScript. Closing also handles an aborted caller. */
+export async function* stream(cfg: SourceConfig, text: string): AsyncGenerator<SourceRow[]> {
+  let lease: Awaited<ReturnType<typeof instanceFor>> | undefined
+  try {
+    lease = await instanceFor(cfg)
+    const conn = await lease.instance.connect()
+    try {
+      const result = await conn.stream(text)
+      try {
+        const names = result.columnNames()
+        const { JsonDuckDBValueConverter } = await loadDuckdb()
+        for await (const chunk of result) {
+          yield chunk.convertRows(JsonDuckDBValueConverter).map(values => Object.fromEntries(names.map((name, i) => [name, values[i]])))
+        }
+      } finally { result.closeSync() }
+    } finally { conn.closeSync() }
+  } catch (err) { wrapError(cfg, err, lease?.secret) }
+  finally { lease?.release() }
 }
 
 function quoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`
 }
+export const quoteIdentifier = quoteIdent
 
 // "gold.main" → "gold"."main" — quoted part by part.
 function quoteSchema(schema: string): string {
@@ -118,6 +192,8 @@ function buildWhere(filters: SourceFilter[]): { text: string; values: unknown[] 
   for (const f of filters) {
     const col = quoteIdent(f.column)
     switch (f.op) {
+      case 'related':
+        throw new AppError('ValidationError', 'Related filters are not supported by this source engine')
       case '=':
         parts.push(`${col} = ?`)
         values.push(f.value)
@@ -177,10 +253,8 @@ export const duckdbDriver: SourceDriver = {
   writable: false,
 
   // #625: an app's dataset query (MotherDuck in production). Wrapped as a
-  // sub-query, so only a query that reads can run.
+  // sub-query, on a session that holds its databases read-only.
   async query(cfg, query, columns, where) {
-    if (!datasetSourceReadOnly(cfg))
-      throw new AppError('PermissionError', `Data source ${cfg.name} is MotherDuck without a read-scaling token, so it cannot run an app's dataset query`)
     const { text, values } = datasetQueryText(query, columns, where,
       { placeholder: () => '?', asText: (column) => `cast(${column} as varchar)`, asDay: (column) => `cast(cast(${column} as date) as varchar)` })
     return run(cfg, text, values)
@@ -240,7 +314,7 @@ export const duckdbDriver: SourceDriver = {
   async getList(bind, spec: ListSpec) {
     const cols = [...new Set([bind.pk, ...spec.columns])].map(quoteIdent).join(', ')
     const { text, values } = buildWhere(spec.filters)
-    const order = `${quoteIdent(spec.order.column)} ${spec.order.dir === 'desc' ? 'desc' : 'asc'}`
+    const order = orderClause(spec.order, bind.pk, quoteIdent)
     const rows = await run(
       bind.source,
       `select ${cols} from ${relation(bind)} where ${text}
@@ -293,11 +367,11 @@ export const duckdbDriver: SourceDriver = {
   dispose(sourceName) {
     const entry = instances.get(sourceName)
     instances.delete(sourceName)
-    void entry?.then((e) => e.instance.closeSync()).catch(() => {})
+    if (entry) retire(entry)
   },
 }
 
-function mapDuckType(dataType: string): string {
+export function mapDuckType(dataType: string): string {
   const t = dataType.toUpperCase()
   if (t.startsWith('DECIMAL') || t === 'FLOAT' || t === 'DOUBLE' || t === 'REAL') return 'Float'
   if (

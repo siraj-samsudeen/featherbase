@@ -407,7 +407,9 @@ only the app's own tables, never Featherbase's or the instance's.
 ### Requirement: A change of kind keeps every value
 
 An upgrade SHALL change a column's kind only where every stored value carries
-over, such as whole numbers to decimals or a date to a date and time. Any other
+over, such as whole numbers to decimals or a date to a date and time. A text
+column SHALL become a link to a table only when every value on the instance
+names a row of that table, and a link SHALL always become text. Any other
 change of kind SHALL be refused: the app adds a new column, copies the data and
 then removes the old one.
 
@@ -420,6 +422,13 @@ then removes the old one.
 
 - **WHEN** a new version changes a number column into a date column
 - **THEN** that version is refused before anything runs
+
+#### Scenario: Codes become links when every code has a row
+
+- **WHEN** an upgrade turns a plant's state code column into a link to State,
+  and one plant holds a code State doesn't have
+- **THEN** the upgrade is refused on that instance, naming the code, and
+  nothing changes
 
 ### Requirement: Removing data is declared and counted first
 
@@ -614,6 +623,71 @@ Then the same address and selected task survive refreshing the page
 Given Featherbase has been built without Tasker's client files
 When built Tasker is installed
 Then Tasker opens with the shared navigation without rebuilding Featherbase or adding an app-specific platform route
+```
+
+### Requirement: An app's page follows the person's theme
+
+An app's page SHALL be told which theme, light or dark, the person sees: when the page opens and whenever it
+changes, without a reload. When the person has chosen to follow the device, the theme told is the device's.
+Featherbase SHALL NOT restyle the app's page itself; the app decides how to follow.
+
+#### Scenario: The app's page follows the person's choice over the device's
+
+```gherkin
+Given the user has chosen the light theme on a device set to dark
+When the user opens an app's page that follows the theme
+Then the app's page is light
+```
+
+#### Scenario: A theme change reaches the open app's page
+
+```gherkin
+Given the user is on an app's page that follows the theme, in the light theme
+When the user switches to the dark theme in the shared bar
+Then the app's page turns dark without reloading
+```
+
+### Requirement: An app knows the roles of the person it acts for
+An app's actions and reads SHALL be told which roles the signed-in person holds, so an app can let a role take a
+step. They SHALL learn only that person's own roles, never another person's.
+
+#### Scenario: Tickets offers a step to the holder of a role
+
+```gherkin
+Given a Data Quality Issue that Bala has marked fixed
+And a person who holds the "Data Quality Verifier" role and is not involved in the ticket
+When that person opens the ticket in Tickets
+Then Tickets offers that person the verification
+```
+
+### Requirement: An app can choose its accent colour
+
+An **App** SHALL be able to name an **accent**, one of the colours Featherbase provides, each made readable in light and dark. The accent SHALL colour the app's buttons and selected items, on its own page and in the shared bar and navigation over it. It SHALL leave the colours that carry meaning (errors, warnings, success) and every other app unchanged. An app that names no accent keeps Featherbase's own, and an accent Featherbase does not provide is refused when the app is installed.
+
+#### Scenario: An app's page and navigation take its accent
+
+```gherkin
+Given Tickets names the green accent
+When the user opens Tickets
+Then Tickets' main buttons and its selected view in the shared navigation are green
+When the user switches to the dark theme in the shared bar
+Then they are the dark theme's green
+```
+
+#### Scenario: An app that names no accent keeps Featherbase's
+
+```gherkin
+Given Tasker names no accent
+When the user opens Tasker
+Then Tasker's selected view in the shared navigation is Featherbase's own blue
+```
+
+#### Scenario: An accent Featherbase does not provide is refused
+
+```gherkin
+Given an app names an accent that Featherbase does not provide
+When a System Manager installs that app
+Then the installation is refused and names the accents Featherbase provides
 ```
 
 ## Deferred

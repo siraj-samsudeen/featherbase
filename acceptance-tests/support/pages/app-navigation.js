@@ -4,18 +4,18 @@ const assert = require('node:assert/strict');
 const { createHash, randomUUID } = require('node:crypto');
 const { readFileSync } = require('node:fs');
 const path = require('node:path');
-const { default: postgres } = require('postgres');
 const { Api } = require('../api');
-const { restartAcceptance } = require('../stack');
+const { restartAcceptance, acceptanceSql } = require('../stack');
 
 class AppNavigation {
   constructor(page) { this.page = page; }
   static async install(api) {
     const res = await api.call('GET', '/api/apps', undefined, [200], 'installed apps');
     const { installed } = await res.json();
-    for (const name of ['tasker', 'feather_dash'])
+    for (const name of ['tasker', 'dash'])
       if (!installed.some(app => app.name === name))
         await api.call('POST', '/api/apps/prepare-install', { name }, [201], `prepare and install ${name}`);
+    await api.admitTaskerAdministrator();
   }
   static async appApi(api, name) {
     const res = await api.call('GET', '/api/apps', undefined, [200], 'installed versions');
@@ -50,30 +50,25 @@ class AppNavigation {
     const filters = encodeURIComponent(JSON.stringify([['email', '=', email]]));
     const res = await api.call('GET', `/api/table/Person?fields=${fields}&filters=${filters}`, undefined, [200], 'find reader');
     const { data } = await res.json();
-    const dash = await AppNavigation.appApi(api, 'feather_dash');
+    const dash = await AppNavigation.appApi(api, 'dash');
     for (const store of ['9901', '9902']) {
-      await dash.saveRow('feather_dash.store_rollout', { store, live_since: '2026-01-01' });
-      await dash.saveRow('feather_dash.job_assignment', { person: data[0].row_id, job: 'Store Manager', store, starts_on: '2026-01-01' });
+      await dash.saveRow('dash.store_rollout', { store, live_since: '2026-01-01' });
+      await dash.saveRow('dash.job_assignment', { person: data[0].row_id, job: 'Store Manager', store, starts_on: '2026-01-01' });
     }
-    await api.saveRow('Data Source', { row_id: 'motherduck', engine: 'duckdb', url_env: 'FEATHER_DASH_LOCAL_DUCKDB', access: 'read_only' });
+    await api.saveRow('Data Source', { row_id: 'motherduck', engine: 'duckdb', url_env: 'DASH_LOCAL_DUCKDB', access: 'read_only' });
     // An existing cached month supplies the store's human name. No warehouse
     // connection or intercepted report response is needed for navigation.
-    const url = new URL(process.env.DATABASE_URL ?? 'postgres://postgres:postgres@127.0.0.1:5432/featherbase');
-    url.pathname = '/featherbase_acceptance_e2e';
-    const sql = postgres(url.toString(), { connection: { search_path: 'featherbase,public' } });
-    try {
-      const { datasets } = JSON.parse(readFileSync(path.resolve(__dirname, '../../../client-apps/jeyarama/dash/featherbase.json')));
-      const dataset = datasets.find(entry => entry.name === 'sales_month');
-      const version = createHash('sha256').update(JSON.stringify({ ...dataset, guard: undefined })).digest('hex').slice(0, 16);
-      const id = randomUUID();
-      await sql`insert into dataset_snapshot (row_id, dataset, definition_version, state, built_at, activated_at, row_count)
-        values (${id}, 'feather_dash.sales_month', ${version}, 'active', now(), now(), 2)`;
-      for (const [store_code, store_name] of [['9901', 'Hill Road'], ['9902', 'Lakeside']])
-        await sql`insert into app_dataset_row (snapshot_id, row) values (${id}, ${sql.json({ store_code, store_name })})`;
-    } finally { await sql.end(); }
+    const { datasets } = JSON.parse(readFileSync(path.resolve(__dirname, '../../../client-apps/jeyarama/dash/featherbase.json')));
+    const dataset = datasets.find(entry => entry.name === 'sales_month');
+    const version = createHash('sha256').update(JSON.stringify({ ...dataset, guard: undefined })).digest('hex').slice(0, 16);
+    const id = randomUUID();
+    await acceptanceSql(`insert into featherbase.dataset_snapshot (row_id, dataset, definition_version, state, built_at, activated_at, row_count)
+      values ($1, 'dash.sales_month', $2, 'active', now(), now(), 2)`, [id, version]);
+    for (const [store_code, store_name] of [['9901', 'Hill Road'], ['9902', 'Lakeside']])
+      await acceptanceSql('insert into featherbase.app_dataset_row (snapshot_id, row) values ($1, $2::jsonb)', [id, { store_code, store_name }]);
   }
   async tasker() { await this.page.goto('/tasker/'); }
-  async dash() { await this.page.goto('/feather_dash/'); }
+  async dash() { await this.page.goto('/dash/'); }
   choices() { return this.page.getByRole('combobox', { name: 'Switch application' }); }
   sidebar() { return this.page.locator('featherbase-sidebar'); }
   async chooseBase() {
@@ -88,8 +83,10 @@ class AppNavigation {
   }
   async expectAppsOnly() {
     await this.page.getByTestId('session-user').waitFor();
+    // The switcher holds only the current app until the catalog answers.
+    await this.choices().locator('option', { hasText: 'Tasker' }).waitFor({ state: 'attached' });
     const options = await this.choices().locator('option').allTextContents();
-    assert.deepEqual(options.sort(), ['Feather Dash', 'Tasker']);
+    assert.deepEqual(options.sort(), ['Dash', 'Tasker']);
   }
   async expectNoBase() {
     assert.equal(await this.choices().locator('option[value="/featherbase/admin"]').count(), 0);
@@ -106,8 +103,8 @@ class AppNavigation {
     assert.equal(await this.sidebar().getByRole('button', { name: 'September stock review', exact: true }).getAttribute('aria-current'), 'page');
   }
   async selectStore() {
-    await this.page.goto('/feather_dash/?store=9902');
-    const response = await this.page.request.get('/api/app_bar/feather_dash');
+    await this.page.goto('/dash/?store=9902');
+    const response = await this.page.request.get('/api/app_bar/dash');
     assert.equal(response.status(), 200, await response.text());
     assert.deepEqual((await response.json()).controls[0]?.options, [{ label: 'Hill Road', value: '9901' }, { label: 'Lakeside', value: '9902' }]);
     await this.page.getByRole('combobox', { name: 'Store', exact: true }).filter({ hasText: 'Lakeside' }).waitFor();
@@ -118,8 +115,8 @@ class AppNavigation {
     assert.equal(new URL(this.page.url()).searchParams.get('store'), '9902');
   }
   async expectReport() {
-    await this.page.locator('[data-testid="feather-dash"]:not([data-view="opening"])').waitFor();
-    assert.notEqual(await this.page.getByTestId('feather-dash').getAttribute('data-view'), 'no_access');
+    await this.page.locator('[data-testid="dash"]:not([data-view="opening"])').waitFor();
+    assert.notEqual(await this.page.getByTestId('dash').getAttribute('data-view'), 'no_access');
     await this.expectStore();
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@featherbase-learning/tasker",
-  "version": "2.3.3",
+  "version": "3.0.2",
   "private": true,
   "type": "module",
   "featherbase": "featherbase.json",
@@ -19,7 +19,8 @@
     "@tanstack/react-query": "^5.105.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "react-markdown": "10.1.0"
+    "react-markdown": "10.1.0",
+    "@featherbase/shop-floor": "file:../../packages/shop-floor"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

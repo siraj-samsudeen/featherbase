@@ -359,12 +359,35 @@ many rows hold a value in it, and nothing is changed.
 ### Requirement: A column's type is fixed once created
 
 Changing an existing column's type SHALL be refused, naming the column; the
-column keeps its type and its values.
+column keeps its type and its values. There are two exceptions, and in both the
+column keeps its name and every value. A text column SHALL become a link to a
+table when every non-empty value in it is the id of a row of that table; if any
+value isn't, the change SHALL be refused, listing those values. A link column
+SHALL always be able to become a text column.
 
 #### Scenario: Turn a text column into a number
 
 - **WHEN** a builder tries to change a text column to a number column
 - **THEN** the change is refused and the column is named
+
+#### Scenario: Turn plant codes into links
+
+- **WHEN** a builder turns a plant's "sales org" text column, holding "1150"
+  and "1160", into a link to Sales Org, which has rows "1150" and "1160"
+- **THEN** the column is a link to Sales Org and every plant keeps its value
+- **AND** the column's history still shows the earlier changes to it
+
+#### Scenario: A code with no master row
+
+- **WHEN** a builder turns the "sales org" column into a link to Sales Org,
+  and one plant holds "9999", which Sales Org doesn't have
+- **THEN** the change is refused, naming "9999"
+- **AND** the column stays text with every value as it was
+
+#### Scenario: Turn a link back into text
+
+- **WHEN** a builder turns the "sales org" link column back into text
+- **THEN** the column is text and every plant keeps its value
 
 ### Requirement: A settings table holds one set of values
 
@@ -382,13 +405,24 @@ saved, and saving changes that one set in place.
 
 Building a table SHALL be refused when its name matches an existing table's
 name, or storage the platform itself uses, once letter case and spacing are
-ignored.
+ignored. The platform's record of the web addresses it answers on is kept
+apart from the builder's tables, so "Site" stays free for a table of the
+builder's own.
 
 #### Scenario: Same name in different letters
 
 - **WHEN** a builder creates "audit owned" while a table "Audit Owned"
   already exists
 - **THEN** the new table is refused and the existing one is unchanged
+
+#### Scenario: A Site table holds the user's sites
+
+```gherkin
+Given no table is called "Site"
+When the user creates a table "Site" and adds the site "Riverside"
+Then the table shows "Riverside"
+And the platform's record of its web addresses is unchanged
+```
 
 ### Requirement: Every table can be found in one list
 
@@ -582,3 +616,301 @@ When a System Manager switches Remarks into its list
 Then a colleague opening the list of "Section Mapping" sees Remarks
 And no row's values have changed
 ```
+
+### Requirement: Readable labels without replacing authored wording
+
+The platform SHALL supply readable labels when none are authored, retaining
+common acronyms. Upgrading built-in labels SHALL preserve custom wording,
+overrides and effective translations.
+Fresh and existing instances SHALL converge through an ordered, repeatable
+update limited to enumerated exact old defaults on noncustom platform columns.
+A legacy base label needed by an installed translation SHALL be retained.
+
+#### Scenario: Generated labels leave authored wording intact
+
+```gherkin
+Given the user defines a contact list with an unlabelled client identifier and an authored service label
+When the user opens the contact list
+Then the generated identifier label is readable with its acronym preserved
+And the authored service label is unchanged
+```
+
+#### Scenario: Upgrade preserves customized wording
+
+```gherkin
+Given the user has customized and translated labels beside unchanged platform defaults
+When the platform label update is applied
+Then eligible unchanged platform defaults become readable without displacing installed translations
+And the user's custom wording and effective translations remain unchanged
+```
+
+### Requirement: Authored choice wording does not change saved values
+
+Forms, lists, filters and public forms SHALL show an existing original-value
+translation first, otherwise translated authored wording, otherwise the value
+verbatim. Translations SHALL NOT be recased. Display wording SHALL NOT change
+allowed or saved values, filters, exports, row requests/responses or definition
+editors, and SHALL NOT become an additional valid value.
+
+#### Scenario: Readable policy choice keeps its original value
+
+```gherkin
+Given the user has a contact list with authored wording for a technical policy choice
+When the user chooses that policy and saves a contact
+Then the contact shows the authored policy wording in its form, list and filter control
+And filtering by that policy finds the contact using its original value
+```
+
+#### Scenario: Unmapped choices keep their authored text
+
+```gherkin
+Given the user has a contact list with an unmapped choice containing underscores and no translation
+When the user opens that choice in a contact
+Then the choice text is shown verbatim
+```
+
+#### Scenario: Installed choice translations keep their wording
+
+```gherkin
+Given the user's contact policy has different translations for its original value and its authored wording
+When the user opens that policy in a contact
+Then the existing translation of the original value is shown unchanged
+```
+
+### Requirement: Recognize a Table in its settings
+
+The user SHALL recognize a saved Table by its own name rather than an unrelated grouping value. An explicitly authored display name MUST retain precedence.
+
+#### Scenario: SAP Plant is identified rather than its module
+
+```gherkin
+Given the user has a Table called "SAP Plant" in the "Custom" module
+When the user opens the settings for "SAP Plant"
+Then the settings identify "SAP Plant" rather than "Custom"
+```
+
+#### Scenario: An authored display name takes precedence
+
+```gherkin
+Given the user has a Table called "SAP Plant" in the "Custom" module
+And its effective authored display name is "Plant catalogue"
+When the user opens the settings for "SAP Plant"
+Then the settings identify "Plant catalogue"
+```
+
+### Requirement: Copy the authoritative storage identity
+
+The user SHALL be able to copy a saved Table's read-only schema, relation and physical row key when its metadata is readable. The identity MUST describe actual local, shared Settings or connected storage, not a name inferred from its label.
+
+#### Scenario: SAP Plant exposes its local storage
+
+```gherkin
+Given the user has a Table called "SAP Plant" in the "Custom" module
+When the user opens the settings for "SAP Plant"
+Then the user can copy schema "featherbase", relation "sap_plant" and row key "row_id" without editing them
+```
+
+#### Scenario: SAP Plant belongs to an installed app
+
+```gherkin
+Given an installed app owns "SAP Plant" with explicitly mapped storage
+When the user opens the settings for the app's "SAP Plant"
+Then the user can copy the app's mapped storage identity rather than a name inferred from its label
+```
+
+#### Scenario: SAP Plant uses shared Settings storage
+
+```gherkin
+Given "SAP Plant" is a Settings Table in the "Custom" module
+When the user opens the settings for "SAP Plant"
+Then the user can copy shared storage "featherbase.single_value" with key "table_name, field" and discriminator "SAP Plant"
+```
+
+#### Scenario: SAP Plant is connected to outside storage
+
+```gherkin
+Given "SAP Plant" is connected to an outside Data Source in the "Custom" module
+When the user opens the settings for "SAP Plant"
+Then its storage identity describes its source binding without credentials
+```
+
+#### Scenario: SAP Plant metadata is not readable
+
+Reading a Table's definition alone MUST NOT disclose storage when the described Table's metadata is denied; the definition form remains usable.
+
+```gherkin
+Given the user can read the definition of "SAP Plant" but not its metadata
+When the user opens the settings for "SAP Plant"
+Then its storage identity is not disclosed and the definition form remains usable
+```
+
+### Requirement: Do not invent a warehouse destination
+
+A warehouse destination SHALL be shown only when Featherbase has an authoritative configured CDC mapping for the Table. Without that mapping the destination MUST be absent, not inferred from a Table name or Data Source. This change introduces no CDC configuration or integration.
+
+#### Scenario: SAP Plant has no configured warehouse mapping
+
+```gherkin
+Given the user has a Table called "SAP Plant" in the "Custom" module
+And Featherbase has no configured warehouse mapping for "SAP Plant"
+When the user opens the settings for "SAP Plant"
+Then no warehouse destination is shown
+```
+
+### Requirement: Rename a custom Table and keep what it holds
+
+A System Manager SHALL be able to rename a Table made in the builder or by an
+import. Its rows and everything that names the Table SHALL move to the new
+name together, and a later re-import SHALL keep the edits people made before
+the rename. Platform, app and data-source Tables keep their names.
+
+#### Scenario: A corrected plant keeps its correction and history
+
+```gherkin
+Given a table "SAP Plant" whose plant 8151 a person corrected to "Chennai"
+When the System Manager renames the table to "Plant"
+Then plant 8151 of "Plant" reads "Chennai", with the correction in its history
+And importing the source again keeps "Chennai"
+```
+
+### Requirement: A renamed Table's old name says where it went
+
+The old name and address of a renamed Table SHALL say what the Table is now
+called, who renamed it and when, and link to it.
+
+#### Scenario: The old address says where the Table went
+
+```gherkin
+Given the table "SAP Plant" was renamed to "Plant"
+When the user opens the old address of "SAP Plant"
+Then the page says "SAP Plant is now called Plant" and links to "Plant"
+```
+
+### Requirement: Link to a row of any table
+
+A link column SHALL be able to point at a row of a table chosen on each row, from the tables the column allows. The table is chosen first, then a row of it, and the row is shown by its name.
+
+#### Scenario: A decision about a plant and a business unit
+
+- **WHEN** the user records one decision about plant 8151 and another about business unit PKN-GOLD, in a column allowing plants and business units
+- **THEN** each decision shows the record it is about by name, and opens it
+
+#### Scenario: Choosing another table clears the row
+
+- **WHEN** the user has picked a plant and then changes the table to business units
+- **THEN** the plant is cleared, and only a business unit can be picked
+
+### Requirement: A link to any table is checked when saved
+
+A link to a row of any table SHALL be saved only when its table is one the column allows and that row exists. A new or changed link SHALL also be to a row the person can see. Only a table that stores its own rows can be allowed, never nested rows, a settings table or a table kept in a connected database.
+
+#### Scenario: A plant that isn't there
+
+- **WHEN** the user links a decision to plant PKN-GOLD, which is a business unit, not a plant
+- **THEN** the save is refused, saying that plant does not exist
+
+#### Scenario: A plant the user can't see
+
+- **WHEN** a user who can't see plants links a decision to plant 8151
+- **THEN** the save is refused, without saying whether that plant exists
+
+### Requirement: A row linked from any table keeps its links
+
+A row SHALL NOT be deleted while a link to any table points at it. Its links SHALL follow when the row gets a new id, or when its table is renamed. A table SHALL NOT be deleted while such a column allows it or a row links into it.
+
+#### Scenario: Deleting a plant a decision is about
+
+- **WHEN** the user deletes plant 8151 while a decision links to it
+- **THEN** the delete is refused, naming the decision
+
+#### Scenario: Renaming the plant's table
+
+- **WHEN** the user renames the table of plant 8151
+- **THEN** the decision still links to plant 8151, under the table's new name
+
+### Requirement: A linked row you can't see shows only its table
+
+When a person can't see the row a link to any table points at, the link SHALL show only that row's table, and SHALL NOT open the row.
+
+#### Scenario: A clerk reads a decision about a plant
+
+- **WHEN** a clerk who can't see plants opens a decision linked to plant 8151
+- **THEN** the link reads as a plant the clerk has no access to, and does not open
+
+### Requirement: A row linked from any table shows what links to it
+
+A row's connections SHALL include the rows that link to it through a link to any table, counted, and SHALL open exactly those rows. This SHALL hold whether the link sits on a row or on one of its nested rows. A table the viewer can't see SHALL be left out.
+
+#### Scenario: Two decisions about a plant
+
+- **WHEN** two decisions link to plant 8151 and the user opens the plant's connections
+- **THEN** they show 2 decisions, and opening them lists those two decisions
+
+#### Scenario: A plan whose step is about the plant
+
+- **WHEN** a plan's nested step links to plant 8151
+- **THEN** the plant's connections show the plan, and opening them lists that plan only
+
+### Requirement: Nested rows can link to a row of any table
+
+A nested row SHALL be able to hold a link to a row of any table, chosen as on a form: the table first, from the tables the column allows, then the row by its name.
+
+#### Scenario: A step about a plant
+
+- **WHEN** the user adds a step to a plan, picks the plant table and then plant Palakkad, and saves
+- **THEN** the step is saved linking to plant 8151
+
+### Requirement: Archive a table without deleting it
+
+A System Manager SHALL be able to archive a custom table, with an optional note of what replaced it, and to
+un-archive it. While archived, its rows and history SHALL stay readable to whoever could read them, and adding,
+changing, retiring, reactivating, deleting, permanently deleting, importing or merging its rows SHALL be refused for everyone, administrators included. Platform
+tables, settings, sub-tables, an installed app's tables and tables that decide access SHALL NOT be archived.
+
+#### Scenario: Archive a replaced table
+
+- **WHEN** a System Manager archives Operating Site, noting "Replaced by Site Master"
+- **THEN** its rows still open for everyone who could read them
+
+#### Scenario: No edits to an archived table
+
+- **WHEN** anyone, an administrator included, tries to add, change, retire, reactivate, delete, permanently delete or import a row of an archived table
+- **THEN** the change is refused, saying the table is archived
+
+#### Scenario: Un-archive
+
+- **WHEN** a System Manager un-archives the table
+- **THEN** its rows can be changed again
+
+#### Scenario: Delete it later
+
+- **WHEN** a System Manager deletes an archived table
+- **THEN** it is deleted as any custom table is
+
+#### Scenario: Only a custom table
+
+- **WHEN** someone tries to archive a platform table, a settings table, a sub-table, an installed app's table or a
+  table that decides who can see what, or
+  someone who is not a System Manager tries to archive any table
+- **THEN** it is refused
+
+### Requirement: An archived table is out of everyday use
+
+An archived table SHALL be left out of the module menus, the command bar and the table pickers, and SHALL be listed
+under "Archived" on All tables. Its list and its rows SHALL say it is archived, by whom, when, and what replaced it.
+
+#### Scenario: Out of the menus
+
+- **WHEN** a table is archived
+- **THEN** it no longer shows in its module's menu, the command bar or a table picker, and All tables lists it under
+  "Archived"
+
+#### Scenario: The banner says why
+
+- **WHEN** someone opens the list or a row of Operating Site, archived by Siraj today and noted "Replaced by Site Master"
+- **THEN** a banner says it is archived, by Siraj, today, and "Replaced by Site Master"
+
+#### Scenario: Back in the menus
+
+- **WHEN** a System Manager un-archives it
+- **THEN** it is back in its module's menu

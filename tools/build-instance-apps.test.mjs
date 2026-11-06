@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { copyShipped, previousVersions } from './build-instance-apps.mjs'
+import { copyShipped, previousVersions, workspaceDependencies } from './build-instance-apps.mjs'
 
 function scratch(t) {
   const dir = mkdtempSync(join(tmpdir(), 'instance-apps-'))
@@ -37,4 +37,18 @@ test('previousVersions is optional, and each entry must say where the version co
   assert.deepEqual(previousVersions(file), [good])
   writeFileSync(file, JSON.stringify({ apps: ['a'], previousVersions: [{ ...good, archive: 'http://example.com/x.tar.gz' }] }))
   assert.throws(() => previousVersions(file), /https archive/)
+})
+
+test('a previous version names the workspace packages it takes by path', (t) => {
+  const dir = scratch(t)
+  const app = join(dir, 'example-apps/board')
+  mkdirSync(app, { recursive: true })
+  mkdirSync(join(dir, 'packages/kit'), { recursive: true })
+  writeFileSync(join(dir, 'packages/kit/package.json'), JSON.stringify({ name: '@x/kit' }))
+  writeFileSync(join(app, 'package.json'), JSON.stringify({ dependencies: { react: '^19.0.0', '@x/kit': 'file:../../packages/kit' } }))
+  assert.deepEqual(workspaceDependencies(app, dir), ['@x/kit'])
+  writeFileSync(join(app, 'package.json'), JSON.stringify({ dependencies: { react: '^19.0.0' } }))
+  assert.deepEqual(workspaceDependencies(app, dir), [])
+  writeFileSync(join(app, 'package.json'), JSON.stringify({ dependencies: { kit: 'file:../../../elsewhere' } }))
+  assert.throws(() => workspaceDependencies(app, dir), /outside the archive/)
 })

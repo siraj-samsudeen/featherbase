@@ -14,16 +14,20 @@
 //     PUT /api/table_def matches columns BY name — a changed name there reads
 //     as delete-plus-add, which the server refuses (#250).
 //
-// Type changes and deletions are not offered. The server refuses a type
-// change outright, and dropping a column is destructive in a way that
-// belongs with Table deletion rather than beside a rename.
+// Type changes and deletions are not offered, with one exception (#911): a
+// text column whose values are codes of another Table's rows becomes a link to
+// it, and a link becomes text again. Both store the same text, so the column
+// keeps its name, values and history; the server refuses the link while any
+// value names no row. Dropping a column is destructive in a way that belongs
+// with Table deletion rather than beside a rename.
 import { useState } from 'react'
-import { Link, useParams } from '@tanstack/react-router'
+import { Link } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { COLUMN_TYPES, NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
 import { RESERVED, SNAKE, TARGET_REQUIRED_TYPES, slugify } from '../lib/column-rules'
-import { buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from '../components/ui'
+import { buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from '@featherbase/shop-floor'
+import { usePickableTables } from '../lib/session'
 
 interface NewColumn {
   label: string
@@ -41,6 +45,30 @@ const blank = (): NewColumn => ({
   nameTouched: false,
 })
 
+/** #881: not a column type of its own, but a pair of columns made together:
+ *  `<name>_table`, a link to Table, and `<name>`, the row of that Table. */
+export const ANY_TABLE_LINK = 'Link to a row of any Table'
+
+/** The columns one new column adds: two for a link to a row of any Table. */
+export function columnsToAdd(adding: NewColumn): Record<string, unknown>[] {
+  const name = adding.column_name.trim()
+  const label = adding.label.trim() || name
+  if (adding.column_type === ANY_TABLE_LINK)
+    return [
+      { column_name: `${name}_table`, label: `${label} Table`, column_type: 'Reference', reference_table: 'Table' },
+      { column_name: name, label, column_type: 'Reference', table_column: `${name}_table`,
+        choices: adding.target.split(/[\n,]/).map((t) => t.trim()).filter(Boolean).join('\n') || undefined },
+    ]
+  return [{
+    column_name: name,
+    label,
+    column_type: adding.column_type,
+    choices: adding.column_type === 'Choice' ? adding.target.trim() : undefined,
+    reference_table: adding.column_type === 'Reference' ? adding.target.trim() : undefined,
+    row_table: adding.column_type === 'Sub-table' ? adding.target.trim() : undefined,
+  }]
+}
+
 /** The advisory mirror of the server's rule, so a typo costs no round trip. */
 function newColumnProblem(col: NewColumn, meta: TableMeta): string | null {
   const name = col.column_name.trim()
@@ -48,6 +76,8 @@ function newColumnProblem(col: NewColumn, meta: TableMeta): string | null {
   if (!SNAKE.test(name)) return 'Use lower_snake_case, starting with a letter'
   if (RESERVED.includes(name)) return `${name} is a standard column name`
   if (meta.columns.some((c) => c.column_name === name)) return `${meta.name} already has ${name}`
+  if (col.column_type === ANY_TABLE_LINK && meta.columns.some((c) => c.column_name === `${name}_table`))
+    return `${meta.name} already has ${name}_table`
   if (TARGET_REQUIRED_TYPES.includes(col.column_type) && !col.target.trim())
     return `A ${col.column_type} column needs its ${col.column_type === 'Choice' ? 'choices' : 'target Table'}`
   return null
@@ -120,8 +150,100 @@ function RenameRow({ table, column }: { table: string; column: { column_name: st
   )
 }
 
-export function ColumnEditor() {
-  const { table } = useParams({ strict: false }) as { table: string }
+/** #911: turn a text column into a link to the Table its values name, or a
+ *  link back into text. */
+function LinkRow({ def, column, onDone }: {
+  def: TableMeta
+  column: TableMeta['columns'][number]
+  onDone: (message: string) => void
+}) {
+  const queryClient = useQueryClient()
+  const tables = usePickableTables()
+  const [open, setOpen] = useState(false)
+  const [target, setTarget] = useState('')
+  const name = column.column_name
+  const change = useMutation({
+    mutationFn: (to: { column_type: string; reference_table: string | null }) =>
+      api.put<TableMeta>(`/api/table_def/${encodeURIComponent(def.name)}`, {
+        ...def,
+        columns: def.columns.map((c) => (c.column_name === name ? { ...c, ...to } : c)),
+      }),
+    onSuccess: async (_meta, to) => {
+      setOpen(false)
+      onDone(to.column_type === 'Reference' ? `${name} now links to ${to.reference_table}` : `${name} is now text`)
+      await queryClient.invalidateQueries({ queryKey: ['meta', def.name] })
+      await queryClient.invalidateQueries({ queryKey: ['import-targets'] })
+    },
+  })
+  const error = change.isError && (
+    <span className="text-negative" data-testid={`ce-link-error-${name}`}>
+      {change.error instanceof ApiError ? change.error.fields?.[name] ?? change.error.message : 'Could not change the column'}
+    </span>
+  )
+
+  if (column.column_type === 'Reference' && column.reference_table && !column.table_column)
+    return (
+      <span className="inline-flex flex-wrap items-center gap-1">
+        <button
+          type="button"
+          className={touchLinkClasses('underline')}
+          aria-label={`Turn ${name} into text`}
+          disabled={change.isPending}
+          onClick={() => change.mutate({ column_type: 'Data', reference_table: null })}
+        >
+          Make text
+        </button>
+        {error}
+      </span>
+    )
+  if (column.column_type !== 'Data') return null
+  if (!open)
+    return (
+      <button
+        type="button"
+        className={touchLinkClasses('underline')}
+        aria-label={`Turn ${name} into a link`}
+        onClick={() => {
+          change.reset()
+          setOpen(true)
+        }}
+      >
+        Make link
+      </button>
+    )
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <select
+        className={inputClasses('w-44 py-0.5')}
+        aria-label={`Table ${name} links to`}
+        value={target}
+        onChange={(e) => setTarget(e.target.value)}
+      >
+        <option value="">Choose a Table…</option>
+        {(tables ?? []).map((t) => (
+          <option key={t.row_id} value={t.row_id}>
+            {t.row_id}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        className={buttonClasses({ variant: 'primary', className: 'py-0.5' })}
+        data-testid={`ce-link-go-${name}`}
+        disabled={change.isPending || !target}
+        onClick={() => change.mutate({ column_type: 'Reference', reference_table: target })}
+      >
+        {change.isPending ? 'Checking…' : 'Make link'}
+      </button>
+      <button type="button" className={buttonClasses({ className: 'py-0.5' })} onClick={() => setOpen(false)}>
+        Cancel
+      </button>
+      {error}
+    </span>
+  )
+}
+
+export function ColumnEditor({ table }: { table: string }) {
   const queryClient = useQueryClient()
   const [adding, setAdding] = useState<NewColumn>(blank())
   const [labels, setLabels] = useState<Record<string, string>>({})
@@ -162,18 +284,7 @@ export function ColumnEditor() {
 
   function addColumn() {
     put.mutate(
-      [
-        ...def.columns,
-        {
-          column_name: adding.column_name.trim(),
-          label: adding.label.trim() || adding.column_name.trim(),
-          column_type: adding.column_type,
-          choices: adding.column_type === 'Choice' ? adding.target.trim() : undefined,
-          reference_table:
-            adding.column_type === 'Reference' ? adding.target.trim() : undefined,
-          row_table: adding.column_type === 'Sub-table' ? adding.target.trim() : undefined,
-        },
-      ],
+      [...def.columns, ...columnsToAdd(adding)],
       {
         onSuccess: () => {
           setSaved(`Added ${adding.column_name.trim()}`)
@@ -221,7 +332,7 @@ export function ColumnEditor() {
       <h1 className="mb-1 text-xl font-semibold text-ink">
         Columns of{' '}
         <Link
-          to="/featherbase/admin/$table"
+          to="/featherbase/admin/table/$table"
           params={{ table: def.name }}
           search={{ filters: undefined }}
           className="underline"
@@ -324,7 +435,14 @@ export function ColumnEditor() {
                   <td className="pr-2 font-mono text-xs text-ink-muted">{column.column_name}</td>
                   <td className="pr-2 text-xs text-ink-muted">{column.column_type}</td>
                   <td className="text-xs">
-                    {!def.system && <RenameRow table={def.name} column={column} />}
+                    {!def.system && (
+                      <span className="inline-flex flex-wrap items-center gap-3">
+                        <RenameRow table={def.name} column={column} />
+                        {!def.data_source && def.kind !== 'settings' && (
+                          <LinkRow def={def} column={column} onDone={setSaved} />
+                        )}
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -368,7 +486,7 @@ export function ColumnEditor() {
             <label className="text-xs text-ink-muted">
               Type
               <select
-                className={inputClasses('mt-0.5 block w-40 py-1')}
+                className={inputClasses('mt-0.5 block w-56 py-1')}
                 data-testid="ce-add-type"
                 value={adding.column_type}
                 onChange={(e) => setAdding((a) => ({ ...a, column_type: e.target.value }))}
@@ -378,8 +496,21 @@ export function ColumnEditor() {
                     {t}
                   </option>
                 ))}
+                <option value={ANY_TABLE_LINK}>{ANY_TABLE_LINK}</option>
               </select>
             </label>
+            {adding.column_type === ANY_TABLE_LINK && (
+              <label className="text-xs text-ink-muted">
+                Allowed Tables (one per line; none allows any)
+                <textarea
+                  rows={3}
+                  className={inputClasses('mt-0.5 block w-56 py-1')}
+                  data-testid="ce-add-allowed"
+                  value={adding.target}
+                  onChange={(e) => setAdding((a) => ({ ...a, target: e.target.value }))}
+                />
+              </label>
+            )}
             {TARGET_REQUIRED_TYPES.includes(adding.column_type) && (
               <label className="text-xs text-ink-muted">
                 {adding.column_type === 'Choice' ? 'Choices (one per line)' : 'Target Table'}
@@ -410,8 +541,9 @@ export function ColumnEditor() {
           )}
           <p className="mt-2 text-xs text-ink-muted">
             The new column is empty on every row that already exists. A column's type cannot be
-            changed after it is made, and columns are not deleted here — delete the Table if that
-            is what you mean.
+            changed after it is made, except that a text column of codes can become a link to the
+            Table they name, and back. Columns are not deleted here — delete the Table if that is
+            what you mean.
           </p>
         </div>
       )}

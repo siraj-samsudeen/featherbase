@@ -124,6 +124,10 @@ export async function settingsRequirements(): Promise<Pick<CheckVariablesOptions
     from data_source where coalesce(trim(url_env), '') <> ''
     group by url_env order by url_env`
   for (const r of rows) named.push({ name: String(r.url_env).trim(), reason: `the url_env of data source ${String(r.sources)}` })
+  // #969: every MotherDuck source reads the instance's one token.
+  const [warehouse] = await sql`
+    select string_agg(row_id, ', ' order by row_id) as sources from data_source where engine = 'motherduck'`
+  if (warehouse?.sources) named.push({ name: 'MOTHERDUCK_TOKEN', reason: `the token of MotherDuck data source ${String(warehouse.sources)}` })
   return { conditions, named }
 }
 
@@ -226,8 +230,18 @@ export async function installedAppsAtStart(environment = currentEnvironment()): 
     await assertInstalledAppsShipped()
     return []
   }
-  return ((await installedNotShipped())?.missing ?? []).map(({ name, version }) =>
-    `WARNING: App ${name} version ${version} is installed and enabled, but this server does not have it, so it is unavailable. On a developer machine, add the folder holding ${name} ${version} to FEATHERBASE_APP_PATHS (init.sh sets it), or disable the app in Admin. A release refuses until it ships.`)
+  const { missingRows = [], paths = [] } = (await installedNotShipped()) ?? {}
+  // #912: say which difference it is, and what to do, not only "does not have it".
+  const { whyUnshipped, notRunningMessage } = await import('./runtime-packages')
+  const lines: string[] = []
+  for (const row of missingRows) {
+    const reason = await whyUnshipped(row, paths)
+    const name = String(row.name), version = String(row.package_version)
+    lines.push(reason === 'absent'
+      ? `WARNING: App ${name} version ${version} is installed and enabled, but this server does not have it, so it is unavailable. On a developer machine, add the folder holding ${name} ${version} to FEATHERBASE_APP_PATHS (init.sh sets it), or disable the app in Admin. A release refuses until it ships.`
+      : `WARNING: ${notRunningMessage(name, version, reason)} Until then it is unavailable here; a release refuses until it ships.`)
+  }
+  return lines
 }
 
 /** The installed, enabled apps with a recorded version, and those not shipped
@@ -237,8 +251,9 @@ async function installedNotShipped() {
   const rows = await sql`select name, package_version, artifact_digest, manifest from installed_app
     where runtime_package and enabled and package_version is not null order by name`
   const named = (row: Record<string, unknown>) => ({ name: String(row.name), version: String(row.package_version) })
-  const missing = await unshippedApps(rows, await appLibraryPaths(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[]))
-  return { installed: rows.map(named), missing: missing.map(named), missingRows: missing }
+  const paths = await appLibraryPaths(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
+  const missing = await unshippedApps(rows, paths)
+  return { installed: rows.map(named), missing: missing.map(named), missingRows: missing, paths }
 }
 
 /** 5e. #651: a warning, never a refusal (the step's destructive: true is the

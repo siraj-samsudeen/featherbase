@@ -3,7 +3,7 @@ import { AppError } from '../errors'
 import { config } from '../config'
 import { invalidateMeta } from '../meta'
 import { assertSystemManager } from '../permissions'
-import { invalidateSources } from '../sources/registry'
+import { allowlistQualificationGuidance, invalidateSources } from '../sources/registry'
 import { readNamedVariable } from '../env'
 
 // EDS-1 validation + spec S1/S3: saving a Data Source drops its cached
@@ -24,7 +24,28 @@ const controller: TableController = {
           name: 'Use lowercase letters, digits and hyphens, starting with a letter',
         })
       const engine = String(row.engine)
-      if (engine === 'csv-folder') {
+      const guidance = allowlistQualificationGuidance(engine, row.table_allowlist)
+      if (guidance)
+        throw new AppError('ValidationError', 'Incomplete table restriction', {
+          table_allowlist: guidance,
+        })
+      // #969: a MotherDuck source names no variable, since the instance has one
+      // token, and is only ever read (ADR 0020).
+      if (engine === 'motherduck') {
+        if (row.access === 'read_write')
+          throw new AppError('ValidationError', 'MotherDuck sources are read-only', {
+            access: 'A warehouse can only be read',
+          })
+        if (String(row.url_env ?? '').trim())
+          throw new AppError('ValidationError', 'A MotherDuck source names no variable', {
+            url_env: 'Every MotherDuck source uses MOTHERDUCK_TOKEN; leave this empty',
+          })
+        const databases = row.databases ?? []
+        if (!Array.isArray(databases) || databases.some((d) => typeof d?.name !== 'string' || !d.name.trim()))
+          throw new AppError('ValidationError', 'Name each database a MotherDuck source reads', {
+            databases: 'A list of databases, each with a name',
+          })
+      } else if (engine === 'csv-folder') {
         if (!String(row.root_path ?? '').trim())
           throw new AppError('ValidationError', 'csv-folder sources need a folder', {
             root_path: 'root_path is required for csv-folder sources',

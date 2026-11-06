@@ -27,7 +27,7 @@ test('the Google callback with a code the server does not know goes back to the 
 
 test('the print page of a row that is not there says it cannot be loaded', async ({ admin }) => {
   await admin.post('/api/table_def', { name: 'Mpg Order', id_pattern: 'prompt', columns: [{ column_name: 'item', column_type: 'Data' }] })
-  await renderApp(`/featherbase/print/${enc('Mpg Order')}/no-such-order`, admin)
+  await renderApp(`/featherbase/print/mpg-order/no-such-order`, admin)
   expect(await screen.findByText('Cannot load Mpg Order no-such-order', {}, { timeout: 8000 })).toBeInTheDocument()
 })
 
@@ -35,15 +35,7 @@ test('Print opens the browser print dialog', async ({ admin }) => {
   await admin.post('/api/table_def', { name: 'Mpg Order', id_pattern: 'prompt', columns: [{ column_name: 'item', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Mpg Order', row: { row_id: 'ord-1', item: 'tea' } })
   const print = vi.spyOn(window, 'print').mockImplementation(() => {})
-  await renderApp(`/featherbase/print/${enc('Mpg Order')}/ord-1`, admin)
+  await renderApp(`/featherbase/print/mpg-order/ord-1`, admin)
   await userEvent.click(await screen.findByTestId('print-button', {}, { timeout: 8000 }))
   expect(print).toHaveBeenCalledTimes(1)
-})
-
-test('a relation map whose trail is not a list of steps shows no trail', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Mpg Customer', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
-  await admin.post('/api/save_row', { table: 'Mpg Customer', row: { row_id: 'cust-1', title: 'Asha' } })
-  await renderApp(`/featherbase/admin/map/${enc('Mpg Customer')}/cust-1?trail=${enc('{"not":"a trail"}')}`, admin)
-  await screen.findByTestId('map-center', {}, { timeout: 8000 })
-  expect(screen.queryByTestId('map-trail')).not.toBeInTheDocument()
 })

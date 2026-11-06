@@ -67,14 +67,13 @@ export default defineConfig({
       MOTHERDUCK_EMBED_ORIGIN: STUB_ORIGIN,
       MOTHERDUCK_TOKEN: 'served-e2e-stub-token',
       DIVE_ID: 'served-e2e-dive',
-      DIVE_VERSION: '1',
       SERVICE_ACCOUNT: 'served-e2e-service',
       SALES_TARGET_SHARED_ENV: '/nonexistent/served-e2e.env',
       // #488 stage A: one address opens the interim Feather Dash, one the
       // Admin. Plain `localhost` is not listed, so it holds everything.
       INSTANCE_ADDRESSES: JSON.stringify([
         { address: `http://admin.localhost:${port}`, opens: 'admin', emails: true },
-        { address: `http://dash.localhost:${port}`, opens: 'feather_dash' },
+        { address: `http://dash.localhost:${port}`, opens: 'dash' },
       ]),
     },
   },

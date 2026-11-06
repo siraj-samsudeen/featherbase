@@ -1,6 +1,8 @@
 // #738 (list-columns-from-the-table, Decision 1): which columns one person's
 // list shows — two sets on top of the Table's list columns:
-//   Row ID + (list columns ∪ shownCols) − hiddenCols, in the Table's column order.
+//   leader + (list columns ∪ shownCols) − hiddenCols, in the Table's column order.
+// #792 (Decision 1): the leader is the Table's title column, or Row ID when it
+// has none the caller may read.
 import { NO_COLUMN_TYPES, type ColumnDef, type TableMeta } from './meta'
 
 /** One person's arrangement of a list's columns, as saved in user_settings.
@@ -15,6 +17,9 @@ export interface ListColumn {
   label: string
   column_type: string
   reference_table?: string | null
+  /** #881: a link to a row of any Table names the column holding its Table. */
+  table_column?: string | null
+  choice_labels?: Record<string, string> | null
 }
 
 export const ROW_ID_COLUMN: ListColumn = { column_name: 'row_id', label: 'Row ID', column_type: 'Data' }
@@ -25,6 +30,8 @@ function toListColumn(c: ColumnDef): ListColumn {
     label: c.label ?? c.column_name,
     column_type: c.column_type,
     reference_table: c.reference_table ?? null,
+    ...(c.table_column ? { table_column: c.table_column } : {}),
+    choice_labels: c.choice_labels,
   }
 }
 
@@ -52,15 +59,33 @@ export function isShown(name: string, defaults: Set<string>, arrangement: Column
   return defaults.has(name) || Boolean(arrangement.shownCols?.includes(name))
 }
 
-/** What this person's list shows: Row ID first, then each shown data column. */
+/** The title column a list leads with, when the Table names one the caller may read. */
+export function titleListColumn(meta: TableMeta): ColumnDef | undefined {
+  return meta.title_column && meta.title_column !== 'row_id'
+    ? dataColumns(meta).find((c) => c.column_name === meta.title_column)
+    : undefined
+}
+
+/** What this person's list shows: the title column first (the link to the
+ *  row), or Row ID when the Table has none, then each shown data column. The
+ *  leader is always on. */
 export function viewColumns(meta: TableMeta, arrangement: ColumnArrangement): ListColumn[] {
   const defaults = defaultColumnNames(meta)
+  const title = titleListColumn(meta)
   return [
-    ROW_ID_COLUMN,
+    title ? toListColumn(title) : ROW_ID_COLUMN,
     ...dataColumns(meta)
-      .filter((c) => isShown(c.column_name, defaults, arrangement))
+      .filter((c) => c !== title && isShown(c.column_name, defaults, arrangement))
       .map(toListColumn),
   ]
+}
+
+/** The fields to fetch for these columns: always the row's id, which keys,
+ *  selects and links each row even when it is not a column. */
+export function listFields(columns: ListColumn[]): string[] {
+  // #881: a link to a row of any Table needs its Table to read as a link.
+  const names = columns.flatMap((c) => (c.table_column ? [c.column_name, c.table_column] : [c.column_name]))
+  return ['row_id', ...new Set(names.filter((n) => n !== 'row_id'))]
 }
 
 /** Switches one column on or off in this person's view. Switching on takes

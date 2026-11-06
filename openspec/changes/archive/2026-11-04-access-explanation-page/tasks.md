@@ -1,0 +1,5 @@
+- [ ] Server tests first: sections, reasons, who may open, no leaked titles
+- [ ] Server: access-explanation.ts and the route; principalReach roles per Table
+- [ ] Web tests first: the page, the user-menu link, the Person-form link
+- [ ] Web: the page and links
+- [ ] Headless check at 1280 against the numbered checklist on #628

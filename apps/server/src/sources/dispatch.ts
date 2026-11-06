@@ -1,7 +1,9 @@
 import { sql } from '../db'
 import { assertNotPlatformRelation } from './platform-guard'
 import { AppError } from '../errors'
-import { ROW_KEY, type TableMeta } from '../meta'
+import { ROW_KEY, getMeta, type TableMeta } from '../meta'
+import { MAX_RELATED_DEPTH } from 'shared'
+import { MAX_RELATED_HOPS, parseRelatedSpec } from '../related-filter'
 import {
   getScopeMap,
   isPrivileged,
@@ -210,18 +212,55 @@ export function explainRefusal(
 
 const OPS = new Set(['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in'])
 
-function mapFilters(bind: Binding, filters: unknown[]): SourceFilter[] {
-  return filters.map((flt) => {
+async function mapFilters(
+  meta: TableMeta,
+  bind: Binding,
+  filters: unknown[],
+  user: string,
+  depth = 0,
+  budget = { hops: 0 },
+): Promise<SourceFilter[]> {
+  if (!Array.isArray(filters))
+    throw new AppError('ValidationError', 'filters must be an array of [field, operator, value]')
+  const mapped: SourceFilter[] = []
+  for (const flt of filters) {
     if (!Array.isArray(flt) || flt.length !== 3)
       throw new AppError('ValidationError', 'Each filter must be [field, operator, value]')
     const [field, op, value] = flt as [string, string, unknown]
-    if (!OPS.has(op)) throw new AppError('ValidationError', `Unknown filter operator ${op}`)
-    return {
-      column: requireSourceColumn(bind, field, 'filter'),
-      op: op as SourceFilter['op'],
-      value,
+    if (op === 'related') {
+      if (depth >= MAX_RELATED_DEPTH)
+        throw new AppError('ValidationError', `'related' filters nest at most ${MAX_RELATED_DEPTH} levels deep`)
+      if (++budget.hops > MAX_RELATED_HOPS)
+        throw new AppError('ValidationError', `At most ${MAX_RELATED_HOPS} 'related' hops per request`)
+      const spec = parseRelatedSpec(value)
+      if (bind.source.engine !== 'postgres' || spec.via !== undefined || field === 'parent')
+        throw new AppError('ValidationError', 'Source related filters support only direct References within one PostgreSQL Data Source')
+      const column = requireSourceColumn(bind, field, 'filter')
+      if (!meta.columns.some((c) => c.column_name === field && c.column_type === 'Reference' && c.reference_table === spec.table))
+        throw new AppError('ValidationError', `${meta.name}.${field} is not a Reference to ${spec.table}`)
+      const target = await getMeta(spec.table)
+      if (target.data_source !== meta.data_source)
+        throw new AppError('ValidationError', 'Source related filters must stay within the same Data Source record')
+      await assertBoundScope(target, user, 'read')
+      const ctx = await boundContext(target)
+      const scopeFilters = await boundScopeFilters(target, user, ctx.bind)
+      const targetBind = narrowToTiers(ctx.bind, target, await permittedTiers(user, target.name, 'read'))
+      mapped.push({
+        column, op: 'related', value: {
+          binding: targetBind,
+          filters: [...await mapFilters(target, targetBind, spec.filters ?? [], user, depth + 1, budget), ...scopeFilters],
+        },
+      })
+      continue
     }
-  })
+    if (!OPS.has(op)) throw new AppError('ValidationError', `Unknown filter operator ${op}`)
+    mapped.push({
+      column: requireSourceColumn(bind, field, 'filter'),
+      op: op as Exclude<SourceFilter['op'], 'related'>,
+      value,
+    })
+  }
+  return mapped
 }
 
 // EDS-4: a bound Table has no owner column, so owner-scoped permissions
@@ -306,7 +345,7 @@ export async function boundGetList(meta: TableMeta, args: BoundListArgs, user: s
     : (sourceColumnFor(bind, orderField) ?? bind.pk)
 
   const spec: ListSpec = {
-    filters: [...mapFilters(bind, args.filters ?? []), ...scopeFilters],
+    filters: [...await mapFilters(meta, bind, args.filters ?? [], user), ...scopeFilters],
     columns: selectCols,
     order: { column: orderColumn, dir: orderDir === 'desc' ? 'desc' : 'asc' },
     limit: Math.min(Math.max(args.limit_page_length ?? 20, 1), 500),
@@ -334,7 +373,7 @@ export async function boundCountDocs(
   // caller-facing binding is narrowed to their read tiers.
   const scopeFilters = await boundScopeFilters(meta, user, ctx.bind)
   const bind = narrowToTiers(ctx.bind, meta, await permittedTiers(user, meta.name, 'read'))
-  return driver.count(bind, [...mapFilters(bind, filters), ...scopeFilters])
+  return driver.count(bind, [...await mapFilters(meta, bind, filters, user), ...scopeFilters])
 }
 
 export async function boundGroupCount(
@@ -354,7 +393,7 @@ export async function boundGroupCount(
   return driver.groupCount(
     bind,
     requireSourceColumn(bind, field, 'group_by'),
-    [...mapFilters(bind, filters), ...scopeFilters],
+    [...await mapFilters(meta, bind, filters, user), ...scopeFilters],
   )
 }
 

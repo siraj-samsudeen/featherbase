@@ -5,7 +5,9 @@
 // included) and Data Scope apply, exactly as a list read does.
 import { sql } from './db'
 import { AppError } from './errors'
-import { scopedWhere } from './query'
+import { hideRetired, scopedWhere } from './query'
+import { getMeta } from './meta'
+import { assertPermission, getRoles } from './permissions'
 
 const MAX_NAMES = 500
 const UNNAMED = 'Unnamed person'
@@ -13,8 +15,16 @@ const UNNAMED = 'Unnamed person'
 /** A person's display name: full name, else @username — never an address
  *  (an address is personal data the name surfaces travel to), else
  *  "Unnamed person". */
-function displayName(r: Record<string, unknown>): string {
+export function displayName(r: Record<string, unknown>): string {
   return String(r.full_name ?? '').trim() || (r.username ? `@${String(r.username)}` : UNNAMED)
+}
+
+/** #912: the caller's own name, which their session already shows them
+ *  (whoami), so no Person read permission is involved. */
+export async function ownDisplayName(user: string): Promise<string> {
+  const [person] = await sql`select * from person where row_id = ${user}`
+  const [account] = await sql`select label from service_account where row_id = ${user}`
+  return person ? displayName(person) : String(account?.label ?? UNNAMED)
 }
 
 /** Display names for principal ids, as `viewer` may see them. A person the
@@ -44,6 +54,22 @@ export async function principalNames(ids: unknown, viewer: string): Promise<Reco
   for (const r of await sql`select row_id, label from service_account where row_id in ${sql(wanted)}`)
     out[String(r.row_id)] = String(r.label)
   return out
+}
+
+/** #963: which of these ids are enabled people, read as the viewer: never a
+ *  built-in or merged-away account, and a service account is not a Person. */
+export async function enabledPeople(ids: string[], viewer: string): Promise<string[]> {
+  const wanted = [...new Set(ids)].slice(0, MAX_NAMES)
+  if (!wanted.length) return []
+  let scoped
+  try {
+    scoped = await scopedWhere('Person', viewer, [['row_id', 'in', wanted], ['enabled', '=', true], ['built_in', '=', false]])
+  } catch (err) {
+    if (!(err instanceof AppError && err.type === 'PermissionError')) throw err
+    return []
+  }
+  const rows = await sql`select p.row_id from ${sql(scoped.table)} p where ${scoped.where} and p.replaced_by is null order by p.row_id`
+  return rows.map((row) => String(row.row_id))
 }
 
 /** The person an email address belongs to, read as the viewer (like the
@@ -81,7 +107,9 @@ interface PickedPerson {
  *  when there is no username. Reads Person as the viewer (scopedWhere), so a
  *  person found is a person they may read. */
 export async function pickPeople(q: string, viewer: string, limit = 10): Promise<PickedPerson[]> {
-  const { table, where, cols } = await scopedWhere('Person', viewer, [['built_in', '=', false]])
+  // #859: a retired person is not offered either (names of people already
+  // chosen resolve through the names lookup, which is unaffected).
+  const { table, where, cols } = await scopedWhere('Person', viewer, hideRetired(await getMeta('Person'), [['built_in', '=', false]]))
   // Only the columns this viewer may read are shown or searched.
   const col = (c: string) => (cols.has(c) ? sql`p.${sql(c)}` : sql`null::text`)
   const like = `%${q.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%`
@@ -103,4 +131,20 @@ export async function pickPeople(q: string, viewer: string, limit = 10): Promise
     const detail = r.username ? `@${String(r.username)}` : (r.email as string | null) || (r.code as string | null) || ''
     return { row_id: String(r.row_id), label: [name, detail].filter(Boolean).join(' · ') || '(no name)' }
   })
+}
+
+/** A protected workspace exposes only its admitted people's display names.
+ * This never grants access to Person records or their contact information. */
+export async function tableMembers(table: string, viewer: string) {
+  const meta = await getMeta(table)
+  if (!meta.access_policy) throw new AppError('PermissionError', 'This Table has no member directory')
+  await assertPermission(viewer, table, 'read')
+  const people = await sql`select row_id, full_name, username from person where enabled and replaced_by is null`
+  const members: { row_id: string; full_name: string }[] = []
+  for (const person of people) {
+    const roles = await getRoles(String(person.row_id))
+    if (meta.access_policy.roles.some(role => roles.includes(role)))
+      members.push({ row_id: String(person.row_id), full_name: displayName(person) })
+  }
+  return members.sort((a, b) => a.full_name.localeCompare(b.full_name) || a.row_id.localeCompare(b.row_id))
 }

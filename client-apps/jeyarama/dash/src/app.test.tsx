@@ -16,7 +16,7 @@ beforeAll(() => {
   const checkout = resolve(import.meta.dirname, '../../../..')
   const require = createRequire(resolve(checkout, 'apps/web/package.json'))
   const { JSDOM } = require('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Record<string, unknown> & { close(): void } } }
-  const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'http://localhost/feather_dash/?store=9901' })
+  const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'http://localhost/dash/?store=9901' })
   const added: string[] = []
   for (const key of Object.getOwnPropertyNames(dom.window)) {
     if (key in globalThis) continue
@@ -54,14 +54,14 @@ describe('choosing another store on the rendered page', () => {
   it("never draws the previous store's figures under the new store, even for an answer that lands before the new store opens", async () => {
     const { act } = await import('react')
     const { createRoot } = await import('react-dom/client')
-    const { FeatherDash } = await import('./app')
+    const { Dash } = await import('./app')
     const container = document.getElementById('root')!
     const drawn: string[] = []
     const observer = new MutationObserver(records => {
       for (const r of records) for (const node of r.addedNodes) drawn.push(node.textContent ?? '')
     })
     observer.observe(container, { childList: true, subtree: true, characterData: true })
-    await act(async () => { createRoot(container).render(<FeatherDash />) })
+    await act(async () => { createRoot(container).render(<Dash />) })
     await act(async () => { await settle() })
     const old = calls.filter(c => c.store === '9901')
     expect(old.map(c => c.name).sort()).toEqual(['embed_session', 'report'])
@@ -83,13 +83,13 @@ describe('choosing another store on the rendered page', () => {
   async function openOn9901({ answer = true, embed = { not_set_up: true } as Record<string, unknown> } = {}) {
     const { act } = await import('react')
     const { createRoot } = await import('react-dom/client')
-    const { FeatherDash } = await import('./app')
+    const { Dash } = await import('./app')
     history.replaceState(null, '', '?store=9901')
     calls.length = 0
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
-    await act(async () => { root.render(<FeatherDash />) })
+    await act(async () => { root.render(<Dash />) })
     await act(async () => { await settle() })
     const answerAll = async () => {
       for (const c of calls.filter(c => c.store === '9901'))
@@ -107,7 +107,7 @@ describe('choosing another store on the rendered page', () => {
       window.dispatchEvent(new (DomEvent().CustomEvent)('featherbase:bar-change', { detail: { key: 'store', value: '9901' } }))
       await settle()
     })
-    expect(container.querySelector('[data-testid=feather-dash]')?.getAttribute('data-view')).toBe('quick')
+    expect(container.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('quick')
     await unmount()
   })
 
@@ -118,7 +118,7 @@ describe('choosing another store on the rendered page', () => {
       window.dispatchEvent(new (DomEvent().PopStateEvent)('popstate'))
       await settle()
     })
-    expect(container.querySelector('[data-testid=feather-dash]')?.getAttribute('data-view')).toBe('quick')
+    expect(container.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('quick')
     await unmount()
   })
 
@@ -129,7 +129,7 @@ describe('choosing another store on the rendered page', () => {
       await settle()
     })
     await answerAll()
-    expect(container.querySelector('[data-testid=feather-dash]')?.getAttribute('data-view')).toBe('quick')
+    expect(container.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('quick')
     await unmount()
   })
 
@@ -141,7 +141,7 @@ describe('choosing another store on the rendered page', () => {
       await settle()
     })
     await answerAll()
-    expect(container.querySelector('[data-testid=feather-dash]')?.getAttribute('data-view')).toBe('quick')
+    expect(container.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('quick')
     await unmount()
   })
 
@@ -159,6 +159,47 @@ describe('choosing another store on the rendered page', () => {
       .toBe('This store is too large for the interactive report yet. Showing the cached table.')
     await unmount()
   })
+
+  // #950 checklist 7: the top of the page goes to the figures; the cached table says what it is in one line.
+  it('says why the cached table shows and how fresh it is in one line, under no title of its own', async () => {
+    const { container, unmount } = await openOn9901({ embed: { too_large: true } })
+    const quick = container.querySelector('[data-testid=quick-view]')!
+    expect(quick.querySelector('h1, h2, h3')).toBeNull()
+    const label = quick.querySelector('[data-testid=quick-label]')!
+    expect(label.parentElement).toBe(quick.querySelector('[data-testid=data-line]')!.parentElement)
+    expect(label.parentElement?.tagName).toBe('P')
+    await unmount()
+  })
+
+  // #750: the bar's month picker.
+  it('opens last month when the bar chooses it, and never draws this month under it', async () => {
+    const { act, container, unmount } = await openOn9901()
+    calls.length = 0
+    await act(async () => {
+      history.pushState(null, '', '?store=9901&month=last')
+      window.dispatchEvent(new (DomEvent().CustomEvent)('featherbase:bar-change', { detail: { key: 'month', value: 'last' } }))
+      await settle()
+    })
+    // (The first test's page is still mounted and hears the bar too.)
+    expect([[...new Set(calls.map(c => `${c.name} ${c.payload.month}`))].sort(), container.textContent?.includes('Lakeside silk')])
+      .toEqual([['embed_session last', 'report last'], false])
+    await unmount()
+  })
+
+  it('opens the month in the address', async () => {
+    history.replaceState(null, '', '?store=9901&month=last')
+    const { act } = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { Dash } = await import('./app')
+    calls.length = 0
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => { root.render(<Dash />) })
+    await act(async () => { await settle() })
+    expect(calls.filter(c => c.name !== 'stores').map(c => c.payload.month)).toEqual(['last', 'last'])
+    await act(async () => root.unmount())
+  })
 })
 
 // #4486: the header says why the reader sees the store on show, and follows the bar's store picker.
@@ -169,13 +210,13 @@ describe("the page's header", () => {
   it('says why the reader sees the store chosen, under the period and above the measure, and changes with the store', async () => {
     const { act } = await import('react')
     const { createRoot } = await import('react-dom/client')
-    const { FeatherDash } = await import('./app')
+    const { Dash } = await import('./app')
     history.replaceState(null, '', '?store=9901')
     calls.length = 0
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
-    await act(async () => { root.render(<FeatherDash />) })
+    await act(async () => { root.render(<Dash />) })
     await act(async () => { await settle() })
     const answer = async (store: string, heading: unknown) => {
       for (const c of calls.filter(c => c.store === store))
@@ -202,22 +243,61 @@ describe("the page's header", () => {
     await act(async () => root.unmount())
   })
 
-  it('draws the header above the Dive too', async () => {
+  // sales-target-report, "Many Sections are counted, not listed": the full list is a tap or key press away.
+  const openWithSections = async (sections: string[]) => {
     const { act } = await import('react')
     const { createRoot } = await import('react-dom/client')
-    const { FeatherDash } = await import('./app')
+    const { Dash } = await import('./app')
     history.replaceState(null, '', '?store=9901')
     calls.length = 0
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
-    await act(async () => { root.render(<FeatherDash />) })
+    await act(async () => { root.render(<Dash />) })
+    await act(async () => { await settle() })
+    for (const c of calls.filter(c => c.store === '9901'))
+      c.answer.resolve(c.name === 'report' ? withHeading('9901', { name: 'LKS', sections, reasons: [] }) : { not_set_up: true })
+    await act(async () => { await settle() })
+    return { act, container, unmount: () => act(async () => root.unmount()) }
+  }
+
+  it('lists every section when the reader presses the count, and hides them again', async () => {
+    const { act, container, unmount } = await openWithSections(['Alpha', 'Beta', 'Gamma', 'Delta'])
+    expect(text(container, 'heading-title')).toBe('LKS · 4 sections')
+    expect(container.querySelector('[data-testid=sections-list]')).toBeNull()
+    const toggle = container.querySelector<HTMLButtonElement>('[data-testid=heading-title] button')!
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    await act(async () => { toggle.click() })
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(text(container, 'sections-list')).toBe('Alpha · Beta · Gamma · Delta')
+    await act(async () => { toggle.click() })
+    expect(container.querySelector('[data-testid=sections-list]')).toBeNull()
+    await unmount()
+  })
+
+  it('offers nothing to expand when the title already names the sections', async () => {
+    const { container, unmount } = await openWithSections(['Alpha', 'Beta', 'Gamma'])
+    expect(text(container, 'heading-title')).toBe('LKS · Alpha · Beta · Gamma')
+    expect(container.querySelector('[data-testid=heading-title] button')).toBeNull()
+    await unmount()
+  })
+
+  it('draws the header above the Dive too', async () => {
+    const { act } = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { Dash } = await import('./app')
+    history.replaceState(null, '', '?store=9901')
+    calls.length = 0
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => { root.render(<Dash />) })
     await act(async () => { await settle() })
     for (const c of calls.filter(c => c.store === '9901'))
       c.answer.resolve(c.name === 'report' ? withHeading('9901', { name: 'LKS', sections: [], reasons: [{ basis: 'store_manager', sections: [] }] })
         : { frame: 'https://embed-motherduck.com/sandbox/#session=made-up' })
     await act(async () => { await settle() })
-    expect(container.querySelector('[data-testid=feather-dash]')?.getAttribute('data-view')).toBe('dive')
+    expect(container.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('dive')
     expect(text(container, 'why-line')).toBe('You see LKS because you are its Store Manager.')
     await act(async () => root.unmount())
   })
@@ -225,13 +305,13 @@ describe("the page's header", () => {
   it('leaves the sentence out, not an empty line, when no reason is known', async () => {
     const { act } = await import('react')
     const { createRoot } = await import('react-dom/client')
-    const { FeatherDash } = await import('./app')
+    const { Dash } = await import('./app')
     history.replaceState(null, '', '?store=9901')
     calls.length = 0
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
-    await act(async () => { root.render(<FeatherDash />) })
+    await act(async () => { root.render(<Dash />) })
     await act(async () => { await settle() })
     for (const c of calls.filter(c => c.store === '9901'))
       c.answer.resolve(c.name === 'report' ? withHeading('9901', { name: 'LKS', sections: ['Alpha'], reasons: [] }) : { not_set_up: true })

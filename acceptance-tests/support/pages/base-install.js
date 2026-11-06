@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const { expect } = require('playwright/test');
 const { Api, SYSTEM_MANAGER, signedInState } = require('../api');
 const { resetAcceptance, acceptanceSql, isolatedEnvironment, REPO_ROOT } = require('../stack');
 
@@ -52,11 +53,11 @@ function sourceCheckout(mode) {
 }
 
 class BaseInstall {
-  constructor(world) { this.world = world; this.env = isolatedEnvironment({ FEATHERBASE_ENV: 'development' }); }
+  constructor(world) { this.world = world; this.env = isolatedEnvironment({ FEATHERBASE_ENV: 'development', MOTHERDUCK_TOKEN: '' }); }
 
   async fresh({ hosted = false, managed = false, source } = {}) {
     if (source) this.scratch = sourceCheckout(source);
-    this.env = isolatedEnvironment({ FEATHERBASE_ENV: hosted ? 'test' : 'development', FEATHERBASE_INSTANCE: managed ? 'acceptance/local' : '' });
+    this.env = isolatedEnvironment({ FEATHERBASE_ENV: hosted ? 'test' : 'development', FEATHERBASE_INSTANCE: managed ? 'acceptance/local' : '', MOTHERDUCK_TOKEN: '' });
     await Api.disposeAll();
     await resetAcceptance(this.env, this.scratch ?? REPO_ROOT);
     this.api = await Api.asSystemManager();
@@ -93,7 +94,7 @@ class BaseInstall {
   async configurationReachable() {
     await this.details().getByRole('link', { name: 'Configure role mappings', exact: true }).waitFor();
     await this.details().getByRole('link', { name: 'Configure settings', exact: true }).click();
-    await this.page.waitForURL('**/App%20Setting?*');
+    await this.page.waitForURL(`**${ADMIN}/table/app-setting?*`);
   }
   async preparationSucceeded() {
     await this.page.getByRole('status').filter({ hasText: 'Preparing the package' }).waitFor();
@@ -133,6 +134,16 @@ class BaseInstall {
   async install(name = 'tasker') {
     const app = await this.app(name);
     if (!app.installed) await this.call('POST', app.preparation.state === 'ready' ? '/api/install_app' : '/api/apps/prepare-install', { name }, [201]);
+    // The scenario's working actor is explicitly admitted after installation;
+    // installing an app itself grants nobody access to private work.
+    if (name === 'tasker') {
+      const person = await this.api.row('Person', SYSTEM_MANAGER.user);
+      if (!person.roles.some(entry => entry.role === 'Tasker Member'))
+        await this.api.saveRow('Person', {
+          row_id: person.row_id, updated_at: person.updated_at,
+          roles: [...person.roles, { role: 'Tasker Member' }],
+        });
+    }
   }
   async manager() {
     if (!this.page) {
@@ -151,7 +162,7 @@ class BaseInstall {
   }
   async inspect(name = 'tasker') {
     await this.open(APPS);
-    await this.page.getByRole('navigation', { name: 'Available apps' }).getByRole('button', { name: name === 'tasker' ? /Tasker/ : /Feather Dash/ }).click();
+    await this.page.getByRole('navigation', { name: 'Available apps' }).getByRole('button', { name: name === 'tasker' ? /Tasker/ : /Dash/ }).click();
   }
   details(name = 'Tasker') { return this.page.getByLabel(`${name} details`); }
   async detailsContain(text, name) {
@@ -170,16 +181,16 @@ class BaseInstall {
     assert.equal((await this.app()).installed, true);
   }
   async preparationsShown() {
-    for (const name of ['Tasker', 'Feather Dash']) {
+    for (const name of ['Tasker', 'Dash']) {
       const button = this.page.getByRole('navigation', { name: 'Available apps' }).getByRole('button', { name: new RegExp(name) });
       assert.match(await button.innerText(), /Needs preparation/);
     }
-    for (const app of await this.catalog()) if (['tasker', 'feather_dash'].includes(app.name)) assert.equal(app.preparation.state, 'needed');
+    for (const app of await this.catalog()) if (['tasker', 'dash'].includes(app.name)) assert.equal(app.preparation.state, 'needed');
   }
   async noInstalledApps() {
     const result = await this.call('GET', '/api/apps');
     assert.deepEqual(result.installed, []);
-    const tables = await acceptanceSql("select table_name from information_schema.tables where table_schema = 'featherbase' and (table_name like 'tasker.%' or table_name like 'feather_dash.%')");
+    const tables = await acceptanceSql("select table_name from information_schema.tables where table_schema = 'featherbase' and (table_name like 'tasker.%' or table_name like 'dash.%')");
     assert.equal(tables.length, 0);
   }
   async noFixtures() {
@@ -313,49 +324,49 @@ class BaseInstall {
   }
   async platformName() {
     const options = this.page.getByRole('combobox', { name: 'Switch application' }).locator('option');
-    assert.ok((await options.allTextContents()).includes('Featherbase'));
+    await expect.poll(() => options.allTextContents()).toContain('Featherbase');
   }
   async taskerName() {
     const options = this.page.getByRole('combobox', { name: 'Switch application' }).locator('option');
-    assert.ok((await options.allTextContents()).includes('Tasker'));
+    await expect.poll(() => options.allTextContents()).toContain('Tasker');
   }
   async configureDash() {
-    await this.inspect('feather_dash');
-    await this.details('Feather Dash').getByRole('link', { name: 'Configure settings', exact: true }).click();
+    await this.inspect('dash');
+    await this.details('Dash').getByRole('link', { name: 'Configure settings', exact: true }).click();
   }
   async manageDashIdentifier() {
-    await this.applySettings({ 'App Setting': [{ row_id: 'feather_dash.dive_id', value: 'acceptance-report' }] });
-    await this.call('POST', '/api/save_row', { table: 'App Setting', row: { row_id: 'feather_dash.dive_version', value: 'initial-version' } }, [201]);
+    await this.applySettings({ 'App Setting': [{ row_id: 'dash.dive_id', value: 'acceptance-report' }] });
+    await this.call('POST', '/api/save_row', { table: 'App Setting', row: { row_id: 'dash.embed_service_account', value: 'initial-account' } }, [201]);
   }
-  async editableVersion() {
-    await this.open(`${ADMIN}/App%20Setting/feather_dash.dive_version`);
+  async editableAccount() {
+    await this.open(`${ADMIN}/table/app-setting/row/dash.embed_service_account`);
     const input = this.page.getByLabel('Value', { exact: true });
     assert.equal(await input.isEnabled(), true);
-    await input.fill('acceptance-version');
+    await input.fill('acceptance-account');
     const saved = this.page.waitForResponse(response => response.url().endsWith('/api/save_row') && response.request().method() === 'POST');
     await this.page.getByRole('button', { name: 'Save', exact: true }).click();
     const response = await saved;
     assert.ok(response.ok(), await response.text());
-    const row = await this.api.row('App Setting', 'feather_dash.dive_version');
-    assert.equal(row.value, 'acceptance-version');
+    const row = await this.api.row('App Setting', 'dash.embed_service_account');
+    assert.equal(row.value, 'acceptance-account');
   }
   async lockedIdentifier() {
-    await this.open(`${ADMIN}/App%20Setting/feather_dash.dive_id`);
+    await this.open(`${ADMIN}/table/app-setting/row/dash.dive_id`);
     const input = this.page.getByLabel('Value', { exact: true });
     await input.waitFor();
     assert.ok(await input.isDisabled() || await input.getAttribute('readonly') !== null);
     await this.textContains('settings file');
   }
   async readOnlyDeclaration() {
-    await this.inspect('feather_dash');
-    await this.detailsContain('packaged declarations are read-only', 'Feather Dash');
-    assert.equal(await this.details('Feather Dash').locator('input,textarea').count(), 0);
+    await this.inspect('dash');
+    await this.detailsContain('packaged declarations are read-only', 'Dash');
+    assert.equal(await this.details('Dash').locator('input,textarea').count(), 0);
   }
   async missingSecret() {
-    const app = await this.app('feather_dash');
+    const app = await this.app('dash');
     assert.deepEqual(app.secrets.find(secret => secret.name === 'MOTHERDUCK_TOKEN'), { name: 'MOTHERDUCK_TOKEN', optional: false, present: false });
-    await this.detailsContain('MOTHERDUCK_TOKEN', 'Feather Dash');
-    await this.detailsContain('Missing', 'Feather Dash');
+    await this.detailsContain('MOTHERDUCK_TOKEN', 'Dash');
+    await this.detailsContain('Missing', 'Dash');
   }
   async secretsAbsent() {
     const json = JSON.stringify(await this.catalog());
@@ -365,7 +376,12 @@ class BaseInstall {
   async command(args, input) {
     return new Promise((resolve, reject) => {
       const child = spawn(process.execPath, ['tools/featherbase.mjs', ...args], {
-        cwd: REPO_ROOT, env: { ...this.env, API_PORT: '8031', WEB_PORT: '5204', PORT: '8031' },
+        cwd: REPO_ROOT, env: {
+          ...this.env,
+          API_PORT: String(Number(this.env.API_PORT) + 1),
+          WEB_PORT: String(Number(this.env.WEB_PORT) + 1),
+          PORT: String(Number(this.env.API_PORT) + 1),
+        },
         stdio: ['pipe', 'pipe', 'pipe'], timeout: 180_000,
       });
       let stdout = '', stderr = '';

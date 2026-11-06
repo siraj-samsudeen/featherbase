@@ -102,6 +102,33 @@ describe('the conflict list', () => {
       .toEqual(['P-103 holds jobs in 9901 and 9902 on overlapping dates'])
   })
 
+  it('names a person whose assignments take more than all of their time, in each store they work in', () => {
+    const rows = [{ ...job('psn_103', 'Team Leader', { section: 's-sarees' }), reports_to: 'psn_107', assignment_type: 'Primary', percentage: 100 },
+      { ...job('psn_103', 'Staff', { section: 's-hill-acc' }, HILLVIEW), assignment_type: 'Secondary', percentage: 30 }]
+    const data = clean([], c => { c.jobs = [...c.jobs.filter(r => r.person !== 'psn_103'), ...rows] })
+    expect(messages(data)).toContain('P-103 has Primary and Secondary assignments taking 130% of their time on 15-Oct-2026: at most 100%')
+    expect(conflictsOf(HILLVIEW, data, ON, name).map(c => c.kind)).toContain('time_over_100_percent')
+  })
+
+  it('lists no time conflict for a Primary home and a temporary deployment', () => {
+    const rows = [{ ...job('psn_103', 'Team Leader', { section: 's-sarees' }), reports_to: 'psn_107', assignment_type: 'Primary', percentage: 100 },
+      { ...job('psn_103', 'Staff', { section: 's-hill-acc' }, HILLVIEW), assignment_type: 'Temporary deployment', percentage: 100 }]
+    const data = clean([], c => { c.jobs = [...c.jobs.filter(r => r.person !== 'psn_103'), ...rows] })
+    expect(conflictsOf(LAKESIDE, data, ON, name)).toEqual([])
+    expect(conflictsOf(HILLVIEW, data, ON, name).filter(c => c.rows.some(r => r.includes('psn_103')))).toEqual([])
+  })
+
+  it('lists no conflict for a Primary and Secondary split across two stores', () => {
+    const rows = [{ ...job('psn_103', 'Team Leader', { section: 's-sarees' }), reports_to: 'psn_107', assignment_type: 'Primary', percentage: 70 },
+      { ...job('psn_103', 'Staff', { section: 's-hill-acc' }, HILLVIEW), assignment_type: 'Secondary', percentage: 30 }]
+    const data = clean([], c => { c.jobs = [...c.jobs.filter(r => r.person !== 'psn_103'), ...rows] })
+    expect(conflictsOf(LAKESIDE, data, ON, name)).toEqual([])
+  })
+
+  it('does not list a Director or Chief Operating Officer as an unknown job', () => {
+    expect(kinds(clean([job('psn_130', 'Director'), job('psn_131', 'Chief Operating Officer')]))).not.toContain('unknown_job')
+  })
+
   it('lets a Cluster Manager hold several stores', () => {
     expect(kinds(clean([job('psn_120', 'Cluster Manager'), job('psn_120', 'Cluster Manager', {}, HILLVIEW)]))).toEqual([])
   })

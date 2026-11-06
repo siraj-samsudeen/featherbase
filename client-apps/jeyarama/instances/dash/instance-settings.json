@@ -1,7 +1,7 @@
 {
   "settings": {
     "System Settings": {
-      "app_name": "Feather Dash",
+      "app_name": "Dash",
       "time_zone": "Asia/Kolkata",
       "privacy_notice": {
         "file": "privacy-notice.md"
@@ -51,10 +51,12 @@
     "Data Source": [
       {
         "row_id": "motherduck",
-        "engine": "duckdb",
-        "url_env": "MOTHERDUCK_URL",
+        "engine": "motherduck",
         "default_schema": "gold.main",
-        "access": "read_only"
+        "databases": [
+          { "name": "gold" },
+          { "name": "marts" }
+        ]
       }
     ]
   },
@@ -80,24 +82,19 @@
         "Sign In Method": [
           {
             "row_id": "google",
-            "client_id": "526042382398-1bqqe2ejsbsi3elihqrkv9k1diorc93l.apps.googleusercontent.com"
+            "client_id": "526042382398-1bqqe2ejsbsi3elihqrkv9k1diorc93l.apps.googleusercontent.com",
+            "self_link": true
           }
         ],
         "App Setting": [
           {
-            "row_id": "feather_dash.dive_id",
+            "row_id": "dash.dive_id",
             "value": {
               "env": "DIVE_ID"
             }
           },
           {
-            "row_id": "feather_dash.dive_version",
-            "value": {
-              "env": "DIVE_VERSION"
-            }
-          },
-          {
-            "row_id": "feather_dash.embed_service_account",
+            "row_id": "dash.embed_service_account",
             "value": {
               "env": "SERVICE_ACCOUNT"
             }
@@ -115,19 +112,13 @@
         ],
         "App Setting": [
           {
-            "row_id": "feather_dash.dive_id",
+            "row_id": "dash.dive_id",
             "value": {
               "env": "DIVE_ID"
             }
           },
           {
-            "row_id": "feather_dash.dive_version",
-            "value": {
-              "env": "DIVE_VERSION"
-            }
-          },
-          {
-            "row_id": "feather_dash.embed_service_account",
+            "row_id": "dash.embed_service_account",
             "value": {
               "env": "SERVICE_ACCOUNT"
             }

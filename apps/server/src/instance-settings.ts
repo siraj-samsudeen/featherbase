@@ -27,7 +27,8 @@ export { INSTANCE_SETTINGS_ACTOR }
  *  file can never reach people, roles or data. `settings` is a Settings Table
  *  (one object); `rows` is a Table whose rows are named by `row_id`. */
 const SCOPE = [
-  { table: 'System Settings', shape: 'settings', fields: 'all', fileFields: ['privacy_notice'] },
+  // #923: never the roles everyone who signs in holds: a file reaches no roles.
+  { table: 'System Settings', shape: 'settings', fields: 'all', exclude: ['everyone_roles'], fileFields: ['privacy_notice'] },
   // Every field of a sign-in method is configuration; its secrets (the Google
   // client secret) are deployment variables, never columns.
   { table: 'Sign In Method', shape: 'rows', fields: 'all', createRows: true },
@@ -42,8 +43,9 @@ const SCOPE = [
   // #703: where an instance's outside data lives, so it comes back after a
   // wipe. A row names the variable holding the connection (url_env; the save
   // refuses a connection string), never the connection itself. The connection
-  // status columns are the server's own, so they stay out.
-  { table: 'Data Source', shape: 'rows', fields: ['engine', 'url_env', 'default_schema', 'access', 'table_allowlist'], createRows: true },
+  // status columns are the server's own, so they stay out. #969: a MotherDuck
+  // row names its databases instead; its token is the instance's one token.
+  { table: 'Data Source', shape: 'rows', fields: ['engine', 'url_env', 'default_schema', 'access', 'table_allowlist', 'databases'], createRows: true },
 ] as const
 
 /** Column types that hold no value, a secret, or a file in one instance's own
@@ -69,7 +71,9 @@ export async function managedScope(): Promise<ScopeEntry[]> {
     out.push({
       table: entry.table,
       shape: entry.shape,
-      fields: entry.fields === 'all' ? valued : valued.filter((f) => (entry.fields as readonly string[]).includes(f)),
+      fields: entry.fields === 'all'
+        ? valued.filter((f) => !('exclude' in entry && (entry.exclude as readonly string[]).includes(f)))
+        : valued.filter((f) => (entry.fields as readonly string[]).includes(f)),
       fileFields: [...('fileFields' in entry ? entry.fileFields : [])],
       createRows: 'createRows' in entry ? entry.createRows : false,
     })

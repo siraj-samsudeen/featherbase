@@ -13,6 +13,8 @@ test('#131: service account + token lifecycle through the Admin screen', async (
   await session.visit('/admin/access-tokens').assertHas('[data-testid="access-tokens"]')
 
   await session.step('create a service account with the System Manager role', async ({ page }) => {
+    await page.getByRole('tab', { name: 'Service accounts' }).click()
+    await page.getByTestId('sa-create-open').click()
     await page.getByTestId('sa-name').fill(SVC)
     await page.getByTestId('sa-role-System Manager').check()
     await page.getByTestId('sa-create').click()
@@ -39,6 +41,9 @@ test('#131: service account + token lifecycle through the Admin screen', async (
       await expect(page.getByTestId('token-owner')).toHaveValue(id)
       await page.getByTestId('token-label').fill('e2e spec token')
       await page.getByTestId('issue-confirm').click()
+      // #852: a token that never expires is issued on a second, deliberate press.
+      await expect(page.getByTestId('token-no-expiry')).toBeVisible()
+      await page.getByTestId('issue-confirm').click()
       await expect(page.getByTestId('secret-dialog')).toBeVisible()
       secret = (await page.getByTestId('secret-value').textContent())!.trim()
       expect(secret).toMatch(/^fbt_/)
@@ -54,6 +59,7 @@ test('#131: service account + token lifecycle through the Admin screen', async (
   expect(((await who.json()) as { row_id: string }).row_id).toBe(id)
 
   await session.step('the token row is listed as active with its label; revoke it', async ({ page }) => {
+    await page.getByRole('tab', { name: 'Tokens', exact: true }).click()
     const row = page.locator('[data-testid^="token-tok_"]', { hasText: 'e2e spec token' }).first()
     await expect(row).toContainText('active')
     await row.getByRole('button', { name: 'Revoke' }).click()

@@ -1,94 +1,107 @@
-// #429: people a sign-in rule let in hold no role and see only the no-access
-// page. System Managers list them here and get one email per arrival.
+// #429, #955: who is waiting for access, per app. A person waits for an app
+// only after opening it without access: an installed app's pages, Feather
+// Dash, or Featherbase itself. Opening it records one Access Request row;
+// System Managers list them, get one email per person and app, and one
+// reminder a day later. A request goes once the person can open that app,
+// however they came to.
+import { INTERIM_APPS } from 'shared'
 import { sql, withTransaction } from './db'
 import { logActivity } from './audit'
 import { queueEmail, type MailMessage } from './email'
 import { recordUndeliveredNotice, systemManagerEmails } from './system-notice'
 import { config } from './config'
 import { adminLinkOrigin } from './instance-addresses'
-import type { SignInMethod } from './identities'
+import { canOpenApp, canUseAdmin } from './landing'
+import { getRoles } from './permissions'
+import { servedApp } from './runtime-packages'
+import { isInstalled } from './apps'
+import { VIEWER_ROLE } from './sales-target'
 
-export const ALERT_SUBJECT = 'New sign-in waiting for access'
+export const ALERT_SUBJECT = 'Someone is waiting for access'
+export const REMINDER_SUBJECT = 'Still waiting for access'
 /** Alerts across the whole instance per day; past it, one line in the log. */
 export const DAILY_ALERT_CAP = 20
+/** How long a request waits before System Managers are reminded, once. */
+export const REMINDER_AFTER_HOURS = 24
 /** The alert row's actor: the system, not a person (the person is the target). */
 const ALERT_ACTOR = 'system'
-const alertOperation = (person: string) => `access_alert for ${person}`
 /** The day the cap counts: India's, whatever the database session's zone. */
 const ALERT_DAY_ZONE = 'Asia/Kolkata'
 const WAITING_PATH = '/featherbase/admin/waiting-for-access'
 
-// A role of their own: `All` and `Guest` are implicit, so they do not count.
-const waitingWhere = () => sql`
-  p.enabled and not coalesce(p.built_in, false) and p.replaced_by is null
-  and not exists (
-    select 1 from has_role r
-    where r.parent = p.row_id and r.parenttype = 'Person' and r.role not in ('All', 'Guest'))`
+/** Featherbase itself: the Admin, or the report a viewer opens there. */
+export const FEATHERBASE_APP = { name: 'featherbase', title: 'Featherbase' } as const
 
-interface WaitingPerson {
-  person: string
-  full_name: string | null
-  email_domain: string | null
-  method: string | null
-  method_label: string | null
-  arrived_by: string | null
-  created_at: string
-  first_sign_in: string | null
-  last_sign_in: string | null
+interface AccessTarget {
+  name: string
+  title: string
 }
 
-/** A name that is still an address shows as its domain only (#429). */
-function shownName(name: string | null | undefined): string | null {
-  if (!name) return null
-  return name.includes('@') ? name.split('@').pop() || null : name
+/** The app `name` names, as a person can ask for it: Featherbase, Feather
+ *  Dash until it is installed, or an installed app whose pages are served
+ *  here. Null for anything else, which nobody can ask for. */
+export async function accessTarget(name: string): Promise<AccessTarget | null> {
+  if (name === FEATHERBASE_APP.name) return FEATHERBASE_APP
+  const interim = Object.hasOwn(INTERIM_APPS, name) ? INTERIM_APPS[name] : undefined
+  if (interim && !(await isInstalled(name))) return { name, title: interim.title }
+  return servedApp(name)
 }
 
-/** The dev mock Google provider serves whenever Google has no client id. */
-export function isMockProvider(method: SignInMethod): boolean {
-  return method.kind === 'google' && !String(method.client_id ?? '').trim()
+/** Can `person` open `app` now: the same rule as the page they opened. */
+async function canOpen(person: string, app: string): Promise<boolean> {
+  if (app !== FEATHERBASE_APP.name) return canOpenApp(person, app)
+  return (await canUseAdmin(person)) || (await getRoles(person)).includes(VIEWER_ROLE)
 }
 
-const iso = (v: unknown) => (v == null ? null : new Date(v as string).toISOString())
-
-/** Newest first. Only the address's domain leaves the server here. */
-export async function listWaitingForAccess(): Promise<WaitingPerson[]> {
+/** Removes every request whose person can now open its app, or who can no
+ *  longer sign in. Run before the list is counted, so the count, the list and
+ *  the reminder agree with what each person can open right now. */
+export async function settleAccessRequests(): Promise<void> {
   const rows = await sql`
-    select p.row_id, p.full_name, nullif(split_part(p.email, '@', 2), '') as email_domain, p.created_at,
-      i.method, m.label as method_label, i.linked_by, i.linked_at, i.last_used_at,
-      l.first_login, l.last_login
-    from person p
-    left join lateral (
-      -- How they arrived: the identity a rule created, else their first one.
-      select method, linked_by, linked_at, last_used_at from sign_in_identity s
-      where s.person_id = p.row_id
-      order by (s.linked_by = 'new-person') desc, s.linked_at asc limit 1
-    ) i on true
-    left join sign_in_method m on m.row_id = i.method
-    left join lateral (
-      select min(a.created_at) as first_login, max(a.created_at) as last_login
-      from activity_log a where a."user" = p.row_id and a.operation = 'login'
-    ) l on true
-    where ${waitingWhere()}
-    order by p.created_at desc, p.row_id`
-  return rows.map((r) => ({
-    person: String(r.row_id),
-    full_name: shownName(r.full_name as string | null),
-    email_domain: (r.email_domain as string | null) ?? null,
-    method: (r.method as string | null) ?? null,
-    method_label: (r.method_label as string | null) || (r.method as string | null) || null,
-    arrived_by: (r.linked_by as string | null) ?? null,
-    created_at: iso(r.created_at)!,
-    first_sign_in: iso(r.first_login),
-    last_sign_in: iso(r.last_login ?? r.last_used_at),
-  }))
+    select r.row_id, r.person, r.app_name,
+      coalesce(p.enabled and p.replaced_by is null, false) as live
+    from access_request r left join person p on p.row_id = r.person`
+  const settled: string[] = []
+  for (const row of rows)
+    if (!row.live || (await canOpen(String(row.person), String(row.app_name)))) settled.push(String(row.row_id))
+  if (settled.length) await sql`delete from access_request where row_id in ${sql(settled)}`
 }
 
 export async function countWaitingForAccess(): Promise<number> {
-  const [row] = await sql`select count(*)::int as n from person p where ${waitingWhere()}`
+  await settleAccessRequests()
+  const [row] = await sql`select count(*)::int as n from access_request`
   return Number(row.n)
 }
 
-// ------------------------------------------------------------------ alert
+export interface AccessAnswer {
+  /** `open`: they can open it after all. `waiting`: an admin has been told. */
+  state: 'open' | 'waiting'
+  title: string
+}
+
+/** `person` opened `app` without access, as far as the page knew: record
+ *  their request and, the first time, tell the System Managers. Null when
+ *  `app` names nothing a person can ask for, or `person` is a built-in
+ *  account. Never throws for mail. */
+export async function requestAccess(person: string, app: string): Promise<AccessAnswer | null> {
+  const target = await accessTarget(app)
+  if (!target) return null
+  if (await canOpen(person, target.name)) return { state: 'open', title: target.title }
+  // A built-in account (Administrator, Guest) is nobody to give a role to:
+  // it asks for nothing, and an app's address shows it as unavailable.
+  const [{ built_in: builtIn }] = await sql`select coalesce(built_in, false) as built_in from person where row_id = ${person}`
+  if (builtIn) return null
+  const made = await sql`
+    insert into access_request (row_id, person, email, app, app_name, created_by, updated_by)
+    select substr(md5(random()::text || clock_timestamp()::text), 1, 10), p.row_id, p.email, ${target.title}, ${target.name}, p.row_id, p.row_id
+    from person p where p.row_id = ${person}
+    on conflict (person, app_name) do nothing
+    returning row_id`
+  if (made.length) await alertAccessRequest(person, target)
+  return { state: 'waiting', title: target.title }
+}
+
+// ------------------------------------------------------------------ mail
 
 type Sender = (msg: MailMessage) => Promise<unknown>
 let sender: Sender = queueEmail
@@ -98,28 +111,30 @@ export function _setAlertSender(fn: Sender | null): void {
   sender = fn ?? queueEmail
 }
 
-/** One email to every enabled System Manager with an address, the first time
- *  a sign-in rule creates `person`. Never throws: a sign-in must not fail
- *  because mail did. The cap is best-effort: arrivals at the same moment can
- *  pass it by a few. An arrival past the cap is recorded as alerted and is
- *  never mailed later; the page still lists them. Returns how many System
- *  Managers were mailed, or 'no recipients' when none has an address. */
-export async function alertNewArrival(person: string, method: SignInMethod): Promise<number | 'no recipients'> {
+const pageLink = () => `${adminLinkOrigin(config.instanceAddresses, config.environment) ?? ''}${WAITING_PATH}`
+
+/** A name that is still an address shows as its domain only (#429). */
+function shownName(name: string | null | undefined): string | null {
+  if (!name) return null
+  return name.includes('@') ? name.split('@').pop() || null : name
+}
+
+/** One email to every enabled System Manager with an address. The cap is
+ *  best-effort: requests at the same moment can pass it by a few. A request
+ *  past the cap is not mailed now; the page lists it and the reminder names
+ *  it. Returns how many were mailed, or 'no recipients' when none has an
+ *  address. Never throws: the page must open whatever mail does. */
+export async function alertAccessRequest(person: string, target: AccessTarget): Promise<number | 'no recipients'> {
   let delivered: number | 'no recipients' = 0
   try {
-    // Runs after the sign-in's own transaction committed, in one of its own:
-    // the activity row, the queued emails and their jobs commit together, or
+    // The activity row, the queued emails and their jobs commit together, or
     // none of them do.
     await withTransaction(async () => {
-      const [p] = await sql`select p.full_name, p.email from person p where p.row_id = ${person} and ${waitingWhere()}`
-      if (!p) return
-      const [seen] = await sql`select 1 from activity_log where operation = ${alertOperation(person)} limit 1`
-      if (seen) return
       const [{ n }] = await sql`
         select count(*)::int as n from activity_log
         where operation like 'access\_alert for %'
           and created_at >= (date_trunc('day', now() at time zone ${ALERT_DAY_ZONE}) at time zone ${ALERT_DAY_ZONE})`
-      await logActivity(ALERT_ACTOR, alertOperation(person))
+      await logActivity(ALERT_ACTOR, `access_alert for ${person} in ${target.name}`)
       if (Number(n) >= DAILY_ALERT_CAP) {
         if (Number(n) === DAILY_ALERT_CAP)
           console.warn(JSON.stringify({ event: 'waiting_for_access_alert_cap', cap: DAILY_ALERT_CAP, note: 'further alerts today are not emailed; see the Waiting for access page' }))
@@ -131,23 +146,71 @@ export async function alertNewArrival(person: string, method: SignInMethod): Pro
         delivered = 'no recipients'
         return
       }
-      const domain = String(p.email ?? '').split('@')[1] || 'no address'
+      const [p] = await sql`select full_name, email from person where row_id = ${person}`
       const body = [
-        'Someone signed in for the first time and has no access yet.',
+        `Someone opened ${target.title} and has no access to it yet.`,
         '',
         `Name: ${shownName(p.full_name as string | null) || 'not given'}`,
-        `Email domain: ${domain}`,
-        `Signed in with: ${method.label || method.key}`,
+        `Email domain: ${String(p.email ?? '').split('@')[1] || 'no address'}`,
+        `App: ${target.title}`,
         '',
-        `Give them roles from the Waiting for access page: ${adminLinkOrigin(config.instanceAddresses, config.environment) ?? ''}${WAITING_PATH}`,
+        `Give them a role from the Waiting for access page: ${pageLink()}`,
       ].join('\n')
       for (const to of managers)
         await sender({ to, subject: ALERT_SUBJECT, body, ref_table: 'Person', reference_name: person })
       delivered = managers.length
     })
   } catch (err) {
-    console.warn(JSON.stringify({ event: 'waiting_for_access_alert_failed', person, method: method.key, error: err instanceof Error ? err.message : String(err) }))
+    console.warn(JSON.stringify({ event: 'waiting_for_access_alert_failed', person, app: target.name, error: err instanceof Error ? err.message : String(err) }))
     return 0
   }
   return delivered
+}
+
+/** The SLA: every request still waiting a day after it was made goes into
+ *  one reminder to each System Manager, once. Returns how many requests the
+ *  reminder named, or 'no recipients' when no System Manager has an address. */
+export async function remindAccessRequests(): Promise<number | 'no recipients'> {
+  await settleAccessRequests()
+  return withTransaction(async () => {
+    const dueWhere = sql`reminded_at is null and created_at < now() - make_interval(hours => ${REMINDER_AFTER_HOURS})`
+    const managers = await systemManagerEmails()
+    // With nobody to tell, nothing is marked reminded: a later run, once a
+    // System Manager has an address, still names these requests.
+    if (!managers.length) {
+      const [waiting] = await sql`select 1 from access_request where ${dueWhere} limit 1`
+      if (!waiting) return 0
+      await recordUndeliveredNotice('waiting-for-access reminder')
+      return 'no recipients'
+    }
+    const due = await sql`update access_request set reminded_at = now() where ${dueWhere} returning person, app, created_at`
+    if (!due.length) return 0
+    const names = await sql`select row_id, full_name, email from person where row_id in ${sql(due.map((r) => String(r.person)))}`
+    const who = new Map(names.map((p) => [String(p.row_id), shownName(p.full_name as string | null) || 'not given']))
+    const lines = [...due]
+      .sort((a, b) => +new Date(a.created_at as string) - +new Date(b.created_at as string))
+      .map((r) => `- ${who.get(String(r.person))}, ${r.app as string}`)
+    const body = [
+      `${due.length === 1 ? 'This request has' : `These ${due.length} requests have`} waited more than a day for access:`,
+      '',
+      ...lines,
+      '',
+      `Give them a role from the Waiting for access page: ${pageLink()}`,
+    ].join('\n')
+    for (const to of managers) await sender({ to, subject: REMINDER_SUBJECT, body })
+    return due.length
+  })
+}
+
+const escapeHtml = (value: string) =>
+  value.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!)
+
+/** What an installed app's address shows a person who has just asked for it
+ *  by opening it. */
+export function noAccessYetPage(title: string): string {
+  const app = escapeHtml(title)
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>No access to ${app} yet</title></head>
+      <body style="font:16px system-ui;background:#f4f5f6;color:#1c2126;margin:0;padding:8vw"><main data-testid="no-access-yet" style="max-width:36rem;margin:auto;background:white;border:1px solid #ebeef0;border-radius:8px;padding:2rem">
+      <h1>You don't have access to ${app} yet</h1><p>An admin has been told. Once they give you access, open this page again.</p>
+      <p><a href="/featherbase/login">Sign in as someone else</a></p></main></body></html>`
 }

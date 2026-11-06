@@ -121,7 +121,7 @@ describe('Connecting Postgres tables: names and column types', () => {
       born: 'Date',
       meta: 'JSON',
       code: 'Data',
-      story: 'Text',
+      story: 'Data',
       initial: 'Data',
       small: 'Int',
       single: 'Float',
@@ -222,7 +222,7 @@ describe('Filtering rows read from Postgres', () => {
       source: {
         name: 'ext-extra-membership', engine: 'postgres', url_env: URL_ENV, root_path: null,
         default_schema: 'ext_extra', access: 'read_only', pool_max: 2,
-        statement_timeout_ms: 10000, allowlist: null,
+        statement_timeout_ms: 10000, allowlist: null, databases: [],
       },
       schema: 'ext_extra', table: 'plain', pk: 'id', modified: null, columns: [],
     }
@@ -247,6 +247,7 @@ describe('Filtering rows read from Postgres', () => {
         pool_max: 2,
         statement_timeout_ms: 10000,
         allowlist: null,
+        databases: [],
       },
       schema: 'ext_extra',
       table: 'plain',
@@ -293,7 +294,7 @@ describe('Writing to a Postgres table that has only defaults', () => {
       source: {
         name: 'ext-extra-null-groups', engine: 'postgres', url_env: URL_ENV, root_path: null,
         default_schema: null, access: 'read_only', pool_max: 2,
-        statement_timeout_ms: 10000, allowlist: null,
+        statement_timeout_ms: 10000, allowlist: null, databases: [],
       },
       schema: 'ext_extra', table: 'nullable_groups', pk: 'id', modified: null, columns: [],
     }
@@ -314,7 +315,7 @@ describe('Writing to a Postgres table that has only defaults', () => {
       source: {
         name: 'ext-extra-missing-update', engine: 'postgres', url_env: URL_ENV, root_path: null,
         default_schema: null, access: 'read_write', pool_max: 2,
-        statement_timeout_ms: 10000, allowlist: null,
+        statement_timeout_ms: 10000, allowlist: null, databases: [],
       },
       schema: 'ext_extra', table: 'missing_update', pk: 'id', modified: null, columns: [],
     }
@@ -338,7 +339,7 @@ describe('Writing to a Postgres table that has only defaults', () => {
       source: {
         name: 'ext-extra-delete', engine: 'postgres', url_env: URL_ENV, root_path: null,
         default_schema: null, access: 'read_write', pool_max: 2,
-        statement_timeout_ms: 10000, allowlist: null,
+        statement_timeout_ms: 10000, allowlist: null, databases: [],
       },
       schema: 'ext_extra', table: 'revision_delete', pk: 'id', modified: 'changed_at',
       columns: [{ column_name: 'note', source_column: 'note', column_type: 'Text' }],
@@ -372,6 +373,7 @@ describe('Connection variables and the table allowlist', () => {
     pool_max: 2,
     statement_timeout_ms: 10000,
     allowlist: null,
+    databases: [],
     ...over,
   })
 
@@ -465,6 +467,39 @@ describe('Foreign keys read from information_schema', () => {
 })
 
 describe('Saving a Data Source', () => {
+  test('an incomplete restriction edit preserves the saved source until corrected', async ({ admin }) => {
+    const saved = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: 'Data Source',
+      row: {
+        row_id: 'allowlist-edit', engine: 'postgres', url_env: URL_ENV,
+        default_schema: 'ext_extra', access: 'read_only', table_allowlist: 'ext_extra.plain',
+      },
+    })
+    const res = await admin.fetch('/api/save_row', {
+      method: 'POST',
+      body: JSON.stringify({
+        table: 'Data Source',
+        row: { ...saved, table_allowlist: 'ext_extra.gadget,plain', access: 'read_write' },
+      }),
+    })
+    expect(res.status).toBe(417)
+    expect(await res.json()).toMatchObject({ error: {
+      type: 'ValidationError',
+      fields: { table_allowlist: expect.stringContaining('schema.table') },
+    } })
+    expect(await admin.get('/api/table/Data%20Source/allowlist-edit')).toMatchObject({
+      table_allowlist: 'ext_extra.plain', access: 'read_only', updated_at: saved.updated_at,
+    })
+
+    await admin.post('/api/save_row', {
+      table: 'Data Source',
+      row: { ...saved, table_allowlist: 'ext_extra.gadget,ext_extra.plain', access: 'read_write' },
+    })
+    expect(await admin.get('/api/table/Data%20Source/allowlist-edit')).toMatchObject({
+      table_allowlist: 'ext_extra.gadget,ext_extra.plain', access: 'read_write',
+    })
+  })
+
   test('invalid binding requests report each missing source column and persist no Table', async ({ admin }) => {
     await makeSource(admin)
     const res = await admin.fetch('/api/table_def', {

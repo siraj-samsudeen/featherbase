@@ -37,14 +37,16 @@ COPY patches patches
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
+COPY packages/shop-floor/package.json packages/shop-floor/
 RUN pnpm install --frozen-lockfile --filter web...
 
 COPY packages/shared packages/shared
+COPY packages/shop-floor packages/shop-floor
 COPY apps/web apps/web
 RUN pnpm --filter web build
 
 # ---- Stage 2: build independently packaged runtime apps --------------------
-FROM node:26.13.0-slim AS tasker-build
+FROM web-build AS tasker-build
 WORKDIR /app/example-apps/tasker
 COPY example-apps/tasker/package.json example-apps/tasker/package-lock.json ./
 RUN npm ci --ignore-scripts
@@ -53,6 +55,56 @@ COPY example-apps/tasker/src src
 COPY example-apps/tasker/public public
 COPY example-apps/tasker/scripts/build-server.mjs scripts/build-server.mjs
 RUN npm run build
+
+# Tickets (#810) ships beside Tasker in the default image. Shipped is not
+# installed: an administrator installs it explicitly (install-app or Apps).
+FROM web-build AS tickets-build
+WORKDIR /app/example-apps/tickets
+COPY example-apps/tickets/package.json example-apps/tickets/package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY example-apps/tickets/featherbase.json example-apps/tickets/index.html example-apps/tickets/tsconfig.json example-apps/tickets/vite.config.ts ./
+COPY example-apps/tickets/src src
+COPY example-apps/tickets/scripts/build-server.mjs scripts/build-server.mjs
+RUN npm run build
+
+# Tickets 0.1.0, the version installed before 0.2.0, rebuilt from the main
+# commit that shipped it (byte-identical), so an instance on 0.1.0 finds its
+# exact artifact and can upgrade (docs/DEPLOY.md, "Upgrading needs both versions").
+FROM web-build AS tickets-previous-build
+WORKDIR /previous
+ARG TICKETS_0_1_0_ARCHIVE=https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/7113aac39d370c84cb6646575c1d20b262f7fce6
+RUN node -e "fetch(process.argv[1]).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer() }).then(b => require('node:fs').writeFileSync('source.tar.gz', Buffer.from(b)))" "$TICKETS_0_1_0_ARCHIVE" \
+    && tar -xzf source.tar.gz --strip-components=1 \
+    && cd example-apps/tickets && node -e "if (require('./package.json').version !== '0.1.0') process.exit(1)" \
+    && npm ci --ignore-scripts && npm run build
+
+# Tickets 0.2.0, the version installed before 0.2.1, the same way: an instance
+# that took 0.2.0 upgrades from its exact artifact too.
+FROM web-build AS tickets-0-2-0-build
+WORKDIR /previous
+ARG TICKETS_0_2_0_ARCHIVE=https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/4143246cc9d81ad10e752f198faec8b5c1f1f5e5
+RUN node -e "fetch(process.argv[1]).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer() }).then(b => require('node:fs').writeFileSync('source.tar.gz', Buffer.from(b)))" "$TICKETS_0_2_0_ARCHIVE" \
+    && tar -xzf source.tar.gz --strip-components=1 \
+    && cd example-apps/tickets && node -e "if (require('./package.json').version !== '0.2.0') process.exit(1)" \
+    && npm ci --ignore-scripts && npm run build
+
+# Tickets 0.2.1, the version installed before 0.2.2, the same way.
+FROM web-build AS tickets-0-2-1-build
+WORKDIR /previous
+ARG TICKETS_0_2_1_ARCHIVE=https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/1f3f3ca86fcbdcb0e4dcf46cac0091d03047756d
+RUN node -e "fetch(process.argv[1]).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer() }).then(b => require('node:fs').writeFileSync('source.tar.gz', Buffer.from(b)))" "$TICKETS_0_2_1_ARCHIVE" \
+    && tar -xzf source.tar.gz --strip-components=1 \
+    && cd example-apps/tickets && node -e "if (require('./package.json').version !== '0.2.1') process.exit(1)" \
+    && npm ci --ignore-scripts && npm run build
+
+# Tickets 0.2.2, the version installed before 0.2.3, the same way.
+FROM web-build AS tickets-0-2-2-build
+WORKDIR /previous
+ARG TICKETS_0_2_2_ARCHIVE=https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/012f1721682cde76fd4a560dbc561f71e1ac30c6
+RUN node -e "fetch(process.argv[1]).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer() }).then(b => require('node:fs').writeFileSync('source.tar.gz', Buffer.from(b)))" "$TICKETS_0_2_2_ARCHIVE" \
+    && tar -xzf source.tar.gz --strip-components=1 \
+    && cd example-apps/tickets && node -e "if (require('./package.json').version !== '0.2.2') process.exit(1)" \
+    && npm ci --ignore-scripts && npm run build
 
 # ---- Stage 3: the platform image -------------------------------------------
 # The server, the built SPA and the start command, with no app and no
@@ -90,9 +142,9 @@ CMD ["pnpm", "--filter", "server", "start"]
 
 # ---- Stage 4: a client instance's apps and folder ---------------------------
 # Skipped by every build that doesn't name an instance.
-FROM node:26.13.0-slim AS instance-build
+FROM web-build AS instance-build
 ARG FEATHERBASE_INSTANCE
-WORKDIR /build
+WORKDIR /app
 COPY client-apps client-apps
 COPY example-apps example-apps
 COPY tools/dev.mjs tools/build-instance-apps.mjs tools/
@@ -106,16 +158,31 @@ ENV FEATHERBASE_INSTANCE=$FEATHERBASE_INSTANCE
 ENV FEATHERBASE_APP_PATHS='["/app/instance-apps/*"]'
 
 # ---- Stage 6: this repository's own server image (the default target) ------
-# The platform image plus Tasker, for this repository's Railway services until
-# #563 retires Tasker. NODE_ENV, EXPOSE and CMD come from the platform stage.
+# The platform image plus Tasker and Tickets. NODE_ENV, EXPOSE and CMD come
+# from the platform stage.
 FROM platform AS tasker-image
 COPY --from=tasker-build /app/example-apps/tasker/package.json example-apps/tasker/package.json
 COPY --from=tasker-build /app/example-apps/tasker/featherbase.json example-apps/tasker/featherbase.json
 COPY --from=tasker-build /app/example-apps/tasker/dist example-apps/tasker/dist
+COPY --from=tickets-build /app/example-apps/tickets/package.json example-apps/tickets/package.json
+COPY --from=tickets-build /app/example-apps/tickets/featherbase.json example-apps/tickets/featherbase.json
+COPY --from=tickets-build /app/example-apps/tickets/dist example-apps/tickets/dist
+COPY --from=tickets-previous-build /previous/example-apps/tickets/package.json example-apps/tickets-0.1.0/package.json
+COPY --from=tickets-previous-build /previous/example-apps/tickets/featherbase.json example-apps/tickets-0.1.0/featherbase.json
+COPY --from=tickets-previous-build /previous/example-apps/tickets/dist example-apps/tickets-0.1.0/dist
+COPY --from=tickets-0-2-0-build /previous/example-apps/tickets/package.json example-apps/tickets-0.2.0/package.json
+COPY --from=tickets-0-2-0-build /previous/example-apps/tickets/featherbase.json example-apps/tickets-0.2.0/featherbase.json
+COPY --from=tickets-0-2-0-build /previous/example-apps/tickets/dist example-apps/tickets-0.2.0/dist
+COPY --from=tickets-0-2-1-build /previous/example-apps/tickets/package.json example-apps/tickets-0.2.1/package.json
+COPY --from=tickets-0-2-1-build /previous/example-apps/tickets/featherbase.json example-apps/tickets-0.2.1/featherbase.json
+COPY --from=tickets-0-2-1-build /previous/example-apps/tickets/dist example-apps/tickets-0.2.1/dist
+COPY --from=tickets-0-2-2-build /previous/example-apps/tickets/package.json example-apps/tickets-0.2.2/package.json
+COPY --from=tickets-0-2-2-build /previous/example-apps/tickets/featherbase.json example-apps/tickets-0.2.2/featherbase.json
+COPY --from=tickets-0-2-2-build /previous/example-apps/tickets/dist example-apps/tickets-0.2.2/dist
 
-# When a later Tasker version ships, the version installed on the instances
-# is built beside it and listed here too, so an upgrade can find it.
-ENV FEATHERBASE_APP_PATHS='["/app/example-apps/tasker"]'
+# When a later app version ships, the version installed on the instances is
+# built beside it and listed here too, so an upgrade can find it (Tickets 0.1.0, 0.2.0, 0.2.1 and 0.2.2).
+ENV FEATHERBASE_APP_PATHS='["/app/example-apps/tasker","/app/example-apps/tickets","/app/example-apps/tickets-0.1.0","/app/example-apps/tickets-0.2.0","/app/example-apps/tickets-0.2.1","/app/example-apps/tickets-0.2.2"]'
 
 # ---- The image this build produces ------------------------------------------
 FROM ${FINAL_STAGE:-tasker-image}

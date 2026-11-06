@@ -50,6 +50,13 @@ and now diverges from Frappe wherever Frappe doesn't serve this platform's own
 users. This section is featherbase's own standing rules; the shared process
 above comes from the template through Copier.
 
+### Default change mode
+
+Use **autopilot** for new and resumed changes unless the owner explicitly selects
+build or learning mode. This overrides the `change-modes` skill's build default
+for this repository. Autopilot removes per-test stops, not required owner decisions
+or approvals for reviews, merges, deployments or destructive actions.
+
 ### Project stage
 
 Pre-release: every interface is provisional and nothing outside this repo
@@ -71,7 +78,7 @@ rewrites a live instance's data is rehearsed on a restored snapshot first
 | Deploying and environment variables | `docs/DEPLOY.md`, `docs/PREVIEW.md` |
 | Issues, ratings and labels | the `issue-workflow` skill; `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md` |
 | Apps shipped with the platform (Tasker); packages the tests install | `example-apps/`; `test-apps/` (never imported by platform source: `pnpm check:platform-imports`) |
-| Apps built for one client (`jeyarama/dash` is Feather Dash) | `client-apps/<client>/<app>/`, run with `pnpm dev <client>/<instance>`; the client's conventions in `client-apps/<client>/CLAUDE.md` |
+| Apps built for one client (`jeyarama/dash` is Dash) | `client-apps/<client>/<app>/`, run with `pnpm dev <client>/<instance>`; the client's conventions in `client-apps/<client>/CLAUDE.md` |
 
 Don't add a document when a spec, test, ADR or PR body can carry it. A claim
 about the code that no check can verify drifts; don't write it down as fact.

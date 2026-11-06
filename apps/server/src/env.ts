@@ -114,7 +114,7 @@ export const VARIABLES = [
   { name: 'SMTP_PASSWORD', secret: true, required: 'optional',
     purpose: 'that user\'s **app password**; required when `SMTP_USER` is set. Google\'s grouped display (`abcd efgh ijkl mnop`) has its spaces removed' },
   { name: 'MAIL_FROM', secret: false, required: 'optional',
-    purpose: 'the From of every SMTP message (`Feather Dash <noreply@example.com>`); it wins over any Email Account address. Unset, the default Email Account\'s address is used' },
+    purpose: 'the From of every SMTP message (`Dash <noreply@example.com>`); it wins over any Email Account address. Unset, the default Email Account\'s address is used' },
   { name: 'SMTP_NAME', secret: false, required: 'optional',
     purpose: 'the `EHLO` hostname. Unset, the domain of `MAIL_FROM`, then the host of the `INSTANCE_ADDRESSES` entry marked for emails, then the sender\'s domain' },
   // ---- Abuse limits (see "Public-route abuse limits")
@@ -140,6 +140,10 @@ export const VARIABLES = [
     docsRequired: '**never outside development and test**',
     purpose: '`1` turns on the mock Google provider, which mints a session for any typed email from a pre-auth endpoint. For development and the test suites',
     fix: 'The mock provider signs anyone in as anyone, so it is allowed only where FEATHERBASE_ENV (or NODE_ENV) is development or test. Unset it.' },
+  { name: 'MOTHERDUCK_STANDIN', secret: false, required: 'forbidden-in-production', allowedIn: DEV_ENVIRONMENTS,
+    docsRequired: '**never outside development and test**',
+    purpose: 'a folder holding a local stand-in for MotherDuck (its account listing and database files); set, every MotherDuck source talks to it instead of MotherDuck. For the test suites',
+    fix: 'The stand-in replaces the real warehouse, so it is allowed only where FEATHERBASE_ENV (or NODE_ENV) is development or test. Unset it.' },
   { name: 'PREVIEW_LOGIN_KEY', secret: true, required: 'forbidden-in-production',
     purpose: 'preview deployments: the one-link sign-in\'s secret, 32+ characters. See [PREVIEW.md](PREVIEW.md)',
     fix: `Preview sign-in is a one-link login. ${ON_FORBIDDEN} Unset it, or run the preview as staging.` },
@@ -152,18 +156,22 @@ export const VARIABLES = [
   { name: 'DISABLE_DATABASE_ENVIRONMENT_CHECK', secret: false, required: 'optional',
     purpose: '`1` skips the check that the database was stamped by this environment. Break-glass only' },
   { name: 'FEATHERBASE_APP_PATHS', secret: false, required: 'optional', default: '`[]`', purpose: 'JSON array of extra app package directories to discover at boot; `<folder>/*` means every folder in it' },
+  // #938: what this instance was built from, shown to System Managers on Admin → Apps. Railway sets these on deploys from GitHub; elsewhere the server reads git from its checkout, or shows "unknown".
+  { name: 'RAILWAY_GIT_COMMIT_SHA', secret: false, required: 'optional', purpose: 'set by Railway: the commit this deployment was built from, shown on Admin → Apps (#938). Unset outside Railway, a checkout reads it from git' },
+  { name: 'RAILWAY_GIT_COMMIT_MESSAGE', secret: false, required: 'optional', purpose: 'set by Railway: that commit\'s message, shown with it' },
+  { name: 'RAILWAY_GIT_REPO_OWNER', secret: false, required: 'optional', purpose: 'set by Railway: the GitHub owner, for links to the commit and its issues' },
+  { name: 'RAILWAY_GIT_REPO_NAME', secret: false, required: 'optional', purpose: 'set by Railway: the GitHub repository, for the same links' },
   { name: 'FEATHERBASE_INSTANCE', secret: false, required: 'optional', purpose: 'the client instance this image was built for (`<client>/<instance>`), as a build argument and a variable. Set, the pre-deploy step installs or upgrades its apps and applies its settings. See [A client instance](#a-client-instance)' },
   { name: 'JOB_POLL_MS', secret: false, required: 'optional', default: '`500`', purpose: 'background worker poll interval' },
   { name: 'SERVER_URL', secret: false, required: 'optional', default: '`http://localhost:8000`', purpose: 'the server `pnpm smoke` probes' },
   // ---- Sales target (Feather Dash)
-  { name: 'MOTHERDUCK_TOKEN', secret: true, required: 'optional', purpose: 'MotherDuck access for the sales-target embed and warehouse reads; never logged, returned or stored' },
+  { name: 'MOTHERDUCK_TOKEN', secret: true, required: 'optional', purpose: 'the one MotherDuck token: every MotherDuck source, app dataset and the sales-target embed use it. Featherbase only reads the warehouse, whatever rights the token has. Never logged, returned or stored' },
   { name: 'MOTHERDUCK_API_BASE', secret: false, required: 'optional', default: '`https://api.motherduck.com`', purpose: 'MotherDuck API base' },
   { name: 'MOTHERDUCK_EMBED_ORIGIN', secret: false, required: 'optional', default: '`https://embed-motherduck.com`', purpose: 'the embed sandbox origin, framed by the Sales Target page alone (#642); overridable only for a local stub' },
   { name: 'DIVE_ID', secret: false, required: 'optional', purpose: 'the sales-target Dive' },
-  { name: 'DIVE_VERSION', secret: false, required: 'optional', purpose: 'the sales-target Dive version' },
   { name: 'SERVICE_ACCOUNT', secret: false, required: 'optional', purpose: 'the MotherDuck service account the embed runs as' },
   { name: 'SALES_TARGET_TODAY', secret: false, required: 'optional', purpose: 'pins "today" (YYYY-MM-DD) for the sales target; for tests and rehearsals' },
-  { name: 'SALES_TARGET_SHARED_ENV', secret: false, required: 'optional', purpose: 'path of a local `.env.local` the sales-target experiment reads `DIVE_ID`, `DIVE_VERSION` and `SERVICE_ACCOUNT` from' },
+  { name: 'SALES_TARGET_SHARED_ENV', secret: false, required: 'optional', purpose: 'path of a local `.env.local` the sales-target experiment reads `DIVE_ID` and `SERVICE_ACCOUNT` from' },
 ] as const satisfies readonly Variable[]
 
 export type VariableName = (typeof VARIABLES)[number]['name']

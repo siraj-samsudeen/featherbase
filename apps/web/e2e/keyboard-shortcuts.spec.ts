@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminAuth } from './fixtures'
 
 const DT = 'KB E2E Doc'
@@ -19,7 +20,7 @@ test.beforeAll(async ({ request }) => {
 // shortcuts and `[data-field]` addressing aren't expressible by DSL verbs,
 // so they stay in named steps; assertHas covers the plain checks around them.
 test('UI-015: Ctrl+S saves the form', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}/${docName}`).assertHas('[data-testid="form-view"]')
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${docName}`).assertHas('[data-testid="form-view"]')
   await session.step('fill the title field and press Ctrl+S', async ({ page }) => {
     await page.locator('[data-field=title]').fill(`kb-${Date.now()}`)
     await page.keyboard.press('Control+s')
@@ -29,17 +30,17 @@ test('UI-015: Ctrl+S saves the form', async ({ session }) => {
 
 // UI-015: Ctrl/Cmd+B opens a new document of the current Table.
 test('UI-015: Ctrl+B opens a new document', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}`).assertHas('[data-testid="list-view"]')
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`).assertHas('[data-testid="list-view"]')
   await session.step('press Ctrl+B', async ({ page }) => {
     await page.keyboard.press('Control+b')
-    await expect(page).toHaveURL(new RegExp(`/admin/${encodeURIComponent(DT)}/new`))
+    await expect(page).toHaveURL(new RegExp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/new`))
   })
   await session.assertHas('[data-testid="form-view"]')
 })
 
 // UI-015: the "g then d" leader sequence navigates to the Admin home.
 test('UI-015: g then d navigates to the Admin home', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}/${docName}`).assertHas('[data-testid="form-view"]')
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${docName}`).assertHas('[data-testid="form-view"]')
   await session.step('press g then d after clicking off any input', async ({ page }) => {
     await page.locator('body').click() // ensure focus is not in an input
     await page.keyboard.press('g')

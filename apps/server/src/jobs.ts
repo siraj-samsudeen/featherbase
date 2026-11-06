@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import type postgres from 'postgres'
 import { readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
@@ -71,8 +72,14 @@ const registry = new Map<string, JobHandler>()
 // #700: which app registered a method; absent for the platform's own jobs.
 const owners = new Map<string, string>()
 
-export function registerJob(method: string, handler: JobHandler, owner?: string): void {
+// #971: jobs that take the app lifecycle lock themselves, only for the part
+// that needs it, because they spend long on an outside read.
+const ownLifecycleLock = new Set<string>()
+
+export function registerJob(method: string, handler: JobHandler, owner?: string, opts: { ownLifecycleLock?: boolean } = {}): void {
   registry.set(method, handler)
+  if (opts.ownLifecycleLock) ownLifecycleLock.add(method)
+  else ownLifecycleLock.delete(method)
   if (owner) owners.set(method, owner)
   else owners.delete(method)
 }
@@ -188,10 +195,13 @@ async function alertProblem(p: import('./job-alerts').JobProblem): Promise<void>
 }
 
 // Claim and run a single due job. Returns true if one was processed.
-export function runOneJob(): Promise<boolean> {
-  return appOperation(runOneJobImpl)
+export async function runOneJob(): Promise<boolean> {
+  const outcome = await appOperation(claimAndRun)
+  return typeof outcome === 'function' ? outcome() : outcome
 }
-async function runOneJobImpl(): Promise<boolean> {
+/** The claim is always under the lifecycle lock. An ordinary job runs under
+ *  that same lock; a job that owns its lock is handed back to run outside it. */
+async function claimAndRun(): Promise<boolean | (() => Promise<boolean>)> {
   // Atomic claim: flip exactly one due queued job to running.
   const [claimed] = await sql`
     update background_job set job_status = 'running', updated_at = now()
@@ -203,12 +213,17 @@ async function runOneJobImpl(): Promise<boolean> {
     )
     returning *`
   if (!claimed) return false
-
+  return ownLifecycleLock.has(claimed.method as string) ? () => runClaimed(claimed) : runClaimed(claimed)
+}
+async function runClaimed(claimed: postgres.Row): Promise<boolean> {
   const method = claimed.method as string
   const attempt = Number(claimed.attempts) + 1
   const maxAttempts = Number(claimed.max_attempts)
   const handler = registry.get(method)
   const payload = (claimed.payload as Record<string, unknown>) ?? {}
+  // Remember administration before the handler runs: removal while it is
+  // running must not turn its old interval into a standalone recurrence.
+  const wasAdministered = await scheduledJob(method)
 
   // JOB-005: progress reports go to the job owner's realtime channel.
   //
@@ -253,84 +268,89 @@ async function runOneJobImpl(): Promise<boolean> {
   try {
     if (!handler) throw new Error(`No job handler registered for "${method}"`)
     await handler(payload, ctx)
-    await sql`
-      update background_job set job_status = 'done', attempts = ${attempt}, error = null, updated_at = now()
-      where row_id = ${claimed.row_id as string}`
-    await logExecution(record(refused ? 'refused' : 'success'))
+    // Bookkeeping takes the lifecycle lock before any row, like every save.
+    return await appOperation(async () => {
+      await sql`
+        update background_job set job_status = 'done', attempts = ${attempt}, error = null, updated_at = now()
+        where row_id = ${claimed.row_id as string}`
+      await logExecution(record(refused ? 'refused' : 'success'))
 
-    // JOB-003: recurring jobs re-enqueue for the next interval. A Scheduled
-    // Job row, when there is one, is the authority: its cadence (edited since
-    // this row was queued, perhaps) sets the interval, and disabled means the
-    // recurrence ends here. Without a row the queue entry's own repeat_every
-    // governs, as it always did.
-    //
-    // An administered method's recurrence advances only when THIS run was
-    // itself the scheduled occurrence. syncScheduledJobs already guarantees
-    // exactly one live ('queued'/'running') entry per enabled row; a demand
-    // or manual run (recordMiss waking the refresh worker between two
-    // scheduled occurrences, or a person hitting "run now") must not queue a
-    // second one alongside it — that leaves two future occurrences live at
-    // once, one of them never reachable by the invariant syncScheduledJobs
-    // otherwise enforces (found in review, 19-Sep-2026). Those triggers still
-    // did the work; they just don't get to move the clock.
-    const administered = await scheduledJob(method)
-    if (administered) {
-      if (trigger === 'schedule' && administered.enabled) {
-        const every = cadenceSeconds(administered.cadence)
-        await enqueue(method, payload, {
-          maxAttempts,
-          runAt: new Date(Date.now() + every * 1000),
-          repeatEvery: every,
-          trigger: 'schedule',
-        })
+      // JOB-003: recurring jobs re-enqueue for the next interval. A Scheduled
+      // Job row, when there is one, is the authority: its cadence (edited since
+      // this row was queued, perhaps) sets the interval, and disabled means the
+      // recurrence ends here. Without a row the queue entry's own repeat_every
+      // governs, as it always did.
+      //
+      // An administered method's recurrence advances only when THIS run was
+      // itself the scheduled occurrence. syncScheduledJobs already guarantees
+      // exactly one live ('queued'/'running') entry per enabled row; a demand
+      // or manual run (recordMiss waking the refresh worker between two
+      // scheduled occurrences, or a person hitting "run now") must not queue a
+      // second one alongside it — that leaves two future occurrences live at
+      // once, one of them never reachable by the invariant syncScheduledJobs
+      // otherwise enforces (found in review, 19-Sep-2026). Those triggers still
+      // did the work; they just don't get to move the clock.
+      const administered = await scheduledJob(method)
+      if (administered) {
+        if (trigger === 'schedule' && administered.enabled) {
+          const every = cadenceSeconds(administered.cadence)
+          await enqueue(method, payload, {
+            maxAttempts,
+            runAt: new Date(Date.now() + every * 1000),
+            repeatEvery: every,
+            trigger: 'schedule',
+          })
+        }
+      } else if (!wasAdministered && claimed.repeat_every != null) {
+        const every = Number(claimed.repeat_every)
+        if (every > 0)
+          await enqueue(method, payload, {
+            maxAttempts,
+            runAt: new Date(Date.now() + every * 1000),
+            repeatEvery: every,
+            trigger: 'schedule',
+          })
       }
-    } else if (claimed.repeat_every != null) {
-      const every = Number(claimed.repeat_every)
-      if (every > 0)
-        await enqueue(method, payload, {
-          maxAttempts,
-          runAt: new Date(Date.now() + every * 1000),
-          repeatEvery: every,
-          trigger: 'schedule',
-        })
-    }
-    if (administered && refused)
-      await alertProblem({ job: claimed.row_id as string, method, outcome: 'refused', message: result ?? 'no reason given', attempts: attempt, at: startedAt })
-    return true
+      if (administered && refused)
+        await alertProblem({ job: claimed.row_id as string, method, outcome: 'refused', message: result ?? 'no reason given', attempts: attempt, at: startedAt })
+      return true
+    })
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    // JOB-002: retry until max_attempts, then land in failed. A final
-    // failure lands there now.
-    const nextStatus = err instanceof FinalJobFailure || attempt >= maxAttempts ? 'failed' : 'queued'
-    await sql`
-      update background_job
-      set job_status = ${nextStatus}, attempts = ${attempt}, error = ${message}, updated_at = now()
-      where row_id = ${claimed.row_id as string}`
-    await logExecution(record('error', message))
-    const administered = nextStatus === 'failed' ? await scheduledJob(method) : null
-    // A recurrence must survive its own failure. Before Scheduled Job, a run
-    // that exhausted its attempts ended the recurrence until the next restart
-    // re-seeded it from a literal — a schedule that silently stopped. Now the
-    // row is the schedule: if it is enabled, the next interval is queued
-    // regardless of how this one ended. Same gate as the success path: only
-    // the schedule's own occurrence advances the schedule, so a demand or
-    // manual run that exhausts its attempts does not fork a second chain.
-    if (nextStatus === 'failed' && trigger === 'schedule') {
-      if (administered?.enabled) {
-        const every = cadenceSeconds(administered.cadence)
-        await enqueue(method, payload, {
-          maxAttempts,
-          runAt: new Date(Date.now() + every * 1000),
-          repeatEvery: every,
-          trigger: 'schedule',
-        })
+    return appOperation(async () => {
+      const message = err instanceof Error ? err.message : String(err)
+      // JOB-002: retry until max_attempts, then land in failed. A final
+      // failure lands there now.
+      const nextStatus = err instanceof FinalJobFailure || attempt >= maxAttempts ? 'failed' : 'queued'
+      await sql`
+        update background_job
+        set job_status = ${nextStatus}, attempts = ${attempt}, error = ${message}, updated_at = now()
+        where row_id = ${claimed.row_id as string}`
+      await logExecution(record('error', message))
+      const administered = nextStatus === 'failed' ? await scheduledJob(method) : null
+      // A recurrence must survive its own failure. Before Scheduled Job, a run
+      // that exhausted its attempts ended the recurrence until the next restart
+      // re-seeded it from a literal — a schedule that silently stopped. Now the
+      // row is the schedule: if it is enabled, the next interval is queued
+      // regardless of how this one ended. Same gate as the success path: only
+      // the schedule's own occurrence advances the schedule, so a demand or
+      // manual run that exhausts its attempts does not fork a second chain.
+      if (nextStatus === 'failed' && trigger === 'schedule') {
+        if (administered?.enabled) {
+          const every = cadenceSeconds(administered.cadence)
+          await enqueue(method, payload, {
+            maxAttempts,
+            runAt: new Date(Date.now() + every * 1000),
+            repeatEvery: every,
+            trigger: 'schedule',
+          })
+        }
       }
-    }
-    // #464: a run that has failed for good tells the System Managers; an
-    // attempt that will be retried does not.
-    if (administered)
-      await alertProblem({ job: claimed.row_id as string, method, outcome: 'failed', message, attempts: attempt, at: startedAt })
-    return true
+      // #464: a run that has failed for good tells the System Managers; an
+      // attempt that will be retried does not.
+      if (administered)
+        await alertProblem({ job: claimed.row_id as string, method, outcome: 'failed', message, attempts: attempt, at: startedAt })
+      return true
+    })
   }
 }
 

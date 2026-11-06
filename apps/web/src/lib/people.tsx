@@ -1,4 +1,5 @@
 import { useQueries, useQuery } from '@tanstack/react-query'
+import { SYSTEM_ACTOR_LABELS } from 'shared'
 import { api } from './api'
 
 // person-rename: a person's id is opaque (`psn_…`), so a screen never shows
@@ -49,7 +50,7 @@ export function usePrincipalNameState(id: string | null | undefined): { name: st
     queryFn: () => loadName(id!),
   })
   if (!id) return { name: null, loading: false }
-  if (!opaque) return { name: id, loading: false }
+  if (!opaque) return { name: SYSTEM_ACTOR_LABELS[id] ?? id, loading: false }
   return { name: q.data ?? null, loading: q.isLoading }
 }
 
@@ -62,7 +63,7 @@ export function usePrincipalName(id: string | null | undefined): string | null {
  *  at all a neutral "Unnamed person" — never the opaque id. */
 export function principalLabel(id: string, name: string | null, loading: boolean): string {
   if (name) return name
-  if (!isOpaqueId(id)) return id
+  if (!isOpaqueId(id)) return SYSTEM_ACTOR_LABELS[id] ?? id
   return loading ? '…' : 'Unnamed person'
 }
 

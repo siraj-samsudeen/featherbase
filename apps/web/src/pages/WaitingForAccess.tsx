@@ -1,79 +1,57 @@
-import { Link } from '@tanstack/react-router'
-import { useQuery, type QueryClient } from '@tanstack/react-query'
-import { adminPageTitle } from 'shared'
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
-import { fmtInstantIST } from '../lib/inr'
-import { DataList, type DataColumn } from '../components/ui'
+import { Link } from '@tanstack/react-router'
+import { adminPageTitle } from 'shared'
+import { ListView, type Filter } from '../components/ListView'
 
-// #429: people a sign-in rule let in who hold no role yet, and see only the
-// no-access page. Opening one goes to their Person form to give roles.
+// #429, #835, #955: who is waiting for access, per app. Someone who opens an
+// app (or Featherbase itself) without access asks for it, and each request is
+// an Access Request row; the page is that Table's standard list, so it sorts,
+// filters by App, searches and picks columns like any list. The server drops
+// a request once its person can open that app, before it counts the menu
+// badge; the page asks for that count first so it never lists one that went.
 
-interface WaitingPerson {
-  person: string
-  full_name: string | null
-  email_domain: string | null
-  method: string | null
-  method_label: string | null
-  arrived_by: string | null
-  first_sign_in: string | null
-  last_sign_in: string | null
-}
-
-const WAITING_QUERY_KEY = ['waiting-for-access'] as const
 export const WAITING_COUNT_QUERY_KEY = ['waiting-for-access-count'] as const
 
 /** Saving or deleting a person or a role assignment can change who is
- *  waiting, so the list and the menu count are asked again. */
+ *  waiting, so the Person list and the menu count are asked again. */
 export async function refreshWaitingAfterSave(queryClient: QueryClient, table: string): Promise<void> {
   if (table !== 'Person' && table !== 'Has Role') return
-  await queryClient.invalidateQueries({ queryKey: WAITING_QUERY_KEY })
+  await queryClient.invalidateQueries({ queryKey: ['list', 'Access Request'] })
   await queryClient.invalidateQueries({ queryKey: WAITING_COUNT_QUERY_KEY })
 }
 
-const columns: DataColumn<WaitingPerson>[] = [
-  {
-    key: 'name',
-    header: 'Name',
-    phone: 'title',
-    cell: (p) => (
-      <Link
-        to="/featherbase/admin/$table/$name"
-        params={{ table: 'Person', name: p.person }}
-        search={{ prefill: undefined }}
-        className="text-action hover:underline"
-        data-testid={`waiting-${p.person}`}
-      >
-        {p.full_name || p.person}
-      </Link>
-    ),
-  },
-  { key: 'domain', header: 'Email domain', phone: 'meta', cell: (p) => p.email_domain ?? '—' },
-  { key: 'method', header: 'Arrived by', phone: 'meta', cell: (p) => p.method_label ?? 'Added by an administrator' },
-  { key: 'first', header: 'First sign-in', cell: (p) => fmtInstantIST(p.first_sign_in) },
-  { key: 'last', header: 'Last sign-in', cell: (p) => fmtInstantIST(p.last_sign_in) },
-]
-
-export function WaitingForAccess() {
-  const q = useQuery({
-    queryKey: WAITING_QUERY_KEY,
-    queryFn: () => api.get<{ people: WaitingPerson[]; count: number }>('/api/people/waiting_for_access'),
+export function WaitingForAccess({ filters, onFiltersChange }: { filters: Filter[]; onFiltersChange: (next: Filter[]) => void }) {
+  const queryClient = useQueryClient()
+  // The count settles the requests whose person got access since; until it
+  // answers, no list (a cached one could still hold them).
+  const settled = useQuery({
+    queryKey: ['waiting-for-access-settled'],
+    gcTime: 0,
+    queryFn: async () => {
+      const answer = await api.get<{ count: number }>('/api/people/waiting_for_access/count')
+      queryClient.setQueryData(WAITING_COUNT_QUERY_KEY, answer)
+      queryClient.removeQueries({ queryKey: ['list', 'Access Request'] })
+      return answer
+    },
   })
+  if (settled.isPending) return <div data-testid="waiting-for-access" />
   return (
-    <div className="space-y-4" data-testid="waiting-for-access">
-      <div>
-        <h1 className="text-lg font-semibold text-ink">{adminPageTitle('waiting-for-access')}</h1>
-        <p className="text-sm text-ink-muted">
-          People who signed in but hold no role yet, newest first. Open one to give them roles.
-        </p>
-      </div>
-      <DataList
-        caption="People waiting for access"
-        rows={q.data?.people ?? []}
-        columns={columns}
-        rowKey={(p) => p.person}
-        state={q.isPending ? 'loading' : q.isError ? 'error' : 'ready'}
-        onRetry={() => void q.refetch()}
-        empty={{ title: 'Nobody is waiting.', body: 'Someone who signs in without a role shows up here.' }}
+    <div data-testid="waiting-for-access">
+      <ListView
+        table="Access Request"
+        filters={filters}
+        onFiltersChange={onFiltersChange}
+        defaultOrderBy="created_at desc"
+        title={adminPageTitle('waiting-for-access')}
+        breadcrumb={
+          <div className="text-xs text-ink-subtle">
+            <Link to="/featherbase/admin" className="hover:text-ink">Home</Link>
+            {' / People and access'}
+          </div>
+        }
+        subtitle="Each row is someone who opened an app without access to it, newest first. Once they can open that app, from a role on their Person page, the row goes."
+        empty={<span data-testid="waiting-empty">Nobody is waiting. Someone who opens an app they have no access to shows up here.</span>}
       />
     </div>
   )

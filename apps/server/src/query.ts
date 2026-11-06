@@ -2,13 +2,17 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { appOperation } from './app-lifecycle'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
-import { STANDARD_COLUMNS, tableRelation } from './table-engine'
+import { RETIREMENT_COLUMNS, STANDARD_COLUMNS, canRetire, tableRelation } from './table-engine'
 import { getScopeMap, isPrivileged, permissionScope, permittedTiers } from './permissions'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, seesEveryColumn } from './row-readers'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
+import { mandatoryWhere, needsMandatoryRowRead } from './mandatory-access'
+import { MAX_RELATED_DEPTH, RELATED_OPS } from 'shared'
+import { MAX_RELATED_HOPS, parseRelatedSpec, type Filter } from './related-filter'
+import { linksTo } from './any-table-link'
 
-export type Filter = [string, string, unknown]
+export type { Filter } from './related-filter'
 
 interface ListArgs {
   filters?: Filter[]
@@ -16,9 +20,22 @@ interface ListArgs {
   order_by?: string
   limit_start?: number
   limit_page_length?: number
+  /** #859: list retired rows too (they are left out by default). */
+  with_retired?: boolean
 }
 
-const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in', 'related'] as const
+// #859 (ADR 0019): the list reads leave retired rows out unless the request
+// asks for them, with `with_retired` or by filtering on retired_at itself.
+// Only the entry points apply it, never scopedWhere: a related filter, the
+// check that a comment's row is readable and scope providers still see
+// retired rows, so retiring a row never changes what anyone may reach.
+export function hideRetired(meta: TableMeta, filters: Filter[], withRetired = false): Filter[] {
+  if (withRetired || !canRetire(meta) || !Array.isArray(filters)) return filters
+  if (filters.some((f) => Array.isArray(f) && f[0] === 'retired_at')) return filters
+  return [...filters, ['retired_at', '=', null]]
+}
+
+const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in', ...RELATED_OPS] as const
 
 // NAV-002: the 'related' operator — the ONE relationship-shaped filter the
 // list language understands. It constrains rows by a relationship to
@@ -44,54 +61,6 @@ const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in'
 // queries BEFORE any SQL executes, so a wide payload of sibling specs is
 // amplification. MAX_RELATED_HOPS caps the TOTAL specs compiled per
 // request, breadth and depth together.
-const MAX_RELATED_DEPTH = 3
-const MAX_RELATED_HOPS = 16
-
-interface RelatedSpec {
-  table: string
-  via?: string
-  column?: string
-  // #106 review: when one row table backs SEVERAL Sub-table columns
-  // (sales_lines and return_lines both → Order Line), an optional
-  // parentfield narrows the via hop to one owning column. Omitted = any
-  // field, which is the right default for "is this row referenced at all"
-  // (Connections counts).
-  parentfield?: string
-  filters?: Filter[]
-}
-
-function parseRelatedSpec(value: unknown): RelatedSpec {
-  const bad = (message: string) => new AppError('ValidationError', message)
-  if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw bad(`'related' filter value must be an object { table, via?, column?, filters? }`)
-  const v = value as Record<string, unknown>
-  if (typeof v.table !== 'string' || !v.table)
-    throw bad(`'related' filter needs a target { table }`)
-  if (v.via !== undefined && (typeof v.via !== 'string' || !v.via))
-    throw bad(`'related' via must be a sub-table name`)
-  if (v.column !== undefined && (typeof v.column !== 'string' || !v.column))
-    throw bad(`'related' column must be a column name`)
-  // via and column travel together — a lone column would be silently
-  // ignored by the Reference shape, and a lone via has no column to hop on.
-  if (v.column !== undefined && v.via === undefined)
-    throw bad(`'related' column only applies together with via`)
-  if (v.via !== undefined && v.column === undefined)
-    throw bad(`'related' via needs the sub-table column that references the target`)
-  if (v.parentfield !== undefined && (typeof v.parentfield !== 'string' || !v.parentfield))
-    throw bad(`'related' parentfield must be a Sub-table column name`)
-  if (v.parentfield !== undefined && v.via === undefined)
-    throw bad(`'related' parentfield only applies together with via`)
-  if (v.filters !== undefined && !Array.isArray(v.filters))
-    throw bad(`'related' filters must be an array of [field, operator, value]`)
-  return {
-    table: v.table,
-    via: v.via as string | undefined,
-    column: v.column as string | undefined,
-    parentfield: v.parentfield as string | undefined,
-    filters: v.filters as Filter[] | undefined,
-  }
-}
-
 const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
 
 // PERM-006: the columns a caller may name in select/filter/order/group.
@@ -102,6 +71,7 @@ const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
 // that for native and (via dispatch.ts) source-bound Tables alike.
 function columnSet(meta: TableMeta, readTiers?: Set<'basic' | 'restricted'>): Set<string> {
   const cols = new Set<string>(STANDARD_COLUMNS)
+  if (canRetire(meta)) for (const c of RETIREMENT_COLUMNS) cols.add(c)
   for (const f of meta.columns)
     if (
       !NO_COLUMN_TYPES.has(f.column_type) &&
@@ -163,7 +133,7 @@ export async function scopedWhere(
   const filters = [...callerFilters]
   // Extra WHERE fragments that can't be expressed as plain [field, op, value]
   // filters (they need OR with IS NULL).
-  const extraConds: ReturnType<typeof sql>[] = []
+  const extraConds: ReturnType<typeof sql>[] = [(await mandatoryWhere(meta, user)).frag]
   if (scope === 'own_rows') filters.push(['created_by', '=', user])
   // PERM-005: user permissions narrow by the table itself and by any
   // Reference column pointing at a restricted table. An UNSET reference does
@@ -177,10 +147,10 @@ export async function scopedWhere(
   // ones carrying a Sub-table column pointing here), so each becomes a
   // branch scoped to what the caller may see of it — and a parent Table the
   // caller cannot read at all contributes no branch, hiding its children.
-  if (meta.kind === 'sub_table' && !bypass)
+  if (meta.kind === 'sub_table')
     extraConds.push((await parentScopeCond(meta.name, user)).frag)
   // #342: likewise a comment or an edit is only as visible as its row.
-  if (ROW_ATTACHED_TABLES.has(meta.name) && !bypass)
+  if (ROW_ATTACHED_TABLES.has(meta.name))
     extraConds.push((await attachedRowScopeCond(meta.name, user, callerFilters)).frag)
   if (!bypass) {
     const upMap = await getScopeMap(user)
@@ -226,6 +196,15 @@ export async function scopedWhere(
     if (!OPS.includes(op as (typeof OPS)[number]))
       throw new AppError('ValidationError', `Unknown filter operator ${op}`)
     if (op === 'related') return relatedCond(field, value)
+    // #835: rows holding NONE of a sub-table's matching rows ("people with no
+    // role of their own"). Only the via shape: negating a Reference match
+    // would also have to decide what an empty reference means.
+    if (op === 'not related') {
+      const spec = parseRelatedSpec(value)
+      if (!spec.via) throw new AppError('ValidationError', `'not related' needs a sub-table { via, column, table }`)
+      const { frag } = await relatedCond(field, value)
+      return { frag: sql`not ${frag}` }
+    }
     return { frag: plainCond(field, op, value) }
   }
 
@@ -276,11 +255,13 @@ export async function scopedWhere(
       if (!owns)
         throw new AppError('ValidationError', `${meta.name} has no sub-table ${spec.via}`)
       const viaMeta = await getMeta(spec.via)
+      // #881: or a link to a row of any Table that may name spec.table; its
+      // Table column must then name it too.
       const viaCol = viaMeta.columns.find(
         (f) =>
           f.column_name === spec.column &&
           f.column_type === 'Reference' &&
-          f.reference_table === spec.table,
+          (f.reference_table === spec.table || (!!f.table_column && linksTo(f.choices, spec.table))),
       )
       if (!viaCol)
         throw new AppError(
@@ -303,7 +284,8 @@ export async function scopedWhere(
       // Depth-indexed alias: self-referential or repeated-table nesting
       // resolves by construction, not by lexical-scoping luck (#106 review).
       const v = sql(`v${relatedDepth}`)
-      const inTarget = sql`${v}.${sql(spec.column!)} in (select ${sql(target.meta.row_key)} from ${sql(target.table)} where ${target.where})`
+      const inRows = sql`${v}.${sql(spec.column!)} in (select ${sql(target.meta.row_key)} from ${sql(target.table)} where ${target.where})`
+      const inTarget = viaCol.table_column ? sql`${v}.${sql(viaCol.table_column)} = ${spec.table} and ${inRows}` : inRows
       // `parent` holds the OWNING row's id, so it joins against this table's
       // own row key.
       const owner = sql`${sql(tbl)}.${sql(meta.row_key)}`
@@ -378,10 +360,11 @@ async function parentScopeCond(
     const scope = await permissionScope(user, holder, 'read')
     if (scope === 'none') continue
     branches.push(
-      scope === 'all'
+      scope === 'all' && !holderMeta.access_policy
         ? sql`parenttype = ${holder}`
         : sql`(parenttype = ${holder} and parent in (
-             select ${sql(physicalRowKey(holder))} from ${sql(await tableRelation(holder))} where created_by = ${user}))`,
+             select ${sql(physicalRowKey(holder))} from ${sql(await tableRelation(holder))}
+             where ${(await mandatoryWhere(holderMeta, user)).frag} and ${scope === 'own_rows' ? sql`created_by = ${user}` : sql`true`}))`,
     )
   }
   if (!branches.length) return { frag: sql`false` }
@@ -422,10 +405,15 @@ async function attachedRowScopeCond(
     : (await sql`select distinct ref_table from ${rel} where ref_table is not null`).map((r) => String(r.ref_table))
   const branches: ReturnType<typeof sql>[] = table === 'File' ? [sql`coalesce(${rel}.ref_name, '') = ''`] : []
   const scopes = await getScopeMap(user)
+  const privileged = await isPrivileged(user)
   for (const target of targets) {
+    if (privileged && !(await needsMandatoryRowRead(target))) {
+      branches.push(sql`${rel}.ref_table = ${target}`)
+      continue
+    }
     const targetMeta = ROW_ATTACHED_TABLES.has(target) ? null : await getMeta(target).catch(() => null)
     if (!targetMeta) continue
-    branches.push(sql`(${rel}.ref_table = ${target} and ${rel}.ref_name in (
+    if (!targetMeta.access_policy) branches.push(sql`(${rel}.ref_table = ${target} and ${rel}.ref_name in (
       select share_name from share where share_table = ${target} and read = true
         and (person = ${user} or service_account = ${user})))`)
     const scope = await permissionScope(user, target, 'read')
@@ -458,11 +446,12 @@ async function countDocsImpl(
   table: string,
   filters: Filter[] = [],
   user = 'Administrator',
+  opts: { withRetired?: boolean } = {},
 ): Promise<number> {
   // M3 seam: source-bound Tables count on the source (spec EDS-5).
   const meta = await getMeta(table)
   if (isBound(meta)) return boundCountDocs(meta, filters, user)
-  const { table: tbl, where } = await scopedWhere(table, user, filters)
+  const { table: tbl, where } = await scopedWhere(table, user, hideRetired(meta, filters, opts.withRetired))
   const [{ count }] = await sql`select count(*)::int as count from ${sql(tbl)} where ${where}`
   return count as number
 }
@@ -481,7 +470,7 @@ async function groupCountImpl(
 ): Promise<{ label: string; value: number }[]> {
   const boundMeta = await getMeta(table)
   if (isBound(boundMeta)) return boundGroupCount(boundMeta, field, filters, user)
-  const { cols, table: tbl, where, phys } = await scopedWhere(table, user, filters)
+  const { cols, table: tbl, where, phys } = await scopedWhere(table, user, hideRetired(boundMeta, filters))
   assertColumn(cols, field, 'group_by')
   const rows = await sql`
     select ${sql(phys(field))}::text as label, count(*)::int as value
@@ -519,7 +508,7 @@ async function aggregateDocsImpl(
       )
     return { count: await boundCountDocs(boundMeta, filters, user), sum: null }
   }
-  const { meta, cols, table: tbl, where } = await scopedWhere(table, user, filters)
+  const { meta, cols, table: tbl, where } = await scopedWhere(table, user, hideRetired(boundMeta, filters))
   if (!sumField) {
     const [row] = await sql`select count(*)::int as count from ${sql(tbl)} where ${where}`
     return { count: row.count as number, sum: null }
@@ -555,6 +544,7 @@ async function summarizeDocsImpl(
   groupBy: string | undefined,
   sumFields: string[] = [],
   user = 'Administrator',
+  opts: { withRetired?: boolean } = {},
 ): Promise<Summary> {
   // Bound Tables: counts push down to the driver; sums are not implemented
   // on the source path yet, as for :aggregate.
@@ -575,7 +565,7 @@ async function summarizeDocsImpl(
       : []
     return { count, sums: {}, groups }
   }
-  const { meta, cols, table: tbl, where, phys } = await scopedWhere(table, user, filters)
+  const { meta, cols, table: tbl, where, phys } = await scopedWhere(table, user, hideRetired(boundMeta, filters, opts.withRetired))
   for (const f of sumFields) {
     assertColumn(cols, f, 'sum')
     const col = meta.columns.find((c) => c.column_name === f)
@@ -613,7 +603,7 @@ async function getListImpl(table: string, args: ListArgs = {}, user = 'Administr
   // paging pushed down to the driver (spec EDS-5).
   const boundMeta = await getMeta(table)
   if (isBound(boundMeta)) return boundGetList(boundMeta, args, user)
-  const { meta, table: tbl, cols, where, phys } = await scopedWhere(table, user, args.filters ?? [])
+  const { meta, table: tbl, cols, where, phys } = await scopedWhere(table, user, hideRetired(boundMeta, args.filters ?? [], args.with_retired === true))
 
   const fields = args.fields?.length ? args.fields : [ROW_KEY]
   for (const f of fields) assertColumn(cols, f, 'selected')
@@ -641,7 +631,7 @@ async function getListImpl(table: string, args: ListArgs = {}, user = 'Administr
   const rows = await sql`
     select ${selection} from ${sql(tbl)}
     where ${where}
-    order by ${sql(phys(orderField))} ${orderDir === 'desc' ? sql`desc` : sql`asc`}
+    order by ${sql(phys(orderField))} ${orderDir === 'desc' ? sql`desc` : sql`asc`}${orderField === ROW_KEY ? sql`` : sql`, ${sql(phys(ROW_KEY))} asc`}
     limit ${limit} offset ${offset}`
   const [{ count }] = await sql`
     select count(*)::int as count from ${sql(tbl)} where ${where}`

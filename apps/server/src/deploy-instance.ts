@@ -8,6 +8,7 @@ import { join, resolve } from 'node:path'
 import { compareVersions } from './runtime-migrations'
 import type { CommandIO } from './command-io'
 import { sql, withTransaction } from './db'
+import { DEPLOY_LOCK_WAIT, instanceDeployOperation, type DeployLockWait } from './app-lifecycle'
 import { storedEnvironment } from './db-environment'
 import { currentEnvironment, readVariable } from './env'
 
@@ -108,10 +109,18 @@ async function installOrUpgradeApps(io: CommandIO) {
 /** The instance's part of a deploy. Runs after the release, so the platform is
  *  migrated. All of it is one transaction: a failure anywhere leaves the apps and
  *  settings as they were, matching the deployment that is still serving. */
-export async function deployInstance(instance: string, io: CommandIO, opts: { root?: string } = {}): Promise<void> {
+export async function deployInstance(instance: string, io: CommandIO, opts: { root?: string; lockWait?: DeployLockWait } = {}): Promise<void> {
   const section = settingsSection()
   const { settingsFile } = instanceFolder(instance, opts.root)
-  await withTransaction(async () => {
+  // #943: the exclusive app lifecycle lock first, before the transaction holds
+  // any row a live request may wait for. Taken mid-transaction instead (by
+  // discovery or an install), it waited on a live job that waited on a row the
+  // deploy had saved, and every /api request queued behind it.
+  await instanceDeployOperation(() => withTransaction(async () => {
+    // A lock wait, or a transaction left idle, fails the deploy instead of
+    // holding locks the live server needs.
+    await sql`set local lock_timeout = '60s'`
+    await sql`set local idle_in_transaction_session_timeout = '5min'`
     // Held to the end, so two overlapping deploys take turns.
     await sql`select pg_advisory_xact_lock(hashtext('featherbase-instance-deploy'))`
     await installOrUpgradeApps(io)
@@ -119,5 +128,5 @@ export async function deployInstance(instance: string, io: CommandIO, opts: { ro
     const code = await cli.main(['settings:apply', '--file', settingsFile, '--environment', section], io)
     if (code !== 0) throw new Error('the settings file was not applied; see above')
     if (followsAppFiles(currentEnvironment(), await storedEnvironment())) await repinChangedApps(io)
-  })
+  }), opts.lockWait ?? DEPLOY_LOCK_WAIT, (line) => io.out(line))
 }

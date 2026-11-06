@@ -36,6 +36,25 @@ async function ledgerOff() {
 }
 
 describe('renameTable', () => {
+  shopTest('#855: the renamed Table carries on its row count', async () => {
+    await shop()
+    await sql`insert into series (name, current) values ('table:shop.supplier:', 41), ('table:shop.supplier:SUP-', 7)`
+    await renameTable('shop.supplier', 'shop.vendor', 'shop')
+    expect(await sql`select name, current from series where name like 'table:shop.%' order by name`).toEqual([
+      { name: 'table:shop.vendor:', current: 41 },
+      { name: 'table:shop.vendor:SUP-', current: 7 },
+    ])
+  })
+
+  shopTest('#855: a rename onto the name of a deleted Table takes over its counts', async () => {
+    await shop()
+    await sql`insert into series (name, current) values ('table:shop.supplier:', 41), ('table:shop.vendor:', 9)`
+    await renameTable('shop.supplier', 'shop.vendor', 'shop')
+    expect(await sql`select name, current from series where name like 'table:shop.%' order by name`).toEqual([
+      { name: 'table:shop.vendor:', current: 41 },
+    ])
+  })
+
   shopTest('rows are kept under the new name', async () => {
     await shop()
     await renameTable('shop.supplier', 'shop.vendor', 'shop')
@@ -488,5 +507,66 @@ describe('loss preview uses installed ownership', () => {
       .toEqual(['prune #2 dropColumn evolve.item.details: 0 values'])
     expect(await sql`select column_name from column_def where parent = 'evolve.item' and column_name = 'details'`).toEqual([])
     expect(await sql`select row_id, title, qty from evolve.item`).toEqual([{ row_id: 'i1', title: 'Keep this item', qty: 3 }])
+  })
+})
+
+// #911: an app version turns a code column into a link, in place.
+describe('a text column becomes a link', () => {
+  const linkCode = (to: Record<string, unknown> = { column_type: 'Reference', reference_table: 'Role' }) =>
+    ({ kind: 'alterColumn', table: 'shop.supplier', column: 'code', from: { column_type: 'Data', reference_table: null }, to })
+
+  shopTest('every code names a row, so the column becomes a link and keeps its values', async () => {
+    await registered()
+    await sql`insert into role (row_id) values ('ACME') on conflict do nothing`
+    await run(linkCode())
+    expect(await sql`select column_type, reference_table from column_def where parent = 'shop.supplier' and column_name = 'code'`)
+      .toEqual([{ column_type: 'Reference', reference_table: 'Role' }])
+    expect(await sql`select code from shop.supplier`).toEqual([{ code: 'ACME' }])
+  })
+
+  shopTest('a code with no row refuses the upgrade, naming it, and the column stays text', async () => {
+    await registered()
+    await expect(run(linkCode())).rejects.toThrow(/ACME names no Role row/)
+    expect(await sql`select column_type, reference_table from column_def where parent = 'shop.supplier' and column_name = 'code'`)
+      .toEqual([{ column_type: 'Data', reference_table: null }])
+  })
+
+  test('a link without the Table it links to is refused', () => {
+    expect(() => step([linkCode({ column_type: 'Reference', reference_table: null })])).toThrow(/a link needs the Table it links to/)
+  })
+
+  test('a link turning into text names the Table it leaves, and keeps none', () => {
+    const toText = (from: Record<string, unknown>, to: Record<string, unknown>) =>
+      () => step([{ kind: 'alterColumn', table: 'shop.order', column: 'supplier', from, to }])
+    expect(toText({ column_type: 'Reference' }, { column_type: 'Data' })).toThrow(/names the Table it links to and from/)
+    expect(toText({ column_type: 'Reference', reference_table: 'shop.supplier' }, { column_type: 'Data', reference_table: 'shop.supplier' }))
+      .toThrow(/text links to no Table/)
+    expect(toText({ column_type: 'Reference', reference_table: 'shop.supplier' }, { column_type: 'Data', reference_table: null })).not.toThrow()
+  })
+
+  shopTest('a link to a row of any Table does not turn into text', async () => {
+    await registered()
+    await createTable({ name: 'shop.audit', label: 'Audit', columns: [
+      { column_name: 'about_table', label: 'About Table', column_type: 'Reference', reference_table: 'Table' },
+      { column_name: 'about', label: 'About', column_type: 'Reference', table_column: 'about_table' },
+    ] }, 'shop')
+    await expect(changeColumnType('shop.audit', 'about', 'Data')).rejects.toThrow(/link to a row of any Table/)
+  })
+
+  shopTest('a link turns back into text and links to no Table', async () => {
+    await shop()
+    await changeColumnType('shop.order', 'supplier', 'Data')
+    expect(await sql`select column_type, reference_table from column_def where parent = 'shop.order' and column_name = 'supplier'`)
+      .toEqual([{ column_type: 'Data', reference_table: null }])
+  })
+
+  shopTest('the engine refuses a link with no Table', async () => {
+    await shop()
+    await expect(changeColumnType('shop.supplier', 'code', 'Reference')).rejects.toThrow(/a link needs the Table it links to/)
+  })
+
+  test("a link's Table cannot be swapped on its own", () => {
+    expect(() => step([{ kind: 'alterColumn', table: 'shop.supplier', column: 'code', from: { reference_table: null }, to: { reference_table: 'Role' } }]))
+      .toThrow(/changes only when a text column becomes a link/)
   })
 })

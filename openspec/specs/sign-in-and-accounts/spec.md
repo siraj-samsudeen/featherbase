@@ -909,50 +909,51 @@ SHALL load nothing from elsewhere, so an image in the notice shows as a link.
 
 ### Requirement: See who is waiting for access
 
-A System Manager SHALL be able to see everyone who signed in but holds no role yet, newest first, with how they signed in and when, and open any of them to give them roles. Only an address's domain SHALL show in the list, even where a name is itself an address. A person created without a name SHALL start with the part of their address before the @. The menu SHALL show how many are waiting.
+A person SHALL wait for an app only after opening it without access: an installed app's pages, Dash or
+Featherbase. Opening it SHALL record one request per person and app and say "You don't have access to <App>
+yet. An admin has been told." A System Manager SHALL see them as a standard list, newest first, with each
+person's full email address and an App column to filter by. A request SHALL leave the list once that person can open
+that app; the menu count SHALL count the same rows.
+
+#### Scenario: Opening an app without access
+
+- **WHEN** Priya, who holds only Tasker Member, opens Dash
+- **THEN** she sees "You don't have access to Dash yet. An admin has been told."
+- **AND** a System Manager sees her on the waiting list with App "Dash" and her email address, and the menu
+  count goes up by one
+
+#### Scenario: An app she can open is not a request
+
+- **WHEN** Priya opens Tasker, which she can use
+- **THEN** she is not listed as waiting for Tasker
 
 #### Scenario: A new starter shows up
 
-- **WHEN** someone from an allowed company domain signs in with Google for the first time
-- **THEN** a System Manager sees them on the waiting list with their domain, the sign-in method and the time, and the menu count goes up by one
+- **WHEN** someone from an allowed company domain signs in with Google for the first time, holding no role
+- **THEN** they are not on the waiting list until they open something they have no access to
+- **AND** once Featherbase has told them they have no access, a System Manager sees them on the waiting list with
+  App "Featherbase"
+
+#### Scenario: Opening it again
+
+- **WHEN** Priya opens Dash again while still waiting
+- **THEN** she is listed once for Dash
 
 #### Scenario: Giving a role takes them off the list
 
-- **WHEN** a System Manager opens a waiting person and gives them a role
-- **THEN** that person no longer shows as waiting
+- **WHEN** a System Manager gives Priya a role that opens Dash
+- **THEN** her Dash request no longer shows, and any request of hers for another app still does
+
+#### Scenario: The waiting list works like any list
+
+- **WHEN** a System Manager filters the waiting list by App "Featherbase" or chooses which columns show
+- **THEN** the list narrows and shows those columns the way every other list does, and only waiting requests are
+  ever listed
 
 #### Scenario: Only System Managers see the list
 
 - **WHEN** someone who is not a System Manager tries to open the waiting list
 - **THEN** they are refused and see no count in their menu
-
-### Requirement: Tell System Managers about a new arrival
-
-When a sign-in rule creates a new person, every enabled System Manager with an email address SHALL get one email saying who arrived, from which domain, how they signed in, and where to give them access.
-
-#### Normative details for the whole requirement
-
-A failed email SHALL NOT stop that person signing in. A day's alerts, counted by the India day, SHALL be capped; the cap is best-effort, so arrivals at the same moment can pass it by a few. Someone who arrives after the cap is reached SHALL NOT be emailed about later, but SHALL still show on the waiting list. Test-mode sign-ins SHALL NOT send alerts.
-
-#### Scenario: One email per arrival
-
-- **WHEN** a new person is created by their first Google sign-in and later signs in again
-- **THEN** each System Manager got exactly one email about them
-
-#### Scenario: An invited person is not announced
-
-- **WHEN** a person an administrator invited signs in for the first time
-- **THEN** no alert is sent, because someone already knows they are coming
-
-#### Scenario: A busy day stops the emails, not the list
-
-- **WHEN** more people arrive in one day than the daily cap allows
-- **THEN** the later arrivals are not emailed about, then or later, and still show on the waiting list
-
-#### Scenario: Mail trouble does not lock anyone out
-
-- **WHEN** the email cannot be sent as a new person signs in
-- **THEN** they are signed in as normal
 
 ### Requirement: Email an invitation to sign in
 
@@ -1145,3 +1146,52 @@ Sign-in attempt limits SHALL treat IPv6 addresses in the same /64 network as one
 
 - **WHEN** the user signs in from a different IPv6 /64 network
 - **THEN** it has a separate attempt budget and history records the full sign-in address
+
+### Requirement: An administrator reads a linked Google account by its address
+
+On a person's sign-in methods, a linked Google account SHALL lead with its address and SHALL say when and
+how it was linked and when it was last used. Google's account number SHALL be shown only when asked for,
+never as the first thing the row says.
+
+#### Scenario: A claimed Google invite reads as who and when
+
+```gherkin
+Given a person was invited by a Google address and has signed in with it
+When a System Manager opens the person's sign-in methods
+Then the Google sign-in leads with the person's address
+And it says it was linked at first sign-in, and when it was last used
+And Google's account number shows only under the sign-in's details
+```
+
+### Requirement: Tell System Managers who is asking for access
+
+When a person first asks for an app by opening it without access, every enabled System Manager with an email
+address SHALL get one email saying who asked, for which app, and where to give them access. A request still
+waiting a day after it was made SHALL be sent again once, in one reminder email to each System Manager listing every
+such request. Signing in SHALL NOT send an alert.
+
+#### Normative details for the whole requirement
+
+A failed email SHALL NOT stop the page opening. A day's alerts, counted by the India day, SHALL be capped; the cap
+is best-effort, so requests at the same moment can pass it by a few. A request made after the cap is reached SHALL
+NOT be emailed about then, but SHALL still show on the waiting list and in the next day's reminder.
+
+#### Scenario: One email per person and app
+
+- **WHEN** Priya opens Dash without access twice, then opens Featherbase without access
+- **THEN** each System Manager got exactly two emails about her: one for Dash and one for Featherbase
+
+#### Scenario: A reminder after a day
+
+- **WHEN** Priya's Dash request has waited more than a day and the reminder runs twice
+- **THEN** each System Manager got one reminder listing it
+
+#### Scenario: A busy day stops the emails, not the list
+
+- **WHEN** more people ask in one day than the daily cap allows
+- **THEN** the later requests are not emailed about that day, and still show on the waiting list
+
+#### Scenario: Mail trouble does not stop the page
+
+- **WHEN** the email cannot be sent as Priya opens Dash
+- **THEN** she still sees that an admin has been told, and her request is listed

@@ -2,14 +2,15 @@
 // fixture is a local .duckdb file (same driver code path as MotherDuck's
 // md: URLs, minus the network); the live MotherDuck warehouse is exercised
 // manually, not from the suite.
-import { afterAll, beforeAll, describe, expect } from 'vitest'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { afterAll, beforeAll, describe, expect, vi } from 'vitest'
+import { DuckDBInstance } from '@duckdb/node-api'
+import { copyFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from './pg-test'
-import { invalidateSources } from '../src/sources/registry'
-import { duckdbDriver } from '../src/sources/duckdb-driver'
-import type { Binding } from '../src/sources/types'
+import { getSource, invalidateSources } from '../src/sources/registry'
+import { duckdbDriver, run } from '../src/sources/duckdb-driver'
+import type { Binding, SourceFilter } from '../src/sources/types'
 
 const DUCK_URL_ENV = 'DUCK_FIXTURE_URL'
 let dir: string
@@ -32,6 +33,8 @@ beforeAll(async () => {
     seen timestamp, payload json, label varchar, at_time time)`)
   await conn.run(`create table nullable_groups (id integer primary key, qty integer)`)
   await conn.run(`insert into nullable_groups values (1, null), (2, null), (3, null), (4, 7), (5, 7), (6, 12)`)
+  await conn.run(`create table tied_rows (id integer primary key, label varchar)`)
+  await conn.run(`insert into tied_rows values (3, 'same'), (1, 'same'), (2, 'same')`)
   // #625: a sequence an app's dataset query must not advance.
   await conn.run(`create sequence probe`)
   conn.closeSync()
@@ -65,6 +68,48 @@ async function makeDuckSource(admin: {
 }
 
 describe('M3: duckdb read-only source', () => {
+  test('a failed superseded connection preserves the working replacement', async ({ admin }) => {
+    await makeDuckSource(admin)
+    const cfg = await getSource('duck-fixture')
+    invalidateSources('duck-fixture')
+    const originalUrl = process.env[DUCK_URL_ENV]
+    const replacement = path.join(dir, 'replacement.duckdb')
+    copyFileSync(path.join(dir, 'warehouse.duckdb'), replacement)
+    let entered!: () => void
+    let release!: () => void
+    const opening = new Promise<void>(resolve => { entered = resolve })
+    const released = new Promise<void>(resolve => { release = resolve })
+    const create = DuckDBInstance.create
+    let acceptOpens = true
+    const sdk = vi.spyOn(DuckDBInstance, 'create').mockImplementationOnce(async () => {
+      entered()
+      await released
+      return Promise.reject('Superseded connection refused')
+    }).mockImplementation((...args) => {
+      if (!acceptOpens) throw new Error('New connections unavailable')
+      return create.apply(DuckDBInstance, args)
+    })
+    const old = run(cfg, 'select count(*)::int as n from daily_sales', [])
+    const refused = expect(old).rejects.toMatchObject({ type: 'DataSourceError', message: expect.stringContaining('Superseded connection refused') })
+    try {
+      await opening
+      process.env[DUCK_URL_ENV] = replacement
+      expect(await run(cfg, 'select sum(qty)::int as n from daily_sales', [])).toEqual([{ n: 29 }])
+      acceptOpens = false
+      release()
+      await refused
+      // The external service no longer accepts new sessions. An already
+      // established replacement must still serve reads after the old failure.
+      expect(await run(cfg, 'select sum(qty)::int as n from daily_sales', [])).toEqual([{ n: 29 }])
+    } finally {
+      release()
+      await Promise.allSettled([old, refused])
+      sdk.mockRestore()
+      process.env[DUCK_URL_ENV] = originalUrl
+      invalidateSources('duck-fixture')
+    }
+  })
+
   test('introspects and reflects a warehouse table (no declared pk → first column)', async ({
     admin,
   }) => {
@@ -128,7 +173,7 @@ describe('Read and write through a connected table: a warehouse', () => {
 // see, on the same file and the same read-only connection the Admin browses with.
 describe('An app dataset query on a warehouse', () => {
   const cfg = { name: 'duck-fixture', engine: 'duckdb' as const, url_env: DUCK_URL_ENV, root_path: null, default_schema: null,
-    access: 'read_only' as const, pool_max: 1, statement_timeout_ms: 10000, allowlist: null }
+    access: 'read_only' as const, pool_max: 1, statement_timeout_ms: 10000, allowlist: null, databases: [] }
   const columns = [{ name: 'store', type: 'text' }, { name: 'business_date', type: 'date' }, { name: 'amount', type: 'money' }]
   const kklOnSecond = () => duckdbDriver.query!(cfg, 'select store, business_date, amount from daily_sales', columns, {
     any: [[{ column: 'store', values: ['KKL'] }], [{ column: 'store', values: ['NOWHERE'] }]],
@@ -186,12 +231,13 @@ describe('An app dataset query on a warehouse', () => {
       .rejects.toThrow(/read-only|read only/i)
   })
 
-  // MotherDuck cannot be opened read-only; without a read-scaling token the
-  // query is refused before anything is dialled.
-  test('a MotherDuck source without a read-scaling token is refused', async () => {
-    process.env.DUCK_MD_URL = 'md:never_dialled'
+  // #969: the only way to MotherDuck is a MotherDuck source, whose session
+  // attaches read-only. A DuckDB file source never dials a MotherDuck address.
+  test.each(['md:never_dialled', 'MD:never_dialled', ' md:', 'motherduck:never_dialled'])('a DuckDB source refuses the MotherDuck address %s', async (address) => {
+    process.env.DUCK_MD_URL = address
+    await expect(duckdbDriver.test({ ...cfg, name: 'duck-md', url_env: 'DUCK_MD_URL' })).rejects.toThrow(/holds a MotherDuck address/)
     await expect(duckdbDriver.query!({ ...cfg, name: 'duck-md', url_env: 'DUCK_MD_URL' }, 'select 1 as store', [{ name: 'store', type: 'integer' }]))
-      .rejects.toThrow(/read-scaling token/)
+      .rejects.toThrow(/holds a MotherDuck address/)
   })
 })
 
@@ -230,6 +276,7 @@ describe('Browsing a warehouse before connecting a table', () => {
       'warehouse.main.daily_sales',
       'warehouse.main.kitchen',
       'warehouse.main.nullable_groups',
+      'warehouse.main.tied_rows',
     ])
     const everything = await introspect(admin, '')
     expect(everything.tables.map((t) => t.table)).toEqual(expect.arrayContaining(['daily_sales', 'kitchen', 'nullable_groups']))
@@ -258,11 +305,33 @@ describe('Filtering rows read from a warehouse', () => {
     source: {
       name: 'duck-fixture', engine: 'duckdb', url_env: DUCK_URL_ENV, root_path: null,
       default_schema: null, access: 'read_only', pool_max: 1,
-      statement_timeout_ms: 10000, allowlist: null,
+      statement_timeout_ms: 10000, allowlist: null, databases: [],
     },
     schema: 'warehouse.main', table: 'nullable_groups', pk: 'id', modified: null,
     columns: [{ column_name: 'qty', source_column: 'qty', column_type: 'Int' }],
   }
+
+  test('rows tied on the sort value page in key order', async () => {
+    const tied: Binding = { ...nullableBinding, table: 'tied_rows' }
+    const ids: unknown[] = []
+    for (const offset of [0, 1, 2]) {
+      const { rows } = await duckdbDriver.getList(tied, {
+        filters: [], columns: ['label'], order: { column: 'label', dir: 'asc' }, limit: 1, offset,
+      })
+      ids.push(...rows.map((r) => r.id))
+    }
+    expect(ids).toEqual([1, 2, 3])
+  })
+
+  test('refuses internal relationship filters without returning warehouse rows', async () => {
+    const filters: SourceFilter[] = [{ column: 'qty', op: 'related', value: { binding: nullableBinding, filters: [] } }]
+    const refusal = { type: 'ValidationError', message: 'Related filters are not supported by this source engine' }
+    await expect(duckdbDriver.getList(nullableBinding, {
+      filters, columns: ['qty'], order: { column: 'id', dir: 'asc' }, limit: 10, offset: 0,
+    })).rejects.toMatchObject(refusal)
+    await expect(duckdbDriver.count(nullableBinding, filters)).rejects.toMatchObject(refusal)
+    expect(await duckdbDriver.count(nullableBinding, [])).toBe(6)
+  })
 
   test('group counts retain the rows whose grouping value is NULL', async () => {
     expect(await duckdbDriver.groupCount(nullableBinding, 'qty', [])).toEqual([
@@ -324,6 +393,7 @@ describe('Filtering rows read from a warehouse', () => {
         pool_max: 5,
         statement_timeout_ms: 10000,
         allowlist: null,
+        databases: [],
       },
       schema: 'warehouse.main',
       table: 'daily_sales',

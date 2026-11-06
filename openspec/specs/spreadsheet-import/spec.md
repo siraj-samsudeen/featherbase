@@ -164,16 +164,79 @@ with the reason, instead of picking one to update.
 
 ### Requirement: The matching column is remembered
 
-Re-importing into a table that was matched with a column before SHALL
-suggest that same column again, named for the user to confirm or change —
-never applied silently.
+Re-importing into a table that was matched with a column before SHALL offer that column when still mapped, permitted and usable, named for explicit acceptance or replacement, never applied silently. Other eligible mapped columns whose distinct nonblank incoming values match every incoming row one-to-one with readable existing rows SHALL also be offered using the existing matching rules, without guessing which column identifies the rows or disclosing unreadable values.
 
 #### Scenario: The same matching column is suggested next time
 
-- **WHEN** a table was last imported into using one column as the match,
-  and the user imports into it again
-- **THEN** that column is offered as the suggested match, named on screen
-- **AND** the import doesn't use it until the user confirms or changes it
+```gherkin
+Given the user has imported 61 zones matched on their zone codes
+When the user prepares the zones file for another import
+Then zone codes are offered as the remembered matching column
+And no matching column is active until the user accepts or chooses one
+```
+
+#### Scenario: A matching column is offered without a previous keyed import
+
+```gherkin
+Given the user has imported 61 zones without choosing a matching column
+When the user prepares the identical zones file for another import
+Then zone codes are offered because each incoming code matches exactly one readable zone
+And no matching column is active until the user accepts or chooses one
+```
+
+#### Scenario: Ambiguous values are not offered as a safe match
+
+```gherkin
+Given the user has imported zones with repeated zone codes
+When the user prepares the zones file for another import
+Then the repeated zone codes are not offered as a one-to-one matching column
+```
+
+#### Scenario: An unreadable matching column is not offered
+
+```gherkin
+Given the user can read the zones but cannot read their zone codes
+When the user prepares the identical zones file for another import
+Then zone codes are not offered as a matching column or used to disclose overlap
+```
+
+#### Scenario: An unmapped remembered column is not offered
+
+```gherkin
+Given the user has imported 61 zones matched on their zone codes
+When the user prepares another zones file without mapping its zone codes
+Then zone codes are not offered as a remembered matching column
+```
+
+### Requirement: A fully overlapping append is deliberate
+
+When the user chooses no matching column and every incoming row has a distinct nonblank value matching exactly one readable existing row in an eligible mapped column whose values the user may read, the import SHALL warn that appending adds another set and require explicit acknowledgement before proceeding. The user SHALL be able to choose a matching column instead; deliberate append remains available, and an inability to check overlap SHALL NOT be treated as proof that no rows overlap.
+
+#### Scenario: Appending the identical file waits for acknowledgement
+
+```gherkin
+Given the user has imported 61 zones with their populations
+When the user imports the identical zones file without choosing a matching column
+Then the import waits for acknowledgement that 61 more rows will be added
+And the user can choose the suggested zone codes instead
+```
+
+#### Scenario: The acknowledged append adds the second set
+
+```gherkin
+Given the user has imported 61 zones with their populations
+And the user has been warned that appending the identical zones file adds 61 more rows
+When the user explicitly acknowledges the append
+Then the zones contain 122 rows
+```
+
+#### Scenario: Readable overlap does not require permission to change rows
+
+```gherkin
+Given the user can read and append the zones but cannot change existing zones
+When the user checks overlap before appending the identical zones file
+Then all 61 rows are reported as overlapping without an available matching key
+```
 
 ### Requirement: The file's own codes can become the row ids
 
@@ -196,15 +259,40 @@ table normally identifies new rows.
 
 ### Requirement: A large update is confirmed before it runs
 
-An import about to update more than a small number of rows SHALL ask the
-user to type that exact count back before it proceeds, so a wrong matching
-column is never clicked past by accident.
+At import time, a fresh changed-row count across the selected unfinished targets and all their parts SHALL determine whether more than 20 existing rows would change mapped values and require that exact count to be typed. Unchanged matches and retained corrections alone SHALL NOT increase that count; missing or wrong confirmation leaves the import blocked, and changed import choices invalidate confirmation.
+
+#### Scenario: An identical large file needs no change confirmation
+
+```gherkin
+Given the user has imported 61 zones with their populations
+When the user imports the identical zones file matched on its zone codes
+Then the import proceeds without a typed change count
+```
+
+#### Scenario: Twenty changed rows need no typed count
+
+```gherkin
+Given the user has imported 61 zones with their populations
+When the user imports the zones file with 20 changed populations matched on its zone codes
+Then the import proceeds without a typed change count
+```
 
 #### Scenario: The count must be typed back
 
-- **WHEN** an import would update more rows than the confirmation point
-- **THEN** the user must type the exact number back before the import runs
-- **AND** a missing or wrong number leaves the import blocked
+```gherkin
+Given the user has imported 61 zones with their populations
+When the user imports the zones file with 21 changed populations matched on its zone codes
+Then the import waits for the user to type 21
+And a missing or wrong count leaves the import blocked
+```
+
+#### Scenario: Changes in different parts count together
+
+```gherkin
+Given the user has imported 520 zones with their populations
+When the user imports the zones file with 11 changed populations among its first 500 zones and 10 among its last 20 matched on zone codes
+Then the import waits for the user to type 21
+```
 
 ### Requirement: A large file is imported in parts
 
@@ -325,6 +413,37 @@ SHALL name the column the user must fix, by the file's own header, and why.
 - **WHEN** a checked row has a value its column refuses, such as a date written `23-10-2026`
 - **THEN** the problem names that column, as the file's header writes it, and the reason
 
+### Requirement: Re-import previews distinguish value changes
+
+The immediate preview and the user's explicit check SHALL split matched rows into changed and unchanged, with the number of mapped values that will change, alongside added, skipped and refused rows. The explanation SHALL agree with the chosen matching mode; classification changes presentation and confirmation, not import automation, source observations, provenance, undo or historical processed-count meaning.
+
+#### Scenario: An identical file changes no values
+
+```gherkin
+Given the user has imported 61 zones with their populations
+When the user chooses zone codes to match the identical zones file before requesting a check
+Then the preview reports 0 changed rows, 61 unchanged rows and 0 added rows
+And the preview reports 0 changed values and explains matching rather than appending
+```
+
+#### Scenario: One changed population does not count the whole file
+
+```gherkin
+Given the user has imported 61 zones with their populations
+When the user checks the zones file with one changed population matched on its zone codes
+Then the preview reports 1 changed row, 60 unchanged rows and 0 added rows
+And the preview reports 1 changed value
+```
+
+#### Scenario: An unchanged re-import is still recorded
+
+```gherkin
+Given the user has imported 61 zones with their populations
+When the user imports the identical zones file matched on its zone codes
+Then import history records 61 processed matches rather than 61 value changes
+And undoing that import reports that the 61 matched rows had no values changed
+```
+
 ### Requirement: Imports preserve corrections
 A Table that keeps change history SHALL preserve a field whose latest change was made by a person when a re-import supplies a different value, and list the conflict with both values, the last editor and time, and the import. Fields last changed by an import SHALL follow the source; this rule applies equally to the import screen and scripted imports.
 
@@ -360,8 +479,114 @@ The conflict list SHALL show only rows and fields the user may read. Resolving a
 - **THEN** neither its conflict nor its values are shown to that user
 
 ### Requirement: Preview explains protected fields
-The import check SHALL count fields it will update and fields it will keep and flag, per Table. When a Table keeps no change history, the check SHALL explain that imports overwrite existing values.
+
+The re-import preview and check SHALL separately count rows and differing incoming values that keep a person's corrections, and new conflicts. Retained rows may also contain changes to other mapped values; when change history is off, the check SHALL explain that imports overwrite existing values.
 
 #### Scenario: Check a correction
-- **WHEN** a re-import would update one untouched field and conflict with one correction
-- **THEN** the check reports one updated field and one kept field before anything commits
+
+```gherkin
+Given the user has imported 61 zones and corrected the first zone's region from North to South
+When the user checks a zones file matched on zone codes with a new East region and a changed population for that zone
+Then the preview reports 1 changed row and 1 row keeping the user's correction
+And it reports 1 changed value, 1 retained value and 1 new conflict
+```
+
+#### Scenario: The previous source retains the correction without another conflict
+
+```gherkin
+Given the user has imported 61 zones and corrected the first zone's region from North to South
+When the user checks the original zones file matched on its zone codes
+Then the preview reports 0 changed rows, 61 unchanged rows and 1 row keeping the user's correction
+And it reports 1 retained value and 0 new conflicts
+```
+
+#### Scenario: No-history overwrites are explained
+
+```gherkin
+Given the user has imported 61 zones without change history and corrected the first zone's region
+When the user checks the original zones file matched on its zone codes
+Then the preview reports the differing region as a change rather than a retained correction
+And the user is warned that imports overwrite existing values without change history
+```
+
+### Requirement: A column switched to Choice takes its options from the sheets
+
+A column the user switches to Choice SHALL take as its options every different value in the sheets feeding it, however many there are, and a value with spaces around it SHALL import as that option. A long list shows its first eight options and how many more, with the whole list on hover.
+
+#### Scenario: Many sections become a Choice by hand
+
+```gherkin
+Given a sheet whose Section column holds 12 different values
+When the user imports it as a new table with Section switched to Choice
+Then the new table holds every row
+And its Section column offers all 12 values
+```
+
+#### Scenario: A long list of options stays readable
+
+```gherkin
+Given a sheet whose Section column holds 12 different values
+When the user switches Section to Choice in the import wizard
+Then the wizard shows the first 8 options and says 4 more
+```
+
+#### Scenario: Spaces around a value don't refuse its row
+
+```gherkin
+Given a sheet whose Zone column repeats Dairy and Fresh with spaces around them
+When the user imports it as a new table
+Then the new table holds every row
+```
+
+### Requirement: A refused table says why
+
+When the server refuses a table the import would make, the wizard SHALL show the server's reason, naming the column by the label the user sees where it can, not only that the definition is invalid.
+
+#### Scenario: A column with a bad name is named
+
+```gherkin
+Given a sheet with a Zone column
+When the user imports it as a new table with Zone's column name changed to "Bad Name"
+Then the import says the table failed because Column "Zone" must be snake_case
+```
+
+### Requirement: Refused rows on a one-sheet import stay on screen
+
+A one-sheet import with any refused row SHALL stay on the wizard and report the refused rows, and SHALL not call itself complete. When every row of a new table is refused nothing has landed, so the target counts as failed and can be corrected and imported again. An import with none refused still goes straight to the table's list.
+
+#### Scenario: Every row is refused
+
+```gherkin
+Given a sheet whose Zone column holds only words
+When the user imports it as a new table with Zone switched to Int
+Then the import says every row was refused
+When the user switches Zone back to Data and imports again
+Then the new table holds every row
+```
+
+### Requirement: Trying again after a dropped connection
+
+If the connection drops after an import has made its new table, importing again SHALL work when no row landed, using the columns as they are now. When rows landed it SHALL refuse, saying how many and where to delete them, so that they are not doubled.
+
+#### Scenario: No row landed
+
+```gherkin
+Given a sheet with a Zone column
+And the connection drops while the import is sending its rows
+When the user imports it as a new table
+Then the import says the table failed
+When the connection is back and the user imports again
+Then the new table holds every row
+```
+
+#### Scenario: Some rows landed
+
+```gherkin
+Given a sheet with a Zone column
+And the connection drops after one row has landed
+When the user imports it as a new table
+Then the import says the table failed
+When the connection is back and the user imports again
+Then the import says the table already holds 1 row and to delete it under Past imports
+And the new table holds 1 row
+```

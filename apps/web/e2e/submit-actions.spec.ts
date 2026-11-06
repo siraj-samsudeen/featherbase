@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminToken, bearer, type APIRequestContext } from './fixtures'
 
 const DT = 'UI Sub Order'
@@ -32,7 +33,7 @@ test('UI-010: draft shows Submit; submitted shows Cancel + locks fields; cancell
   })
   const docName = ((await created.json()) as { row_id: string }).row_id
 
-  await session.visit(`/admin/${encodeURIComponent(DT)}/${docName}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${docName}`)
   await session.step('submit, cancel, and amend walk the status badge and field lock', async ({ page }) => {
     await expect(page.getByTestId('form-view')).toBeVisible()
 
@@ -46,7 +47,9 @@ test('UI-010: draft shows Submit; submitted shows Cancel + locks fields; cancell
     await expect(page.getByTestId('status-badge')).toContainText('Submitted')
     await expect(page.getByTestId('form-cancel')).toBeVisible()
     await expect(page.getByTestId('form-submit')).toHaveCount(0)
-    await expect(page.locator('[data-field=title]')).toBeDisabled()
+    // Locked: the title reads as a value (#795), with no box left to type in.
+    await expect(page.locator('[data-form-field][data-label="Title"] [data-value]')).toHaveText('action doc')
+    await expect(page.locator('[data-field=title]')).toHaveCount(0)
 
     // Cancel -> Cancelled, Amend present
     await page.getByTestId('form-cancel').click()
@@ -55,7 +58,7 @@ test('UI-010: draft shows Submit; submitted shows Cancel + locks fields; cancell
 
     // Amend -> navigates to a new draft (name-1) editable
     await page.getByTestId('form-amend').click()
-    await expect(page).toHaveURL(new RegExp(`/admin/${encodeURIComponent(DT)}/${docName}-1`))
+    await expect(page).toHaveURL(new RegExp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${docName}-1`))
     await expect(page.getByTestId('status-badge')).toContainText('Draft')
     await expect(page.locator('[data-field=title]')).toBeEnabled()
     await expect(page.locator('[data-field=title]')).toHaveValue('action doc')

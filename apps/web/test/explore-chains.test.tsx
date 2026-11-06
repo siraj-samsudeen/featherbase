@@ -120,7 +120,7 @@ test('from an item, the purchases that carry it through their lines', async ({ a
 })
 
 // The final pane opens details rather than making a selection (#546).
-test('a row in the third pane opens Peek without changing either upstream selection', async ({ admin }) => {
+test('a row in the third pane opens the drill pane without changing either upstream selection', async ({ admin }) => {
   await seed(admin)
   await renderApp('/featherbase/admin/explore', admin)
   await pick(await screen.findByTestId('explore-root'), 'Ec Supplier')
@@ -135,14 +135,21 @@ test('a row in the third pane opens Peek without changing either upstream select
   const [line] = within(screen.getByTestId('explore-pane3')).getAllByTestId('explore-row')
   fireEvent.click(line)
   expect(line).not.toHaveAttribute('data-selected')
-  const panel = await screen.findByTestId('peek-panel-0')
-  const expected = await admin.get<{ data: { row_id: string }[] }>(
+  // The drill pane shows that very line, po-2's only one: named exactly as
+  // that row is, and pointing at po-2 (po-1 has a line of the same name).
+  const lines = await admin.get<{ data: { row_id: string }[] }>(
     `/api/table/Ec%20Line?fields=${encodeURIComponent(JSON.stringify(['row_id']))}&filters=${encodeURIComponent(JSON.stringify([['parent', '=', 'po-2']]))}`,
   )
-  expect(expected.data).toHaveLength(1)
-  expect(within(panel).getByTestId('peek-title')).toHaveTextContent(expected.data[0].row_id)
-  fireEvent.click(within(panel).getByTestId('peek-close'))
-  await waitFor(() => expect(screen.queryByTestId('peek-panel-0')).not.toBeInTheDocument())
+  expect(lines.data).toHaveLength(1)
+  const { titles: [expected] } = await admin.post<{ titles: { title: string }[] }>('/api/row_titles', {
+    rows: [{ table: 'Ec Line', row_id: lines.data[0].row_id }],
+  })
+  const panel = await screen.findByRole('complementary', { name: expected.title })
+  expect(panel).toHaveTextContent('Ec Line')
+  const pointsAt = (await within(panel).findByRole('heading', { name: 'Points at' })).parentElement!
+  await waitFor(() => expect(pointsAt).toHaveTextContent('po-2'))
+  fireEvent.click(within(panel).getByRole('button', { name: 'Close' }))
+  await waitFor(() => expect(panel).not.toBeInTheDocument())
   expect(screen.getByTestId('explore-chips').textContent).toBe(chips)
   expect(count('pane2')).toHaveTextContent('2')
   expect(count('pane3')).toHaveTextContent('1')
@@ -151,7 +158,7 @@ test('a row in the third pane opens Peek without changing either upstream select
 test("the list's Explore button opens a chain of the dependents ticked under it", async ({ admin }) => {
   const user = userEvent.setup()
   await seed(admin)
-  const { router } = await renderApp(`/featherbase/admin/${encodeURIComponent('Ec Supplier')}`, admin)
+  const { router } = await renderApp(`/featherbase/admin/table/ec-supplier`, admin)
   await user.click(await screen.findByTestId('explore-split-toggle'))
   const [option] = await within(await screen.findByTestId('explore-split-panel')).findAllByTestId('explore-split-option')
   await user.click(option)
@@ -162,4 +169,24 @@ test("the list's Explore button opens a chain of the dependents ticked under it"
   await user.click(screen.getByTestId('explore-split-open'))
   await waitFor(() => expect((router.state as { location: { pathname: string } }).location.pathname).toBe('/featherbase/admin/explore'))
   await waitFor(() => expect(screen.getByTestId('explore-pane2')).toBeInTheDocument())
+})
+
+test('typing narrows the Start-from list, Enter starts from the first match, and links read as titles', async ({ admin }) => {
+  const user = userEvent.setup()
+  await seed(admin)
+  await renderApp('/featherbase/admin/explore', admin)
+  const root = await screen.findByTestId('explore-root')
+  await waitFor(() => expect(within(root).getAllByRole('option').map((o) => o.textContent)).toContain('Ec Purchase'))
+
+  await user.type(screen.getByTestId('explore-root-search'), 'ec purch')
+  const shown = within(root).getAllByRole('option').map((o) => o.textContent)
+  expect(shown).toEqual(['1 matching table', 'Ec Purchase'])
+
+  await user.keyboard('{Enter}')
+  // Picking a root moves the page address, which renders the picker afresh.
+  await waitFor(() => expect(screen.getByTestId('explore-root')).toHaveValue('Ec Purchase'))
+  // A purchase's supplier shows the supplier's title, never its id.
+  const pane1 = await screen.findByTestId('explore-pane1')
+  await waitFor(() => expect(pane1).toHaveTextContent('Acme'))
+  expect(pane1).not.toHaveTextContent('sup-a')
 })

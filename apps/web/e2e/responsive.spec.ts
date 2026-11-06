@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminAuth, type Page } from './fixtures'
 
 const DT = 'Resp E2E Item'
@@ -119,7 +120,7 @@ test.describe('UI-025: responsive Admin (mobile)', () => {
       .clickLink(DT)
       .assertHas('[data-testid="list-view"]')
     await session.step('the table list fits after drawer navigation', async ({ page }) => {
-      await expect(page).toHaveURL(new RegExp(`/admin/${encodeURIComponent(DT)}`))
+      await expect(page).toHaveURL(new RegExp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`))
       await expect(page.getByTestId('sidebar-backdrop')).toHaveCount(0)
       await expect
         .poll(async () => (await page.getByTestId('admin-sidebar').boundingBox())!.x)

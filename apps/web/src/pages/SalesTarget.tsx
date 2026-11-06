@@ -1,10 +1,11 @@
+import { useAccessRequest } from '../lib/access-request'
 import { useEffect, useRef, useState } from 'react'
-import { Button, Notice, Select, cardClasses } from '../components/ui'
+import { Button, Notice, Select, cardClasses } from '@featherbase/shop-floor'
 import { ApiError, api, clearSession, getSessionUser, getToken } from '../lib/api'
 import { TopBar } from '../components/TopBar'
 import { ThemeChoiceProvider } from '../lib/theme-choice'
 import { SCOPE_BASES, type ScopeBasis } from 'shared'
-import { fmtDate as fmtDay, fmtExact, fmtInstantIST, fmtPct, fmtSigned } from '../lib/inr'
+import { fmtDate as fmtDay, fmtExact, fmtInstantIST, fmtPct, fmtSigned } from '@featherbase/shop-floor'
 
 // #3755: the personalised sales-target report. The page holds no report
 // logic — MotherDuck renders the Dive inside a sandboxed iframe. What the page
@@ -391,7 +392,7 @@ function SalesTargetReport() {
       {/* #489: the shared top bar. The identity line and the store switcher
           sit below it, inside the page (Stage B moves the switcher into the
           bar as a declared control). */}
-      <TopBar home="feather_dash" />
+      <TopBar home="dash" />
       <div className="flex flex-wrap items-center justify-between gap-3 px-3 pt-3" data-testid="report-identity">
         <div className="flex min-w-0 items-center gap-3">
           <div>
@@ -624,14 +625,7 @@ function SalesTargetReport() {
                 </p>
               </>
             )}
-            {embed.kind === 'no-access' && (
-              <>
-                <p className="font-medium text-ink">You don't have access to this report</p>
-                <p className="mt-1 text-ink-muted">
-                  Ask your manager or administrator to give you access.
-                </p>
-              </>
-            )}
+            {embed.kind === 'no-access' && <NoReportAccess />}
             {embed.kind === 'not-configured' && (
               // Quiet, not red: this deployment simply has no live Dive. The numbers
               // above came from the snapshot and are unaffected.
@@ -653,5 +647,25 @@ function SalesTargetReport() {
         )}
       </main>
     </div>
+  )
+}
+
+/** #955: finding no access to Dash is the request for it. */
+function NoReportAccess() {
+  const asked = useAccessRequest('dash')
+  if (asked?.state === 'waiting')
+    return (
+      <>
+        <p className="font-medium text-ink">You don't have access to {asked.title} yet</p>
+        <p className="mt-1 text-ink-muted">An admin has been told.</p>
+      </>
+    )
+  return (
+    <>
+      <p className="font-medium text-ink">You don't have access to this report</p>
+      <p className="mt-1 text-ink-muted">
+        Ask your manager or administrator to give you access.
+      </p>
+    </>
   )
 }

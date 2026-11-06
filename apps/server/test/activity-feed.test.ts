@@ -52,23 +52,23 @@ describe('#101: GET /api/activity_feed', () => {
     })
     const created = await admin.post<{ updated_at: string }>('/api/save_row', {
       table: 'Feed DT',
-      row: { row_id: 'feed-row', title: 'v1' },
+      row: { row_id: 'feed / row?#%', title: 'v1' },
     })
     await admin.post('/api/save_row', {
       table: 'Feed DT',
-      row: { row_id: 'feed-row', title: 'v2', updated_at: created.updated_at },
+      row: { row_id: 'feed / row?#%', title: 'v2', updated_at: created.updated_at },
     })
     await logActivity('Administrator', 'login', { full_name: 'Administrator' })
     // A read event that must NOT surface in the team scope.
     await admin.post('/api/events', {
-      events: [{ kind: 'row', key: 'row:Feed DT/feed-row', label: 'feed-row' }],
+      events: [{ kind: 'row', key: 'row:Feed DT/feed / row?#%', label: 'feed / row?#%' }],
     })
 
     const feed = await admin.get<{ items: Array<Record<string, unknown>> }>(
       '/api/activity_feed?scope=team',
     )
-    const change = feed.items.find((i) => i.kind === 'change' && i.label === 'feed-row')
-    expect(change).toMatchObject({ sub: 'Feed DT', path: '/featherbase/admin/Feed DT/feed-row' })
+    const change = feed.items.find((i) => i.kind === 'change' && i.label === 'feed / row?#%')
+    expect(change).toMatchObject({ sub: 'Feed DT', path: '/featherbase/admin/table/feed-dt/row/feed%20%2F%20row%3F%23%25' })
     expect(feed.items.some((i) => i.kind === 'login')).toBe(true)
     expect(feed.items.every((i) => !['row', 'list', 'page', 'search'].includes(i.kind as string))).toBe(
       true,
@@ -300,7 +300,7 @@ describe('#101: GET /api/activity_feed', () => {
       events: [{ kind: 'row', key: 'row:Feed Merch Map/1517|040802006', label: '1517|040802006', sub: 'Feed Merch Map', path: '/featherbase/admin/Feed%20Merch%20Map/1517%7C040802006' }],
     })
     const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine')
-    expect(feed.items[0]).toMatchObject({ kind: 'row', title: '1517 · Kurti Z', sub: 'Feed Merch Map' })
+    expect(feed.items[0]).toMatchObject({ kind: 'row', title: 'Kurti Z · 1517', sub: 'Feed Merch Map' })
   })
 
   test("'mine' titles an old slug-labelled page from the catalog, query string and all", async ({ admin }) => {
@@ -364,10 +364,15 @@ describe('#101: GET /api/activity_feed', () => {
   })
 
   test("'team' counts one person's long run of edits in full, and reaches the change before it", async ({ admin }) => {
-    const base = Date.now() - 3_600_000
+    const [{ latest }] = await sql`select greatest(
+      (select max(created_at) from version),
+      (select max(created_at) from activity_log)
+    ) as latest`
+    const base = new Date(latest ?? Date.now()).getTime() + 1000
     const at = (s: number) => new Date(base + s * 1000)
     // Newest first: 45 edits of one row, then (older) one edit of another.
-    // An hour ago, so nothing else in the run's span can sit between them.
+    // After persisted activity, so a restored database's age cannot place
+    // an unrelated change inside this synthetic run.
     await sql`insert into version ${sql([
       { row_id: 'feed-run-older', created_by: 'Administrator', updated_by: 'Administrator', created_at: at(0), updated_at: at(0), status: 'draft', ref_table: 'Feed Run DT', ref_name: 'run-b', data: '{}' },
       ...Array.from({ length: 45 }, (_, i) => ({

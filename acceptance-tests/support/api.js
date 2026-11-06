@@ -81,6 +81,14 @@ class Api {
     return res;
   }
 
+  /** Explicit setup for scenarios whose administrator must enter Tasker.
+   * Installation alone never grants access to member-only app data. */
+  async admitTaskerAdministrator() {
+    const admin = await this.row('Person', SYSTEM_MANAGER.user);
+    if (!admin.roles.some(entry => entry.role === 'Tasker Member'))
+      await this.saveRow('Person', { ...admin, roles: [...admin.roles, { role: 'Tasker Member' }] });
+  }
+
   /** Deletes a table left by an earlier scenario, so a create starts fresh. */
   async removeTableIfPresent(name) {
     const enc = encodeURIComponent(name);
@@ -135,6 +143,19 @@ class Api {
       `read ${rowId} of ${table}`,
     );
     return res.json();
+  }
+
+  async copyWarehouse(source, choices) {
+    const res = await this.call('POST', `/api/table/Data%20Source/${encodeURIComponent(source)}:copy_create`, choices, [200], 'create native warehouse copy');
+    return res.json();
+  }
+
+  async refreshWarehouse(source, database) {
+    await this.call('POST', `/api/table/Data%20Source/${encodeURIComponent(source)}:refresh_tables`, { database }, [200], 'refresh synthetic warehouse');
+  }
+
+  async renameColumn(table, from, to) {
+    await this.call('POST', `/api/table_def/${encodeURIComponent(table)}/rename_column`, { from, to }, [200], 'rename copied column');
   }
 
   /** A role that may read this table (its basic columns). */

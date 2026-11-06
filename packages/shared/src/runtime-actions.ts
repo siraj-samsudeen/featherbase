@@ -12,6 +12,19 @@ export interface ActionListArgs {
 // Structural package API: no core exception, SQL handle or identity override.
 export interface RuntimeActionContext {
   readonly user: string
+  /** #912: the caller's own display name (full name, else @username), as
+   *  they see it themselves. Never another person's name or address. */
+  readonly userName: string
+  /** #918: the roles the caller holds (never another person's). */
+  readonly roles: readonly string[]
+  /** #912: display names for person ids, as the caller may see them: a
+   *  person the caller may not read maps to null. Never contact data. */
+  readonly people: {
+    names(ids: string[]): Promise<Record<string, string | null>>
+    /** #963: which of these ids are enabled people, as the caller may see them:
+     *  never a built-in or merged-away account, nor a service account. */
+    enabled(ids: string[]): Promise<string[]>
+  }
   readonly payload: unknown
   readonly authorization: AppAuthorizationContext
   /** #620: the app's declared settings that hold a value on this instance. */
@@ -22,12 +35,16 @@ export interface RuntimeActionContext {
   reject(message: string, fields?: Record<string, string>): never
   readonly documents: {
     get(table: string, rowId: string): Promise<ActionRow>
+    members(table: string): Promise<{ row_id: string; full_name: string }[]>
     list(table: string, args?: ActionListArgs): Promise<ActionRow[]>
     create(table: string, values: ActionRow): Promise<ActionRow>
     update(table: string, values: ActionRow): Promise<ActionRow>
     delete(table: string, rowId: string, updatedAt: string): Promise<void>
     activity(table: string, rowId: string): Promise<{ comments: ActionRow[]; versions: ActionRow[] }>
     deletionState(table: string, rowId: string): Promise<{ comments: number; versions: number; references: number; files: number; shares: number }>
+    /** #963: makes an enabled person the creator of one row of the app's own
+     *  Table, so an own-rows grant follows the row. Only for a System Manager. */
+    handOver(table: string, rowId: string, person: string): Promise<void>
   }
 }
 
@@ -80,6 +97,13 @@ export interface AppJobPerson {
  *  system actor, which holds no role: each capability below works only when
  *  the job declares the grant it needs, and is refused otherwise. */
 export interface RuntimeJobContext {
+  /** Stable run clock and the instance's configured timezone. */
+  readonly now: string
+  readonly timeZone: string
+  readonly documents: {
+    /** Server-selected enabled creators of the declared owner Table only. */
+    forEachOwner(callback: (scope: { readonly user: string; readonly documents: RuntimeActionContext['documents'] }) => Promise<void>): Promise<void>
+  }
   /** The job's registered name (`<app>.<job>`), which is also its actor. */
   readonly job: { readonly name: string; readonly run: string; readonly trigger: string }
   readonly settings: Readonly<Record<string, string>>

@@ -1,12 +1,13 @@
 import { describe, expect } from 'vitest'
 import { join, resolve } from 'node:path'
-import { cp, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { test as base } from './pg-test'
+import { committedTest } from './pg-test-shared'
 import type { TestClient, CreateUserFn } from 'feather-testing-postgres'
-import { taskerClient } from './tasker-client'
+import { admitTasker, taskerClient } from './tasker-client'
 import { discoverPackages, findScopeProvider, shippedUpgrades } from '../src/runtime-packages'
-import { loadInstalledApps } from '../src/apps'
+import { loadInstalledApps, uninstallApp } from '../src/apps'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { registerController, unregisterController, type TableController } from '../src/controllers'
@@ -126,6 +127,10 @@ describe('Rejected runtime artifacts never become applications', () => {
       change: serverExports("export const validators = { 'tasker.task'() {} }") },
     { name: 'validator is not callable', error: 'Validators must target owned Tables',
       change: serverExports("export const validators = { 'other.task': 37 }") },
+    { name: 'destructive guard targets a foreign Table', error: 'Destructive guards must target owned Tables',
+      change: serverExports("export const destructiveGuards = { 'tasker.task'() {} }") },
+    { name: 'destructive guard is not callable', error: 'Destructive guards must target owned Tables',
+      change: serverExports("export const destructiveGuards = { 'other.task': 37 }") },
   ]
 
   test.for(rejected)('$name is refused before registration', async ({ change, error }, { admin }) => {
@@ -287,12 +292,12 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     await admin.post('/api/install_app', { name: 'other' })
     for (const property of ['name', 'owner_app', 'physical_schema', 'physical_relation', 'data_source', 'row_key', 'columns']) {
       const row = { row_id: `override-${property}`, table_name: 'other.task', column_name: null, property, value: 'tasker' }
-      await expect(admin.post('/api/save_row', { table: 'Metadata Override', row })).rejects.toMatchObject({ status: 417, message: expect.stringContaining('cannot be overridden') })
+      await expect(admin.post('/api/table/Metadata%20Override', row)).rejects.toMatchObject({ status: 417, message: expect.stringContaining('cannot be overridden') })
       await expect(importCustomizations({ property_setters: [row] })).rejects.toMatchObject({ type: 'ValidationError' })
     }
-    await admin.post('/api/save_row', { table: 'Metadata Override', row: {
+    await admin.post('/api/table/Metadata%20Override', {
       row_id: 'override-label', table_name: 'other.task', property: 'label', value: 'Counting task',
-    } })
+    })
     expect(await getMeta('other.task')).toMatchObject({ name: 'other.task', label: 'Counting task', physical_schema: 'other' })
     // A pre-existing unsafe override must not get applied on the next boot.
     await sql`insert into metadata_override (row_id, table_name, property, value) values ('legacy-unsafe', 'other.task', 'name', 'Task')`
@@ -309,7 +314,9 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     }
   })
 
-  test('PKG-R3: disable waits for the post-commit tail, including a nested save', async ({ admin }) => {
+  // This race requires independent requests/connections, not the shared
+  // sandbox dispatcher: disable must reach its lock while save is paused.
+  committedTest('PKG-R3: disable waits for the post-commit tail, including a nested save', async ({ admin }) => {
     await discoverPackages([resolve('../..', 'test-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
     let entered!: () => void
@@ -342,6 +349,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       release()
       await Promise.allSettled([save, disable])
       unregisterController(controller)
+      await uninstallApp('other')
     }
   })
 
@@ -349,7 +357,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     expect(await discoverPackages([resolve('../..', 'example-apps/tasker'), resolve('../..', 'test-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'tasker' })
     await admin.post('/api/install_app', { name: 'other' })
-    const member = await createUser({ email: 'two-packages@example.com', roles: [] })
+    const member = await createUser({ email: 'two-packages@example.com', roles: ['Tasker Member'] })
     const task = await member.post<Record<string, unknown>>('/api/save_row', {
       table: 'tasker.task', row: { task_title: 'Only Tasker owns this title', task_state: 'In progress' },
     })
@@ -388,8 +396,8 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       const manifest = JSON.parse(await readFile(file, 'utf8'))
       manifest.permissions.push(
         // #437: a shared core Table both packages grant on (Tasker's Comment grant).
-        { table: 'Comment', role: 'All', can_read: true },
-        { table: 'Comment', role: 'All', tier: 'restricted', can_read: true },
+        { table: 'Comment', role: 'Tasker Member', can_read: true },
+        { table: 'Comment', role: 'Tasker Member', tier: 'restricted', can_read: true },
       )
       await writeFile(file, JSON.stringify(manifest))
       expect(await discoverPackages([resolve('../..', 'example-apps/tasker'), other])).toEqual([])
@@ -405,7 +413,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
         { owner_app: 'other', tier: 'restricted' },
         { owner_app: 'tasker', tier: 'basic' },
       ])
-      const member = await createUser({ email: 'shared-grants@example.com', roles: [] })
+      const member = await createUser({ email: 'shared-grants@example.com', roles: ['Tasker Member'] })
       expect((await member.get<{ data: unknown[] }>('/api/table/Comment')).data).toBeInstanceOf(Array)
       expect(await permittedTiers(member.user!, 'Comment', 'read')).toEqual(new Set(['basic', 'restricted']))
 
@@ -552,6 +560,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   test("PKG-R4: an app's entry document carries the shared bar's host, named by the app's title", async ({ admin }) => {
     expect(await discoverPackages([resolve('../..', 'example-apps/tasker'), resolve('../..', 'test-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'tasker' })
+    await admitTasker(admin)
     await admin.post('/api/install_app', { name: 'other' })
 
     const page = await admin.fetch('/tasker/review/37?filter=a%26b', { headers: { accept: 'text/html' } })
@@ -585,12 +594,15 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       await discoverPackages([resolve('../..', 'example-apps/tasker'), restricted])
       await admin.post('/api/install_app', { name: 'tasker' })
       await admin.post('/api/install_app', { name: 'other' })
-      const member = await createUser({ email: 'runtime-shell-no-manager@example.com', roles: [] })
+      const member = await createUser({ email: 'runtime-shell-no-manager@example.com', roles: ['Tasker Member'] })
       expect(await member.get('/api/app_catalog')).toEqual([{ name: 'tasker', title: 'Tasker', href: '/tasker/' }])
       const html = await (await member.fetch('/tasker/')).text()
       expect(html).toContain('<featherbase-bar data-app="tasker" data-title="Tasker"></featherbase-bar>')
       expect(html).not.toContain('Other tasks')
-      expect((await member.fetch('/other/')).status).toBe(404)
+      // #955: no page of the app, only word that an admin has been told.
+      const refused = await member.fetch('/other/')
+      expect(refused.status).toBe(403)
+      expect(await refused.text()).toContain("You don't have access to Other tasks yet")
     } finally {
       await rm(restricted, { recursive: true, force: true })
     }
@@ -599,7 +611,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   // #437: a new version may withdraw a grant its installed version declared.
   // Two synthetic copies of Tasker: the installed one also lets everyone read
   // Person; the next version, one migration on, does not.
-  const currentTasker = resolve('../..', 'example-apps/tasker')
+  const currentTasker = resolve('../..', 'test-apps/fixtures/tasker-v2.3')
   const everyoneReadsPerson = () => sql`select 1 from permission where owner_app = 'tasker' and role = 'All' and ref_table = 'Person'`
   async function taskerGrants() {
     const [app] = await sql`select perms from installed_app where name = 'tasker'`
@@ -778,7 +790,7 @@ describe('An app owns its own screen', () => {
       for (const entry of ['package.json', ...shipped.files]) await cp(resolve(source, entry), resolve(staged, entry), { recursive: true })
       expect(await discoverPackages([staged])).toEqual([])
       await admin.post('/api/install_app', { name: 'tasker' })
-      const member = await createUser({ email: 'delivered-member@example.com', roles: [] })
+      const member = await createUser({ email: 'delivered-member@example.com', roles: ['Tasker Member'] })
       expect(await member.get('/api/app_catalog')).toContainEqual({ name: 'tasker', title: 'Tasker', href: '/tasker/' })
 
       const page = await member.fetch('/tasker/', { headers: { accept: 'text/html' } })
@@ -831,6 +843,30 @@ describe('An app declares its phone tabs', () => {
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
+  test('#737 command destinations follow available app roots and declared tabs', async ({ admin, createUser }) => {
+    const directory = await otherWith({ tabs: TABS })
+    try {
+      expect(await discoverPackages([directory])).toEqual([])
+      await admin.post('/api/install_app', { name: 'other' })
+      type Inventory = { pages: { href: string; label: string }[]; tables: { row_id: string }[] }
+      const inventory = await admin.get<Inventory>('/api/command_destinations')
+      expect(inventory.pages.filter((p) => p.href.startsWith('/other/')).map((p) => p.href).sort())
+        .toEqual(['/other/', '/other/checks/open', '/other/targets'])
+      expect(inventory.tables.map((t) => t.row_id)).toContain('other.task')
+
+      // An app-only reader never acquires Admin simply by asking for its
+      // inventory, even though the app's own catalogue is open to them.
+      const appOnly = await createUser({ roles: [] })
+      expect(await appOnly.get('/api/app_catalog')).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'other' })]))
+      expect((await appOnly.fetch('/api/command_destinations')).status).toBe(403)
+
+      await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
+      const disabled = await admin.get<Inventory>('/api/command_destinations')
+      expect(disabled.pages.some((p) => p.href.startsWith('/other/'))).toBe(false)
+      expect(disabled.tables.map((t) => t.row_id)).not.toContain('other.task')
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
   test('a member who cannot open the app gets neither its catalog entry, its tabs nor its pages', async ({ admin, createUser }) => {
     const directory = await otherWith({ tabs: TABS })
     try {
@@ -842,13 +878,17 @@ describe('An app declares its phone tabs', () => {
       await admin.post('/api/install_app', { name: 'other' })
       const member = await createUser({ email: 'app-tabs-no-read@example.com', roles: [] })
       expect(await member.get('/api/app_catalog')).toEqual([])
-      expect((await member.fetch('/other/targets', { headers: { accept: 'text/html' } })).status).toBe(404)
+      // #955: no page of the app, only word that an admin has been told.
+      const refused = await member.fetch('/other/targets', { headers: { accept: 'text/html' } })
+      expect(refused.status).toBe(403)
+      expect(await refused.text()).not.toContain('<featherbase-bar')
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
   test("a tab's deep address serves the app's page with the bar, at the device's width", async ({ admin }) => {
     const directory = await otherWith({ tabs: TABS })
     try {
+      await mkdir(resolve(directory, 'client/targets'))
       expect(await discoverPackages([directory])).toEqual([])
       await admin.post('/api/install_app', { name: 'other' })
       const res = await admin.fetch('/other/targets', { headers: { accept: 'text/html' } })
@@ -856,6 +896,14 @@ describe('An app declares its phone tabs', () => {
       const html = await res.text()
       expect(html).toContain('<featherbase-bar data-app="other" data-title="Other tasks"></featherbase-bar>')
       expect(html).toContain('<meta name="viewport" content="width=device-width, initial-scale=1">')
+      for (const asset of ['targets', 'missing.js']) {
+        expect((await admin.fetch(`/other/${asset}`)).status).toBe(404)
+      }
+      expect((await admin.fetch('/other/%E0%A4%A', { headers: { accept: 'text/html' } })).status).toBe(404)
+      // A broken deployed entry must not expose a directory or answer as a working page.
+      await rm(resolve(directory, 'client/index.html'))
+      await mkdir(resolve(directory, 'client/index.html'))
+      expect((await admin.fetch('/other/', { headers: { accept: 'text/html' } })).status).toBe(404)
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
@@ -863,6 +911,9 @@ describe('An app declares its phone tabs', () => {
     expect(await discoverPackages([resolve('../..', 'test-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'other' })
     expect(await admin.get('/api/app_catalog')).toEqual([{ name: 'other', title: 'Other tasks', href: '/other/' }])
+    const inventory = await admin.get<{ pages: { href: string; label: string; kind: string }[] }>('/api/command_destinations')
+    expect(inventory.pages.filter((page) => page.href.startsWith('/other/')))
+      .toEqual([{ label: 'Other tasks', href: '/other/', kind: 'App' }])
   })
 
   test('a tab list the bar cannot draw safely is refused when the app is found', async () => {
@@ -888,5 +939,40 @@ describe('An app declares its phone tabs', () => {
         expect(await discoverPackages([directory]), what).toEqual([expect.objectContaining({ error: expect.stringContaining('"tabs"') })])
       } finally { await rm(directory, { recursive: true, force: true }) }
     }
+  })
+})
+
+// #941 (design D1): an app names its accent, one of the platform's set, and
+// the served document carries it so Shop Floor's accent tokens apply.
+describe('An app names its accent', () => {
+  async function otherWith(fields: Record<string, unknown>) {
+    const directory = await mkdtemp(resolve('test/.app-accent-'))
+    await cp(resolve('../..', 'test-apps/other'), directory, { recursive: true })
+    const file = resolve(directory, 'featherbase.json')
+    await writeFile(file, JSON.stringify({ ...JSON.parse(await readFile(file, 'utf8')), ...fields }))
+    return directory
+  }
+
+  // The app is still found, so the System Manager who installs it is told why
+  // it is refused rather than that it is unknown.
+  test('installing an app that names an accent the platform does not provide is refused, naming the ones it does', async ({ admin }) => {
+    const directory = await otherWith({ accent: 'purple' })
+    try {
+      expect(await discoverPackages([directory])).toEqual([])
+      await expect(admin.post('/api/install_app', { name: 'other' })).rejects.toMatchObject({
+        status: 417, type: 'ValidationError', message: "417 ValidationError: App other names the accent 'purple'; Featherbase provides: blue, green",
+      })
+      expect((await admin.get<{ name: string }[]>('/api/app_catalog')).map((entry) => entry.name)).not.toContain('other')
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test("the app's page carries its accent", async ({ admin }) => {
+    const directory = await otherWith({ accent: 'green' })
+    try {
+      expect(await discoverPackages([directory])).toEqual([])
+      await admin.post('/api/install_app', { name: 'other' })
+      const html = await (await admin.fetch('/other/', { headers: { accept: 'text/html' } })).text()
+      expect(html).toContain('<html lang="en" data-featherbase-accent="green">')
+    } finally { await rm(directory, { recursive: true, force: true }) }
   })
 })

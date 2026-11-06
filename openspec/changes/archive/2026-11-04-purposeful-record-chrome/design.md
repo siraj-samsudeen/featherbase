@@ -1,0 +1,23 @@
+## Decision: Reuse Table-level Metadata Overrides for optional collaboration
+
+The owner selected “Default collaboration off everywhere, but keep existing content readable” on 02-Nov-2026. Four boolean effective Table properties (`enable_assignments`, `enable_tags`, `enable_files`, `enable_discussion`) default false and use the existing Table-level Metadata Override mechanism to opt in. This reuses persistence, generic editing, customization export and cache invalidation, rather than adding four physical columns plus another configuration API and migration. No content is rewritten. System-written metadata retains its existing override prohibition.
+
+The rejected alternative is physical flags on every Table definition. That would duplicate an existing generic configuration path for UI-only optional features. Flags are not authorization: all underlying server read/write checks stay unchanged. Disabled UI is read-only for existing content, not a new server denial policy. Audit and existing discussion share the existing chronological timeline; the comment component contributes a composer only, not a second copy of discussion.
+
+The UI checklist in #800 owns labels and layout. Field layout and pickers stay outside this change. Existing content queries remain permission-filtered; a failed read is never interpreted as empty authorized content. Internal tab changes keep panel state mounted to retain edits and drafts.
+
+## Display capabilities, not a permission engine
+
+The existing document ownership boundary computes a read-effect `:capabilities` row action only after `getDoc` authorizes access. It reuses operation-specific permission assertions, own-row ownership, Data Scopes, write-share handling and security/source restrictions. The UI uses this advice to hide unavailable operations; mutation endpoints remain authoritative and unchanged. Assignment, File and Comment creation retain their independent grants; tags require only parent-row read. Attachment removal consults the File row's own delete capability. Advice refreshes on row changes, explicit refresh and browser focus; it is not persisted or cached in effective Table metadata.
+
+Baseline `main` FormView has no router blocker or beforeunload handler, and the independent verifier reproduced silent breadcrumb loss on existing/new rows. Checklist 6 preserves existing protection, not a new leave-page policy: that baseline gap is outside #800 and recorded as a suggested fix. Tab navigation must retain unfinished fields and discussion drafts.
+
+## Related workspace: one selector and the native list
+
+Siraj selected Related option A, relayed by the manager on 03-Nov-2026. Related remains a primary workspace tab. One searchable side selector contains the complete permission-scoped relationship collection, including quieter selectable zero-count relationships. The selected relationship's actual native ListView occupies the remaining content area. This replaces, rather than supplements, the existing ConnectionsPanel and RelatedTabs selection surfaces. Reuse #773's Breadcrumbs, SearchableList and mounted ContentTabs primitives; do not duplicate them or alter field arrangement.
+
+Relationship identity includes target Table, Reference Column and optional via Sub-table. Labels distinguish paths even when they reach the same target Table. Relationship search filters that complete collection; record search uses the server and adds filters to the immutable selected relationship filters. Neither clearing a search nor applying a personal filter may discard the owner/path restriction. The selector's matching-relationship count and the native list's row count measure different collections.
+
+Breadcrumbs retain owner → Related → selected path context, with no misleading second Home root inside the embedded list. Keep explicit Open full list with the selected path's filters, permitted peek, and permitted new-row navigation with its existing reference prefill. Preserve all current operation-specific authorization, read-only and system-written restrictions. No new controls, toolbar redesign, permission policy or shipped app schema is implied. Reconcile canonical Table URL helpers with #821 when integrating, rather than inventing another URL convention.
+
+Work panels remain mounted while consulting Related so an unfinished edit survives the complete edit → Related → Work cycle. Prototype evidence uses the real shell/list/form and synthetic fixtures only; it is not production completion or security proof. Production replacement awaits presentation/review of the real-component preview. Its acceptance bindings, implementation and independent final real-HTTP/headless UI verification remain separate unchecked tasks. No new ADR or policy is needed.

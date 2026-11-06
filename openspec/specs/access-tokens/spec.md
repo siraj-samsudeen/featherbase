@@ -11,8 +11,9 @@ as a service account instead.
 ### Requirement: Issue an access token
 
 A user SHALL be able to issue a labeled access token for themselves, with an
-expiry they choose or none at all. Its secret is shown once, at the moment
-it's issued, and never again afterward.
+expiry they choose or none at all. Choosing none SHALL take a second,
+deliberate confirmation. Its secret is shown once, at the moment it's
+issued, and never again afterward.
 
 #### Scenario: Issue and lose it
 
@@ -20,6 +21,12 @@ it's issued, and never again afterward.
   it, and comes back to look for the secret later
 - **THEN** the secret is nowhere to be found; only issuing a new token gets
   them a usable one
+
+#### Scenario: A token that never expires is asked about first
+
+- **WHEN** a user issues a token with no expiry
+- **THEN** they are asked first, and the token is issued only when they
+  confirm; choosing an expiry instead issues it straight away
 
 ### Requirement: A token acts as its owner
 
@@ -160,3 +167,94 @@ additionally see and manage everyone's tokens and every service account.
 
 - **WHEN** a user who isn't a System Manager opens their access tokens
 - **THEN** they see only tokens they issued, not anyone else's
+
+### Requirement: Consistent credential management
+
+The user SHALL manage tokens and, for System Managers, service accounts in separate views using the platform's standard lists, actions, loading, empty and error states. Creation and renaming SHALL use dismissible dialogs with keyboard focus management, pending and error feedback; cancelling SHALL discard unsaved edits.
+
+#### Scenario: Cancel leaves the name alone
+
+```gherkin
+Given the service account "warehouse-import-agent" exists
+When a System Manager edits its name to "warehouse-reader" but cancels
+Then the service account is still named "warehouse-import-agent"
+```
+
+### Requirement: Recognisable suggested token names
+
+The user SHALL get an editable suggested token name using the selected owner's display name, a hyphen and one more than the number of that owner's existing tokens, including revoked and expired tokens. Changing owner SHALL update an untouched suggestion but preserve a custom name or deliberate blank; reopening starts a fresh suggestion and a blank cannot be issued.
+
+#### Scenario: Old tokens still count
+
+```gherkin
+Given the service account "warehouse-import-agent" owns one revoked token and one expired token
+When the user prepares another token for "warehouse-import-agent"
+Then its suggested name is "warehouse-import-agent-3"
+```
+
+#### Scenario: A deliberate name survives changing owner
+
+```gherkin
+Given the user is preparing a token for "warehouse-import-agent"
+When the user replaces the suggested name with "nightly export" and changes owner
+Then the name remains "nightly export"
+```
+
+### Requirement: Rename without replacing credentials
+
+The user SHALL be able to rename their own tokens, and a System Manager SHALL additionally be able to rename any token or service account. Renaming SHALL change only the display name, preserving identity, secrets, ownership, roles, enabled state, expiry, revocation and data access; it never retrieves a secret. Blank or invalid edits SHALL be refused without changing state. Accepted name changes SHALL be recorded with the actor in the activity record.
+
+#### Scenario: A blank token name cannot replace a useful one
+
+```gherkin
+Given the service account "warehouse-import-agent" has a working token named "nightly export"
+When a System Manager tries to rename the token to a blank name
+Then the rename is refused and the token is still named "nightly export"
+```
+
+#### Scenario: A renamed automation credential still works
+
+```gherkin
+Given the service account "warehouse-import-agent" has a working token named "nightly export"
+When a System Manager renames it to "warehouse-reader" and the token to "morning export"
+Then the same credential authenticates as the same account named "warehouse-reader"
+And the token is listed as "morning export" without its secret
+```
+
+#### Scenario: Another person's token cannot be renamed
+
+```gherkin
+Given the service account "warehouse-import-agent" has a working token named "nightly export"
+When an ordinary user tries to rename that token to "morning export"
+Then the rename is refused and the token is still named "nightly export"
+```
+
+#### Scenario: A taken service-account name cannot be claimed
+
+```gherkin
+Given the service accounts "warehouse-import-agent" and "warehouse-reader" exist
+When a System Manager renames "warehouse-import-agent" to "warehouse-reader"
+Then the rename is refused and both accounts keep their names
+```
+
+### Requirement: Say what a token will reach before issuing it
+
+Before a token is issued, the user SHALL see what it will reach: the Tables its
+owner can read and the Tables it can change, or every Table when the owner is a
+System Manager. This SHALL follow the owner's real permissions, including what
+every account is granted, and the user SHALL be warned, without being stopped,
+when the owner holds no role of its own or can read no Table.
+
+#### Scenario: A new service account's token
+
+- **WHEN** a System Manager issues a token for a service account just created
+  with no role
+- **THEN** the dialog lists only what every account can read, says it can
+  change nothing, and warns that the account has no role of its own
+
+#### Scenario: Given a role, the account reaches its Table
+
+- **WHEN** the account is given a role that can read and change "Reach Dock",
+  and a token is issued for it
+- **THEN** the dialog lists "Reach Dock" under what it can change, and no
+  warning shows

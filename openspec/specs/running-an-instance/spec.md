@@ -576,3 +576,51 @@ When the user requests a machine-readable command-line health report
 Then the command fails with a setup-readiness finding and the next action
 And the missing setup is distinguished from an operational fault
 ```
+
+### Requirement: Local instances keep separate uploads
+
+Local commands SHALL keep each selected database's uploads separate. Existing shared uploads SHALL remain untouched when isolation is introduced.
+
+#### Scenario: Two local instances have different uploads
+
+```gherkin
+Given the user has two disposable local reset instances with different uploads
+When the user confirms resetting the first local instance
+Then only the first instance's database and isolated uploads are removed
+And the other instance and legacy shared uploads remain unchanged
+And the user is told to prepare the instance separately
+```
+
+### Requirement: Reset requires deliberate local development selection
+
+Reset SHALL require explicit confirmation and a local database recorded as development. It SHALL refuse connected processes or ambiguous upload ownership without killing a process or deleting data. Without confirmation it SHALL describe the selected database, storage location and file count, then fail without changes.
+
+#### Scenario: Preview before confirming
+
+```gherkin
+Given the user has two disposable local reset instances with different uploads
+When the user previews resetting the first local instance
+Then the reset describes the first instance's database and upload count without changing either instance
+```
+
+#### Scenario: Unsafe targets remain untouched
+
+```gherkin
+Given the user has two disposable local reset instances with different uploads
+When the user attempts reset with unsafe target selections
+Then every unsafe reset is refused without changing either instance
+```
+
+### Requirement: A deploy waits out long work by itself
+
+A deploy SHALL keep trying to start for about ten minutes while the live server is busy, and SHALL say what it is doing at each try. Between tries, the live server SHALL be left free to answer people. If it still cannot start, the deploy SHALL fail with nothing changed.
+
+#### Scenario: A long copy is running when the deploy starts
+
+- **WHEN** the user deploys while a long copy is being applied
+- **THEN** the deploy reports each try, and starts once the copy has finished
+
+#### Scenario: The server stays busy for the whole wait
+
+- **WHEN** the live server is still busy after about ten minutes
+- **THEN** the deploy fails, says nothing changed, and the old version keeps serving

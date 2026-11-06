@@ -32,6 +32,7 @@ const REFUSED = { status: 403, type: 'PermissionError', message: expect.stringMa
 // is written by the server alone; the ones left out are edited by people.
 const SYSTEM_WRITTEN = [
   'Access Log',
+  'Access Request',
   'Activity Log',
   'Background Job',
   'Dataset Miss',
@@ -153,6 +154,7 @@ describe('#432: every privileged principal is refused on an audit table', () => 
           client.post('/api/save_row', { table: 'Custom Field', row: { row_id: 'Activity Log-forged_flag', dt: AL, column_name: 'forged_flag', column_type: 'Check' } }),
           REFUSED,
         )
+        await expectApiError(client.post(`/api/table_def/${ENC}/rename`, { to: 'Forged Log' }), REFUSED)
         await expectApiError(client.delete(`/api/table_def/${ENC}`), REFUSED)
         const after = await admin.get<{ columns: { column_name: string }[]; id_pattern: string }>(`/api/table/${ENC}:meta`)
         expect(after.columns.map((c) => c.column_name)).not.toContain('forged_note')
@@ -269,7 +271,7 @@ describe('#432: every write entry point is covered', () => {
 
   // Every exported function of the document engine is either a reader, the
   // trusted internal writer, or a public writer that refuses audit tables.
-  const READERS = ['assertUserPermissions', 'checkRowForInsert', 'duplicateValueFields', 'getDoc', 'validateRowForUpdate']
+  const READERS = ['assertUserPermissions', 'checkRowForInsert', 'duplicateValueFields', 'getDoc', 'rowCapabilities', 'validateRowForUpdate']
   const TRUSTED = ['saveSystemRow']
   const PUBLIC_WRITERS: Record<string, (id: string) => Promise<unknown>> = {
     saveDoc: () => documentModule.saveDoc(AL, { user: 'Administrator', operation: 'forged' }),
@@ -278,6 +280,8 @@ describe('#432: every write entry point is covered', () => {
     submitDoc: (id) => documentModule.submitDoc(AL, id),
     cancelDoc: (id) => documentModule.cancelDoc(AL, id),
     amendDoc: (id) => documentModule.amendDoc(AL, id),
+    retireDoc: (id) => documentModule.retireDoc(AL, id, 'forged'),
+    reactivateDoc: (id) => documentModule.reactivateDoc(AL, id),
     saveSingle: () => documentModule.saveSingle(AL, {}),
   }
 
@@ -309,6 +313,9 @@ describe('#432: every write entry point is covered', () => {
     'PUT /api/table_def/:name': 'structure',
     'PUT /api/table_def/:name/id_pattern': 'structure',
     'POST /api/table_def/:name/rename_column': 'structure',
+    'POST /api/table_def/:name/rename': 'structure',
+    'POST /api/table_def/:name/archive': 'refuses system and system-written Tables (#905)',
+    'POST /api/table_def/:name/unarchive': 'only an archived Table, never a system-written one (#905)',
     'DELETE /api/table_def/:name': 'structure',
     'POST /api/import_customizations': 'structure — custom fields go through the guarded save',
     'POST /api/reapply_custom_fields': 'structure — re-applies existing custom fields only',
@@ -332,6 +339,7 @@ describe('#432: every write entry point is covered', () => {
     'POST /api/set_language': 'personal preference',
     'POST /api/set_password': 'credentials',
     'POST /api/people/names': 'read',
+    'POST /api/access_request': 'audit: records an access request for the person asking (#955)',
     'POST /api/row_titles': 'read',
     'POST /api/people/:id/identities': 'person identities',
     'POST /api/people/:id/identifiers': 'person identifiers',
@@ -343,12 +351,13 @@ describe('#432: every write entry point is covered', () => {
     'DELETE /api/me/identities/:identityId': 'person identities',
     'DELETE /api/me/password': 'credentials',
     'POST /api/access_tokens': 'credentials',
+    'PATCH /api/access_tokens/:id': 'credentials',
     'DELETE /api/access_tokens/:id': 'credentials',
     'POST /api/service_accounts': 'service accounts',
     'POST /api/instance-settings/apply': 'saveDoc on the managed settings Tables (#465), none system-written',
     'POST /api/instance-settings/variables': 'read-only: the variable report for the environment comparison (#465 D10); POST only to carry the key in the body',
     'POST /api/setup/system-managers': 'first-run setup (#465 D9) — saveDoc on Person, then the Google invitation flow; none system-written',
-    'PATCH /api/service_accounts/:name': 'service accounts',
+    'PATCH /api/service_accounts/:id': 'service accounts',
     'POST /api/service_accounts/:id/roles': 'service accounts',
     'POST /api/access_log': 'internal writer: records the caller\'s own export',
     'POST /api/upload_file': 'creates a File row through the guarded save',
@@ -421,7 +430,7 @@ describe('#432: configurable automation never reaches a system-written table', (
 
   test('Server Scripts, Metadata Overrides, Workflows and Custom Fields cannot target an audit table', async ({ admin }) => {
     await expectApiError(admin.post('/api/save_row', { table: 'Server Script', row: { row_id: 'forge', script_type: 'Document Event', ref_table: AL, event: 'validate', script: 'doc.x = 1', enabled: true } }), REFUSED)
-    await expectApiError(admin.post('/api/save_row', { table: 'Metadata Override', row: { row_id: 'mo-forge', table_name: AL, column_name: 'operation', property: 'hidden', value: '1' } }), REFUSED)
+    await expectApiError(admin.post('/api/table/Metadata%20Override', { row_id: 'mo-forge', table_name: AL, column_name: 'operation', property: 'hidden', value: '1' }), REFUSED)
     await expectApiError(admin.post('/api/save_row', { table: 'Workflow', row: { row_id: 'forge-wf', ref_table: AL, is_active: true, states: [{ state: 'Open', target_status: 'draft' }] } }), REFUSED)
     expect((await admin.get<{ columns: { column_name: string }[] }>(`/api/table/${ENC}:meta`)).columns.map((c) => c.column_name)).not.toContain('workflow_state')
   })

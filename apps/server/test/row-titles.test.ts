@@ -1,6 +1,8 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { grantRole, makePerson, makeTable } from './fixtures'
+import { sql } from '../src/db'
+import { invalidateMeta } from '../src/meta'
 
 // Home cleanup: POST /api/row_titles answers what a person reads for each
 // referenced row, scoped to what the caller may read. A Table with no title
@@ -23,6 +25,27 @@ async function seedMerch(admin: Parameters<typeof makeTable>[0]) {
 type Titles = { titles: Array<{ table: string; row_id: string; title: string }> }
 
 describe('POST /api/row_titles', () => {
+  test('Table definitions use their natural name by default', async ({ admin, createUser }) => {
+    await makeTable(admin, { name: 'Title SAP Plant', module: 'Custom', columns: ['plant_name'] })
+    await grantRole(admin, { role: 'Definition Title Reader', table: 'Table', can_read: true })
+    const reader = await createUser({ roles: ['Definition Title Reader'] })
+    const rows = [{ table: 'Table', row_id: 'Title SAP Plant' }]
+    expect((await reader.post<Titles>('/api/row_titles', { rows })).titles)
+      .toEqual([{ ...rows[0], title: 'Title SAP Plant' }])
+    const outsider = await createUser({ roles: [] })
+    expect((await outsider.post<Titles>('/api/row_titles', { rows })).titles).toEqual([])
+  })
+
+  test('an effective authored Table title keeps precedence', async ({ admin }) => {
+    await makeTable(admin, { name: 'Authored SAP Plant', module: 'Custom', description: 'Plant catalogue', columns: ['plant_name'] })
+    await sql`insert into metadata_override (row_id, table_name, property, value)
+      values ('title-860', 'Table', 'title_column', 'description')`
+    invalidateMeta('Table')
+    const rows = [{ table: 'Table', row_id: 'Authored SAP Plant' }]
+    expect((await admin.post<Titles>('/api/row_titles', { rows })).titles)
+      .toEqual([{ ...rows[0], title: 'Plant catalogue' }])
+  })
+
   test.for(['Person', 'Service Account'] as const)('a %s-valued title resolves through principal names', async (principalTable, { admin, createUser }) => {
     const principal = principalTable === 'Person'
       ? await makePerson({ full_name: 'Title Owner' })
@@ -69,7 +92,7 @@ describe('POST /api/row_titles', () => {
   test('a Table with no title column titles a row from its readable values', async ({ admin }) => {
     await seedMerch(admin)
     const res = await admin.post<Titles>('/api/row_titles', { rows: [{ table: MERCH, row_id: '1517|040802006' }] })
-    expect(res.titles).toEqual([{ table: MERCH, row_id: '1517|040802006', title: '1517 · Kurti Z' }])
+    expect(res.titles).toEqual([{ table: MERCH, row_id: '1517|040802006', title: 'Kurti Z · 1517' }])
   })
 
   test("a Table's title column wins", async ({ admin }) => {

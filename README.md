@@ -66,6 +66,9 @@ URL-encode symbols in the password (`@` becomes `%40`, `#` becomes `%23`).
 Keep credentials out of Git. These instructions are not a claim of testing on
 a personal Windows machine; CI verifies the command surface separately.
 
+**Start clean:** stop Featherbase, preview with `featherbase reset`, then run
+`featherbase reset --yes; if ($LASTEXITCODE -eq 0) { featherbase setup }` in PowerShell.
+
 ### macOS and Linux
 
 Install [Git](https://git-scm.com/downloads), [Node 26.13.0 LTS (Lithium)](https://nodejs.org/en/download)
@@ -97,6 +100,9 @@ featherbase
 featherbase setup
 featherbase start
 ```
+
+**Start clean (macOS and Linux):** stop Featherbase, preview with `featherbase reset`,
+then run `featherbase reset --yes && featherbase setup`.
 
 `npm link` registers **this clone**, not a published package or another download.
 Run it once after installing dependencies; relink if you move the clone or want
@@ -138,13 +144,93 @@ reported separately. With the pnpm fallback, add `--silent` when stdout must
 be only JSON. Help needs no database: `featherbase --help`, or add `--help`
 to any action.
 
+### Prototype with native components
+
+Before inventing a control, browse `/gallery.html` on the development server.
+Search by name/purpose; each working specimen names its source. Import shared
+controls from `@featherbase/shop-floor` (`packages/shop-floor/src`), with `src/index.css` and the native
+query/router/theme providers. `TabBar` is phone navigation; `ContentTabs` is
+full-content section navigation. `Breadcrumbs` accepts context-preserving links.
+`SearchableList` searches an entire supplied collection, not a loaded page of
+remote results. Its render callback can mount `DataList`; cell callbacks accept
+real `TextInput`/`Select` controls, so an editable mapping needs no second grid.
+
+For the resettable synthetic starter, run from this checkout:
+
+```bash
+pnpm --filter web exec vite --config vite.prototype.config.ts
+```
+
+Open `/prototype.html` on the printed address (default port 5373; override
+`PROTOTYPE_PORT`). In an Amp orb, run that command as a supervised service and
+share its portal. The prototype server needs no database or credentials and has
+**no live API proxy**. Unknown API/file/socket actions are refused. Its separate
+origin holds synthetic identity and in-memory records; never enter real tokens.
+Normal dev-server launch refuses to initialize this entry. Production builds
+include neither its entry nor its fixtures.
+
+`src/gallery/prototype-main.tsx` is the composition point: pass a React screen
+to `createPrototypeRouter` from `PrototypeApp.tsx`. It uses actual `AdminLayout`
+with opt-in wide content; normal routes keep their existing sizing. Use generic
+`ListView`/`FormView` for metadata Tables, `DataList` for non-Table collections.
+`fixtures.ts` defines Lab Project and related Lab Task metadata/records. Scenario
+controls change their responses to populated/empty/loading/error/permission-limited;
+Reset data restores synthetic records, not planning-note drafts. Give every new
+long collection visible search and keep return context in breadcrumbs/URLs.
+
+For integration, keep those same screen imports, define the corresponding Table
+through the existing API, and open it on the **normal isolated development API**.
+Do not add a live-forwarding switch to fixture mode. The acceptance journey in
+`acceptance-tests/support/pages/prototype-library.js` compares native field
+order, labels, types and geometry across both origins, then saves and reloads
+the real form. Synthetic approval is not proof of permissions, persistence,
+concurrency or deployment readiness. Grow this library from consumer needs;
+do not fork native renderers or build a second design system.
+
 ### Configuration and troubleshooting
 
-All three actions use `.env.local` at the repository root. Real environment
+All actions use `.env.local` at the repository root. Real environment
 variables win; blank values use defaults. Default database: `featherbase` on
 `127.0.0.1:5432`, user/password `postgres`; API port `8000`, web port `5173`.
-Setup and start are local-development operations, not production deployment.
+Setup, start and reset are local-development operations, not production deployment.
 Health can inspect the environment selected by the operator without mutating it.
+
+### Reset only the selected local instance
+
+`featherbase reset [<client>/<instance>] [--yes]` uses the same database selection
+as start: no name defaults to `featherbase`; `jeyarama/dash` defaults to
+`fb_jeyarama_dash`. An explicit `DATABASE_URL` overrides either default.
+Without `--yes`, reset prints the database, absolute storage path and file count,
+changes nothing and exits `1`. Confirmation removes that database and isolated
+uploads only, then says `Next: featherbase setup`; setup is never automatic.
+For a named instance, use `featherbase start <client>/<instance>` afterwards to
+prepare and install its declared apps again.
+
+Reset requires a loopback database URL without query options, a development
+process environment and the database's actual persisted `development` stamp.
+It refuses unstamped, test, staging and production databases even when the process
+says development; there is no override. Stop connected servers or database clients
+first: refusal lists PostgreSQL backend PIDs and application names, and kills nothing.
+
+Local commands now select uploads under `apps/server/storage/instances/<identity>`,
+where identity derives from the selected host, port and database, not the login
+password. Routing query overrides (`host`, `port`, `database`) are refused by every
+local command before assigning storage; put these in the URL authority/path.
+Non-routing options such as `sslmode` retain their setup/start/health semantics.
+Setup prints the absolute path. Different local databases no longer share
+uploads. **Existing uploads under `apps/server/storage/public` and `private` are
+not moved, copied or deleted**: another database may still use them. Existing File
+records will not find those old files in the new isolated directory. To continue
+using an old database with its old uploads, explicitly set `FILE_STORAGE_DIR` in
+`.env.local` to that old folder's absolute path. This retains the old shared-storage
+behavior, so reset refuses it. Unset that override only when deliberately choosing
+the new isolated storage and a clean reset. No legacy-file ownership is inferred
+from one database's records. Hosted storage configuration is unchanged.
+
+Reset also refuses custom storage paths and symbolic links rather than assume
+ownership. A database drop and filesystem deletion cannot be one transaction;
+if filesystem permissions prevent cleanup after the drop, the command fails and
+reports that no setup ran. Keep the printed path when diagnosing that failure.
 
 | Problem | Next action |
 |---|---|
@@ -163,7 +249,7 @@ install and configure the apps of a named instance, name it explicitly:
 
 ```bash
 featherbase start jeyarama/dash
-# Or, to see Feather Dash using made-up data instead of a real warehouse:
+# Or, to see Dash using made-up data instead of a real warehouse:
 featherbase start jeyarama/dash --made-up-data
 ```
 
@@ -183,7 +269,61 @@ featherbase advanced people --help
 featherbase advanced apps install-app <explicit-app-name>
 ```
 
+From a checkout, an app is found only on `FEATHERBASE_APP_PATHS`. To try Tasker,
+build it with `pnpm apps:prepare`, then set
+`FEATHERBASE_APP_PATHS='["<absolute checkout>/example-apps/tasker"]'` for both
+`install-app tasker` and `start`. Membership is the **Tasker Member** role on a Person;
+installing admits nobody. The default image already carries Tasker on that path.
+
 There is no public marketplace or automatic download of unreviewed code.
+
+### Explicit opt-in: Feather Tickets
+
+Tickets is a separate product app in `example-apps/tickets`, not the Helpdesk
+sample. Build it with `npm ci --prefix example-apps/tickets` followed by
+`npm run build --prefix example-apps/tickets`. Add that folder's absolute path
+to the JSON array `FEATHERBASE_APP_PATHS` in your untracked `.env.local`, restart
+the server, then choose Tickets in app administration (or run
+`featherbase advanced apps install-app tickets`). Either takes effect at once,
+with no second restart; if the app cannot run, the Apps screen and every
+Tickets request say why. Ordinary startup does not install it or create
+sample requests.
+
+An instance adds its own ticket types without a release: a System Manager
+adds a row to Tickets' *Ticket type* Table (its states, one per line, the
+first being where a ticket starts; its done states; the state a reopened
+ticket returns to; optional routing) and one *Ticket type field* row per
+field (text, long text, choice, date, person or link). A link field reads an
+instance Table only when that Table is listed in the `linked_tables` setting,
+and always with the requester's own permissions.
+
+Requesters share public ticket summaries and progress. Original request details
+stay with the submitter and support; employee verification and investigation
+evidence remain support-only. Give staff the `Tickets Support` role and configure
+the app's settings with person IDs, not display names: `support_users`,
+`verification_admins` and `fulfillment_admins` are JSON arrays; `approval_routes`
+maps regions to arrays of alternative approvers; `restricted_resources` is a
+JSON array of restricted resource names. `assignees` is a JSON array of people
+support may assign tickets to without giving them support rights; the assign
+picker also offers everyone in the other lists. Missing authority or routing blocks
+access decisions. Use the existing App Setting/instance-settings interface.
+
+Tickets uses ordinary platform Table permissions: Administrator and System
+Manager retain privileged read access. The `Tickets Support` role grants private
+reads independently of action membership; removing someone from an action
+setting alone does not revoke that role's read access.
+
+For an explicitly disposable, local development instance only:
+
+```bash
+node tools/seed-tickets-development.mjs --url=http://127.0.0.1:8000
+```
+
+This opt-in walkthrough creates fictional people and requests through the real
+server. It refuses remote destinations, non-development databases and queues
+containing real requests. It never connects to StyleHR, email, MotherDuck or
+GitHub. Stage one records manual verification, decisions, fulfillment and
+investigation; live integrations are a separate stage.
 
 ### Boot and smoke-test for contributors
 
@@ -211,6 +351,7 @@ pnpm test                        # workspace suites (prepare app fixtures first)
 pnpm smoke                       # server + web smoke tests against running stack
 pnpm --filter server typecheck   # also: pnpm --filter web typecheck
 pnpm check:specs                 # OpenSpec specifications and active changes
+pnpm check:audit                 # no high or critical advisory in production dependencies
 ```
 
 ## Source map

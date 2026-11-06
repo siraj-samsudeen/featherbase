@@ -1,3 +1,4 @@
+import { getDoc, saveDoc } from '../src/document'
 import { describe, expect } from 'vitest'
 import { test as base } from './pg-test'
 import type { TestClient, CreateUserFn } from 'feather-testing-postgres'
@@ -9,7 +10,7 @@ import { resolve } from 'node:path'
 
 const test = base.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(taskerClient(admin)),
-  createUser: async ({ createUser }, use) => use(async options => taskerClient(await createUser(options))),
+  createUser: async ({ createUser }, use) => use(async options => taskerClient(await createUser({ ...options, roles: [...new Set([...(options?.roles ?? []), 'Tasker Member'])] }))),
 })
 
 const APP = 'tasker'
@@ -19,6 +20,12 @@ async function install() {
   expect(await discoverPackages([resolve('../..', 'example-apps/tasker')])).toEqual([])
   if (await isInstalled(APP)) await uninstallApp(APP)
   await installApp(APP)
+  const admin = await getDoc('Person', 'Administrator', 'Administrator')
+  await saveDoc('Person', { ...admin, roles: [...admin.roles as Record<string, unknown>[], { role: 'Tasker Member' }] }, 'Administrator')
+}
+
+async function sharedProject(as: TestClient) {
+  return as.post<{ row_id: string }>('/api/save_row', { table: 'tasker.project', row: { project_name: 'Team coordination' } })
 }
 
 describe('capture_neutral_task: title-only Inbox capture', () => {
@@ -316,9 +323,10 @@ describe('shared team visibility', () => {
   }) => {
     await install()
     try {
+      const project = await sharedProject(admin)
       const task = await admin.post<Record<string, unknown>>('/api/save_row', {
         table: TASK,
-        row: { task_title: 'Choose a warehouse count date' },
+        row: { task_title: 'Choose a warehouse count date', project: project.row_id },
       })
       const member = await createUser({ roles: [] })
 
@@ -358,9 +366,10 @@ describe('shared team visibility', () => {
   }) => {
     await install()
     try {
+      const project = await sharedProject(admin)
       const task = await admin.post<Record<string, unknown>>('/api/save_row', {
         table: TASK,
-        row: { task_title: 'Confirm the customer deadline' },
+        row: { task_title: 'Confirm the customer deadline', project: project.row_id },
       })
       const member = await createUser({ roles: [] })
       await admin.put('/api/user_settings/Task%20Management%20Focus', { task_ids: [task.row_id] })
@@ -417,12 +426,12 @@ describe('A personal list decides who is responsible', () => {
       const project = await admin.post<Record<string, unknown>>('/api/save_row', {
         table: 'tasker.project', row: { project_name: 'Warehouse review' },
       })
-      const task = await admin.post<Record<string, unknown>>('/api/save_row', {
+      const task = await shahul.post<Record<string, unknown>>('/api/save_row', {
         table: TASK, row: { task_title: 'Count the 37 returned cartons', personal_tasks_owner: shahul.user },
       })
       expect(task).toMatchObject({ assigned_to: shahul.user })
 
-      const moved = await admin.post<Record<string, unknown>>('/api/save_row', {
+      const moved = await shahul.post<Record<string, unknown>>('/api/save_row', {
         table: TASK,
         row: { row_id: task.row_id, updated_at: task.updated_at, project: project.row_id, personal_tasks_owner: null },
       })
@@ -439,8 +448,9 @@ describe('One responsible person', () => {
     try {
       const shahul = await createUser({ roles: [] })
       const siraj = await createUser({ roles: [] })
+      const project = await sharedProject(admin)
       const task = await admin.post<Record<string, unknown>>('/api/save_row', {
-        table: TASK, row: { task_title: 'Phone the supplier about 11 missing crates', assigned_to: shahul.user },
+        table: TASK, row: { task_title: 'Phone the supplier about 11 missing crates', project: project.row_id, assigned_to: shahul.user },
       })
       const handed = await shahul.post<Record<string, unknown>>('/api/save_row', {
         table: TASK, row: { row_id: task.row_id, updated_at: task.updated_at, assigned_to: siraj.user },
@@ -462,8 +472,9 @@ describe('A newer change is never overwritten', () => {
     try {
       const siraj = await createUser({ roles: [] })
       const shahul = await createUser({ roles: [] })
+      const project = await sharedProject(admin)
       const task = await admin.post<Record<string, unknown>>('/api/save_row', {
-        table: TASK, row: { task_title: 'Recount aisle 7' },
+        table: TASK, row: { task_title: 'Recount aisle 7', project: project.row_id },
       })
       // Both open the same copy; Shahul saves first.
       await shahul.post('/api/save_row', {

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
 import { viewColumns } from './list-view-columns'
+import type { ReadingPresentation } from 'shared'
 
 export interface ColumnDef {
   row_id: string
@@ -10,7 +11,11 @@ export interface ColumnDef {
   label: string | null
   column_type: string
   reference_table: string | null
+  /** #881: on a link to a row of any Table, the column holding its Table;
+   *  its `choices` then lists the Tables allowed, one per line. */
+  table_column?: string | null
   choices: string | null
+  choice_labels?: Record<string, string> | null
   row_table: string | null
   reqd: boolean
   unique: boolean
@@ -21,6 +26,9 @@ export interface ColumnDef {
   tier: 'basic' | 'restricted'
   /** One plain line shown under the control (#473). */
   description?: string | null
+  /** On a source-bound Table: the source table this column's foreign key lands on (#796). */
+  source_fk_schema?: string | null
+  source_fk_table?: string | null
   created_by: string
   updated_by: string
   created_at: string
@@ -35,17 +43,31 @@ export interface TableMeta {
   is_submittable: boolean
   id_pattern: string
   title_column: string | null
+  reading_presentation?: ReadingPresentation | null
   sort_column: string
   sort_order: string
   track_changes: boolean
+  enable_assignments?: boolean
+  enable_tags?: boolean
+  enable_files?: boolean
+  enable_discussion?: boolean
   description: string | null
   custom: boolean
   // #74: platform tables created by the migration chain — grouped under the
   // sidebar's collapsed System section, never hidden.
   system: boolean
+  // #651: the installed app that owns this Table, if any.
+  owner_app?: string | null
   // #432: the platform alone writes this Table's rows (Activity Log, Version,
   // Background Job, …). Lists and forms show it read-only for everyone.
   system_written?: boolean
+  /** Private work (mandatory access); never deleted permanently (#859). */
+  access_policy?: unknown
+  // #905: an archived Table keeps its rows readable but takes no new rows or
+  // edits. Who archived it, when, and what replaced it.
+  archived_at?: string | null
+  archived_by?: string | null
+  archived_note?: string | null
   // EDS-13: set when the Table is bound to an external Data Source. The Admin
   // shows a source badge and, for read-only sources, renders lists/forms
   // without any write affordance.
@@ -67,9 +89,23 @@ export interface TableMeta {
   /** #738: the levels of column the caller may read; served per request
    *  beside the cached meta. */
   readable_tiers?: ('basic' | 'restricted')[]
+  /** Server-resolved storage, never inferred from a display label. */
+  storage_identity?: {
+    schema: string
+    relation: string
+    row_key: string[]
+    data_source: string | null
+    discriminator: { table_name: string } | null
+  } | null
 }
 
 export const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
+
+/** When the platform made and last changed a row: on every row, in no Table's columns. */
+export const ROW_STAMPS: Record<'created_at' | 'updated_at', { label: string; column_type: 'Datetime'; by: 'created_by' | 'updated_by' }> = {
+  created_at: { label: 'Created', column_type: 'Datetime', by: 'created_by' },
+  updated_at: { label: 'Updated', column_type: 'Datetime', by: 'updated_by' },
+}
 
 export const COLUMN_TYPES = [
   'Data', 'Int', 'Float', 'Currency', 'Check', 'Choice', 'Date', 'Datetime',
@@ -97,7 +133,12 @@ export function isSystemWritten(meta: TableMeta | undefined): boolean {
 // hangs on this: absent when a read-only source owns the rows or when the
 // platform does.
 export function isRowsReadOnly(meta: TableMeta | undefined): boolean {
-  return isSourceReadOnly(meta) || isSystemWritten(meta)
+  return isSourceReadOnly(meta) || isSystemWritten(meta) || isArchived(meta)
+}
+
+/** #905: archived: its rows read only for everyone, until it is un-archived. */
+export function isArchived(meta: TableMeta | undefined): boolean {
+  return Boolean(meta?.archived_at)
 }
 
 /** The one query for a Table's metadata — shared by useMeta and by callers

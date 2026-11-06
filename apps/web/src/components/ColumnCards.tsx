@@ -2,9 +2,9 @@
 // friendly chips, and the type-specific detail control labelled inside the
 // card. Shares the grid view's column state; the grid remains the power
 // view (full engine type list), the cards speak spreadsheet.
-import { useShellTables } from '../lib/session'
+import { usePickableTables } from '../lib/session'
 import { BuilderColumn, ColumnVerdict, slugify } from '../lib/column-rules'
-import { buttonClasses, cardClasses, iconButtonClasses, inputClasses, labelClasses, pillClasses } from './ui'
+import { buttonClasses, cardClasses, iconButtonClasses, inputClasses, labelClasses, pillClasses } from '@featherbase/shop-floor'
 
 // The engine's types behind words a spreadsheet user already has. Types the
 // cards don't offer (Sub-table, layout breaks, …) still render as a raw
@@ -41,7 +41,7 @@ export function ColumnCards({
   // second query under the same ['tables'] key asking for a `name` field the
   // Table list no longer has (#132 renamed it row_id), so the picker below
   // offered no Table at all.
-  const tables = useShellTables()
+  const tables = usePickableTables()
 
   return (
     <div className="space-y-3">

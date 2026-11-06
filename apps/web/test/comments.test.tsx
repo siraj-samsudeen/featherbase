@@ -8,6 +8,7 @@
 // a stored mention renders as its own highlighted node (not as plain text,
 // which is what a broken renderContent would leave behind).
 
+import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { test, expect, renderApp } from './pg-test'
@@ -21,6 +22,10 @@ async function seedRow(admin: Admin) {
     name: DT,
     columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }],
   })
+  await admin.post('/api/save_row', {
+    table: 'Metadata Override',
+    row: { table_name: DT, property: 'enable_discussion', value: 'true' },
+  })
   const doc = (await admin.post('/api/save_row', {
     table: DT,
     row: { title: 'discuss me' },
@@ -29,9 +34,10 @@ async function seedRow(admin: Admin) {
 }
 
 async function openRow(admin: Admin, rowId: string) {
-  await renderApp(`/featherbase/admin/${encodeURIComponent(DT)}/${rowId}`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(DT)}/row/${rowId}`, admin)
   await screen.findByTestId('form-view')
-  return screen.findByTestId('comments-panel')
+  fireEvent.click(await screen.findByRole('tab', { name: 'Activity' }))
+  return screen.findByTestId('activity-timeline')
 }
 
 const input = () => screen.getByTestId('comment-input') as HTMLTextAreaElement
@@ -47,21 +53,24 @@ async function submit(text: string) {
   screen.getByTestId('comment-submit').click()
 }
 
-test('a row with no comments says so rather than rendering an empty list', async ({ admin }) => {
+// #829: a row's activity always opens with who created it, so a row with no
+// comments shows that line and no comment entries.
+test('a row with no comments shows only who created it', async ({ admin }) => {
   const rowId = await seedRow(admin)
   const panel = await openRow(admin, rowId)
-  await waitFor(() => expect(panel).toHaveTextContent('No comments yet'))
-  expect(screen.queryAllByTestId('comment-item')).toHaveLength(0)
+  await waitFor(() => expect(panel).toHaveTextContent('Administrator created this'))
+  expect(panel).not.toHaveTextContent('No activity yet')
+  expect(screen.queryAllByTestId('activity-comment')).toHaveLength(0)
 })
 
 test('a posted comment appears in the thread and is stored against the row', async ({ admin }) => {
   const rowId = await seedRow(admin)
   const panel = await openRow(admin, rowId)
-  await waitFor(() => expect(panel).toHaveTextContent('No comments yet'))
+  await waitFor(() => expect(panel).toHaveTextContent('Administrator created this'))
 
   await submit('First observation')
 
-  await waitFor(() => expect(screen.getAllByTestId('comment-item')).toHaveLength(1))
+  await waitFor(() => expect(screen.getAllByTestId('activity-comment')).toHaveLength(1))
   expect(screen.getByTestId('comment-content')).toHaveTextContent('First observation')
   // The draft clears, so the next comment starts from empty.
   await waitFor(() => expect(input()).toHaveValue(''))
@@ -113,10 +122,10 @@ test('a stored mention renders as its own highlighted node, and notifies', async
   const { ravi } = await people(admin)
   const rowId = await seedRow(admin)
   const panel = await openRow(admin, rowId)
-  await waitFor(() => expect(panel).toHaveTextContent('No comments yet'))
+  await waitFor(() => expect(panel).toHaveTextContent('Administrator created this'))
 
   await submit('cc @[Ravi Menon] please review')
-  await waitFor(() => expect(screen.getAllByTestId('comment-item')).toHaveLength(1))
+  await waitFor(() => expect(screen.getAllByTestId('activity-comment')).toHaveLength(1))
 
   // The mention is a separate element, brand-coloured — not swallowed into
   // the surrounding sentence.
@@ -147,4 +156,14 @@ test('a person with neither a username nor a name is never offered, so a mention
   const shown = screen.getAllByTestId('mention-option').map((o) => o.textContent ?? '')
   expect(shown).toContain('Named One · @named.one')
   expect(shown.some((t) => /psn_|Unnamed/.test(t) || t.trim() === '')).toBe(false)
+})
+
+// #909: the box names the person writing by their name, never by an id.
+test('the comment box says who is commenting by name', async ({ admin, createUser }) => {
+  const rowId = await seedRow(admin)
+  const priya = await createUser({ email: 'priya.cmt@example.com', fullName: 'Priya Commenter', roles: ['System Manager'] })
+  expect(priya.user).toMatch(/^psn_/)
+  await openRow(priya, rowId)
+  await waitFor(() => expect(input().placeholder).toBe('Comment as Priya Commenter… use @ to mention'))
+  expect(input().placeholder).not.toContain('psn_')
 })

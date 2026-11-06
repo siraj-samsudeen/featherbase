@@ -235,6 +235,20 @@ describe('history', () => {
   })
 })
 
+describe('addAccessPolicy', () => {
+  const policy = { version: 1 as const, roles: ['Team member'] }
+  test('replays creator privacy from an unprotected predecessor', () => {
+    const migration = step([{ kind: 'addAccessPolicy', table: 'shop.item', policy }])
+    expect(replayForward('shop', [item()], migration.operations)[0].access_policy).toEqual(policy)
+    expect(() => validateMigrations('shop', '0.2.0', [{ ...item(), access_policy: policy }], [migration])).not.toThrow()
+  })
+  test('cannot replace existing privacy or change another app', () => {
+    const migration = step([{ kind: 'addAccessPolicy', table: 'shop.item', policy }])
+    expect(() => replayForward('shop', [{ ...item(), access_policy: policy }], migration.operations)).toThrow(/already/)
+    expect(() => replayForward('other', [item()], migration.operations)).toThrow(/own/)
+  })
+})
+
 describe('replay refuses inconsistent operation starting points', () => {
   const notes = { column_name: 'notes', label: 'Notes', column_type: 'Text' as const }
   const line: TableDef = { name: 'shop.line', label: 'Line', kind: 'sub_table', columns: [notes] }
@@ -363,4 +377,16 @@ describe('history must explain the final declaration', () => {
     ])])).toThrowError(expect.objectContaining({ type: 'ValidationError', message: 'Migration history does not replay to the final declaration' }))
     expect(final).toEqual(before)
   })
+})
+
+// #911: a link to a row of any Table keeps its Table in a second column, so it
+// does not turn into text.
+test('a link to a row of any Table does not replay into text', () => {
+  const audit = item([
+    { column_name: 'about_table', label: 'About Table', column_type: 'Reference', reference_table: 'Table' },
+    { column_name: 'about', label: 'About', column_type: 'Reference', table_column: 'about_table' },
+  ])
+  const [op] = step([{ kind: 'alterColumn', table: 'shop.item', column: 'about',
+    from: { column_type: 'Reference', reference_table: null }, to: { column_type: 'Data', reference_table: null } }]).operations
+  expect(refusal(() => replayForward('shop', [audit], [op]))).toMatch(/a link to a row of any Table does not turn into text/)
 })

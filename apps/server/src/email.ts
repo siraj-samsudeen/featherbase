@@ -70,7 +70,7 @@ interface SmtpConfig {
   port: number
   user?: string
   password?: string
-  /** MAIL_FROM: the deployment's one sender (e.g. `Feather Dash <noreply@…>`). */
+  /** MAIL_FROM: the deployment's one sender (e.g. `Dash <noreply@…>`). */
   from?: string
   /** The EHLO name: SMTP_NAME, else the MAIL_FROM domain, else the emails address's
    *  host. Unset here, the sender's domain is used at send time. */
@@ -92,6 +92,16 @@ export function _setSmtpTestOverrides(o: Pick<SmtpConfig, 'tls'> | null): void {
 function activeSmtpConfig(): SmtpConfig | null {
   const cfg = readSmtpConfig()
   return cfg && testOverrides ? { ...cfg, ...testOverrides } : cfg
+}
+
+/** #833: where mail goes right now, so a screen can say "emailed" only when it
+ *  was. A broken SMTP setting still counts as SMTP: the send itself fails. */
+export function mailTransport(): 'smtp' | 'email_sink' {
+  try {
+    return activeSmtpConfig() ? 'smtp' : 'email_sink'
+  } catch {
+    return 'smtp'
+  }
 }
 
 // Read per send, not at import, so a changed environment needs no restart of

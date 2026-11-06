@@ -1,9 +1,9 @@
 import { useMemo, useRef, useState } from 'react'
 import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query'
-import { PrincipalName, isOpaqueId, usePrincipalName } from '../lib/people'
+import { isOpaqueId, usePrincipalName } from '../lib/people'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
-import { buttonClasses, cardClasses, inputClasses } from './ui'
-import { fmtInstantIST } from '../lib/inr'
+import { useWhoAmI } from '../lib/session'
+import { buttonClasses, cardClasses, inputClasses } from '@featherbase/shop-floor'
 
 interface CommentRow {
   row_id: string
@@ -17,8 +17,11 @@ export interface VersionRow {
   created_at: string
   data: {
     changed?: [string, unknown, unknown][]
+    created?: boolean
     import_run?: string
     resolution?: { field: string; decision: 'keep' | 'source'; incoming: unknown }
+    // #859: a retirement or reactivation, with the reason given to retire.
+    retirement?: { action: 'retired' | 'reactivated'; reason?: string }
   } | null
 }
 
@@ -30,7 +33,7 @@ export function activityQuery(table: string, name: string) {
   return queryOptions({
     queryKey: ['activity', table, name],
     queryFn: () =>
-      api.get<{ comments: CommentRow[]; versions: VersionRow[] }>(
+      api.get<{ created?: { created_by?: string; created_at?: string }; comments: CommentRow[]; versions: VersionRow[] }>(
         `/api/activity/${encodeURIComponent(table)}/${encodeURIComponent(name)}`,
       ),
   })
@@ -42,6 +45,9 @@ export function activityQuery(table: string, name: string) {
 export function Comments({ table, name }: { table: string; name: string }) {
   const queryClient = useQueryClient()
   const me = getSessionUser()
+  // #909: the box names the person by name, never by an internal id.
+  const whoami = useWhoAmI().data
+  const myName = whoami?.full_name?.trim() || (me && !isOpaqueId(me.row_id) ? me.row_id : null)
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [posting, setPosting] = useState(false)
@@ -49,8 +55,6 @@ export function Comments({ table, name }: { table: string; name: string }) {
   // A name-only mention that several people share notifies nobody; say so.
   const [mentionWarning, setMentionWarning] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-
-  const activity = useQuery(activityQuery(table, name))
 
   // @mention candidates from the people list, filtered by the token being
   // typed. person-rename: ids are opaque, so a mention names the person —
@@ -125,46 +129,10 @@ export function Comments({ table, name }: { table: string; name: string }) {
     }
   }
 
-  // Render @mentions as highlighted spans.
-  function renderContent(text: string) {
-    // `@username` or `@[Full Name]` (person-rename: never a row id).
-    // A mention starts a word: `name@gmail.com` is an address, not a mention.
-    const parts = text.split(/((?<![\w.@-])@\[[^\]\n]{1,140}\]|(?<![\w.@-])@[\w.-]+)/g)
-    return parts.map((p, i) =>
-      p.startsWith('@') ? (
-        <span key={i} className="font-medium text-action">
-          {p}
-        </span>
-      ) : (
-        <span key={i}>{p}</span>
-      ),
-    )
-  }
-
   return (
     <div className={cardClasses('p-4')} data-testid="comments-panel">
-      <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+      <div className="mb-3 text-xs font-semibold text-ink-subtle">
         Comments
-      </div>
-
-      <div className="mb-3 space-y-3" data-testid="comment-list">
-        {activity.data?.comments.length === 0 && (
-          <p className="text-xs text-ink-subtle">No comments yet</p>
-        )}
-        {activity.data?.comments.map((c) => (
-          <div key={c.row_id} className="flex gap-2" data-testid="comment-item">
-            <AuthorInitials id={c.created_by} />
-            <div className="min-w-0 flex-1">
-              <div className="text-xs text-ink-muted">
-                <span className="font-medium text-ink" data-testid="comment-author"><PrincipalName id={c.created_by} /></span>{' '}
-                <span data-testid="comment-time">{fmtInstantIST(c.created_at)}</span>
-              </div>
-              <div className="whitespace-pre-wrap break-words text-sm text-ink" data-testid="comment-content">
-                {renderContent(c.content)}
-              </div>
-            </div>
-          </div>
-        ))}
       </div>
 
       <div className="relative">
@@ -173,7 +141,7 @@ export function Comments({ table, name }: { table: string; name: string }) {
           value={draft}
           onChange={onChange}
           rows={2}
-          placeholder={`Comment as ${me?.row_id ?? 'you'}… use @ to mention`}
+          placeholder={myName ? `Comment as ${myName}… use @ to mention` : 'Write a comment… use @ to mention'}
           className={inputClasses('resize-none')}
           data-testid="comment-input"
         />
@@ -225,7 +193,7 @@ const initialsOf = (name: string) =>
   name.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('')
 
 /** The author's initials — from their name, never from an opaque id. */
-function AuthorInitials({ id }: { id: string }) {
+export function AuthorInitials({ id }: { id: string }) {
   const name = usePrincipalName(id)
   return (
     <span

@@ -1,12 +1,15 @@
-import { useEffect, useMemo } from 'react'
+import { createContext, useContext, useEffect, useMemo, type ComponentType } from 'react'
 import {
   Link,
   Outlet,
   createRootRoute,
   createRoute,
   redirect,
+  useRouterState,
+  useParams,
+  useRouter,
 } from '@tanstack/react-router'
-import { parseFilters } from 'shared'
+import { parseFilters, tableSlug } from 'shared'
 import { LoginPage } from './pages/Login'
 import { ResetPasswordPage } from './pages/ResetPassword'
 import { WebFormPage } from './pages/WebForm'
@@ -14,14 +17,15 @@ import { PortalListPage, PortalRowPage } from './pages/Portal'
 import { OAuthCallbackPage } from './pages/OAuthCallback'
 import { AdminLayout } from './pages/AdminLayout'
 import { ManageOnly } from './pages/RestrictedShell'
-import { EmptyState, buttonClasses } from './components/ui'
+import { EmptyState, Notice, buttonClasses, fmtDate } from '@featherbase/shop-floor'
 import { useCapabilities } from './lib/session'
-import { ApiError, getToken, landingPath, loginHref } from './lib/api'
+import { ApiError, api, getToken, landingPath, loginHref } from './lib/api'
+import { useQuery } from '@tanstack/react-query'
 import { crossesFramePolicy } from './lib/document-path'
 import { SalesTargetPage } from './pages/SalesTarget'
 import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
-import { useMeta } from './lib/meta'
+import { useMeta, type TableMeta } from './lib/meta'
 import { ReportView } from './components/ReportView'
 import { ScriptReportView } from './components/ScriptReportView'
 import { PermissionManager } from './components/PermissionManager'
@@ -32,6 +36,7 @@ import { useHomePages } from './lib/home-pages'
 import { Jobs } from './pages/Jobs'
 import { AccessTokens } from './pages/AccessTokens'
 import { SignInMethods } from './pages/SignInMethods'
+import { AccessExplanation } from './pages/AccessExplanation'
 import { AccountLayout } from './pages/AccountLayout'
 import { FindPerson } from './pages/FindPerson'
 import { WaitingForAccess } from './pages/WaitingForAccess'
@@ -51,9 +56,18 @@ import { ColumnEditor } from './pages/ColumnEditor'
 import { TableMerge } from './pages/TableMerge'
 import { AllTablesPage } from './pages/AllTables'
 import SourceBrowser from './pages/SourceBrowser'
+import ConnectSource from './pages/ConnectSource'
+import WarehouseSource from './pages/WarehouseSource'
+import { WarehouseBrowser } from './pages/WarehouseBrowser'
+import { CopySetup } from './pages/CopySetup'
+import { CopyBar } from './components/CopyBar'
+import type { BrowseContext } from './lib/warehouse'
 import { ExploreView } from './pages/Explore'
 import { parseChain, parseSelect } from './lib/explore-steps'
-import { RelationMap } from './pages/RelationMap'
+import { NavPathBar } from './components/NavPathBar'
+import { PaneSplit } from './components/RowPane'
+import { NavigationProvider, useAddressNavigation, useLocalNavigation } from './lib/navigation'
+import type { NavStep } from './lib/nav-path'
 
 // #642 (E4): a page with a frame policy of its own (the Sales Target report)
 // is entered and left by a full load, so each document carries the policy the
@@ -78,6 +92,72 @@ function searchString(value: unknown): string | undefined {
 }
 
 // #87: `filters` is validated, not asserted — see parseFilters in `shared`.
+
+// URL spellings are never Table identities. Resolve once at the route
+// boundary before mounting any consumer (including settings and tools).
+function stringifyTableParams<T extends { table: string }>(params: T): T {
+  return { ...params, table: tableSlug(params.table) }
+}
+
+const tableAddress = {
+  params: {
+    stringify: stringifyTableParams<{ table: string }>,
+  },
+  beforeLoad: ({ location }: { location: { href: string } }) => {
+    if (!getToken()) throw redirect({ href: loginHref(location.href) })
+  },
+  errorComponent: TableAddressError,
+}
+
+const rowAddress = {
+  ...tableAddress,
+  params: { stringify: stringifyTableParams<{ table: string; name: string }> },
+}
+
+const resolvedTable = createContext<TableMeta | null>(null)
+
+function useTableAddress() {
+  const tableMeta = useContext(resolvedTable)
+  if (!tableMeta) throw new Error('Table pages must render inside their metadata boundary')
+  return { table: tableMeta.name, tableMeta }
+}
+
+// Resolve through the surrounding QueryClient, just like every metadata
+// consumer. Cached destinations can mount offline; new destinations still
+// wait for metadata before any canonical-name operation can run.
+function tablePage(Page: ComponentType) {
+  return function TablePageBoundary() {
+    const { table } = useParams({ strict: false }) as { table: string }
+    const meta = useMeta(table)
+    // A failed refresh may retain data. Connectivity loss can use it, but a
+    // definitive refusal (notably ambiguity or deletion) must not mount it.
+    if (meta.error instanceof ApiError && meta.error.status < 500)
+      return <TableAddressError error={meta.error} />
+    if (!meta.data) {
+      if (meta.error) return <TableAddressError error={meta.error} />
+      return <p className="p-4 text-ink-muted">Loading…</p>
+    }
+    return <resolvedTable.Provider value={meta.data}><Page /></resolvedTable.Provider>
+  }
+}
+
+function TableAddressError({ error }: { error: unknown }) {
+  if (error instanceof ApiError && error.status === 404 && /^Table .* not found$/.test(error.message))
+    return <AdminPageNotFound />
+  // #871: an old address of a renamed Table says where it went.
+  const moved = error instanceof ApiError && error.status === 404 ? /^Table (.+) was renamed to (.+) by (.+) on (\S+)$/.exec(error.message) : null
+  if (moved)
+    return (
+      <div data-testid="table-renamed">
+        <EmptyState
+          title={`${moved[1]} is now called ${moved[2]}`}
+          body={`Renamed by ${moved[3]} on ${fmtDate(moved[4])}. Its rows and history are under the new name.`}
+          action={<Link to="/featherbase/admin/table/$table" params={{ table: moved[2] }} search={{ filters: undefined }} className={buttonClasses()}>Open {moved[2]}</Link>}
+        />
+      </div>
+    )
+  return <p role="alert" className="p-4 text-negative">{error instanceof Error ? error.message : 'Could not open this Table'}</p>
+}
 
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -129,26 +209,23 @@ function OAuthCallbackRouteComponent() {
 const portalListRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/featherbase/portal/$table',
-  beforeLoad: ({ location }) => {
-    if (!getToken()) throw redirect({ href: loginHref(location.href) })
-  },
-  component: PortalListRouteComponent,
+  ...tableAddress,
+  component: tablePage(PortalListRouteComponent),
 })
 function PortalListRouteComponent() {
-  const { table } = portalListRoute.useParams()
+  const { table } = useTableAddress()
   return <PortalListPage key={table} table={table} />
 }
 
 const portalDocRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/featherbase/portal/$table/$name',
-  beforeLoad: ({ location }) => {
-    if (!getToken()) throw redirect({ href: loginHref(location.href) })
-  },
-  component: PortalDocRouteComponent,
+  ...rowAddress,
+  component: tablePage(PortalDocRouteComponent),
 })
 function PortalDocRouteComponent() {
-  const { table, name } = portalDocRoute.useParams()
+  const { table } = useTableAddress()
+  const { name } = portalDocRoute.useParams()
   return <PortalRowPage key={`${table}/${name}`} table={table} name={name} />
 }
 
@@ -180,10 +257,17 @@ const adminRoute = createRoute({
   beforeLoad: ({ location }) => {
     if (!getToken()) throw redirect({ href: loginHref(location.href) })
   },
-  component: AdminLayout,
+  component: AdminRouteLayout,
   // Verifier, round 2 on #495: a path no Admin page matches.
   notFoundComponent: AdminPageNotFound,
 })
+
+function AdminRouteLayout() {
+  const wide = useRouterState({ select: (state) => state.matches.some((match) =>
+    match.routeId === sourceBrowserRoute.id || match.routeId === copySetupRoute.id,
+  ) })
+  return <AdminLayout wide={wide} />
+}
 
 /** An Admin path that is neither a known page nor an existing Table: said
  *  plainly, with the way back. Never the Table loader's own error. */
@@ -199,28 +283,20 @@ function AdminPageNotFound() {
   )
 }
 
-/** The Table a path names never existed: its metadata answered the server's
- *  plain not-found (meta.ts). A deleted Table answers 404 too, with a tombstone
- *  saying who deleted it and when (DEL-R9); that one keeps its own message. */
-function noSuchTable(error: unknown, table: string): boolean {
-  return error instanceof ApiError && error.status === 404 && error.message === `Table ${table} not found`
-}
-
 // PRN-001: print view lives OUTSIDE the Admin layout — no navbar/sidebar.
 const printRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/featherbase/print/$table/$name',
+  ...rowAddress,
   validateSearch: (search: Record<string, unknown>) => ({
     format: searchString(search.format),
   }),
-  beforeLoad: ({ location }) => {
-    if (!getToken()) throw redirect({ href: loginHref(location.href) })
-  },
-  component: PrintPage,
+  component: tablePage(PrintPage),
 })
 
 function PrintPage() {
-  const { table, name } = printRoute.useParams()
+  const { table } = useTableAddress()
+  const { name } = printRoute.useParams()
   const { format } = printRoute.useSearch()
   const navigate = printRoute.useNavigate()
   return (
@@ -243,6 +319,7 @@ const adminIndexRoute = createRoute({
 })
 
 function AdminIndexPage() {
+  const router = useRouter()
   const navigate = adminIndexRoute.useNavigate()
   const pages = useHomePages()
   const caps = useCapabilities()
@@ -251,8 +328,11 @@ function AdminIndexPage() {
   // the link they were sent. An empty Home Page would be the same dead end.
   const sharedOnly = Boolean(caps && !caps.manage && !caps.own_grant)
   useEffect(() => {
+    // Another effect may already have chosen setup while this index remains
+    // mounted. Never let its stale Home redirect overwrite that destination.
+    if (router.latestLocation.pathname.replace(/\/$/, '') !== adminRoute.fullPath) return
     if (first && caps && !sharedOnly) void navigate({ to: '/featherbase/admin/home/$name', params: { name: first.row_id }, replace: true })
-  }, [first, caps, sharedOnly, navigate])
+  }, [first, caps, sharedOnly, navigate, router])
   if (!pages.data || !caps) return null
   if (sharedOnly)
     return (
@@ -316,64 +396,86 @@ const importBatchesRoute = createRoute({
 // so.
 const columnsRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$table/columns',
-  component: () => (
+  path: 'table/$table/columns',
+  ...tableAddress,
+  component: tablePage(() => (
     <div data-testid="table-page">
-      <ManageOnly><ColumnEditor /></ManageOnly>
+      <ManageOnly><ColumnEditor table={useTableAddress().table} /></ManageOnly>
     </div>
-  ),
+  )),
 })
 
 // #208: merge this Table's rows into another, column by column.
 const mergeRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$table/merge',
-  component: () => (
+  path: 'table/$table/merge',
+  ...tableAddress,
+  component: tablePage(() => (
     <div data-testid="table-page">
-      <ManageOnly><TableMerge /></ManageOnly>
+      <ManageOnly><TableMerge table={useTableAddress().table} /></ManageOnly>
     </div>
-  ),
+  )),
 })
 
 // UI-002/UI-003: the generic ListView renders every Table; filters are
 // URL state so they survive reloads and are shareable.
 const tableRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$table',
-  validateSearch: (search: Record<string, unknown>) => ({
+  path: 'table/$table',
+  ...tableAddress,
+  // #910: `path` is the walk the user is on (lib/navigation); `filters`
+  // stays the way in from elsewhere (a saved view, a shared list link).
+  validateSearch: (search: Record<string, unknown>) => withPath(search, {
     filters: searchString(search.filters),
   }),
-  component: TableListPage,
+  component: tablePage(TableListPage),
 })
 
+/** A list or row page's search, with the walk's `path` when there is one:
+ *  kept as the router parsed it (an object), so the address carries it once,
+ *  not as a quoted string; decodePath validates either. */
+function withPath<T extends object>(search: Record<string, unknown>, rest: T): T & { path?: unknown } {
+  return search.path === undefined || search.path === null || search.path === '' ? rest : { ...rest, path: search.path }
+}
+
 function TableListPage() {
-  const { table } = tableRoute.useParams()
-  const { filters } = tableRoute.useSearch()
-  const navigate = tableRoute.useNavigate()
-  const meta = useMeta(table)
-  if (noSuchTable(meta.error, table)) return <AdminPageNotFound />
+  const { table, tableMeta } = useTableAddress()
+  const { filters, path } = tableRoute.useSearch()
   // SET-001: a Settings Table has no list — open its one row directly.
-  if (meta.data?.kind === 'settings') {
+  if (tableMeta.kind === 'settings') {
     return (
       <div data-testid="table-page">
         <FormView key={table} table={table} name={table} />
       </div>
     )
   }
-  const parsed = parseFilters(filters)
+  return <NavigatedList key={table} table={table} filters={filters} path={path} />
+}
+
+function NavigatedList({ table, filters, path }: { table: string; filters?: string; path?: unknown }) {
+  const here = useMemo<NavStep>(() => {
+    const parsed = parseFilters(filters)
+    return parsed.length ? { screen: 'list', table, filters: parsed } : { screen: 'list', table }
+  }, [table, filters])
+  const nav = useAddressNavigation(here, path)
   return (
     <div data-testid="table-page">
-      <ListView
-        key={table}
-        table={table}
-        filters={parsed}
-        onFiltersChange={(next) =>
-          navigate({
-            search: { filters: next.length ? JSON.stringify(next) : undefined },
-            replace: true,
-          })
-        }
-      />
+      {/* #772: a table copied from a data source shows where from, and Copy again. */}
+      <CopyBar key={`copy-${table}`} table={table} />
+      <NavigationProvider value={nav}>
+        <NavPathBar />
+        <PaneSplit>
+          <ListView
+            key={table}
+            table={table}
+            filters={nav.step.filters ?? []}
+            onFiltersChange={(next) => {
+              const { filters: _, ...step } = nav.step
+              nav.push(next.length ? { ...step, filters: next } : step)
+            }}
+          />
+        </PaneSplit>
+      </NavigationProvider>
     </div>
   )
 }
@@ -383,15 +485,16 @@ function TableListPage() {
 // $table/$name.
 const reportRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$table/view/report',
+  path: 'table/$table/view/report',
+  ...tableAddress,
   validateSearch: (search: Record<string, unknown>) => ({
     report: searchString(search.report),
   }),
-  component: ReportPage,
+  component: tablePage(ReportPage),
 })
 
 function ReportPage() {
-  const { table } = reportRoute.useParams()
+  const { table } = useTableAddress()
   const { report } = reportRoute.useSearch()
   const navigate = reportRoute.useNavigate()
   return (
@@ -409,15 +512,16 @@ function ReportPage() {
 // UI-020: Kanban board view.
 const kanbanRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$table/view/kanban',
+  path: 'table/$table/view/kanban',
+  ...tableAddress,
   validateSearch: (search: Record<string, unknown>) => ({
     group_by: searchString(search.group_by),
   }),
-  component: KanbanPage,
+  component: tablePage(KanbanPage),
 })
 
 function KanbanPage() {
-  const { table } = kanbanRoute.useParams()
+  const { table } = useTableAddress()
   const { group_by } = kanbanRoute.useSearch()
   const navigate = kanbanRoute.useNavigate()
   return (
@@ -435,12 +539,13 @@ function KanbanPage() {
 // UI-021: Calendar view.
 const calendarRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$table/view/calendar',
-  component: CalendarPage,
+  path: 'table/$table/view/calendar',
+  ...tableAddress,
+  component: tablePage(CalendarPage),
 })
 
 function CalendarPage() {
-  const { table } = calendarRoute.useParams()
+  const { table } = useTableAddress()
   return (
     <div data-testid="table-page">
       <CalendarView key={table} table={table} />
@@ -451,12 +556,13 @@ function CalendarPage() {
 // UI-022: Gantt view.
 const ganttRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$table/view/gantt',
-  component: GanttPage,
+  path: 'table/$table/view/gantt',
+  ...tableAddress,
+  component: tablePage(GanttPage),
 })
 
 function GanttPage() {
-  const { table } = ganttRoute.useParams()
+  const { table } = useTableAddress()
   return (
     <div data-testid="table-page">
       <GanttView key={table} table={table} />
@@ -468,15 +574,16 @@ function GanttPage() {
 // (a Sub-table column whose row table carries a Check column).
 const checklistRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$table/view/checklist',
+  path: 'table/$table/view/checklist',
+  ...tableAddress,
   validateSearch: (search: Record<string, unknown>) => ({
     run: searchString(search.run),
   }),
-  component: ChecklistPage,
+  component: tablePage(ChecklistPage),
 })
 
 function ChecklistPage() {
-  const { table } = checklistRoute.useParams()
+  const { table } = useTableAddress()
   const { run } = checklistRoute.useSearch()
   const navigate = checklistRoute.useNavigate()
   return (
@@ -544,6 +651,18 @@ const signInMethodsRoute = createRoute({
   component: SignInMethods,
 })
 
+// #628: what a person can see, and why. An account page, so a person without
+// Admin access opens their own; the server refuses anyone else's to all but a
+// System Manager.
+const accessExplanationRoute = createRoute({
+  getParentRoute: () => accountRoute,
+  path: 'access/$person',
+  component: function AccessExplanationPage() {
+    const { person } = accessExplanationRoute.useParams()
+    return <AccessExplanation person={person} />
+  },
+})
+
 // person-resolution: find a person by an exact identifier (an employee code
 // mailed by HR) — linked from the Person list.
 const findPersonRoute = createRoute({
@@ -553,13 +672,31 @@ const findPersonRoute = createRoute({
 })
 
 // #429: people who signed in but hold no role yet (System Manager only).
+// #835: the standard Person list behind the waiting filter; the person's own
+// filters live in the address like any list's.
 const waitingForAccessRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'waiting-for-access',
-  component: () => (
-    <ManageOnly><WaitingForAccess /></ManageOnly>
-  ),
+  validateSearch: (search: Record<string, unknown>) => ({
+    filters: searchString(search.filters),
+  }),
+  component: WaitingForAccessPage,
 })
+
+function WaitingForAccessPage() {
+  const { filters } = waitingForAccessRoute.useSearch()
+  const navigate = waitingForAccessRoute.useNavigate()
+  return (
+    <ManageOnly>
+      <WaitingForAccess
+        filters={parseFilters(filters)}
+        onFiltersChange={(next) =>
+          navigate({ search: { filters: next.length ? JSON.stringify(next) : undefined }, replace: true })
+        }
+      />
+    </ManageOnly>
+  )
+}
 
 // #465 D8: instance health (System Manager only).
 const instanceHealthRoute = createRoute({
@@ -627,14 +764,71 @@ const allTablesRoute = createRoute({
 const sourceBrowserRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'source/$name',
+  // #772: a MotherDuck source's browser keeps its place in the address.
+  // #796: `connect=<schema.table>` opens a non-MotherDuck source with that table loaded and chosen.
+  validateSearch: (search: Record<string, unknown>): BrowseContext & { connect?: string } => ({
+    connect: searchString(search.connect),
+    database: searchString(search.database),
+    schema: searchString(search.schema),
+    table: searchString(search.table),
+    tableSchema: searchString(search.tableSchema),
+    tab: searchString(search.tab),
+    query: searchString(search.query),
+    columnQuery: searchString(search.columnQuery),
+    databaseQuery: searchString(search.databaseQuery),
+    schemaQuery: searchString(search.schemaQuery),
+  }),
   component: SourceBrowserPage,
 })
 
 function SourceBrowserPage() {
   const { name } = sourceBrowserRoute.useParams()
+  const { connect, ...context } = sourceBrowserRoute.useSearch()
+  const source = useQuery({
+    queryKey: ['data-source', name],
+    queryFn: () => api.get<{ engine: string }>(`/api/table/Data%20Source/${encodeURIComponent(name)}`),
+  })
+  if (source.isPending) return null
+  if (source.error)
+    return (
+      <div data-testid="table-page">
+        <div data-testid="source-refused" className="max-w-3xl">
+          <Notice tone="negative">
+            {source.error instanceof ApiError && source.error.status === 403
+              ? 'Only a System Manager can open a data source.'
+              : 'This data source cannot be opened.'}
+          </Notice>
+        </div>
+      </div>
+    )
   return (
-    <div data-testid="table-page">
-      <SourceBrowser key={name} name={name} />
+    <div data-testid="table-page" className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {source.data?.engine === 'motherduck'
+        ? <WarehouseBrowser key={name} name={name} {...context} />
+        : <SourceBrowser key={`${name}\u0000${connect ?? ''}`} name={name} connect={connect} />}
+    </div>
+  )
+}
+
+// #772 part 2: set up the copy of one warehouse table (static segments).
+const copySetupRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'source/$name/copy',
+  validateSearch: (search: Record<string, unknown>) => ({
+    database: searchString(search.database),
+    schema: searchString(search.schema),
+    table: searchString(search.table),
+    returnTo: searchString(search.returnTo),
+  }),
+  component: CopySetupPage,
+})
+
+function CopySetupPage() {
+  const { name } = copySetupRoute.useParams()
+  const { database, schema, table, returnTo } = copySetupRoute.useSearch()
+  return (
+    <div data-testid="table-page" className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <CopySetup key={`${name}/${database}/${schema}/${table}`} name={name} database={database ?? ''} schema={schema ?? ''} table={table ?? ''} returnTo={returnTo} />
     </div>
   )
 }
@@ -658,12 +852,13 @@ function DashboardPage() {
 // NAM-001: id-pattern editor for an existing Table (static first segment).
 const namingRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: 'naming/$table',
-  component: NamingPage,
+  path: 'table/$table/naming',
+  ...tableAddress,
+  component: tablePage(NamingPage),
 })
 
 function NamingPage() {
-  const { table } = namingRoute.useParams()
+  const { table } = useTableAddress()
   return (
     <div data-testid="table-page">
       <TableNaming key={table} table={table} />
@@ -674,12 +869,13 @@ function NamingPage() {
 // SET-003: role & permission manager for a Table (static first segment).
 const permissionsRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: 'permissions/$table',
-  component: PermissionsPage,
+  path: 'table/$table/permissions',
+  ...tableAddress,
+  component: tablePage(PermissionsPage),
 })
 
 function PermissionsPage() {
-  const { table } = permissionsRoute.useParams()
+  const { table } = useTableAddress()
   return (
     <div data-testid="table-page">
       <PermissionManager key={table} table={table} />
@@ -706,33 +902,65 @@ function parsePrefill(raw: string | undefined): Record<string, unknown> | undefi
 // UI-004/UI-005: the generic FormView renders and saves every Table.
 const docRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$table/$name',
-  validateSearch: (search: Record<string, unknown>) => ({
+  path: 'table/$table/row/$name',
+  ...rowAddress,
+  validateSearch: (search: Record<string, unknown>) => withPath(search, {
     prefill: searchString(search.prefill),
   }),
-  component: TableFormPage,
+  component: tablePage(TableFormPage),
 })
 
 function TableFormPage() {
-  const { table, name } = docRoute.useParams()
-  const { prefill } = docRoute.useSearch()
+  const { table } = useTableAddress()
+  const { name } = docRoute.useParams()
+  const { prefill, path } = docRoute.useSearch()
+  const here = useMemo<NavStep>(() => ({ screen: 'row', table, row: name }), [table, name])
+  const nav = useAddressNavigation(here, path)
   // #102 review: the raw prefill string is part of the key — navigating
   // from one ?prefill= URL to another (or clearing it, e.g. Ctrl/Cmd+B)
   // remounts the form instead of retaining the previous form's values.
   // Parsing is memoized so the object isn't rebuilt every render.
   const parsedPrefill = useMemo(() => parsePrefill(prefill), [prefill])
-  const meta = useMeta(table)
-  if (noSuchTable(meta.error, table)) return <AdminPageNotFound />
+  // #772: Data Source's New page is the guided connect page; a MotherDuck
+  // source's page shows its token by last four only (any other source keeps the form).
+  if (table === 'Data Source') {
+    return (
+      <div data-testid="doc-page">
+        {name === 'new' ? <ConnectSource /> : <WarehouseSource key={name} name={name} />}
+      </div>
+    )
+  }
   return (
     <div data-testid="doc-page">
-      <FormView
-        key={`${table}/${name}/${prefill ?? ''}`}
-        table={table}
-        name={name}
-        prefill={parsedPrefill}
-      />
+      <NavigationProvider value={nav}>
+        <NavPathBar />
+        <PaneSplit onFocus={(pane) => nav.push({ screen: 'row', table: pane.table, row: pane.row, ...(nav.step.view ? { view: nav.step.view } : {}) })}>
+          <FormView
+            key={`${table}/${name}/${prefill ?? ''}`}
+            table={table}
+            name={name}
+            prefill={parsedPrefill}
+          />
+        </PaneSplit>
+      </NavigationProvider>
     </div>
   )
+}
+
+const newRowRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'table/$table/new',
+  ...tableAddress,
+  validateSearch: (search: Record<string, unknown>) => ({ prefill: searchString(search.prefill) }),
+  component: tablePage(NewRowPage),
+})
+
+function NewRowPage() {
+  const { table } = useTableAddress()
+  const { prefill } = newRowRoute.useSearch()
+  const parsedPrefill = useMemo(() => parsePrefill(prefill), [prefill])
+  if (table === 'Data Source') return <div data-testid="doc-page"><ConnectSource /></div>
+  return <div data-testid="doc-page"><FormView key={`${table}/new/${prefill ?? ''}`} table={table} name="" isNew prefill={parsedPrefill} /></div>
 }
 
 // #100 pattern 4: cross-filter Explore — pane chains over reference links,
@@ -742,7 +970,7 @@ const exploreRoute = createRoute({
   path: 'explore',
   validateSearch: (search: Record<string, unknown>) => ({
     root: searchString(search.root),
-    // Entry points (ListView split button, RelationMap) deep-link a whole
+    // Entry points (ListView split button, the row page's Map tab) deep-link a whole
     // workspace: `chain` pre-builds step2/step3, `select` preselects pane 1.
     // Both are validated the parseFilters way — malformed means absent.
     chain: searchString(search.chain),
@@ -754,8 +982,12 @@ const exploreRoute = createRoute({
 function ExplorePage() {
   const { root, chain, select } = exploreRoute.useSearch()
   const navigate = exploreRoute.useNavigate()
+  // #910: Explore keeps its own chain; its drill pane walks in memory.
+  const nav = useLocalNavigation({ screen: 'list', table: root || 'Explore' })
   return (
     <div data-testid="table-page">
+      <NavigationProvider value={nav}>
+      <PaneSplit>
       {/* Params initialize state, they are not two-way bound — in-view step
           and selection changes stay pure state (#87 keeps root shareable;
           the chain/select params exist for the entry points). The key
@@ -774,27 +1006,8 @@ function ExplorePage() {
           })
         }
       />
-    </div>
-  )
-}
-
-// #100 pattern 6: relationship map — the row's neighborhood as a walkable
-// graph. `trail` carries the hop history (static first segment).
-const mapRoute = createRoute({
-  getParentRoute: () => adminRoute,
-  path: 'map/$table/$name',
-  validateSearch: (search: Record<string, unknown>) => ({
-    trail: search.trail,
-  }),
-  component: MapPage,
-})
-
-function MapPage() {
-  const { table, name } = mapRoute.useParams()
-  const { trail } = mapRoute.useSearch()
-  return (
-    <div data-testid="table-page">
-      <RelationMap key={`${table}/${name}`} table={table} name={name} trail={trail} />
+      </PaneSplit>
+      </NavigationProvider>
     </div>
   )
 }
@@ -809,7 +1022,7 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   salesTargetRoute,
-  accountRoute.addChildren([signInMethodsRoute]),
+  accountRoute.addChildren([signInMethodsRoute, accessExplanationRoute]),
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPeopleRoute, tableRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
 ])

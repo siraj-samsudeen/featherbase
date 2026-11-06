@@ -14,6 +14,7 @@ interface CustomFieldExport {
   column_type: string
   reference_table: string | null
   choices: string | null
+  choice_labels?: Record<string, string> | null
   row_table: string | null
   reqd: boolean
   in_list_view: boolean
@@ -32,7 +33,7 @@ interface CustomizationBundle {
 
 export async function exportCustomizations(table: string): Promise<CustomizationBundle> {
   const cf = await sql`
-    select dt, column_name, label, column_type, reference_table, choices, row_table, reqd, in_list_view
+    select dt, column_name, label, column_type, reference_table, choices, choice_labels, row_table, reqd, in_list_view
     from custom_field where dt = ${table} order by column_name`
   const ps = await sql`
     select table_name, column_name, property, value
@@ -66,6 +67,7 @@ export async function importCustomizations(
         column_type: f.column_type ?? 'Data',
         reference_table: f.reference_table ?? null,
         choices: f.choices ?? null,
+        choice_labels: f.choice_labels ?? null,
         row_table: f.row_table ?? null,
         reqd: f.reqd ?? false,
         in_list_view: f.in_list_view ?? false,
@@ -85,7 +87,6 @@ export async function importCustomizations(
     await saveDoc(
       'Metadata Override',
       {
-        row_id: `${p.table_name}-${p.column_name ?? ''}-${p.property}`,
         table_name: p.table_name,
         column_name: p.column_name ?? null,
         property: p.property,

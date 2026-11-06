@@ -130,7 +130,7 @@ async function reportFrame(page: Page) {
 interface StubState {
   dive_id: string
   username: string
-  version: number
+  version?: number
   initial_state: { plant_code: string; material_groups: string[]; period_start: string; period_end: string }
   changed?: boolean
 }
@@ -291,7 +291,7 @@ test.describe('2. Four initial reports', () => {
         expect([...o.codes].sort()).toEqual([...a.material_groups].sort())
         if (o.stub) {
           expect(o.stub.username).toBe(env.SERVICE_ACCOUNT)
-          expect(o.stub.version).toBe(Number(env.DIVE_VERSION))
+          expect(o.stub.version).toBeUndefined()
           expect(o.stub.dive_id).toBe(env.DIVE_ID)
           expect(o.stub.initial_state).toEqual({ plant_code: a.plant_code, material_groups: a.material_groups, period_start: '2026-09-01', period_end: '2026-09-17' })
         }

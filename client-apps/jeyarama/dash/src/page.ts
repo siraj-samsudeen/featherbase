@@ -5,7 +5,7 @@ type Embed = { frame?: string; not_set_up?: boolean; unreachable?: boolean; too_
 
 /** Where the Dive is served from (featherbase.json's `frameOrigins`), and the message it posts once it has drawn (B7). */
 export const DIVE_ORIGIN = 'https://embed-motherduck.com'
-export const DIVE_READY_MESSAGE = 'feather-dash:dive-ready'
+export const DIVE_READY_MESSAGE = 'dash:dive-ready'
 type ReportState = { state: string }
 
 export type View =
@@ -159,8 +159,8 @@ export function firstStore(inAddress: string | undefined, listen: (onStore: (sto
 }
 
 /** The quick view's footnote for `n` shown subcategories with a "—". */
-export function blankNote(n: number): string {
-  return `${n} ${n === 1 ? 'subcategory has' : 'subcategories have'} no target or no sales recorded this month: “—” means nothing was recorded, never ₹0.00.`
+export function blankNote(n: number, month?: MonthChoice): string {
+  return `${n} ${n === 1 ? 'subcategory has' : 'subcategories have'} no target or no sales recorded ${monthWords(month)}: “—” means nothing was recorded, never ₹0.00.`
 }
 
 /** How long the cached report has to answer; then it counts as failed and a late answer is ignored. */
@@ -175,22 +175,56 @@ export const DIVE_READY_TIMEOUT_MS = 15_000
  * the page waiting with nothing in flight. Any other store drops the previous store's answers at
  * once (`select`) and then sets the store, whose effect opens it.
  */
-export function storeChooser(loader: { select(store: string): void }, setStore: (store?: string) => void) {
+export function storeChooser(loader: { select(store: string, month?: string): void }, setStore: (store?: string) => void,
+  month: () => string | undefined = () => undefined) {
   let chosen: { value?: string } | undefined
   return (value?: string) => {
     if (chosen && chosen.value === value) return
     chosen = { value }
-    if (value) loader.select(value)
+    if (value) loader.select(value, month())
     setStore(value)
   }
+}
+
+/**
+ * The page's one way to choose a month (#750), as `storeChooser` is for stores: the month on show,
+ * repeated (the bar announces its first option on a page opened without one), changes nothing;
+ * another drops the answers on show at once and sets the month, whose effect opens it.
+ */
+export function monthChooser(loader: { select(store: string, month?: string): void }, store: () => string | undefined,
+  setMonth: (month: MonthChoice) => void, initial: MonthChoice = 'this') {
+  let chosen = initial
+  return (value: string) => {
+    if (!isMonthChoice(value) || value === chosen) return
+    chosen = value
+    const on = store()
+    if (on) loader.select(on, value)
+    setMonth(value)
+  }
+}
+
+/** A month choice as the address and the bar carry it (#750). */
+export type MonthChoice = 'this' | 'last'
+export const isMonthChoice = (value: unknown): value is MonthChoice => value === 'this' || value === 'last'
+
+/** The month as a sentence names it: "this month" or "last month". */
+export const monthWords = (month: MonthChoice | undefined) => (month === 'last' ? 'last month' : 'this month')
+
+/** The empty state of a month whose figures haven't arrived. */
+export function notArrivedLine(month: MonthChoice | undefined): string {
+  return month === 'last'
+    ? "Last month's figures aren't ready yet. Try again in a few minutes."
+    : "This month's figures haven't arrived yet. They usually arrive by early morning."
 }
 
 /**
  * What may be drawn for the store now chosen: a state published for any other store draws
  * nothing (defence in depth behind `select`, round 8).
  */
-export function visibleState<S extends { store?: string; embed: unknown; report: unknown; frameFailed: boolean; diveReady: boolean }>(state: S, store: string | undefined): S {
-  return state.store === store ? state : { ...state, store, embed: undefined, report: undefined, frameFailed: false, diveReady: false }
+export function visibleState<S extends { store?: string; month?: string; embed: unknown; report: unknown; frameFailed: boolean; diveReady: boolean }>(state: S, store: string | undefined,
+  month?: string): S {
+  return state.store === store && state.month === month ? state
+    : { ...state, store, month, embed: undefined, report: undefined, frameFailed: false, diveReady: false }
 }
 
 /**
@@ -282,6 +316,8 @@ export function dataLine({ data_through, refreshed_at }: { data_through: string 
 export interface LoadState<R = unknown, E = Embed> {
   /** The store this state was opened for; rendering ignores a state of another store. */
   store?: string
+  /** The month choice it was opened for (#750); rendering ignores a state of another month too. */
+  month?: string
   embed: Answer<E> | undefined
   report: Answer<R> | undefined
   frameFailed: boolean
@@ -318,16 +354,17 @@ export function reportLoader<R = unknown>(read: (name: string, payload: Record<s
      * The reader chose `store`: everything in flight for the previous store is dropped NOW,
      * before React's effect opens the new one, so no answer can land in between (round 8).
      */
-    select(store: string) {
+    select(store: string, month?: string) {
       token = guard.bump()
-      state = { store, embed: undefined, report: undefined, frameFailed: false, diveReady: false }
+      state = { store, month, embed: undefined, report: undefined, frameFailed: false, diveReady: false }
       publish(state)
     },
-    open(store?: string) {
+    /** Opens `store` for the month chosen (#750; none: the server's default, this month). */
+    open(store?: string, month?: string) {
       const opened = token = guard.bump()
-      state = { store, embed: undefined, report: undefined, frameFailed: false, diveReady: false }
+      state = { store, month, embed: undefined, report: undefined, frameFailed: false, diveReady: false }
       publish(state)
-      const payload = store ? { store } : {}
+      const payload = { ...(store ? { store } : {}), ...(month ? { month } : {}) }
       deadline = guard.after(opened, timeoutMs, () => update(opened, { frameFailed: true }))
       // The cached report gets its own deadline: past it, it counts as failed (the page then shows
       // the Dive if it works, or "couldn't load" with Try again), and a late answer is ignored.
@@ -401,6 +438,12 @@ function sectionsNamed(sections: readonly string[], join: (names: readonly strin
 export function headingTitle({ name, sections }: { name: string | null; sections: readonly string[] }): string {
   const named = sectionsNamed(sections, names => names.join(' · '))
   return [name ?? 'Your store', ...(named ? [named] : [])].join(' · ')
+}
+
+/** The title split for the page: the count, when sections are counted, is what opens their full list. */
+export function headingParts({ name, sections }: { name: string | null; sections: readonly string[] }): { lead: string; count: string | null } {
+  if (sections.length <= 3) return { lead: headingTitle({ name, sections }), count: null }
+  return { lead: `${name ?? 'Your store'} · `, count: `${sections.length} sections` }
 }
 
 /**

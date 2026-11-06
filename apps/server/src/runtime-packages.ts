@@ -1,3 +1,4 @@
+import { getSystemSettings } from './settings'
 import { readFile, readdir, realpath, stat } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
@@ -9,28 +10,32 @@ import { tableDefSchema } from './table-engine'
 import { hasPermission } from './permissions'
 import { AppError } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
-import { APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
-import { executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
+import { APP_ACCENTS, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
+import { callerDocuments, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import type { ScopeProviderBinding } from './person-scope'
 import { loadAppSetup, secretEntries, secretsDeclaration, settingsDeclaration } from './app-settings'
 import { roleDefaultsDeclaration, validateRoleDefaults } from './app-role-bindings'
 import { datasetsDeclaration, forgetAppDatasets, registerAppDatasets } from './app-datasets'
 import { glossaryDeclaration, syncAppGlossary, validateGlossary } from './glossary'
-import { sql, withTransaction } from './db'
+import { sql, withTransaction, usingTransaction } from './db'
 import { logActivity } from './audit'
 import { invalidateMeta } from './meta'
 import { migrationSchema, migrationLedger, packageVersion, validateMigrations, canonical, checksum, compareVersions, applyMigrations, countLosses, describeLoss, refuse, replayForward, sameDeclaration, type Loss, type Operation } from './runtime-migrations'
 
 // Public v1 hook contract is structural: packages never import core classes.
 interface PackageHookContext {
+  readonly now: string
+  readonly timeZone: string
   row: Record<string, unknown>
   old?: Record<string, unknown>
   user: string
   isNew: boolean
+  documents: Pick<import('shared').RuntimeActionContext['documents'], 'get' | 'list' | 'members'>
   reject(message: string, fields?: Record<string, string>): never
 }
 type Validator = (context: PackageHookContext) => void | Promise<void>
+type DestructiveGuard = (context: Pick<PackageHookContext, 'row' | 'user' | 'isNew' | 'reject'>) => void | Promise<void>
 
 // #551 (ADR 0011): an app names the platform version it was built for, dated by
 // month. These are the versions this Featherbase runs apps on.
@@ -113,6 +118,10 @@ const manifestSchema = z.object({
   // #642 (E8): the app's controls in the shared top bar.
   bar: z.array(barControl).optional(),
   tabs: tabsDeclaration.optional(),
+  // #941 (ADR 0019): the app's accent, one of the platform's named set. Any
+  // text is accepted here so the app is still found; installing (or upgrading
+  // to) an accent outside the set is refused, naming the accents there are.
+  accent: z.string().optional(),
   // #629: the app's glossary terms, written under the app at install and
   // upgrade.
   glossary: glossaryDeclaration.optional(),
@@ -120,6 +129,13 @@ const manifestSchema = z.object({
   // only the grants it declares.
   jobs: jobsDeclaration.optional(),
   migrations: z.array(migrationSchema).default([]),
+  // #938: what changed in each version, newest first, written by hand and
+  // shown to System Managers on Admin → Apps. "#123" in a change links to
+  // that issue.
+  releaseNotes: z.array(z.object({
+    version: z.string().min(1),
+    changes: z.array(z.string().min(1)).min(1),
+  }).strict()).optional(),
 }).strict()
 
 interface RuntimePackage {
@@ -213,14 +229,46 @@ export async function repinToFolder(name: string, development: boolean): Promise
   return 'repinned'
 }
 
+/** #912: why the installed package row is not the one this server holds,
+ *  from the artifacts already loaded (no disk read): null when it matches. */
+export function installedPackageDifference(row: Record<string, unknown>): 'files' | 'manifest' | 'version' | 'absent' | null {
+  const name = String(row.name)
+  const pkg = artifacts.get(`${name}@${String(row.package_version)}`)
+  if (!pkg) return packages.has(name) ? 'version' : 'absent'
+  if (matchesInstalled(pkg, row)) return null
+  return sameManifest(pkg, row) ? 'files' : 'manifest'
+}
+
+/** #912: what an administrator reads when an installed, enabled app is not
+ *  running on this server, and what to do about it. */
+export function notRunningReason(row: Record<string, unknown>): string {
+  return notRunningMessage(String(row.name), String(row.package_version ?? ''), installedPackageDifference(row), packages.get(String(row.name))?.version)
+}
+export function notRunningMessage(name: string, version: string, reason: 'files' | 'manifest' | 'version' | 'absent' | null, shipped?: string): string {
+  switch (reason) {
+    case 'files': return `App ${name} ${version} is installed, but its files changed on this server under the same version. On a development database run \`featherbase advanced apps install-app ${name}\` to re-pin it; otherwise give the changed app a new version and upgrade it.`
+    case 'manifest': return `App ${name} ${version} is installed, but its featherbase.json changed on this server under the same version. Give the changed app a new version and upgrade it; on a development database you may instead recreate the database.`
+    case 'version': return `App ${name} ${version} is installed, but this server has ${name} ${shipped}. Upgrade it in Apps, or ship ${name} ${version}.`
+    case 'absent': return `App ${name} ${version} is installed, but this server does not have its files. Add its folder to FEATHERBASE_APP_PATHS and restart the server.`
+    default: return `App ${name} is installed; it starts working after the server restarts.`
+  }
+}
+
 /** The manifest this artifact declares is the one the instance installed. */
 function sameManifest(pkg: RuntimePackage, row: Record<string, unknown>) {
   const stored = { ...(row.manifest as object), migrations: (row.manifest as { migrations?: unknown })?.migrations ?? [] }
   return canonical(stored) === canonical(pkg.app.runtime_manifest)
 }
 
+function assertKnownAccent(pkg: RuntimePackage) {
+  const { accent } = pkg.manifest
+  if (accent !== undefined && !(APP_ACCENTS as readonly string[]).includes(accent))
+    throw new AppError('ValidationError', `App ${pkg.name} names the accent '${accent}'; Featherbase provides: ${APP_ACCENTS.join(', ')}`)
+}
+
 export async function verifySelectedRuntimePackage(name: string) {
   const pkg = await verifyArtifact(packages.get(name))
+  assertKnownAccent(pkg)
   const [row] = await sql`select * from installed_app where name = ${name}`
   if (row && !matchesInstalled(pkg, row)) refuse('Restore the exact installed artifact before enabling')
   await assertOnlyScopeProvider(pkg)
@@ -364,10 +412,29 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     for (const [table, validator] of Object.entries(module.validators ?? {})) {
       if (!names.has(table) || typeof validator !== 'function')
         throw new Error('Validators must target owned Tables')
-      doc_events[table] = { before_validate: (ctx) => (validator as Validator)({
-        row: ctx.row, old: ctx.old, user: ctx.user, isNew: ctx.isNew,
-        reject(message, fields) { throw new AppError('ValidationError', message, fields) },
+      doc_events[table] = { before_validate: (ctx) => usingTransaction(ctx.tx, async () => {
+        const access = callerDocuments(manifest.name, [...names], ctx.user)
+        try {
+          await (validator as Validator)({
+            row: ctx.row, old: ctx.old, user: ctx.user, isNew: ctx.isNew,
+            now: new Date().toISOString(), timeZone: (await getSystemSettings()).time_zone,
+            documents: Object.freeze({ get: access.documents.get, list: access.documents.list, members: access.documents.members }),
+            reject(message, fields) { throw new AppError('ValidationError', message, fields) },
+          })
+        } finally { await access.close() }
       }) }
+    }
+    // Destructive operations do not run save validation. Opt in separately
+    // without changing existing validators or pre-row lock acquisition.
+    for (const [table, guard] of Object.entries(module.destructiveGuards ?? {})) {
+      if (!names.has(table) || typeof guard !== 'function')
+        throw new Error('Destructive guards must target owned Tables')
+      for (const event of ['on_trash', 'before_rename'] as const) {
+        (doc_events[table] ??= {})[event] = (ctx) => (guard as DestructiveGuard)({
+          row: ctx.row, user: ctx.user, isNew: false,
+          reject(message, fields) { throw new AppError('ValidationError', message, fields) },
+        })
+      }
     }
   }
   const bindOperations = (operations: Record<string, AppOperationDeclaration>) => new Map(Object.entries(operations).map(([name, declaration]): [string, DeclaredAppOperation] =>
@@ -502,6 +569,7 @@ async function upgradePlan(name: string, version: string, preview = true) {
   const [row] = await sql`select * from installed_app where name = ${name} and runtime_package`
   if (!row) refuse('Upgrade requires an installed runtime application')
   const target = await verifyArtifact(artifacts.get(`${name}@${version}`))
+  assertKnownAccent(target)
   const prior = await verifyArtifact(artifacts.get(`${name}@${row.package_version}`))
   if (!matchesInstalled(prior, row)) refuse('Installed artifact does not match its recorded identity')
   if (row.activation_pending) throw new AppError('ConflictError', 'Activate the committed upgrade before previewing another version')
@@ -528,12 +596,23 @@ async function upgradePlan(name: string, version: string, preview = true) {
   const { added, follow } = tableFates(prior.manifest.tables.map(t => t.name), operations)
   const priorGrants = prior.manifest.permissions.map(p => ({ prior: p, now: follow(p.table) === undefined ? null : { ...p, table: follow(p.table)! } }))
   const held = new Set(priorGrants.flatMap(g => g.now ? [canonical(g.now)] : []))
-  if (!target.manifest.permissions.every((p) => added.has(p.table) || held.has(canonical(p))) || prior.app.runtime_manifest == null ||
+  // Replacing an All grant with the identical app-member grant narrows its
+  // audience. No flag, tier, or row-scope expansion is admitted here.
+  const narrowsAudience = (permission: typeof target.manifest.permissions[number]) => {
+    if (!target.manifest.roles?.includes(permission.role) || ['All', 'Guest'].includes(permission.role)) return false
+    const { role: _role, ...scope } = permission
+    return priorGrants.some(({ now }) => {
+      if (!now || now.role !== 'All') return false
+      const { role: _priorRole, ...priorScope } = now
+      return canonical(scope) === canonical(priorScope)
+    })
+  }
+  if (!target.manifest.permissions.every((p) => added.has(p.table) || held.has(canonical(p)) || narrowsAudience(p)) || prior.app.runtime_manifest == null ||
       (prior.app.runtime_manifest as { packageName: string }).packageName !== (target.app.runtime_manifest as { packageName: string }).packageName)
     refuse('Permission or package identity changes are unsupported')
   const kept = new Set(target.manifest.permissions.map(canonical))
   const withdrawn = priorGrants.filter(g => !g.now || !kept.has(canonical(g.now))).map(g => g.prior)
-  const granted = target.manifest.permissions.filter(p => added.has(p.table))
+  const granted = target.manifest.permissions.filter(p => added.has(p.table) || (!held.has(canonical(p)) && narrowsAudience(p)))
   const destructive = operations.some(op => 'destructive' in op && op.destructive === true)
   // #700: what the upgrade does to the app's scheduled jobs.
   const jobs = planJobChanges(name, prior.manifest.jobs ?? [], target.manifest.jobs ?? [])
@@ -722,6 +801,14 @@ export function appEntryTable(name: string): string | undefined {
   return packages.get(name)?.entryTable
 }
 
+/** #955: an installed app whose pages this process serves, whoever may open
+ *  them: the apps a person can ask for by opening them. */
+export async function servedApp(name: string): Promise<{ name: string; title: string } | null> {
+  const item = (await listInstalledApps()).find((entry) => entry.name === name)
+  const pkg = packages.get(name)
+  return item?.active && item.ownPages && pkg?.clientRoot ? { name: pkg.name, title: pkg.title } : null
+}
+
 export async function appCatalog(user: string) {
   const installed = await listInstalledApps()
   const result = []
@@ -786,7 +873,7 @@ export async function appAsset(name: string, asset: string, user: string, client
     }
     if (!(await stat(file)).isFile()) throw new Error('Not a file')
     const clientEntry = file === await contained(pkg.clientRoot!, 'index.html')
-    return { file, bytes: await readFile(file), catalog, clientEntry, frameOrigins: pkg.manifest.frameOrigins ?? [] }
+    return { file, bytes: await readFile(file), catalog, clientEntry, frameOrigins: pkg.manifest.frameOrigins ?? [], accent: pkg.manifest.accent }
   } catch {
     throw new AppError('NotFoundError', 'App asset not found')
   }

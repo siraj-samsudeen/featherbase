@@ -2,6 +2,16 @@ import { calendarDay, isCalendarDay } from './dates'
 import { z } from 'zod'
 import './zod-messages'
 
+// A fixed reading contract, not a layout language. Values remain plain text.
+export const readingPresentationSchema = z.strictObject({
+  title: z.string().min(1),
+  headers: z.array(z.string().min(1)),
+  body: z.string().min(1),
+  attachment_names: z.string().min(1).optional(),
+  notice: z.string().min(1).optional(),
+})
+export type ReadingPresentation = z.infer<typeof readingPresentationSchema>
+
 // META-013: one zod schema generated from Table metadata, used by the
 // server's row engine and the Admin form views.
 
@@ -10,6 +20,7 @@ export interface ColumnDef {
   column_type: string
   reference_table?: string | null
   choices?: string | null
+  choice_labels?: Record<string, string> | null
   row_table?: string | null
   reqd?: boolean
   label?: string | null
@@ -23,9 +34,16 @@ const NO_VALUE_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
 const emptyToUndefined = (v: unknown) =>
   v == null || v === '' || typeof v === 'function' ? undefined : v
 
-function baseSchema(f: ColumnDef): z.ZodTypeAny {
+export interface SchemaOptions {
+  /** A connected Table: its source holds each one-line text column's length
+   *  and refuses an over-long value itself (#795). */
+  sourceLimitsLength?: boolean
+}
+
+function baseSchema(f: ColumnDef, opts: SchemaOptions): z.ZodTypeAny {
   switch (f.column_type) {
     case 'Data':
+      return opts.sourceLimitsLength ? z.string() : z.string().max(140)
     case 'Reference':
       return z.string().max(140)
     case 'Text':
@@ -92,11 +110,11 @@ function baseSchema(f: ColumnDef): z.ZodTypeAny {
   }
 }
 
-export function tableSchemaToZod(columns: ColumnDef[]) {
+export function tableSchemaToZod(columns: ColumnDef[], opts: SchemaOptions = {}) {
   const shape: Record<string, z.ZodTypeAny> = {}
   for (const f of columns) {
     if (NO_VALUE_TYPES.has(f.column_type)) continue
-    const base = baseSchema(f)
+    const base = baseSchema(f, opts)
     shape[f.column_name] = z.preprocess(
       // An empty string is a JSON value; only the form's empty box means clear.
       // An inherited function (#436) is still no value.

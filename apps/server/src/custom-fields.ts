@@ -1,8 +1,9 @@
 import { assertNotSystemWritten } from './system-written'
+import { prettifyLabel } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
 import { getMeta, invalidateMeta } from './meta'
-import { STANDARD_COLUMNS, pgType, tableRelation, quoteRelation } from './table-engine'
+import { RESERVED_COLUMNS, columnSchema, pgType, tableRelation, quoteRelation } from './table-engine'
 import { isColumnName, quoteIdent } from './sql-identifier'
 
 // CUST-001: apply a Custom Field record to its target Table — add the
@@ -16,6 +17,7 @@ export interface CustomFieldRec {
   column_type?: string | null
   reference_table?: string | null
   choices?: string | null
+  choice_labels?: Record<string, string> | null
   row_table?: string | null
   reqd?: boolean | null
   in_list_view?: boolean | null
@@ -26,7 +28,7 @@ export interface CustomFieldRec {
 export function assertCustomFieldName(columnName: unknown): asserts columnName is string {
   if (!isColumnName(columnName))
     throw new AppError('ValidationError', 'column_name must be snake_case', { column_name: 'snake_case' })
-  if ((STANDARD_COLUMNS as readonly string[]).includes(columnName))
+  if (RESERVED_COLUMNS.includes(columnName))
     throw new AppError('ValidationError', `'${columnName}' is a reserved column name`, { column_name: 'reserved' })
 }
 
@@ -35,6 +37,8 @@ export async function applyCustomField(
   tx: typeof sql = sql,
 ): Promise<void> {
   assertCustomFieldName(rec.column_name)
+  if (!columnSchema.shape.choice_labels.safeParse(rec.choice_labels).success)
+    throw new AppError('ValidationError', 'choice_labels must map choice values to strings', { choice_labels: 'Expected an object of strings' })
   const columnType = rec.column_type || 'Data'
   const meta = await getMeta(rec.dt)
   // #432: a system-written Table's columns are the platform's alone.
@@ -55,10 +59,11 @@ export async function applyCustomField(
       parent: rec.dt,
       position: position ?? 0,
       column_name: rec.column_name,
-      label: rec.label ?? rec.column_name,
+      label: rec.label ?? prettifyLabel(rec.column_name),
       column_type: columnType,
       reference_table: rec.reference_table ?? null,
       choices: rec.choices ?? null,
+      choice_labels: rec.choice_labels == null ? null : tx.json(rec.choice_labels),
       row_table: rec.row_table ?? null,
       reqd: rec.reqd ?? false,
       in_list_view: rec.in_list_view ?? false,
@@ -67,6 +72,7 @@ export async function applyCustomField(
     on conflict (parent, column_name) do update set
       label = excluded.label, column_type = excluded.column_type,
       reference_table = excluded.reference_table, choices = excluded.choices,
+      choice_labels = excluded.choice_labels,
       row_table = excluded.row_table, reqd = excluded.reqd,
       in_list_view = excluded.in_list_view, custom = true`
   invalidateMeta(rec.dt)
@@ -82,7 +88,7 @@ export async function removeCustomField(dt: string, columnName: string): Promise
 // survive a re-seed of core fixtures that rewrote base column_def rows.
 export async function reapplyCustomFields(): Promise<number> {
   const recs = await sql<CustomFieldRec[]>`
-    select dt, column_name, label, column_type, reference_table, choices, row_table, reqd, in_list_view
+    select dt, column_name, label, column_type, reference_table, choices, choice_labels, row_table, reqd, in_list_view
     from custom_field`
   for (const r of recs) {
     try {
