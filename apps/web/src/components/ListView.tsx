@@ -195,6 +195,8 @@ export function ListView({
   const [compact, setCompact] = useState(false)
   const [tableScroll, setTableScroll] = useState<HTMLDivElement | null>(null)
   const moreToTheRight = useMoreToTheRight(tableScroll)
+  // #1017: the Add filter row waits until it's asked for.
+  const [addFilterOpen, setAddFilterOpen] = useState(false)
   const [colPickerOpen, setColPickerOpen] = useState(false)
   // #738: the Show columns menu grows into the space below its button and no
   // further, so it ends on screen; it scrolls inside only when that is short.
@@ -613,7 +615,7 @@ export function ListView({
     <div data-testid="list-view">
       {/* Top-aligned on desktop: however many rows the actions wrap to, the first
           row sits level with the title (listview.spec "share a vertical band"). */}
-      <div className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+      <div className="mb-3 flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
         <div>
           {breadcrumb ?? <div className="text-xs text-ink-subtle">
             <Link to="/featherbase/admin" className="hover:text-ink">
@@ -622,14 +624,15 @@ export function ListView({
             {' / '}
             {table}
           </div>}
+          {/* #1017: the count reads on the title's line, not one of its own. */}
+          <div className="flex flex-wrap items-baseline gap-x-2">
           <h1 className="text-xl font-semibold text-ink">{title ?? <>{table}<GlossaryHelp table={table} className="ml-1" /></>}</h1>
-          {subtitle && <p className="text-sm text-ink-muted">{subtitle}</p>}
           <span className="text-xs text-ink-muted" data-testid="list-total">
             {fmtCount(total)} total
           </span>
           {/* #859: beside the total it changes; the toolbar stays as it was. */}
           {retirable && (
-            <label className="ml-3 inline-flex cursor-pointer items-center gap-1 text-xs text-ink-muted" data-testid="list-show-retired">
+            <label className="ml-1 inline-flex cursor-pointer items-center gap-1 text-xs text-ink-muted" data-testid="list-show-retired">
               <input
                 type="checkbox"
                 checked={showRetired}
@@ -644,13 +647,15 @@ export function ListView({
           )}
           {meta.data?.data_source && (
             <span
-              className={pillClasses('ml-2 align-middle text-xs')}
+              className={pillClasses('text-xs')}
               data-testid="source-badge"
               title={`Rows live on data source ${meta.data.data_source}`}
             >
               {meta.data.data_source} · {meta.data.source_writable ? 'read-write' : 'read-only'}
             </span>
           )}
+          </div>
+          {subtitle && <p className="text-sm text-ink-muted">{subtitle}</p>}
         </div>
         <div
           className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1 sm:basis-64 sm:justify-end"
@@ -956,11 +961,28 @@ export function ListView({
       )}
       {onFiltersChange && !baseFilters.length && <SavedViewsBar table={table} filters={filters} onApply={onFiltersChange} />}
       {onFiltersChange && !baseFilters.length && <RecentStrip table={table} meta={meta.data} onApply={onFiltersChange} />}
-      {onFiltersChange && meta.data && (
-        <>
-          <StandardFilters meta={meta.data} filters={filters} onChange={onFiltersChange} />
-          <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} />
-        </>
+      {/* #1017: filters, Add filter and the list's layouts share a line, so the rows start high up. */}
+      <div className="mb-2 flex flex-wrap items-end gap-2">
+        {onFiltersChange && meta.data && (
+          <>
+            <StandardFilters meta={meta.data} filters={filters} onChange={onFiltersChange} />
+            <Button aria-expanded={addFilterOpen} onClick={() => setAddFilterOpen((open) => !open)} data-testid="filter-toggle">
+              Add filter
+              <ChevronDown aria-hidden data-chevron size={18} />
+            </Button>
+          </>
+        )}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <ViewToggle label="List layout" value={compact ? 'compact' : 'table'} onChange={(v) => {
+            setCompact(v === 'compact')
+            persist({ compact: v === 'compact' })
+          }} />
+          <Button aria-pressed={treeOn} onClick={() => setTree(!treeOn)}
+            className={treeOn ? 'border-action bg-action-tint text-action' : undefined}>Tree of all</Button>
+        </div>
+      </div>
+      {onFiltersChange && meta.data && (addFilterOpen || filters.length > 0) && (
+        <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} builderOpen={addFilterOpen} />
       )}
       {selected.size > 0 && !isRowsReadOnly(meta.data) && (
         <div
@@ -1031,15 +1053,6 @@ export function ListView({
           )}
         </div>
       )}
-      {/* #910: the list's layouts, just above it. */}
-      <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
-        <ViewToggle label="List layout" value={compact ? 'compact' : 'table'} onChange={(v) => {
-          setCompact(v === 'compact')
-          persist({ compact: v === 'compact' })
-        }} />
-        <Button aria-pressed={treeOn} onClick={() => setTree(!treeOn)}
-          className={treeOn ? 'border-action bg-action-tint text-action' : undefined}>Tree of all</Button>
-      </div>
       {treeOn ? (
         <div className={cardClasses('p-3')}>
           <TreeOfAll table={table} filters={queryFilters} expanded={treeExpanded}
@@ -1700,7 +1713,7 @@ function StandardFilters({
   }
 
   return (
-    <div className="mb-3 flex flex-wrap items-end gap-2" data-testid="standard-filters">
+    <div className="flex flex-wrap items-end gap-2" data-testid="standard-filters">
       {columns.map((f) =>
         f.column_type === 'Reference' && f.reference_table ? (
           // #793: a link filters by picking a row by its name, not by typing its id.
@@ -1817,10 +1830,13 @@ export function FilterBar({
   meta,
   filters,
   onChange,
+  builderOpen = true,
 }: {
   meta: import('../lib/meta').TableMeta
   filters: Filter[]
   onChange: (filters: Filter[]) => void
+  /** False leaves only the chips of the filters already applied (#1017). */
+  builderOpen?: boolean
 }) {
   const { t } = useI18n()
   const fields = [
@@ -1845,7 +1861,7 @@ export function FilterBar({
 
   return (
     <div className="mb-3">
-      <div className="flex flex-wrap items-center gap-2">
+      {builderOpen && <div className="flex flex-wrap items-center gap-2">
         <select
           value={field}
           onChange={(e) => { setField(e.target.value); setValue('') }}
@@ -1900,11 +1916,11 @@ export function FilterBar({
           data-testid="filter-add"
           className={buttonClasses()}
         >
-          Add filter
+          Add
         </button>
-      </div>
+      </div>}
       {filters.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-2" data-testid="filter-chips">
+        <div className={`flex flex-wrap gap-2 ${builderOpen ? 'mt-2' : ''}`} data-testid="filter-chips">
           {filters.map((f, i) => (
             <span
               key={i}

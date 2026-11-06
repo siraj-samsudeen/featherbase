@@ -64,7 +64,9 @@ function HiddenSteps({ label, items, onStep }: {
  * not at all: those that do not fit around the current one sit behind a "…"
  * menu on their own side (earlier steps before, later steps after); a single step wider than the whole bar is shortened at a word, its
  * full name kept as its name and title. On a bar narrower than a wide window
- * the path has a line of its own under the buttons.
+ * a path of several steps has a line of its own under the buttons; a single
+ * step stays beside them unless the bar is phone-narrow, so the bar leaves room
+ * for the page (#1017).
  */
 export function PathBar({ steps, current, onStep, onBack, onForward, onCopyLink, recent }: {
   steps: PathStep[]
@@ -131,7 +133,7 @@ export function PathBar({ steps, current, onStep, onBack, onForward, onCopyLink,
     <div className="@container flex min-w-0 flex-wrap items-center gap-2 border-b border-border bg-surface px-4 py-2">
       <Button onClick={onBack} disabled={current <= 0}>Back</Button>
       <Button onClick={onForward} disabled={current >= steps.length - 1}>Forward</Button>
-      <div ref={room} data-path-room className="relative flex min-w-0 flex-1 items-center gap-1 @max-5xl:order-last @max-5xl:basis-full">
+      <div ref={room} data-path-room className={cx('relative flex min-w-0 flex-1 items-center gap-1', steps.length > 1 ? '@max-5xl:order-last @max-5xl:basis-full' : '@max-xl:order-last @max-xl:basis-full')}>
         {/* Every step at full width, out of sight, to measure what fits. */}
         <div ref={measure} aria-hidden className="pointer-events-none invisible absolute top-0 left-0 flex w-max items-center gap-1 text-sm">
           <span data-measure-more className="inline-flex px-2">…</span>
