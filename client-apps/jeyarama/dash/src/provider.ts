@@ -234,3 +234,4 @@ export function orgChartProvider({ today = istToday, employeeCodes = fromIdentif
     return [...chartPlaces(units, chart, on), ...legacyPlaces(old)]
   }
 }
+// Probe for #995: CI timing only, never merged.
