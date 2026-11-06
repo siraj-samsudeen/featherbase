@@ -152,4 +152,11 @@ describe('every failure answers in one shape: unexpected faults', () => {
     expect(res.status).toBe(409)
     expect(((await res.json()) as { error: { type: string } }).error.type).toBe('ConflictError')
   })
+
+  test('409 ConflictError, to try again, when two writes waited on each other (#947)', async () => {
+    const res = await faulty(Object.assign(new Error('deadlock detected'), { code: '40P01' }))
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as { error: { type: string; message: string } }
+    expect(body.error).toEqual({ type: 'ConflictError', message: 'Someone else changed a linked row at the same moment. Try again.' })
+  })
 })
