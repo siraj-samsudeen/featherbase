@@ -4,7 +4,7 @@ import { api, ApiError } from '../lib/api'
 import { buttonClasses, cardClasses } from '@featherbase/shop-floor'
 
 // SET-003: edit the Permission matrix (roles × actions) for a Table at
-// tier 'basic'. System-Manager-only; changes take effect immediately because
+// the basic level. System-Manager-only; changes take effect immediately because
 // the server reads Permission live on every request.
 
 const FLAGS = [

@@ -11,6 +11,7 @@ import { sql } from 'server/src/db'
 import { config } from 'server/src/config'
 import { parseInstanceAddresses } from 'server/src/instance-addresses'
 import { test, expect, renderApp } from './pg-test'
+import { grantRole } from 'server/test/fixtures'
 
 afterEach(() => {
   config.instanceAddresses = null
@@ -46,7 +47,7 @@ test("Open Admin on an app's address hands the person over to the Admin's addres
 test('Open Admin refused because the grant went meanwhile stays on the page, ready to try again', async ({ admin, createUser }) => {
   await admin.post('/api/table_def', { name: 'Tba Note', columns: [{ column_name: 'note', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Tba Clerk' } })
-  const grant = (await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Tba Note', role: 'Tba Clerk', can_read: true } })) as { row_id: string }
+  const [grantId] = await grantRole(admin, { table: 'Tba Note', role: 'Tba Clerk', can_read: true })
   const clerk = await createUser({ roles: ['Tba Clerk'] })
   // The account page on the Feather Dash address offers Open Admin to her.
   config.instanceAddresses = parseInstanceAddresses(
@@ -58,7 +59,7 @@ test('Open Admin refused because the grant went meanwhile stays on the page, rea
   )
   const r = await renderApp('/featherbase/account/sign-in-methods', clerk)
   const button = await within(await screen.findByTestId('top-bar')).findByTestId('open-admin', {}, { timeout: 8000 })
-  await admin.delete(`/api/table/Permission/${encodeURIComponent(grant.row_id)}`)
+  await admin.delete(`/api/table/Permission/${encodeURIComponent(grantId)}`)
   await userEvent.click(button)
   await waitFor(() => expect(button).toBeEnabled())
   expect(pathOf(r)).toBe('/featherbase/account/sign-in-methods')

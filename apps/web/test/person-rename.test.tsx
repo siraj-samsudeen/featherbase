@@ -11,6 +11,7 @@ import { isOpaqueId, principalLabel, PrincipalName, usePrincipalLabels } from '.
 import { RowTitle } from '../src/lib/row-titles'
 import { api, getToken, setSession } from '../src/lib/api'
 import { recordAction } from '../src/lib/recents'
+import { grantRole } from 'server/test/fixtures'
 
 const anonymous = { user: null, token: null } as never
 
@@ -95,8 +96,8 @@ test('service accounts are listed by name, never by their svc_ id', async ({ adm
 test('names, not ids: a comment by a person shows their name and initials', async ({ admin, createUser }) => {
   const asha = await createUser({ email: 'asha.names@example.com', fullName: 'Asha Kumar' })
   await admin.post('/api/table_def', { name: 'Names Row', columns: [{ column_name: 'title', column_type: 'Data' }] })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Names Row', role: 'All', can_read: true } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Comment', role: 'All', can_read: true, can_create: true, can_write: true } })
+  await grantRole(admin, { table: 'Names Row', role: 'All', can_read: true })
+  await grantRole(admin, { table: 'Comment', role: 'All', can_read: true, can_create: true, can_write: true })
   const doc = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Names Row', row: { title: 'discuss' } })
   await asha.post('/api/save_row', { table: 'Comment', row: { ref_table: 'Names Row', ref_name: doc.row_id, content: 'looks right, mail sm.atk@jeyarama.com' } })
   await renderApp(`/featherbase/admin/table/names-row/row/${doc.row_id}`, admin)
@@ -130,8 +131,8 @@ test('a name the viewer may not read is "Unnamed person", never a stuck "…" or
   const reader = await createUser({ email: 'no.person.read@example.com', roles: ['Hidden Row Reader'] })
   await admin.post('/api/table_def', { name: 'Hidden Row', columns: [{ column_name: 'title', column_type: 'Data' }] })
   // A grant of their own earns the Admin (#410); grants to the implicit All role alone do not.
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Hidden Row', role: 'Hidden Row Reader', can_read: true } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Comment', role: 'All', can_read: true, can_create: true, can_write: true } })
+  await grantRole(admin, { table: 'Hidden Row', role: 'Hidden Row Reader', can_read: true })
+  await grantRole(admin, { table: 'Comment', role: 'All', can_read: true, can_create: true, can_write: true })
   const doc = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Hidden Row', row: { title: 'x' } })
   await author.post('/api/save_row', { table: 'Comment', row: { ref_table: 'Hidden Row', ref_name: doc.row_id, content: 'hello' } })
   await renderApp(`/featherbase/admin/table/hidden-row/row/${doc.row_id}`, reader)

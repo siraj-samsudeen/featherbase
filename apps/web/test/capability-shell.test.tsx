@@ -14,6 +14,7 @@ import { shellKindOf } from '../src/lib/session'
 import { setSession } from '../src/lib/api'
 import { ManageOnly } from '../src/pages/RestrictedShell'
 import { test, expect, renderApp } from './pg-test'
+import { grantRole } from 'server/test/fixtures'
 
 type Admin = Parameters<typeof renderApp>[1]
 
@@ -37,7 +38,7 @@ async function seed(admin: Admin) {
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Shelf Clerk' } })
   await admin.post('/api/table_def', { name: 'Shelf Note', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
   await admin.post('/api/table_def', { name: 'Back Office', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Shelf Note', role: 'Shelf Clerk', can_read: true } })
+  await grantRole(admin, { table: 'Shelf Note', role: 'Shelf Clerk', can_read: true })
 }
 
 // Management tools are System Manager only. Access tokens are self-service (#131), so they stay.
@@ -75,7 +76,7 @@ test('a person with a Table grant sees no management tools and only the Tables t
 
 test('a Person reader without management access cannot see administrative sign-in controls', async ({ admin, createUser }) => {
   await seed(admin)
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Shelf Clerk', can_read: true } })
+  await grantRole(admin, { table: 'Person', role: 'Shelf Clerk', can_read: true })
   const clerk = await createUser({ email: 'person.reader@example.com', roles: ['Shelf Clerk'] })
   const urls = recordCalls()
   await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(clerk.user!)}`, clerk)
@@ -132,7 +133,7 @@ test("a person whose only grant is on an installed app's Table gets the no-acces
   try {
     await admin.post('/api/install_app', { name: 'dash' })
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Dash Reader' } })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'dash.note', role: 'Dash Reader', can_read: true } })
+    await grantRole(admin, { table: 'dash.note', role: 'Dash Reader', can_read: true })
     const reader = await createUser({ email: 'dash.reader.shell@example.com', roles: ['Dash Reader'] })
     await renderApp('/featherbase/admin', reader)
     expect(await screen.findByTestId('no-access')).toBeInTheDocument()
@@ -151,7 +152,7 @@ test('a failed refresh of whoami keeps the shell the person already has', () => 
 // (5) Grants to the implicit All role come from runtime apps; they list a Table, they do not earn the shell.
 test('a viewer whose only grants are to the All role gets the report, not the Admin', async ({ admin, createUser }) => {
   await seed(admin)
-  await sql`insert into permission (row_id, ref_table, role, tier, can_read) values ('all-grant-web', 'Back Office', 'All', 'basic', true)`
+  await sql`insert into permission (row_id, ref_table, role, operation, scope_mode, column_rule) values ('all-grant-web', 'Back Office', 'All', 'read', 'all', 'basic')`
   const tl = await createUser({ email: 'tl-all@example.com', roles: [VIEWER_ROLE] })
   await renderApp('/featherbase/admin/all-tables', tl)
   await screen.findByTestId('identity')
@@ -161,7 +162,7 @@ test('a viewer whose only grants are to the All role gets the report, not the Ad
 // (3) ListView toolbar follows what the person may do.
 test('a Table list offers Columns, Merge and Import only to a System Manager, and New only where rows can be created', async ({ admin, createUser }) => {
   await seed(admin)
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Back Office', role: 'Shelf Clerk', can_read: true, can_create: true } })
+  await grantRole(admin, { table: 'Back Office', role: 'Shelf Clerk', can_read: true, can_create: true })
   const clerk = await createUser({ email: 'clerk-list@example.com', roles: ['Shelf Clerk'] })
 
   await renderApp('/featherbase/admin/table/back-office', clerk)
@@ -236,7 +237,7 @@ test('a create-only grant holder is not told "nothing is open to you"', async ({
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Drop Box Clerk' } })
   await admin.post('/api/table_def', { name: 'Drop Box', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
   // The role's ONLY grant: create. It reads nothing, so `tables` is empty.
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Drop Box', role: 'Drop Box Clerk', can_create: true } })
+  await grantRole(admin, { table: 'Drop Box', role: 'Drop Box Clerk', can_create: true })
   const writer = await createUser({ email: 'writer-only@example.com', roles: ['Drop Box Clerk'] })
   await renderApp('/featherbase/admin', writer)
   // Wait for a positive marker: the empty-home note or the home page has rendered.

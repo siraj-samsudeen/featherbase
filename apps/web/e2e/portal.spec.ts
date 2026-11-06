@@ -22,14 +22,12 @@ test.beforeAll(async ({ request }) => {
   if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
 
   await request.post('/api/save_row', { headers: H, data: { table: 'Role', row: { row_id: ROLE } } })
-  // own_rows_only grant: website users only ever see/created their own tickets.
-  await request.post('/api/save_row', {
-    headers: H,
-    data: {
-      table: 'Permission',
-      row: { ref_table: DT, role: ROLE, own_rows_only: true, can_read: true, can_write: true, can_create: true },
-    },
-  })
+  // Creator-scoped grants: website users only ever see/created their own tickets.
+  for (const operation of ['read', 'update', 'create'])
+    await request.post('/api/save_row', {
+      headers: H,
+      data: { table: 'Permission', row: { ref_table: DT, role: ROLE, operation, scope_mode: 'creator' } },
+    })
   // person-rename: ids are minted (`psn_…`); people are found by email.
   for (const u of [ALICE, BOB]) {
     const filters = encodeURIComponent(JSON.stringify([['email', '=', u]]))

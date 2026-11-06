@@ -9,6 +9,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { sql } from 'server/src/db'
 import { discoverPackages } from 'server/src/runtime-packages'
 import { test, expect, renderApp } from './pg-test'
+import { grantRole } from 'server/test/fixtures'
 
 const shelves = resolve(process.cwd(), '../..', 'test-apps/fixtures/shelves-v1')
 
@@ -83,12 +84,12 @@ test('with no terms, the page says so (item 9)', async ({ admin }) => {
 test('a failed glossary read can be retried after access is restored without leaving the page', async ({ admin, createUser }) => {
   await addTerm(admin, { term: 'Planogram', definition: 'The drawing of what goes on each shelf.' })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Glossary Retry Reader' } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Glossary Retry Reader', can_read: true } })
+  await grantRole(admin, { table: 'Person', role: 'Glossary Retry Reader', can_read: true })
   const reader = await createUser({ email: 'glossary-retry@example.test', roles: ['Glossary Retry Reader'] })
-  await sql`update permission set can_read = false where ref_table = 'Glossary Term'`
+  await sql`delete from permission where ref_table = 'Glossary Term' and operation = 'read'`
   await renderApp('/featherbase/admin/glossary', reader)
   expect(await screen.findByText('The glossary could not be loaded.')).toBeInTheDocument()
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Glossary Term', role: 'Glossary Retry Reader', can_read: true } })
+  await grantRole(admin, { table: 'Glossary Term', role: 'Glossary Retry Reader', can_read: true })
   await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
   expect(await screen.findByRole('heading', { level: 3, name: 'Planogram' })).toBeInTheDocument()
   expect(screen.getByText('The drawing of what goes on each shelf.')).toBeInTheDocument()
@@ -104,7 +105,7 @@ test('an editor can add and edit terms; a reader cannot (items 1, 8)', async ({ 
   unmount()
   // A person with any grant of their own enters the Admin (#410); none on Glossary Term.
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Glossary Reader' } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Glossary Reader', can_read: true } })
+  await grantRole(admin, { table: 'Person', role: 'Glossary Reader', can_read: true })
   const reader = await createUser({ email: 'reader@example.test', roles: ['Glossary Reader'] })
   await renderApp('/featherbase/admin/glossary', reader)
   await waitFor(() => expect(screen.getAllByTestId('glossary-term')).toHaveLength(2))

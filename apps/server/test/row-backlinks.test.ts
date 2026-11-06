@@ -1,6 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
+import { grantRole } from './fixtures'
 
 // The table-level :backlinks collection action (row-connections.ts): which
 // Tables point at this one, before any row is chosen — the Explore picker and
@@ -28,7 +29,7 @@ describe('Tables that point at a table', () => {
   test('leaves out Tables the caller cannot read, and refuses a caller who cannot read the Table itself', async ({ admin, createUser }) => {
     await setup(admin)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: EMP, role: ROLE, can_read: true } })
+    await grantRole(admin, { table: EMP, role: ROLE, can_read: true })
     const reader = await createUser({ roles: [ROLE] })
     expect(await backlinkTables(reader)).toEqual([])
     const outsider = await createUser({ roles: [] })

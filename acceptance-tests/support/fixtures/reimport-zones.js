@@ -61,7 +61,7 @@ async function importedZones(world, { corrected = false, history = true, count =
     const role = `${table} Importer`;
     await world.withApi(async api => {
       await api.saveRow('Role', { row_id: role });
-      await api.saveRow('Permission', { ref_table: table, role, can_read: true, can_write: !appendOnly, can_create: true });
+      await api.grant(table, role, ['read', 'create', ...(appendOnly ? [] : ['update'])]);
     });
     await world.person('the user', [role]);
   }

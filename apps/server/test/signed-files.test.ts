@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { deleteStored } from '../src/storage'
 import { test } from './pg-test'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
+import { grantRole } from './fixtures'
 
 // FILE-003: private files are served only after a permission check on the
 // document they are attached to. A signed URL, minted after that check,
@@ -20,10 +21,7 @@ async function setup(admin: TestClient, createUser: CreateUserFn) {
   })
   // A role that can read the table, and a document to attach the file to.
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: READER_ROLE } })
-  await admin.post('/api/save_row', {
-    table: 'Permission',
-    row: { ref_table: DT, role: READER_ROLE, can_read: true },
-  })
+  await grantRole(admin, { table: DT, role: READER_ROLE, can_read: true })
   const docName = (
     await admin.post<{ row_id: string }>('/api/save_row', {
       table: DT,

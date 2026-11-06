@@ -35,13 +35,12 @@ function toListColumn(c: ColumnDef): ListColumn {
   }
 }
 
-/** The data columns a list may show, in the Table's column order: never one
- *  above the caller's readable levels (Decision 2). A meta without levels
- *  (none is served without them) withholds nothing. */
+/** The data columns a list may show, in the Table's column order, limited to
+ * the caller's explicit readable Column selection. */
 export function dataColumns(meta: TableMeta): ColumnDef[] {
-  const readable = meta.readable_tiers ? new Set<string>(meta.readable_tiers) : null
+  const readable = meta.readable_columns ? new Set(meta.readable_columns) : null
   return meta.columns.filter(
-    (c) => !NO_COLUMN_TYPES.has(c.column_type) && !c.hidden && (!readable || readable.has(c.tier)),
+    (c) => !NO_COLUMN_TYPES.has(c.column_type) && !c.hidden && (!readable || readable.has(c.column_name)),
   )
 }
 

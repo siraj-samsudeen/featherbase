@@ -8,6 +8,7 @@ import { overrideVariable } from 'server/src/env'
 import { invalidateSources } from 'server/src/sources/registry'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from 'server/test/motherduck-standin'
 import { test, expect, renderApp } from './pg-test'
+import { grantRole } from 'server/test/fixtures'
 
 type Client = Parameters<typeof renderApp>[1]
 const WAIT = { timeout: 15_000 }
@@ -242,7 +243,7 @@ test('someone who is not a System Manager sees no Data sources group', async ({ 
   await connect(admin, 'web-wh-hidden')
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Warehouse Shelf Clerk' } })
   await admin.post('/api/table_def', { name: 'Warehouse Shelf Note', columns: [{ column_name: 'title', column_type: 'Data' }] })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Warehouse Shelf Note', role: 'Warehouse Shelf Clerk', can_read: true } })
+  await grantRole(admin, { table: 'Warehouse Shelf Note', role: 'Warehouse Shelf Clerk', can_read: true })
   const clerk = await createUser({ email: 'wh.clerk@example.com', roles: ['Warehouse Shelf Clerk'] })
   await renderApp('/featherbase/admin', clerk)
   await screen.findByTestId('sidebar-group-data', {}, WAIT)

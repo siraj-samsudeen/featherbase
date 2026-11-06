@@ -6,7 +6,7 @@ import { scopedWhere } from './query'
 import { principalNames } from './people-directory'
 import { getMeta, ROW_KEY, type TableMeta } from './meta'
 import { boundGetList, isBound } from './sources/dispatch'
-import { permittedTiers } from './permissions'
+import { includesColumn, permittedColumns } from './permissions'
 import { isSensitiveColumn } from './sensitive-columns'
 
 // Home cleanup: what a person reads for each referenced row (Home tiles,
@@ -48,7 +48,7 @@ export async function rowTitles(user: string, refs: RowRef[]): Promise<RowTitle[
     const scoped = await scopedWhere(table, user, [['row_id', 'in', [...ids]]])
       .catch((err: unknown) => (err instanceof AppError ? null : Promise.reject(err)))
     if (!scoped) continue
-    const { meta, table: relation, where, cols } = scoped
+    const { meta, table: relation, where, cols, creatorColumns } = scoped
     const rows = await sql`select * from ${sql(relation)} where ${where}`
     // Only the columns this caller may read take part in the title.
     const readable = { ...meta, columns: meta.columns.filter((c) => cols.has(c.column_name)) }
@@ -64,8 +64,12 @@ export async function rowTitles(user: string, refs: RowRef[]): Promise<RowTitle[
     const names = principalTitle
       ? await principalNames(rows.map((row) => String(row[principalTitle.column_name] ?? '')).filter(Boolean), user)
       : {}
-    for (const row of rows) {
-      const rowId = String(row[meta.row_key])
+    for (const stored of rows) {
+      // A Column reached only through a creator-scoped grant is read only on
+      // the caller's own rows, here as in every list.
+      const row = stored.created_by === user ? stored
+        : Object.fromEntries(Object.entries(stored).filter(([name]) => !creatorColumns.has(name)))
+      const rowId = String(stored[meta.row_key])
       const principal = principalTitle && row[principalTitle.column_name]
       const titled = principal && principalTitle
         ? { ...row, [principalTitle.column_name]: names[String(principal)] ?? 'Unnamed person' }
@@ -80,8 +84,8 @@ export async function rowTitles(user: string, refs: RowRef[]): Promise<RowTitle[
 // through the same scoped list a bound Table's list view uses. A source that
 // refuses or is down leaves these rows out, like any unreadable Table.
 async function boundTitles(meta: TableMeta, ids: string[], user: string): Promise<RowTitle[]> {
-  const tiers = await permittedTiers(user, meta.name, 'read')
-  const columns = meta.columns.filter((c) => tiers.has(c.tier ?? 'basic')
+  const granted = await permittedColumns(user, meta.name, 'read', '')
+  const columns = meta.columns.filter((c) => includesColumn(granted, c)
     && !['Sub-table', 'Section Break', 'Column Break'].includes(c.column_type)
     && !isSensitiveColumn(c.column_name) && !isSensitiveColumn(c.source_column || ''))
   const fields = columns.map((c) => c.column_name)

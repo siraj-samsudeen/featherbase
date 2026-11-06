@@ -87,7 +87,7 @@ export async function ensureAdminReaderRole(request: APIRequestContext): Promise
   if (!grants.data.length) {
     const made = await request.post('/api/save_row', {
       headers,
-      data: { table: 'Permission', row: { ref_table: 'Person', role: ADMIN_READER_ROLE, can_read: true } },
+      data: { table: 'Permission', row: { ref_table: 'Person', role: ADMIN_READER_ROLE, operation: 'read' } },
     })
     if (made.status() !== 201) throw new Error(`create grant: ${made.status()} ${await made.text()}`)
   }

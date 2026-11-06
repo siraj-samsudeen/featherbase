@@ -18,6 +18,7 @@ import { getMeta } from './meta'
 // write entry points (document.ts, applyWorkflowAction), after it.
 export const SECURITY_TABLES: ReadonlySet<string> = new Set([
   'Permission',
+  'Permission Column',
   'Role',
   'Has Role',
   'Data Scope',

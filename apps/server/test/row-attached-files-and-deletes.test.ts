@@ -78,10 +78,11 @@ describe('#609: files follow the row they are attached to', () => {
     expect(await response.json()).toMatchObject({ error: { type: 'InternalError' } })
   })
 
-  test('opening a history row cannot reveal a parent field outside the reader tier', async ({ admin, createUser }) => {
+  test('opening a history row cannot reveal a parent Column outside the read grant', async ({ admin, createUser }) => {
     const { agent, mine } = await setup(admin, createUser)
-    await sql`update column_def set tier = 'restricted' where parent = ${PLAIN} and column_name = 'subject'`
-    invalidateMeta(PLAIN)
+    const [grant] = await sql`select row_id from permission where ref_table = ${PLAIN} and role = ${ROLE} and operation = 'read'`
+    const current = await admin.get<Record<string, unknown>>(`/api/table/Permission/${String(grant.row_id)}`)
+    await admin.post('/api/save_row', { table: 'Permission', row: { ...current, column_rule: 'listed', columns: [] } })
     await grantRole(admin, { role: ROLE, table: 'Version', can_read: true })
     await sql`insert into version (row_id, ref_table, ref_name, data) values ('rafd-sensitive', ${PLAIN}, ${mine}, ${sql.json({ changed: [['subject', 'old', 'secret']] })})`
     expect((await agent.fetch('/api/table/Version/rafd-sensitive')).status).toBe(403)

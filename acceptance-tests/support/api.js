@@ -145,6 +145,11 @@ class Api {
     return res.json();
   }
 
+  /** One basic-level Permission Row per operation for this role on this table. */
+  async grant(table, role, operations) {
+    for (const operation of operations) await this.saveRow('Permission', { ref_table: table, role, operation });
+  }
+
   async copyWarehouse(source, choices) {
     const res = await this.call('POST', `/api/table/Data%20Source/${encodeURIComponent(source)}:copy_create`, choices, [200], 'create native warehouse copy');
     return res.json();
@@ -167,7 +172,7 @@ class Api {
     await this.call(
       'POST',
       '/api/save_row',
-      { table: 'Permission', row: { ref_table: table, role, can_read: true } },
+      { table: 'Permission', row: { ref_table: table, role, operation: 'read' } },
       [201],
       `let ${role} read ${table}`,
     );

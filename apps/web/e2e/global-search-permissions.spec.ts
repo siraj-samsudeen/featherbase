@@ -61,29 +61,14 @@ test.beforeAll(async ({ request }) => {
     data: { table: 'Role', row: { row_id: ROLE } },
   })
   await expectCreatedRow(role, ROLE, 'create Role')
-  const basicPermission = await request.post('/api/save_row', {
-    headers,
-    data: {
-      table: 'Permission',
-      row: {
-        ref_table: TABLE,
-        role: ROLE,
-        tier: 'basic',
-        own_rows_only: true,
-        can_read: true,
-        can_create: true,
-      },
-    },
-  })
-  await expectStatus(basicPermission, 201, 'create basic Permission')
+  const grant = (row: Record<string, unknown>) =>
+    request.post('/api/save_row', { headers, data: { table: 'Permission', row: { ref_table: TABLE, role: ROLE, ...row } } })
+  await expectStatus(await grant({ operation: 'read', scope_mode: 'creator' }), 201, 'create basic read Permission')
+  const basicCreate = await grant({ operation: 'create', scope_mode: 'creator' })
+  await expectStatus(basicCreate, 201, 'create basic create Permission')
   // The fixture users can supply the sensitive title but cannot read it.
-  const restrictedPermission = await request.post('/api/save_row', {
-    headers,
-    data: {
-      table: 'Permission',
-      row: { ref_table: TABLE, role: ROLE, tier: 'restricted', can_write: true },
-    },
-  })
+  const restrictedPermission = await grant({ operation: 'create', column_rule: 'every',
+    requires_permission: ((await basicCreate.json()) as { row_id: string }).row_id })
   await expectStatus(restrictedPermission, 201, 'create restricted Permission')
 
   for (const user of [ALICE, BOB]) {

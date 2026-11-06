@@ -4,6 +4,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
+import { grantRole } from 'server/test/fixtures'
 
 async function openIssue(admin: Parameters<typeof renderApp>[1]) {
   const user = userEvent.setup()
@@ -38,7 +39,7 @@ test('#852 a new service account: the dialog lists what its token reaches and wa
 
   // Given a role, the account reaches its Table and the warning goes.
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Dock Writer' } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Reach Dock', role: 'Dock Writer', can_read: true, can_write: true } })
+  await grantRole(admin, { table: 'Reach Dock', role: 'Dock Writer', can_read: true, can_write: true })
   await admin.post(`/api/service_accounts/${svc.row_id}/roles`, { roles: ['Dock Writer'] })
   await user.click(within(screen.getByTestId('issue-dialog')).getByRole('button', { name: 'Cancel' }))
   await user.click(screen.getByTestId('issue-token'))

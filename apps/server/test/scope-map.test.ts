@@ -16,6 +16,7 @@ import { canSubscribe, eventVisibleTo } from '../src/realtime'
 import { getScopeMap } from '../src/permissions'
 import { invalidateSources } from '../src/sources/registry'
 import { sql } from '../src/db'
+import { grantRole } from './fixtures'
 
 const STORE = 'Scope Store'
 const ROLE = 'Scope Reader'
@@ -44,8 +45,7 @@ async function world(admin: TestClient) {
     columns: [{ column_name: 'label', column_type: 'Data', in_list_view: true }],
   })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
-  for (const table of [STORE])
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: table, role: ROLE, can_read: true } })
+  await grantRole(admin, { table: STORE, role: ROLE, can_read: true })
   for (const code of ['ATK', 'KNP'])
     await admin.post(`/api/table/${encodeURIComponent(STORE)}`, { row_id: code, label: `scopeprobe ${code} store` })
   const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-scope', roles: [ROLE] })
@@ -103,7 +103,7 @@ describe('getScopeMap: a scoped service account is narrowed everywhere', () => {
       table: 'Report',
       row: { row_id: 'Scope Report', ref_table: STORE, report_type: 'Report Builder', config: { columns: ['label'], filters: [] } },
     })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Report', role: ROLE, can_read: true } })
+    await grantRole(admin, { table: 'Report', role: ROLE, can_read: true })
     const { data } = await runReportChart({ report: 'Scope Report', label_field: 'label' }, id)
     expect(data.map((d) => d.label)).toEqual(['scopeprobe ATK store'])
   })
@@ -121,7 +121,7 @@ describe('getScopeMap: a scoped service account is narrowed everywhere', () => {
       name: 'Scope Invoice',
       columns: [{ column_name: 'store', column_type: 'Reference', reference_table: STORE }],
     })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Scope Invoice', role: ROLE, can_read: true } })
+    await grantRole(admin, { table: 'Scope Invoice', role: ROLE, can_read: true })
     const atk = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Scope Invoice', row: { store: 'ATK' } })
     const knp = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Scope Invoice', row: { store: 'KNP' } })
     const user: SessionUser = { row_id: id, kind: 'service_account', email: null, full_name: 'svc-scope' }
@@ -176,7 +176,7 @@ describe('getScopeMap: a scoped service account is narrowed everywhere', () => {
       schema: 'scope_fixture', tables: ['till'], prefix: 'Scope',
     })
     const bound = reflected.created[0].name
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: bound, role: ROLE, can_read: true } })
+    await grantRole(admin, { table: bound, role: ROLE, can_read: true })
     await admin.post('/api/save_row', { table: 'Data Scope', row: { service_account: id, allow_table: bound, for_value: 'T-ATK' } })
     const list = await svc.get<{ data: { row_id: string }[] }>(`/api/table/${encodeURIComponent(bound)}`)
     expect(list.data.map((r) => r.row_id)).toEqual(['T-ATK'])

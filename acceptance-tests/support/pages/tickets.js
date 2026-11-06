@@ -279,7 +279,7 @@ class TicketTypes {
       { column_name: 'person', column_type: 'Data' }, { column_name: 'is_primary', column_type: 'Check' }] });
     if (readers !== 'All') await api.call('POST', '/api/save_row', { table: 'Role', row: { row_id: readers } }, [201, 409, 417], 'reader role');
     for (const table of [this.systemsTable, this.ownersTable])
-      await api.saveRow('Permission', { ref_table: table, role: readers, can_read: true });
+      await api.grant(table, readers, ['read']);
     this.systems = {};
     for (const name of ['SAP', 'StyleHR']) this.systems[name] = (await api.saveRow(this.systemsTable, { source_system: name })).row_id;
     await api.saveRow(this.ownersTable, { source_system: this.systems.SAP, person: this.t.ids.Bala, is_primary: true });
@@ -327,7 +327,7 @@ class TicketTypes {
     const api = await this.api();
     await api.call('POST', '/api/save_row', { table: 'Role', row: { row_id: 'Tickets Person Reader' } }, [201, 409, 417], 'person reader role');
     const existing = await api.call('GET', `/api/table/Permission?filters=${encodeURIComponent(JSON.stringify([['ref_table', '=', 'Person'], ['role', '=', 'Tickets Person Reader']]))}`, undefined, [200], 'find Person grant');
-    if (!(await existing.json()).data.length) await api.saveRow('Permission', { ref_table: 'Person', role: 'Tickets Person Reader', can_read: true });
+    if (!(await existing.json()).data.length) await api.grant('Person', 'Tickets Person Reader', ['read']);
     await this.t.world.person(name, ['All', 'Tickets Person Reader']);
     const page = await this.t.world.signedIn(name);
     await page.goto(`${BASE_URL}/tickets/`);

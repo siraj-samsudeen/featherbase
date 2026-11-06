@@ -86,9 +86,8 @@ export interface TableMeta {
   status: string
   position: number
   columns: ColumnDef[]
-  /** #738: the levels of column the caller may read; served per request
-   *  beside the cached meta. */
-  readable_tiers?: ('basic' | 'restricted')[]
+  /** Column names the caller may read; served per request beside cached metadata. */
+  readable_columns?: string[]
   /** Server-resolved storage, never inferred from a display label. */
   storage_identity?: {
     schema: string
