@@ -539,7 +539,7 @@ describe('TreeOutline', () => {
   test('Left on a child goes to its parent', async () => {
     const user = userEvent.setup()
     render(<Tree open={['shelves']} />)
-    item('Middle shelf · S-2').focus()
+    item('Middle shelf (S-2)').focus()
     await user.keyboard('{ArrowLeft}')
     expect(item('Shelf 40')).toHaveFocus()
   })

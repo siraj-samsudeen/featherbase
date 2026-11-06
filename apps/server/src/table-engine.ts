@@ -487,13 +487,21 @@ export async function updateTable(
     throw new AppError('ValidationError', 'Body Table name must match the path', { name: 'Table renaming is not supported by this endpoint' })
   const existing = await getMeta(name)
   assertNotSystemWritten(existing, 'changed')
-  const parsed = tableDefSchema.safeParse({ ...(input as object), name })
+  // #1025: an update changes what it names. Columns left out are the stored ones,
+  // not the effective meta, so a Metadata Override is not written into the Table.
+  const named = input as Record<string, unknown>
+  const columns = named.columns ?? await sql`select * from column_def where parent = ${name} order by position`
+  const parsed = tableDefSchema.safeParse({ ...named, name, columns })
   if (!parsed.success) {
     const errs: Record<string, string> = {}
     for (const issue of parsed.error.issues) errs[issue.path.join('.')] = issue.message
     throw new AppError('ValidationError', 'Invalid Table definition', errs)
   }
   const def = parsed.data
+  def.kind ??= existing.kind
+  if (def.title_column && def.title_column !== existing.title_column && def.title_column !== ROW_KEY &&
+      !def.columns.some((c) => c.column_name === def.title_column && !['Sub-table', 'Section Break', 'Column Break'].includes(c.column_type)))
+    throw new AppError('ValidationError', `${name} has no column ${def.title_column} to name its rows`, { title_column: 'No such column' })
   if (existing.access_policy && def.access_policy && JSON.stringify(def.access_policy) !== JSON.stringify(accessPolicySchema.parse(existing.access_policy)))
     throw new AppError('PermissionError', 'An existing mandatory access policy cannot be changed through the schema editor')
   if (existing.access_policy) {
@@ -540,7 +548,7 @@ export async function updateTable(
   validateDef(def)
   if (def.id_pattern)
     validateIdPattern(def.id_pattern, def.columns.map((f) => f.column_name))
-  if ((def.kind ?? 'table') !== existing.kind)
+  if (def.kind !== existing.kind)
     throw new AppError('ValidationError', 'kind cannot be changed after creation')
 
   const before = new Map(existing.columns.map((f) => [f.column_name, f]))
@@ -600,10 +608,11 @@ export async function updateTable(
       module: def.module ?? existing.module,
       is_submittable: def.is_submittable ?? existing.is_submittable,
       id_pattern: def.id_pattern ?? existing.id_pattern,
-      title_column: def.title_column ?? null,
+      // Only when named: null or an empty value clears them, leaving them out keeps them.
+      ...(named.title_column !== undefined ? { title_column: def.title_column || null } : {}),
       ...(def.link_format !== undefined ? { link_format: def.link_format } : {}),
       ...(def.reading_presentation !== undefined ? { reading_presentation: def.reading_presentation } : {}),
-      description: def.description ?? null,
+      ...(named.description !== undefined ? { description: def.description || null } : {}),
       // Only when given: an update that leaves it out keeps the Table's choice.
       ...(def.decides_scope !== undefined ? { decides_scope: def.decides_scope } : {}),
       ...(def.access_policy !== undefined ? { access_policy: def.access_policy } : {}),
