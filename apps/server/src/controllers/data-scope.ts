@@ -11,7 +11,7 @@ const controller: TableController = {
   hooks: {
     before_validate: exactlyOnePrincipal,
     async before_save({ row, tx }) {
-      const [target] = await tx`select kind, to_jsonb(table_def)->>'view_of' as view_of from table_def where name = ${String(row.allow_table ?? '')}`
+      const [target] = await tx`select kind, to_jsonb(table_def)->>'view_of' as view_of from table_def where name = ${row.allow_table as string}`
       if (target?.kind === 'view')
         throw new AppError('ValidationError', `${String(row.allow_table)} is a view of ${String(target.view_of)}; scope ${String(target.view_of)} instead`)
     },

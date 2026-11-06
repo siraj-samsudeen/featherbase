@@ -6,7 +6,7 @@ const controller: TableController = {
   hooks: {
     async before_save({ row, tx }) {
       // #1021: a view has no grants of its own; it reads under its base's.
-      const [target] = await tx`select kind, to_jsonb(table_def)->>'view_of' as view_of from table_def where name = ${String(row.ref_table ?? '')}`
+      const [target] = await tx`select kind, to_jsonb(table_def)->>'view_of' as view_of from table_def where name = ${row.ref_table as string}`
       if (target?.kind === 'view')
         throw new AppError('ValidationError', `${String(row.ref_table)} is a view of ${String(target.view_of)}; grant access on ${String(target.view_of)} instead`)
       if (row.operation === 'read_identifiers' && row.ref_table !== 'Person')

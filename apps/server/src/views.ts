@@ -86,8 +86,7 @@ export function viewCondition(relation: string, filters: readonly ViewFilter[]):
       default: throw new AppError('ValidationError', `A view filter cannot use ${op}`)
     }
   })
-  if (!conds.length) return sql`true`
-  return sql`(${conds.reduce((acc, c) => sql`${acc} and ${c}`)})`
+  return sql`(${conds.reduce((acc, c) => sql`${acc} and ${c}`, sql`true`)})`
 }
 
 /** Which of `ids` are rows of the view (existing base rows its filter
@@ -115,7 +114,8 @@ export function normaliseViewFilters(base: TableMeta, raw: unknown): ViewFilter[
     if (!Array.isArray(f) || f.length !== 3 || typeof f[0] !== 'string' || typeof f[1] !== 'string')
       throw new AppError('ValidationError', 'Each view filter is [column, operator, value]', { [`view_filters.${i}`]: 'Expected [column, operator, value]' })
     const [column, op, value] = f as [string, string, unknown]
-    const col = base.columns.find((c) => c.column_name === column)
+    // A row's own id is a plain text column a view can name too.
+    const col = column === ROW_KEY ? { column_type: 'Data' } : base.columns.find((c) => c.column_name === column)
     if (!col || ['Sub-table', 'Section Break', 'Column Break', 'JSON'].includes(col.column_type))
       throw new AppError('ValidationError', `${column} is not a column of ${base.name} a view can filter on`, { [`view_filters.${i}`]: `Unknown column ${column}` })
     if (!(VIEW_OPERATORS as readonly string[]).includes(op))

@@ -64,7 +64,10 @@ describe('#1021: a view is metadata only', () => {
     await expectApiError(def([['region', 'related', {}]]), { status: 417, message: expect.stringContaining('cannot use related') })
     await expectApiError(def([]), { status: 417, message: expect.stringContaining('at least one filter') })
     await expectApiError(def([['region', '=', 'North']], STORE), { status: 417, message: expect.stringContaining('cannot have a view') })
-    await expectApiError(def([['row_id', '=', 'x']], 'Person'), { status: 417 })
+    await expectApiError(def([['row_id', '=', 'x']], 'Table'), { status: 417 })
+    await expectApiError(admin.post('/api/table_def', { kind: 'view', view_of: SITE, view_filters: [['region', '=', 'North']] }), { status: 417, message: expect.stringContaining('Invalid view definition') })
+    await expectApiError(admin.post('/api/table_def', { name: SITE, kind: 'view', view_of: STORE, view_filters: [['region', '=', 'North']] }), { status: 417 })
+    await expectApiError(admin.post('/api/table_def', { name: STORE, kind: 'view', view_of: SITE, view_filters: [['region', '=', 'North']] }), { status: 409, message: expect.stringContaining('already exists') })
   })
 
   test('its filter can change; its base cannot', async ({ admin }) => {
@@ -72,6 +75,42 @@ describe('#1021: a view is metadata only', () => {
     await admin.put(store.defUrl, { view_filters: [['region', '=', 'North']], label: 'North sites' })
     expect(ids(await admin.get(store.url))).toEqual(['S-1', 'W-1'])
     await expectApiError(admin.put(store.defUrl, { view_of: 'Person' }), { status: 417, message: expect.stringContaining('keeps its base') })
+  })
+
+  test('every filter operator reads the base rows it names', async ({ admin }) => {
+    await sites(admin)
+    const rows = async (view_filters: unknown[]) => {
+      await admin.put(store.defUrl, { view_filters })
+      return ids(await admin.get(store.url))
+    }
+    expect(await rows([['region', '!=', 'North']])).toEqual(['S-2'])
+    expect(await rows([['row_id', '>', 'S-1']])).toEqual(['S-2', 'W-1'])
+    expect(await rows([['row_id', '<', 'S-2']])).toEqual(['S-1'])
+    expect(await rows([['row_id', '>=', 'S-2']])).toEqual(['S-2', 'W-1'])
+    expect(await rows([['row_id', '<=', 'S-2']])).toEqual(['S-1', 'S-2'])
+    expect(await rows([['row_id', 'in', ['S-1', 'W-1']]])).toEqual(['S-1', 'W-1'])
+    expect(await rows([['row_id', 'not in', ['S-1']]])).toEqual(['S-2', 'W-1'])
+    expect(await rows([['row_id', 'in', []]])).toEqual([])
+    expect(await rows([['row_id', 'not in', []]])).toEqual([])
+    expect(await rows([['site_name', 'like', '%nagar']])).toEqual(['S-1', 'S-2'])
+    expect(await rows([['site_name', 'not like', '%nagar']])).toEqual(['W-1'])
+    expect(await rows([['region', '=', null]])).toEqual([])
+    expect(await rows([['region', '!=', '']])).toEqual(['S-1', 'S-2', 'W-1'])
+    expect(await rows([['region', '=', 'North'], ['is_store', '=', 'true']])).toEqual(['S-1'])
+  })
+
+  test('a filter value must fit its column and operator', async ({ admin }) => {
+    await makeTable(admin, { name: SITE, columns: ['site_name', 'floors:Int', { column_name: 'notes', column_type: 'JSON' }] })
+    const def = (filters: unknown) => admin.post('/api/table_def', { name: STORE, kind: 'view', view_of: SITE, view_filters: filters })
+    await expectApiError(def('is_store'), { status: 417, message: expect.stringContaining('at least one filter') })
+    await expectApiError(def([['floors', '=']]), { status: 417, message: expect.stringContaining('[column, operator, value]') })
+    await expectApiError(def([['notes', '=', 'x']]), { status: 417, message: expect.stringContaining('notes is not a column') })
+    await expectApiError(def([['floors', 'in', 2]]), { status: 417, message: expect.stringContaining('takes a list of values') })
+    await expectApiError(def([['floors', '=', [2]]]), { status: 417, message: expect.stringContaining('takes one value') })
+    await expectApiError(def([['floors', '=', 'two']]), { status: 417, message: expect.stringContaining('floors takes a number') })
+    await expectApiError(def([['site_name', '=', { a: 1 }]]), { status: 417, message: expect.stringContaining('takes a plain value') })
+    await expectApiError(def([['floors', '>', null]]), { status: 417, message: expect.stringContaining('> needs a value') })
+    expect(await def([['floors', 'in', ['2', 3]]])).toMatchObject({ view_filters: [['floors', 'in', [2, 3]]] })
   })
 })
 
