@@ -9,3 +9,12 @@ alter table featherbase.table_def
 alter table featherbase.table_def drop constraint if exists table_def_view_shape;
 alter table featherbase.table_def add constraint table_def_view_shape
   check ((kind = 'view') = (view_of is not null) and (view_of is null or view_filters is not null));
+
+-- The Table list names views and what they are views of.
+update featherbase.column_def set choices = choices || E'\nview'
+where parent = 'Table' and column_name = 'kind' and choices is not null
+  and not ('view' = any(string_to_array(replace(choices, E'\r', ''), E'\n')));
+insert into featherbase.column_def (parent, position, column_name, label, column_type, reference_table, read_only, description)
+select 'Table', coalesce((select max(position) from featherbase.column_def where parent = 'Table'), 0) + 1,
+  'view_of', 'View of', 'Reference', 'Table', true, 'A view shows the rows of this Table that its filter matches.'
+where not exists (select 1 from featherbase.column_def where parent = 'Table' and column_name = 'view_of');

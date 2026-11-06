@@ -35,9 +35,13 @@ export function resolvedFrom(meta: TableMeta): ResolvedTable {
   return { table: meta.view_of, view: meta.name, filters: meta.view_filters ?? [] }
 }
 
-/** The stored Table a name reads: itself, or a view's base. */
+/** The stored Table a name reads: itself, or a view's base. Read from the
+ *  persisted definition, so a permission probe never fails on metadata it
+ *  would not otherwise load. */
 export async function storedTable(name: string): Promise<string> {
-  return (await resolveView(name)).table
+  const [row] = await sql<{ base: string | null }[]>`
+    select to_jsonb(d)->>'view_of' as base from table_def d where name = ${name}`
+  return row?.base ?? name
 }
 
 /** The stored Table a link column's values are rows of. */
