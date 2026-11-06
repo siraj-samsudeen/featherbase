@@ -70,8 +70,8 @@ test('the row is chosen after its Table, from the Tables the column allows, and 
   // Another Table clears the row: PKN-GOLD is not a Plant, nor 8151 a Unit.
   await pick('shapes_table', 'Unit', UNIT)
   await waitFor(() => expect(box('shapes')).toHaveValue(''))
-  await pick('shapes', 'Gold', 'Gold jewellery')
-  await waitFor(() => expect(box('shapes')).toHaveValue('Gold jewellery'))
+  await pick('shapes', 'Gold', 'Gold jewellery (PKN-GOLD)')
+  await waitFor(() => expect(box('shapes')).toHaveValue('Gold jewellery (PKN-GOLD)'))
 })
 
 test("a row the reader can't read shows only its Table, and is not a link", async ({ admin, createUser }) => {
