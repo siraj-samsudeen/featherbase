@@ -12,7 +12,7 @@ The instance's settings, the privacy notice and the one-off setup steps are in
 `../instances/dash/`. JeyaRama's conventions
 shared by its apps are in `../CLAUDE.md`.
 
-**Version 0.10.1.** It arrived here at 0.10.0, the version data-warehouse last
+**Version 0.11.0.** It arrived here at 0.10.0, the version data-warehouse last
 shipped, as a snapshot without its earlier git history and with no upgrade
 history: go-live is a fresh install, and the platform is fresh-install only.
 0.10.1 lists the published Sales Target Dive v13 as compact-aware, with one
@@ -43,6 +43,7 @@ repository (data-warehouse #4486, #4531, #4453).
 | `src/coverage.ts`, `src/provider.ts` | coverage on the new org chart, and the scope provider |
 | `src/legacy-derivation.ts` | today's derivation from the old Store Sections Tables |
 | `src/conflicts.ts`, `src/compare.ts`, `src/compare-cli.ts` | a store's conflict list and the coverage comparison |
+| `src/my-sections.ts`, `src/sections-page.tsx` | Your sections and Waiting for your approval (#975): the rules and the two pages. They read the instance's base Tables, declared under `baseTables` in the manifest and listed in the `linked_tables` setting, and propose through the platform's Change Proposal. The seam for posting to StyleHR is marked in `decide` and not built |
 | `src/report.ts` | the report's rules: a reader's stores and scope, the month-to-date rows and totals, the Dive's `initial_state` |
 | `src/page.ts`, `src/app.tsx`, `src/main.tsx`, `index.html` | the report page (the Dive, the quick view, the empty states; `page.ts` holds its rules and the async guard), built by Vite to `dist/client` |
 | `platform-test/` | tests that run inside this repository's server test harness (`npm run test:platform`), with `mark-scope-tables.mjs`, the instance setup step they rely on |

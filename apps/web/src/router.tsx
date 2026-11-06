@@ -266,7 +266,9 @@ function AdminRouteLayout() {
   const wide = useRouterState({ select: (state) => state.matches.some((match) =>
     match.routeId === sourceBrowserRoute.id || match.routeId === copySetupRoute.id,
   ) })
-  return <AdminLayout wide={wide} />
+  // #1018: a Table's list has no reading width to keep, so a wide one gets the whole page.
+  const fullWidth = useRouterState({ select: (state) => state.matches.some((match) => match.routeId === tableRoute.id) })
+  return <AdminLayout wide={wide} fullWidth={fullWidth} />
 }
 
 /** An Admin path that is neither a known page nor an existing Table: said
@@ -728,10 +730,19 @@ const setupRoute = createRoute({
   component: () => <ManageOnly><WelcomeSetup /></ManageOnly>,
 })
 
+const setupPersonRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'setup/person',
+  component: FirstRunSetup,
+})
+
+// #1005: the screen's address before it took the Table's word.
 const setupPeopleRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'setup/people',
-  component: FirstRunSetup,
+  beforeLoad: () => {
+    throw redirect({ to: '/featherbase/admin/setup/person', replace: true })
+  },
 })
 
 // UI-027 / #80: a Home Page renders grouped link cards and its legacy
@@ -917,7 +928,7 @@ function TableFormPage() {
   const here = useMemo<NavStep>(() => ({ screen: 'row', table, row: name }), [table, name])
   const nav = useAddressNavigation(here, path)
   // #102 review: the raw prefill string is part of the key — navigating
-  // from one ?prefill= URL to another (or clearing it, e.g. Ctrl/Cmd+B)
+  // from one ?prefill= URL to another (or clearing it, e.g. g then n)
   // remounts the form instead of retaining the previous form's values.
   // Parsing is memoized so the object isn't rebuilt every render.
   const parsedPrefill = useMemo(() => parsePrefill(prefill), [prefill])
@@ -1024,5 +1035,5 @@ export const routeTree = rootRoute.addChildren([
   salesTargetRoute,
   accountRoute.addChildren([signInMethodsRoute, accessExplanationRoute]),
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
 ])

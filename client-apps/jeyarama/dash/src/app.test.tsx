@@ -197,7 +197,7 @@ describe('choosing another store on the rendered page', () => {
     const root = createRoot(container)
     await act(async () => { root.render(<Dash />) })
     await act(async () => { await settle() })
-    expect(calls.filter(c => c.name !== 'stores').map(c => c.payload.month)).toEqual(['last', 'last'])
+    expect(calls.filter(c => c.name !== 'stores' && c.name !== 'approvals').map(c => c.payload.month)).toEqual(['last', 'last'])
     await act(async () => root.unmount())
   })
 })
