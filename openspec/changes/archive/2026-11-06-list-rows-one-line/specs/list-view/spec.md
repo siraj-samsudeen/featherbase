@@ -75,3 +75,32 @@ desktop window of 1280×800 the first row SHALL start within the top two fifths.
 
 - **WHEN** a person opens a list whose address carries a filter
 - **THEN** the filter shows as a chip they can remove, with the row for building one still closed
+
+### Requirement: The Add filter row offers the box its column calls for
+
+The Value box of the row for building a filter SHALL suit the chosen column and
+condition: the same picker as the quick filter for a link compared with = or !=,
+a dropdown for a Choice compared with = or !=, a date or number input for those
+columns, and a text box for `like`. A value SHALL NOT survive a change to a
+different kind of box.
+
+#### Scenario: A link column
+
+- **WHEN** the person chooses a link column with =
+- **THEN** Value is a picker of rows by name, and the filter matches the row picked
+
+#### Scenario: Changing the condition
+
+- **WHEN** the person types a number and changes the condition to `like`
+- **THEN** Value becomes an empty text box
+
+### Requirement: A link box reads as a picker and password managers leave it alone
+
+A link box SHALL show that it is a picker, and password managers SHALL be asked to
+leave it alone, in filters and on forms. Its list SHALL carry a search box at the
+top and SHALL sort by the name shown wherever it has a name to sort by.
+
+#### Scenario: Clicking a link filter
+
+- **WHEN** the person clicks a link filter
+- **THEN** the first values show sorted by name, and typing in the list's search box narrows them

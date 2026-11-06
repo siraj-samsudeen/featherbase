@@ -8,3 +8,4 @@
 - [x] 2.1 One-line rows and header, with the right-edge hint and a name column that stays in view
 - [x] 2.2 Password manager marks on filter boxes
 - [x] 2.3 Controls share a line, Add filter collapses, a one-step path stays inline
+- [x] 2.4 Link boxes: password manager marks, chevron, search box, sorted by name; the Add filter row's Value suits its column
