@@ -13,6 +13,7 @@ import { holdBeforeRowLock } from './row-lock-order'
 import { documentActivity, retainedDocumentCounts } from './document-activity'
 import { getList } from './query'
 import { assertNoSecret, readyAppSetup, withSecretsKept, type AppSetup, type ReadySetup } from './app-settings'
+import { callerMail } from './runtime-mail'
 import { appDatasets, recordPlaceDrops, type DatasetDeclaration, type DropProvenance, type DropVersions, type PlaceDrop } from './app-datasets'
 import { baseTablesReader, proposalsReader, proposalsWriter, type BaseTablesDeclaration } from './change-proposals'
 
@@ -208,7 +209,7 @@ export function executeRuntimeAction(app: string, name: string, input: unknown, 
       // Serialized inside the guard (Codex round 2 on #670): a getter on the
       // result is the app's code running, and may log or throw a secret.
       const json = await withSecretsKept(kept, async () => {
-        try { return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), roles: await callerRoles(user), people: callerPeople(user), payload: normalized, authorization, settings, secrets, documents: context.documents, baseTables: base.helper, changeProposals: proposals.helper, reject }))) }
+        try { return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), roles: await callerRoles(user), people: callerPeople(user), payload: normalized, authorization, settings, secrets, mail: callerMail(app, contribution.tables), documents: context.documents, baseTables: base.helper, changeProposals: proposals.helper, reject }))) }
         finally { await context.close(); await base.close(); await proposals.close() }
       })
       assertNoSecret(kept, JSON.parse(json))
