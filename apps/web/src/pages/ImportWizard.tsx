@@ -3,13 +3,15 @@ import { tableHref } from 'shared'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 // (search read non-strictly: the wizard route lives in router.tsx, which
 // imports this file — a strict useSearch would need the route object back)
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { adminPageTitle } from 'shared'
 import { DEFAULT_ID_PATTERN, applyColumnCombines, autoMapImportColumns, choiceOptions, listColumnsInUse, retiredColumnNotice, coerceRows, combineOverlap, inferTableDef, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { ImportOverview, type GroupMode } from '../components/ImportOverview'
 import { NamingControl } from '../components/NamingControl'
-import { COLUMN_TYPES, NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
+import { PurgeDialog, tableCanPurge } from '../components/PurgeDialog'
+import { useIsSystemManager } from '../lib/session'
+import { COLUMN_TYPES, NO_COLUMN_TYPES, useMeta, type TableMeta } from '../lib/meta'
 import { refusalMessage } from '../lib/table-refusal'
 import {
   countDataRows,
@@ -120,6 +122,7 @@ interface SheetPlan {
     rows_kept: number
     conflicts: number
     tracks_changes?: boolean | null
+    retired?: number
     valid: number
     updated: number
     inserted: number
@@ -325,7 +328,8 @@ function TargetPicker({
 function TargetRowCount({ i, table }: { i: number; table: string }) {
   const count = useQuery({
     queryKey: ['iw-count', table],
-    queryFn: () => api.get<{ count: number }>(`/api/table/${encodeURIComponent(table)}:count`),
+    // #859: every row an import can match, retired ones included.
+    queryFn: () => api.get<{ count: number }>(`/api/table/${encodeURIComponent(table)}:count?with_retired=true`),
     staleTime: 30_000,
   })
   if (count.data == null) return null
@@ -352,6 +356,11 @@ function ImportPreviewFacts({ report }: {
         {fmtCount(report.fields_kept ?? 0)} {report.fields_kept === 1 ? 'value' : 'values'} retained ·{' '}
         {fmtCount(report.conflicts)} new {report.conflicts === 1 ? 'conflict' : 'conflicts'}
       </p>
+      {(report.retired ?? 0) > 0 && (
+        <p data-testid="iw-preview-retired">
+          {fmtCount(report.retired ?? 0)} matched {report.retired === 1 ? 'row is' : 'rows are'} retired and {report.retired === 1 ? 'stays' : 'stay'} retired
+        </p>
+      )}
       <p className="text-xs text-ink-muted">
         Rows keeping corrections may also have other values change. Counts describe mapped values; import automation still runs.
       </p>
@@ -691,6 +700,12 @@ interface RunEntry {
 }
 
 function RunHistory({ table }: { table: string }) {
+  // #859: a System Manager may delete the rows a run added, permanently.
+  const isSystemManager = useIsSystemManager()
+  const meta = useMeta(table)
+  const canPurge = isSystemManager && tableCanPurge(meta.data)
+  const [purgeRun, setPurgeRun] = useState<string | null>(null)
+  const queryClient = useQueryClient()
   const runs = useQuery({
     queryKey: ['iw-run-history', table],
     staleTime: 10_000,
@@ -732,9 +747,31 @@ function RunHistory({ table }: { table: string }) {
       return [...byRun.values()].slice(0, 5)
     },
   })
+  // Whether a run's added rows are still there, from the server, so a reload
+  // tells the same story.
+  const remaining = useQueries({
+    queries: (runs.data ?? []).map((r) => ({
+      queryKey: ['iw-run-remaining', table, r.run_id],
+      enabled: canPurge && r.inserted > 0,
+      queryFn: () => api.get<{ remaining: number }>(`/api/table/${encodeURIComponent(table)}:purge_run_remaining?run_id=${encodeURIComponent(r.run_id)}`),
+    })),
+  })
   if (!runs.data?.length) return null
+  const gone = (r: RunEntry, idx: number) => canPurge && r.inserted > 0 && remaining[idx]?.data?.remaining === 0
   return (
     <div className={cardClasses('mt-4 p-3')} data-testid="iw-run-history">
+      {purgeRun && (
+        <PurgeDialog
+          table={table}
+          runId={purgeRun}
+          onClose={() => setPurgeRun(null)}
+          onDone={() => {
+            setPurgeRun(null)
+            void runs.refetch()
+            void queryClient.invalidateQueries({ queryKey: ['iw-run-remaining', table] })
+          }}
+        />
+      )}
       <div className="mb-1 text-xs font-medium text-ink-muted">Recent imports into {table}</div>
       {runs.data.map((r, idx) => (
         <div
@@ -746,11 +783,23 @@ function RunHistory({ table }: { table: string }) {
             {r.file_name ?? 'API import'} — {fmtCount(r.updated)} processed matches · {fmtCount(r.inserted)} added · {fmtCount(r.failed)}{' '}
             failed
           </span>
-          {r.reverted_at ? (
+          {gone(r, idx) && (
+            <span className="text-xs text-ink-subtle" data-testid={`iw-run-purged-${idx}`}>its added rows are gone</span>
+          )}
+          {gone(r, idx) && r.updated === 0 ? null : r.reverted_at ? (
             <span className="text-xs text-ink-subtle">reverted</span>
           ) : (
             <RevertControl i={`h${idx}`} table={table} runId={r.run_id} />
           )}
+          {canPurge && r.inserted > 0 && !r.reverted_at && remaining[idx]?.data?.remaining ? (
+            <button
+              className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}
+              onClick={() => setPurgeRun(r.run_id)}
+              data-testid={`iw-run-purge-${idx}`}
+            >
+              Delete its rows permanently
+            </button>
+          ) : null}
         </div>
       ))}
     </div>
@@ -1455,7 +1504,7 @@ export function ImportWizard() {
         if (i !== only) continue
         // #201: rehearse member by member, exactly as the import will send
         // them, so a reported row number is true against its own sheet.
-        const totals = { valid: 0, updated: 0, changed: 0, unchanged: 0, inserted: 0, skipped: 0, fields_updated: 0, fields_kept: 0, rows_kept: 0, conflicts: 0, tracks_changes: null as boolean | null }
+        const totals = { valid: 0, updated: 0, changed: 0, unchanged: 0, inserted: 0, skipped: 0, fields_updated: 0, fields_kept: 0, rows_kept: 0, conflicts: 0, retired: 0, tracks_changes: null as boolean | null }
         const failed: { sheetIndex: number; sourceIndex: number; message: string }[] = []
         for (const { sheetIndex: m, rows, skipped, failed: duplicates } of targetParts(plan)) {
           const sheet = memberSheet(plan, m)
@@ -1478,6 +1527,7 @@ export function ImportWizard() {
           totals.unchanged += report.unchanged
           totals.rows_kept += report.rows_kept
           totals.conflicts += report.conflicts
+          totals.retired += report.retired
           totals.tracks_changes = report.tracks_changes
           totals.valid += report.valid
           totals.updated += report.updated

@@ -67,15 +67,18 @@ const KINDS: Record<string, [string, string]> = {
   references: ['row linking to it', 'rows linking to it'],
 }
 
+// #859: what a refused delete offers, on a Table whose rows can be retired.
+export const RETIRE_INSTEAD = 'Retire it instead to take it out of use and keep its history.'
+
 /** Refuse a delete while the row has retained activity, naming each kind and
  *  its count, e.g. "it has 2 comments and 1 history entry". */
-export function assertNothingRetained(table: string, rowId: string, counts: Record<string, number>): void {
+export function assertNothingRetained(table: string, rowId: string, counts: Record<string, number>, retirable = false): void {
   const held = Object.entries(counts).filter(([, n]) => n > 0)
     .map(([kind, n]) => `${n} ${KINDS[kind]?.[n === 1 ? 0 : 1] ?? kind}`)
   if (!held.length) return
   const list = held.length === 1 ? held[0] : `${held.slice(0, -1).join(', ')} and ${held.at(-1)}`
-  throw new AppError('ValidationError', `${table} ${rowId} cannot be deleted: it has ${list}`,
-    Object.fromEntries(Object.entries(counts).map(([key, count]) => [key, String(count)])))
+  throw new AppError('ValidationError', `${table} ${rowId} cannot be deleted: it has ${list}${retirable ? `. ${RETIRE_INSTEAD}` : ''}`,
+    { ...Object.fromEntries(Object.entries(counts).map(([key, count]) => [key, String(count)])), ...(retirable ? { retire: 'available' } : {}) })
 }
 
 export async function retainedDocumentCounts(tx: typeof sql, table: string, rowId: string) {
@@ -116,12 +119,14 @@ export async function documentActivity(table: string, name: string, user: string
     author_name: names.get(String(entry.created_by)) ?? SYSTEM_ACTOR_LABELS[String(entry.created_by)] ?? 'Unknown person',
   })
   const visibleVersions = versions.map((version) => {
-    const data = version.data as { changed?: [string, unknown, unknown][]; created?: boolean; import_run?: string; resolution?: { field: string; decision: string; incoming: unknown } } | null
+    const data = version.data as { changed?: [string, unknown, unknown][]; created?: boolean; import_run?: string; resolution?: { field: string; decision: string; incoming: unknown }; retirement?: { action: string; reason?: string } } | null
     return {
       ...withAuthor(version),
       data: {
         ...(data?.created ? { created: true } : {}),
         ...(data?.import_run ? { import_run: data.import_run } : {}),
+        // #859: who retired or reactivated the row, and why.
+        ...(data?.retirement ? { retirement: data.retirement } : {}),
         ...(data?.resolution && visibleFields.has(data.resolution.field) ? { resolution: data.resolution } : {}),
         changed: (data?.changed ?? []).filter(([field]) => visibleFields.has(field)),
       },

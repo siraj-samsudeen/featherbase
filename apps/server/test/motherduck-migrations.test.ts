@@ -33,7 +33,8 @@ const laterMain = ['0012_table_settings_storage_identity.sql', '0013_reading_pre
   '0016_master_sync.sql',
   '0138_mandatory_access.sql', '0140_data_source_sentence_labels.sql',
   '0141_any_table_link.sql', '0142_everyone_roles.sql', '0143_access_auditor_role.sql',
-  '0144_access_request.sql', '0145_archived_tables.sql', '0146_one_motherduck_token.sql']
+  '0144_access_request.sql', '0145_archived_tables.sql', '0146_one_motherduck_token.sql',
+  '0147_row_retirement.ts', '0148_deletion_record.sql']
 const pendingAfterLabels = [...additions, '0010_copy_refresh_schedule.sql', ...laterMain]
 const allMigrations = [...Object.keys(mainHistory), ...pendingAfterLabels]
 const oldLabels = { postgres: 'PostgreSQL', mysql: 'MySQL', duckdb: 'DuckDB', 'csv-folder': 'CSV folder' }
@@ -168,7 +169,13 @@ it('upgrades the historical branch ledger without replacing its data', async () 
     expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0, stderr: '' })
     // #969: everything but the source row survives; the token table is gone.
     const after = await snapshot()
-    expect({ ...after, source: null }).toEqual({ ...before, source: null })
+    // #859: the upgrade also adds three empty retirement columns; every value stays.
+    const held = (snap: Record<string, readonly Record<string, unknown>[]>) => Object.fromEntries(Object.entries(snap).map(([k, rows]) =>
+      [k, rows.map(({ retired_at, retired_by, retired_reason, ...row }) => {
+        expect([retired_at ?? null, retired_by ?? null, retired_reason ?? null]).toEqual([null, null, null])
+        return row
+      })]))
+    expect(held({ ...after, source: [] } as never)).toEqual(held({ ...before, source: [] } as never))
     expect(after.source).toEqual([expect.objectContaining({ engine: 'motherduck', access: 'read_only', databases: [{ name: 'fixture', owner: 'This account' }] })])
     expect(after.source[0]).not.toHaveProperty('token_last_four')
     expect(after.source[0]).not.toHaveProperty('read_scaling_token')

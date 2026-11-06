@@ -11,7 +11,7 @@ import { deleteStored } from './storage'
 import { asNameList } from './installed-app-ledger'
 import { COLUMN_NAME_RE, quoteIdent } from './sql-identifier'
 import { PLATFORM_SCHEMA, platformRelation, resolvedRelation, tableName } from './platform-schema'
-import { readingPresentationSchema } from 'shared'
+import { canRetire, readingPresentationSchema } from 'shared'
 import { allowedTables, anyTableLinkColumns, linkableTable } from './any-table-link'
 
 export { tableName }
@@ -31,6 +31,16 @@ export const STANDARD_COLUMNS = [
   'parenttype',
   'parentfield',
 ] as const
+
+// #859: retiring a row (ADR 0019). Every stored Table of kind 'table' carries
+// these beside the standard columns; the names are reserved on every Table.
+export const RETIREMENT_COLUMNS = ['retired_at', 'retired_by', 'retired_reason'] as const
+
+// Names no builder's column may take: the standard columns and the retirement ones.
+export const RESERVED_COLUMNS: readonly string[] = [...STANDARD_COLUMNS, ...RETIREMENT_COLUMNS]
+
+/** Whether a Table's rows can be retired (ADR 0019); one rule, in shared. */
+export { canRetire }
 
 // META-002: how each column type maps to a Postgres column type.
 // Layout columns and Sub-table columns produce no column at all.
@@ -284,7 +294,7 @@ function validateDef(def: TableDef) {
   }
   const seen = new Set<string>()
   for (const f of def.columns) {
-    if ((STANDARD_COLUMNS as readonly string[]).includes(f.column_name))
+    if (RESERVED_COLUMNS.includes(f.column_name))
       errs[f.column_name] = `'${f.column_name}' is a reserved column name`
     if (seen.has(f.column_name)) errs[f.column_name] = 'duplicate column_name'
     seen.add(f.column_name)
@@ -390,6 +400,8 @@ function createTableDDL(def: TableDef, relation = tableName(def.name)): string |
     `"status" text not null default 'draft'`,
     `"position" integer not null default 0`,
   ]
+  if ((def.kind ?? 'table') === 'table')
+    cols.push(`"retired_at" timestamptz`, `"retired_by" varchar(140)`, `"retired_reason" text`)
   if (def.kind === 'sub_table') {
     cols.push(
       `"parent" varchar(140)`,
@@ -1082,7 +1094,7 @@ export async function renameColumn(
   if (target === from) return meta
   if (!COLUMN_NAME_RE.test(target))
     throw new AppError('ValidationError', 'column_name must be snake_case', { to: 'snake_case' })
-  if ((STANDARD_COLUMNS as readonly string[]).includes(target))
+  if (RESERVED_COLUMNS.includes(target))
     throw new AppError('ValidationError', `${target} is a standard column name`)
   if (meta.columns.some((c) => c.column_name === target))
     throw new AppError('ValidationError', `${meta.name} already has a column ${target}`)
