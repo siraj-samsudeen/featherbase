@@ -168,7 +168,8 @@ describe('#1021: rows are written as base rows only', () => {
     await sites(admin)
     const s1 = await admin.get<Row>(site.rowUrl('S-1'))
     const refused = { status: 417, message: expect.stringContaining(`${STORE} is a view of ${SITE}`) }
-    await expectApiError(admin.post(store.url, { row_id: 'S-9', site_name: 'New', is_store: true }), refused)
+    await expectApiError(admin.post(store.url, { row_id: 'S-9', site_name: 'New', is_store: true }),
+      { status: 417, message: expect.stringContaining(`nothing can be created through it. Add it to ${SITE} instead.`) })
     await expectApiError(admin.post('/api/save_row', { table: STORE, row: { row_id: 'S-1', updated_at: s1.updated_at, region: 'East' } }), refused)
     await expectApiError(patchDoc(admin, store.rowUrl('S-1'), { updated_at: s1.updated_at, region: 'East' }), refused)
     await expectApiError(admin.delete(store.rowUrl('S-1')), refused)
@@ -226,7 +227,10 @@ describe('#1021: a link can name a view', () => {
     expect(edited).toMatchObject({ amount: 11, store: 'S-1' })
     // A new or changed value must still be a row of the view.
     await expectApiError(patchDoc(admin, sale.rowUrl(saved.row_id), { updated_at: edited.updated_at, store: 'W-1' }), { status: 417 })
-    expect(await admin.get(sale.rowUrl(saved.row_id))).toMatchObject({ amount: 11 })
+    const read = await admin.get<Row>(sale.rowUrl(saved.row_id))
+    expect(read).toMatchObject({ amount: 11 })
+    // The form sends back the row it read, flag included, and it saves.
+    expect(await admin.post('/api/save_row', { table: SALE, row: { ...read, amount: 12 } })).toMatchObject({ amount: 12, store: 'S-1' })
     const fine = await admin.post<Row>(sale.url, { amount: 1, store: 'S-2' })
     expect(await admin.get(sale.rowUrl(fine.row_id))).not.toHaveProperty('links_outside_view')
   })

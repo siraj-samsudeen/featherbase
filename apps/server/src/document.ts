@@ -210,6 +210,8 @@ function pickFieldValues(meta: TableMeta, values: RowValues, managedValues: RowV
   const errors: Record<string, string> = {}
   for (const [key, value] of Object.entries({ ...values, ...managedValues })) {
     if (key === 'table') continue
+    // #1021: the read-only flag a row's read adds; a form sends it back.
+    if (key === 'links_outside_view') continue
     // #859: retirement is changed only by :retire and :reactivate.
     if (RESERVED_COLUMNS.includes(key)) continue
     const field = known.get(key)

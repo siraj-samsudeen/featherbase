@@ -30,7 +30,7 @@ export function assertRowsWritable(
   // #1021: a view holds no rows; every write addressed to one stops here.
   if (meta.kind === 'view')
     throw new AppError('ValidationError',
-      `${meta.name} is a view of ${meta.view_of}; it holds no rows of its own, so nothing can be ${action} through it. Open the ${meta.view_of} row instead.`)
+      `${meta.name} is a view of ${meta.view_of}; it holds no rows of its own, so nothing can be ${action} through it. ${action === 'created' || action === 'imported' ? `Add it to ${meta.view_of} instead.` : `Open the ${meta.view_of} row instead.`}`)
   assertNotSystemWritten(meta, action)
   if (meta.archived_at)
     throw new AppError('PermissionError', `${meta.name} is archived; its rows cannot be ${action}. A System Manager can un-archive it.`)
