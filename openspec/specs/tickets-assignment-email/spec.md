@@ -1,4 +1,9 @@
-## ADDED Requirements
+# Tickets assignment email
+
+## Purpose
+Assigning a ticket to someone tells them by email, once the save commits. Loading tickets through the create action sends nothing, whatever assignee a type's routing picks (#1001).
+
+## Requirements
 
 ### Requirement: Assigning a ticket emails the person assigned
 When support changes a ticket's assignee to a person through the ticket's edit, including a reassignment, Tickets SHALL queue one email to that person's address after the save commits. A save that rolls back SHALL send nothing, and a retry with the same idempotency key SHALL not send again. A mail failure SHALL leave the assignment standing.
@@ -19,6 +24,16 @@ And support has assigned Anjali's ticket to Colleague
 When support reassigns Anjali's ticket to Verifier
 Then Verifier is emailed once about the ticket
 And Colleague is emailed once about the ticket
+```
+
+#### Scenario: Assigning on the ticket screen
+
+```gherkin
+Given Anjali has raised a ticket that support can assign
+And Colleague is listed as someone tickets can be assigned to
+When support assigns the ticket to Colleague on the ticket screen
+Then Colleague is emailed once about the ticket
+And the link in the email opens that ticket for Colleague
 ```
 
 ### Requirement: Only a change of assignee to someone else sends mail
