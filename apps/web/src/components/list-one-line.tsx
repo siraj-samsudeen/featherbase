@@ -8,8 +8,9 @@ import { ChevronRight } from '@featherbase/shop-floor'
  *  is put on at hover: a value that fits gets no tooltip repeating it. */
 function showFullTextIfClipped(event: MouseEvent<HTMLElement>) {
   const box = event.currentTarget
-  const clipped = [box, ...box.children].some((el) => el.scrollWidth > el.clientWidth && el.clientWidth > 0)
-  if (clipped) box.title = box.textContent?.trim() ?? ''
+  // The clipped part's own words: the name's, not the Retired badge beside it.
+  const clipped = [box, ...box.children].find((el) => el.scrollWidth > el.clientWidth && el.clientWidth > 0)
+  if (clipped) box.title = clipped.textContent?.trim() ?? ''
   else box.removeAttribute('title')
 }
 
@@ -58,7 +59,8 @@ export function MoreColumnsHint({ box }: { box: HTMLElement | null }) {
         type="button"
         aria-label="Show more columns"
         onClick={() => box?.scrollBy({ left: box.clientWidth * 0.6, behavior: 'smooth' })}
-        className="pointer-events-auto absolute right-1 top-1 flex size-7 items-center justify-center rounded-full border border-border bg-surface text-ink-muted shadow-sm hover:text-action"
+        // Halfway down, so it's in sight whether the list is scrolled to its top or its end.
+        className="pointer-events-auto absolute right-1 top-1/2 flex -translate-y-1/2 size-7 items-center justify-center rounded-full border border-border bg-surface text-ink-muted shadow-sm hover:text-action"
       >
         <ChevronRight aria-hidden size={16} />
       </button>

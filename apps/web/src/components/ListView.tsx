@@ -20,6 +20,7 @@ import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { useStepOptions, type Step } from '../lib/explore-steps'
 import { ChecklistSwitch } from './ChecklistView'
 import { PrincipalName, usePrincipalLabels } from '../lib/people'
+import { NOT_A_LOGIN } from '../lib/not-a-login'
 import { MoreColumnsHint, OneLine, useMoreToTheRight } from './list-one-line'
 import { Button, DataCards, NARROW_QUERY, ViewToggle, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, touchRowClasses, useMediaQuery, type DataColumn } from '@featherbase/shop-floor'
 import { ArrowDown, ArrowUp, ChevronDown } from '@featherbase/shop-floor'
@@ -612,10 +613,11 @@ export function ListView({
   }
 
   return (
-    <div data-testid="list-view">
+    // data-page: a list uses the whole window, so a wide one shows more columns.
+    <div data-testid="list-view" data-page="list">
       {/* Top-aligned on desktop: however many rows the actions wrap to, the first
           row sits level with the title (listview.spec "share a vertical band"). */}
-      <div className="mb-3 flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+      <div className="mb-2 flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
         <div>
           {breadcrumb ?? <div className="text-xs text-ink-subtle">
             <Link to="/featherbase/admin" className="hover:text-ink">
@@ -972,7 +974,7 @@ export function ListView({
             </Button>
           </>
         )}
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-end gap-2">
           <ViewToggle label="List layout" value={compact ? 'compact' : 'table'} onChange={(v) => {
             setCompact(v === 'compact')
             persist({ compact: v === 'compact' })
@@ -1097,6 +1099,7 @@ export function ListView({
             <tr>
               {/* Selection exists only to feed the bulk bar — a read-only
                   source has neither (EDS-13: absent, not disabled). */}
+              {expandable && <th className="w-7 border-b border-border" />}
               {!isRowsReadOnly(meta.data) && (
                 <th className="w-8 border-b border-border px-3 py-2">
                   <label className="cursor-pointer">
@@ -1114,7 +1117,6 @@ export function ListView({
                   </label>
                 </th>
               )}
-              {expandable && <th className="w-7 border-b border-border" />}
               {columns.map((col, i) => (
                 <th key={col.column_name} className={`border-b border-border ${i === 0 ? 'sticky left-0 z-[1] border-r bg-subtle' : ''}`}>
                   <button
@@ -1128,6 +1130,8 @@ export function ListView({
                   </button>
                 </th>
               ))}
+              {/* Takes the spare width, so columns stay as wide as their content. */}
+              <td aria-hidden className="w-full border-b border-border p-0" />
             </tr>
           </thead>
           <tbody data-testid="list-rows">
@@ -1154,7 +1158,7 @@ export function ListView({
               <tr>
                 <td
                   colSpan={
-                    columns.length +
+                    columns.length + 1 +
                     (expandable ? 1 : 0) +
                     (isRowsReadOnly(meta.data) ? 0 : 1)
                   }
@@ -1252,7 +1256,7 @@ function ListRow({
           e.preventDefault()
           onOpenPane({ table, row: rowId })
         })}
-        className={`group hover:bg-subtle focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus ${onOpenPane ? 'cursor-pointer' : ''} ${inPane ? 'bg-action-tint' : ''}`}>
+        className={`group ${inPane ? '' : 'hover:bg-subtle'} focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus ${onOpenPane ? 'cursor-pointer' : ''} ${inPane ? 'bg-action-tint' : ''}`}>
         {expandable && (
           <td className="border-b border-border pl-2 group-last:border-b-0">
             <button
@@ -1282,17 +1286,18 @@ function ListRow({
           </td>
         )}
         {columns.map((col, i) => (
-          <td key={col.column_name} className={`border-b border-border px-3 py-2 group-last:border-b-0 ${isFigure(col) ? 'text-right tabular-nums' : ''} ${i === 0 ? `sticky left-0 z-[1] border-r group-hover:bg-subtle ${inPane ? 'bg-action-tint' : 'bg-surface'}` : ''}`}>
+          <td key={col.column_name} className={`border-b border-border px-3 py-2 group-last:border-b-0 ${isFigure(col) ? 'text-right tabular-nums' : ''} ${i === 0 ? `sticky left-0 z-[1] border-r group-focus-visible:bg-action-tint ${inPane ? 'bg-action-tint' : 'bg-surface group-hover:bg-subtle'}` : ''}`}>
             <OneLine className={i === 0 ? NAME_CLIP : 'max-w-80'}>
               <ListCell row={row} col={col} table={table} settings={settings} first={i === 0} />
             </OneLine>
           </td>
         ))}
+        <td aria-hidden className="border-b border-border p-0 group-last:border-b-0" />
       </tr>
       {expanded && (
         <tr data-testid="expanded-row">
           <td
-            colSpan={columns.length + 1 + (selectable ? 1 : 0)}
+            colSpan={columns.length + 2 + (selectable ? 1 : 0)}
             className="border-b border-border bg-subtle py-3 pl-10 pr-4"
           >
             <InlineChildren table={table} name={String(row.row_id)} childFields={childFields} />
@@ -1361,7 +1366,7 @@ function ListCell({
             : cell(row[col.column_name], col.column_type, settings)
         )}
       </Link>
-      {row.retired_at != null && <RetiredBadge className="ml-2 shrink-0 align-middle" />}
+      {row.retired_at != null && <RetiredBadge className="-my-1 ml-2 shrink-0 align-middle" />}
       </>
     )
   const value = row[col.column_name]
@@ -1487,14 +1492,16 @@ function PhoneList({
             Select all on this page
           </label>
         )}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex min-w-0 max-w-full items-center gap-2">
           <label htmlFor="list-sort-by" className="text-control text-ink-muted">
             Sort by
           </label>
           <Select
             id="list-sort-by"
             data-testid="list-sort-by"
-            className="w-auto"
+            // A long column label is cut, rather than pushing the page sideways.
+            wrapperClassName="min-w-0"
+            className="truncate"
             value={sort?.field ?? ''}
             onChange={(e) => onSort(e.target.value ? { field: e.target.value, dir: sort?.dir ?? 'asc' } : null)}
           >
@@ -1666,16 +1673,22 @@ function InlineChildGrid({
 // columns match with contains. They read and write the same URL-driven filter
 // list the advanced FilterBar manages, so chips stay in sync.
 const STANDARD_TEXT_TYPES = new Set(['Data', 'Reference', 'Email', 'Small Text'])
+// #1017: one width for every kind of box, so a long Choice can't stretch its own
+// and four of them share a line with the list's other controls.
+const FILTER_BOX = 'flex w-36 flex-col gap-0.5'
+const FILTER_LABEL = 'truncate text-xs font-semibold text-ink-subtle'
 
-// #1016: a "Name" box reads as a login to a password manager, which then adds
-// its icon to it and knocks it out of line. Browsers read autocomplete; the
-// rest are 1Password's, LastPass's, Bitwarden's and Dashlane's own marks.
-const NOT_A_LOGIN = {
-  autoComplete: 'off',
-  'data-1p-ignore': 'true',
-  'data-lpignore': 'true',
-  'data-bwignore': 'true',
-  'data-form-type': 'other',
+// A value's box in the Add filter row suits its column, where the condition can use it (#1019).
+const NUMBER_TYPES = new Set(['Int', 'Float', 'Currency', 'Percent'])
+function filterBoxKind(col: import('../lib/meta').ColumnDef | undefined, op: string) {
+  const exact = op === '=' || op === '!='
+  if (!col || op === 'like') return 'text'
+  if (exact && col.column_type === 'Reference' && col.reference_table) return 'link'
+  if (exact && col.column_type === 'Choice') return 'choice'
+  if (col.column_type === 'Date') return 'date'
+  if (col.column_type === 'Datetime') return 'datetime-local'
+  if (NUMBER_TYPES.has(col.column_type)) return 'number'
+  return 'text'
 }
 
 function StandardFilters({
@@ -1717,17 +1730,17 @@ function StandardFilters({
       {columns.map((f) =>
         f.column_type === 'Reference' && f.reference_table ? (
           // #793: a link filters by picking a row by its name, not by typing its id.
-          <label key={f.column_name} className="flex flex-col gap-0.5">
-            <span className="text-xs font-semibold text-ink-subtle">
+          <label key={f.column_name} className={FILTER_BOX}>
+            <span className={FILTER_LABEL} title={f.label ?? f.column_name}>
               {f.label ?? f.column_name}
             </span>
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1 [&>div]:min-w-0 [&>div]:flex-1">
               <LinkControl
                 field={f}
                 value={current(f.column_name, '=')}
                 onChange={(v) => apply(f.column_name, '=', String(v ?? ''))}
-                className={inputClasses('max-w-[10rem]')}
-                common={{ 'data-testid': `std-filter-${f.column_name}`, ...NOT_A_LOGIN }}
+                className={inputClasses('text-ellipsis')}
+                common={{ 'data-testid': `std-filter-${f.column_name}` }}
                 forFilter
               />
               {current(f.column_name, '=') && (
@@ -1744,15 +1757,15 @@ function StandardFilters({
             </span>
           </label>
         ) : f.column_type === 'Choice' ? (
-          <label key={f.column_name} className="flex flex-col gap-0.5">
-            <span className="text-xs font-semibold text-ink-subtle">
+          <label key={f.column_name} className={FILTER_BOX}>
+            <span className={FILTER_LABEL} title={f.label ?? f.column_name}>
               {f.label ?? f.column_name}
             </span>
             <select
               value={current(f.column_name, '=')}
               onChange={(e) => apply(f.column_name, '=', e.target.value)}
               data-testid={`std-filter-${f.column_name}`}
-              className={inputClasses('max-w-[20rem]')}
+              className={inputClasses()}
             >
               <option value="">All</option>
               {(f.choices ?? '')
@@ -1766,8 +1779,8 @@ function StandardFilters({
             </select>
           </label>
         ) : (
-          <label key={f.column_name} className="flex flex-col gap-0.5">
-            <span className="text-xs font-semibold text-ink-subtle">
+          <label key={f.column_name} className={FILTER_BOX}>
+            <span className={FILTER_LABEL} title={f.label ?? f.column_name}>
               {f.label ?? f.column_name}
             </span>
             <input
@@ -1782,7 +1795,7 @@ function StandardFilters({
               }}
               placeholder={`Filter ${f.label ?? f.column_name}…`}
               data-testid={`std-filter-${f.column_name}`}
-              className={inputClasses('max-w-[10rem]')}
+              className={inputClasses('text-ellipsis')}
               {...NOT_A_LOGIN}
             />
           </label>
@@ -1848,9 +1861,8 @@ export function FilterBar({
   const [field, setField] = useState('row_id')
   const [op, setOp] = useState<string>('=')
   const [value, setValue] = useState('')
-  const choice = ['=', '!='].includes(op)
-    ? meta.columns.find((c) => c.column_name === field && c.column_type === 'Choice')
-    : undefined
+  const column = meta.columns.find((c) => c.column_name === field)
+  const kind = filterBoxKind(column, op)
 
   function add() {
     if (!value.trim()) return
@@ -1877,7 +1889,10 @@ export function FilterBar({
         </select>
         <select
           value={op}
-          onChange={(e) => setOp(e.target.value)}
+          onChange={(e) => {
+            if (filterBoxKind(column, e.target.value) !== kind) setValue('')
+            setOp(e.target.value)
+          }}
           aria-label="Filter condition"
           data-testid="filter-op"
           className={inputClasses('max-w-[10rem]')}
@@ -1888,7 +1903,17 @@ export function FilterBar({
             </option>
           ))}
         </select>
-        {choice ? (
+        {kind === 'link' ? (
+          <LinkControl
+            key={field}
+            field={column!}
+            value={value}
+            onChange={(v) => setValue(String(v ?? ''))}
+            className={inputClasses('max-w-[10rem]')}
+            common={{ 'aria-label': 'Filter value', 'data-testid': 'filter-value' }}
+            forFilter
+          />
+        ) : kind === 'choice' ? (
           <select
             value={value}
             onChange={(e) => setValue(e.target.value)}
@@ -1897,11 +1922,13 @@ export function FilterBar({
             className={inputClasses('max-w-[20rem]')}
           >
             <option value="">Choose a value</option>
-            {(choice.choices ?? '').split('\n').filter(Boolean).map((raw) => (
-              <option key={raw} value={raw}>{choiceLabel(raw, choice.choice_labels, t)}</option>
+            {(column!.choices ?? '').split('\n').filter(Boolean).map((raw) => (
+              <option key={raw} value={raw}>{choiceLabel(raw, column!.choice_labels, t)}</option>
             ))}
           </select>
         ) : <input
+          type={kind}
+          step={kind === 'number' ? 'any' : undefined}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && add()}
