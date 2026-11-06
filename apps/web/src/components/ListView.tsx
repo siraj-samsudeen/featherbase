@@ -26,6 +26,8 @@ import { RetiredBadge, tableCanRetire } from './RowRetirement'
 import { PurgeDialog, tableCanPurge } from './PurgeDialog'
 import { GlossaryHelp } from './GlossaryHelp'
 import { fmtCount } from '@featherbase/shop-floor'
+import { ChoiceTicks } from './ChoiceTicks'
+import { inChoiceOrder, mergeChoiceFilters, tickedChoices, withTicked } from '../lib/choice-filters'
 import { failureMessage } from '../lib/import-run'
 import { ImportConflicts } from './ImportConflicts'
 import { ActionDisclosure } from './ActionDisclosure'
@@ -125,7 +127,7 @@ function linkPrefill(meta: import('../lib/meta').TableMeta, filters: Filter[]): 
 // UI-002/UI-003: ONE list component renders every Table from its metadata.
 export function ListView({
   table,
-  filters = [],
+  filters: given = [],
   onFiltersChange,
   breadcrumb,
   newRowPrefill,
@@ -154,6 +156,18 @@ export function ListView({
   subtitle?: ReactNode
 }) {
   const meta = useMeta(table)
+  // #820: one filter per Choice column. Filters arriving with two or more on
+  // one Choice column (a link, a saved view, Recent) are merged into one `in`,
+  // and the merged list is written back to the page address.
+  const choiceColumns = (meta.data?.columns ?? [])
+    .filter((c) => c.column_type === 'Choice')
+    .map((c) => ({ column: c.column_name, choices: choicesOf(c)! }))
+  const filters = mergeChoiceFilters(given, choiceColumns)
+  const merged = filters !== given
+  useEffect(() => {
+    if (merged) onFiltersChange?.(filters)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [merged, JSON.stringify(filters)])
   const settings = useSettings()
   // #910: on a list page, selecting a row shows it in the drill pane.
   const navigation = useNavigation()
@@ -1671,6 +1685,53 @@ function choicesOf(f: { column_type: string; choices?: string | null }): string[
   return null
 }
 
+/** #820: the quick filter for a Choice column: its choices to tick, always the
+ *  same as the column's one filter, and reading All while there is none. */
+function ChoiceBox({
+  column,
+  filters,
+  onChange,
+  className,
+  width,
+}: {
+  column: {
+    column_name: string
+    label?: string | null
+    column_type: string
+    choices?: string | null
+    choice_labels?: Record<string, string> | null
+  }
+  filters: Filter[]
+  onChange: (filters: Filter[]) => void
+  /** #742's box layout: one line on a desktop, the full width on a phone. */
+  className: string
+  /** The button's width, as the text boxes': at most 10rem on a desktop. */
+  width?: string
+}) {
+  const { t } = useI18n()
+  const label = column.label ?? column.column_name
+  const choices = choicesOf(column)!
+  const ticked = tickedChoices(filters, column.column_name, choices)
+  return (
+    <div className={className}>
+      <span className="text-xs font-semibold text-ink-subtle">{label}</span>
+      <ChoiceTicks
+        label={label}
+        // A link's value that is no longer a choice still shows, ticked.
+        choices={inChoiceOrder([...choices, ...ticked], choices)}
+        labelOf={(c) => choiceLabel(c, column.choice_labels, t)}
+        ticked={ticked}
+        onChange={(next) => onChange(withTicked(filters, column.column_name, next, choices))}
+        settle={(next) => tickedChoices(withTicked([], column.column_name, next, choices), column.column_name, choices)}
+        buttonText={ticked.length ? `${ticked.length} selected` : 'All'}
+        testId={`std-filter-${column.column_name}`}
+        listTestId={`std-choices-${column.column_name}`}
+        className={width}
+      />
+    </div>
+  )
+}
+
 function StandardFilters({
   meta,
   view,
@@ -1700,7 +1761,11 @@ function StandardFilters({
   // #742: the first six show; past them, only a box holding a value, until
   // the person asks for the rest.
   const inRow = columns.filter(
-    (f, i) => i < (stacked ? QUICK_FILTER_STACK : QUICK_FILTER_ROW) || current(f.column_name, boxOp(f)) !== '',
+    (f, i) =>
+      i < (stacked ? QUICK_FILTER_STACK : QUICK_FILTER_ROW) ||
+      (f.column_type === 'Choice'
+        ? tickedChoices(filters, f.column_name, choicesOf(f)!).length > 0
+        : current(f.column_name, boxOp(f)) !== ''),
   )
   const shown = showAll ? columns : inRow
   const folded = columns.length - inRow.length
@@ -1750,7 +1815,9 @@ function StandardFilters({
       data-testid="standard-filters"
     >
       {shown.map((f) =>
-        f.column_type === 'Reference' && f.reference_table ? (
+        f.column_type === 'Choice' ? (
+          <ChoiceBox key={f.column_name} column={f} filters={filters} onChange={onChange} className={box} width={textWidth} />
+        ) : f.column_type === 'Reference' && f.reference_table ? (
           // #793: a link filters by picking a row by its name, not by typing its id.
           <label key={f.column_name} className={box}>
             <span className="text-xs font-semibold text-ink-subtle">
@@ -1862,6 +1929,9 @@ export function FilterWords({ meta, filter }: { meta: import('../lib/meta').Tabl
       {label} {op}{' '}
       {linked ? <LinkedTitle table={col.reference_table!} rowId={String(value)} />
         : (op === '=' || op === '!=') && col?.column_type === 'Choice' ? choiceLabel(String(value), col.choice_labels, t)
+        // #820: an `in` on a Choice column names its choices by their labels.
+        : op === 'in' && col?.column_type === 'Choice' && Array.isArray(value)
+          ? filterValueLabel(op, value.map((v) => choiceLabel(String(v), col.choice_labels, t)))
         : filterValueLabel(op, value)}
     </>
   )
@@ -1887,7 +1957,7 @@ export function FilterBar({
 }) {
   const { t } = useI18n()
   const fields = [
-    { fieldname: 'row_id', label: 'Row ID', choices: null, choice_labels: undefined },
+    { fieldname: 'row_id', label: 'Row ID', choices: null, choice_labels: undefined, ticks: false },
     ...meta.columns
       .filter((f) => !NO_COLUMN_TYPES.has(f.column_type) && !f.hidden)
       .map((f) => ({
@@ -1895,23 +1965,40 @@ export function FilterBar({
         label: f.label ?? f.column_name,
         choices: choicesOf(f),
         choice_labels: f.choice_labels,
+        ticks: f.column_type === 'Choice',
       })),
   ]
   const [field, setField] = useState('row_id')
   const [op, setOp] = useState<string>('=')
   const [value, setValue] = useState('')
-  // #742: a column with set values is picked from, and only matched or not.
+  // #820: what is ticked in Add filter; until the person ticks, the column's
+  // filter in use, so adding the column again starts from its choices.
+  const [picks, setPicks] = useState<string[] | null>(null)
   const picking = fields.find((f) => f.fieldname === field)
+  // #742: a Yes/No column is picked from, and only matched or not. #820: a
+  // Choice column ticks one or more of its choices.
   const choices = picking?.choices ?? null
-  const ops: readonly string[] = choices ? ['=', '!='] : OPS
+  const ticks = Boolean(picking?.ticks)
+  const ops: readonly string[] = ticks ? ['in'] : choices ? ['=', '!='] : OPS
+  const ticked = picks ?? (ticks ? tickedChoices(filters, field, choices!) : [])
 
   function pickField(next: string) {
     setField(next)
     setValue('')
-    if (fields.find((f) => f.fieldname === next)?.choices && op !== '!=') setOp('=')
+    setPicks(null)
+    const to = fields.find((f) => f.fieldname === next)
+    if (to?.ticks) setOp('in')
+    else if ((to?.choices && op !== '!=') || op === 'in') setOp('=')
   }
 
   function add() {
+    if (ticks) {
+      // #820: one filter per Choice column, so adding it again adds to it.
+      const union = inChoiceOrder([...tickedChoices(filters, field, choices!), ...ticked], choices!)
+      onChange(withTicked(filters, field, [...new Set(union)], choices!))
+      setPicks(null)
+      return
+    }
     if (!value.trim()) return
     const v = op === 'like' ? `%${value.trim()}%` : value.trim()
     onChange([...filters, [field, op, v]])
@@ -1948,7 +2035,19 @@ export function FilterBar({
             </option>
           ))}
         </select>
-        {choices ? (
+        {ticks ? (
+          <ChoiceTicks
+            label={picking!.label}
+            choices={choices!}
+            labelOf={(c) => choiceLabel(c, picking?.choice_labels, t)}
+            ticked={ticked}
+            onChange={setPicks}
+            buttonText={ticked.length ? `${ticked.length} selected` : 'Value'}
+            testId="filter-value"
+            listTestId="filter-choices"
+            className={FILTER_PART}
+          />
+        ) : choices ? (
           <select
             value={value}
             onChange={(e) => setValue(e.target.value)}
@@ -1976,6 +2075,7 @@ export function FilterBar({
         )}
         <button
           onClick={add}
+          disabled={ticks && !ticked.length}
           data-testid="filter-add"
           className={buttonClasses({ className: 'shrink-0' })}
         >

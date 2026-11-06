@@ -87,8 +87,10 @@ test('Switching a column on and off makes its box appear and go', async ({ sessi
 
 test('Filtering a column and hiding it keeps the filter on', async ({ session }) => {
   await session.visit(`${tableHref(SWITCH)}`).assertHas('[data-testid="list-total"]', { text: '3 total' })
-  await session.step('pick Ground in the Floor box', async ({ page }) => {
-    await page.getByTestId('std-filter-floor').selectOption('Ground')
+  await session.step('tick Ground in the Floor box', async ({ page }) => {
+    // #820: a Choice box is a list of choices to tick.
+    await page.getByTestId('std-filter-floor').click()
+    await page.getByTestId('std-choices-floor').getByRole('checkbox', { name: 'Ground' }).check()
   })
   await session.assertHas('[data-testid="list-total"]', { text: '2 total' })
   await session.step('switch Floor off: its box goes, the filter stays', async ({ page }) => {
@@ -97,7 +99,7 @@ test('Filtering a column and hiding it keeps the filter on', async ({ session })
   })
   await session
     .assertHas('[data-testid="list-total"]', { text: '2 total' })
-    .assertHas('[data-testid="filter-chip"]', { text: 'Floor = Ground' })
+    .assertHas('[data-testid="filter-chip"]', { text: 'Floor in Ground' })
   await session.step('remove the chip, then switch Floor back on', async ({ page }) => {
     await page.getByTestId('filter-chip').getByLabel('Remove filter').click()
     await expect(page.getByTestId('list-total')).toHaveText('3 total')
@@ -105,17 +107,18 @@ test('Filtering a column and hiding it keeps the filter on', async ({ session })
   })
 })
 
-test('Picking a Choice in Add filter from its dropdown narrows the rows', async ({ session }) => {
+test('Ticking a Choice in Add filter narrows the rows', async ({ session }) => {
   await session.visit(`${tableHref(BOXES)}`).assertHas('[data-testid="list-total"]', { text: '4 total' })
-  await session.step('add Floor = Ground by picking, not typing', async ({ page }) => {
+  await session.step('add Floor in Ground by ticking, not typing', async ({ page }) => {
     await page.getByTestId('filter-field').selectOption('floor')
-    await expect(page.getByTestId('filter-op').locator('option')).toHaveText(['=', '!='])
-    await page.getByTestId('filter-value').selectOption('Ground')
+    await expect(page.getByTestId('filter-op').locator('option')).toHaveText(['in'])
+    await page.getByTestId('filter-value').click()
+    await page.getByTestId('filter-choices').getByRole('checkbox', { name: 'Ground' }).check()
     await page.getByTestId('filter-add').click()
   })
   await session
     .assertHas('[data-testid="list-total"]', { text: '2 total' })
-    .assertHas('[data-testid="filter-chip"]', { text: 'Floor = Ground' })
+    .assertHas('[data-testid="filter-chip"]', { text: 'Floor in Ground' })
 })
 
 test('Picking Yes in the Active box and in Add filter shows the right rows', async ({ session }) => {

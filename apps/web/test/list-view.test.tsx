@@ -121,12 +121,12 @@ test('Narrow the list with filters: a filter narrows the rows, shows as its own 
   await waitFor(() => expect(cellTexts('title')).toHaveLength(4))
 
   fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'stage' } })
-  expect(within(screen.getByRole('combobox', { name: 'Filter value' })).getByRole('option', { name: 'Awaiting response' })).toHaveValue('Open')
-  fireEvent.change(screen.getByTestId('filter-value'), { target: { value: 'Open' } })
+  fireEvent.click(screen.getByTestId('filter-value'))
+  fireEvent.click(within(screen.getByTestId('filter-choices')).getByRole('checkbox', { name: 'Awaiting response' }))
   fireEvent.click(screen.getByTestId('filter-add'))
   await waitFor(() => expect(cellTexts('title')).toEqual(['row-03', 'row-01']))
   expect(screen.getAllByTestId('filter-chip')).toHaveLength(1)
-  expect(screen.getByTestId('filter-chip')).toHaveTextContent('Stage = Awaiting response')
+  expect(screen.getByTestId('filter-chip')).toHaveTextContent('Stage in Awaiting response')
 
   // A second filter narrows further, and each chip can go on its own.
   fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'rank' } })
@@ -148,9 +148,12 @@ test('Narrow the list with filters: a quick filter box above the list filters it
   await openList(admin, 'Lv Quick')
   await waitFor(() => expect(cellTexts('title')).toHaveLength(4))
 
-  fireEvent.change(await screen.findByTestId('std-filter-stage'), { target: { value: 'Closed' } })
+  // #820: a Choice box is a list of choices to tick.
+  fireEvent.click(await screen.findByTestId('std-filter-stage'))
+  const closed = () => within(screen.getByTestId('std-choices-stage')).getByRole('checkbox', { name: 'Closed' })
+  fireEvent.click(closed())
   await waitFor(() => expect(cellTexts('title')).toEqual(['row-04', 'row-02']))
-  fireEvent.change(screen.getByTestId('std-filter-stage'), { target: { value: '' } })
+  fireEvent.click(closed())
   await waitFor(() => expect(cellTexts('title')).toHaveLength(4))
 })
 

@@ -53,6 +53,16 @@ const boxes = () =>
   [...screen.getByTestId('standard-filters').querySelectorAll('[data-testid^="std-filter-"]:not([data-testid="std-filter-more"])')].map((e) =>
     e.getAttribute('data-testid')!.replace('std-filter-', ''),
   )
+/** #820: ticks a choice in a list opened from `button`, opening it if shut. */
+function tickIn(button: string, list: string, choice: string) {
+  const b = screen.getByTestId(button)
+  if (b.getAttribute('aria-expanded') !== 'true') fireEvent.click(b)
+  fireEvent.click(within(screen.getByTestId(list)).getByRole('checkbox', { name: choice }))
+}
+const tickFloor = (choice: string) => tickIn('std-filter-floor', 'std-choices-floor', choice)
+const choiceNames = (list: string) =>
+  within(screen.getByTestId(list)).getAllByRole('checkbox').map((c) => c.closest('label')?.textContent)
+
 const sections = () =>
   [...screen.getByTestId('list-rows').querySelectorAll('[data-testid="cell-section"]')].map((e) => e.textContent ?? '')
 
@@ -87,14 +97,14 @@ test('A filter on a hidden column stays on, shows as in use, and can be removed'
   await seed(admin)
   await openList(admin)
   await waitFor(() => expect(sections()).toHaveLength(3))
-  fireEvent.change(screen.getByTestId('std-filter-floor'), { target: { value: 'Ground' } })
+  tickFloor('Ground')
   await waitFor(() => expect(sections().sort()).toEqual(['Sarees', 'Shawls']))
 
   await switchColumn(admin, 'floor', { hiddenCols: ['floor'] })
   await waitFor(() => expect(screen.queryByTestId('std-filter-floor')).not.toBeInTheDocument())
   expect(sections().sort()).toEqual(['Sarees', 'Shawls'])
   const chip = screen.getByTestId('filter-chip')
-  expect(chip).toHaveTextContent('Floor = Ground')
+  expect(chip).toHaveTextContent('Floor in Ground')
 
   fireEvent.click(within(chip).getByLabelText('Remove filter'))
   await waitFor(() => expect(sections()).toHaveLength(3))
@@ -124,14 +134,15 @@ test('Number, money, long text, file and JSON columns get no box', async ({ admi
   expect(boxes()).toEqual(['section'])
 })
 
-test('Picking First narrows the rows and shows as in use; picking All brings them back', async ({ admin }) => {
+test('Ticking First narrows the rows and shows as in use; unticking it brings them back', async ({ admin }) => {
   await seed(admin)
   await openList(admin)
   await waitFor(() => expect(sections()).toHaveLength(3))
-  fireEvent.change(screen.getByTestId('std-filter-floor'), { target: { value: 'First' } })
+  tickFloor('First')
   await waitFor(() => expect(sections()).toEqual(['Shirts']))
-  expect(screen.getByTestId('filter-chip')).toHaveTextContent('Floor = First')
-  fireEvent.change(screen.getByTestId('std-filter-floor'), { target: { value: '' } })
+  expect(screen.getByTestId('filter-chip')).toHaveTextContent('Floor in First')
+  expect(screen.getByTestId('std-filter-floor')).toHaveTextContent('1 selected')
+  tickFloor('First')
   await waitFor(() => expect(sections()).toHaveLength(3))
   expect(screen.queryByTestId('filter-chip')).not.toBeInTheDocument()
 })
@@ -183,16 +194,16 @@ test('A Yes/No box stores the word Yes or No in the page address, as Choice does
 const options = (testId: string) =>
   [...screen.getByTestId(testId).querySelectorAll('option')].map((o) => o.getAttribute('value'))
 
-test('Adding Floor = Ground narrows the rows, and removing it brings them all back', async ({ admin }) => {
+test('Adding Floor in Ground narrows the rows, and removing it brings them all back', async ({ admin }) => {
   await seed(admin)
   await openList(admin)
   await waitFor(() => expect(sections()).toHaveLength(3))
   fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'floor' } })
-  fireEvent.change(screen.getByTestId('filter-value'), { target: { value: 'Ground' } })
+  tickIn('filter-value', 'filter-choices', 'Ground')
   fireEvent.click(screen.getByTestId('filter-add'))
   await waitFor(() => expect(sections().sort()).toEqual(['Sarees', 'Shawls']))
   const chip = screen.getByTestId('filter-chip')
-  expect(chip).toHaveTextContent('Floor = Ground')
+  expect(chip).toHaveTextContent('Floor in Ground')
   fireEvent.click(within(chip).getByLabelText('Remove filter'))
   await waitFor(() => expect(sections()).toHaveLength(3))
 })
@@ -201,8 +212,8 @@ test('Adding a filter on Floor offers its choices, without typing', async ({ adm
   await seed(admin)
   await openList(admin)
   fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'floor' } })
-  expect(screen.getByTestId('filter-value').tagName).toBe('SELECT')
-  expect(options('filter-value')).toEqual(['', 'Ground', 'First'])
+  fireEvent.click(screen.getByTestId('filter-value'))
+  expect(choiceNames('filter-choices')).toEqual(['Ground', 'First'])
 })
 
 test('An added filter on Active finds the active rows, and its chip reads Yes', async ({ admin }) => {
@@ -217,12 +228,13 @@ test('An added filter on Active finds the active rows, and its chip reads Yes', 
   expect(screen.getByTestId('filter-chip')).toHaveTextContent('Active = Yes')
 })
 
-test('Choice and Yes/No columns offer only = and !=, and moving to one resets another operator to =', async ({ admin }) => {
-  await seed(admin)
+// #820: a Choice column offers only in (test/choice-filters-in.test.tsx).
+test('Yes/No columns offer only = and !=, and moving to one resets another operator to =', async ({ admin }) => {
+  await seedActive(admin)
   await openList(admin)
   fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'section' } })
   fireEvent.change(screen.getByTestId('filter-op'), { target: { value: 'like' } })
-  fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'floor' } })
+  fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'active' } })
   expect(options('filter-op')).toEqual(['=', '!='])
   expect(screen.getByTestId('filter-op')).toHaveValue('=')
 })
@@ -235,12 +247,13 @@ test('A text column keeps its typed value and every operator', async ({ admin })
   expect(options('filter-op')).toEqual(['=', '!=', 'like', '>', '<', '>=', '<='])
 })
 
-test("The report's filter bar also offers the dropdowns", async ({ admin }) => {
+test("The report's filter bar also offers the choices", async ({ admin }) => {
   await seed(admin)
   await renderApp(`${tableHref(T)}/view/report`, admin)
   await screen.findByTestId('report-view', {}, { timeout: 8000 })
   fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'floor' } })
-  expect(options('filter-value')).toEqual(['', 'Ground', 'First'])
+  fireEvent.click(screen.getByTestId('filter-value'))
+  expect(choiceNames('filter-choices')).toEqual(['Ground', 'First'])
 })
 
 const EIGHT = ['store', 'lob', 'main_category', 'category', 'sub_category', 'section', 'floor_name', 'owner_name']
