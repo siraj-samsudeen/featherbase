@@ -112,7 +112,7 @@ interface PickedPerson {
 export async function pickPeople(q: string, viewer: string, limit = 10): Promise<PickedPerson[]> {
   // #859: a retired person is not offered either (names of people already
   // chosen resolve through the names lookup, which is unaffected).
-  const { table, where, cols, readExpression } = await scopedWhere('Person', viewer, hideRetired(await getMeta('Person'), [['built_in', '=', false]]))
+  const { table, where, cols, readExpression } = await scopedWhere('Person', viewer, hideRetired(await getMeta('Person'), []))
   // Only the columns this viewer may read are shown or searched.
   const col = (c: string) => (cols.has(c) ? sql`p.${sql(c)}` : sql`null::text`)
   const selected = (c: string) => cols.has(c) ? readExpression(c) : sql`null::text`
