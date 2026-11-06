@@ -43,8 +43,9 @@ const SCOPE = [
   // #703: where an instance's outside data lives, so it comes back after a
   // wipe. A row names the variable holding the connection (url_env; the save
   // refuses a connection string), never the connection itself. The connection
-  // status columns are the server's own, so they stay out.
-  { table: 'Data Source', shape: 'rows', fields: ['engine', 'url_env', 'default_schema', 'access', 'table_allowlist'], createRows: true },
+  // status columns are the server's own, so they stay out. #969: a MotherDuck
+  // row names its databases instead; its token is the instance's one token.
+  { table: 'Data Source', shape: 'rows', fields: ['engine', 'url_env', 'default_schema', 'access', 'table_allowlist', 'databases'], createRows: true },
 ] as const
 
 /** Column types that hold no value, a secret, or a file in one instance's own

@@ -179,6 +179,21 @@ export async function copyAgain(user: SessionUser, target: string): Promise<Copy
   })
 }
 
+/** #932: a whole number past 2^53 cannot be held exactly by an Int column.
+ *  The warehouse sends it as exact text; refuse the whole copy and say which
+ *  value, rather than store a rounded one or fail with a generic range error. */
+function assertExactWholeNumbers(rows: Record<string, unknown>[], columns: string[]) {
+  for (const row of rows)
+    for (const column of columns) {
+      const value = row[column]
+      // Empty cells read as 0 or NaN and pass; only digit text past the range is refused.
+      if (Number.isSafeInteger(Number(value))) continue
+      if (typeof value === 'bigint' || (typeof value === 'string' && /^-?\d+$/.test(value.trim())))
+        throw new AppError('ValidationError', `Copy failed; no rows changed: ${column} holds ${String(value).trim()} in row ${String(row.row_id)}, ` +
+          'past the largest whole number a number column holds exactly (9,007,199,254,740,991 either way)')
+    }
+}
+
 /** The caller's transaction owns metadata, rows, triggers, history and provenance. */
 async function applyCopy(user: SessionUser, target: string, copy: NonNullable<Awaited<ReturnType<typeof copyInfo>>>, meta: TableMeta, folder: string, parts: number): Promise<CopyResult> {
   const columns = meta.columns.filter(c => c.source_column)
@@ -195,6 +210,7 @@ async function applyCopy(user: SessionUser, target: string, copy: NonNullable<Aw
   const relationName = await tableRelation(target)
   const [before] = await sql`select count(*)::int as n from ${sql(relationName)} where ${sql(DELETED_AT_SOURCE)} is true`
   const context = { run_id: runId, batch_id: runId, file_name: `${copy.data_source} · ${copy.database}.${copy.source_schema}.${copy.source_table}` }
+  const wholeNumberColumns = columns.filter(c => c.column_type === 'Int').map(c => c.column_name)
   let partNumber = 0
   const apply = async (rows: Record<string, unknown>[], mapped: string[]) => {
     const part = await importRows({ table: target, user, args: {
@@ -213,6 +229,7 @@ async function applyCopy(user: SessionUser, target: string, copy: NonNullable<Aw
     if (rows.some(r => !r.row_id)) throw new AppError('ValidationError', 'Copy key values must not be empty')
     const accepted = await sql`insert into ${sql(seen)} ${sql(rows.map(r => ({ row_id: String(r.row_id) })))} on conflict do nothing returning row_id`
     if (accepted.length !== rows.length) throw new AppError('ValidationError', 'Copy key values must be unique')
+    assertExactWholeNumbers(rows, wholeNumberColumns)
     const part = await apply(rows, [...columns.map(c => c.column_name), DELETED_AT_SOURCE])
     result.inserted += part.inserted
     result.updated += part.updated

@@ -16,7 +16,7 @@ import { saveDoc } from './document'
 import { logActivity } from './audit'
 import { queueEmail, type MailMessage } from './email'
 import { NO_RECIPIENTS, recordUndeliveredNotice, systemManagerEmails } from './system-notice'
-import { readMotherDuck } from './motherduck-hosted'
+import { readMotherDuck } from './sources/motherduck'
 import type { WarehouseReader } from './motherduck-reader'
 
 export const LEAVER_CHECK_JOB = 'disable_leavers'
@@ -238,7 +238,7 @@ let reader: WarehouseReader | null = null
 export function _setWarehouseReader(r: WarehouseReader | null): void {
   reader = r
 }
-const read: WarehouseReader = (q) => (reader ? reader(q) : readMotherDuck(q, 'run the leaver check'))
+const read: WarehouseReader = (q) => (reader ? reader(q) : readMotherDuck(q, 'run the leaver check', ['gold']))
 
 async function readWarehouse(): Promise<{ records: EmployeeRecord[]; latestFeedDay: string | null }> {
   const [feed] = await read(FEED_DAY_SQL)

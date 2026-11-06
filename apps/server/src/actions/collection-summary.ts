@@ -24,6 +24,6 @@ registerCollectionAction('summary', {
     if (!Array.isArray(sums) || !sums.every((s) => typeof s === 'string'))
       throw new AppError('BadRequestError', 'sums must be a JSON list of column names')
     const groupBy = typeof args.group_by === 'string' && args.group_by ? args.group_by : undefined
-    return summarizeDocs(table, filters, groupBy, sums, user.row_id)
+    return summarizeDocs(table, filters, groupBy, sums, user.row_id, { withRetired: args.with_retired === 'true' || args.with_retired === true })
   },
 })

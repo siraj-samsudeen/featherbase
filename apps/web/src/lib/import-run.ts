@@ -87,6 +87,8 @@ interface ImportRunReport {
   rows_kept: number
   conflicts: number
   tracks_changes: boolean | null
+  /** #859: matched rows that are retired; they are updated and stay retired. */
+  retired: number
 }
 
 // UPS-R2 × IMPORT_CHUNK: the server resolves keys against the database and
@@ -154,6 +156,7 @@ export async function sendImportRun(opts: {
   let fieldsKept = 0
   let rowsKept = 0
   let conflicts = 0
+  let retired = 0
   let tracksChanges: boolean | null = null
   const parts = Math.ceil(send.length / IMPORT_CHUNK)
   for (let at = 0; at < send.length; at += IMPORT_CHUNK) {
@@ -171,6 +174,7 @@ export async function sendImportRun(opts: {
       changed?: number
       unchanged?: number
       inserted?: number
+      retired?: number
       failed: { index: number; message: string; fields?: Record<string, string> }[]
     }>(`/api/table/${encodeURIComponent(opts.table)}:import`, {
       rows: chunk,
@@ -182,6 +186,7 @@ export async function sendImportRun(opts: {
     fieldsKept += res.fields_kept ?? 0
     rowsKept += res.rows_kept ?? 0
     conflicts += res.conflicts ?? 0
+    retired += res.retired ?? 0
     if (res.tracks_changes !== undefined) tracksChanges = res.tracks_changes
     valid += res.valid ?? 0
     updated += res.updated ?? 0
@@ -198,5 +203,5 @@ export async function sendImportRun(opts: {
   }
   failed.sort((a, b) => a.sourceIndex - b.sourceIndex)
   if (!opts.dryRun) valid = inserted + updated
-  return { valid, updated, changed, unchanged, inserted, failed, fields_updated: fieldsUpdated, fields_kept: fieldsKept, rows_kept: rowsKept, conflicts, tracks_changes: tracksChanges }
+  return { valid, updated, changed, unchanged, inserted, failed, fields_updated: fieldsUpdated, fields_kept: fieldsKept, rows_kept: rowsKept, conflicts, tracks_changes: tracksChanges, retired }
 }

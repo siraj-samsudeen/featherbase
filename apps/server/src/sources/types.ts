@@ -33,11 +33,8 @@ export interface SourceConfig {
   statement_timeout_ms: number
   // Newline-separated "schema.table" entries; null = everything allowed.
   allowlist: string[] | null
-  // #625: the administrator says the token is a MotherDuck read-scaling
-  // (read-only) token, so an app's dataset query may run on it.
-  read_scaling_token?: boolean
-  // #772: a pasted-token MotherDuck source attaches only these databases.
-  databases: { name: string; address: string; owner: string; account?: string }[]
+  // #772: a MotherDuck source attaches only these databases.
+  databases: { name: string; owner?: string }[]
 }
 
 // EDS-6: the shape of a write the data source refused for a constraint
