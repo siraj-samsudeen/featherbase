@@ -21,7 +21,8 @@ async function noManagerEmails() {
 }
 
 async function invite() {
-  await userEvent.click(await screen.findByRole('link', { name: 'Set up administrators' }))
+  const guide = await screen.findByTestId('welcome-setup')
+  await userEvent.click(await within(guide).findByRole('link', { name: 'Set up administrators' }))
   await userEvent.type(await screen.findByLabelText('Full name', {}, { timeout: 8000 }), 'Asha Keeper')
   await userEvent.type(screen.getByLabelText('Email'), 'asha@example.com')
   await userEvent.click(screen.getByRole('button', { name: 'Invite' }))
