@@ -54,6 +54,16 @@ test('a link box on a form reads as a picker and password managers leave it alon
   expectLeftAlone(within(list).getByRole('searchbox'))
 })
 
+test('Tab leaves a link box for the next field: nothing in its list is a Tab stop', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(`${tableHref(SHOP)}/new`, admin)
+  await screen.findByTestId('form-view')
+  fireEvent.focus(document.querySelector<HTMLInputElement>('[data-field=region]')!)
+  const list = await screen.findByTestId('link-options-region')
+  await within(list).findAllByTestId('link-option')
+  for (const stop of [list, ...list.querySelectorAll('input,a,button')]) expect(stop).toHaveAttribute('tabindex', '-1')
+})
+
 test('a form link with a value offers its way to the row, not a chevron', async ({ admin }) => {
   await seed(admin)
   await renderApp(`${tableHref(SHOP)}/row/s-1`, admin)
@@ -76,6 +86,12 @@ test('a link filter lists values by name, and the search box in the list narrows
   await waitFor(() => expect(box).toHaveValue('Tamil Nadu'))
 })
 
+// Past the picker's 150ms search delay, so a stray search would have reopened it.
+async function stayClosed() {
+  await new Promise((resolve) => setTimeout(resolve, 400))
+  expect(screen.queryByTestId('link-options-region')).not.toBeInTheDocument()
+}
+
 test('the keyboard walks a link list: arrows to an option, Enter picks it, Escape closes it', async ({ admin }) => {
   await seed(admin)
   await renderApp(tableHref(SHOP), admin)
@@ -90,12 +106,19 @@ test('the keyboard walks a link list: arrows to an option, Enter picks it, Escap
   fireEvent.keyDown(first, { key: 'ArrowDown' })
   const second = within(list).getAllByTestId('link-option')[1]
   expect(second).toHaveFocus()
+  second.focus()
   fireEvent.keyDown(second, { key: 'Enter' })
   await waitFor(() => expect(box).toHaveValue('Kerala'))
-  fireEvent.focus(box)
-  await screen.findByTestId('link-options-region')
-  fireEvent.keyDown(box, { key: 'Escape' })
-  await waitFor(() => expect(screen.queryByTestId('link-options-region')).not.toBeInTheDocument())
+  expect(box).toHaveFocus()
+  await stayClosed()
+  // A box that kept its focus opens again on a click.
+  fireEvent.click(box)
+  const again = await screen.findByTestId('link-options-region')
+  const option = (await within(again).findAllByTestId('link-option'))[0]
+  option.focus()
+  fireEvent.keyDown(option, { key: 'Escape' })
+  expect(box).toHaveFocus()
+  await stayClosed()
 })
 
 const openBuilder = async () => fireEvent.click(await screen.findByTestId('filter-toggle'))

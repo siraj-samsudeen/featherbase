@@ -1531,6 +1531,16 @@ export function LinkControl({
   // A click means "show me the list": the typing goes to its search box (#1019).
   // Tabbing in stays on the box, so the keyboard walks a form as before.
   const clicked = useRef(false)
+  const listBox = useRef<HTMLDivElement>(null)
+  // Focus handed back to the box from its list is not a new search (#1019).
+  const handingBack = useRef(false)
+  function backToBox() {
+    clearTimeout(timer.current)
+    searchVersion.current++
+    handingBack.current = true
+    box.current?.focus()
+    handingBack.current = false
+  }
   const [place, setPlace] = useState<{ top?: number; bottom?: number; left: number; width: number; maxHeight: number } | null>(null)
   // #793: a Table with no picker of its own is searched and shown by its
   // title column, never by its row id — only when the caller may read that
@@ -1569,7 +1579,11 @@ export function LinkControl({
   // would leave it behind, so either closes it.
   useEffect(() => {
     if (!floating || !open) return
-    const close = () => setOpen(false)
+    // The list's own scrolling isn't the page moving away from it.
+    const close = (event: Event) => {
+      if (event.target instanceof Node && listBox.current?.contains(event.target)) return
+      setOpen(false)
+    }
     window.addEventListener('scroll', close, true)
     window.addEventListener('resize', close)
     return () => {
@@ -1672,11 +1686,11 @@ export function LinkControl({
       event.stopPropagation()
       setOpen(false)
       if (forFilter || floating) setQuery(null)
-      box.current?.focus()
+      backToBox()
     } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
       event.stopPropagation()
-      const items = [...event.currentTarget.querySelectorAll<HTMLElement>('[data-testid="link-option"]')]
+      const items = [...event.currentTarget.querySelectorAll<HTMLElement>('[data-testid="link-option"],[data-testid="link-create-new"]')]
       const at = items.indexOf(document.activeElement as HTMLElement)
       const next = event.key === 'ArrowDown' ? at + 1 : at - 1
       if (next >= items.length) return
@@ -1708,9 +1722,11 @@ export function LinkControl({
         placeholder={forFilter ? `Filter ${field.label ?? field.column_name}…` : `Reference: ${target}`}
         value={shown}
         onMouseDown={() => { clicked.current = true }}
+        // Focus doesn't fire again on a box that kept it, as after Escape.
+        onClick={() => { if (!open) search(query ?? (picker.labelField ? '' : shown)) }}
         onFocus={() => {
           clearTimeout(blurTimer.current)
-          search(query ?? (picker.labelField ? '' : shown))
+          if (!handingBack.current) search(query ?? (picker.labelField ? '' : shown))
         }}
         onBlur={leave}
         onChange={(e) => {
@@ -1768,6 +1784,9 @@ export function LinkControl({
       )}
       {open && (
         <div
+          ref={listBox}
+          // Off the Tab order, which a browser otherwise gives a list that scrolls.
+          tabIndex={-1}
           className={place
             ? 'fixed z-30 overflow-y-auto rounded-md border border-border bg-surface shadow-lg'
             : 'absolute z-10 mt-1 max-h-80 w-full min-w-56 overflow-y-auto rounded-md border border-border bg-surface shadow-lg'}
@@ -1808,7 +1827,7 @@ export function LinkControl({
                 onChange(o.value)
                 setQuery(null)
                 setOpen(false)
-                box.current?.focus()
+                backToBox()
               }}
               className="block w-full px-3 py-1.5 text-left text-sm hover:bg-subtle focus-visible:bg-subtle focus-visible:outline-none"
               data-testid="link-option"
@@ -1825,6 +1844,7 @@ export function LinkControl({
               to="/featherbase/admin/table/$table/new"
               params={{ table: target }}
               search={{ prefill: undefined }}
+              tabIndex={-1}
               className="block border-t border-border px-3 py-1.5 text-sm text-ink-muted hover:bg-subtle"
               data-testid="link-create-new"
             >

@@ -1493,7 +1493,7 @@ function PhoneList({
           </label>
         )}
         <div className="ml-auto flex min-w-0 max-w-full items-center gap-2">
-          <label htmlFor="list-sort-by" className="text-control text-ink-muted">
+          <label htmlFor="list-sort-by" className="shrink-0 text-control text-ink-muted">
             Sort by
           </label>
           <Select
