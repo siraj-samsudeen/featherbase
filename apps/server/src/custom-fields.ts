@@ -3,7 +3,7 @@ import { prettifyLabel } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
 import { getMeta, invalidateMeta } from './meta'
-import { STANDARD_COLUMNS, columnSchema, pgType, tableRelation, quoteRelation } from './table-engine'
+import { RESERVED_COLUMNS, columnSchema, pgType, tableRelation, quoteRelation } from './table-engine'
 import { isColumnName, quoteIdent } from './sql-identifier'
 
 // CUST-001: apply a Custom Field record to its target Table — add the
@@ -28,7 +28,7 @@ export interface CustomFieldRec {
 export function assertCustomFieldName(columnName: unknown): asserts columnName is string {
   if (!isColumnName(columnName))
     throw new AppError('ValidationError', 'column_name must be snake_case', { column_name: 'snake_case' })
-  if ((STANDARD_COLUMNS as readonly string[]).includes(columnName))
+  if (RESERVED_COLUMNS.includes(columnName))
     throw new AppError('ValidationError', `'${columnName}' is a reserved column name`, { column_name: 'reserved' })
 }
 

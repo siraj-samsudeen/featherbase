@@ -24,7 +24,7 @@ const pathOf = (r: { router: unknown }) => (r.router as { state: { location: { p
 test("Open Admin on an app's address hands the person over to the Admin's address", async ({ admin }) => {
   config.instanceAddresses = parseInstanceAddresses(
     JSON.stringify([
-      { address: 'http://localhost', opens: 'feather_dash', emails: true },
+      { address: 'http://localhost', opens: 'dash', emails: true },
       { address: 'http://elsewhere.example.test', opens: 'admin' },
     ]),
     'test',
@@ -51,7 +51,7 @@ test('Open Admin refused because the grant went meanwhile stays on the page, rea
   // The account page on the Feather Dash address offers Open Admin to her.
   config.instanceAddresses = parseInstanceAddresses(
     JSON.stringify([
-      { address: 'http://localhost', opens: 'feather_dash', emails: true },
+      { address: 'http://localhost', opens: 'dash', emails: true },
       { address: 'http://elsewhere.example.test', opens: 'admin' },
     ]),
     'test',

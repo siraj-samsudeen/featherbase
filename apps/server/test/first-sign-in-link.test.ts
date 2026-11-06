@@ -271,6 +271,12 @@ describe('the service is not asked, and the refusal says nothing', () => {
     expect(notes[0]).toMatch(/ duplicate_id$/)
   })
 
+  test('a retired row is out of use, whatever its status says', async ({ api, admin }) => {
+    await setUp(admin)
+    await sql`update featherbase.crew_list set retired_at = now(), retired_reason = 'Entered by mistake' where crew_no = ${CODE}`
+    await expectRefusedWithoutAsking(api, provider())
+  })
+
   test('a row that already has a person', async ({ api, admin, createUser }) => {
     const other = await createUser({ email: 'other.crew@example.test' })
     await setUp(admin, { rows: [crewRow({ login: other.user })] })
@@ -468,6 +474,7 @@ describe('what cannot be read is refused', () => {
   test.for([
     ['removed', () => sql`delete from featherbase.crew_list where crew_no = ${CODE}`, 'link_failed'],
     ['no longer current', () => sql`update featherbase.crew_list set crew_state = 'Left' where crew_no = ${CODE}`, 'link_failed'],
+    ['retired', () => sql`update featherbase.crew_list set retired_at = now(), retired_reason = 'Entered by mistake' where crew_no = ${CODE}`, 'link_failed'],
     ['given another record', () => sql`update featherbase.crew_list set hr_record = '7009' where crew_no = ${CODE}`, 'link_failed'],
     ['joined by a second row with its ID', () => sql`insert into featherbase.crew_list (row_id, crew_name, crew_no, hr_record, crew_state) values ('second-crew', 'Made Up Two', ${CODE}, '7003', 'Working')`, 'duplicate_id'],
   ] as const)('a row %s while the service was asked is not linked', async ([, change, reason], { api, admin }) => {

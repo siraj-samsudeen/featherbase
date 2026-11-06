@@ -12,6 +12,7 @@ export interface Capabilities {
   own_grant: boolean // holds a Table grant of their own (not only a shared row)
   tables: string[] // Tables the person can read (empty for a System Manager: they read the Table list)
   creatable: string[] // Tables the person can add rows to
+  archived: string[] // #905: archived Tables the person can read: listed apart, never offered in a picker
 }
 
 /** An installed app the person can open (#671). */
@@ -101,6 +102,8 @@ export interface TableSummary {
   system: boolean
   // #432: no "New" anywhere for a Table only the platform writes.
   system_written?: boolean
+  // #905: archived: listed under Archived, never offered in a picker.
+  archived?: boolean
 }
 
 /**
@@ -123,6 +126,12 @@ export function useShellTables(): TableSummary[] | undefined {
       }),
   })
   if (!caps) return undefined
-  if (manage) return list.data?.data
-  return caps.tables.map((row_id) => ({ row_id, module: '', system: false }))
+  const archived = new Set(caps.archived ?? [])
+  if (manage) return list.data?.data.map((t) => ({ ...t, archived: archived.has(t.row_id) }))
+  return caps.tables.map((row_id) => ({ row_id, module: '', system: false, archived: archived.has(row_id) }))
+}
+
+/** #905: the Tables a picker may offer: the shell's list without archived ones. */
+export function usePickableTables(): TableSummary[] | undefined {
+  return useShellTables()?.filter((t) => !t.archived)
 }

@@ -33,9 +33,11 @@ test('supervised startup restores only declared runtime selections from a privat
     // The actual instance and app declare these names; they are not in VARIABLES.
     const settings = JSON.parse(readFileSync('client-apps/jeyarama/instances/dash/instance-settings.json', 'utf8'))
     const manifest = JSON.parse(readFileSync('client-apps/jeyarama/dash/featherbase.json', 'utf8'))
-    assert.equal(settings.settings['Data Source'][0].url_env, 'MOTHERDUCK_URL')
+    // #969: Feather Dash's warehouse names no variable: it reads the one MotherDuck token.
+    assert.equal(settings.settings['Data Source'][0].engine, 'motherduck')
+    assert.equal(settings.settings['Data Source'][0].url_env, undefined)
     assert.ok(manifest.secrets.includes('MOTHERDUCK_TOKEN'))
-    await sql`insert into featherbase.data_source (url_env) values (${settings.settings['Data Source'][0].url_env}), ('UNSET_SOURCE_URL')`
+    await sql`insert into featherbase.data_source (url_env) values ('ORB_WAREHOUSE_URL'), ('UNSET_SOURCE_URL')`
     await sql`insert into featherbase.installed_app (manifest) values (${sql.json(manifest)}),
       (${sql.json({ secrets: [{ name: 'OPTIONAL_APP_TOKEN', optional: true }, { name: 'UNSET_APP_TOKEN', optional: true }] })})`
     const captured = run('capture', {
@@ -43,7 +45,7 @@ test('supervised startup restores only declared runtime selections from a privat
       API_PORT: '18059', WEB_PORT: '15259', FEATHERBASE_APP_PATHS: '[]',
       NODE_ENV: 'development', FEATHERBASE_ENV: 'development',
       JWT_SECRET: 'private-jwt', UNRELATED_SECRET: 'do-not-collect',
-      MOTHERDUCK_URL: 'md:private-warehouse', MOTHERDUCK_TOKEN: 'private-app-token',
+      ORB_WAREHOUSE_URL: 'private-warehouse.duckdb', MOTHERDUCK_TOKEN: 'private-app-token',
       OPTIONAL_APP_TOKEN: 'private-optional-token', UNSET_SOURCE_URL: undefined, UNSET_APP_TOKEN: undefined,
     })
     assert.equal(captured.status, 0, captured.stderr)
@@ -53,7 +55,7 @@ test('supervised startup restores only declared runtime selections from a privat
     assert.equal(saved.WEB_PORT, '15259')
     assert.equal(saved.JWT_SECRET, 'private-jwt')
     assert.equal(saved.UNRELATED_SECRET, undefined)
-    assert.equal(saved.MOTHERDUCK_URL, 'md:private-warehouse')
+    assert.equal(saved.ORB_WAREHOUSE_URL, 'private-warehouse.duckdb')
     assert.equal(saved.MOTHERDUCK_TOKEN, 'private-app-token')
     assert.equal(saved.OPTIONAL_APP_TOKEN, 'private-optional-token')
     assert.equal(saved.UNSET_SOURCE_URL, null)
@@ -65,11 +67,11 @@ test('supervised startup restores only declared runtime selections from a privat
     writeFileSync(file, JSON.stringify(saved))
     const started = run('start', {
       DATABASE_URL: 'invalid-supervisor-default', API_PORT: '19999', WEB_PORT: '19998',
-      MOTHERDUCK_URL: 'wrong-supervisor-url', MOTHERDUCK_TOKEN: 'wrong-supervisor-token',
+      ORB_WAREHOUSE_URL: 'wrong-supervisor-url', MOTHERDUCK_TOKEN: 'wrong-supervisor-token',
       OPTIONAL_APP_TOKEN: 'wrong-optional-token', UNSET_SOURCE_URL: 'wrong-source-default', UNSET_APP_TOKEN: 'wrong-app-default',
     }, `
       const { readNamedVariable } = await import('../../apps/server/src/env.ts');
-      const restored = readNamedVariable('MOTHERDUCK_URL') === 'md:private-warehouse'
+      const restored = readNamedVariable('ORB_WAREHOUSE_URL') === 'private-warehouse.duckdb'
         && readNamedVariable('MOTHERDUCK_TOKEN') === 'private-app-token'
         && readNamedVariable('OPTIONAL_APP_TOKEN') === 'private-optional-token'
         && readNamedVariable('UNSET_SOURCE_URL') === undefined

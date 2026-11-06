@@ -302,7 +302,7 @@ describe('the embed_session read', () => {
     expect((await stateFor({ store: '9901', app_origin: 'https://dash.example.test' })).app_origin).toBe('https://dash.example.test')
   })
 
-  it.each([['a path', 'https://dash.example.test/feather_dash/'], ['a script address', 'javascript:alert(1)'], ['a number', 7]])(
+  it.each([['a path', 'https://dash.example.test/dash/'], ['a script address', 'javascript:alert(1)'], ['a number', 7]])(
     'gives the Dive no `app_origin` when the page sends %s', async (_what, origin) => {
       expect(await stateFor({ store: '9901', app_origin: origin })).not.toHaveProperty('app_origin')
     })

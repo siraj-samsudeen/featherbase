@@ -20,6 +20,7 @@ import { runPackageAction } from './runtime-packages'
 import { appOperation, withAppIdentity } from './app-lifecycle'
 import { createServiceAccount } from './service-accounts'
 import { copyInfo, DELETED_AT_SOURCE } from './sources/table-copy'
+import { differenceFingerprint } from './master-sync-names'
 import type { SessionUser } from './auth'
 
 const name = z.string().trim().min(1).max(140)
@@ -217,7 +218,6 @@ export interface MasterSyncResult {
   tickets: string[]; ticket_errors: string[]
 }
 
-const fingerprintOf = (...parts: unknown[]) => createHash('sha256').update(JSON.stringify(parts)).digest('hex')
 const KIND_TEXT: Record<DifferenceKind, string> = {
   source_changed: 'The source changed a value Featherbase owns. Check our value.',
   edited_here: 'This value was edited in Featherbase, but the source owns it. Should the source be fixed?',
@@ -255,7 +255,7 @@ export async function syncAfterCopy(user: SessionUser, copied: string): Promise<
 /** Compare and apply in one transaction, then raise the new differences as tickets. */
 export async function runMasterSync(user: SessionUser, copied: string): Promise<MasterSyncResult> {
   await assertSystemManager(user.row_id)
-  const actor = await syncActor(user.row_id)
+  const actor = await appOperation(() => syncActor(user.row_id))
   // The app lifecycle lock comes before any row lock, as every save takes them,
   // so a sync can never wait on an upgrade that waits on the sync.
   const outcome = await appOperation(() => runAsSystemActor(actor, () => actionTransaction(() => compareAndApply(actor, copied))))
@@ -377,9 +377,7 @@ async function applyRule(actor: string, copied: string, rule: MasterSyncRule): P
   }
   for (const d of differences) {
     // One ticket per difference: the same values, unresolved, never raise twice.
-    const fingerprint = !d.column_name
-      ? fingerprintOf(copied, rule.master_table, rule.source_system, d.kind, d.source_key, d.master_row)
-      : fingerprintOf(copied, rule.master_table, rule.source_system, 'value', d.source_key, d.master_row, d.column_name, d.source_value, d.featherbase_value)
+    const fingerprint = differenceFingerprint(copied, rule.master_table, rule.source_system, d)
     const inserted = await sql`insert into featherbase.master_sync_difference
       (copied_table, fingerprint, kind, source_key, master_row, column_name, source_value, featherbase_value, ticket_app, ticket_payload, run_id)
       values (${copied}, ${fingerprint}, ${d.kind}, ${d.source_key}, ${d.master_row}, ${d.column_name}, ${d.source_value}, ${d.featherbase_value},

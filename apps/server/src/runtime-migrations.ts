@@ -6,7 +6,7 @@ import { AppError } from './errors'
 import { sql, withTransaction } from './db'
 import { provisionApp } from './app-lifecycle'
 import { namingColumn, renameNamingColumn, tableSchemaToZod } from 'shared'
-import { changeColumnType, columnSchema, createTable, deleteTable, isLinkTypeChange, isSafeTypeChange, pgType, quoteRelation, renameColumn, renameTable, STANDARD_COLUMNS, storedRelation, tableDefSchema, updateTable, type TableDef } from './table-engine'
+import { changeColumnType, columnSchema, createTable, deleteTable, isLinkTypeChange, isSafeTypeChange, pgType, quoteRelation, renameColumn, renameTable, RESERVED_COLUMNS, storedRelation, tableDefSchema, updateTable, type TableDef } from './table-engine'
 import { ensureHomePageForTable } from './home-pages'
 import { COLUMN_TYPE_VALUES, defaultValueFor, invalidateMeta, physicalRowKey } from './meta'
 
@@ -159,7 +159,7 @@ function setProperties(target: Column, values: Alterable) {
 // Links to platform Tables are checked by the engine when the step runs.
 function checkColumns(app: string, state: TableDef[], table: TableDef, columns: Column[], what: string) {
   for (const c of columns) {
-    if ((STANDARD_COLUMNS as readonly string[]).includes(c.column_name)) refuse(`${what}: ${c.column_name} is a standard column name`)
+    if (RESERVED_COLUMNS.includes(c.column_name)) refuse(`${what}: ${c.column_name} is a standard column name`)
     if (c.column_type === 'Choice' && !c.choices) refuse(`${what}: Choice column ${c.column_name} needs choices`)
     if (c.column_type === 'Reference' && !c.reference_table) refuse(`${what}: link column ${c.column_name} needs reference_table`)
     if (c.column_type === 'Reference' && c.reference_table!.startsWith(`${app}.`) && c.reference_table !== table.name &&
@@ -244,7 +244,7 @@ function forward(app: string, state: TableDef[], op: Operation) {
       mustOwn(app, op.table)
       const table = tableIn(state, op.table, what)
       columnIn(table, op.from, what)
-      if ((STANDARD_COLUMNS as readonly string[]).includes(op.to)) refuse(`${what}: ${op.to} is a standard column name`)
+      if (RESERVED_COLUMNS.includes(op.to)) refuse(`${what}: ${op.to} is a standard column name`)
       if (table.columns.some(c => c.column_name === op.to)) refuse(`${what}: ${op.table} already has a column ${op.to}`)
       renameColumnIn(table, op.from, op.to)
       return

@@ -27,7 +27,7 @@ describe('dev-repin on a database not stamped development', () => {
   it('never prints the database password', () => {
     const run = spawnSync('bash', [script], { encoding: 'utf8', env: { ...process.env,
       PATH: `${stubPsql('staging')}:${process.env.PATH}`,
-      DATABASE_URL: `postgres://postgres:${SENTINEL}@db.example.test:5432/feather_dash` } })
+      DATABASE_URL: `postgres://postgres:${SENTINEL}@db.example.test:5432/dash` } })
     expect(run.status).not.toBe(0)
     expect(run.stdout + run.stderr).not.toContain(SENTINEL)
   })

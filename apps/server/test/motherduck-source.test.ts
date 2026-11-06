@@ -1,25 +1,29 @@
-// #772: a MotherDuck source connected by pasting its token, against the local
+// #772, #969: a MotherDuck source, read with the instance's one token, against the local
 // stand-in (design D4). Each test names its own source, so they never share a session.
-import { afterAll, beforeAll, describe, expect } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect } from 'vitest'
 import { readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename } from 'node:path'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { overrideVariable } from '../src/env'
-import { getSource, invalidateSources } from '../src/sources/registry'
-import { run, stream } from '../src/sources/duckdb-driver'
-import { encryptSecret } from '../src/secret-store'
+import { invalidateMeta } from '../src/meta'
+import { getSource, invalidateSources, testSource } from '../src/sources/registry'
+import { duckdbDriver, run, stream } from '../src/sources/duckdb-driver'
+import { readMotherDuck } from '../src/sources/motherduck'
 import { addStandinTable, buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
 
 let dir: string
 beforeAll(async () => {
   dir = await buildStandin()
   overrideVariable('MOTHERDUCK_STANDIN', dir)
+  overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.reader)
 })
+beforeEach(() => overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.reader))
 afterAll(() => {
   invalidateSources()
   overrideVariable('MOTHERDUCK_STANDIN', undefined)
+  overrideVariable('MOTHERDUCK_TOKEN', undefined)
   rmSync(dir, { recursive: true, force: true })
 })
 
@@ -30,48 +34,48 @@ type Client = {
 }
 const SOURCES = '/api/table/Data%20Source'
 
-async function connect(admin: Client, name: string, databases = ['sales', 'stock'], token = STANDIN_TOKENS.reader) {
-  return admin.post<{ name: string }>(`${SOURCES}:motherduck_connect`, { name, token, databases })
+async function connect(admin: Client, name: string, databases = ['sales', 'stock']) {
+  return admin.post<{ name: string }>(`${SOURCES}:motherduck_connect`, { name, databases })
 }
 
-describe('Connect a MotherDuck warehouse by pasting its token', () => {
-  test('a working token names its owner and every database it can read', async ({ admin }) => {
-    const report = await admin.post<{ user: string; can_write: boolean; databases: { name: string; owner: string }[] }>(
-      `${SOURCES}:motherduck_test`, { token: STANDIN_TOKENS.reader })
+describe("Connect a MotherDuck warehouse with the instance's token", () => {
+  test('the token names its owner and every database it can read', async ({ admin }) => {
+    const report = await admin.get<{ user: string; databases: { name: string; owner: string }[] }>(`${SOURCES}:motherduck_databases`)
     expect(report.user).toBe('reader_user')
-    expect(report.can_write).toBe(false)
     expect(report.databases.map((d) => d.name)).toEqual(['sales', 'stock', 'finance', 'people', 'planning'])
     expect(report.databases[0].owner).toBe('This account')
     expect(report.databases[2].owner).toBe('finance-team')
     expect(JSON.stringify(report)).not.toContain(dir)
-  })
-
-  test('a token that can also write is flagged', async ({ admin }) => {
-    const report = await admin.post<{ can_write: boolean }>(`${SOURCES}:motherduck_test`, { token: STANDIN_TOKENS.writer })
-    expect(report.can_write).toBe(true)
+    expect(JSON.stringify(report)).not.toContain(STANDIN_TOKENS.reader)
   })
 
   test('a refused token is explained in plain words, and never echoed', async ({ admin }) => {
-    const res = await admin.fetch(`${SOURCES}:motherduck_test`, { method: 'POST', body: JSON.stringify({ token: STANDIN_TOKENS.refused }) })
+    overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.refused)
+    const res = await admin.fetch(`${SOURCES}:motherduck_databases`)
     expect(res.status).toBe(417)
     const text = await res.text()
-    expect(text).toMatch(/MotherDuck refused the token/)
+    expect(text).toMatch(/MotherDuck refused this server's token/)
     expect(text).not.toContain(STANDIN_TOKENS.refused)
   })
 
-  test('an empty token is refused before MotherDuck is asked', async ({ admin }) => {
-    await expect(admin.post(`${SOURCES}:motherduck_test`, { token: '  ' })).rejects.toMatchObject({ status: 417 })
+  test('an instance with no token says so before MotherDuck is asked', async ({ admin }) => {
+    overrideVariable('MOTHERDUCK_TOKEN', undefined)
+    const res = await admin.fetch(`${SOURCES}:motherduck_databases`)
+    expect(res.status).toBe(417)
+    expect(await res.text()).toMatch(/MOTHERDUCK_TOKEN is not set/)
+    overrideVariable('MOTHERDUCK_TOKEN', '   ')
+    expect((await admin.fetch(`${SOURCES}:motherduck_databases`)).status).toBe(417)
   })
 })
 
 describe('Choose which databases a warehouse source reads', () => {
   test('only the chosen databases are kept, with their owners', async ({ admin }) => {
     await connect(admin, 'md-choose')
-    const row = await admin.get<{ engine: string; access: string; databases: { name: string }[]; token_last_four: string }>(`${SOURCES}/md-choose`)
+    const row = await admin.get<{ engine: string; access: string; databases: { name: string }[]; url_env: string | null }>(`${SOURCES}/md-choose`)
     expect(row.engine).toBe('motherduck')
     expect(row.access).toBe('read_only')
     expect(row.databases.map((d) => d.name)).toEqual(['sales', 'stock'])
-    expect(row.token_last_four).toBe('4f2a')
+    expect(row.url_env).toBeNull()
   })
 
   test('saving with no database chosen, or one the token cannot read, is refused', async ({ admin }) => {
@@ -82,33 +86,96 @@ describe('Choose which databases a warehouse source reads', () => {
   })
 
   test('a refused token saves nothing', async ({ admin }) => {
-    await expect(connect(admin, 'md-refused', ['sales'], STANDIN_TOKENS.refused)).rejects.toMatchObject({ status: 417 })
+    overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.refused)
+    await expect(connect(admin, 'md-refused', ['sales'])).rejects.toMatchObject({ status: 417 })
     const [left] = await sql`select count(*)::int as n from featherbase.data_source where row_id = 'md-refused'`
     expect(left.n).toBe(0)
   })
 })
 
-describe('A pasted token stays secret', () => {
-  test('neither a read nor a list returns the token, and the stored form is encrypted', async ({ admin }) => {
+describe("The instance's token stays secret", () => {
+  test('neither a read nor a list returns it, and nothing about a source stores it', async ({ admin }) => {
     await connect(admin, 'md-secret')
     const row = await admin.get(`${SOURCES}/md-secret`)
-    const list = await admin.get(`${SOURCES}?fields=${encodeURIComponent('["row_id","engine","token_last_four","databases"]')}`)
+    const list = await admin.get(`${SOURCES}?fields=${encodeURIComponent('["row_id","engine","databases"]')}`)
     expect(JSON.stringify(row)).not.toContain(STANDIN_TOKENS.reader)
     expect(JSON.stringify(list)).not.toContain(STANDIN_TOKENS.reader)
-    const [stored] = await sql`select token_ciphertext from featherbase.data_source_secret where data_source = 'md-secret'`
-    expect(String(stored.token_ciphertext)).not.toContain(STANDIN_TOKENS.reader)
-  })
-
-  test('the generic form cannot set the last four or the databases', async ({ admin }) => {
-    await connect(admin, 'md-generic')
-    await admin.post('/api/save_row', { table: 'Data Source', row: { row_id: 'md-generic', token_last_four: 'zzzz', databases: [] } }).catch(() => undefined)
-    const row = await admin.get<{ token_last_four: string; databases: unknown[] }>(`${SOURCES}/md-generic`)
-    expect(row.token_last_four).toBe('4f2a')
-    expect(row.databases).toHaveLength(2)
+    const [stored] = await sql`select to_jsonb(d) as row from featherbase.data_source d where row_id = 'md-secret'`
+    expect(JSON.stringify(stored.row)).not.toContain(STANDIN_TOKENS.reader)
+    expect(Object.keys(stored.row as object)).not.toContain('token_last_four')
+    expect(Object.keys(stored.row as object)).not.toContain('read_scaling_token')
   })
 })
 
-describe('A warehouse token can be replaced', () => {
+describe('What a MotherDuck source saves', () => {
+  test('its databases must be a list of named databases', async ({ admin }) => {
+    const res = await admin.fetch(SOURCES, { method: 'POST', body: JSON.stringify({ row_id: 'md-bad-list', engine: 'motherduck', databases: [{ address: 'md:gold' }] }) })
+    expect(res.status).toBe(417)
+    expect(await res.text()).toMatch(/Name each database/)
+  })
+
+  test('it names no variable: the instance has one token', async ({ admin }) => {
+    const res = await admin.fetch(SOURCES, { method: 'POST', body: JSON.stringify({ row_id: 'md-var', engine: 'motherduck', url_env: 'MD_OTHER_TOKEN' }) })
+    expect(res.status).toBe(417)
+    expect(await res.text()).toMatch(/names no variable/)
+  })
+})
+
+describe('A MotherDuck warehouse is only ever read', () => {
+  test('a token with write rights still opens every database read-only, and a write is refused', async ({ admin }) => {
+    overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.writer)
+    await connect(admin, 'md-ro', ['sales'])
+    const cfg = await getSource('md-ro')
+    const [row] = await run(cfg, "select readonly from duckdb_databases() where database_name = 'sales'", [])
+    expect(row.readonly).toBe(true)
+    await expect(run(cfg, "update sales.main.stores set name = 'Changed' where code = 'S001'", [])).rejects.toThrow(/read-only|read only/i)
+    await expect(run(cfg, 'create table sales.main.written (a integer)', [])).rejects.toThrow(/read-only|read only/i)
+  })
+
+  test("an app's dataset query reads, and one that would change the warehouse is refused, with a token that can write", async ({ admin }) => {
+    await changeStandin(dir, 'stock', ['create sequence if not exists stock_probe'])
+    overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.writer)
+    await connect(admin, 'md-dataset', ['sales', 'stock'])
+    const cfg = await getSource('md-dataset')
+    const column = [{ name: 'code', type: 'text' }]
+    expect(await duckdbDriver.query!(cfg, 'select code from sales.main.stores', column)).toHaveLength(3)
+    await expect(duckdbDriver.query!(cfg, "select nextval('stock.main.stock_probe') as code", column)).rejects.toThrow(/read-only|read only/i)
+  })
+
+  test("the platform's own fixed reads hold only the databases they name, read-only", async () => {
+    overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.writer)
+    expect(await readMotherDuck('select count(*)::int from sales.main.stores', 'test', ['sales'])).toEqual([[3]])
+    await expect(readMotherDuck("update sales.main.stores set name = 'Changed'", 'test', ['sales'])).rejects.toThrow(/read-only|read only/i)
+    await expect(readMotherDuck('select * from stock.main.items', 'test', ['sales'])).rejects.toThrow(/stock/)
+    overrideVariable('MOTHERDUCK_TOKEN', undefined)
+    await expect(readMotherDuck('select 1', 'run the leaver check', ['sales'])).rejects.toThrow('MOTHERDUCK_TOKEN is not set (required to run the leaver check)')
+  })
+
+  test('a connected table refuses a change, even if the stored row says read and write', async ({ admin }) => {
+    overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.writer)
+    await connect(admin, 'md-bound', ['sales'])
+    await admin.post(`${SOURCES}/md-bound:reflect`, { schema: 'sales.main', tables: ['stores'] })
+    await sql`update featherbase.data_source set access = 'read_write' where row_id = 'md-bound'`
+    invalidateSources('md-bound')
+    invalidateMeta()
+    expect((await getSource('md-bound')).access).toBe('read_only')
+    const [bound] = await sql`select name from featherbase.table_def where data_source = 'md-bound'`
+    const path = `/api/table/${encodeURIComponent(String(bound.name))}`
+    for (const [url, init] of [
+      [`${path}/S001`, { method: 'PATCH', body: JSON.stringify({ name: 'Changed' }) }],
+      [path, { method: 'POST', body: JSON.stringify({ code: 'S999', name: 'New' }) }],
+      [`${path}/S001`, { method: 'DELETE' }],
+    ] as const) {
+      const res = await admin.fetch(url, init)
+      expect(res.status).toBe(403)
+      expect(await res.text()).toMatch(/read-only/)
+    }
+    const [row] = await run(await getSource('md-bound'), "select name from sales.main.stores where code = 'S001'", [])
+    expect(row.name).toBe('Harbour Road')
+  })
+})
+
+describe('A session follows the instance token', () => {
   test('concurrent first public previews open only one source session', async ({ admin }) => {
     await connect(admin, 'md-concurrent-open', ['sales'])
     const folders = () => readdirSync(tmpdir()).filter(n => n.startsWith(`fb-md-session-${basename(dir)}-`))
@@ -118,7 +185,7 @@ describe('A warehouse token can be replaced', () => {
     expect(folders().filter(n => !before.has(n))).toHaveLength(1)
   })
 
-  test('token replacement keeps an active source reader alive until it finishes', async ({ admin }) => {
+  test('a new token keeps an active source reader alive until it finishes', async ({ admin }) => {
     await changeStandin(dir, 'sales', ['create table session_rows as select i as id from range(4100) t(i)'])
     await connect(admin, 'md-active-reader', ['sales'])
     const folders = () => readdirSync(tmpdir()).filter(n => n.startsWith(`fb-md-session-${basename(dir)}-`))
@@ -127,7 +194,7 @@ describe('A warehouse token can be replaced', () => {
     try {
       const first = await reader.next()
       expect(first.done).toBe(false)
-      await admin.post(`${SOURCES}/md-active-reader:replace_token`, { token: STANDIN_TOKENS.second })
+      overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.second)
       await admin.get(`${SOURCES}/md-active-reader:preview?database=sales&schema=main&table=stores`)
       expect(folders().filter(n => !before.has(n))).toHaveLength(2)
       let count = first.value!.length
@@ -137,13 +204,14 @@ describe('A warehouse token can be replaced', () => {
     } finally { await reader.return(undefined) }
   })
 
-  test('a working new token replaces the old one; a refused one changes nothing', async ({ admin }) => {
+  test('the next session uses a new token; a refused one is reported, naming no token', async ({ admin }) => {
     await connect(admin, 'md-replace')
-    await expect(admin.post(`${SOURCES}/md-replace:replace_token`, { token: STANDIN_TOKENS.refused })).rejects.toMatchObject({ status: 417 })
-    expect((await admin.get<{ token_last_four: string }>(`${SOURCES}/md-replace`)).token_last_four).toBe('4f2a')
-    await admin.post(`${SOURCES}/md-replace:replace_token`, { token: STANDIN_TOKENS.second })
-    expect((await admin.get<{ token_last_four: string }>(`${SOURCES}/md-replace`)).token_last_four).toBe('9c1e')
-    const tables = await admin.get<{ schemas: { schema: string }[] }>(`${SOURCES}/md-replace:tables?database=sales`)
+    overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.refused)
+    const res = await admin.fetch(`${SOURCES}/md-replace:refresh_tables`, { method: 'POST', body: JSON.stringify({ database: 'sales' }) })
+    expect(res.status).toBe(417)
+    expect(await res.text()).not.toContain(STANDIN_TOKENS.refused)
+    overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.second)
+    const tables = await admin.post<{ schemas: { schema: string }[] }>(`${SOURCES}/md-replace:refresh_tables`, { database: 'sales' })
     expect(tables.schemas.map((s) => s.schema)).toContain('main')
   })
 })
@@ -198,21 +266,19 @@ describe('Only a System Manager reaches a warehouse source', () => {
   test('every action is refused to anyone else', async ({ admin, createUser }) => {
     await connect(admin, 'md-guard')
     const user = await createUser({ roles: [] })
-    await expect(user.post(`${SOURCES}:motherduck_test`, { token: STANDIN_TOKENS.reader })).rejects.toMatchObject({ status: 403 })
-    await expect(user.post(`${SOURCES}:motherduck_connect`, { name: 'md-rogue', token: STANDIN_TOKENS.reader, databases: ['sales'] })).rejects.toMatchObject({ status: 403 })
+    await expect(user.get(`${SOURCES}:motherduck_databases`)).rejects.toMatchObject({ status: 403 })
+    await expect(user.post(`${SOURCES}:motherduck_connect`, { name: 'md-rogue', databases: ['sales'] })).rejects.toMatchObject({ status: 403 })
     await expect(user.get(`${SOURCES}/md-guard:tables?database=sales`)).rejects.toMatchObject({ status: 403 })
     await expect(user.get(`${SOURCES}/md-guard:preview?database=sales&schema=main&table=stores`)).rejects.toMatchObject({ status: 403 })
     await expect(user.post(`${SOURCES}/md-guard:refresh_tables`, { database: 'sales' })).rejects.toMatchObject({ status: 403 })
-    await expect(user.post(`${SOURCES}/md-guard:replace_token`, { token: STANDIN_TOKENS.writer })).rejects.toMatchObject({ status: 403 })
   })
 })
 
 describe('Requests a warehouse source refuses', () => {
-  test('a missing name, token or database list, and an action on another table, are refused plainly', async ({ admin }) => {
-    await expect(admin.post(`${SOURCES}:motherduck_connect`, { token: STANDIN_TOKENS.reader, databases: ['sales'] })).rejects.toMatchObject({ status: 417 })
-    await expect(admin.post(`${SOURCES}:motherduck_connect`, { name: 'md-no-list', token: STANDIN_TOKENS.reader })).rejects.toMatchObject({ status: 417 })
-    await expect(admin.post(`${SOURCES}:motherduck_test`, {})).rejects.toMatchObject({ status: 417 })
-    await expect(admin.post('/api/table/Role:motherduck_test', { token: STANDIN_TOKENS.reader })).rejects.toMatchObject({ status: 404 })
+  test('a missing name or database list, and an action on another table, are refused plainly', async ({ admin }) => {
+    await expect(admin.post(`${SOURCES}:motherduck_connect`, { databases: ['sales'] })).rejects.toMatchObject({ status: 417 })
+    await expect(admin.post(`${SOURCES}:motherduck_connect`, { name: 'md-no-list' })).rejects.toMatchObject({ status: 417 })
+    await expect(admin.get('/api/table/Role:motherduck_databases')).rejects.toMatchObject({ status: 404 })
   })
 
   test('a preview with no schema is a plain not-found', async ({ admin }) => {
@@ -221,18 +287,24 @@ describe('Requests a warehouse source refuses', () => {
     await expect(admin.get(`${SOURCES}/md-no-schema:preview?database=sales&schema=main`)).rejects.toMatchObject({ status: 404 })
   })
 
-  test('a source that is not connected by a token has no warehouse actions', async ({ admin }) => {
+  test('a source of another engine has no warehouse actions', async ({ admin }) => {
     await admin.post(SOURCES, { row_id: 'md-plain-pg', engine: 'postgres', url_env: 'MD_PLAIN_UNSET_URL', access: 'read_only' })
     await expect(admin.get(`${SOURCES}/md-plain-pg:tables?database=sales`)).rejects.toMatchObject({ status: 417 })
   })
 
-  test('a MotherDuck source saved without a token asks for one', async ({ admin }) => {
-    await admin.post(SOURCES, { row_id: 'md-tokenless', engine: 'motherduck', access: 'read_only' })
-    await sql`update featherbase.data_source set databases = ${sql.json([{ name: 'sales', address: 'unused', owner: 'This account' }])} where row_id = 'md-tokenless'`
-    invalidateSources('md-tokenless')
+  test('a MotherDuck source with no databases says so, and its connection test fails', async ({ admin }) => {
+    await admin.post(SOURCES, { row_id: 'md-empty', engine: 'motherduck', access: 'read_only' })
+    const tested = await testSource('md-empty')
+    expect(tested.ok).toBe(false)
+    expect(tested.error).toMatch(/reads no database yet/)
+  })
+
+  test('a MotherDuck source on an instance with no token says which variable is missing', async ({ admin }) => {
+    await admin.post(SOURCES, { row_id: 'md-tokenless', engine: 'motherduck', access: 'read_only', databases: [{ name: 'sales' }] })
+    overrideVariable('MOTHERDUCK_TOKEN', undefined)
     const res = await admin.fetch(`${SOURCES}/md-tokenless:tables?database=sales`)
     expect(res.status).toBe(417)
-    expect(await res.text()).toMatch(/no token saved/)
+    expect(await res.text()).toMatch(/MOTHERDUCK_TOKEN is not set/)
   })
 
   test('a MotherDuck source cannot be made writable', async ({ admin }) => {
@@ -241,49 +313,72 @@ describe('Requests a warehouse source refuses', () => {
     expect(await res.text()).toMatch(/MotherDuck sources are read-only/)
   })
 
-  test('a stored token MotherDuck has since revoked is reported as refused', async ({ admin }) => {
+  test('a token MotherDuck has since revoked is reported as refused', async ({ admin }) => {
     await connect(admin, 'md-revoked')
-    await sql`update featherbase.data_source_secret set token_ciphertext = ${encryptSecret(STANDIN_TOKENS.refused)} where data_source = 'md-revoked'`
-    invalidateSources('md-revoked')
+    overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.refused)
     const res = await admin.fetch(`${SOURCES}/md-revoked:tables?database=sales`)
     expect(res.status).toBe(417)
     const text = await res.text()
-    expect(text).toMatch(/MotherDuck refused the token/)
+    expect(text).toMatch(/MotherDuck refused this server's token/)
     expect(text).not.toContain(STANDIN_TOKENS.refused)
   })
 
-  test('a new token that cannot read a chosen database is refused, and the old one stays', async ({ admin }) => {
-    await connect(admin, 'md-narrow')
-    await sql`update featherbase.data_source set databases = databases || ${sql.json([{ name: 'archive', address: 'unused', owner: 'This account' }])} where row_id = 'md-narrow'`
-    invalidateSources('md-narrow')
-    const res = await admin.fetch(`${SOURCES}/md-narrow:replace_token`, { method: 'POST', body: JSON.stringify({ token: STANDIN_TOKENS.second }) })
-    expect(res.status).toBe(417)
-    expect(await res.text()).toMatch(/cannot read archive/)
-    expect((await admin.get<{ token_last_four: string }>(`${SOURCES}/md-narrow`)).token_last_four).toBe('4f2a')
-  })
-
-  test('a database that can no longer be opened is reported each time, and never stays half-open', async ({ admin }) => {
+  test('a database the token cannot read is reported each time, and never stays half-open', async ({ admin }) => {
     await connect(admin, 'md-gone')
-    await sql`update featherbase.data_source set databases = ${sql.json([{ name: 'sales', address: `${dir}/no-such.duckdb`, owner: 'This account' }])} where row_id = 'md-gone'`
+    await sql`update featherbase.data_source set databases = ${sql.json([{ name: 'archive' }])} where row_id = 'md-gone'`
     invalidateSources('md-gone')
     for (let attempt = 0; attempt < 2; attempt++) {
-      const res = await admin.fetch(`${SOURCES}/md-gone:tables?database=sales`)
-      expect(res.status).toBeGreaterThanOrEqual(400)
+      const res = await admin.fetch(`${SOURCES}/md-gone:tables?database=archive`)
+      expect(res.status).toBe(417)
       const text = await res.text()
-      expect(text).toMatch(/MotherDuck could not be reached/)
+      expect(text).toMatch(/token cannot read the database archive/)
       expect(text).not.toContain(STANDIN_TOKENS.reader)
     }
+  })
+
+  test('an address kept on an older row is ignored: what the token can read decides', async ({ admin }) => {
+    await connect(admin, 'md-old-address', ['sales'])
+    await sql`update featherbase.data_source set databases = ${sql.json([{ name: 'sales', address: `${dir}/finance.duckdb`, owner: 'This account' }])} where row_id = 'md-old-address'`
+    invalidateSources('md-old-address')
+    expect((await admin.get<{ rows: number }>(`${SOURCES}/md-old-address:preview?database=sales&schema=main&table=stores`)).rows).toBe(3)
   })
 })
 
 describe('An account with no database of its own', () => {
-  test('lists only the databases shared with it, and is taken as read-only', async ({ admin }) => {
+  // #969: a service account that owns nothing reaches the warehouse only through
+  // shares, by their listed address. Queries still name the databases directly.
+  test('a dataset query naming "gold" and "marts" reads them through their shares, read-only', async () => {
+    const bare = await buildStandin([])
+    await changeStandin(bare, 'gold', ['create schema masters', "create table masters.store (code varchar)", "insert into masters.store values ('S001')"])
+    await changeStandin(bare, 'marts', ['create schema sales', "create table sales.target_vs_actual_daily (code varchar, target integer)", "insert into sales.target_vs_actual_daily values ('S001', 7)"])
+    const { DuckDBInstance } = await import('@duckdb/node-api')
+    const listing = await DuckDBInstance.create(`${bare}/md_information_schema.duckdb`)
+    const conn = await listing.connect()
+    await conn.run(`insert into shared_with_me values ('gold', '${bare}/gold.duckdb', 'warehouse-owner'), ('marts', '${bare}/marts.duckdb', 'warehouse-owner')`)
+    conn.closeSync()
+    listing.closeSync()
+    overrideVariable('MOTHERDUCK_STANDIN', bare)
+    const cfg = { name: 'md-shares-only', engine: 'motherduck', url_env: null, root_path: null, default_schema: 'gold.main', access: 'read_only', pool_max: 5, statement_timeout_ms: 10000, allowlist: null, databases: [{ name: 'gold' }, { name: 'marts' }] } as const
+    try {
+      const rows = await duckdbDriver.query!({ ...cfg, databases: [...cfg.databases] },
+        'select s.code, t.target from "gold"."masters"."store" s join "marts"."sales"."target_vs_actual_daily" t on t.code = s.code',
+        [{ name: 'code', type: 'text' }, { name: 'target', type: 'integer' }])
+      expect(rows).toEqual([{ code: 'S001', target: 7 }])
+      const attached = await run({ ...cfg, databases: [...cfg.databases] }, "select database_name, readonly from duckdb_databases() where database_name in ('gold', 'marts') order by 1", [])
+      expect(attached).toEqual([{ database_name: 'gold', readonly: true }, { database_name: 'marts', readonly: true }])
+    } finally {
+      duckdbDriver.dispose(cfg.name)
+      overrideVariable('MOTHERDUCK_STANDIN', dir)
+      rmSync(bare, { recursive: true, force: true })
+    }
+  })
+
+  test('lists only the databases shared with it', async ({ admin }) => {
     const bare = await buildStandin([])
     overrideVariable('MOTHERDUCK_STANDIN', bare)
     try {
-      const report = await admin.post<{ can_write: boolean; databases: { name: string }[] }>(`${SOURCES}:motherduck_test`, { token: STANDIN_TOKENS.writer })
+      const report = await admin.get<{ databases: { name: string }[] }>(`${SOURCES}:motherduck_databases`)
       expect(report.databases.map((d) => d.name)).toEqual(['finance', 'people', 'planning'])
-      expect(report.can_write).toBe(false)
     } finally {
       overrideVariable('MOTHERDUCK_STANDIN', dir)
       rmSync(bare, { recursive: true, force: true })
@@ -302,41 +397,13 @@ describe('Review fixes (#772 security review)', () => {
     instance.closeSync()
     overrideVariable('MOTHERDUCK_STANDIN', twin)
     try {
-      const res = await admin.fetch(`${SOURCES}:motherduck_connect`, { method: 'POST', body: JSON.stringify({ name: 'md-twin', token: STANDIN_TOKENS.reader, databases: ['stock'] }) })
+      const res = await admin.fetch(`${SOURCES}:motherduck_connect`, { method: 'POST', body: JSON.stringify({ name: 'md-twin', databases: ['stock'] }) })
       expect(res.status).toBe(417)
       expect(await res.text()).toMatch(/Two databases the token can read are called stock/)
     } finally {
       overrideVariable('MOTHERDUCK_STANDIN', dir)
       rmSync(twin, { recursive: true, force: true })
     }
-  })
-
-  test('a new token whose database of the same name is a different one is refused', async ({ admin }) => {
-    await connect(admin, 'md-other-account')
-    await sql`update featherbase.data_source set databases = jsonb_set(databases, '{0,address}', '"md:sales_of_someone_else"') where row_id = 'md-other-account'`
-    invalidateSources('md-other-account')
-    const res = await admin.fetch(`${SOURCES}/md-other-account:replace_token`, { method: 'POST', body: JSON.stringify({ token: STANDIN_TOKENS.second }) })
-    expect(res.status).toBe(417)
-    expect(await res.text()).toMatch(/cannot read sales/)
-  })
-
-  test("another account's token is refused even when it owns a database of the same name at the same address", async ({ admin }) => {
-    // reader_user and writer_user both own "sales" (md:sales on MotherDuck).
-    await connect(admin, 'md-same-name-other-user', ['sales'])
-    const res = await admin.fetch(`${SOURCES}/md-same-name-other-user:replace_token`, { method: 'POST', body: JSON.stringify({ token: STANDIN_TOKENS.writer }) })
-    expect(res.status).toBe(417)
-    expect(await res.text()).toMatch(/cannot read sales/)
-    expect((await admin.get<{ token_last_four: string }>(`${SOURCES}/md-same-name-other-user`)).token_last_four).toBe('4f2a')
-    // A shared database's address is global, so another user reading the same share is accepted.
-    await connect(admin, 'md-share-other-user', ['finance'])
-    await admin.post(`${SOURCES}/md-share-other-user:replace_token`, { token: STANDIN_TOKENS.writer })
-    expect((await admin.get<{ token_last_four: string }>(`${SOURCES}/md-share-other-user`)).token_last_four).toBe('77b1')
-  })
-
-  test('a source opens its databases read-only, even with a token that can write', async ({ admin }) => {
-    await connect(admin, 'md-ro', ['sales'], STANDIN_TOKENS.writer)
-    const [row] = await run(await getSource('md-ro'), "select readonly from duckdb_databases() where database_name = 'sales'", [])
-    expect(row.readonly).toBe(true)
   })
 
   test("a query's error never carries the token", async ({ admin }) => {

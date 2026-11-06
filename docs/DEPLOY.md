@@ -50,9 +50,20 @@ a variable is missing.
 Beyond the table, the instance's data asks for two more. An enabled Google
 sign-in method with a client id needs `GOOGLE_CLIENT_SECRET`: the release and
 the server start refuse without it (in development and test they warn). A Data
-Source needs the variable its `url_env` names: without it the release and the
-start only warn, and every query against that source refuses, naming the
-variable.
+Source needs the variable its `url_env` names, and every MotherDuck source needs
+`MOTHERDUCK_TOKEN`: without it the release and the start only warn, and every
+query against that source refuses, naming the variable.
+
+**One MotherDuck token.** `MOTHERDUCK_TOKEN` is the only MotherDuck setting: app
+datasets, the Dive embed, connected tables and copied tables all use it. A
+MotherDuck source names the databases it reads, and that token must be able to
+read them; a share created hidden is not listed, so it cannot be named. Featherbase
+only reads the warehouse, even when the token has write rights: every session
+attaches its databases read-only, and no setting changes that (ADR 0020). To
+rotate the token, change the variable and restart. A DuckDB source that held a
+MotherDuck address under another variable name is refused until a settings file or
+an admin makes it a MotherDuck source, with `"url_env": null`; the upgrade converts
+only a source using `MOTHERDUCK_URL` or marked as holding a read-scaling token.
 
 <!-- generated:variables:start — from apps/server/src/env.ts by `pnpm --filter server generate:env`; do not edit -->
 
@@ -65,7 +76,6 @@ variable.
 | `WEB_ORIGINS` | no | no | `http://localhost:5173,http://127.0.0.1:5173` | comma-separated CORS allowlist; needed only when the SPA is served from another origin |
 | `INSTANCE_ADDRESSES` | **yes**, outside development and test | no |  | a JSON array saying what each web address of this instance opens (`admin` or an app) and which one emailed links use. See [Instance addresses](#instance-addresses). Unset (development and test only), the server falls back to the request, trusting the first `x-forwarded-proto` hop |
 | `JWT_SECRET` | **yes**, outside development and test | yes | `dev-secret-change-me` | session and token signing. Must differ between environments, or one environment's sessions are valid on another (must differ across environments) |
-| `SECRET_STORE_KEY` | no | yes | a fixed development key (development and test only) | the master key that encrypts tokens pasted in the app, such as a MotherDuck source's (ADR 0018). Outside development and test it must be set, and at least 32 characters, before a pasted token can be saved or read. Changing it means pasting each token again (must differ across environments) |
 | `FILE_URL_SECRET` | no | yes | `JWT_SECRET` | signs the short-lived URLs of private files (must differ across environments) |
 | `ADMIN_PASSWORD` | no | yes |  | provisions a null Administrator password hash; missing or blank leaves production password login locked. Never rotates an existing hash (see [Rotating credentials](#rotating-credentials)) |
 | `GOOGLE_CLIENT_SECRET` | **yes**, while a Google sign-in method is enabled with a client id | yes |  | the Google OAuth client secret; the client id and allowed domains live on the Google sign-in method (must match across environments) |
@@ -76,7 +86,7 @@ variable.
 | `SMTP_PORT` | no | no | `587` | `587` = STARTTLS, `465` = implicit TLS. On every port but 465, STARTTLS is required |
 | `SMTP_USER` | no | no |  | a Workspace user in the domain; turns on SMTP AUTH |
 | `SMTP_PASSWORD` | no | yes |  | that user's **app password**; required when `SMTP_USER` is set. Google's grouped display (`abcd efgh ijkl mnop`) has its spaces removed |
-| `MAIL_FROM` | no | no |  | the From of every SMTP message (`Feather Dash <noreply@example.com>`); it wins over any Email Account address. Unset, the default Email Account's address is used |
+| `MAIL_FROM` | no | no |  | the From of every SMTP message (`Dash <noreply@example.com>`); it wins over any Email Account address. Unset, the default Email Account's address is used |
 | `SMTP_NAME` | no | no |  | the `EHLO` hostname. Unset, the domain of `MAIL_FROM`, then the host of the `INSTANCE_ADDRESSES` entry marked for emails, then the sender's domain |
 | `PREAUTH_WINDOW_MS` | no | no | `900000` | pre-auth fixed window, in milliseconds |
 | `PREAUTH_LOGIN_MAX` | no | no | `60` | password and delegated sign-in submissions per source and window |
@@ -92,7 +102,7 @@ variable.
 | `RATE_LIMIT_MAX` | no | no | `100000` | per-user API requests per window, unless the person has their own limit |
 | `DELEGATED_LOGIN_TEST_MODE` | **never in production**: development, test and staging only | no |  | `trust-any-password` lets a linked account sign in by its employee code without a password, to try a rollout as any linked Team Leader. Any other value is ignored |
 | `ALLOW_MOCK_OAUTH` | **never outside development and test** | no |  | `1` turns on the mock Google provider, which mints a session for any typed email from a pre-auth endpoint. For development and the test suites |
-| `MOTHERDUCK_STANDIN` | **never outside development and test** | no |  | a folder holding a local stand-in for MotherDuck (its account listing and database files); set, every pasted-token MotherDuck source talks to it instead of MotherDuck. For the test suites |
+| `MOTHERDUCK_STANDIN` | **never outside development and test** | no |  | a folder holding a local stand-in for MotherDuck (its account listing and database files); set, every MotherDuck source talks to it instead of MotherDuck. For the test suites |
 | `PREVIEW_LOGIN_KEY` | **never in production**: development, test and staging only | yes |  | preview deployments: the one-link sign-in's secret, 32+ characters. See [PREVIEW.md](PREVIEW.md) |
 | `PREVIEW_LOGIN_USER` | **never in production**: development, test and staging only | no |  | preview deployments: the account the link signs in as (never Administrator) |
 | `PREVIEW_USER_NAME` | no | no |  | preview deployments: the full name the pre-deploy step gives the preview person (default `Preview Visitor`) |
@@ -105,7 +115,7 @@ variable.
 | `FEATHERBASE_INSTANCE` | no | no |  | the client instance this image was built for (`<client>/<instance>`), as a build argument and a variable. Set, the pre-deploy step installs or upgrades its apps and applies its settings. See [A client instance](#a-client-instance) |
 | `JOB_POLL_MS` | no | no | `500` | background worker poll interval |
 | `SERVER_URL` | no | no | `http://localhost:8000` | the server `pnpm smoke` probes |
-| `MOTHERDUCK_TOKEN` | no | yes |  | MotherDuck access for the sales-target embed and warehouse reads; never logged, returned or stored |
+| `MOTHERDUCK_TOKEN` | no | yes |  | the one MotherDuck token: every MotherDuck source, app dataset and the sales-target embed use it. Featherbase only reads the warehouse, whatever rights the token has. Never logged, returned or stored |
 | `MOTHERDUCK_API_BASE` | no | no | `https://api.motherduck.com` | MotherDuck API base |
 | `MOTHERDUCK_EMBED_ORIGIN` | no | no | `https://embed-motherduck.com` | the embed sandbox origin, framed by the Sales Target page alone (#642); overridable only for a local stub |
 | `DIVE_ID` | no | no |  | the sales-target Dive |
@@ -121,7 +131,7 @@ variable.
 entry is one web address of this instance:
 
 ```json
-[{ "address": "https://dash.example.com", "opens": "feather_dash", "emails": true },
+[{ "address": "https://dash.example.com", "opens": "dash", "emails": true },
  { "address": "https://featherbase.example.com", "opens": "admin" }]
 ```
 
@@ -227,10 +237,15 @@ stopping at the first problem so that the old deployment keeps serving:
 
 Steps 2 to 4 are one transaction, and they hold the apps' lifecycle lock from
 start to end. While they run, the old deployment's API requests and jobs wait,
-usually for a few seconds. To take the lock, the step waits up to 60 seconds for
-requests already running. If they keep the apps busy longer than that, the deploy
-fails and changes nothing; deploy again. Inside the transaction, a lock wait over
-60 seconds, or 5 minutes idle, also fails the deploy.
+usually for a few seconds. To take the lock, the step makes up to 20 tries of 15
+seconds each, 15 seconds apart (just under 10 minutes), and logs each one with who
+is holding the apps. New requests queue behind a try, so they can stall for up to
+15 seconds while it waits; during the pause they run. If the apps are still busy
+after the last try, the deploy fails and changes nothing; deploy again. Railway
+sets no time limit on the pre-deploy step unless the service has a Pre-deploy
+Timeout; keep any such limit above 10 minutes plus the release's own time. Inside
+the transaction, a lock wait over 60 seconds, or 5 minutes idle, also fails the
+deploy.
 
 **Variables.** The table above, and for a client instance:
 
@@ -243,7 +258,7 @@ fails and changes nothing; deploy again. Inside the transaction, a lock wait ove
 | `DATABASE_URL`, `JWT_SECRET`, `INSTANCE_ADDRESSES`, `ADMIN_PASSWORD` | as for any instance, with its own values |
 | every `{ "env": "NAME" }` in the settings section | a missing one fails the deploy, naming it |
 | `GOOGLE_CLIENT_SECRET` | when the section enables Google sign-in with a client id; missing, the deploy fails, naming it |
-| the `url_env` of each Data Source, and each app's declared secrets | missing, the deploy warns, and only what needs them refuses |
+| the `url_env` of each Data Source, `MOTHERDUCK_TOKEN` when a MotherDuck source exists, and each app's declared secrets | missing, the deploy warns, and only what needs them refuses |
 
 **Which code each environment runs.**
 
@@ -686,7 +701,8 @@ manages `System Settings` (any field, e.g. `app_name`, `time_zone`,
 and `Scheduled Job` rows (`enabled` only), and installed apps' declared
 settings as `App Setting` rows (`row_id` `<app>.<setting>`, `value` only), and
 `Data Source` rows by `row_id`, which name the variable holding the connection
-(`url_env`) and never the connection itself. A reflected Table comes back by
+(`url_env`) and never the connection itself; a MotherDuck row names the databases
+it reads instead. A reflected Table comes back by
 reflecting from the restored source (the source's `reflect` action); the row does
 not create it.
 Values that differ by environment go in that environment's section; when the

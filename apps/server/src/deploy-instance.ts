@@ -8,7 +8,7 @@ import { join, resolve } from 'node:path'
 import { compareVersions } from './runtime-migrations'
 import type { CommandIO } from './command-io'
 import { sql, withTransaction } from './db'
-import { instanceDeployOperation } from './app-lifecycle'
+import { DEPLOY_LOCK_WAIT, instanceDeployOperation, type DeployLockWait } from './app-lifecycle'
 import { storedEnvironment } from './db-environment'
 import { currentEnvironment, readVariable } from './env'
 
@@ -106,13 +106,10 @@ async function installOrUpgradeApps(io: CommandIO) {
   }
 }
 
-/** How long a deploy waits for live requests to finish with the apps. */
-const DEPLOY_LOCK_WAIT_SECONDS = 60
-
 /** The instance's part of a deploy. Runs after the release, so the platform is
  *  migrated. All of it is one transaction: a failure anywhere leaves the apps and
  *  settings as they were, matching the deployment that is still serving. */
-export async function deployInstance(instance: string, io: CommandIO, opts: { root?: string; lockWaitSeconds?: number } = {}): Promise<void> {
+export async function deployInstance(instance: string, io: CommandIO, opts: { root?: string; lockWait?: DeployLockWait } = {}): Promise<void> {
   const section = settingsSection()
   const { settingsFile } = instanceFolder(instance, opts.root)
   // #943: the exclusive app lifecycle lock first, before the transaction holds
@@ -131,5 +128,5 @@ export async function deployInstance(instance: string, io: CommandIO, opts: { ro
     const code = await cli.main(['settings:apply', '--file', settingsFile, '--environment', section], io)
     if (code !== 0) throw new Error('the settings file was not applied; see above')
     if (followsAppFiles(currentEnvironment(), await storedEnvironment())) await repinChangedApps(io)
-  }), opts.lockWaitSeconds ?? DEPLOY_LOCK_WAIT_SECONDS)
+  }), opts.lockWait ?? DEPLOY_LOCK_WAIT, (line) => io.out(line))
 }

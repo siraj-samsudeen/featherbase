@@ -3,6 +3,7 @@ import { DEFAULT_ID_PATTERN, namingColumn, prettifyLabel, renameNamingColumn, ta
 import { inAppTransaction, sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { assertNotSystemWritten } from './system-written'
+import { renameColumnInSyncRules, renameTableInSyncRules } from './master-sync-names'
 import { COLUMN_TYPE_VALUES, ROW_KEY, type TableMeta, getMeta, invalidateMeta } from './meta'
 import { accessPolicySchema, policyColumns } from './access-policy'
 import { logAccess } from './audit'
@@ -10,7 +11,7 @@ import { deleteStored } from './storage'
 import { asNameList } from './installed-app-ledger'
 import { COLUMN_NAME_RE, quoteIdent } from './sql-identifier'
 import { PLATFORM_SCHEMA, platformRelation, resolvedRelation, tableName } from './platform-schema'
-import { readingPresentationSchema } from 'shared'
+import { canRetire, readingPresentationSchema } from 'shared'
 import { allowedTables, anyTableLinkColumns, linkableTable } from './any-table-link'
 
 export { tableName }
@@ -30,6 +31,16 @@ export const STANDARD_COLUMNS = [
   'parenttype',
   'parentfield',
 ] as const
+
+// #859: retiring a row (ADR 0019). Every stored Table of kind 'table' carries
+// these beside the standard columns; the names are reserved on every Table.
+export const RETIREMENT_COLUMNS = ['retired_at', 'retired_by', 'retired_reason'] as const
+
+// Names no builder's column may take: the standard columns and the retirement ones.
+export const RESERVED_COLUMNS: readonly string[] = [...STANDARD_COLUMNS, ...RETIREMENT_COLUMNS]
+
+/** Whether a Table's rows can be retired (ADR 0019); one rule, in shared. */
+export { canRetire }
 
 // META-002: how each column type maps to a Postgres column type.
 // Layout columns and Sub-table columns produce no column at all.
@@ -283,7 +294,7 @@ function validateDef(def: TableDef) {
   }
   const seen = new Set<string>()
   for (const f of def.columns) {
-    if ((STANDARD_COLUMNS as readonly string[]).includes(f.column_name))
+    if (RESERVED_COLUMNS.includes(f.column_name))
       errs[f.column_name] = `'${f.column_name}' is a reserved column name`
     if (seen.has(f.column_name)) errs[f.column_name] = 'duplicate column_name'
     seen.add(f.column_name)
@@ -389,6 +400,8 @@ function createTableDDL(def: TableDef, relation = tableName(def.name)): string |
     `"status" text not null default 'draft'`,
     `"position" integer not null default 0`,
   ]
+  if ((def.kind ?? 'table') === 'table')
+    cols.push(`"retired_at" timestamptz`, `"retired_by" varchar(140)`, `"retired_reason" text`)
   if (def.kind === 'sub_table') {
     cols.push(
       `"parent" varchar(140)`,
@@ -1081,7 +1094,7 @@ export async function renameColumn(
   if (target === from) return meta
   if (!COLUMN_NAME_RE.test(target))
     throw new AppError('ValidationError', 'column_name must be snake_case', { to: 'snake_case' })
-  if ((STANDARD_COLUMNS as readonly string[]).includes(target))
+  if (RESERVED_COLUMNS.includes(target))
     throw new AppError('ValidationError', `${target} is a standard column name`)
   if (meta.columns.some((c) => c.column_name === target))
     throw new AppError('ValidationError', `${meta.name} already has a column ${target}`)
@@ -1100,6 +1113,8 @@ export async function renameColumn(
       where parent = ${meta.name} and table_column = ${from}`
     await tx`update featherbase.table_copy set key_column = ${target}
       where target_table = ${meta.name} and key_column = ${from}`
+    // #936: a master sync rule naming this column keeps working.
+    await renameColumnInSyncRules(tx, meta.name, from, target)
     // A Sub-table's children name their column on every row, in
     // `parentfield`, and every child read filters on it (document.ts
     // loadChildren). Renaming only the column_def would leave them addressed
@@ -1287,6 +1302,8 @@ async function moveTable(meta: TableMeta, to: string, relationName: string, user
     // A copied Table's provenance follows it, before the old definition's
     // delete would cascade it away (#772: Copy again must survive a rename).
     await tx`update featherbase.table_copy set target_table = ${to} where target_table = ${from}`
+    // #936: a master sync rule naming this Table as its master or link keeps working.
+    await renameTableInSyncRules(tx, from, to)
     await tx`delete from table_def where name = ${from}`
     await tx`update column_def set reference_table = ${to} where reference_table = ${from}`
     // #881: a link to a row of any Table keeps allowing the Table by its new

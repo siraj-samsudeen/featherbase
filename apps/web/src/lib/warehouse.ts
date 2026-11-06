@@ -1,4 +1,4 @@
-// #772: a MotherDuck source connected by a pasted token — the calls the
+// #772, #969: a MotherDuck source, read with the instance's one token — the calls the
 // connect page, the source page and the browser make, and where each person
 // last browsed (a per-user localStorage entry, like recents).
 import { api, getSessionUser } from './api'
@@ -6,16 +6,14 @@ import { api, getSessionUser } from './api'
 const SOURCES = '/api/table/Data%20Source'
 const enc = encodeURIComponent
 
-export interface TokenReport { user: string; can_write: boolean; databases: { name: string; owner: string }[] }
+export interface WarehouseReport { user: string; databases: { name: string; owner: string }[] }
 export interface TableListing { listed_at: string; schemas: { schema: string; tables: { name: string; rows: number; columns: number }[] }[] }
 export interface TablePreview { rows: number; columns: { name: string; type: string }[]; first_rows: Record<string, unknown>[] }
-export interface WarehouseSource { row_id: string; engine: string; token_last_four: string | null; databases: { name: string; owner: string }[] | null }
+export interface WarehouseSource { row_id: string; engine: string; databases: { name: string; owner?: string }[] | null }
 
-export const testToken = (token: string) => api.post<TokenReport>(`${SOURCES}:motherduck_test`, { token })
-export const connectWarehouse = (name: string, token: string, databases: string[]) =>
-  api.post<{ name: string }>(`${SOURCES}:motherduck_connect`, { name, token, databases })
-export const replaceToken = (name: string, token: string) =>
-  api.post<{ token_last_four: string; can_write: boolean }>(`${SOURCES}/${enc(name)}:replace_token`, { token })
+export const listDatabases = () => api.get<WarehouseReport>(`${SOURCES}:motherduck_databases`)
+export const connectWarehouse = (name: string, databases: string[]) =>
+  api.post<{ name: string }>(`${SOURCES}:motherduck_connect`, { name, databases })
 export const listTables = (name: string, database: string) =>
   api.get<TableListing>(`${SOURCES}/${enc(name)}:tables?database=${enc(database)}`)
 export const refreshTables = (name: string, database: string) =>

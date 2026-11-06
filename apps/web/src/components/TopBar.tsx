@@ -9,7 +9,7 @@ import { useIsPreview, useWhoAmI, type Capabilities, type OpenableApp } from '..
 import { THEMES, THEME_LABEL, type Theme } from '../lib/theme'
 import { useThemeChoice } from '../lib/theme-choice'
 import { useI18n } from '../lib/i18n'
-import { BarControls } from './BarControls'
+import { BarControls, useBarControls } from './BarControls'
 import { AppSwitcher, useOpenAdmin } from './AppSwitcher'
 import { Logo } from './Logo'
 import { TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, useMediaQuery } from '@featherbase/shop-floor'
@@ -84,7 +84,7 @@ function nameOf(context: string, brand: Brand | undefined): string {
 
 /** The one app a person can belong to without a Table grant of their own:
  *  Feather Dash, the report page until an app is installed under its name. */
-const DASH = 'feather_dash'
+const DASH = 'dash'
 
 /** #501 item 3: on the Admin side, a page of the person's own (the account
  *  page) is named for where they belong — the Admin if they can use it, else
@@ -200,6 +200,10 @@ export function TopBar({
   // The app whose declared controls the bar draws (#642): the page's own app,
   // else the app this address opens.
   const controlsOf = app?.name ?? (onAppAddress ? brand?.opens : undefined)
+  // #983: beside an app's pickers a phone has no room for the app's name, so
+  // the switcher keeps its logo and a chevron that still opens the list.
+  const hasControls = useBarControls(caps && controlsOf ? controlsOf : undefined).length > 0
+  const compactSwitcher = Boolean(app) && hasControls
   const tabs = useAppTabs(context, installed, isPhone && Boolean(caps))
   // Over an app's own page the bar's router is a private one, so the open tab
   // follows the document's own address (#650).
@@ -219,10 +223,10 @@ export function TopBar({
         {/* The shared name dropdown lines up with the sidebar. App-declared
             controls follow it; content keeps its own document and state. */}
         <div
-          className={`flex min-w-0 items-center gap-1 md:px-3 ${controlsOf && !app ? 'md:shrink-0' : 'flex-1 sm:flex-none md:w-60 md:shrink-0'}`}
+          className={`flex min-w-0 items-center gap-1 md:px-3 ${controlsOf && !app ? 'md:shrink-0' : compactSwitcher ? 'max-sm:shrink-0 sm:flex-none md:w-60 md:shrink-0' : 'flex-1 sm:flex-none md:w-60 md:shrink-0'}`}
           data-testid="top-bar-left"
         >
-          {left ?? (app ? <AppSwitcher app={app} /> : context && name && <BarName href={homeHref(context, installed)} name={name} />)}
+          {left ?? (app ? <AppSwitcher app={app} compact={compactSwitcher} /> : context && name && <BarName href={homeHref(context, installed)} name={name} />)}
         </div>
         {caps && controlsOf && <BarControls app={controlsOf} />}
         {children ?? <div className="hidden flex-1 sm:block" aria-hidden="true" />}

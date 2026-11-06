@@ -6,7 +6,7 @@ import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { secureHeaders } from 'hono/secure-headers'
 import { config } from './config'
 import { sql, withTransaction } from './db'
-import { assertNotSystemWritten } from './system-written'
+import { assertRowsWritable } from './system-written'
 import { AppError, errorResponse } from './errors'
 import { runInSession } from './session-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
@@ -27,6 +27,7 @@ import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview
 import { resolvePreviewPerson } from './preview-person'
 import { personByEmail, pickPeople, principalNames, tableMembers } from './people-directory'
 import { countWaitingForAccess, noAccessYetPage, requestAccess } from './waiting-for-access'
+import { archiveTable, unarchiveTable } from './table-archive'
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser, noLinkCarries, recordToName } from './delegated-login'
 import { hold, rosterFirstSignIn } from './roster-first-sign-in'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
@@ -60,6 +61,7 @@ import './actions/master-sync-actions'
 import './actions/row-connections'
 import './actions/collection-aggregate'
 import './actions/collection-summary'
+import './actions/collection-purge'
 import './actions/collection-bulk'
 import { renderPdf, renderPrintHtml } from './print'
 import { availableActions, currentState, getActiveWorkflow } from './workflow'
@@ -771,6 +773,14 @@ app.use('/api/*', async (c, next) => {
 // key by the resolved user and read their budget).
 app.use('/api/*', rateLimit)
 
+/** A request that reaches only the copy actions, whichever way its path is
+ *  encoded (a colon may arrive as %3A): any other suffix or verb takes the lock. */
+function isCopyRequest(method: string, path: string): boolean {
+  if (method !== 'POST' || !path.startsWith('/api/table/')) return false
+  try { return /:copy_(?:again|create)$/.test(decodeURIComponent(path)) }
+  catch { return false }
+}
+
 // Lock the complete request, including internal SQL and post-commit work.
 // Lifecycle endpoints take the exclusive counterpart inside their handlers
 // (the upgrade preview too since #651: it runs the steps to count losses).
@@ -785,7 +795,8 @@ app.use('/api/*', async (c, next) => {
     // on an outside call holds no lifecycle connection.
     // #642: the top bar's options are app reads too (Codex round 1 on #643).
     const appRead = c.req.path.startsWith('/api/app_reads/') || c.req.path.startsWith('/api/app_bar/')
-    return withAppClientVersion(c.req.header('X-Featherbase-App-Version') ?? '', () => appRead ? next() : appOperation(next))
+    // #971: a copy reads its source with no lifecycle lock and takes it to apply.
+    return withAppClientVersion(c.req.header('X-Featherbase-App-Version') ?? '', () => appRead || isCopyRequest(c.req.method, c.req.path) ? next() : appOperation(next))
   } catch (error) {
     const protectedOperation = /^\/api\/app_(?:reads|actions)\/([^/]+)\/([^/]+)(?:\/access)?$/.exec(c.req.path)
     if (protectedOperation) return recordAppAccessRefusal(who(c), protectedOperation[1], protectedOperation[2], 'identity')
@@ -903,12 +914,17 @@ app.get('/api/whoami', async (c) => {
   // Table list itself, so none are sent here.
   const manage = user.row_id === 'Administrator' || roles.includes('System Manager')
   const access = manage
-    ? { readable: [], creatable: [], ownGrant: true, admin: true }
+    ? { readable: [] as string[], creatable: [] as string[], ownGrant: true, admin: true }
     : await tableAccessFor(user.row_id, roles)
+  // #905: archived Tables the person can read, so the shell lists them apart
+  // and keeps them out of the pickers.
+  const archived = (await sql`select name from table_def where archived_at is not null order by name`)
+    .map((r) => String(r.name))
+    .filter((name) => manage || access.readable.includes(name))
   return c.json({
     ...user,
     roles,
-    capabilities: { manage, report: roles.includes(VIEWER_ROLE), admin: access.admin, own_grant: access.ownGrant, tables: access.readable, creatable: access.creatable },
+    capabilities: { manage, report: roles.includes(VIEWER_ROLE), admin: access.admin, own_grant: access.ownGrant, tables: access.readable, creatable: access.creatable, archived },
     // #671: the installed apps this person can open, so the shared top bar can
     // lead to and name them without asking an Admin endpoint.
     apps: (await appCatalog(user.row_id)).map(({ name, title }) => ({ name, title })),
@@ -1302,7 +1318,7 @@ app.get('/api/people/waiting_for_access/count', async (c) => {
 })
 
 // #955: a page that found the person has no access to it (Featherbase's
-// no-access page, Feather Dash's) says so here; opening it is the request.
+// no-access page, Dash's) says so here; opening it is the request.
 app.post('/api/access_request', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { app?: unknown }
   const answer = typeof body.app === 'string' ? await requestAccess(who(c), body.app) : null
@@ -1631,6 +1647,18 @@ app.post('/api/table_def/:name/rename_column', async (c) => {
   if (typeof body.from !== 'string' || typeof body.to !== 'string')
     throw new AppError('ValidationError', 'Expected { from, to }')
   return c.json(await renameColumn(c.req.param('name'), body.from, body.to, who(c)))
+})
+
+// #905: archive a custom Table, or bring it back. Its rows stay readable.
+app.post('/api/table_def/:name/archive', async (c) => {
+  await assertSystemManager(who(c))
+  const body = (await c.req.json().catch(() => ({}))) as { note?: unknown }
+  return c.json(await archiveTable(await resolveTableName(c.req.param('name')), who(c), body.note))
+})
+
+app.post('/api/table_def/:name/unarchive', async (c) => {
+  await assertSystemManager(who(c))
+  return c.json(await unarchiveTable(await resolveTableName(c.req.param('name')), who(c)))
 })
 
 // #871: rename a custom Table, carrying everything that names it.
@@ -2185,6 +2213,7 @@ function listArgsFromQuery(q: Record<string, string>) {
     order_by: q.order_by,
     limit_start: num('limit_start'),
     limit_page_length: num('limit_page_length'),
+    with_retired: q.with_retired === 'true',
   }
 }
 
@@ -2270,7 +2299,7 @@ app.get('/api/table/:table', async (c) => {
         throw new AppError('BadRequestError', 'filters must be valid JSON')
       }
     }
-    return c.json({ count: await countDocs(table, parsed as never, user.row_id) })
+    return c.json({ count: await countDocs(table, parsed as never, user.row_id, { withRetired: c.req.query('with_retired') === 'true' }) })
   }
   if (suffix) {
     const action = getCollectionAction(suffix)
@@ -2296,7 +2325,7 @@ app.post('/api/table/:table', async (c) => {
       throw new AppError('NotFoundError', `No writable collection action ":${suffix}"`)
     // #432: one gate for every write action, present and future (import,
     // import-revert, …) — a system-written Table takes none of them.
-    assertNotSystemWritten(await getMeta(table), 'changed')
+    assertRowsWritable(await getMeta(table), 'changed')
     const args = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
     return c.json(await action.handler({ table, args, user }), 201)
   }
@@ -2334,7 +2363,7 @@ app.post('/api/table/:table/:name', async (c) => {
   if (!action || action.effect !== 'write')
     throw new AppError('NotFoundError', `No writable row action ":${suffix}"`)
   // #432: submit, cancel, amend, rename, workflow actions and any later one.
-  assertNotSystemWritten(await getMeta(table), 'changed')
+  assertRowsWritable(await getMeta(table), 'changed')
   const args = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
   const result = await action.handler({ table, name, args, user })
   publishDocEvent(table, name, 'updated')

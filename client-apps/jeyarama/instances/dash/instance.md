@@ -1,6 +1,6 @@
 # The `jeyarama/dash` instance
 
-This folder is how JeyaRama's Feather Dash instance is set up. It holds no code
+This folder is how JeyaRama's Dash instance is set up. It holds no code
 and no secret: passwords, tokens and connection strings stay in the host's
 variables.
 
@@ -27,8 +27,10 @@ The base applies everywhere. `local`, `dev` and `prod` hold what differs:
   saving a Dive releases it (#937).
 - **Refreshing the cached figures.** Off locally: there is no warehouse to
   refresh from, and a refresh would only fail.
-- **The warehouse.** The `motherduck` Data Source names the variable holding its
-  connection, `MOTHERDUCK_URL`.
+- **The warehouse.** The `motherduck` Data Source names the databases it reads.
+  Its token is the `MOTHERDUCK_TOKEN` deployment variable, the one token all of
+  Featherbase uses. Featherbase only reads the warehouse, whatever rights that
+  token has. The token must be able to read those databases.
 
 Apply from the repository root. `--dry-run` writes nothing, and an app's settings
 need the app installed first:

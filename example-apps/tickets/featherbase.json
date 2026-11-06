@@ -10,6 +10,7 @@
   "roles": ["Tickets Support"],
   "settings": [
     {"name": "support_users", "required": false},
+    {"name": "assignees", "required": false},
     {"name": "verification_admins", "required": false},
     {"name": "fulfillment_admins", "required": false},
     {"name": "approval_routes", "required": false},
@@ -114,7 +115,8 @@
       {"kind": "addTable", "table": {"name": "tickets.open_event", "label": "Open history", "module": "Tickets", "id_pattern": "FTO-.########", "columns": [       {"column_name": "ticket", "label": "Ticket", "column_type": "Reference", "reference_table": "tickets.ticket"},       {"column_name": "operation", "label": "Operation", "column_type": "Data"},       {"column_name": "text", "label": "Event", "column_type": "Text"},       {"column_name": "by", "label": "Actor", "column_type": "Data"},       {"column_name": "at", "label": "Time", "column_type": "Data"}     ]}}
     ]},
     {"id": "platform_shell", "fromVersion": "0.2.0", "toVersion": "0.2.1", "operations": []},
-    {"id": "change_raiser", "fromVersion": "0.2.1", "toVersion": "0.2.2", "operations": []}
+    {"id": "change_raiser", "fromVersion": "0.2.1", "toVersion": "0.2.2", "operations": []},
+    {"id": "assignees", "fromVersion": "0.2.2", "toVersion": "0.2.3", "operations": []}
   ],
   "permissions": [
     {"table": "tickets.ticket", "role": "All", "can_read": true, "can_write": true, "can_create": true},

@@ -37,6 +37,7 @@ interface RosterRow {
   person: string | null
   name: string
   status: string
+  retired: boolean
   values: Record<string, string>
 }
 
@@ -96,6 +97,7 @@ function rowOf(r: Record<string, unknown>, link: RosterLink): RosterRow {
     person: (r[link.person_column] as string | null) || null,
     name: text(link.name_column),
     status: text(link.status_column),
+    retired: r.retired_at != null,
     values: Object.fromEntries(Object.entries(link.identifiers).map(([system, column]) => [system, text(column)])),
   }
 }
@@ -141,7 +143,8 @@ async function candidate(method: SignInMethod, roster: Roster, id: string): Prom
     return null
   }
   const [row] = rows
-  if (row.status !== roster.link.current_status) return null
+  // #859: a retired row is out of use, whatever its status says.
+  if (row.status !== roster.link.current_status || row.retired) return null
   // A concurrent first sign-in committed just now. The service still checks this
   // one's password, and link() then lands it on the winner.
   if (row.person && (await winner(method, row))) return row
@@ -185,7 +188,7 @@ async function link(method: SignInMethod, roster: Roster, id: string, asked: Ros
       const won = row.record === asked.record ? await winner(method, row) : null
       return won ?? 'row_has_person'
     }
-    if (row.status !== config.current_status || row.record !== asked.record || row.sign_in_id.toLowerCase() !== id.toLowerCase()) return 'link_failed'
+    if (row.retired || row.status !== config.current_status || row.record !== asked.record || row.sign_in_id.toLowerCase() !== id.toLowerCase()) return 'link_failed'
     if ((await rowsWithId(roster, id)).length > 1) return 'duplicate_id'
     const problem = await problemWith(method, roster, row)
     if (problem) return problem

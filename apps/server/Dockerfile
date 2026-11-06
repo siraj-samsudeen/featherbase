@@ -97,6 +97,15 @@ RUN node -e "fetch(process.argv[1]).then(r => { if (!r.ok) throw new Error('HTTP
     && cd example-apps/tickets && node -e "if (require('./package.json').version !== '0.2.1') process.exit(1)" \
     && npm ci --ignore-scripts && npm run build
 
+# Tickets 0.2.2, the version installed before 0.2.3, the same way.
+FROM web-build AS tickets-0-2-2-build
+WORKDIR /previous
+ARG TICKETS_0_2_2_ARCHIVE=https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/012f1721682cde76fd4a560dbc561f71e1ac30c6
+RUN node -e "fetch(process.argv[1]).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer() }).then(b => require('node:fs').writeFileSync('source.tar.gz', Buffer.from(b)))" "$TICKETS_0_2_2_ARCHIVE" \
+    && tar -xzf source.tar.gz --strip-components=1 \
+    && cd example-apps/tickets && node -e "if (require('./package.json').version !== '0.2.2') process.exit(1)" \
+    && npm ci --ignore-scripts && npm run build
+
 # ---- Stage 3: the platform image -------------------------------------------
 # The server, the built SPA and the start command, with no app and no
 # FEATHERBASE_APP_PATHS. This is the image published to GHCR by commit
@@ -167,10 +176,13 @@ COPY --from=tickets-0-2-0-build /previous/example-apps/tickets/dist example-apps
 COPY --from=tickets-0-2-1-build /previous/example-apps/tickets/package.json example-apps/tickets-0.2.1/package.json
 COPY --from=tickets-0-2-1-build /previous/example-apps/tickets/featherbase.json example-apps/tickets-0.2.1/featherbase.json
 COPY --from=tickets-0-2-1-build /previous/example-apps/tickets/dist example-apps/tickets-0.2.1/dist
+COPY --from=tickets-0-2-2-build /previous/example-apps/tickets/package.json example-apps/tickets-0.2.2/package.json
+COPY --from=tickets-0-2-2-build /previous/example-apps/tickets/featherbase.json example-apps/tickets-0.2.2/featherbase.json
+COPY --from=tickets-0-2-2-build /previous/example-apps/tickets/dist example-apps/tickets-0.2.2/dist
 
 # When a later app version ships, the version installed on the instances is
-# built beside it and listed here too, so an upgrade can find it (Tickets 0.1.0, 0.2.0 and 0.2.1).
-ENV FEATHERBASE_APP_PATHS='["/app/example-apps/tasker","/app/example-apps/tickets","/app/example-apps/tickets-0.1.0","/app/example-apps/tickets-0.2.0","/app/example-apps/tickets-0.2.1"]'
+# built beside it and listed here too, so an upgrade can find it (Tickets 0.1.0, 0.2.0, 0.2.1 and 0.2.2).
+ENV FEATHERBASE_APP_PATHS='["/app/example-apps/tasker","/app/example-apps/tickets","/app/example-apps/tickets-0.1.0","/app/example-apps/tickets-0.2.0","/app/example-apps/tickets-0.2.1","/app/example-apps/tickets-0.2.2"]'
 
 # ---- The image this build produces ------------------------------------------
 FROM ${FINAL_STAGE:-tasker-image}

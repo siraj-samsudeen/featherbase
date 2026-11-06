@@ -36,13 +36,13 @@ function options(argv: string[]) {
 }
 
 const FIELDS = {
-  'feather_dash.store_rollout': ['store', 'live_since'],
-  'feather_dash.store_floor': ['row_id', 'store', 'floor_name'],
-  'feather_dash.department': ['row_id', 'store', 'department_key', 'name'],
-  'feather_dash.section': ['row_id', 'store', 'section_name', 'floor', 'department', 'team_leaders_allowed'],
-  'feather_dash.section_subcategory': ['row_id', 'store', 'subcategory', 'section', 'starts_on', 'ends_on'],
-  'feather_dash.job_assignment': ['row_id', 'person', 'job', 'store', 'floor', 'department', 'section', 'reports_to', 'acting', 'assignment_type', 'percentage', 'starts_on', 'ends_on'],
-  'feather_dash.section_alias': ['row_id', 'store', 'source', 'alias', 'section'],
+  'dash.store_rollout': ['store', 'live_since'],
+  'dash.store_floor': ['row_id', 'store', 'floor_name'],
+  'dash.department': ['row_id', 'store', 'department_key', 'name'],
+  'dash.section': ['row_id', 'store', 'section_name', 'floor', 'department', 'team_leaders_allowed'],
+  'dash.section_subcategory': ['row_id', 'store', 'subcategory', 'section', 'starts_on', 'ends_on'],
+  'dash.job_assignment': ['row_id', 'person', 'job', 'store', 'floor', 'department', 'section', 'reports_to', 'acting', 'assignment_type', 'percentage', 'starts_on', 'ends_on'],
+  'dash.section_alias': ['row_id', 'store', 'source', 'alias', 'section'],
   [LEGACY_TABLES.assignments]: ['row_id', 'employee', 'plant_code', 'store_label', 'material_group'],
   [LEGACY_TABLES.employeeSections]: ['row_id', 'store_code', 'employee_code', 'subcategory', 'section_name'],
   [LEGACY_TABLES.ownership]: ['row_id', 'store_code', 'section_name', 'tl_employee_code', 'dm_employee_code', 'effective_from'],
@@ -56,7 +56,7 @@ const FIELDS = {
 export async function fromInstance(base: string, token: string, fetchImpl: typeof fetch = fetch): Promise<Snapshot> {
   const { version } = JSON.parse(await readFile(resolve(import.meta.dirname, '../package.json'), 'utf8')) as { version: string }
   const get = async (path: string): Promise<{ status: number; body: any }> => {
-    const response = await fetchImpl(`${base}${path}`, { headers: { authorization: `Bearer ${token}`, 'X-Featherbase-App-Version': `feather_dash@${version}` } })
+    const response = await fetchImpl(`${base}${path}`, { headers: { authorization: `Bearer ${token}`, 'X-Featherbase-App-Version': `dash@${version}` } })
     return { status: response.status, body: await response.json().catch(() => null) }
   }
   const all = async (table: string, optional = false, fields = FIELDS[table]): Promise<Row[]> => {
@@ -78,13 +78,13 @@ export async function fromInstance(base: string, token: string, fetchImpl: typeo
   const legacy = {} as LegacyTables
   for (const [key, table] of Object.entries(LEGACY_TABLES)) legacy[key as keyof LegacyTables] = await all(table, true)
   const snapshot: Snapshot = {
-    rollout: await all('feather_dash.store_rollout'),
+    rollout: await all('dash.store_rollout'),
     chart: {
-      floors: await all('feather_dash.store_floor'), departments: await all('feather_dash.department'),
-      sections: await all('feather_dash.section'), placements: await all('feather_dash.section_subcategory'),
-      jobs: await all('feather_dash.job_assignment'),
+      floors: await all('dash.store_floor'), departments: await all('dash.department'),
+      sections: await all('dash.section'), placements: await all('dash.section_subcategory'),
+      jobs: await all('dash.job_assignment'),
     },
-    sectionAliases: await all('feather_dash.section_alias'),
+    sectionAliases: await all('dash.section_alias'),
     legacy, codeHolders: {}, people: {},
   }
   // Each code the old Tables name, and its current holders.

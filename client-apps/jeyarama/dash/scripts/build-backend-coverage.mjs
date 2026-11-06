@@ -6,7 +6,7 @@ import { app, backendSources, instrumentBackend } from './backend-coverage.mjs'
 
 const outfile = resolve(process.argv[2] || '')
 const serverTests = resolve(app, '../../../apps/server/test')
-if (!/^feather-dash-platform-[^/]+\/app\/dist\/server\.mjs$/.test(relative(serverTests, outfile)))
+if (!/^dash-platform-[^/]+\/app\/dist\/server\.mjs$/.test(relative(serverTests, outfile)))
   throw new Error('Coverage builds must target a disposable platform-test runtime, never app dist')
 const sources = backendSources()
 const loaded = new Set()
