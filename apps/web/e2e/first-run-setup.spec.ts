@@ -29,7 +29,7 @@ const test = anonymousTest.extend<{ setupDiagnostics: void }>({
       const safePath = (path: string) => [
         '/featherbase/login', '/featherbase/admin', '/featherbase/admin/home/home',
         '/featherbase/admin/home/system', '/featherbase/admin/home/$name',
-        '/featherbase/admin/setup', '/featherbase/admin/setup/people',
+        '/featherbase/admin/setup', '/featherbase/admin/setup/person',
       ].includes(path) ? path : '<other>'
       const record = (event: string, extra: Partial<SetupDiagnostic> = {}) => w.__captureSetupDiagnostic({
         event,

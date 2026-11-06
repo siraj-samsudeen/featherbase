@@ -43,7 +43,7 @@ const COVERAGE: Record<string, string> = {
   '/featherbase/admin/apps': 'manager page catalogue',
   '/featherbase/admin/glossary': 'page catalogue',
   '/featherbase/admin/setup': 'manager page catalogue',
-  '/featherbase/admin/setup/people': 'Administrator-only page catalogue',
+  '/featherbase/admin/setup/person': 'Administrator-only page catalogue',
   '/featherbase/admin/home/$name': 'visible Home Pages',
   '/featherbase/admin/all-tables': 'page catalogue',
   '/featherbase/admin/source/$name': 'manager readable Data Sources',
