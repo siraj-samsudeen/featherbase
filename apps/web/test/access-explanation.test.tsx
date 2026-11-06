@@ -45,7 +45,8 @@ test('#628 a System Manager sees a person\'s roles, Tables, limits and shares, e
 test('#1006 someone who can use Admin reads the account pages in the Admin frame', async ({ admin }) => {
   await renderApp(pageOf('Administrator'), admin)
   expect(await screen.findByTestId('access-explanation', {}, WAIT)).toBeInTheDocument()
-  expect(await screen.findByTestId('awesomebar', {}, WAIT)).toBeInTheDocument()
+  expect(await screen.findByTestId('admin-sidebar', {}, WAIT)).toBeInTheDocument()
+  expect(screen.getByTestId('awesomebar')).toBeInTheDocument()
   expect(screen.queryByTestId('account-layout')).not.toBeInTheDocument()
 })
 
@@ -54,7 +55,7 @@ test('#1006 someone who cannot use Admin keeps the plain top bar', async ({ crea
   await renderApp(pageOf(me.user!), me)
   expect(await screen.findByTestId('access-explanation', {}, WAIT)).toBeInTheDocument()
   expect(screen.getByTestId('account-layout')).toBeInTheDocument()
-  expect(screen.queryByTestId('awesomebar')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('admin-sidebar')).not.toBeInTheDocument()
 })
 
 test('#628 the account menu opens your own page; an empty section says so', async ({ createUser }) => {

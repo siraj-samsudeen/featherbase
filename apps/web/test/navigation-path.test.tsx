@@ -57,7 +57,8 @@ test("the browser's back button returns to the step before", async ({ admin }) =
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(2))
   ;(router as unknown as { history: { back: () => void } }).history.back()
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(3))
-  expect(current()).toHaveTextContent(SITE)
+  // That entry's address holds no walk, so it reads as any plain list (#1013).
+  expect(screen.queryByRole('navigation', { name: 'Path' })).not.toBeInTheDocument()
 })
 
 test("the path's Back is the browser's back, so a new step after it leaves no stray history behind", async ({ admin }) => {
@@ -113,14 +114,14 @@ test("a step on a row the viewer can't read is named neutrally, never by its id"
 
 test('a filter on several linked rows names each of them', async ({ admin }) => {
   await seedSites(admin)
-  const path: NavPath = { steps: [{ screen: 'list', table: SITE, filters: [['region', 'in', ['KL', 'TN']]] }], at: 0 }
+  const path: NavPath = { steps: [{ screen: 'list', table: SITE }, { screen: 'list', table: SITE, filters: [['region', 'in', ['KL', 'TN']]] }], at: 1 }
   await renderApp(`${tableHref(SITE)}?path=${encodeURIComponent(encodePath(path))}`, admin)
   await waitFor(() => expect(current()).toHaveTextContent('Region in Kerala · KL, Tamil Nadu · TN'))
 })
 
 test("a filter on rows the viewer can't read names them neutrally, never by their ids", async ({ admin }) => {
   await seedSites(admin)
-  const path: NavPath = { steps: [{ screen: 'list', table: SITE, filters: [['region', 'not in', ['no-such-77']]] }], at: 0 }
+  const path: NavPath = { steps: [{ screen: 'list', table: SITE }, { screen: 'list', table: SITE, filters: [['region', 'not in', ['no-such-77']]] }], at: 1 }
   await renderApp(`${tableHref(SITE)}?path=${encodeURIComponent(encodePath(path))}`, admin)
   await waitFor(() => expect(current()).toHaveTextContent('Region not in A row you cannot see'))
   expect(pathNav()).not.toHaveTextContent('no-such-77')
@@ -128,7 +129,7 @@ test("a filter on rows the viewer can't read names them neutrally, never by thei
 
 test('a filter on the row id names the row', async ({ admin }) => {
   await seedSites(admin)
-  const path: NavPath = { steps: [{ screen: 'list', table: SITE, filters: [['row_id', '=', 'ENK']] }], at: 0 }
+  const path: NavPath = { steps: [{ screen: 'list', table: SITE }, { screen: 'list', table: SITE, filters: [['row_id', '=', 'ENK']] }], at: 1 }
   await renderApp(`${tableHref(SITE)}?path=${encodeURIComponent(encodePath(path))}`, admin)
   await waitFor(() => expect(current()).toHaveTextContent('Row ID: Enchakkal · ENK'))
 })
@@ -158,7 +159,9 @@ test('a walk is listed under Recent paths by its names after signing in again', 
   })
   first.unmount()
 
-  await renderApp(tableHref(REGION), admin)
+  // #1013: Recent paths sits in the bar, so it shows wherever a walk does.
+  const walking: NavPath = { steps: [{ screen: 'list', table: REGION }, { screen: 'list', table: REGION, filters: [['row_id', '=', 'KL']] }], at: 1 }
+  await renderApp(`${tableHref(REGION)}?path=${encodeURIComponent(encodePath(walking))}`, admin)
   fireEvent.click(await screen.findByRole('button', { name: 'Recent paths' }))
   const item = await screen.findByRole('menuitem', { name: `${SITE} › Region: Kerala · KL` })
   fireEvent.click(item)
@@ -168,6 +171,7 @@ test('a walk is listed under Recent paths by its names after signing in again', 
 
 test("a row page's path bar names the row", async ({ admin }) => {
   await seedSites(admin)
-  await renderApp(`${tableHref(PLANT)}/row/1503`, admin)
+  const path: NavPath = { steps: [{ screen: 'list', table: PLANT }, { screen: 'row', table: PLANT, row: '1503' }], at: 1 }
+  await renderApp(`${tableHref(PLANT)}/row/1503?path=${encodeURIComponent(encodePath(path))}`, admin)
   await waitFor(() => expect(current()).toHaveTextContent('Enchakkal Supermarket · 1503'))
 })

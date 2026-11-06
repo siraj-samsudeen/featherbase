@@ -134,10 +134,10 @@ test('the Sign-in methods page is served on the Admin address too', async ({ ses
     await page.getByTestId('session-user').click()
     await page.getByTestId('account-sign-in-methods').click()
   })
-  await session.step('it opens under a bar named Featherbase, with no Admin menus', async () => {
+  await session.step('it opens in the Admin frame the person came from (#1006)', async () => {
     await expect(page).toHaveURL(`${ADMIN}/featherbase/account/sign-in-methods`)
-    await expect(page.getByTestId('top-bar-name')).toHaveText('Featherbase')
-    await expect(page.getByTestId('admin-sidebar')).toHaveCount(0)
+    await expect(page.getByTestId('sign-in-methods')).toBeVisible()
+    await expect(page.getByTestId('admin-sidebar')).toBeVisible()
   })
 })
 
