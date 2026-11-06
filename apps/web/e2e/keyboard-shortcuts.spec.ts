@@ -44,29 +44,48 @@ test('UI-015: g then n opens a new document', async ({ session }) => {
 test('#1018: Ctrl+B and the control give the content the width of the sidebar, and a reload remembers', async ({ session }) => {
   await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`).assertHas('[data-testid="list-view"]')
   await session.step('collapse by keyboard, reopen by the control', async ({ page }) => {
+    // Wider than the 1024px reading width of other pages, where the list has to
+    // get the sidebar's 240px too. Measured on the list: the page around it
+    // growing is not the table getting the room.
+    await page.setViewportSize({ width: 1440, height: 800 })
     const sidebar = page.getByTestId('admin-sidebar')
     const control = page.getByTestId('sidebar-collapse')
-    const main = page.locator('main')
+    const list = page.getByTestId('list-view')
     await expect(sidebar).toBeVisible()
-    const before = (await main.boundingBox())!
+    const before = (await list.boundingBox())!
     const controlAt = (await control.boundingBox())!
 
     await page.locator('body').click()
     await page.keyboard.press('Control+b')
     await expect(sidebar).toBeHidden()
-    await expect.poll(async () => (await main.boundingBox())!.width).toBe(before.width + 240)
+    await expect.poll(async () => (await list.boundingBox())!.width).toBe(before.width + 240)
     // The control stays exactly where it was, so a second click reopens.
     expect((await control.boundingBox())!.x).toBe(controlAt.x)
 
     await page.reload()
-    await expect(page.getByTestId('list-view')).toBeVisible()
+    await expect(list).toBeVisible()
     await expect(sidebar).toBeHidden()
 
     await control.click()
     await expect(sidebar).toBeVisible()
     await page.reload()
-    await expect(page.getByTestId('list-view')).toBeVisible()
+    await expect(list).toBeVisible()
     await expect(sidebar).toBeVisible()
+  })
+})
+
+// #1018: only a Table's list takes the whole width; other pages keep their
+// reading width, collapsed or not.
+test('#1018: a page that is not a list keeps its reading width', async ({ session }) => {
+  await session.visit('/featherbase/admin/all-tables').assertHas('[data-testid="admin-sidebar"]')
+  await session.step('collapse on a wide window', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 800 })
+    await page.locator('body').click()
+    await page.keyboard.press('Control+b')
+    await expect(page.getByTestId('admin-sidebar')).toBeHidden()
+    await expect.poll(async () => (await page.locator('main > div').boundingBox())!.width).toBe(1024)
+    await page.keyboard.press('Control+b')
+    await expect(page.getByTestId('admin-sidebar')).toBeVisible()
   })
 })
 
