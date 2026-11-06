@@ -492,13 +492,14 @@ export function FormView({
 
   const work = <div className="flex flex-col gap-6 lg:flex-row">
     {/* Its columns follow its own width (a form beside the pane is narrow). */}
-    <div className="@container min-w-0 max-w-3xl flex-1">
+    <div className="@container min-w-0 max-w-[50rem] flex-1">
       {!isNew && (
         <ArrangeBar mode={arrangement.mode} columns={arrangement.columns}
           onMode={arrangement.setMode} onColumns={arrangement.setColumns} />
       )}
-      {/* #1012: one column narrows the fields only, so the toolbar above stays put. */}
-      <div className={arrangement.columns === 1 && !isNew ? 'max-w-2xl' : undefined} data-testid="form-fields">
+      {/* #1012: one column narrows the fields only, so the toolbar above stays put.
+          The wrapper is wider than the fields because the toolbar needs 50rem on one line in a wide font. */}
+      <div className={arrangement.columns === 1 && !isNew ? 'max-w-2xl' : 'max-w-3xl'} data-testid="form-fields">
       {!isNew && !arrangement.ready ? (
         <p className="text-sm text-ink-subtle">Loading…</p>
       ) : !isNew && arrangement.mode !== 'source' ? (() => {
@@ -1021,7 +1022,7 @@ export function FormView({
         <div role="status" data-testid="form-unsaved-bar"
           className="fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-card border border-border bg-surface px-4 py-2 shadow-lg max-sm:left-4 max-sm:justify-between">
           <span className="text-sm font-medium text-ink">{t('Unsaved changes')}</span>
-          <button onClick={save} disabled={saveDisabled} className={buttonClasses({ variant: 'primary', className: 'disabled:opacity-40' })}>
+          <button onClick={save} disabled={saveDisabled} aria-label={saving ? undefined : t('Save changes')} className={buttonClasses({ variant: 'primary', className: 'disabled:opacity-40' })}>
             {saving ? t('Saving…') : t('Save')}
           </button>
         </div>
