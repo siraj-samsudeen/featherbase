@@ -10,6 +10,8 @@ import { discoverPackages } from '../src/runtime-packages'
 import { sql } from '../src/db'
 import { drainJobs, loadJobs } from '../src/jobs'
 import { appLinkOrigin, parseInstanceAddresses } from '../src/instance-addresses'
+import { callerMail } from '../src/runtime-mail'
+import { config } from '../src/config'
 
 // #1001: assigning a ticket emails the person assigned, once, after the save
 // commits. A load through `create` sends nothing.
@@ -238,6 +240,51 @@ describe('Tickets: assigning a ticket emails the person assigned (#1001)', () =>
     expect(appLinkOrigin(list, 'production', 'tickets')).toBe('https://featherbase.example.com')
     expect(appLinkOrigin(null, 'production', 'tickets')).toBeNull()
     expect(appLinkOrigin(null, 'development', 'tickets')).toBe('http://localhost:5173')
+  })
+})
+
+describe('Runtime action mail (#1001)', () => {
+  const mail = callerMail('tickets', ['tickets.ticket'])
+  const queued = (subject: string) => sql`select recipient, body from email_queue where subject = ${subject}`
+  const skipped = () => vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const skips = (warn: ReturnType<typeof skipped>) => warn.mock.calls.map(call => JSON.parse(String(call[0])).reason)
+
+  test('nobody who can\'t be emailed gets mail, and each skip says why', async ({ admin, createUser }) => {
+    const { worker, second } = await world(admin, createUser)
+    await sql`update person set enabled = false, replaced_by = ${second.user} where row_id = ${worker.user}`
+    const warn = skipped()
+    for (const person of ['psn_nobody', 'Administrator', worker.user]) await mail.toPerson(person, { subject: 'Skipped mail', body: 'Hello' })
+    expect(await queued('Skipped mail')).toEqual([])
+    expect(skips(warn)).toEqual(['unknown_person', 'built_in', 'disabled'])
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('@')
+  })
+
+  test('a message with no path has no link, and an unsafe subject stays one line', async ({ admin, createUser }) => {
+    const { worker } = await world(admin, createUser)
+    await mail.toPerson(worker.user, { subject: ' Two\nlines ', body: 'Just this' })
+    expect(await queued('Two lines')).toEqual([{ recipient: 'worker@tickets.example.test', body: 'Just this' }])
+  })
+
+  test('on an instance with addresses, the link uses the Admin address when none opens the app', async ({ admin, createUser }) => {
+    const { worker } = await world(admin, createUser)
+    const before = config.instanceAddresses
+    config.instanceAddresses = parseInstanceAddresses(JSON.stringify([
+      { address: 'https://dash.example.com', opens: 'dash', emails: true },
+      { address: 'https://featherbase.example.com', opens: 'admin' },
+    ]), 'production')
+    try { await mail.toPerson(worker.user, { subject: 'Linked mail', body: 'See', path: '?ticket=FT-1' }) }
+    finally { config.instanceAddresses = before }
+    expect((await queued('Linked mail'))[0].body).toBe('See\n\nOpen it here: https://featherbase.example.com/tickets/?ticket=FT-1')
+  })
+
+  test('mayRead answers for the person, and only about the app\'s own Tables', async ({ admin, createUser }) => {
+    const { worker, openTicket } = await world(admin, createUser)
+    const ticket = await openTicket()
+    expect(await mail.mayRead(worker.user, 'tickets.ticket', ticket.row_id)).toBe(true)
+    expect(await mail.mayRead(worker.user, 'tickets.ticket', 'FT-none')).toBe(false)
+    await expect(mail.mayRead(worker.user, 'Person', worker.user)).rejects.toThrow('has not declared Table Person')
+    // Any other failure is not an answer of "no": it is raised.
+    await expect(mail.mayRead(worker.user, 'tickets.ticket', undefined as unknown as string)).rejects.toThrow()
   })
 })
 

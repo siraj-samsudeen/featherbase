@@ -21,15 +21,16 @@ function logSkip(app: string, person: string, reason: string, message: Message):
 }
 
 async function send(app: string, person: string, message: Message): Promise<void> {
-  const [row] = await sql`select email, enabled, built_in, replaced_by from person where row_id = ${person}`
-  const skip = !row ? 'unknown_person' : !row.enabled ? 'disabled' : row.built_in ? 'built_in' : row.replaced_by ? 'merged_away'
+  const [row] = await sql`select email, enabled, built_in from person where row_id = ${person}`
+  // A merged-away person is always disabled (person_replaced_is_disabled).
+  const skip = !row ? 'unknown_person' : !row.enabled ? 'disabled' : row.built_in ? 'built_in'
     : !String(row.email ?? '').trim() ? 'no_email' : null
   if (skip) return logSkip(app, person, skip, message)
-  const origin = appLinkOrigin(config.instanceAddresses, config.environment, app)
+  const origin = message.path === undefined ? null : appLinkOrigin(config.instanceAddresses, config.environment, app)
   await queueEmail({
     to: String(row.email).trim(),
     subject: message.subject.replace(/\s+/g, ' ').trim(),
-    body: message.path !== undefined && origin ? `${message.body}\n\nOpen it here: ${origin}${appHref(app)}${message.path}` : message.body,
+    body: origin ? `${message.body}\n\nOpen it here: ${origin}${appHref(app)}${message.path}` : message.body,
     ref_table: message.ref_table,
     reference_name: message.reference_name,
   })
