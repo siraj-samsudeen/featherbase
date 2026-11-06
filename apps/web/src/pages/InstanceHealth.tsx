@@ -64,7 +64,9 @@ export function useInstanceHealth(enabled: boolean) {
   })
   const { refetch } = query
   useEffect(() => {
-    if (enabled) void refetch()
+    // Several parts of the shell call this: they share one request, rather than
+    // each cancelling the last and asking again.
+    if (enabled) void refetch({ cancelRefetch: false })
   }, [pathname, enabled, refetch])
   return query
 }

@@ -80,7 +80,7 @@ export function WelcomeSetup() {
               <h2 className="font-semibold text-ink">1. Set up your administrators</h2>
               <StatusPill tone={data.setup.administrator_ready ? 'positive' : 'neutral'}>{data.setup.administrator_ready ? 'Ready' : 'Next step'}</StatusPill>
             </div>
-            <p className="mt-2 text-sm text-ink-muted">Use your own identity and choose who receives system notices. You can do this later while exploring locally.</p>
+            <p className="mt-2 text-sm text-ink-muted">Use your own identity and choose who receives system notices.{data.setup.environment === 'development' ? ' You can do this later while exploring locally.' : ''}</p>
             <div className="mt-3 flex flex-wrap gap-3">
               {getSessionUser()?.row_id === ADMINISTRATOR && <Link to={SETUP_PERSON_PATH} className={buttonClasses()}>{SETUP_PERSON_LABEL}</Link>}
               <Link to="/featherbase/admin/table/$table" params={{ table: 'Person' }} search={{ filters: undefined }} className={buttonClasses()}>Manage people</Link>
