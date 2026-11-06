@@ -32,7 +32,8 @@ test('UI-015: Ctrl+S saves the form', async ({ session }) => {
 test('UI-015: g then n opens a new document', async ({ session }) => {
   await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`).assertHas('[data-testid="list-view"]')
   await session.step('press g then n', async ({ page }) => {
-    await page.locator('body').click()
+    // Nothing has focus on a page just opened. No click to get there: the middle
+    // of the page may be a filter box or a Table's link, whatever earlier specs left.
     await page.keyboard.press('g')
     await page.keyboard.press('n')
     await expect(page).toHaveURL(new RegExp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/new`))
@@ -55,7 +56,6 @@ test('#1018: Ctrl+B and the control give the content the width of the sidebar, a
     const before = (await list.boundingBox())!
     const controlAt = (await control.boundingBox())!
 
-    await page.locator('body').click()
     await page.keyboard.press('Control+b')
     await expect(sidebar).toBeHidden()
     await expect.poll(async () => (await list.boundingBox())!.width).toBe(before.width + 240)
@@ -80,7 +80,6 @@ test('#1018: a page that is not a list keeps its reading width', async ({ sessio
   await session.visit('/featherbase/admin/all-tables').assertHas('[data-testid="admin-sidebar"]')
   await session.step('collapse on a wide window', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 800 })
-    await page.locator('body').click()
     await page.keyboard.press('Control+b')
     await expect(page.getByTestId('admin-sidebar')).toBeHidden()
     await expect.poll(async () => (await page.locator('main > div').boundingBox())!.width).toBe(1024)
