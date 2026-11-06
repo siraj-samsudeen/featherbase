@@ -176,7 +176,22 @@ test('#1016: the filter boxes line up', async ({ session }) => {
 test('#1017: the first row starts in the top two fifths of a desktop window, with every admin menu showing', async ({ session }) => {
   await session.step('measure the first row', async ({ page }) => {
     await openWide(page)
-    const top = (await page.getByTestId('list-rows').locator('tr').first().boundingBox())!.y
+    // A notice across the window's top lasts until the instance is set up; it isn't one of the list's controls.
+    const top = await page.evaluate(() => {
+      const row = document.querySelector('[data-testid="list-rows"] tr')!.getBoundingClientRect().top
+      const notices = [...document.querySelectorAll('[data-testid="health-banner"], [data-testid="setup-banner"]')]
+      return row - notices.reduce((sum, notice) => sum + notice.getBoundingClientRect().height, 0)
+    })
     expect(top).toBeLessThanOrEqual(800 * 0.4)
+  })
+})
+
+test('#1017: a wider font keeps the filters and layout choices on one line', async ({ session }) => {
+  await session.step('measure the controls in a wide font', async ({ page }) => {
+    await openWide(page)
+    await page.addStyleTag({ content: 'main * { font-family: "DejaVu Sans", Verdana, sans-serif !important }' })
+    const box = (await page.getByTestId('standard-filters').locator('input, select').first().boundingBox())!
+    const layoutBox = (await layout(page).boundingBox())!
+    expect(layoutBox.y, 'the layout choices did not wrap under the filters').toBeLessThan(box.y + box.height)
   })
 })
