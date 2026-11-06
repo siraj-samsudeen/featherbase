@@ -31,8 +31,8 @@ export async function resolveView(name: string): Promise<ResolvedTable> {
 
 export function resolvedFrom(meta: TableMeta): ResolvedTable {
   if (meta.kind !== 'view') return { table: meta.name, view: null, filters: [] }
-  if (!meta.view_of) throw new AppError('ValidationError', `${meta.name} is a view with no base Table`)
-  return { table: meta.view_of, view: meta.name, filters: meta.view_filters ?? [] }
+  // table_def_view_shape: a view always has a base and filters.
+  return { table: meta.view_of!, view: meta.name, filters: meta.view_filters! }
 }
 
 /** The stored Table a name reads: itself, or a view's base. Read from the
@@ -45,8 +45,8 @@ export async function storedTable(name: string): Promise<string> {
 }
 
 /** The stored Table a link column's values are rows of. */
-export function linkBase(column: Pick<ColumnDef, 'reference_table' | 'reference_base'>): string | null {
-  return column.reference_base ?? column.reference_table ?? null
+export function linkBase(column: Pick<ColumnDef, 'reference_table' | 'reference_base'>): string | null | undefined {
+  return column.reference_base ?? column.reference_table
 }
 
 /** Every name a link to a row of `table` may carry as its target: the Table
@@ -60,10 +60,10 @@ export async function linkTargetNames(table: string, db: typeof sql = sql): Prom
 
 /** The views of a Table, with their filters, for refusals that name them. */
 export async function viewsOf(table: string, db: typeof sql = sql): Promise<{ name: string; filters: ViewFilter[] }[]> {
-  const rows = await db<{ name: string; filters: ViewFilter[] | null }[]>`
+  const rows = await db<{ name: string; filters: ViewFilter[] }[]>`
     select name, to_jsonb(table_def)->'view_filters' as filters from table_def
     where to_jsonb(table_def)->>'view_of' = ${table} order by name`
-  return rows.map((r) => ({ name: r.name, filters: r.filters ?? [] }))
+  return rows.map((r) => ({ name: r.name, filters: r.filters }))
 }
 
 /** The filter as a system condition on the base's relation. It never passes
@@ -82,8 +82,8 @@ export function viewCondition(relation: string, filters: readonly ViewFilter[]):
       case 'like': return sql`${col}::text ilike ${value as string}`
       case 'not like': return sql`${col}::text not ilike ${value as string}`
       case 'in': return sql`${col} in ${sql((value as string[]).length ? (value as string[]) : [null as never])}`
-      case 'not in': return sql`${col} not in ${sql((value as string[]).length ? (value as string[]) : [null as never])}`
-      default: throw new AppError('ValidationError', `A view filter cannot use ${op}`)
+      // normaliseViewFilters admits only VIEW_OPERATORS, so this is 'not in'.
+      default: return sql`${col} not in ${sql((value as string[]).length ? (value as string[]) : [null as never])}`
     }
   })
   return sql`(${conds.reduce((acc, c) => sql`${acc} and ${c}`, sql`true`)})`

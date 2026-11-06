@@ -6,7 +6,7 @@ import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { expectApiError, grantRole, makeTable, patchDoc, tableRef } from './fixtures'
-import { storedRelation } from '../src/table-engine'
+import { createTable, storedRelation } from '../src/table-engine'
 import { sql } from '../src/db'
 import { getBacklinks } from '../src/meta'
 import { globalSearch } from '../src/search'
@@ -272,6 +272,8 @@ describe('#1021: a link can name a view', () => {
     expect(await admin.post('/api/save_row', { table: SALE, row: { ...read, amount: 12 } })).toMatchObject({ amount: 12, store: 'S-1' })
     const fine = await admin.post<Row>(sale.url, { amount: 1, store: 'S-2' })
     expect(await admin.get(sale.rowUrl(fine.row_id))).not.toHaveProperty('links_outside_view')
+    const blank = await admin.post<Row>(sale.url, { amount: 2 })
+    expect(await admin.get(sale.rowUrl(blank.row_id))).not.toHaveProperty('links_outside_view')
   })
 
   test('a link moves from the base to its view and back as metadata, once its values fit', async ({ admin }) => {
@@ -303,6 +305,48 @@ describe('#1021: a link can name a view', () => {
 })
 
 describe('#1021: a base keeps what its views stand on', () => {
+  test('a view changes only its label, description and filters', async ({ admin }) => {
+    await sites(admin)
+    await expectApiError(admin.put(store.defUrl, { kind: 'table' }), { status: 417, message: expect.stringContaining('kind cannot be changed') })
+    expect(await admin.put(store.defUrl, { label: ' ', description: ' Sites that sell ' })).toMatchObject({ label: null, description: 'Sites that sell' })
+    expect(await admin.put(store.defUrl, {})).toMatchObject({ label: null, description: 'Sites that sell', view_filters: [['is_store', '=', true]] })
+    await expectApiError(admin.post(`${store.defUrl}/rename_column`, { from: 'region', to: 'zone' }), { status: 417, message: expect.stringContaining(`rename the column on ${SITE}`) })
+    await expect(createTable({ name: 'Vw App View', kind: 'view', view_of: SITE, view_filters: [['region', '=', 'North']] }, 'someapp'))
+      .rejects.toThrow('An app cannot define a view')
+  })
+
+  test('a view name cannot spell a relation that already holds rows', async ({ admin }) => {
+    await sites(admin)
+    await sql`create table featherbase.vw_orphan (row_id text primary key)`
+    try {
+      await expectApiError(admin.post('/api/table_def', { name: 'Vw Orphan', kind: 'view', view_of: SITE, view_filters: [['region', '=', 'North']] }),
+        { status: 409, message: expect.stringContaining('already exists') })
+    } finally {
+      await sql`drop table featherbase.vw_orphan`
+    }
+  })
+
+  test('refusals name every view that depends on the base', async ({ admin }) => {
+    await sites(admin)
+    await admin.post('/api/table_def', { name: 'Vw Shop', kind: 'view', view_of: SITE, view_filters: [['is_store', '=', true], ['region', '=', 'North']] })
+    await expectApiError(admin.post(`${site.defUrl}/rename_column`, { from: 'is_store', to: 'store_flag' }),
+      { status: 417, message: expect.stringContaining('filter on it') })
+    const refusal = await admin.delete(site.defUrl).catch((e: Error) => e.message)
+    expect(refusal).toContain('Delete those views first')
+  })
+
+  test('a link with many values outside the view names the first twenty', async ({ admin }) => {
+    await sites(admin)
+    await makeTable(admin, { name: SALE, columns: ['amount:Int', { column_name: 'store', column_type: 'Reference', reference_table: SITE }] })
+    const columns = (target: string) => [{ column_name: 'amount', column_type: 'Int' }, { column_name: 'store', column_type: 'Reference', reference_table: target }]
+    // An empty link column moves at once.
+    await admin.put(sale.defUrl, { columns: columns(STORE) })
+    await admin.put(sale.defUrl, { columns: columns(SITE) })
+    for (let i = 10; i < 32; i++) await admin.post(site.url, { row_id: `W-${i}`, site_name: `Depot ${i}`, is_store: false })
+    for (let i = 10; i < 32; i++) await admin.post(sale.url, { amount: i, store: `W-${i}` })
+    await expectApiError(admin.put(sale.defUrl, { columns: columns(STORE) }), { status: 417, message: expect.stringContaining(`and 2 more are not ${STORE} rows`) })
+  })
+
   test('a filter column cannot be renamed, removed or retyped; the base cannot be deleted while a view stands', async ({ admin }) => {
     await sites(admin)
     await expectApiError(admin.post(`${site.defUrl}/rename_column`, { from: 'is_store', to: 'store_flag' }), { status: 417, message: expect.stringContaining(STORE) })

@@ -347,7 +347,7 @@ async function validateLinks(
     // #1021: a new or changed value must be one of the view's rows. A value
     // kept from before stays, even once its row has left the view, so the
     // rows linking to it are never locked by that.
-    else if (view && !(old != null && String(own(old, f.column_name) ?? '') === String(value))
+    else if (view && !(old != null && String(own(old, f.column_name)) === String(value))
       && !(await rowsInView(tx, view, [String(value)], await tableRelation(target))).has(String(value)))
       errors[prefix + f.column_name] = `${target} ${String(value)} is not one of the ${linked} rows`
   }
