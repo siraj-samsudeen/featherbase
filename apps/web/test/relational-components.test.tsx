@@ -417,6 +417,13 @@ describe('PathBar', () => {
     expect(line.className).toMatch(/@max-5xl:basis-full/)
   })
 
+  test('a single step stays beside the buttons unless the bar is phone-narrow', () => {
+    render(<PathBar steps={[{ key: 'a', label: 'Sites' }]} current={0} onStep={vi.fn()} onBack={vi.fn()} onForward={vi.fn()} onCopyLink={vi.fn()} />)
+    const line = screen.getByRole('navigation', { name: 'Path' }).parentElement!
+    expect(line.className).not.toMatch(/@max-5xl:basis-full/)
+    expect(line.className).toMatch(/@max-xl:basis-full/)
+  })
+
   test('a path that fits says nothing about earlier steps', () => {
     bar(0)
     expect(screen.queryByRole('button', { name: 'Earlier steps' })).not.toBeInTheDocument()

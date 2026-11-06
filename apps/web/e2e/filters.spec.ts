@@ -24,6 +24,7 @@ test('UI-003: filters narrow results, persist in the URL across reload, and are 
 
   // qty >= 25 -> 5 rows
   await session.step('add a qty >= 25 filter', async ({ page }) => {
+    await page.getByTestId('filter-toggle').click()
     await page.getByTestId('filter-field').selectOption('qty')
     await page.getByTestId('filter-op').selectOption('>=')
     await page.getByTestId('filter-value').fill('25')

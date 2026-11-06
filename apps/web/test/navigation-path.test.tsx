@@ -17,6 +17,7 @@ const pathParam = (router: { state: unknown }) =>
   new URLSearchParams((router.state as { location: { searchStr: string } }).location.searchStr).get('path')
 
 async function addRegionFilter() {
+  fireEvent.click(await screen.findByTestId('filter-toggle'))
   fireEvent.change(await screen.findByTestId('filter-field'), { target: { value: 'region' } })
   fireEvent.change(screen.getByTestId('filter-value'), { target: { value: 'KL' } })
   fireEvent.click(screen.getByTestId('filter-add'))

@@ -197,10 +197,13 @@ async function assertResponsiveListLayout(
   } else {
     const tableArea = page.getByTestId('list-table-scroll')
     expect(await tableArea.evaluate((element) => getComputedStyle(element).overflowX)).toBe('auto')
+    // #1015: rows stay one line, so this fixture's wide columns scroll inside the
+    // table, which says so; the page itself never scrolls sideways (checked above).
     expect(
-      await tableArea.evaluate((element) => element.scrollWidth <= element.clientWidth),
-      'rows table must fit its desktop container for this fixture',
+      await tableArea.evaluate((element) => element.scrollWidth > element.clientWidth),
+      'this fixture is wider than its desktop container',
     ).toBe(true)
+    await expect(page.getByTestId('list-more-columns')).toBeVisible()
   }
   await page.screenshot({ path: screenshot, fullPage: true })
 }
