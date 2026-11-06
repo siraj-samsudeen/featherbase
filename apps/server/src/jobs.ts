@@ -1,3 +1,5 @@
+// First: a module that registers a job can run while this one is still loading.
+import { ownLifecycleLock, owners, registry } from './job-registry'
 import { randomBytes } from 'node:crypto'
 import type postgres from 'postgres'
 import { readdirSync } from 'node:fs'
@@ -68,13 +70,6 @@ export type JobHandler = (
  *  row. */
 export class FinalJobFailure extends Error {}
 
-const registry = new Map<string, JobHandler>()
-// #700: which app registered a method; absent for the platform's own jobs.
-const owners = new Map<string, string>()
-
-// #971: jobs that take the app lifecycle lock themselves, only for the part
-// that needs it, because they spend long on an outside read.
-const ownLifecycleLock = new Set<string>()
 
 export function registerJob(method: string, handler: JobHandler, owner?: string, opts: { ownLifecycleLock?: boolean } = {}): void {
   registry.set(method, handler)
