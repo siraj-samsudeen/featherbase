@@ -22,6 +22,11 @@ export const validators = { 'tasker.task': prepareTask, 'tasker.discussion': pre
 export const actions = { ...taskActions, ...recurrenceActions }
 export const jobs = { repeat_tasks: runRecurrence }
 
+// A stored date arrives as midnight UTC, a proposed one as 'YYYY-MM-DD'; both start with the day.
+function calendarDay(value: unknown): string {
+  return value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10)
+}
+
 async function prepareTask(ctx: Context): Promise<void> {
   let recurrenceSeries: Record<string, unknown> | undefined
   if (!ctx.isNew && (ctx.row.occurrence_key || null) !== (ctx.old?.occurrence_key || null))
@@ -50,6 +55,8 @@ async function prepareTask(ctx: Context): Promise<void> {
     } else if (!ctx.old?.recurrence && series.active_task !== ctx.row.row_id) ctx.reject('This series belongs to another task')
   } else if (ctx.old?.recurrence) ctx.reject('An occurrence stays in its original recurring series')
   await prepareSubtaskIdentity(ctx)
+  if (ctx.row.start_date && ctx.row.due_date && calendarDay(ctx.row.due_date) < calendarDay(ctx.row.start_date))
+    ctx.reject('The due date can’t be before the start date', { due_date: 'Choose the start date or a later day' })
   if (!ctx.row.shared) {
     if (ctx.row.personal_tasks_owner && ctx.row.personal_tasks_owner !== ctx.user)
       ctx.reject('Private tasks belong only to their creator')

@@ -336,9 +336,88 @@
       "fromVersion": "3.0.1",
       "toVersion": "3.0.2",
       "operations": []
+    },
+    {
+      "id": "due_dates_and_stores",
+      "fromVersion": "3.0.2",
+      "toVersion": "3.1.0",
+      "operations": [
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "tasker.store",
+            "label": "Store",
+            "module": "Tasker",
+            "id_pattern": "STORE-.####",
+            "title_column": "store_name",
+            "columns": [
+              {
+                "column_name": "store_name",
+                "label": "Store name",
+                "column_type": "Data",
+                "reqd": true,
+                "unique": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "store_type",
+                "label": "Type",
+                "column_type": "Choice",
+                "choices": "Store\nWarehouse",
+                "default_value": "Store",
+                "reqd": true,
+                "in_list_view": true
+              }
+            ],
+            "access_policy": {
+              "version": 1,
+              "roles": [
+                "Tasker Member"
+              ]
+            }
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "store",
+            "label": "Store",
+            "column_type": "Reference",
+            "reference_table": "tasker.store",
+            "in_list_view": true
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "start_date",
+            "label": "Start date",
+            "column_type": "Date"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "due_date",
+            "label": "Due date",
+            "column_type": "Date",
+            "in_list_view": true
+          }
+        }
+      ]
     }
   ],
   "releaseNotes": [
+    {
+      "version": "3.1.0",
+      "changes": [
+        "Tasks can have a start date and a due date, and show Overdue, Due today or Scheduled",
+        "Tasks can belong to a store or warehouse; the Stores page counts each store's work"
+      ]
+    },
     {
       "version": "3.0.2",
       "changes": [
@@ -488,6 +567,24 @@
           "label": "Completed at",
           "column_type": "Datetime",
           "hidden": true
+        },
+        {
+          "column_name": "store",
+          "label": "Store",
+          "column_type": "Reference",
+          "reference_table": "tasker.store",
+          "in_list_view": true
+        },
+        {
+          "column_name": "start_date",
+          "label": "Start date",
+          "column_type": "Date"
+        },
+        {
+          "column_name": "due_date",
+          "label": "Due date",
+          "column_type": "Date",
+          "in_list_view": true
         }
       ],
       "access_policy": {
@@ -626,6 +723,38 @@
           "default_value": "0"
         }
       ]
+    },
+    {
+      "name": "tasker.store",
+      "label": "Store",
+      "module": "Tasker",
+      "id_pattern": "STORE-.####",
+      "title_column": "store_name",
+      "columns": [
+        {
+          "column_name": "store_name",
+          "label": "Store name",
+          "column_type": "Data",
+          "reqd": true,
+          "unique": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "store_type",
+          "label": "Type",
+          "column_type": "Choice",
+          "choices": "Store\nWarehouse",
+          "default_value": "Store",
+          "reqd": true,
+          "in_list_view": true
+        }
+      ],
+      "access_policy": {
+        "version": 1,
+        "roles": [
+          "Tasker Member"
+        ]
+      }
     }
   ],
   "permissions": [
@@ -665,6 +794,13 @@
       "can_create": true,
       "can_read": true,
       "can_write": true
+    },
+    {
+      "table": "tasker.store",
+      "role": "Tasker Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
     }
   ],
   "roles": [

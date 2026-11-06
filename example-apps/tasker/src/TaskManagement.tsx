@@ -274,6 +274,8 @@ export function TaskManagementPage() {
         responsiblePeople: [...setup.filters.responsiblePeople],
         urgencies: [...setup.filters.urgencies],
         projects: [...setup.filters.projects],
+        stores: [...setup.filters.stores],
+        dueMarks: [...setup.filters.dueMarks],
       },
     }
   }

@@ -11,6 +11,11 @@ export interface DatedTask {
   due_date?: string | null
 }
 
+/** The server sends a stored date as midnight UTC; its first ten characters are the day. */
+export function calendarDay(value?: string | null): string | null {
+  return value ? value.slice(0, 10) : null
+}
+
 export function localDay(date = new Date()): string {
   const pad = (value: number) => String(value).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
@@ -22,9 +27,10 @@ function settled(task: DatedTask) {
 
 export function dueMark(task: DatedTask, today: string): DueMark | null {
   if (settled(task)) return null
-  if (task.due_date && task.due_date < today) return 'overdue'
-  if (task.due_date === today) return 'due_today'
-  if (task.start_date && task.start_date > today) return 'scheduled'
+  const due = calendarDay(task.due_date), start = calendarDay(task.start_date)
+  if (due && due < today) return 'overdue'
+  if (due === today) return 'due_today'
+  if (start && start > today) return 'scheduled'
   return null
 }
 
