@@ -27,6 +27,12 @@ describe('due marks', () => {
     expect(dueMark({ task_state, start_date: '2026-11-10' }, today)).toBeNull()
   })
 
+  it('reads a stored date by its day, as the server sends it', () => {
+    expect(dueMark({ ...open, due_date: '2026-11-04T00:00:00.000Z' }, today)).toBe('overdue')
+    expect(dueMark({ ...open, due_date: '2026-11-06T00:00:00.000Z' }, today)).toBe('due_today')
+    expect(dueMark({ ...open, start_date: '2026-11-10T00:00:00.000Z' }, today)).toBe('scheduled')
+  })
+
   it('reads today in the local calendar', () => {
     expect(localDay(new Date(2026, 10, 6, 23, 30))).toBe('2026-11-06')
     expect(localDay(new Date(2026, 0, 2, 0, 5))).toBe('2026-01-02')
