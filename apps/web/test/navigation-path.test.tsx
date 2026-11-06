@@ -106,7 +106,7 @@ test('a filter on several linked rows names each of them', async ({ admin }) => 
   await seedSites(admin)
   const path: NavPath = { steps: [{ screen: 'list', table: SITE, filters: [['region', 'in', ['KL', 'TN']]] }], at: 0 }
   await renderApp(`${tableHref(SITE)}?path=${encodeURIComponent(encodePath(path))}`, admin)
-  await waitFor(() => expect(current()).toHaveTextContent('Region in Kerala · KL, Tamil Nadu · TN'))
+  await waitFor(() => expect(current()).toHaveTextContent('Region in Kerala (KL), Tamil Nadu (TN)'))
 })
 
 test("a filter on rows the viewer can't read names them neutrally, never by their ids", async ({ admin }) => {
@@ -121,7 +121,7 @@ test('a filter on the row id names the row', async ({ admin }) => {
   await seedSites(admin)
   const path: NavPath = { steps: [{ screen: 'list', table: SITE, filters: [['row_id', '=', 'ENK']] }], at: 0 }
   await renderApp(`${tableHref(SITE)}?path=${encodeURIComponent(encodePath(path))}`, admin)
-  await waitFor(() => expect(current()).toHaveTextContent('Row ID: Enchakkal · ENK'))
+  await waitFor(() => expect(current()).toHaveTextContent('Row ID: Enchakkal (ENK)'))
 })
 
 test('Copy link copies the address of this step', async ({ admin }) => {
@@ -153,7 +153,7 @@ test('a walk is listed under Recent paths by its names after signing in again', 
 
   await renderApp(tableHref(REGION), admin)
   fireEvent.click(await screen.findByRole('button', { name: 'Recent paths' }))
-  const item = await screen.findByRole('menuitem', { name: `${SITE} › Region: Kerala · KL` })
+  const item = await screen.findByRole('menuitem', { name: `${SITE} › Region: Kerala (KL)` })
   fireEvent.click(item)
   await waitFor(() => expect(current()).toHaveTextContent('Region: Kerala'))
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(2))
@@ -162,5 +162,5 @@ test('a walk is listed under Recent paths by its names after signing in again', 
 test("a row page's path bar names the row", async ({ admin }) => {
   await seedSites(admin)
   await renderApp(`${tableHref(PLANT)}/row/1503`, admin)
-  await waitFor(() => expect(current()).toHaveTextContent('Enchakkal Supermarket · 1503'))
+  await waitFor(() => expect(current()).toHaveTextContent('Enchakkal Supermarket (1503)'))
 })

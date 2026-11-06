@@ -38,7 +38,7 @@ test("a form's link searches and shows the target's title column", async ({ admi
   await renderApp(`${tableHref(ORDER)}/row/o-3`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   const box = () => document.querySelector<HTMLInputElement>('[data-field=customer]') as HTMLInputElement
-  await waitFor(() => expect(box()).toHaveValue('Initech'))
+  await waitFor(() => expect(box()).toHaveValue('Initech (c-2)'))
 
   fireEvent.change(box(), { target: { value: 'Ltd' } })
   const options = await screen.findByTestId('link-options-customer')
@@ -46,7 +46,7 @@ test("a form's link searches and shows the target's title column", async ({ admi
   expect(options).toHaveTextContent('Globex Ltd')
   expect(within(options).getByTestId('link-create-new')).toBeInTheDocument()
   fireEvent.mouseDown(within(options).getByTestId('link-option'))
-  await waitFor(() => expect(box()).toHaveValue('Globex Ltd'))
+  await waitFor(() => expect(box()).toHaveValue('Globex Ltd (c-1)'))
 })
 
 test("a link column's quick filter picks a row by name, offers no new row, and clears in one click", async ({ admin }) => {
@@ -64,7 +64,7 @@ test("a link column's quick filter picks a row by name, offers no new row, and c
   fireEvent.mouseDown(within(options).getByTestId('link-option'))
 
   await waitFor(() => expect(listed()).toBe(2))
-  await waitFor(() => expect(screen.getByTestId('std-filter-customer')).toHaveValue('Globex Ltd'))
+  await waitFor(() => expect(screen.getByTestId('std-filter-customer')).toHaveValue('Globex Ltd (c-1)'))
 
   fireEvent.click(screen.getByTestId('std-filter-clear-customer'))
   await waitFor(() => expect(listed()).toBe(3))
@@ -81,7 +81,7 @@ test('a quick link filter drops typing that picked nothing and carries no peek o
   const options = await screen.findByTestId('link-options-customer')
   await waitFor(() => expect(within(options).getAllByTestId('link-option')).toHaveLength(1))
   fireEvent.mouseDown(within(options).getByTestId('link-option'))
-  await waitFor(() => expect(screen.getByTestId('std-filter-customer')).toHaveValue('Globex Ltd'))
+  await waitFor(() => expect(screen.getByTestId('std-filter-customer')).toHaveValue('Globex Ltd (c-1)'))
   await waitFor(() => expect(listed()).toBe(2))
   expect(screen.queryByTestId('link-pane-customer')).not.toBeInTheDocument()
   expect(screen.queryByTestId('link-open-customer')).not.toBeInTheDocument()
@@ -89,7 +89,7 @@ test('a quick link filter drops typing that picked nothing and carries no peek o
   const filter = screen.getByTestId('std-filter-customer')
   fireEvent.change(filter, { target: { value: 'zzz' } })
   fireEvent.focusOut(filter)
-  await waitFor(() => expect(screen.getByTestId('std-filter-customer')).toHaveValue('Globex Ltd'))
+  await waitFor(() => expect(screen.getByTestId('std-filter-customer')).toHaveValue('Globex Ltd (c-1)'))
   expect(listed()).toBe(2)
 })
 

@@ -8,7 +8,7 @@ import { changeOverride, overrideControl } from '../lib/metadata-override-editor
 import { principalLabel, usePrincipalName, isOpaqueId } from '../lib/people'
 import { RowTitle } from '../lib/row-titles'
 import { RowName } from '../lib/row-name'
-import { UNSEEN_ROW, useRowName } from '../lib/relations'
+import { UNSEEN_ROW, hasGeneratedIds, linkedRowText, useRowName } from '../lib/relations'
 import { useRowCapabilities } from '../lib/row-capabilities'
 import { useIsSystemManager, useWhoAmI } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
@@ -1614,12 +1614,20 @@ export function LinkControl({
   const valueLabel = picker.peopleSearch
     ? value ? principalLabel(String(value), principalName, principalName === null) : null
     : own.labelField ? (current.data ? String(current.data[own.labelField] ?? '') || null : null)
-    : linked.state === 'read' ? linked.text : null
+    : (picker.labelField || (targetMeta.data && !targetMeta.data.system && hasGeneratedIds(targetMeta.data))) && linked.state === 'read' ? linked.text : null
   // #881: the Table is the reader's only clue; the row's name stays private.
   const noAccess = anyTable && Boolean(value) && targetMeta.isError
   // #910 D3: a row the viewer cannot read is named neutrally, never by its id,
   // and offers no way to it.
   const unseen = !picker.peopleSearch && Boolean(value) && !noAccess && linked.state === 'unreadable'
+  // #1020: an option reads as its Table's links read. A Table with no title
+  // column and ids people chose lists those ids, as its search matches them.
+  const optionText = (o: { value: string; label: string }) => {
+    const m = targetMeta.data
+    if (!m || own.labelField || picker.peopleSearch) return o.label
+    if (picker.labelField) return linkedRowText(m, o.value, o.label)
+    return !m.system && hasGeneratedIds(m) ? <RowName table={target} rowId={o.value} /> : o.label
+  }
   const shown = query ?? (noAccess ? `${target} (no access)` : null) ?? (unseen ? UNSEEN_ROW : valueLabel ?? String(value ?? ''))
 
   // A link the person cannot see is not theirs to change: neutral words, no
@@ -1718,7 +1726,7 @@ export function LinkControl({
               className="block w-full px-3 py-1.5 text-left text-sm hover:bg-subtle"
               data-testid="link-option"
             >
-              {own.labelField || picker.peopleSearch ? o.label : <RowName table={target} rowId={o.value} />}
+              {optionText(o)}
             </button>
           ))}
           {!options.length && (

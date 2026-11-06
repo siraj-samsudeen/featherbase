@@ -25,7 +25,7 @@ test('its region and its counted plants show under its name', async ({ admin }) 
   await seedSites(admin)
   await renderApp(ENK, admin)
   const chips = await connections()
-  expect(await within(chips).findByRole('button', { name: 'Kerala · KL' })).toBeInTheDocument()
+  expect(await within(chips).findByRole('button', { name: 'Kerala (KL)' })).toBeInTheDocument()
   expect(await within(chips).findByRole('button', { name: `${PLANT} 3` })).toBeInTheDocument()
 })
 
@@ -33,15 +33,15 @@ test('opening the plants shows them in the drill pane', async ({ admin }) => {
   await seedSites(admin)
   await renderApp(ENK, admin)
   fireEvent.click(await within(await connections()).findByRole('button', { name: `${PLANT} 3` }))
-  const pane = await screen.findByRole('complementary', { name: 'Enchakkal · ENK' })
+  const pane = await screen.findByRole('complementary', { name: 'Enchakkal (ENK)' })
   await waitFor(() => expect(within(within(pane).getByRole('table')).getAllByRole('row')).toHaveLength(4))
 })
 
 test('opening its region shows Kerala in the drill pane', async ({ admin }) => {
   await seedSites(admin)
   await renderApp(ENK, admin)
-  fireEvent.click(await within(await connections()).findByRole('button', { name: 'Kerala · KL' }))
-  expect(await screen.findByRole('complementary', { name: 'Kerala · KL' })).toHaveTextContent(REGION)
+  fireEvent.click(await within(await connections()).findByRole('button', { name: 'Kerala (KL)' }))
+  expect(await screen.findByRole('complementary', { name: 'Kerala (KL)' })).toHaveTextContent(REGION)
 })
 
 test('the chosen tab is kept in the path', async ({ admin }) => {
@@ -62,8 +62,8 @@ test('an unfinished edit survives switching tabs and opening the pane', async ({
   await waitFor(() => expect(field('site_name')).toHaveValue('Enchakkal'))
   fireEvent.change(field('site_name'), { target: { value: 'Enchakkal North' } })
   fireEvent.click(screen.getByRole('tab', { name: 'Activity' }))
-  fireEvent.click(await within(await connections()).findByRole('button', { name: 'Kerala · KL' }))
-  await screen.findByRole('complementary', { name: 'Kerala · KL' })
+  fireEvent.click(await within(await connections()).findByRole('button', { name: 'Kerala (KL)' }))
+  await screen.findByRole('complementary', { name: 'Kerala (KL)' })
   fireEvent.click(screen.getByRole('tab', { name: 'Form' }))
   expect(field('site_name')).toHaveValue('Enchakkal North')
   expect(screen.getByTestId('form-save')).toBeEnabled()

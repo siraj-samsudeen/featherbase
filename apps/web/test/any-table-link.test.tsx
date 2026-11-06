@@ -63,8 +63,8 @@ test('the row is chosen after its Table, from the Tables the column allows, and 
   fireEvent.mouseDown(within(tables).getAllByTestId('link-option').find((o) => o.textContent === PLANT)!)
 
   await waitFor(() => expect(box('shapes')).toBeEnabled())
-  await pick('shapes', 'Pala', 'Palakkad')
-  await waitFor(() => expect(box('shapes')).toHaveValue('Palakkad'))
+  await pick('shapes', 'Pala', 'Palakkad (8151)')
+  await waitFor(() => expect(box('shapes')).toHaveValue('Palakkad (8151)'))
   expect(screen.getByTestId('link-open-shapes')).toBeInTheDocument()
 
   // Another Table clears the row: PKN-GOLD is not a Plant, nor 8151 a Unit.
@@ -125,8 +125,8 @@ test('a Sub-table row links to a row of any Table, its Table first', async ({ ad
 
   await pickCell('Steps, Shapes Table, row 1', 'shapes_table', 'Atw', PLANT)
   await waitFor(() => expect(screen.getByLabelText('Steps, Shapes, row 1')).toBeEnabled())
-  await pickCell('Steps, Shapes, row 1', 'shapes', 'Pala', 'Palakkad')
-  await waitFor(() => expect(screen.getByLabelText('Steps, Shapes, row 1')).toHaveValue('Palakkad'))
+  await pickCell('Steps, Shapes, row 1', 'shapes', 'Pala', 'Palakkad (8151)')
+  await waitFor(() => expect(screen.getByLabelText('Steps, Shapes, row 1')).toHaveValue('Palakkad (8151)'))
 
   screen.getByTestId('form-save').click()
   await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Saved'), { timeout: 8000 })

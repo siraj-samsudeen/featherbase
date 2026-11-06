@@ -187,6 +187,5 @@ test('typing narrows the Start-from list, Enter starts from the first match, and
   await waitFor(() => expect(screen.getByTestId('explore-root')).toHaveValue('Ec Purchase'))
   // A purchase's supplier shows the supplier's title, never its id.
   const pane1 = await screen.findByTestId('explore-pane1')
-  await waitFor(() => expect(pane1).toHaveTextContent('Acme'))
-  expect(pane1).not.toHaveTextContent('sup-a')
+  await waitFor(() => expect(pane1).toHaveTextContent('Acme (sup-a)'))
 })

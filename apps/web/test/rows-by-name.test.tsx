@@ -79,9 +79,8 @@ test('a link filter names its column and the picked row, in use and in Recent', 
     kind: 'list', key: `list:${ORDER}?${filters}`, label: ORDER, sub: 'customer = cust-1', path: `${path}?filters=${enc(filters)}`,
   }, Date.now() - 1000)
   await renderApp(`${path}?filters=${enc(filters)}`, admin)
-  await waitFor(() => expect(screen.getByTestId('filter-chip')).toHaveTextContent('Customer = Globex Ltd'))
-  await waitFor(() => expect(screen.getByTestId('recent-strip-view')).toHaveTextContent('Customer = Globex Ltd'))
-  expect(screen.getByTestId('recent-strip-view')).not.toHaveTextContent('cust-1')
+  await waitFor(() => expect(screen.getByTestId('filter-chip')).toHaveTextContent('Customer = Globex Ltd (cust-1)'))
+  await waitFor(() => expect(screen.getByTestId('recent-strip-view')).toHaveTextContent('Customer = Globex Ltd (cust-1)'))
 })
 
 test('a plain filter names its column by its label', async ({ admin }) => {

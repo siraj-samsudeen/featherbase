@@ -210,7 +210,7 @@ test('a read-only row shows each value by its type, folds its empty fields and p
   expect(value('Weight')).toHaveClass('tabular-nums')
   expect(value('Fragile')).toHaveTextContent('Yes')
   expect(value('Photo')).toHaveTextContent(/^blue-box\.png$/)
-  await waitFor(() => expect(within(value('Rack')).getByRole('link')).toHaveTextContent(/^Top$/))
+  await waitFor(() => expect(within(value('Rack')).getByRole('link')).toHaveTextContent(/^Top \(3\)$/))
   expect(value('Sender')).toHaveClass('whitespace-nowrap')
   expect(value('Instructions')).toHaveClass('whitespace-pre-wrap')
   expect(document.querySelector('[data-form-field="weight"] [data-type-mark="number"]')).not.toBeNull()

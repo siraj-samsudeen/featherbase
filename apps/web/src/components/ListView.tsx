@@ -6,7 +6,7 @@ import { ApiError, api, getSessionUser, getToken, listResource } from '../lib/ap
 import { describeFilters, recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
 import { RowLink, RowName } from '../lib/row-name'
-import { UNSEEN_ROW, useLinkTitle } from '../lib/relations'
+import { UNSEEN_ROW, hasGeneratedIds, useLinkTitle } from '../lib/relations'
 import { useNavigation } from '../lib/navigation'
 import { TreeOfAll } from './RelationTree'
 import { rowCapabilitiesQuery } from '../lib/row-capabilities'
@@ -1374,11 +1374,13 @@ const isBlank = (v: unknown) => v == null || String(v).trim() === ''
 function NestedLink({ table, rowId }: { table: string; rowId: string }) {
   const principal = isPrincipalTable(table)
   const title = useLinkTitle(principal ? undefined : table, rowId)
+  // A Table with no title column and ids people chose still reads by its key.
+  const meta = useMeta(principal ? '' : table).data
   if (!principal && title.state === 'unreadable') return <span className="text-ink-muted">{UNSEEN_ROW}</span>
   return (
     <Link to="/featherbase/admin/table/$table/row/$name" search={{ prefill: undefined }}
       params={{ table, name: rowId }} className="text-action hover:underline">
-      {principal ? <PrincipalName id={rowId} /> : <RowName table={table} rowId={rowId} />}
+      {principal ? <PrincipalName id={rowId} /> : meta && (meta.title_column || hasGeneratedIds(meta)) ? <RowName table={table} rowId={rowId} /> : rowId}
     </Link>
   )
 }

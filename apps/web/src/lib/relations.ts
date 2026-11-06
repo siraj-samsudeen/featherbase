@@ -138,6 +138,11 @@ export function shownCode(meta: Pick<TableMeta, 'title_column' | 'id_pattern' | 
   return rowId
 }
 
+/** Whether a Table's row ids are made up by the platform, so never worth reading. */
+export function hasGeneratedIds(meta: Pick<TableMeta, 'id_pattern' | 'data_source'>): boolean {
+  return !meta.data_source && generatedIds(meta.id_pattern)
+}
+
 /** #1020: a linked row as its Table chooses to show it. Without a title column
  *  the stand-in title may already hold a code ("Kurti Z · 1517"), and the format
  *  covers that too, unless all it holds is the Table's name and a made-up id. */
