@@ -20,6 +20,7 @@ import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { useStepOptions, type Step } from '../lib/explore-steps'
 import { ChecklistSwitch } from './ChecklistView'
 import { PrincipalName, usePrincipalLabels } from '../lib/people'
+import { MoreColumnsHint, OneLine, useMoreToTheRight } from './list-one-line'
 import { Button, DataCards, NARROW_QUERY, ViewToggle, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, touchRowClasses, useMediaQuery, type DataColumn } from '@featherbase/shop-floor'
 import { ArrowDown, ArrowUp, ChevronDown } from '@featherbase/shop-floor'
 import { RetiredBadge, tableCanRetire } from './RowRetirement'
@@ -95,10 +96,12 @@ export function indicatorColor(value: string): string {
 
 export function Indicator({ value, label = value }: { value: string; label?: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5">
+    // Not inline-flex: a browser drops an atomic box whole when it runs out of
+    // room, where plain text clips with an ellipsis (#1015).
+    <span>
       <span
         aria-hidden="true"
-        className="h-2 w-2 shrink-0 rounded-full"
+        className="mr-1.5 inline-block size-2 rounded-full align-[0.05em]"
         style={{ backgroundColor: indicatorColor(value) }}
       />
       {label}
@@ -109,6 +112,9 @@ export function Indicator({ value, label = value }: { value: string; label?: str
 const NO_FILTERS: Filter[] = []
 // A compact list: the row's name, then this many key values.
 const COMPACT_COLUMNS = 3
+// #1015: the row's name stays in view, so it may not take the whole window. Flex
+// keeps its Retired badge beside the link rather than clipped with it.
+const NAME_CLIP = 'flex max-w-64 items-center [&>a]:min-w-0 [&>a]:truncate'
 
 /** The link values a filtered list's new rows start with: each "= one row"
  *  filter on a link column the person may set. */
@@ -187,6 +193,8 @@ export function ListView({
   const [arrangement, setArrangement] = useState<Required<ColumnArrangement>>({ shownCols: [], hiddenCols: [] })
   // #910 checklist 1: Compact shows each row's name and two key values.
   const [compact, setCompact] = useState(false)
+  const [tableScroll, setTableScroll] = useState<HTMLDivElement | null>(null)
+  const moreToTheRight = useMoreToTheRight(tableScroll)
   const [colPickerOpen, setColPickerOpen] = useState(false)
   // #738: the Show columns menu grows into the space below its button and no
   // further, so it ends on screen; it scrolls inside only when that is short.
@@ -1068,8 +1076,10 @@ export function ListView({
           }
         />
       ) : (
-      <div className={cardClasses('overflow-x-auto')} data-testid="list-table-scroll">
-        <table className="w-full text-sm">
+      <div className="relative">
+      <div className={cardClasses('overflow-x-auto')} ref={setTableScroll} data-testid="list-table-scroll">
+        {/* Separate borders: a collapsed one stays behind when its sticky cell scrolls. */}
+        <table className="w-full border-separate border-spacing-0 text-sm">
           <thead className="bg-subtle text-left">
             <tr>
               {/* Selection exists only to feed the bulk bar — a read-only
@@ -1092,15 +1102,16 @@ export function ListView({
                 </th>
               )}
               {expandable && <th className="w-7 border-b border-border" />}
-              {columns.map((col) => (
-                <th key={col.column_name} className="border-b border-border">
+              {columns.map((col, i) => (
+                <th key={col.column_name} className={`border-b border-border ${i === 0 ? 'sticky left-0 z-[1] border-r bg-subtle' : ''}`}>
                   <button
-                    className={`w-full px-3 py-2 font-medium text-ink-muted hover:text-ink ${isFigure(col) ? 'text-right' : 'text-left'}`}
+                    className={`flex w-full px-3 py-2 font-medium text-ink-muted hover:text-ink ${isFigure(col) ? 'justify-end text-right' : 'text-left'}`}
                     data-testid={`col-${col.column_name}`}
                     onClick={() => toggleSort(col.column_name)}
                   >
-                    {col.label}
-                    {sort?.field === col.column_name && (sort.dir === 'asc' ? ' ↑' : ' ↓')}
+                    {/* The sort arrow sits outside the clip, so it always shows. */}
+                    <OneLine className={i === 0 ? NAME_CLIP : 'max-w-80'}>{col.label}</OneLine>
+                    {sort?.field === col.column_name && <span className="shrink-0 whitespace-pre">{sort.dir === 'asc' ? ' ↑' : ' ↓'}</span>}
                   </button>
                 </th>
               ))}
@@ -1143,6 +1154,8 @@ export function ListView({
             )}
           </tbody>
         </table>
+      </div>
+      {moreToTheRight && <MoreColumnsHint box={tableScroll} />}
       </div>
       )}
       <div className="mt-3 flex items-center gap-3 text-sm">
@@ -1226,9 +1239,9 @@ function ListRow({
           e.preventDefault()
           onOpenPane({ table, row: rowId })
         })}
-        className={`border-b border-border last:border-0 hover:bg-subtle focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus ${onOpenPane ? 'cursor-pointer' : ''} ${inPane ? 'bg-action-tint' : ''}`}>
+        className={`group hover:bg-subtle focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus ${onOpenPane ? 'cursor-pointer' : ''} ${inPane ? 'bg-action-tint' : ''}`}>
         {expandable && (
-          <td className="pl-2">
+          <td className="border-b border-border pl-2 group-last:border-b-0">
             <button
               onClick={onToggleExpand}
               aria-label={expanded ? 'Collapse child rows' : 'Expand child rows'}
@@ -1243,7 +1256,7 @@ function ListRow({
           </td>
         )}
         {selectable && (
-          <td className="px-3 py-2">
+          <td className="border-b border-border px-3 py-2 group-last:border-b-0">
             <label className="cursor-pointer">
               <input
                 type="checkbox"
@@ -1256,8 +1269,10 @@ function ListRow({
           </td>
         )}
         {columns.map((col, i) => (
-          <td key={col.column_name} className={`px-3 py-2 ${isFigure(col) ? 'text-right tabular-nums' : ''}`}>
-            <ListCell row={row} col={col} table={table} settings={settings} first={i === 0} />
+          <td key={col.column_name} className={`border-b border-border px-3 py-2 group-last:border-b-0 ${isFigure(col) ? 'text-right tabular-nums' : ''} ${i === 0 ? `sticky left-0 z-[1] border-r group-hover:bg-subtle ${inPane ? 'bg-action-tint' : 'bg-surface'}` : ''}`}>
+            <OneLine className={i === 0 ? NAME_CLIP : 'max-w-80'}>
+              <ListCell row={row} col={col} table={table} settings={settings} first={i === 0} />
+            </OneLine>
           </td>
         ))}
       </tr>
@@ -1333,7 +1348,7 @@ function ListCell({
             : cell(row[col.column_name], col.column_type, settings)
         )}
       </Link>
-      {row.retired_at != null && <RetiredBadge className="ml-2 align-middle" />}
+      {row.retired_at != null && <RetiredBadge className="ml-2 shrink-0 align-middle" />}
       </>
     )
   const value = row[col.column_name]
