@@ -28,14 +28,46 @@ test('UI-015: Ctrl+S saves the form', async ({ session }) => {
   await session.assertHas('[data-testid="form-banner"]', { text: 'Saved' })
 })
 
-// UI-015: Ctrl/Cmd+B opens a new document of the current Table.
-test('UI-015: Ctrl+B opens a new document', async ({ session }) => {
+// UI-015, #1018: g then n opens a new document of the current Table.
+test('UI-015: g then n opens a new document', async ({ session }) => {
   await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`).assertHas('[data-testid="list-view"]')
-  await session.step('press Ctrl+B', async ({ page }) => {
-    await page.keyboard.press('Control+b')
+  await session.step('press g then n', async ({ page }) => {
+    await page.locator('body').click()
+    await page.keyboard.press('g')
+    await page.keyboard.press('n')
     await expect(page).toHaveURL(new RegExp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/new`))
   })
   await session.assertHas('[data-testid="form-view"]')
+})
+
+// #1018: the key press and the width are what the browser alone can witness.
+test('#1018: Ctrl+B and the control give the content the width of the sidebar, and a reload remembers', async ({ session }) => {
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`).assertHas('[data-testid="list-view"]')
+  await session.step('collapse by keyboard, reopen by the control', async ({ page }) => {
+    const sidebar = page.getByTestId('admin-sidebar')
+    const control = page.getByTestId('sidebar-collapse')
+    const main = page.locator('main')
+    await expect(sidebar).toBeVisible()
+    const before = (await main.boundingBox())!
+    const controlAt = (await control.boundingBox())!
+
+    await page.locator('body').click()
+    await page.keyboard.press('Control+b')
+    await expect(sidebar).toBeHidden()
+    await expect.poll(async () => (await main.boundingBox())!.width).toBe(before.width + 240)
+    // The control stays exactly where it was, so a second click reopens.
+    expect((await control.boundingBox())!.x).toBe(controlAt.x)
+
+    await page.reload()
+    await expect(page.getByTestId('list-view')).toBeVisible()
+    await expect(sidebar).toBeHidden()
+
+    await control.click()
+    await expect(sidebar).toBeVisible()
+    await page.reload()
+    await expect(page.getByTestId('list-view')).toBeVisible()
+    await expect(sidebar).toBeVisible()
+  })
 })
 
 // UI-015: the "g then d" leader sequence navigates to the Admin home.
