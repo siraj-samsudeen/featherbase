@@ -7,6 +7,7 @@ import { secureHeaders } from 'hono/secure-headers'
 import { config } from './config'
 import { sql, withTransaction } from './db'
 import { assertRowsWritable } from './system-written'
+import { assertNotView, storedTable } from './views'
 import { AppError, errorResponse } from './errors'
 import { runInSession } from './session-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
@@ -2100,6 +2101,8 @@ app.post('/api/assign', async (c) => {
   }
   if (!table || !name || typeof assign_to !== 'string' || !assign_to.trim())
     throw new AppError('ValidationError', 'Expected { table, row_id, assign_to }')
+  // #1021: assigned through its base row, never through a view.
+  assertNotView(await getMeta(table), 'assigned')
   // The assigner must be able to read the document.
   await getDoc(table, name, who(c))
   // Assignments go to people; a service account is not offered (person-rename).
@@ -2133,6 +2136,8 @@ app.post('/api/tags', async (c) => {
   }
   if (!table || !name || !tag?.trim())
     throw new AppError('ValidationError', 'Expected { table, row_id, tag }')
+  // #1021: tagged through its base row, never through a view.
+  assertNotView(await getMeta(table), 'tagged')
   await getDoc(table, name, who(c))
   await sql`
     insert into tag_link ${sql({ ref_table: table, ref_name: name, tag: tag.trim(), created_by: who(c) })}
@@ -2314,10 +2319,12 @@ app.get('/api/table/:table', async (c) => {
   if (suffix === 'actions') return c.json(listActions())
   if (suffix === 'meta') {
     const meta = await getMeta(table)
-    await assertPermission(user.row_id, meta.name, 'read')
+    // #1021: a view's meta answers to its base's read grant and levels.
+    const stored = await storedTable(meta.name)
+    await assertPermission(user.row_id, stored, 'read')
     // #738: the caller's readable levels ride beside the cached meta, never
     // inside it — the meta object is shared by every caller.
-    const readable = await permittedColumns(user.row_id, meta.name, 'read')
+    const readable = await permittedColumns(user.row_id, stored, 'read')
     return c.json({ ...meta, readable_columns: meta.columns.filter((column) => includesColumn(readable, column)).map((column) => column.column_name), storage_identity: await tableStorageIdentity(meta) })
   }
   if (suffix === 'count') {

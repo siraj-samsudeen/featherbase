@@ -4,6 +4,7 @@
 // or have their link cleared ("clear"); a dependent that allows neither
 // holds the whole delete. Every removed row leaves an Access Log entry with
 // the reason and a snapshot. All of it runs in one transaction.
+import { linkTargetNames } from './views'
 import { randomUUID } from 'node:crypto'
 import { canRetire, rowDisplayTitle } from 'shared'
 import { sql, usingTransaction } from './db'
@@ -203,7 +204,7 @@ export async function planPurge(db: Db, table: string, ids: string[], links: Lin
     const step = queue.shift()!
     const refs = await db`
       select c.parent, c.column_name, c.reqd, c.table_column from column_def c
-      where c.column_type = 'Reference' and (c.reference_table = ${step.table} or c.table_column is not null)
+      where c.column_type = 'Reference' and (c.reference_table = any(${await linkTargetNames(step.table, db as typeof sql)}) or c.table_column is not null)
       order by c.parent, c.column_name`
     for (const ref of refs) {
       const holder = String(ref.parent)
@@ -487,7 +488,7 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
     // this ran refuses the whole delete rather than dangle.
     for (const [t, list] of removedIds) {
       const refs = await db`select parent, column_name, table_column from column_def
-        where column_type = 'Reference' and (reference_table = ${t} or table_column is not null)`
+        where column_type = 'Reference' and (reference_table = any(${await linkTargetNames(t, db as typeof sql)}) or table_column is not null)`
       for (const ref of refs) {
         const holder = await getMeta(String(ref.parent))
         // A Settings or connected holder already held the delete, in the plan.
