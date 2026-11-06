@@ -610,7 +610,7 @@ The import targets SHALL leave out any Table the person is refused, such as an a
 
 Choosing Reference for a column of a new Table SHALL show a picker of the Tables the person can read, and the Table SHALL be made with that link. Import SHALL wait until every link column in use has its Table, saying which columns need one.
 
-Check SHALL be offered on a new Table with a link column, and SHALL report each row whose value is not the row ID of a row of the target. A value matches by row ID alone: a target named by a name column matches that name, and a target keyed by a code does not match a value holding its name. Check makes nothing, and a retired target row still matches.
+Check SHALL be offered on a new Table with a link column, and SHALL report each row whose value is not the row ID of a row of the target, making nothing.
 
 #### Scenario: Importing stores with a link to their cluster
 
@@ -628,3 +628,9 @@ Check SHALL be offered on a new Table with a link column, and SHALL report each 
 - **THEN** that row is reported with the value and the Table, saying links match a row's ID
 - **AND** no Table is made
 - **AND** importing still lands the other rows and reports that one
+
+#### Scenario: A value matches by row ID alone
+
+- **WHEN** a file value is a target row's name
+- **THEN** it matches a target named by that name column, and is reported for a target keyed by a code
+- **AND** a retired target row still matches
