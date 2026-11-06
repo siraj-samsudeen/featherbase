@@ -121,7 +121,7 @@ export function mapRowOut(bind: Binding, row: SourceRow): SourceRow {
     created_at: null,
     updated_at: bind.modified ? (row[bind.modified] ?? null) : null,
     updated_by: null,
-    status: 'draft',
+    submission_status: 'draft',
     position: 0,
   }
   for (const c of bind.columns) {

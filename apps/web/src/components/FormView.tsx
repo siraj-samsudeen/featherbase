@@ -277,7 +277,7 @@ export function FormView({
     fireHandler(fieldname, next)
   }
 
-  const status = String((baseline as Record<string, unknown>).status ?? 'draft')
+  const status = String((baseline as Record<string, unknown>).submission_status ?? 'draft')
   const submittable = Boolean(m.is_submittable) && !isNew
   // EDS-13: a bound Table on a read-only source renders with no write
   // affordance at all — every field read-only, Save/Rename absent.

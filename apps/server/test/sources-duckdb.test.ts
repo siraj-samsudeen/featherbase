@@ -141,7 +141,7 @@ describe('M3: duckdb read-only source', () => {
 
     const doc = (await admin.get(`/api/table/${enc}/TVM`)) as Record<string, unknown>
     expect(doc.qty).toBe('7')
-    expect(doc.status).toBe('draft')
+    expect(doc.submission_status).toBe('draft')
   })
 
   test('every write path is rejected — the driver has no write capability', async ({ admin }) => {

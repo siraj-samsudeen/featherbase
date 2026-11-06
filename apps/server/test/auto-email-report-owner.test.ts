@@ -92,7 +92,7 @@ describe('#338: scheduled report emails run as the person who set them up', () =
   test('every row the owner may see is attached, past the first 500', async ({ admin, createUser }) => {
     const planner = await setup(admin, createUser)
     await sql.unsafe(
-      `insert into featherbase.aeo_order (row_id, title, created_by, updated_by, status)
+      `insert into featherbase.aeo_order (row_id, title, created_by, updated_by, submission_status)
        select 'bulk-' || n, 'Bulk ' || n, '${planner.user}', '${planner.user}', 'draft' from generate_series(1, 600) n`,
     )
     const out = await deliverAutoEmailReport(AER)

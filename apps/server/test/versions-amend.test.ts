@@ -103,7 +103,7 @@ describe('DOC-008: amend cancelled documents', () => {
     )
     expect(amended.row_id).toBe(`${doc.row_id}-1`)
     expect(amended.amended_from).toBe(doc.row_id)
-    expect(amended.status).toBe('draft')
+    expect(amended.submission_status).toBe('draft')
     expect(amended.title).toBe('to amend')
     expect(amended.lines.map((r: any) => r.item)).toEqual(['x', 'y'])
     expect(amended.lines[0].row_id).not.toBe(doc.lines[0].row_id)

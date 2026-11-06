@@ -50,7 +50,7 @@ export async function recordEvents(user: string, events: IncomingEvent[]): Promi
       updated_by: user,
       created_at: new Date(now),
       updated_at: new Date(now),
-      status: 'draft',
+      submission_status: 'draft',
       kind: e.kind,
       ref_key: e.key,
       label: e.label ?? null,

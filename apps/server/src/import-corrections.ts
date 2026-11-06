@@ -178,7 +178,7 @@ export async function observeUnchangedRows(meta: TableMeta, inputs: { row_id: st
     unchanged.add(row_id)
     // What planImport records: read-only columns are never source observations.
     if (meta.track_changes) observations.push({
-      row_id: randomBytes(5).toString('hex'), ref_table: meta.name, ref_name: row_id, run_id: runId, created_by: user, updated_by: user, created_at: at, updated_at: at, status: 'draft', position: 0,
+      row_id: randomBytes(5).toString('hex'), ref_table: meta.name, ref_name: row_id, run_id: runId, created_by: user, updated_by: user, created_at: at, updated_at: at, submission_status: 'draft', position: 0,
       values: sql.json(Object.fromEntries(mapped.filter(c => !c.read_only).map(c => [c.column_name, normalized(values[c.column_name], c.column_type)])) as never),
     })
   }

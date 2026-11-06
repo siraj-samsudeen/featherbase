@@ -56,7 +56,7 @@ async function writeRoles(id: string, roles: string[], actor: string) {
       updated_by: actor,
       created_at: now,
       updated_at: now,
-      status: 'draft',
+      submission_status: 'draft',
       position: i + 1,
       parent: id,
       parenttype: SERVICE_ACCOUNT_TABLE,
@@ -81,7 +81,7 @@ export async function createServiceAccount(label: string, roles: string[], actor
       updated_by: actor,
       created_at: now,
       updated_at: now,
-      status: 'draft',
+      submission_status: 'draft',
       position: 0,
     } as unknown as Record<string, never>)}`
     await writeRoles(id, wanted, actor)
