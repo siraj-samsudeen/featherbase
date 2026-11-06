@@ -521,9 +521,9 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
       const required = await admin.fetch(path, { method: 'POST', body: JSON.stringify({ business_code: 1 }) })
       expect(required.status).toBe(417)
       const r = (await required.json()) as { error: { message: string; fields?: Record<string, string> } }
-      expect(r.error.fields).toEqual({ status_1: 'Required' })
+      expect(r.error.fields).toEqual({ status: 'Required' })
       expect(r.error.message).not.toMatch(/violates|null value/)
-      const broken = await admin.fetch(path, { method: 'POST', body: JSON.stringify({ status_1: 'ok', business_code: 999 }) })
+      const broken = await admin.fetch(path, { method: 'POST', body: JSON.stringify({ status: 'ok', business_code: 999 }) })
       expect(broken.status).toBe(417)
       const b = (await broken.json()) as { error: { message: string; fields?: Record<string, string> } }
       expect(b.error.fields).toEqual({ business_code: expect.any(String) })
@@ -568,7 +568,7 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
     await cli.unsafe(`create or replace function ext_fixture.refuse_gauge() returns trigger language plpgsql as $$ begin raise exception using errcode = '${code}', message = 'private source diagnostic', ${diagnostic}; end $$`)
     await cli.unsafe('create trigger refuse_gauge before insert on ext_fixture.gauge for each row execute function ext_fixture.refuse_gauge()')
     try {
-      const response = await admin.fetch('/api/table/Ext%20Gauge', { method: 'POST', body: JSON.stringify({ status_1: 'new' }) })
+      const response = await admin.fetch('/api/table/Ext%20Gauge', { method: 'POST', body: JSON.stringify({ status: 'new' }) })
       expect(response.status).toBe(417)
       expect(await response.json()).toMatchObject({ error: { type: 'ValidationError', message } })
     } finally {
