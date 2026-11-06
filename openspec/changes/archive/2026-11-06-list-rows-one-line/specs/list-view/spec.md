@@ -64,7 +64,8 @@ The list's filter boxes, its Add filter button and its layout choices SHALL shar
 one line where they fit. The row for building a filter SHALL stay closed until
 the person asks for it, and filters already applied SHALL still show and be
 removable while it is closed. The row count SHALL read on the title's line. On a
-desktop window of 1280×800 the first row SHALL start within the top two fifths.
+desktop window of 1280×800 the first row SHALL start within the top two fifths,
+not counting a notice across the window's top that lasts until the instance is set up.
 
 #### Scenario: Opening a list
 

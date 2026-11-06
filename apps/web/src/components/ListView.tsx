@@ -1674,7 +1674,7 @@ function InlineChildGrid({
 const STANDARD_TEXT_TYPES = new Set(['Data', 'Reference', 'Email', 'Small Text'])
 // #1017: one width for every kind of box, so a long Choice can't stretch its own
 // and four of them share a line with the list's other controls.
-const FILTER_BOX = 'flex w-36 flex-col gap-0.5'
+const FILTER_BOX = 'flex w-32 flex-col gap-0.5'
 const FILTER_LABEL = 'truncate text-xs font-semibold text-ink-subtle'
 
 // A value's box in the Add filter row suits its column, where the condition can use it (#1019).
