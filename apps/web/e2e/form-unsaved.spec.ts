@@ -26,7 +26,7 @@ test('#1009: Save stays on screen after scrolling, and reloading warns', async (
     const bar = page.getByTestId('form-unsaved-bar')
     await expect(bar).toBeInViewport()
     await expect(page.getByTestId('form-save')).toBeInViewport()
-    await page.getByLabel('Field 29', { exact: true }).scrollIntoViewIfNeeded()
+    await page.getByLabel('Field 28', { exact: true }).scrollIntoViewIfNeeded()
     await expect(page.getByTestId('form-save')).not.toBeInViewport()
     await expect(bar).toBeInViewport()
   })
