@@ -1,6 +1,6 @@
 import { writeFile } from 'node:fs/promises'
 import { tableHref } from 'shared'
-import { anonymousTest, expect, adminAuth, loginAs, type APIRequestContext } from './fixtures'
+import { ADMIN_PWD, ADMIN_USER, anonymousTest, expect, adminAuth, loginAs, type APIRequestContext } from './fixtures'
 import { ensureTable } from './fixtures-ui'
 
 // Bounded, test-only evidence for #774's unreproduced initial-Welcome failure.
@@ -29,7 +29,7 @@ const test = anonymousTest.extend<{ setupDiagnostics: void }>({
       const safePath = (path: string) => [
         '/featherbase/login', '/featherbase/admin', '/featherbase/admin/home/home',
         '/featherbase/admin/home/system', '/featherbase/admin/home/$name',
-        '/featherbase/admin/setup', '/featherbase/admin/setup/people',
+        '/featherbase/admin/setup', '/featherbase/admin/setup/person',
       ].includes(path) ? path : '<other>'
       const record = (event: string, extra: Partial<SetupDiagnostic> = {}) => w.__captureSetupDiagnostic({
         event,
@@ -237,11 +237,32 @@ test('the welcome guide can be deferred and resumed without treating optional se
     .refuteHas('[data-testid="health-banner"]')
     .clickLink('Welcome')
     .assertHas('[data-testid="welcome-setup"]')
-    .clickLink('Set up administrators')
+    .within('[data-testid="welcome-setup"]', (w) => w.clickLink('Set up administrators'))
     .assertHas('[data-testid="first-run-setup"]')
+    .assertPath('/featherbase/admin/setup/person')
+    .refuteHas('[data-testid="setup-banner"]')
     .clickButton('Not now')
     .refuteHas('[data-testid="first-run-setup"]')
     .refuteHas('[data-testid="health-banner"]')
+    .assertHas('[data-testid="setup-banner"]')
+})
+
+test('the old setup address reaches the screen through sign-in, and a reload keeps the banner', async ({ session }) => {
+  await session.visit('/featherbase/admin/setup/people')
+  await session.step('sign in where the old address sent us', async ({ page }) => {
+    await expect(page).toHaveURL(/\/featherbase\/login\?next=/)
+    await page.fill('input[name=email]', ADMIN_USER)
+    await page.fill('input[name=password]', ADMIN_PWD)
+    await page.click('button[type=submit]')
+  })
+  await session
+    .assertHas('[data-testid="first-run-setup"]')
+    .assertPath('/featherbase/admin/setup/person')
+    .visit('/featherbase/admin/instance-health')
+    .assertHas('[data-testid="setup-banner"]')
+    .assertHas('[data-testid="setup-administrators-link"]')
+    .within('[data-testid="health-check-system-manager-email"]', (c) => c.clickLink('Set up administrators'))
+    .assertPath('/featherbase/admin/setup/person')
 })
 
 test('with the email sink: the person becomes a System Manager and their invitation is shown to copy', async ({ session }) => {
@@ -250,7 +271,7 @@ test('with the email sink: the person becomes a System Manager and their invitat
   })
   await session
     .assertHas('[data-testid="welcome-setup"]')
-    .clickLink('Set up administrators')
+    .within('[data-testid="welcome-setup"]', (w) => w.clickLink('Set up administrators'))
     .assertHas('[data-testid="first-run-setup"]')
     .fillIn('Full name', 'Asha Keeper')
     .fillIn('Email', ASHA)
@@ -271,4 +292,5 @@ test('once someone has an address, signing in goes straight to the Admin', async
   await session
     .assertHas('[data-testid="import-data-link"]')
     .refuteHas('[data-testid="first-run-setup"]')
+    .refuteHas('[data-testid="setup-banner"]')
 })

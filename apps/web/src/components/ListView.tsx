@@ -613,8 +613,7 @@ export function ListView({
   }
 
   return (
-    // data-page: a list uses the whole window, so a wide one shows more columns.
-    <div data-testid="list-view" data-page="list">
+    <div data-testid="list-view">
       {/* Top-aligned on desktop: however many rows the actions wrap to, the first
           row sits level with the title (listview.spec "share a vertical band"). */}
       <div className="mb-2 flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">

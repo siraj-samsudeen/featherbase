@@ -26,9 +26,11 @@ interface BarControl {
   picker: string
   sets: string
   options: BarOption[]
+  /** #975: stays away from a page whose address carries this key. */
+  hiddenWhen?: string
 }
 
-/** The controls the bar shows for `app`: those with at least one option. */
+/** The controls the bar shows for `app`: those with at least one option, on a page they apply to. */
 export function useBarControls(app: string | undefined) {
   const bar = useQuery({
     queryKey: ['app_bar', app],
@@ -36,7 +38,11 @@ export function useBarControls(app: string | undefined) {
     enabled: Boolean(app),
     retry: false,
   })
-  return (bar.data?.controls ?? []).filter((control) => control.options.length > 0)
+  const page = useBarAddress()
+  const location = useRouterState({ select: (state) => state.location })
+  const address = new URLSearchParams(page ? page.search : location.searchStr)
+  return (bar.data?.controls ?? []).filter((control) =>
+    control.options.length > 0 && !(control.hiddenWhen && address.has(control.hiddenWhen)))
 }
 
 export function BarControls({ app }: { app: string }) {

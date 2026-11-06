@@ -91,7 +91,7 @@ describe('#737 command destinations', () => {
     const inventory = await reader.get<Inventory>(PATH)
     expect(inventory.tables.map((t) => t.row_id)).toEqual(['Glossary Term', 'Person', 'System Settings'])
     expect(inventory.tables.every((t) => !t.can_create)).toBe(true)
-    for (const slug of ['jobs', 'instance-health', 'apps', 'import', 'imports', 'waiting-for-access', 'setup', 'setup/people', 'find-person'])
+    for (const slug of ['jobs', 'instance-health', 'apps', 'import', 'imports', 'waiting-for-access', 'setup', 'setup/person', 'find-person'])
       expect(inventory.pages.map((p) => p.href)).not.toContain(`/featherbase/admin/${slug}`)
     expect(inventory.pages.map((p) => p.label)).not.toContain('Secret inventory page')
     expect(inventory.pages.map((p) => p.href)).toContain('/featherbase/admin/glossary')
