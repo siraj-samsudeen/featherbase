@@ -1,7 +1,7 @@
 ## 1. Rename
 
 - [x] 1.1 Rename the lifecycle in every read, write, DDL statement and name list
-- [x] 1.2 Migration `0151`: every stored Table, checked one by one, refusing a clash
+- [x] 1.2 Migration `0152`: every stored Table, checked one by one, refusing a clash
 
 ## 2. Tests
 

@@ -8,7 +8,7 @@ Every Table reserves the column name `status` for the submit lifecycle (draft, s
 - `status` is an ordinary column name. Its values mean nothing to the platform: `cancelled` there locks nothing, and a workflow doesn't touch it.
 - **BREAKING** The row field and filter `status` no longer mean the lifecycle. Nothing outside this repo depends on them yet.
 - SLA escalation reads fulfilled states from a Table's own `status` column when it has no workflow.
-- Migration `0151` renames the column on every stored Table and refuses a Table where either name already holds something else. `person_match` keeps its own `status`.
+- Migration `0152` renames the column on every stored Table and refuses a Table where either name already holds something else. `person_match` keeps its own `status`.
 
 ## Capabilities
 
