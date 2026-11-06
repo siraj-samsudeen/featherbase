@@ -81,16 +81,16 @@ connectEventSink({
 // home page sidebar. All Tables render inside <Outlet/>.
 // #410: pick the layout from the server-computed capabilities BEFORE mounting
 // the Admin shell, so a person who cannot use it never fires its API calls.
-export function AdminLayout({ wide = false }: { wide?: boolean } = {}) {
+export function AdminLayout({ wide = false, fullWidth = false }: { wide?: boolean; fullWidth?: boolean } = {}) {
   // #489: the signed-in person's theme choice outlives every toggle on the page.
   return (
     <ThemeChoiceProvider>
-      <AdminLayoutForKind wide={wide} />
+      <AdminLayoutForKind wide={wide} fullWidth={fullWidth} />
     </ThemeChoiceProvider>
   )
 }
 
-function AdminLayoutForKind({ wide }: { wide: boolean }) {
+function AdminLayoutForKind({ wide, fullWidth }: { wide: boolean; fullWidth: boolean }) {
   const kind = useShellKind()
   // #489 item 10: while whoami loads, the bar's frame and name are drawn and
   // its right side stays empty — no flash of the wrong items.
@@ -111,10 +111,10 @@ function AdminLayoutForKind({ wide }: { wide: boolean }) {
   // A report reader has no Admin page left: their sign-in methods are an
   // account page now (#489), so every Admin address sends them to the report.
   if (kind === 'report-only') return <Navigate to={REPORT_PATH} replace />
-  return <AdminShell wide={wide} />
+  return <AdminShell wide={wide} fullWidth={fullWidth} />
 }
 
-function AdminShell({ wide }: { wide: boolean }) {
+function AdminShell({ wide, fullWidth }: { wide: boolean; fullWidth: boolean }) {
   const navigate = useNavigate()
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -914,7 +914,7 @@ function AdminShell({ wide }: { wide: boolean }) {
 
         {/* Page canvas */}
         <main className={`min-w-0 flex-1 overflow-auto bg-canvas p-4 sm:p-6${wide ? ' flex flex-col' : ''}`}>
-          <div className={wide ? 'flex min-h-0 w-full flex-1 flex-col' : 'mx-auto max-w-5xl has-data-[pane=right]:max-w-none'}>
+          <div className={wide ? 'flex min-h-0 w-full flex-1 flex-col' : fullWidth ? 'w-full' : 'mx-auto max-w-5xl has-data-[pane=right]:max-w-none'}>
             <Outlet />
           </div>
         </main>
