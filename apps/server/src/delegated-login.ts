@@ -12,7 +12,8 @@
 // an unrecognised shape is "could not confirm", never a sign-in. A body that
 // says the person has left is refused even with a right password — StyleHR
 // keeps authenticating leavers (data-warehouse report_server/stylehr_auth.py,
-// whose rules this ports). Binding never depends on the body.
+// whose rules this ports). Binding depends on the body only for a link a roster
+// first sign-in made (#970), which must name its record.
 //
 // The password is held for one outbound request and never stored, logged,
 // thrown or echoed. Failures are logged as label + outcome only.
@@ -92,6 +93,59 @@ export function wireFrom(settings: Record<string, unknown> | null): DelegatedWir
   return wire
 }
 
+/** Where a method finds staff who have never signed in (#970): the method's
+ *  `settings.roster`. The Table and its columns are the instance's; the
+ *  platform names none of them. The ID typed must match `sign_in_id_column`,
+ *  and the service's answer must carry the row's `record_number_column` under
+ *  `provider_record_key`, so a service that signs in somebody else on a shared
+ *  ID cannot link the wrong row. `identifiers` maps an identifier system to the
+ *  column holding its value, recorded on the new person. */
+export interface RosterLink {
+  table: string
+  sign_in_id_column: string
+  record_number_column: string
+  person_column: string
+  name_column: string
+  status_column: string
+  current_status: string
+  provider_record_key: string
+  identifiers: Record<string, string>
+}
+
+/** `linked_by` on a link a roster first sign-in made. */
+export const ROSTER_LINK = 'roster-first-sign-in'
+
+const COLUMN_NAME = /^[a-z][a-z0-9_]*$/
+const ROSTER_COLUMNS = ['sign_in_id_column', 'record_number_column', 'person_column', 'name_column', 'status_column'] as const
+
+/** The method's roster, or null when it has none; refuses a malformed one. */
+export function rosterFrom(settings: Record<string, unknown> | null): RosterLink | null {
+  const raw = settings?.roster
+  if (raw === undefined || raw === null) return null
+  if (!isObj(raw)) throw new Error('settings.roster must be an object')
+  const text = (key: string) => {
+    const value = raw[key]
+    if (typeof value !== 'string' || !value.trim()) throw new Error(`settings.roster.${key} must be a string`)
+    return value.trim()
+  }
+  for (const key of ROSTER_COLUMNS)
+    if (!COLUMN_NAME.test(text(key))) throw new Error(`settings.roster.${key} must be a column name`)
+  const identifiers = raw.identifiers ?? {}
+  if (!isObj(identifiers) || !Object.values(identifiers).every((c) => typeof c === 'string' && COLUMN_NAME.test(c)))
+    throw new Error('settings.roster.identifiers must map an identifier system to a column name')
+  return {
+    table: text('table'),
+    sign_in_id_column: text('sign_in_id_column'),
+    record_number_column: text('record_number_column'),
+    person_column: text('person_column'),
+    name_column: text('name_column'),
+    status_column: text('status_column'),
+    current_status: text('current_status'),
+    provider_record_key: text('provider_record_key').toLowerCase(),
+    identifiers: identifiers as Record<string, string>,
+  }
+}
+
 // http is accepted only for a stub on this machine (tests, local dev); a
 // password never crosses a network in the clear.
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
@@ -161,7 +215,7 @@ export function _setDelegatedFetch(f: typeof fetch | null) {
 
 const TIMEOUT_MS = 10_000
 
-type ProviderOutcome = 'verified' | 'rejected' | 'unavailable' | 'left'
+type ProviderOutcome = 'verified' | 'rejected' | 'unavailable' | 'left' | 'another_record'
 
 type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => Boolean(v) && typeof v === 'object' && !Array.isArray(v)
@@ -194,8 +248,15 @@ function saysLeft(o: Obj, w: DelegatedWire): boolean {
   return w.left_status_keys.some((k) => typeof o[k] === 'string' && w.left_words.some((word) => String(o[k]).toLowerCase().includes(word)))
 }
 
-/** Ask the provider whether `id`/`password` are good. Never throws. */
-export async function checkWithProvider(cfg: DelegatedLoginConfig, id: string, password: string): Promise<ProviderOutcome> {
+/** Ask the provider whether `id`/`password` are good. Never throws. With
+ *  `mustName`, a yes that does not carry this record under this key is
+ *  `another_record`, not a yes. */
+export async function checkWithProvider(
+  cfg: DelegatedLoginConfig,
+  id: string,
+  password: string,
+  mustName?: { key: string; record: string },
+): Promise<ProviderOutcome> {
   if (delegatedTestMode()) return 'verified'
   let res: Response
   try {
@@ -247,6 +308,17 @@ export async function checkWithProvider(cfg: DelegatedLoginConfig, id: string, p
     logOutcome(cfg, 'rejected', `http_${res.status}_error_body ${keys}`)
     return 'rejected'
   }
+  // Before the left check: an answer about somebody else, or about nobody it
+  // names, says nothing about this person; nor does one naming two records. A body
+  // with neither a yes nor a leaver falls through to "could not confirm".
+  if (mustName) {
+    const named = ls.map((o) => o[mustName.key]).filter(filled)
+    const speaks = ls.some((o) => saysYes(o, cfg.wire) || saysLeft(o, cfg.wire))
+    if (named.length ? named.some((v) => String(v).trim() !== mustName.record) : speaks) {
+      logOutcome(cfg, 'another_record', `http_${res.status} ${keys}`)
+      return 'another_record'
+    }
+  }
   if (ls.some((o) => saysLeft(o, cfg.wire))) {
     logOutcome(cfg, 'left', `http_${res.status} ${keys}`)
     return 'left'
@@ -291,6 +363,36 @@ function eligibleOne(cfg: DelegatedLoginConfig, rows: Record<string, unknown>[])
   if (!rows[0].enabled || rows[0].privileged)
     throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
   return { user: String(rows[0].row_id), identity: String(rows[0].identity) }
+}
+
+/** What a sign-in through this link must have the provider name (#970): a link
+ *  a roster first sign-in made is keyed on the row's record, and stays held to
+ *  it on every sign-in, so an ID that comes to answer for someone else cannot
+ *  open this person's account. Refused when the method no longer says where
+ *  the provider names it, rather than stop checking. */
+export async function recordToName(cfg: DelegatedLoginConfig, identity: string | null): Promise<{ key: string; record: string } | undefined> {
+  const [link] = await sql`select subject from sign_in_identity where id = ${identity} and linked_by = ${ROSTER_LINK}`
+  if (!link) return undefined
+  let roster: RosterLink | null = null
+  try {
+    roster = rosterFrom(cfg.method.settings)
+  } catch {
+    /* malformed: the same as none */
+  }
+  if (!roster) {
+    console.warn(`[delegated-login] ${cfg.label}: a roster-made link refused, the method has no roster to check it with`)
+    throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
+  }
+  return { key: roster.provider_record_key, record: String(link.subject) }
+}
+
+/** Does no live link carry this sign-in name? Then the method's rule for people
+ *  it does not know decides, before the provider is asked. */
+export async function noLinkCarries(cfg: DelegatedLoginConfig, id: string): Promise<boolean> {
+  const rows = await sql`
+    select 1 from sign_in_identity
+    where method = ${cfg.key} and subject is not null and ended_at is null and lower(sign_in_name) = lower(trim(${id})) limit 1`
+  return rows.length === 0
 }
 
 /** Test mode (person-resolution D5): a tester knows the employee code, not
