@@ -728,10 +728,19 @@ const setupRoute = createRoute({
   component: () => <ManageOnly><WelcomeSetup /></ManageOnly>,
 })
 
+const setupPersonRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'setup/person',
+  component: FirstRunSetup,
+})
+
+// #1005: the screen's address before it took the Table's word.
 const setupPeopleRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'setup/people',
-  component: FirstRunSetup,
+  beforeLoad: () => {
+    throw redirect({ to: '/featherbase/admin/setup/person', replace: true })
+  },
 })
 
 // UI-027 / #80: a Home Page renders grouped link cards and its legacy
@@ -1024,5 +1033,5 @@ export const routeTree = rootRoute.addChildren([
   salesTargetRoute,
   accountRoute.addChildren([signInMethodsRoute, accessExplanationRoute]),
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
 ])
