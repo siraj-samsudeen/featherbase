@@ -1,6 +1,8 @@
-// Development sample data for the Assets app: Jeyarama's places, about twenty
-// assets, two people and a few repair jobs. Safe to run again: it finds what it
-// made before by name. Development only.
+// Development sample data for the Assets app, set up for the Asset Management
+// BRD's pilot: ATK 1501, Enchakkal WH 9151 and a Chennai store still to be
+// chosen. Legal entity codes and every SAP number here are made up and marked
+// SAMPLE; they are not the group's real records. Safe to run again: it finds
+// what it made before by name. Development only.
 //
 //   node client-apps/jeyarama/equipment/development/seed.mjs --url=http://127.0.0.1:8000
 import { readFile } from 'node:fs/promises'
@@ -40,61 +42,87 @@ async function withRole(personId, role) {
 await withRole('Administrator', 'Assets Manager')
 const ravi = await ensure('Person', 'email', 'ravi.technician@example.test', { email: 'ravi.technician@example.test', full_name: 'Ravi (technician)', enabled: true })
 await withRole(ravi.row_id, 'Assets Technician')
-const staff = await ensure('Person', 'email', 'avadi.staff@example.test', { email: 'avadi.staff@example.test', full_name: 'Avadi store staff', enabled: true })
+const staff = await ensure('Person', 'email', 'atk.staff@example.test', { email: 'atk.staff@example.test', full_name: 'Suresh K (ATK store)', enabled: true })
 await withRole(staff.row_id, 'Assets Member')
 
+// Legal entities: short names from the BRD; codes are samples until Finance certifies the register.
+const entities = {}
+for (const [short, status, code] of [['JRPL', 'Verified', 'SAMPLE-1000'], ['KAIPL', 'Verified', 'SAMPLE-2000'], ['RRPL', 'Held', 'SAMPLE-3000']])
+  entities[short] = (await ensure('equipment.entity', 'short_name', short, {
+    entity_name: `${short} (sample: confirm the registered name)`, short_name: short, sap_company_code: code, entity_status: status,
+  })).row_id
+
+// Places: site › building › floor › area.
 const places = {}
-for (const [name, type] of [
-  ['Avadi Store', 'Store'], ['Keelkattalai Store', 'Store'], ['Madhavaram Store', 'Store'], ['Pallaikaranai Store', 'Store'],
-  ['Tambaram Store', 'Store'], ['Kaniyapuram Store', 'Store'], ['Manimangalam WH', 'Warehouse'], ['Kattarapakkam WH', 'Warehouse'],
-  ['Jeyarama Corporate Office', 'Office'],
-]) places[name] = (await ensure('equipment.place', 'place_name', name, { place_name: name, place_type: type })).row_id
+async function place(name, level, parent, extra = {}) {
+  places[name] = (await ensure('equipment.place', 'place_name', name, { place_name: name, place_level: level, ...(parent ? { parent_place: places[parent] } : {}), ...extra })).row_id
+}
+await place('ATK 1501', 'Site', null, { site_kind: 'Store', sap_plant: '1501' })
+await place('ATK main building', 'Building', 'ATK 1501')
+await place('ATK ground floor', 'Floor', 'ATK main building')
+for (const area of ['Billing', 'Dairy aisle', 'Back store']) await place(`ATK ${area}`, 'Area', 'ATK ground floor')
+await place('Enchakkal WH 9151', 'Site', null, { site_kind: 'Warehouse', sap_plant: '9151' })
+await place('Enchakkal main building', 'Building', 'Enchakkal WH 9151')
+await place('Enchakkal ground floor', 'Floor', 'Enchakkal main building')
+for (const area of ['Cold chain', 'Dispatch']) await place(`Enchakkal ${area}`, 'Area', 'Enchakkal ground floor')
+await place('Chennai pilot store (to be chosen)', 'Site', null, { site_kind: 'Store' })
 
 const types = {}
 for (const name of ['AC', 'Cold room', 'Generator', 'POS terminal', 'Fixture', 'Vehicle', 'Other'])
   types[name] = (await ensure('equipment.asset_type', 'type_name', name, { type_name: name })).row_id
 
 const day = (offset) => { const d = new Date(); d.setDate(d.getDate() + offset); return d.toISOString().slice(0, 10) }
+const refreshed = new Date(Date.now() - 6 * 3_600_000).toISOString()
 const assets = {}
-for (const [name, type, place, area, make, model, serial, bought, cost, warranty] of [
-  ['Voltas 2-ton split AC', 'AC', 'Avadi Store', 'Billing area', 'Voltas', '243V DZX', 'VT24-118230', '2024-03-12', 52500, '2027-03-12'],
-  ['Billing PC, till 3', 'POS terminal', 'Avadi Store', 'Till 3', 'HP', 'ProDesk 400', 'HP4-99812', '2023-06-01', 41800, day(12)],
-  ['Display chiller 1', 'Cold room', 'Avadi Store', 'Dairy aisle', 'Western', 'SRC 450', 'WS-450-2211', '2022-09-20', 68000, '2026-09-20'],
-  ['Weighing scale 2', 'Other', 'Avadi Store', 'Vegetables', 'Essae', 'DS-852', 'ES852-7781', '2025-01-10', 9200, '2027-01-10'],
-  ['Blue Star walk-in cold room', 'Cold room', 'Keelkattalai Store', 'Back store', 'Blue Star', 'WICR 8x10', 'BS-WI-5521', '2023-02-14', 385000, '2027-02-14'],
-  ['Daikin 1.5-ton split AC', 'AC', 'Keelkattalai Store', 'Ladies wear', 'Daikin', 'FTKF50', 'DK-50-33190', '2024-05-02', 46900, '2029-05-02'],
-  ['Billing PC, till 1', 'POS terminal', 'Keelkattalai Store', 'Till 1', 'Dell', 'OptiPlex 3000', 'DL3K-1188', '2024-08-19', 44500, '2027-08-19'],
-  ['Gondola shelving, aisle 4', 'Fixture', 'Keelkattalai Store', 'Aisle 4', 'Kwality Racks', 'GR-5', null, '2021-11-05', 18500, null],
-  ['Carrier 2-ton cassette AC', 'AC', 'Madhavaram Store', 'Entrance', 'Carrier', 'Cassette 24K', 'CR-24K-6610', '2022-04-28', 78000, day(25)],
-  ['Billing PC, till 2', 'POS terminal', 'Madhavaram Store', 'Till 2', 'Lenovo', 'ThinkCentre M70', 'LN70-55120', '2025-02-11', 47200, '2028-02-11'],
-  ['Kirloskar 62.5 kVA DG', 'Generator', 'Pallaikaranai Store', 'Terrace', 'Kirloskar', 'KG1-62.5AS', 'KOEL-62-30419', '2021-07-15', 845000, day(23)],
-  ['Voltas 1.5-ton split AC', 'AC', 'Pallaikaranai Store', 'Office', 'Voltas', '183V CZZ', 'VT18-44102', '2023-10-03', 38900, '2026-10-03'],
-  ['Visi cooler 2-door', 'Cold room', 'Tambaram Store', 'Beverages', 'Rockwell', 'FGVC-1000', 'RW-1000-8812', '2024-12-01', 72000, '2026-12-01'],
-  ['Billing PC, till 1', 'POS terminal', 'Tambaram Store', 'Till 1', 'HP', 'ProDesk 400', 'HP4-10233', '2023-06-01', 41800, '2026-06-01'],
-  ['Mahindra Supro delivery van', 'Vehicle', 'Kaniyapuram Store', 'Parking', 'Mahindra', 'Supro Cargo', 'TN 20 BX 4471', '2023-01-20', 685000, '2026-01-20'],
-  ['Cummins 125 kVA DG', 'Generator', 'Manimangalam WH', 'Yard', 'Cummins', 'C125D5', 'CU-125-77810', '2020-11-30', 1420000, '2025-11-30'],
-  ['Godrej electric forklift', 'Vehicle', 'Manimangalam WH', 'Dock 2', 'Godrej', 'GX 300E', 'GD-300E-1902', '2022-03-08', 1250000, day(-10)],
-  ['Cold storage room 2', 'Cold room', 'Manimangalam WH', 'Cold chain', 'Blue Star', 'WICR 12x16', 'BS-WI-9912', '2021-06-18', 920000, '2026-06-18'],
-  ['Pallet racking, bay A', 'Fixture', 'Kattarapakkam WH', 'Bay A', 'Godrej', 'Selective 6m', null, '2021-02-10', 260000, null],
-  ['Server rack and UPS', 'Other', 'Jeyarama Corporate Office', 'Server room', 'APC', 'Smart-UPS 3kVA', 'APC3K-55129', '2024-04-04', 98000, '2027-04-04'],
+let sapNo = 1
+for (const [name, type, at, owner, books, condition, custody, make, model, serial, warranty, amc] of [
+  ['Voltas 2-ton split AC', 'AC', 'ATK Billing', 'JRPL', 'Capitalized', 'Working', 'At location', 'Voltas', '243V DZX', 'VT24-118230', '2027-03-12', null],
+  ['Billing PC, till 3', 'POS terminal', 'ATK Billing', 'JRPL', 'Capitalized', 'Working', 'With custodian', 'HP', 'ProDesk 400', 'HP4-99812', day(12), null],
+  ['Display chiller 1', 'Cold room', 'ATK Dairy aisle', 'JRPL', 'Fully depreciated', 'Working', 'At location', 'Western', 'SRC 450', 'WS-450-2211', '2026-09-20', ['Western Refrigeration', day(200)]],
+  ['Weighing scale 2', 'Other', 'ATK Dairy aisle', 'JRPL', 'Controlled item', 'Working', 'At location', 'Essae', 'DS-852', 'ES852-7781', '2027-01-10', null],
+  ['Gondola shelving, aisle 4', 'Fixture', 'ATK ground floor', 'JRPL', 'Capitalized', 'Working', 'At location', 'Kwality Racks', 'GR-5', null, null, null],
+  ['Kirloskar 62.5 kVA DG', 'Generator', 'ATK main building', 'JRPL', 'Capitalized', 'Under repair', 'At location', 'Kirloskar', 'KG1-62.5AS', 'KOEL-62-30419', day(23), ['Kirloskar Service', day(300)]],
+  ['EDC card terminal 2', 'POS terminal', 'ATK Billing', null, 'Leased or third party', 'Working', 'At location', 'Pine Labs', 'Plutus', 'PL-55102', null, null],
+  ['Blue Star walk-in cold room', 'Cold room', 'Enchakkal Cold chain', 'KAIPL', 'Capitalized', 'Under repair', 'With vendor', 'Blue Star', 'WICR 12x16', 'BS-WI-9912', '2026-06-18', ['Blue Star AMC', day(240)]],
+  ['Pallet racking, bay A', 'Fixture', 'Enchakkal Dispatch', 'KAIPL', 'Capitalized', 'Working', 'At location', 'Godrej', 'Selective 6m', null, null, null],
+  ['Godrej electric forklift', 'Vehicle', 'Enchakkal Dispatch', 'KAIPL', 'Capitalized', 'Idle', 'At location', 'Godrej', 'GX 300E', 'GD-300E-1902', day(-10), null],
+  ['Cummins 125 kVA DG', 'Generator', 'Enchakkal main building', 'KAIPL', 'Capitalized', 'Working', 'At location', 'Cummins', 'C125D5', 'CU-125-77810', '2025-11-30', null],
+  ['Daikin 1.5-ton split AC', 'AC', 'Chennai pilot store (to be chosen)', 'JRPL', 'Not yet in SAP', 'Working', 'At location', 'Daikin', 'FTKF50', 'DK-50-33190', '2029-05-02', null],
 ]) {
-  assets[`${name}|${place}`] = (await ensure('equipment.asset', 'serial_no', serial ?? `${name}|${place}`, {
-    asset_name: name, asset_type: types[type], place: places[place], area, make, model, serial_no: serial ?? `${name}|${place}`,
-    purchase_date: bought, purchase_cost: cost, ...(warranty ? { warranty_until: warranty } : {}),
+  const sap = books === 'Not yet in SAP' || books === 'Leased or third party' ? {} : {
+    sap_company_code: `SAMPLE-${owner === 'KAIPL' ? 2000 : 1000}`, sap_asset_no: `SAMPLE-${String(sapNo).padStart(6, '0')}`, sap_asset_sub: '0',
+    sap_equipment_no: type === 'Fixture' ? null : `SAMPLE-EQ-${String(sapNo).padStart(5, '0')}`, legacy_id: `SAMPLE-OLD-${sapNo}`, sap_refreshed_at: refreshed,
+  }
+  sapNo += 1
+  const key = serial ?? `${name}|${at}`
+  assets[name] = (await ensure('equipment.asset', 'serial_no', key, {
+    asset_name: name, asset_type: types[type], place: places[at], book_status: books, condition, custody_status: custody,
+    ...(owner ? { owner_entity: entities[owner], operator_entity: entities[owner] } : {}),
+    cost_centre: owner === 'KAIPL' ? 'SAMPLE-CC-ENC-410' : 'SAMPLE-CC-ATK-110',
+    ...(custody === 'With custodian' ? { custodian: staff.row_id } : { custodian: staff.row_id, location_custodian: true }),
+    make, model, serial_no: key, ...(warranty ? { warranty_until: warranty } : {}),
+    ...(amc ? { amc_vendor: amc[0], amc_until: amc[1] } : {}), ...sap,
   })).row_id
 }
 
 async function job(asset, problem, priority, after = {}) {
   const found = (await request(`/api/table/equipment.job${query([['asset', '=', asset], ['problem', '=', problem]], ['row_id'])}`)).data
-  if (found.length) return
-  let row = await request('/api/save_row', { method: 'POST', body: { table: 'equipment.job', row: { asset, problem, priority } } })
-  for (const change of [after.assign ? { assigned_to: after.assign } : null, after.stage ? { job_state: after.stage, ...(after.fix ?? {}) } : null].filter(Boolean))
+  if (found.length) return found[0]
+  let row = await request('/api/save_row', { method: 'POST', body: { table: 'equipment.job', row: {
+    asset, problem, priority, ...(after.failedMinutesAgo ? { failure_started_at: new Date(Date.now() - after.failedMinutesAgo * 60_000).toISOString() } : {}),
+  } } })
+  for (const change of [after.assign ? { assigned_to: after.assign } : null, ...(after.stages ?? []).map(stage => ({ job_state: stage, ...(stage === 'Fixed' ? after.fix : {}) }))].filter(Boolean))
     row = await request('/api/save_row', { method: 'POST', body: { table: 'equipment.job', row: { row_id: row.row_id, updated_at: row.updated_at, ...change } } })
+  return row
 }
-await job(assets['Voltas 2-ton split AC|Avadi Store'], 'Not cooling', 'Urgent')
-await job(assets['Blue Star walk-in cold room|Keelkattalai Store'], 'Door seal torn', 'High', { assign: ravi.row_id })
-await job(assets['Kirloskar 62.5 kVA DG|Pallaikaranai Store'], 'Battery weak, slow to start', 'Normal', { assign: ravi.row_id, stage: 'Waiting for parts' })
-await job(assets['Billing PC, till 2|Madhavaram Store'], 'Receipt printer jams', 'High', { assign: ravi.row_id, stage: 'In progress' })
-await job(assets['Billing PC, till 3|Avadi Store'], 'Keyboard keys stuck', 'Normal', { assign: ravi.row_id, stage: 'Fixed', fix: { work_done: 'Replaced the keyboard', repair_cost: 650 } })
+await job(assets['Voltas 2-ton split AC'], 'Not cooling', 'Urgent', { failedMinutesAgo: 25 })
+await job(assets['Blue Star walk-in cold room'], 'Door seal torn', 'High', { assign: ravi.row_id, failedMinutesAgo: 40, stages: ['In progress', 'Waiting for parts'] })
+await job(assets['Kirloskar 62.5 kVA DG'], 'Battery weak, slow to start', 'Normal', { assign: ravi.row_id, stages: ['In progress'] })
+await job(assets['Billing PC, till 3'], 'Receipt printer jams', 'High', { assign: ravi.row_id, failedMinutesAgo: 30, stages: ['In progress', 'Fixed'],
+  fix: { work_done: 'Cleaned and realigned the printer head', cause: 'Paper dust in the head', spares: 'Thermal roll, 2 nos.', repair_cost: 450 } })
+const closed = await job(assets['Display chiller 1'], 'Not holding temperature', 'Urgent', { assign: ravi.row_id, failedMinutesAgo: 90, stages: ['In progress', 'Fixed'],
+  fix: { work_done: 'Replaced the thermostat', cause: 'Faulty thermostat', spares: 'Thermostat, 1 no.', outside_service: 'Western Refrigeration AMC', repair_cost: 1850 } })
+const confirmations = (await request(`/api/table/equipment.restoration${query([['job', '=', closed.row_id]], ['row_id'])}`)).data
+if (!confirmations.length) await request('/api/save_row', { method: 'POST', body: { table: 'equipment.restoration', row: { job: closed.row_id, note: 'Holding 4 °C again' } } })
 
-console.log(`Assets sample data ready at ${origin}/equipment/ (${Object.keys(places).length} places, ${Object.keys(assets).length} assets)`)
+console.log(`Assets sample data ready at ${origin}/equipment/ (${Object.keys(places).length} places, ${Object.keys(assets).length} assets; SAP numbers are SAMPLE)`)
