@@ -15,6 +15,7 @@ test('#851 key coverage combines all import parts', async ({ admin }) => {
     .toEqual([{ column: 'code', matched: 520, complete: true, can_match: true }])
 })
 
+// Importing 520 rows and reading them back as a restricted user takes about 15 s, as below.
 test('#851 readable coverage survives aggregation without write permission', async ({ admin, createUser }) => {
   await admin.post('/api/table_def', { name: 'Ika Zone', columns: [{ column_name: 'code', column_type: 'Data' }] })
   const rows = Array.from({ length: 520 }, (_, i) => ({ code: `Z${i}` }))
@@ -25,7 +26,7 @@ test('#851 readable coverage survives aggregation without write permission', asy
   setSession(user.token!, { row_id: user.user!, email: null, full_name: null })
   expect(await analyzeImportKeys({ table: 'Ika Zone', columns: ['code'], rows: rows.map((values, sourceIndex) => ({ values, sourceIndex })) }))
     .toEqual([{ column: 'code', matched: 520, complete: true, can_match: false }])
-})
+}, 30_000)
 
 // Seeding through a restricted user takes 10-15 s on CI, right at the 15 s default.
 test('#851 matching permission must hold in every import part', async ({ admin, createUser }) => {
