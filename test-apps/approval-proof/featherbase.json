@@ -6,8 +6,18 @@
   "entryTable": "approvalproof.note",
   "server": "server.mjs",
   "approvalResolvers": {
-    "names": ["site_lead", "broken"],
-    "tables": ["Shelf Site"]
+    "names": [
+      "site_lead",
+      "broken",
+      "by_id",
+      "racing",
+      "related",
+      "forgotten",
+      "not_a_list"
+    ],
+    "tables": [
+      "Shelf Site"
+    ]
   },
   "tables": [
     {

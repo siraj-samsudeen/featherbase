@@ -189,9 +189,10 @@ test('a rule\'s form offers the names running apps give for "Maker is" and "Pers
   await renderApp('/featherbase/admin/table/approval-rule/new', admin)
   const names = await waitFor(() => {
     const list = screen.getByTestId('approval-resolver-names')
-    expect(list.querySelectorAll('option')).toHaveLength(2)
+    expect(list.querySelectorAll('option')).toHaveLength(7)
     return list
   }, WAIT)
-  expect([...names.querySelectorAll('option')].map((o) => o.getAttribute('value'))).toEqual(['approvalproof.broken', 'approvalproof.site_lead'])
+  expect([...names.querySelectorAll('option')].map((o) => o.getAttribute('value'))).toEqual(['approvalproof.broken', 'approvalproof.by_id', 'approvalproof.forgotten',
+    'approvalproof.not_a_list', 'approvalproof.racing', 'approvalproof.related', 'approvalproof.site_lead'])
   expect(document.querySelector('input[data-field=maker_resolver]')).toHaveAttribute('list', names.id)
 })

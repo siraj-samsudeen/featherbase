@@ -398,7 +398,8 @@ describe('approving rechecks the rules as they are now', () => {
 
   test('System Managers see which resolvers a rule can name', async ({ admin, createUser }) => {
     const w = await setUp(admin, createUser)
-    expect(await w.manager.get('/api/approval_resolvers')).toEqual({ resolvers: ['approvalproof.broken', 'approvalproof.site_lead'] })
+    expect(await w.manager.get('/api/approval_resolvers')).toEqual({ resolvers: ['approvalproof.broken', 'approvalproof.by_id', 'approvalproof.forgotten',
+      'approvalproof.not_a_list', 'approvalproof.racing', 'approvalproof.related', 'approvalproof.site_lead'] })
     await expect(w.helper.get('/api/approval_resolvers')).rejects.toMatchObject({ status: 403 })
   })
 })
@@ -433,6 +434,12 @@ describe('approval rules are data a System Manager keeps', () => {
     await refused({ governed_columns: 'colour', approvers: [{ role: 'Region Lead' }] }, /has no column colour/)
     await refused({ row_condition: [['site', 'between', 'A']], approvers: [{ role: 'Region Lead' }] }, /operator between/)
     await refused({ ref_table: 'Person', approvers: [{ role: 'Region Lead' }] }, /only an ordinary Table/)
+    await refused({ ref_table: 'Nowhere', approvers: [{ role: 'Region Lead' }] }, /no Table named Nowhere/)
+    await refused({ row_condition: 'site is A', approvers: [{ role: 'Region Lead' }] }, /must be a list filter/)
+    await refused({ row_condition: { site: 'A' }, approvers: [{ role: 'Region Lead' }] }, /must be a list filter/)
+    await refused({ row_condition: [['site', '=']], approvers: [{ role: 'Region Lead' }] }, /\[column, operator, value\]/)
+    await refused({ row_condition: [['colour', '=', 'A']], approvers: [{ role: 'Region Lead' }] }, /has no column colour/)
+    await refused({ maker_resolver: 'approvalproof.nobody', outcome: 'Apply and log' }, /No running app names people as approvalproof.nobody/)
     await admin.post('/api/table_def', { name: 'Unlogged', columns: [{ column_name: 'label', column_type: 'Data' }] })
     await sql`update table_def set track_changes = false where name = 'Unlogged'`
     ;(await import('../src/meta')).invalidateMeta('Unlogged')
@@ -440,6 +447,10 @@ describe('approval rules are data a System Manager keeps', () => {
     // "Any" with another approver than the maker is fine; "Apply and log" needs no approver.
     await rule(admin, { maker_resolver: SITE_LEAD, approvals_needed: 'Any', approvers: [{ resolver: SITE_LEAD }, { role: 'Region Lead' }] })
     await rule(admin, { maker_role: 'Helper', outcome: 'Apply and log' })
+    // Saving a rule again checks the approvers it already has.
+    const kept = await rule(admin, { maker_role: 'Region Lead', approvers: [{ resolver: SITE_LEAD }] })
+    const { approvers: _approvers, ...row } = kept
+    expect((await admin.post<any>('/api/save_row', { table: 'Approval Rule', row: { ...row, description: 'Region asks the lead' } })).description).toBe('Region asks the lead')
   })
 
   test('a maker condition that can\'t be worked out refuses the change, rather than letting a broader rule apply it', async ({ admin, createUser }) => {
@@ -458,5 +469,107 @@ describe('approval rules are data a System Manager keeps', () => {
     const { status, body } = await edit(w.helper, 'S-1', { label: 'Red box' })
     expect(status).toBe(403)
     expect(JSON.stringify(body)).toMatch(/Nobody else can approve/)
+  })
+})
+
+describe('the edges of a rule', () => {
+  test('a rule for changes only, or new rows only, leaves the other kind to other rules', async ({ admin, createUser }) => {
+    const w = await setUp(admin, createUser)
+    await rule(admin, { maker_role: 'Helper', operations: 'Changes', outcome: 'Apply and log' })
+    await rule(admin, { maker_role: 'Region Lead', operations: 'New rows', outcome: 'Apply and log' })
+    expect((await edit(w.helper, 'S-1', { label: 'Red box' })).status).toBe(201)
+    expect((await edit(w.region, 'S-1', { label: 'Green box' })).status).toBe(403)
+    const create = (client: TestClient, id: string) => client.fetch('/api/table/Shelf', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ row_id: id, site: 'A', label: 'New box' }) })
+    expect((await create(w.helper, 'S-40')).status).toBe(403)
+    expect((await create(w.region, 'S-41')).status).toBeLessThan(300)
+  })
+
+  test('rows named as text, and a resolver that reads a row by id', async ({ admin, createUser }) => {
+    const w = await setUp(admin, createUser)
+    await rule(admin, { maker_role: 'Helper', row_condition: '[["site", "=", "A"]]', approvers: [{ resolver: 'approvalproof.by_id' }] })
+    const { status, body } = await edit(w.helper, 'S-1', { label: 'Red box' })
+    expect(status).toBe(202)
+    expect(body.pending_proposal.waiting_for).toMatchObject([{ people: [w.lead.user] }])
+    expect((await edit(w.helper, 'S-9', { label: 'Red box' })).status).toBe(403)
+  })
+
+  test('a resolver that reads two rows at once, uses a related filter, leaves a read running or names no list names nobody', async ({ admin, createUser }) => {
+    const w = await setUp(admin, createUser)
+    const ids = ['racing', 'related', 'forgotten', 'not_a_list'].map(name => `approvalproof.${name}`)
+    const saved = await rule(admin, { maker_role: 'Helper', approvers: [{ resolver: ids[0] }] })
+    for (const resolver of ids) {
+      await sql`update approval_rule_approver set resolver = ${resolver} where parent = ${saved.row_id}`
+      const { status, body } = await edit(w.helper, 'S-1', { label: 'Red box' })
+      expect([resolver, status, JSON.stringify(body)]).toEqual([resolver, 403, expect.stringMatching(/Nobody else can approve/)])
+    }
+  })
+
+  test('a rule naming an app that is no longer running refuses the change', async ({ admin, createUser }) => {
+    const w = await setUp(admin, createUser)
+    const saved = await rule(admin, { maker_resolver: SITE_LEAD, approvers: [{ role: 'Region Lead' }] })
+    await sql`update approval_rule set maker_resolver = 'gone.site_lead' where row_id = ${saved.row_id}`
+    const { status, body } = await edit(w.lead, 'S-1', { label: 'Red box' })
+    expect(status).toBe(403)
+    expect(JSON.stringify(body)).toMatch(/isn't running/)
+    // As an approver it names nobody.
+    await sql`update approval_rule set maker_resolver = null, maker_role = 'Helper' where row_id = ${saved.row_id}`
+    await sql`update approval_rule_approver set role = null, resolver = 'gone.site_lead' where parent = ${saved.row_id}`
+    expect(JSON.stringify((await edit(w.helper, 'S-1', { label: 'Red box' })).body)).toMatch(/Nobody else can approve/)
+  })
+
+  test('sub-table rows can\'t wait with a held change', async ({ admin, createUser }) => {
+    const w = await setUp(admin, createUser)
+    await admin.post('/api/table_def', { name: 'Shelf Part', kind: 'sub_table', columns: [{ column_name: 'part', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { name: 'Shelf Kit', track_changes: true, columns: [{ column_name: 'site', column_type: 'Data' },
+      { column_name: 'parts', column_type: 'Sub-table', row_table: 'Shelf Part' }] })
+    await grantRole(admin, { role: 'Helper', table: 'Shelf Kit', can_read: true, can_write: true, can_create: true })
+    const kit = await admin.post<any>('/api/save_row', { table: 'Shelf Kit', row: { site: 'A' } })
+    await admin.post('/api/save_row', { table: 'Approval Rule', row: { ref_table: 'Shelf Kit', operations: 'Changes and new rows', outcome: 'Route to approvers',
+      maker_role: 'Helper', approvers: [{ resolver: SITE_LEAD }] } })
+    const save = (row: Record<string, unknown>) => w.helper.fetch('/api/save_row', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ table: 'Shelf Kit', row }) })
+    const created = await save({ site: 'A', parts: [{ part: 'Bolt' }] })
+    expect(created.status).toBe(417)
+    expect(JSON.stringify(await created.json())).toMatch(/sub-table rows can't wait/)
+    const updated = await save({ row_id: kit.row_id, updated_at: kit.updated_at, parts: [{ part: 'Nut' }] })
+    expect(updated.status).toBe(417)
+  })
+})
+
+describe('deciding a proposal', () => {
+  test('only someone it waits for rejects it, with a reason; a disabled approver can\'t decide', async ({ admin, createUser }) => {
+    const w = await setUp(admin, createUser)
+    await helperWaitsForLead(admin)
+    const id = (await edit(w.helper, 'S-1', { label: 'Red box' })).body.pending_proposal.row_id
+    await expect(w.region.post(`/api/change_proposals/${id}/reject`, { reason: 'Not mine' })).rejects.toMatchObject({ status: 403 })
+    await expect(w.lead.post(`/api/change_proposals/${id}/reject`, { reason: ' ' })).rejects.toMatchObject({ status: 417 })
+    await expect(w.helper.post(`/api/change_proposals/${id}/reject`, { reason: 'Mine' })).rejects.toMatchObject({ status: 403 })
+    const stranger = await createUser({ email: `stranger-${randomUUID()}@example.test`, roles: [] })
+    expect((await stranger.get<any>('/api/change_proposals/waiting')).proposals).toEqual([])
+    // An approver with no way to sign in any more can't decide on a session they still hold.
+    await sql`update person set password_hash = null where row_id = ${w.lead.user!}`
+    await expect(approve(w.lead, id)).rejects.toMatchObject({ status: 403 })
+  })
+
+  test('a new row\'s proposal is seen by the people it names, not other readers', async ({ admin, createUser }) => {
+    const w = await setUp(admin, createUser)
+    await helperWaitsForLead(admin)
+    const response = await w.helper.fetch('/api/table/Shelf', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ row_id: 'S-21', site: 'A', label: 'New box' }) })
+    const id = (await response.json() as any).pending_proposal.row_id
+    expect((await w.lead.get<any>(`/api/change_proposals/${id}`)).can_decide).toBe(true)
+    await expect(w.region.get(`/api/change_proposals/${id}`)).rejects.toMatchObject({ status: 404 })
+  })
+
+  test('approving after the row changed asks for a fresh review, and a second approval is still needed after it', async ({ admin, createUser }) => {
+    const w = await setUp(admin, createUser)
+    await helperWaitsForLead(admin, { approvers: [{ resolver: SITE_LEAD }, { role: 'Region Lead' }] })
+    const id = (await edit(w.helper, 'S-1', { label: 'Red box' })).body.pending_proposal.row_id
+    await edit(admin, 'S-1', { label: 'Grey box' })
+    expect(await approve(w.lead, id)).toMatchObject({ state: 'Needs fresh review' })
+    expect(await approve(w.lead, id)).toMatchObject({ state: 'Pending', waiting_for: [{ approved_by: w.lead.user }, { approved_by: null }] })
+    expect(await approve(w.region, id)).toMatchObject({ state: 'Applied' })
+    expect((await w.shelf('S-1')).label).toBe('Red box')
   })
 })
