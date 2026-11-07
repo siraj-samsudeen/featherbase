@@ -41,7 +41,7 @@ gets there is being walked through.
 
 ### D5. What the new table does and doesn't carry (06-Nov-2026)
 
-- Stores come through Store Master, the view on sites.
+- Stores come through Store Master, the view on sites. (Later changed: see [Later changes](#later-changes).)
 - Say subcategory wherever possible. The warehouse's merchandise levels are division, subdivision,
   category and subcategory.
 - LOB and main category exist only for SAP and are never shown to anyone.
@@ -50,14 +50,14 @@ gets there is being walked through.
 
 ### D6. Names in the new table, and how a name gets fixed (06-Nov-2026)
 
-- Store Master is the shared "Stores" view on Site Master (`is_store` ticked).
+- Store Master is the shared "Stores" view on Site Master (`is_store` ticked). (Later changed: see [Later changes](#later-changes).)
 - `store_code` is the short code (ATK). There is no `store_short_code`.
 - There is one section name and no separate label, so a section's name must be unique in its store.
 - `Subcategory` carries division and subdivision. `main_category` goes.
 - When we fix a section name ourselves, a data quality ticket comes first, so the fix has a source.
 - Load the subcategories only gold has, and file the data quality tickets for HR.
 - Section names, floors and wrong rows are not fixed by us. They go to HR as tickets, and HR fixes
-  them on production.
+  them on production. (Later changed: see [Later changes](#later-changes).)
 - `Section` keeps `site`: the business owner wants sections at every site later, though only stores have them today.
 
 ### D7. Section and floor IDs are fully readable (06-Nov-2026)
@@ -121,7 +121,7 @@ merchandise levels. Category, subdivision and division come from a join to
 
 - A view (Store on Site) is filed as an issue, featherbase#1021. Links point at `Site` until it exists.
 
-- Rent stays off `Building`: `monthly_rent` is on `Rent Contract`, linked through `Rent Contract Premises`. A rent history table may come later.
+- Rent stays off `Building`: `monthly_rent` is on `Rent Contract`. On production `Rent Contract` carries `building` and `premises_part` itself, and there is no `Rent Contract Premises` table (07-Nov-2026). A rent history table may come later.
 
 - A row's origin is two columns: `source_system` (a link) and `source_key` (the record there). No free-text `source` on new tables.
 - Floors and sections are Kerala only for now.
@@ -147,6 +147,13 @@ merchandise levels. Category, subdivision and division come from a join to
 
 - Tickets show one number, `TICK-0001`. An older DQ number stays only as a line in a ticket's description. Not built yet (07-Nov-2026).
 - Featherbase data is fixed directly, not ticketed. A ticket states the affected rows, how to check them and how to fix them.
+
+## Later changes
+
+Decisions above that a later one changed. The earlier text stays as it was decided.
+
+- **Store Master (D5, D6).** No table is called "... Master": `Site Master` is now `Site`, and the stores view is "Store on Site" (featherbase#1021). Links point at `Site` until it exists.
+- **Who fixes a row (D4, D6, D8).** On 07-Nov-2026: "Featherbase data is fixed directly, not ticketed. A ticket states the affected rows, how to check them and how to fix them." Whether HR still corrects section names and floors themselves, or the team fixes them from HR's answer, isn't written down. Siraj to confirm.
 
 On production since 06-Nov-2026: `State`, `Operating Region`, `Source System`, `City`, `Cluster`, `Site`, `Address`, `Building`, `Store Floor`, `Section`, `Business Line`, `Legal Company`, `Designation`, `Employee`, `Employment`, `Job Assignment`, `Subcategory`, `Section Subcategory`, `Plant`, `Source Link`, `Payment Terminal`, `Channel`, `Sales Org`, `Purchasing Org`, `Brand`, `Business Line Segment`, `Business Unit`, `Profit Centre`, `Cost Centre`, `Company Event`, `Rent Contract`, `POS Item Map`, `Unit of Measure Alias`, `Brand Family Correction`, `Data Quality Row`.
 
