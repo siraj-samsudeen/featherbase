@@ -102,7 +102,7 @@ describe('Table definition defenses leave no partial metadata or storage', () =>
   for (const { columns, fields } of [
     {
       columns: [{ column_name: 'stage', column_type: 'Choice' }],
-      fields: { stage: 'Choice column requires choices' },
+      fields: { stage: 'Choice column needs at least one choice' },
     },
     {
       columns: [{ column_name: 'lines', column_type: 'Sub-table' }],

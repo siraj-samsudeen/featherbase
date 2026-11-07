@@ -17,9 +17,9 @@ export function ActionDisclosure({ label, children, open: controlledOpen, onOpen
     <div
       className="relative"
       onBlur={(e) => {
-        // A dialog opened from this menu stays until it closes itself: a click
-        // on its blank space, or its own button going busy, loses focus.
-        if ((e.target as Element).closest('[role="dialog"]')) return
+        // A dialog opened from this menu renders inside it: closing the menu
+        // would take the dialog and anything it has to say with it.
+        if (e.currentTarget.querySelector('[role="dialog"]')) return
         if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false)
       }}
       onKeyDown={(e) => {

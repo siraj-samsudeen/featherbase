@@ -138,10 +138,24 @@ A System Manager SHALL see, on the Apps page, the commit the instance was built 
 #### Scenario: See what changed in an app
 
 - **WHEN** a System Manager chooses Tasker on the Apps page
-- **THEN** they see what changed in Tasker 3.0.2, 3.0.1 and 3.0.0, newest first
+- **THEN** they see what changed in each Tasker version, newest first
 - **AND** each issue a change names links to that issue
 
 #### Scenario: Others cannot see it
 
 - **WHEN** a person who is not a System Manager asks for the Apps page's information
 - **THEN** it is refused
+
+### Requirement: A System Manager can tell an installed app is closed to them
+
+A System Manager's app switcher SHALL list each installed, enabled app they can't open, greyed out so it can't be chosen, naming the roles that would open it. Anyone else's list SHALL hold only the apps they can open, and they SHALL be refused the list of closed apps. This SHALL NOT change who can open an app.
+
+#### Scenario: A System Manager without the app's role
+
+- **WHEN** a System Manager without the Tasker Member role opens the switcher on an instance with Tasker installed
+- **THEN** Tasker is listed as "Tasker: you need the Tasker Member role" and can't be chosen
+
+#### Scenario: Someone who isn't a System Manager
+
+- **WHEN** a person who isn't a System Manager opens the switcher
+- **THEN** an app they can't open isn't listed

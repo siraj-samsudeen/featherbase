@@ -8,7 +8,7 @@ import {
   type FieldGridGroup, type PanePlaceValue, type ViewMode,
 } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
-import { NO_COLUMN_TYPES, metaQuery, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
+import { NO_COLUMN_TYPES, linkRowsTable, metaQuery, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { dataColumns, listFields, viewColumns, type ListColumn } from '../lib/list-view-columns'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { push, type NavGroup, type NavPane, type NavStep } from '../lib/nav-path'
@@ -149,7 +149,7 @@ function HrefLink({ href, className, children }: { href: string; className?: str
 /** The column of the list underneath that holds links to `link`'s table: the
  *  same column when it is there, else the only one. */
 function filterColumn(listMeta: TableMeta | undefined, link: ForwardLink): ColumnDef | undefined {
-  const refs = (listMeta ? dataColumns(listMeta) : []).filter((c) => c.column_type === 'Reference' && c.reference_table === link.table)
+  const refs = (listMeta ? dataColumns(listMeta) : []).filter((c) => c.column_type === 'Reference' && linkRowsTable(c) === link.table)
   return refs.find((c) => c.column_name === link.column) ?? (refs.length === 1 ? refs[0] : undefined)
 }
 
@@ -283,7 +283,7 @@ function CellValue({ col, row, settings, lead = false }: { col: ListColumn | und
   const value = row[col.column_name]
   if (col.column_name === 'row_id') return <>{String(row.row_id)}</>
   if (isEmpty(value)) return lead ? <>{String(row.row_id)}</> : <span className="text-ink-subtle">—</span>
-  if (col.column_type === 'Reference' && col.reference_table) return <LinkName table={col.reference_table} rowId={String(value)} />
+  if (col.column_type === 'Reference' && col.reference_table) return <LinkName table={linkRowsTable(col) ?? col.reference_table} rowId={String(value)} />
   if (col.column_type === 'Choice') return <>{choiceLabel(String(value), col.choice_labels, t)}</>
   return <>{formatValue(col.column_type, value, settings) || String(value)}</>
 }
@@ -331,7 +331,7 @@ function PaneFields({ meta, row, onOpen }: { meta: TableMeta; row: Row; onOpen: 
 function FieldValue({ col, value, settings, onOpen }: { col: ColumnDef; value: unknown; settings: Settings; onOpen: (pane: NavPane) => void }) {
   const { t } = useI18n()
   if (isEmpty(value)) return null
-  if (col.column_type === 'Reference' && col.reference_table) return <PaneLink table={col.reference_table} rowId={String(value)} onOpen={onOpen} />
+  if (col.column_type === 'Reference' && col.reference_table) return <PaneLink table={linkRowsTable(col) ?? col.reference_table} rowId={String(value)} onOpen={onOpen} />
   if (col.column_type === 'Check') return <>{value ? 'Yes' : 'No'}</>
   if (col.column_type === 'Choice') return <>{choiceLabel(String(value), col.choice_labels, t)}</>
   if (col.column_type === 'JSON') return <code className="text-xs">{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</code>
