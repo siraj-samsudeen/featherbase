@@ -219,6 +219,12 @@ describe('#959 a refused delete names rows readably', () => {
     await expectApiError(admin.delete(unit.rowUrl('U-HIST')), {
       status: 417, message: expect.stringContaining('Cannot delete Rt Named Unit "Historic unit": it is linked from Rt Named Shelf SH-1.'),
     })
+    // A title column holding the id itself says no more than the id.
+    await admin.post('/api/table/Rt%20Named%20Unit', { row_id: 'U-SAME', unit_name: 'U-SAME' })
+    await admin.post('/api/table/Comment', { ref_table: UNIT, ref_name: 'U-SAME', content: 'keep' })
+    await expectApiError(admin.delete(unit.rowUrl('U-SAME')), {
+      status: 417, message: expect.stringContaining('Rt Named Unit U-SAME cannot be deleted'),
+    })
     await expectApiError(admin.delete('/api/table/Rt%20Named%20Bin/B-1'), {
       status: 417, message: expect.stringContaining('Rt Named Bin B-1 cannot be deleted'),
     })

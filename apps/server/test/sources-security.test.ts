@@ -768,6 +768,15 @@ describe('a bound Table keeps its binding', () => {
     expect(row.label).toBe('Alpha')
   })
 
+  test('#959 a bound row names itself by its title column, and by its id without one', async ({ admin }) => {
+    await bindAccount(admin)
+    const { rowLabel } = await import('../src/row-titles')
+    expect(await rowLabel('Administrator', BOUND, 'ACC-A')).toBe(`${BOUND} "Alpha"`)
+    await sql`update table_def set title_column = null where name = ${BOUND}`
+    invalidateMeta(BOUND)
+    expect(await rowLabel('Administrator', BOUND, 'ACC-A')).toBe(`${BOUND} ACC-A`)
+  })
+
   test('a bound row a local Table refers to cannot be deleted; a reference from a Settings Table does not hold it', async ({ admin }) => {
     await bindAccount(admin)
     await admin.post('/api/table_def', { name: 'Sec Holder', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
