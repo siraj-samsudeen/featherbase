@@ -31,6 +31,7 @@ import { ImportConflicts } from './ImportConflicts'
 import { ActionDisclosure } from './ActionDisclosure'
 import { RenameTable } from './RenameTable'
 import { ArchiveTable, ArchivedBanner, canArchive } from './ArchiveTable'
+import { rememberListPlace } from './RecordNav'
 
 export type Filter = [string, string, unknown]
 
@@ -388,6 +389,15 @@ export function ListView({
         limit_page_length: PAGE,
       }),
   })
+  // A form opened from this list steps through it (RecordNav).
+  useEffect(() => {
+    if (!list.data || list.isError) return
+    rememberListPlace(table, {
+      filters: queryFilters, orderBy, withRetired, start,
+      ids: list.data.data.map((r) => String(r.row_id)),
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list.data, list.isError, table])
 
   if (meta.isLoading) return <p className="text-sm text-ink-subtle">Loading…</p>
   // DEL-R9: the server's not-found can carry a tombstone ("X was deleted by
