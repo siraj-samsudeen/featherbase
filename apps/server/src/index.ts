@@ -1940,7 +1940,7 @@ app.post('/api/glossary/take_app_wording', async (c) => {
 // this person.
 app.get('/api/app_bar/:app', async (c) => {
   c.header('Cache-Control', 'no-store')
-  return c.json(await appBar(c.req.param('app'), who(c)))
+  return c.json(await appBar(c.req.param('app'), who(c), c.req.query()))
 })
 // Authenticated bootstrap contains identities only, never manager metadata.
 app.get('/api/runtime_app_versions', async (c) => {
