@@ -16,6 +16,7 @@ const CONDITIONS = ['Working', 'Needs repair', 'Idle', 'Damaged']
 const USAGE = ['In use', 'Idle', 'In store room', 'Not working']
 /** Today in IST, the platform's display zone. */
 const istToday = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 const istDay = (instant: string | null | undefined) => instant ? new Date(Date.parse(instant) + 330 * 60_000).toISOString().slice(0, 10) : ''
 
 function siteOf(id: string, places: Place[]): Place | undefined {
@@ -144,7 +145,7 @@ export function FreshCount({ count }: { count: Count & { freeze_from?: string | 
 
       <section aria-label="Close the area" className="asset-report fresh-close">
         <h2>Close {areaPlace?.area_code ?? 'the area'} for today</h2>
-        <p>Today: {todayLines.filter(a => a.tag_status === 'Tagged').length} tagged lines, {todayLines.filter(a => a.tag_status !== 'Tagged').length} lines without a group tag, {todaySpoiled} spoiled labels.</p>
+        <p>Today: {plural(todayLines.filter(a => a.tag_status === 'Tagged').length, 'tagged line')}, {plural(todayLines.filter(a => a.tag_status !== 'Tagged').length, 'line')} without a group tag, {plural(todaySpoiled, 'spoiled label')}.</p>
         {closedToday ? <p className="asset-muted">Signed for today.</p> : siteManager
           ? <form aria-label="Sign the area" onSubmit={e => { e.preventDefault(); void run(() => save('equipment.area_close', { count: count.row_id, area, labels_used: Number(labelsUsed) }), () => setLabelsUsed('')) }}>
             <label>Labels used from the roll<input aria-label="Labels used" type="number" min="0" value={labelsUsed} onChange={e => setLabelsUsed(e.target.value)} /></label>
