@@ -166,7 +166,7 @@ export async function readGlossary(user: string) {
       const manifest = (row.manifest ?? {}) as { title?: string; glossary?: Declaration }
       return [String(row.name), { title: manifest.title ?? String(row.name), keys: new Set((manifest.glossary?.terms ?? []).map(t => t.term)) }] as const
     }))
-  const rows = (await sql`select row_id, app, app_key, app_wording, app_wording_changed from glossary_term`)
+  const rows = (await sql`select row_id, app, app_key, app_wording, app_wording_changed, picture from glossary_term`)
     .filter(row => row.app == null || apps.get(String(row.app))?.keys.has(String(row.app_key)))
   const wordings = await wordingsOf(rows.map(row => String(row.row_id)))
   // A described column is shown by its label, as forms show it.
@@ -178,7 +178,10 @@ export async function readGlossary(user: string) {
     const app = row.app == null ? null : String(row.app)
     const editedHere = app !== null && canonical(wording) !== canonical(row.app_wording)
     const describes = wording.describes.map(d => ({ ...d, columnLabel: d.column && (labels.get(`${d.table}\u0000${d.column}`) ?? d.column) }))
-    return { id: String(row.row_id), ...wording, describes, app, appTitle: app && apps.get(app)!.title,
+    // #1037: a picture is not wording. The instance adds it, so it is never
+    // compared with the app's and survives every upgrade.
+    const picture = blank(row.picture) ? null : String(row.picture)
+    return { id: String(row.row_id), ...wording, describes, picture, app, appTitle: app && apps.get(app)!.title,
       editedHere, appWordingChanged: editedHere && row.app_wording_changed === true }
   })
   // The instance's own terms come after every app's.
