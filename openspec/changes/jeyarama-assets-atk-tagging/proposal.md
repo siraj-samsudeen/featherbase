@@ -30,8 +30,12 @@ fixing all 22 gaps ("Fix all ticked"). They chose a Tasker project for the plan'
   site manager. Each day the site manager closes an area: the labels used must equal the tagged
   lines plus spoiled labels. During the count dates, a transfer into or out of the site needs the
   site manager's written note.
-- **Independent recount.** The Finance Controller starts a recount of a 10% sample plus every
-  item at or above their value threshold. The error rate is shown.
+- **Count sheet and register.** Count lines live in their own Table, the plan's count sheet. In
+  phase 7 the pilot lead loads the group's lines into the asset register, with their tags and SAP
+  numbers. Third-party items stay out.
+- **Independent recount.** The pilot lead starts the recount on the Finance Controller's value
+  threshold. It takes every tagged line at or above the threshold plus a 10% sample. Someone
+  outside the count team records each result, and the error rate is shown.
 - **SAP matching.** The SAP book extract for the plant is held only by asset accountants. Each
   match records its method:
   - serial
