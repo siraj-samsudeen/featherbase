@@ -5,6 +5,7 @@ import { ApiError, api, save, uploadJobPhoto } from './api'
 import { nameOf, useEntities, useJobs, usePeople, usePlaces, useRestorations, useTypes, type Asset, type Job } from './data'
 import { JobClock } from './JobClock'
 import { LastVerified } from './Counts'
+import { AssetMovements } from './Custody'
 import { PRIORITIES, coverNotice, isOpen, localDay, placePath, warrantyNotice, workflowState } from './jobRules'
 
 /** When each part of a repair happened, in Indian time. */
@@ -102,6 +103,7 @@ export function AssetPage({ id }: { id: string }) {
     </p>}
     {a.amc_until && <p className="asset-muted">AMC{a.amc_vendor ? ` with ${a.amc_vendor}` : ''} until {fmtDate(a.amc_until.slice(0, 10))}</p>}
     <LastVerified asset={a.row_id} />
+    <AssetMovements asset={a.row_id} />
 
     <section aria-labelledby="from-sap" className="asset-sap">
       <h2 id="from-sap">From SAP</h2>

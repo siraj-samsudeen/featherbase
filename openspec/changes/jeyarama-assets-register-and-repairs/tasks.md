@@ -30,10 +30,10 @@
 
 ## 2d. Custody hand-over and transfers (BRD PHY-01..05, step 3)
 
-- [ ] 2d.1 Tests first: receipt deadlines, transfer clock, clearance state (unit); issue, accept, not with me, return, clearance, request, approval by another, one open transfer per asset, dispatch, receive, refuse, Finance confirmation (server); custody page, transfers page, asset history (web)
-- [ ] 2d.2 Tables: custody, clearance, transfer and its lines; custodian kept as a person ID
-- [ ] 2d.3 Actions: issue, return, dispatch, receive, confirm Finance; validators for answers, approval, open transfers and clearance
-- [ ] 2d.4 Pages: Custody (issue, your assets, clearances), Transfers (request, approve, dispatch, receive), history on the asset page
+- [x] 2d.1 Tests first: receipt deadlines, transfer clock, clearance state (unit); issue, accept, not with me, return, clearance, request, approval by another, one open transfer per asset, dispatch, receive, refuse, Finance confirmation (server); custody page, transfers page, asset history (web)
+- [x] 2d.2 Tables: custody, clearance, transfer and its lines; custodian kept as a person ID
+- [x] 2d.3 Actions: issue, return, dispatch, receive, confirm Finance; validators for answers, approval, open transfers and clearance
+- [x] 2d.4 Pages: Custody (issue, your assets, clearances), Transfers (request, approve, dispatch, receive), history on the asset page
 - [ ] 2d.5 One isolated browser journey; sample custody and transfers for the owner
 
 ## 3. Proof

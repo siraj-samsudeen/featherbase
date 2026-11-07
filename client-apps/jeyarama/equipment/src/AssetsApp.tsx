@@ -2,21 +2,25 @@ import { createElement, useEffect, useState } from 'react'
 import { AssetPage } from './AssetPage'
 import { AssetsList } from './AssetsList'
 import { CountPage, CountsPage, ReviewPage } from './Counts'
+import { CustodyPage } from './Custody'
 import { JobsBoard } from './JobsBoard'
 import { LabelSheet } from './LabelSheet'
+import { TransferPage, TransfersPage } from './Transfers'
 
-type Route = { page: 'jobs' } | { page: 'assets' } | { page: 'labels' } | { page: 'counts' }
-  | { page: 'asset'; id: string } | { page: 'count'; id: string } | { page: 'review'; id: string }
+type Route = { page: 'jobs' } | { page: 'assets' } | { page: 'labels' } | { page: 'counts' } | { page: 'custody' } | { page: 'transfers' }
+  | { page: 'asset'; id: string } | { page: 'count'; id: string } | { page: 'review'; id: string } | { page: 'transfer'; id: string }
 
 function readRoute(): Route {
   const hash = new URLSearchParams(location.hash.slice(1))
-  for (const page of ['asset', 'count', 'review'] as const) {
+  for (const page of ['asset', 'count', 'review', 'transfer'] as const) {
     const id = hash.get(page)
     if (id) return { page, id }
   }
   if (hash.has('assets')) return { page: 'assets' }
   if (hash.has('labels')) return { page: 'labels' }
   if (hash.has('counts')) return { page: 'counts' }
+  if (hash.has('custody')) return { page: 'custody' }
+  if (hash.has('transfers')) return { page: 'transfers' }
   return { page: 'jobs' }
 }
 
@@ -24,6 +28,8 @@ const NAV: { page: Route['page']; label: string; hash: string }[] = [
   { page: 'jobs', label: 'Repair jobs', hash: '#jobs' },
   { page: 'assets', label: 'Assets', hash: '#assets' },
   { page: 'counts', label: 'Counts', hash: '#counts' },
+  { page: 'custody', label: 'Custody', hash: '#custody' },
+  { page: 'transfers', label: 'Transfers', hash: '#transfers' },
   { page: 'labels', label: 'QR labels', hash: '#labels' },
 ]
 
@@ -34,7 +40,7 @@ export function AssetsApp({ roles }: { roles: string[] }) {
     window.addEventListener('hashchange', change)
     return () => window.removeEventListener('hashchange', change)
   }, [])
-  const current = route.page === 'count' || route.page === 'review' ? 'counts' : route.page
+  const current = route.page === 'count' || route.page === 'review' ? 'counts' : route.page === 'transfer' ? 'transfers' : route.page
 
   // Featherbase's shared sidebar, as every app uses (app-navigation spec).
   return <div className="assets-shell">
@@ -49,6 +55,9 @@ export function AssetsApp({ roles }: { roles: string[] }) {
       {route.page === 'counts' && <CountsPage roles={roles} />}
       {route.page === 'count' && <CountPage key={route.id} id={route.id} />}
       {route.page === 'review' && <ReviewPage key={route.id} id={route.id} />}
+      {route.page === 'custody' && <CustodyPage roles={roles} />}
+      {route.page === 'transfers' && <TransfersPage roles={roles} />}
+      {route.page === 'transfer' && <TransferPage key={route.id} id={route.id} roles={roles} />}
       {route.page === 'asset' && <AssetPage key={route.id} id={route.id} />}
     </main>
   </div>

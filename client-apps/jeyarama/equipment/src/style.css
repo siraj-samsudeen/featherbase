@@ -134,3 +134,35 @@ h2 { margin: 0 0 8px; font-size: 15px; font-weight: 650; }
 .asset-verified { margin: 0 0 12px; font-weight: 600; }
 .asset-report label.asset-radio { display: flex; align-items: center; gap: 8px; font-weight: 500; }
 .asset-report label.asset-radio input { margin: 0; }
+
+/* Custody and transfers */
+.custody-mine { list-style: none; padding: 0 !important; }
+.custody-mine li { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding: 8px 0; border-top: 1px solid var(--color-border); }
+.custody-mine li:first-child { border-top: 0; }
+.custody-subheading { margin: 24px 0 8px; font-size: 16px; }
+.custody-state, .transfer-stage { padding: 2px 8px; border-radius: 999px; background: var(--color-subtle); font-size: 12px; font-weight: 600; white-space: nowrap; }
+tr[data-state="Pending"] .custody-state, tr[data-state="Return requested"] .custody-state { background: var(--color-action-tint); color: var(--color-action); }
+tr[data-state="Not with me"] .custody-state { color: var(--color-negative); }
+.custody-clearances { margin-top: 24px; }
+.custody-clearances .assets-table { margin-bottom: 14px; }
+.custody-escalate { color: var(--color-negative); font-weight: 650; }
+.custody-clearance-form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.custody-clearance-form label { display: grid; gap: 4px; font-weight: 600; font-size: 13px; }
+.transfer-clock { font-weight: 600; white-space: nowrap; }
+.transfer-clock.is-late { color: var(--color-negative); }
+.transfer-clock.is-done { color: var(--color-ink-muted); font-weight: 500; }
+.transfer-finance { margin: 0; color: var(--color-action); font-weight: 600; }
+.transfer-page { max-width: 760px; }
+.transfer-route { margin: 0 0 12px; font-weight: 600; }
+.transfer-due { margin: 0 0 14px; }
+.transfer-scan { display: flex !important; gap: 8px; align-items: end; }
+.transfer-scan label { flex: 1; }
+.transfer-scanned { margin: 0; padding-left: 18px; }
+.transfer-receive { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.transfer-receive li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 0; border-top: 1px solid var(--color-border); }
+.transfer-receive li:first-child { border-top: 0; }
+.transfer-finance-box { border-color: var(--color-action); }
+.asset-movements { list-style: none; padding: 0 !important; margin: 0; }
+.asset-movements li { display: flex; gap: 10px; padding: 6px 0; border-top: 1px solid var(--color-border); font-size: 13px; }
+.asset-movements li:first-child { border-top: 0; }
+.asset-movements time { flex: none; min-width: 150px; color: var(--color-ink-muted); }
