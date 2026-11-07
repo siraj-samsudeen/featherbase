@@ -824,7 +824,8 @@ export function FormView({
               id="delete-row-title"
               className="mb-2 text-base font-semibold text-ink"
             >
-              Delete {table} {name}?
+              {/* #959: the row as its heading names it. */}
+              Delete {table}: <RowTitle table={table} rowId={name} />?
             </h2>
             <p className="mb-3 text-sm text-ink-muted">
               This cannot be undone.

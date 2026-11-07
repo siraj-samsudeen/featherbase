@@ -5,6 +5,7 @@ import { activeApps } from './app-lifecycle'
 import { isActingSystemActor } from './system-actor'
 import { asNameList, declaresOwnPages } from './installed-app-ledger'
 import { admittedToTable } from './mandatory-access'
+import { readOnce } from './permission-reads'
 import { permissionRefusal } from './refusals'
 
 // PERM-001: role resolution for a principal — a person or a service account
@@ -18,7 +19,7 @@ export async function getRoles(principal: string): Promise<string[]> {
   if (isActingSystemActor(principal)) return ['All', 'System Manager']
   // One round trip: the roles held directly (app null), then the app roles
   // bound to them (#620, D4). getRoles runs on nearly every permission check.
-  const rows = await sql`
+  const rows = await readOnce(JSON.stringify(['roles', principal]), () => sql`
     with held as (
       select role from has_role
       where parent = ${principal} and parenttype in ('Person', 'Service Account')
@@ -40,7 +41,7 @@ export async function getRoles(principal: string): Promise<string[]> {
       and b.bound_role not in ${sql(OPEN_ROLES)}
       and b.app_role not in ${sql(PLATFORM_ROLES)}
       and jsonb_typeof(a.manifest->'roles') = 'array' and a.manifest->'roles' ? b.app_role
-    order by app nulls first, role`
+    order by app nulls first, role`)
   const held = ['All', ...rows.filter((r) => r.app === null).map((r) => r.role as string)]
   // The same availability assertAppAvailable requires: enabled, not pending
   // activation, and its exact files loaded (activeApps).
@@ -95,13 +96,13 @@ function columnsOf(rule: string, listed: string[]): string[] {
  * cyclic prerequisite contributes nothing; it never becomes an open grant. */
 export async function permissionGrants(user: string, table: string, action: PermAction, parentPermission?: string, parentColumn?: string): Promise<PermissionGrant[]> {
   const roles = await getRoles(user)
-  const rows = await sql`
+  const rows = await readOnce(JSON.stringify(['grants', roles, table, action]), () => sql`
     select p.row_id, p.scope_mode, p.column_rule, p.owner_app, p.requires_permission, p.parent_permission, p.parent_column,
       coalesce(array_agg(c.target_column) filter (where c.target_column is not null), '{}') as columns
     from permission p left join featherbase.permission_column c on c.parent = p.row_id
     where p.ref_table = ${table} and p.operation = ${action === 'write' ? 'update' : action}
       and p.role in ${sql(roles)}
-    group by p.row_id`
+    group by p.row_id`)
   const active = new Map(rows.filter((row) => row.owner_app == null || activeApps.has(String(row.owner_app)))
     .map((row) => [String(row.row_id), row]))
   function resolve(id: string, seen = new Set<string>()): PermissionGrant | undefined {
@@ -260,9 +261,9 @@ export async function getScopeMap(
   principal: string,
 ): Promise<Map<string, Set<string>>> {
   const map = new Map<string, Set<string>>()
-  const rows = await sql`
+  const rows = await readOnce(JSON.stringify(['scopes', principal]), () => sql`
     select allow_table, for_value from data_scope
-    where person = ${principal} or service_account = ${principal}`
+    where person = ${principal} or service_account = ${principal}`)
   for (const r of rows) {
     const key = r.allow_table as string
     if (!map.has(key)) map.set(key, new Set())
