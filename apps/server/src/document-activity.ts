@@ -1,3 +1,4 @@
+import { linkTargetNames } from './views'
 import { sql } from './db'
 import { getDoc } from './document'
 import { getMeta } from './meta'
@@ -87,7 +88,8 @@ export function assertNothingRetained(table: string, rowId: string, counts: Reco
 export async function retainedDocumentCounts(tx: typeof sql, table: string, rowId: string) {
   const activity = await retainedActivityCounts(tx, table, rowId)
   let references = 0
-  const columns = await tx`select parent, column_name from column_def where column_type = 'Reference' and reference_table = ${table}`
+  // #1021: a link to a view of it counts too.
+  const columns = await tx`select parent, column_name from column_def where column_type = 'Reference' and reference_table in ${tx(await linkTargetNames(table, tx))}`
   for (const column of columns) {
     const meta = await getMeta(String(column.parent))
     if (meta.data_source || meta.kind === 'settings') throw new AppError('ValidationError', 'Deletion cannot prove references from nonlocal Tables')

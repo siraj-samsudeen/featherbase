@@ -35,6 +35,13 @@ import {
 import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 
+// #993: "1 row", never "1 rows".
+const rowCount = (n: number) => `${fmtCount(n)} ${n === 1 ? 'row' : 'rows'}`
+
+// #993: rows a Table made by an earlier attempt already holds. Importing again
+// would double them, and nothing on the column step can fix that.
+class HeldRowsError extends ApiError {}
+
 /**
  * Type-to-confirm for an update run: the prompt shows the count with Indian
  * grouping (1,23,456), so the typed value matches with or without the commas.
@@ -69,6 +76,9 @@ interface SheetPlan {
   // #203: this target's own failure, if it threw. Kept per target so one
   // sheet's problem cannot erase another's result.
   failure: string | null
+  // #993: set when nothing on the column step can fix the failure, so its
+  // "Fix it" points to Past imports instead.
+  failureAtPastImports?: boolean
   // #211: columns the USER declared to be one, which folding could never
   // work out — `Store Code` and `Store Name` are the same store to them and
   // to nothing else. Applied on top of the folded set, so the column grid,
@@ -884,6 +894,10 @@ export function ImportWizard() {
   // index rather than a position, so deselecting an earlier sheet cannot
   // silently slide the user onto a different target.
   const [current, setCurrent] = useState(0)
+  // #993: the target card "Fix it" brought into view, outlined for a moment so
+  // the press shows even when the card was already on screen.
+  const [flash, setFlash] = useState<number | null>(null)
+  const doneRef = useRef<HTMLParagraphElement>(null)
   // #204: decisions came back but the file's rows did not — too big for
   // sessionStorage, or a fresh tab. Everything the user DECIDED is intact;
   // only the data needs dropping again.
@@ -1040,6 +1054,23 @@ export function ImportWizard() {
     }
   }, [])
 
+  function fixTarget(i: number) {
+    setCurrent(i)
+    setFlash(i)
+    requestAnimationFrame(() => {
+      const card = document.querySelector<HTMLElement>(`[data-testid="iw-sheet-${i}"]`)
+      card?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+      card?.focus({ preventScroll: true })
+    })
+    window.setTimeout(() => setFlash((f) => (f === i ? null : f)), 2000)
+  }
+
+  // #993: the outcome line sits just above the sticky Import bar, which can
+  // cover it; bring it into view, clear of the bar, whenever it changes.
+  useEffect(() => {
+    if (runOutcome) doneRef.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [runOutcome])
+
   function startOver() {
     // Before clearing: a queued snapshot would otherwise be flushed back on
     // the way out and undo this.
@@ -1063,7 +1094,7 @@ export function ImportWizard() {
 
   function setPlan(i: number, patch: Partial<SheetPlan>) {
     setPlans((ps) =>
-      ps.map((p, j) => (j === i ? { ...p, ...patch, check: null, result: null, failure: null } : p)),
+      ps.map((p, j) => (j === i ? { ...p, ...patch, check: null, result: null, failure: null, failureAtPastImports: undefined } : p)),
     )
     // A changed plan invalidates a pending typed confirmation — its total
     // was computed for the previous mapping/key.
@@ -1504,7 +1535,7 @@ export function ImportWizard() {
       const address = encodeURIComponent(plan.table)
       const held = await api.get<{ count: number }>(`/api/table/${address}:count`).catch(() => null)
       if (held?.count)
-        throw new ApiError(409, 'ConflictError', `${plan.table} already holds ${fmtCount(held.count)} ${held.count === 1 ? 'row' : 'rows'} from the attempt that stopped. Delete it under Past imports, then import again.`)
+        throw new HeldRowsError(409, 'ConflictError', `${plan.table} already holds ${rowCount(held.count)} from the attempt that stopped. Delete it under Past imports, then import again.`)
       if (held) await api.delete(`/api/table_def/${address}`)
     }
     const inList = listTicks(plan)
@@ -1519,6 +1550,11 @@ export function ImportWizard() {
         reference_table: c.column_type === 'Reference' ? c.reference_table : undefined,
         in_list_view: inList[c.sourceIndex],
       })),
+    }).catch((err: unknown) => {
+      // #993: say what to do about a name that is taken, not only that it is.
+      if (err instanceof ApiError && err.type === 'ConflictError')
+        throw new ApiError(err.status, err.type, `${err.message}. Give the new Table another name, or pick that Table under “Import into” to add the rows to it.`)
+      throw err
     })
     setPlans((ps) => ps.map((p, j) => (j === i ? { ...p, created_table: plan.table } : p)))
   }
@@ -1629,7 +1665,7 @@ export function ImportWizard() {
     setError(null)
     setRunOutcome(null)
     setPlans((ps) =>
-      ps.map((p, j) => (only === undefined || j === only ? { ...p, failure: null } : p)),
+      ps.map((p, j) => (only === undefined || j === only ? { ...p, failure: null, failureAtPastImports: undefined } : p)),
     )
     setBusy('Importing…')
     try {
@@ -1767,8 +1803,9 @@ export function ImportWizard() {
           // not the same as one that imported nothing, so it says which.
           failedTargets.push(plan.table)
           const message = refusalMessage(err, 'Import failed', plan.mode === 'new' ? sentColumns(plan) : [])
+          const atPastImports = err instanceof HeldRowsError
           setPlans((ps) =>
-            ps.map((p, j) => (j === i ? { ...p, failure: message } : p)),
+            ps.map((p, j) => (j === i ? { ...p, failure: message, failureAtPastImports: atPastImports } : p)),
           )
         }
       }
@@ -2195,7 +2232,13 @@ export function ImportWizard() {
         const targetCols = targets.data?.find((t) => t.name === plan.table)?.columns ?? []
         const mappedCount = plan.mapping.filter((m, idx) => m && plan.include[idx]).length
         return (
-          <div key={sheet.sheetName + i} className={cardClasses('mb-4 p-3')} data-testid={`iw-sheet-${i}`}>
+          <div
+            key={sheet.sheetName + i}
+            tabIndex={-1}
+            className={cardClasses(`mb-4 scroll-mt-4 p-3 outline-none ${flash === i ? 'ring-2 ring-action' : ''}`)}
+            data-testid={`iw-sheet-${i}`}
+            data-flash={flash === i ? 'true' : undefined}
+          >
             <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               {/* The counts describe the FILE's sheet, never the target
                   Table — say so, since sheet and Table often share a name
@@ -2210,7 +2253,7 @@ export function ImportWizard() {
                       {plan.members.length} sheets → one Table
                     </span>{' '}
                     <span className="font-normal text-ink-muted">
-                      — {fmtCount(plan.members.reduce((n, m) => n + countDataRows(sheets[m].rows), 0))} rows,{' '}
+                      — {rowCount(plan.members.reduce((n, m) => n + countDataRows(sheets[m].rows), 0))},{' '}
                       {sheet.headers.length} columns combined
                     </span>
                   </>
@@ -2218,7 +2261,7 @@ export function ImportWizard() {
                   <>
                     Sheet "{sheet.sheetName}"{' '}
                     <span className="font-normal text-ink-muted">
-                      — {fmtCount(countDataRows(sheet.rows))} rows, {sheet.headers.length} columns in the file
+                      — {rowCount(countDataRows(sheet.rows))}, {sheet.headers.length} columns in the file
                     </span>
                   </>
                 )}
@@ -2307,6 +2350,22 @@ export function ImportWizard() {
                     className={inputClasses('w-64 py-1')}
                   />
                 </div>
+                {plan.created_table !== plan.table && (targets.data ?? []).some((t) => t.name === plan.table.trim()) && (
+                  <div className="mb-2" data-testid={`iw-name-taken-${i}`}>
+                  <Notice tone="caution">
+                    A Table called <strong>{plan.table.trim()}</strong> already exists.{' '}
+                    <button
+                      type="button"
+                      className="underline"
+                      data-testid={`iw-name-taken-use-${i}`}
+                      onClick={() => retarget(i, plan.table.trim())}
+                    >
+                      Import into it
+                    </button>
+                    , or give the new Table another name.
+                  </Notice>
+                  </div>
+                )}
                 {/* #738: the In list column makes the grid wider than a
                     phone; it scrolls on its own rather than the page. */}
                 <div className="overflow-x-auto">
@@ -2498,11 +2557,16 @@ export function ImportWizard() {
                             data-rowfield="column_type"
                             className="rounded border border-border px-1 py-0.5"
                           >
-                            {COLUMN_TYPES.map((t) => (
-                              <option key={t} value={t}>
-                                {t}
-                              </option>
-                            ))}
+                            {COLUMN_TYPES.map((t) => {
+                              // #993: a Choice needs options, and a column with no values has none to offer.
+                              const noChoices = t === 'Choice' && c.column_type !== 'Choice' && !c.choices &&
+                                !plan.members.some((m) => memberSheet(plan, m).rows.some((row) => choiceOptions([row[ci]]).length > 0))
+                              return (
+                                <option key={t} value={t} disabled={noChoices}>
+                                  {noChoices ? 'Choice (no values to offer)' : t}
+                                </option>
+                              )
+                            })}
                           </select>
                         </td>
                         <td
@@ -2955,11 +3019,13 @@ export function ImportWizard() {
                 {/* Matched rows are not necessarily changed rows. */}
                 {plan.check.failed.length === 0 ? (
                   <span className="text-positive">
-                    ✓ All {fmtCount(plan.check.valid)} rows {plan.mode === 'new' ? 'link to a row in their Table' : 'are ready to import'}
+                    {plan.check.valid === 1
+                      ? `✓ The 1 row ${plan.mode === 'new' ? 'links to a row in its Table' : 'is ready to import'}`
+                      : `✓ All ${fmtCount(plan.check.valid)} rows ${plan.mode === 'new' ? 'link to a row in their Table' : 'are ready to import'}`}
                   </span>
                 ) : (
                   <span className="text-negative">
-                    {fmtCount(plan.check.valid)} rows ready, {fmtCount(plan.check.failed.length)} with problems:{' '}
+                    {rowCount(plan.check.valid)} ready, {fmtCount(plan.check.failed.length)} with problems:{' '}
                     {plan.check.failed
                       .slice(0, ERRORS_ON_SCREEN)
                       .map((f) => failLabel(plan, f))
@@ -2977,7 +3043,7 @@ export function ImportWizard() {
                 )}
                 {plan.check.skipped > 0 && (
                   <span className="ml-1 text-ink-muted" data-testid={`iw-check-skipped-${i}`}>
-                    ({fmtCount(plan.check.skipped)} rows have no data in the imported columns and will be
+                    ({rowCount(plan.check.skipped)} {plan.check.skipped === 1 ? 'has' : 'have'} no data in the imported columns and will be
                     skipped)
                   </span>
                 )}
@@ -3006,14 +3072,20 @@ export function ImportWizard() {
                     data-testid={`iw-failure-${i}`}
                   >
                     ✗ {plan.table} failed — {plan.failure}{' '}
-                    <button
-                      type="button"
-                      className="underline"
-                      data-testid={`iw-failure-goto-${i}`}
-                      onClick={() => setCurrent(i)}
-                    >
-                      Fix it
-                    </button>
+                    {plan.failureAtPastImports ? (
+                      <Link to="/featherbase/admin/imports" className="underline" data-testid={`iw-failure-past-imports-${i}`}>
+                        Open Past imports
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        className="underline"
+                        data-testid={`iw-failure-goto-${i}`}
+                        onClick={() => fixTarget(i)}
+                      >
+                        Fix it
+                      </button>
+                    )}
                   </div>
                 )}
                 {plan.result && (
@@ -3023,8 +3095,8 @@ export function ImportWizard() {
                         number. */}
                     <span className={plan.result.failed.length ? 'text-negative' : 'text-positive'}>
                       {plan.result.updated > 0
-                        ? `Recorded ${fmtCount(plan.result.updated)} processed matches and added ${fmtCount(plan.result.inserted)} rows in `
-                        : `Imported ${fmtCount(plan.result.inserted)} rows into `}
+                        ? `Recorded ${fmtCount(plan.result.updated)} processed ${plan.result.updated === 1 ? 'match' : 'matches'} and added ${rowCount(plan.result.inserted)} in `
+                        : `Imported ${rowCount(plan.result.inserted)} into `}
                       <Link
                         to="/featherbase/admin/table/$table"
                         params={{ table: plan.table }}
@@ -3039,7 +3111,7 @@ export function ImportWizard() {
                           plan.result.failed[0],
                         )})`}
                       {plan.result.skipped > 0 &&
-                        ` (${fmtCount(plan.result.skipped)} rows had no data in the imported columns and were skipped)`}
+                        ` (${rowCount(plan.result.skipped)} had no data in the imported columns and ${plan.result.skipped === 1 ? 'was' : 'were'} skipped)`}
                     </span>
                     <RevertControl i={i} table={plan.table} runId={plan.result.run_id} />
                   </div>
@@ -3062,7 +3134,8 @@ export function ImportWizard() {
       )}
       {runOutcome && !needsFile && (
         <p
-          className={`mt-2 text-sm ${runOutcome.failed.length || runOutcome.refused ? 'text-negative' : 'text-positive'}`}
+          ref={doneRef}
+          className={`mt-2 scroll-mb-32 text-sm ${runOutcome.failed.length || runOutcome.refused ? 'text-negative' : 'text-positive'}`}
           data-testid="iw-done"
         >
           {runOutcome.failed.length > 0
@@ -3153,7 +3226,7 @@ export function ImportWizard() {
                 data-testid="iw-import-one"
                 className={buttonClasses({ variant: 'primary', className: 'disabled:opacity-40' })}
               >
-                {`Import ${fmtCount(targetRows(activeTarget))} rows into ${activePlan?.table || 'this Table'}`}
+                {`Import ${rowCount(targetRows(activeTarget))} into ${activePlan?.table || 'this Table'}`}
               </button>
             ))}
           <button
@@ -3176,12 +3249,12 @@ export function ImportWizard() {
                     const left = targetIndexes.filter((i) => !plans[i]?.result).length
                     return `Import the remaining ${left} Table${left === 1 ? '' : 's'}`
                   })()
-                : `Import ${fmtCount(
+                : `Import ${rowCount(
                     sheets.reduce(
                       (n, s, si) => n + (plans[si]?.mode === 'skip' ? 0 : countDataRows(s.rows)),
                       0,
                     ),
-                  )} rows`}
+                  )}`}
           </button>
         </div>
       )}

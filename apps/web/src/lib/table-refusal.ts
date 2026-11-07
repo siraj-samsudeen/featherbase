@@ -33,7 +33,9 @@ export function describeFieldErrors(
   const parts: string[] = []
   for (const [path, message] of Object.entries(fields)) {
     const match = COLUMN_PATH.exec(path)
-    const col = match ? kept[Number(match[1])] : undefined
+    // #993: the definition check keys a column by its machine name, not its
+    // place in the payload; either way the person reads the label they see.
+    const col = match ? kept[Number(match[1])] : kept.find((c) => c.column_name.trim() === path)
     if (!col) {
       const label = TOP_LEVEL_LABEL[path] ?? (path.includes('.') ? null : path)
       parts.push(label ? `${label}: ${message}` : message)
