@@ -9,8 +9,9 @@ import { pathToFileURL } from 'node:url'
 import { makeClient, type CreateUserFn, type TestClient } from 'feather-testing-postgres'
 import { describe, expect } from 'vitest'
 import { test as pgTest } from './pg-test'
-import { availableRuntimeVersions, discoverPackages, runPackageRead } from '../src/runtime-packages'
+import { availableRuntimeVersions, discoverPackages, findScopeProvider, runPackageRead } from '../src/runtime-packages'
 import { sql } from '../src/db'
+import { resolvePersonScope } from '../src/person-scope'
 import { expectApiError, tableRef } from './fixtures'
 import { newIdentifierId } from '../src/person-identifiers'
 import { runHealthChecks } from '../src/instance-health'
@@ -137,6 +138,17 @@ describe("the scope provider's read context", () => {
     roster.faults.readUndeclared = true
     await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 403 })
     expect(await refusals(user)).toEqual(['scopeproof.places:provider'])
+  })
+
+  // #967: an app may name an instance Table it reads without the mark, so role grants decide who edits it.
+  test('reads an unmarked instance Table the app names, and still not one it only declares', async ({ admin, createUser }) => {
+    const { user, roster } = await setup(admin, createUser)
+    await admin.post('/api/table_def', { name: 'Roster Extra', columns: [{ column_name: 'note', column_type: 'Data' }] })
+    await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+    roster.faults.readInstance = true
+    const binding = await findScopeProvider()
+    await expect(resolvePersonScope(user.user!, binding)).rejects.toMatchObject({ reason: 'provider' })
+    await expect(resolvePersonScope(user.user!, { ...binding!, unmarkedTables: ['Roster Extra'] })).resolves.toEqual(expect.any(Array))
   })
 
   test.for([[false, 403], [true, 200]] as const)('reads a declared instance Table only when it is marked as deciding scope (marked: %s)', async ([marked, status], { admin, createUser }) => {

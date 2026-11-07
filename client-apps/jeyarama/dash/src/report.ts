@@ -76,7 +76,7 @@ export interface Totals {
 }
 
 /** `unconfirmed`: the reader has no row, and no metadata compatible with the figures says whether the month has arrived. */
-export type ReportState = 'ready' | 'not_built' | 'no_data_yet' | 'no_sections' | 'unconfirmed'
+export type ReportState = 'ready' | 'not_built' | 'no_data_yet' | 'unconfirmed'
 
 /** The month a reader chose (#750): this month to date, or last month whole. */
 export type MonthChoice = 'this' | 'last'
@@ -101,6 +101,8 @@ export interface Report {
   total: Totals
   /** What the page's header says about the store (#4486); the `report` read adds it. */
   heading?: Heading
+  /** A report with no quick view answers only its state and header. */
+  no_quick_view?: boolean
 }
 
 /** One reason the reader sees the store: a basis on their places there, and the sections those places name. */
@@ -237,7 +239,6 @@ export function buildReport({ store, places, answer, month = null, today, choice
     refreshed_at: answer?.at ?? null, data_through: known?.data_through ?? null, targets_available: known?.targets_available ?? true,
     rows: [] as ReportRow[], sections: [], total: empty }
   if (!answer) return { ...base, state: 'not_built' }
-  if (scope.wholeStore && !scope.hasSections) return { ...base, state: 'no_sections' }
   // Figures cut before the month began can't hold its figures.
   if (!first && istDay(answer.at) < period.period_start) return { ...base, state: 'no_data_yet' }
   // An empty scope with nothing compatible to say whether the month has arrived: not claimed
@@ -269,152 +270,15 @@ export function buildReport({ store, places, answer, month = null, today, choice
     sections: names.map(section => ({ section, ...totalOf(shaped.filter(r => r.section === section)) })), total: totalOf(shaped) }
 }
 
-/** MotherDuck caps `initial_state` at 64 KB; the cache rides only while the whole state fits in 56 KB (design D6). */
-export const CACHE_BUDGET_BYTES = 56 * 1024
-
 /**
- * The largest `initial_state` an embed session is asked for (#4453). MotherDuck refuses one past
- * 64 KB; whether that kilobyte is 1,000 or 1,024 bytes is not confirmed, so this stays under both
- * with 1,000 bytes to spare. A larger state is never trimmed (a Dive before v12 reads a shorter
- * `material_groups` as a smaller scope, and a missing one as every store): the page shows the
- * cached table instead.
+ * The bar's store picker labels: each store by its name alone, never its plant code. A store with
+ * no name known goes by "Your store" (the reader's only store) or "Store 1", "Store 2". Stores
+ * sharing a name are numbered ("Lakeside (1)").
  */
-export const EMBED_STATE_LIMIT_BYTES = 63_000
-
-/**
- * The cached month to date, one array per field, row i across them (#4453). Codes are numbers
- * (the nine-digit code without its leading zeros), ascending, each after the first written as the
- * step from the one before. Money is whole paise and quantities whole thousandths, so no figure
- * drifts through JSON; a value the warehouse does not have is null. Only subcategories with a day
- * this month are listed, as the Dive's live query lists them.
- */
-export interface CachedColumns {
-  /** Subcategory codes: the first, then each step. */
-  c: number[]
-  /** Subcategory names. */
-  n: (string | null)[]
-  /** Month-to-date target and actual, in paise. */
-  t: (number | null)[]
-  a: (number | null)[]
-  /** Month-to-date target and actual quantity, in thousandths; only with `q: true`. */
-  tq?: (number | null)[]
-  aq?: (number | null)[]
-}
-
-/** The Dive's `initial_state`. */
-export interface InitialState {
-  plant_code: string
-  /**
-   * The reader covers the whole store, as the reader's places say (never the request): the Dive
-   * filters on `plant_code` alone, and only then may `material_groups` be absent (#4453).
-   */
-  whole_store: boolean
-  /** A section reader's subcategories, which the Dive limits every query to. Absent for a whole-store reader. */
-  material_groups?: string[]
-  /** A section reader's section per subcategory. Absent for a whole-store reader. */
-  section_by_material_group?: Record<string, string>
-  /** A whole-store reader's sections: each one's codes, written as `CachedColumns.c` is. */
-  sections?: Record<string, number[]>
-  period_start: string
-  period_end: string
-  /** The Feather Dash page's origin, the target of the Dive's ready message (#4453); only a plain origin. */
-  app_origin?: string
-  /**
-   * Version 1: `cols` (plain) or `z` (the same columns as JSON, gzipped, base64), never both.
-   * `q` says whether the columns carry quantities (else the Dive shows "—" for quantity until live).
-   */
-  cached?: { v: 1; refreshed_at: string | null; data_through: string | null; q: boolean; cols?: CachedColumns; z?: string }
-}
-
-/** Codes as `CachedColumns.c` writes them: numbers, ascending, the first and then each step. */
-export function codeSteps(codes: readonly string[]): number[] {
-  const sorted = codes.map(Number).sort((a, b) => a - b)
-  return sorted.map((code, i) => (i ? code - sorted[i - 1] : code))
-}
-
-const scaled = (value: number | string | null | undefined, by: number) => (value == null ? null : Math.round(Number(value) * by))
-
-/**
- * The Dive's `initial_state`: the reader's store and period, the reader's scope (a section reader's
- * subcategories and sections, or a whole-store reader's compact section map), and `cached`, the
- * month to date. The cache takes the first rung that keeps the WHOLE state within 56 KB: plain with
- * quantities, compressed with quantities, compressed value-only, else none. It is never cut: a
- * partial cache would read as a total.
- */
-/**
- * The app always sends `compact` to the latest Dive (#937). `legacy` is 0.8.0's scope keys, the
- * shape the platform's older Sales Target page still sends: the Dive's harness (data-warehouse
- * #4453) builds it here to prove the Dive keeps reading it.
- */
-export type StateFormat = 'legacy' | 'compact'
-
-export function initialState(report: Report, answer: CachedAnswer, places: readonly Place[], today: string,
-  { appOrigin = null, compress, format = 'compact', storeCodes = [] }: { appOrigin?: string | null; compress: (json: string) => string;
-    format?: StateFormat; storeCodes?: readonly string[] }): InitialState {
-  const scope = scopeIn(places, report.store)
-  const bySection: Record<string, string[]> = {}
-  for (const [code, name] of Object.entries(scope.sectionOf)) (bySection[name] ??= []).push(code)
-  // Legacy: a whole-store reader's list is every subcategory of the store the places, the cache or
-  // the warehouse (`storeCodes`) know, never only the placed ones; anyone else's is their places' alone.
-  const listed = scope.wholeStore
-    ? [...new Set([...scope.codes, ...report.rows.map(r => r.code), ...(answer?.rows ?? []).filter(r => r.store_code === report.store)
-        .map(r => r.subcategory_code), ...storeCodes])].sort()
-    : scope.codes
-  const state: InitialState = {
-    plant_code: report.store,
-    whole_store: scope.wholeStore,
-    ...(scope.wholeStore && format === 'compact'
-      ? { sections: Object.fromEntries(Object.keys(bySection).sort().map(name => [name, codeSteps(bySection[name])])) }
-      : { material_groups: listed,
-          section_by_material_group: Object.fromEntries(listed.filter(c => scope.sectionOf[c]).map(c => [c, scope.sectionOf[c]])) }),
-    // The report's own period (#750): the Dive caps its anchor day at `period_end` from v14.
-    period_start: report.period_start,
-    period_end: report.period_end,
-    ...(appOrigin ? { app_origin: appOrigin } : {}),
-  }
-  if (report.state !== 'ready') return state
-  const mine = new Set(scope.codes)
-  const rows = (answer?.rows ?? [])
-    .filter(r => r.store_code === report.store && r.days > 0 && /^\d{9}$/.test(r.subcategory_code) && (scope.wholeStore || mine.has(r.subcategory_code)))
-    .sort((a, b) => Number(a.subcategory_code) - Number(b.subcategory_code))
-  const columns = (quantities: boolean): CachedColumns => ({
-    c: codeSteps(rows.map(r => r.subcategory_code)), n: rows.map(r => r.subcategory),
-    t: rows.map(r => scaled(r.target, 100)), a: rows.map(r => scaled(r.actual, 100)),
-    ...(quantities ? { tq: rows.map(r => scaled(r.target_quantity, 1000)), aq: rows.map(r => scaled(r.actual_quantity, 1000)) } : {}),
-  })
-  const head = { v: 1 as const, refreshed_at: report.refreshed_at, data_through: report.data_through }
-  const rungs = [
-    () => ({ ...head, q: true, cols: columns(true) }),
-    () => ({ ...head, q: true, z: compress(JSON.stringify(columns(true))) }),
-    () => ({ ...head, q: false, z: compress(JSON.stringify(columns(false))) }),
-  ]
-  for (const rung of rungs) {
-    const candidate = { ...state, cached: rung() }
-    if (new TextEncoder().encode(JSON.stringify(candidate)).length <= CACHE_BUDGET_BYTES) return candidate
-  }
-  return state
-}
-
-/**
- * The bar's store picker labels (#4531): each store by its name alone, never its plant code. A
- * store with no name known goes by its short code, else "Your store" (the reader's only store) or
- * "Store 1", "Store 2" (its place in the list). Stores whose labels collide are told apart by their
- * short codes ("Lakeside · LKS"), else numbered ("Lakeside (1)").
- */
-export function storeLabels(stores: readonly string[], names: ReadonlyMap<string, string>, shorts: ReadonlyMap<string, string> = new Map()) {
-  const base = stores.map((store, i) => names.get(store) ?? shorts.get(store) ?? (stores.length === 1 ? 'Your store' : `Store ${i + 1}`))
-  const clashes = (label: string) => base.filter(b => b === label).length > 1
+export function storeLabels(stores: readonly string[], names: ReadonlyMap<string, string>) {
+  const base = stores.map((store, i) => names.get(store) ?? (stores.length === 1 ? 'Your store' : `Store ${i + 1}`))
   return stores.map((store, i) => {
-    if (!clashes(base[i])) return { value: store, label: base[i] }
     const twins = stores.filter((_, j) => base[j] === base[i])
-    const twinShorts = twins.map(s => shorts.get(s))
-    const distinct = twinShorts.every(s => s && s !== base[i]) && new Set(twinShorts).size === twins.length
-    return { value: store, label: distinct ? `${base[i]} · ${shorts.get(store)}` : `${base[i]} (${twins.indexOf(store) + 1})` }
+    return { value: store, label: twins.length > 1 ? `${base[i]} (${twins.indexOf(store) + 1})` : base[i] }
   })
-}
-
-/** Whether `storeLabels` needs short codes: some store has no name, or two share one. */
-export function needsShortCodes(stores: readonly string[], names: ReadonlyMap<string, string>): boolean {
-  const named = stores.map(s => names.get(s))
-  return named.some(n => !n) || new Set(named).size < named.length
 }

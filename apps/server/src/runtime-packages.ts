@@ -8,6 +8,7 @@ import { appPermissionSchema, registerApp, forgetRuntimePackages, listInstalledA
 import { applyJobPlan, bindAppJobs, jobsDeclaration, planJobChanges, validateAppJobs } from './app-jobs'
 import { tableDefSchema } from './table-engine'
 import { hasPermission } from './permissions'
+import { tableAccessPolicy } from './mandatory-access'
 import { AppError } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
 import { APP_ACCENTS, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
@@ -78,6 +79,8 @@ const barControl = z.object({
   options: z.string().min(1),
   /** #975: the control stays away from a page whose address carries this key. */
   hiddenWhen: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).optional(),
+  /** #967: address keys this picker's options depend on: its read gets their values as its payload. */
+  dependsOn: z.array(z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)).optional(),
   sets: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/, 'A bar control sets a query-string key: lower case letters, digits and _, starting with a letter'),
 }).strict()
 
@@ -362,6 +365,10 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     if (!manifest.server) throw new Error('A scope provider requires a server module')
     // An owned Table the provider reads must carry the mark; another
     // Table's mark is checked on every read.
+    const notDeclared = provider.unmarkedTables?.find(table => !provider.tables.includes(table))
+    if (notDeclared) throw new Error(`A scope provider's unmarked Table ${notDeclared} is not one of the Tables it reads`)
+    const ownUnmarked = provider.unmarkedTables?.find(table => manifest.tables.some(t => t.name === table))
+    if (ownUnmarked) throw new Error(`A scope provider's own Table ${ownUnmarked} must be marked decides_scope`)
     for (const table of provider.tables) {
       const owned = manifest.tables.find(t => t.name === table)
       if (owned && !owned.decides_scope) throw new Error('A scope provider reads only Tables marked decides_scope')
@@ -446,7 +453,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     runtime_manifest: { ...manifest, packageName: pkg.name, packageVersion: pkg.version } }
   return { name: manifest.name, title: manifest.title,
     entryTable: manifest.entryTable, clientRoot, root, version: pkg.version, digest, manifest, app,
-    scopeProvider: provider ? { app: manifest.name, title: manifest.title, version: pkg.version, tables: provider.tables, identifiers: provider.identifiers ?? [], provide: providers.get(provider.name)! } : undefined,
+    scopeProvider: provider ? { app: manifest.name, title: manifest.title, version: pkg.version, tables: provider.tables, unmarkedTables: provider.unmarkedTables ?? [], identifiers: provider.identifiers ?? [], provide: providers.get(provider.name)! } : undefined,
     // V1 stays recognizable as an exact upgrade predecessor, never gets a default policy.
     actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations), setup, baseTables: manifest.baseTables } : undefined,
     reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations), setup, datasets: manifest.datasets, baseTables: manifest.baseTables } : undefined }
@@ -839,11 +846,26 @@ export async function appCatalog(user: string) {
   return result
 }
 
+/** #1008: the installed apps this person can't open, and the roles that would
+ *  open each. Being without access must not read as the app not being there, so
+ *  a System Manager is told; nothing here decides what opens (appCatalog does).
+ *  Apps turned off aren't listed: the Apps page says so. */
+export async function closedApps(user: string) {
+  const open = new Set((await appCatalog(user)).map((entry) => entry.name))
+  const result = []
+  for (const item of await listInstalledApps()) {
+    const pkg = packages.get(item.name)
+    if (item.active && item.ownPages && pkg?.clientRoot && !open.has(pkg.name))
+      result.push({ name: pkg.name, title: pkg.title, roles: (await tableAccessPolicy(pkg.entryTable))?.roles ?? [] })
+  }
+  return result
+}
+
 /** #642 (E8): an app's controls for the shared top bar, each picker with its
  *  options: the answer of the app's own read, run for `user` under their own
  *  scope, as the serving version (the platform draws the bar, not the app's
  *  client, so there is no client version to name). */
-export async function appBar(name: string, user: string) {
+export async function appBar(name: string, user: string, address: Readonly<Record<string, string>> = {}) {
   // The bar is drawn on the app's own pages: the same gate as serving them.
   // The request holds no lifecycle lock (index.ts), so the check takes its
   // own; each read below takes it again only while it authorizes.
@@ -853,10 +875,11 @@ export async function appBar(name: string, user: string) {
     return packages.get(name)!
   })
   const controls = []
-  for (const { picker, options, sets, hiddenWhen } of pkg.manifest.bar ?? []) {
+  for (const { picker, options, sets, hiddenWhen, dependsOn } of pkg.manifest.bar ?? []) {
+    const payload = Object.fromEntries((dependsOn ?? []).filter(key => address[key]).map(key => [key, address[key]]))
     let result: unknown
     try {
-      ({ result } = await withAppIdentity(name, pkg.version, () => runPackageRead(name, options, { payload: {} }, user)) as { result: unknown })
+      ({ result } = await withAppIdentity(name, pkg.version, () => runPackageRead(name, options, { payload }, user)) as { result: unknown })
     } catch (error) {
       // A person the read refuses (no role for it, no places) has nothing to
       // choose; the read has already logged the refusal.
@@ -866,7 +889,7 @@ export async function appBar(name: string, user: string) {
     const parsed = barOptions.safeParse(result)
     if (!parsed.success)
       throw new AppError('InternalError', `App ${name}'s read ${options} answered options the bar cannot show: it must answer a list of { value, label }, both text`)
-    controls.push({ picker, sets, options: parsed.data, ...(hiddenWhen ? { hiddenWhen } : {}) })
+    controls.push({ picker, sets, options: parsed.data, ...(hiddenWhen ? { hiddenWhen } : {}), ...(dependsOn ? { dependsOn } : {}) })
   }
   return { controls }
 }

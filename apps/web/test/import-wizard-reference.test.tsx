@@ -111,7 +111,7 @@ test('a value matches a row by its ID: a name matches a Table named by name, not
 
   fireEvent.change(picker(row), { target: { value: 'Iwl Zone' } })
   fireEvent.click(screen.getByTestId('iw-check'))
-  expect(await screen.findByTestId('iw-check-0')).toHaveTextContent('All 1 rows link to a row')
+  expect(await screen.findByTestId('iw-check-0')).toHaveTextContent('The 1 row links to a row')
   clearSession()
 })
 
@@ -122,7 +122,7 @@ test('a retired target row still matches, as saving the link accepts it', async 
   await waitFor(() => expect(within(picker(row)).getByRole('option', { name: 'Iwl Cluster' })).toBeInTheDocument())
   fireEvent.change(picker(row), { target: { value: 'Iwl Cluster' } })
   fireEvent.click(screen.getByTestId('iw-check'))
-  expect(await screen.findByTestId('iw-check-0')).toHaveTextContent('All 1 rows link to a row')
+  expect(await screen.findByTestId('iw-check-0')).toHaveTextContent('The 1 row links to a row')
   clearSession()
 })
 

@@ -11,23 +11,91 @@
       "name": "barproof.note",
       "label": "note",
       "id_pattern": "prompt",
-      "columns": [{ "column_name": "body", "column_type": "Data" }]
+      "columns": [
+        {
+          "column_name": "body",
+          "column_type": "Data"
+        }
+      ]
     }
   ],
-  "roles": ["Bar Reader"],
-  "permissions": [{ "table": "barproof.note", "role": "Bar Reader", "can_read": true }],
+  "roles": [
+    "Bar Reader"
+  ],
+  "permissions": [
+    {
+      "table": "barproof.note",
+      "role": "Bar Reader",
+      "can_read": true
+    }
+  ],
   "reads": {
     "version": 1,
-    "tables": ["barproof.note"],
+    "tables": [
+      "barproof.note"
+    ],
     "operations": {
       "stores": {
-        "policy": { "kind": "person_scope", "readRoles": ["Bar Reader"], "actionRoles": [] },
-        "authorization": { "kind": "generic" }
+        "policy": {
+          "kind": "person_scope",
+          "readRoles": [
+            "Bar Reader"
+          ],
+          "actionRoles": []
+        },
+        "authorization": {
+          "kind": "generic"
+        }
       },
-      "malformed": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
-      "broken": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
-      "waiting": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" }, "outbound": true }
+      "malformed": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "broken": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "waiting": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        },
+        "outbound": true
+      },
+      "by_report": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "prepared_outbound": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        },
+        "outbound": true
+      }
     }
   },
-  "bar": [{ "picker": "Store", "options": "stores", "sets": "store" }]
+  "bar": [
+    {
+      "picker": "Store",
+      "options": "stores",
+      "sets": "store"
+    }
+  ]
 }

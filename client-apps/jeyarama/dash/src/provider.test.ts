@@ -1,240 +1,134 @@
-// The scope provider over a stand-in for the platform's provider read context
-// (documents.get/list over declared Tables): the system boundary, played by
-// rows in memory. Made-up stores and people.
+// Who sees what (#967's table), from the core Tables. Made-up stores and people.
 import { describe, expect, it } from 'vitest'
-import manifest from '../featherbase.json' with { type: 'json' }
-import { PROVIDER_TABLES, orgChartProvider } from './provider.ts'
-import { chart, job } from './test-chart.ts'
+import { PROVIDER_TABLES, orgChartProvider, reachOf, type Documents } from './provider'
 
 type Row = Record<string, unknown>
-type Filter = [string, string, unknown]
-const TODAY = '2026-10-15'
+const ON = '2026-11-07'
+const SITES: Row[] = [
+  { row_id: 'AAA', name: 'Alpha', is_store: true, cluster: 'North' },
+  { row_id: 'BBB', name: 'Beta', is_store: true, cluster: 'North' },
+  { row_id: 'CCC', name: 'Gamma', is_store: true, cluster: 'South' },
+  { row_id: 'DDD', name: 'Delta', is_store: true, cluster: null },
+  { row_id: 'HOF', name: 'Head office', is_store: false, cluster: null },
+]
+const PLANTS: Row[] = [
+  { row_id: '9901', site: 'AAA', plant_type: 'Store' }, { row_id: '9151', site: 'AAA', plant_type: 'Warehouse' },
+  { row_id: '9902', site: 'BBB', plant_type: 'Store' }, { row_id: '9903', site: 'CCC', plant_type: 'Store' }, { row_id: '9904', site: 'DDD', plant_type: 'Store' },
+]
+const SECTIONS: Row[] = [
+  { row_id: 'AAA-GF-Tops', name: 'Tops', site: 'AAA', floor: 'AAA-GF' },
+  { row_id: 'AAA-GF-Sarees', name: 'Sarees', site: 'AAA', floor: 'AAA-GF' },
+  { row_id: 'AAA-FF-Toys', name: 'Toys', site: 'AAA', floor: 'AAA-FF' },
+  { row_id: 'AAA-FF-Empty', name: 'Empty', site: 'AAA', floor: 'AAA-FF' },
+  { row_id: 'BBB-GF-Tops', name: 'Tops', site: 'BBB', floor: 'BBB-GF' },
+]
+const PLACEMENTS: Row[] = [
+  { row_id: 'p1', store: 'AAA', section: 'AAA-GF-Tops', subcategory: '000000001', starts_on: '2026-01-01', ends_on: null },
+  { row_id: 'p2', store: 'AAA', section: 'AAA-GF-Tops', subcategory: '000000002', starts_on: '2026-01-01', ends_on: '2026-02-01' },
+  { row_id: 'p3', store: 'AAA', section: 'AAA-GF-Sarees', subcategory: '000000003', starts_on: '2026-01-01', ends_on: null },
+  { row_id: 'p4', store: 'AAA', section: 'AAA-FF-Toys', subcategory: '000000004', starts_on: '2026-01-01', ends_on: null },
+  { row_id: 'p5', store: 'BBB', section: 'BBB-GF-Tops', subcategory: '000000005', starts_on: '2026-01-01', ends_on: null },
+]
 
-/** The platform's documents.list, as far as the provider uses it: '=' and 'in' filters, only the
- *  fields asked for (row_id alone when none are), pages of at most 500 in a stable order. */
-function documents(tables: Record<string, Row[]>, reads: string[] = []) {
+function fake(jobs: Row[], { employee = { row_id: 'E1', person: 'me', status: 'Current' } as Row } = {}): Documents {
+  const tables: Record<string, Row[]> = {
+    Employee: [employee], 'Job Assignment': jobs.map((job, i) => ({ row_id: `J${i}`, employee: 'E1', starts_on: '2026-01-01', ends_on: null, ...job })),
+    Site: SITES, Plant: PLANTS, Section: SECTIONS, 'Section Subcategory': PLACEMENTS,
+  }
   return {
-    async get(): Promise<Row> { throw new Error('not used') },
-    async list(table: string, args: { filters?: Filter[]; fields?: string[]; order_by?: string; limit_start?: number; limit_page_length?: number } = {}) {
-      reads.push(table)
-      if (!PROVIDER_TABLES.includes(table)) throw new Error(`undeclared Table ${table}`)
-      const rows = (tables[table] ?? []).filter(row => (args.filters ?? []).every(([column, operator, value]) =>
-        operator === '=' ? row[column] === value : operator === 'in' ? (value as unknown[]).includes(row[column]) : false))
-      if (args.order_by !== 'row_id asc') throw new Error('pages need a stable order')
-      const fields = args.fields?.length ? args.fields : ['row_id']
-      const start = args.limit_start ?? 0
-      return rows.slice(start, start + Math.min(args.limit_page_length ?? 20, 500))
-        .map(row => Object.fromEntries(fields.map(field => [field, row[field] ?? null])))
+    async list(table, { filters = [], limit_start = 0, limit_page_length = 500 }) {
+      const rows = tables[table].filter(row => filters.every(([column, op, value]) =>
+        op === 'in' ? (value as unknown[]).includes(row[column]) : row[column] === value))
+      return rows.slice(limit_start, limit_start + limit_page_length)
     },
   }
 }
+const reach = (...jobs: Row[]) => reachOf(fake(jobs), 'me', ON)
+const stores = async (...jobs: Row[]) => (await reach(...jobs)).places.map(place => place.filters)
 
-function instance(jobs: Row[], extra: Record<string, Row[]> = {}): Record<string, Row[]> {
-  const org = chart(jobs)
-  return {
-    'dash.store_rollout': [{ row_id: '9901', store: '9901', live_since: '2026-10-01' }],
-    'dash.store_floor': org.floors,
-    'dash.department': org.departments,
-    'dash.section': org.sections,
-    'dash.section_subcategory': org.placements,
-    'dash.job_assignment': org.jobs,
-    'Section Merchandise Map': [
-      { store_code: '9902', material_group: '010404001', mch_subcategory: 'Belts', section_name: 'Accessories' },
-      { store_code: '9902', material_group: '010404002', mch_subcategory: 'Wallets', section_name: 'Accessories' },
-      { store_code: '9901', material_group: '010101001', mch_subcategory: 'Saree', section_name: 'Sarees' },
-    ],
-    'Store Manager': [{ store_code: '9902', employee_code: 'EMP-0120' }, { store_code: '9901', employee_code: 'EMP-0120' }],
-    ...extra,
-  }
-}
-
-const provide = (tables: Record<string, Row[]>, person = 'psn_103', codes: string[] = [], reads: string[] = []) =>
-  orgChartProvider({ today: () => TODAY, employeeCodes: async () => ({ codes, ambiguous: false }) })(
-    { person: { id: person, email: null }, documents: documents(tables, reads) })
-
-describe('the org_chart scope provider', () => {
-  it("gives a live store's Team Leader their section, confirmed", async () => {
-    expect(await provide(instance([job('psn_103', 'Team Leader', { section: 's-sarees' })]))).toEqual([{
-      label: '9901 / Section: Sarees',
-      filters: { store: ['9901'], subcategory: ['010101001', '010303001'] },
-      basis: 'team_leader',
-      reasons: [{ text: 'Team Leader job assignment', since: '2026-07-01' }],
-      confirmation: { store: { '9901': 'confirmed' }, subcategory: { '010101001': 'confirmed', '010303001': 'confirmed' } },
-    }])
+describe('who sees what', () => {
+  it('Staff and a Team Leader see their section\'s current subcategories', async () => {
+    for (const job of ['Staff', 'Team Leader'])
+      expect(await stores({ job, site: 'AAA', section: 'AAA-GF-Tops' })).toEqual([{ store: ['9901'], subcategory: ['000000001'] }])
   })
 
-  it("gives a live store's Store Manager the store itself, with no narrower filter", async () => {
-    const [store] = await provide(instance([job('psn_101', 'Store Manager')]), 'psn_101')
-    expect(store).toEqual({ label: '9901', filters: { store: ['9901'] }, basis: 'store_manager',
-      reasons: [{ text: 'Store Manager job assignment', since: '2026-07-01' }], confirmation: { store: { '9901': 'confirmed' } } })
+  it('Staff with no section get no place, and the reason', async () => {
+    expect(await reach({ job: 'Staff', site: 'AAA', section: null })).toEqual({ places: [], problems: ['no_section'] })
   })
 
-  it("gives a live store's Store Manager each section of the store as a place too, so a report can group by section", async () => {
-    const places = await provide(instance([job('psn_101', 'Store Manager')]), 'psn_101')
-    expect(places.map(p => p.label)).toEqual(['9901', '9901 / Section: Kids Wear', '9901 / Section: Lehenga',
-      '9901 / Section: Sarees', '9901 / Section: Silk Sarees', '9901 / Section: Women Tops'])
+  it('a section with nothing placed reaches nothing, and says so', async () => {
+    expect(await reach({ job: 'Team Leader', site: 'AAA', section: 'AAA-FF-Empty' })).toEqual({ places: [], problems: ['nothing_placed'] })
   })
 
-  it('gives a Floor Manager one place per section on their floor', async () => {
-    const places = await provide(instance([job('psn_102', 'Floor Manager', { floor: 'f-ground' })]), 'psn_102')
-    expect(places.map(p => [p.label, p.filters, p.basis])).toEqual([
-      ['9901 / Section: Sarees', { store: ['9901'], subcategory: ['010101001', '010303001'] }, 'floor_manager'],
-      ['9901 / Section: Women Tops', { store: ['9901'], subcategory: ['010303002'] }, 'floor_manager'],
-    ])
+  it('a Floor Manager sees their floor\'s sections, each its own place', async () => {
+    const { places } = await reach({ job: 'Floor Manager', site: 'AAA', floor: 'AAA-GF' })
+    expect(places.map(place => [place.label, place.filters.subcategory])).toEqual([
+      ['9901 / Section: Sarees', ['000000003']], ['9901 / Section: Tops', ['000000001']]])
   })
 
-  it('gives a Department Manager one place per section in their department', async () => {
-    const places = await provide(instance([job('psn_109', 'Department Manager', { department: 'd-kids' })]), 'psn_109')
-    expect(places.map(p => p.label)).toEqual(['9901 / Section: Kids Wear', '9901 / Section: Women Tops'])
+  it('a Department Manager has a clear reason until departments are filled', async () => {
+    expect(await reach({ job: 'Department Manager', site: 'AAA' })).toEqual({ places: [], problems: ['departments_not_filled'] })
   })
 
-  it("never names a floor or a section row in a place's filters, which a dataset of store and subcategory could not apply", async () => {
-    const places = await provide(instance([job('psn_102', 'Floor Manager', { floor: 'f-ground' }), job('psn_102', 'Team Leader', { section: 's-silk' })]), 'psn_102')
-    expect([...new Set(places.flatMap(p => Object.keys(p.filters)))].sort()).toEqual(['store', 'subcategory'])
+  it('a Store Manager sees the whole of their store, through its store plant only', async () => {
+    expect(await stores({ job: 'Store Manager', site: 'AAA' })).toEqual([{ store: ['9901'] }])
   })
 
-  it('merges the places of two rows on one section', async () => {
-    const rows = [job('psn_103', 'Team Leader', { section: 's-silk' }), { ...job('psn_103', 'Staff', { section: 's-silk' }), acting: true }]
-    expect((await provide(instance(rows))).map(p => [p.label, p.basis])).toEqual([['9901 / Section: Silk Sarees', 'acting_section_staff, team_leader']])
+  it('a Cluster Manager sees every store in the cluster of the site on their job', async () => {
+    expect(await stores({ job: 'Cluster Manager', site: 'BBB' })).toEqual([{ store: ['9901'] }, { store: ['9902'] }])
   })
 
-  // featherbase#628: the platform's "What can this person see" page shows why
-  // each place is given, from the job assignments that give it.
-  it('gives each place the job assignments behind it as reasons, with their days', async () => {
-    const rows = [{ ...job('psn_103', 'Team Leader', { section: 's-silk' }), ends_on: '2026-12-31' },
-      { ...job('psn_103', 'Staff', { section: 's-silk' }), acting: true, starts_on: '2026-08-06' }]
-    expect((await provide(instance(rows))).map(p => p.reasons)).toEqual([[
-      { text: 'Acting Staff job assignment', since: '2026-08-06' },
-      { text: 'Team Leader job assignment', since: '2026-07-01', until: '2026-12-31' },
-    ]])
+  it('a Cluster Manager on a site with no cluster reaches nothing, and says so', async () => {
+    expect(await reach({ job: 'Cluster Manager', site: 'DDD' })).toEqual({ places: [], problems: ['no_cluster'] })
   })
 
-  it('lists places by label, whatever order the rows come in', async () => {
-    const rows = [job('psn_107', 'Department Manager', { department: 'd-ethnic' }), job('psn_107', 'Department Manager', { department: 'd-bridal' })]
-    expect((await provide(instance(rows), 'psn_107')).map(p => p.label)).toEqual(['9901 / Section: Lehenga', '9901 / Section: Sarees', '9901 / Section: Silk Sarees'])
+  it('a Director, Managing Director and Chief Operating Officer see every store, wherever their job row sits', async () => {
+    for (const job of ['Director', 'Managing Director', 'Chief Operating Officer'])
+      expect(await stores({ job, site: 'HOF' })).toEqual(['9901', '9902', '9903', '9904'].map(store => ({ store: [store] })))
   })
 
-  it('leaves out a place whose sections own no subcategory on the date', async () => {
-    const tables = instance([job('psn_103', 'Team Leader', { section: 's-silk' })])
-    tables['dash.section_subcategory'] = []
-    expect(await provide(tables)).toEqual([])
+  it('head office staff see no report', async () => {
+    expect(await reach({ job: 'Head office staff', site: 'HOF' })).toEqual({ places: [], problems: ['head_office'] })
   })
 
-  it('uses the old rules for a store not yet live, marked assumed, one place per section of the merchandise map', async () => {
-    expect(await provide(instance([]), 'psn_120', ['EMP-0120'])).toEqual([{
-      label: '9902 / Section: Accessories', filters: { store: ['9902'], subcategory: ['010404001', '010404002'] }, basis: 'store_manager',
-      reasons: [{ text: 'Store Manager, by the old rules' }],
-      confirmation: { store: { '9902': 'assumed' }, subcategory: { '010404001': 'assumed', '010404002': 'assumed' } },
-    }])
+  it('a person with no employee record has no job', async () => {
+    expect(await reachOf(fake([]), 'someone else', ON)).toEqual({ places: [], problems: ['no_job'] })
   })
 
-  it('ignores the old rules for a live store', async () => {
-    const places = await provide(instance([]), 'psn_120', ['EMP-0120'])
-    expect(places.map(p => p.filters.store)).toEqual([['9902']])
+  it('a leaver has no job, whatever rows remain', async () => {
+    const left = fake([{ job: 'Store Manager', site: 'AAA' }], { employee: { row_id: 'E1', person: 'me', status: 'Left' } })
+    expect(await reachOf(left, 'me', ON)).toEqual({ places: [], problems: ['no_job'] })
   })
 
-  it('ignores the new chart for a store not yet live', async () => {
-    expect(await provide(instance([job('psn_121', 'Team Leader', { section: 's-hill-acc' }, '9902')]), 'psn_121')).toEqual([])
+  it('a job that has ended or not begun reaches nothing', async () => {
+    expect((await reach({ job: 'Store Manager', site: 'AAA', ends_on: ON })).problems).toEqual(['no_job'])
+    expect((await reach({ job: 'Store Manager', site: 'AAA', starts_on: '2026-12-01' })).problems).toEqual(['no_job'])
   })
 
-  it('keeps a store on the old rules until its live date arrives', async () => {
-    const tables = instance([job('psn_103', 'Team Leader', { section: 's-sarees' })])
-    tables['dash.store_rollout'] = [{ row_id: '9901', store: '9901', live_since: '2026-10-16' }]
-    expect(await provide(tables)).toEqual([])
+  it('a section in another store than the job\'s reaches nothing', async () => {
+    expect(await reach({ job: 'Team Leader', site: 'BBB', section: 'AAA-GF-Tops' })).toEqual({ places: [], problems: ['nothing_placed'] })
   })
 
-  it('answers an empty scope for a person who covers nothing', async () => {
-    expect(await provide(instance([]), 'psn_999')).toEqual([])
+  it('two jobs add up, and a whole store sits beside a section elsewhere', async () => {
+    expect(await stores({ job: 'Store Manager', site: 'AAA' }, { job: 'Team Leader', site: 'BBB', section: 'BBB-GF-Tops' })).toEqual([
+      { store: ['9901'] }, { store: ['9902'], subcategory: ['000000005'] }])
   })
 
-  it('adds the explicit Sales Target Assignment rows of a store not yet live', async () => {
-    const tables = instance([], { 'Sales Target Assignment': [{ employee: 'psn_130', plant_code: '9902', material_group: '010404002' }] })
-    expect((await provide(tables, 'psn_130')).map(p => [p.label, p.filters.subcategory, p.basis])).toEqual([['9902 / Section: Accessories', ['010404002'], 'assignment']])
+  it('a place says which job gives it, and an acting one says so', async () => {
+    const [place] = (await reach({ job: 'Store Manager', site: 'AAA', acting: true })).places
+    expect(place.basis).toBe('acting_store_manager')
+    expect(place.reasons).toEqual([{ text: 'Acting Store Manager job assignment', since: '2026-01-01' }])
+  })
+})
+
+describe('the provider', () => {
+  it('answers the person\'s places on today\'s date', async () => {
+    const provide = orgChartProvider({ today: () => ON })
+    const places = await provide({ person: { id: 'me', email: null }, documents: fake([{ job: 'Store Manager', site: 'AAA' }]) })
+    expect(places.map(place => place.filters)).toEqual([{ store: ['9901'] }])
   })
 
-  it("puts old-rule subcategories outside the merchandise map in a place named by the store", async () => {
-    const tables = instance([], { 'Sales Target Assignment': [{ employee: 'psn_130', plant_code: '9902', material_group: '010909001' }] })
-    expect((await provide(tables, 'psn_130')).map(p => [p.label, p.filters])).toEqual([['9902', { store: ['9902'], subcategory: ['010909001'] }]])
-  })
-
-  // #4486: the page says which job gives which section, so an old-rule place carries the bases of
-  // its own subcategories, not every basis the person has in the store.
-  it("gives each old-rule place the bases of its own subcategories, not the store's", async () => {
-    const tables = instance([], {
-      'Section Merchandise Map': [
-        { store_code: '9902', material_group: '010404001', mch_subcategory: 'Belts', section_name: 'Accessories' },
-        { store_code: '9902', material_group: '010505001', mch_subcategory: 'Handbags', section_name: 'Bags' },
-      ],
-      'Section Ownership': [{ store_code: '9902', section_name: 'Accessories', tl_employee_code: 'EMP-0140', dm_employee_code: null, effective_from: null }],
-      'Employee Section Map': [{ store_code: '9902', employee_code: 'EMP-0140', subcategory: 'Handbags' }],
-    })
-    expect((await provide(tables, 'psn_140', ['EMP-0140'])).map(p => [p.label, p.filters.subcategory, p.basis])).toEqual([
-      ['9902 / Section: Accessories', ['010404001'], 'team_leader'],
-      ['9902 / Section: Bags', ['010505001'], 'section_staff'],
-    ])
-  })
-
-  // The default provider reads the person's employee codes from the identifiers the platform hands it
-  // (#660), each saying whether another person holds the same code today (#662).
-  type Held = { value: string; shared: boolean }
-  const asPlatform = (tables: Record<string, Row[]>, id: string, identifiers?: Record<string, Held[]>) =>
-    orgChartProvider({ today: () => TODAY })({ person: { id, email: null, ...(identifiers ? { identifiers } : {}) }, documents: documents(tables) })
-  const explicitRow = (person: string) => ({ 'Sales Target Assignment': [{ employee: person, plant_code: '9902', material_group: '010404002' }] })
-  const codes = (...held: Held[]) => ({ 'stylehr-employee-code': held })
-
-  it('gives a person who holds no employee code today their explicit assignment rows from the old rules', async () => {
-    const places = await asPlatform(instance([], explicitRow('psn_130')), 'psn_130', codes())
-    expect(places.map(p => [p.label, p.filters.subcategory, p.basis])).toEqual([['9902 / Section: Accessories', ['010404002'], 'assignment']])
-  })
-
-  it('gives a person whose codes are all unshared their old-rule coverage from those codes, plus their explicit rows', async () => {
-    const places = await asPlatform(instance([], explicitRow('psn_120')), 'psn_120', codes({ value: 'EMP-0120', shared: false }))
-    expect(places.map(p => [p.label, p.filters.subcategory, p.basis])).toEqual([['9902 / Section: Accessories', ['010404001', '010404002'], 'assignment, store_manager']])
-  })
-
-  it('gives a person with one shared code among several nothing from the old rules, explicit rows included', async () => {
-    const places = await asPlatform(instance([], explicitRow('psn_120')), 'psn_120',
-      codes({ value: 'EMP-0120', shared: false }, { value: 'EMP-0999', shared: true }))
-    expect(places).toEqual([])
-  })
-
-  it('gives no old-rule coverage when the platform hands over no employee codes at all', async () => {
-    expect(await asPlatform(instance([], explicitRow('psn_130')), 'psn_130')).toEqual([])
-  })
-
-  it("keeps the new chart for a live store whatever the person's identifiers", async () => {
-    const places = await asPlatform(instance([job('psn_103', 'Team Leader', { section: 's-sarees' })]), 'psn_103', codes({ value: 'EMP-0103', shared: true }))
-    expect(places.map(p => p.label)).toEqual(['9901 / Section: Sarees'])
-  })
-
-  it('declares the employee-code identifier system it reads', () => {
-    expect(manifest.scopeProvider.identifiers).toEqual(['stylehr-employee-code'])
-  })
-
-  it('gives a person whose employee code is shared nothing from the old rules, explicit rows included', async () => {
-    const tables = instance([], { 'Sales Target Assignment': [{ employee: 'psn_130', plant_code: '9902', material_group: '010404002' }] })
-    const places = await orgChartProvider({ today: () => TODAY, employeeCodes: async () => ({ codes: ['EMP-0130'], ambiguous: true }) })(
-      { person: { id: 'psn_130', email: null }, documents: documents(tables) })
-    expect(places).toEqual([])
-  })
-
-  it('gives nothing from a section whose store code is padded, as the comparison does', async () => {
-    const tables = instance([job('psn_103', 'Team Leader', { section: 's-sarees' })])
-    tables['dash.section'] = tables['dash.section'].map(s => s.row_id === 's-sarees' ? { ...s, store: ' 9901 ' } : s)
-    expect(await provide(tables)).toEqual([])
-  })
-
-  it('reads every page of a long Table', async () => {
-    const many = Array.from({ length: 1200 }, (_, i) => ({ employee: 'psn_130', plant_code: '9902', material_group: String(10404100 + i).padStart(9, '0') }))
-    const [place] = await provide(instance([], { 'Sales Target Assignment': many }), 'psn_130')
-    expect(place.filters.subcategory).toHaveLength(1200)
-  })
-
-  it('reads only the Tables the manifest declares for it', () => {
-    expect(PROVIDER_TABLES).toEqual(manifest.scopeProvider.tables)
-  })
-
-  it('is the provider the manifest names', () => {
-    expect(manifest.scopeProvider.name).toBe('org_chart')
+  it('reads only the Tables it declares', () => {
+    expect(PROVIDER_TABLES).toEqual(['Employee', 'Job Assignment', 'Site', 'Plant', 'Section', 'Section Subcategory'])
   })
 })

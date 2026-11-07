@@ -1,9 +1,9 @@
 // Feather Dash's report page (rendered by main.tsx).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { accessFacts, read } from './api'
-import { MEASURE_LINE, TOTALS_NOTE, isMonthChoice, monthChooser, monthWords, notArrivedLine, type MonthChoice, noAccessHelp, type NoAccessHelp, headingParts, periodLine, sectionHeading, whyLine, storeChooser, totalCells, visibleState, blankNote, dataLine, firstStore, inr, pageView, percent, quickBody, reportLoader, signedInr, subcategoryLabel, subtotalLabel, type LoadState } from './page'
+import { REPORT_TIMEOUT_MS, reachMessage, MEASURE_LINE, TOTALS_NOTE, isMonthChoice, monthChooser, monthWords, notArrivedLine, type MonthChoice, noAccessHelp, type NoAccessHelp, headingParts, periodLine, sectionHeading, whyLine, storeChooser, totalCells, visibleState, blankNote, dataLine, firstStore, inr, pageView, percent, quickBody, reportLoader, signedInr, subcategoryLabel, subtotalLabel, type LoadState } from './page'
 import type { Heading, Report, ReportRow, Totals } from './report'
-import { DashSidebar, SECTIONS_ADDRESS } from './sections-page'
+import { DashSidebar, SECTIONS_ADDRESS, readReports, type ReportLink } from './sections-page'
 
 /** The store the bar's picker keeps in the address (`?store=`). */
 const storeInAddress = () => new URLSearchParams(window.location.search).get('store') ?? undefined
@@ -44,7 +44,25 @@ function listenForStore(onStore: (store: string) => void): () => void {
   }
 }
 
+/** The report named in the address; none: the reader's first. A report change reloads the page. */
+const reportInAddress = () => new URLSearchParams(window.location.search).get('report') ?? undefined
+
+const NO_FILTER_READS: Readonly<Record<string, string>> = { report: 'report_open', embed_session: 'embed_open' }
+
 export function Dash() {
+  // The reader's reports, for whether this one takes a store: undefined until answered.
+  const [reports, setReports] = useState<ReportLink[] | undefined>(undefined)
+  useEffect(() => {
+    // A slow read never holds the page: past the deadline it opens, and the server judges the report.
+    const timer = setTimeout(() => setReports(answer => answer ?? []), REPORT_TIMEOUT_MS)
+    readReports().then(list => setReports(list), () => setReports([])).finally(() => clearTimeout(timer))
+    return () => clearTimeout(timer)
+  }, [])
+  const named = reportInAddress()
+  const current = reports?.find(report => report.key === named) ?? (named ? undefined : reports?.[0])
+  // A report taking no filter opens through its own reads, which need no reach.
+  const noFilter = useRef(false)
+  noFilter.current = !!current?.no_filter
   // undefined until the first store is known: the reads wait for it (one call per read per load).
   const [store, setStore] = useState<{ value: string | undefined } | undefined>(undefined)
   const [month, setMonth] = useState<MonthChoice>(monthInAddress)
@@ -57,7 +75,7 @@ export function Dash() {
   // quick view. A late answer, or one for a store no longer on show, is ignored.
   // The Dive sends its ready message to this page's origin (#4453), which only the page knows.
   const loader = useMemo(() => reportLoader<Report>((name, payload) =>
-    read(name, name === 'embed_session' ? { ...payload, app_origin: location.origin } : payload), setState), [])
+    read(noFilter.current ? NO_FILTER_READS[name] ?? name : name, { ...payload, ...(named ? { report: named } : {}), ...(name === 'embed_session' ? { app_origin: location.origin } : {}) }), setState), [named])
   // Choosing a store: the store on show, repeated, changes nothing (round 9); another store drops
   // the previous store's answers at once (round 8), and its effect below opens it.
   const choose = useMemo(() => storeChooser(loader, value => { chosen.current.store = value; setStore({ value }) }, () => chosen.current.month), [loader])
@@ -71,17 +89,19 @@ export function Dash() {
   const [checkFailed, setCheckFailed] = useState(false)
   const [checkAttempt, setCheckAttempt] = useState(0)
   useEffect(() => {
-    if (store) return
+    if (store || !reports) return
+    // A report taking no store, or none of the reader's: open it now; the server judges it.
+    if (!current?.takes_store) { setStore({ value: undefined }); return }
     setCheckFailed(false)
     return firstStore(storeInAddress(), listenForStore, value => {
       setCheckFailed(false)
       choose(value)
-    }, undefined, store => read<{ value: string }[]>('stores').then(options => options.some(o => o.value === store)),
+    }, undefined, store => read<{ value: string }[]>('stores', named ? { report: named } : {}).then(options => options.some(o => o.value === store)),
     () => setCheckFailed(true))
     // Runs once per load, and again on Try again while no store is known yet; its listener also
     // carries every later choice (the bar, Back and Forward).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkAttempt])
+  }, [checkAttempt, reports])
   useEffect(() => {
     if (!store) return
     loader.open(store.value, month)
@@ -105,7 +125,7 @@ export function Dash() {
     <DashSidebar current="report" />
     <main className="fd-page" data-testid="dash" data-view={view.kind}>
       {/* The header, in every state with a store on show (#4486): the Dive, the quick view, and each empty state. */}
-      {(view.kind === 'dive' || view.kind === 'quick' || view.kind === 'empty') && report?.ok && report.value.heading && (
+      {(view.kind === 'dive' || view.kind === 'quick' || view.kind === 'empty') && report?.ok && report.value.heading && (report.value.heading.name || report.value.heading.reasons.length > 0) && (
         <ReportHeading heading={report.value.heading} period={report.value} wide={view.kind === 'dive'} />
       )}
       {view.kind === 'opening' && <p className="fd-opening">Opening your report…</p>}
@@ -114,7 +134,7 @@ export function Dash() {
           {!shown.diveReady && <p className="fd-opening fd-opening-over">Opening your report…</p>}
           <iframe
             data-testid="report-frame"
-            title="Sales target against sales"
+            title={current?.name ?? 'Report'}
             sandbox="allow-scripts allow-same-origin"
             src={view.src}
             ref={frame}
@@ -125,17 +145,12 @@ export function Dash() {
           />
         </div>
       )}
-      {view.kind === 'quick' && report?.ok && <QuickView report={report.value} why={view.why} />}
+      {view.kind === 'quick' && report?.ok && <QuickView report={report.value} />}
       {view.kind === 'empty' && (
         <Notice testid={`empty-${view.why}`}>
           {view.why === 'no_data_yet' && notArrivedLine(month)}
-          {view.why === 'no_sections' && (
-            <>
-              <span>This store has no sections set up yet, so there is nothing to show.</span>
-              <a href={SECTIONS_ADDRESS} data-testid="fix-link">Open Your sections to see what is set against you</a>
-            </>
-          )}
           {view.why === 'not_built' && 'The figures are being prepared. Try again in a few minutes.'}
+          {view.why === 'whole_stores_only' && "This report covers whole stores, so it isn't available for your job."}
         </Notice>
       )}
       {view.kind === 'no_access' && <NoAccess />}
@@ -144,7 +159,7 @@ export function Dash() {
       )}
       {view.kind === 'failed' && (
         <Notice testid="failed">
-          <span>Your report couldn't load.</span>
+          <span>This report couldn't open.</span>
           <button type="button" className="fd-button" onClick={tryAgain}>Try again</button>
         </Notice>
       )}
@@ -154,7 +169,7 @@ export function Dash() {
 }
 
 /** The store on show, the period, why the reader sees the store (left out when no reason is known), and what the figures measure. */
-function ReportHeading({ heading, period, wide }: { heading: Heading; period: { period_start: string; period_end: string }; wide: boolean }) {
+function ReportHeading({ heading, period, wide }: { heading: Heading; period: { period_start?: string; period_end?: string; no_quick_view?: boolean }; wide: boolean }) {
   const why = whyLine(heading)
   const { lead, count } = headingParts(heading)
   const [listOpen, setListOpen] = useState(false)
@@ -164,9 +179,9 @@ function ReportHeading({ heading, period, wide }: { heading: Heading; period: { 
         {lead}
         {count && <button type="button" className="fd-count" aria-expanded={listOpen} onClick={() => setListOpen(open => !open)}>{count}</button>}
       </h1>
-      <p className="fd-muted" data-testid="period-line">{periodLine(period)}</p>
+      {period.period_start && period.period_end && <p className="fd-muted" data-testid="period-line">{periodLine({ period_start: period.period_start, period_end: period.period_end })}</p>}
       {why && <p className="fd-muted" data-testid="why-line">{why}</p>}
-      <p className="fd-muted" data-testid="measure-line">{MEASURE_LINE}</p>
+      {!period.no_quick_view && <p className="fd-muted" data-testid="measure-line">{MEASURE_LINE}</p>}
       {count && listOpen && <p className="fd-sections" data-testid="sections-list">{heading.sections.join(' · ')}</p>}
     </header>
   )
@@ -176,13 +191,23 @@ function ReportHeading({ heading, period, wide }: { heading: Heading; period: { 
  *  flashes the reader's "ask your Store Manager". */
 function NoAccess() {
   const [help, setHelp] = useState<NoAccessHelp | undefined>(undefined)
+  // Why this job reaches nothing, when it is something the person can act on or wait for.
+  const [message, setMessage] = useState<ReturnType<typeof reachMessage>>(null)
   useEffect(() => {
     let live = true
+    read<{ problems: string[] }>('reach_problem').then(answer => { if (live) setMessage(reachMessage(answer.problems)) }, () => {})
     const local = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)
     accessFacts().then(facts => { if (live) setHelp(noAccessHelp({ ...facts, local })) })
     return () => { live = false }
   }, [])
   if (!help) return <p className="fd-opening">Opening your report…</p>
+  if (message)
+    return (
+      <Notice testid="reach-problem">
+        <span>{message.text}</span>
+        {message.sectionsLink && <a href={SECTIONS_ADDRESS} data-testid="fix-link">Open Your sections to see what is set against you, and correct it</a>}
+      </Notice>
+    )
   if (help.kind === 'reader')
     return (
       <Notice testid="no-access">
@@ -250,13 +275,7 @@ function TotalFigures({ t }: { t: Totals }) {
   )
 }
 
-/** Why the quick view stands in for the Dive, said above its table. */
-function quickLabel(why: 'too_large' | undefined): string {
-  if (why === 'too_large') return 'This store is too large for the interactive report yet. Showing the cached table.'
-  return "Cached · the full report couldn't open"
-}
-
-function QuickView({ report, why }: { report: Report; why?: 'too_large' }) {
+function QuickView({ report }: { report: Report }) {
   const [showQuiet, setShowQuiet] = useState(false)
   // Whether the table is wider than its box (the swipe cue), and whether more of it lies to the
   // right of what is in view (the edge fade); both re-checked on scroll and resize.
@@ -281,7 +300,7 @@ function QuickView({ report, why }: { report: Report; why?: 'too_large' }) {
     <section className="fd-card fd-quick" data-testid="quick-view">
       <header className="fd-quick-head">
         <p className="fd-muted fd-quick-line">
-          <span data-testid="quick-label">{quickLabel(why)}</span>
+          <span data-testid="quick-label">{"Cached · the full report couldn't open"}</span>
           <span data-testid="data-line">{dataLine(report)}</span>
         </p>
         {!report.targets_available && <p className="fd-muted">Targets for {monthWords(report.month)} aren't available yet; sales are shown.</p>}

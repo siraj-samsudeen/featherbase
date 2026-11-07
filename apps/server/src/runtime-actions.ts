@@ -244,13 +244,20 @@ export async function executeRuntimeRead(app: string, name: string, input: unkno
       // handler runs once this transaction AND the request's lifecycle lock
       // have been released, so it holds no row lock, no transaction and no
       // lifecycle connection while it calls out.
-      if (outbound) return { outbound: { handler, contribution, frozen: { authorization, payload, setup, provenance }, identity: await servingIdentity(app) } }
-      const context = callerDocuments(app, contribution.tables, user, linkedTables(setup.settings))
-      const { get, list, activity } = context.documents
-      const base = baseTablesReader(app, contribution.baseTables, linkedTables(setup.settings))
-      const proposals = proposalsReader(app, user, contribution.entryTable)
-      return await runRead(app, name, user, handler, contribution, { authorization, payload, setup, provenance },
-        Object.freeze({ get, list, activity }), async () => { await context.close(); await base.close(); await proposals.close() }, undefined, base.helper, proposals.helper)
+      const inTransaction = async (step: RuntimeReadHandler) => {
+        const context = callerDocuments(app, contribution.tables, user, linkedTables(setup.settings))
+        const { get, list, activity } = context.documents
+        const base = baseTablesReader(app, contribution.baseTables, linkedTables(setup.settings))
+        const proposals = proposalsReader(app, user, contribution.entryTable)
+        return runRead(app, name, user, step, contribution, { authorization, payload, setup, provenance },
+          Object.freeze({ get, list, activity }), async () => { await context.close(); await base.close(); await proposals.close() }, undefined, base.helper, proposals.helper)
+      }
+      if (outbound) {
+        // #967: the one chance to read documents before the transaction closes.
+        const prepared = handler.prepare ? (await inTransaction(handler.prepare)).answer.result : undefined
+        return { outbound: { handler, contribution, frozen: { authorization, payload, setup, provenance, prepared }, identity: await servingIdentity(app) } }
+      }
+      return await inTransaction(handler)
     })
   })
   // #667: drops are recorded once the read's transaction has committed, on
@@ -289,7 +296,7 @@ const CLOSED_DOCUMENTS: RuntimeReadContext['documents'] = Object.freeze({ get: c
 const CLOSED_BASE_TABLES: RuntimeReadContext['baseTables'] = Object.freeze({ list: closedDocuments })
 const CLOSED_PROPOSALS: RuntimeReadContext['changeProposals'] = Object.freeze({ list: closedDocuments, mayDecide: closedDocuments, routeFor: closedDocuments })
 
-interface Frozen { authorization: AppAuthorizationContext; payload: unknown; setup: ReadySetup; provenance?: DropProvenance }
+interface Frozen { authorization: AppAuthorizationContext; payload: unknown; setup: ReadySetup; provenance?: DropProvenance; prepared?: unknown }
 
 // The app's installed version and the scope provider that answered, as they
 // are while the read is authorized. No provider means no drop to name.
@@ -301,7 +308,7 @@ async function dropVersions(app: string, scopeProvider: (() => Promise<{ app: st
 }
 
 async function runRead(app: string, name: string, user: string, handler: RuntimeReadHandler, contribution: DeclaredOperations<RuntimeReadHandler>,
-  { authorization, payload, setup, provenance }: Frozen,
+  { authorization, payload, setup, provenance, prepared }: Frozen,
   documents: RuntimeReadContext['documents'], close: () => Promise<void>, deferWrite?: (write: () => Promise<void>) => void,
   baseTables: RuntimeReadContext['baseTables'] = CLOSED_BASE_TABLES, changeProposals: RuntimeReadContext['changeProposals'] = CLOSED_PROPOSALS) {
   const { title, settings, secrets, kept } = setup
@@ -309,7 +316,7 @@ async function runRead(app: string, name: string, user: string, handler: Runtime
     places: authorization.places, outbound: !inAppTransaction(), deferWrite, provenance })
   const json = await withSecretsKept(kept, async () => {
     try {
-      return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), roles: await callerRoles(user), people: callerPeople(user), payload, authorization, settings, secrets, reject, documents, baseTables, changeProposals, datasets, recordView })))
+      return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), roles: await callerRoles(user), people: callerPeople(user), payload, prepared, authorization, settings, secrets, reject, documents, baseTables, changeProposals, datasets, recordView })))
     } finally { await close() }
   })
   assertNoSecret(kept, JSON.parse(json))

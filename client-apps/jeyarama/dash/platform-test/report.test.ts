@@ -1,26 +1,23 @@
-// Feather Dash's report reads on the real platform: the reader's places come
+// Dash's report reads on the real platform: the reader's places come
 // from the app's own scope provider, and the platform limits the cached
 // dataset to them before the app sees a row. The cached copy is seeded the
 // way the platform stores one (the warehouse is MotherDuck, which a test
-// cannot reach). Made-up stores 9901 (live) and 9902, people and figures.
+// cannot reach). Made-up stores 9901 and 9902, people and figures.
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
-import { afterEach, beforeEach, describe, expect } from 'vitest'
+import { afterEach, beforeEach, describe, expect, vi } from 'vitest'
 import { test as pgTest } from '../pg-test'
-import { applySeedPack } from '../../src/seed-packs'
 import { datasetsDeclaration } from '../../src/app-datasets'
 import { invalidateSources } from '../../src/sources/registry'
 import { withNamedVariable } from '../../src/env'
 import { sql } from '../../src/db'
 import { activeSnapshot, buildSnapshot } from '../../src/dataset-snapshot'
 import { drainJobs, enqueue, loadJobs } from '../../src/jobs'
-import { APP_DIR, createOldTables, installApp, pinned, saveRow } from './helpers'
+import { APP_DIR, REPORT_ROWS, createCoreTables, installApp, pinned, saveRow } from './helpers'
 import { FOUR_TARGETS, addSource, answerWithoutPeriod, closeWarehouse, fillWarehouse, openWarehouse } from './warehouse'
-// @ts-expect-error a plain .mjs module, copied in beside this file by the runner
-import { markScopeTables } from './mark-scope-tables.mjs'
 
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(pinned(admin)),
@@ -54,46 +51,52 @@ async function seedSnapshot(rows: Record<string, unknown>[], name = 'sales_to_da
 }
 
 async function setup(admin: TestClient, createUser: CreateUserFn, facts?: Record<string, unknown>[]) {
-  await applySeedPack('jeyarama')
   await installApp(admin)
-  // Until every store is live the provider reads the old Tables, so an instance has them, marked.
-  await createOldTables(admin, markScopeTables)
+  await createCoreTables(admin)
   invalidateSources()
   // The instance's MotherDuck source, played by a local DuckDB path: the platform
   // accepts it as read-only. The reads never query it; a refresh below queries the
   // made-up warehouse instead (warehouse.ts).
   await addSource(admin)
   const user = async (name: string) => createUser({ email: `${name}@example.test`, roles: [READER] })
-  const people = { manager: await user('p-101'), leader: await user('p-103'), nobody: await user('p-999') }
+  const people = { manager: await user('p-101'), leader: await user('p-103'), nobody: await user('p-999'), headOffice: await user('p-998') }
   const save = (table: string, row: Record<string, unknown>) => saveRow(admin, table, row)
-  await save('store_rollout', { store: '9901', live_since: '2026-01-01' })
-  const sarees = await save('section', { store: '9901', section_name: 'Sarees' })
-  const lehenga = await save('section', { store: '9901', section_name: 'Lehenga' })
-  await save('section_subcategory', { store: '9901', subcategory: '010101001', section: sarees.row_id, starts_on: '2026-01-01' })
-  await save('section_subcategory', { store: '9901', subcategory: '010101003', section: lehenga.row_id, starts_on: '2026-01-01' })
-  await save('job_assignment', { person: people.manager.user, job: 'Store Manager', store: '9901', starts_on: '2026-01-01' })
-  await save('job_assignment', { person: people.leader.user, job: 'Team Leader', store: '9901', section: sarees.row_id, starts_on: '2026-01-01' })
+  for (const [code, name] of [['LKS', 'Lakeside'], ['HIL', 'Hillview']]) await save('Site', { code, name, is_store: true })
+  await save('Site', { code: 'HOF', name: 'Head Office', is_store: false })
+  await save('Plant', { plant_code: '9901', plant_type: 'Store', site: 'LKS' })
+  await save('Plant', { plant_code: '9902', plant_type: 'Store', site: 'HIL' })
+  for (const [row_id, name] of [['LKS-S1', 'Sarees'], ['LKS-S2', 'Lehenga']]) await save('Section', { row_id, name, site: 'LKS', status: 'Active' })
+  for (const [code, name] of [['010101001', 'Silk'], ['010101003', 'Bridal']]) await save('Subcategory', { row_id: code, subcategory: name, subcategory_type: 'Merchandise' })
+  await save('Section Subcategory', { section_subcategory_id: 'P1', store: 'LKS', subcategory: '010101001', section: 'LKS-S1', starts_on: '2026-01-01' })
+  await save('Section Subcategory', { section_subcategory_id: 'P2', store: 'LKS', subcategory: '010101003', section: 'LKS-S2', starts_on: '2026-01-01' })
+  await save('Employee', { employee_code: '101', name: 'Made-up Manager', person: people.manager.user, status: 'Current' })
+  await save('Employee', { employee_code: '103', name: 'Made-up Leader', person: people.leader.user, status: 'Current' })
+  await save('Employee', { employee_code: '998', name: 'Made-up Office', person: people.headOffice.user, status: 'Current' })
+  await save('Job Assignment', { assignment_id: 'JA-101', employee: '101', job: 'Store Manager', site: 'LKS', starts_on: '2026-01-01' })
+  await save('Job Assignment', { assignment_id: 'JA-103', employee: '103', job: 'Team Leader', site: 'LKS', section: 'LKS-S1', starts_on: '2026-01-01' })
+  await save('Job Assignment', { assignment_id: 'JA-998', employee: '998', job: 'Head office staff', site: 'HOF', starts_on: '2026-01-01' })
+  for (const row of REPORT_ROWS) await save('dash.report', row)
   await seedSnapshot(facts ?? [
     salesRow('9901', '010101001', 'Lakeside', 1000, 800),
     salesRow('9901', '010101003', 'Lakeside', 500, 650),
     salesRow('9901', '010909001', 'Lakeside', 0, 120),
     salesRow('9902', '010404001', 'Hillview', 300, 100),
   ])
-  // The month's metadata, which also names the stores for the bar.
+  // The month's metadata, which names a store on the report's header when the reader has no row.
   await seedSnapshot(['010101001', '010101003', '010909001'].map(code => ({ store_code: '9901', store_name: 'Lakeside', subcategory_code: code,
     period_start: periodStart, data_through: today, targets_available: true })), 'sales_month')
-  return people
+  return { ...people, save }
 }
 
 const report = (client: TestClient, payload: Record<string, unknown> = { store: '9901' }) =>
   client.post<{ result: { state: string; rows: { code: string; section: string | null }[] } }>('/api/app_reads/dash/report', { payload }).then(a => a.result)
 
 describe('the report reads on the platform', () => {
-  test("give a Store Manager every cached row of their store, each in its section", async ({ admin, createUser }) => {
+  // A whole-store place names no section: the Dive reads sections for itself (#967).
+  test("give a Store Manager every cached row of their store", async ({ admin, createUser }) => {
     const { manager } = await setup(admin, createUser)
     const answer = await report(manager)
-    expect([answer.state, answer.rows.map(r => [r.section, r.code])]).toEqual(['ready',
-      [['Lehenga', '010101003'], ['Sarees', '010101001'], [null, '010909001']]])
+    expect([answer.state, answer.rows.map(r => r.code)]).toEqual(['ready', ['010101001', '010101003', '010909001']])
   })
 
   test("give a Team Leader only their section's rows: the platform limits the dataset to their places", async ({ admin, createUser }) => {
@@ -106,7 +109,7 @@ describe('the report reads on the platform', () => {
     const { manager, leader } = await setup(admin, createUser)
     const heading = (client: TestClient) => client.post<{ result: { heading: unknown } }>('/api/app_reads/dash/report', { payload: { store: '9901' } })
       .then(a => a.result.heading)
-    expect(await heading(manager)).toEqual({ name: 'Lakeside', sections: ['Lehenga', 'Sarees'], reasons: [{ basis: 'store_manager', sections: ['Lehenga', 'Sarees'] }] })
+    expect(await heading(manager)).toEqual({ name: 'Lakeside', sections: [], reasons: [{ basis: 'store_manager', sections: [] }] })
     expect(await heading(leader)).toEqual({ name: 'Lakeside', sections: ['Sarees'], reasons: [{ basis: 'team_leader', sections: ['Sarees'] }] })
   })
 
@@ -132,8 +135,8 @@ describe('the report reads on the platform', () => {
   test("fill the bar's store picker with the reader's stores, and its month picker with this month and last (#750)", async ({ admin, createUser }) => {
     const { manager } = await setup(admin, createUser)
     expect(await manager.get('/api/app_bar/dash')).toEqual({ controls: [
-      { picker: 'Store', sets: 'store', hiddenWhen: 'view', options: [{ value: '9901', label: 'Lakeside' }] },
-      { picker: 'Month', sets: 'month', hiddenWhen: 'view', options: [{ value: 'this', label: `This month · ${monthName(periodStart)}` },
+      { picker: 'Store', sets: 'store', hiddenWhen: 'view', dependsOn: ['report'], options: [{ value: '9901', label: 'Lakeside' }] },
+      { picker: 'Month', sets: 'month', hiddenWhen: 'view', dependsOn: ['report'], options: [{ value: 'this', label: `This month · ${monthName(periodStart)}` },
         { value: 'last', label: `Last month · ${monthName(lastMonthStart)}` }] },
     ] })
   })
@@ -150,7 +153,107 @@ describe('the report reads on the platform', () => {
       .toEqual(['ready', lastMonthStart, lastMonthEnd, ['010101001']])
   })
 
-  test('say the Dive is not set up while the instance has no Dive settings, so the page shows the quick view', async ({ admin, createUser }) => {
+  test("list the reports for the sidebar, and none for someone whose job reaches nothing", async ({ admin, createUser }) => {
+    const { leader, headOffice, nobody } = await setup(admin, createUser)
+    const reports = (client: TestClient) => client.post<{ result: unknown[] }>('/api/app_reads/dash/reports', { payload: {} }).then(a => a.result)
+    expect(await reports(leader)).toEqual([
+      { key: 'sales', name: 'Sales versus target', takes_store: true, takes_month: true, no_filter: false },
+      { key: 'store_target', name: 'Store target month to date', takes_store: false, takes_month: false, no_filter: false },
+      { key: 'vendor_sales', name: 'Vendor sales by city', takes_store: false, takes_month: false, no_filter: false },
+    ])
+    expect(await Promise.all([reports(headOffice), reports(nobody)])).toEqual([[], []])
+  })
+
+  test('say why a job reaches nothing', async ({ admin, createUser }) => {
+    const { headOffice, nobody } = await setup(admin, createUser)
+    const why = (client: TestClient) => client.post<{ result: unknown }>('/api/app_reads/dash/reach_problem', { payload: {} }).then(a => a.result)
+    expect(await Promise.all([why(headOffice), why(nobody)])).toEqual([{ problems: ['head_office'] }, { problems: ['no_job'] }])
+  })
+
+  test("name the store on the report's picker and header from the core Tables, and offer pickers only where the report takes them", async ({ admin, createUser }) => {
+    const { manager } = await setup(admin, createUser)
+    const options = (name: string, payload: object) => manager.post<{ result: unknown[] }>(`/api/app_reads/dash/${name}`, { payload }).then(a => a.result)
+    expect(await options('stores', { report: 'sales' })).toEqual([{ value: '9901', label: 'Lakeside' }])
+    expect(await options('stores', { report: 'store_target' })).toEqual([])
+    expect(await options('months', { report: 'store_target' })).toEqual([])
+    expect(await options('months', { report: 'nope' })).toEqual([])
+  })
+
+  test('answer no_access for a report that does not exist, on the report and on the Dive', async ({ admin, createUser }) => {
+    const { leader } = await setup(admin, createUser)
+    expect(await report(leader, { report: 'nope' })).toEqual({ state: 'no_access' })
+    expect(await leader.post('/api/app_reads/dash/embed_session', { payload: { report: 'nope' } })).toEqual({ result: { refused: 'no_access' } })
+  })
+
+  test("tell a section reader a whole-stores report isn't for them", async ({ admin, createUser }) => {
+    const { leader } = await setup(admin, createUser)
+    expect(await report(leader, { report: 'store_target' })).toEqual({ state: 'whole_stores_only' })
+  })
+
+  // The whole outbound path on the platform: its prepare step reads the row in the transaction, and
+  // the handler calls out afterwards. MotherDuck's API is the one thing played by a stand-in.
+  describe('calling MotherDuck for a Dive', () => {
+    afterEach(() => { vi.unstubAllGlobals() })
+    async function opening(admin: TestClient) {
+      await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'dash.embed_service_account', value: 'svc-made-up' } })
+      const real = globalThis.fetch
+      const called: { url: string; body: unknown }[] = []
+      vi.stubGlobal('fetch', async (url: string | URL | Request, init?: RequestInit) => {
+        if (!String(url).startsWith('https://api.motherduck.com/')) return real(url, init)
+        called.push({ url: String(url), body: JSON.parse(String(init?.body)) })
+        return new Response(JSON.stringify({ session: 'made-up-session' }), { status: 200 })
+      })
+      return called
+    }
+
+    test("sends a Team Leader's one-store Dive only their store, subcategories and month", async ({ admin, createUser }) => {
+      const { leader } = await setup(admin, createUser)
+      const called = await opening(admin)
+      expect(await leader.post('/api/app_reads/dash/embed_session', { payload: { report: 'sales', store: '9901' } }))
+        .toEqual({ result: { frame: 'https://embed-motherduck.com/sandbox/#session=made-up-session' } })
+      expect(called).toEqual([{ url: 'https://api.motherduck.com/v1/dives/made-up-sales-dive/embed-session',
+        body: { username: 'svc-made-up', initial_state: { plant_code: '9901', material_groups: ['010101001'], period_end: today } } }])
+    })
+
+    test("sends a Store Manager's whole-stores Dive only their stores", async ({ admin, createUser }) => {
+      const { manager } = await setup(admin, createUser)
+      const called = await opening(admin)
+      await manager.post('/api/app_reads/dash/embed_session', { payload: { report: 'store_target' } })
+      expect(called[0].body).toEqual({ username: 'svc-made-up', initial_state: { plant_codes: ['9901'] } })
+    })
+
+    test("sends a Team Leader's per-store Dive their store's reach", async ({ admin, createUser }) => {
+      const { leader } = await setup(admin, createUser)
+      const called = await opening(admin)
+      await leader.post('/api/app_reads/dash/embed_session', { payload: { report: 'vendor_sales' } })
+      expect(called[0].body).toEqual({ username: 'svc-made-up', initial_state: { store_reach: { 9901: ['010101001'] } } })
+    })
+
+    test('opens a report taking no filter for someone whose job reaches nothing, and nothing else', async ({ admin, createUser }) => {
+      const { headOffice, leader } = await setup(admin, createUser)
+      await saveRow(admin, 'dash.report', { report_key: 'open', report_name: 'Open to anyone given it', dive_id: 'made-up-open-dive', filter_shape: 'No filter' })
+      const called = await opening(admin)
+      const reports = await headOffice.post<{ result: { key: string; no_filter: boolean }[] }>('/api/app_reads/dash/reports', { payload: {} })
+      expect(reports.result.map(r => [r.key, r.no_filter])).toEqual([['open', true]])
+      expect(await headOffice.post('/api/app_reads/dash/embed_open', { payload: { report: 'open' } }))
+        .toEqual({ result: { frame: 'https://embed-motherduck.com/sandbox/#session=made-up-session' } })
+      expect(called).toEqual([{ url: 'https://api.motherduck.com/v1/dives/made-up-open-dive/embed-session', body: { username: 'svc-made-up', initial_state: {} } }])
+      called.length = 0
+      // A store-filtered report never opens this way, for them or for someone with reach.
+      expect(await headOffice.post('/api/app_reads/dash/embed_open', { payload: { report: 'sales' } })).toEqual({ result: { refused: 'no_access' } })
+      expect(await leader.post('/api/app_reads/dash/embed_open', { payload: { report: 'sales', store: '9901' } })).toEqual({ result: { refused: 'no_access' } })
+      expect(called).toEqual([])
+    })
+
+    test('never calls MotherDuck for a refused report', async ({ admin, createUser }) => {
+      const { leader } = await setup(admin, createUser)
+      const called = await opening(admin)
+      expect(await leader.post('/api/app_reads/dash/embed_session', { payload: { report: 'store_target' } })).toEqual({ result: { refused: 'whole_stores_only' } })
+      expect(called).toEqual([])
+    })
+  })
+
+  test('say the Dive is not set up while the instance has no service account setting, so the page shows the quick view', async ({ admin, createUser }) => {
     const { leader } = await setup(admin, createUser)
     expect(await leader.post('/api/app_reads/dash/embed_session', { payload: { store: '9901' } })).toEqual({ result: { not_set_up: true } })
   })

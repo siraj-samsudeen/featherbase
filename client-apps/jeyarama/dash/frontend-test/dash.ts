@@ -1,42 +1,55 @@
-// The same real runtime package, org-chart Tables and cached dataset storage
+// The same real runtime package, core Tables and cached dataset storage
 // as platform-test/report.test.ts. No warehouse or HTTP response stand-ins.
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { expect } from 'vitest'
 import type { CreateUserFn, TestClient } from '../../../../apps/server/node_modules/feather-testing-postgres'
 import { discoverPackages } from '../../../../apps/server/src/runtime-packages'
-import { applySeedPack } from '../../../../apps/server/src/seed-packs'
 import { datasetsDeclaration } from '../../../../apps/server/src/app-datasets'
 import { sql } from '../../../../apps/server/src/db'
+// @ts-expect-error a plain .mjs module
+import { BASE_TABLES, LINKED_TABLES, REPORT_ROWS } from '../platform-test/base-tables.mjs'
 
 export async function setupDash(admin: TestClient, createUser: CreateUserFn) {
-  await applySeedPack('jeyarama')
   expect(await discoverPackages([new URL('..', import.meta.url).pathname])).toEqual([])
   await admin.post('/api/install_app', { name: 'dash' })
-  for (const [name, fields] of Object.entries({
-    'Sales Target Assignment': ['employee', 'plant_code', 'store_label', 'material_group'],
-    'Employee Section Map': ['store_code', 'employee_code', 'subcategory', 'section_name'],
-    'Section Ownership': ['store_code', 'section_name', 'tl_employee_code', 'dm_employee_code', 'effective_from'],
-    'Store Manager': ['store_code', 'employee_code', 'full_name', 'email'],
-    'Section Merchandise Map': ['store_code', 'material_group', 'mch_subcategory', 'section_name'],
-    'Section Name Alias': ['store_code', 'merch_section_name', 'roster_section_name'],
-  })) await admin.post('/api/table_def', { name, module: 'Store Sections', decides_scope: true,
-    columns: fields.map(column_name => ({ column_name, column_type: 'Data' })) })
+  for (const table of BASE_TABLES) await admin.post('/api/table_def', table)
+  await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'dash.linked_tables', value: JSON.stringify(LINKED_TABLES) } })
   const manifest = JSON.parse(readFileSync(new URL('../featherbase.json', import.meta.url), 'utf8'))
   const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
   const headers = { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': `dash@${version}` }
   const save = async (table: string, row: Record<string, unknown>) => {
     const response = await admin.fetch('/api/save_row', { method: 'POST', headers,
-      body: JSON.stringify({ table: /^[a-z_]+$/.test(table) ? `dash.${table}` : table, row }) })
-    expect(response.status).toBe(row.row_id ? 200 : 201)
+      body: JSON.stringify({ table, row }) })
+    expect([200, 201], await response.clone().text()).toContain(response.status)
     return await response.json() as { row_id: string }
   }
-  const reader = await createUser({ email: 'dash-ui-manager@example.test', roles: ['Dash Reader'] })
-  await save('store_rollout', { store: '9901', live_since: '2026-01-01' })
-  const section = await save('section', { store: '9901', section_name: 'Sarees' })
-  for (const subcategory of ['010101001', '010101002', '010101003'])
-    await save('section_subcategory', { store: '9901', subcategory, section: section.row_id, starts_on: '2026-01-01' })
-  const job = await save('job_assignment', { person: reader.user, job: 'Store Manager', store: '9901', starts_on: '2026-01-01' })
+  for (const [code, name] of [['LKS', 'Lakeside'], ['HIL', 'Hillview']]) await save('Site', { code, name, is_store: true })
+  await save('Plant', { plant_code: '9901', plant_type: 'Store', site: 'LKS' })
+  await save('Plant', { plant_code: '9902', plant_type: 'Store', site: 'HIL' })
+  let numbers = 0
+  /** A person on the staff list, known by their sign-in, with one more job (at Lakeside unless told). */
+  const employees = new Map<string, string>()
+  const job = async (person: string, job: string, values: Record<string, unknown> = {}) => {
+    let employee = employees.get(person)
+    if (!employee) {
+      employee = String(++numbers)
+      employees.set(person, employee)
+      await save('Employee', { employee_code: employee, name: `Made-up ${employee}`, person, status: 'Current' })
+    }
+    return save('Job Assignment', { assignment_id: `JA-${employee}-${++numbers}`, employee, job, site: 'LKS', starts_on: '2026-01-01', ...values })
+  }
+  const section = async (row_id: string, name: string) => save('Section', { row_id, name, site: 'LKS', status: 'Active' })
+  const place = async (subcategory: string, onSection: string) => {
+    await save('Subcategory', { row_id: subcategory, subcategory: `Made-up ${subcategory}`, subcategory_type: 'Merchandise' })
+    return save('Section Subcategory', { section_subcategory_id: `P-${subcategory}`, store: 'LKS', subcategory, section: onSection, starts_on: '2026-01-01' })
+  }
+  for (const row of REPORT_ROWS) await save('dash.report', row)
+  const sarees = await section('LKS-S1', 'Sarees')
+  for (const subcategory of ['010101001', '010101002', '010101003']) await place(subcategory, sarees.row_id)
+  // The reader the page is opened as: a Team Leader of Sarees at Lakeside.
+  const reader = await createUser({ email: 'dash-ui-leader@example.test', roles: ['Dash Reader'] })
+  const lead = await job(reader.user!, 'Team Leader', { section: sarees.row_id })
   await admin.post('/api/table/Data%20Source', { row_id: 'motherduck', engine: 'duckdb', url_env: 'DASH_UI_DUCKDB', access: 'read_only' })
   const day = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)
   const fact = (subcategory_code: string, values: Record<string, unknown> = {}) => ({
@@ -58,5 +71,5 @@ export async function setupDash(admin: TestClient, createUser: CreateUserFn) {
     fact('010101003', { subcategory: 'Sales only', target: null, actual: 100 })]
   await snapshot(facts)
   await snapshot(facts, 'sales_month')
-  return { reader, section, job, save, fact, facts, snapshot, day }
+  return { reader, section: sarees, addSection: section, place, lead, job, save, fact, facts, snapshot, day }
 }
