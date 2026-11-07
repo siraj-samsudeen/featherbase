@@ -1,5 +1,5 @@
 import { AppError } from './errors'
-import { isPrivileged } from './permissions'
+import { isPrivileged, reachGrants } from './permissions'
 import { getMeta } from './meta'
 
 // #437: the Tables that decide who may do what. Writing them is System
@@ -81,9 +81,14 @@ export function securityRefusal(what: string): AppError {
 export async function assertSecurityWriter(
   table: string,
   user: string,
-  opts: { trusted?: boolean } = {},
+  opts: { trusted?: boolean; reach?: ('create' | 'write' | 'delete')[] } = {},
 ): Promise<void> {
   if (!(await isSecurityTable(table))) return
   if (!opts.trusted && (await isPrivileged(user))) return
+  // #919: an app's store administrators write a scope Table of theirs, only
+  // through a grant limited to their reach, on the paths that check each row
+  // against it (the caller names the operations it checks that way).
+  if (!opts.trusted && opts.reach && !SECURITY_TABLES.has(table))
+    for (const action of opts.reach) if ((await reachGrants(user, table, action)).length) return
   throw securityRefusal(`${table} rows`)
 }

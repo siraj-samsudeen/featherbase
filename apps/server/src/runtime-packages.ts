@@ -13,6 +13,7 @@ import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
 import { APP_ACCENTS, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
 import { callerDocuments, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
 import { baseTablesDeclaration } from './change-proposals'
+import { administrationDeclaration, forgetAdministrations, registerAdministration, validateAdministration, type AdministrationBinding, type ReachProvider } from './administration'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import type { ScopeProviderBinding } from './person-scope'
 import { loadAppSetup, secretEntries, secretsDeclaration, settingsDeclaration } from './app-settings'
@@ -100,6 +101,8 @@ const manifestSchema = z.object({
   reads: readDeclaration.optional(),
   // #559: this app provides people's scope for the instance (one app at most).
   scopeProvider: scopeProviderDeclaration.optional(),
+  // #919: which jobs administer which stores, and which roles they may give.
+  administration: administrationDeclaration.optional(),
   // #975: the instance Tables the app reads and proposes changes on.
   baseTables: baseTablesDeclaration.optional(),
   // #620 (E2): what the app reads per instance, and the deployment variables
@@ -143,6 +146,7 @@ interface RuntimePackage {
   actions?: DeclaredOperations
   reads?: DeclaredOperations<RuntimeReadHandler>
   scopeProvider?: ScopeProviderBinding
+  administration?: AdministrationBinding
   root: string
   version: string
   digest: string
@@ -209,6 +213,7 @@ async function verifyArtifact(pkg: RuntimePackage | undefined): Promise<RuntimeP
 function selectPackage(pkg: RuntimePackage) {
   registerApp(pkg.app)
   packages.set(pkg.name, pkg)
+  registerAdministration(pkg.name, pkg.administration)
   registerAppDatasets(pkg.name, pkg.manifest.datasets)
 }
 
@@ -356,6 +361,9 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
   let resolvers = new Map<string, AppScopeResolver>()
   let authorizers = new Map<string, AppProductAuthorizer>()
   let providers = new Map<string, AppScopeProvider>()
+  let reachProviders = new Map<string, ReachProvider>()
+  validateAdministration(manifest, manifest.administration)
+  if (manifest.administration && !manifest.server) throw new Error('Store administration requires a server module')
   let jobHandlers = new Map<string, RuntimeJobHandler>()
   const provider = manifest.scopeProvider
   if (provider) {
@@ -405,6 +413,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     resolvers = namedFunctions(module.scopeResolvers, allOperations.flatMap(o => 'scope' in o && o.scope.kind === 'resolver' ? [o.scope.name] : []))
     authorizers = namedFunctions(module.authorizers, allOperations.flatMap(o => o.authorization.kind === 'product' ? [o.authorization.name] : []))
     providers = namedFunctions(module.scopeProviders, provider ? [provider.name] : [])
+    reachProviders = namedFunctions(module.reachProviders, manifest.administration ? [manifest.administration.provider] : [])
     jobHandlers = namedFunctions(module.jobs, (manifest.jobs ?? []).map(job => job.name))
     for (const [table, validator] of Object.entries(module.validators ?? {})) {
       if (!names.has(table) || typeof validator !== 'function')
@@ -446,6 +455,8 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     runtime_manifest: { ...manifest, packageName: pkg.name, packageVersion: pkg.version } }
   return { name: manifest.name, title: manifest.title,
     entryTable: manifest.entryTable, clientRoot, root, version: pkg.version, digest, manifest, app,
+    administration: manifest.administration ? { app: manifest.name, version: pkg.version, declaration: freezeJson(manifest.administration),
+      provide: reachProviders.get(manifest.administration.provider)! } : undefined,
     scopeProvider: provider ? { app: manifest.name, title: manifest.title, version: pkg.version, tables: provider.tables, identifiers: provider.identifiers ?? [], provide: providers.get(provider.name)! } : undefined,
     // V1 stays recognizable as an exact upgrade predecessor, never gets a default policy.
     actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations), setup, baseTables: manifest.baseTables } : undefined,
@@ -517,6 +528,7 @@ export function discoverPackages(paths: string[]) {
   return appOperation(async () => {
     forgetRuntimePackages()
     forgetAppDatasets()
+    forgetAdministrations()
     packages.clear()
     artifacts.clear()
     packageFailures.length = 0

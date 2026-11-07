@@ -5,6 +5,8 @@ import { activeApps } from './app-lifecycle'
 import { isActingSystemActor } from './system-actor'
 import { asNameList, declaresOwnPages } from './installed-app-ledger'
 import { admittedToTable } from './mandatory-access'
+import { administrationFor, reachCondition, reachOf, rowWithin, type Stores } from './administration'
+import { getMeta } from './meta'
 
 // PERM-001: role resolution for a principal — a person or a service account
 // (person-rename R2). Every enabled principal implicitly holds 'All';
@@ -139,6 +141,102 @@ export async function hasPermission(
   action: PermAction,
 ): Promise<boolean> {
   return (await permissionScope(user, table, action)) !== 'none'
+}
+
+/** #919: a grant limited to the holder's reach, with the stores it reaches. */
+export interface ReachGrant {
+  id: string
+  role: string
+  columns: string[]
+  stores: Stores
+}
+
+/** The reach grants `user` holds on `table` for `action`: Permission rows
+ *  with scope_mode 'reach', of the Table's own active app, whose role the
+ *  person holds through a job or a given role. A role held any other way
+ *  gives no stores, so nothing. permissionScope and hasPermission never count
+ *  these: a path not taught about reach refuses. */
+export async function reachGrants(user: string, table: string, action: PermAction): Promise<ReachGrant[]> {
+  if (action === 'read_identifiers') return []
+  // A System Manager reads and writes every row already; and the provider
+  // itself reads as the platform, so asking it here again would never end.
+  if (await isPrivileged(user)) return []
+  const meta = await getMeta(table).catch(() => null)
+  const binding = administrationFor(meta?.owner_app)
+  if (!meta || !binding || !binding.declaration.targets[meta.name]) return []
+  if (!(await admittedToTable(user, table))) return []
+  const rows = await sql`
+    select p.row_id, p.role, p.column_rule,
+      coalesce(array_agg(c.target_column) filter (where c.target_column is not null), '{}') as columns
+    from permission p left join featherbase.permission_column c on c.parent = p.row_id
+    where p.ref_table = ${table} and p.operation = ${action === 'write' ? 'update' : action}
+      and p.scope_mode = 'reach' and p.owner_app = ${binding.app}
+      and p.parent_permission is null and p.requires_permission is null
+    group by p.row_id order by p.row_id`
+  if (!rows.length) return []
+  const reach = await reachOf(binding.app, user)
+  return rows.flatMap((row) => {
+    const stores = reach.get(String(row.role))
+    return stores ? [{ id: String(row.row_id), role: String(row.role), stores,
+      columns: columnsOf(String(row.column_rule), row.columns as string[]) }] : []
+  })
+}
+
+/** The SQL test that the row under `alias` is reached by one of `grants`. */
+export async function reachWhere(table: string, grants: ReachGrant[], alias: string, write = false): Promise<{ frag: ReturnType<typeof sql> }> {
+  const meta = await getMeta(table)
+  const binding = administrationFor(meta.owner_app)
+  if (!binding || !grants.length) return { frag: sql`false` }
+  // Boxed, one at a time: a fragment is a thenable, and awaiting one runs it.
+  let frag: ReturnType<typeof sql> = sql`false`
+  for (const grant of grants) {
+    const part = await reachCondition(binding, meta, grant.stores, alias, write)
+    frag = sql`${frag} or (${part.frag})`
+  }
+  return { frag }
+}
+
+/** Which of `grants` reach this row, as given. */
+export async function grantsHolding(table: string, grants: ReachGrant[], row: Record<string, unknown>, write: boolean): Promise<ReachGrant[]> {
+  const meta = await getMeta(table)
+  const binding = administrationFor(meta.owner_app)
+  if (!binding) return []
+  const held: ReachGrant[] = []
+  for (const grant of grants) if (await rowWithin(binding, meta, grant.stores, row, write)) held.push(grant)
+  return held
+}
+
+/** Whether `user` may do `action` on this row: an all-rows grant, a creator
+ *  grant on a row they created, or a reach grant that reaches the row (for
+ *  a change, not a protected row). Answers the reach grants that admitted
+ *  it, empty when another grant did; refuses as assertDocPermission does. */
+export async function assertRowAccess(user: string, table: string, action: PermAction, row: Record<string, unknown>): Promise<{ reach: ReachGrant[] }> {
+  // A Table deciding people's scope is written only by a System Manager, or
+  // through reach (assertSecurityWriter): no other grant writes it.
+  const scope = action !== 'read' && await reachOnlyWrite(user, table) ? 'none' : await permissionScope(user, table, action)
+  // The reach grants holding the row lend their Columns however it is admitted.
+  const held = await grantsHolding(table, await reachGrants(user, table, action), row, action !== 'read')
+  if (held.length || scope === 'all' || (scope === 'own_rows' && String(row.created_by ?? '') === user)) return { reach: held }
+  throw new AppError('PermissionError', `No ${action} permission on ${table} for ${user}`)
+}
+
+/** #919: a Table marked as deciding people's scope is written by a System
+ *  Manager, or by its administrators through reach, and no other grant. */
+export async function reachOnlyWrite(user: string, table: string): Promise<boolean> {
+  const meta = await getMeta(table).catch(() => null)
+  return meta?.decides_scope === true && !(await isPrivileged(user))
+}
+
+/** Whether `user` may do `action` on some rows of `table`, a reach grant
+ *  included: what a Table's description and a button's advice ask. Never
+ *  authority to read or change a row. */
+export async function hasTableAccess(user: string, table: string, action: PermAction): Promise<boolean> {
+  return (await hasPermission(user, table, action)) || (await reachGrants(user, table, action)).length > 0
+}
+
+/** The Columns `grants` reach, together. */
+export function reachColumns(grants: ReachGrant[]): string[] {
+  return grants.flatMap((grant) => grant.columns)
 }
 
 // PERM-008: is this specific row shared with the user for this action?

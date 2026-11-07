@@ -47,6 +47,7 @@ const SYSTEM_WRITTEN = [
   'Import Source',
   'Job Execution',
   'Notification Log',
+  'Role Assignment',
   'User Event',
   'Version',
 ]
@@ -378,6 +379,8 @@ describe('#432: every write entry point is covered', () => {
     'POST /api/install_app': 'app lifecycle',
     'POST /api/apps/prepare-install': 'app lifecycle; builds a trusted package and installs through the guarded lifecycle',
     'POST /api/uninstall_app': 'app lifecycle',
+    'POST /api/apps/:app/given_roles': 'internal writer: gives a role, checked against the giver\'s reach (#919)',
+    'POST /api/apps/:app/given_roles/:id/take_back': 'internal writer: takes a given role back (#919)',
     'POST /api/run_auto_email_report': 'internal writer: queues email',
     'POST /api/run_script_report': 'read',
     'POST /api/server_script/:method': 'server scripts write through the guarded save',

@@ -44,7 +44,7 @@ export async function principalReach(owner: string): Promise<Reach> {
   if (owner === 'Administrator' || roles.includes('System Manager'))
     return { every_table: true, own_roles: true, own_reach: true, read: [], change: [] }
   const rows = await sql`
-    select p.ref_table as name, p.role, p.scope_mode = 'creator' as own_rows_only,
+    select p.ref_table as name, p.role, p.scope_mode <> 'all' as own_rows_only,
       p.operation = 'read' as can_read, p.operation in ('update', 'create', 'delete') as can_change,
       to_jsonb(t)->'access_policy' as policy
     from permission p

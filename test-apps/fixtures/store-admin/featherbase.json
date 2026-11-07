@@ -1,0 +1,70 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "storeadmin",
+  "title": "Store administration proof",
+  "entryTable": "storeadmin.shelf",
+  "server": "server.mjs",
+  "roles": ["Shelf Manager", "Shelf Helper", "Shelf Viewer"],
+  "tables": [
+    {
+      "name": "storeadmin.job",
+      "label": "Job",
+      "decides_scope": true,
+      "columns": [
+        { "column_name": "person", "column_type": "Reference", "reference_table": "Person" },
+        { "column_name": "job", "column_type": "Data" },
+        { "column_name": "store", "column_type": "Data" },
+        { "column_name": "starts_on", "column_type": "Date" },
+        { "column_name": "ends_on", "column_type": "Date" }
+      ]
+    },
+    {
+      "name": "storeadmin.shelf",
+      "label": "Shelf",
+      "decides_scope": true,
+      "columns": [
+        { "column_name": "store", "column_type": "Data" },
+        { "column_name": "shelf_name", "column_type": "Data" },
+        { "column_name": "note", "column_type": "Data" }
+      ]
+    },
+    {
+      "name": "storeadmin.staff",
+      "label": "Staff",
+      "columns": [
+        { "column_name": "person", "column_type": "Reference", "reference_table": "Person" },
+        { "column_name": "phone", "column_type": "Data" }
+      ]
+    },
+    {
+      "name": "storeadmin.contract",
+      "label": "Contract",
+      "columns": [
+        { "column_name": "staff", "column_type": "Reference", "reference_table": "storeadmin.staff" },
+        { "column_name": "terms", "column_type": "Data" }
+      ]
+    }
+  ],
+  "permissions": [
+    { "table": "storeadmin.shelf", "role": "Shelf Manager", "scope_mode": "reach", "operations": { "read": "*", "create": "*", "update": "*", "delete": true } },
+    { "table": "storeadmin.job", "role": "Shelf Manager", "scope_mode": "reach", "operations": { "read": "*", "create": "*", "update": "*", "delete": true } },
+    { "table": "storeadmin.staff", "role": "Shelf Manager", "scope_mode": "reach", "operations": { "read": "*" } },
+    { "table": "storeadmin.contract", "role": "Shelf Manager", "scope_mode": "reach", "operations": { "read": "*" } },
+    { "table": "storeadmin.shelf", "role": "Shelf Helper", "scope_mode": "reach", "operations": { "read": "*", "update": "*" } },
+    { "table": "storeadmin.shelf", "role": "Shelf Viewer", "operations": { "read": ["shelf_name"] } }
+  ],
+  "administration": {
+    "provider": "stores",
+    "tables": ["storeadmin.job"],
+    "jobRoles": ["Shelf Manager"],
+    "targets": {
+      "storeadmin.shelf": { "column": "store" },
+      "storeadmin.job": { "column": "store", "protect": { "column": "job", "values": ["Manager", "Head"] } },
+      "storeadmin.staff": { "person": "person" },
+      "storeadmin.contract": { "person": "staff.person" }
+    },
+    "memberships": { "table": "storeadmin.job", "person": "person", "column": "store", "startsOn": "starts_on", "endsOn": "ends_on" },
+    "delegation": [{ "authority": "Shelf Manager", "grants": ["Shelf Helper"] }]
+  }
+}

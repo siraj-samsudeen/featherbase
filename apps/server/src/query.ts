@@ -3,7 +3,7 @@ import { AppError } from './errors'
 import { appOperation } from './app-lifecycle'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { RETIREMENT_COLUMNS, STANDARD_COLUMNS, canRetire, tableRelation } from './table-engine'
-import { getScopeMap, includesColumn, isPrivileged, permissionScope, permittedColumns } from './permissions'
+import { getScopeMap, includesColumn, isPrivileged, permissionScope, permittedColumns, reachGrants, reachWhere } from './permissions'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, childColumns, seesEveryColumn } from './row-readers'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
@@ -117,32 +117,50 @@ export async function scopedWhere(
       `${table} is bound to data source ${meta.data_source} — this operation cannot compile against it${relatedDepth > 0 ? " (a 'related' filter cannot target a source-bound Table)" : ''}`,
     )
   const scope = await permissionScope(user, table, 'read')
-  if (scope === 'none')
+  // #919: grants limited to the holder's reach add the rows of their stores.
+  // Their Columns count even beside an all-rows grant, on their own rows.
+  const reach = await reachGrants(user, table, 'read')
+  if (scope === 'none' && !reach.length)
     throw new AppError('PermissionError', `No read permission on ${table} for ${user}`)
   if (meta.kind === 'settings')
     throw new AppError(
       'ValidationError',
       `${table} is a Settings Table and has no list — open it directly by its name`,
     )
-  const cols = columnSet(meta, await permittedColumns(user, table, 'read'))
+  const granted = await permittedColumns(user, table, 'read')
+  const cols = columnSet(meta, new Set([...granted, ...reach.flatMap((grant) => grant.columns)]))
   const tbl = await tableRelation(table)
   // Callers always speak the logical row key (`row_id`); only the SQL we emit
   // uses the physical one, which differs for `Table` alone (see meta.ts).
   const phys = (field: string) => (field === ROW_KEY ? meta.row_key : field)
   const unrestricted = await permittedColumns(user, table, 'read', '')
-  const creatorColumns = new Set(meta.columns.filter((column) =>
-    cols.has(column.column_name) && !includesColumn(unrestricted, column)).map((column) => column.column_name))
+  // A Column not every row's grant reaches reads only on the rows whose
+  // grant reaches it: a creator grant's on rows the reader created, a reach
+  // grant's on rows of its stores.
+  const columnGuards = new Map<string, ReturnType<typeof sql>>()
+  for (const column of meta.columns) {
+    if (!cols.has(column.column_name) || includesColumn(unrestricted, column)) continue
+    let guard: ReturnType<typeof sql> = includesColumn(granted, column) ? sql`${sql(tbl)}.created_by = ${user}` : sql`false`
+    const through = reach.filter((grant) => includesColumn(new Set(grant.columns), column))
+    if (through.length) guard = sql`(${guard}) or (${(await reachWhere(table, through, tbl)).frag})` as ReturnType<typeof sql>
+    columnGuards.set(column.column_name, guard)
+  }
+  const creatorColumns = new Set(columnGuards.keys())
   // Apply the Column's own scope before selecting, sorting or aggregating.
   // An unrelated unrestricted Row grant must never expose this value.
-  const readExpression = (field: string) => creatorColumns.has(field)
-    ? sql`case when ${sql(tbl)}.created_by = ${user} then ${sql(phys(field))} else null end`
+  const readExpression = (field: string) => columnGuards.has(field)
+    ? sql`case when ${columnGuards.get(field)!} then ${sql(phys(field))} else null end`
     : sql`${sql(phys(field))}`
 
   const filters = [...callerFilters]
   // Extra WHERE fragments that can't be expressed as plain [field, op, value]
   // filters (they need OR with IS NULL).
   const extraConds: ReturnType<typeof sql>[] = [(await mandatoryWhere(meta, user)).frag]
-  if (scope === 'own_rows') filters.push(['created_by', '=', user])
+  if (scope === 'own_rows' && !reach.length) filters.push(['created_by', '=', user])
+  else if (scope !== 'all') {
+    const rows = (await reachWhere(table, reach, tbl)).frag
+    extraConds.push(scope === 'own_rows' ? sql`(${sql(tbl)}.created_by = ${user} or ${rows})` : sql`(${rows})`)
+  }
   // PERM-005: user permissions narrow by the table itself and by any
   // Reference column pointing at a restricted table. An UNSET reference does
   // not disqualify a row — the restriction applies to values, so NULL passes
@@ -214,8 +232,8 @@ export async function scopedWhere(
       const { frag } = await relatedCond(field, value)
       condition = { frag: sql`not ${frag}` }
     } else condition = { frag: plainCond(field, op, value) }
-    return { frag: creatorColumns.has(field)
-      ? sql`(${sql(tbl)}.created_by = ${user} and ${condition.frag})`
+    return { frag: columnGuards.has(field)
+      ? sql`((${columnGuards.get(field)!}) and ${condition.frag})`
       : condition.frag }
   }
 

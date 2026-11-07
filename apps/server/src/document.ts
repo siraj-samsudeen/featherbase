@@ -29,7 +29,13 @@ import { assertSecurityWriter, isSecurityTable, securityRefusal } from './securi
 import {
   assertDocPermission,
   assertPermission,
+  assertRowAccess,
+  reachOnlyWrite,
   assertSystemManager,
+  hasPermission,
+  hasTableAccess,
+  reachColumns,
+  reachGrants,
   checkUserPermissions,
   filterReadFields,
   getScopeMap,
@@ -681,8 +687,10 @@ async function childWriteColumns(user: string, parentColumns: ColumnSelection, p
 }
 
 // #608: a new row keeps every Column its creator's create or edit grant reaches.
-async function insertColumns(user: string, table: string): Promise<ColumnSelection> {
-  return new Set([...await permittedColumns(user, table, 'create', user), ...await permittedColumns(user, table, 'write', user)])
+// #919: before the row is known, what any reach grant to create reaches.
+async function insertColumns(user: string, table: string, reach = false): Promise<ColumnSelection> {
+  return new Set([...await permittedColumns(user, table, 'create', user), ...await permittedColumns(user, table, 'write', user),
+    ...(reach ? reachColumns(await reachGrants(user, table, 'create')) : [])])
 }
 
 // Defaults may initialise a hidden column, but may not overwrite an existing
@@ -948,7 +956,7 @@ async function writeDoc(
       'ValidationError',
       `${table} rows are managed via /api/table`,
     )
-  await assertSecurityWriter(table, user, { trusted: opts.skipPermissions })
+  await assertSecurityWriter(table, user, { trusted: opts.skipPermissions, reach: ['create', 'write'] })
   if (isBound(meta)) return saveBoundDoc(meta, values, user, mode)
   if (meta.kind === 'settings') return saveSingle(table, values, user)
   if (meta.kind === 'sub_table')
@@ -972,13 +980,16 @@ async function writeDoc(
     if (meta.id_pattern !== 'prompt' && values.amended_from == null && mode !== 'insert')
       throw new AppError('NotFoundError', `${table} ${values[ROW_KEY]} not found`)
   }
+  // #919: without a create grant on every row, a grant limited to the
+  // holder's reach may create; the row the save chain leaves is checked below.
+  const createReach = !opts.skipPermissions && (!(await hasPermission(user, table, 'create')) || await reachOnlyWrite(user, table))
   if (!opts.skipPermissions) {
-    await assertPermission(user, table, 'create')
+    if (!createReach || !(await reachGrants(user, table, 'create')).length) await assertPermission(user, table, 'create')
     await assertUserPermissions(user, meta, { ...values, created_by: user })
   }
-  const writeTiers = opts.skipPermissions
+  let writeTiers = opts.skipPermissions
     ? new Set(ALL_COLUMNS)
-    : await insertColumns(user, table)
+    : await insertColumns(user, table, createReach)
   const fieldValues = validateValues(
     meta,
     applyDefaults(meta, stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values, opts.managedValues))),
@@ -1028,6 +1039,12 @@ async function writeDoc(
       await runHooks('before_save', ctx)
       await runDocEventScripts('before_save', meta.name, ctx.row, ctx.tx)
       await assertMandatoryAccess(user, meta, row)
+      // #919: created through reach, the row as it will be written is in
+      // reach, and holds only Columns the grants reaching it reach.
+      if (createReach) {
+        const { reach } = await assertRowAccess(user, meta.name, 'create', row)
+        writeTiers = new Set([...await insertColumns(user, meta.name), ...reachColumns(reach)])
+      }
       stripUnwritableFields(meta.columns.filter((column) => !column.read_only), writeTiers, row, fieldValues)
       await assertAttachedTarget(meta, row, null, user, Boolean(opts.skipPermissions))
       assertStoredFileUrl(meta, row, opts.uploadedFileUrl)
@@ -1243,10 +1260,12 @@ async function updateDoc(
   // A write-share grants full field access; otherwise honor tiers.
   // #975: a trusted save is the platform's own, such as an approved Change Proposal: approving
   // is not editing, so neither the maker's nor the approver's grants are what it runs on.
-  const sharedWrite = trusted || await isSharedWith(user, meta.name, name, 'write')
+  // #919: a write share never opens a Table its administrators write through reach.
+  const sharedWrite = trusted || (!(await reachOnlyWrite(user, meta.name)) && await isSharedWith(user, meta.name, name, 'write'))
   let writeTiers = sharedWrite
     ? new Set(ALL_COLUMNS)
     : await permittedColumns(user, meta.name, 'write')
+  let updateReach = false
   const fieldValues = validateValues(
     meta,
     pickFieldValues(meta, values, managedValues),
@@ -1287,9 +1306,11 @@ async function updateDoc(
       // PERM-008: a share with write grants update even without role write.
       if (!trusted) await assertMandatoryAccess(user, meta, existing as RowValues)
       if (!sharedWrite) {
-        await assertDocPermission(user, meta.name, 'write', String(existing.created_by))
+        // #919: a reach grant admits a row of its stores, and its Columns.
+        const { reach } = await assertRowAccess(user, meta.name, 'write', existing as RowValues)
+        updateReach = reach.length > 0
         await assertUserPermissions(user, meta, existing as RowValues)
-        writeTiers = await permittedColumns(user, meta.name, 'write', String(existing.created_by))
+        writeTiers = new Set([...await permittedColumns(user, meta.name, 'write', String(existing.created_by)), ...reachColumns(reach)])
       }
       const dbModified = (existing.updated_at as Date).getTime()
       const sentModified = new Date(expectedStamp(values.updated_at)).getTime()
@@ -1332,6 +1353,8 @@ async function updateDoc(
       stripUnwritableFields(meta.columns.filter((column) => !column.read_only && column.column_type !== 'Sub-table'), writeTiers, row, existing as RowValues)
       await assertAccessColumnsUnchanged(stx, meta, row, existing as RowValues, user, trusted, writeTiers)
       await assertMandatoryAccess(user, meta, row)
+      // #919: a row changed through reach stays in reach: never moved out.
+      if (updateReach) await assertRowAccess(user, meta.name, 'write', row)
       await assertAttachedTarget(meta, row, existing as RowValues, user, trusted)
       assertStoredFileUrl(meta, row, existing.file_url)
       const dbRow = {
@@ -1614,7 +1637,7 @@ async function deleteDocImpl(
 ): Promise<void> {
   const meta = await getMeta(table)
   assertRowsWritable(meta, 'deleted')
-  await assertSecurityWriter(table, user)
+  await assertSecurityWriter(table, user, { reach: ['delete'] })
   if (meta.kind === 'settings' || meta.kind === 'sub_table' || ENGINE_MANAGED.has(table))
     throw new AppError('ValidationError', `${table} rows cannot be deleted directly`)
   if (isBound(meta)) return deleteBoundDoc(meta, name, user, opts.expectUpdatedAt ?? null)
@@ -1625,7 +1648,7 @@ async function deleteDocImpl(
       select * from ${tx(await tableRelation(table))} where ${tx(meta.row_key)} = ${name} for update`
     if (!existing)
       throw new AppError('NotFoundError', `${table} ${name} not found`)
-    await assertDocPermission(user, table, 'delete', String(existing.created_by))
+    await assertRowAccess(user, table, 'delete', existing as RowValues)
     await assertUserPermissions(user, meta, existing as RowValues)
     // #610: a comment or file on a row is removed only by someone who may
     // open that row, as only they may read it (#342, #609).
@@ -1804,7 +1827,7 @@ async function setRetirement(
   assertRowsWritable(meta, retire ? 'retired' : 'reactivated')
   if (!canRetire(meta))
     throw new AppError('ValidationError', `${table} rows cannot be retired`)
-  await assertSecurityWriter(table, user)
+  await assertSecurityWriter(table, user, { reach: [retire ? 'delete' : 'write'] })
   let reason: string | null = null
   if (retire) {
     reason = typeof retire.reason === 'string' ? retire.reason.trim() : ''
@@ -1818,7 +1841,7 @@ async function setRetirement(
   await getDoc(table, name, user)
   // PERM-008: reactivating is editing, so a write share grants it as it
   // grants an update; retiring is deleting, which no share grants.
-  const sharedWrite = !retire && await isSharedWith(user, table, name, 'write')
+  const sharedWrite = !retire && !(await reachOnlyWrite(user, table)) && await isSharedWith(user, table, name, 'write')
   const tbl = await tableRelation(table)
   let previous: RowValues = {}
   const [saved] = await afterCommitOf(() => sql.begin(async (tx) => {
@@ -1830,7 +1853,7 @@ async function setRetirement(
     previous = existing as RowValues
     await assertMandatoryAccess(user, meta, existing as RowValues)
     if (!sharedWrite) {
-      await assertDocPermission(user, table, retire ? 'delete' : 'write', String(existing.created_by))
+      await assertRowAccess(user, table, retire ? 'delete' : 'write', existing as RowValues)
       await assertUserPermissions(user, meta, existing as RowValues)
     }
     if (ROW_ATTACHED_TABLES.has(meta.name)) await assertAttachedRowReadable(meta.name, existing as RowValues, user)
@@ -2022,15 +2045,17 @@ export function rowCapabilities(table: string, name: string, user: string): Prom
     }
     const rowGrant = (action: 'write' | 'delete' | 'submit' | 'cancel' | 'amend') => allowed(async () => {
       assertRowsWritable(meta, 'changed')
-      await assertSecurityWriter(table, user)
+      await assertSecurityWriter(table, user, action === 'write' || action === 'delete' ? { reach: [action] } : {})
       if (isBound(meta) && (action === 'write' || action === 'delete')) {
         await writableContext(meta)
         await assertBoundScope(meta, user, action)
       } else if (meta.kind === 'settings' && action === 'write') {
         await assertPermission(user, table, action)
         return
-      } else if (action === 'write' && await isSharedWith(user, table, name, 'write')) {
+      } else if (action === 'write' && !(await reachOnlyWrite(user, table)) && await isSharedWith(user, table, name, 'write')) {
         return
+      } else if (action === 'write' || action === 'delete') {
+        await assertRowAccess(user, table, action, row)
       } else {
         await assertDocPermission(user, table, action, String(row.created_by))
       }
@@ -2047,15 +2072,15 @@ export function rowCapabilities(table: string, name: string, user: string): Prom
       })
     const createIn = (target: string) => allowed(async () => {
       assertRowsWritable(await getMeta(target), 'created')
-      await assertSecurityWriter(target, user)
-      await assertPermission(user, target, 'create')
+      await assertSecurityWriter(target, user, { reach: ['create'] })
+      if (!(await hasTableAccess(user, target, 'create'))) await assertPermission(user, target, 'create')
     })
     // #859: exactly the checks setRetirement runs, so advice never disagrees.
     const retirement = (action: 'delete' | 'write') => allowed(async () => {
       assertRowsWritable(meta, 'changed')
-      await assertSecurityWriter(table, user)
-      if (action === 'delete' || !(await isSharedWith(user, table, name, 'write'))) {
-        await assertDocPermission(user, table, action, String(row.created_by))
+      await assertSecurityWriter(table, user, { reach: [action] })
+      if (action === 'delete' || await reachOnlyWrite(user, table) || !(await isSharedWith(user, table, name, 'write'))) {
+        await assertRowAccess(user, table, action, row)
         await assertUserPermissions(user, meta, row)
       }
     })
@@ -2113,15 +2138,16 @@ async function getDocImpl(
   await assertMandatoryAccess(user, meta, row as RowValues)
   if (ROW_ATTACHED_TABLES.has(meta.name)) await assertAttachedRowReadable(meta.name, row as RowValues, user)
   const shared = await isSharedWith(user, table, name, 'read')
+  let readReach: string[] = []
   if (!shared) {
-    await assertPermission(user, table, 'read')
-    await assertDocPermission(user, table, 'read', String(row.created_by))
+    // #919: or a reach grant whose stores hold the row.
+    readReach = reachColumns((await assertRowAccess(user, table, 'read', row as RowValues)).reach)
     await assertUserPermissions(user, meta, row as RowValues)
     if (meta.kind === 'sub_table') await assertParentReadable(row as RowValues, user)
   }
   // A share grants full field visibility; otherwise honor tiers, on the row
   // and on its sub-table rows alike (#341).
-  const reader = shared ? FULL_READER : await readerFor(user, table, 'read', String(row.created_by))
+  const reader = shared ? FULL_READER : await readerFor(user, table, 'read', String(row.created_by), readReach)
   return restrictRow(meta, await loadChildren(meta, { table, ...(row as RowValues) }), reader)
 }
 
