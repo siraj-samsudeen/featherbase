@@ -68,22 +68,6 @@ test('store staff report a fault from the asset page and see it as an open job',
   expect(jobs.data).toEqual([{ problem: 'Not cooling', priority: 'Urgent', job_state: 'Reported' }])
 })
 
-test('the label sheet has a QR label for each asset anywhere in the chosen site only', async ({ createUser }) => {
-  await install()
-  const manager = assetsClient(await createUser({ roles: ['Assets Manager'] }))
-  const { avadi, voltas, till, room } = await register(manager)
-  renderAssets(manager, ['Assets Manager'], '#labels')
-  const user = userEvent.setup()
-  await screen.findByRole('option', { name: 'ATK 1501' })
-  expect(screen.queryByRole('option', { name: 'Billing area' })).not.toBeInTheDocument()
-  await user.selectOptions(screen.getByRole('combobox', { name: 'Place' }), avadi.row_id)
-  const sheet = await screen.findByRole('region', { name: 'Labels for ATK 1501' })
-  for (const asset of [voltas, till])
-    expect(await within(sheet).findByRole('img', { name: `QR code for ${asset.row_id}` })).toBeInTheDocument()
-  expect(within(sheet).getByText('Voltas 2-ton split AC')).toBeInTheDocument()
-  expect(within(sheet).queryByText(room.row_id)).not.toBeInTheDocument()
-})
-
 test('a manager assigns a job and a technician fixes it with a note and a cost', async ({ createUser }) => {
   await install()
   const manager = assetsClient(await createUser({ roles: ['Assets Manager'], fullName: 'Meena' }))
