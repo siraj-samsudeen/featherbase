@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { coverNotice, fixByFor, isOpen, jobClock, jobStage, placePath, warrantyNotice, workflowState } from './jobRules'
+import { coverNotice, fixByFor, isOpen, jobClock, jobStage, placePath, siteOf, warrantyNotice, workflowState } from './jobRules'
 
 describe('fix-by time', () => {
   it.each([
@@ -78,6 +78,12 @@ describe('place path', () => {
   it('reads a place from its site down', () => {
     expect(placePath('area', places)).toBe('Enchakkal WH 9151 › Main building › Ground floor › Cold chain')
     expect(placePath('site', places)).toBe('Enchakkal WH 9151')
+  })
+
+  it('finds the site a place is in', () => {
+    expect(siteOf('area', places)).toBe('site')
+    expect(siteOf('site', places)).toBe('site')
+    expect(siteOf(null, places)).toBeNull()
   })
 
   it('stops on a loop or a missing parent rather than running forever', () => {
