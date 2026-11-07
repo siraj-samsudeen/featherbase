@@ -863,8 +863,8 @@ A nested row SHALL be able to hold a link to a row of any table, chosen as on a 
 ### Requirement: Archive a table without deleting it
 
 A System Manager SHALL be able to archive a custom table or an app's table, with an optional note, and to
-un-archive it. While archived, its rows and history SHALL stay readable to whoever could read them, and adding,
-changing, retiring, reactivating, deleting, permanently deleting, importing or merging its rows SHALL be refused for everyone, administrators included. Platform
+un-archive it. While archived, its rows and history SHALL stay readable to whoever could read them, and every change
+to its rows SHALL be refused for everyone, administrators included. Platform
 tables, settings and sub-tables SHALL NOT be archived, nor tables that decide access, except as the next requirement allows.
 
 #### Scenario: Archive a replaced table
