@@ -9,6 +9,7 @@ import { app } from '../src/index'
 import { applySeedPack } from '../src/seed-packs'
 import { createTable } from '../src/table-engine'
 import { withCommittedDatabase } from './committed-database'
+import { HR_WIRE } from './identity-fixtures'
 import { TEST_SEED_PACK } from './seed-pack'
 
 const prove = process.env.FIRST_SIGN_IN_COMMIT_PROOF === '1' ? test : test.skip
@@ -48,7 +49,7 @@ prove('sign-ins that were all confirmed at once make one person, and all land on
   })
   await saveDoc('Sign In Method', {
     row_id: 'stylehr', kind: 'external_password', label: 'StyleHR', enabled: true, self_link: false,
-    new_person: 'create_if_on_roster', service_url: 'https://hr.example.test/api/login/', settings: JSON.stringify({ roster: ROSTER }),
+    new_person: 'create_if_on_roster', service_url: 'https://hr.example.test/api/login/', settings: JSON.stringify({ ...HR_WIRE, roster: ROSTER }),
   }, 'Administrator', 'insert')
   await applySeedPack(TEST_SEED_PACK)
   await saveDoc(TABLE, { crew_name: 'Made Up Crew', crew_no: 'TT-2001', hr_record: '8001', crew_state: 'Working' }, 'Administrator', 'insert')
