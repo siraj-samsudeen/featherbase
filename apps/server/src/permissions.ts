@@ -314,6 +314,14 @@ export function tableScope(meta: ScopedTable, map: Map<string, Set<string>>): Ta
       if (!scope.missing.includes(f.reference_table)) scope.missing.push(f.reference_table)
     }
   }
+  // Fail closed on a stale declaration too: a required column that is no
+  // longer a Reference (its type changed) narrows to nothing, not to everything.
+  if (required)
+    for (const name of declared!)
+      if (!meta.columns.some((f) => f.column_name === name && f.column_type === 'Reference' && f.reference_table)) {
+        scope.none = true
+        if (!scope.missing.includes(name)) scope.missing.push(name)
+      }
   return scope.own || scope.refs.length || scope.none ? scope : null
 }
 

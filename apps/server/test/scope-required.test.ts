@@ -3,6 +3,7 @@ import { test } from './pg-test'
 import { createUserWithRole, expectApiError, makeTable, type TableRef } from './fixtures'
 import { sql } from '../src/db'
 import { eventVisibleTo } from '../src/realtime'
+import { invalidateMeta } from '../src/meta'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 
 // #246 items 1 and 2: a Table names the Reference columns that scope it
@@ -159,6 +160,13 @@ describe('#246 scope_required: no Data Scope means no rows', () => {
     await expectApiError(user.post(section.url, { title: 'x' }), { status: 403 })
     const ok = await user.fetch(section.url, { method: 'POST', body: JSON.stringify({ title: 'ok', store: 'North' }) })
     expect(ok.status).toBe(201)
+  })
+
+  test('a scope column whose type changed still fails closed', async ({ admin, createUser }) => {
+    const { user, section } = await setup(admin, createUser, required, [{ allow_table: STORE, for_value: 'North' }])
+    await sql`update featherbase.column_def set column_type = 'Data', reference_table = null where parent = ${SECTION} and column_name = 'store'`
+    invalidateMeta(SECTION)
+    expect((await user.get<{ total: number }>(section.url)).total).toBe(0)
   })
 
   test('admins are unaffected', async ({ admin, createUser }) => {
