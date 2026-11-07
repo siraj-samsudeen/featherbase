@@ -112,12 +112,12 @@ export function CountsPage({ roles }: { roles: string[] }) {
       <h2 id="plan-count">Plan a count</h2>
       <form onSubmit={event => void plan(event)}>
         <label>Count name<input value={name} onChange={event => setName(event.target.value)} placeholder="ATK full count, Nov 2026" /></label>
-        <label>Place to count<select value={scope} onChange={event => setScope(event.target.value)}>
+        <label>Place to count<select aria-label="Place to count" value={scope} onChange={event => setScope(event.target.value)}>
           <option value="">Choose a site or area</option>
           {allPlaces.map(place => ({ id: place.row_id, label: placePath(place.row_id, allPlaces) })).sort((a, b) => a.label.localeCompare(b.label))
             .map(place => <option key={place.id} value={place.id}>{place.label}</option>)}
         </select></label>
-        <label>Kind<select value={kind} onChange={event => setKind(event.target.value)}>
+        <label>Kind<select aria-label="Kind" value={kind} onChange={event => setKind(event.target.value)}>
           {['Full', 'Sample', 'Targeted', 'Custodian self-check'].map(value => <option key={value}>{value}</option>)}
         </select></label>
         {kind === 'Sample' && <label>Sample size<input type="number" min="1" value={sampleSize} onChange={event => setSampleSize(event.target.value)} /></label>}
@@ -125,7 +125,7 @@ export function CountsPage({ roles }: { roles: string[] }) {
           <label>Starts on<input type="date" value={startsOn} onChange={event => setStartsOn(event.target.value)} /></label>
           <label>Ends on<input type="date" value={endsOn} onChange={event => setEndsOn(event.target.value)} /></label>
         </div>
-        <label>Reviewer<select value={reviewer} onChange={event => { setReviewer(event.target.value); setChosen(chosen.filter(person => person !== event.target.value)) }}>
+        <label>Reviewer<select aria-label="Reviewer" value={reviewer} onChange={event => { setReviewer(event.target.value); setChosen(chosen.filter(person => person !== event.target.value)) }}>
           <option value="">Choose an Assets Manager</option>
           {(managers.data ?? []).map(person => <option key={person.row_id} value={person.row_id}>{person.full_name}</option>)}
         </select></label>
@@ -193,7 +193,7 @@ export function CountPage({ id }: { id: string }) {
         : <p className="asset-muted">Nothing to recount.</p>}
     </section>}
     {recording && <>
-      <label className="count-area">Area<select value={area} onChange={event => setArea(event.target.value)}>
+      <label className="count-area">Area<select aria-label="Area" value={area} onChange={event => setArea(event.target.value)}>
         <option value="">Choose where you are</option>
         {areas.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
       </select></label>
@@ -209,10 +209,10 @@ export function CountPage({ id }: { id: string }) {
           <label>Tag<input value={tag} onChange={event => setTag(event.target.value)} placeholder="AST-0001" autoComplete="off" /></label>
           <label className="asset-radio"><input type="checkbox" checked={typed} onChange={event => setTyped(event.target.checked)} /> Typed by hand</label>
           {typed && <label>Why typed?<input value={why} onChange={event => setWhy(event.target.value)} placeholder="Label torn" /></label>}
-          <label>Outcome<select value={outcome} onChange={event => setOutcome(event.target.value)}>
+          <label>Outcome<select aria-label="Outcome" value={outcome} onChange={event => setOutcome(event.target.value)}>
             {OUTCOMES.map(value => <option key={value} value={value}>{value === 'Belongs elsewhere' ? 'Found, but belongs elsewhere' : value}</option>)}
           </select></label>
-          <label>Condition (optional)<select value={condition} onChange={event => setCondition(event.target.value)}>
+          <label>Condition (optional)<select aria-label="Condition" value={condition} onChange={event => setCondition(event.target.value)}>
             <option value="">Not noted</option>
             {['Working', 'Needs repair', 'Damaged'].map(value => <option key={value}>{value}</option>)}
           </select></label>
