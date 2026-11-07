@@ -138,6 +138,8 @@ export interface DatasetAnswer {
 
 export interface RuntimeReadContext extends Omit<RuntimeActionContext, 'documents' | 'mail' | 'changeProposals'> {
   readonly documents: Pick<RuntimeActionContext['documents'], 'get' | 'list' | 'activity'>
+  /** #967: what this outbound read's `prepare` answered; undefined everywhere else. */
+  readonly prepared?: unknown
   /** #975: a read can list proposals, never make or decide one. */
   readonly changeProposals: ChangeProposalsReader
   /** #625 (E3): the app's declared datasets, limited to the reader's places. */
@@ -152,7 +154,11 @@ export interface RuntimeReadContext extends Omit<RuntimeActionContext, 'document
    *  fills in who, the places, and what this read served for `dataset`. */
   recordView(details?: { dataset?: string }): Promise<void>
 }
-export type RuntimeReadHandler = (context: RuntimeReadContext) => unknown | Promise<unknown>
+export type RuntimeReadHandler = ((context: RuntimeReadContext) => unknown | Promise<unknown>) & {
+  /** #967: an outbound read's first step, run in its transaction, where documents can be read.
+   *  What it answers (as JSON) reaches the handler as `prepared`, after the transaction closes. */
+  prepare?: (context: RuntimeReadContext) => unknown | Promise<unknown>
+}
 
 /** #700: the grants an app job may declare. A job holds only those it names. */
 export const APP_JOB_GRANTS = ['read_people', 'disable_people', 'email_system_managers'] as const

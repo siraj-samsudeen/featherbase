@@ -1,11 +1,10 @@
-// Feather Dash's reads over a stand-in for what the platform hands a read
-// handler (the reader's places, the cached dataset, settings, secrets,
-// recordView), and a stand-in for MotherDuck's embed API (the network
-// boundary). Made-up stores, people and figures.
+// Dash's reads over a stand-in for what the platform hands a read handler (the reader's places, the
+// cached dataset, the report rows, the core Tables, settings, secrets, recordView), and a stand-in
+// for MotherDuck's embed API (the network boundary). Made-up stores, people and figures.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { EMBED_API_TIMEOUT_MS, LAST_MONTH_DATASET, LAST_SALES_DATASET, MONTH_DATASET, STORE_NAMES_TIMEOUT_MS, appOrigin, reads, setEmbedFetch, SALES_DATASET } from './server'
+import { EMBED_API_TIMEOUT_MS, LAST_MONTH_DATASET, LAST_SALES_DATASET, MONTH_DATASET, appOrigin, reads, setEmbedFetch, SALES_DATASET } from './server'
 import type { Place } from './provider.ts'
-import { EMBED_STATE_LIMIT_BYTES, type SalesRow } from './report.ts'
+import type { SalesRow } from './report.ts'
 
 const AT = '2026-10-15T00:19:00.000Z'
 const place = (label: string, store: string, subcategory?: string[]): Place =>
@@ -14,6 +13,31 @@ const row = (store: string, code: string, name: string | null = 'Lakeside'): Sal
   store_code: store, store_name: name, short_code: null, subcategory_code: code, subcategory: `Name ${code}`, target: 1000, actual: 800,
   days_with_actual: 14, days: 15, period_start: '2026-10-01', data_through: '2026-10-14', targets_available: true, target_days: 15,
   target_quantity: 10, actual_quantity: 8 })
+
+type Row = Record<string, unknown>
+/** The three made-up Dives, each taking a different shape of filters. */
+const SALES = { report_key: 'sales', report_name: 'Sales versus target', dive_id: 'dive-sales', filter_shape: 'One store and subcategories', store_key: 'plant_code',
+  subcategory_key: 'material_groups', whole_store_key: 'whole_store', month_key: 'period_end', ready_signal: 0, quick_view: 'Sales target' }
+const WHOLE = { report_key: 'whole', report_name: 'Store target month to date', dive_id: 'dive-whole', filter_shape: 'Whole stores', store_key: 'plant_codes',
+  subcategory_key: null, whole_store_key: null, month_key: null, ready_signal: 0, quick_view: null }
+const VENDORS = { report_key: 'vendors', report_name: 'Vendor sales by city', dive_id: 'dive-vendors', filter_shape: 'Stores and subcategories', store_key: 'reach',
+  subcategory_key: null, whole_store_key: null, month_key: null, ready_signal: 0, quick_view: null }
+
+/** The platform's table reads: the filters and paging `list` is given, over in-memory rows. */
+function reader(tables: Record<string, Row[]>, throws = false) {
+  return {
+    async list(table: string, args: { filters?: [string, string, unknown][]; order_by?: string; limit_start?: number; limit_page_length?: number }) {
+      if (throws) throw new Error('not set up')
+      const found = (tables[table] ?? []).filter(r => (args.filters ?? []).every(([column, op, value]) => (op === 'in' ? (value as unknown[]).includes(r[column]) : r[column] === value)))
+      const start = args.limit_start ?? 0
+      return found.slice(start, start + (args.limit_page_length ?? 500))
+    },
+  }
+}
+const STORES = {
+  Plant: [{ row_id: '9901', site: 'LKS', plant_type: 'Store' }, { row_id: '9902', site: 'HLV', plant_type: 'Store' }],
+  Site: [{ row_id: 'LKS', name: 'Lakeside', is_store: true, cluster: null }, { row_id: 'HLV', name: 'Hillview', is_store: true, cluster: null }],
+}
 
 interface Options {
   places?: Place[]
@@ -26,13 +50,16 @@ interface Options {
   live?: SalesRow[]
   /** The month's metadata rows (`sales_month`); none when it isn't built. */
   month?: Record<string, unknown>[] | null
-  monthStalls?: boolean
-  monthThrows?: boolean
+  /** The rows of `dash.report`. */
+  reports?: Row[]
+  /** The core Tables as the app's base Table reads see them. */
+  core?: Record<string, Row[]>
+  coreThrows?: boolean
 }
-const DIVE = { dive_id: 'dive-made-up', embed_service_account: 'svc-made-up' }
+const DIVE = { embed_service_account: 'svc-made-up' }
 
 function context({ places = [place('9901 / Section: Sarees', '9901', ['010101001'])], rows = [row('9901', '010101001')], payload = {}, settings = DIVE,
-  cacheThrows = false, live = [], month = null, monthStalls = false, monthThrows = false }: Options = {}) {
+  cacheThrows = false, live = [], month = null, reports = [SALES], core = STORES, coreThrows = false }: Options = {}) {
   const views: unknown[] = []
   const asked: unknown[] = []
   return {
@@ -40,16 +67,14 @@ function context({ places = [place('9901 / Section: Sarees', '9901', ['010101001
     ctx: {
       user: 'psn_103', payload, settings, secrets: { MOTHERDUCK_TOKEN: 'token-made-up' },
       authorization: { places },
+      documents: reader({ 'dash.report': reports }),
+      baseTables: reader(core, coreThrows),
       reject(message: string): never { throw new Error(message) },
       datasets: {
         async active(name: string, filters?: Record<string, unknown>) {
           asked.push([name, filters])
-          if (name === MONTH_DATASET || name === LAST_MONTH_DATASET) {
-            if (monthStalls) return new Promise<null>(() => {})
-            if (monthThrows) throw new Error('not set up')
-            return month && { dataset: name, served: 'cached', at: AT, rows: month }
-          }
           if (cacheThrows) throw new Error('not set up')
+          if (name === MONTH_DATASET || name === LAST_MONTH_DATASET) return month && { dataset: name, served: 'cached', at: AT, rows: month }
           if (rows === null) return null
           const store = filters?.store_code
           return { dataset: name, served: 'cached', at: AT, rows: store ? rows.filter(r => r.store_code === store) : rows }
@@ -63,6 +88,17 @@ function context({ places = [place('9901 / Section: Sarees', '9901', ['010101001
     },
   }
 }
+type Context = ReturnType<typeof context>['ctx']
+
+/**
+ * An outbound read as the platform runs it: `prepare` in the transaction, then the handler with what
+ * it read, and no Table left to read.
+ */
+async function embedSession(ctx: Context) {
+  const prepared = await reads.embed_session.prepare(ctx)
+  const { documents: _documents, baseTables: _baseTables, ...handed } = ctx
+  return reads.embed_session({ ...handed, prepared })
+}
 
 // The fixtures are October 2026's: the reads work out the month from the clock, so it is frozen
 // on a day of that month (only Date is faked; promises and timers run as usual).
@@ -73,6 +109,50 @@ beforeEach(() => {
 afterEach(() => {
   setEmbedFetch(null)
   vi.useRealTimers()
+  vi.restoreAllMocks()
+})
+
+describe('a report taking no filter', () => {
+  const OPEN = { report_key: 'open', report_name: 'Open', dive_id: 'dive-open', filter_shape: 'No filter', store_key: null, subcategory_key: null, whole_store_key: null, month_key: null, ready_signal: 0, quick_view: null }
+  const noReach = { 'Employee': [], ...STORES }
+  const nobody = (over: Options) => { const made = context({ reports: [SALES, WHOLE, VENDORS, OPEN], core: noReach, ...over }); (made.ctx.authorization as { places?: unknown }).places = undefined; return made }
+  let posted: { url: string; body: unknown }[]
+  beforeEach(() => {
+    posted = []
+    setEmbedFetch((async (url: string, init: RequestInit) => {
+      posted.push({ url, body: JSON.parse(String(init.body)) })
+      return new Response(JSON.stringify({ session: 's' }), { status: 200 })
+    }) as unknown as typeof fetch)
+  })
+  afterEach(() => setEmbedFetch(null))
+
+  it('is the only report offered to someone whose job reaches nothing', async () => {
+    const answer = await reads.reports(nobody({}).ctx) as { key: string; no_filter: boolean }[]
+    expect(answer.map(r => [r.key, r.no_filter])).toEqual([['open', true]])
+  })
+
+  it('opens for them with empty filters', async () => {
+    const { ctx } = nobody({ payload: { report: 'open' } })
+    const prepared = await reads.embed_open.prepare(ctx)
+    expect(await reads.embed_open({ ...ctx, prepared })).toMatchObject({ frame: expect.any(String) })
+    expect(posted).toEqual([{ url: expect.stringContaining('/dives/dive-open/'), body: { username: 'svc-made-up', initial_state: {} } }])
+  })
+
+  it('no store-filtered report opens through these reads, even for someone with reach', async () => {
+    for (const key of ['sales', 'whole', 'vendors']) {
+      const { ctx } = context({ reports: [SALES, WHOLE, VENDORS, OPEN], payload: { report: key }, places: [place('9901', '9901')] })
+      const prepared = await reads.embed_open.prepare(ctx)
+      expect(await reads.embed_open({ ...ctx, prepared })).toEqual({ refused: 'no_access' })
+      expect(await reads.report_open(ctx)).toEqual({ state: 'no_access' })
+    }
+    expect(posted).toEqual([])
+  })
+
+  it('a store-filtered report is not theirs to name', async () => {
+    const { ctx } = nobody({ payload: { report: 'sales' } })
+    expect(await reads.embed_open.prepare(ctx)).toBeNull()
+    expect(await reads.report_open(ctx)).toEqual({ state: 'no_access' })
+  })
 })
 
 describe('the me read', () => {
@@ -89,69 +169,113 @@ describe('the ready-message origin', () => {
   })
 })
 
+// A person's job, in the core Tables the provider reads.
+const jobOf = (job: Record<string, unknown>) => ({
+  ...STORES,
+  Employee: [{ row_id: 'E1', person: 'psn_103', status: 'Current' }],
+  'Job Assignment': [{ row_id: 'J1', employee: 'E1', site: 'LKS', floor: null, section: null, acting: 0, starts_on: '2026-01-01', ends_on: null, ...job }],
+  Section: [],
+  'Section Subcategory': [],
+})
+
+describe("the reports read (Dash's sidebar)", () => {
+  const ALL = [SALES, WHOLE, VENDORS]
+
+  it('lists every report by name, saying which takes a store and which a month', async () => {
+    const { ctx } = context({ places: [], reports: ALL, core: jobOf({ job: 'Store Manager' }) })
+    expect(await reads.reports(ctx)).toEqual([
+      { key: 'sales', name: 'Sales versus target', takes_store: true, takes_month: true, no_filter: false },
+      { key: 'whole', name: 'Store target month to date', takes_store: false, takes_month: false, no_filter: false },
+      { key: 'vendors', name: 'Vendor sales by city', takes_store: false, takes_month: false, no_filter: false },
+    ])
+  })
+
+  it("doesn't offer a whole-stores report to someone without a whole store (#967 point 1)", async () => {
+    const { ctx } = context({ reports: ALL })
+    expect((await reads.reports(ctx)).map(report => report.key)).toEqual(['sales', 'vendors'])
+  })
+
+  it.each([
+    ['Head office staff', { job: 'Head office staff' }],
+    ['Staff with no section', { job: 'Staff' }],
+    ['a Department Manager, until departments are filled', { job: 'Department Manager' }],
+  ])('answers nothing for %s, whose job reaches nothing', async (_who, job) => {
+    const { ctx } = context({ reports: ALL, core: jobOf(job), places: [] })
+    expect(await reads.reports(ctx)).toEqual([])
+  })
+
+  it('answers nothing for someone with no job at all', async () => {
+    const { ctx } = context({ reports: ALL, core: { ...STORES, Employee: [] }, places: [] })
+    expect(await reads.reports(ctx)).toEqual([])
+  })
+
+  it('answers nothing, never an error, when the core Tables can\'t be read yet', async () => {
+    const { ctx } = context({ reports: ALL, coreThrows: true, places: [] })
+    expect(await reads.reports(ctx)).toEqual([])
+  })
+})
+
+describe('the reach_problem read', () => {
+  it.each([
+    [{ job: 'Head office staff' }, ['head_office']],
+    [{ job: 'Staff' }, ['no_section']],
+    [{ job: 'Department Manager' }, ['departments_not_filled']],
+    [{ job: 'Store Manager' }, []],
+  ])('says why a job reaches nothing: %j', async (job, problems) => {
+    const { ctx } = context({ core: jobOf(job) })
+    expect(await reads.reach_problem(ctx)).toEqual({ problems })
+  })
+})
+
 describe("the stores read (the bar's store picker)", () => {
   const TWO = [place('9902', '9902'), place('9901 / Section: Sarees', '9901', ['010101001'])]
-  const monthRow = (store: string, name: string) => ({ store_code: store, store_name: name, subcategory_code: '010101001',
-    period_start: '2026-10-01', data_through: '2026-10-14', targets_available: true })
+  const SAME_NAME = { Plant: STORES.Plant, Site: STORES.Site.map(site => ({ ...site, name: 'Lakeside' })) }
 
-  it("offers each of the reader's stores from their places, named from the month's metadata", async () => {
-    const { ctx } = context({ places: TWO, month: [monthRow('9901', 'Lakeside'), monthRow('9902', 'Hillview')] })
+  it("offers each of the reader's stores from their places, named from the core Tables", async () => {
+    const { ctx } = context({ places: TWO })
     expect(await reads.stores(ctx)).toEqual([{ value: '9901', label: 'Lakeside' }, { value: '9902', label: 'Hillview' }])
   })
 
   it('never reads the cached figures, so a failing cache leaves the picker whole', async () => {
-    const { ctx, asked } = context({ places: TWO, cacheThrows: true, month: [monthRow('9901', 'Lakeside'), monthRow('9902', 'Hillview')] })
-    await reads.stores(ctx)
-    expect(asked.map(a => (a as unknown[])[0])).toEqual([MONTH_DATASET])
+    const { ctx, asked } = context({ places: TWO, cacheThrows: true })
+    expect(await reads.stores(ctx)).toEqual([{ value: '9901', label: 'Lakeside' }, { value: '9902', label: 'Hillview' }])
+    expect(asked).toEqual([])
   })
 
-  it('offers every store promptly, never by its plant code, when the names stall (#4531)', async () => {
-    vi.useRealTimers()
-    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
-    const { ctx } = context({ places: TWO, monthStalls: true })
-    let options: unknown
-    reads.stores(ctx).then(o => { options = o })
-    await vi.advanceTimersByTimeAsync(STORE_NAMES_TIMEOUT_MS)
-    expect(options).toEqual([{ value: '9901', label: 'Store 1' }, { value: '9902', label: 'Store 2' }])
-  })
-
-  it('offers every store by its place in the list, never its plant code, when the names fail (#4531)', async () => {
-    const { ctx } = context({ places: TWO, monthThrows: true })
+  it('offers every store by its place in the list, never its plant code, when the core Tables name none (#4531)', async () => {
+    const { ctx } = context({ places: TWO, core: { Plant: [], Site: [] } })
     expect(await reads.stores(ctx)).toEqual([{ value: '9901', label: 'Store 1' }, { value: '9902', label: 'Store 2' }])
   })
 
-  it("names a store from the month's metadata, so a reader with no cached figures sees the same label", async () => {
-    const month = [{ store_code: '9901', store_name: 'Lakeside', subcategory_code: '010101001', period_start: '2026-10-01', data_through: '2026-10-14', targets_available: true }]
-    const { ctx } = context({ rows: [], month })
+  it('names a store the same for a reader with no cached figures', async () => {
+    const { ctx } = context({ rows: null })
     expect(await reads.stores(ctx)).toEqual([{ value: '9901', label: 'Lakeside' }])
   })
 
-  it('offers a lone store as "Your store", never its plant code, while nothing is cached (#4531)', async () => {
-    const { ctx } = context({ rows: null })
+  it('offers a lone store as "Your store", never its plant code, when the core Tables name none (#4531)', async () => {
+    const { ctx } = context({ core: { Plant: [], Site: [] } })
     expect(await reads.stores(ctx)).toEqual([{ value: '9901', label: 'Your store' }])
   })
 
-  // #4531: two of a reader's stores with one name are told apart by their short codes, never their plant codes.
-  const shortRow = (store: string, short: string | null): SalesRow => ({ ...row(store, '010101001', 'Lakeside'), short_code: short })
-  it('tells two stores of one name apart by their short codes', async () => {
-    const { ctx } = context({ places: TWO, month: [monthRow('9901', 'Lakeside'), monthRow('9902', 'Lakeside')],
-      rows: [shortRow('9901', 'LKN'), shortRow('9902', 'LKS')] })
-    expect(await reads.stores(ctx)).toEqual([{ value: '9901', label: 'Lakeside · LKN' }, { value: '9902', label: 'Lakeside · LKS' }])
-  })
-
-  it('numbers two stores of one name when their short codes are not known', async () => {
-    const { ctx } = context({ places: TWO, month: [monthRow('9901', 'Lakeside'), monthRow('9902', 'Lakeside')], rows: [] })
+  it('numbers two stores of one name', async () => {
+    const { ctx } = context({ places: TWO, core: SAME_NAME })
     expect(await reads.stores(ctx)).toEqual([{ value: '9901', label: 'Lakeside (1)' }, { value: '9902', label: 'Lakeside (2)' }])
-  })
-
-  it('names a store with no name by its short code', async () => {
-    const { ctx } = context({ places: TWO, month: [monthRow('9902', 'Hillview')], rows: [shortRow('9901', 'LKS')] })
-    expect(await reads.stores(ctx)).toEqual([{ value: '9901', label: 'LKS' }, { value: '9902', label: 'Hillview' }])
   })
 
   it('keeps every store when the cached figures fail while telling stores apart', async () => {
-    const { ctx } = context({ places: TWO, month: [monthRow('9901', 'Lakeside'), monthRow('9902', 'Lakeside')], cacheThrows: true })
+    const { ctx } = context({ places: TWO, core: SAME_NAME, cacheThrows: true })
     expect(await reads.stores(ctx)).toEqual([{ value: '9901', label: 'Lakeside (1)' }, { value: '9902', label: 'Lakeside (2)' }])
+  })
+
+  it.each([['a report taking whole stores', 'whole'], ['a report taking stores and subcategories', 'vendors'], ['a report that does not exist', 'nope']])(
+    'offers none on %s', async (_what, key) => {
+      const { ctx } = context({ places: TWO, reports: [SALES, WHOLE, VENDORS], payload: { report: key } })
+      expect(await reads.stores(ctx)).toEqual([])
+    })
+
+  it('follows the report named, not the first', async () => {
+    const { ctx } = context({ places: TWO, reports: [WHOLE, SALES], payload: { report: 'sales' } })
+    expect((await reads.stores(ctx)).map(option => option.value)).toEqual(['9901', '9902'])
   })
 })
 
@@ -162,8 +286,8 @@ describe('the report read', () => {
   })
 
   it("answers the reader's first store when none is chosen", async () => {
-    const { ctx } = context({ places: [place('9902', '9902'), place('9901', '9901')] })
-    expect((await reads.report(ctx)).store).toBe('9901')
+    const { ctx } = context({ places: [place('9902 / Section: Belts', '9902', ['010404001']), place('9901 / Section: Sarees', '9901', ['010101001'])] })
+    expect((await reads.report(ctx) as { store: string }).store).toBe('9901')
   })
 
   it('reads only the chosen store from the cached dataset', async () => {
@@ -188,17 +312,70 @@ describe('the report read', () => {
     await reads.report(ctx)
     expect(views).toEqual([{ dataset: SALES_DATASET }])
   })
+
+  it('answers no_access for a report that does not exist, reading nothing else', async () => {
+    const { ctx, asked } = context({ payload: { report: 'nope', store: '9901' } })
+    expect(await reads.report(ctx)).toEqual({ state: 'no_access' })
+    expect(asked).toEqual([])
+  })
+
+  it('answers no_access for a one-store report when the reader has no store', async () => {
+    const { ctx } = context({ places: [] })
+    expect(await reads.report(ctx)).toEqual({ state: 'no_access' })
+  })
+
+  it("opens the one-store report for a Store Manager, whose place names the store and no section", async () => {
+    const { ctx } = context({ places: [place('9901', '9901')], payload: { store: '9901' } })
+    expect(await reads.report(ctx)).toMatchObject({ state: 'ready', rows: [{ code: '010101001', section: null }] })
+  })
+
+  it("says a whole-stores report isn't for someone without a whole store", async () => {
+    const { ctx, asked } = context({ reports: [WHOLE] })
+    expect(await reads.report(ctx)).toEqual({ state: 'whole_stores_only' })
+    expect(asked).toEqual([])
+  })
+
+  it('says a report whose row lacks its keys is not set up', async () => {
+    const { ctx } = context({ reports: [{ ...WHOLE, store_key: null }], places: [place('9901', '9901')] })
+    expect(await reads.report(ctx)).toEqual({ state: 'report_not_set_up' })
+  })
+
+  it('reads no figures for a report with no quick view: it answers only that it can open, and its header', async () => {
+    const { ctx, asked, views } = context({ reports: [WHOLE], places: [place('9901', '9901')] })
+    expect(await reads.report(ctx)).toEqual({ state: 'ready', no_quick_view: true, heading: { name: null, sections: [], reasons: [] } })
+    expect([asked, views]).toEqual([[], []])
+  })
+
+  it('names the store from the core Tables on a one-store report with no quick view', async () => {
+    const { ctx } = context({ reports: [{ ...SALES, quick_view: null }], payload: { store: '9901' } })
+    expect(await reads.report(ctx)).toEqual({ state: 'ready', no_quick_view: true, period_start: '2026-10-01', period_end: '2026-10-15',
+      heading: { name: 'Lakeside', sections: ['Sarees'], reasons: [] } })
+  })
+
+  it('answers the period only on a report taking a month', async () => {
+    const { ctx } = context({ reports: [{ ...VENDORS, month_key: 'period_end' }], payload: { month: 'last' } })
+    expect(await reads.report(ctx)).toMatchObject({ state: 'ready', no_quick_view: true, period_start: '2026-09-01', period_end: '2026-09-30' })
+  })
 })
 
 // #750: this month or last month. The clock is 15-Oct-2026, so last month is September.
 describe("the months read (the bar's month picker)", () => {
-  it('offers this month and last month, each named by its month', () => {
-    expect(reads.months()).toEqual([{ value: 'this', label: "This month · Oct'26" }, { value: 'last', label: "Last month · Sep'26" }])
+  it('offers this month and last month, each named by its month', async () => {
+    expect(await reads.months(context().ctx)).toEqual([{ value: 'this', label: "This month · Oct'26" }, { value: 'last', label: "Last month · Sep'26" }])
   })
 
-  it('names December of the year before in January', () => {
+  it('names December of the year before in January', async () => {
     vi.setSystemTime(new Date('2027-01-01T00:30:00Z'))
-    expect(reads.months().map(o => o.label)).toEqual(["This month · Jan'27", "Last month · Dec'26"])
+    expect((await reads.months(context().ctx)).map(o => o.label)).toEqual(["This month · Jan'27", "Last month · Dec'26"])
+  })
+
+  it.each([['a report taking no month', 'whole'], ['a report that does not exist', 'nope']])('offers none on %s', async (_what, key) => {
+    const { ctx } = context({ reports: [SALES, WHOLE], payload: { report: key } })
+    expect(await reads.months(ctx)).toEqual([])
+  })
+
+  it("follows the first report when none is named", async () => {
+    expect(await reads.months(context({ reports: [WHOLE, SALES] }).ctx)).toEqual([])
   })
 })
 
@@ -236,7 +413,7 @@ describe('a report of last month (#750)', () => {
 
   it("says last month hasn't arrived while its copy still holds the month before", async () => {
     const { ctx } = context({ rows: [row('9901', '010101001')], payload: { store: '9901', month: 'last' } })
-    expect((await reads.report(ctx)).state).toBe('no_data_yet')
+    expect((await reads.report(ctx) as { state: string }).state).toBe('no_data_yet')
   })
 
   const upstream = () => {
@@ -245,19 +422,18 @@ describe('a report of last month (#750)', () => {
     return calls
   }
 
-  it("gives the Dive last month's period and cache", async () => {
+  it("gives the Dive last month's last day", async () => {
     const calls = upstream()
     const { ctx } = lastMonth()
-    await reads.embed_session(ctx)
-    expect(JSON.parse(String(calls[0].init.body)).initial_state).toMatchObject({ period_start: '2026-09-01', period_end: '2026-09-30',
-      cached: { data_through: '2026-09-30', cols: { c: [10101001] } } })
+    await embedSession(ctx)
+    expect(JSON.parse(String(calls[0].init.body)).initial_state.period_end).toBe('2026-09-30')
   })
 
-  it("gives the Dive this month's period to date", async () => {
+  it('gives the Dive today, in this month', async () => {
     const calls = upstream()
     const { ctx } = context({ payload: { store: '9901', month: 'this' } })
-    await reads.embed_session(ctx)
-    expect(JSON.parse(String(calls[0].init.body)).initial_state).toMatchObject({ period_start: '2026-10-01', period_end: '2026-10-15' })
+    await embedSession(ctx)
+    expect(JSON.parse(String(calls[0].init.body)).initial_state.period_end).toBe('2026-10-15')
   })
 })
 
@@ -268,34 +444,76 @@ describe('the embed_session read', () => {
     return calls
   }
   const ok = () => Promise.resolve(new Response(JSON.stringify({ session: 'session-made-up' }), { status: 200 }))
+  const sentBody = (calls: { init: RequestInit }[]) => JSON.parse(String(calls[0].init.body))
 
   it("answers the Dive's frame address, carrying the new session", async () => {
     upstream(ok)
     const { ctx } = context({ payload: { store: '9901' } })
-    expect(await reads.embed_session(ctx)).toEqual({ frame: 'https://embed-motherduck.com/sandbox/#session=session-made-up' })
+    expect(await embedSession(ctx)).toEqual({ frame: 'https://embed-motherduck.com/sandbox/#session=session-made-up' })
   })
 
-  it("asks MotherDuck for a session of the configured Dive's latest version, as its service account, with the reader's state", async () => {
+  it("asks MotherDuck for a session of the report's Dive's latest version, as its service account, with the reader's state", async () => {
     const calls = upstream(ok)
     const { ctx } = context({ payload: { store: '9901' } })
-    await reads.embed_session(ctx)
-    const body = JSON.parse(String(calls[0].init.body))
+    await embedSession(ctx)
+    const body = sentBody(calls)
     expect([calls[0].url, (calls[0].init.headers as Record<string, string>).authorization, Object.keys(body).sort(), body.username, body.initial_state.plant_code])
-      .toEqual(['https://api.motherduck.com/v1/dives/dive-made-up/embed-session', 'Bearer token-made-up', ['initial_state', 'username'], 'svc-made-up', '9901'])
+      .toEqual(['https://api.motherduck.com/v1/dives/dive-sales/embed-session', 'Bearer token-made-up', ['initial_state', 'username'], 'svc-made-up', '9901'])
   })
 
-  it('puts the cached rows into the Dive\'s state under `cached`', async () => {
+  it('opens the Dive of the report named, not the first', async () => {
     const calls = upstream(ok)
-    const { ctx } = context({ payload: { store: '9901' } })
-    await reads.embed_session(ctx)
-    expect(JSON.parse(String(calls[0].init.body)).initial_state.cached).toMatchObject({ v: 1, refreshed_at: AT, cols: { c: [10101001] } })
+    const { ctx } = context({ reports: [SALES, VENDORS], places: [place('9901', '9901')], payload: { report: 'vendors' } })
+    await embedSession(ctx)
+    expect(calls[0].url).toBe('https://api.motherduck.com/v1/dives/dive-vendors/embed-session')
+  })
+
+  describe('sends exactly the filters, and nothing else (no rows, no section mapping, no cache)', () => {
+    const MIXED = [place('9901', '9901'), place('9902 / Section: Belts', '9902', ['010404001']), place('9903 / Section: Sarees', '9903', ['010101001'])]
+    const bodyFor = async (options: Options) => {
+      const calls = upstream(ok)
+      await embedSession(context(options).ctx)
+      return sentBody(calls)
+    }
+
+    it('one store, for a section reader: the store, their subcategories, the last day of the month', async () => {
+      expect(await bodyFor({ payload: { store: '9903' }, places: MIXED })).toEqual({ username: 'svc-made-up',
+        initial_state: { plant_code: '9903', material_groups: ['010101001'], period_end: '2026-10-15' } })
+    })
+
+    it('one store, for a whole-store reader: the store, the flag, the last day of the month', async () => {
+      expect(await bodyFor({ payload: { store: '9901' }, places: MIXED })).toEqual({ username: 'svc-made-up',
+        initial_state: { plant_code: '9901', whole_store: true, period_end: '2026-10-15' } })
+    })
+
+    it('whole stores: only the stores the reader covers whole', async () => {
+      expect(await bodyFor({ reports: [WHOLE], places: MIXED })).toEqual({ username: 'svc-made-up', initial_state: { plant_codes: ['9901'] } })
+    })
+
+    it('stores and subcategories: each store its own reach', async () => {
+      expect(await bodyFor({ reports: [VENDORS], places: MIXED })).toEqual({ username: 'svc-made-up',
+        initial_state: { reach: { 9901: null, 9902: ['010404001'], 9903: ['010101001'] } } })
+    })
+  })
+
+  describe('a refused report never calls the embed API', () => {
+    it.each<[string, Options, unknown]>([
+      ['a report that does not exist', { payload: { report: 'nope' } }, { refused: 'no_access' }],
+      ['a whole-stores report for someone without a whole store', { reports: [WHOLE] }, { refused: 'whole_stores_only' }],
+      ['a one-store report for someone with no store', { places: [] }, { refused: 'no_access' }],
+      ['a report whose row lacks its keys', { reports: [{ ...SALES, whole_store_key: null }], payload: { store: '9901' } }, { refused: 'report_not_set_up' }],
+    ])('%s', async (_what, options, refusal) => {
+      const calls = upstream(ok)
+      expect([await embedSession(context(options).ctx), calls.length]).toEqual([refusal, 0])
+    })
   })
 
   // The Dive posts its ready message to the page's own origin, which the page sends (#4453).
+  const SAYS_READY = { ...SALES, ready_signal: 1 }
   const stateFor = async (payload: Record<string, unknown>) => {
     const calls = upstream(ok)
-    await reads.embed_session(context({ payload }).ctx)
-    return JSON.parse(String(calls[0].init.body)).initial_state
+    await embedSession(context({ payload, reports: [SAYS_READY] }).ctx)
+    return sentBody(calls).initial_state
   }
 
   it("gives the Dive the page's origin as `app_origin`, for its ready message", async () => {
@@ -307,37 +525,40 @@ describe('the embed_session read', () => {
       expect(await stateFor({ store: '9901', app_origin: origin })).not.toHaveProperty('app_origin')
     })
 
-  it("asks the page to wait for the Dive's ready message when the instance turns the signal on", async () => {
+  it("asks the page to wait for the Dive's ready message when the report says its Dive sends one", async () => {
     upstream(ok)
-    const { ctx } = context({ payload: { store: '9901' }, settings: { ...DIVE, dive_ready_signal: 'on' } })
-    expect(await reads.embed_session(ctx)).toEqual({ frame: 'https://embed-motherduck.com/sandbox/#session=session-made-up', ready_signal: true })
+    const { ctx } = context({ payload: { store: '9901' }, reports: [SAYS_READY] })
+    expect(await embedSession(ctx)).toEqual({ frame: 'https://embed-motherduck.com/sandbox/#session=session-made-up', ready_signal: true })
   })
 
-  it('says the Dive is not set up when a Dive setting is missing, and calls nothing', async () => {
+  it.each<[string, Options]>([
+    ['the service account setting', { settings: {} }],
+    ["the report's Dive", { reports: [{ ...SALES, dive_id: '' }] }],
+  ])('says the Dive is not set up when %s is missing, and calls nothing', async (_what, options) => {
     const calls = upstream(ok)
-    const { ctx } = context({ payload: { store: '9901' }, settings: { dive_id: 'dive-made-up' } })
-    expect([await reads.embed_session(ctx), calls.length]).toEqual([{ not_set_up: true }, 0])
+    const { ctx } = context({ payload: { store: '9901' }, ...options })
+    expect([await embedSession(ctx), calls.length]).toEqual([{ not_set_up: true }, 0])
   })
 
   it('says the Dive is unreachable when MotherDuck refuses the session', async () => {
     upstream(() => Promise.resolve(new Response('{"message":"nope"}', { status: 503 })))
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const { ctx } = context({ payload: { store: '9901' } })
-    expect(await reads.embed_session(ctx)).toEqual({ unreachable: true })
+    expect(await embedSession(ctx)).toEqual({ unreachable: true })
   })
 
   it('says the Dive is unreachable when MotherDuck cannot be reached', async () => {
     upstream(() => Promise.reject(new TypeError('fetch failed')))
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const { ctx } = context({ payload: { store: '9901' } })
-    expect(await reads.embed_session(ctx)).toEqual({ unreachable: true })
+    expect(await embedSession(ctx)).toEqual({ unreachable: true })
   })
 
   it('never writes the token into what it logs', async () => {
     upstream(() => Promise.resolve(new Response('{"message":"bad token token-made-up"}', { status: 401 })))
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { ctx } = context({ payload: { store: '9901' } })
-    await reads.embed_session(ctx)
+    await embedSession(ctx)
     expect(JSON.stringify(logged.mock.calls)).not.toContain('token-made-up')
   })
 
@@ -351,7 +572,7 @@ describe('the embed_session read', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const { ctx } = context({ payload: { store: '9901' } })
     let settled: unknown = 'pending'
-    reads.embed_session(ctx).then(a => { settled = a })
+    void embedSession(ctx).then(a => { settled = a })
     await vi.advanceTimersByTimeAsync(EMBED_API_TIMEOUT_MS ?? 10_000)
     expect(settled).toEqual({ unreachable: true })
   })
@@ -359,57 +580,50 @@ describe('the embed_session read', () => {
   it("refuses a store that is not one of the reader's", async () => {
     upstream(ok)
     const { ctx } = context({ payload: { store: '9909' } })
-    await expect(reads.embed_session(ctx)).rejects.toThrow(/not one of your stores/)
+    await expect(embedSession(ctx)).rejects.toThrow(/not one of your stores/)
   })
 
-  it('opens the Dive without a cache while nothing is cached', async () => {
-    const calls = upstream(ok)
-    const { ctx } = context({ payload: { store: '9901' }, rows: null })
-    await reads.embed_session(ctx)
-    expect(JSON.parse(String(calls[0].init.body)).initial_state.cached).toBeUndefined()
-  })
-
-  it('records who opened the report', async () => {
+  it('reads no dataset, cached or live: the Dive opens on live figures of its own', async () => {
     upstream(ok)
-    const { ctx, views } = context({ payload: { store: '9901' } })
-    await reads.embed_session(ctx)
-    expect(views).toEqual([{ dataset: SALES_DATASET }])
+    const { ctx, asked } = context({ payload: { store: '9901' }, rows: [row('9901', '010101001')] })
+    await embedSession(ctx)
+    expect(asked).toEqual([])
   })
 
-  describe("a whole-store reader's Dive, whatever the cache", () => {
+  describe("a whole-store reader's Dive", () => {
     const manager = [place('9901', '9901'), place('9901 / Section: Sarees', '9901', ['010101001'])]
     const warehouse = [row('9901', '010101001'), row('9901', '010909001')]
     const state = async (options: Options) => {
       const calls = upstream(ok)
-      await reads.embed_session(context({ payload: { store: '9901' }, ...options }).ctx)
-      return JSON.parse(String(calls[0].init.body)).initial_state
+      await embedSession(context({ payload: { store: '9901' }, ...options }).ctx)
+      return sentBody(calls).initial_state
     }
 
     it('names the whole store, so the Dive filters on the store alone', async () => {
       expect((await state({ places: manager })).whole_store).toBe(true)
     })
 
-    it('sends a whole-store reader their sections by code and no material_groups (the compact state)', async () => {
-      const s = await state({ places: manager })
-      expect([s.material_groups, s.sections]).toEqual([undefined, { Sarees: [10101001] }])
+    it('sends a whole-store reader no subcategories, however many their sections hold', async () => {
+      const many = Array.from({ length: 6000 }, (_, i) => String(10100000 + i).padStart(9, '0'))
+      expect(await state({ places: [place('9901', '9901'), place('9901 / Section: All', '9901', many)] })).toEqual({ plant_code: '9901', whole_store: true, period_end: '2026-10-15' })
     })
 
     it('asks the warehouse for nothing live, even with nothing cached', async () => {
       const { ctx, asked } = context({ payload: { store: '9901' }, places: manager, rows: null, live: warehouse })
       upstream(ok)
-      await reads.embed_session(ctx)
+      await embedSession(ctx)
       expect(asked.filter(a => (a as unknown[])[0] === 'live')).toEqual([])
     })
 
     it("never widens a section-scoped reader's Dive", async () => {
       const s = await state({ rows: null, live: warehouse })
-      expect([s.whole_store, s.material_groups]).toEqual([false, ['010101001']])
+      expect([s.whole_store, s.material_groups]).toEqual([undefined, ['010101001']])
     })
 
     // #4453: only the reader's places make a whole-store reader, never the request.
     it('keeps a section reader section-scoped whatever the request says', async () => {
       const s = await state({ payload: { store: '9901', whole_store: true, material_groups: [], sections: { All: [10101001] } } })
-      expect([s.whole_store, s.material_groups, s.sections]).toEqual([false, ['010101001'], undefined])
+      expect(s).toEqual({ plant_code: '9901', material_groups: ['010101001'], period_end: '2026-10-15' })
     })
 
     describe('a reader who covers one store whole and a section of another', () => {
@@ -417,69 +631,14 @@ describe('the embed_session read', () => {
 
       it('is section-scoped in the store where they hold a section', async () => {
         const s = await state({ places: mixed, payload: { store: '9901' } })
-        expect([s.whole_store, s.material_groups]).toEqual([false, ['010101001']])
+        expect([s.whole_store, s.material_groups]).toEqual([undefined, ['010101001']])
       })
 
       it('is whole-store in the store they cover whole', async () => {
         const s = await state({ places: mixed, payload: { store: '9902' } })
-        expect([s.whole_store, s.material_groups, s.sections]).toEqual([true, undefined, { Belts: [10404001] }])
+        expect([s.whole_store, s.material_groups]).toEqual([true, undefined])
       })
     })
-  })
-})
-
-// #4453: MotherDuck refuses an initial_state past its cap. A state that would pass
-// EMBED_STATE_LIMIT_BYTES is never sent and never trimmed: the page shows the cached table, and
-// the operator log names the store (no person).
-describe("a Dive state too large to embed", () => {
-  const codes = Array.from({ length: 1300 }, (_, i) => String(10100000 + i).padStart(9, '0'))
-  /** A section reader of a large store; one section's name is padded to set the state's size exactly. */
-  const placesWith = (pad: number) => [
-    place('9901 / Section: Big', '9901', codes.slice(1)), place(`9901 / Section: ${'P'.repeat(1 + pad)}`, '9901', codes.slice(0, 1))]
-  async function embed(pad: number) {
-    const calls: { init: RequestInit }[] = []
-    setEmbedFetch(async (_url, init) => { calls.push({ init: init! }); return new Response(JSON.stringify({ session: 's' }), { status: 200 }) })
-    const answer = await reads.embed_session(context({ payload: { store: '9901' }, places: placesWith(pad), rows: null }).ctx)
-    return { answer, sent: calls[0] && JSON.parse(String(calls[0].init.body)).initial_state }
-  }
-  const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length
-  /** The padding that brings the state to exactly the limit. */
-  const exact = async () => EMBED_STATE_LIMIT_BYTES - bytes((await embed(0)).sent)
-
-  it('stays under MotherDuck\'s 64 KB cap, whether a kilobyte is 1,000 or 1,024 bytes, with room to spare', () => {
-    expect(EMBED_STATE_LIMIT_BYTES).toBeLessThanOrEqual(64_000 - 1_000)
-  })
-
-  it('embeds a state of exactly the limit', async () => {
-    const { answer, sent } = await embed(await exact())
-    expect([answer, bytes(sent)]).toEqual([{ frame: 'https://embed-motherduck.com/sandbox/#session=s' }, EMBED_STATE_LIMIT_BYTES])
-  })
-
-  it('sends the full material_groups at the limit, never a trimmed one', async () => {
-    expect((await embed(await exact())).sent.material_groups).toHaveLength(codes.length)
-  })
-
-  it('answers too_large for a state one byte over, without asking MotherDuck for a session', async () => {
-    expect(await embed((await exact()) + 1)).toEqual({ answer: { too_large: true }, sent: undefined })
-  })
-
-  it("names the store in the operator log, and no person", async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    await embed((await exact()) + 1)
-    const line = warn.mock.calls.map(args => String(args[0])).find(text => text.includes('too_large'))!
-    expect([JSON.parse(line).store, line.includes('psn_103')]).toEqual(['9901', false])
-  })
-
-  it('embeds a whole-store reader of a store with thousands of subcategories', async () => {
-    const many = Array.from({ length: 6000 }, (_, i) => String(10100000 + i).padStart(9, '0'))
-    const calls: { init: RequestInit }[] = []
-    setEmbedFetch(async (_url, init) => { calls.push({ init: init! }); return new Response(JSON.stringify({ session: 's' }), { status: 200 }) })
-    const places = [place('9901', '9901'), place('9901 / Section: All', '9901', many)]
-    expect(await reads.embed_session(context({ payload: { store: '9901' }, places, rows: null }).ctx))
-      .toEqual({ frame: 'https://embed-motherduck.com/sandbox/#session=s' })
-    const sent = JSON.parse(String(calls[0].init.body)).initial_state
-    // The compact state: the store alone and its sections by code step, so 6,000 codes stay small.
-    expect([sent.material_groups, sent.sections.All.length, bytes(sent) < EMBED_STATE_LIMIT_BYTES / 2]).toEqual([undefined, 6000, true])
   })
 })
 
@@ -488,21 +647,23 @@ describe("the report read's heading", () => {
   const based = (label: string, store: string, subcategory: string[] | undefined, basis: string): Place =>
     ({ ...place(label, store, subcategory), basis })
   const PLACES = [based('9901 / Section: Sarees', '9901', ['010101001'], 'team_leader'), based('9902', '9902', undefined, 'store_manager')]
+  type Answered = { state: string; heading: unknown }
 
   it("answers the chosen store's reasons and sections, named by the cached rows", async () => {
     const { ctx } = context({ places: PLACES, payload: { store: '9901' } })
-    expect((await reads.report(ctx)).heading).toEqual({ name: 'Lakeside', sections: ['Sarees'], reasons: [{ basis: 'team_leader', sections: ['Sarees'] }] })
+    expect((await reads.report(ctx) as Answered).heading).toEqual({ name: 'Lakeside', sections: ['Sarees'], reasons: [{ basis: 'team_leader', sections: ['Sarees'] }] })
   })
 
   it("names the store from the month's metadata when the reader has no row of figures", async () => {
     const monthRow = { store_code: '9902', store_name: 'Hillview', subcategory_code: '010404001', period_start: '2026-10-01', data_through: '2026-10-14', targets_available: true }
     const { ctx } = context({ places: PLACES, payload: { store: '9902' }, rows: [], month: [monthRow] })
-    expect((await reads.report(ctx)).heading).toEqual({ name: 'Hillview', sections: [], reasons: [{ basis: 'store_manager', sections: [] }] })
+    expect((await reads.report(ctx) as Answered).heading).toEqual({ name: 'Hillview', sections: [], reasons: [{ basis: 'store_manager', sections: [] }] })
   })
 
   it('still answers the heading while nothing is cached yet (the figures are being prepared)', async () => {
     const { ctx } = context({ places: PLACES, payload: { store: '9901' }, rows: null })
-    const report = await reads.report(ctx)
-    expect([report.state, report.heading]).toEqual(['not_built', { name: null, sections: ['Sarees'], reasons: [{ basis: 'team_leader', sections: ['Sarees'] }] }])
+    const report = await reads.report(ctx) as Answered
+    // The store's name comes from the core Tables, never a code (#967 point 13).
+    expect([report.state, report.heading]).toEqual(['not_built', { name: 'Lakeside', sections: ['Sarees'], reasons: [{ basis: 'team_leader', sections: ['Sarees'] }] }])
   })
 })

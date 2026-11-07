@@ -8,6 +8,7 @@ import { app } from '../../../../apps/server/src/index'
 import { test as sandboxed, isTestDatabaseOpen } from '../../../../apps/server/test/pg-test-shared'
 import { sql } from '../../../../apps/server/src/db'
 import { withNamedVariable } from '../../../../apps/server/src/env'
+import { tableRelation } from '../../../../apps/server/src/table-engine'
 import { setupDash } from './dash'
 
 const require = createRequire(new URL('../../../../apps/web/package.json', import.meta.url))
@@ -110,7 +111,7 @@ async function waitForQuickView(timeout = 5000) {
   expect(document.querySelector('[data-testid=quick-view]')).not.toBeNull()
 }
 
-describe('Feather Dash against the real platform', () => {
+describe('Dash against the real platform', () => {
   test('offers a sign-in link preserving the report address after the server refuses anonymous reads', async () => {
     history.replaceState(null, '', '/dash/?store=9901')
     await open()
@@ -126,12 +127,11 @@ describe('Feather Dash against the real platform', () => {
     await waitForText('your account covers no store')
     expect(document.querySelector('[data-testid=manager-no-store] a')?.getAttribute('href')).toBe('/featherbase/admin/instance-health')
     expect(document.querySelector('code')?.textContent).toBe('pnpm dev jeyarama/dash --made-up-data')
-    expect([...requests].sort((a, b) => a.path.localeCompare(b.path))).toEqual([
-      { path: '/api/app_reads/dash/embed_session', status: 403 },
-      { path: '/api/app_reads/dash/report', status: 403 },
-      { path: '/api/instance-health', status: 200 },
-      { path: '/api/whoami', status: 200 },
-    ])
+    const once = (path: string) => requests.filter(r => r.path === path)
+    expect(['/api/app_reads/dash/embed_session', '/api/app_reads/dash/report', '/api/instance-health', '/api/whoami'].map(path => once(path).map(r => r.status)))
+      .toEqual([[403], [403], [200], [200]])
+    // Nothing else reaches past the reads that say why.
+    expect([...new Set(requests.map(r => r.path))].filter(path => /stores|months/.test(path))).toEqual([])
   })
 
   for (const path of ['/api/whoami', '/api/instance-health']) {
@@ -186,10 +186,10 @@ describe('Feather Dash against the real platform', () => {
   test('tells an ordinary signed-in reader to ask their Store Manager without exposing instance health', async ({ createUser }) => {
     token = (await createUser({ email: 'dash-ui-reader@example.test' })).token
     await open()
-    await waitForText('Ask your Store Manager')
-    expect(document.querySelector('[data-testid=dash] a')).toBeNull()
-    expect(requests.map(r => r.path).sort()).toEqual([
-      '/api/app_reads/dash/embed_session', '/api/app_reads/dash/report', '/api/whoami',
+    await waitForText("You don't have a report to open yet.")
+    expect(document.querySelector('[data-testid=dash] a[href*=instance-health]')).toBeNull()
+    expect([...new Set(requests.map(r => r.path))].sort()).toEqual([
+      '/api/app_reads/dash/approvals', '/api/app_reads/dash/embed_session', '/api/app_reads/dash/reach_problem', '/api/app_reads/dash/report', '/api/app_reads/dash/reports', '/api/whoami',
     ])
   })
 
@@ -226,7 +226,7 @@ describe('Feather Dash against the real platform', () => {
     await act(async () => root!.unmount())
     await withNamedVariable('MOTHERDUCK_TOKEN', undefined, async () => {
       await open()
-      await waitForText("Your report couldn't load.")
+      await waitForText("This report couldn't open.")
       expect(requests.slice(-2).map(r => r.status)).toEqual([409, 409])
     })
     await act(async () => (document.querySelector('button') as HTMLButtonElement).click())
@@ -234,7 +234,7 @@ describe('Feather Dash against the real platform', () => {
     expect(document.querySelector('tfoot')?.textContent).toBe('Total₹1,000.00₹900.00−₹100.0090%')
   })
 
-  for (const state of ['not_built', 'no_data_yet', 'unconfirmed', 'no_sections'] as const) {
+  for (const state of ['not_built', 'no_data_yet', 'unconfirmed'] as const) {
     installed(`explains ${state} without presenting missing figures as zero`, async ({ dash }) => {
       if (state === 'not_built')
         await sql`update dataset_snapshot set state = 'superseded' where dataset = 'dash.sales_to_date'`
@@ -243,16 +243,8 @@ describe('Feather Dash against the real platform', () => {
         await dash.snapshot([])
         await dash.snapshot([], 'sales_month')
       }
-      if (state === 'no_sections') {
-        await dash.save('store_rollout', { store: '9902', live_since: '2026-01-01' })
-        await dash.save('job_assignment', { person: dash.reader.user, job: 'Store Manager', store: '9902', starts_on: '2026-01-01' })
-        await dash.snapshot([dash.fact('010101001', { store_code: '9902' })])
-        history.replaceState(null, '', '/dash/?store=9902')
-      }
       await open()
-      const text = state === 'no_data_yet' ? "This month's figures haven't arrived yet."
-        : state === 'no_sections' ? 'This store has no sections set up yet'
-        : 'The figures are being prepared.'
+      const text = state === 'no_data_yet' ? "This month's figures haven't arrived yet." : 'The figures are being prepared.'
       await waitForText(text)
       expect(document.querySelector('table')).toBeNull()
       expect(document.querySelector('[data-testid=report-heading]')?.textContent).toContain('Sales before tax, net of returns')
@@ -294,6 +286,7 @@ describe('Feather Dash against the real platform', () => {
   })
 
   installed('includes unplaced sales under No section with their own subtotal', async ({ dash }) => {
+    await dash.job(dash.reader.user!, 'Store Manager')
     await dash.snapshot([...dash.facts, dash.fact('010909009', { subcategory: 'Unplaced silk', target: 50, actual: 80 })])
     await open()
     await waitForQuickView()
@@ -304,44 +297,54 @@ describe('Feather Dash against the real platform', () => {
   })
 
   for (const example of [
-    { job: 'Team Leader', acting: false, sentence: 'You see Sarees at LKS because you are their Team Leader.' },
-    { job: 'Team Leader', acting: true, sentence: 'You see Sarees at LKS because you are their acting Team Leader.' },
-    { job: 'Staff', acting: false, sentence: 'You see Sarees at LKS because you work in them.' },
-    { job: 'Staff', acting: true, sentence: 'You see Sarees at LKS because you work in them.' },
+    { job: 'Team Leader', acting: false, sentence: 'You see Sarees at Lakeside because you are their Team Leader.' },
+    { job: 'Team Leader', acting: true, sentence: 'You see Sarees at Lakeside because you are their acting Team Leader.' },
+    { job: 'Staff', acting: false, sentence: 'You see Sarees at Lakeside because you work in them.' },
+    { job: 'Staff', acting: true, sentence: 'You see Sarees at Lakeside because you work in them.' },
   ]) {
     installed(`names a ${example.acting ? 'temporary ' : ''}${example.job}'s section and reason without a store code`, async ({ dash, createUser }) => {
       const person = await createUser({ email: 'dash-section-reader@example.test', roles: ['Dash Reader'] })
-      await dash.save('job_assignment', { person: person.user, job: example.job, acting: example.acting,
-        store: '9901', section: dash.section.row_id, starts_on: '2026-01-01' })
+      await dash.job(person.user!, example.job, { acting: example.acting, section: dash.section.row_id })
       token = person.token
       await open()
       await waitForQuickView()
-      expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('LKS · Sarees')
+      expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('Lakeside · Sarees')
       expect(document.querySelector('[data-testid=why-line]')?.textContent).toBe(example.sentence)
       expect(document.body.textContent).not.toMatch(/9901|010101001/)
     })
   }
 
   installed('lists combined leadership and staff reasons in title order for the same reader', async ({ dash }) => {
-    await dash.save('job_assignment', { person: dash.reader.user, job: 'Cluster Manager', cluster: 'DEMO-NORTH', store: '9901', starts_on: '2026-01-01' })
-    await dash.save('job_assignment', { person: dash.reader.user, job: 'Team Leader', store: '9901', section: dash.section.row_id, starts_on: '2026-01-01' })
-    await dash.save('job_assignment', { person: dash.reader.user, job: 'Staff', store: '9901', section: dash.section.row_id, starts_on: '2026-01-01' })
+    await dash.save('Cluster', { code: 'NORTH', name: 'North' })
+    const [site] = await sql`select updated_at from ${sql(await tableRelation('Site'))} where row_id = 'LKS'`
+    await dash.save('Site', { row_id: 'LKS', updated_at: site.updated_at, cluster: 'NORTH' })
+    await dash.job(dash.reader.user!, 'Store Manager')
+    await dash.job(dash.reader.user!, 'Cluster Manager')
+    await dash.job(dash.reader.user!, 'Staff', { section: dash.section.row_id })
     await open()
     await waitForQuickView()
     expect(document.querySelector('[data-testid=why-line]')?.textContent)
-      .toBe('You see LKS because you are its Store Manager, Cluster Manager and Team Leader of Sarees and work in Sarees.')
+      .toBe('You see Lakeside because you are its Store Manager, Cluster Manager and Team Leader of Sarees and work in Sarees.')
   })
 
-  installed('a slow real database offers store-check retry without ever reading the unchecked store', async ({ dash: _dash }) => {
-    // Occupy the real sandbox connection, rather than mocking stores or
-    // manufacturing a rejected promise. Its queued HTTP read must still finish.
-    const busy = sql`select pg_sleep(11)`.execute()
+  /** The page has its reports, so it has started what the report on show needs. */
+  async function reportsAnswered() {
+    const deadline = Date.now() + 5000
+    while (requests.filter(r => r.path.endsWith('/reports')).length < 2 && Date.now() < deadline)
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+  }
+
+  installed('a slow store check offers retry without ever reading the unchecked store', async ({ dash: _dash }) => {
+    // The real read, its answer held past the check's deadline.
+    let release!: () => void
+    delayedResponse = { path: '/api/app_reads/dash/stores', untilReleased: new Promise<void>(resolve => { release = resolve }), release: () => release() }
     await open()
-    await waitForText("Your report couldn't load.", 12000)
-    expect(requests).toEqual([])
+    await waitForText("This report couldn't open.", 12000)
+    expect(requests.filter(r => /\/(report|embed_session)$/.test(r.path))).toEqual([])
     expect(document.querySelector('table')).toBeNull()
     await act(async () => (document.querySelector('button') as HTMLButtonElement).click())
-    await act(async () => { await busy })
+    await act(async () => { release() })
     await waitForQuickView()
     expect(requests.filter(r => r.path.endsWith('/stores'))).toHaveLength(2)
     expect(requests.filter(r => r.path.endsWith('/report'))).toHaveLength(1)
@@ -359,7 +362,7 @@ describe('Feather Dash against the real platform', () => {
       await busy
       while (inFlight.size) await Promise.all([...inFlight])
     })
-    expect(requests).toEqual([{ path: '/api/app_reads/dash/stores', status: 403 }])
+    expect(requests.filter(r => /\/(report|embed_session|stores)$/.test(r.path))).toEqual([])
     expect(document.getElementById('root')?.childElementCount).toBe(0)
   })
 
@@ -393,10 +396,10 @@ describe('Feather Dash against the real platform', () => {
       const names = ['Alpha', 'Beta', 'Gamma', 'Omega'].slice(0, count)
       const facts = []
       for (const [index, section_name] of names.entries()) {
-        const section = await dash.save('section', { store: '9901', section_name })
+        const section = await dash.addSection(`LKS-${section_name}`, section_name)
         const subcategory = `02000000${index}`
-        await dash.save('section_subcategory', { store: '9901', subcategory, section: section.row_id, starts_on: '2026-01-01' })
-        await dash.save('job_assignment', { person: person.user, job: 'Staff', store: '9901', section: section.row_id, starts_on: '2026-01-01' })
+        await dash.place(subcategory, section.row_id)
+        await dash.job(person.user!, 'Staff', { section: section.row_id })
         facts.push(dash.fact(subcategory, { subcategory: `${section_name} cloth` }))
       }
       await dash.snapshot(facts)
@@ -404,9 +407,9 @@ describe('Feather Dash against the real platform', () => {
       await open()
       await waitForQuickView()
       expect(document.querySelector('[data-testid=heading-title]')?.textContent)
-        .toBe(count > 3 ? 'LKS · 4 sections' : `LKS · ${names.join(' · ')}`)
+        .toBe(count > 3 ? 'Lakeside · 4 sections' : `Lakeside · ${names.join(' · ')}`)
       expect(document.querySelector('[data-testid=why-line]')?.textContent)
-        .toBe(`You see ${count === 2 ? 'Alpha and Beta' : count === 3 ? 'Alpha, Beta and Gamma' : '4 sections'} at LKS because you work in them.`)
+        .toBe(`You see ${count === 2 ? 'Alpha and Beta' : count === 3 ? 'Alpha, Beta and Gamma' : '4 sections'} at Lakeside because you work in them.`)
       expect(document.querySelectorAll('tbody')).toHaveLength(count)
       expect(document.body.textContent).not.toContain('Sarees')
     })
@@ -414,33 +417,17 @@ describe('Feather Dash against the real platform', () => {
 
   installed('a reader with staff and team-lead jobs sees one ordered explanation for both sections', async ({ dash, createUser }) => {
     const person = await createUser({ email: 'dash-two-jobs@example.test', roles: ['Dash Reader'] })
-    const section = await dash.save('section', { store: '9901', section_name: 'Cotton' })
-    await dash.save('section_subcategory', { store: '9901', subcategory: '020202002', section: section.row_id, starts_on: '2026-01-01' })
-    await dash.save('job_assignment', { person: person.user, job: 'Staff', store: '9901', section: section.row_id, starts_on: '2026-01-01' })
-    await dash.save('job_assignment', { person: person.user, job: 'Team Leader', store: '9901', section: dash.section.row_id, starts_on: '2026-01-01' })
+    const section = await dash.addSection('LKS-Cotton', 'Cotton')
+    await dash.place('020202002', section.row_id)
+    await dash.job(person.user!, 'Staff', { section: section.row_id })
+    await dash.job(person.user!, 'Team Leader', { section: dash.section.row_id })
     await dash.snapshot([...dash.facts, dash.fact('020202002', { subcategory: 'Cotton shirts' })])
     token = person.token
     await open()
     await waitForQuickView()
-    expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('LKS · Cotton · Sarees')
+    expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('Lakeside · Cotton · Sarees')
     expect(document.querySelector('[data-testid=why-line]')?.textContent)
-      .toBe('You see Cotton and Sarees at LKS because you are Team Leader of Sarees and work in Cotton.')
-  })
-
-  installed('legacy explicit assignments explain unplaced subcategories without claiming a section job', async ({ dash, createUser }) => {
-    const person = await createUser({ email: 'dash-legacy-assigned@example.test', roles: ['Dash Reader'] })
-    await dash.save('Sales Target Assignment', { employee: person.user, plant_code: '9902', material_group: '020202002' })
-    await dash.snapshot([dash.fact('020202002', { store_code: '9902', store_name: null, short_code: null, subcategory: 'Assigned cloth' })])
-    await dash.snapshot([], 'sales_month')
-    token = person.token
-    history.replaceState(null, '', '/dash/?store=9902')
-    await open()
-    await waitForQuickView()
-    expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('Your store')
-    expect(document.querySelector('[data-testid=why-line]')?.textContent)
-      .toBe('You see these subcategories at your store because they are assigned to you.')
-    expect(document.querySelector('[scope=rowgroup]')?.textContent).toBe('No section')
-    expect(document.body.textContent).toContain('Assigned cloth')
+      .toBe('You see Cotton and Sarees at Lakeside because you are Team Leader of Sarees and work in Cotton.')
   })
 
   for (const signedIn of [true, false]) {
@@ -454,30 +441,33 @@ describe('Feather Dash against the real platform', () => {
         await busy
       })
       if (signedIn) await waitForQuickView()
-      else await waitForText('Ask your Store Manager')
+      else await waitForText("You don't have a report to open yet.")
       expect(requests.filter(r => r.path.endsWith('/report'))).toHaveLength(1)
       expect(requests.filter(r => r.path.endsWith('/embed_session'))).toHaveLength(1)
-      expect(requests.filter(r => r.path.endsWith('/stores'))).toHaveLength(1)
+      // Someone with no reports has no store to check: the report is opened at once, and refused.
+      expect(requests.filter(r => r.path.endsWith('/stores'))).toHaveLength(signedIn ? 1 : 0)
       if (signedIn) expect(document.querySelector('tfoot')?.textContent).toBe('Total₹1,000.00₹900.00−₹100.0090%')
       else {
-        expect(document.querySelector('[data-testid=dash] a')).toBeNull()
-        expect(requests.filter(r => r.path.includes('/app_reads/')).map(r => r.status)).toEqual([403, 403, 403])
+        expect(document.querySelector('[data-testid=dash] a[href*=instance-health]')).toBeNull()
+        expect([...new Set(requests.filter(r => r.path.includes('/app_reads/')).map(r => r.status))]).toEqual([403])
       }
     })
   }
 
   installed('a cached-read database deadline stays failed when late answers arrive, then Try again loads fresh totals', async ({ dash: _dash }) => {
     history.replaceState(null, '', '/dash/')
-    const busy = sql`select pg_sleep(16)`.execute()
     await open()
+    await reportsAnswered()
+    const busy = sql`select pg_sleep(16)`.execute()
+    const reads = () => requests.filter(r => /\/(report|embed_session)$/.test(r.path))
     await act(async () => window.dispatchEvent(new dom.window.CustomEvent('featherbase:bar-change', { detail: { key: 'store', value: '9901' } })))
-    await waitForText("Your report couldn't load.", 17000)
-    expect(requests).toEqual([])
+    await waitForText("This report couldn't open.", 17000)
+    expect(reads()).toEqual([])
     await act(async () => {
       await busy
       while (inFlight.size) await Promise.all([...inFlight])
     })
-    expect(requests.map(r => r.status)).toEqual([200, 200])
+    expect(reads().map(r => r.status)).toEqual([200, 200])
     expect(document.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('failed')
     expect(document.querySelector('table')).toBeNull()
     await act(async () => (document.querySelector('button') as HTMLButtonElement).click())
@@ -501,15 +491,14 @@ describe('Feather Dash against the real platform', () => {
   }
 
   installed('bar and history store changes replace old figures with the new store empty state and back again', async ({ dash }) => {
-    await dash.save('store_rollout', { store: '9902', live_since: '2026-01-01' })
-    await dash.save('job_assignment', { person: dash.reader.user, job: 'Store Manager', store: '9902', starts_on: '2026-01-01' })
+    await dash.job(dash.reader.user!, 'Store Manager', { site: 'HIL' })
     await open()
     await waitForQuickView()
     await act(async () => {
       history.pushState(null, '', '?store=9902')
       window.dispatchEvent(new dom.window.CustomEvent('featherbase:bar-change', { detail: { key: 'store', value: '9902' } }))
     })
-    await waitForText('This store has no sections set up yet')
+    await waitForText('The figures are being prepared.')
     expect(document.querySelector('table')).toBeNull()
     expect(document.body.textContent).not.toContain('Silk')
     await act(async () => {
@@ -528,36 +517,72 @@ describe('Feather Dash against the real platform', () => {
       { path: '/api/app_reads/dash/stores', status: 200 },
     ])
     expect(requests.filter(r => r.path.endsWith('/report'))).toHaveLength(1)
-    expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('LKS · Sarees')
+    expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('Lakeside · Sarees')
     expect(document.querySelector('tfoot')?.textContent).toBe('Total₹1,000.00₹900.00−₹100.0090%')
     expect(document.body.textContent).not.toContain('9909')
   })
 
-  for (const role of ['staff', 'leader', 'manager']) {
-    installed(`a legacy ${role} with explicit assignments sees both reasons without suggesting a new org-chart job`, async ({ dash, createUser }) => {
-      const person = await createUser({ email: 'dash-legacy-combined@example.test', roles: ['Dash Reader'] })
-      // The real roster input, as in platform-test/provider.test.ts; this
-      // identifier system is managed by roster sync rather than edited in Admin.
-      await sql`insert into person_identifier (id, person_id, system, assigner, value, valid, verified, one_holder, source, recorded_by)
-        values ('pid_dash_frontend_legacy', ${person.user}, 'stylehr-employee-code', 'firm-a', 'EMP-UI', daterange('2024-01-01', null, '[)'), true, true, 'test', 'test')`
-      await dash.save('Sales Target Assignment', { employee: person.user, plant_code: '9902', material_group: '020202001' })
-      await dash.save('Section Merchandise Map', { store_code: '9902', material_group: '020202002', mch_subcategory: 'Cotton shirts', section_name: 'Cotton' })
-      if (role === 'staff') await dash.save('Employee Section Map', { store_code: '9902', employee_code: 'EMP-UI', subcategory: 'Cotton shirts' })
-      if (role === 'leader') await dash.save('Section Ownership', { store_code: '9902', section_name: 'Cotton', tl_employee_code: 'EMP-UI' })
-      if (role === 'manager') await dash.save('Store Manager', { store_code: '9902', employee_code: 'EMP-UI' })
-      await dash.snapshot(['020202001', '020202002'].map(code => dash.fact(code, { store_code: '9902', subcategory: `Cloth ${code}` })))
-      await dash.snapshot([], 'sales_month')
-      token = person.token
-      history.replaceState(null, '', '/dash/?store=9902')
-      await open()
-      await waitForQuickView()
-      expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('LKS · Cotton')
-      expect(document.querySelector('[data-testid=why-line]')?.textContent).toBe(role === 'staff'
-        ? 'You see Cotton at LKS because you work in Cotton and have other subcategories assigned to you.'
-        : role === 'leader' ? 'You see Cotton at LKS because you are Team Leader of Cotton and have other subcategories assigned to you.'
-        : 'You see LKS because you are its Store Manager and have other subcategories assigned to you.')
-      expect(document.querySelector('tfoot')?.textContent).toBe('Total₹2,000.00₹1,600.00−₹400.0080%')
-      expect(document.querySelectorAll('tbody')).toHaveLength(2)
-    })
-  }
+  // #967's UI checklist, against the real reads.
+  installed('lists the reports in the sidebar, marks the one on show, and keeps the store in each address', async ({ dash: _dash }) => {
+    history.replaceState(null, '', '/dash/?store=9901&report=sales')
+    await open()
+    await waitForQuickView()
+    const links = [...document.querySelectorAll('[data-testid=report-link]')]
+    expect(links.map(a => [a.textContent, a.getAttribute('aria-current'), a.getAttribute('href')])).toEqual([
+      ['Sales versus target', 'page', '?store=9901&report=sales'],
+      // The reader is a Team Leader: the whole-stores report isn't theirs to open, so it isn't listed (#967 point 1).
+      ['Vendor sales by city', null, '?store=9901&report=vendor_sales'],
+    ])
+  })
+
+  installed("tells a Team Leader a whole-stores report isn't available for their job", async ({ dash: _dash }) => {
+    history.replaceState(null, '', '/dash/?report=store_target')
+    await open()
+    await waitForText("This report covers whole stores, so it isn't available for your job.")
+    expect(document.body.textContent).not.toMatch(/9901|010101001/)
+  })
+
+  installed("says a report with no quick view couldn't open, with Try again, when its Dive isn't set up", async ({ dash: _dash }) => {
+    history.replaceState(null, '', '/dash/?report=vendor_sales')
+    await open()
+    await waitForText("This report couldn't open.")
+    expect(document.querySelector('[data-testid=failed] button')?.textContent).toBe('Try again')
+  })
+
+  installed('shows no-access for a report that does not exist', async ({ dash: _dash }) => {
+    history.replaceState(null, '', '/dash/?report=nope')
+    await open()
+    // #967 point 7: the reader has other reports, so the page says this one isn't theirs.
+    await waitForText("You can't open this report. Choose one of your reports from the list.")
+  })
+
+  installed('tells Staff with no section why, with a link to Your sections', async ({ dash, createUser }) => {
+    const person = await createUser({ email: 'dash-no-section@example.test', roles: ['Dash Reader'] })
+    await dash.job(person.user!, 'Staff')
+    token = person.token
+    history.replaceState(null, '', '/dash/')
+    await open()
+    await waitForText("You aren't set against a section yet")
+    expect(document.querySelector('[data-testid=fix-link]')?.getAttribute('href')).toBe('?view=sections')
+  })
+
+  installed("tells a Department Manager their report waits for the store's departments", async ({ dash, createUser }) => {
+    const person = await createUser({ email: 'dash-department@example.test', roles: ['Dash Reader'] })
+    await dash.job(person.user!, 'Department Manager')
+    token = person.token
+    history.replaceState(null, '', '/dash/')
+    await open()
+    await waitForText("Your store's departments aren't filled in yet")
+  })
+
+  installed('gives Head office staff the no-access page', async ({ dash, createUser }) => {
+    const person = await createUser({ email: 'dash-head-office@example.test', roles: ['Dash Reader'] })
+    await dash.save('Site', { code: 'HOF', name: 'Head Office', is_store: false })
+    await dash.job(person.user!, 'Head office staff', { site: 'HOF' })
+    token = person.token
+    history.replaceState(null, '', '/dash/')
+    await open()
+    await waitForText("You don't have a report to open yet.")
+    expect(document.querySelector('[data-testid=reach-problem]')).toBeNull()
+  })
 })
