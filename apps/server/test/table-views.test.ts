@@ -8,7 +8,8 @@ import { test } from './pg-test'
 import { expectApiError, grantRole, makeTable, patchDoc, tableRef } from './fixtures'
 import { createTable, storedRelation } from '../src/table-engine'
 import { sql } from '../src/db'
-import { getBacklinks } from '../src/meta'
+import { getBacklinks, invalidateMeta } from '../src/meta'
+import { isInstalled, uninstallApp } from '../src/apps'
 import { globalSearch } from '../src/search'
 
 const SITE = 'Vw Site'
@@ -195,6 +196,32 @@ describe('#1021: a view reads as its base, never wider', () => {
       { status: 417, message: expect.stringContaining('scope Vw Site instead') })
   })
 
+  test('a reader of the view gets only the columns they may read of the base, on every list road', async ({ admin, createUser }) => {
+    await sites(admin, { restricted: true })
+    await grantRole(admin, { role: 'Vw Site Reader', table: SITE, can_read: true })
+    const reader = await createUser({ roles: ['Vw Site Reader'] })
+    const list = await reader.get<{ data: Record<string, unknown>[] }>(store.listUrl({ fields: ['row_id', 'site_name'] }))
+    expect(list.data.map((r) => r.site_name).sort()).toEqual(['Anna Nagar', 'T Nagar'])
+    await expectApiError(reader.get(store.listUrl({ fields: ['row_id', 'is_store'] })), { status: 417 })
+    await expectApiError(reader.get(`${store.url}:summary?group_by=is_store`), { status: 417 })
+  })
+
+  test('files on a connected row stay hidden from someone a Data Scope narrows through a link to a view', async ({ admin, createUser }) => {
+    const OUTSIDE = 'Vw Outside'
+    await sites(admin)
+    await makeTable(admin, { name: OUTSIDE, id_pattern: 'prompt', columns: ['subject', { column_name: 'store', column_type: 'Reference', reference_table: STORE }] })
+    await admin.post('/api/save_row', { table: OUTSIDE, row: { row_id: 'o-1', subject: 'Outside', store: 'S-1' } })
+    await admin.post('/api/save_row', { table: 'File', row: { file_name: 'outside.pdf', ref_table: OUTSIDE, ref_name: 'o-1' } })
+    await sql`update table_def set data_source = 'outside-db' where name = ${OUTSIDE}`
+    invalidateMeta(OUTSIDE)
+    await grantRole(admin, { role: 'Vw Outside Reader', table: [SITE, OUTSIDE, 'File'], can_read: true })
+    const scoped = await createUser({ roles: ['Vw Outside Reader'] })
+    const fileNames = async () => (await scoped.get<{ data: { file_name: string }[] }>(tableRef('File').listUrl({ fields: ['file_name'], filters: [['ref_table', '=', OUTSIDE]] }))).data.map((f) => f.file_name)
+    expect(await fileNames()).toEqual(['outside.pdf'])
+    await admin.post('/api/save_row', { table: 'Data Scope', row: { person: scoped.user, allow_table: SITE, for_value: 'S-2' } })
+    expect(await fileNames()).toEqual([])
+  })
+
   test('a view takes no grants of its own', async ({ admin }) => {
     await sites(admin)
     await expectApiError(grantRole(admin, { role: 'Vw Grant', table: STORE, can_read: true }),
@@ -252,6 +279,19 @@ describe('#1021: a link can name a view', () => {
     expect(await admin.get(sale.rowUrl(saved.row_id))).toMatchObject({ store: 'S-100' })
     const plan = await admin.get<{ groups: { table: string }[] }>(`${site.url}:purge_preview?ids=${encodeURIComponent(JSON.stringify(['S-100']))}&links=clear`)
     expect(plan.groups).toContainEqual(expect.objectContaining({ table: SALE }))
+  })
+
+  test('deleting a base row permanently unlinks or removes the rows linking through a view', async ({ admin }) => {
+    await sites(admin)
+    await sales(admin)
+    const unlinked = await admin.post<Row>(sale.url, { amount: 1, store: 'S-1' })
+    const removed = await admin.post<Row>(sale.url, { amount: 2, store: 'S-2' })
+    const purge = (id: string, links: string) => admin.post(`${site.url}:purge`, { ids: [id], links, reason: 'Closed down', confirm: true })
+    expect(await purge('S-1', 'clear')).toEqual({ deleted: 1, cleared: 1 })
+    expect((await admin.get<Row>(sale.rowUrl(unlinked.row_id))).store).toBeNull()
+    await expectApiError(admin.get(site.rowUrl('S-1')), { status: 404 })
+    expect(await purge('S-2', 'cascade')).toEqual({ deleted: 2, cleared: 0 })
+    await expectApiError(admin.get(sale.rowUrl(removed.row_id)), { status: 404 })
   })
 
   test('a row that leaves the view keeps its links: they save unchanged and are flagged', async ({ admin }) => {
@@ -333,6 +373,28 @@ describe('#1021: a base keeps what its views stand on', () => {
       { status: 417, message: expect.stringContaining('filter on it') })
     const refusal = await admin.delete(site.defUrl).catch((e: Error) => e.message)
     expect(refusal).toContain('Delete those views first')
+  })
+
+  test('an app cannot be uninstalled while a view stands on its Table', async ({ admin }) => {
+    const APP = 'test-view-base-app'
+    const OWNED = 'Vw App Site'
+    try {
+      const installed = await admin.fetch('/api/install_app', { method: 'POST', body: JSON.stringify({ manifest: {
+        name: APP, tables: [{ name: OWNED, columns: [{ column_name: 'region', column_type: 'Data' }] }],
+      } }) })
+      expect(installed.status).toBe(201)
+      await admin.post('/api/table_def', { name: STORE, kind: 'view', view_of: OWNED, view_filters: [['region', '=', 'North']] })
+      await expect(uninstallApp(APP)).rejects.toThrow(`the view ${STORE} is based on ${OWNED}`)
+      // Refused before anything went: the app and its Table are whole.
+      expect(await isInstalled(APP)).toBe(true)
+      expect((await admin.get<{ columns: { column_name: string }[] }>(tableRef(OWNED).metaUrl)).columns.map((c) => c.column_name)).toContain('region')
+      await admin.delete(store.defUrl)
+      await uninstallApp(APP)
+      expect(await isInstalled(APP)).toBe(false)
+    } finally {
+      await sql`delete from table_def where name = ${STORE}`
+      await uninstallApp(APP).catch(() => {})
+    }
   })
 
   test('a link with many values outside the view names the first twenty', async ({ admin }) => {
