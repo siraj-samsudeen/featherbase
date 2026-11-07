@@ -417,7 +417,7 @@ describe('Headline', () => {
   })
 })
 
-describe('achievementTone — the bands of the sales-target legend', () => {
+describe('achievementTone — the bands of an achievement legend', () => {
   test.each([
     [62.4, 'negative'],
     [89.94, 'negative'], // shown as 89.9%

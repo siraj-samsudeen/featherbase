@@ -142,7 +142,7 @@ test('every sign-out follows the device, so the next person on a shared phone ne
   setSession('t', { row_id: 'Shared Phone A', email: null, full_name: null })
   applyTheme('dark')
   expect(document.documentElement.dataset.theme).toBe('dark')
-  // RestrictedShell, SalesTarget, Portal, AdminLayout and the 401 handler all sign out through clearSession.
+  // RestrictedShell, Portal, AdminLayout and the 401 handler all sign out through clearSession.
   clearSession()
   expect(document.documentElement.dataset.theme).toBe('light')
 })

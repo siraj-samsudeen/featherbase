@@ -131,13 +131,6 @@ test('on a phone, the Admin screens draw no tab bar', async ({ admin }) => {
   expect(screen.queryByTestId('tab-bar')).toBeNull()
 })
 
-test('on a phone, Feather Dash draws no tab bar until it declares tabs', async ({ admin }) => {
-  width(true)
-  await renderApp('/featherbase/sales-target', admin)
-  await screen.findByTestId('session-user')
-  expect(screen.queryByTestId('tab-bar')).toBeNull()
-})
-
 // ---- over the app's own page (#650's bar) ---------------------------------------
 
 /** The app's own page at `path`, with the bar mounted as the served document mounts it. */

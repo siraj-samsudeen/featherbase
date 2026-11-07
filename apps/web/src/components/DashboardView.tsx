@@ -30,7 +30,7 @@ interface DashboardConfig {
 
 function NumberCard({ card }: { card: CardCfg }) {
   const q = useQuery({
-    queryKey: ['dash-count', card.table, card.filters, card.label],
+    queryKey: ['dashboard-count', card.table, card.filters, card.label],
     queryFn: () =>
       api.post<{ count: number }>('/api/dashboard/count', {
         table: card.table,
@@ -54,7 +54,7 @@ export function chartValueText(chart: ChartCfg, value: number): string {
 
 function BarChart({ chart }: { chart: ChartCfg }) {
   const q = useQuery({
-    queryKey: ['dash-chart', chart.report, chart.table, chart.group_by, chart.label_field, chart.value_field, chart.filters, chart.label],
+    queryKey: ['dashboard-chart', chart.report, chart.table, chart.group_by, chart.label_field, chart.value_field, chart.filters, chart.label],
     queryFn: () =>
       chart.report
         ? api.post<{ data: { label: string; value: number }[] }>('/api/report_chart', {
@@ -99,20 +99,20 @@ function BarChart({ chart }: { chart: ChartCfg }) {
 }
 
 export function DashboardView({ name }: { name: string }) {
-  const dash = useQuery({
+  const board = useQuery({
     queryKey: ['dashboard', name],
     queryFn: () => api.get<{ name: string; label?: string; config?: DashboardConfig | string }>(`/api/table/Dashboard/${encodeURIComponent(name)}`),
   })
 
-  if (dash.isError)
+  if (board.isError)
     return (
       <div className={cardClasses('p-4 text-sm text-negative')} data-testid="dashboard-error">
-        {dash.error instanceof ApiError ? dash.error.message : 'Dashboard not found'}
+        {board.error instanceof ApiError ? board.error.message : 'Dashboard not found'}
       </div>
     )
-  if (!dash.data) return <div className="p-4 text-ink-subtle">Loading…</div>
+  if (!board.data) return <div className="p-4 text-ink-subtle">Loading…</div>
 
-  const cfgRaw = dash.data.config
+  const cfgRaw = board.data.config
   const config: DashboardConfig =
     typeof cfgRaw === 'string' ? (JSON.parse(cfgRaw || '{}') as DashboardConfig) : (cfgRaw ?? {})
   const cards = config.cards ?? []
@@ -121,7 +121,7 @@ export function DashboardView({ name }: { name: string }) {
   return (
     <div data-testid="dashboard" className="space-y-6">
       <h1 className="text-lg font-semibold text-ink" data-testid="dashboard-title">
-        {dash.data.label || dash.data.name}
+        {board.data.label || board.data.name}
       </h1>
 
       {cards.length > 0 && (

@@ -58,7 +58,7 @@ function syntheticApi(): Plugin {
             return send({ scenario })
           }
           const who = { name: 'Administrator', email: null, full_name: 'Synthetic designer', roles: ['System Manager'], apps: [], installed_apps: [],
-            capabilities: { manage: true, report: false, admin: true, own_grant: true, tables: [], creatable: labTables.map((t) => t.name) } }
+            capabilities: { manage: true, admin: true, own_grant: true, tables: [], creatable: labTables.map((t) => t.name) } }
           const reads: Record<string, unknown> = {
             '/api/brand': { app_name: 'Featherbase UI Lab', opens: 'admin' }, '/api/whoami': who,
             '/api/runtime_app_versions': [], '/api/app_catalog': [], '/api/home_pages': { pages: [] },

@@ -208,7 +208,7 @@ export function announceDelegatedTestMode(log: (message: string) => void = conso
 }
 
 // Injectable for the sandboxed suite — the real provider is never contacted
-// from a test (same seam as `_setEmbedFetch` in sales-target.ts).
+// from a test.
 let delegatedFetch: typeof fetch | null = null
 export function _setDelegatedFetch(f: typeof fetch | null) {
   delegatedFetch = f

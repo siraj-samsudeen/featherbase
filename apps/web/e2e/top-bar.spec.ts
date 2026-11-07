@@ -1,18 +1,21 @@
-import { anonymousTest as test, expect, adminAuth, type Page } from './fixtures'
+import { anonymousTest as test, expect, adminAuth, ensureRuntimeApp, type Page } from './fixtures'
 import type { APIRequestContext } from '@playwright/test'
 import { createServer, request as httpRequest } from 'node:http'
 import { once } from 'node:events'
 
 // #489 (design D3, "One top bar on every address"): the shared top bar on the
 // two addresses of one instance (playwright.config.ts INSTANCE_ADDRESSES):
-// admin.localhost opens Admin, dash.localhost opens Feather Dash. What jsdom
+// admin.localhost opens Admin, barproof.localhost opens the bar-proof fixture
+// app, which its Bar Reader role alone opens. What jsdom
 // cannot show lives here: the hand-off "Open Admin" follows across hosts,
 // widths, sideways scroll and real Tab order. Set TOP_BAR_SHOTS to a directory
 // to also save reference screenshots of the bar.
 const port = process.env.E2E_WEB_PORT ?? '5193'
 const ADMIN = `http://admin.localhost:${port}`
-const DASH = `http://dash.localhost:${port}`
-const VIEWER_ROLE = 'Sales Target Viewer'
+const APP = `http://barproof.localhost:${port}`
+const ROOT = `${APP}/barproof/`
+const ACCOUNT = `${APP}/featherbase/account/sign-in-methods`
+const VIEWER_ROLE = 'Bar Reader'
 const PASSWORD = 'top-bar-pw-489'
 const SHOTS = process.env.TOP_BAR_SHOTS
 
@@ -63,8 +66,8 @@ test('the Admin bar remains named and usable when its public brand endpoint fail
 
 async function person(request: APIRequestContext, name: string, roles: string[]): Promise<string> {
   const headers = await adminAuth(request)
-  const role = await request.get(`/api/table/Role/${encodeURIComponent(VIEWER_ROLE)}`, { headers })
-  if (role.status() !== 200) await request.post('/api/save_row', { headers, data: { table: 'Role', row: { row_id: VIEWER_ROLE } } })
+  // Installing it brings its role.
+  await ensureRuntimeApp(request, 'barproof')
   const email = `${name.toLowerCase().replace(/\s+/g, '.')}.${Date.now()}@example.com`
   const made = await request.post('/api/save_row', {
     headers,
@@ -84,11 +87,14 @@ async function signInAt(page: Page, origin: string, usr: string) {
   await page.click('button[type=submit]')
 }
 
-/** Someone who can use Admin and open the app, signed in on the app's address. */
-async function onDash(page: Page, request: APIRequestContext, name: string) {
+/** Someone who can use Admin and open the app, signed in on the app's
+ *  address and on its account page, the platform page every address serves.
+ *  (The app's own pages carry the application dropdown, not Open Admin.) */
+async function onApp(page: Page, request: APIRequestContext, name: string) {
   const both = await person(request, name, ['System Manager', VIEWER_ROLE])
-  await signInAt(page, DASH, both)
-  await expect(page).toHaveURL(`${DASH}/featherbase/sales-target`, { timeout: 15_000 })
+  await signInAt(page, APP, both)
+  await expect(page).toHaveURL(new RegExp(`^${ROOT}`), { timeout: 15_000 })
+  await page.goto(ACCOUNT)
   await expect(page.getByTestId('session-user')).toBeVisible()
   return both
 }
@@ -96,9 +102,9 @@ async function onDash(page: Page, request: APIRequestContext, name: string) {
 const noSidewaysScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)
 
 test("Open Admin on the app's address reaches the Admin address, signed in there", async ({ session, page, request }) => {
-  await onDash(page, request, 'Open Admin')
-  await session.step('the bar on the app address is named Dash', async () => {
-    await expect(page.getByTestId('top-bar-name')).toHaveText('Dash')
+  await onApp(page, request, 'Open Admin')
+  await session.step('the bar on the app address is named for the app', async () => {
+    await expect(page.getByTestId('top-bar-name')).toHaveText('Bar proof')
   })
   await session.step('Open Admin hands the person to the Admin address', async () => {
     await page.getByTestId('open-admin').click()
@@ -112,15 +118,15 @@ test("Open Admin on the app's address reaches the Admin address, signed in there
 })
 
 test("the Account menu's Sign-in methods stays on the app's address", async ({ session, page, request }) => {
-  await onDash(page, request, 'Dash Methods')
+  await onApp(page, request, 'App Methods')
   await session.step('open Sign-in methods from the Account menu', async () => {
     await page.getByTestId('session-user').click()
     await page.getByTestId('account-sign-in-methods').click()
   })
   await session.step('the account page opens on the app address, with the bar and no Admin menus', async () => {
-    await expect(page).toHaveURL(`${DASH}/featherbase/account/sign-in-methods`)
+    await expect(page).toHaveURL(ACCOUNT)
     await expect(page.getByTestId('sign-in-methods')).toBeVisible()
-    await expect(page.getByTestId('top-bar-name')).toHaveText('Dash')
+    await expect(page.getByTestId('top-bar-name')).toHaveText('Bar proof')
     await expect(page.getByTestId('awesomebar')).toHaveCount(0)
     await expect(page.getByTestId('notif-bell')).toHaveCount(0)
   })
@@ -142,7 +148,7 @@ test('the Sign-in methods page is served on the Admin address too', async ({ ses
 })
 
 test('signed out, the sign-in page has no bar', async ({ page }) => {
-  await page.goto(`${DASH}/featherbase/login`)
+  await page.goto(`${APP}/featherbase/login`)
   await expect(page.locator('input[name=password]')).toBeVisible()
   await expect(page.getByTestId('top-bar')).toHaveCount(0)
 })
@@ -151,7 +157,7 @@ test.describe('at 1280px', () => {
   test.use({ viewport: { width: 1280, height: 800 } })
 
   test('Tab walks the bar in visual order on the app address', async ({ session, page, request }) => {
-    await onDash(page, request, 'Tab Order')
+    await onApp(page, request, 'Tab Order')
     await session.step('from the name: Open Admin, the three theme choices, then the Account menu', async () => {
       await page.getByTestId('top-bar-name').focus()
       const reached: string[] = []
@@ -172,19 +178,19 @@ test.describe('at 1280px', () => {
   })
 
   test('the bar is the same frame on both addresses', async ({ session, page, request }) => {
-    const both = await onDash(page, request, 'Same Frame')
+    const both = await onApp(page, request, 'Same Frame')
     const frame = () => page.getByTestId('top-bar').evaluate((el) => {
       const s = getComputedStyle(el)
       return { height: el.getBoundingClientRect().height, padding: s.padding, border: s.borderBottom, background: s.backgroundColor }
     })
-    const dash = await frame()
-    if (SHOTS) await page.screenshot({ path: `${SHOTS}/dash-1280-light.png` })
+    const onAppFrame = await frame()
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/app-1280-light.png` })
     await signInAt(page, ADMIN, both)
     await expect(page).toHaveURL(new RegExp(`^${ADMIN}/featherbase/admin`), { timeout: 15_000 })
     await expect(page.getByTestId('session-user')).toBeVisible()
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/admin-1280-light.png` })
     await session.step('height, padding, border and background match', async () => {
-      expect(await frame()).toEqual(dash)
+      expect(await frame()).toEqual(onAppFrame)
     })
   })
 })
@@ -193,14 +199,14 @@ test.describe('at 375px', () => {
   test.use({ viewport: { width: 375, height: 812 } })
 
   test('on the app address the name stays on one line and nothing scrolls sideways', async ({ session, page, request }) => {
-    await onDash(page, request, 'Phone Dash')
+    await onApp(page, request, 'Phone App')
     await session.step('one line, no sideways scroll', async () => {
       const name = page.getByTestId('top-bar-name')
       const box = await name.boundingBox()
       expect(box!.height).toBeLessThanOrEqual(56)
       expect(await noSidewaysScroll(page)).toBe(true)
     })
-    if (SHOTS) await page.screenshot({ path: `${SHOTS}/dash-375-light.png` })
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/app-375-light.png` })
     await session.step('Open Admin and the theme toggle are in the Account menu, above Sign-in methods', async () => {
       await expect(page.getByTestId('top-bar-right').getByTestId('open-admin')).toHaveCount(0)
       await page.getByTestId('session-user').click()
@@ -229,14 +235,14 @@ test.describe('at 375px', () => {
   })
 
   test("the bar's row is the same height on both addresses", async ({ session, page, request }) => {
-    const both = await onDash(page, request, 'Phone Frame')
+    const both = await onApp(page, request, 'Phone Frame')
     const height = async () => (await page.getByTestId('top-bar').boundingBox())!.height
-    const dash = await height()
+    const onAppHeight = await height()
     await signInAt(page, ADMIN, both)
     await expect(page).toHaveURL(new RegExp(`^${ADMIN}/featherbase/admin`), { timeout: 15_000 })
     await expect(page.getByTestId('session-user')).toBeVisible()
     await session.step('the same height', async () => {
-      expect(await height()).toBe(dash)
+      expect(await height()).toBe(onAppHeight)
     })
   })
 
@@ -314,31 +320,16 @@ for (const width of [1280, 375]) {
       await shot(page, 'item1-admin-address-admin')
     })
 
-    test('the Sales Target page on the Admin address offers no Open Admin', async ({ session, page, request }) => {
-      const both = await person(request, `Admin Report ${width}`, ['System Manager', VIEWER_ROLE])
-      await signInAt(page, ADMIN, both)
-      await expect(page).toHaveURL(new RegExp(`^${ADMIN}/featherbase/admin`), { timeout: 15_000 })
-      await page.goto(`${ADMIN}/featherbase/sales-target`)
-      await expect(page.getByTestId('top-bar-name')).toHaveText('Dash')
-      await expect(page.getByTestId('session-user')).toBeVisible()
-      await session.step('no Open Admin, in the bar or the Account menu', async () => {
-        expect(await openAdminShown(page, phone)).toBe(0)
-      })
-      await shot(page, 'item2-admin-address-sales-target')
-    })
-
     test("on the app's address Open Admin is offered, and the account page keeps the app's name", async ({ session, page, request }) => {
-      await onDash(page, request, `Dash Both ${width}`)
-      await session.step('Open Admin is offered on the report', async () => {
+      await onApp(page, request, `App Both ${width}`)
+      await session.step('Open Admin is offered on the account page', async () => {
         expect(await openAdminShown(page, phone)).toBe(1)
       })
-      await shot(page, 'item2-dash-address-sales-target')
-      await page.goto(`${DASH}/featherbase/account/sign-in-methods`)
-      await session.step('the account page is named Dash', async () => {
-        await expect(page.getByTestId('top-bar-name')).toHaveText('Dash')
-        await expect(page).toHaveTitle('Dash')
+      await session.step('the account page is named for the app', async () => {
+        await expect(page.getByTestId('top-bar-name')).toHaveText('Bar proof')
+        await expect(page).toHaveTitle('Bar proof')
       })
-      await shot(page, 'item3-dash-address-account')
+      await shot(page, 'item3-app-address-account')
     })
 
     test('on the Admin address the account page is Featherbase for someone who can use Admin', async ({ session, page, request }) => {
@@ -357,11 +348,11 @@ for (const width of [1280, 375]) {
     test("on the Admin address the account page names the app for someone who can open it but not Admin", async ({ session, page, request }) => {
       const viewer = await person(request, `Account Viewer ${width}`, [VIEWER_ROLE])
       await signInAt(page, ADMIN, viewer)
-      await expect(page).toHaveURL(`${DASH}/featherbase/sales-target`, { timeout: 15_000 })
+      await expect(page).toHaveURL(new RegExp(`^${ROOT}`), { timeout: 15_000 })
       await page.goto(`${ADMIN}/featherbase/account/sign-in-methods`)
-      await session.step('bar and tab say Dash', async () => {
-        await expect(page.getByTestId('top-bar-name')).toHaveText('Dash')
-        await expect(page).toHaveTitle('Dash')
+      await session.step('bar and tab name the app', async () => {
+        await expect(page.getByTestId('top-bar-name')).toHaveText('Bar proof')
+        await expect(page).toHaveTitle('Bar proof')
       })
       await shot(page, 'item3-admin-address-account-viewer')
     })

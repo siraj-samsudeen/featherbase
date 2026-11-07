@@ -1,4 +1,4 @@
-import { ACCOUNT_SIGN_IN_METHODS_PATH, ADMIN_PAGES, INTERIM_APPS, type CommandDestinations, type CommandPageDestination } from 'shared'
+import { ACCOUNT_SIGN_IN_METHODS_PATH, ADMIN_PAGES, type CommandDestinations, type CommandPageDestination } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
 import { getMeta } from './meta'
@@ -7,7 +7,6 @@ import { getVisibleHomePages } from './home-pages'
 import { appCatalog } from './runtime-packages'
 import { getList } from './query'
 import { scriptReportMeta } from './script-report'
-import { VIEWER_ROLE } from './sales-target'
 import { assertAppAvailable } from './app-lifecycle'
 
 // Only expected access/availability refusals omit a destination; genuine
@@ -75,7 +74,6 @@ export async function commandDestinations(user: string): Promise<CommandDestinat
     add(page.title, `/featherbase/admin/${page.slug}`, 'Page')
   }
   add('Sign-in methods', ACCOUNT_SIGN_IN_METHODS_PATH, 'Account')
-  if (roles.includes(VIEWER_ROLE)) add(INTERIM_APPS.dash.title, INTERIM_APPS.dash.root, 'Report')
   for (const page of await getVisibleHomePages(user))
     add(page.label || page.row_id, `/featherbase/admin/home/${encodeURIComponent(page.row_id)}`, 'Home Page')
   for (const app of await appCatalog(user)) {

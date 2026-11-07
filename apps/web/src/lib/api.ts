@@ -19,7 +19,7 @@ export interface SessionUser {
   email: string | null
   full_name: string | null
   // Where this account lands after sign-in on this address when it is not the
-  // Admin (#3755, #488: on Feather Dash's address, its report). Absent = /admin.
+  // Admin (#3755, #488: on an app's address, that app). Absent = /admin.
   landing?: string
 }
 

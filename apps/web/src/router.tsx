@@ -21,8 +21,6 @@ import { EmptyState, Notice, buttonClasses, fmtDate } from '@featherbase/shop-fl
 import { useCapabilities } from './lib/session'
 import { ApiError, api, getToken, landingPath, loginHref } from './lib/api'
 import { useQuery } from '@tanstack/react-query'
-import { crossesFramePolicy } from './lib/document-path'
-import { SalesTargetPage } from './pages/SalesTarget'
 import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
 import { useMeta, type TableMeta } from './lib/meta'
@@ -69,14 +67,8 @@ import { PaneSplit } from './components/RowPane'
 import { NavigationProvider, useAddressNavigation, useLocalNavigation } from './lib/navigation'
 import type { NavStep } from './lib/nav-path'
 
-// #642 (E4): a page with a frame policy of its own (the Sales Target report)
-// is entered and left by a full load, so each document carries the policy the
-// server set for the page it shows. Checked on every navigation.
 const rootRoute = createRootRoute({
   component: Outlet,
-  beforeLoad: ({ location }) => {
-    if (crossesFramePolicy(location.pathname)) throw redirect({ href: location.href, reloadDocument: true })
-  },
 })
 
 // #87: every search param below is a string to the app, but TanStack's default
@@ -228,18 +220,6 @@ function PortalDocRouteComponent() {
   const { name } = portalDocRoute.useParams()
   return <PortalRowPage key={`${table}/${name}`} table={table} name={name} />
 }
-
-// #3755: the personalised sales-target report — outside the Admin shell, one
-// page per signed-in employee, no selector. The server resolves the
-// assignment and mints the embed session; the page only frames it.
-const salesTargetRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/featherbase/sales-target',
-  beforeLoad: ({ location }) => {
-    if (!getToken()) throw redirect({ href: loginHref(location.href) })
-  },
-  component: SalesTargetPage,
-})
 
 // SET-002: public password-reset page (target of the emailed link).
 const resetPasswordRoute = createRoute({
@@ -1032,7 +1012,6 @@ export const routeTree = rootRoute.addChildren([
   oauthCallbackRoute,
   portalListRoute,
   portalDocRoute,
-  salesTargetRoute,
   accountRoute.addChildren([signInMethodsRoute, accessExplanationRoute]),
   printRoute,
   adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),

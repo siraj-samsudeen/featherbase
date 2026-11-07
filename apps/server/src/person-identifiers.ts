@@ -415,12 +415,6 @@ async function lockedRow(id: string, db: Db) {
   return row as unknown as IdentifierRow & { lower_raw: string }
 }
 
-// ----------------------------------------------- the employee-code system
-
-/** The StyleHR employee-code system: what sales-target scoping reads
- *  (`currentEmployeeCodes` in sales-target.ts, #408). */
-export const EMPLOYEE_CODE_SYSTEM = 'stylehr-employee-code'
-
 /** Whose identifier this is — for the routes' Person read / Data Scope check
  *  (the same one adding a value runs). Never echoes the value. */
 export async function identifierPerson(id: string): Promise<string> {

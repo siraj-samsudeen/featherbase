@@ -217,7 +217,7 @@ const CONSUMER_DOMAINS = new Set(GOOGLE_CONSUMER_DOMAINS)
  *  account ID (`sub`); the email is display data and an admission signal. */
 
 // Injectable for the sandboxed suite — Google itself is never contacted from a
-// test (same seam as `_setEmbedFetch` in sales-target.ts).
+// test.
 let googleFetch: typeof fetch | null = null
 export function _setGoogleFetch(f: typeof fetch | null) {
   googleFetch = f

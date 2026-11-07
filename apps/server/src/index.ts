@@ -32,13 +32,12 @@ import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, del
 import { hold, rosterFirstSignIn } from './roster-first-sign-in'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
 import { sendInvitation } from './invitation-email'
-import { ADMIN, addressRedirect, interimApp, linkAddress, matchAddress, requestHost } from './instance-addresses'
+import { ADMIN, addressRedirect, linkAddress, matchAddress, requestHost } from './instance-addresses'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { buildInfo } from './build-info'
 import { assertPermission, assertSystemManager, getRoles, includesColumn, permissionScope, permittedColumns, tableAccessFor } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
-import { EMBED_ORIGIN, VIEWER_ROLE, salesTargetRoutes } from './sales-target'
-import { landingAfterSignIn, openAdminFor } from './landing'
+import { landingAfterSignIn, openAdminFor, ownApp } from './landing'
 import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
 import { globalSearch } from './search'
@@ -86,11 +85,11 @@ import { rateLimit } from './rate-limit'
 import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
-import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled, isInstalled, installedAppNames } from './apps'
+import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled, installedAppNames } from './apps'
 import { packageTitle, appCatalog, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { discoverAppLibrary, appLibraryCatalog, prepareAndInstallApp } from './app-library'
 import { documentActivity } from './document-activity'
-import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage, rowHref } from 'shared'
+import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, rowHref } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
 import { composeRuntimeShell } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
@@ -143,13 +142,6 @@ app.use('*', async (c, next) => {
   c.res.headers.set('Content-Security-Policy', ["frame-src 'self'", ...(c.get('frameOrigins') ?? [])].join(' '))
 })
 app.use('*', secureHeaders())
-// #3755: until the report moves into its app (B9), its page frames
-// MotherDuck's embed sandbox: that page alone, not the instance, with or
-// without a trailing slash (Codex round 2 on #643).
-app.use('*', async (c, next) => {
-  if (ownFramePolicyPage(c.req.path)) c.set('frameOrigins', [EMBED_ORIGIN])
-  await next()
-})
 app.use(
   '/api/*',
   cors({
@@ -196,7 +188,7 @@ app.get('/api/brand', async (c) => {
   // #488: on an address that opens an app, the sign-in page and the document
   // title carry the app's name; elsewhere the instance's.
   const opened = matchAddress(config.instanceAddresses, requestHost(c.req.url))?.opens
-  const appTitle = opened && opened !== ADMIN ? (interimApp(opened, await isInstalled(opened))?.title ?? packageTitle(opened)) : undefined
+  const appTitle = opened && opened !== ADMIN ? packageTitle(opened) : undefined
   return c.json({
     app_name: appTitle ?? s.app_name,
     // #380: named only when it is a public file this instance serves; a
@@ -832,7 +824,7 @@ app.get('*', async (c, next) => {
   if (!entry || entry.opens === ADMIN) return next()
   // #671: by the installation every process shares, never this process's
   // serving state, so replicas agree and a disabled app keeps its root.
-  const target = addressRedirect(entry, c.req.path, await isInstalled(entry.opens))
+  const target = addressRedirect(entry, c.req.path)
   return target ? c.redirect(target, 302) : next()
 })
 
@@ -901,8 +893,6 @@ app.get('*', async (c, next) => {
 
 const who = (c: { get: (k: 'user') => SessionUser }) => c.get('user').row_id
 
-// #3755: personalised sales-target report (identity + embed-session minting).
-app.route('/api/sales_target', salesTargetRoutes)
 
 app.get('/api/whoami', async (c) => {
   const user = c.get('user')
@@ -924,13 +914,16 @@ app.get('/api/whoami', async (c) => {
   return c.json({
     ...user,
     roles,
-    capabilities: { manage, report: roles.includes(VIEWER_ROLE), admin: access.admin, own_grant: access.ownGrant, tables: access.readable, creatable: access.creatable, archived },
+    capabilities: { manage, admin: access.admin, own_grant: access.ownGrant, tables: access.readable, creatable: access.creatable, archived },
     // #671: the installed apps this person can open, so the shared top bar can
     // lead to and name them without asking an Admin endpoint.
     apps: (await appCatalog(user.row_id)).map(({ name, title }) => ({ name, title })),
     // Every installed app, open or not (disabled, pending): where the bar's
     // name leads follows the installation, as the address routing does.
     installed_apps: await installedAppNames(),
+    // The app this person belongs to without the Admin, which names their
+    // own pages (landing.ts ownApp); null when there is none.
+    own_app: access.admin ? null : await ownApp(user.row_id),
     theme: (row?.theme as string) || 'device',
     language: (row?.language as string) || 'en',
     // A preview deployment says so in the UI: anyone handed the link should
@@ -1318,7 +1311,7 @@ app.get('/api/people/waiting_for_access/count', async (c) => {
 })
 
 // #955: a page that found the person has no access to it (Featherbase's
-// no-access page, Dash's) says so here; opening it is the request.
+// no-access page, an app's own) says so here; opening it is the request.
 app.post('/api/access_request', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { app?: unknown }
   const answer = typeof body.app === 'string' ? await requestAccess(who(c), body.app) : null

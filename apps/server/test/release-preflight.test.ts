@@ -336,7 +336,7 @@ describe('release preflight: access configuration', () => {
   })
 
   test('(a) a grant to a non-open role passes', async () => {
-    await grant('Sales Target Viewer', 'Person', 'read')
+    await grant('Shelf Viewer', 'Person', 'read')
     expect(await preflightRelease({ environment: 'test' })).toContain(ACCESS_OK)
   })
 

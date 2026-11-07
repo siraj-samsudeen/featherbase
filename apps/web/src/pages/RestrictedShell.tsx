@@ -11,13 +11,10 @@ import { useAccessRequest } from '../lib/access-request'
 //
 //   admin        a System Manager, or anyone holding a Table grant -> the Admin
 //                outside the Tables of apps with pages of their own (#659)
-//   report-only  the Sales Target report and nothing else        -> the report
 //   no-access    no role of use yet                               -> a plain page
 //
 // #489: every one of them wears the shared top bar; signing out and the
 // person's sign-in methods live in its Account menu, nowhere else.
-
-export const REPORT_PATH = '/featherbase/sales-target'
 
 // person-rename: a person's id is opaque (`psn_…`) — never shown as a name.
 function personName(): string | null {

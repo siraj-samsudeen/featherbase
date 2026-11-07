@@ -10,7 +10,7 @@ import { sql } from 'server/src/db'
 import { applySeedPack } from 'server/src/seed-packs'
 import { addIdentifier } from 'server/src/person-identifiers'
 import { configureDelegated, linkDelegated } from 'server/test/identity-fixtures'
-import { VIEWER_ROLE } from 'server/src/sales-target'
+const VIEWER_ROLE = 'Team Leader'
 import { test, expect, renderApp } from './pg-test'
 import { TEST_SEED_PACK } from 'server/test/seed-pack'
 

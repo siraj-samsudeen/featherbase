@@ -514,30 +514,37 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
   })
 })
 
-describe('#3783: Google sign-in lands a report viewer on their report', () => {
-  test('a provisioned Sales Target Viewer redeems a session that names the report as landing; others get none', async ({ api }) => {
-    await setAllowedDomains('')
-    await saveDoc('Role', { row_id: 'Sales Target Viewer' }, 'Administrator')
-    // Provisioned ahead of time (the data-warehouse viewer sync), not created.
-    const dm = await makePerson({
-      email: 'dm.test@jeyarama.com', full_name: 'DM Test',
-      roles: [{ role: 'Sales Target Viewer' }],
-    })
-    const plainUser = await makePerson({ email: 'plain.user@jeyarama.com', full_name: 'Plain', roles: [] })
-    // person-identities: the viewer sync invites each Google address; the
-    // first sign-in claims the invite. A matching email alone opens nothing.
-    await inviteGoogleRaw(dm, 'dm.test@jeyarama.com')
-    await inviteGoogleRaw(plainUser, 'plain.user@jeyarama.com')
+describe('#3783: Google sign-in lands an app reader in their app', () => {
+  test('a provisioned reader redeems a session that names their app as landing; others get none', async ({ api, admin }) => {
+    const { discoverPackages } = await import('../src/runtime-packages')
+    const { resolve } = await import('node:path')
+    try {
+      expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/bar-proof')])).toEqual([])
+      await admin.post('/api/install_app', { name: 'barproof' })
+      await setAllowedDomains('')
+      // Provisioned ahead of time (a roster sync), not created.
+      const dm = await makePerson({
+        email: 'dm.test@jeyarama.com', full_name: 'DM Test',
+        roles: [{ role: 'Bar Reader' }],
+      })
+      const plainUser = await makePerson({ email: 'plain.user@jeyarama.com', full_name: 'Plain', roles: [] })
+      // person-identities: the sync invites each Google address; the
+      // first sign-in claims the invite. A matching email alone opens nothing.
+      await inviteGoogleRaw(dm, 'dm.test@jeyarama.com')
+      await inviteGoogleRaw(plainUser, 'plain.user@jeyarama.com')
 
-    const viewer = await mockSignIn(api, 'dm.test@jeyarama.com', 'DM Test')
-    expect(viewer.status).toBe(302)
-    const v = await (await redeem(api, handoffCode(viewer), sidCookie(viewer))).json() as { user: { row_id: string }; landing?: string }
-    expect(v.user.row_id).toBe(dm)
-    expect(v.landing).toBe('/featherbase/sales-target')
+      const viewer = await mockSignIn(api, 'dm.test@jeyarama.com', 'DM Test')
+      expect(viewer.status).toBe(302)
+      const v = await (await redeem(api, handoffCode(viewer), sidCookie(viewer))).json() as { user: { row_id: string }; landing?: string }
+      expect(v.user.row_id).toBe(dm)
+      expect(v.landing).toBe('/barproof/')
 
-    const plain = await mockSignIn(api, 'plain.user@jeyarama.com', 'Plain')
-    const p = await (await redeem(api, handoffCode(plain), sidCookie(plain))).json() as { landing?: string }
-    expect(p.landing).toBeUndefined()
+      const plain = await mockSignIn(api, 'plain.user@jeyarama.com', 'Plain')
+      const p = await (await redeem(api, handoffCode(plain), sidCookie(plain))).json() as { landing?: string }
+      expect(p.landing).toBeUndefined()
+    } finally {
+      await discoverPackages([])
+    }
   })
 })
 

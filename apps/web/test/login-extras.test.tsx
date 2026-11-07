@@ -10,16 +10,19 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, vi } from 'vitest'
 import { config } from 'server/src/config'
 import { parseInstanceAddresses } from 'server/src/instance-addresses'
-import { VIEWER_ROLE } from 'server/src/sales-target'
 import { setPasswordMethod } from 'server/test/identity-fixtures'
+import { discoverPackages } from 'server/src/runtime-packages'
+import { resolve } from 'node:path'
 import { test, expect, renderApp } from './pg-test'
 
 const anonymous = { user: null, token: null } as never
 type Router = { state: { location: { pathname: string } } }
 
-afterEach(() => {
+afterEach(async () => {
   config.instanceAddresses = null
   vi.restoreAllMocks()
+  // An app installed by a test stays loaded in this process after its rows roll back.
+  await discoverPackages([])
 })
 
 function navigationReports() {
@@ -57,12 +60,14 @@ test('someone who belongs on another address is handed off there when they sign 
   config.instanceAddresses = parseInstanceAddresses(
     JSON.stringify([
       { address: 'http://localhost', opens: 'admin', emails: true },
-      { address: 'http://dash.example.test', opens: 'dash' },
+      { address: 'http://bar.example.test', opens: 'barproof' },
     ]),
     'test',
   )
-  await admin.post('/api/save_row', { table: 'Role', row: { row_id: VIEWER_ROLE } })
-  const viewer = await createUser({ email: 'viewer.handoff@example.com', roles: [VIEWER_ROLE] })
+  // Their one role opens Bar proof and no Admin: its address is where they belong.
+  expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/bar-proof')])).toEqual([])
+  await admin.post('/api/install_app', { name: 'barproof' })
+  const viewer = await createUser({ email: 'viewer.handoff@example.com', roles: ['Bar Reader'] })
   await admin.post('/api/set_password', { user: viewer.user, password: 'handoff-pw-1' })
   const reports = navigationReports()
   const { router } = await renderApp('/featherbase/login', anonymous)

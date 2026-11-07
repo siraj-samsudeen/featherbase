@@ -17,9 +17,12 @@ import {
   remindAccessRequests, requestAccess,
 } from '../src/waiting-for-access'
 
-afterEach(() => {
+afterEach(async () => {
   _setAlertSender(null)
   vi.restoreAllMocks()
+  // An installed app stays loaded in this process after its rows roll back.
+  const { discoverPackages } = await import('../src/runtime-packages')
+  await discoverPackages([])
 })
 
 interface RequestRow {
@@ -52,10 +55,15 @@ async function count(client: TestClient): Promise<number> {
 const ask = (client: TestClient, app: unknown) =>
   client.fetch('/api/access_request', { method: 'POST', body: JSON.stringify({ app }) })
 
-const VIEWER = 'Sales Target Viewer'
-async function viewerRole() {
-  const [have] = await sql`select 1 from role where row_id = ${VIEWER}`
-  if (!have) await saveDoc('Role', { row_id: VIEWER }, 'Administrator')
+const READER = 'Bar Reader'
+const FIXTURES = [resolve('../..', 'test-apps/other'), resolve('../..', 'test-apps/fixtures/bar-proof')]
+
+/** test-apps/fixtures/bar-proof: an installed app titled "Bar proof", open to
+ *  its Bar Reader role alone. */
+async function installBar(admin: TestClient) {
+  const { discoverPackages } = await import('../src/runtime-packages')
+  await discoverPackages(FIXTURES)
+  await admin.post('/api/install_app', { name: 'barproof' })
 }
 
 async function giveRole(person: string, role: string) {
@@ -67,7 +75,7 @@ async function giveRole(person: string, role: string) {
  *  tasks", here open only to System Managers (its manifest opens it to All). */
 async function installOther(admin: TestClient) {
   const { discoverPackages } = await import('../src/runtime-packages')
-  await discoverPackages([resolve('../..', 'test-apps/other')])
+  await discoverPackages(FIXTURES)
   await admin.post('/api/install_app', { name: 'other' })
   await sql`delete from permission where ref_table = 'other.task' and role = 'All'`
 }
@@ -111,21 +119,15 @@ describe('opening something without access is the request', () => {
     expect(await count(admin)).toBe(1)
   })
 
-  test('opening Dash without its role is a request for Dash', async ({ admin, createUser }) => {
+  test('opening Bar proof without its role is a request for Bar proof', async ({ admin, createUser }) => {
+    await installBar(admin)
     const priya = await createUser({ email: 'priya.dash@example.com', roles: [] })
-    expect(await (await ask(priya, 'dash')).json()).toEqual({ state: 'waiting', title: 'Dash' })
-    expect((await list(admin)).rows).toMatchObject([{ person: priya.user, app: 'Dash' }])
+    expect(await (await ask(priya, 'barproof')).json()).toEqual({ state: 'waiting', title: 'Bar proof' })
+    expect((await list(admin)).rows).toMatchObject([{ person: priya.user, app: 'Bar proof' }])
   })
 
   test('something they can open is not a request', async ({ admin }) => {
     expect(await (await ask(admin, 'featherbase')).json()).toEqual({ state: 'open', title: 'Featherbase' })
-    expect((await list(admin)).total).toBe(0)
-  })
-
-  test('a report viewer can open Featherbase, so they never wait for it', async ({ admin, createUser }) => {
-    await viewerRole()
-    const viewer = await createUser({ email: 'viewer@example.com', roles: [VIEWER] })
-    expect(await (await ask(viewer, 'featherbase')).json()).toEqual({ state: 'open', title: 'Featherbase' })
     expect((await list(admin)).total).toBe(0)
   })
 
@@ -181,13 +183,13 @@ describe('opening something without access is the request', () => {
 
 describe('the waiting list', () => {
   test('a request goes once the person can open that app, and their other requests stay', async ({ admin, createUser }) => {
+    await installBar(admin)
     await installOther(admin)
-    await viewerRole()
-    const priya = await createUser({ email: 'priya.two@example.com', roles: [] })
-    await ask(priya, 'dash')
+        const priya = await createUser({ email: 'priya.two@example.com', roles: [] })
+    await ask(priya, 'barproof')
     await ask(priya, 'other')
     expect(await count(admin)).toBe(2)
-    await giveRole(priya.user!, VIEWER)
+    await giveRole(priya.user!, READER)
     expect(await count(admin)).toBe(1)
     expect((await list(admin)).rows).toMatchObject([{ app: 'Other tasks' }])
   })
@@ -204,15 +206,16 @@ describe('the waiting list', () => {
   })
 
   test('filters by App like any list, newest first', async ({ admin, createUser }) => {
+    await installBar(admin)
     const asha = await createUser({ email: 'asha@example.com', roles: [] })
     const bala = await createUser({ email: 'bala@example.com', roles: [] })
     await ask(asha, 'featherbase')
-    await ask(bala, 'dash')
+    await ask(bala, 'barproof')
     await ask(bala, 'featherbase')
     await sql`update access_request set created_at = now() - interval '2 days' where person = ${asha.user}`
     expect((await list(admin)).rows.map((r) => r.person)).toEqual([bala.user, bala.user, asha.user])
     expect((await list(admin, [['app', '=', 'Featherbase']])).rows.map((r) => r.person)).toEqual([bala.user, asha.user])
-    expect((await list(admin, [['app', '=', 'Dash']])).rows.map((r) => r.person)).toEqual([bala.user])
+    expect((await list(admin, [['app', '=', 'Bar proof']])).rows.map((r) => r.person)).toEqual([bala.user])
   })
 
   test('the list and the count are System Manager only', async ({ admin, createUser }) => {
@@ -231,11 +234,12 @@ describe('the waiting list', () => {
 })
 
 describe('the email alert to System Managers', () => {
-  test('one email to each enabled System Manager with an address per person and app', async ({ createUser }) => {
+  test('one email to each enabled System Manager with an address per person and app', async ({ admin, createUser }) => {
+    await installBar(admin)
     await managers()
     const priya = await createUser({ email: `priya@${DOMAIN}`, fullName: 'Priya Raman', roles: [] })
-    await ask(priya, 'dash')
-    await ask(priya, 'dash')
+    await ask(priya, 'barproof')
+    await ask(priya, 'barproof')
     await ask(priya, 'featherbase')
     const mails = await mailsTo('manager.one@example.com')
     expect(mails).toHaveLength(2)
@@ -243,7 +247,7 @@ describe('the email alert to System Managers', () => {
     const bodies = mails.map((m) => String(m.body)).join('\n')
     expect(bodies).toContain('Priya Raman')
     expect(bodies).toContain(`Email domain: ${DOMAIN}`)
-    expect(bodies).toContain('App: Dash')
+    expect(bodies).toContain('App: Bar proof')
     expect(bodies).toContain('App: Featherbase')
     expect(bodies).toContain('/featherbase/admin/waiting-for-access')
     expect(bodies).not.toContain('priya@')
@@ -350,10 +354,11 @@ describe('the reminder a day later', () => {
   const ageRequests = (interval: string) => sql`update access_request set created_at = now() - ${interval}::interval`
 
   test('lists every request waiting over a day, once, in one email to each System Manager', async ({ admin }) => {
+    await installBar(admin)
     await managers()
     const old = await makePerson({ full_name: 'Waited Long', email: 'waited@example.com' })
     await requestAccess(old, 'featherbase')
-    await requestAccess(old, 'dash')
+    await requestAccess(old, 'barproof')
     await requestAccess(await makePerson({ full_name: null }), 'featherbase')
     await ageRequests('25 hours')
     await requestAccess(await makePerson({ full_name: 'Just Asked' }), 'featherbase')
@@ -363,7 +368,7 @@ describe('the reminder a day later', () => {
     expect(mails).toHaveLength(1)
     expect(mails[0].body).toContain('These 3 requests have waited more than a day')
     expect(mails[0].body).toContain('- Waited Long, Featherbase')
-    expect(mails[0].body).toContain('- Waited Long, Dash')
+    expect(mails[0].body).toContain('- Waited Long, Bar proof')
     expect(mails[0].body).toContain('- not given, Featherbase')
     expect(mails[0].body).not.toContain('Just Asked')
     expect(mails[0].body).toContain('/featherbase/admin/waiting-for-access')
@@ -375,19 +380,19 @@ describe('the reminder a day later', () => {
     expect(await count(admin)).toBe(4)
   })
 
-  test('one request reads as one, and a request that got access is not reminded about', async ({ createUser }) => {
+  test('one request reads as one, and a request that got access is not reminded about', async ({ admin, createUser }) => {
+    await installBar(admin)
     await managers()
-    await viewerRole()
-    const priya = await createUser({ email: 'priya.late@example.com', fullName: 'Priya Late', roles: [] })
+        const priya = await createUser({ email: 'priya.late@example.com', fullName: 'Priya Late', roles: [] })
     const sam = await createUser({ email: 'sam.late@example.com', fullName: 'Sam Late', roles: [] })
-    await ask(priya, 'dash')
-    await ask(sam, 'dash')
+    await ask(priya, 'barproof')
+    await ask(sam, 'barproof')
     await ageRequests('2 days')
-    await giveRole(sam.user!, VIEWER)
+    await giveRole(sam.user!, READER)
     expect(await remindAccessRequests()).toBe(1)
     const [mail] = await mailsTo('manager.one@example.com', REMINDER_SUBJECT)
     expect(mail.body).toContain('This request has waited more than a day')
-    expect(mail.body).toContain('- Priya Late, Dash')
+    expect(mail.body).toContain('- Priya Late, Bar proof')
     expect(mail.body).not.toContain('Sam Late')
   })
 

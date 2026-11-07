@@ -6,6 +6,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, vi } from 'vitest'
+import { ACCOUNT_SIGN_IN_METHODS_PATH } from 'shared'
 import { SIGN_OUT_INCOMPLETE, getToken } from '../src/lib/api'
 import { sql } from 'server/src/db'
 import { config } from 'server/src/config'
@@ -38,7 +39,7 @@ test("Open Admin on an app's address hands the person over to the Admin's addres
     return res
   })
   vi.spyOn(console, 'error').mockImplementation(() => {}) // jsdom cannot follow a cross-address navigation
-  await renderApp('/featherbase/sales-target', admin)
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
   await userEvent.click(await within(await screen.findByTestId('top-bar')).findByTestId('open-admin', {}, { timeout: 8000 }))
   await waitFor(() => expect(answers).toHaveLength(1))
   expect(answers[0].handoff).toMatch(/^http:\/\/elsewhere\.example\.test\//)
