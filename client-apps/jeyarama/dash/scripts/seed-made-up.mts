@@ -27,7 +27,6 @@ const server = (path: string) => import(pathToFileURL(resolve(checkout, 'apps/se
 const { sql } = await server('db.ts')
 const { setUserPassword } = await server('auth.ts')
 const { datasetsDeclaration } = await server('app-datasets.ts')
-const { markScopeTables } = await import(pathToFileURL(resolve(appDir, 'platform-test/mark-scope-tables.mjs')).href)
 const { BASE_TABLES, LINKED_TABLES, REPORT_ROWS } = await import(pathToFileURL(resolve(appDir, 'platform-test/base-tables.mjs')).href)
 const org = JSON.parse(await readFile(resolve(appDir, 'fixtures/made-up-org-chart.json'), 'utf8'))
 
@@ -62,7 +61,6 @@ for (const table of BASE_TABLES as { name: string }[]) {
   const exists = await call(`/api/table/${encodeURIComponent(table.name)}:meta`).then(() => true, () => false)
   if (!exists) await post('/api/table_def', table)
 }
-await markScopeTables((path: string, init?: RequestInit) => call(path, init))
 const linked = await call<{ data: { updated_at: string }[] }>(`/api/table/App%20Setting?filters=${encodeURIComponent(JSON.stringify([['row_id', '=', 'dash.linked_tables']]))}&fields=${encodeURIComponent('["updated_at"]')}`)
 if (!linked.data.length) await save('App Setting', { row_id: 'dash.linked_tables', value: JSON.stringify(LINKED_TABLES) })
 

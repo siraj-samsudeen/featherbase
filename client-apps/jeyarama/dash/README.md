@@ -38,7 +38,7 @@ Dive can't load; any other says "This report couldn't open" with Try again.
 | `src/my-sections.ts`, `src/sections-page.tsx` | Your sections and Waiting for your approval (#975): the rules and the two pages. They read the instance's base Tables, declared under `baseTables` in the manifest and listed in the `linked_tables` setting, and propose through the platform's Change Proposal. The seam for posting to StyleHR is marked in `decide` and not built |
 | `src/report.ts` | the sales quick view's rules: a reader's scope, the month-to-date rows and totals, the store picker's labels |
 | `src/page.ts`, `src/app.tsx`, `src/main.tsx`, `index.html` | the report page (the Dive, the quick view, the empty states; `page.ts` holds its rules and the async guard), built by Vite to `dist/client` |
-| `platform-test/` | tests that run inside this repository's server test harness (`npm run test:platform`), with `mark-scope-tables.mjs`, the instance setup step they rely on |
+| `platform-test/` | tests that run inside this repository's server test harness (`npm run test:platform`), the instance setup step they rely on |
 | `scripts/platform-test.sh` | the platform test runner |
 | `scripts/platform-loads-app.mts` | runs the platform's own app loader over this folder |
 | `scripts/seed-made-up.mts` | local development only: made-up core Tables, three reports and a cached copy, to see every state of the page |
@@ -75,7 +75,7 @@ npm run test:platform              # or: npm run test:platform -- provider.test.
 ```
 
 They prove the provider through the platform's own `resolvePersonScope`, one
-reader per job, and that an unmarked Table fails closed; the report reads and the
+reader per job, and that role grants decide who edits the core Tables; the report reads and the
 Dive's filters under real places; Your sections' rules; and the refresh guard on `sales_to_date` (against a made-up warehouse in an
 in-memory DuckDB, `platform-test/warehouse.ts`). CI runs them when a PR
 touches `client-apps/` or the platform.
@@ -143,8 +143,7 @@ at the repository root.
 - **`baseTables.read`**: the core Tables Dash reads by the columns named there. An instance lists all
   eight in the `dash.linked_tables` setting. `baseTables.propose` is what Your sections may propose.
 - **The scope provider, `org_chart`.** It reads the six Tables in `scopeProvider.tables`, each of
-  which the instance must mark `decides_scope` (`../instances/dash/instance-setup/mark-scope-tables.mjs`):
-  an unmarked one fails the whole scope closed. Person → current Employee → job rows in force →
+  which it reads unmarked (`unmarkedTables`), so role grants decide who edits them. Person → current Employee → job rows in force →
   places, by #967's table:
 
   | Job | Reaches |

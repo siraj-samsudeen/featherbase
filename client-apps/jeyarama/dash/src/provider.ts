@@ -1,6 +1,6 @@
 // Dash's scope provider: the places a person covers, from the core Tables. The platform calls it
-// fresh on every person_scope request and reads only the Tables declared here, each marked
-// decides_scope on the instance. An empty answer is an empty scope, which the platform reads as
+// fresh on every person_scope request and reads only the Tables declared here, which it names
+// in `unmarkedTables` so role grants decide who edits them (#967). An empty answer is an empty scope, which the platform reads as
 // no access. Who sees what is #967's table; `reachOf` is the one place it is written.
 import { EMPLOYEE_STATUS, checked, day, exact, holdsOn, text } from './values.ts'
 
@@ -95,6 +95,7 @@ class Places {
   }
 }
 
+const basisOf = (job: Row) => `${checked(job.acting) ? 'acting_' : ''}${BASIS[exact(job.job)]}`
 const reasonOf = (job: Row): Reason => ({ text: `${checked(job.acting) ? 'Acting ' : ''}${exact(job.job)} job assignment`, since: day(job.starts_on),
   ...(day(job.ends_on) ? { until: day(job.ends_on) } : {}) })
 
@@ -122,7 +123,7 @@ export async function reachOf(documents: Documents, person: string, on: string):
     const whole = (sitesCovered: Row[]) => {
       for (const covered of sitesCovered) {
         const plant = plantOf.get(id(covered))
-        if (plant) places.add(plant, plant, null, BASIS[name], reason)
+        if (plant) places.add(plant, plant, null, basisOf(job), reason)
       }
     }
     if (name === 'Staff' || name === 'Team Leader') {
@@ -147,7 +148,6 @@ export async function reachOf(documents: Documents, person: string, on: string):
   }
 
   for (const { job, sections } of sectionJobs) {
-    const name = exact(job.job)
     const reason = reasonOf(job)
     let reached = false
     for (const section of sections) {
@@ -157,7 +157,7 @@ export async function reachOf(documents: Documents, person: string, on: string):
       const codes = (await all(documents, T.placement, [['section', '=', id(section)]]))
         .filter(row => holdsOn(row, on) && exact(row.store) === exact(section.site)).map(row => exact(row.subcategory))
       if (!codes.length) continue
-      places.add(sectionLabel(plant, text(section.name)), plant, codes, BASIS[name], reason)
+      places.add(sectionLabel(plant, text(section.name)), plant, codes, basisOf(job), reason)
       reached = true
     }
     if (!reached) problems.push('nothing_placed')

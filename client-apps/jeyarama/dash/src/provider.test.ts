@@ -116,7 +116,7 @@ describe('who sees what', () => {
 
   it('a place says which job gives it, and an acting one says so', async () => {
     const [place] = (await reach({ job: 'Store Manager', site: 'AAA', acting: true })).places
-    expect(place.basis).toBe('store_manager')
+    expect(place.basis).toBe('acting_store_manager')
     expect(place.reasons).toEqual([{ text: 'Acting Store Manager job assignment', since: '2026-01-01' }])
   })
 })

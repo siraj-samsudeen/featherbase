@@ -414,6 +414,14 @@
       "Plant",
       "Section",
       "Section Subcategory"
+    ],
+    "unmarkedTables": [
+      "Employee",
+      "Job Assignment",
+      "Site",
+      "Plant",
+      "Section",
+      "Section Subcategory"
     ]
   },
   "permissions": [

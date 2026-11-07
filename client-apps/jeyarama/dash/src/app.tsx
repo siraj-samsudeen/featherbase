@@ -1,7 +1,7 @@
 // Feather Dash's report page (rendered by main.tsx).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { accessFacts, read } from './api'
-import { reachMessage, MEASURE_LINE, TOTALS_NOTE, isMonthChoice, monthChooser, monthWords, notArrivedLine, type MonthChoice, noAccessHelp, type NoAccessHelp, headingParts, periodLine, sectionHeading, whyLine, storeChooser, totalCells, visibleState, blankNote, dataLine, firstStore, inr, pageView, percent, quickBody, reportLoader, signedInr, subcategoryLabel, subtotalLabel, type LoadState } from './page'
+import { REPORT_TIMEOUT_MS, reachMessage, MEASURE_LINE, TOTALS_NOTE, isMonthChoice, monthChooser, monthWords, notArrivedLine, type MonthChoice, noAccessHelp, type NoAccessHelp, headingParts, periodLine, sectionHeading, whyLine, storeChooser, totalCells, visibleState, blankNote, dataLine, firstStore, inr, pageView, percent, quickBody, reportLoader, signedInr, subcategoryLabel, subtotalLabel, type LoadState } from './page'
 import type { Heading, Report, ReportRow, Totals } from './report'
 import { DashSidebar, SECTIONS_ADDRESS, readReports, type ReportLink } from './sections-page'
 
@@ -50,7 +50,12 @@ const reportInAddress = () => new URLSearchParams(window.location.search).get('r
 export function Dash() {
   // The reader's reports, for whether this one takes a store: undefined until answered.
   const [reports, setReports] = useState<ReportLink[] | undefined>(undefined)
-  useEffect(() => { readReports().then(setReports, () => setReports([])) }, [])
+  useEffect(() => {
+    // A slow read never holds the page: past the deadline it opens, and the server judges the report.
+    const timer = setTimeout(() => setReports(answer => answer ?? []), REPORT_TIMEOUT_MS)
+    readReports().then(list => setReports(list), () => setReports([])).finally(() => clearTimeout(timer))
+    return () => clearTimeout(timer)
+  }, [])
   const named = reportInAddress()
   const current = reports?.find(report => report.key === named) ?? (named ? undefined : reports?.[0])
   // undefined until the first store is known: the reads wait for it (one call per read per load).

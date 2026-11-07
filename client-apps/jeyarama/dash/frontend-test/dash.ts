@@ -9,15 +9,12 @@ import { datasetsDeclaration } from '../../../../apps/server/src/app-datasets'
 import { sql } from '../../../../apps/server/src/db'
 // @ts-expect-error a plain .mjs module
 import { BASE_TABLES, LINKED_TABLES, REPORT_ROWS } from '../platform-test/base-tables.mjs'
-// @ts-expect-error a plain .mjs module
-import { markScopeTables } from '../platform-test/mark-scope-tables.mjs'
 
 export async function setupDash(admin: TestClient, createUser: CreateUserFn) {
   expect(await discoverPackages([new URL('..', import.meta.url).pathname])).toEqual([])
   await admin.post('/api/install_app', { name: 'dash' })
   for (const table of BASE_TABLES) await admin.post('/api/table_def', table)
   await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'dash.linked_tables', value: JSON.stringify(LINKED_TABLES) } })
-  await markScopeTables((path: string, init?: RequestInit) => init?.method === 'PUT' ? admin.fetch(path, init).then(r => r.json()) : admin.get(path))
   const manifest = JSON.parse(readFileSync(new URL('../featherbase.json', import.meta.url), 'utf8'))
   const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
   const headers = { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': `dash@${version}` }

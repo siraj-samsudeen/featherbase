@@ -9,9 +9,8 @@ import { describe, expect } from 'vitest'
 import { test as pgTest } from '../pg-test'
 import { availableRuntimeVersions } from '../../src/runtime-packages'
 import { NoPersonScope, resolvePersonScope } from '../../src/person-scope'
-import { APP_DIR, VERSION, createCoreTables, installApp, markTables, pinned, saveRow } from './helpers'
+import { APP_DIR, VERSION, createCoreTables, installApp, pinned, saveRow } from './helpers'
 // @ts-expect-error a plain .mjs module, copied in beside this file by the runner
-import { SCOPE_TABLES } from './mark-scope-tables.mjs'
 
 const test = pgTest.extend<{ admin: TestClient }>({ admin: async ({ admin }, use) => use(pinned(admin)) })
 
@@ -19,7 +18,7 @@ async function binding() {
   const manifest = JSON.parse(await readFile(resolve(APP_DIR, 'featherbase.json'), 'utf8'))
   const digest = availableRuntimeVersions().find(p => p.name === 'dash')!.digest
   const module = await import(`${pathToFileURL(resolve(APP_DIR, 'dist/server.mjs')).href}?artifact=${digest}`)
-  return { app: 'dash', title: manifest.title, version: VERSION, tables: manifest.scopeProvider.tables,
+  return { app: 'dash', title: manifest.title, version: VERSION, tables: manifest.scopeProvider.tables, unmarkedTables: manifest.scopeProvider.unmarkedTables,
     identifiers: manifest.scopeProvider.identifiers ?? [], provide: module.scopeProviders.org_chart }
 }
 
@@ -27,10 +26,10 @@ const SARI = ['010101001', '010101002']
 const LEHENGA = ['010101003']
 const BELTS = ['010404001']
 
-/** The app installed, the core Tables created and (unless told which) marked, and a made-up org chart. */
-async function setup(admin: TestClient, createUser: (o: { email: string }) => Promise<TestClient>, marked: readonly string[] = SCOPE_TABLES) {
+/** The app installed, the core Tables created, and a made-up org chart. */
+async function setup(admin: TestClient, createUser: (o: { email: string }) => Promise<TestClient>) {
   await installApp(admin)
-  await createCoreTables(admin, marked)
+  await createCoreTables(admin)
   const save = (table: string, row: Record<string, unknown>) => saveRow(admin, table, row)
   for (const [code, name] of [['NORTH', 'North'], ['SOUTH', 'South']]) await save('Cluster', { code, name })
   for (const [code, name, cluster] of [['LKS', 'Lakeside', 'NORTH'], ['HIL', 'Hillview', 'NORTH'], ['RIV', 'Riverside', 'SOUTH']])
@@ -166,22 +165,32 @@ describe('what never widens a scope', () => {
   })
 })
 
-describe('the six core Tables, each marked decides_scope', () => {
-  for (const table of SCOPE_TABLES as string[])
-    test(`a reader's scope fails closed, never open, while ${table} is unmarked`, async ({ admin, createUser }) => {
-      const { reader } = await setup(admin, createUser, (SCOPE_TABLES as string[]).filter(other => other !== table))
-      const person = await reader([{ job: 'Team Leader', section: 'LKS-S1' }])
-      await expect(resolvePersonScope(person, await binding())).rejects.toMatchObject({ reason: 'provider' })
-    })
+describe('the six core Tables stay ordinary Tables', () => {
+  const SCOPE_TABLES = ['Employee', 'Job Assignment', 'Site', 'Plant', 'Section', 'Section Subcategory']
 
-  test('the instance setup marks all six, and a second run leaves them alone', async ({ admin, createUser }) => {
-    await setup(admin, createUser, [])
-    expect((await markTables(admin)).map(r => r.outcome)).toEqual(Array(6).fill('marked'))
-    expect((await markTables(admin)).map(r => r.outcome)).toEqual(Array(6).fill('already marked'))
+  test('the provider reads them with none of them marked', async ({ admin, createUser }) => {
+    const { reader } = await setup(admin, createUser)
+    const person = await reader([{ job: 'Team Leader', section: 'LKS-S1' }])
+    expect(await resolvePersonScope(person, await binding())).toHaveLength(1)
+    for (const table of SCOPE_TABLES) expect((await admin.get<{ decides_scope?: boolean }>(`/api/table/${encodeURIComponent(table)}:meta`)).decides_scope ?? false).toBe(false)
   })
 
-  test('the Tables it marks are the ones the manifest declares', async ({ admin, createUser }) => {
+  test('the manifest names all six as read unmarked', async ({ admin, createUser }) => {
     await setup(admin, createUser)
-    expect((await binding()).tables).toEqual(SCOPE_TABLES)
+    const bound = await binding()
+    expect(bound.tables).toEqual(SCOPE_TABLES)
+    expect(bound.unmarkedTables).toEqual(SCOPE_TABLES)
+  })
+
+  test('role grants decide who edits them: a granted editor saves, anyone else is refused', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Section Corrector' } })
+    for (const operation of ['read', 'update'])
+      await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Section', role: 'Section Corrector', operation, scope_mode: 'all' } })
+    const editor = await createUser({ email: 'corrector@example.test', roles: ['Section Corrector'] })
+    const other = await createUser({ email: 'no-grant@example.test' })
+    const edit = (client: typeof admin) => client.fetch('/api/save_row', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ table: 'Section', row: { row_id: 'LKS-S1', name: 'Corrected name' } }) })
+    expect((await edit(other)).status).toBe(403)
+    expect((await edit(editor)).status).toBe(200)
   })
 })

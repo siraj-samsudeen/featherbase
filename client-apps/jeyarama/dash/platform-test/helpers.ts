@@ -7,7 +7,6 @@ import { expect } from 'vitest'
 import { discoverPackages } from '../../src/runtime-packages'
 import { BASE_TABLES, LINKED_TABLES, REPORT_ROWS } from './base-tables.mjs'
 // @ts-expect-error a plain .mjs module, copied in beside this file by the runner
-import { SCOPE_TABLES, markScopeTables } from './mark-scope-tables.mjs'
 
 export const APP_DIR = process.env.DASH_DIR!
 /** The version under test: the app folder's own package.json. */
@@ -31,13 +30,10 @@ export const saveRow = (client: TestClient, table: string, row: Record<string, u
 const asAdmin = (admin: TestClient) => (path: string, init?: RequestInit) =>
   init?.method === 'PUT' ? admin.fetch(path, init).then(r => r.json()) : admin.get(path)
 
-/** The core Tables created, listed in `dash.linked_tables`, and (unless told which) all six the provider reads marked. */
-export async function createCoreTables(admin: TestClient, marked: readonly string[] = SCOPE_TABLES) {
+/** The core Tables created and listed in `dash.linked_tables`. */
+export async function createCoreTables(admin: TestClient) {
   for (const table of BASE_TABLES) await admin.post('/api/table_def', table)
   await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'dash.linked_tables', value: JSON.stringify(LINKED_TABLES) } })
-  await markTables(admin, marked)
 }
-export const markTables = (admin: TestClient, tables: readonly string[] = SCOPE_TABLES): Promise<{ table: string; outcome: string }[]> =>
-  markScopeTables(asAdmin(admin), [...tables])
 
 export { REPORT_ROWS }

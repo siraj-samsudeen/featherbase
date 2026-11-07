@@ -60,5 +60,5 @@ Table's columns are named in the method's `settings.roster`.
 
 ## Scope
 
-`instance-setup/mark-scope-tables.mjs` marks the six core Tables the scope provider reads as
-`decides_scope`; it runs once, and its header says how.
+Dash's scope provider reads six core Tables without marking them `decides_scope` (`unmarkedTables` in
+its manifest), so role grants decide who edits them. Keep the grants on `Job Assignment` tight: they change who sees what.

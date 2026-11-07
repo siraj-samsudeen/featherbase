@@ -364,6 +364,10 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     if (!manifest.server) throw new Error('A scope provider requires a server module')
     // An owned Table the provider reads must carry the mark; another
     // Table's mark is checked on every read.
+    const notDeclared = provider.unmarkedTables?.find(table => !provider.tables.includes(table))
+    if (notDeclared) throw new Error(`A scope provider's unmarked Table ${notDeclared} is not one of the Tables it reads`)
+    const ownUnmarked = provider.unmarkedTables?.find(table => manifest.tables.some(t => t.name === table))
+    if (ownUnmarked) throw new Error(`A scope provider's own Table ${ownUnmarked} must be marked decides_scope`)
     for (const table of provider.tables) {
       const owned = manifest.tables.find(t => t.name === table)
       if (owned && !owned.decides_scope) throw new Error('A scope provider reads only Tables marked decides_scope')
@@ -448,7 +452,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     runtime_manifest: { ...manifest, packageName: pkg.name, packageVersion: pkg.version } }
   return { name: manifest.name, title: manifest.title,
     entryTable: manifest.entryTable, clientRoot, root, version: pkg.version, digest, manifest, app,
-    scopeProvider: provider ? { app: manifest.name, title: manifest.title, version: pkg.version, tables: provider.tables, identifiers: provider.identifiers ?? [], provide: providers.get(provider.name)! } : undefined,
+    scopeProvider: provider ? { app: manifest.name, title: manifest.title, version: pkg.version, tables: provider.tables, unmarkedTables: provider.unmarkedTables ?? [], identifiers: provider.identifiers ?? [], provide: providers.get(provider.name)! } : undefined,
     // V1 stays recognizable as an exact upgrade predecessor, never gets a default policy.
     actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations), setup, baseTables: manifest.baseTables } : undefined,
     reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations), setup, datasets: manifest.datasets, baseTables: manifest.baseTables } : undefined }
