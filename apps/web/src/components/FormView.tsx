@@ -445,6 +445,8 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       await queryClient.invalidateQueries({ queryKey: ['activity', table, name] })
+      // #627: a direct change can send the row's open proposals to a fresh review.
+      if (!isNew) await queryClient.invalidateQueries({ queryKey: ['row-proposals', table, name] })
       // A save can settle a health check, and the banners shouldn't lag behind it (#1003).
       void queryClient.invalidateQueries({ queryKey: INSTANCE_HEALTH_QUERY_KEY })
       if (editingOverride) {
