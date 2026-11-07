@@ -1,23 +1,17 @@
-// Feather Dash's scope provider (featherbase B2, #559): the places a person
-// covers, in the platform's scope shape. The platform calls it fresh on every
-// person_scope request and reads only the Tables declared here, each marked
-// decides_scope. Per store, featherbase#630 D10:
-//  - a store with a store_rollout row live on or before today uses the new
-//    org chart (coverage.ts), its places `confirmed`;
-//  - every other store uses today's derivation from the old Tables
-//    (legacy-derivation.ts), its places `assumed`.
-// An empty answer is an empty scope, which the platform reads as no access.
-import { coverageOf, ownedOn, type CoveredUnit, type OrgChart } from './coverage.ts'
-import { LEGACY_TABLES, legacyCoverage, type LegacyStore, type LegacyTables } from './legacy-derivation.ts'
-import { day, exact, text } from './values.ts'
+// Dash's scope provider: the places a person covers, from the core Tables. The platform calls it
+// fresh on every person_scope request and reads only the Tables declared here, each marked
+// decides_scope on the instance. An empty answer is an empty scope, which the platform reads as
+// no access. Who sees what is #967's table; `reachOf` is the one place it is written.
+import { checked, day, exact, holdsOn, text } from './values.ts'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
-interface Documents {
-  list(table: string, args?: { filters?: Filter[]; fields?: string[]; order_by?: string; limit_start?: number; limit_page_length?: number }): Promise<Row[]>
+/** The platform's document reads, and an app's base Table reads, as far as this file uses them. */
+export interface Documents {
+  list(table: string, args: { fields: string[]; filters?: Filter[]; order_by?: string; limit_start?: number; limit_page_length?: number }): Promise<Row[]>
 }
 interface ProviderContext {
-  readonly person: { readonly id: string; readonly email: string | null; readonly identifiers?: Readonly<Record<string, readonly Readonly<{ value: string; shared: boolean }>[]>> }
+  readonly person: { readonly id: string; readonly email: string | null }
   readonly documents: Documents
 }
 export interface Reason { text: string; since?: string; until?: string }
@@ -26,71 +20,22 @@ export interface Place {
   label: string
   filters: Record<string, string[]>
   basis?: string
-  /** featherbase#628: why the person has the place, and from and to when. */
+  /** Why the person has the place, and from and to when. */
   reasons?: Reason[]
-  confirmation?: Record<string, Record<string, 'confirmed' | 'assumed'>>
 }
 
-const APP = {
-  rollout: 'dash.store_rollout',
-  floors: 'dash.store_floor',
-  departments: 'dash.department',
-  sections: 'dash.section',
-  placements: 'dash.section_subcategory',
-  jobs: 'dash.job_assignment',
-} as const
+const T = { employee: 'Employee', job: 'Job Assignment', site: 'Site', plant: 'Plant', section: 'Section', placement: 'Section Subcategory' } as const
 
 /** Every Table the provider reads: featherbase.json's scopeProvider.tables. */
-export const PROVIDER_TABLES: string[] = [...Object.values(APP), ...Object.values(LEGACY_TABLES)]
+export const PROVIDER_TABLES: string[] = Object.values(T)
 
-/** A person's current employee codes, and whether one is current on someone else too. */
-export interface EmployeeCodes { codes: string[]; ambiguous: boolean }
-
-/** The identifier system today's derivation reads codes from; the manifest's scopeProvider.identifiers declares it. */
-export const EMPLOYEE_CODE_SYSTEM = 'stylehr-employee-code'
-
-/**
- * Where the old rules get a person's employee codes: the platform hands the
- * provider the person's values valid today in each identifier system it
- * declared (featherbase #660), each saying whether another person holds the
- * same value today too (#662). `null` means the old rules give the person
- * nothing.
- *
- * As the original rule (#408 D10): a person with any shared code gets nothing
- * from the old rules, explicit Sales Target Assignment rows included; a person
- * whose codes are all unshared gets what those codes derive plus their explicit
- * rows; a person with no code gets their explicit rows.
- */
-async function fromIdentifiers(person: ProviderContext['person']): Promise<EmployeeCodes | null> {
-  const held = person.identifiers?.[EMPLOYEE_CODE_SYSTEM]
-  if (!held) return null
-  return { codes: held.map(code => code.value), ambiguous: held.some(code => code.shared) }
-}
-
-/** Today in India Standard Time. */
-function istToday(): string {
-  return new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)
-}
-
-/**
- * The columns read from each Table. A list answers only the fields it names
- * (row_id alone when it names none), and naming a column a Table lacks fails
- * the read, and with it the whole scope: the old Tables must hold every column
- * below, Section Ownership's dm_employee_code included.
- */
 const FIELDS: Record<string, string[]> = {
-  [APP.rollout]: ['store', 'live_since'],
-  [APP.jobs]: ['row_id', 'person', 'job', 'store', 'floor', 'department', 'section', 'acting', 'starts_on', 'ends_on'],
-  [APP.floors]: ['row_id', 'store', 'floor_name'],
-  [APP.departments]: ['row_id', 'store', 'department_key', 'name'],
-  [APP.sections]: ['row_id', 'store', 'section_name', 'floor', 'department'],
-  [APP.placements]: ['row_id', 'store', 'subcategory', 'section', 'starts_on', 'ends_on'],
-  [LEGACY_TABLES.assignments]: ['employee', 'plant_code', 'store_label', 'material_group'],
-  [LEGACY_TABLES.employeeSections]: ['store_code', 'employee_code', 'subcategory'],
-  [LEGACY_TABLES.ownership]: ['store_code', 'section_name', 'tl_employee_code', 'dm_employee_code', 'effective_from'],
-  [LEGACY_TABLES.storeManagers]: ['store_code', 'employee_code'],
-  [LEGACY_TABLES.merchandise]: ['store_code', 'material_group', 'mch_subcategory', 'section_name'],
-  [LEGACY_TABLES.aliases]: ['store_code', 'roster_section_name', 'merch_section_name'],
+  [T.employee]: ['person', 'employee_status'],
+  [T.job]: ['employee', 'job', 'site', 'floor', 'section', 'acting', 'starts_on', 'ends_on'],
+  [T.site]: ['name', 'is_store', 'cluster'],
+  [T.plant]: ['site', 'plant_type'],
+  [T.section]: ['name', 'site', 'floor'],
+  [T.placement]: ['store', 'section', 'subcategory', 'starts_on', 'ends_on'],
 }
 
 const PAGE = 500
@@ -98,139 +43,131 @@ const PAGE = 500
 async function all(documents: Documents, table: string, filters: Filter[] = []): Promise<Row[]> {
   const rows: Row[] = []
   for (;;) {
-    const page = await documents.list(table, { filters, fields: FIELDS[table], order_by: 'row_id asc', limit_start: rows.length, limit_page_length: PAGE })
+    const page = await documents.list(table, { filters, fields: ['row_id', ...FIELDS[table]], order_by: 'row_id asc', limit_start: rows.length, limit_page_length: PAGE })
     rows.push(...page)
     if (page.length < PAGE) return rows
   }
 }
 
-const BASIS: Record<string, string> = {
-  'Store Manager': 'store_manager', 'Cluster Manager': 'cluster_manager', 'Floor Manager': 'floor_manager',
-  'Department Manager': 'department_manager', 'Team Leader': 'team_leader', 'Staff': 'section_staff',
+const id = (row: Row) => exact(row.row_id)
+
+/** Today in India Standard Time. */
+function istToday(): string {
+  return new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)
 }
 
-/** The label of a section's place; the report reads a subcategory's section back from it (`sectionOfPlace`). */
+/** The label of a section's place; the report reads a section's name back from it. */
 export const sectionLabel = (store: string, section: string) => `${store} / Section: ${section}`
 
-function confirmation(filters: Record<string, string[]>, status: 'confirmed' | 'assumed') {
-  return Object.fromEntries(['store', 'subcategory'].filter(name => filters[name])
-    .map(name => [name, Object.fromEntries(filters[name].map(value => [value, status]))]))
+/** Why someone's job gives them no place: the page says so plainly. */
+export type NoReach = 'no_job' | 'no_section' | 'departments_not_filled' | 'head_office' | 'no_cluster' | 'nothing_placed'
+
+export interface Reach {
+  places: Place[]
+  /** Why each job that reaches nothing does; empty when everything reaches something. */
+  problems: NoReach[]
 }
 
-/** The old rules' bases, as the reasons page says them. */
-const LEGACY_REASON: Record<string, string> = {
-  store_manager: 'Store Manager', department_manager: 'Department Manager', team_leader: 'Team Leader',
-  section_staff: 'Section staff', assignment: 'Sales Target Assignment',
+const BASIS: Record<string, string> = {
+  'Staff': 'section_staff', 'Team Leader': 'team_leader', 'Floor Manager': 'floor_manager', 'Department Manager': 'department_manager',
+  'Store Manager': 'store_manager', 'Cluster Manager': 'cluster_manager', 'Chief Operating Officer': 'chief_operating_officer',
+  'Director': 'director', 'Managing Director': 'managing_director',
 }
-
-/** Places by label: places with one label merge their filters, bases and reasons; listed by label. */
-type Merged = { filters: Record<string, Set<string>>; basis: Set<string>; reasons: Map<string, Reason> }
+const EVERY_STORE = new Set(['Director', 'Managing Director', 'Chief Operating Officer'])
 
 class Places {
-  private merged = new Map<string, Merged>()
-  add(label: string, store: string, subcategories: string[] | null, basis: string[], reasons: Reason[]) {
-    const place: Merged = this.merged.get(label) ?? { filters: { store: new Set() }, basis: new Set(), reasons: new Map() }
-    place.filters.store.add(store)
-    if (subcategories) for (const code of subcategories) (place.filters.subcategory ??= new Set()).add(code)
-    for (const b of basis) if (b) place.basis.add(b)
-    for (const r of reasons) place.reasons.set(JSON.stringify(r), r)
+  private merged = new Map<string, { store: string; codes: Set<string> | null; basis: Set<string>; reasons: Map<string, Reason> }>()
+  add(label: string, store: string, codes: string[] | null, basis: string, reason: Reason) {
+    const place = this.merged.get(label) ?? { store, codes: codes ? new Set<string>() : null, basis: new Set<string>(), reasons: new Map<string, Reason>() }
+    if (codes && place.codes) for (const code of codes) place.codes.add(code)
+    place.basis.add(basis)
+    place.reasons.set(JSON.stringify(reason), reason)
     this.merged.set(label, place)
   }
-  list(status: 'confirmed' | 'assumed'): Place[] {
-    return [...this.merged].sort(([a], [b]) => a.localeCompare(b)).map(([label, place]) => {
-      const filters = Object.fromEntries(Object.entries(place.filters).map(([name, values]) => [name, [...values].sort()]))
-      const reasons = [...place.reasons].sort(([a], [b]) => a.localeCompare(b)).map(([, r]) => r)
-      return { label, filters, basis: [...place.basis].sort().join(', '), reasons, confirmation: confirmation(filters, status) }
-    })
+  list(): Place[] {
+    return [...this.merged].sort(([a], [b]) => a.localeCompare(b)).map(([label, place]) => ({
+      label,
+      filters: { store: [place.store], ...(place.codes ? { subcategory: [...place.codes].sort() } : {}) },
+      basis: [...place.basis].sort().join(', '),
+      reasons: [...place.reasons].sort(([a], [b]) => a.localeCompare(b)).map(([, reason]) => reason),
+    }))
   }
 }
 
-/**
- * Places from new-chart units (provisional, #4444): one per covered section that owns a
- * subcategory on the date, named by the section, plus the store itself for a whole-store
- * job. Filters name only the store and subcategories: a dataset of store and subcategory
- * cannot apply a floor or section row id, and the platform drops a place it cannot apply.
- */
-function chartPlaces(units: CoveredUnit[], chart: OrgChart, on: string): Place[] {
-  const owned = ownedOn(chart, on)
-  const names = new Map(chart.sections.map(s => [exact(s.row_id), text(s.section_name)]))
+const reasonOf = (job: Row): Reason => ({ text: `${checked(job.acting) ? 'Acting ' : ''}${exact(job.job)} job assignment`, since: day(job.starts_on),
+  ...(day(job.ends_on) ? { until: day(job.ends_on) } : {}) })
+
+/** What `person` reaches on `on`, by the who-sees-what table in #967. */
+export async function reachOf(documents: Documents, person: string, on: string): Promise<Reach> {
+  const employees = (await all(documents, T.employee, [['person', '=', person]])).filter(row => text(row.employee_status) === 'Current')
+  const jobs = employees.length
+    ? (await all(documents, T.job, [['employee', 'in', employees.map(id)]])).filter(row => holdsOn(row, on))
+    : []
+  if (!jobs.length) return { places: [], problems: ['no_job'] }
+
+  const sites = await all(documents, T.site)
+  const stores = sites.filter(site => checked(site.is_store))
+  const siteOf = new Map(sites.map(site => [id(site), site]))
+  // A store is sold through its one Store plant: a site's warehouse or e-commerce plant holds no store's sales.
+  const plantOf = new Map((await all(documents, T.plant, [['plant_type', '=', 'Store']])).map(plant => [exact(plant.site), id(plant)]))
+
   const places = new Places()
-  for (const unit of units) {
-    const basis = `${unit.acting ? 'acting_' : ''}${BASIS[unit.job]}`
-    const reason: Reason = { text: `${unit.acting ? 'Acting ' : ''}${unit.job} job assignment`, since: unit.startsOn,
-      ...(unit.endsOn ? { until: unit.endsOn } : {}) }
-    if (unit.wholeStore) places.add(unit.store, unit.store, null, [basis], [reason])
-    for (const section of unit.sections) {
-      const codes = owned.get(section) ?? []
-      // ownedOn credits only sections in this same chart, so their names exist.
-      if (codes.length) places.add(sectionLabel(unit.store, names.get(section)!), unit.store, codes, [basis], [reason])
+  const problems: NoReach[] = []
+  const sectionJobs: { job: Row; sections: Row[] }[] = []
+  for (const job of jobs) {
+    const name = exact(job.job)
+    const site = exact(job.site)
+    const reason = reasonOf(job)
+    const whole = (sitesCovered: Row[]) => {
+      for (const covered of sitesCovered) {
+        const plant = plantOf.get(id(covered))
+        if (plant) places.add(plant, plant, null, BASIS[name], reason)
+      }
+    }
+    if (name === 'Staff' || name === 'Team Leader') {
+      if (!exact(job.section)) { problems.push('no_section'); continue }
+      sectionJobs.push({ job, sections: await all(documents, T.section, [['row_id', '=', exact(job.section)]]) })
+    } else if (name === 'Floor Manager') {
+      if (!exact(job.floor)) { problems.push('no_section'); continue }
+      sectionJobs.push({ job, sections: await all(documents, T.section, [['floor', '=', exact(job.floor)]]) })
+    } else if (name === 'Department Manager') {
+      problems.push('departments_not_filled')
+    } else if (name === 'Store Manager') {
+      whole(sites.filter(row => id(row) === site))
+    } else if (name === 'Cluster Manager') {
+      const cluster = exact(siteOf.get(site)?.cluster)
+      if (!cluster) { problems.push('no_cluster'); continue }
+      whole(stores.filter(row => exact(row.cluster) === cluster))
+    } else if (EVERY_STORE.has(name)) {
+      whole(stores)
+    } else {
+      problems.push('head_office')
     }
   }
-  return places.list('confirmed')
-}
 
-/**
- * Places from the old rules: one per section of the merchandise map, and the store for subcategories
- * outside it. Each carries the bases of its own subcategories, never the store's union: the page says
- * which job gives which section (#4486).
- */
-function legacyPlaces(stores: LegacyStore[]): Place[] {
-  const places = new Places()
-  for (const store of stores) {
-    for (const code of store.material_groups) {
-      const section = store.section_by_material_group[code]
-      // legacyCoverage creates each group's basis alongside material_groups.
-      const bases = store.basis_by_material_group[code]
-      places.add(section ? sectionLabel(store.plant_code, section) : store.plant_code, store.plant_code, [code],
-        bases, bases.map(b => ({ text: `${LEGACY_REASON[b]}, by the old rules` })))
+  for (const { job, sections } of sectionJobs) {
+    const name = exact(job.job)
+    const reason = reasonOf(job)
+    let reached = false
+    for (const section of sections) {
+      // A section on another site's job row reaches nothing: the store on the job decides.
+      const plant = plantOf.get(exact(section.site))
+      if (!plant || exact(section.site) !== exact(job.site)) continue
+      const codes = (await all(documents, T.placement, [['section', '=', id(section)]]))
+        .filter(row => holdsOn(row, on) && exact(row.store) === exact(section.site)).map(row => exact(row.subcategory))
+      if (!codes.length) continue
+      places.add(sectionLabel(plant, text(section.name)), plant, codes, BASIS[name], reason)
+      reached = true
     }
+    if (!reached) problems.push('nothing_placed')
   }
-  return places.list('assumed')
+  return { places: places.list(), problems: [...new Set(problems)] }
 }
 
-/** Today's derivation for a person whose codes are known and unshared, for the stores not yet live. */
-async function legacyStores(documents: Documents, person: string, codes: string[], on: string, live: Set<string>) {
-  const legacy: LegacyTables = { assignments: [], employeeSections: [], ownership: [], storeManagers: [], merchandise: [], aliases: [] }
-  legacy.assignments = await all(documents, LEGACY_TABLES.assignments, [['employee', '=', person]])
-  if (codes.length) {
-    legacy.employeeSections = await all(documents, LEGACY_TABLES.employeeSections)
-    legacy.ownership = await all(documents, LEGACY_TABLES.ownership)
-    legacy.storeManagers = await all(documents, LEGACY_TABLES.storeManagers)
-    legacy.aliases = await all(documents, LEGACY_TABLES.aliases)
-  }
-  const stores = [...new Set([...legacy.assignments.map(r => r.plant_code), ...legacy.employeeSections.map(r => r.store_code),
-    ...legacy.ownership.map(r => r.store_code), ...legacy.storeManagers.map(r => r.store_code)].map(String))]
-  if (stores.length) legacy.merchandise = await all(documents, LEGACY_TABLES.merchandise, [['store_code', 'in', stores]])
-  return legacyCoverage({ id: person, codes, ambiguous: false }, legacy, on).filter(store => !live.has(store.plant_code))
-}
+export interface ProviderOptions { today?: () => string }
 
-export interface ProviderOptions {
-  today?: () => string
-  employeeCodes?: (person: ProviderContext['person']) => Promise<EmployeeCodes | null>
-}
-
-export function orgChartProvider({ today = istToday, employeeCodes = fromIdentifiers }: ProviderOptions = {}) {
+export function orgChartProvider({ today = istToday }: ProviderOptions = {}) {
   return async function orgChart({ person, documents }: ProviderContext): Promise<Place[]> {
-    const on = today()
-    const live = new Set((await all(documents, APP.rollout))
-      .filter(row => { const since = day(row.live_since); return !!since && since <= on })
-      .map(row => exact(row.store)))
-
-    // The new chart, for the live stores the person holds a job in.
-    const jobs = await all(documents, APP.jobs, [['person', '=', person.id]])
-    const stores = [...new Set(jobs.map(row => exact(row.store)).filter(store => live.has(store)))]
-    const inStores = (table: string) => stores.length ? all(documents, table, [['store', 'in', stores]]) : Promise.resolve([])
-    const chart: OrgChart = { jobs, floors: [], departments: [], sections: [], placements: [] }
-    chart.floors = await inStores(APP.floors)
-    chart.departments = await inStores(APP.departments)
-    chart.sections = await inStores(APP.sections)
-    chart.placements = await inStores(APP.placements)
-    const units = coverageOf(person.id, chart, on).filter(unit => live.has(unit.store))
-
-    // The old rules, for every store not yet live, only when the person's employee codes are known.
-    const known = await employeeCodes(person)
-    const old = known && !known.ambiguous ? await legacyStores(documents, person.id, known.codes, on, live) : []
-
-    return [...chartPlaces(units, chart, on), ...legacyPlaces(old)]
+    return (await reachOf(documents, person.id, today())).places
   }
 }
