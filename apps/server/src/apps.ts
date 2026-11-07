@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { sql, withTransaction } from './db'
 import { AppError } from './errors'
+import { viewsOf } from './views'
 import { readLegacyPermission, type ColumnLevel } from './app-permission-format'
 import { createTable, tableRelation, quoteRelation } from './table-engine'
 import { asNameList, declaresOwnPages } from './installed-app-ledger'
@@ -738,6 +739,13 @@ async function uninstallAppImpl(name: string): Promise<{ name: string; removed: 
     select tables, roles, perms, fixtures, sources from installed_app where name = ${name}`
   if (!row) throw new AppError('ValidationError', `App ${name} is not installed`)
   const tables = asNameList(row.tables)
+
+  // #1021: a view stands on its base. Refused here, before anything goes,
+  // since the steps below are not one transaction.
+  for (const t of tables) {
+    const [view] = await viewsOf(t)
+    if (view) throw new AppError('ValidationError', `Cannot uninstall ${name}: the view ${view.name} is based on ${t}. Delete that view first.`)
+  }
 
   // Unwire hooks first so no lifecycle event fires against a half-dropped table.
   unwireHooks(name)

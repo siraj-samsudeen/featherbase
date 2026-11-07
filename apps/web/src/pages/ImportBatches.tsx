@@ -172,8 +172,8 @@ function BatchCard({ batch, onDone }: { batch: ImportBatch; onDone: (o: Outcome)
             className="rounded bg-negative-tint px-2 py-1"
             data-testid={`ib-confirm-${batch.batch_id}`}
           >
-            Delete <strong>{removable.map((t) => t.table).join(', ')}</strong> and every row in
-            them? This also removes their import records, and cannot be undone.{' '}
+            Delete <strong>{removable.map((t) => t.table).join(', ')}</strong> and every row in{' '}
+            {removable.length === 1 ? 'it? This also removes its' : 'them? This also removes their'} import records, and cannot be undone.{' '}
             <button
               type="button"
               className={buttonClasses({ variant: 'primary', className: 'ml-1 py-0.5' })}
@@ -240,7 +240,9 @@ export function ImportBatches() {
             </span>
           ))}
           {outcome.deleted.length > 0 &&
-            ' Their import records went with them, so that import is no longer listed.'}
+            (outcome.deleted.length === 1
+              ? ' Its import records went with it, so that import is no longer listed.'
+              : ' Their import records went with them, so that import is no longer listed.')}
         </p>
       )}
 

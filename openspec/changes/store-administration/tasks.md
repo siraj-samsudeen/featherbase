@@ -5,7 +5,7 @@
 
 ## 2. Platform
 
-- [x] 2.1 Permission `scope_mode` `reach`, the `Role Assignment` Table (migration 0153).
+- [x] 2.1 Permission `scope_mode` `reach`, the `Role Assignment` Table (migration 0155).
 - [x] 2.2 The manifest's `administration` declaration, validated on load; the app's reach provider called the way a scope provider is.
 - [x] 2.3 Reach grants enforced on list, count, search, open, create, update (before and after), delete and retirement; protected rows; Column reach only on rows in reach; every other path refuses.
 - [x] 2.4 Giving, listing and taking back roles (`/api/apps/:app/given_roles`).
