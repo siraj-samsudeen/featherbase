@@ -41,8 +41,14 @@ SAP. Requirement IDs below are the BRD's.
   the reviewer sees found, missing, moved, unlisted and duplicate lines, sends lines for recount,
   and decides every exception before the count closes. Nothing writes off or touches SAP.
 
-Not included: offline count packs, RFID, importing a count sheet, custody hand-over and transfers
-(step 3), a live SAP
+- Custody and transfers (PHY-01..05): issue to an employee or location custodian with acceptance,
+  returns, clearance for leavers, and transfers within a site, between sites, on loan, to a vendor
+  for repair or between companies, each approved by someone other than the requester, scanned out
+  and in, with receipt deadlines. An asset's place changes only on receipt; its owner changes only
+  after Finance confirms the SAP transaction. The custodian is kept as a person ID.
+
+Not included: offline count packs, RFID, importing a count sheet, a StyleHR feed, offline scans,
+disposal gate passes, a live SAP
 connection, capitalization, depreciation and anything else SAP owns, reporting without signing in
 or by WhatsApp, scheduled servicing, sensors, and adding the app to the live Jeyarama instance.
 
@@ -55,6 +61,8 @@ or by WhatsApp, scheduled servicing, sensors, and adding the app to the live Jey
 - `asset-repair-jobs`: reporting a fault, the fix-by clock, and moving a job to fixed.
 - `asset-verification-counts`: planning a count, the fixed expected list, blind recording, review,
   recount and decisions.
+- `asset-custody-and-transfers`: issue and acceptance, returns, clearance, and transfers from
+  request to receipt.
 
 ### Modified Capabilities
 
