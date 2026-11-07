@@ -1,0 +1,25 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "approvalproof",
+  "title": "Approval rule proof",
+  "entryTable": "approvalproof.note",
+  "server": "server.mjs",
+  "approvalResolvers": {
+    "names": ["site_lead", "broken"],
+    "tables": ["Shelf Site"]
+  },
+  "tables": [
+    {
+      "name": "approvalproof.note",
+      "label": "Note",
+      "columns": [
+        {
+          "column_name": "title",
+          "column_type": "Data"
+        }
+      ]
+    }
+  ],
+  "migrations": []
+}
