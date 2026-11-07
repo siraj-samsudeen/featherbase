@@ -132,7 +132,8 @@ async function start(configured, refusedApps = []) {
   for (let attempt = 0; attempt < 100; attempt++) {
     if (refusedApps.length && server.exitCode !== null) {
       assert.notEqual(server.exitCode, 0, 'Missing installed code must refuse startup')
-      for (const app of refusedApps) assert(diagnostics.includes(`App ${app} is installed and enabled, but this release does not ship it`), diagnostics)
+      // #924: a release that ships only an older version says it would roll the app back.
+      for (const app of refusedApps) assert(/^App .+ is installed and enabled, but this release (does not ship it|ships only .+, which is not newer)/m.test(diagnostics) && diagnostics.includes(`App ${app} is installed and enabled, but this release`), diagnostics)
       return
     }
     assert.equal(server.exitCode, null, 'Frozen server exited before ready')
