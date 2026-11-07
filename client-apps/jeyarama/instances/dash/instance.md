@@ -71,3 +71,9 @@ pnpm --filter server cli seed-pack apply jeyarama
 ## Cut-over
 
 `instance-setup/mark-scope-tables.mjs` runs once at go-live; its header says how.
+
+## Store administration
+
+`instance-setup/mark-reach-tables.mjs` marks Plant and Site Master as deciding
+scope, which a Cluster Manager's reach reads (featherbase#919); its header says
+how.

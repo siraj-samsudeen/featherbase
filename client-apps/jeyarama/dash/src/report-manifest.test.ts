@@ -13,12 +13,14 @@ const datasets = (manifest as unknown as { datasets: Dataset[] }).datasets
 const sales = () => datasets.find(d => d.name === SALES_DATASET)!
 const operations = manifest.reads.operations as Record<string, { policy: { kind: string; readRoles?: string[] }; outbound?: boolean }>
 const ROLES = ['Dash Reader', 'Dash Section Editor', 'Dash Section Reviewer']
+// featherbase#919: store administration's roles, which open no report.
+const ADMINISTRATION_ROLES = ['Dash Store Administrator', 'Dash Store Editor', 'Dash HR']
 
 describe("the app's name in the manifest", () => {
   it('is Dash everywhere: title, identifier, roles and Table group', () => {
     expect(manifest.title).toBe('Dash')
     expect(manifest.name).toBe('dash')
-    expect(manifest.roles).toEqual(ROLES)
+    expect(manifest.roles).toEqual([...ROLES, ...ADMINISTRATION_ROLES])
     expect([...new Set(manifest.tables.map(table => table.module))]).toEqual(['Dash'])
   })
 })
@@ -157,11 +159,20 @@ describe('the read grants, declared before the first install', () => {
     expect(granted('Dash Section Reviewer')).toEqual([...ORG_CHART, 'dash.store_rollout'].sort())
   })
 
-  it('give no app role the people Tables: who reads contacts and stints is the scopes\' to decide (#683)', () => {
-    expect(manifest.permissions.filter(p => ['dash.employee', 'dash.employment'].includes(p.table))).toEqual([])
+  // featherbase#919: who reads contacts and stints is the scopes' to decide (#683): a Store
+  // Administrator reads the people who work in their reach, and HR every row.
+  it('give the people Tables only to HR, and to a Store Administrator within reach', () => {
+    const people = manifest.permissions.filter(p => ['dash.employee', 'dash.employment'].includes(p.table))
+    expect(people.map(p => [p.role, p.table, p.scope_mode ?? 'all', Object.keys(p.operations ?? { read: 1 }).sort().join()]).sort()).toEqual([
+      ['Dash HR', 'dash.employee', 'all', 'create,read,update'], ['Dash HR', 'dash.employment', 'all', 'create,read,update'],
+      ['Dash Store Administrator', 'dash.employee', 'reach', 'read'], ['Dash Store Administrator', 'dash.employment', 'reach', 'read'],
+    ])
   })
 
-  it('grant reads only: writing a Table that decides scope waits for featherbase #462', () => {
-    expect(manifest.permissions.every(p => Object.keys(p).sort().join() === 'can_read,role,table' && p.can_read === true)).toBe(true)
+  it('give the report roles reads only: writes to a Table that decides scope go through reach (#919)', () => {
+    const report = manifest.permissions.filter(p => ROLES.includes(p.role))
+    expect(report.every(p => Object.keys(p).sort().join() === 'can_read,role,table' && p.can_read === true)).toBe(true)
+    const decidesScope = new Set(manifest.tables.filter(t => t.decides_scope).map(t => t.name))
+    expect(manifest.permissions.filter(p => decidesScope.has(p.table) && p.operations && Object.keys(p.operations).some(op => op !== 'read') && p.scope_mode !== 'reach')).toEqual([])
   })
 })
