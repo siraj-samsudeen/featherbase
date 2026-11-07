@@ -197,9 +197,12 @@ export async function runOneJob(): Promise<boolean> {
 /** The claim is always under the lifecycle lock. An ordinary job runs under
  *  that same lock; a job that owns its lock is handed back to run outside it. */
 async function claimAndRun(): Promise<boolean | (() => Promise<boolean>)> {
-  // Atomic claim: flip exactly one due queued job to running.
+  if (await recoverAbandonedJobs()) return true
+  // Atomic claim: flip exactly one due queued job to running, under a lease
+  // its worker renews while the handler runs (#978).
   const [claimed] = await sql`
-    update background_job set job_status = 'running', updated_at = now()
+    update background_job set job_status = 'running', updated_at = now(),
+      lease_expires_at = clock_timestamp() + make_interval(secs => ${jobLease.leaseMs / 1000})
     where row_id = (
       select row_id from background_job
       where job_status = 'queued' and (run_at is null or run_at <= now())
@@ -221,12 +224,7 @@ async function runClaimed(claimed: postgres.Row): Promise<boolean> {
   const wasAdministered = await scheduledJob(method)
 
   // JOB-005: progress reports go to the job owner's realtime channel.
-  //
-  // `trigger` is nullable: a row without one that repeats is a recurrence
-  // ('schedule'), never 'demand'. Getting this wrong silently ends the
-  // recurrence under the trigger === 'schedule' gate below (#287).
-  const trigger: JobTrigger =
-    (claimed.trigger as JobTrigger | null) ?? (claimed.repeat_every != null ? 'schedule' : 'demand')
+  const trigger = triggerOf(claimed)
   let result: string | undefined
   let refused = false
   const ctx: JobContext = {
@@ -260,13 +258,22 @@ async function runClaimed(claimed: postgres.Row): Promise<boolean> {
     result,
   })
 
+  const heartbeat = setInterval(() => {
+    renewLease(claimed.row_id as string).catch(() => {
+      // A missed renewal is retried at the next beat; the lease outlasts several.
+    })
+  }, jobLease.heartbeatMs)
   try {
     if (!handler) throw new Error(`No job handler registered for "${method}"`)
-    await handler(payload, ctx)
+    try {
+      await handler(payload, ctx)
+    } finally {
+      clearInterval(heartbeat)
+    }
     // Bookkeeping takes the lifecycle lock before any row, like every save.
     return await appOperation(async () => {
       await sql`
-        update background_job set job_status = 'done', attempts = ${attempt}, error = null, updated_at = now()
+        update background_job set job_status = 'done', attempts = ${attempt}, error = null, lease_expires_at = null, updated_at = now()
         where row_id = ${claimed.row_id as string}`
       await logExecution(record(refused ? 'refused' : 'success'))
 
@@ -318,35 +325,107 @@ async function runClaimed(claimed: postgres.Row): Promise<boolean> {
       const nextStatus = err instanceof FinalJobFailure || attempt >= maxAttempts ? 'failed' : 'queued'
       await sql`
         update background_job
-        set job_status = ${nextStatus}, attempts = ${attempt}, error = ${message}, updated_at = now()
+        set job_status = ${nextStatus}, attempts = ${attempt}, error = ${message}, lease_expires_at = null, updated_at = now()
         where row_id = ${claimed.row_id as string}`
       await logExecution(record('error', message))
-      const administered = nextStatus === 'failed' ? await scheduledJob(method) : null
-      // A recurrence must survive its own failure. Before Scheduled Job, a run
-      // that exhausted its attempts ended the recurrence until the next restart
-      // re-seeded it from a literal — a schedule that silently stopped. Now the
-      // row is the schedule: if it is enabled, the next interval is queued
-      // regardless of how this one ended. Same gate as the success path: only
-      // the schedule's own occurrence advances the schedule, so a demand or
-      // manual run that exhausts its attempts does not fork a second chain.
-      if (nextStatus === 'failed' && trigger === 'schedule') {
-        if (administered?.enabled) {
-          const every = cadenceSeconds(administered.cadence)
-          await enqueue(method, payload, {
-            maxAttempts,
-            runAt: new Date(Date.now() + every * 1000),
-            repeatEvery: every,
-            trigger: 'schedule',
-          })
-        }
-      }
-      // #464: a run that has failed for good tells the System Managers; an
-      // attempt that will be retried does not.
-      if (administered)
-        await alertProblem({ job: claimed.row_id as string, method, outcome: 'failed', message, attempts: attempt, at: startedAt })
+      await afterFailedAttempt(claimed, nextStatus, message, attempt, startedAt)
       return true
     })
   }
+}
+
+/** What a failed attempt sets in motion once it is recorded: a run that has
+ *  failed for good keeps its schedule going and tells the System Managers. */
+async function afterFailedAttempt(
+  row: postgres.Row,
+  nextStatus: 'failed' | 'queued',
+  message: string,
+  attempt: number,
+  startedAt: Date,
+): Promise<void> {
+  if (nextStatus !== 'failed') return
+  const method = row.method as string
+  const administered = await scheduledJob(method)
+  // A recurrence must survive its own failure. Before Scheduled Job, a run
+  // that exhausted its attempts ended the recurrence until the next restart
+  // re-seeded it from a literal — a schedule that silently stopped. Now the
+  // row is the schedule: if it is enabled, the next interval is queued
+  // regardless of how this one ended. Same gate as the success path: only
+  // the schedule's own occurrence advances the schedule, so a demand or
+  // manual run that exhausts its attempts does not fork a second chain.
+  if (triggerOf(row) === 'schedule' && administered?.enabled) {
+    const every = cadenceSeconds(administered.cadence)
+    await enqueue(method, row.payload as Record<string, unknown>, {
+      maxAttempts: Number(row.max_attempts),
+      runAt: new Date(Date.now() + every * 1000),
+      repeatEvery: every,
+      trigger: 'schedule',
+    })
+  }
+  // #464: a run that has failed for good tells the System Managers; an
+  // attempt that will be retried does not.
+  if (administered)
+    await alertProblem({ job: row.row_id as string, method, outcome: 'failed', message, attempts: attempt, at: startedAt })
+}
+
+// `trigger` is nullable: a row without one that repeats is a recurrence
+// ('schedule'), never 'demand'. Getting this wrong silently ends the
+// recurrence under the trigger === 'schedule' gate (#287).
+function triggerOf(row: postgres.Row): JobTrigger {
+  return (row.trigger as JobTrigger | null) ?? (row.repeat_every != null ? 'schedule' : 'demand')
+}
+
+// #978: a running job holds a lease its worker renews on every heartbeat.
+// A server that stops mid-run (a deploy replacing it, a crash) stops
+// renewing, and once the lease runs out any worker treats the row as
+// abandoned. Old and new servers overlap during a deploy, so a live run is
+// told apart by its fresh lease, never by which server started it. Tests
+// shorten both times.
+export const jobLease = { leaseMs: 5 * 60_000, heartbeatMs: 60_000 }
+
+/** Recorded as the lost attempt's error. */
+export const ABANDONED_MESSAGE = 'The server stopped while this job was running'
+
+// Its own transaction, so a failed renewal cannot abort a caller's.
+async function renewLease(rowId: string): Promise<void> {
+  await sql.begin((tx) => tx`
+    update background_job set lease_expires_at = clock_timestamp() + make_interval(secs => ${jobLease.leaseMs / 1000})
+    where row_id = ${rowId} and job_status = 'running'`)
+}
+
+/** Put back every running job whose lease ran out. The lost attempt counts:
+ *  it is logged as failed and the job is queued again, or failed for good
+ *  once its attempts are spent, so a job that brings its server down every
+ *  time cannot loop for ever. A row from before leases (none set) counts as
+ *  abandoned an hour after it was claimed. Returns whether any was found. */
+export async function recoverAbandonedJobs(): Promise<boolean> {
+  const rows = await sql`
+    with abandoned as (
+      select row_id, updated_at as claimed_at from background_job
+      where job_status = 'running'
+        and coalesce(lease_expires_at, updated_at + interval '1 hour') < clock_timestamp()
+      for update skip locked
+    )
+    update background_job b
+    set job_status = case when b.attempts + 1 >= b.max_attempts then 'failed' else 'queued' end,
+        attempts = b.attempts + 1, error = ${ABANDONED_MESSAGE}, lease_expires_at = null, updated_at = now()
+    from abandoned a where b.row_id = a.row_id
+    returning b.*, a.claimed_at`
+  for (const row of rows) {
+    const startedAt = new Date(row.claimed_at as string)
+    const attempt = Number(row.attempts)
+    await logExecution({
+      job: row.row_id as string,
+      method: row.method as string,
+      attempt,
+      outcome: 'error',
+      startedAt,
+      durationMs: Math.max(0, Date.now() - startedAt.getTime()),
+      error: ABANDONED_MESSAGE,
+    })
+    await afterFailedAttempt(row, row.job_status as 'failed' | 'queued', ABANDONED_MESSAGE, attempt, startedAt)
+  }
+  return rows.length > 0
 }
 
 // Make the queue agree with the Scheduled Job rows: every enabled row has
