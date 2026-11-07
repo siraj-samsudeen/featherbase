@@ -5,7 +5,7 @@ import { useId, useState, type MouseEvent, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { api } from '../lib/api'
-import { ROW_STAMPS, type ColumnDef, type TableMeta } from '../lib/meta'
+import { ROW_STAMPS, linkRowsTable, type ColumnDef, type TableMeta } from '../lib/meta'
 import { ShownName } from '../lib/people'
 import { formatValue, type Settings } from '../lib/settings'
 import { RowTitle } from '../lib/row-titles'
@@ -260,7 +260,7 @@ export function ValueField({ field, value, meta, settings, columns }: {
   let shown: ReactNode
   if (isEmpty(value)) shown = <span className="text-ink-subtle">—</span>
   else if (kind === 'link' && field.reference_table) {
-    const target = field.reference_table
+    const target = linkRowsTable(field) ?? field.reference_table
     // #910: the linked row opens in the drill pane.
     const open = (e: MouseEvent) => {
       if (!nav || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
@@ -340,7 +340,7 @@ export function BookkeepingLine({ fields, values, settings }: { fields: ColumnDe
           {t(f.label ?? f.column_name)}{' '}
           <span className="text-ink-muted">
             {f.column_type === 'Reference' && f.reference_table
-              ? <RowTitle table={f.reference_table} rowId={String(values[f.column_name])} />
+              ? <RowTitle table={linkRowsTable(f) ?? f.reference_table} rowId={String(values[f.column_name])} />
               : formatValue(f.column_type, values[f.column_name], settings) || String(values[f.column_name])}
           </span>
         </span>

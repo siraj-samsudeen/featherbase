@@ -24,6 +24,8 @@ import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { FULL_READER, ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, childColumns, readerFor, restrictRow, seesEveryColumn } from './row-readers'
 import { assertRowsWritable } from './system-written'
+import { assertNotView, linkBase, linkTargetNames, rowsInView } from './views'
+import { scopedWhere } from './query'
 import { assertManagedUnchanged, assertNoManagedReference, assertRowNotManaged, holdManagedSet } from './managed-settings'
 import { assertSecurityWriter, isSecurityTable, securityRefusal } from './security-tables'
 import {
@@ -208,6 +210,8 @@ function pickFieldValues(meta: TableMeta, values: RowValues, managedValues: RowV
   const errors: Record<string, string> = {}
   for (const [key, value] of Object.entries({ ...values, ...managedValues })) {
     if (key === 'table') continue
+    // #1021: the read-only flag a row's read adds; a form sends it back.
+    if (key === 'links_outside_view') continue
     // #859: retirement is changed only by :retire and :reactivate.
     if (RESERVED_COLUMNS.includes(key)) continue
     const field = known.get(key)
@@ -307,14 +311,19 @@ async function validateLinks(
       if (problem) errors[prefix + f.column_name] = problem
       continue
     }
-    const target = f.reference_table
-    if (!target) continue
+    const linked = f.reference_table
+    if (!linked) continue
     // select *: early migrations save rows before table_def has data_source.
-    const [targetMeta] = await tx`select * from table_def where name = ${target}`
-    if (!targetMeta) {
-      errors[prefix + f.column_name] = `Reference target Table ${target} does not exist`
+    const [linkedDef] = await tx`select * from table_def where name = ${linked}`
+    if (!linkedDef) {
+      errors[prefix + f.column_name] = `Reference target Table ${linked} does not exist`
       continue
     }
+    // #1021: a link to a view stores a row of its base. The row is checked
+    // there, and then against the view's filter, below.
+    const view = linkedDef.kind === 'view' ? await getMeta(linked) : null
+    const target = view ? String(linkedDef.view_of) : linked
+    const [targetMeta] = view ? await tx`select * from table_def where name = ${target}` : [linkedDef]
     // A source-bound target has no local table: ask its source (EDS-5). Like
     // the native lookup, this checks existence only, not the caller's access.
     // It runs outside the save transaction, so it is best-effort: the source
@@ -335,6 +344,12 @@ async function validateLinks(
     }
     if (!row)
       errors[prefix + f.column_name] = `${target} ${String(value)} does not exist`
+    // #1021: a new or changed value must be one of the view's rows. A value
+    // kept from before stays, even once its row has left the view, so the
+    // rows linking to it are never locked by that.
+    else if (view && !(old != null && String(own(old, f.column_name)) === String(value))
+      && !(await rowsInView(tx, view, [String(value)], await tableRelation(target))).has(String(value)))
+      errors[prefix + f.column_name] = `${target} ${String(value)} is not one of the ${linked} rows`
   }
   if (Object.keys(errors).length)
     throw new AppError('ValidationError', `Invalid links for ${meta.name}`, errors)
@@ -385,6 +400,8 @@ async function lockCoreDocumentTargets(tx: typeof sql, meta: TableMeta, row: Row
     // and refuses, or this write waits and then finds the row gone. A
     // connected row lives on its source and a settings table has no rows.
     const [def] = await tx`select kind, data_source from table_def where name = ${table}`
+    // #1021: comments, versions, files and shares stay with the base row.
+    if (def?.kind === 'view') assertNotView(await getMeta(table), 'attached')
     if (!appTable && (!def || def.data_source || def.kind === 'settings')) continue
     const targetMeta = await getMeta(table)
     const [exists] = await tx`select 1 from ${tx(await tableRelation(table))}
@@ -406,7 +423,8 @@ export async function assertUserPermissions(
   if (!map.size) return
   const linkFields = meta.columns
     .filter((f) => f.column_type === 'Reference')
-    .map((f) => ({ column_name: f.column_name, reference_table: f.reference_table }))
+    // #1021: a link to a view holds its base's rows, scoped as such.
+    .map((f) => ({ column_name: f.column_name, reference_table: linkBase(f) }))
   checkUserPermissions(user, meta.name, linkFields, row, map)
 }
 
@@ -745,7 +763,7 @@ async function saveChildren(
         errors[`${input.columnName}.${i}.${k}`] = v
       continue
     }
-    await validateLinks(tx, childMeta, fieldValues, user, `${input.columnName}.${i}.`)
+    await validateLinks(tx, childMeta, fieldValues, user, `${input.columnName}.${i}.`, isExisting ? stored.get(String(rowId)) : undefined)
     const now = new Date()
     if (isExisting) {
       keep.add(String(rowId))
@@ -762,7 +780,7 @@ async function saveChildren(
         updated_by: user,
         created_at: now,
         updated_at: now,
-        status: 'draft',
+        submission_status: 'draft',
         position: i + 1,
         parent: parentRowId,
         parenttype: parentMeta.name,
@@ -929,7 +947,7 @@ export async function saveSystemRow(table: string, values: RowValues, actor: str
     [meta.row_key]: String(values[ROW_KEY] ?? '') || hashRowId(),
     created_by: actor,
     updated_by: actor,
-    status: 'draft',
+    submission_status: 'draft',
     position: 0,
   } as unknown as Record<string, never>)} returning *`
   return { table, ...(saved as RowValues) }
@@ -1013,7 +1031,7 @@ async function writeDoc(
         updated_by: user,
         created_at: now,
         updated_at: now,
-        status: 'draft',
+        submission_status: 'draft',
         position: 0,
         ...fieldValues,
       }
@@ -1045,7 +1063,7 @@ async function writeDoc(
         updated_by: row.updated_by,
         created_at: row.created_at,
         updated_at: row.updated_at,
-        status: row.status,
+        submission_status: row.submission_status,
         position: row.position,
       }
       await lockCoreDocumentTargets(stx, meta, dbRow, user)
@@ -1121,7 +1139,7 @@ async function saveBoundDoc(
     applyDefaults(meta, stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values))),
     'insert',
   )
-  const row: RowValues = { [ROW_KEY]: providedName, status: 'draft', ...fieldValues }
+  const row: RowValues = { [ROW_KEY]: providedName, submission_status: 'draft', ...fieldValues }
   const hctx: HookContext = { row, meta, user, isNew: true, tx: sql }
   await runHooks('before_insert', hctx)
   await runHooks('before_validate', hctx)
@@ -1298,12 +1316,12 @@ async function updateDoc(
           'ConflictError',
           `${meta.name} ${name} has been modified after you loaded it`,
         )
-      if ((existing.status as string) === 'submitted')
+      if ((existing.submission_status as string) === 'submitted')
         throw new AppError(
           'ValidationError',
           `${meta.name} ${name} is submitted and cannot be modified (cancel it first)`,
         )
-      if ((existing.status as string) === 'cancelled')
+      if ((existing.submission_status as string) === 'cancelled')
         throw new AppError(
           'ValidationError',
           `${meta.name} ${name} is cancelled and cannot be modified`,
@@ -1418,7 +1436,7 @@ async function recordVersion(
     updated_by: user,
     created_at: at,
     updated_at: at,
-    status: 'draft',
+    submission_status: 'draft',
     position: 0,
     ref_table: meta.name,
     ref_name: name,
@@ -1495,10 +1513,10 @@ async function setStatus(
     await assertDocPermission(
       user, table, event === 'on_submit' ? 'submit' : 'cancel', String(existing.created_by))
     await assertUserPermissions(user, meta, existing as RowValues)
-    if ((existing.status as string) !== from)
+    if ((existing.submission_status as string) !== from)
       throw new AppError(
         'ValidationError',
-        `${table} ${name} has status ${existing.status}; expected ${from}`,
+        `${table} ${name} has status ${existing.submission_status}; expected ${from}`,
       )
     // Order: before_submit/before_cancel run BEFORE the write and may
     // abort it; on_update fires after the write, then on_submit/on_cancel.
@@ -1512,7 +1530,7 @@ async function setStatus(
     }
     await runHooks(event === 'on_submit' ? 'before_submit' : 'before_cancel', preCtx)
     const [updated] = await tx`
-      update ${tx(tbl)} set status = ${to}, updated_at = ${new Date()},
+      update ${tx(tbl)} set submission_status = ${to}, updated_at = ${new Date()},
         updated_by = ${user}
       where ${tx(meta.row_key)} = ${name} returning *`
     const ctx: HookContext = {
@@ -1560,7 +1578,7 @@ async function amendDocImpl(
   if (!meta.is_submittable)
     throw new AppError('ValidationError', `${table} is not submittable`)
   const source = await getDoc(table, name, user)
-  if ((source.status as string) !== 'cancelled')
+  if ((source.submission_status as string) !== 'cancelled')
     throw new AppError('ValidationError', `${table} ${name} must be cancelled before amending`)
   await assertDocPermission(user, table, 'amend', String(source.created_by))
 
@@ -1603,14 +1621,23 @@ async function assertChildRowsWritable(tx: typeof sql, meta: TableMeta, name: st
 }
 
 // DOC-006: a row referenced by Reference columns anywhere cannot be deleted.
-export function deleteDoc(...args: Parameters<typeof deleteDocImpl>) {
-  return appOperation(() => deleteDocImpl(...args))
+export function deleteDoc(table: string, name: string, user = 'Administrator', opts: { expectUpdatedAt?: string | null } = {}) {
+  return appOperation(() => deleteDocImpl(table, name, user, opts))
+}
+// #1034: the permission matrix ends a grant even when the grant has history.
+// Clearing the old flag was an update, which history never blocked, and access
+// must not outlast the decision to end it. So everything on the row stays,
+// with one more entry saying who ended it and what it was. No other delete,
+// and no other Table, comes this way.
+export function revokeGrant(name: string, user: string) {
+  return appOperation(() => deleteDocImpl('Permission', name, user, {}, true))
 }
 async function deleteDocImpl(
   table: string,
   name: string,
-  user = 'Administrator',
-  opts: { expectUpdatedAt?: string | null } = {},
+  user: string,
+  opts: { expectUpdatedAt?: string | null },
+  revoking = false,
 ): Promise<void> {
   const meta = await getMeta(table)
   assertRowsWritable(meta, 'deleted')
@@ -1631,7 +1658,9 @@ async function deleteDocImpl(
     // open that row, as only they may read it (#342, #609).
     if (ROW_ATTACHED_TABLES.has(meta.name)) await assertAttachedRowReadable(meta.name, existing as RowValues, user)
     await assertRowNotManaged(stx, meta, name, user)
-    if (meta.owner_app) {
+    if (revoking) {
+      // Nothing held back and nothing removed: see revokeGrant.
+    } else if (meta.owner_app) {
       if (!opts.expectUpdatedAt || !Number.isFinite(Date.parse(opts.expectUpdatedAt))
         || new Date(existing.updated_at as string).getTime() !== Date.parse(opts.expectUpdatedAt))
         throw new AppError('ConflictError', `${table} ${name} has been modified after you loaded it; supply its current updated_at`)
@@ -1641,17 +1670,18 @@ async function deleteDocImpl(
       // by refusing the delete while it has any (links are checked below).
       assertNothingRetained(table, name, await retainedActivityCounts(stx, table, name), true)
     }
-    await tx`delete from version where ref_table = ${table} and ref_name = ${name} and data->>'created' = 'true'`
-    if ((existing.status as string) === 'submitted')
+    if (!revoking) await tx`delete from version where ref_table = ${table} and ref_name = ${name} and data->>'created' = 'true'`
+    if ((existing.submission_status as string) === 'submitted')
       throw new AppError(
         'ValidationError',
         `${table} ${name} is submitted and cannot be deleted (cancel it first)`,
       )
 
     // Any Reference column in any Table pointing at this table blocks deletion.
+    // #1021: so does one pointing at a view of it.
     const linkFields = await tx`
       select parent, column_name from column_def
-      where column_type = 'Reference' and reference_table = ${table}`
+      where column_type = 'Reference' and reference_table in ${tx(await linkTargetNames(table, stx))}`
     for (const lf of linkFields) {
       const parentTable = lf.parent as string
       const [parentMeta] = await tx`
@@ -1692,6 +1722,7 @@ async function deleteDocImpl(
       tx: stx,
     }
     await runHooks('on_trash', ctx)
+    if (revoking) await recordVersion(stx, meta, name, existing as RowValues, {}, user)
 
     // Remove this row's own child rows, then the row.
     await assertChildRowsWritable(stx, meta, name, user)
@@ -1743,7 +1774,7 @@ async function deleteBoundDoc(
   await assertUserPermissions(user, meta, mapRowOut(ctx.bind, existing))
   const linkFields = await sql`
     select parent, column_name from column_def
-    where column_type = 'Reference' and reference_table = ${meta.name}`
+    where column_type = 'Reference' and reference_table in ${sql(await linkTargetNames(meta.name))}`
   for (const lf of linkFields) {
     const parentTable = lf.parent as string
     const [pm] = await sql`
@@ -1866,7 +1897,7 @@ async function setRetirement(
       updated_by: user,
       created_at: at,
       updated_at: at,
-      status: 'draft',
+      submission_status: 'draft',
       position: 0,
       ref_table: meta.name,
       ref_name: name,
@@ -1974,10 +2005,11 @@ async function renameDocImpl(
         where parent = ${oldName} and parenttype = ${table}`
     }
 
-    // Update every Reference column, in any Table, that points at this table.
+    // Update every Reference column, in any Table, that points at this table
+    // or (#1021) at a view of it.
     const linkFields = await tx`
       select parent, column_name from column_def
-      where column_type = 'Reference' and reference_table = ${table}`
+      where column_type = 'Reference' and reference_table in ${tx(await linkTargetNames(table, stx))}`
     for (const lf of linkFields) {
       const parentTable = lf.parent as string
       const [pm] = await tx`select kind from table_def where name = ${parentTable}`
@@ -2007,6 +2039,8 @@ export function rowCapabilities(table: string, name: string, user: string): Prom
   return appOperation(async () => {
     const readable = await getDoc(table, name, user)
     const meta = await getMeta(table)
+    // #1021: a view's row is its base's row; what may be done to it is too.
+    if (meta.kind === 'view') return rowCapabilities(meta.view_of!, name, user)
     // A read share can bypass Data Scopes, but (unlike a write share) cannot
     // authorize saving. Check mutations against the full row, not a read-tier
     // projection that may omit a restricted Reference used by a Data Scope.
@@ -2061,15 +2095,15 @@ export function rowCapabilities(table: string, name: string, user: string): Prom
     })
     const retirable = canRetire(meta)
     return {
-      write: !ENGINE_MANAGED.has(table) && row.status !== 'submitted' && row.status !== 'cancelled' && await rowGrant('write'),
+      write: !ENGINE_MANAGED.has(table) && row.submission_status !== 'submitted' && row.submission_status !== 'cancelled' && await rowGrant('write'),
       retire: retirable && row.retired_at == null && await retirement('delete'),
       reactivate: retirable && row.retired_at != null && await retirement('write'),
       purge: await mayPurge(user, meta),
       rename,
-      delete: meta.kind === 'table' && !ENGINE_MANAGED.has(table) && row.status !== 'submitted' && await rowGrant('delete'),
-      submit: Boolean(meta.is_submittable) && row.status === 'draft' && await rowGrant('submit'),
-      cancel: Boolean(meta.is_submittable) && row.status === 'submitted' && await rowGrant('cancel'),
-      amend: Boolean(meta.is_submittable) && row.status === 'cancelled' && await rowGrant('amend'),
+      delete: meta.kind === 'table' && !ENGINE_MANAGED.has(table) && row.submission_status !== 'submitted' && await rowGrant('delete'),
+      submit: Boolean(meta.is_submittable) && row.submission_status === 'draft' && await rowGrant('submit'),
+      cancel: Boolean(meta.is_submittable) && row.submission_status === 'submitted' && await rowGrant('cancel'),
+      amend: Boolean(meta.is_submittable) && row.submission_status === 'cancelled' && await rowGrant('amend'),
       assign: await createIn('ToDo'),
       tag: true, // tags, unlike ToDo/Comment/File creation, need only row read
       comment: await createIn('Comment'),
@@ -2085,6 +2119,14 @@ async function getDocImpl(
 ): Promise<RowValues> {
   const meta = await getMeta(table)
   if (meta.kind === 'settings') return getSingle(meta, user)
+  // #1021: a view's row is its base's row, read as one, and found through
+  // the view only while the view's filter matches it.
+  if (meta.kind === 'view') {
+    const { table: base, where } = await scopedWhere(table, user, [[ROW_KEY, '=', name]])
+    const [inView] = await sql`select 1 from ${sql(base)} where ${where}`
+    if (!inView) throw new AppError('NotFoundError', `${table} ${name} not found`)
+    return getDocImpl(meta.view_of!, name, user)
+  }
   if (isBound(meta)) {
     // EDS-5: single row by pk from the source; permission gate control-side
     // and BEFORE the foreign fetch (review finding 1). Bound rows have no
@@ -2122,7 +2164,25 @@ async function getDocImpl(
   // A share grants full field visibility; otherwise honor tiers, on the row
   // and on its sub-table rows alike (#341).
   const reader = shared ? FULL_READER : await readerFor(user, table, 'read', String(row.created_by))
-  return restrictRow(meta, await loadChildren(meta, { table, ...(row as RowValues) }), reader)
+  const readable = await restrictRow(meta, await loadChildren(meta, { table, ...(row as RowValues) }), reader)
+  const outside = await linksOutsideViews(meta, readable)
+  return outside.length ? { ...readable, links_outside_view: outside } : readable
+}
+
+/** #1021: the link columns whose value is a row that has since left the view
+ *  the column links to. The link stays and still saves unchanged; the row's
+ *  page says it no longer matches. Only columns the reader can see count. */
+async function linksOutsideViews(meta: TableMeta, row: RowValues): Promise<string[]> {
+  const out: string[] = []
+  for (const f of meta.columns) {
+    if (f.column_type !== 'Reference' || !f.reference_base || !Object.hasOwn(row, f.column_name)) continue
+    const value = own(row, f.column_name)
+    if (value == null || value === '') continue
+    const view = await getMeta(f.reference_table!)
+    const inside = await rowsInView(sql, view, [String(value)], await tableRelation(f.reference_base))
+    if (!inside.has(String(value))) out.push(f.column_name)
+  }
+  return out
 }
 
 // SET-001: read a Settings Table's one instance from the EAV store, applying
@@ -2136,7 +2196,7 @@ async function getSingle(meta: TableMeta, user: string): Promise<RowValues> {
     table: meta.name,
     [ROW_KEY]: meta.name,
     created_by: 'Administrator',
-    status: 'draft',
+    submission_status: 'draft',
   }
   for (const f of meta.columns) {
     if (NO_COLUMN_TYPES.has(f.column_type)) continue

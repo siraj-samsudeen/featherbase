@@ -23,7 +23,7 @@ describe('DOC-001: save_row inserts through the Document engine', () => {
     expect(doc.created_by).toBe('Administrator')
     expect(Date.parse(doc.created_at as string)).not.toBeNaN()
     expect(doc.updated_at).toBe(doc.created_at) // same stamp on insert
-    expect(doc.status).toBe('draft')
+    expect(doc.submission_status).toBe('draft')
     expect(doc.title).toBe('hello')
     expect(doc.qty).toBe(3)
 
@@ -219,8 +219,8 @@ describe('DOC: lifecycle and rename guards', () => {
     await expectApiError(admin.post(`${dt.rowUrl(doc.row_id)}:amend`), {
       status: 417, type: 'ValidationError', message: `417 ValidationError: ${DT} is not submittable`,
     })
-    expect(await sql`select row_id, title, qty::int as qty, status from featherbase.doc_test_note`).toEqual([
-      { row_id: doc.row_id, title: 'original', qty: 2, status: 'draft' },
+    expect(await sql`select row_id, title, qty::int as qty, submission_status from featherbase.doc_test_note`).toEqual([
+      { row_id: doc.row_id, title: 'original', qty: 2, submission_status: 'draft' },
     ])
   })
 
@@ -260,14 +260,14 @@ describe('DOC: lifecycle and rename guards', () => {
     await admin.post(`${url}:submit`)
     await admin.post(`${url}:cancel`)
     const amended = await admin.post<{ row_id: string; lines: { row_id: string }[] }>(`${url}:amend`)
-    expect(amended).toMatchObject({ row_id: `${doc.row_id}-1`, title: 'copy me', status: 'draft', amended_from: doc.row_id, lines: [{ item: 'bolt' }] })
+    expect(amended).toMatchObject({ row_id: `${doc.row_id}-1`, title: 'copy me', submission_status: 'draft', amended_from: doc.row_id, lines: [{ item: 'bolt' }] })
     expect(amended).not.toHaveProperty('section')
     expect(amended).not.toHaveProperty('column')
     expect(amended.lines[0].row_id).not.toBe(doc.lines[0].row_id)
     expect(await sql`select parent, item from featherbase.doc_amend_line order by parent`).toEqual([
       { parent: doc.row_id, item: 'bolt' }, { parent: amended.row_id, item: 'bolt' },
     ])
-    expect(await admin.get(url)).toMatchObject({ status: 'cancelled' })
+    expect(await admin.get(url)).toMatchObject({ submission_status: 'cancelled' })
     expect(await admin.get(dt.rowUrl(amended.row_id))).toMatchObject(amended)
   })
 

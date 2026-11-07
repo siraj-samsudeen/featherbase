@@ -374,9 +374,9 @@ describe('#101: GET /api/activity_feed', () => {
     // After persisted activity, so a restored database's age cannot place
     // an unrelated change inside this synthetic run.
     await sql`insert into version ${sql([
-      { row_id: 'feed-run-older', created_by: 'Administrator', updated_by: 'Administrator', created_at: at(0), updated_at: at(0), status: 'draft', ref_table: 'Feed Run DT', ref_name: 'run-b', data: '{}' },
+      { row_id: 'feed-run-older', created_by: 'Administrator', updated_by: 'Administrator', created_at: at(0), updated_at: at(0), submission_status: 'draft', ref_table: 'Feed Run DT', ref_name: 'run-b', data: '{}' },
       ...Array.from({ length: 45 }, (_, i) => ({
-        row_id: `feed-run-${i}`, created_by: 'Administrator', updated_by: 'Administrator', created_at: at(10 + i), updated_at: at(10 + i), status: 'draft', ref_table: 'Feed Run DT', ref_name: 'run-a', data: '{}',
+        row_id: `feed-run-${i}`, created_by: 'Administrator', updated_by: 'Administrator', created_at: at(10 + i), updated_at: at(10 + i), submission_status: 'draft', ref_table: 'Feed Run DT', ref_name: 'run-a', data: '{}',
       })),
     ])}`
     await sql`delete from activity_log where operation = 'login' and created_at >= ${at(0)}`

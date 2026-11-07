@@ -69,7 +69,7 @@ describe('META-003: Table save generates its physical table', () => {
       created_at: 'timestamp with time zone',
       updated_at: 'timestamp with time zone',
       updated_by: 'character varying',
-      status: 'text',
+      submission_status: 'text',
       position: 'integer',
       title: 'character varying',
       qty: 'bigint',

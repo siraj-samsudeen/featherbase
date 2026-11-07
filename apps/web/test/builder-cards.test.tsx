@@ -18,12 +18,12 @@ test('a table built from cards stores what the cards said', async ({ admin }) =>
   await user.click(screen.getByTestId('dt-view-cards'))
   expect(screen.getByTestId('dt-view-cards')).toHaveAttribute('aria-pressed', 'true')
 
-  // Card 1: "Status" is a built-in name; the card offers the prefixed one.
+  // Card 1: "Position" is a built-in name; the card offers the prefixed one.
   const first = screen.getByTestId('dt-card-0')
-  await user.type(within(first).getByPlaceholderText('e.g. Date of Birth'), 'Status')
-  expect(within(first).getByText('“status” is a built-in column every table gets')).toBeInTheDocument()
-  await user.click(within(first).getByRole('button', { name: 'Use “cc_depot_status”' }))
-  expect(within(first).getByText('stored as cc_depot_status')).toBeInTheDocument()
+  await user.type(within(first).getByPlaceholderText('e.g. Date of Birth'), 'Position')
+  expect(within(first).getByText('“position” is a built-in column every table gets')).toBeInTheDocument()
+  await user.click(within(first).getByRole('button', { name: 'Use “cc_depot_position”' }))
+  expect(within(first).getByText('stored as cc_depot_position')).toBeInTheDocument()
   // A list of options, required, shown in the list (#738: the first seven
   // columns of a new table start in the list, so this card already is).
   await user.click(within(first).getByRole('button', { name: 'Pick from a list' }))
@@ -51,10 +51,10 @@ test('a table built from cards stores what the cards said', async ({ admin }) =>
   await user.click(screen.getByTestId('dt-create'))
   await screen.findByTestId('list-view', undefined, { timeout: 10_000 })
   const meta = (await admin.get(`/api/table/${encodeURIComponent('Cc Depot')}:meta`)) as Meta
-  expect(meta.columns.map((c) => c.column_name)).toEqual(['cc_depot_status', 'region'])
-  const [status, region] = meta.columns
-  expect(status).toMatchObject({ column_type: 'Choice', reqd: true, in_list_view: true })
-  expect(status.choices?.split('\n')).toEqual(['Open', 'Closed'])
+  expect(meta.columns.map((c) => c.column_name)).toEqual(['cc_depot_position', 'region'])
+  const [position, region] = meta.columns
+  expect(position).toMatchObject({ column_type: 'Choice', reqd: true, in_list_view: true })
+  expect(position.choices?.split('\n')).toEqual(['Open', 'Closed'])
   expect(region).toMatchObject({ column_type: 'Reference', reference_table: 'Cc Region', in_list_view: false })
 })
 

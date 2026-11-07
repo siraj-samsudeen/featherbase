@@ -338,8 +338,14 @@
       "operations": []
     },
     {
-      "id": "due_dates_and_stores",
+      "id": "shared_packages",
       "fromVersion": "3.0.2",
+      "toVersion": "3.0.3",
+      "operations": []
+    },
+    {
+      "id": "due_dates_and_stores",
+      "fromVersion": "3.0.3",
       "toVersion": "3.1.0",
       "operations": [
         {
@@ -416,6 +422,12 @@
       "changes": [
         "Tasks can have a start date and a due date, and show Overdue, Due today or Scheduled",
         "Tasks can belong to a store or warehouse; the Stores page counts each store's work"
+      ]
+    },
+    {
+      "version": "3.0.3",
+      "changes": [
+        "Takes the platform's latest shared interface updates; Tasker itself is unchanged (#1044)"
       ]
     },
     {

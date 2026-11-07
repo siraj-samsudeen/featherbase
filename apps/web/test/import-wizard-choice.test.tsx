@@ -98,13 +98,41 @@ test('a Choice value with spaces around it imports as its option', async ({ admi
   clearSession()
 }, 30000)
 
-test('a refused Table says why, naming the column by its label', async ({ admin }) => {
-  const user = await singleSheet('Iwc Blank', [['Zone', 'Empty'], ['a', ''], ['b', '']], admin)
-  await user.selectOptions(typeOf('Zone'), 'Reference')
+// #993: a column with no values has no options to offer, so Choice is not
+// offered for it; a column with values still is.
+test('Choice cannot be picked for a column with no values', async ({ admin }) => {
+  await singleSheet('Iwc Blank', [['Zone', 'Empty'], ['a', ''], ['b', '']], admin)
+  const choice = (label: string) => [...typeOf(label).options].find((o) => o.value === 'Choice')!
+  expect(choice('Empty')).toBeDisabled()
+  expect(choice('Empty')).toHaveTextContent('Choice (no values to offer)')
+  expect(choice('Zone')).toBeEnabled()
+  clearSession()
+}, 30000)
+
+// #993: after Start over, the name a first attempt took is an existing Table.
+test('a new Table named like an existing one says so before importing, and offers to import into it', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Iwc Taken', columns: [{ column_name: 'zone', column_type: 'Data' }] })
+  const user = await singleSheet('Iwc Taken', [['Zone', 'Code'], ['a', 'x']], admin)
+  expect(await screen.findByTestId('iw-name-taken-0')).toHaveTextContent(
+    'A Table called Iwc Taken already exists. Import into it, or give the new Table another name.',
+  )
   await user.click(screen.getByTestId('iw-import'))
   expect(await screen.findByTestId('iw-failure-0', {}, { timeout: 10000 })).toHaveTextContent(
-    'Iwc Blank failed — Invalid Table definition — zone: Reference column requires reference_table',
+    'Iwc Taken failed — Table Iwc Taken already exists. Give the new Table another name, or pick that Table under “Import into” to add the rows to it.',
   )
+  await waitFor(() => expect(screen.getByTestId('iw-import')).toBeEnabled(), { timeout: 8000 })
+  await user.click(screen.getByTestId('iw-name-taken-use-0'))
+  expect(screen.getByTestId('iw-target-0')).toHaveValue('Iwc Taken')
+  expect(screen.queryByTestId('iw-name-taken-0')).not.toBeInTheDocument()
+  clearSession()
+}, 30000)
+
+test('one row is one row: the Import button and its result', async ({ admin }) => {
+  const user = await singleSheet('Iwc Single', [['Zone', 'Code'], [1, 'x'], ['text', 'y']], admin)
+  expect(screen.getByTestId('iw-import')).toHaveTextContent(/^Import 2 rows$/)
+  await user.selectOptions(typeOf('Zone'), 'Int')
+  await user.click(screen.getByTestId('iw-import'))
+  expect(await screen.findByTestId('iw-result-0', {}, { timeout: 10000 })).toHaveTextContent('Imported 1 row into Iwc Single; 1 failed')
   clearSession()
 }, 30000)
 
@@ -124,12 +152,17 @@ test('a bad column name is named by the row the person sees; a bad Table name as
 }, 30000)
 
 test('a one-sheet import with some rows refused stays, lists them, and does not call itself complete', async ({ admin }) => {
+  // #993: the outcome line is brought into view, clear of the sticky Import bar.
+  const scrolled: Element[] = []
+  Element.prototype.scrollIntoView = function (this: Element) { scrolled.push(this) }
   const user = await singleSheet('Iwc Partial', [['Zone', 'Code'], [1, 'x'], ['text', 'y']], admin)
   await user.selectOptions(typeOf('Zone'), 'Int')
   await user.click(screen.getByTestId('iw-import'))
   expect(await screen.findByTestId('iw-result-0', {}, { timeout: 10000 })).toHaveTextContent('1 failed')
   await waitFor(() => expect(screen.getByTestId('iw-done')).toHaveTextContent('1 row was refused. See above.'), { timeout: 8000 })
   expect(screen.getByTestId('iw-done')).toHaveClass('text-negative')
+  expect(scrolled).toContain(screen.getByTestId('iw-done'))
+  delete (Element.prototype as Partial<Element>).scrollIntoView
   await new Promise((resolve) => setTimeout(resolve, 1000))
   expect(screen.getByTestId('iw-result-0')).toBeInTheDocument()
   clearSession()
@@ -142,6 +175,10 @@ test('when every row is refused nothing has landed: it says so, and correcting t
   const failure = await screen.findByTestId('iw-failure-0', {}, { timeout: 10000 })
   expect(failure).toHaveTextContent('Iwc Refused failed — all 3 rows were refused (first: row 2:')
   expect(screen.queryByTestId('iw-result-0')).not.toBeInTheDocument()
+  // #993: with one target, Fix it still shows where: the card, outlined.
+  await user.click(screen.getByTestId('iw-failure-goto-0'))
+  expect(screen.getByTestId('iw-sheet-0')).toHaveAttribute('data-flash', 'true')
+  await waitFor(() => expect(screen.getByTestId('iw-sheet-0')).not.toHaveAttribute('data-flash'), { timeout: 4000 })
   await waitFor(() => expect(screen.getByTestId('iw-import')).toBeEnabled(), { timeout: 8000 })
   await user.selectOptions(typeOf('Zone'), 'Data')
   await user.click(screen.getByTestId('iw-import'))
@@ -215,6 +252,9 @@ describe('trying again after the connection dropped once the Table was made', ()
     await waitFor(() => expect(screen.getByTestId('iw-failure-0')).toHaveTextContent(
       'Iwc Landed already holds 1 row from the attempt that stopped. Delete it under Past imports, then import again.',
     ), { timeout: 10000 })
+    // #993: nothing on this step can fix that, so the way out is Past imports.
+    expect(screen.queryByTestId('iw-failure-goto-0')).not.toBeInTheDocument()
+    expect(screen.getByTestId('iw-failure-past-imports-0')).toHaveAttribute('href', '/featherbase/admin/imports')
     expect(await admin.get('/api/table/Iwc%20Landed:count')).toMatchObject({ count: 1 })
     clearSession()
   }, 30000)

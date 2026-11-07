@@ -239,7 +239,7 @@ describe('DEL-R9: a stale pointer gets a tombstone, not a shrug', () => {
     const NOBODY = 'psn_eeeeeeeeeeeeeeeeeeee'
 
     async function bury(name: string, user: string, operation = 'delete_table', reference: string | null = null) {
-      await sql`insert into access_log (row_id, created_by, updated_by, created_at, updated_at, status, "user", operation, ref_table, reference_name)
+      await sql`insert into access_log (row_id, created_by, updated_by, created_at, updated_at, submission_status, "user", operation, ref_table, reference_name)
         values (${name}, ${user}, ${user}, '2026-11-04T19:00:00Z', now(), 'draft', ${user}, ${operation}, ${name}, ${reference})`
     }
     const messageFor = (admin: TestClient, name: string) =>
