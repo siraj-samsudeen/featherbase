@@ -627,8 +627,9 @@ export async function updateTable(
       ...(named.description !== undefined ? { description: def.description || null } : {}),
       // Only when given: an update that leaves it out keeps the Table's choice.
       ...(def.decides_scope !== undefined ? { decides_scope: def.decides_scope } : {}),
-      scope_on: def.scope_on?.length ? def.scope_on : null,
-      scope_required: Boolean(def.scope_required),
+      // Only once the definition has them: migrations before 0154 update Tables too.
+      ...(def.scope_on !== undefined ? { scope_on: def.scope_on?.length ? def.scope_on : null } : {}),
+      ...(def.scope_required !== undefined ? { scope_required: def.scope_required } : {}),
       ...(def.access_policy !== undefined ? { access_policy: def.access_policy } : {}),
       updated_at: new Date(),
     })} where name = ${name}`

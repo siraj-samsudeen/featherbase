@@ -92,6 +92,36 @@ describe('#246 scope_on: only the declared Reference columns narrow rows', () =>
   })
 })
 
+describe('#246 the scope declaration lives with the Table definition', () => {
+  const defUrl = `/api/table_def/${encodeURIComponent(SECTION)}`
+  const columns = [
+    { column_name: 'title', column_type: 'Data' },
+    { column_name: 'store', column_type: 'Reference', reference_table: STORE },
+    { column_name: 'supplier_store', column_type: 'Reference', reference_table: STORE },
+  ]
+  const stored = async () => (await sql`select scope_on, scope_required from featherbase.table_def where name = ${SECTION}`)[0]
+
+  test('an update that leaves it out keeps it; an empty list clears it', async ({ admin, createUser }) => {
+    await setup(admin, createUser, { scope_on: ['store'], scope_required: true })
+    await admin.put(defUrl, { name: SECTION, columns, description: 'kept' })
+    expect(await stored()).toEqual({ scope_on: ['store'], scope_required: true })
+    await admin.put(defUrl, { name: SECTION, columns, scope_on: [], scope_required: false })
+    expect(await stored()).toEqual({ scope_on: null, scope_required: false })
+  })
+
+  test('renaming a scope column renames it in the declaration', async ({ admin, createUser }) => {
+    await setup(admin, createUser, { scope_on: ['store', 'supplier_store'], scope_required: true })
+    await admin.post(`${defUrl}/rename_column`, { from: 'store', to: 'home_store' })
+    expect((await stored()).scope_on).toEqual(['home_store', 'supplier_store'])
+  })
+
+  test('a scope column cannot be removed while the Table is scoped on it', async ({ admin, createUser }) => {
+    await setup(admin, createUser, { scope_on: ['store'] })
+    await expectApiError(admin.put(defUrl, { name: SECTION, columns: columns.filter((c) => c.column_name !== 'store'), remove_columns: ['store'] }), { status: 417 })
+    expect((await stored()).scope_on).toEqual(['store'])
+  })
+})
+
 describe('#246 scope_required: no Data Scope means no rows', () => {
   const required = { scope_on: ['store'], scope_required: true }
 
