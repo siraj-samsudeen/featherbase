@@ -12,6 +12,7 @@ import { test, patchDoc } from './pg-test'
 import { EXTERNAL_DATABASE_URL } from './external-database'
 import { sql } from '../src/db'
 import { invalidateSources } from '../src/sources/registry'
+import { invalidateMeta } from '../src/meta'
 import type { ReflectionCandidate } from '../src/sources/reflect'
 import { grantRole, makeTable } from './fixtures'
 
@@ -719,6 +720,14 @@ describe('EDS-2: foreign keys reflect as References', () => {
       expect(await cli`select * from ext_fixture.garage order by id`).toEqual(before.garages)
       expect(await cli`select * from ext_fixture.accident order by id`).toEqual(before.accidents)
       expect(await Promise.all(metaPaths.map((p) => admin.get(p)))).toEqual(allMetadata)
+      // #246: scoped on the garage alone, and required. An accident naming no
+      // garage leaves the reader's list, and with no Data Scope nothing is left.
+      await sql`update table_def set scope_on = ${['garage_id']}, scope_required = true where name = ${accident}`
+      invalidateMeta(accident)
+      const scopedQuery = new URLSearchParams({ fields: JSON.stringify(fields), filters: JSON.stringify([['row_id', 'in', ids]]), order_by: 'row_id asc' })
+      expect((await reader.get<{ data: unknown[] }>(`${path}?${scopedQuery}`)).data).toEqual([rows[0], rows[2]])
+      await sql`delete from data_scope where person = ${reader.user!}`
+      expect(await reader.get(`${path}?${scopedQuery}`)).toEqual({ data: [], total: 0, limit_start: 0, limit_page_length: 20 })
     } finally {
       await cli`delete from ext_fixture.accident where vehicle_id in ${cli(vehicles.map((v) => v.id))}`
       await cli`delete from ext_fixture.vehicle where id in ${cli(vehicles.map((v) => v.id))}`

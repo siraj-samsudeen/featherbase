@@ -590,7 +590,7 @@ describe('the rule is configuration', () => {
     expect((await patchMethod(admin, 'stylehr', { settings: JSON.stringify({}) })).status).toBe(417)
   })
 
-  // #1061 turned the method on in Dash's instance file.
+  // #1061: the owner turned StyleHR sign-in on in the instance file.
   test('the instance file ships the method on, needing no variable', async () => {
     const file = JSON.parse(readFileSync(new URL('../../../client-apps/jeyarama/instances/dash/instance-settings.json', import.meta.url), 'utf8')) as {
       settings: { 'Sign In Method': { row_id: string }[] }
