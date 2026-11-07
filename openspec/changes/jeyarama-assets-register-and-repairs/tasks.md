@@ -22,11 +22,11 @@
 
 ## 2c. Physical verification counts (BRD VER-01..03, step 2)
 
-- [ ] 2c.1 Tests first: review lines and outcome counts (unit); planning, start action and its fixed list, blind counters, scans with reasons and duplicates, reviewer separation, recount, decisions and close (server); counts page, blind count page, review page, asset's last verified (web)
-- [ ] 2c.2 Tables: counts, counters, expected list (managers only), scans, decisions; the start action
-- [ ] 2c.3 Server rules: scan, decision, counter and count-stage checks; close only with every decision
-- [ ] 2c.4 Pages: Counts list and planning, blind count page with recount list, review page, last verified on the asset page
-- [ ] 2c.5 One isolated browser journey; sample ATK count in review for the owner
+- [x] 2c.1 Tests first: review lines and outcome counts (unit); planning, start action and its fixed list, blind counters, scans with reasons and duplicates, reviewer separation, recount, decisions and close (server); counts page, blind count page, review page, asset's last verified (web)
+- [x] 2c.2 Tables: counts, counters, expected list (managers only), scans, decisions; the start action
+- [x] 2c.3 Server rules: scan, decision, counter and count-stage checks; close only with every decision
+- [x] 2c.4 Pages: Counts list and planning, blind count page with recount list, review page, last verified on the asset page
+- [x] 2c.5 One isolated browser journey; sample ATK count in review for the owner
 
 ## 3. Proof
 
