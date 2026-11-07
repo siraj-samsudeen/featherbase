@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { DEFAULT_ID_PATTERN, namingColumn, prettifyLabel, renameNamingColumn, tableSlug } from 'shared'
+import { DEFAULT_ID_PATTERN, LINK_FORMATS, namingColumn, prettifyLabel, renameNamingColumn, tableSlug } from 'shared'
 import { inAppTransaction, sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { assertNotSystemWritten } from './system-written'
@@ -184,6 +184,8 @@ export const tableDefSchema = z.object({
   is_submittable: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
   id_pattern: optionalString,
   title_column: optionalString,
+  // #1020: how links to this Table's rows read. Kept when an update leaves it out.
+  link_format: z.enum(LINK_FORMATS).nullish().transform((v) => v ?? undefined).optional(),
   reading_presentation: readingPresentationSchema.nullish(),
   description: optionalString,
   // #74: platform-table flag. Accepted here so migrations and seeds can set
@@ -482,6 +484,14 @@ async function assertNoRepeats(
 // partial payload would otherwise erase every column it left out. Each one
 // must be named in remove_columns; an unnamed omission refuses the whole
 // write, naming the column and how many rows hold a value in it.
+/** A link's value is a row's id, a code, so it can't name a row (#1020). A link
+ *  to a person can: people read the person's name. */
+function refuseLinkTitle(def: { title_column?: string | null; columns: { column_name: string; column_type: string; reference_table?: string | null }[] }) {
+  const link = def.columns.find((c) => c.column_name === def.title_column && c.column_type === 'Reference')
+  if (link && link.reference_table !== 'Person' && link.reference_table !== 'Service Account')
+    throw new AppError('ValidationError', `A link can't name a row: ${def.title_column} holds another row's code`, { title_column: 'Choose a column that holds a name' })
+}
+
 export async function updateTable(
   name: string,
   input: unknown,
@@ -511,6 +521,7 @@ export async function updateTable(
   if (def.title_column && def.title_column !== existing.title_column && def.title_column !== ROW_KEY &&
       !def.columns.some((c) => c.column_name === def.title_column && !['Sub-table', 'Section Break', 'Column Break'].includes(c.column_type)))
     throw new AppError('ValidationError', `${name} has no column ${def.title_column} to name its rows`, { title_column: 'No such column' })
+  if (def.title_column !== existing.title_column) refuseLinkTitle(def)
   if (existing.access_policy && def.access_policy && JSON.stringify(def.access_policy) !== JSON.stringify(accessPolicySchema.parse(existing.access_policy)))
     throw new AppError('PermissionError', 'An existing mandatory access policy cannot be changed through the schema editor')
   if (existing.access_policy) {
@@ -628,6 +639,7 @@ export async function updateTable(
       id_pattern: def.id_pattern ?? existing.id_pattern,
       // Only when named: null or an empty value clears them, leaving them out keeps them.
       ...(named.title_column !== undefined ? { title_column: def.title_column || null } : {}),
+      ...(def.link_format !== undefined ? { link_format: def.link_format } : {}),
       // A title column removed with this update names nothing any more.
       ...(existing.title_column && opts.remove_columns?.includes(existing.title_column) ? { title_column: null } : {}),
       ...(def.reading_presentation !== undefined ? { reading_presentation: def.reading_presentation } : {}),
@@ -1001,6 +1013,7 @@ export async function createTable(
         [f.column_name]: `${f.row_table} is not a sub_table Table`,
       })
   }
+  refuseLinkTitle(def)
 
   await sql.begin(async (tx) => {
     const tableRow: Record<string, unknown> = {
@@ -1019,6 +1032,7 @@ export async function createTable(
     }
     await assertTableAddressAvailable(tx, def.name)
     if (def.decides_scope) tableRow.decides_scope = true
+    if (def.link_format) tableRow.link_format = def.link_format
     if (def.access_policy) tableRow.access_policy = def.access_policy
     if (qualified) {
       tableRow.label = def.label ?? def.name.split('.')[1]

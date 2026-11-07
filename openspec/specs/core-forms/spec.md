@@ -139,8 +139,8 @@ row to link to.
 Given the user is a System Manager
 And orders from the customers "Globex Ltd" and "Initech"
 When the user types "Ltd" into a new order's customer and picks "Globex Ltd"
-Then the user was offered only "Globex Ltd"
-And the user sees the saved order's customer as "Globex Ltd"
+Then the user was offered only "Globex Ltd (cust-1)"
+And the user sees the saved order's customer as "Globex Ltd (cust-1)"
 ```
 
 ### Requirement: Every form control can be found by its name
@@ -286,7 +286,7 @@ When the user opens that parcel
 Then the user sees each of the parcel's fields marked with its type
 And the user sees the parcel's weight in even-width figures
 And the user sees the parcel marked as fragile
-And the user sees the parcel's rack as "Top"
+And the user sees the parcel's rack as "Top (3)"
 And the user sees the parcel's photo as the file "blue-box.png"
 ```
 

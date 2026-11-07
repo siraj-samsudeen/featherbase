@@ -48,7 +48,7 @@ describe('PanePlace', () => {
 describe('LinkChip', () => {
   test('reads name first, then the code', () => {
     render(<LinkChip label="North bay" code="B-104" onOpen={() => {}} />)
-    expect(screen.getByRole('button', { name: 'North bay · B-104' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'North bay (B-104)' })).toBeInTheDocument()
   })
 
   test('opening the label reports it', async () => {
@@ -139,7 +139,7 @@ describe('FieldGrid', () => {
 
 describe('DrillPane', () => {
   function pane(onClose = vi.fn()) {
-    render(<DrillPane kind="Bin" title="North bay · B-104" place="right" onClose={onClose}
+    render(<DrillPane kind="Bin" title="North bay (B-104)" place="right" onClose={onClose}
       actions={<button type="button">Open row page</button>}>
       <PaneSection title="Points at"><p>Aisle 4</p></PaneSection>
     </DrillPane>)
@@ -148,8 +148,8 @@ describe('DrillPane', () => {
 
   test('is a complementary region named by its title, its kind above', () => {
     pane()
-    const region = screen.getByRole('complementary', { name: 'North bay · B-104' })
-    expect(region).toHaveTextContent(/^Bin\s*North bay · B-104/)
+    const region = screen.getByRole('complementary', { name: 'North bay (B-104)' })
+    expect(region).toHaveTextContent(/^Bin\s*North bay \(B-104\)/)
   })
 
   test('holds its sections under their headings', () => {
@@ -167,7 +167,7 @@ describe('DrillPane', () => {
 
   test("its actions sit on a line of their own under the title, so they never squeeze it", () => {
     pane()
-    const heading = screen.getByRole('heading', { level: 2, name: 'North bay · B-104' })
+    const heading = screen.getByRole('heading', { level: 2, name: 'North bay (B-104)' })
     const titleRow = screen.getByRole('button', { name: 'Close' }).parentElement!
     expect(titleRow).toContainElement(heading)
     expect(titleRow).not.toContainElement(screen.getByRole('button', { name: 'Open row page' }))
@@ -175,12 +175,12 @@ describe('DrillPane', () => {
 
   test('its title wraps between words, never inside one', () => {
     pane()
-    expect(screen.getByRole('heading', { level: 2, name: 'North bay · B-104' }).className).not.toMatch(/\b(wrap-anywhere|break-all)\b/)
+    expect(screen.getByRole('heading', { level: 2, name: 'North bay (B-104)' }).className).not.toMatch(/\b(wrap-anywhere|break-all)\b/)
   })
 
   test('takes focus when it opens, so Escape closes it at once', () => {
     pane()
-    expect(screen.getByRole('complementary', { name: 'North bay · B-104' })).toHaveFocus()
+    expect(screen.getByRole('complementary', { name: 'North bay (B-104)' })).toHaveFocus()
   })
 
   test('Escape inside the pane closes it', async () => {
@@ -300,7 +300,7 @@ describe('PathBar', () => {
   const steps = [
     { key: 'list', kindLabel: 'List', label: 'Bins' },
     { key: 'filter', kindLabel: 'Filter', label: 'Aisle: 4' },
-    { key: 'row', label: 'North bay · B-104' },
+    { key: 'row', label: 'North bay (B-104)' },
   ]
   function bar(current: number, handlers: Partial<Record<'onStep' | 'onBack' | 'onForward' | 'onCopyLink', () => void>> = {}) {
     render(<PathBar steps={steps} current={current} onStep={handlers.onStep ?? vi.fn()} onBack={handlers.onBack ?? vi.fn()}
@@ -366,7 +366,7 @@ describe('PathBar', () => {
 
     test('shows whole steps only, the earlier ones that do not fit hidden behind "…"', () => {
       bar(2)
-      expect(shownSteps()).toEqual(['North bay · B-104'])
+      expect(shownSteps()).toEqual(['North bay (B-104)'])
       expect(screen.getByRole('button', { name: 'Earlier steps' })).toHaveTextContent('…')
     })
 
@@ -391,7 +391,7 @@ describe('PathBar', () => {
       expect(buttons.map((b) => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['List Bins', 'Later steps'])
       await user.click(screen.getByRole('button', { name: 'Later steps' }))
       const menu = screen.getByRole('menu', { name: 'Later steps' })
-      expect(within(menu).getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Filter Aisle: 4', 'North bay · B-104'])
+      expect(within(menu).getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Filter Aisle: 4', 'North bay (B-104)'])
       await user.click(within(menu).getByRole('menuitem', { name: 'Filter Aisle: 4' }))
       expect(onStep).toHaveBeenCalledWith(1)
     })
@@ -488,9 +488,9 @@ describe('TreeOutline', () => {
     expect(screen.getByText('Linked from').style.paddingInlineStart).toBe('1.25rem')
   })
 
-  test('a line reads name · code with its level', () => {
+  test('a line reads name (code) with its level', () => {
     render(<Tree open={['shelves']} />)
-    expect(item('Top shelf · S-1')).toHaveAttribute('aria-level', '2')
+    expect(item('Top shelf (S-1)')).toHaveAttribute('aria-level', '2')
   })
 
   test('a group line shows its count and whether it is open', () => {
@@ -500,13 +500,13 @@ describe('TreeOutline', () => {
 
   test('only the selected line is in the tab order', () => {
     render(<Tree />)
-    expect(screen.getAllByRole('treeitem').filter((el) => el.tabIndex === 0)).toEqual([item('North bay · B-104')])
+    expect(screen.getAllByRole('treeitem').filter((el) => el.tabIndex === 0)).toEqual([item('North bay (B-104)')])
   })
 
   test('Down moves to the next line, past a heading', async () => {
     const user = userEvent.setup()
     render(<Tree />)
-    item('North bay · B-104').focus()
+    item('North bay (B-104)').focus()
     await user.keyboard('{ArrowDown}')
     expect(item('Shelf 40')).toHaveFocus()
   })
@@ -514,7 +514,7 @@ describe('TreeOutline', () => {
   test('Up moves to the previous line', async () => {
     const user = userEvent.setup()
     render(<Tree />)
-    item('North bay · B-104').focus()
+    item('North bay (B-104)').focus()
     await user.keyboard('{ArrowUp}')
     expect(item('Aisle 4')).toHaveFocus()
   })
@@ -533,13 +533,13 @@ describe('TreeOutline', () => {
     render(<Tree open={['shelves']} />)
     item('Shelf 40').focus()
     await user.keyboard('{ArrowRight}')
-    expect(item('Top shelf · S-1')).toHaveFocus()
+    expect(item('Top shelf (S-1)')).toHaveFocus()
   })
 
   test('Left on a child goes to its parent', async () => {
     const user = userEvent.setup()
     render(<Tree open={['shelves']} />)
-    item('Middle shelf · S-2').focus()
+    item('Middle shelf (S-2)').focus()
     await user.keyboard('{ArrowLeft}')
     expect(item('Shelf 40')).toHaveFocus()
   })
@@ -581,7 +581,7 @@ describe('TreeOutline', () => {
   test('the selected line carries its actions', () => {
     render(<Tree />)
     expect(screen.getByRole('button', { name: 'Focus here' })).toBeInTheDocument()
-    expect(item('North bay · B-104')).toHaveAttribute('aria-selected', 'true')
+    expect(item('North bay (B-104)')).toHaveAttribute('aria-selected', 'true')
   })
 })
 

@@ -485,7 +485,7 @@ And a Postgres database of shelves and the bins on each shelf
 And its shelf and bin tables connected as "Shelf" and "Bin"
 And a bin on the shelf titled "Top"
 When the user opens that bin's relationship map
-Then the user sees its shelf as "Top"
+Then the user sees its shelf as "Top (7)"
 ```
 
 #### Scenario: A shelf the user may not read keeps its title hidden

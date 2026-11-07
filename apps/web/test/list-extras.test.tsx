@@ -93,7 +93,7 @@ test('expanding a row deleted after the list loaded reports the missing row', as
   const name = 'o-3'
   await admin.delete(`/api/table/${ENC}/${encodeURIComponent(name)}`)
   await userEvent.click(within(row).getByTestId('row-expand'))
-  expect(await screen.findByText(`Cannot load ${name}`)).toBeInTheDocument()
+  expect(await screen.findByText('Cannot load this row')).toBeInTheDocument()
   expect(screen.queryByTestId('inline-children-lines')).not.toBeInTheDocument()
 })
 

@@ -58,12 +58,25 @@ test('with no title column, a name-like first value stands alone', () => {
 
 test('readable values from supported column types become titles', () => {
   for (const [column_type, value, title] of [
-    ['Choice', 'Ready', 'Ready'], ['Reference', 'STORE-7', 'STORE-7'],
+    ['Choice', 'Ready', 'Ready'],
     ['Int', 42, '42'], ['Text', 'Delivery notes', 'Delivery notes'],
   ] as const) {
     const meta = { name: 'Visit', columns: [{ column_name: 'value', column_type }] }
     expect(rowDisplayTitle(meta, { value }, 'V-1')).toBe(title)
   }
+})
+
+test("#1020: a link's value is another row's code, so it never words a title", () => {
+  const columns = [{ column_name: 'cluster', column_type: 'Reference', reference_table: 'Cluster' }, { column_name: 'any', column_type: 'Reference' }]
+  const row = { cluster: 'VLM', any: 'VLM' }
+  expect(rowDisplayTitle({ name: 'Visit', columns }, row, 'V-1')).toBe('Visit · V-1')
+  expect(rowDisplayTitle({ name: 'Visit', title_column: 'cluster', columns }, row, 'V-1')).toBe('Visit · V-1')
+  expect(rowDisplayTitle({ name: 'Visit', title_column: 'any', columns }, row, 'V-1')).toBe('Visit · V-1')
+})
+
+test('a link to a person can name a row: callers put the name in its place', () => {
+  const meta = { name: 'Visit', title_column: 'owner', columns: [{ column_name: 'owner', column_type: 'Reference', reference_table: 'Person' }] }
+  expect(rowDisplayTitle(meta, { owner: 'Asha' }, 'V-1')).toBe('Asha')
 })
 
 test('a row id shown as the title counts as no title column', () => {
@@ -74,7 +87,7 @@ test('a row id shown as the title counts as no title column', () => {
 test('hidden, layout and opaque-id values are skipped', () => {
   const meta = { name: 'Visit', title_column: null, columns: [
     { column_name: 'row_id', column_type: 'Data' },
-    { column_name: 'owner', column_type: 'Reference' },
+    { column_name: 'owner', column_type: 'Data' },
     { column_name: 'notes_break', column_type: 'Section Break' },
     { column_name: 'secret', column_type: 'Data', hidden: true },
     { column_name: 'place', column_type: 'Data' },

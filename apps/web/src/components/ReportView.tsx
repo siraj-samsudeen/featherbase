@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { choiceLabel } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, useMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
+import { UNSEEN_ROW } from '../lib/relations'
+import { RowName } from '../lib/row-name'
 import { FilterBar, type Filter } from './ListView'
 import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from '@featherbase/shop-floor'
 import { fmtCount, fmtNumber } from '@featherbase/shop-floor'
@@ -287,11 +289,19 @@ export function ReportView({
     return definition?.column_type === 'Choice' ? choiceLabel(value, definition.choice_labels, t) : value
   }
 
+  // #1020: a link reads as its Table's links read, wherever it is on the page.
+  const displayValue = (value: string, column: string): ReactNode => {
+    const definition = available.find((f) => f.column_name === column)
+    return value && value !== EMPTY_GROUP && definition?.column_type === 'Reference' && definition.reference_table
+      ? <RowName table={definition.reference_table} rowId={value} />
+      : displayChoice(value, column)
+  }
+
   const cell = (row: Row, col: string) => {
     const v = row[col]
     if (v == null || v === '') return '—'
     if (typeof v === 'boolean') return v ? '✓' : ''
-    return displayChoice(String(v), col)
+    return displayValue(String(v), col)
   }
 
   // RPT-003: export what is on screen, in display order — group header rows
@@ -328,11 +338,37 @@ export function ReportView({
     return all
   }
 
+  // #1020: the file keeps a link's stored value, as other systems read it, except
+  // a link to a row this viewer can't read: neutral words, as on the screen.
+  const linkTable = (col: string) => {
+    const definition = available.find((f) => f.column_name === col)
+    return definition?.column_type === 'Reference' ? definition.reference_table ?? null : null
+  }
+  const barMark = (barLabel: string, i: number) => (linkTable(groupBy || chartLabelField) ? `link-${i}` : barLabel)
+  async function unreadableLinks(list: Row[]): Promise<Set<string>> {
+    const wanted = new Map<string, { table: string; row_id: string }>()
+    for (const col of new Set([...columns, ...(groupBy ? [groupBy] : [])])) {
+      const table = linkTable(col)
+      if (!table) continue
+      for (const row of list) {
+        if (row[col] != null && row[col] !== '') wanted.set(`${table}\0${row[col]}`, { table, row_id: String(row[col]) })
+      }
+    }
+    const refs = [...wanted.values()]
+    for (let i = 0; i < refs.length; i += 100) {
+      const { titles } = await api.post<{ titles: { table: string; row_id: string }[] }>('/api/row_titles', { rows: refs.slice(i, i + 100) })
+      for (const t of titles) wanted.delete(`${t.table}\0${t.row_id}`)
+    }
+    return new Set(wanted.keys())
+  }
+
   async function exportRows(): Promise<(string | number)[][]> {
     const list = await allRows()
     const header = ['Name', ...columns.map(label)]
     const out: (string | number)[][] = [header]
-    const member = (row: Row) => [String(row.row_id), ...columns.map((c) => exportCell(row, c))]
+    const unreadable = await unreadableLinks(list)
+    const shown = (col: string, value: string) => (unreadable.has(`${linkTable(col)}\0${value}`) ? UNSEEN_ROW : value)
+    const member = (row: Row) => [String(row.row_id), ...columns.map((c) => shown(c, exportCell(row, c)))]
     // The file carries the same totals as the screen: the server's exact sums
     // when it has them, otherwise sums over every exported row.
     const totalCells = (t: { count: number; sums: Record<string, number> }, name: string) => [
@@ -342,7 +378,7 @@ export function ReportView({
     const own = (rows: Row[]) => ({ count: rows.length, sums: sumsOf(rows) })
     if (groupBy) {
       for (const g of orderedGroups(groupRows(list))) {
-        out.push(totalCells(g, g.key))
+        out.push(totalCells(g, shown(groupBy, g.key)))
         for (const row of g.list) out.push(member(row))
       }
     } else {
@@ -604,9 +640,10 @@ export function ReportView({
             {groupBy &&
               shownGroups.map((g) => (
                 <ReportGroup
+                  linked={Boolean(linkTable(groupBy))}
                   key={g.key}
                   group={g}
-                  label={displayChoice(g.key, groupBy)}
+                  label={displayValue(g.key, groupBy)}
                   columns={columns}
                   numericCols={numericCols}
                   fmt={fmt}
@@ -686,15 +723,15 @@ export function ReportView({
         )}
         <div className="space-y-2">
           {chartData.map((r, i) => (
-            <div key={`${r.label}-${i}`} className="flex items-center gap-2" data-testid={`chart-bar-${r.label}`}>
-              <div className="w-24 shrink-0 truncate text-xs text-ink-muted">{displayChoice(r.label, groupBy || chartLabelField) || '—'}</div>
+            <div key={`${r.label}-${i}`} className="flex items-center gap-2" data-testid={`chart-bar-${barMark(r.label, i)}`}>
+              <div className="w-24 shrink-0 truncate text-xs text-ink-muted">{displayValue(r.label, groupBy || chartLabelField) || '—'}</div>
               <div className="h-5 flex-1 rounded bg-subtle">
                 <div
                   className="h-5 rounded bg-action"
                   style={{ width: `${Math.round((r.value / chartMax) * 100)}%`, minWidth: r.value ? '2px' : 0 }}
                 />
               </div>
-              <div className="w-10 shrink-0 text-right text-xs tabular-nums text-ink" data-testid={`chart-bar-value-${r.label}`}>
+              <div className="w-10 shrink-0 text-right text-xs tabular-nums text-ink" data-testid={`chart-bar-value-${barMark(r.label, i)}`}>
                 {r.value}
               </div>
             </div>
@@ -709,6 +746,7 @@ export function ReportView({
 }
 
 function ReportGroup({
+  linked,
   group,
   label,
   columns,
@@ -717,7 +755,9 @@ function ReportGroup({
   bodyRow,
 }: {
   group: GroupTotals
-  label: string
+  /** A group by a link: its value is a code, kept off the page (#1020). */
+  linked: boolean
+  label: ReactNode
   columns: string[]
   numericCols: string[]
   fmt: (v: number) => string
@@ -729,7 +769,7 @@ function ReportGroup({
       <tr
         className="cursor-pointer border-t border-border bg-action-tint/60"
         data-testid="group-header"
-        data-group={group.key}
+        data-group={linked ? undefined : group.key}
         onClick={() => setOpen((o) => !o)}
       >
         <td className="px-3 py-1.5 font-medium text-ink">

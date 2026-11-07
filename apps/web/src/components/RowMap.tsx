@@ -71,11 +71,11 @@ export function RowMap({ table, name }: { table: string; name: string }) {
   if (meta.isLoading || doc.isLoading)
     return <p className="text-sm text-ink-subtle">Loading…</p>
   if (meta.isError || doc.isError)
-    return <p className="text-sm text-negative">Cannot load {table} {name}</p>
+    return <p className="text-sm text-negative">Cannot load this {table} row</p>
 
   const m = meta.data!
   const d = doc.data!
-  const centreTitle = centre.state === 'read' ? centre.title : rowNameText(centre)
+  const centreTitle = rowNameText(centre)
 
   const forward: ForwardNode[] = []
   if (m.kind === 'sub_table' && typeof d.parenttype === 'string' && typeof d.parent === 'string')
@@ -386,7 +386,7 @@ function SvgForward({ link, y, height, lines, onOpen }: {
   const name = useRowName(link.table, link.row_id)
   const unreadable = name.state === 'unreadable'
   // Never its id (#907), and never the name of a row the viewer cannot read.
-  const title = name.state === 'read' ? name.title : unreadable ? 'Not visible to you' : '…'
+  const title = name.state === 'read' ? name.text : unreadable ? 'Not visible to you' : '…'
   return (
     <g
       onClick={unreadable ? undefined : () => onOpen(link)}

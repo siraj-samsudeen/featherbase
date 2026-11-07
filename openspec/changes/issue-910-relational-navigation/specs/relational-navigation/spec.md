@@ -36,7 +36,7 @@ system made up never shows.
 ```gherkin
 Given the plant Enchakkal Supermarket has the plant code 1503
 When the user opens the list of profit centres
-Then each profit centre's plant reads "Enchakkal Supermarket · 1503"
+Then each profit centre's plant reads "Enchakkal Supermarket (1503)"
 ```
 
 ### Requirement: Following a link opens the linked row in the drill pane

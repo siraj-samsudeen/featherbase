@@ -5,7 +5,7 @@ import { ENGINE_WRITABLE, type SourceEngine } from './sources/types'
 import { assertAppAvailable } from './app-lifecycle'
 import { resolvedRelation } from './platform-schema'
 import type { ReadingPresentation } from 'shared'
-import { METADATA_OVERRIDE_PROPERTIES, METADATA_OVERRIDE_BOOLEAN_VALUES } from 'shared'
+import { METADATA_OVERRIDE_PROPERTIES, METADATA_OVERRIDE_BOOLEAN_VALUES, type LinkFormat } from 'shared'
 
 // Column types the engine understands (columns generated in META-002/003).
 export const COLUMN_TYPE_VALUES = [
@@ -118,6 +118,8 @@ export interface TableMeta {
   is_submittable: boolean
   id_pattern: string
   title_column: string | null
+  // #1020: how links to this Table's rows read. Undefined before its migration.
+  link_format?: LinkFormat
   reading_presentation?: ReadingPresentation | null
   sort_column: string
   sort_order: string
@@ -446,6 +448,7 @@ async function viewMeta(dt: Record<string, unknown>, loadedAt: number): Promise<
     is_submittable: base.is_submittable,
     id_pattern: base.id_pattern,
     title_column: base.title_column,
+    link_format: base.link_format,
     reading_presentation: base.reading_presentation ?? null,
     sort_column: base.sort_column,
     sort_order: base.sort_order,

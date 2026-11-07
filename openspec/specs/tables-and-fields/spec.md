@@ -915,6 +915,51 @@ under "Archived" on All tables. Its list and its rows SHALL say it is archived, 
 - **WHEN** a System Manager un-archives it
 - **THEN** it is back in its module's menu
 
+### Requirement: A Table chooses how links to it read
+
+A Table SHALL choose how links to its rows read: Name (code), the default; Code (name); Name only; or Code only. The choice SHALL apply wherever a link to that Table shows. The code is the row's ID, when its IDs are codes people use.
+
+#### Scenario: Each format
+
+- **WHEN** a Cluster row has the code VLM and the name Vellayambalam
+- **THEN** a link reads "Vellayambalam (VLM)" in Name (code), "VLM (Vellayambalam)" in Code (name), "Vellayambalam" in Name only, and "VLM" in Code only
+
+#### Scenario: A link does not name a row
+
+- **WHEN** a Table's title column would be a link to a row of another Table
+- **THEN** the Table's definition is refused, and a row's stand-in title leaves links out, because a link's value is a code the reader may not be allowed to see. A link to a person can still name a row, by the person's name
+
+#### Scenario: A row with no value of its own
+
+- **WHEN** a linked row has no value that could name it
+- **THEN** a link reads as its Table when its ID is generated, and as its ID when people chose it
+
+#### Scenario: A view
+
+- **WHEN** a link points at a view, or someone tries to set a format on a view
+- **THEN** the link reads by its base Table's format, and a view can't choose its own
+
+#### Scenario: No separate code
+
+- **WHEN** a Table's rows are numbered by a series, or their ID already is their name
+- **THEN** a link reads just the name, in every format
+
+#### Scenario: Changing it leaves the columns alone
+
+- **WHEN** a System Manager changes a Table's format
+- **THEN** every link to it reads the new way, and its columns are unchanged
+- **AND** an update to the Table's definition that leaves the format out keeps it
+
+#### Scenario: A row the viewer can't read
+
+- **WHEN** a link points at a row the viewer can't read
+- **THEN** it reads as neutral words in every format
+
+#### Scenario: A Table with no name column
+
+- **WHEN** a Table has no name column, and its stand-in title holds a name and a code
+- **THEN** a link follows the format, with no dot left over
+
 ### Requirement: A column can be called status
 
 A Table SHALL be able to hold its own column called `status`, whose values mean nothing to the platform. Whether a row is a draft, submitted or cancelled SHALL be held only in `submission_status`, a name no Table's own column can take.

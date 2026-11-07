@@ -1,9 +1,9 @@
 import { useId } from 'react'
 import { cx } from './cx'
 
-/** A row's name, then its code when people use one: "North bay · B-104" (D5, name first). */
+/** A row's name, then its code when people use one: "North bay (B-104)". */
 export function nameAndCode(label: string, code?: string): string {
-  return code ? `${label} · ${code}` : label
+  return code ? `${label} (${code})` : label
 }
 
 /** A small, quiet action beside a value (Go there, Filter, Focus here). */

@@ -13,7 +13,7 @@ test("a profit centre's plant reads by its name, then its plant code", async ({ 
   await seedSites(admin)
   await renderApp(tableHref(PROFIT), admin)
   const rows = await screen.findByTestId('list-rows')
-  await waitFor(() => expect(within(rows).getAllByTestId('cell-plant')[0]).toHaveTextContent('Enchakkal Supermarket · 1503'))
+  await waitFor(() => expect(within(rows).getAllByTestId('cell-plant')[0]).toHaveTextContent('Enchakkal Supermarket (1503)'))
 })
 
 test("a list's own title cell is the name alone", async ({ admin }) => {
@@ -54,7 +54,7 @@ test("a link cell never shows the linked row's id while its name is on its way",
     await waitFor(() => expect(within(rows).getAllByTestId('cell-site')).toHaveLength(4))
     for (const cell of within(rows).getAllByTestId('cell-site')) expect(cell).not.toHaveTextContent(/ENK|TCR/)
     release()
-    await waitFor(() => expect(within(rows).getAllByTestId('cell-site')[0]).toHaveTextContent(/· (ENK|TCR)$/))
+    await waitFor(() => expect(within(rows).getAllByTestId('cell-site')[0]).toHaveTextContent(/\((ENK|TCR)\)$/))
   } finally {
     release()
     held.mockRestore()

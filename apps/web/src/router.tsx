@@ -30,6 +30,7 @@ import { useMeta, type TableMeta } from './lib/meta'
 import { ReportView } from './components/ReportView'
 import { ScriptReportView } from './components/ScriptReportView'
 import { PermissionManager } from './components/PermissionManager'
+import { TableLinkFormat } from './components/TableLinkFormat'
 import { TableNaming } from './components/TableNaming'
 import { DashboardView } from './components/DashboardView'
 import { HomePageView } from './components/HomePageView'
@@ -874,6 +875,7 @@ function NamingPage() {
   return (
     <div data-testid="table-page">
       <TableNaming key={table} table={table} />
+      <div className="mt-4 max-w-2xl"><TableLinkFormat key={`links-${table}`} table={table} /></div>
     </div>
   )
 }

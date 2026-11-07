@@ -117,7 +117,7 @@ test('a filter on several linked rows names each of them', async ({ admin }) => 
   await seedSites(admin)
   const path: NavPath = { steps: [{ screen: 'list', table: SITE }, { screen: 'list', table: SITE, filters: [['region', 'in', ['KL', 'TN']]] }], at: 1 }
   await renderApp(`${tableHref(SITE)}?path=${encodeURIComponent(encodePath(path))}`, admin)
-  await waitFor(() => expect(current()).toHaveTextContent('Region in Kerala · KL, Tamil Nadu · TN'))
+  await waitFor(() => expect(current()).toHaveTextContent('Region in Kerala (KL), Tamil Nadu (TN)'))
 })
 
 test("a filter on rows the viewer can't read names them neutrally, never by their ids", async ({ admin }) => {
@@ -132,7 +132,7 @@ test('a filter on the row id names the row', async ({ admin }) => {
   await seedSites(admin)
   const path: NavPath = { steps: [{ screen: 'list', table: SITE }, { screen: 'list', table: SITE, filters: [['row_id', '=', 'ENK']] }], at: 1 }
   await renderApp(`${tableHref(SITE)}?path=${encodeURIComponent(encodePath(path))}`, admin)
-  await waitFor(() => expect(current()).toHaveTextContent('Row ID: Enchakkal · ENK'))
+  await waitFor(() => expect(current()).toHaveTextContent('Row ID: Enchakkal (ENK)'))
 })
 
 test('Copy link copies the address of this step', async ({ admin }) => {
@@ -165,7 +165,7 @@ test('a walk is listed under Recent paths by its names after signing in again', 
   const recent = await screen.findByRole('button', { name: 'Recent paths' })
   expect(screen.queryByRole('navigation', { name: 'Path' })).not.toBeInTheDocument()
   fireEvent.click(recent)
-  const item = await screen.findByRole('menuitem', { name: `${SITE} › Region: Kerala · KL` })
+  const item = await screen.findByRole('menuitem', { name: `${SITE} › Region: Kerala (KL)` })
   fireEvent.click(item)
   await waitFor(() => expect(current()).toHaveTextContent('Region: Kerala'))
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(2))
@@ -175,5 +175,5 @@ test("a row page's path bar names the row", async ({ admin }) => {
   await seedSites(admin)
   const path: NavPath = { steps: [{ screen: 'list', table: PLANT }, { screen: 'row', table: PLANT, row: '1503' }], at: 1 }
   await renderApp(`${tableHref(PLANT)}/row/1503?path=${encodeURIComponent(encodePath(path))}`, admin)
-  await waitFor(() => expect(current()).toHaveTextContent('Enchakkal Supermarket · 1503'))
+  await waitFor(() => expect(current()).toHaveTextContent('Enchakkal Supermarket (1503)'))
 })

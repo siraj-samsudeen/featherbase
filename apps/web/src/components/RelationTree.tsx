@@ -7,7 +7,7 @@ import { connectionsQuery, type Connection, type Filter } from '../lib/connectio
 import { listFields, viewColumns } from '../lib/list-view-columns'
 import { metaQuery, type TableMeta } from '../lib/meta'
 import type { NavPane } from '../lib/nav-path'
-import { ALL_ROWS, TREE_PAGE, backlinkGroups, groupOrder, forwardLinks, groupRowsQuery, shownCode, UNSEEN_ROW, type BacklinkGroup } from '../lib/relations'
+import { ALL_ROWS, TREE_PAGE, backlinkGroups, groupOrder, forwardLinks, groupRowsQuery, linkedRowText, UNSEEN_ROW, type BacklinkGroup } from '../lib/relations'
 import { rowTitleQuery } from '../lib/row-titles'
 
 // #910 checklist 18–19: a tree of related rows. Each row line unfolds in
@@ -23,8 +23,8 @@ import { rowTitleQuery } from '../lib/row-titles'
 type Row = Record<string, unknown>
 type Query = { queryKey: QueryKey; queryFn: () => Promise<unknown> }
 
-/** A top line of the tree: a row, by its name and code. */
-export interface TreeRoot { table: string; row: string; label: string; code?: string }
+/** A top line of the tree: a row, as links to its Table read. */
+export interface TreeRoot { table: string; row: string; label: string }
 
 /** A short, stable id for one line: its parent's id and a hash of what it shows. */
 function lineId(parent: string, local: string): string {
@@ -100,12 +100,12 @@ function linkedLine(w: Walker, id: string, table: string, row: string, ctx: Ctx)
   if (title === undefined) return { id, label: '…', kind: table }
   if (title === null) return { id, label: UNSEEN_ROW }
   const meta = w.get<TableMeta>(metaQuery(table))
-  return rowLine(w, id, { table, row, label: title, code: meta ? shownCode(meta, row, title) : undefined }, ctx)
+  return rowLine(w, id, { table, row, label: meta ? linkedRowText(meta, row, title) : title }, ctx)
 }
 
 function rowLine(w: Walker, id: string, root: TreeRoot, ctx: Ctx, opts: RowOpts = { forward: true }): TreeNode {
   w.open.set(id, { table: root.table, row: root.row })
-  const node: TreeNode = { id, label: root.label, code: root.code, kind: root.table, hasChildren: true }
+  const node: TreeNode = { id, label: root.label, kind: root.table, hasChildren: true }
   if (!ctx.expanded.has(id)) return node
   const { children, loading } = rowChildren(w, id, root.table, root.row, ctx, opts)
   return { ...node, children, loading, hasChildren: loading || children.length > 0 }
@@ -125,7 +125,7 @@ function groupLine(w: Walker, id: string, g: BacklinkGroup, table: string, row: 
   const children = rows.data.map((r) => {
     const rowId = String(r.row_id)
     const label = rowDisplayTitle(meta, r, rowId)
-    return rowLine(w, lineId(id, `r:${rowId}`), { table: g.connection.table, row: rowId, label, code: shownCode(meta, rowId, label) }, ctx,
+    return rowLine(w, lineId(id, `r:${rowId}`), { table: g.connection.table, row: rowId, label: linkedRowText(meta, rowId, label) }, ctx,
       { forward: true, backLink: g.connection.via ? undefined : g.connection.column })
   })
   return { ...node, children, more: { shown: rows.data.length, total: rows.total, onShowAll: () => ctx.onShowAll(id) } }
@@ -140,11 +140,10 @@ export function defaultExpansion(rootId: string, groups: BacklinkGroup[]): strin
  * The tree around one row: "Links to" above it, its groups ("Linked from")
  * below, unfolding in place. Activating a line shows it in the pane.
  */
-export function RowRelationTree({ table, row, label, code, expanded, onExpandedChange, onOpen, onFocus, selected }: {
+export function RowRelationTree({ table, row, label, expanded, onExpandedChange, onOpen, onFocus, selected }: {
   table: string
   row: string
   label: string
-  code?: string
   expanded: Set<string>
   onExpandedChange: (next: Set<string>) => void
   onOpen: (pane: NavPane) => void
@@ -155,7 +154,7 @@ export function RowRelationTree({ table, row, label, code, expanded, onExpandedC
   const ctx: Ctx = { expanded, showAll, onShowAll: (id) => setShowAll((s) => new Set(s).add(id)) }
   const rootId = 'c'
   const walk = useTreeWalk((w) => {
-    const centre = rowLine(w, rootId, { table, row, label, code }, { ...ctx, expanded: new Set([...expanded, rootId]) }, { forward: false })
+    const centre = rowLine(w, rootId, { table, row, label }, { ...ctx, expanded: new Set([...expanded, rootId]) }, { forward: false })
     const meta = w.get<TableMeta>(metaQuery(table))
     const doc = w.get<Row>(docQuery(table, row))
     const links = meta && doc ? forwardLinks(meta, doc) : []
@@ -254,7 +253,7 @@ export function TreeOfAll({ table, filters, expanded, onExpandedChange, onOpen }
   const roots = shown.map((r) => {
     const rowId = String(r.row_id)
     const label = rowDisplayTitle(meta, r, rowId)
-    return { table, row: rowId, label, code: shownCode(meta, rowId, label) }
+    return { table, row: rowId, label: linkedRowText(meta, rowId, label) }
   })
   return <TableRelationTree roots={roots} label={`Every ${table} row`} expanded={expanded}
     onExpandedChange={onExpandedChange} onOpen={onOpen}

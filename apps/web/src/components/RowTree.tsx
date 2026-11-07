@@ -21,8 +21,7 @@ export function RowTree({ table, name }: { table: string; name: string }) {
   const expanded = stored ? new Set(stored) : local ?? new Set(defaultExpansion('c', backlinkGroups(cnx.data.connections)))
   return (
     <RowRelationTree table={table} row={name}
-      label={centre.state === 'read' ? centre.title : rowNameText(centre)}
-      code={centre.state === 'read' ? centre.code : undefined}
+      label={rowNameText(centre)}
       expanded={expanded}
       onExpandedChange={(next) => {
         setLocal(next)

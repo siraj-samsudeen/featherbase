@@ -239,7 +239,7 @@ test('a row whose Table has no title column is headed by its readable values', a
   await seedMerch(admin)
   await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(MERCH))}/row/${encodeURIComponent(MERCH_ROW)}`, admin)
   const heading = await screen.findByRole('heading', { level: 1 })
-  await waitFor(() => expect(heading).toHaveTextContent(`${MERCH}: Kurti Z · 1517`))
+  await waitFor(() => expect(heading).toHaveTextContent(`${MERCH}: Kurti Z (1517)`))
 })
 
 test.for(['Person', 'Service Account'] as const)('a %s-valued row title names recents, sidebar, heading and breadcrumb', async (principalTable, { admin }) => {

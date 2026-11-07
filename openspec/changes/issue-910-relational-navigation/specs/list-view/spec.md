@@ -37,7 +37,7 @@ And unfolding Enchakkal shows its region and its group of plants
 
 A list cell that links to another table's row SHALL show that row's title,
 not its id alone. Where the row's id is a code people use, not a generated id,
-the code SHALL follow the name ("Globex Ltd · cust-1"). Clicking the link SHALL
+the code SHALL follow the name ("Globex Ltd (cust-1)"). Clicking the link SHALL
 open that row in the drill pane beside the list, not move away from the list.
 A linked row the user may not read SHALL show neither its title nor its id.
 
@@ -47,7 +47,7 @@ A linked row the user may not read SHALL show neither its title nor its id.
 Given the user is a System Manager
 And orders from the customers "Globex Ltd" and "Initech"
 When the user opens the orders list
-Then the user sees the customer of the order "Widgets" as "Globex Ltd · cust-1"
+Then the user sees the customer of the order "Widgets" as "Globex Ltd (cust-1)"
 ```
 
 #### Scenario: Globex Ltd opens from an order

@@ -11,8 +11,8 @@ import { PLANT, REGION, SITE, seedSites } from './relational-fixture'
 configure({ asyncUtilTimeout: 10_000 })
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-/** The pane on the row named `name`, which its code may follow ("Enchakkal · ENK"). */
-const pane = (name: string) => screen.findByRole('complementary', { name: new RegExp(`^${escape(name)}( · .+)?$`) })
+/** The pane on the row named `name`, which its code may follow ("Enchakkal (ENK)"). */
+const pane = (name: string) => screen.findByRole('complementary', { name: new RegExp(`^${escape(name)}( \\(.+\\))?$`) })
 const listed = () => within(screen.getByTestId('list-rows')).getAllByTestId('row-check').length
 const pathSteps = () => within(screen.getByRole('navigation', { name: 'Path' })).getAllByRole('button')
 
@@ -39,7 +39,7 @@ test("selecting a row shows it in the pane, named with its table", async ({ admi
 test('the pane lists what the row points at, with Go there and Filter', async ({ admin }) => {
   const { pane } = await openEnchakkal(admin)
   const pointsAt = (await within(pane).findByRole('heading', { name: 'Points at' })).parentElement!
-  await waitFor(() => expect(within(pointsAt).getByRole('button', { name: 'Kerala · KL' })).toBeInTheDocument())
+  await waitFor(() => expect(within(pointsAt).getByRole('button', { name: 'Kerala (KL)' })).toBeInTheDocument())
   expect(within(pointsAt).getByRole('button', { name: 'Go there' })).toBeInTheDocument()
   expect(within(pointsAt).getByRole('button', { name: 'Filter' })).toBeInTheDocument()
 })
@@ -72,7 +72,7 @@ test('clicking a row in the pane drills to it, growing the path and leaving the 
   const before = pathSteps().length
   fireEvent.click(await within(site).findByRole('button', { name: `${PLANT} 3` }))
   fireEvent.click(await within(await within(site).findByRole('table')).findByRole('cell', { name: /Enchakkal Supermarket/ }))
-  const plant = await pane('Enchakkal Supermarket · 1503')
+  const plant = await pane('Enchakkal Supermarket (1503)')
   expect(plant).toHaveTextContent(PLANT)
   expect(pathSteps()).toHaveLength(before + 1)
   expect(listed()).toBe(3)
@@ -81,7 +81,7 @@ test('clicking a row in the pane drills to it, growing the path and leaving the 
 test('Go there opens the linked row in the pane', async ({ admin }) => {
   const { pane: site } = await openEnchakkal(admin)
   fireEvent.click(await within(site).findByRole('button', { name: 'Go there' }))
-  expect(await pane('Kerala · KL')).toHaveTextContent(REGION)
+  expect(await pane('Kerala (KL)')).toHaveTextContent(REGION)
 })
 
 test('Filter narrows the list underneath to the same value, as a removable chip', async ({ admin }) => {
@@ -98,9 +98,9 @@ test("Filter is unavailable when the list underneath has no such column", async 
   await seedSites(admin)
   await renderApp(tableHref(PLANT), admin)
   await select('Enchakkal Supermarket')
-  const plant = await pane('Enchakkal Supermarket · 1503')
+  const plant = await pane('Enchakkal Supermarket (1503)')
   fireEvent.click(await within(plant).findByRole('button', { name: 'Go there' }))
-  const site = await pane('Enchakkal · ENK')
+  const site = await pane('Enchakkal (ENK)')
   // The plants list has no Region column to narrow.
   await waitFor(() => expect(within(site).getByRole('button', { name: 'Filter' })).toBeDisabled())
 })
@@ -156,7 +156,7 @@ test('the fields read formatted: dates, rupees, links by name', async ({ admin }
   fireEvent.click(await within(site).findByRole('button', { name: 'Fields' }))
   await waitFor(() => expect(site).toHaveTextContent('05-Feb-2019'))
   expect(site).toHaveTextContent('₹12,45,000.00')
-  expect(within(site).getAllByRole('button', { name: 'Kerala · KL' }).length).toBeGreaterThan(0)
+  expect(within(site).getAllByRole('button', { name: 'Kerala (KL)' }).length).toBeGreaterThan(0)
 })
 
 test('empty fields fold under a count and a long note offers Show more', async ({ admin }) => {
@@ -262,7 +262,7 @@ test('a pane on a row the viewer cannot read offers no way to the row', async ({
 test('Filter from the pane puts the filter on the path before the row it was read from', async ({ admin }) => {
   const { pane: site } = await openEnchakkal(admin)
   fireEvent.click(await within(site).findByRole('button', { name: 'Filter' }))
-  await waitFor(() => expect(pathSteps().map((s) => s.textContent)).toEqual([SITE, 'Region: Kerala · KL', 'Enchakkal · ENK']))
+  await waitFor(() => expect(pathSteps().map((s) => s.textContent)).toEqual([SITE, 'Region: Kerala (KL)', 'Enchakkal (ENK)']))
 })
 
 // Checklist 21: a list line goes to the pane from the keyboard.
@@ -279,7 +279,7 @@ test('Enter on a link inside a list line still follows the link, not the line', 
   await seedSites(admin)
   await renderApp(tableHref(SITE), admin)
   const line = (await screen.findByRole('link', { name: 'Enchakkal' })).closest('tr')!
-  fireEvent.keyDown(await within(line).findByRole('link', { name: 'Kerala · KL' }), { key: 'Enter' })
+  fireEvent.keyDown(await within(line).findByRole('link', { name: 'Kerala (KL)' }), { key: 'Enter' })
   await new Promise((r) => setTimeout(r, 300))
   expect(screen.queryByRole('complementary', { name: /^Enchakkal/ })).not.toBeInTheDocument()
 })
@@ -291,11 +291,11 @@ test("after Filter from the pane, the browser's back button lands on the filter'
   const history = (view.router as unknown as { history: { length: number; back: () => void } }).history
   const before = history.length
   fireEvent.click(await within(site).findByRole('button', { name: 'Filter' }))
-  await waitFor(() => expect(pathSteps().map((s) => s.textContent)).toEqual([SITE, 'Region: Kerala · KL', 'Enchakkal · ENK']))
+  await waitFor(() => expect(pathSteps().map((s) => s.textContent)).toEqual([SITE, 'Region: Kerala (KL)', 'Enchakkal (ENK)']))
   expect(history.length).toBe(before + 1)
   history.back()
-  await waitFor(() => expect(within(screen.getByRole('navigation', { name: 'Path' })).getByRole('button', { current: 'step' })).toHaveTextContent('Region: Kerala · KL'))
-  expect(pathSteps().map((s) => s.textContent)).toEqual([SITE, 'Region: Kerala · KL', 'Enchakkal · ENK'])
+  await waitFor(() => expect(within(screen.getByRole('navigation', { name: 'Path' })).getByRole('button', { current: 'step' })).toHaveTextContent('Region: Kerala (KL)'))
+  expect(pathSteps().map((s) => s.textContent)).toEqual([SITE, 'Region: Kerala (KL)', 'Enchakkal (ENK)'])
 })
 
 test("opening a group on the row page's own row changes its step in place, adding no browser history entry", async ({ admin }) => {

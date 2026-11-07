@@ -63,15 +63,15 @@ test('the row is chosen after its Table, from the Tables the column allows, and 
   fireEvent.mouseDown(within(tables).getAllByTestId('link-option').find((o) => o.textContent === PLANT)!)
 
   await waitFor(() => expect(box('shapes')).toBeEnabled())
-  await pick('shapes', 'Pala', 'Palakkad')
-  await waitFor(() => expect(box('shapes')).toHaveValue('Palakkad'))
+  await pick('shapes', 'Pala', 'Palakkad (8151)')
+  await waitFor(() => expect(box('shapes')).toHaveValue('Palakkad (8151)'))
   expect(screen.getByTestId('link-open-shapes')).toBeInTheDocument()
 
   // Another Table clears the row: PKN-GOLD is not a Plant, nor 8151 a Unit.
   await pick('shapes_table', 'Unit', UNIT)
   await waitFor(() => expect(box('shapes')).toHaveValue(''))
-  await pick('shapes', 'Gold', 'Gold jewellery')
-  await waitFor(() => expect(box('shapes')).toHaveValue('Gold jewellery'))
+  await pick('shapes', 'Gold', 'Gold jewellery (PKN-GOLD)')
+  await waitFor(() => expect(box('shapes')).toHaveValue('Gold jewellery (PKN-GOLD)'))
 })
 
 test("a row the reader can't read shows only its Table, and is not a link", async ({ admin, createUser }) => {
@@ -125,8 +125,8 @@ test('a Sub-table row links to a row of any Table, its Table first', async ({ ad
 
   await pickCell('Steps, Shapes Table, row 1', 'shapes_table', 'Atw', PLANT)
   await waitFor(() => expect(screen.getByLabelText('Steps, Shapes, row 1')).toBeEnabled())
-  await pickCell('Steps, Shapes, row 1', 'shapes', 'Pala', 'Palakkad')
-  await waitFor(() => expect(screen.getByLabelText('Steps, Shapes, row 1')).toHaveValue('Palakkad'))
+  await pickCell('Steps, Shapes, row 1', 'shapes', 'Pala', 'Palakkad (8151)')
+  await waitFor(() => expect(screen.getByLabelText('Steps, Shapes, row 1')).toHaveValue('Palakkad (8151)'))
 
   screen.getByTestId('form-save').click()
   await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Saved'), { timeout: 8000 })

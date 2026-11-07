@@ -3,7 +3,7 @@
 // The drill pane (#910): one row beside or below whatever the user is
 // looking at. Found by its accessible role and name only:
 //   - the pane is a complementary landmark (<aside>) named by the row's title
-//     ("Enchakkal", "Enchakkal Supermarket · 1503"); the Admin's sidebar is
+//     ("Enchakkal", "Enchakkal Supermarket (1503)"); the Admin's sidebar is
 //     another, unnamed one;
 //   - "Points at" and "Pointed at by" are headings over their parts;
 //   - each group of rows pointing at it is a button "<Table> <count>" whose
@@ -16,7 +16,7 @@ const { expect } = require('playwright/test');
 
 const WAIT = 10_000;
 const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-/** A name that starts with `text` (a code may follow: "Enchakkal Supermarket · 1503"), and is not a longer name. */
+/** A name that starts with `text` (a code may follow: "Enchakkal Supermarket (1503)"), and is not a longer name. */
 const startsWith = (text) => new RegExp(`^${escape(text)}(?![\\w ]*\\w)`, 'i');
 
 class DrillPane {

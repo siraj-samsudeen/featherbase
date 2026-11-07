@@ -8,7 +8,7 @@ import { filterRefs, filterText } from '../src/lib/step-labels'
 
 describe('filterText', () => {
   test("while the table's columns load, a value shows as a placeholder, never as itself", () => {
-    expect(filterText('Nv Site', undefined, ['region', '=', 'KL'], () => 'Kerala · KL')).toBe('region: …')
+    expect(filterText('Nv Site', undefined, ['region', '=', 'KL'], () => 'Kerala (KL)')).toBe('region: …')
   })
 })
 
@@ -23,6 +23,6 @@ describe('a relationship filter', () => {
   })
 
   test('reads as the related table and its row, never the id', () => {
-    expect(filterText('Nv Visit', visitMeta, throughLines, () => 'Enchakkal · ENK')).toBe('Nv Site: Enchakkal · ENK')
+    expect(filterText('Nv Visit', visitMeta, throughLines, () => 'Enchakkal (ENK)')).toBe('Nv Site: Enchakkal (ENK)')
   })
 })

@@ -80,7 +80,7 @@ test('clicking a linked row shows it in the drill pane; the map stays centred', 
   await seed(admin)
   await openMap(admin, 'Rm Order', 'ord-1')
   fireEvent.click(await screen.findByTestId('map-forward-Rm Customer'))
-  expect(await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })).toBeInTheDocument()
+  expect(await screen.findByRole('complementary', { name: 'Asha Stores (cust-1)' })).toBeInTheDocument()
   expect(screen.getByTestId('map-center')).toHaveTextContent('First order')
 })
 
@@ -88,7 +88,7 @@ test('clicking a collection shows its rows in the drill pane', async ({ admin })
   await seed(admin)
   await openMap(admin, 'Rm Customer', 'cust-1')
   fireEvent.click(await screen.findByTestId('map-group-Rm Order'))
-  const pane = await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })
+  const pane = await screen.findByRole('complementary', { name: 'Asha Stores (cust-1)' })
   await waitFor(() => expect(within(within(pane).getByRole('table')).getAllByRole('row')).toHaveLength(3))
   expect(screen.getByTestId('map-center')).toHaveTextContent('Asha Stores')
 })
@@ -97,7 +97,7 @@ test('Focus here re-centres the map on the row in the pane', async ({ admin }) =
   await seed(admin)
   await openMap(admin, 'Rm Order', 'ord-1')
   fireEvent.click(await screen.findByTestId('map-forward-Rm Customer'))
-  const pane = await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })
+  const pane = await screen.findByRole('complementary', { name: 'Asha Stores (cust-1)' })
   fireEvent.click(await within(pane).findByRole('button', { name: 'Focus here' }))
   await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('Asha Stores'))
   expect(await screen.findByTestId('map-group-Rm Order')).toHaveTextContent('2')
@@ -105,7 +105,7 @@ test('Focus here re-centres the map on the row in the pane', async ({ admin }) =
 })
 
 // #907: a row known by a code reads by its name on the map.
-test('a code-keyed row reads by its name in its box', async ({ admin }) => {
+test('a code-keyed row reads by its name and code in its box', async ({ admin }) => {
   await admin.post('/api/table_def', {
     name: 'Rm State', id_pattern: 'prompt', title_column: 'state_name',
     columns: [{ column_name: 'state_name', column_type: 'Data', in_list_view: true }],
@@ -121,8 +121,7 @@ test('a code-keyed row reads by its name in its box', async ({ admin }) => {
   await admin.post('/api/save_row', { table: 'Rm Depot', row: { row_id: 'd-1', title: 'Kochi depot', state: '32' } })
   await openMap(admin, 'Rm Depot', 'd-1')
   const box = await screen.findByTestId('map-forward-Rm State')
-  await waitFor(() => expect(box).toHaveTextContent('Kerala'))
-  expect(box).not.toHaveTextContent(/\b32\b/)
+  await waitFor(() => expect(box).toHaveTextContent('Kerala (32)'))
 })
 
 test('the narrow layout exposes every backlink count through buttons', async ({ admin }) => {
@@ -137,7 +136,7 @@ test('the narrow layout exposes every backlink count through buttons', async ({ 
   expect(await narrow.findByTestId('map-narrow-group-Rm Order')).toHaveTextContent('2')
   expect(await narrow.findByTestId('map-narrow-group-Rm Note')).toHaveTextContent('1')
   fireEvent.click(narrow.getByTestId('map-narrow-group-Rm Order'))
-  expect(await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })).toBeInTheDocument()
+  expect(await screen.findByRole('complementary', { name: 'Asha Stores (cust-1)' })).toBeInTheDocument()
 })
 
 test('an unconnected row says it has no related rows', async ({ admin }) => {
@@ -210,7 +209,7 @@ test('a linked row on the map is reached by Tab and shown in the pane by Enter',
   const box = await screen.findByTestId('map-forward-Rm Customer')
   expect(box).toHaveAttribute('tabindex', '0')
   fireEvent.keyDown(box, { key: 'Enter' })
-  expect(await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })).toBeInTheDocument()
+  expect(await screen.findByRole('complementary', { name: 'Asha Stores (cust-1)' })).toBeInTheDocument()
 })
 
 test('a collection on the map is reached by Tab and shown in the pane by Space', async ({ admin }) => {
@@ -219,7 +218,7 @@ test('a collection on the map is reached by Tab and shown in the pane by Space',
   const box = await screen.findByTestId('map-group-Rm Order')
   expect(box).toHaveAttribute('tabindex', '0')
   fireEvent.keyDown(box, { key: ' ' })
-  const pane = await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })
+  const pane = await screen.findByRole('complementary', { name: 'Asha Stores (cust-1)' })
   await waitFor(() => expect(within(within(pane).getByRole('table')).getAllByRole('row')).toHaveLength(3))
 })
 

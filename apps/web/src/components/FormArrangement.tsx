@@ -5,16 +5,15 @@ import { useId, useState, type MouseEvent, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { api } from '../lib/api'
-import { ROW_STAMPS, linkRowsTable, type ColumnDef, type TableMeta } from '../lib/meta'
+import { ROW_STAMPS, linkRowsTable, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { ShownName } from '../lib/people'
 import { formatValue, type Settings } from '../lib/settings'
-import { RowTitle } from '../lib/row-titles'
-import { RowLink } from '../lib/row-name'
+import { RowLink, RowName } from '../lib/row-name'
 import { useIsSystemManager } from '../lib/session'
 import { useI18n } from '../lib/i18n'
 import { useNavigation } from '../lib/navigation'
 import {
-  buttonClasses, fmtDate, pillClasses,
+  buttonClasses, fmtCount, fmtDate, pillClasses,
   Braces, CalendarDays, ChevronDown, ChevronRight, Hash, Image, Link2, ToggleRight, Type, type LucideIcon,
 } from '@featherbase/shop-floor'
 
@@ -244,6 +243,38 @@ export function UnlinkedNote({ id, field, meta }: { id: string; field: ColumnDef
   )
 }
 
+/** The rows of a Sub-table on a row the user can only read. */
+function NestedValues({ field, rows, settings }: { field: ColumnDef; rows: Record<string, unknown>[]; settings: Settings }) {
+  const child = useMeta(field.row_table ?? '')
+  // Nested rows the viewer may not read column by column: how many, no more.
+  if (child.isError) return <span data-testid={`nested-count-${field.column_name}`}>{fmtCount(rows.length)} {rows.length === 1 ? 'row' : 'rows'}</span>
+  if (!child.data) return <span className="text-xs text-ink-subtle">Loading rows…</span>
+  const columns = child.data.columns.filter((c) => !c.hidden && !['Section Break', 'Column Break', 'Sub-table'].includes(c.column_type))
+  return (
+    <div className="overflow-x-auto rounded-md border border-border">
+      <table className="w-full text-sm" data-testid={`nested-values-${field.column_name}`}>
+        <thead className="bg-subtle text-left">
+          <tr>{columns.map((c) => <th key={c.column_name} className="border-b border-border px-2 py-1 text-xs font-medium text-ink-muted">{c.label ?? c.column_name}</th>)}</tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={String(row.row_id ?? i)} className="border-t border-border">
+              {columns.map((c) => {
+                const v = row[c.column_name]
+                return <td key={c.column_name} className="px-2 py-1">
+                  {isEmpty(v) ? '—'
+                    : c.column_type === 'Reference' && c.reference_table ? <RowName table={c.reference_table} rowId={String(v)} />
+                    : formatValue(c.column_type, v, settings) || String(v)}
+                </td>
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 /** A field on a row the user can only read: its value, shown by what it holds. */
 export function ValueField({ field, value, meta, settings, columns }: {
   field: ColumnDef; value: unknown; meta: TableMeta; settings: Settings; columns: Columns
@@ -256,9 +287,11 @@ export function ValueField({ field, value, meta, settings, columns }: {
   const labelId = `${id}-label`
   const noteId = `${id}-unlinked`
   const unlinked = Boolean(unlinkedSourceTable(field, meta))
-  const long = LONG_TEXT.has(field.column_type) || kind === 'json'
+  const nested = field.column_type === 'Sub-table'
+  const long = LONG_TEXT.has(field.column_type) || kind === 'json' || nested
   let shown: ReactNode
-  if (isEmpty(value)) shown = <span className="text-ink-subtle">—</span>
+  if (isEmpty(value) || (nested && !(value as unknown[]).length)) shown = <span className="text-ink-subtle">—</span>
+  else if (nested) shown = <NestedValues field={field} rows={value as Record<string, unknown>[]} settings={settings} />
   else if (kind === 'link' && field.reference_table) {
     const target = linkRowsTable(field) ?? field.reference_table
     // #910: the linked row opens in the drill pane.
@@ -267,7 +300,7 @@ export function ValueField({ field, value, meta, settings, columns }: {
       e.preventDefault()
       nav.push({ ...nav.step, pane: { table: target, row: String(value) } })
     }
-    shown = <RowLink table={target} rowId={String(value)} onClick={open} withCode={false} />
+    shown = <RowLink table={target} rowId={String(value)} onClick={open} />
   } else if (kind === 'yesno')
     shown = <span className={pillClasses(value ? 'bg-positive-tint text-positive' : 'bg-subtle text-ink-muted')}>{value ? 'Yes' : 'No'}</span>
   else if (kind === 'number') shown = formatValue(field.column_type, value, settings) || String(value)
@@ -340,7 +373,7 @@ export function BookkeepingLine({ fields, values, settings }: { fields: ColumnDe
           {t(f.label ?? f.column_name)}{' '}
           <span className="text-ink-muted">
             {f.column_type === 'Reference' && f.reference_table
-              ? <RowTitle table={linkRowsTable(f) ?? f.reference_table} rowId={String(values[f.column_name])} />
+              ? <RowName table={linkRowsTable(f) ?? f.reference_table} rowId={String(values[f.column_name])} />
               : formatValue(f.column_type, values[f.column_name], settings) || String(values[f.column_name])}
           </span>
         </span>
