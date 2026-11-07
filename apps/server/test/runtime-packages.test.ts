@@ -606,6 +606,20 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     }
   })
 
+  // #1008: a System Manager can tell an app is installed when they lack its
+  // role, and why. Everyone else, and what opens an app, stays as it was.
+  test('#1008: the closed apps list names what a System Manager lacks, and is theirs alone', async ({ admin, createUser }) => {
+    await discoverPackages([resolve('../..', 'example-apps/tasker')])
+    await admin.post('/api/install_app', { name: 'tasker' })
+    const manager = await createUser({ email: 'closed-apps-manager@example.com', roles: ['System Manager'] })
+    expect(await manager.get('/api/app_catalog/closed')).toEqual([{ name: 'tasker', title: 'Tasker', roles: ['Tasker Member'] }])
+    expect(await manager.get('/api/app_catalog')).toEqual([])
+    const holder = await createUser({ email: 'closed-apps-holder@example.com', roles: ['System Manager', 'Tasker Member'] })
+    expect(await holder.get('/api/app_catalog/closed')).toEqual([])
+    const member = await createUser({ email: 'closed-apps-member@example.com', roles: [] })
+    await expect(member.get('/api/app_catalog/closed')).rejects.toMatchObject({ status: 403 })
+  })
+
   // #437: a new version may withdraw a grant its installed version declared.
   // Two synthetic copies of Tasker: the installed one also lets everyone read
   // Person; the next version, one migration on, does not.

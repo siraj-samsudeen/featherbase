@@ -24,6 +24,10 @@ export function useOpenAdmin() {
   return { open, busy }
 }
 
+/** #1008: why a System Manager can't open an installed app. */
+const closedReason = (roles: string[]) =>
+  roles.length ? `you need the ${roles.join(' or ')} role` : 'no role opens it yet'
+
 /** The same native application-name dropdown on platform and app pages. */
 /** `compact`: on a phone, only the logo and the list's chevron (#983), for an
  *  app whose pickers share the bar. The list still opens and switches. */
@@ -33,6 +37,11 @@ export function AppSwitcher({ app, compact = false }: { app?: { name: string; ti
     queryKey: ['app-catalog'],
     queryFn: () => api.get<{ name: string; title: string; href: string }[]>('/api/app_catalog'),
     enabled: Boolean(whoami),
+  })
+  const closed = useQuery({
+    queryKey: ['app-catalog', 'closed'],
+    queryFn: () => api.get<{ name: string; title: string; roles: string[] }[]>('/api/app_catalog/closed'),
+    enabled: Boolean(whoami?.capabilities.manage),
   })
   const { open, busy } = useOpenAdmin()
   const current = app ? catalog.data?.find((entry) => entry.name === app.name)?.href ?? appHref(app.name) : FEATHERBASE_ADMIN_DESTINATION.href
@@ -58,6 +67,7 @@ export function AppSwitcher({ app, compact = false }: { app?: { name: string; ti
       {(!app || whoami?.capabilities.admin) && <option className="text-ink" value={FEATHERBASE_ADMIN_DESTINATION.href}>{FEATHERBASE_ADMIN_DESTINATION.label}</option>}
       {app && !catalog.data && <option className="text-ink" value={current}>{app.title}</option>}
       {(catalog.data ?? []).map((entry) => <option className="text-ink" key={entry.name} value={entry.href}>{entry.title}</option>)}
+      {(closed.data ?? []).map((entry) => <option className="text-ink-subtle" key={entry.name} value="" disabled>{entry.title}: {closedReason(entry.roles)}</option>)}
     </Select>
   </>
 }
