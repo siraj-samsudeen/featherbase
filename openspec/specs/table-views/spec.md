@@ -68,16 +68,22 @@ When a base row stops matching a view, rows that already link to it through that
 
 ### Requirement: Links to a view count as links to its base
 
-A link that names a view SHALL protect and follow the base row exactly as a link to the base does: it blocks the row's deletion, follows a rename of the row, and appears in the row's backlinks, connections, purge preview and activity.
+A link that names a view SHALL protect and follow the base row exactly as a link to the base does: it blocks the row's deletion, follows a rename of the row, and appears in the row's backlinks, connections, permanent deletion and activity.
 
 #### Scenario: Deleting a store that a sale names
 
 - **WHEN** someone deletes a site that a sale links to through the Store view
 - **THEN** the delete is refused, naming the sale
 
+#### Scenario: Deleting a base row permanently follows links to the view
+
+- **GIVEN** a sale links to a site through the Store view
+- **WHEN** a System Manager permanently deletes the site, unlinking what points at it
+- **THEN** the site goes and the sale stays with its link cleared
+
 ### Requirement: The base keeps what its views depend on
 
-Renaming, retyping or removing a column a view filters on SHALL be refused while the view exists. Deleting a base that has views SHALL be refused, naming them. Renaming the base SHALL carry its views along. Deleting a view SHALL remove only the view: the base rows stay.
+Renaming, retyping or removing a column a view filters on SHALL be refused while the view exists. Deleting a base that has views, or uninstalling the app that owns it, SHALL be refused, naming them. Renaming the base SHALL carry its views along. Deleting a view SHALL remove only the view: the base rows stay.
 
 #### Scenario: Removing the filter column
 
