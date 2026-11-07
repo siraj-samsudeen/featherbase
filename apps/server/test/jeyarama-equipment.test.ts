@@ -40,7 +40,7 @@ test('a manager keeps the register; store staff see it but cannot change it', as
   expect(asset.row_id).toMatch(/^AST-\d{4}$/)
   const seen = await staff.get<{ data: Row[] }>('/api/table/equipment.asset?fields=["asset_name","place"]')
   expect(seen.data).toEqual([{ asset_name: 'Voltas 2-ton split AC', place: avadi.row_id }])
-  await expect(staff.post('/api/save_row', { table: 'equipment.asset', row: { row_id: asset.row_id, updated_at: asset.updated_at, area: 'Billing' } }))
+  await expect(staff.post('/api/save_row', { table: 'equipment.asset', row: { row_id: asset.row_id, updated_at: asset.updated_at, condition: 'Idle' } }))
     .rejects.toMatchObject({ status: 403 })
 })
 
