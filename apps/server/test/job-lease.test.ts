@@ -132,6 +132,21 @@ describe('A job left running by a stopped server is picked up again', () => {
     expect(row.lease_expires_at).toBeNull()
   })
 
+  test('a renewal that fails does not stop the run; the next beat tries again', async () => {
+    await setup()
+    Object.assign(jobLease, { heartbeatMs: 20 })
+    registerJob(METHOD, async () => {
+      // An interval Postgres refuses: every renewal during this wait fails.
+      jobLease.leaseMs = Number.NaN
+      await new Promise((r) => setTimeout(r, 70))
+      jobLease.leaseMs = saved.leaseMs
+    })
+    const id = await enqueue(METHOD, {})
+    await sql`update background_job set run_at = now() where row_id = ${id}`
+    expect(await runOneJob()).toBe(true)
+    expect((await job(id)).job_status).toBe('done')
+  })
+
   test('a failed attempt gives up its lease too', async () => {
     await setup()
     registerJob(METHOD, async () => { throw new Error('boom') })

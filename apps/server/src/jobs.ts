@@ -386,10 +386,11 @@ export const jobLease = { leaseMs: 5 * 60_000, heartbeatMs: 60_000 }
 /** Recorded as the lost attempt's error. */
 export const ABANDONED_MESSAGE = 'The server stopped while this job was running'
 
+// Its own transaction, so a failed renewal cannot abort a caller's.
 async function renewLease(rowId: string): Promise<void> {
-  await sql`
+  await sql.begin((tx) => tx`
     update background_job set lease_expires_at = clock_timestamp() + make_interval(secs => ${jobLease.leaseMs / 1000})
-    where row_id = ${rowId} and job_status = 'running'`
+    where row_id = ${rowId} and job_status = 'running'`)
 }
 
 /** Put back every running job whose lease ran out. The lost attempt counts:
