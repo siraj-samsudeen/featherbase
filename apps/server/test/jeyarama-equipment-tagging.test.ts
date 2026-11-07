@@ -30,6 +30,9 @@ async function pilot(createUser: (options: { roles: string[]; fullName?: string 
   const get = (table: string, id: string, as: TestClient = manager) => as.get<Row>(`/api/table/${table}/${id}`)
   const act = <T = Row>(as: TestClient, name: string, payload: Record<string, unknown>) =>
     as.post<{ result: T }>(`/api/app_actions/equipment/${name}`, { idempotencyKey: crypto.randomUUID(), payload }).then(r => r.result)
+  // The pilot names its Finance people, as in the plan's team list.
+  for (const [who, finance_role] of [[accountant, 'Asset accountant'], [checker, 'Asset accountant'], [controller, 'Finance controller']] as const)
+    await save('equipment.finance_person', { person: who.user, finance_role })
   const atk = await save('equipment.place', { place_name: 'ATK 1501', place_level: 'Site', sap_plant: '1501', site_manager: senthil.user })
   const dairy = await save('equipment.place', { place_name: 'Dairy', place_level: 'Area', parent_place: atk.row_id, area_code: 'ATK-GF-A03', area_custodian: meena.user })
   const cold = await save('equipment.asset_class', { class_name: 'Refrigeration and cold chain', sap_class_code: '3300' })
@@ -106,10 +109,13 @@ test('only Finance sets the control category and book value', async ({ createUse
 
 test('the asset accountant matches SAP records to tags; the count team never matches', async ({ createUser }) => {
   const p = await pilot(createUser)
-  await expect(p.save('equipment.counter', { count: p.count.row_id, person: p.accountant.user })).rejects.toThrow('An asset accountant can’t count; the count team never matches')
   const tags = []
   for (const tag of ['JRA-000021', 'JRA-000022', 'JRA-000023']) tags.push(await p.line(p.meena, { tag_no: tag, asset_name: 'Split AC 2 ton' }))
   const record = await p.save('equipment.sap_book', { plant: '1501', sap_asset_no: '200031', sap_asset_sub: '0', description: 'AC 2 ton, 6 nos', book_value: 288000, quantity: 6 }, p.accountant)
+  // An accountant put on the count team can't then match that count's items.
+  await p.save('equipment.counter', { count: p.count.row_id, person: p.checker.user })
+  await expect(p.act(p.checker, 'match_sap', { sap_book: record.row_id, assets: [tags[0].row_id], method: 'Serial number' }))
+    .rejects.toThrow('The count team never matches: you are on the team that counted JRA-000021')
   await expect(p.act(p.accountant, 'match_sap', { sap_book: record.row_id, assets: [tags[0].row_id], method: 'Description, place and date' }))
     .rejects.toThrow('A match by description, place and date needs a second person to check it')
   await expect(p.act(p.accountant, 'match_sap', { sap_book: record.row_id, assets: [tags[0].row_id], method: 'Description, place and date', second_checker: p.accountant.user }))
@@ -117,7 +123,9 @@ test('the asset accountant matches SAP records to tags; the count team never mat
   const result = await p.act<{ matched: number }>(p.accountant, 'match_sap', { sap_book: record.row_id, assets: tags.map(tag => tag.row_id), method: 'Invoice or PO' })
   expect(result.matched).toBe(3)
   // One record of six links to three tags; each carries its share of the book value.
-  expect(await p.get('equipment.asset', tags[0].row_id)).toMatchObject({ sap_asset_no: '200031', sap_asset_sub: '0', book_value: '48000.00', control_category: 'Capital asset in SAP', book_status: 'Capitalized' })
+  const first = await p.get('equipment.asset', tags[0].row_id)
+  expect(first).toMatchObject({ sap_asset_no: '200031', sap_asset_sub: '0', control_category: 'Capital asset in SAP', book_status: 'Capitalized' })
+  expect(Number(first.book_value)).toBe(48000)
   await expect(p.act(p.accountant, 'match_sap', { sap_book: record.row_id, assets: [tags[0].row_id], method: 'Serial number' }))
     .rejects.toThrow('JRA-000021 is already matched to 200031-0')
   await expect(p.meena.get('/api/table/equipment.sap_book')).rejects.toThrow()
@@ -136,19 +144,20 @@ test('an exception is approved only by a Finance Controller who did not raise it
   await expect(p.change('equipment.exception', own, { exception_state: 'Approved', approval_ref: 'FC/ATK/002' }, p.controller)).rejects.toThrow('Nobody approves an exception they raised')
 })
 
-test('the Finance Controller starts a recount of every line over the threshold plus a 10% sample', async ({ createUser }) => {
+test('the independent recount takes every line over Finance’s threshold plus a 10% sample', async ({ createUser }) => {
   const p = await pilot(createUser)
   const lines = []
   for (let n = 31; n <= 50; n++) lines.push(await p.line(p.meena, { tag_no: `JRA-0000${n}` }))
   for (const asset of lines.slice(0, 2)) await p.change('equipment.asset', await p.get('equipment.asset', asset.row_id), { book_value: 250000 }, p.accountant)
-  await expect(p.act(p.manager, 'start_recount', { count: p.count.row_id })).rejects.toThrow('Only a Finance Controller starts the independent recount')
-  await expect(p.act(p.controller, 'start_recount', { count: p.count.row_id })).rejects.toThrow('Set the recount threshold for ATK 1501 first')
+  await expect(p.act(p.meena, 'start_recount', { count: p.count.row_id })).rejects.toThrow('Only an Assets Manager starts the independent recount')
+  await expect(p.act(p.manager, 'start_recount', { count: p.count.row_id })).rejects.toThrow('Set the recount threshold for ATK 1501 first')
+  await expect(p.save('equipment.control_setting', { site: p.atk.row_id, recount_threshold: 200000 })).rejects.toThrow()
   await p.save('equipment.control_setting', { site: p.atk.row_id, recount_threshold: 200000, recount_percent: 10 }, p.controller)
-  const recount = await p.act<{ count: string; expected: number }>(p.controller, 'start_recount', { count: p.count.row_id })
+  const recount = await p.act<{ count: string; expected: number }>(p.manager, 'start_recount', { count: p.count.row_id })
   // 2 over the threshold, and 10% of the other 18, rounded up to 2.
   expect(recount.expected).toBe(4)
   const created = await p.get('equipment.count', recount.count)
   expect(created).toMatchObject({ count_kind: 'Recount', recount_of: p.count.row_id, count_state: 'Planned' })
-  const expected = await p.controller.get<{ data: Row[] }>(`/api/table/equipment.count_expected?fields=["asset"]&filters=${encodeURIComponent(JSON.stringify([['count', '=', recount.count]]))}`)
+  const expected = await p.manager.get<{ data: Row[] }>(`/api/table/equipment.count_expected?fields=["asset"]&filters=${encodeURIComponent(JSON.stringify([['count', '=', recount.count]]))}`)
   expect(expected.data.map(row => row.asset)).toEqual(expect.arrayContaining([lines[0].row_id, lines[1].row_id]))
 })
