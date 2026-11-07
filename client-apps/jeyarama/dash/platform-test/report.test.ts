@@ -154,13 +154,15 @@ describe('the report reads on the platform', () => {
   })
 
   test("list the reports for the sidebar, and none for someone whose job reaches nothing", async ({ admin, createUser }) => {
-    const { leader, headOffice, nobody } = await setup(admin, createUser)
+    const { manager, leader, headOffice, nobody } = await setup(admin, createUser)
     const reports = (client: TestClient) => client.post<{ result: unknown[] }>('/api/app_reads/dash/reports', { payload: {} }).then(a => a.result)
-    expect(await reports(leader)).toEqual([
+    expect(await reports(manager)).toEqual([
       { key: 'sales', name: 'Sales versus target', takes_store: true, takes_month: true, no_filter: false },
       { key: 'store_target', name: 'Store target month to date', takes_store: false, takes_month: false, no_filter: false },
       { key: 'vendor_sales', name: 'Vendor sales by city', takes_store: false, takes_month: false, no_filter: false },
     ])
+    // A Team Leader holds no whole store, so the whole-stores report isn't offered (#967 point 1).
+    expect((await reports(leader) as { key: string }[]).map(r => r.key)).toEqual(['sales', 'vendor_sales'])
     expect(await Promise.all([reports(headOffice), reports(nobody)])).toEqual([[], []])
   })
 

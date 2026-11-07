@@ -135,9 +135,9 @@ export function headingOf(places: readonly Place[], store: string, name: string 
     reasons: [...byBasis].sort(([a], [b]) => a.localeCompare(b)).map(([basis, named]) => ({ basis, sections: sorted(named) })) }
 }
 
-/** The store's short name as people know it: its short code, else its name; never its plant code. */
-export function storeShortName(report: { short_code: string | null; store_name: string | null }, month: { store_name?: string | null } | null): string | null {
-  return report.short_code || report.store_name || month?.store_name || null
+/** The store as staff read it (#967 point 13): its name, never a code, short or plant. The core Tables' name comes first. */
+export function storeShortName(report: { short_code: string | null; store_name: string | null }, month: { store_name?: string | null } | null, named: string | null = null): string | null {
+  return named || report.store_name || month?.store_name || null
 }
 
 /** Today in India Standard Time. */

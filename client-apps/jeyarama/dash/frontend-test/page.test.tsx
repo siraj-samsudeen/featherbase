@@ -186,7 +186,7 @@ describe('Dash against the real platform', () => {
   test('tells an ordinary signed-in reader to ask their Store Manager without exposing instance health', async ({ createUser }) => {
     token = (await createUser({ email: 'dash-ui-reader@example.test' })).token
     await open()
-    await waitForText('Ask your Store Manager')
+    await waitForText("You don't have a report to open yet.")
     expect(document.querySelector('[data-testid=dash] a[href*=instance-health]')).toBeNull()
     expect([...new Set(requests.map(r => r.path))].sort()).toEqual([
       '/api/app_reads/dash/approvals', '/api/app_reads/dash/embed_session', '/api/app_reads/dash/reach_problem', '/api/app_reads/dash/report', '/api/app_reads/dash/reports', '/api/whoami',
@@ -297,10 +297,10 @@ describe('Dash against the real platform', () => {
   })
 
   for (const example of [
-    { job: 'Team Leader', acting: false, sentence: 'You see Sarees at LKS because you are their Team Leader.' },
-    { job: 'Team Leader', acting: true, sentence: 'You see Sarees at LKS because you are their acting Team Leader.' },
-    { job: 'Staff', acting: false, sentence: 'You see Sarees at LKS because you work in them.' },
-    { job: 'Staff', acting: true, sentence: 'You see Sarees at LKS because you work in them.' },
+    { job: 'Team Leader', acting: false, sentence: 'You see Sarees at Lakeside because you are their Team Leader.' },
+    { job: 'Team Leader', acting: true, sentence: 'You see Sarees at Lakeside because you are their acting Team Leader.' },
+    { job: 'Staff', acting: false, sentence: 'You see Sarees at Lakeside because you work in them.' },
+    { job: 'Staff', acting: true, sentence: 'You see Sarees at Lakeside because you work in them.' },
   ]) {
     installed(`names a ${example.acting ? 'temporary ' : ''}${example.job}'s section and reason without a store code`, async ({ dash, createUser }) => {
       const person = await createUser({ email: 'dash-section-reader@example.test', roles: ['Dash Reader'] })
@@ -308,7 +308,7 @@ describe('Dash against the real platform', () => {
       token = person.token
       await open()
       await waitForQuickView()
-      expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('LKS · Sarees')
+      expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('Lakeside · Sarees')
       expect(document.querySelector('[data-testid=why-line]')?.textContent).toBe(example.sentence)
       expect(document.body.textContent).not.toMatch(/9901|010101001/)
     })
@@ -324,7 +324,7 @@ describe('Dash against the real platform', () => {
     await open()
     await waitForQuickView()
     expect(document.querySelector('[data-testid=why-line]')?.textContent)
-      .toBe('You see LKS because you are its Store Manager, Cluster Manager and Team Leader of Sarees and work in Sarees.')
+      .toBe('You see Lakeside because you are its Store Manager, Cluster Manager and Team Leader of Sarees and work in Sarees.')
   })
 
   /** The page has its reports, so it has started what the report on show needs. */
@@ -407,9 +407,9 @@ describe('Dash against the real platform', () => {
       await open()
       await waitForQuickView()
       expect(document.querySelector('[data-testid=heading-title]')?.textContent)
-        .toBe(count > 3 ? 'LKS · 4 sections' : `LKS · ${names.join(' · ')}`)
+        .toBe(count > 3 ? 'Lakeside · 4 sections' : `Lakeside · ${names.join(' · ')}`)
       expect(document.querySelector('[data-testid=why-line]')?.textContent)
-        .toBe(`You see ${count === 2 ? 'Alpha and Beta' : count === 3 ? 'Alpha, Beta and Gamma' : '4 sections'} at LKS because you work in them.`)
+        .toBe(`You see ${count === 2 ? 'Alpha and Beta' : count === 3 ? 'Alpha, Beta and Gamma' : '4 sections'} at Lakeside because you work in them.`)
       expect(document.querySelectorAll('tbody')).toHaveLength(count)
       expect(document.body.textContent).not.toContain('Sarees')
     })
@@ -425,9 +425,9 @@ describe('Dash against the real platform', () => {
     token = person.token
     await open()
     await waitForQuickView()
-    expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('LKS · Cotton · Sarees')
+    expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('Lakeside · Cotton · Sarees')
     expect(document.querySelector('[data-testid=why-line]')?.textContent)
-      .toBe('You see Cotton and Sarees at LKS because you are Team Leader of Sarees and work in Cotton.')
+      .toBe('You see Cotton and Sarees at Lakeside because you are Team Leader of Sarees and work in Cotton.')
   })
 
   for (const signedIn of [true, false]) {
@@ -441,7 +441,7 @@ describe('Dash against the real platform', () => {
         await busy
       })
       if (signedIn) await waitForQuickView()
-      else await waitForText('Ask your Store Manager')
+      else await waitForText("You don't have a report to open yet.")
       expect(requests.filter(r => r.path.endsWith('/report'))).toHaveLength(1)
       expect(requests.filter(r => r.path.endsWith('/embed_session'))).toHaveLength(1)
       // Someone with no reports has no store to check: the report is opened at once, and refused.
@@ -517,7 +517,7 @@ describe('Dash against the real platform', () => {
       { path: '/api/app_reads/dash/stores', status: 200 },
     ])
     expect(requests.filter(r => r.path.endsWith('/report'))).toHaveLength(1)
-    expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('LKS · Sarees')
+    expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('Lakeside · Sarees')
     expect(document.querySelector('tfoot')?.textContent).toBe('Total₹1,000.00₹900.00−₹100.0090%')
     expect(document.body.textContent).not.toContain('9909')
   })
@@ -530,7 +530,7 @@ describe('Dash against the real platform', () => {
     const links = [...document.querySelectorAll('[data-testid=report-link]')]
     expect(links.map(a => [a.textContent, a.getAttribute('aria-current'), a.getAttribute('href')])).toEqual([
       ['Sales versus target', 'page', '?store=9901&report=sales'],
-      ['Store target month to date', null, '?store=9901&report=store_target'],
+      // The reader is a Team Leader: the whole-stores report isn't theirs to open, so it isn't listed (#967 point 1).
       ['Vendor sales by city', null, '?store=9901&report=vendor_sales'],
     ])
   })
@@ -552,7 +552,8 @@ describe('Dash against the real platform', () => {
   installed('shows no-access for a report that does not exist', async ({ dash: _dash }) => {
     history.replaceState(null, '', '/dash/?report=nope')
     await open()
-    await waitForText('Ask your Store Manager')
+    // #967 point 7: the reader has other reports, so the page says this one isn't theirs.
+    await waitForText("You can't open this report. Choose one of your reports from the list.")
   })
 
   installed('tells Staff with no section why, with a link to Your sections', async ({ dash, createUser }) => {
@@ -581,7 +582,7 @@ describe('Dash against the real platform', () => {
     token = person.token
     history.replaceState(null, '', '/dash/')
     await open()
-    await waitForText('Ask your Store Manager')
+    await waitForText("You don't have a report to open yet.")
     expect(document.querySelector('[data-testid=reach-problem]')).toBeNull()
   })
 })

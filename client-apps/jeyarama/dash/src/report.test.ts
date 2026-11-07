@@ -272,9 +272,9 @@ describe("a store's heading", () => {
     expect(headingOf([place('9901 / Section: Sarees', '9901', ['010101001'])], '9901', 'LKS').reasons).toEqual([])
   })
 
-  it("names the store by its short code, else its name, from the report or the month's metadata, never by its plant code", () => {
-    expect([storeShortName({ short_code: 'LKS', store_name: 'Lakeside' }, null), storeShortName({ short_code: null, store_name: 'Lakeside' }, null),
-      storeShortName({ short_code: null, store_name: null }, { store_name: 'Lakeside' }), storeShortName({ short_code: null, store_name: null }, null)])
-      .toEqual(['LKS', 'Lakeside', 'Lakeside', null])
+  it("names the store by name, the core Tables' first, else the report's or the month's metadata's, never by a short or plant code (#967)", () => {
+    expect([storeShortName({ short_code: 'LKS', store_name: 'Lakeside' }, null), storeShortName({ short_code: 'LKS', store_name: 'Lakeside' }, null, 'Lakeside Mall'),
+      storeShortName({ short_code: null, store_name: null }, { store_name: 'Lakeside' }), storeShortName({ short_code: 'LKS', store_name: null }, null)])
+      .toEqual(['Lakeside', 'Lakeside Mall', 'Lakeside', null])
   })
 })

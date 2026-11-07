@@ -115,7 +115,7 @@ for (const reader of org.readers as { key: string; name: string; jobs: [string, 
 // Both copies describe the same made-up month to date, including today. Hillview
 // deliberately retains last month's figures to demonstrate the no-data-yet state.
 const { refreshedAt, dataThrough, periodStart, lastMonth, lastMonthEnd } = madeUpReportDates(Date.now())
-// Lakeside and Bayside carry a short code, as the warehouse's store master does; the header names them by it.
+// Lakeside and Bayside carry a short code, as the warehouse's store master does; the header still names them by name (#967 point 13).
 const SHORT_CODES: Record<string, string> = { '9901': 'LKS', '9906': 'BYS' }
 const row = (store: string, name: string, code: string, subcategory: string, target: number | null, actual: number | null, month = periodStart, through = dataThrough) => ({
   store_code: store, store_name: name, short_code: SHORT_CODES[store] ?? null, subcategory_code: code, subcategory, target, actual,
