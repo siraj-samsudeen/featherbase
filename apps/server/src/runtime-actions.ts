@@ -5,7 +5,9 @@ import { inAppTransaction, sql } from './db'
 import { appOperation, assertAppAvailable, assertStillServing, servingIdentity } from './app-lifecycle'
 import { canonicalJson, recordAppAccessRefusal, withAppAuthorization, type DeclaredAppOperation } from './app-access'
 import { AppError } from './errors'
-import { assertSystemManager, getRoles } from './permissions'
+import { PLATFORM_ROLES, assertSystemManager, getRoles } from './permissions'
+import { accessApprovers } from './runtime-packages'
+import { settleAccessRequests } from './waiting-for-access'
 import { getMeta } from './meta'
 import { tableRelation } from './table-engine'
 import { assertUserPermissions, deleteDoc, getDoc, saveDoc } from './document'
@@ -51,10 +53,24 @@ export function linkedTables(settings: Readonly<Record<string, string>>): string
 }
 
 /** #912: names of people, read as the caller (the Person permission applies). */
-function callerPeople(user: string): RuntimeActionContext['people'] {
+function callerPeople(user: string, app: string): RuntimeActionContext['people'] {
   return Object.freeze({
     names: (ids: string[]) => principalNames(ids, user),
     enabled: (ids: string[]) => enabledPeople(ids, user),
+    // #1046: an app that gives things to roles says why someone has one.
+    rolesOf: async (person: string) => {
+      if (typeof person !== 'string' || !person) return Object.freeze([])
+      const [live] = await sql`select 1 from person where row_id = ${person} and enabled and replaced_by is null and not coalesce(built_in, false)`
+      return Object.freeze(live ? [...new Set(await getRoles(person))].filter((role) => role !== 'All').sort() : [])
+    },
+    roleNames: async () => Object.freeze((await sql`select row_id from role where row_id not in ${sql(PLATFORM_ROLES)} order by row_id`).map((r) => String(r.row_id))),
+    waitingForAccess: async () => {
+      const roles = await getRoles(user)
+      if (!roles.includes('System Manager') && !accessApprovers(app).roles.some((role) => roles.includes(role))) return Object.freeze([])
+      await settleAccessRequests()
+      const rows = await sql`select person, created_at from access_request where app_name = ${app} order by created_at, person`
+      return Object.freeze(rows.map((r) => ({ person: String(r.person), asked_at: new Date(r.created_at as string).toISOString() })))
+    },
   })
 }
 
@@ -209,7 +225,7 @@ export function executeRuntimeAction(app: string, name: string, input: unknown, 
       // Serialized inside the guard (Codex round 2 on #670): a getter on the
       // result is the app's code running, and may log or throw a secret.
       const json = await withSecretsKept(kept, async () => {
-        try { return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), roles: await callerRoles(user), people: callerPeople(user), payload: normalized, authorization, settings, secrets, mail: callerMail(app, contribution.tables), documents: context.documents, baseTables: base.helper, changeProposals: proposals.helper, reject }))) }
+        try { return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), roles: await callerRoles(user), people: callerPeople(user, app), payload: normalized, authorization, settings, secrets, mail: callerMail(app, contribution.tables), documents: context.documents, baseTables: base.helper, changeProposals: proposals.helper, reject }))) }
         finally { await context.close(); await base.close(); await proposals.close() }
       })
       assertNoSecret(kept, JSON.parse(json))
@@ -316,7 +332,7 @@ async function runRead(app: string, name: string, user: string, handler: Runtime
     places: authorization.places, outbound: !inAppTransaction(), deferWrite, provenance })
   const json = await withSecretsKept(kept, async () => {
     try {
-      return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), roles: await callerRoles(user), people: callerPeople(user), payload, prepared, authorization, settings, secrets, reject, documents, baseTables, changeProposals, datasets, recordView })))
+      return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), roles: await callerRoles(user), people: callerPeople(user, app), payload, prepared, authorization, settings, secrets, reject, documents, baseTables, changeProposals, datasets, recordView })))
     } finally { await close() }
   })
   assertNoSecret(kept, JSON.parse(json))

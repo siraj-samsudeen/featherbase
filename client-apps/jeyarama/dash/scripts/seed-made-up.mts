@@ -27,7 +27,7 @@ const server = (path: string) => import(pathToFileURL(resolve(checkout, 'apps/se
 const { sql } = await server('db.ts')
 const { setUserPassword } = await server('auth.ts')
 const { datasetsDeclaration } = await server('app-datasets.ts')
-const { BASE_TABLES, LINKED_TABLES, REPORT_ROWS } = await import(pathToFileURL(resolve(appDir, 'platform-test/base-tables.mjs')).href)
+const { ACCESS_ROWS, BASE_TABLES, LINKED_TABLES, REPORT_ROWS } = await import(pathToFileURL(resolve(appDir, 'platform-test/base-tables.mjs')).href)
 const org = JSON.parse(await readFile(resolve(appDir, 'fixtures/made-up-org-chart.json'), 'utf8'))
 
 /** The local password every made-up reader signs in with (this script's own test value). */
@@ -72,6 +72,13 @@ if (!sourceExists) await post('/api/table/Data%20Source', { row_id: 'motherduck'
 // Three made-up Dives, one per filter shape. No Dive of these ids exists and no service account is
 // set, so the sales report falls to its quick view and the other two to "This report couldn't open".
 for (const row of REPORT_ROWS as { report_key: string }[]) await keep('dash.report', row.report_key, row)
+// #1046: every made-up report goes to everyone holding Dash Reader, as one bundle, so each made-up
+// reader opens them; the Report access page shows the row, and a made-up Report Access Manager.
+const bundles = await call<{ data: { row_id: string }[] }>(`/api/table/dash.report_bundle?filters=${encodeURIComponent(JSON.stringify([['bundle_name', '=', 'Store reports']]))}&fields=${encodeURIComponent('["row_id"]')}`)
+const bundle = bundles.data[0]?.row_id ?? (await save('dash.report_bundle', { bundle_name: 'Store reports', notes: 'Every made-up report, for everyone in the stores' })).row_id
+for (const row of REPORT_ROWS as { report_key: string }[])
+  await save('dash.report_bundle_member', { report_bundle: bundle, report: row.report_key }).catch(() => {})
+await save('dash.report_access', { report_bundle: bundle, role: 'Dash Reader' }).catch(() => {})
 
 for (const [code, name] of org.clusters) await keep('Cluster', code, { code, name })
 for (const [code, name, is_store, cluster] of org.sites) await keep('Site', code, { code, name, is_store, cluster })
@@ -91,10 +98,10 @@ for (const code of LARGE.slice(0, 3)) await placement('BAY', code, 'BAY-S1')
 for (const code of LARGE.slice(3, 6)) await placement('BAY', code, 'BAY-S2')
 
 /** A made-up person who can sign in, a Dash Reader, and whatever roles are named. */
-async function person(email: string, full_name: string, roles: string[] = []) {
+async function person(email: string, full_name: string, roles: string[] = [], reader = true) {
   const [found] = await sql`select row_id from person where lower(email) = ${email}`
   const id = found ? String(found.row_id) : String((await post('/api/table/Person', { email, full_name, enabled: true,
-    roles: ['Dash Reader', ...roles].map(role => ({ role })) })).row_id)
+    roles: [...(reader ? ['Dash Reader'] : []), ...roles].map(role => ({ role })) })).row_id)
   await setUserPassword(id, PASSWORD)
   return id
 }
@@ -181,6 +188,9 @@ await seed('sales_last_month_meta', [...new Set(month.map(m => `${m.store_code} 
   return { store_code, store_name: STORE_NAMES[store_code], subcategory_code, period_start: lastMonth, data_through: lastMonthEnd, targets_available: true }
 }))
 
+// #1046: someone who gives reports, and nothing else: the Report access page (/dash/?view=access).
+await person('access-manager@example.test', 'Made-up Access Manager', ['Report Access Manager'], false)
+
 // Each person is a Reader and shows one state of Your sections.
 for (const staff of org.sectionPeople as { key: string; name: string; code: string | null; roles: string[]; jobs: [string, string, string, string | null, string | null][] }[]) {
   const id = await person(`sections-${staff.key}@example.test`, staff.name, staff.roles)
@@ -210,6 +220,8 @@ console.log(`To see figures, sign in at /featherbase/login with:
 Other made-up people, same password. Each shows one state of the page:
 ${says(org.readers, 'reader')}
 Your sections (/dash/?view=sections), same password:
-${says(org.sectionPeople, 'sections')}`)
+${says(org.sectionPeople, 'sections')}
+Report access (/dash/?view=access), same password:
+  access-manager@example.test          Report Access Manager: gives reports and bundles, and sees who has what`)
 await sql.end()
 process.exit(0)

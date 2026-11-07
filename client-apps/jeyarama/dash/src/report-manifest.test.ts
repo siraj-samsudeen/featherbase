@@ -14,7 +14,7 @@ type Dataset = { name: string; source: string; query: string; columns: { name: s
 const datasets = (manifest as unknown as { datasets: Dataset[] }).datasets
 const sales = () => datasets.find(d => d.name === SALES_DATASET)!
 const operations = manifest.reads.operations as Record<string, { policy: { kind: string; readRoles?: string[] }; outbound?: boolean }>
-const ROLES = ['Dash Reader', 'Dash Section Editor', 'Dash Section Reviewer']
+const ROLES = ['Dash Reader', 'Dash Section Editor', 'Dash Section Reviewer', 'Report Access Manager']
 
 describe("the app's name in the manifest", () => {
   it('is Dash everywhere: title, identifier, roles and Table group', () => {
@@ -75,7 +75,7 @@ describe('the report in the manifest', () => {
 
   it("scopes the report's reads by the reader's places", () => {
     expect(['stores', 'report', 'embed_session'].map(name => [name, operations[name].policy.kind, operations[name].policy.readRoles]))
-      .toEqual(['stores', 'report', 'embed_session'].map(name => [name, 'person_scope', ROLES]))
+      .toEqual(['stores', 'report', 'embed_session'].map(name => [name, 'person_scope', ROLES.filter(role => role !== 'Report Access Manager')]))
   })
 
   it('declares only the two Dive openers as calling out', () => {
@@ -136,12 +136,19 @@ describe("last month's datasets", () => {
 })
 
 describe('what Dash owns and what it reads', () => {
-  it('owns one Table, its entry Table, and keeps its list of Dives there', () => {
-    expect([manifest.entryTable, manifest.tables.map(table => table.name)]).toEqual(['dash.report', ['dash.report']])
+  it('owns its list of Dives, its entry Table, and the report access Tables (#1046)', () => {
+    expect([manifest.entryTable, manifest.tables.map(table => table.name)])
+      .toEqual(['dash.report', ['dash.report', 'dash.report_bundle', 'dash.report_bundle_member', 'dash.report_access']])
+  })
+
+  it('decides scope with none of its own Tables, so role grants decide who gives reports', () => {
+    expect(manifest.tables.filter(table => (table as { decides_scope?: boolean }).decides_scope)).toEqual([])
   })
 
   it("declares a read of every Table its scope provider and Your sections read, and of nothing else", () => {
-    expect(Object.keys(manifest.baseTables.read).sort()).toEqual([...new Set([...PROVIDER_TABLES, ...BASE_TABLES])].sort())
+    // #1046: and its own report access Tables, read as the app so a reader needs no grant on them.
+    expect(Object.keys(manifest.baseTables.read).sort()).toEqual([...new Set([...PROVIDER_TABLES, ...BASE_TABLES,
+      'dash.report_access', 'dash.report_bundle', 'dash.report_bundle_member'])].sort())
   })
 
   it('declares the Tables the scope provider reads, as the provider lists them', () => {
@@ -159,7 +166,7 @@ describe('what Dash owns and what it reads', () => {
   })
 
   it('offers the three filter shapes and no filter on a report', () => {
-    const shape = manifest.tables[0].columns.find(column => column.column_name === 'filter_shape')
+    const shape = manifest.tables[0].columns.find(column => column.column_name === 'filter_shape') as { choices?: string } | undefined
     expect(shape?.choices?.split('\n')).toEqual(['One store and subcategories', 'Whole stores', 'Stores and subcategories', 'No filter'])
   })
 })
@@ -183,7 +190,9 @@ describe('the read grants, declared before the first install', () => {
     expect(manifest.permissions.filter(p => ['Employee', 'Job Assignment'].includes(p.table))).toEqual([])
   })
 
-  it('grant reads only: writing a Table that decides scope waits for featherbase #462', () => {
-    expect(manifest.permissions.every(p => Object.keys(p).sort().join() === 'can_read,role,table' && p.can_read === true)).toBe(true)
+  it('grant reads only, apart from the Report Access Manager on the report access Tables (#1046)', () => {
+    const writes = manifest.permissions.filter(p => Object.keys(p).sort().join() !== 'can_read,role,table' || (p as { can_read?: boolean }).can_read !== true)
+    expect(writes.map(p => [p.role, p.table])).toEqual([
+      ['Report Access Manager', 'dash.report_bundle'], ['Report Access Manager', 'dash.report_bundle_member'], ['Report Access Manager', 'dash.report_access']])
   })
 })

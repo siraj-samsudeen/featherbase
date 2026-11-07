@@ -6,6 +6,10 @@ import { orgChartProvider, reachOf, type Documents, type Place } from './provide
 import { diveFilters, storesOfReport, type ReportRecord } from './dive-filters.ts'
 import { MONTH_CHOICES, buildReport, monthLabel, headingOf, istToday, periodOf, storeLabels, storeShortName, type CachedAnswer, type Heading, type Month, type MonthChoice, type SalesRow } from './report.ts'
 import { actions as sectionActions, reads as sectionReads } from './my-sections.ts'
+import { accessPage, giveReport, managesAccess, personLookup, personSearch, removeAccess, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
+
+/** The save rules of Dash's own Tables. */
+export const validators = accessValidators
 
 /** The places each person covers, from the core Tables. */
 export const scopeProviders = { org_chart: orgChartProvider() }
@@ -36,6 +40,8 @@ export const EMBED_API_TIMEOUT_MS = 10_000
 /** What the platform hands a read handler (the part this module uses). */
 interface ReadContext {
   user: string
+  roles?: readonly string[]
+  people?: AccessContext['people']
   payload?: unknown
   authorization?: { places?: readonly Place[] }
   /** What this outbound read's prepare step read in its transaction. */
@@ -66,13 +72,17 @@ const placesOf = (ctx: ScopedContext) => ctx.authorization.places ?? []
 const REPORT_FIELDS = ['report_key', 'report_name', 'dive_id', 'filter_shape', 'store_key', 'subcategory_key', 'whole_store_key', 'month_key', 'ready_signal', 'quick_view']
 
 /**
- * The one place that decides which reports this person may open. STAND-IN until report bundles
- * (#1046) answers who has been given what: every report, except that someone whose job reaches
- * nothing gets only a report taking no filter. A grant never widens which stores a person sees.
+ * The one place that decides which reports this person may open: the reports given to them by
+ * any route (#1046), read fresh on every request. No row means no report, for everyone. Someone
+ * whose job reaches nothing gets only a given report that takes no filter: a grant never widens
+ * which stores a person sees. Unreadable means nothing.
  */
 export async function reportsFor(ctx: ScopedContext): Promise<ReportRecord[]> {
+  let given: Set<string>
+  try { given = new Set((await reportsGivenTo(ctx.baseTables, ctx.user, ctx.roles ?? [], istToday())).keys()) } catch { return [] }
+  if (!given.size) return []
   const rows = await ctx.documents.list('dash.report', { fields: REPORT_FIELDS, order_by: 'report_name asc', limit_page_length: 200 })
-  const reports = rows.map(row => ({ ...row, ready_signal: checked(row.ready_signal) }) as unknown as ReportRecord)
+  const reports = rows.map(row => ({ ...row, ready_signal: checked(row.ready_signal) }) as unknown as ReportRecord).filter(report => given.has(report.report_key))
   return (await reachesSomething(ctx)) ? reports : reports.filter(report => report.filter_shape === 'No filter')
 }
 
@@ -198,8 +208,12 @@ async function openDive(ctx: ScopedContext, report: ReportRecord | null) {
   return { unreachable: true }
 }
 
-/** Your sections and its approvals (#975). */
-export const actions = sectionActions
+/** Your sections and its approvals (#975), and giving reports (#1046). */
+export const actions = {
+  ...sectionActions,
+  give_report: (context: AccessContext) => giveReport(context),
+  remove_report_access: (context: AccessContext) => removeAccess(context),
+}
 
 export const reads = {
   ...sectionReads,
@@ -208,6 +222,24 @@ export const reads = {
   me({ user }: ReadContext) {
     return { user }
   },
+
+  /** The app's gate (#1046): Dash opens for someone with a report, or who manages report access. */
+  async can_open(context: ReadContext) {
+    const ctx = context as ScopedContext
+    return managesAccess(ctx) || (await reportsFor(ctx)).length > 0
+  },
+
+  /** Whether this person manages report access, for the sidebar's link. */
+  manages_access(context: ReadContext) {
+    return managesAccess(context as AccessContext)
+  },
+
+  /** The Report access page (#1046). Managers only. */
+  access_page: (context: ReadContext) => accessPage(context as AccessContext),
+  person_search: (context: ReadContext) => personSearch(context as AccessContext),
+  person_lookup: (context: ReadContext) => personLookup(context as AccessContext, istToday(), async person => {
+    try { return (await reachOf((context as ScopedContext).baseTables, person, istToday())).places.length > 0 } catch { return false }
+  }),
 
   /** The reports this person may open, for the sidebar. */
   async reports(context: ReadContext) {

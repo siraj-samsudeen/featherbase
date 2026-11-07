@@ -27,3 +27,6 @@ export const REPORT_ROWS = [
   { report_key: 'store_target', report_name: 'Store target month to date', dive_id: 'made-up-store-target-dive', filter_shape: 'Whole stores', store_key: 'plant_codes' },
   { report_key: 'vendor_sales', report_name: 'Vendor sales by city', dive_id: 'made-up-vendor-sales-dive', filter_shape: 'Stores and subcategories', store_key: 'store_reach' },
 ]
+
+/** #1046: each made-up report given to everyone holding Dash Reader, so the tests' readers reach them. */
+export const ACCESS_ROWS = REPORT_ROWS.map(row => ({ report: row.report_key, role: 'Dash Reader' }))

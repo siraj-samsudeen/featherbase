@@ -8,7 +8,7 @@ import { discoverPackages } from '../../../../apps/server/src/runtime-packages'
 import { datasetsDeclaration } from '../../../../apps/server/src/app-datasets'
 import { sql } from '../../../../apps/server/src/db'
 // @ts-expect-error a plain .mjs module
-import { BASE_TABLES, LINKED_TABLES, REPORT_ROWS } from '../platform-test/base-tables.mjs'
+import { ACCESS_ROWS, BASE_TABLES, LINKED_TABLES, REPORT_ROWS } from '../platform-test/base-tables.mjs'
 
 export async function setupDash(admin: TestClient, createUser: CreateUserFn) {
   expect(await discoverPackages([new URL('..', import.meta.url).pathname])).toEqual([])
@@ -45,6 +45,7 @@ export async function setupDash(admin: TestClient, createUser: CreateUserFn) {
     return save('Section Subcategory', { section_subcategory_id: `P-${subcategory}`, store: 'LKS', subcategory, section: onSection, starts_on: '2026-01-01' })
   }
   for (const row of REPORT_ROWS) await save('dash.report', row)
+  for (const row of ACCESS_ROWS) await save('dash.report_access', row)
   const sarees = await section('LKS-S1', 'Sarees')
   for (const subcategory of ['010101001', '010101002', '010101003']) await place(subcategory, sarees.row_id)
   // The reader the page is opened as: a Team Leader of Sarees at Lakeside.

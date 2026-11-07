@@ -67,8 +67,11 @@ function context({ places = [place('9901 / Section: Sarees', '9901', ['010101001
     ctx: {
       user: 'psn_103', payload, settings, secrets: { MOTHERDUCK_TOKEN: 'token-made-up' },
       authorization: { places },
+      roles: ['Dash Reader'],
       documents: reader({ 'dash.report': reports }),
-      baseTables: reader(core, coreThrows),
+      // #1046: every report given to everyone holding Dash Reader, unless a test says otherwise.
+      baseTables: reader({ 'dash.report_access': reports.map(r => ({ row_id: `a-${String(r.report_key)}`, report: r.report_key, role: 'Dash Reader' })),
+        'dash.report_bundle_member': [], ...core }, coreThrows),
       reject(message: string): never { throw new Error(message) },
       datasets: {
         async active(name: string, filters?: Record<string, unknown>) {

@@ -16,7 +16,7 @@ import { withNamedVariable } from '../../src/env'
 import { sql } from '../../src/db'
 import { activeSnapshot, buildSnapshot } from '../../src/dataset-snapshot'
 import { drainJobs, enqueue, loadJobs } from '../../src/jobs'
-import { APP_DIR, REPORT_ROWS, createCoreTables, installApp, pinned, saveRow } from './helpers'
+import { ACCESS_ROWS, APP_DIR, REPORT_ROWS, createCoreTables, installApp, pinned, saveRow } from './helpers'
 import { FOUR_TARGETS, addSource, answerWithoutPeriod, closeWarehouse, fillWarehouse, openWarehouse } from './warehouse'
 
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
@@ -76,6 +76,7 @@ async function setup(admin: TestClient, createUser: CreateUserFn, facts?: Record
   await save('Job Assignment', { assignment_id: 'JA-103', employee: '103', job: 'Team Leader', site: 'LKS', section: 'LKS-S1', starts_on: '2026-01-01' })
   await save('Job Assignment', { assignment_id: 'JA-998', employee: '998', job: 'Head office staff', site: 'HOF', starts_on: '2026-01-01' })
   for (const row of REPORT_ROWS) await save('dash.report', row)
+  for (const row of ACCESS_ROWS) await save('dash.report_access', row)
   await seedSnapshot(facts ?? [
     salesRow('9901', '010101001', 'Lakeside', 1000, 800),
     salesRow('9901', '010101003', 'Lakeside', 500, 650),
@@ -232,6 +233,7 @@ describe('the report reads on the platform', () => {
     test('opens a report taking no filter for someone whose job reaches nothing, and nothing else', async ({ admin, createUser }) => {
       const { headOffice, leader } = await setup(admin, createUser)
       await saveRow(admin, 'dash.report', { report_key: 'open', report_name: 'Open to anyone given it', dive_id: 'made-up-open-dive', filter_shape: 'No filter' })
+      await saveRow(admin, 'dash.report_access', { report: 'open', role: 'Dash Reader' })
       const called = await opening(admin)
       const reports = await headOffice.post<{ result: { key: string; no_filter: boolean }[] }>('/api/app_reads/dash/reports', { payload: {} })
       expect(reports.result.map(r => [r.key, r.no_filter])).toEqual([['open', true]])
