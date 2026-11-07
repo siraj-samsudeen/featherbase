@@ -2,14 +2,19 @@
 // from a nav item with a count, as the standard Access Request list. Someone
 // who opens Featherbase without access is told an admin has been told.
 import { afterEach, vi } from 'vitest'
+import { resolve } from 'node:path'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { sql } from 'server/src/db'
 import { requestAccess } from 'server/src/waiting-for-access'
 import { test, expect, renderApp } from './pg-test'
 import { grantRole } from 'server/test/fixtures'
+import { discoverPackages } from 'server/src/runtime-packages'
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(async () => {
+  vi.restoreAllMocks()
+  await discoverPackages([])
+})
 
 async function waitingPerson(name: string, email: string, app = 'featherbase') {
   const { saveDoc } = await import('server/src/document')
@@ -19,8 +24,11 @@ async function waitingPerson(name: string, email: string, app = 'featherbase') {
 }
 
 test('a System Manager sees the count and the list, with the App, and opens a request', async ({ admin }) => {
+  // test-apps/fixtures/bar-proof: an installed app titled "Bar proof".
+  expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/bar-proof')])).toEqual([])
+  await admin.post('/api/install_app', { name: 'barproof' })
   await waitingPerson('Waiting Person', 'waiting.person@staff.example.com')
-  await waitingPerson('Second Person', 'second.person@staff.example.com', 'dash')
+  await waitingPerson('Second Person', 'second.person@staff.example.com', 'barproof')
   await renderApp('/featherbase/admin/waiting-for-access', admin)
 
   const link = await screen.findByTestId('waiting-for-access-link')
@@ -33,7 +41,7 @@ test('a System Manager sees the count and the list, with the App, and opens a re
   await waitFor(() => expect(within(page).getByTestId('list-total')).toHaveTextContent('2 total'))
   expect(page).toHaveTextContent('waiting.person@staff.example.com')
   await waitFor(() => expect(page).toHaveTextContent('Waiting Person'))
-  expect(page).toHaveTextContent('Dash')
+  expect(page).toHaveTextContent('Bar proof')
   expect(page).toHaveTextContent('Featherbase')
   expect(page.textContent).not.toMatch(/psn_[a-z2-7]{20}/)
   // A list's own tools: filters and column choice.
