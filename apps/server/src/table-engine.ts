@@ -251,6 +251,7 @@ export function seriesKey(table: string, prefix: string): string {
 // an omission there silently rewrites the schema.
 export async function setIdPattern(name: string, pattern: string): Promise<TableMeta> {
   const meta = await getMeta(name)
+  if (meta.kind === 'view') throw baseOnlyChange(meta)
   assertNotSystemWritten(meta, 'renamed or changed')
   validateIdPattern(pattern, meta.columns.map((c) => c.column_name))
   await sql`update table_def set id_pattern = ${pattern}, updated_at = ${new Date()}
@@ -490,7 +491,10 @@ export async function updateTable(
     throw new AppError('ValidationError', 'Body Table name must match the path', { name: 'Table renaming is not supported by this endpoint' })
   const existing = await getMeta(name)
   // #1021: a view's columns are its base's; only its own definition changes.
-  if (existing.kind === 'view') return updateView(name, input)
+  if (existing.kind === 'view') {
+    if (opts.remove_columns?.length) throw baseOnlyChange(existing)
+    return updateView(name, input)
+  }
   assertNotSystemWritten(existing, 'changed')
   // #1025: an update changes what it names. Columns left out are the stored ones,
   // not the effective meta, so a Metadata Override is not written into the Table.
@@ -823,6 +827,10 @@ export async function createView(input: unknown, user = 'Administrator'): Promis
   return getMeta(def.name)
 }
 
+function baseOnlyChange(view: TableMeta): AppError {
+  return new AppError('ValidationError', `${view.name} is a view of ${view.view_of}: its columns and settings are ${view.view_of}'s, so change it on ${view.view_of}`)
+}
+
 /** A view's label, description and filters change; its base never does. */
 export async function updateView(name: string, input: unknown, user = 'Administrator'): Promise<TableMeta> {
   const meta = await getMeta(name)
@@ -831,6 +839,10 @@ export async function updateView(name: string, input: unknown, user = 'Administr
   if (body.view_of !== undefined && body.view_of !== meta.view_of)
     throw new AppError('ValidationError', `A view keeps its base; make a new view of ${String(body.view_of)} instead`, { view_of: 'cannot change' })
   if (body.kind !== undefined && body.kind !== 'view') throw new AppError('ValidationError', 'kind cannot be changed after creation')
+  // Anything else is its base's: dropping it silently would report a change
+  // that never happened.
+  if (Object.keys(body).some((key) => !['name', 'kind', 'view_of', 'label', 'description', 'view_filters'].includes(key)))
+    throw baseOnlyChange(meta)
   const base = await viewBase(meta.view_of!)
   const filters = body.view_filters === undefined ? meta.view_filters ?? [] : normaliseViewFilters(base, body.view_filters)
   const text = (key: string) => body[key] === undefined ? (meta as unknown as Record<string, unknown>)[key] ?? null
