@@ -2,10 +2,10 @@
 
 ### Requirement: Archive a table without deleting it
 
-A System Manager SHALL be able to archive a custom table or an installed app's table, with an optional note of what replaced it, and to
+A System Manager SHALL be able to archive a custom table or an app's table, with an optional note, and to
 un-archive it. While archived, its rows and history SHALL stay readable to whoever could read them, and adding,
 changing, retiring, reactivating, deleting, permanently deleting, importing or merging its rows SHALL be refused for everyone, administrators included. Platform
-tables, settings, sub-tables, an app's entry table and tables that decide access SHALL NOT be archived, with one exception for an app's empty table.
+tables, settings and sub-tables SHALL NOT be archived, nor tables that decide access, except as the next requirement allows.
 
 #### Scenario: Archive a replaced table
 
