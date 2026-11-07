@@ -43,7 +43,7 @@ it('two first sign-ins racing for one invite: one link, both signed in as that p
     const address = `${p}@jeyarama.com`
     await person(p, address)
     await sql`insert into sign_in_identity ${sql({ id: `uid_${p}`, person_id: p, method: 'google', pending_email: address, linked_by: 'test' })}`
-    const google = (await methodOfKind('google'))!
+    const google = (await methodOfKind('google_oauth'))!
     const v = { status: 'verified' as const, subject: `g-${p}`, email: address, email_verified: true }
     const results = await Promise.allSettled([resolveVerified(google, v), resolveVerified(google, v), resolveVerified(google, v)])
     expect(results.map((r) => r.status)).toEqual(['fulfilled', 'fulfilled', 'fulfilled'])
@@ -60,7 +60,7 @@ it('two different Google accounts racing for one invite: exactly one claims it',
     const address = `${p}@jeyarama.com`
     await person(p, address)
     await sql`insert into sign_in_identity ${sql({ id: `uid_${p}`, person_id: p, method: 'google', pending_email: address, linked_by: 'test' })}`
-    const google = (await methodOfKind('google'))!
+    const google = (await methodOfKind('google_oauth'))!
     const attempt = (subject: string) => resolveVerified(google, { status: 'verified', subject, email: address, email_verified: true })
     const results = await Promise.allSettled([attempt(`g-a-${p}`), attempt(`g-b-${p}`)])
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
@@ -100,7 +100,7 @@ it('two first sign-ins by one new Google account: the loser signs in as the winn
   const addresses = [`psnconc${tag}a@store.example`, `psnconc${tag}b@store.example`]
   const subject = `g-new-${tag}`
   try {
-    const google = { ...(await methodOfKind('google'))!, new_person: 'create' as const, allowed_email_domains: '*' }
+    const google = { ...(await methodOfKind('google_oauth'))!, new_person: 'create' as const, allowed_email_domains: '*' }
     // The same account arriving twice at once, each time with a different address
     // on it, so only the subject's unique index can tell them apart.
     const attempt = (email: string) => resolveVerified(google, { status: 'verified', subject, email, email_verified: true, hosted_domain: 'jeyarama.com' })
@@ -132,7 +132,7 @@ it('one Google account claiming two people\'s expected sign-ins at once: the los
       await person(p, addresses[i])
       await sql`update person set expects_google_sign_in = true where row_id = ${p}`
     }
-    const google = { ...(await methodOfKind('google'))!, allowed_email_domains: '*' }
+    const google = { ...(await methodOfKind('google_oauth'))!, allowed_email_domains: '*' }
     const attempt = (email: string) => resolveVerified(google, { status: 'verified', subject, email, email_verified: true, hosted_domain: 'jeyarama.com' })
     const results = await Promise.allSettled(addresses.map(attempt))
     expect(results.map((r) => r.status)).toEqual(['fulfilled', 'fulfilled'])
@@ -150,7 +150,7 @@ it('a database failure while linking an expected sign-in is not hidden: it is ra
     const address = `${p}@jeyarama.com`
     await person(p, address)
     await sql`update person set expects_google_sign_in = true where row_id = ${p}`
-    const google = { ...(await methodOfKind('google'))!, allowed_email_domains: '*' }
+    const google = { ...(await methodOfKind('google_oauth'))!, allowed_email_domains: '*' }
     // A NUL byte cannot be stored in text: the insert fails, with no unique violation to recover from.
     await expect(
       resolveVerified(google, { status: 'verified', subject: `g-nul-${p}`, email: address, email_verified: true, hosted_domain: 'jeyarama.com', display_name: 'bad\u0000name' }),
@@ -166,7 +166,7 @@ it('a database failure while creating a first-time person is raised, and no pers
   const tag = randomUUID().slice(0, 8)
   const address = `psnconc${tag}@jeyarama.com`
   try {
-    const google = { ...(await methodOfKind('google'))!, new_person: 'create' as const, allowed_email_domains: '*' }
+    const google = { ...(await methodOfKind('google_oauth'))!, new_person: 'create' as const, allowed_email_domains: '*' }
     await expect(
       resolveVerified(google, { status: 'verified', subject: `g-nul-${tag}`, email: address, email_verified: true, hosted_domain: 'jeyarama.com', display_name: 'bad\u0000name' }),
     ).rejects.toBeInstanceOf(Error)

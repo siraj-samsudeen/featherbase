@@ -88,8 +88,8 @@ export const KINDS: Record<
   { trustedSubject: boolean; verifiedEmail: boolean; hostedDomain: boolean; candidateFirst: boolean; admitsPrivileged: boolean; rosterFirstSignIn: boolean; unique: boolean }
 > = {
   password: { trustedSubject: true, verifiedEmail: false, hostedDomain: false, candidateFirst: true, admitsPrivileged: true, rosterFirstSignIn: false, unique: true },
-  google: { trustedSubject: true, verifiedEmail: true, hostedDomain: true, candidateFirst: false, admitsPrivileged: true, rosterFirstSignIn: false, unique: true },
-  delegated_password: { trustedSubject: false, verifiedEmail: false, hostedDomain: false, candidateFirst: true, admitsPrivileged: false, rosterFirstSignIn: true, unique: false },
+  google_oauth: { trustedSubject: true, verifiedEmail: true, hostedDomain: true, candidateFirst: false, admitsPrivileged: true, rosterFirstSignIn: false, unique: true },
+  external_password: { trustedSubject: false, verifiedEmail: false, hostedDomain: false, candidateFirst: true, admitsPrivileged: false, rosterFirstSignIn: true, unique: false },
 }
 
 export const METHOD_TABLE = 'Sign In Method'
@@ -104,7 +104,7 @@ export function mockOAuthEnabled(): boolean {
  *  the dev mock). Used by every way-in count, so the counts agree. */
 export function methodUsable(m: { kind: string; enabled: boolean; client_id?: string | null }): boolean {
   if (!m.enabled) return false
-  return m.kind !== 'google' || Boolean(String(m.client_id ?? '').trim()) || mockOAuthEnabled()
+  return m.kind !== 'google_oauth' || Boolean(String(m.client_id ?? '').trim()) || mockOAuthEnabled()
 }
 
 function toMethod(r: Record<string, unknown>): SignInMethod {
@@ -241,7 +241,7 @@ function keepsDomain(lists: string, proof: WayInProof) {
   const list = sql`coalesce(${lists}::text::jsonb -> m.row_id::text, '[]'::jsonb)`
   const domain = sql`lower(split_part(i.email, '@', 2))`
   return sql`(
-    m.kind <> 'google'
+    m.kind <> 'google_oauth'
     or coalesce(i.linked_by, '') <> all(${[...DOMAIN_RULED_LINKS]}::text[])
     or jsonb_array_length(${list}) = 0
     or (
@@ -293,7 +293,7 @@ export function newIdentityId(): string {
  *  address. `updated_at` moves, so a form loaded before is told to reload
  *  rather than echo the mark back. A no-op for any other kind. */
 export async function consumeExpectedSignIn(person: string, method: Pick<SignInMethod, 'kind'>, db: Sql | TxSql = sql): Promise<boolean> {
-  if (method.kind !== 'google') return false
+  if (method.kind !== 'google_oauth') return false
   const rows = await db`
     update person set expects_google_sign_in = false, updated_at = now()
     where row_id = ${person} and expects_google_sign_in returning row_id`
@@ -411,7 +411,7 @@ export async function linkIdentity(
 /** Invite a Google address: the first verified Google sign-in with it links
  *  the account for good (design D5). Re-inviting the same address is a no-op. */
 export async function inviteGoogle(user: string, email: string, actor: string): Promise<Identity & { created: boolean }> {
-  const method = await methodOfKind('google')
+  const method = await methodOfKind('google_oauth')
   if (!method) throw new AppError('ValidationError', 'Google sign-in is not set up')
   const address = normaliseEmail(email)
   if (!address || !looksLikeEmail(address)) throw new AppError('ValidationError', 'Expected { email }', { email: 'a real address' })
@@ -493,7 +493,7 @@ export async function updateIdentity(
 // System Manager is never signed in through a delegated method, so for them
 // those links do not count (review A-M2).
 const usableWhere = (mock: boolean) =>
-  sql`m.enabled and (m.kind <> 'google' or coalesce(m.client_id, '') <> '' or ${mock}::boolean)`
+  sql`m.enabled and (m.kind <> 'google_oauth' or coalesce(m.client_id, '') <> '' or ${mock}::boolean)`
 
 /** How many working ways in a person has right now. Pending invites never
  *  count. `excluding` leaves one identity id (or 'password') out. */
@@ -512,7 +512,7 @@ async function waysIn(user: string, db: Sql | TxSql, excluding?: string, proof: 
         where u.row_id = ${user} and u.password_hash is not null and ${excluding ?? ''}::text <> 'password')::int
       + (select count(*) from sign_in_identity i join sign_in_method m on m.row_id = i.method and ${usableWhere(mock)}
         where i.person_id = ${user} and i.subject is not null and i.ended_at is null and i.id <> ${excluding ?? ''}::text
-          and not (m.kind = 'delegated_password' and (select privileged from p))
+          and not (m.kind = 'external_password' and (select privileged from p))
           and ${keepsDomain(lists, proof)})::int as n`
   return Number(row.n)
 }
@@ -604,7 +604,7 @@ async function followGoogleAddress(id: string, oldEmail: string | null, newEmail
     join sign_in_method m on m.row_id = i.method
     join person p on p.row_id = i.person_id
     where i.id = ${id} and i.ended_at is null`
-  if (!i || i.kind !== 'google') return
+  if (!i || i.kind !== 'google_oauth') return
   if (String(i.email ?? '').toLowerCase() !== oldEmail.toLowerCase()) return
   const [taken] = await sql`select 1 from person where lower(email) = lower(${newEmail}) and row_id <> ${i.person_id}`
   if (taken) return
@@ -654,7 +654,7 @@ export async function endSessionsNoLongerAdmitted(methodKey: string, nextDomains
   const ended = await db`
     update sign_in_identity i set sessions_ended_at = clock_timestamp()
     from sign_in_method m
-    where m.row_id = i.method and i.method = ${methodKey} and m.kind = 'google'
+    where m.row_id = i.method and i.method = ${methodKey} and m.kind = 'google_oauth'
       and i.subject is not null and i.ended_at is null
       and i.linked_by = any(${[...DOMAIN_RULED_LINKS]}::text[])
       and ${keepsDomain(before, 'possible')} and not ${keepsDomain(after, 'possible')}
@@ -699,13 +699,13 @@ export async function assertNoAdminLockout(
       -- Each live link, judged before and after: possible (may work) and
       -- proven (known to work), per keepsDomain.
       select i.person_id,
-        exists (select 1 from m0 m where m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
+        exists (select 1 from m0 m where m.row_id = i.method and m.kind <> 'external_password' and ${usableWhere(mock)}
           and ${keepsDomain(before, 'possible')}) as possible_before,
-        exists (select 1 from m0 m where m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
+        exists (select 1 from m0 m where m.row_id = i.method and m.kind <> 'external_password' and ${usableWhere(mock)}
           and ${keepsDomain(before, 'proven')}) as proven_before,
-        exists (select 1 from m1 m where m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
+        exists (select 1 from m1 m where m.row_id = i.method and m.kind <> 'external_password' and ${usableWhere(mock)}
           and ${keepsDomain(after, 'possible')}) as possible_after,
-        exists (select 1 from m1 m where m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
+        exists (select 1 from m1 m where m.row_id = i.method and m.kind <> 'external_password' and ${usableWhere(mock)}
           and ${keepsDomain(after, 'proven')}) as proven_after
       from sign_in_identity i join privileged p on p.row_id = i.person_id
       where i.subject is not null and i.ended_at is null

@@ -334,7 +334,7 @@ describe('linked identity validation and lifecycle through the public APIs', () 
   test('removing an unused Google method leaves no invitation mechanism', async ({ admin }) => {
     const person = await makePerson()
     await admin.delete('/api/table/Sign%20In%20Method/google')
-    expect(await methodOfKind('google')).toBeNull()
+    expect(await methodOfKind('google_oauth')).toBeNull()
     await expect(inviteGoogle(person, 'staff@example.com', 'Administrator')).rejects.toMatchObject({
       type: 'ValidationError', message: 'Google sign-in is not set up',
     })

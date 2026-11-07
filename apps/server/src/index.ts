@@ -183,7 +183,7 @@ app.get('/api/brand', async (c) => {
   const methods = [
     ...(password?.enabled ? [{ key: password.key, kind: password.kind, label: password.label || 'Password', test_mode: false }] : []),
     ...(google ? [{ key: google.key, kind: google.kind, label: google.label || 'Google', test_mode: false }] : []),
-    ...delegated.map((d) => ({ key: d.key, kind: 'delegated_password', label: d.label, test_mode: testMode })),
+    ...delegated.map((d) => ({ key: d.key, kind: 'external_password', label: d.label, test_mode: testMode })),
   ]
   // #488: on an address that opens an app, the sign-in page and the document
   // title carry the app's name; elsewhere the instance's.
@@ -1339,7 +1339,7 @@ app.post('/api/people/:id/identities', async (c) => {
     method?: string; subject?: string; sign_in_name?: string; email?: string; send_invitation_email?: boolean
   }
   if (!body.method) throw new AppError('ValidationError', 'Expected { method }', { method: 'required' })
-  const google = await methodOfKind('google')
+  const google = await methodOfKind('google_oauth')
   if (google && body.method === google.key && !body.subject && body.email) {
     const { created, ...identity } = await inviteGoogle(c.req.param('id'), body.email, who(c))
     // #430: a new invite emails the address unless the inviter said not to; a

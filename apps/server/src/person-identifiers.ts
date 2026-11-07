@@ -506,7 +506,7 @@ async function emailStillBacked(person: string, address: string, db: Db, excludi
   const [own] = await db`select 1 from person where row_id = ${person} and lower(trim(email)) = ${address}`
   if (own) return true
   const [linked] = await db`
-    select 1 from sign_in_identity i join sign_in_method m on m.row_id = i.method and m.kind = 'google'
+    select 1 from sign_in_identity i join sign_in_method m on m.row_id = i.method and m.kind = 'google_oauth'
     where i.person_id = ${person} and i.ended_at is null and i.subject is not null and lower(trim(i.email)) = ${address}
       and i.id <> ${excludingIdentity ?? ''}`
   return Boolean(linked)
@@ -551,7 +551,7 @@ async function identityTargets(identityId: string, db: Db) {
   if (!i || i.subject == null) return { person: null as string | null, targets: [] as [string, string][] }
   const targets: [string, string][] = []
   if (i.identifier_system) targets.push([String(i.identifier_system), String(i.subject)])
-  if (i.kind === 'google' && i.email) targets.push(['email', String(i.email)])
+  if (i.kind === 'google_oauth' && i.email) targets.push(['email', String(i.email)])
   return { person: String(i.person_id), targets }
 }
 
@@ -599,7 +599,7 @@ export async function reconcileIdentityEmail(identityId: string, oldEmail: strin
   const [i] = await db`
     select i.person_id, i.email, m.kind from sign_in_identity i join sign_in_method m on m.row_id = i.method
     where i.id = ${identityId} and i.ended_at is null and i.subject is not null`
-  if (!i || i.kind !== 'google') return
+  if (!i || i.kind !== 'google_oauth') return
   const before = oldEmail?.trim().toLowerCase() || null
   const after = (i.email as string | null)?.trim().toLowerCase() || null
   if (before === after) return

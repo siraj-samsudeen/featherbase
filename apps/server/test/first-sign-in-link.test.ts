@@ -568,7 +568,7 @@ describe('what cannot be read is refused', () => {
 })
 
 describe('the rule is configuration', () => {
-  const method = { row_id: 'hr_two', kind: 'delegated_password', label: 'HR Two', enabled: false }
+  const method = { row_id: 'hr_two', kind: 'external_password', label: 'HR Two', enabled: false }
   const METHODS = `/api/table/${encodeURIComponent('Sign In Method')}`
   async function patchMethod(admin: TestClient, key: string, change: Record<string, unknown>) {
     const [r] = await sql`select updated_at from sign_in_method where row_id = ${key}`
@@ -596,7 +596,7 @@ describe('the rule is configuration', () => {
       environments: Record<string, { settings: { 'Sign In Method'?: { row_id: string }[] } }>
     }
     const stylehr = file.settings['Sign In Method'].find((m) => m.row_id === 'stylehr')
-    expect(stylehr).toMatchObject({ kind: 'delegated_password', enabled: false, new_person: 'create_if_on_roster' })
+    expect(stylehr).toMatchObject({ kind: 'external_password', enabled: false, new_person: 'create_if_on_roster' })
     for (const section of Object.values(file.environments))
       expect((section.settings['Sign In Method'] ?? []).some((m) => m.row_id === 'stylehr')).toBe(false)
     await applyInstanceSettings({ settings: { 'Sign In Method': [stylehr!] } }, { by: 'Administrator' })

@@ -12,7 +12,7 @@ const DOMAIN = 'staff.example.com'
 
 async function firstGoogleSignIn(email: string, subject: string) {
   await configureGoogle({ client_id: 'real-client-id', allowed_email_domains: DOMAIN })
-  const google = (await methodOfKind('google'))!
+  const google = (await methodOfKind('google_oauth'))!
   const issued = await completeSignIn(
     google,
     { status: 'verified', subject, email, email_verified: true, display_name: 'New Starter', hosted_domain: DOMAIN },

@@ -15,10 +15,10 @@ import { readVariable } from './env'
 
 const secret = () => readVariable('JWT_SECRET') ?? 'dev-secret-change-me'
 
-// Google is the Sign In Method row of kind `google` (person-identities). Real
+// Google is the Sign In Method row of kind `google_oauth` (person-identities). Real
 // Google is used only when that row carries a client id; otherwise the mock.
 async function googleMethod(): Promise<SignInMethod | null> {
-  return methodOfKind('google')
+  return methodOfKind('google_oauth')
 }
 
 export async function oauthClientId(): Promise<string> {

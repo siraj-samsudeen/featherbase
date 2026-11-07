@@ -22,7 +22,7 @@ async function findOrCreateGoogleUser(user: string, name: string) {
   const subject = `g-${user}`
   await sql`insert into sign_in_identity (id, person_id, method, subject, linked_by)
     values (${'uid_' + subject.slice(0, 30)}, ${user}, 'google', ${subject}, 'test') on conflict do nothing`
-  const method = (await methodOfKind('google'))!
+  const method = (await methodOfKind('google_oauth'))!
   // Resolve and check eligibility exactly as the shared pipeline does.
   const { completeSignIn } = await import('../src/sign-in')
   void resolveVerified

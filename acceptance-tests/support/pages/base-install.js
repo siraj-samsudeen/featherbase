@@ -124,7 +124,7 @@ class BaseInstall {
     const ids = await this.api.rowIds('Sign In Method', 20);
     for (const id of ids) {
       const row = await this.api.row('Sign In Method', id);
-      if (row.kind === 'google') {
+      if (row.kind === 'google_oauth') {
         await this.call('POST', '/api/save_row', { table: 'Sign In Method', row: { ...row, enabled: true } }, [200, 201]);
         return;
       }

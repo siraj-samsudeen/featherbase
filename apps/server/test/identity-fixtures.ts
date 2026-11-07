@@ -38,7 +38,7 @@ export async function configureDelegated(o: { key?: string; label?: string; url?
   if (!have)
     await saveDoc(
       'Sign In Method',
-      { row_id: key, kind: 'delegated_password', label: label || key, enabled: true, new_person: 'refuse', self_link: false, service_url: DELEGATED_URL, settings: HR_WIRE },
+      { row_id: key, kind: 'external_password', label: label || key, enabled: true, new_person: 'refuse', self_link: false, service_url: DELEGATED_URL, settings: HR_WIRE },
       'Administrator',
     )
   await sql`update sign_in_method set label = ${label}, service_url = ${url}, enabled = ${o.enabled ?? true} where row_id = ${key}`
@@ -62,8 +62,8 @@ export async function giveEmployeeCode(person: string, code: string) {
 }
 
 export async function removeDelegated() {
-  await sql`delete from sign_in_identity where method in (select row_id from sign_in_method where kind = 'delegated_password')`
-  await sql`delete from sign_in_method where kind = 'delegated_password'`
+  await sql`delete from sign_in_identity where method in (select row_id from sign_in_method where kind = 'external_password')`
+  await sql`delete from sign_in_method where kind = 'external_password'`
 }
 
 /** Link `user` at a delegated method: subject defaults to the user id. The

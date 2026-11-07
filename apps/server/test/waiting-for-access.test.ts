@@ -146,7 +146,7 @@ describe('opening something without access is the request', () => {
   test('signing in for the first time is not a request', async ({ admin }) => {
     await managers()
     await configureGoogle({ client_id: 'real-client-id', allowed_email_domains: DOMAIN })
-    const google = (await methodOfKind('google'))!
+    const google = (await methodOfKind('google_oauth'))!
     await completeSignIn(google, { status: 'verified', subject: 'g-wfa-1', email: `new.starter@${DOMAIN}`, email_verified: true, display_name: 'New Starter', hosted_domain: DOMAIN }, null)
     expect(await count(admin)).toBe(0)
     expect(await mailsTo('manager.one@example.com')).toHaveLength(0)

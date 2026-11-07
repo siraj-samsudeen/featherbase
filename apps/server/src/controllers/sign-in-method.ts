@@ -1,4 +1,5 @@
 import type { TableController } from '../controllers'
+import { SIGN_IN_KIND_NAMES } from 'shared'
 import { AppError } from '../errors'
 import { KINDS, METHOD_TABLE, SIGN_IN_METHOD_KINDS, assertNoAdminLockout, domainListProblem, endSessionsNoLongerAdmitted, lockWaysIn, methodUsable, type MethodKind } from '../identities'
 import { rosterFrom, usableServiceUrl, wireFrom } from '../delegated-login'
@@ -62,9 +63,9 @@ const controller: TableController = {
         })
       if (isNew && caps.unique) {
         const [other] = await tx`select row_id from sign_in_method where kind = ${kind}`
-        if (other) throw new AppError('ConflictError', `There is already a ${kind} sign-in method (${other.row_id as string})`)
+        if (other) throw new AppError('ConflictError', `There is already a ${SIGN_IN_KIND_NAMES[kind as MethodKind] ?? kind} sign-in method (${other.row_id as string})`)
       }
-      if (kind === 'delegated_password' && row.settings !== undefined) {
+      if (kind === 'external_password' && row.settings !== undefined) {
         try {
           const settings = parseSettings(row.settings)
           wireFrom(settings)
@@ -90,9 +91,9 @@ const controller: TableController = {
       const usableCheck = () => {
         if (!truthy(merged.enabled)) return
         const kind = String(merged.kind)
-        if (kind === 'google' && !methodUsable({ kind, enabled: true, client_id: String(merged.client_id ?? '') }))
+        if (kind === 'google_oauth' && !methodUsable({ kind, enabled: true, client_id: String(merged.client_id ?? '') }))
           throw new AppError('ValidationError', 'Google cannot be on without a client id; set one or turn it off', { client_id: 'required while on' })
-        if (kind === 'delegated_password' && !usableServiceUrl(String(merged.service_url ?? '')))
+        if (kind === 'external_password' && !usableServiceUrl(String(merged.service_url ?? '')))
           throw new AppError('ValidationError', 'A connected service needs an https address (or a local stub) while it is on', { service_url: 'https required' })
       }
       if (isNew || !old) return usableCheck()
@@ -114,7 +115,7 @@ const controller: TableController = {
       usableCheck()
       // #693 (Siraj, 30-Oct-2026): sessions through links the new list no
       // longer admits end now, in this transaction, after the guard allowed it.
-      if (domainsChanged && String(merged.kind) === 'google')
+      if (domainsChanged && String(merged.kind) === 'google_oauth')
         await endSessionsNoLongerAdmitted(String(old.row_id), String(row.allowed_email_domains ?? ''), tx)
     },
     on_trash: async ({ row, tx }) => {

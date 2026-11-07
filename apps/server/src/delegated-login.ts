@@ -23,7 +23,7 @@ import { listSignInMethods, type SignInMethod } from './identities'
 import { switchedOn, TEST_MODE_PHRASE } from './env'
 
 // person-identities: the connected service is a Sign In Method row of kind
-// `delegated_password`, and the person is found through a linked identity,
+// `external_password`, and the person is found through a linked identity,
 // not a User column.
 export interface DelegatedLoginConfig {
   key: string
@@ -171,7 +171,7 @@ function usable(raw: string): URL | null {
 export async function delegatedMethods(): Promise<DelegatedLoginConfig[]> {
   const out: DelegatedLoginConfig[] = []
   for (const m of await listSignInMethods()) {
-    if (m.kind !== 'delegated_password' || !m.enabled) continue
+    if (m.kind !== 'external_password' || !m.enabled) continue
     const url = usable(m.service_url)
     let wire: DelegatedWire
     try {

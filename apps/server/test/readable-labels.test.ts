@@ -210,7 +210,7 @@ test('readable-label migration requires exact old platform choices', async ({ ad
     where parent = 'Sign In Method' and column_name = 'new_person'`
   await sql`update column_def set choices = 'changed' where parent = 'Data Source' and column_name = 'access'`
   await sql`update column_def set choice_labels = ${sql.json({ password: 'Our password' })} where parent = 'Sign In Method' and column_name = 'kind'`
-  const app = await makeTable(admin, { name: 'Readable App Data', columns: [{ column_name: 'kind', column_type: 'Choice', choices: 'password\ngoogle\ndelegated_password', label: 'kind' }] })
+  const app = await makeTable(admin, { name: 'Readable App Data', columns: [{ column_name: 'kind', column_type: 'Choice', choices: 'password\ngoogle\nexternal_password', label: 'kind' }] })
   await sql.unsafe(migration)
   const mappings = await sql`select parent, column_name, choice_labels from column_def where choice_labels is not null`
   expect(mappings).toEqual(expect.arrayContaining([

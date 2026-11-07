@@ -113,7 +113,7 @@ export async function setUpSystemManagers(input: unknown, actor: string, request
 
   // 2. One transaction: each person a System Manager, with a pending Google
   //    invitation when Google sign-in is on.
-  const google = await methodOfKind('google')
+  const google = await methodOfKind('google_oauth')
   const invites = Boolean(google?.enabled)
   const made = await actionTransaction(async () => {
     const out: { person: string; full_name: string; email: string; created: boolean; identity: string | null; invited: boolean }[] = []

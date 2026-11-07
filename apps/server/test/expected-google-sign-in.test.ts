@@ -68,7 +68,7 @@ describe('any condition missing keeps today\'s answer', () => {
   test('2. an email Google has not verified does not link', async () => {
     await configureGoogle({ allowed_email_domains: DOMAIN })
     const asha = await expectedPerson()
-    const google = (await methodOfKind('google'))!
+    const google = (await methodOfKind('google_oauth'))!
     await expect(
       resolveVerified(google, { status: 'verified', subject: 'g-asha', email: `asha@${DOMAIN}`, email_verified: false, hosted_domain: DOMAIN }),
     ).rejects.toThrow()

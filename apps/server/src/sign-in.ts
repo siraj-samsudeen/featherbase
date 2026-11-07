@@ -191,7 +191,7 @@ async function claimInvite(method: SignInMethod, v: VerifiedIdentity): Promise<F
  *  mark is consumed in the same transaction. Null when any fails, so the
  *  caller falls through to today's answer (refused, or a new person). */
 async function claimExpectedSignIn(method: SignInMethod, v: VerifiedIdentity): Promise<Found | null> {
-  if (method.kind !== 'google' || !v.subject || !v.email_verified || !v.email) return null
+  if (method.kind !== 'google_oauth' || !v.subject || !v.email_verified || !v.email) return null
   if (!domainAdmitted(method, v).ok) return null
   const address = foldName(v.email)
   try {

@@ -142,8 +142,8 @@ export function PersonSignInMethods({ user }: { user: string }) {
   if (!isManager) return null
 
   const all = methods.data?.methods ?? []
-  const delegated = all.filter((m) => m.kind === 'delegated_password')
-  const google = all.find((m) => m.kind === 'google')
+  const delegated = all.filter((m) => m.kind === 'external_password')
+  const google = all.find((m) => m.kind === 'google_oauth')
   // Names come from every method row, so a link on a turned-off method is
   // still labelled (and says it is off). The identities and the method rows
   // arrive in one answer, and a link's method is a foreign key to a method
@@ -154,7 +154,7 @@ export function PersonSignInMethods({ user }: { user: string }) {
   }
   // #837: a Google account reads as its address; its account number means
   // nothing to an administrator and waits under Details.
-  const isGoogle = (i: AdminIdentity) => data?.methods.find((m) => m.key === i.method)?.kind === 'google'
+  const isGoogle = (i: AdminIdentity) => data?.methods.find((m) => m.key === i.method)?.kind === 'google_oauth'
   const shownAs = (i: AdminIdentity) =>
     isGoogle(i) && i.email ? i.email : [i.subject, i.sign_in_name, i.email].filter(Boolean).join(' · ')
 

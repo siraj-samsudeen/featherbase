@@ -559,7 +559,7 @@ describe('public brand names the connected service', () => {
     await removeDelegated()
     const label = async () =>
       ((await (await api.fetch('/api/brand')).json()) as { sign_in_methods: { kind: string; label: string }[] })
-        .sign_in_methods.find((m) => m.kind === 'delegated_password')?.label
+        .sign_in_methods.find((m) => m.kind === 'external_password')?.label
     expect(await label()).toBeUndefined()
     await configure()
     expect(await label()).toBe('StyleHR')

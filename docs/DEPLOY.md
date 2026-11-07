@@ -811,7 +811,7 @@ linked to outside accounts by the provider's permanent ID, from the Person
 form's Sign-in methods panel or `POST /api/people/<person>/identities`.
 
 **StyleHR delegated sign-in.** As a System Manager, add a Sign In Method row:
-`row_id` `stylehr`, kind `delegated_password`, label `StyleHR`, service URL
+`row_id` `stylehr`, kind `external_password`, label `StyleHR`, service URL
 `https://stylehr.in/api/login/` (keep the trailing slash: StyleHR redirects
 without it, and a redirected POST loses its body). Another HR system is a new
 row with its own `settings` JSON, not code.

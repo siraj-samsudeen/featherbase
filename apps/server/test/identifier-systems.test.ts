@@ -192,7 +192,7 @@ describe('identifier system guards', () => {
 
   test('a system a sign-in method points at cannot be deleted, and the method is named by the link check', async ({ admin }) => {
     await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'probe-linked', label: 'Linked probe', kind: 'external-record' } })
-    await sql`insert into sign_in_method (row_id, kind, label, enabled, new_person, identifier_system) values ('probe-method', 'delegated_password', 'Probe', false, 'refuse', 'probe-linked')`
+    await sql`insert into sign_in_method (row_id, kind, label, enabled, new_person, identifier_system) values ('probe-method', 'external_password', 'Probe', false, 'refuse', 'probe-linked')`
     const res = await admin.fetch('/api/table/Identifier%20System/probe-linked', { method: 'DELETE' })
     expect(res.status).toBe(417)
     expect(await res.json()).toMatchObject({ error: { message: 'Cannot delete Identifier System probe-linked: it is linked from Sign In Method probe-method. Retire it instead to take it out of use and keep its history.' } })
@@ -248,7 +248,7 @@ describe('identifier systems: Advanced settings and their presets', () => {
 
 describe('the Jeyarama seed pack', () => {
   test('adds the StyleHR systems, links the StyleHR sign-in to its record numbers, sets people_review; applying it again changes nothing', async () => {
-    await sql`insert into sign_in_method (row_id, kind, label, enabled, new_person) values ('stylehr', 'delegated_password', 'StyleHR', false, 'refuse')
+    await sql`insert into sign_in_method (row_id, kind, label, enabled, new_person) values ('stylehr', 'external_password', 'StyleHR', false, 'refuse')
       on conflict (row_id) do nothing`
     const first = await applySeedPack(TEST_SEED_PACK)
     expect(first.added.sort()).toEqual(['stylehr-employee-code', 'stylehr-employee-id'])

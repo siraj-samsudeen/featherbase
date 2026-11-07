@@ -201,7 +201,7 @@ test('#829: the activity opens with who created the row', async ({ admin }) => {
   const { methodOfKind } = await import('server/src/identities')
   await configureGoogle({ client_id: 'real-client-id', allowed_email_domains: 'staff.example.com' })
   const issued = await completeSignIn(
-    (await methodOfKind('google'))!,
+    (await methodOfKind('google_oauth'))!,
     { status: 'verified', subject: 'g-829-web', email: 'new@staff.example.com', email_verified: true, display_name: 'New Starter', hosted_domain: 'staff.example.com' },
     null,
     { testMode: true },

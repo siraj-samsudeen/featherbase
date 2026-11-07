@@ -47,7 +47,7 @@ prove('sign-ins that were all confirmed at once make one person, and all land on
     ],
   })
   await saveDoc('Sign In Method', {
-    row_id: 'stylehr', kind: 'delegated_password', label: 'StyleHR', enabled: true, self_link: false,
+    row_id: 'stylehr', kind: 'external_password', label: 'StyleHR', enabled: true, self_link: false,
     new_person: 'create_if_on_roster', service_url: 'https://hr.example.test/api/login/', settings: JSON.stringify({ roster: ROSTER }),
   }, 'Administrator', 'insert')
   await applySeedPack(TEST_SEED_PACK)

@@ -38,7 +38,7 @@ describe('API-004: authentication', () => {
 
   test('an enabled delegated method still requires a valid request and never defaults an unknown method', async ({ api, admin }) => {
     await admin.post('/api/save_row', { table: 'Sign In Method', row: {
-      row_id: 'request-shape', kind: 'delegated_password', label: 'Request shape', enabled: true,
+      row_id: 'request-shape', kind: 'external_password', label: 'Request shape', enabled: true,
       new_person: 'refuse', self_link: false, service_url: 'https://provider.example.test/login',
     } })
     const malformed = await api.fetch('/api/login/delegated', { method: 'POST', body: '{"unfinished":' })

@@ -130,7 +130,7 @@ describe('the checks (5.1)', () => {
   })
 
   test('a variable the settings made required is an error on production, not a pass (Codex review)', async () => {
-    await sql`update sign_in_method set enabled = true, client_id = 'a-client-id' where kind = 'google'`
+    await sql`update sign_in_method set enabled = true, client_id = 'a-client-id' where kind = 'google_oauth'`
     await withVariable('GOOGLE_CLIENT_SECRET', '', async () => {
       const check = byKey(await runHealthChecks({ environment: 'production' }), 'recommended-variables')
       expect(check).toMatchObject({ ok: false, severity: 'error' })

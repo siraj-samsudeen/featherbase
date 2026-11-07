@@ -23,20 +23,20 @@ describe('Sign In Method rows', () => {
   test('the upgrade leaves password and Google rows that reproduce today', async () => {
     const rows = await sql`select row_id, kind, enabled, new_person from sign_in_method where row_id in ('password', 'google') order by row_id`
     expect(rows).toEqual([
-      { row_id: 'google', kind: 'google', enabled: true, new_person: 'create_if_email_domain_allowed' },
+      { row_id: 'google', kind: 'google_oauth', enabled: true, new_person: 'create_if_email_domain_allowed' },
       { row_id: 'password', kind: 'password', enabled: true, new_person: 'refuse' },
     ])
   })
 
   test('a policy the kind cannot vouch for is refused', async ({ admin }) => {
     const cases: Record<string, unknown>[] = [
-      { row_id: 'hr_create', kind: 'delegated_password', label: 'HR', new_person: 'create' },
-      { row_id: 'hr_self', kind: 'delegated_password', label: 'HR', self_link: true },
-      { row_id: 'hr_domain', kind: 'delegated_password', label: 'HR', new_person: 'create_if_email_domain_allowed' },
+      { row_id: 'hr_create', kind: 'external_password', label: 'HR', new_person: 'create' },
+      { row_id: 'hr_self', kind: 'external_password', label: 'HR', self_link: true },
+      { row_id: 'hr_domain', kind: 'external_password', label: 'HR', new_person: 'create_if_email_domain_allowed' },
     ]
     for (const row of cases) expect((await save(admin, row)).status, String(row.row_id)).toBe(417)
     expect((await patchMethod(admin, 'password', { new_person: 'create_if_email_domain_allowed' })).status).toBe(417)
-    expect((await patchMethod(admin, 'password', { kind: 'google' })).status).toBe(417)
+    expect((await patchMethod(admin, 'password', { kind: 'google_oauth' })).status).toBe(417)
     expect((await save(admin, { row_id: 'password2', kind: 'password', label: 'Again' })).status).toBe(409)
   })
 

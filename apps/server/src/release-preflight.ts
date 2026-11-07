@@ -3,6 +3,7 @@
 // that would stop part-way stops before it starts. A database the migrator
 // would refuse (not empty, with no ledger) is refused here.
 import { sql } from './db'
+import { SIGN_IN_KIND_NAMES, type SignInMethodKind } from 'shared'
 import { config, environmentDeclared } from './config'
 import { assertDatabaseEnvironment, storedEnvironment } from './db-environment'
 import { delegatedTestMode } from './delegated-login'
@@ -115,7 +116,7 @@ export async function settingsRequirements(): Promise<Pick<CheckVariablesOptions
   if (!(await installed())) return { conditions, named }
   const [google] = await sql`
     select 1 from sign_in_method
-    where kind = 'google' and enabled and coalesce(trim(client_id), '') <> '' limit 1`
+    where kind = 'google_oauth' and enabled and coalesce(trim(client_id), '') <> '' limit 1`
   if (google) conditions.add('google-sign-in-enabled')
   // A Data Source reads its connection from the variable its url_env names,
   // so that variable is required while the source exists.
@@ -395,7 +396,7 @@ async function assertAccessConfiguration(environment: string): Promise<string[]>
       // `create` ignores allowed_email_domains (sign-in.ts): password admits
       // anyone who signs up, Google any Google account.
       if (String(r.new_person) === 'create' && !SIGN_UP_ENVIRONMENTS.includes(environment))
-        problems.push(`the ${String(r.kind)} sign-in method "${String(r.row_id)}" creates a new person for anyone it admits, on a "${environment}" server: set its new_person to refuse${String(r.kind) === 'password' ? '' : ' or create_if_email_domain_allowed with company domains'}`)
+        problems.push(`the ${SIGN_IN_KIND_NAMES[r.kind as SignInMethodKind] ?? String(r.kind)} sign-in method "${String(r.row_id)}" creates a new person for anyone it admits, on a "${environment}" server: set its new_person to refuse${String(r.kind) === 'password' ? '' : ' or create_if_email_domain_allowed with company domains'}`)
       if (!creates) continue
       const open = parseDomainList(r.domains as string | null)
         .filter((d) => d === '*' || CONSUMER_EMAIL_DOMAINS.has(d))
