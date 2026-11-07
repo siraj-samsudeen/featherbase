@@ -6,6 +6,8 @@ import { afterEach } from 'vitest'
 import { clearSession, setSession } from '../src/lib/api'
 import { sendImportRun } from '../src/lib/import-run'
 import { test, expect } from './pg-test'
+import { sql } from 'server/src/db'
+import { quoteRelation, tableRelation } from 'server/src/table-engine'
 
 afterEach(() => clearSession())
 
@@ -43,7 +45,11 @@ test('#851 changes in separate import parts count together', async ({ admin }) =
     ],
   })
   const original = Array.from({ length: 520 }, (_, i) => ({ zone: `Z${i}`, pop: 1000 + i }))
-  await admin.post('/api/table/Iro%20Zone:import', { rows: original })
+  // #1042: seeded in one insert; through :import this took ~8 s of the 15.
+  const relation = quoteRelation(await tableRelation('Iro Zone'))
+  await sql.unsafe(`insert into ${relation} (row_id, zone, pop, created_by, updated_by)
+    select gen_random_uuid()::text, zone, pop, $3, $3 from unnest($1::text[], $2::int[]) as seed(zone, pop)`,
+    [original.map((r) => r.zone), original.map((r) => r.pop), admin.user!])
   const report = await sendImportRun({
     table: 'Iro Zone', dryRun: true,
     upsert: { key_column: 'zone', empty_cells: 'keep', columns: ['zone', 'pop'] },
