@@ -10,9 +10,9 @@
 
 - [x] 2.1 Mockups and a numbered checklist on the issue.
 - [x] 2.2 The row's pending change strip, approve and reject with a reason, and the bulk, import and save messages that say "waiting for approval".
-- [ ] 2.3 The independent verifier against the checklist.
+- [x] 2.3 The independent verifier against the checklist.
 
 ## 3. Check and release
 
-- [ ] 3.1 Codex review (server logic and permissions), at most two rounds.
-- [ ] 3.2 CI green; change verified and archived in the last PR.
+- [x] 3.1 Codex review (server logic and permissions), at most two rounds.
+- [x] 3.2 CI green; change verified and archived in the last PR.
