@@ -459,7 +459,7 @@ describe.skipIf(!MYSQL_URL)('mysql: reading bound rows', () => {
     const doc = (await admin.get(`/api/table/Ext%20Tenant/${name}`)) as Record<string, unknown>
     expect(doc.slug).toBe('acme')
     expect(Date.parse(doc.updated_at as string)).not.toBeNaN()
-    expect(doc.status).toBe('draft')
+    expect(doc.submission_status).toBe('draft')
   })
 })
 
@@ -1236,9 +1236,9 @@ describe.skipIf(!MYSQL_URL)('mysql: refused saves (#154)', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
       const omitted = await refusal(await post(admin, path, { level: 1 }))
-      expect(omitted).toMatchObject({ status: 417, type: 'ValidationError', fields: { status_1: 'Required' } })
-      const blank = await refusal(await post(admin, path, { level: 1, status_1: null }))
-      expect(blank).toMatchObject({ status: 417, fields: { status_1: 'Required' } })
+      expect(omitted).toMatchObject({ status: 417, type: 'ValidationError', fields: { status: 'Required' } })
+      const blank = await refusal(await post(admin, path, { level: 1, status: null }))
+      expect(blank).toMatchObject({ status: 417, fields: { status: 'Required' } })
       // The server log keeps what the database said.
       expect(warn.mock.calls.flat().join(' ')).toMatch(/status/)
     } finally {
@@ -1251,7 +1251,7 @@ describe.skipIf(!MYSQL_URL)('mysql: refused saves (#154)', () => {
   test('a link to a row the database does not have comes back on that field', async ({ admin }) => {
     const path = await gaugeTable(admin)
     try {
-      const res = await refusal(await post(admin, path, { status_1: 'ok', vehicle_id: 999 }))
+      const res = await refusal(await post(admin, path, { status: 'ok', vehicle_id: 999 }))
       expect(res).toMatchObject({ status: 417, type: 'ValidationError', fields: { vehicle_id: expect.any(String) } })
     } finally {
       await cli.query(`delete from ext_mysql.gauge`)
@@ -1261,7 +1261,7 @@ describe.skipIf(!MYSQL_URL)('mysql: refused saves (#154)', () => {
   test('a value that breaks one of the database rules is refused in plain words', async ({ admin }) => {
     const path = await gaugeTable(admin)
     try {
-      const res = await refusal(await post(admin, path, { status_1: 'ok', level: 50 }))
+      const res = await refusal(await post(admin, path, { status: 'ok', level: 50 }))
       expect(res).toMatchObject({ status: 417, type: 'ValidationError' })
       expect(res.message).toContain('gauge_level_range')
     } finally {
@@ -1272,9 +1272,9 @@ describe.skipIf(!MYSQL_URL)('mysql: refused saves (#154)', () => {
   test('a value too long or of the wrong kind comes back on its field', async ({ admin }) => {
     const path = await gaugeTable(admin)
     try {
-      const long = await refusal(await post(admin, path, { status_1: 'x'.repeat(30) }))
-      expect(long).toMatchObject({ status: 417, fields: { status_1: expect.any(String) } })
-      const big = await refusal(await post(admin, path, { status_1: 'ok', level: 99999999999 }))
+      const long = await refusal(await post(admin, path, { status: 'x'.repeat(30) }))
+      expect(long).toMatchObject({ status: 417, fields: { status: expect.any(String) } })
+      const big = await refusal(await post(admin, path, { status: 'ok', level: 99999999999 }))
       expect(big).toMatchObject({ status: 417, fields: { level: expect.any(String) } })
     } finally {
       await cli.query(`delete from ext_mysql.gauge`)

@@ -302,10 +302,11 @@ test("opening a group on the row page's own row changes its step in place, addin
   await seedSites(admin)
   const view = await renderApp(`${tableHref(SITE)}/row/ENK`, admin)
   const history = (view.router as unknown as { history: { length: number } }).history
-  await screen.findByRole('navigation', { name: 'Path' })
+  const group = await screen.findByRole('button', { name: `${PLANT} 3` })
   const before = history.length
-  fireEvent.click(await screen.findByRole('button', { name: `${PLANT} 3` }))
+  fireEvent.click(group)
   await pane('Enchakkal')
-  expect(pathSteps()).toHaveLength(1)
+  // Still one step, so no path bar yet (#1013).
+  expect(screen.queryByRole('navigation', { name: 'Path' })).not.toBeInTheDocument()
   expect(history.length).toBe(before)
 })

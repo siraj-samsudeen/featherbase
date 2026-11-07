@@ -16,7 +16,7 @@ async function seed(user: string, key: string, kind: string, days: number[]) {
       updated_by: user,
       created_at: new Date(),
       updated_at: new Date(),
-      status: 'draft',
+      submission_status: 'draft',
       kind,
       ref_key: key,
       label: key.split(':')[1] ?? key,

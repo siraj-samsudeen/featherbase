@@ -34,7 +34,7 @@ const STANDARD = [
   'created_at',
   'updated_at',
   'updated_by',
-  'status',
+  'submission_status',
   'position',
   'parent',
   'parenttype',

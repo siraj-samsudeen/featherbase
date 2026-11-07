@@ -309,7 +309,7 @@ describe('export (D9)', () => {
 
   test('a JSON column holding a JSON string round-trips as that string (Codex P2)', async () => {
     await sql`insert into sign_in_method ${sql({
-      row_id: 'stringy', created_by: 'Administrator', updated_by: 'Administrator', created_at: new Date(), updated_at: new Date(), status: 'draft', position: 0,
+      row_id: 'stringy', created_by: 'Administrator', updated_by: 'Administrator', created_at: new Date(), updated_at: new Date(), submission_status: 'draft', position: 0,
       kind: 'delegated_password', label: 'Stringy', enabled: false, new_person: 'refuse', self_link: false, settings: sql.json('{}'),
     } as never)}`
     const exported = await exportInstanceSettings()
@@ -333,7 +333,7 @@ describe('export (D9)', () => {
     await sql`insert into single_value ${sql({ table_name: 'System Settings', field: 'invitation_email_intro', value: `Our relay password is ${secrets.SMTP_PASSWORD}` })}
       on conflict (table_name, field) do update set value = excluded.value`
     await sql`insert into sign_in_method ${sql({
-      row_id: 'leaky', created_by: 'Administrator', updated_by: 'Administrator', created_at: new Date(), updated_at: new Date(), status: 'draft', position: 0,
+      row_id: 'leaky', created_by: 'Administrator', updated_by: 'Administrator', created_at: new Date(), updated_at: new Date(), submission_status: 'draft', position: 0,
       kind: 'delegated_password', label: 'Leaky', enabled: false, new_person: 'refuse', self_link: false,
       service_url: 'https://bot:hunter2-url-password@hr.example.com/login',
       settings: sql.json({ username_key: 'user', api_token: 'tok-in-json-1234', nested: { client_secret: 'nested-secret-5678' } }),
@@ -363,7 +363,7 @@ describe('export: credentials no deployment variable holds', () => {
       jsonText: '{"endpoint":"https://x.example.com","api_key":"k-json-text-99"}',
     }
     await sql`insert into sign_in_method ${sql({
-      row_id: 'leaky2', created_by: 'Administrator', updated_by: 'Administrator', created_at: new Date(), updated_at: new Date(), status: 'draft', position: 0,
+      row_id: 'leaky2', created_by: 'Administrator', updated_by: 'Administrator', created_at: new Date(), updated_at: new Date(), submission_status: 'draft', position: 0,
       kind: 'delegated_password', label: 'Leaky Two', enabled: false, new_person: 'refuse', self_link: false, service_url: leaks.query,
     } as never)}`
     for (const [field, value] of [['time_zone', leaks.dsn], ['invitation_email_intro', leaks.bearer], ['app_name', leaks.jsonText]])

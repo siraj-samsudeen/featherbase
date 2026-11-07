@@ -1,7 +1,7 @@
 import { useQueries } from '@tanstack/react-query'
 import { choiceLabel, RELATED_OPS } from 'shared'
 import type { ListFilter } from 'shared'
-import { metaQuery, type TableMeta } from './meta'
+import { linkRowsTable, metaQuery, type TableMeta } from './meta'
 import { stepKind, stepRefs, type NavStep } from './nav-path'
 import { rowNameText, useRowNames, type RowName } from './relations'
 
@@ -23,7 +23,7 @@ export function filterRefs(table: string, meta: TableMeta | undefined, [column, 
   if (related) return (related.filters ?? []).flatMap((f) => filterRefs(related.table, undefined, f))
   const col = meta?.columns.find((c) => c.column_name === column)
   const target = column === 'row_id' ? table
-    : col?.column_type === 'Reference' && col.reference_table ? col.reference_table
+    : col?.column_type === 'Reference' && col.reference_table ? linkRowsTable(col)
     : undefined
   if (!target) return []
   const values = ONE.includes(op) ? [value] : MANY.includes(op) && Array.isArray(value) ? value : []

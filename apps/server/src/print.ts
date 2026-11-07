@@ -11,7 +11,7 @@ import { sql } from './db'
 // metadata auto-layout — then Chromium turns it into a PDF.
 
 const FRAMEWORK_CHILD_COLS = new Set([
-  'row_id', 'created_by', 'created_at', 'updated_at', 'updated_by', 'status', 'position',
+  'row_id', 'created_by', 'created_at', 'updated_at', 'updated_by', 'submission_status', 'position',
   'parent', 'parenttype', 'parentfield',
 ])
 
