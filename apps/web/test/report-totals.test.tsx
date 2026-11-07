@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import { DuckDBInstance } from '@duckdb/node-api'
 import { sql } from 'server/src/db'
 import { invalidateSources } from 'server/src/sources/registry'
+import { createUserWithRole } from 'server/test/fixtures'
 import { test, expect, renderApp } from './pg-test'
 
 type Admin = Parameters<typeof renderApp>[1]
@@ -159,6 +160,28 @@ test('check values and absent text retain their meaning in the report and CSV', 
   const [header, ...rows] = (await textOf(blobs[0])).split('\n')
   expect(header).toBe('Name,Ready,Notes')
   expect(rows.sort()).toEqual(['ready,true,', 'waiting,false,Pending'])
+})
+
+test("#1020: the file keeps a readable link's value, and shows neutral words for a row the viewer can't read", async ({ admin, createUser }) => {
+  for (const name of ['Rpt Open', 'Rpt Closed']) {
+    await admin.post('/api/table_def', { name, id_pattern: 'prompt', title_column: 'label', columns: [{ column_name: 'label', column_type: 'Data' }] })
+  }
+  await admin.post('/api/save_row', { table: 'Rpt Open', row: { row_id: 'OPN', label: 'Open Place' } })
+  await admin.post('/api/save_row', { table: 'Rpt Closed', row: { row_id: 'SEC', label: 'Secret Place' } })
+  await admin.post('/api/table_def', { name: T, id_pattern: 'prompt', columns: [
+    { column_name: 'open', column_type: 'Reference', reference_table: 'Rpt Open', label: 'Open', in_list_view: true },
+    { column_name: 'closed', column_type: 'Reference', reference_table: 'Rpt Closed', label: 'Closed', in_list_view: true },
+  ] })
+  await admin.post('/api/save_row', { table: T, row: { row_id: 'one', open: 'OPN', closed: 'SEC' } })
+  const viewer = await createUserWithRole(admin, createUser, { role: 'Rpt Viewer', table: [T, 'Rpt Open'], can_read: true })
+  const blobs = captureDownloads()
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(T))}/view/report`, viewer)
+  await screen.findAllByText('Open Place (OPN)')
+  await userEvent.click(screen.getByTestId('export-csv'))
+  await waitFor(() => expect(blobs).toHaveLength(1))
+  const file = await textOf(blobs[0])
+  expect(file.split('\n')[1]).toBe('one,OPN,A row you cannot see')
+  expect(file).not.toContain('SEC')
 })
 
 test('a summary that fits on the page says nothing about rows left out', async ({ admin }) => {

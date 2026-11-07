@@ -5,6 +5,7 @@ import { choiceLabel } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, useMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
+import { UNSEEN_ROW } from '../lib/relations'
 import { RowName } from '../lib/row-name'
 import { FilterBar, type Filter } from './ListView'
 import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from '@featherbase/shop-floor'
@@ -337,11 +338,36 @@ export function ReportView({
     return all
   }
 
+  // #1020: the file keeps a link's stored value, as other systems read it, except
+  // a link to a row this viewer can't read: neutral words, as on the screen.
+  const linkTable = (col: string) => {
+    const definition = available.find((f) => f.column_name === col)
+    return definition?.column_type === 'Reference' ? definition.reference_table ?? null : null
+  }
+  async function unreadableLinks(list: Row[]): Promise<Set<string>> {
+    const wanted = new Map<string, { table: string; row_id: string }>()
+    for (const col of new Set([...columns, ...(groupBy ? [groupBy] : [])])) {
+      const table = linkTable(col)
+      if (!table) continue
+      for (const row of list) {
+        if (row[col] != null && row[col] !== '') wanted.set(`${table}\0${row[col]}`, { table, row_id: String(row[col]) })
+      }
+    }
+    const refs = [...wanted.values()]
+    for (let i = 0; i < refs.length; i += 100) {
+      const { titles } = await api.post<{ titles: { table: string; row_id: string }[] }>('/api/row_titles', { rows: refs.slice(i, i + 100) })
+      for (const t of titles) wanted.delete(`${t.table}\0${t.row_id}`)
+    }
+    return new Set(wanted.keys())
+  }
+
   async function exportRows(): Promise<(string | number)[][]> {
     const list = await allRows()
     const header = ['Name', ...columns.map(label)]
     const out: (string | number)[][] = [header]
-    const member = (row: Row) => [String(row.row_id), ...columns.map((c) => exportCell(row, c))]
+    const unreadable = await unreadableLinks(list)
+    const shown = (col: string, value: string) => (unreadable.has(`${linkTable(col)}\0${value}`) ? UNSEEN_ROW : value)
+    const member = (row: Row) => [String(row.row_id), ...columns.map((c) => shown(c, exportCell(row, c)))]
     // The file carries the same totals as the screen: the server's exact sums
     // when it has them, otherwise sums over every exported row.
     const totalCells = (t: { count: number; sums: Record<string, number> }, name: string) => [
@@ -351,7 +377,7 @@ export function ReportView({
     const own = (rows: Row[]) => ({ count: rows.length, sums: sumsOf(rows) })
     if (groupBy) {
       for (const g of orderedGroups(groupRows(list))) {
-        out.push(totalCells(g, g.key))
+        out.push(totalCells(g, shown(groupBy, g.key)))
         for (const row of g.list) out.push(member(row))
       }
     } else {

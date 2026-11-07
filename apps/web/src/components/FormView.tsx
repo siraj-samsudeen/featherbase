@@ -41,7 +41,7 @@ import { ChangeRecord } from './ChangeRecord'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
 import { INSTANCE_HEALTH_QUERY_KEY } from '../pages/InstanceHealth'
 import { ArchivedBanner } from './ArchiveTable'
-import { ContentTabs, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
+import { ContentTabs, buttonClasses, cardClasses, fmtCount, inputClasses, labelClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
 
 type Row = Record<string, unknown>
 
@@ -534,8 +534,10 @@ export function FormView({
   const changeRecord = !isNew && table === 'Version'
   const RawDetails = reading || changeRecord ? 'details' : 'div'
 
-  // #1020: a stand-in title holds a code, so it reads as the Table's links do.
-  const ownName = m.title_column && m.title_column !== 'row_id' ? <RowTitle table={table} rowId={name} /> : <RowName table={table} rowId={name} />
+  // #1020: a stand-in title holds a code, so it reads as the Table's links do. A
+  // link stored as the title column never words a title, so it stands in too.
+  const titleLink = m.columns.find((c) => c.column_name === m.title_column && c.column_type === 'Reference' && c.reference_table !== 'Person' && c.reference_table !== 'Service Account')
+  const ownName = m.title_column && m.title_column !== 'row_id' && !titleLink ? <RowTitle table={table} rowId={name} /> : <RowName table={table} rowId={name} />
 
   return (
     <div data-testid="form-view" className="min-w-0 max-w-5xl [overflow-wrap:anywhere]">
@@ -1362,6 +1364,8 @@ function ChildGrid({
     }
     return key
   }
+  // Nested rows the viewer may not read: how many, no more.
+  if (childMeta.isError) return <p className="text-sm" data-testid={`nested-count-${field.column_name}`}>{fmtCount(rows.length)} {rows.length === 1 ? 'row' : 'rows'}</p>
   if (!childMeta.data) return <p className="text-xs text-ink-subtle">Loading rows…</p>
   const cols = childMeta.data.columns.filter(
     (f) => !NO_COLUMN_TYPES.has(f.column_type) && !f.hidden,
