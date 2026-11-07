@@ -112,6 +112,49 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+describe('a report taking no filter', () => {
+  const OPEN = { report_key: 'open', report_name: 'Open', dive_id: 'dive-open', filter_shape: 'No filter', store_key: null, subcategory_key: null, whole_store_key: null, month_key: null, ready_signal: 0, quick_view: null }
+  const noReach = { 'Employee': [], ...STORES }
+  const nobody = (over: Options) => { const made = context({ reports: [SALES, WHOLE, VENDORS, OPEN], core: noReach, ...over }); (made.ctx.authorization as { places?: unknown }).places = undefined; return made }
+  let posted: { url: string; body: unknown }[]
+  beforeEach(() => {
+    posted = []
+    setEmbedFetch((async (url: string, init: RequestInit) => {
+      posted.push({ url, body: JSON.parse(String(init.body)) })
+      return new Response(JSON.stringify({ session: 's' }), { status: 200 })
+    }) as unknown as typeof fetch)
+  })
+  afterEach(() => setEmbedFetch(null))
+
+  it('is the only report offered to someone whose job reaches nothing', async () => {
+    const answer = await reads.reports(nobody({}).ctx) as { key: string; no_filter: boolean }[]
+    expect(answer.map(r => [r.key, r.no_filter])).toEqual([['open', true]])
+  })
+
+  it('opens for them with empty filters', async () => {
+    const { ctx } = nobody({ payload: { report: 'open' } })
+    const prepared = await reads.embed_open.prepare(ctx)
+    expect(await reads.embed_open({ ...ctx, prepared })).toMatchObject({ frame: expect.any(String) })
+    expect(posted).toEqual([{ url: expect.stringContaining('/dives/dive-open/'), body: { username: 'svc-made-up', initial_state: {} } }])
+  })
+
+  it('no store-filtered report opens through these reads, even for someone with reach', async () => {
+    for (const key of ['sales', 'whole', 'vendors']) {
+      const { ctx } = context({ reports: [SALES, WHOLE, VENDORS, OPEN], payload: { report: key }, places: [place('9901', '9901')] })
+      const prepared = await reads.embed_open.prepare(ctx)
+      expect(await reads.embed_open({ ...ctx, prepared })).toEqual({ refused: 'no_access' })
+      expect(await reads.report_open(ctx)).toEqual({ state: 'no_access' })
+    }
+    expect(posted).toEqual([])
+  })
+
+  it('a store-filtered report is not theirs to name', async () => {
+    const { ctx } = nobody({ payload: { report: 'sales' } })
+    expect(await reads.embed_open.prepare(ctx)).toBeNull()
+    expect(await reads.report_open(ctx)).toEqual({ state: 'no_access' })
+  })
+})
+
 describe('the me read', () => {
   it("answers the caller's user name", () => {
     expect(reads.me({ user: 'manager@example.com' })).toEqual({ user: 'manager@example.com' })
@@ -141,9 +184,9 @@ describe("the reports read (Dash's sidebar)", () => {
   it('lists every report by name, saying which takes a store and which a month', async () => {
     const { ctx } = context({ reports: ALL, core: jobOf({ job: 'Store Manager' }) })
     expect(await reads.reports(ctx)).toEqual([
-      { key: 'sales', name: 'Sales versus target', takes_store: true, takes_month: true },
-      { key: 'whole', name: 'Store target month to date', takes_store: false, takes_month: false },
-      { key: 'vendors', name: 'Vendor sales by city', takes_store: false, takes_month: false },
+      { key: 'sales', name: 'Sales versus target', takes_store: true, takes_month: true, no_filter: false },
+      { key: 'whole', name: 'Store target month to date', takes_store: false, takes_month: false, no_filter: false },
+      { key: 'vendors', name: 'Vendor sales by city', takes_store: false, takes_month: false, no_filter: false },
     ])
   })
 
@@ -152,17 +195,17 @@ describe("the reports read (Dash's sidebar)", () => {
     ['Staff with no section', { job: 'Staff' }],
     ['a Department Manager, until departments are filled', { job: 'Department Manager' }],
   ])('answers nothing for %s, whose job reaches nothing', async (_who, job) => {
-    const { ctx } = context({ reports: ALL, core: jobOf(job) })
+    const { ctx } = context({ reports: ALL, core: jobOf(job), places: [] })
     expect(await reads.reports(ctx)).toEqual([])
   })
 
   it('answers nothing for someone with no job at all', async () => {
-    const { ctx } = context({ reports: ALL, core: { ...STORES, Employee: [] } })
+    const { ctx } = context({ reports: ALL, core: { ...STORES, Employee: [] }, places: [] })
     expect(await reads.reports(ctx)).toEqual([])
   })
 
   it('answers nothing, never an error, when the core Tables can\'t be read yet', async () => {
-    const { ctx } = context({ reports: ALL, coreThrows: true })
+    const { ctx } = context({ reports: ALL, coreThrows: true, places: [] })
     expect(await reads.reports(ctx)).toEqual([])
   })
 })
@@ -452,7 +495,7 @@ describe('the embed_session read', () => {
     it.each<[string, Options, unknown]>([
       ['a report that does not exist', { payload: { report: 'nope' } }, { refused: 'no_access' }],
       ['a whole-stores report for someone without a whole store', { reports: [WHOLE] }, { refused: 'whole_stores_only' }],
-      ['a one-store report for someone with no store', { places: [] }, { refused: 'not_your_store' }],
+      ['a one-store report for someone with no store', { places: [] }, { refused: 'no_access' }],
       ['a report whose row lacks its keys', { reports: [{ ...SALES, whole_store_key: null }], payload: { store: '9901' } }, { refused: 'report_not_set_up' }],
     ])('%s', async (_what, options, refusal) => {
       const calls = upstream(ok)

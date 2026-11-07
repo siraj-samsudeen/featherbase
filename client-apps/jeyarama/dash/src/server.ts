@@ -66,12 +66,20 @@ const placesOf = (ctx: ScopedContext) => ctx.authorization.places ?? []
 const REPORT_FIELDS = ['report_key', 'report_name', 'dive_id', 'filter_shape', 'store_key', 'subcategory_key', 'whole_store_key', 'month_key', 'ready_signal', 'quick_view']
 
 /**
- * The reports this person may open, by name. STAND-IN until report bundles (#1046) answers who has
- * been given what: every report, for anyone whose job reaches something.
+ * The one place that decides which reports this person may open. STAND-IN until report bundles
+ * (#1046) answers who has been given what: every report, except that someone whose job reaches
+ * nothing gets only a report taking no filter. A grant never widens which stores a person sees.
  */
-async function reportsFor(ctx: ScopedContext): Promise<ReportRecord[]> {
+export async function reportsFor(ctx: ScopedContext): Promise<ReportRecord[]> {
   const rows = await ctx.documents.list('dash.report', { fields: REPORT_FIELDS, order_by: 'report_name asc', limit_page_length: 200 })
-  return rows.map(row => ({ ...row, ready_signal: checked(row.ready_signal) }) as unknown as ReportRecord)
+  const reports = rows.map(row => ({ ...row, ready_signal: checked(row.ready_signal) }) as unknown as ReportRecord)
+  return (await reachesSomething(ctx)) ? reports : reports.filter(report => report.filter_shape === 'No filter')
+}
+
+/** A person_scope read already holds the reader's places; any other read works them out. Unreadable means nothing. */
+async function reachesSomething(ctx: ScopedContext): Promise<boolean> {
+  if (ctx.authorization?.places?.length) return true
+  try { return (await reachOf(ctx.baseTables, ctx.user, istToday())).places.length > 0 } catch { return false }
 }
 
 /** The report the read is for: the one the payload names, or the reader's first. Undefined when it isn't one of theirs. */
@@ -152,6 +160,44 @@ async function storeNames(ctx: ScopedContext, stores: readonly string[]): Promis
 /** What a report's first answer says, for a report with no quick view: whether it can open, and its header. */
 type Plain = { state: 'ready'; no_quick_view: true; heading: Heading; period_start?: string; period_end?: string }
 
+/** A fresh MotherDuck embed session for a report's Dive, opening its latest saved version, with only filters in its state. */
+async function openDive(ctx: ScopedContext, report: ReportRecord | null) {
+  if (!report) return { refused: 'no_access' }
+  const { embed_service_account: account } = ctx.settings
+  if (!report.dive_id || !account) return { not_set_up: true }
+  const store = chosenStore(ctx, report)
+  const period = periodOf(istToday(), chosenMonth(ctx))
+  const origin = appOrigin((ctx.payload as { app_origin?: unknown } | undefined)?.app_origin)
+  const filters = diveFilters(report, placesOf(ctx), { store, periodEnd: period.period_end, appOrigin: origin })
+  if ('refused' in filters) return { refused: filters.refused }
+  const body = JSON.stringify({ username: account, initial_state: filters.state })
+  let failure: string
+  const abort = new AbortController()
+  const timer = setTimeout(() => abort.abort(), EMBED_API_TIMEOUT_MS)
+  try {
+    const response = await (embedFetch ?? fetch)(`${EMBED_API}/v1/dives/${encodeURIComponent(report.dive_id)}/embed-session`, {
+      method: 'POST', headers: { authorization: `Bearer ${ctx.secrets.MOTHERDUCK_TOKEN}`, 'content-type': 'application/json' }, body,
+      signal: abort.signal,
+    })
+    const answered = await response.json().catch(() => null) as { session?: unknown } | null
+    if (response.ok && typeof answered?.session === 'string') {
+      // `ready_signal`: the Dive posts { type: 'dash:dive-ready' } once it has drawn, and the
+      // page waits for it rather than trusting the frame's load event.
+      return { frame: `${EMBED_ORIGIN}/sandbox/#session=${encodeURIComponent(answered.session)}`,
+        ...(report.ready_signal ? { ready_signal: true } : {}) }
+    }
+    failure = `embed API answered HTTP ${response.status}`
+  } catch (error) {
+    failure = abort.signal.aborted ? `embed API gave no answer in ${EMBED_API_TIMEOUT_MS} ms`
+      : `embed API unreachable: ${(error as Error)?.constructor?.name ?? 'error'}`
+  } finally {
+    clearTimeout(timer)
+  }
+  // For whoever runs the instance: the person's opaque id and the status, never the token or the upstream text.
+  console.error(JSON.stringify({ event: 'dash_embed_session_failed', person: ctx.user, message: failure }))
+  return { unreachable: true }
+}
+
 /** Your sections and its approvals (#975). */
 export const actions = sectionActions
 
@@ -163,14 +209,11 @@ export const reads = {
     return { user }
   },
 
-  /** The reports this person may open, for the sidebar. A person whose job reaches nothing has none. */
+  /** The reports this person may open, for the sidebar. */
   async reports(context: ReadContext) {
     const ctx = context as ScopedContext
-    let reached = false
-    try { reached = (await reachOf(ctx.baseTables, ctx.user, istToday())).places.length > 0 } catch { /* Not set up: nothing to offer. */ }
-    if (!reached) return []
     return (await reportsFor(ctx)).map(report => ({ key: report.report_key, name: report.report_name,
-      takes_store: report.filter_shape === 'One store and subcategories', takes_month: !!report.month_key }))
+      takes_store: report.filter_shape === 'One store and subcategories', takes_month: !!report.month_key, no_filter: report.filter_shape === 'No filter' }))
   },
 
   /** Why this person's job reaches nothing, for the page's message. */
@@ -225,45 +268,26 @@ export const reads = {
    * (outbound: it runs after the platform's transaction has closed, so `prepare` reads the row). The
    * Dive's state carries only filters.
    */
-  embed_session: Object.assign(async (context: ReadContext) => {
-    const ctx = context as ScopedContext
-    const report = ctx.prepared as ReportRecord | null
-    if (!report) return { refused: 'no_access' }
-    const { embed_service_account: account } = ctx.settings
-    if (!report.dive_id || !account) return { not_set_up: true }
-    const store = chosenStore(ctx, report)
-    const period = periodOf(istToday(), chosenMonth(ctx))
-    const origin = appOrigin((ctx.payload as { app_origin?: unknown } | undefined)?.app_origin)
-    const filters = diveFilters(report, placesOf(ctx), { store, periodEnd: period.period_end, appOrigin: origin })
-    if ('refused' in filters) return { refused: filters.refused }
-    const body = JSON.stringify({ username: account, initial_state: filters.state })
-    let failure: string
-    const abort = new AbortController()
-    const timer = setTimeout(() => abort.abort(), EMBED_API_TIMEOUT_MS)
-    try {
-      const response = await (embedFetch ?? fetch)(`${EMBED_API}/v1/dives/${encodeURIComponent(report.dive_id)}/embed-session`, {
-        method: 'POST', headers: { authorization: `Bearer ${ctx.secrets.MOTHERDUCK_TOKEN}`, 'content-type': 'application/json' }, body,
-        signal: abort.signal,
-      })
-      const answered = await response.json().catch(() => null) as { session?: unknown } | null
-      if (response.ok && typeof answered?.session === 'string') {
-        // `ready_signal`: the Dive posts { type: 'dash:dive-ready' } once it has drawn, and the
-        // page waits for it rather than trusting the frame's load event.
-        return { frame: `${EMBED_ORIGIN}/sandbox/#session=${encodeURIComponent(answered.session)}`,
-          ...(report.ready_signal ? { ready_signal: true } : {}) }
-      }
-      failure = `embed API answered HTTP ${response.status}`
-    } catch (error) {
-      failure = abort.signal.aborted ? `embed API gave no answer in ${EMBED_API_TIMEOUT_MS} ms`
-        : `embed API unreachable: ${(error as Error)?.constructor?.name ?? 'error'}`
-    } finally {
-      clearTimeout(timer)
-    }
-    // For whoever runs the instance: the person's opaque id and the status, never the token or the upstream text.
-    console.error(JSON.stringify({ event: 'dash_embed_session_failed', person: ctx.user, message: failure }))
-    return { unreachable: true }
-  }, {
+  embed_session: Object.assign(async (context: ReadContext) => openDive(context as ScopedContext, (context as ScopedContext).prepared as ReportRecord | null), {
     /** In the transaction: the report's row, which the handler can no longer read. */
+    prepare: async (context: ReadContext) => (await chosenReport(context as ScopedContext)) ?? null,
+  }),
+
+  /**
+   * A report taking no filter, for someone given it whatever their job reaches (#1046). These two
+   * reads run without the reader's places, so they refuse every other report: a store-filtered
+   * Dive is only ever opened by `report` and `embed_session`, under the reader's scope.
+   */
+  async report_open(context: ReadContext) {
+    const report = await chosenReport(context as ScopedContext)
+    if (report?.filter_shape !== 'No filter') return { state: 'no_access' }
+    return { state: 'ready', no_quick_view: true, heading: { name: null, sections: [], reasons: [] } } satisfies Plain
+  },
+
+  embed_open: Object.assign(async (context: ReadContext) => {
+    const report = (context as ScopedContext).prepared as ReportRecord | null
+    return report?.filter_shape === 'No filter' ? openDive(context as ScopedContext, report) : { refused: 'no_access' }
+  }, {
     prepare: async (context: ReadContext) => (await chosenReport(context as ScopedContext)) ?? null,
   }),
 }

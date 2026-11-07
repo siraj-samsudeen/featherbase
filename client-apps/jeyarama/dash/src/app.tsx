@@ -47,6 +47,8 @@ function listenForStore(onStore: (store: string) => void): () => void {
 /** The report named in the address; none: the reader's first. A report change reloads the page. */
 const reportInAddress = () => new URLSearchParams(window.location.search).get('report') ?? undefined
 
+const NO_FILTER_READS: Readonly<Record<string, string>> = { report: 'report_open', embed_session: 'embed_open' }
+
 export function Dash() {
   // The reader's reports, for whether this one takes a store: undefined until answered.
   const [reports, setReports] = useState<ReportLink[] | undefined>(undefined)
@@ -58,6 +60,9 @@ export function Dash() {
   }, [])
   const named = reportInAddress()
   const current = reports?.find(report => report.key === named) ?? (named ? undefined : reports?.[0])
+  // A report taking no filter opens through its own reads, which need no reach.
+  const noFilter = useRef(false)
+  noFilter.current = !!current?.no_filter
   // undefined until the first store is known: the reads wait for it (one call per read per load).
   const [store, setStore] = useState<{ value: string | undefined } | undefined>(undefined)
   const [month, setMonth] = useState<MonthChoice>(monthInAddress)
@@ -70,7 +75,7 @@ export function Dash() {
   // quick view. A late answer, or one for a store no longer on show, is ignored.
   // The Dive sends its ready message to this page's origin (#4453), which only the page knows.
   const loader = useMemo(() => reportLoader<Report>((name, payload) =>
-    read(name, { ...payload, ...(named ? { report: named } : {}), ...(name === 'embed_session' ? { app_origin: location.origin } : {}) }), setState), [named])
+    read(noFilter.current ? NO_FILTER_READS[name] ?? name : name, { ...payload, ...(named ? { report: named } : {}), ...(name === 'embed_session' ? { app_origin: location.origin } : {}) }), setState), [named])
   // Choosing a store: the store on show, repeated, changes nothing (round 9); another store drops
   // the previous store's answers at once (round 8), and its effect below opens it.
   const choose = useMemo(() => storeChooser(loader, value => { chosen.current.store = value; setStore({ value }) }, () => chosen.current.month), [loader])

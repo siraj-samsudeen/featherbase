@@ -157,9 +157,9 @@ describe('the report reads on the platform', () => {
     const { leader, headOffice, nobody } = await setup(admin, createUser)
     const reports = (client: TestClient) => client.post<{ result: unknown[] }>('/api/app_reads/dash/reports', { payload: {} }).then(a => a.result)
     expect(await reports(leader)).toEqual([
-      { key: 'sales', name: 'Sales versus target', takes_store: true, takes_month: true },
-      { key: 'store_target', name: 'Store target month to date', takes_store: false, takes_month: false },
-      { key: 'vendor_sales', name: 'Vendor sales by city', takes_store: false, takes_month: false },
+      { key: 'sales', name: 'Sales versus target', takes_store: true, takes_month: true, no_filter: false },
+      { key: 'store_target', name: 'Store target month to date', takes_store: false, takes_month: false, no_filter: false },
+      { key: 'vendor_sales', name: 'Vendor sales by city', takes_store: false, takes_month: false, no_filter: false },
     ])
     expect(await Promise.all([reports(headOffice), reports(nobody)])).toEqual([[], []])
   })
@@ -227,6 +227,22 @@ describe('the report reads on the platform', () => {
       const called = await opening(admin)
       await leader.post('/api/app_reads/dash/embed_session', { payload: { report: 'vendor_sales' } })
       expect(called[0].body).toEqual({ username: 'svc-made-up', initial_state: { store_reach: { 9901: ['010101001'] } } })
+    })
+
+    test('opens a report taking no filter for someone whose job reaches nothing, and nothing else', async ({ admin, createUser }) => {
+      const { headOffice, leader } = await setup(admin, createUser)
+      await saveRow(admin, 'dash.report', { report_key: 'open', report_name: 'Open to anyone given it', dive_id: 'made-up-open-dive', filter_shape: 'No filter' })
+      const called = await opening(admin)
+      const reports = await headOffice.post<{ result: { key: string; no_filter: boolean }[] }>('/api/app_reads/dash/reports', { payload: {} })
+      expect(reports.result.map(r => [r.key, r.no_filter])).toEqual([['open', true]])
+      expect(await headOffice.post('/api/app_reads/dash/embed_open', { payload: { report: 'open' } }))
+        .toEqual({ result: { frame: 'https://embed-motherduck.com/sandbox/#session=made-up-session' } })
+      expect(called).toEqual([{ url: 'https://api.motherduck.com/v1/dives/made-up-open-dive/embed-session', body: { username: 'svc-made-up', initial_state: {} } }])
+      called.length = 0
+      // A store-filtered report never opens this way, for them or for someone with reach.
+      expect(await headOffice.post('/api/app_reads/dash/embed_open', { payload: { report: 'sales' } })).toEqual({ result: { refused: 'no_access' } })
+      expect(await leader.post('/api/app_reads/dash/embed_open', { payload: { report: 'sales', store: '9901' } })).toEqual({ result: { refused: 'no_access' } })
+      expect(called).toEqual([])
     })
 
     test('never calls MotherDuck for a refused report', async ({ admin, createUser }) => {

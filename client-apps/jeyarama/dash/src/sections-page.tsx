@@ -76,7 +76,7 @@ const approvalsLabel = (waiting: number) => (waiting === 1 ? '1 change is waitin
 /** The app's navigation. The approvals row appears only when something waits for this person.
  *  A page that already knows the count passes it, so the row follows what the page shows. */
 /** One report the reader may open, as the `reports` read answers it. */
-export interface ReportLink { key: string; name: string; takes_store: boolean; takes_month: boolean }
+export interface ReportLink { key: string; name: string; takes_store: boolean; takes_month: boolean; no_filter?: boolean }
 export const readReports = () => read<ReportLink[]>('reports')
 
 export function DashSidebar({ current, count }: { current: DashView; count?: number }) {

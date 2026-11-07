@@ -545,6 +545,23 @@
         "authorization": {
           "kind": "generic"
         }
+      },
+      "report_open": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "embed_open": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        },
+        "outbound": true
       }
     }
   },

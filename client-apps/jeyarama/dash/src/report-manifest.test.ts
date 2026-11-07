@@ -78,8 +78,8 @@ describe('the report in the manifest', () => {
       .toEqual(['stores', 'report', 'embed_session'].map(name => [name, 'person_scope', ROLES]))
   })
 
-  it('declares only embed_session as calling out', () => {
-    expect(Object.entries(operations).filter(([, o]) => o.outbound).map(([name]) => name)).toEqual(['embed_session'])
+  it('declares only the two Dive openers as calling out', () => {
+    expect(Object.entries(operations).filter(([, o]) => o.outbound).map(([name]) => name).sort()).toEqual(['embed_open', 'embed_session'])
   })
 
   it('draws the store picker and the month picker (#750) in the top bar, setting ?store= and ?month=', () => {
