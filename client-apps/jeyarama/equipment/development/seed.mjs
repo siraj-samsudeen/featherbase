@@ -223,4 +223,98 @@ if (!existingTransfers.length) {
   }
 }
 
+// ATK 1501 tagging plan (equipment 0.2.0): classes, types with stickers, tag rolls, area codes,
+// Finance people, and a fresh count on its first day. The Administrator is ATK's site manager and
+// the asset accountant; Meena is the Finance Controller; Suresh and Ravi are the count team.
+const CLASS_TYPES = {
+  'Buildings': [['Building structure', 'No sticker', false, 'Recorded by area with a photo']],
+  'Leasehold improvements and fit-outs': [['Fit-out by area', 'No sticker', false, 'Recorded by area with a photo'], ['Signage', 'Metal', false, 'UV-resistant plate']],
+  'Electrical installations': [['DG set', 'Metal', true, 'Plate away from the hot surface'], ['UPS and batteries', 'Standard PET', true, 'Front panel, not the battery'], ['Electrical panel', 'Standard PET', true, 'Outside the door'], ['Lighting', 'No sticker', false, 'Recorded by area']],
+  'HVAC': [['Split AC', 'Metal', true, 'Indoor and outdoor units carry the same tag; top right of the indoor front panel'], ['Cassette AC', 'Standard PET', true, 'Grille edge, visible from below'], ['Ducted AC', 'Metal', true, 'Outdoor unit plate'], ['Air curtain', 'Standard PET', true, 'Right end of the casing']],
+  'Refrigeration and cold chain': [['Walk-in cold room', 'Freezer-grade', true, 'Outside the door, applied at room temperature'], ['Display chiller', 'Freezer-grade', true, 'Outside the door'], ['Visi cooler', 'Freezer-grade', true, 'Side panel, outside']],
+  'Furniture and fixtures': [['Gondola run', 'Standard PET', false, 'Aisle-facing end panel'], ['Racking', 'Standard PET', false, 'Upright at eye level'], ['Counter', 'Standard PET', false, 'Inside face, staff side'], ['Office furniture', 'Standard PET', false, 'Underside front edge']],
+  'Retail store equipment': [['Weighing scale', 'Tamper-evident', false, 'IT supports; base, not the pan'], ['Billing printer', 'Tamper-evident', false, 'Back panel'], ['EAS gate', 'Standard PET', false, 'Inside face of the left gate'], ['Shopping trolley', 'No sticker', false, 'Bulk count, no tag'], ['Shopping basket', 'No sticker', false, 'Bulk count, no tag']],
+  'Computers and IT': [['POS terminal', 'Tamper-evident', false, 'Back of the monitor'], ['PC', 'Tamper-evident', false, 'Side of the cabinet'], ['Network switch', 'Tamper-evident', false, 'Front, beside the ports'], ['Handheld scanner', 'Tamper-evident', false, 'Back, below the battery door']],
+  'Office equipment': [['Printer or copier', 'Standard PET', true, 'Front top right']],
+  'Security and safety systems': [['CCTV camera', 'Standard PET', false, 'Recorded with the NVR channel'], ['Fire system', 'Standard PET', true, 'Panel door'], ['Fire extinguisher', 'Standard PET', false, 'Body, below the gauge']],
+  'Vehicles and material handling': [['Delivery van', 'Metal', false, 'Riveted plate inside the door frame'], ['Forklift', 'Metal', false, 'Riveted plate on the chassis'], ['Pallet truck', 'Metal', false, 'Handle plate']],
+  'Kitchen and food-service': [['Oven', 'Metal', true, 'Plate away from the hot surface'], ['Fryer', 'Metal', true, 'Plate away from the hot surface'], ['Mixer', 'Standard PET', true, 'Base, front']],
+}
+const classes = {}, atkTypes = {}
+for (const [className, list] of Object.entries(CLASS_TYPES)) {
+  classes[className] = (await ensure('equipment.asset_class', 'class_name', className, { class_name: className })).row_id
+  for (const [type_name, sticker, engineering_maintained, counting_note] of list)
+    atkTypes[type_name] = (await ensure('equipment.asset_type', 'type_name', type_name, { type_name, asset_class: classes[className], sticker, engineering_maintained, counting_note })).row_id
+}
+for (const [roll_name, sticker, first_no, last_no, team] of [['Standard PET roll 1', 'Standard PET', 1, 200, 'Team A'], ['Tamper-evident roll 1', 'Tamper-evident', 201, 300, 'Team A'],
+  ['Freezer-grade roll 1', 'Freezer-grade', 301, 400, 'Team B'], ['Metal labels 1', 'Metal', 401, 460, 'Team B']])
+  await ensure('equipment.tag_roll', 'roll_name', roll_name, { roll_name, sticker, first_no, last_no, team, issued_on: day(0) })
+const refreshPlace = (name) => request(`/api/table/equipment.place/${encodeURIComponent(places[name])}`)
+for (const [name, area_code] of [['ATK Billing', 'ATK-GF-A01'], ['ATK Dairy aisle', 'ATK-GF-A02'], ['ATK Back store', 'ATK-GF-A03']]) {
+  const area = await refreshPlace(name)
+  if (!area.area_code) await request('/api/save_row', { method: 'POST', body: { table: 'equipment.place', row: { row_id: area.row_id, updated_at: area.updated_at, area_code, area_custodian: staff.row_id } } })
+}
+const atkSite = await refreshPlace('ATK 1501')
+if (!atkSite.site_manager) await request('/api/save_row', { method: 'POST', body: { table: 'equipment.place', row: { row_id: atkSite.row_id, updated_at: atkSite.updated_at, site_manager: 'Administrator' } } })
+await withRole('Administrator', 'Assets Accountant')
+await withRole(meena.row_id, 'Assets Finance Controller')
+for (const [person, finance_role] of [['Administrator', 'Asset accountant'], [meena.row_id, 'Finance controller']]) {
+  const named = (await request(`/api/table/equipment.finance_person${query([['person', '=', person], ['finance_role', '=', finance_role]], ['row_id'])}`)).data
+  if (!named.length) await request('/api/save_row', { method: 'POST', body: { table: 'equipment.finance_person', row: { person, finance_role } } })
+}
+const freshCounts = (await request(`/api/table/equipment.count${query([['count_kind', '=', 'Fresh inventory']], ['row_id'])}`)).data
+if (!freshCounts.length) {
+  const tokens = []
+  const tokenFor = async (person) => {
+    const access = await request('/api/access_tokens', { method: 'POST', body: { label: 'Assets ATK sample count (removed after seeding)', owner: person, expires_at: new Date(Date.now() + 600_000).toISOString() } })
+    tokens.push(access.id)
+    return access.token
+  }
+  const save = (table, row, as) => request('/api/save_row', { method: 'POST', as, body: { table, row } })
+  const act = (name, payload, as) => request(`/api/app_actions/equipment/${name}`, { method: 'POST', as, body: { idempotencyKey: crypto.randomUUID(), payload } }).then(r => r.result)
+  try {
+    const asMeena = await tokenFor(meena.row_id), asSuresh = await tokenFor(staff.row_id)
+    await save('equipment.control_setting', { site: places['ATK 1501'], capital_threshold: 5000, recount_threshold: 100000, recount_percent: 10 }, asMeena)
+    let count = await save('equipment.count', { count_name: 'ATK 1501 fresh count (pilot D1)', scope_place: places['ATK 1501'], count_kind: 'Fresh inventory', reviewer: 'Administrator',
+      starts_on: day(0), ends_on: day(2), freeze_from: day(0), freeze_to: day(2) })
+    for (const person of [staff.row_id, ravi.row_id]) await save('equipment.counter', { count: count.row_id, person })
+    count = await request(`/api/table/equipment.count/${count.row_id}`)
+    await act('start_count', { row_id: count.row_id, updated_at: count.updated_at })
+    const line = (area, values) => save('equipment.asset', { counted_in: count.row_id, place: places[area], tag_status: 'Tagged', condition: 'Working', usage: 'In use',
+      ownership: 'Group owned', custodian: staff.row_id, tagged_by: ravi.row_id, ...values }, asSuresh)
+    const lines = {}
+    lines.chiller1 = await line('ATK Dairy aisle', { tag_no: 'JRA-000301', asset_type: atkTypes['Display chiller'], asset_name: '3-door upright chiller', make: 'Blue Star', model: 'VC350', serial_no: 'SAMPLE-BS23K44871' })
+    lines.chiller2 = await line('ATK Dairy aisle', { tag_no: 'JRA-000302', asset_type: atkTypes['Visi cooler'], asset_name: 'Single-door visi cooler', make: 'Western', model: 'SRC 300', serial_no: 'SAMPLE-WS300-1180' })
+    await line('ATK Dairy aisle', { tag_status: 'Third-party, not tagged', asset_type: atkTypes['Visi cooler'], asset_name: 'Amul ice cream freezer', make: 'Amul', ownership: 'Vendor or brand supplied', owner_name: 'Amul (Kaira District Co-op)' })
+    lines.ac1 = await line('ATK Billing', { tag_no: 'JRA-000401', asset_type: atkTypes['Split AC'], asset_name: 'Split AC 2 ton, billing', make: 'Voltas', model: '243V DZX', serial_no: 'SAMPLE-VT24-118301' })
+    lines.ac2 = await line('ATK Billing', { tag_no: 'JRA-000402', asset_type: atkTypes['Split AC'], asset_name: 'Split AC 2 ton, entrance', make: 'Voltas', model: '243V DZX', serial_no: 'SAMPLE-VT24-118302' })
+    lines.pos = await line('ATK Billing', { tag_no: 'JRA-000201', asset_type: atkTypes['POS terminal'], asset_name: 'POS terminal, till 1', make: 'HP', model: 'Engage One', serial_no: 'SAMPLE-HPE1-4410' })
+    lines.gondola = await line('ATK Back store', { tag_no: 'JRA-000001', asset_type: atkTypes['Gondola run'], asset_name: 'Gondola run, aisle 7', make: 'Kwality Racks' })
+    await line('ATK Back store', { tag_status: 'Bulk count, no tag', asset_type: atkTypes['Shopping trolley'], asset_name: 'Shopping trolleys', quantity: 40, condition: 'Working' })
+    await save('equipment.tag_event', { tag_no: 'JRA-000002', event_kind: 'Spoiled', reason: 'Torn while peeling', area: places['ATK Back store'], count: count.row_id }, asSuresh)
+    // The Administrator signs the dairy aisle for today as site manager: 2 labels for 2 tagged lines.
+    await save('equipment.area_close', { count: count.row_id, area: places['ATK Dairy aisle'], labels_used: 2 })
+
+    // The SAP book extract for plant 1501 (SAMPLE numbers) and the asset accountant's matching.
+    const book = {}
+    for (const [key, sap_asset_no, description, book_value, quantity, extra] of [
+      ['chiller', 'SAMPLE-200014', 'Chiller 3-door', 142000, 1, { serial_no: 'SAMPLE-BS23K44871', capitalized_on: '2023-03-12', sap_class_code: '3300' }],
+      ['ac', 'SAMPLE-200031', 'AC 2 ton, 6 nos', 288000, 6, { invoice_ref: 'SAMPLE-PO-4410023', capitalized_on: '2022-08-01', sap_class_code: '3200' }],
+      ['pos', 'SAMPLE-200052', 'POS terminal HP', 64000, 1, { capitalized_on: '2024-01-15', sap_class_code: '3600' }],
+      ['eas', 'SAMPLE-200081', 'EAS gate pair', 96000, 1, { capitalized_on: '2021-11-20', sap_class_code: '3400' }],
+      ['dup1', 'SAMPLE-200090', 'Visi cooler single door', 38000, 1, { capitalized_on: '2023-05-02' }],
+      ['dup2', 'SAMPLE-200091', 'Visi cooler single door', 38000, 1, { capitalized_on: '2023-05-02' }],
+    ]) book[key] = await save('equipment.sap_book', { plant: '1501', sap_company_code: 'SAMPLE-1000', sap_asset_no, sap_asset_sub: '0', description, book_value, quantity, location_text: 'ATK 1501', ...extra })
+    await act('match_sap', { sap_book: book.chiller.row_id, assets: [lines.chiller1.row_id], method: 'Serial number' })
+    await act('match_sap', { sap_book: book.ac.row_id, assets: [lines.ac1.row_id, lines.ac2.row_id], method: 'Invoice or PO' })
+    await act('match_sap', { sap_book: book.dup1.row_id, assets: [lines.chiller2.row_id], method: 'Description, place and date', second_checker: meena.row_id })
+    await save('equipment.exception', { outcome: 'In books, not found', sap_asset_no: 'SAMPLE-200081-0', detail: 'EAS gate pair not found in any ATK area', owner: staff.row_id, due_on: day(7) })
+    await save('equipment.exception', { outcome: 'Duplicate SAP records', sap_asset_no: 'SAMPLE-200090-0 and SAMPLE-200091-0', detail: 'The same visi cooler is in the book twice', owner: meena.row_id, due_on: day(10) })
+    const found = await save('equipment.exception', { outcome: 'Found, not in books', asset: lines.gondola.row_id, detail: 'Gondola run in aisle 7 has no SAP record', owner: meena.row_id, due_on: day(10) })
+    await save('equipment.exception', { row_id: found.row_id, updated_at: found.updated_at, exception_state: 'Approved', approval_ref: 'SAMPLE-FC/ATK/001' }, asMeena)
+  } finally {
+    for (const id of tokens) await request(`/api/access_tokens/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+}
+
 console.log(`Assets sample data ready at ${origin}/equipment/ (${Object.keys(places).length} places, ${Object.keys(assets).length} assets; SAP numbers are SAMPLE)`)
