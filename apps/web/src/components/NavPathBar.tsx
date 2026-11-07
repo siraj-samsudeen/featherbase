@@ -22,16 +22,28 @@ export function NavPathBar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, settings.ready])
   if (!nav || !path) return null
+  // #1013: one step is no path, and would only repeat the page's own heading.
+  // Only the way back to remembered walks stays, so they survive signing in.
+  if (path.steps.length < 2) {
+    if (settings.recent.length === 0) return null
+    return (
+      <div className="mb-3 flex justify-end">
+        <RecentWalks paths={settings.recent} onPick={nav.open} />
+      </div>
+    )
+  }
   return (
-    <PathBar
-      steps={path.steps.map((_, i) => ({ key: String(i), label: labels[i] }))}
-      current={path.at}
-      onStep={nav.go}
-      onBack={() => nav.go(path.at - 1)}
-      onForward={() => nav.go(path.at + 1)}
-      onCopyLink={() => void navigator.clipboard?.writeText(new URL(nav.href(path), window.location.origin).href).catch(() => {})}
-      recent={<RecentWalks paths={settings.recent} onPick={nav.open} />}
-    />
+    <div className="mb-3">
+      <PathBar
+        steps={path.steps.map((_, i) => ({ key: String(i), label: labels[i] }))}
+        current={path.at}
+        onStep={nav.go}
+        onBack={() => nav.go(path.at - 1)}
+        onForward={() => nav.go(path.at + 1)}
+        onCopyLink={() => void navigator.clipboard?.writeText(new URL(nav.href(path), window.location.origin).href).catch(() => {})}
+        recent={<RecentWalks paths={settings.recent} onPick={nav.open} />}
+      />
+    </div>
   )
 }
 
