@@ -167,6 +167,9 @@ export interface AppJobPerson {
   readonly privileged: boolean
   /** Current values of the identifier systems the job declares, by system. */
   readonly identifiers: Readonly<Record<string, readonly string[]>>
+  /** The subjects of the person's live sign-ins with the methods the job
+   *  declares (`sign_in_methods`), by method: who the provider says they are. */
+  readonly sign_ins: Readonly<Record<string, readonly string[]>>
 }
 
 /** #700: what an app's scheduled job handler gets. It runs as the job's own

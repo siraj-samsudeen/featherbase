@@ -188,66 +188,66 @@ describe('the checks (5.1)', () => {
 
   test('scheduled jobs: one check per job; the last run failing fails it until a later run succeeds', async () => {
     const now = new Date()
-    await sql`update scheduled_job set enabled = true, last_run_at = ${now}, last_outcome = 'success' where method = 'disable_leavers'`
-    expect(byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers')).toMatchObject({ ok: true, title: 'Scheduled job: disable_leavers' })
+    await sql`update scheduled_job set enabled = true, last_run_at = ${now}, last_outcome = 'success' where method = 'check_sla'`
+    expect(byKey(await runHealthChecks({ now }), 'scheduled-job:check_sla')).toMatchObject({ ok: true, title: 'Scheduled job: check_sla' })
 
-    await sql`update scheduled_job set last_outcome = 'error' where method = 'disable_leavers'`
+    await sql`update scheduled_job set last_outcome = 'error' where method = 'check_sla'`
     await sql`insert into job_execution (row_id, created_by, updated_by, job, method, attempt, outcome, error, started_at)
-      values ('hc-exec-1', 'Administrator', 'Administrator', 'x', 'disable_leavers', 1, 'error', 'the warehouse feed is stale', ${now})`
-    const failed = byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers')
+      values ('hc-exec-1', 'Administrator', 'Administrator', 'x', 'check_sla', 1, 'error', 'the warehouse feed is stale', ${now})`
+    const failed = byKey(await runHealthChecks({ now }), 'scheduled-job:check_sla')
     expect(failed).toMatchObject({ ok: false, severity: 'error' })
     expect(failed.message).toContain('the warehouse feed is stale')
     const result = await healthCommand('development')
     expect(result.code).toBe(1)
-    expect(JSON.parse(result.stdout).checks).toContainEqual(expect.objectContaining({ key: 'scheduled-job:disable_leavers', state: 'fault' }))
+    expect(JSON.parse(result.stdout).checks).toContainEqual(expect.objectContaining({ key: 'scheduled-job:check_sla', state: 'fault' }))
     const text = await healthCommand('development', false)
     expect(text.code).toBe(1)
     expect(text.stdout).toContain('Featherbase needs attention.')
-    expect(text.stdout).toContain('fault: Scheduled job: disable_leavers — The last run failed: the warehouse feed is stale')
+    expect(text.stdout).toContain('fault: Scheduled job: check_sla — The last run failed: the warehouse feed is stale')
     expect(text.stdout).toContain('Next: Open Jobs in Admin to see the error')
 
-    await sql`update scheduled_job set last_outcome = 'success' where method = 'disable_leavers'`
-    expect(byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers').ok).toBe(true)
+    await sql`update scheduled_job set last_outcome = 'success' where method = 'check_sla'`
+    expect(byKey(await runHealthChecks({ now }), 'scheduled-job:check_sla').ok).toBe(true)
   })
 
   test('scheduled jobs: a last run that refused to act fails the check like a failure (#464)', async () => {
     const now = new Date()
     await sql`update scheduled_job set enabled = true, last_run_at = ${now}, last_outcome = 'refused',
-      last_result = 'disabled nobody: the feed is stale' where method = 'disable_leavers'`
-    const refused = byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers')
+      last_result = 'disabled nobody: the feed is stale' where method = 'check_sla'`
+    const refused = byKey(await runHealthChecks({ now }), 'scheduled-job:check_sla')
     expect(refused).toMatchObject({ ok: false, severity: 'error', message: 'The last run refused to act: disabled nobody: the feed is stale' })
     expect(refused.fix).toContain('Jobs')
   })
 
   test('scheduled jobs: a switched-off job passes; an enabled one that stopped running fails', async () => {
     const now = new Date()
-    await sql`update scheduled_job set enabled = false, last_outcome = 'error' where method = 'disable_leavers'`
-    const off = byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers')
+    await sql`update scheduled_job set enabled = false, last_outcome = 'error' where method = 'check_sla'`
+    const off = byKey(await runHealthChecks({ now }), 'scheduled-job:check_sla')
     expect(off).toMatchObject({ ok: true, message: 'Switched off.' })
 
     const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 3600 * 1000)
-    await sql`update scheduled_job set enabled = true, last_outcome = 'success', last_run_at = ${threeDaysAgo} where method = 'disable_leavers'`
-    const stale = byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers')
+    await sql`update scheduled_job set enabled = true, last_outcome = 'success', last_run_at = ${threeDaysAgo} where method = 'check_sla'`
+    const stale = byKey(await runHealthChecks({ now }), 'scheduled-job:check_sla')
     expect(stale).toMatchObject({ ok: false, severity: 'error' })
     expect(stale.message).toContain('has not run since')
   })
 
   test('scheduled jobs: a cadence the worker does not know fails, and a job switched on long ago that never ran says so', async () => {
     const now = new Date()
-    await sql`update scheduled_job set enabled = true, cadence = 'every fortnight' where method = 'disable_leavers'`
-    const unknown = byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers')
+    await sql`update scheduled_job set enabled = true, cadence = 'every fortnight' where method = 'check_sla'`
+    const unknown = byKey(await runHealthChecks({ now }), 'scheduled-job:check_sla')
     expect(unknown).toMatchObject({ ok: false, severity: 'error' })
     expect(unknown.message).toBe('Its cadence "every fortnight" is not one the worker knows, so it never runs.')
     expect(unknown.fix).toContain('choose one of the listed cadences')
 
     const longAgo = new Date(now.getTime() - 30 * 24 * 3600 * 1000)
-    await sql`update scheduled_job set cadence = 'daily', last_run_at = null, last_outcome = null, updated_at = ${longAgo} where method = 'disable_leavers'`
-    const never = byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers')
+    await sql`update scheduled_job set cadence = 'daily', last_run_at = null, last_outcome = null, updated_at = ${longAgo} where method = 'check_sla'`
+    const never = byKey(await runHealthChecks({ now }), 'scheduled-job:check_sla')
     expect(never).toMatchObject({ ok: false, severity: 'error' })
     expect(never.message).toContain('has not run since it was switched on')
 
-    await sql`update scheduled_job set updated_at = ${now} where method = 'disable_leavers'`
-    expect(byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers')).toMatchObject({ ok: true, message: 'Has not run yet.' })
+    await sql`update scheduled_job set updated_at = ${now} where method = 'check_sla'`
+    expect(byKey(await runHealthChecks({ now }), 'scheduled-job:check_sla')).toMatchObject({ ok: true, message: 'Has not run yet.' })
   })
 
   test('the Administrator default password: failing outside development and test, passing once rotated', async () => {
@@ -363,8 +363,8 @@ describe('history: only changes of state are recorded (5.2)', () => {
   test('a problem that came and went at night shows as failing for that hour', async () => {
     await sql`delete from health_check_event`
     const at = (h: number) => new Date(Date.UTC(2026, 9, 26, h - 5, 30)) // IST hours
-    const job = 'scheduled-job:disable_leavers'
-    const base = { key: job, title: 'Scheduled job: disable_leavers', severity: 'error' as const, why: 'w' }
+    const job = 'scheduled-job:check_sla'
+    const base = { key: job, title: 'Scheduled job: check_sla', severity: 'error' as const, why: 'w' }
     await recordHealthTransitions([{ ...base, ok: true, message: 'Last run succeeded.', fix: null }], at(1))
     await recordHealthTransitions([{ ...base, ok: false, message: 'Last run failed.', fix: 'f' }], at(2))
     await recordHealthTransitions([{ ...base, ok: true, message: 'Last run succeeded.', fix: null }], at(3))

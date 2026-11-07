@@ -54,11 +54,6 @@
 //   cli seed-pack apply <name>        apply an organisation's identifier systems (e.g. jeyarama); idempotent
 //   cli boot-check                    run the server's start-up refusal and the release preflight with this
 //                                     process's environment (rehearse a target's real variables); read-only
-//   cli leavers:check [--apply [--accept <n>]]
-//                                     the daily warehouse exit-date check (leaver-check.ts): with no flag a
-//                                     dry run that changes nothing and prints counts only; --apply acts on
-//                                     it; --accept <n> lifts the size limit for exactly n people (a large but
-//                                     genuine batch), never a stale feed
 //   cli console                       REPL with the row API in scope
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -645,30 +640,11 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       io.out(`seed pack ${name}: added ${r.added.join(', ') || 'none'}; kept ${r.kept.join(', ') || 'none'}; sign-in methods linked ${r.methodsLinked.join(', ') || 'none'}; people_review ${r.peopleReview}`)
       break
     }
-    case 'leavers:check': {
-      const { formatLeaverPlan, formatSummaryDelivery, planLeaverCheck, runLeaverCheck } = await import('./leaver-check')
-      if (!rest.includes('--apply')) {
-        if (flags.accept !== undefined) throw new Error('--accept only means something with --apply')
-        io.out(formatLeaverPlan(await planLeaverCheck()))
-        io.out('leaver check: dry run; nothing was changed')
-        break
-      }
-      // A bare --accept parses as `true`; Number(true) is 1, so demand digits.
-      if (flags.accept !== undefined && !(typeof flags.accept === 'string' && /^[1-9]\d*$/.test(flags.accept)))
-        throw new Error('--accept takes the number of people the dry run reported')
-      const accept = flags.accept === undefined ? undefined : Number(flags.accept)
-      const { assertDatabaseEnvironment } = await import('./db-environment')
-      await assertDatabaseEnvironment()
-      const run = await runLeaverCheck({ acceptCount: accept })
-      io.out(formatLeaverPlan(run.plan, { applied: run.disabled }))
-      io.out(formatSummaryDelivery(run))
-      break
-    }
     case 'console':
       await cmdConsole(io)
       break
     default:
-      io.out('usage: cli <migrate|seed|install-app|repin-apps|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|migrate:rehearse|leavers:check|settings:set|settings:apply|settings:export|settings:variables|settings:compare|mail:test|seed-pack|boot-check|console> [...]')
+      io.out('usage: cli <migrate|seed|install-app|repin-apps|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|migrate:rehearse|settings:set|settings:apply|settings:export|settings:variables|settings:compare|mail:test|seed-pack|boot-check|console> [...]')
       return cmd ? 1 : 0
   }
   return 0

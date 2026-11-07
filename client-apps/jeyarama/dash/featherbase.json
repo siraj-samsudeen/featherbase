@@ -324,6 +324,84 @@
         "store": "store_code",
         "subcategory": "subcategory_code"
       }
+    },
+    {
+      "name": "hr_employee_records",
+      "source": "motherduck",
+      "query": "select cast(e.employee_key as varchar) as employee_key, cast(e.employee_code as varchar) as employee_code,\n       e.payroll_active, e.movement_active, e.date_of_joining, x.exit_date\nfrom \"gold\".\"hr\".\"employee\" e\nleft join \"gold\".\"hr\".\"employee_exit\" x on x.employee_key = e.employee_key and x.is_leaver",
+      "columns": [
+        {
+          "name": "employee_key",
+          "type": "text"
+        },
+        {
+          "name": "employee_code",
+          "type": "text"
+        },
+        {
+          "name": "payroll_active",
+          "type": "boolean"
+        },
+        {
+          "name": "movement_active",
+          "type": "boolean"
+        },
+        {
+          "name": "date_of_joining",
+          "type": "date"
+        },
+        {
+          "name": "exit_date",
+          "type": "date"
+        }
+      ],
+      "keys": [
+        "employee_key"
+      ],
+      "filters": {
+        "employee": "employee_key"
+      }
+    },
+    {
+      "name": "hr_feed_day",
+      "source": "motherduck",
+      "query": "select max(date) as latest_day from \"gold\".\"hr\".\"attendance\" where is_present",
+      "columns": [
+        {
+          "name": "latest_day",
+          "type": "date"
+        }
+      ],
+      "keys": [
+        "latest_day"
+      ],
+      "filters": {
+        "day": "latest_day"
+      }
+    }
+  ],
+  "jobs": [
+    {
+      "name": "disable_leavers",
+      "cadence": "daily",
+      "enabled": false,
+      "description": "Disable everyone whose StyleHR record in the warehouse shows they have left: an exit date that has passed, an inactive status, or not on the latest payroll. Only ever disables; skips and reports System Managers; refuses on a stale feed or an implausibly large batch.",
+      "grants": [
+        "read_people",
+        "disable_people",
+        "email_system_managers"
+      ],
+      "identifiers": [
+        "stylehr-employee-id",
+        "stylehr-employee-code"
+      ],
+      "sign_in_methods": [
+        "stylehr"
+      ],
+      "datasets": [
+        "hr_employee_records",
+        "hr_feed_day"
+      ]
     }
   ],
   "tables": [
@@ -1311,6 +1389,12 @@
       "id": "my_sections",
       "fromVersion": "0.10.4",
       "toVersion": "0.11.0",
+      "operations": []
+    },
+    {
+      "id": "leaver_check",
+      "fromVersion": "0.11.0",
+      "toVersion": "0.12.0",
       "operations": []
     }
   ],

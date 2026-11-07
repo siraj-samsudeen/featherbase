@@ -1,5 +1,5 @@
 // Who a system notice goes to: every enabled System Manager with an email
-// address (the leaver-check summary, the waiting-for-access alert). A notice
+// address (an app job's summary, the waiting-for-access alert). A notice
 // with nobody to send it to is recorded as undelivered, never dropped
 // silently: one activity row and one JSON log line (#463).
 import { logActivity } from './audit'

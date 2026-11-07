@@ -42,10 +42,10 @@ test('health reports a real scheduled-job failure through JSON', async () => {
     const healthy = command('health', '--json')
     assert.equal(healthy.status, 0, healthy.stdout + healthy.stderr)
     assert.ok(Array.isArray(JSON.parse(healthy.stdout).checks))
-    await sql`update featherbase.scheduled_job set enabled = true, last_run_at = now(), last_outcome = 'error' where method = 'disable_leavers'`
+    await sql`update featherbase.scheduled_job set enabled = true, last_run_at = now(), last_outcome = 'error' where method = 'check_sla'`
     const failed = command('health', '--json')
     assert.equal(failed.status, 1, failed.stdout + failed.stderr)
-    const check = JSON.parse(failed.stdout).checks.find((entry) => entry.key === 'scheduled-job:disable_leavers')
+    const check = JSON.parse(failed.stdout).checks.find((entry) => entry.key === 'scheduled-job:check_sla')
     assert.equal(check.ok, false)
     assert.ok(check.fix)
     assert.ok(!failed.stdout.includes(env.BASE_CLI_SECRET))

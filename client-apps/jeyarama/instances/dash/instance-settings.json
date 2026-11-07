@@ -64,10 +64,6 @@
         "enabled": true
       },
       {
-        "row_id": "disable_leavers",
-        "enabled": false
-      },
-      {
         "row_id": "refresh_datasets",
         "enabled": true
       }

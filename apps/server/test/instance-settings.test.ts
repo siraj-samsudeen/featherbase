@@ -205,19 +205,19 @@ describe('apply (D4)', () => {
 
 describe('values that differ by environment', () => {
   const file: InstanceSettingsFile = {
-    settings: { 'Scheduled Job': [{ row_id: 'disable_leavers', enabled: true }] },
+    settings: { 'Scheduled Job': [{ row_id: 'check_sla', enabled: true }] },
     environments: {
-      dev: { settings: { 'Scheduled Job': [{ row_id: 'disable_leavers', enabled: false }] } },
+      dev: { settings: { 'Scheduled Job': [{ row_id: 'check_sla', enabled: false }] } },
       production: {},
     },
   }
 
   test('a job is off only on dev', async () => {
     await applyInstanceSettings(file, { by: 'Administrator', environment: 'production' })
-    const [prod] = await sql`select enabled from scheduled_job where row_id = 'disable_leavers'`
+    const [prod] = await sql`select enabled from scheduled_job where row_id = 'check_sla'`
     expect(prod.enabled).toBe(true)
     const dev = await applyInstanceSettings(file, { by: 'Administrator', environment: 'dev' })
-    expect(dev.changes).toEqual([{ table: 'Scheduled Job', row_id: 'disable_leavers', field: 'enabled', old: true, new: false }])
+    expect(dev.changes).toEqual([{ table: 'Scheduled Job', row_id: 'check_sla', field: 'enabled', old: true, new: false }])
   })
 
   test('an environment the file does not list is refused, so a typo cannot apply the base alone', async () => {
@@ -520,7 +520,7 @@ describe('an environment section adds to the base', () => {
           settings: {
             'Sign In Method': [{ row_id: 'base_one', label: 'Base one (dev)' }, row('dev_only', 'Dev only')],
             'System Settings': { app_name: 'Dev Name' },
-            'Scheduled Job': [{ row_id: 'disable_leavers', enabled: false }],
+            'Scheduled Job': [{ row_id: 'check_sla', enabled: false }],
           },
         },
       },

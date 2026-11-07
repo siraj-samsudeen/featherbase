@@ -40,6 +40,8 @@ export interface SchedulerEvent {
   // manifest's value is only the default, never re-imposed.
   cadence: Cadence
   description?: string
+  // #731: false installs the Scheduled Job switched off. Default on.
+  enabled?: boolean
 }
 
 // PLAT-004 (#54): a role grant an app declares on a Table. `table` may
@@ -228,7 +230,7 @@ async function ensureSchedulerJobs(manifest: AppManifest, claimed?: Set<string>)
         updated_by: 'Administrator',
         method: ev.method,
         cadence: ev.cadence,
-        enabled: true,
+        enabled: ev.enabled ?? true,
         description: ev.description ?? `Scheduled by app ${manifest.name}.`,
         owner_app: manifest.runtime_package ? manifest.name : null,
       })}`

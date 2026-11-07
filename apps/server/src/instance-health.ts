@@ -61,7 +61,7 @@ async function systemManagerEmail(environment: string): Promise<HealthCheck> {
     key: 'system-manager-email',
     title: 'A System Manager with an email address',
     severity: 'error' as const,
-    why: 'System notices (the leaver-check summary, waiting-for-access alerts) go to System Managers by email. With no address they reach nobody.',
+    why: 'System notices (job summaries, waiting-for-access alerts) go to System Managers by email. With no address they reach nobody.',
   }
   if (emails.length)
     return {

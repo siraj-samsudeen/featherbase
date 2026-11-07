@@ -303,7 +303,7 @@ async function assertNoOpenAppRoleBinding(): Promise<string> {
  *  notices go to enabled System Managers with an email address; with none
  *  besides the Administrator, they reach nobody. */
 export const NO_NOTICE_RECIPIENTS_WARNING =
-  'WARNING: no enabled System Manager other than the built-in Administrator has an email address, so system alerts (the leaver-check summary, waiting-for-access alerts) will reach nobody. Give a System Manager an email address on their Person page.'
+  'WARNING: no enabled System Manager other than the built-in Administrator has an email address, so system alerts (job summaries, waiting-for-access alerts) will reach nobody. Give a System Manager an email address on their Person page.'
 
 async function noticeRecipients(): Promise<string> {
   if (!(await installed())) return 'notice recipient check skipped (no Person table yet)'

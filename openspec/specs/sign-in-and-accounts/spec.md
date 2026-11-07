@@ -1045,7 +1045,7 @@ The daily check SHALL disable nobody when the StyleHR data it reads is more than
 
 ### Requirement: A notice with nobody to receive it is recorded
 
-When a system notice, such as the leaver-check summary or a waiting-for-access alert, has no System Manager with an email address to go to, the system SHALL record that it reached nobody instead of dropping it silently. Before a release, the system SHALL warn, without stopping the release, when no System Manager other than the built-in Administrator has an email address.
+When a system notice, such as a job's summary or a waiting-for-access alert, has no System Manager with an email address to go to, the system SHALL record that it reached nobody instead of dropping it silently. Before a release, the system SHALL warn, without stopping the release, when no System Manager other than the built-in Administrator has an email address.
 
 #### Scenario: No System Manager has an email address
 

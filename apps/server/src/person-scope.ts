@@ -77,7 +77,7 @@ async function assertIdentifierSystems(binding: ScopeProviderBinding) {
 // read fresh with the scope, and nothing from any other system. Current means
 // valid today (owner decision 27-Oct-2026, provisional): started on or before
 // today and not yet ended, so a value with a future start is not passed.
-// Today is India's day, as the leaver check and the access alerts count it.
+// Today is India's day, as the access alerts count it.
 async function currentIdentifiers(user: string, systems: readonly string[]): Promise<AppScopeProviderContext['person']['identifiers']> {
   const values: Record<string, { value: string; shared: boolean }[]> = Object.fromEntries(systems.map(system => [system, []]))
   if (systems.length) {

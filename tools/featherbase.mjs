@@ -10,7 +10,7 @@ const groups = {
   people: ['create-person', 'set-password', 'create-service-account', 'issue-token', 'list-tokens', 'revoke-token'],
   apps: ['install-app', 'repin-apps', 'seed-pack'],
   settings: ['settings:set', 'settings:apply', 'settings:export', 'settings:variables', 'settings:compare'],
-  operations: ['boot-check', 'mail:test', 'leavers:check', 'console'],
+  operations: ['boot-check', 'mail:test', 'console'],
 }
 const help = {
   root: `Featherbase — your local platform

@@ -74,7 +74,7 @@ test('history: each change of state, with the activity around it one step away (
 
 test('a System Manager sees a red banner leading to the page; it has no close button (items 12–16)', async ({ admin }) => {
   await sql`delete from instance_settings_apply`
-  await sql`update scheduled_job set enabled = true, last_run_at = now(), last_outcome = 'error' where method = 'disable_leavers'`
+  await sql`update scheduled_job set enabled = true, last_run_at = now(), last_outcome = 'error' where method = 'check_sla'`
   await renderApp('/featherbase/admin/all-tables', admin)
   const banner = await screen.findByTestId('health-banner')
   expect(banner).toHaveAttribute('data-severity', 'error')

@@ -61,13 +61,13 @@ describe('direct writes honour a locked set an apply commits mid-write (#493)', 
       transitions: [{ state: 'true', action: 'Switch off', next_state: 'false', allowed: 'System Manager' }],
     })
     try {
-      await sql`update scheduled_job set enabled = true where row_id = 'disable_leavers'`
+      await sql`update scheduled_job set enabled = true where row_id = 'check_sla'`
       const outcome = await applyLandsMidWrite(
-        () => applyWorkflowAction('Scheduled Job', 'disable_leavers', 'Switch off', 'Administrator'),
-        { table: 'Scheduled Job', row_id: 'disable_leavers', field: 'enabled' },
+        () => applyWorkflowAction('Scheduled Job', 'check_sla', 'Switch off', 'Administrator'),
+        { table: 'Scheduled Job', row_id: 'check_sla', field: 'enabled' },
       )
       expect(outcome).toMatchObject({ status: 'rejected', reason: { type: 'PermissionError', message: expect.stringContaining(INSTANCE_SETTINGS_FILE) } })
-      const [job] = await sql`select enabled from scheduled_job where row_id = 'disable_leavers'`
+      const [job] = await sql`select enabled from scheduled_job where row_id = 'check_sla'`
       expect(job.enabled).toBe(true)
     } finally {
       // One active workflow per Table: switch this one off for later runs.
@@ -79,13 +79,13 @@ describe('direct writes honour a locked set an apply commits mid-write (#493)', 
     const rule = `Commit Proof Rule ${Date.now()}`
     await saveDoc('Assignment Rule', { row_id: rule, ref_table: 'Scheduled Job', assign_to_field: 'description', users: [{ user: 'Administrator' }] })
     try {
-      const [before] = await sql`select description from scheduled_job where row_id = 'disable_leavers'`
+      const [before] = await sql`select description from scheduled_job where row_id = 'check_sla'`
       const outcome = await applyLandsMidWrite(
-        () => evaluateAssignmentRules('Scheduled Job', { row_id: 'disable_leavers' }),
-        { table: 'Scheduled Job', row_id: 'disable_leavers', field: 'description' },
+        () => evaluateAssignmentRules('Scheduled Job', { row_id: 'check_sla' }),
+        { table: 'Scheduled Job', row_id: 'check_sla', field: 'description' },
       )
       expect(outcome.status).toBe('fulfilled')
-      const [job] = await sql`select description from scheduled_job where row_id = 'disable_leavers'`
+      const [job] = await sql`select description from scheduled_job where row_id = 'check_sla'`
       expect(job.description).toBe(before.description)
     } finally {
       await sql`update assignment_rule set disabled = true where row_id = ${rule}`

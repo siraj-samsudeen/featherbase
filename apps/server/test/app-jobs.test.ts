@@ -29,6 +29,8 @@ interface Job {
   description: string
   grants?: string[]
   identifiers?: string[]
+  sign_in_methods?: string[]
+  enabled?: boolean
   datasets?: string[]
   needs?: string[]
 }
@@ -330,6 +332,17 @@ describe("a job follows its app's lifecycle", () => {
       { status: 417, message: expect.stringContaining(`The job ${OVERREACH} would gain disable_people; a job cannot gain access in an upgrade`) })
   })
 
+  test('an upgrade may not give a job a sign-in method it did not read', async ({ admin }) => {
+    const v1 = await writeApp({ jobs: [overreach] })
+    expect(await discoverPackages([v1])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    const v2 = await writeApp({ version: '2.0.0', jobs: [{ ...overreach, sign_in_methods: ['google'] }],
+      migrations: [{ id: 'jobs_v2', fromVersion: '1.0.0', toVersion: '2.0.0', operations: [] }] })
+    await discoverPackages([v1, v2])
+    await expectApiError(admin.post('/api/preview_app_upgrade', { name: APP, version: '2.0.0' }),
+      { status: 417, message: expect.stringContaining(`The job ${OVERREACH} would gain the sign-in method google`) })
+  })
+
   test("removing the app leaves a schedule of the same name that someone else holds, and its queued runs", async ({ admin }) => {
     expect(await discoverPackages([await writeApp({ jobs: [sweep] })])).toEqual([])
     await admin.post('/api/install_app', { name: APP })
@@ -413,6 +426,7 @@ describe('a job name belongs to one owner', () => {
     expect((await failures([{ ...sweep, grants: ['delete_everything'] }]))[0]).toContain('A job grant must be one of read_people, disable_people, email_system_managers')
     expect(await failures([{ ...sweep, name: 'missing' }])).toEqual(['Package handlers and authorization callbacks must match declared names'])
     expect(await failures([{ ...overreach, grants: [], identifiers: [SYSTEM] }])).toEqual(['The job overreach names identifier systems, which only a job granted read_people reads'])
+    expect(await failures([{ ...overreach, grants: [], sign_in_methods: ['google'] }])).toEqual(['The job overreach names sign-in methods, which only a job granted read_people reads'])
   })
 })
 
@@ -829,6 +843,31 @@ test('a people-reading job receives missing optional profile values as null', as
   expect(cleared).toMatchObject({ enabled: true, full_name: null, email: null })
   await runDue()
   expect(calls()).toEqual([{ job: `${APP}.read_profile`, people: [{
-    person: person.user, full_name: null, email: null, privileged: false, identifiers: {},
+    person: person.user, full_name: null, email: null, privileged: false, identifiers: {}, sign_ins: {},
   }] }])
+})
+
+// #731: a provider's record number can live only on the person's sign-in (a
+// first sign-in links it before any roster sync), so a job that checks people
+// against that provider reads it there.
+test("a people-reading job sees the subjects of each person's live sign-ins with the methods it names", async ({ admin, createUser }) => {
+  const job: Job = { name: 'read_profile', cadence: 'hourly', description: 'Read sign-ins.', grants: ['read_people'], sign_in_methods: ['google'] }
+  expect(await discoverPackages([await writeApp({ jobs: [job] })])).toEqual([])
+  await admin.post('/api/install_app', { name: APP })
+  const linked = await createUser({ roles: [], fullName: 'Linked', email: 'job-linked@example.test' })
+  const ended = await createUser({ roles: [], fullName: 'Ended', email: 'job-ended@example.test' })
+  await sql`insert into sign_in_identity (id, person_id, method, subject, linked_by) values ('uid_job_live', ${linked.user}, 'google', 'g-live', 'test')`
+  await sql`insert into sign_in_identity (id, person_id, method, subject, linked_by, ended_at, ended_reason)
+    values ('uid_job_ended', ${ended.user}, 'google', 'g-ended', 'test', now(), 'left')`
+  await runDue()
+  const [{ people }] = calls() as { people: { person: string; sign_ins: Record<string, string[]> }[] }[]
+  expect(people.find((p) => p.person === linked.user)?.sign_ins).toEqual({ google: ['g-live'] })
+  expect(people.find((p) => p.person === ended.user)?.sign_ins).toEqual({ google: [] })
+})
+
+test('a job declared off is installed switched off', async ({ admin }) => {
+  expect(await discoverPackages([await writeApp({ jobs: [{ ...sweep, enabled: false }] })])).toEqual([])
+  await admin.post('/api/install_app', { name: APP })
+  expect(await row(SWEEP)).toMatchObject({ enabled: false, owner_app: APP })
+  expect(await queued(SWEEP)).toBe(0)
 })

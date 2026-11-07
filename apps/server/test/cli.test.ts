@@ -435,19 +435,19 @@ describe('#401: cli settings:set', () => {
   }, 60_000)
 
   it('flips a locked scheduled job switch', async () => {
-    const [before] = await sql`select enabled from scheduled_job where row_id = 'disable_leavers'`
+    const [before] = await sql`select enabled from scheduled_job where row_id = 'check_sla'`
     await sql`delete from instance_settings_apply`
-    await sql`insert into instance_settings_apply ${sql({ applied_by: 'cli-test', managed_paths: sql.json([{ table: 'Scheduled Job', row_id: 'disable_leavers', field: 'enabled' }]) })}`
+    await sql`insert into instance_settings_apply ${sql({ applied_by: 'cli-test', managed_paths: sql.json([{ table: 'Scheduled Job', row_id: 'check_sla', field: 'enabled' }]) })}`
     try {
       const target = !before.enabled
-      const out = await cli(['settings:set', 'enabled', '--stdin', '--table', 'Scheduled Job', '--row', 'disable_leavers'], `${target}\n`)
-      expect(out).toContain(`Scheduled Job disable_leavers enabled set (${target})`)
-      const [after] = await sql`select enabled from scheduled_job where row_id = 'disable_leavers'`
+      const out = await cli(['settings:set', 'enabled', '--stdin', '--table', 'Scheduled Job', '--row', 'check_sla'], `${target}\n`)
+      expect(out).toContain(`Scheduled Job check_sla enabled set (${target})`)
+      const [after] = await sql`select enabled from scheduled_job where row_id = 'check_sla'`
       expect(after.enabled).toBe(target)
     } finally {
       // Back through the same path, so the job queue is re-timed back too and
       // no queued run leaks into the job tests.
-      await cli(['settings:set', 'enabled', '--stdin', '--table', 'Scheduled Job', '--row', 'disable_leavers'], String(before.enabled))
+      await cli(['settings:set', 'enabled', '--stdin', '--table', 'Scheduled Job', '--row', 'check_sla'], String(before.enabled))
       await sql`delete from instance_settings_apply`
       await sql`delete from activity_log where "user" = 'cli' and operation like 'settings_set Scheduled Job%'`
     }
@@ -726,13 +726,6 @@ describe('the command line, command by command', () => {
     expect((await failure(['seed-pack', 'apply', 'missing-backend-coverage-pack']))?.stderr)
       .toBe(`error: Seed pack missing-backend-coverage-pack not found (${join(serverDir, 'seeds/missing-backend-coverage-pack/identifier-systems.json')})\n`)
     expect(await cli(['seed-pack', 'apply', 'jeyarama'])).toMatch(/^seed pack jeyarama: added .*; kept .*; sign-in methods linked .*; people_review \w+\n$/)
-  })
-
-  test('leavers:check is a dry run unless --apply, and --accept takes a count', async () => {
-    expect(await cli(['leavers:check'])).toMatch(/\nleaver check: dry run; nothing was changed\n$/)
-    expect((await failure(['leavers:check', '--accept', '3']))?.stderr).toBe('error: --accept only means something with --apply\n')
-    expect((await failure(['leavers:check', '--apply', '--accept']))?.stderr).toBe('error: --accept takes the number of people the dry run reported\n')
-    expect(await cli(['leavers:check', '--apply', '--accept', '3'])).toMatch(/^leaver check: .*\nleaver check: .*\n$/)
   })
 
   test('console runs a piped script to the end, writing through the row API', async () => {
