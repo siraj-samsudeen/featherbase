@@ -36,7 +36,13 @@ SAP. Requirement IDs below are the BRD's.
 - Development sample data for the BRD's pilot: ATK 1501, Enchakkal WH 9151 and a Chennai store.
   Its SAP numbers are made up.
 
-Not included: physical counts, custody hand-over and transfers (next steps), a live SAP
+- Physical verification counts (VER-01..03): a manager plans a count of a site or place with its
+  counters and a separate reviewer; starting it fixes the expected list; counters record blind;
+  the reviewer sees found, missing, moved, unlisted and duplicate lines, sends lines for recount,
+  and decides every exception before the count closes. Nothing writes off or touches SAP.
+
+Not included: offline count packs, RFID, importing a count sheet, custody hand-over and transfers
+(step 3), a live SAP
 connection, capitalization, depreciation and anything else SAP owns, reporting without signing in
 or by WhatsApp, scheduled servicing, sensors, and adding the app to the live Jeyarama instance.
 
@@ -47,6 +53,8 @@ or by WhatsApp, scheduled servicing, sensors, and adding the app to the live Jey
 - `asset-register`: places, asset types, assets and who may change them.
 - `asset-labels`: the QR label sheet and what scanning a label opens.
 - `asset-repair-jobs`: reporting a fault, the fix-by clock, and moving a job to fixed.
+- `asset-verification-counts`: planning a count, the fixed expected list, blind recording, review,
+  recount and decisions.
 
 ### Modified Capabilities
 
