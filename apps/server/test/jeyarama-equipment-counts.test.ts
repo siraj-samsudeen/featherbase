@@ -114,7 +114,10 @@ test('the reviewer sends lines back, decides every exception, and only then clos
   await expect(decide(manager, { asset: scale.row_id, decision: 'To Loss Prevention' })).rejects.toThrow('Only the count’s reviewer decides its lines')
   await expect(decide(meena, { asset: scale.row_id, decision: 'Capitalize' })).rejects.toThrow('Choose a decision that fits a missing item')
   await expect(record({ asset: forklift.row_id, outcome: 'Found here', area: dairy.row_id })).rejects.toThrow('Only items sent back for recount can be recorded during review')
-  const recount = await decide(meena, { asset: scale.row_id, decision: 'Recount' })
+  const first = await decide(meena, { asset: scale.row_id, decision: 'Found later' })
+  const changed = await meena.post<Row>('/api/save_row', { table: 'equipment.count_decision', row: { row_id: first.row_id, updated_at: first.updated_at, decision: 'Recount' } })
+  expect(changed.decision).toBe('Recount')
+  const recount = changed
   await expect(meena.post('/api/save_row', { table: 'equipment.count', row: { row_id: count.row_id, updated_at: (await latest(meena, count)).updated_at, count_state: 'Closed' } }))
     .rejects.toThrow('Decide every missing and unlisted line before closing')
   expect(await record({ asset: scale.row_id, outcome: 'Found here', area: dairy.row_id })).toMatchObject({ for_recount: true })

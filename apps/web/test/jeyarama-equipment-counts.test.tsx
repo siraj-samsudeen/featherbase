@@ -123,6 +123,7 @@ test('the reviewer sees each outcome, sends a line back, decides the rest and cl
   renderAssets(p.meena, ['Assets Manager'], `#review=${count.row_id}`)
   const user = userEvent.setup()
   await user.click(await screen.findByRole('button', { name: 'Move to review' }))
+  await screen.findByRole('button', { name: 'Close count' })
   const outcomes = await screen.findByRole('table', { name: 'Outcomes' })
   const cell = (name: string) => within(within(outcomes).getByRole('rowheader', { name }).closest('tr')!).getByRole('cell').textContent
   await waitFor(() => expect(cell('Expected')).toBe('3'))
@@ -139,7 +140,8 @@ test('the reviewer sees each outcome, sends a line back, decides the rest and cl
   expect(await screen.findByRole('alert')).toHaveTextContent('Decide every missing and unlisted line before closing')
   await user.selectOptions(within(missing).getByRole('combobox', { name: 'Decision for Weighing scale 2' }), 'To Loss Prevention')
   await user.selectOptions(within(screen.getByRole('region', { name: 'Not on the list' })).getByRole('combobox', { name: 'Decision for Blue crate stand' }), 'Controlled item')
-  await waitFor(async () => expect((await p.meena.get<{ data: Row[] }>('/api/table/equipment.count_decision?fields=["decision"]')).data).toHaveLength(2))
+  await waitFor(async () => expect((await p.meena.get<{ data: Row[] }>('/api/table/equipment.count_decision?fields=["decision"]')).data.map(d => d.decision).sort())
+    .toEqual(['Controlled item', 'To Loss Prevention']))
   await user.click(screen.getByRole('button', { name: 'Close count' }))
   expect(await screen.findByText('Closed')).toBeInTheDocument()
 })
