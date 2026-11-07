@@ -307,7 +307,7 @@ describe('every way of changing a row obeys the rules', () => {
     expect(await w.shelf('S-20')).toBeUndefined()
     // A new row has no page yet: the approver's email opens it on the approvals page.
     const [mail] = await w.mails(w.lead)
-    expect(mail.body).toContain(`/featherbase/admin/approvals?proposal=${held.pending_proposal.row_id}`)
+    expect(mail.body).toContain(`/featherbase/account/approvals?proposal=${held.pending_proposal.row_id}`)
     const decided = await approve(w.lead, held.pending_proposal.row_id)
     expect(decided).toMatchObject({ state: 'Applied', operation: 'create', result_row: 'S-20' })
     expect(await w.shelf('S-20')).toMatchObject({ site: 'A', label: 'New box', created_by: w.helper.user })

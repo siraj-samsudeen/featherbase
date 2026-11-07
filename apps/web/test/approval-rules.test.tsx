@@ -151,7 +151,7 @@ test('a new row waits on its form, and the approver finds it on their approvals 
   expect(await screen.findByTestId('form-waiting', {}, WAIT)).toHaveTextContent('Your new Apr Shelf row is waiting for approval.')
   expect(label()).toHaveValue('')
   const [proposal] = await sql`select row_id from change_proposal where target_table = 'Apr Shelf' and target_row is null`
-  await renderApp(`/featherbase/admin/approvals?proposal=${proposal.row_id}`, lead)
+  await renderApp(`/featherbase/account/approvals?proposal=${proposal.row_id}`, lead)
   const linked = await screen.findByTestId('approvals-linked', {}, WAIT)
   expect(within(linked).getByTestId('proposal-target')).toHaveTextContent('Apr Shelf')
   await waitFor(() => expect(within(linked).getByTestId('proposal-changes')).toHaveTextContent('Label: New box'), WAIT)
@@ -164,12 +164,12 @@ test('the approvals page lists what waits for the lead, and the menu counts it',
   const { lead, helper } = await world(admin, createUser as CreateUser)
   await propose(helper, 'S-1', { label: 'Red box' })
   await propose(helper, 'S-2', { bay: 7 })
-  await renderApp('/featherbase/admin/approvals', lead)
+  await renderApp('/featherbase/account/approvals', lead)
   const list = await screen.findByTestId('approvals-list', {}, WAIT)
   expect(within(list).getAllByTestId('proposal')).toHaveLength(2)
   expect(within(list).getAllByTestId('proposal-target').map((a) => a.textContent).sort()).toEqual(['Apr Shelf S-1', 'Apr Shelf S-2'])
   await waitFor(() => expect(screen.getByTestId('approvals-count')).toHaveTextContent('2'), WAIT)
-  await renderApp('/featherbase/admin/approvals', helper)
+  await renderApp('/featherbase/account/approvals', helper)
   expect(await screen.findByTestId('approvals-empty', {}, WAIT)).toHaveTextContent('Nothing waits for your approval.')
 })
 

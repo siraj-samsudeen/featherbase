@@ -873,7 +873,7 @@ export function AdminShell({ wide, fullWidth = false }: { wide: boolean; fullWid
               { to: GLOSSARY_PATH, label: 'Glossary', icon: BookOpen, testid: 'glossary-link' },
               ...(approvalCount > 0
                 ? [{
-                    to: '/featherbase/admin/approvals',
+                    to: '/featherbase/account/approvals',
                     search: { proposal: undefined },
                     label: 'Your approvals',
                     icon: ListChecks,

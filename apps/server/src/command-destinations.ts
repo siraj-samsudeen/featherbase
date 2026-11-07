@@ -76,6 +76,8 @@ export async function commandDestinations(user: string): Promise<CommandDestinat
     if (page.slug === 'find-person' && (!readable.has('Person') || !readable.has('Identifier System'))) continue
     add(page.title, `/featherbase/admin/${page.slug}`, 'Page')
   }
+  // #627: what waits for the person's approval.
+  add('Waiting for your approval', '/featherbase/account/approvals', 'Account')
   add('Sign-in methods', ACCOUNT_SIGN_IN_METHODS_PATH, 'Account')
   if (roles.includes(VIEWER_ROLE)) add(INTERIM_APPS.dash.title, INTERIM_APPS.dash.root, 'Report')
   for (const page of await getVisibleHomePages(user))

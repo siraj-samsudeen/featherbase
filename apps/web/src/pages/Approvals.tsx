@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
-import { adminPageTitle } from 'shared'
 import { ApiError, api } from '../lib/api'
 import { ProposalCard, WAITING_QUERY_KEY, type RuleProposal } from '../components/ChangeProposals'
 
 // #627: what waits for this person's approval, changes and new rows alike, each
 // with Approve and Reject. The approval email for a new row links here with
 // ?proposal=<id>, which opens that proposal at the top whatever its state.
+
+export const APPROVALS_TITLE = 'Waiting for your approval'
 
 export function waitingQuery() {
   return {
@@ -26,10 +26,7 @@ export function Approvals({ proposal }: { proposal?: string }) {
   const rest = (waiting.data?.proposals ?? []).filter((p) => p.row_id !== proposal)
   return (
     <div data-testid="approvals">
-      <div className="text-xs text-ink-subtle">
-        <Link to="/featherbase/admin" className="hover:text-ink">Home</Link>
-      </div>
-      <h1 className="text-xl font-semibold text-ink">{adminPageTitle('approvals')}</h1>
+      <h1 className="text-xl font-semibold text-ink">{APPROVALS_TITLE}</h1>
       <p className="mb-4 text-sm text-ink-muted">
         Changes and new rows that an approval rule holds until you approve them. Nothing changes until it is approved.
       </p>

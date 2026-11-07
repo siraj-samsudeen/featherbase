@@ -308,7 +308,7 @@ export async function mailProposal(proposal: string, table: string, target: stri
     const subject = target ? `${table} ${target}` : `a new ${table} row`
     await mailApprovers([...people], {
       subject: `Approval required: ${subject}`,
-      body: `${await personName(maker)} proposed ${target ? `a change to ${subject}` : subject}. It waits for your approval.\n\nAvailable actions: Approve, Reject\nOpen it: ${target ? rowHref(table, target) : `/featherbase/admin/approvals?proposal=${encodeURIComponent(proposal)}`}`,
+      body: `${await personName(maker)} proposed ${target ? `a change to ${subject}` : subject}. It waits for your approval.\n\nAvailable actions: Approve, Reject\nOpen it: ${target ? rowHref(table, target) : `/featherbase/account/approvals?proposal=${encodeURIComponent(proposal)}`}`,
       ref_table: target ? table : 'Change Proposal',
       reference_name: target ?? proposal,
     })

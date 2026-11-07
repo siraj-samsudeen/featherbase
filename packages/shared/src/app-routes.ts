@@ -86,8 +86,6 @@ export const ADMIN_PAGES: readonly { slug: string; title: string; manage?: true;
   { slug: 'find-person', title: 'Find a person by identifier' },
   { slug: 'explore', title: 'Explore' },
   { slug: 'glossary', title: 'Glossary' },
-  // #627: the changes and new rows an approval rule holds for this person.
-  { slug: 'approvals', title: 'Waiting for your approval' },
   { slug: 'waiting-for-access', title: 'Waiting for access', manage: true },
   { slug: 'apps', title: 'Apps', manage: true },
   { slug: 'instance-health', title: 'Instance health', manage: true },
