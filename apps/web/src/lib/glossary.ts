@@ -16,6 +16,9 @@ export interface GlossaryTerm {
   avoid: { word: string; reason: string | null }[]
   /** columnLabel: the column's label, as forms show it. */
   describes: { table: string; column: string | null; columnLabel: string | null }[]
+  /** #1037: the file URL of a picture shown with the definition, such as a
+   *  diagram of how words relate; null when there is none. */
+  picture: string | null
   /** An app's term someone here reworded. */
   editedHere: boolean
   /** …and the app has since shipped different wording of its own. */

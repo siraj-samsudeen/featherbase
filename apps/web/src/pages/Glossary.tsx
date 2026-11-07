@@ -39,6 +39,25 @@ function TermCard({ term, canEdit }: { term: GlossaryTerm; canEdit: boolean }) {
         </div>
       </div>
       <p className="mt-1 text-sm text-ink [overflow-wrap:anywhere]">{term.definition}</p>
+      {term.picture && (
+        // #1037: a diagram explains how words relate better than text. A
+        // private file needs no credential here: the browser sends the session
+        // cookie on this same-origin request.
+        <a
+          href={term.picture}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`Open the picture for ${term.term} full size`}
+          className="mt-3 block w-fit max-w-full"
+        >
+          <img
+            src={term.picture}
+            alt={`Picture for ${term.term}`}
+            loading="lazy"
+            className="max-h-96 max-w-full rounded-md border border-border object-contain"
+          />
+        </a>
+      )}
       {term.appWordingChanged && (
         <Notice tone="caution" className="mt-3">
           <p>The app's wording has changed.</p>
