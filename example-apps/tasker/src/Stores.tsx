@@ -1,4 +1,4 @@
-import { Button } from '@featherbase/shop-floor'
+import { Button, fmtDate } from '@featherbase/shop-floor'
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { ApiError, api } from './api'
 import {
@@ -31,7 +31,7 @@ export function storeName(stores: Store[], id: string) {
 }
 
 function shortDay(day: string) {
-  return new Date(`${day}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  return fmtDate(day)
 }
 
 function daysBetween(from: string, to: string) {
