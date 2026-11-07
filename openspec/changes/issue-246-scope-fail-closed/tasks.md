@@ -1,6 +1,6 @@
 ## 1. Settings
 
-- [x] 1.1 Migration `0153`: a Table's scope columns and its scope-required flag
+- [x] 1.1 Migration `0154`: a Table's scope columns and its scope-required flag
 - [x] 1.2 Table definitions accept, validate, keep and rename them
 
 ## 2. Enforcement

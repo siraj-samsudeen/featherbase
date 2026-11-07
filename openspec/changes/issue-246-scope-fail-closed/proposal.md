@@ -17,5 +17,5 @@ Store managers will edit their own store's section and subcategory rows at go-li
 
 ## Impact
 
-- Migration `0153` adds the two settings to every Table definition, off by default, so no existing Table changes behaviour.
+- Migration `0154` adds the two settings to every Table definition, off by default, so no existing Table changes behaviour.
 - Deriving Data Scope from an app's own tables (item 3 of #246) is not part of this change.
