@@ -42,8 +42,9 @@ export async function globalSearch(query: string, user: string): Promise<SearchH
   // Source-bound Tables are excluded: they have no physical table here (the
   // old query 500'd the whole search the moment one existed), and fanning a
   // per-keystroke ilike out to every foreign store is not a typeahead's job.
+  // #1041: an archived Table is out of everyday use, so out of search too.
   const tables = await sql`
-    select name, owner_app from table_def where kind = 'table' and data_source is null
+    select name, owner_app from table_def where kind = 'table' and data_source is null and archived_at is null
     order by name`
   // Stable sort: ordinary Tables first, registries last (#431).
   const isRegistry = (n: unknown) => (registryLabel(String(n)) ? 1 : 0)

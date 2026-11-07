@@ -4,6 +4,8 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
+import { canArchive } from '../src/components/ArchiveTable'
+import type { TableMeta } from '../src/lib/meta'
 
 type Admin = Parameters<typeof renderApp>[1]
 const OLD = 'Twa SAP Plant'
@@ -74,4 +76,13 @@ test('a row of an archived Table opens read only, with the banner', async ({ adm
   expect(await within(form).findByTestId('archived-banner')).toHaveTextContent(`${OLD} is archived.`)
   expect(within(form).queryByTestId('form-save')).not.toBeInTheDocument()
   expect(within(form).queryByTestId('unarchive-table')).not.toBeInTheDocument()
+})
+
+test("#1041: an app's table offers Archive; the platform's, a settings table and a sub-table don't", () => {
+  const table = { name: 'dash.store_floor', kind: 'table', owner_app: 'dash' } as TableMeta
+  expect(canArchive(table)).toBe(true)
+  expect(canArchive({ ...table, system: true })).toBe(false)
+  expect(canArchive({ ...table, system_written: true })).toBe(false)
+  expect(canArchive({ ...table, kind: 'settings' } as TableMeta)).toBe(false)
+  expect(canArchive({ ...table, kind: 'sub_table' } as TableMeta)).toBe(false)
 })
