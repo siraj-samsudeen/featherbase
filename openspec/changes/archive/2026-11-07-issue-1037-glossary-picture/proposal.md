@@ -17,6 +17,6 @@ Some business words only make sense together, such as how Site, Store, Plant, Bu
 
 ## Impact
 
-- Migration 0154 adds the column and its definition, moving the term's later columns down one place.
+- Migration 0155 adds the column and its definition, moving the term's later columns down one place.
 - `GET /api/glossary` returns `picture` on each term.
 - Not in this change: an app shipping a picture in its manifest, and a term naming the other terms it relates to. Both are in #1037's request; this change is its first slice.

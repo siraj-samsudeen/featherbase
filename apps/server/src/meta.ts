@@ -136,6 +136,10 @@ export interface TableMeta {
   system_written?: boolean
   // #559: the Table's rows decide which places people cover.
   decides_scope?: boolean
+  // #246: the Reference columns Data Scope narrows by (null: every Reference),
+  // and whether a person with no Data Scope on them sees no rows at all.
+  scope_on?: string[] | null
+  scope_required?: boolean
   // #905: archived: readable, never written, out of everyday menus.
   archived_at?: string | Date | null
   archived_by?: string | null

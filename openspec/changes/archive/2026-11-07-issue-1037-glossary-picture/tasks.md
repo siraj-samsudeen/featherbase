@@ -5,5 +5,5 @@
 
 ## 2. Build
 
-- [x] 2.1 Migration 0154: the Picture column after the definition
+- [x] 2.1 Migration 0155: the Picture column after the definition
 - [x] 2.2 `GET /api/glossary` returns the picture; the glossary page shows it
