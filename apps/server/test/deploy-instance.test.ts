@@ -343,6 +343,21 @@ describe('an image that ships only the new version', () => {
       .toThrow(`but ${name} ${nextVersion}, which this release ships, cannot upgrade from it: it has no migration from ${version}.`)
   })
 
+  test('a newest version whose history differs from the steps already applied is refused', async () => {
+    await pretendTo('staging')
+    await deploy()
+    await sql`update installed_app set migration_ledger = ${sql.json([{ id: 'applied_elsewhere', checksum: 'x' }])} where name = ${name}`
+    const next = shipOnlyNext()
+    // An older one beside it: the newest is the one the release would upgrade to.
+    const between = join(apps, 'other-between')
+    cpSync(next, between, { recursive: true })
+    writeFileSync(join(between, 'package.json'), JSON.stringify({ ...readJson(join(next, 'package.json')), version: '98.0.0' }))
+    writeFileSync(join(between, 'featherbase.json'), JSON.stringify({ ...readJson(join(next, 'featherbase.json')),
+      migrations: [{ id: 'add_note', fromVersion: version, toVersion: '98.0.0', operations: [{ kind: 'addColumn', table: 'other.task', column: { column_name: 'note', column_type: 'Data' } }] }] }))
+    await expect(assertInstalledAppsShipped({ followFiles: true })).rejects
+      .toThrow(`but ${name} ${nextVersion}, which this release ships, cannot upgrade from it: its migration history differs from the steps ${version} already applied.`)
+  })
+
   test('a record this platform cannot read names the step that needs the old files, which then may ship', async () => {
     await pretendTo('staging')
     await deploy()
