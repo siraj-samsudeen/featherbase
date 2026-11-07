@@ -516,7 +516,7 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
 
 async function record(db: Db, user: string, table: string, rowId: string, reason: string, snapshot: Row, run: string, root: string) {
   await db`insert into access_log ${db({
-    [ROW_KEY]: randomUUID(), created_by: user, updated_by: user, status: 'draft', position: 0,
+    [ROW_KEY]: randomUUID(), created_by: user, updated_by: user, submission_status: 'draft', position: 0,
     user, operation: 'purge', ref_table: table, reference_name: rowId, method: 'delete permanently',
     scope: `${root} (${run})`, reason, snapshot: JSON.parse(JSON.stringify(snapshot)) as unknown as string,
   })}`

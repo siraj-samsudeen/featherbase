@@ -40,9 +40,8 @@ async function setup(admin: TestClient) {
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data' },
-      // 'status' is now the standard lifecycle column, so this Table's own
-      // business status lives in 'ticket_status' (same convention as the
-      // real HD Ticket, src/sample-apps/helpdesk.ts) — bound below as the
+      // This Table's business status lives in 'ticket_status' (same convention
+      // as the real HD Ticket, src/sample-apps/helpdesk.ts) — bound below as the
       // workflow's state_field so the SLA's fulfilled_states can be checked
       // against it.
       { column_name: 'ticket_status', column_type: 'Choice', choices: 'Open\nResolved', default_value: 'Open' },

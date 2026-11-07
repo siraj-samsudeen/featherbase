@@ -6,6 +6,7 @@ export { validators } from './validators.ts'
 import { orgChartProvider, type Place } from './provider.ts'
 import { EMBED_STATE_LIMIT_BYTES, MONTH_CHOICES, buildReport, monthLabel, headingOf, initialState, istToday, needsShortCodes, periodOf, storeLabels, storeShortName, storesOf, type CachedAnswer, type Month, type MonthChoice, type SalesRow } from './report.ts'
 import { gzipBase64 } from './compress.ts'
+import { actions as sectionActions, reads as sectionReads } from './my-sections.ts'
 
 /** The places each person covers (featherbase B2), per store: the new org chart or today's derivation. */
 export const scopeProviders = { org_chart: orgChartProvider() }
@@ -120,7 +121,12 @@ async function storeReport(ctx: ScopedContext) {
   return { answer, today, report, heading: headingOf(placesOf(ctx), store, storeShortName(report, month)) }
 }
 
+/** Your sections and its approvals (#975). */
+export const actions = sectionActions
+
 export const reads = {
+  ...sectionReads,
+
   /** The signed-in person, as the platform knows them. */
   me({ user }: ReadContext) {
     return { user }

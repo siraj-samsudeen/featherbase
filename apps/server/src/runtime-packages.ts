@@ -12,6 +12,7 @@ import { AppError } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
 import { APP_ACCENTS, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
 import { callerDocuments, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
+import { baseTablesDeclaration } from './change-proposals'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import type { ScopeProviderBinding } from './person-scope'
 import { loadAppSetup, secretEntries, secretsDeclaration, settingsDeclaration } from './app-settings'
@@ -75,6 +76,8 @@ const frameOrigin = z.string().refine((value) => {
 const barControl = z.object({
   picker: z.string().min(1),
   options: z.string().min(1),
+  /** #975: the control stays away from a page whose address carries this key. */
+  hiddenWhen: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).optional(),
   sets: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/, 'A bar control sets a query-string key: lower case letters, digits and _, starting with a letter'),
 }).strict()
 
@@ -97,6 +100,8 @@ const manifestSchema = z.object({
   reads: readDeclaration.optional(),
   // #559: this app provides people's scope for the instance (one app at most).
   scopeProvider: scopeProviderDeclaration.optional(),
+  // #975: the instance Tables the app reads and proposes changes on.
+  baseTables: baseTablesDeclaration.optional(),
   // #620 (E2): what the app reads per instance, and the deployment variables
   // it reads. D4: which of the instance's roles should carry each app role,
   // written as App Role Binding rows once, at install.
@@ -443,8 +448,8 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     entryTable: manifest.entryTable, clientRoot, root, version: pkg.version, digest, manifest, app,
     scopeProvider: provider ? { app: manifest.name, title: manifest.title, version: pkg.version, tables: provider.tables, identifiers: provider.identifiers ?? [], provide: providers.get(provider.name)! } : undefined,
     // V1 stays recognizable as an exact upgrade predecessor, never gets a default policy.
-    actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations), setup } : undefined,
-    reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations), setup, datasets: manifest.datasets } : undefined }
+    actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations), setup, baseTables: manifest.baseTables } : undefined,
+    reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations), setup, datasets: manifest.datasets, baseTables: manifest.baseTables } : undefined }
 }
 
 // The apps on `paths`, by name@version, as boot takes them: each loaded and
@@ -848,7 +853,7 @@ export async function appBar(name: string, user: string) {
     return packages.get(name)!
   })
   const controls = []
-  for (const { picker, options, sets } of pkg.manifest.bar ?? []) {
+  for (const { picker, options, sets, hiddenWhen } of pkg.manifest.bar ?? []) {
     let result: unknown
     try {
       ({ result } = await withAppIdentity(name, pkg.version, () => runPackageRead(name, options, { payload: {} }, user)) as { result: unknown })
@@ -861,7 +866,7 @@ export async function appBar(name: string, user: string) {
     const parsed = barOptions.safeParse(result)
     if (!parsed.success)
       throw new AppError('InternalError', `App ${name}'s read ${options} answered options the bar cannot show: it must answer a list of { value, label }, both text`)
-    controls.push({ picker, sets, options: parsed.data })
+    controls.push({ picker, sets, options: parsed.data, ...(hiddenWhen ? { hiddenWhen } : {}) })
   }
   return { controls }
 }

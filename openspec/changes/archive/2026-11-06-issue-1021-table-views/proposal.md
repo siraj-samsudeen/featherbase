@@ -20,6 +20,6 @@ A link meant for stores has to point at Site today, and nothing stops it naming 
 ## Impact
 
 - Server: one resolver (`apps/server/src/views.ts`) that read, permission and link paths call first; the row-write gate refuses writes to a view; metadata-only branches in the Table engine.
-- Migration `0151_table_views.sql`: `table_def.view_of` and `table_def.view_filters`.
+- Migration `0153_table_views.sql`: `table_def.view_of` and `table_def.view_filters`.
 - Web: a view's list page and banner, "New view…" on a filtered list, view names in link column editors.
 - No app version change. The warehouse copy is unaffected: a view has no relation to copy.

@@ -29,6 +29,11 @@ import { RESERVED, SNAKE, TARGET_REQUIRED_TYPES, slugify } from '../lib/column-r
 import { buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from '@featherbase/shop-floor'
 import { tableOptionLabel, usePickableTables } from '../lib/session'
 
+// #1024: what can be chosen as a title. A link's value is the other row's id, so
+// a row headed by one reads as a bare id. A title already stored stays shown,
+// whatever its type or if hidden, so the page always says what the title is.
+const TITLE_CHOICE_TYPES = new Set(['Data', 'Text', 'Choice', 'Int'])
+
 interface NewColumn {
   label: string
   column_name: string
@@ -287,6 +292,24 @@ export function ColumnEditor({ table }: { table: string }) {
     },
   })
 
+  // #1024: the column that names the Table's rows, saved at once. Row titles are
+  // cached for minutes, and every link to this Table reads them.
+  const setTitle = useMutation({
+    mutationFn: (title_column: string | null) =>
+      api.put<TableMeta>(`/api/table_def/${encodeURIComponent(table)}`, { title_column }),
+    onSuccess: async (saved, title_column) => {
+      const column = saved.columns.find((c) => c.column_name === title_column)
+      setSaved(title_column ? `${column?.label ?? title_column} is now the title` : 'This Table has no title column now')
+      await queryClient.invalidateQueries({ queryKey: ['meta', table] })
+      await queryClient.invalidateQueries({ queryKey: ['row-title', table] })
+    },
+    // A refusal can mean the page is out of date: show what is true now.
+    onError: async () => {
+      setSaved(null)
+      await queryClient.invalidateQueries({ queryKey: ['meta', table] })
+    },
+  })
+
   if (meta.isPending) return <p className="text-sm text-ink-muted">Loading…</p>
   if (meta.isError || !meta.data)
     return (
@@ -382,6 +405,12 @@ export function ColumnEditor({ table }: { table: string }) {
         </p>
       )}
 
+      {setTitle.isError && (
+        <p className={cardClasses('mb-3 p-2 text-sm text-negative')} data-testid="ce-title-error">
+          {setTitle.error instanceof ApiError ? setTitle.error.message : 'Could not save the title'}
+        </p>
+      )}
+
       <div className={cardClasses('mb-4 p-3')}>
         <div className={labelClasses('mb-1')}>Columns</div>
         <div className="overflow-x-auto" data-testid="ce-columns-table">
@@ -391,6 +420,22 @@ export function ColumnEditor({ table }: { table: string }) {
                 {/* #738: In list comes first, so a phone shows it without
                     scrolling the table sideways. */}
                 <th className="whitespace-nowrap py-1 pr-2 text-center">In list</th>
+                {def.kind !== 'settings' && (
+                  <th className="whitespace-nowrap py-1 pr-2 text-center">
+                    Title
+                    {def.title_column && def.title_column !== 'row_id' && !def.system && (
+                      <button
+                        type="button"
+                        className={touchLinkClasses('ml-1 font-normal normal-case underline')}
+                        data-testid="ce-title-clear"
+                        disabled={setTitle.isPending}
+                        onClick={() => setTitle.mutate(null)}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </th>
+                )}
                 <th className="py-1">Label</th>
                 <th>Column name</th>
                 <th>Type</th>
@@ -424,6 +469,23 @@ export function ColumnEditor({ table }: { table: string }) {
                       </label>
                     )}
                   </td>
+                  {def.kind !== 'settings' && (
+                    <td className="pr-2 text-center">
+                      {(def.title_column === column.column_name || (TITLE_CHOICE_TYPES.has(column.column_type) && !column.hidden)) && (
+                        <label className="inline-flex size-control cursor-pointer items-center justify-center max-sm:size-touch">
+                          <input
+                            type="radio"
+                            name="ce-title-column"
+                            aria-label={`Title: ${column.label ?? column.column_name}`}
+                            data-testid={`ce-title-${column.column_name}`}
+                            checked={(setTitle.isPending ? setTitle.variables : def.title_column) === column.column_name}
+                            disabled={def.system || setTitle.isPending}
+                            onChange={() => setTitle.mutate(column.column_name)}
+                          />
+                        </label>
+                      )}
+                    </td>
+                  )}
                   <td className="py-1 pr-2">
                     <input
                       className={inputClasses('w-48 py-0.5')}

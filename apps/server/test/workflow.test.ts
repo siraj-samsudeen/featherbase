@@ -141,7 +141,7 @@ describe('WF-002/003: execution + server-side enforcement', () => {
       expect(await snapshot()).toEqual(before)
     }
     expect(await admin.post(`${base}/wf-srv-1:apply_workflow_action`, { action: 'Submit' }))
-      .toMatchObject({ row_id: 'wf-srv-1', title: 'x', workflow_state: 'Pending', status: 'draft' })
+      .toMatchObject({ row_id: 'wf-srv-1', title: 'x', workflow_state: 'Pending', submission_status: 'draft' })
     const after = await snapshot()
     expect(after.rows).toEqual(before.rows.map((row) => row.row_id === 'wf-srv-1'
       ? { ...row, workflow_state: 'Pending', updated_at: expect.any(Date) } : row))
@@ -165,13 +165,13 @@ describe('WF-002/003: execution + server-side enforcement', () => {
     await expect(
       viewer.post(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent('wf-srv-1')}:apply_workflow_action`, { action: 'Submit' }),
     ).rejects.toMatchObject({ status: 403 })
-    const doc = await admin.get<{ workflow_state: string | null; status: string }>(
+    const doc = await admin.get<{ workflow_state: string | null; submission_status: string }>(
       `/api/table/${encodeURIComponent(DT)}/wf-srv-1`,
     )
     // New documents start at the workflow's initial state (WF-003) — the
     // refused action must leave them there.
     expect(doc.workflow_state).toBe('Draft')
-    expect(doc.status).toBe('draft')
+    expect(doc.submission_status).toBe('draft')
   })
 
   test('an authorized user (admin) drives states and the audit trail records who/what', async ({
@@ -180,19 +180,19 @@ describe('WF-002/003: execution + server-side enforcement', () => {
     await setup(admin)
     await makeFlow(admin)
     await makeDoc(admin)
-    const submit = await admin.post<{ workflow_state: string; status: string }>(
+    const submit = await admin.post<{ workflow_state: string; submission_status: string }>(
       `/api/table/${encodeURIComponent(DT)}/wf-srv-1:apply_workflow_action`,
       { action: 'Submit' },
     )
     expect(submit.workflow_state).toBe('Pending')
-    expect(submit.status).toBe('draft')
+    expect(submit.submission_status).toBe('draft')
 
-    const approve = await admin.post<{ workflow_state: string; status: string }>(
+    const approve = await admin.post<{ workflow_state: string; submission_status: string }>(
       `/api/table/${encodeURIComponent(DT)}/wf-srv-1:apply_workflow_action`,
       { action: 'Approve' },
     )
     expect(approve.workflow_state).toBe('Approved')
-    expect(approve.status).toBe('submitted')
+    expect(approve.submission_status).toBe('submitted')
 
     const trail = await sql`
       select action, from_state, to_state, actor from workflow_action

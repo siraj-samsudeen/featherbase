@@ -27,7 +27,7 @@ export const STANDARD_COLUMNS = [
   'created_at',
   'updated_at',
   'updated_by',
-  'status',
+  'submission_status',
   'position',
   'parent',
   'parenttype',
@@ -403,7 +403,7 @@ function createTableDDL(def: TableDef, relation = tableName(def.name)): string |
     `"created_at" timestamptz not null default now()`,
     `"updated_at" timestamptz not null default now()`,
     `"updated_by" varchar(140) not null default 'Administrator'`,
-    `"status" text not null default 'draft'`,
+    `"submission_status" text not null default 'draft'`,
     `"position" integer not null default 0`,
   ]
   if ((def.kind ?? 'table') === 'table')
@@ -624,6 +624,8 @@ export async function updateTable(
       id_pattern: def.id_pattern ?? existing.id_pattern,
       // Only when named: null or an empty value clears them, leaving them out keeps them.
       ...(named.title_column !== undefined ? { title_column: def.title_column || null } : {}),
+      // A title column removed with this update names nothing any more.
+      ...(existing.title_column && opts.remove_columns?.includes(existing.title_column) ? { title_column: null } : {}),
       ...(def.reading_presentation !== undefined ? { reading_presentation: def.reading_presentation } : {}),
       ...(named.description !== undefined ? { description: def.description || null } : {}),
       // Only when given: an update that leaves it out keeps the Table's choice.

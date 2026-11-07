@@ -200,3 +200,47 @@ test.describe('phone layout', () => {
     })
   })
 })
+
+// #1024: a link from another Table, already on screen once, reads the new title.
+test('choosing a Title takes effect in the list and in links', async ({ page, request }) => {
+  const token = await adminToken(request)
+  const headers = { Authorization: `Bearer ${token}` }
+  const ZONE = 'Title Zone'
+  const STORE = 'Title Store'
+  await deleteTableIfExists(request, token, STORE)
+  await deleteTableIfExists(request, token, ZONE)
+  await request.post('/api/table_def', {
+    headers,
+    data: {
+      name: ZONE,
+      id_pattern: 'field:zone_code',
+      columns: [
+        { column_name: 'zone_code', label: 'Zone code', column_type: 'Data', in_list_view: true },
+        { column_name: 'zone_name', label: 'Zone name', column_type: 'Data', in_list_view: true },
+      ],
+    },
+  })
+  await request.post('/api/save_row', { headers, data: { table: ZONE, row: { zone_code: 'VLM', zone_name: 'Vellayambalam' } } })
+  await request.post('/api/table_def', {
+    headers,
+    data: {
+      name: STORE,
+      columns: [
+        { column_name: 'store_name', column_type: 'Data', in_list_view: true },
+        { column_name: 'zone', column_type: 'Reference', reference_table: ZONE, in_list_view: true },
+      ],
+    },
+  })
+  await request.post('/api/save_row', { headers, data: { table: STORE, row: { store_name: 'East', zone: 'VLM' } } })
+
+  await page.goto(`/featherbase/admin/table/${tableSlug(STORE)}`)
+  await expect(page.getByTestId('cell-zone')).toHaveText('VLM')
+
+  // Moved within the app, so a title read before the change could still be held.
+  await page.evaluate((to) => { history.pushState({}, '', to); dispatchEvent(new PopStateEvent('popstate')) }, `/featherbase/admin/table/${tableSlug(ZONE)}/columns`)
+  await page.getByTestId('ce-title-zone_name').click()
+  await expect(page.getByTestId('ce-saved')).toContainText('Zone name is now the title')
+
+  await page.evaluate((to) => { history.pushState({}, '', to); dispatchEvent(new PopStateEvent('popstate')) }, `/featherbase/admin/table/${tableSlug(STORE)}`)
+  await expect(page.getByTestId('cell-zone')).toContainText('Vellayambalam')
+})

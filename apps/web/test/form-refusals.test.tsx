@@ -178,13 +178,13 @@ test('primary lifecycle actions reach the amended draft from a cancelled row', a
   await user.click(await screen.findByRole('tab', { name: 'Map' }))
   await user.click(await screen.findByRole('button', { name: 'Submit' }))
   await user.click(await screen.findByRole('button', { name: 'Cancel' }))
-  await waitFor(async () => expect(await admin.get(path)).toMatchObject({ status: 'cancelled', item: 'tea for north depot' }))
+  await waitFor(async () => expect(await admin.get(path)).toMatchObject({ submission_status: 'cancelled', item: 'tea for north depot' }))
   await user.click(await screen.findByRole('button', { name: 'Amend' }))
   await screen.findByRole('button', { name: 'Submit' })
   await user.click(screen.getByRole('tab', { name: 'Form' }))
   await waitFor(() => expect(field('item')).toHaveValue('tea for north depot'))
   expect(await admin.get(`${path}-1`)).toMatchObject({
-    status: 'draft', amended_from: saved.row_id, item: 'tea for north depot',
+    submission_status: 'draft', amended_from: saved.row_id, item: 'tea for north depot',
   })
   expect(screen.getByRole('button', { name: 'Submit' })).toBeVisible()
 })
@@ -204,7 +204,7 @@ test('submitting a row someone else already submitted is refused with the reason
   await user.click(submit)
   await waitFor(() => expect(screen.getByTestId('form-banner')).not.toBeEmptyDOMElement())
   expect(screen.getByTestId('form-banner')).toHaveTextContent('Frf Order ord-1 has status submitted; expected draft')
-  expect(((await admin.get(`/api/table/${enc('Frf Order')}/ord-1`)) as { status: string }).status).toBe('submitted')
+  expect(((await admin.get(`/api/table/${enc('Frf Order')}/ord-1`)) as { submission_status: string }).submission_status).toBe('submitted')
 })
 
 test('a Reference to a service account shows the account by its label, not its id', async ({ admin }) => {

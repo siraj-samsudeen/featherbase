@@ -99,7 +99,7 @@ test('IMP-010: multi-sheet workbook — one sheet to a new Table, one mapped ont
     await expect(grid.nth(2).locator('[data-rowfield=column_type]')).toHaveValue('Choice')
     // IMP-012: the editable display label sits beside the machine name.
     await expect(grid.nth(2).locator('[data-rowfield=label]')).toHaveValue('Status')
-    await expect(grid.nth(2).locator('[data-rowfield=column_name]')).toHaveValue('status_1')
+    await expect(grid.nth(2).locator('[data-rowfield=column_name]')).toHaveValue('status')
     await expect(grid.nth(2)).toContainText('Closed, Open')
     // Rename the new Table so re-runs and other specs can't collide.
     await page.getByTestId('iw-new-name-0').fill(NEW_DT)
@@ -176,7 +176,7 @@ test('IMP-010: multi-sheet workbook — one sheet to a new Table, one mapped ont
   const meta = (await (
     await request.get(`/api/table/${encodeURIComponent(NEW_DT)}:meta`, { headers })
   ).json()) as { columns: { column_name: string; column_type: string; choices: string | null }[] }
-  const status = meta.columns.find((c) => c.column_name === 'status_1')
+  const status = meta.columns.find((c) => c.column_name === 'status')
   expect(status?.column_type).toBe('Choice')
   expect(status?.choices).toBe('Closed\nOpen')
 })

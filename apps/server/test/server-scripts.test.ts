@@ -14,9 +14,7 @@ async function setup(admin: TestClient) {
     name: DT,
     columns: [
       { column_name: 'amount', column_type: 'Int' },
-      // 'status' is now a reserved standard column (the lifecycle state), so
-      // this custom field — a plain business field, unrelated to draft/
-      // submitted/cancelled — is renamed to size_label to avoid the clash.
+      // A plain business field, unrelated to draft/submitted/cancelled.
       { column_name: 'size_label', column_type: 'Data' },
     ],
   })
