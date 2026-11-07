@@ -76,9 +76,14 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   auto_email_report: { '*': code },
   background_job: { method: code, payload: text, job_status: code, error: text, trigger: code },
   // #975: a proposed change. Its values and the app's description are about the row, not a person.
-  change_proposal: { app: code, target_table: code, target_row: on('target_table'), maker: id, proposal_state: code, about: text, decided_by: id, decision_reason: text, result_row: on('target_table') },
+  change_proposal: { app: code, target_table: code, target_row: on('target_table'), maker: id, proposal_state: code, about: text, decided_by: id, decision_reason: text, result_row: on('target_table'),
+    // #627: the values the maker saved are about the row, not a person.
+    operation: code, proposed_values: text },
   change_proposal_column: { column_name: code, original_value: text, proposed_value: text, review_base_value: text },
-  change_proposal_approver: { person: id, role: code },
+  change_proposal_approver: { person: id, role: code, requirement: code, approved_by: id },
+  // #627: approval rules are configuration; a resolver is an app's function name, never a person.
+  approval_rule: { ref_table: code, operations: code, governed_columns: code, row_condition: text, maker_role: code, maker_resolver: code, outcome: code, approvals_needed: code, description: text },
+  approval_rule_approver: { role: code, resolver: code },
   client_script: { ref_table: code, script: text },
   column_def: { '*': code, label: text },
   comment: { ref_table: code, ref_name: on('ref_table'), content: text },

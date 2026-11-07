@@ -55,9 +55,11 @@ async function stampOf(table: string, name: string, user: SessionUser): Promise<
   return (await getDoc(table, name, user.row_id)).updated_at
 }
 
-async function editRow(table: string, name: string, values: Record<string, unknown>, user: SessionUser) {
+// #627: a row an approval rule holds is not changed; its proposal waits, and the answer lists it.
+async function editRow(table: string, name: string, values: Record<string, unknown>, user: SessionUser, pending: string[]) {
   const updated_at = await stampOf(table, name, user)
-  await saveDoc(table, { ...values, [ROW_KEY]: name, updated_at }, user.row_id)
+  const saved = await saveDoc(table, { ...values, [ROW_KEY]: name, updated_at }, user.row_id)
+  if (saved.pending_proposal) pending.push(name)
 }
 
 async function deleteRow(table: string, name: string, user: SessionUser, bound: boolean) {
@@ -113,13 +115,16 @@ async function runBulk(
 registerCollectionAction('bulk-edit', {
   effect: 'write',
   description:
-    'Set the same values on several rows ({ rows: [...], values: { column: value } }); returns { changed }. ' +
+    'Set the same values on several rows ({ rows: [...], values: { column: value } }); returns { changed }, and ' +
+    'waiting_for_approval: [rows] when an approval rule holds some. ' +
     'All-or-nothing on a platform Table; on a connected Table every row is tried and failures are listed ({ changed, failed }).',
   handler: async ({ table, args, user }) => {
     const rows = rowsOf(args)
     const values = valuesOf(args)
-    const { done, failed } = await runBulk(table, rows, 'changed', (name) => editRow(table, name, values, user))
-    return failed ? { changed: done, failed } : { changed: done }
+    const pending: string[] = []
+    const { done, failed } = await runBulk(table, rows, 'changed', (name) => editRow(table, name, values, user, pending))
+    const waiting = pending.length ? { changed: done - pending.length, waiting_for_approval: pending } : { changed: done }
+    return failed ? { ...waiting, failed } : waiting
   },
 })
 

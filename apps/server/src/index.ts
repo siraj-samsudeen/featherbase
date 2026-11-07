@@ -13,6 +13,8 @@ import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { createTable, deleteTable, renameColumn, renameCustomTable, setIdPattern, tableStorageIdentity, updateTable } from './table-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { rowForCaller } from './row-readers'
+import { approveProposal, proposalFor, proposalsForRow, proposalsWaitingFor, rejectProposal } from './rule-decisions'
+import { approvalResolverNames } from './approval-resolvers'
 import { countDocs, getList, groupCount } from './query'
 import { hasMandatoryRowAccess, mandatoryReferencesWhere } from './mandatory-access'
 import { loadControllers } from './controllers'
@@ -1685,6 +1687,7 @@ app.post('/api/save_row', async (c) => {
     throw new AppError('ValidationError', 'Expected { table, row }')
   const hadRowId = Boolean(body.row[ROW_KEY])
   const saved = await saveDoc(body.table, body.row, who(c))
+  if (saved.pending_proposal) return c.json(await heldForCaller(body.table, saved, who(c)), 202)
   publishDocEvent(body.table, String(saved.row_id), hadRowId ? 'updated' : 'created')
   return c.json(await rowForCaller(body.table, saved, who(c)), 201)
 })
@@ -2044,6 +2047,35 @@ app.post('/api/server_script/:method', async (c) => {
   return c.json({ result: await runApiScript(c.req.param('method'), args) })
 })
 
+// #627: a save an approval rule held. The row as it still is (none, for a held new row), and the
+// proposal waiting for approval. 202: accepted, not yet applied.
+async function heldForCaller(table: string, saved: Record<string, unknown>, user: string) {
+  const { pending_proposal, ...row } = saved
+  return { ...(row.row_id ? await rowForCaller(table, row, user) : { table, row_id: null }), pending_proposal }
+}
+
+// #627: Change Proposals made by approval rules, and their decisions.
+app.get('/api/change_proposals/waiting', async (c) => c.json({ proposals: await proposalsWaitingFor(who(c)) }))
+app.get('/api/change_proposals/:id', async (c) => c.json(await proposalFor(c.req.param('id'), who(c))))
+app.get('/api/row_proposals/:table/:name', async (c) => {
+  const table = await resolveTableName(c.req.param('table'))
+  return c.json({ proposals: await proposalsForRow(table, c.req.param('name'), who(c)) })
+})
+app.post('/api/change_proposals/:id/approve', async (c) => {
+  const proposal = await approveProposal(c.req.param('id'), who(c))
+  if (proposal.state === 'Applied' && proposal.result_row) publishDocEvent(proposal.target_table, proposal.result_row, proposal.target_row ? 'updated' : 'created')
+  return c.json(proposal)
+})
+app.post('/api/change_proposals/:id/reject', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { reason?: unknown }
+  return c.json(await rejectProposal(c.req.param('id'), who(c), body.reason))
+})
+// The names a rule can use for "the person an app names for the row".
+app.get('/api/approval_resolvers', async (c) => {
+  await assertSystemManager(who(c))
+  return c.json({ resolvers: approvalResolverNames() })
+})
+
 // WF-002: the transitions available to the current user for a document,
 // plus its current state — drives the form's action buttons.
 app.get('/api/workflow/:table/:name', async (c) => {
@@ -2362,6 +2394,7 @@ app.post('/api/table/:table', async (c) => {
   }
   const doc = (await c.req.json()) as Record<string, unknown>
   const saved = await saveDoc(table, doc, user.row_id, 'insert')
+  if (saved.pending_proposal) return c.json(await heldForCaller(table, saved, user.row_id), 202)
   publishDocEvent(table, String(saved.row_id), 'created')
   return c.json(await rowForCaller(table, saved, user.row_id), 201)
 })
@@ -2408,6 +2441,7 @@ app.patch('/api/table/:table/:name', async (c) => {
   const doc = (await c.req.json()) as Record<string, unknown>
   doc.row_id = name
   const saved = await saveDoc(table, doc, user.row_id)
+  if (saved.pending_proposal) return c.json(await heldForCaller(table, saved, user.row_id), 202)
   publishDocEvent(table, String(saved.row_id), 'updated')
   return c.json(await rowForCaller(table, saved, user.row_id))
 })

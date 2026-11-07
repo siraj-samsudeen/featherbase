@@ -12,6 +12,7 @@ import { invalidateSources } from './sources/registry'
 import { activeApps, appOperation, provisionApp } from './app-lifecycle'
 import { cadenceSeconds, jobRegistrant, registerJob, syncScheduledJobs, unregisterAppJobs, type Cadence, type JobHandler } from './jobs'
 import { assertJobClaimable } from './app-jobs'
+import { registerApprovalResolvers, unregisterApprovalResolvers, type ApprovalResolverFn } from './approval-resolvers'
 import {
   registerController,
   unregisterController,
@@ -119,6 +120,9 @@ export interface AppManifest {
   // Recurring jobs this app schedules. Wired as
   // job handlers + a Scheduled Job row while the app is installed.
   scheduler_events?: SchedulerEvent[]
+  // #627: who counts as whom for approval rules, named in a rule as `<app>.<resolver>`. Each
+  // gets the Table and the row, and names the people (Person ids).
+  approval_resolvers?: Record<string, ApprovalResolverFn>
 }
 
 // Registry of apps KNOWN to this process (installed or not).
@@ -181,6 +185,7 @@ function wireHooks(manifest: AppManifest, claimed?: Set<string>): void {
   }
   wired.set(manifest.name, controllers)
   activeApps.add(manifest.name)
+  registerApprovalResolvers(manifest.name, manifest.approval_resolvers)
 
   // scheduler_events: register the handlers; the recurring enqueue itself is
   // ensured separately (install + boot) so a dead row gets re-seeded. #700:
@@ -195,6 +200,7 @@ function wireHooks(manifest: AppManifest, claimed?: Set<string>): void {
 
 function unwireHooks(name: string): void {
   activeApps.delete(name)
+  unregisterApprovalResolvers(name)
   for (const controller of wired.get(name) ?? []) unregisterController(controller)
   wired.delete(name)
   unregisterAppJobs(name)

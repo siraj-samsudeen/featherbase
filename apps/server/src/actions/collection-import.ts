@@ -439,6 +439,8 @@ export async function importRows({ table, args, user }: CollectionActionContext,
     let inserted = 0
     let updated = 0
     let changed = 0
+    // #627: rows an approval rule held for approval, written by nobody yet.
+    let waiting = 0
     const failed: FailedRow[] = []
     // RVT-R1 (spec 0005): record every row this part writes — id, action,
     // and the updated_at stamp the write left — so the run is revertable.
@@ -470,12 +472,14 @@ export async function importRows({ table, args, user }: CollectionActionContext,
             touched.push({ row_id: resolution.row_id!, action: 'updated', stamp: stampOf(resolution.updated_at) })
             continue
           }
-          const { saved, version, changed: rowChanged } = await saveImportedRow(meta, updateValues(record, upsert!, resolution), user.row_id, runId, true, managedColumns)
+          const { saved, version, changed: rowChanged, held } = await saveImportedRow(meta, updateValues(record, upsert!, resolution), user.row_id, runId, true, managedColumns)
+          if (held) { waiting++; continue }
           updated++
           if (rowChanged) changed++
           touched.push({ row_id: String(saved.row_id), action: 'updated', stamp: stampOf(saved.updated_at), ...(version ? { version } : {}) })
         } else {
-          const { saved } = await saveImportedRow(meta, row as Record<string, unknown>, user.row_id, runId, false, managedColumns)
+          const { saved, held } = await saveImportedRow(meta, row as Record<string, unknown>, user.row_id, runId, false, managedColumns)
+          if (held) { waiting++; continue }
           inserted++
           touched.push({
             row_id: String(saved[ROW_KEY]),
@@ -502,8 +506,9 @@ export async function importRows({ table, args, user }: CollectionActionContext,
     }
     await writeImportLog(table, user.row_id, { inserted, updated, upsert }, failed, { ...context, run_id: runId }, touched)
     // #687: every writing run names its run ID, so the caller can undo it.
-    if (!upsert) return { inserted, failed, run_id: runId }
-    return { updated, changed, unchanged: updated - changed, inserted, failed, run_id: runId }
+    const held = waiting ? { waiting_for_approval: waiting } : {}
+    if (!upsert) return { inserted, failed, run_id: runId, ...held }
+    return { updated, changed, unchanged: updated - changed, inserted, failed, run_id: runId, ...held }
 }
 
 // RVT-R1: the record of one written row. `version` names the version row an
