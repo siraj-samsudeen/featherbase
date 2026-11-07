@@ -91,6 +91,9 @@ describe('#1034: unticking an edited grant', () => {
     expect(revoked.data.changed).toEqual(expect.arrayContaining([
       ['ref_table', DT, null], ['role', ROLE, null], ['operation', 'read', null],
     ]))
+    // The team feed reads every history entry, this one's row gone or not.
+    const feed = await admin.get<{ items: { kind: string; sub?: string; label: string }[] }>('/api/activity_feed?scope=team')
+    expect(feed.items).toContainEqual(expect.objectContaining({ kind: 'change', sub: 'Permission', label: read.row_id }))
   })
 
   test('a grant never edited leaves who revoked it too', async ({ admin }) => {

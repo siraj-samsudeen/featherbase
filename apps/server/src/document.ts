@@ -1603,14 +1603,23 @@ async function assertChildRowsWritable(tx: typeof sql, meta: TableMeta, name: st
 }
 
 // DOC-006: a row referenced by Reference columns anywhere cannot be deleted.
-export function deleteDoc(...args: Parameters<typeof deleteDocImpl>) {
-  return appOperation(() => deleteDocImpl(...args))
+export function deleteDoc(table: string, name: string, user = 'Administrator', opts: { expectUpdatedAt?: string | null } = {}) {
+  return appOperation(() => deleteDocImpl(table, name, user, opts))
+}
+// #1034: the permission matrix ends a grant even when the grant has history.
+// Clearing the old flag was an update, which history never blocked, and access
+// must not outlast the decision to end it. So everything on the row stays,
+// with one more entry saying who ended it and what it was. No other delete,
+// and no other Table, comes this way.
+export function revokeGrant(name: string, user: string) {
+  return appOperation(() => deleteDocImpl('Permission', name, user, {}, true))
 }
 async function deleteDocImpl(
   table: string,
   name: string,
-  user = 'Administrator',
-  opts: { expectUpdatedAt?: string | null } = {},
+  user: string,
+  opts: { expectUpdatedAt?: string | null },
+  revoking = false,
 ): Promise<void> {
   const meta = await getMeta(table)
   assertRowsWritable(meta, 'deleted')
@@ -1631,7 +1640,9 @@ async function deleteDocImpl(
     // open that row, as only they may read it (#342, #609).
     if (ROW_ATTACHED_TABLES.has(meta.name)) await assertAttachedRowReadable(meta.name, existing as RowValues, user)
     await assertRowNotManaged(stx, meta, name, user)
-    if (meta.owner_app) {
+    if (revoking) {
+      // Nothing held back and nothing removed: see revokeGrant.
+    } else if (meta.owner_app) {
       if (!opts.expectUpdatedAt || !Number.isFinite(Date.parse(opts.expectUpdatedAt))
         || new Date(existing.updated_at as string).getTime() !== Date.parse(opts.expectUpdatedAt))
         throw new AppError('ConflictError', `${table} ${name} has been modified after you loaded it; supply its current updated_at`)
@@ -1641,7 +1652,7 @@ async function deleteDocImpl(
       // by refusing the delete while it has any (links are checked below).
       assertNothingRetained(table, name, await retainedActivityCounts(stx, table, name), true)
     }
-    await tx`delete from version where ref_table = ${table} and ref_name = ${name} and data->>'created' = 'true'`
+    if (!revoking) await tx`delete from version where ref_table = ${table} and ref_name = ${name} and data->>'created' = 'true'`
     if ((existing.submission_status as string) === 'submitted')
       throw new AppError(
         'ValidationError',
@@ -1692,6 +1703,7 @@ async function deleteDocImpl(
       tx: stx,
     }
     await runHooks('on_trash', ctx)
+    if (revoking) await recordVersion(stx, meta, name, existing as RowValues, {}, user)
 
     // Remove this row's own child rows, then the row.
     await assertChildRowsWritable(stx, meta, name, user)
