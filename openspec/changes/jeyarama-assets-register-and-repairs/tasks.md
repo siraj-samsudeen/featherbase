@@ -8,7 +8,7 @@
 ## 2. Assets app
 
 - [x] 2.1 App skeleton (`client-apps/jeyarama/equipment`), manifest with places, asset types, assets, jobs, three roles, permissions; built by `pnpm apps:prepare`
-- [x] 2.2 Server rules for jobs: place and fix-by time, state on assignment, Fixed needs a note, assignee is a technician or manager
+- [x] 2.2 Server rules for jobs: place and fix-by time, state on assignment, Fixed needs a note (any Assets person can be assigned; only technicians and managers can change a job)
 - [x] 2.3 Pages: repair jobs board, assets list by place, asset page with report form and history, label sheet with QR codes
 - [x] 2.4 Development sample data with Jeyarama's places, assets and jobs
 
