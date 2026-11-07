@@ -104,6 +104,26 @@ export async function seedTasker({ baseUrl, password = 'admin', expectedEnvironm
       if (!comments.length) await request('/api/save_row', { method: 'POST', body: { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: task.row_id, content } } })
     }
   }
+  // Issues: store managers and function heads are set only where none is named yet.
+  for (const [storeId, person] of Object.entries(TASKER_SCENARIOS.storeManagers ?? {})) {
+    const store = await request(`/api/table/tasker.store/${encodeURIComponent(storeId)}`)
+    if (!store.store_manager) await request('/api/save_row', { method: 'POST', body: { table: 'tasker.store', row: { row_id: store.row_id, updated_at: store.updated_at, store_manager: personId(person) } } })
+  }
+  for (const [owner_function, person] of Object.entries(TASKER_SCENARIOS.functionHeads ?? {}))
+    await ensure('tasker.function_head', 'owner_function', owner_function, { owner_function, head: personId(person) })
+  for (const rule of TASKER_SCENARIOS.slaRules ?? []) await ensure('tasker.sla_rule', 'row_id', rule.row_id, rule)
+  let issueCount = 0
+  for (const scenario of TASKER_SCENARIOS.issues ?? []) {
+    const { after = [], ...values } = scenario
+    const existed = (await request(`/api/table/tasker.issue${query([['row_id', '=', scenario.row_id]])}`)).data.length > 0
+    let issue = await ensure('tasker.issue', 'row_id', scenario.row_id, {
+      ...values, owner: personId(values.owner) ?? null, verifier: personId(values.verifier) ?? null,
+    }, { issue_title: scenario.issue_title })
+    if (!existed) for (const step of after)
+      issue = await request('/api/save_row', { method: 'POST', body: { table: 'tasker.issue', row: { row_id: issue.row_id, updated_at: issue.updated_at, ...step } } })
+    issueCount++
+  }
+  log(`Tasker issues ready (${issueCount} issues)`)
   const focusPath = `/api/user_settings/${encodeURIComponent('Task Management Focus')}`
   const current = (await request(focusPath)).settings?.task_ids ?? []
   const seededFocus = TASKER_SCENARIOS.focus.map((id) => tasks.get(id))
