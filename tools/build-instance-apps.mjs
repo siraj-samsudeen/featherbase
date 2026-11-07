@@ -5,9 +5,11 @@
 //   instance-apps/<app>-<version>/        package.json, featherbase.json, dist
 //   client-apps/<client>/instances/<instance>/
 //
-// To upgrade an installed version, an instance needs its exact files as well as
-// the new version's. A release PR lists it in instance.json under
-// previousVersions, naming a source archive of the commit that released it:
+// An instance upgrades from the manifest its database recorded (#924), so it
+// needs only the new version. When the release refuses because one step needs
+// the installed version's own files, a release PR lists that version in
+// instance.json under previousVersions, naming a source archive of the commit
+// that released it:
 //
 //   "previousVersions": [{ "path": "client-apps/acme/board", "version": "1.0.0",
 //                          "archive": "https://codeload.github.com/<owner>/<repo>/tar.gz/<commit>" }]

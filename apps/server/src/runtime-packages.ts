@@ -511,6 +511,37 @@ export async function whyUnshipped(row: Record<string, unknown>, paths: string[]
   return sameManifest(pkg, row) ? 'files' : 'manifest'
 }
 
+/** #924: what a release can do with an installed row whose exact version it
+ *  does not ship. An instance deploy upgrades it to the newest version on
+ *  `paths` from the recorded declaration, unless a step needs the installed
+ *  version's files or the new version's history does not continue from it; a
+ *  release that ships only older versions would roll it back. */
+export type UnshippedFate =
+  | { kind: 'upgrade'; to: string }
+  | { kind: 'needs-files'; to: string; step: string }
+  | { kind: 'history'; to: string; problem: string }
+  | { kind: 'rollback'; shipped: string }
+  | { kind: 'absent' }
+
+export async function unshippedFate(row: Record<string, unknown>, paths: string[]): Promise<UnshippedFate> {
+  const installed = String(row.package_version)
+  const versions = [...(await loadArtifacts(paths)).loaded.values()].filter(pkg => pkg.name === row.name)
+    .sort((a, b) => compareVersions(b.version, a.version))
+  const newest = versions[0]
+  if (!newest) return { kind: 'absent' }
+  if (compareVersions(newest.version, installed) <= 0) return { kind: 'rollback', shipped: newest.version }
+  const step = stepNeedingInstalledFiles(row)
+  if (step && !versions.some(pkg => pkg.version === installed && matchesInstalled(pkg, row)))
+    return { kind: 'needs-files', to: newest.version, step }
+  const ledger = migrationLedger(newest.manifest.migrations)
+  const installedLedger = row.migration_ledger as unknown[]
+  if (canonical(installedLedger) !== canonical(ledger.slice(0, installedLedger.length)))
+    return { kind: 'history', to: newest.version, problem: `its migration history differs from the steps ${installed} already applied` }
+  if (newest.manifest.migrations[installedLedger.length]?.fromVersion !== installed)
+    return { kind: 'history', to: newest.version, problem: `it has no migration from ${installed}` }
+  return { kind: 'upgrade', to: newest.version }
+}
+
 // Boot discovery indexes versions without upgrading an installed application.
 // Importing any server module grants full Node privileges, deliberately.
 export function discoverPackages(paths: string[]) {
@@ -567,8 +598,7 @@ async function upgradePlan(name: string, version: string, preview = true) {
   if (!row) refuse('Upgrade requires an installed runtime application')
   const target = await verifyArtifact(artifacts.get(`${name}@${version}`))
   assertKnownAccent(target)
-  const prior = await verifyArtifact(artifacts.get(`${name}@${row.package_version}`))
-  if (!matchesInstalled(prior, row)) refuse('Installed artifact does not match its recorded identity')
+  const prior = await installedPredecessor(row)
   if (row.activation_pending) throw new AppError('ConflictError', 'Activate the committed upgrade before previewing another version')
   if (compareVersions(version, prior.version) <= 0) refuse('Target must be newer than installed version; downgrades are unsupported')
   const history = target.manifest.migrations
@@ -604,8 +634,8 @@ async function upgradePlan(name: string, version: string, preview = true) {
       return canonical(scope) === canonical(priorScope)
     })
   }
-  if (!target.manifest.permissions.every((p) => added.has(p.table) || held.has(canonical(p)) || narrowsAudience(p)) || prior.app.runtime_manifest == null ||
-      (prior.app.runtime_manifest as { packageName: string }).packageName !== (target.app.runtime_manifest as { packageName: string }).packageName)
+  if (!target.manifest.permissions.every((p) => added.has(p.table) || held.has(canonical(p)) || narrowsAudience(p)) ||
+      prior.packageName !== (target.app.runtime_manifest as { packageName: string }).packageName)
     refuse('Permission or package identity changes are unsupported')
   const kept = new Set(target.manifest.permissions.map(canonical))
   const withdrawn = priorGrants.filter(g => !g.now || !kept.has(canonical(g.now))).map(g => g.prior)
@@ -629,6 +659,49 @@ async function upgradePlan(name: string, version: string, preview = true) {
   const losses = preview ? await countLosses(name, pending, { ownsClient: typeof target.manifest.client === 'string' }) : []
   return { row, target, prior, pending, ledger, withdrawn, granted, jobs,
     plan: { ...plan, planId: checksum(plan), losses: losses.map(describeLoss) } }
+}
+
+/** #924: the installed version an upgrade starts from, as this instance
+ *  recorded it at install or upgrade: its version, fingerprint and manifest
+ *  (Tables, columns, permissions, roles, jobs, glossary). Upgrading needs
+ *  nothing else from the old version, so its files need not ship. */
+interface Predecessor {
+  version: string
+  digest: string | null
+  packageName: string
+  manifest: z.infer<typeof manifestSchema>
+}
+
+/** The installed version's recorded declaration, or why this platform cannot
+ *  read it (a record from before the manifest was kept, or one an older
+ *  platform wrote in a shape this one refuses). */
+export function recordedPredecessor(row: Record<string, unknown>): Predecessor | { unreadable: string } {
+  const version = String(row.package_version ?? '')
+  const { packageName, packageVersion, ...declaration } = (row.manifest ?? {}) as Record<string, unknown>
+  if (typeof packageName !== 'string' || packageVersion !== version)
+    return { unreadable: `the instance's record of ${String(row.name)} ${version} does not hold its manifest` }
+  const parsed = manifestSchema.safeParse(declaration)
+  if (!parsed.success)
+    return { unreadable: `this platform cannot read the recorded manifest of ${String(row.name)} ${version}: ${parsed.error.issues.map(issue => issue.message).join('; ')}` }
+  return { version, digest: row.artifact_digest as string | null, packageName, manifest: parsed.data }
+}
+
+/** The step of an upgrade that needs the installed version's own files, and
+ *  why; null when the recorded declaration is enough. */
+export function stepNeedingInstalledFiles(row: Record<string, unknown>): string | null {
+  const recorded = recordedPredecessor(row)
+  return 'unreadable' in recorded ? `reading the installed declaration to replay the upgrade on it: ${recorded.unreadable}` : null
+}
+
+async function installedPredecessor(row: Record<string, unknown>): Promise<Predecessor> {
+  const recorded = recordedPredecessor(row)
+  if (!('unreadable' in recorded)) return recorded
+  // Only an unreadable record needs the old version's files, exactly as installed.
+  const shipped = artifacts.get(`${String(row.name)}@${String(row.package_version)}`)
+  if (!shipped) refuse(`Upgrading ${String(row.name)} needs its installed version's files, because ${recorded.unreadable}. Ship ${String(row.name)} ${String(row.package_version)} beside the new version and restart`)
+  const prior = await verifyArtifact(shipped)
+  if (!matchesInstalled(prior, row)) refuse('Installed artifact does not match its recorded identity')
+  return { version: prior.version, digest: prior.digest, packageName: (prior.app.runtime_manifest as { packageName: string }).packageName, manifest: prior.manifest }
 }
 
 // #651: where an upgrade's operations take the app's Tables, by identity,

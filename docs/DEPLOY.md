@@ -273,16 +273,27 @@ So moving prod is merging into its release branch, whose history is the deploy
 log. `cli repin-apps` is the re-pin by hand. It refuses a production server or
 database.
 
-**Upgrading needs both versions in the image.** An upgrade replays the installed
-version's declaration, and that exact version must ship or the release refuses.
-So the release PR that bumps an app adds the version it replaces to `instance.json`,
-naming a source archive of the commit that released it; the build rebuilds it from
-there (`tools/build-instance-apps.mjs`):
+**An upgrade needs only the new version in the image** (#924). Installing or
+upgrading an app records its manifest, version and fingerprint in the database,
+and the deploy step upgrades from that record, so the image ships only the
+version it upgrades to. The release still refuses, before any migration:
+
+- an installed, enabled app the image ships no version of: ship it, or disable the app;
+- an image whose newest version of the app is older than the installed one: rolling back is refused;
+- a new version with no migration from the installed one;
+- a step that needs the installed version's own files. Today that is only a
+  record this platform cannot read; the refusal names it. Then list the
+  installed version in `instance.json`, naming a source archive of the commit
+  that released it, and the build rebuilds it beside the new one
+  (`tools/build-instance-apps.mjs`):
 
 ```json
 "previousVersions": [{ "path": "client-apps/<client>/<app>", "version": "1.0.0",
                        "archive": "https://codeload.github.com/<owner>/<repo>/tar.gz/<commit>" }]
 ```
+
+This repository's default image has no deploy step (an administrator upgrades
+from Apps), so it still ships the installed versions beside the new ones.
 
 **Watch paths**, so that a service rebuilds only for what is in its image. On
 Railway they are set per service, and `.railway/railway.ts` records them for
