@@ -84,14 +84,20 @@ export async function seedTasker({ baseUrl, password = 'admin', expectedEnvironm
   }
   const tasks = new Map()
   for (const scenario of TASKER_SCENARIOS.tasks) {
-    const { explanation, comments = [], project, ...values } = scenario
+    const { explanation, comments = [], project, after = [], ...values } = scenario
+    const existed = (await request(`/api/table/tasker.task${query([['row_id', '=', scenario.row_id]])}`)).data.length > 0
     const task = await ensure('tasker.task', 'row_id', scenario.row_id, {
       ...values,
       ...(values.assigned_to ? { assigned_to: personId(values.assigned_to) } : {}),
+      ...(values.verifier ? { verifier: personId(values.verifier) } : {}),
       ...(values.personal_tasks_owner ? { personal_tasks_owner: personId(values.personal_tasks_owner) } : {}),
       ...(project ? { project: projects.get(project) } : {}),
     }, { task_title: scenario.task_title })
     tasks.set(scenario.row_id, task.row_id)
+    // Later steps (submitting, moving a date) run once, when the task is first created.
+    let current = task
+    if (!existed) for (const step of after)
+      current = await request('/api/save_row', { method: 'POST', body: { table: 'tasker.task', row: { row_id: task.row_id, updated_at: current.updated_at, ...step } } })
     for (const content of [...(explanation ? [explanation] : []), ...comments]) {
       const filters = [['ref_table', '=', 'tasker.task'], ['ref_name', '=', task.row_id], ['content', '=', content]]
       const comments = (await request(`/api/table/Comment${query(filters)}`)).data
