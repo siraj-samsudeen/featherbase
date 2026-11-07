@@ -7,13 +7,15 @@ import { Button, cardClasses, buttonClasses } from '@featherbase/shop-floor'
 import { createElement, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { rowHref } from '../../../packages/shared/src/app-routes'
-import { fmtDateTime } from '@featherbase/shop-floor'
+import { fmtDate, fmtDateTime } from '@featherbase/shop-floor'
 import { ApiError, api, getSessionUser, listAllResources } from './api'
 import { listVisiblePeople, PEOPLE_LIMITED_NOTICE, type PersonOption } from './people'
 import { Markdown } from './Markdown'
 import { describeHistoryValue } from './history'
 import { ProjectDescription } from './ProjectDescription'
 import { TaskActions } from './TaskActions'
+import { ClosureNotes, ProjectVerifier, ReasonForm, ToVerifyPage, VerificationPanel } from './Closure'
+import { SUBMITTED, waitingFor } from './verification'
 import { StoresContext, StoresPage, TaskStoreAndDue, dueNote, storeName, useStores, type Store } from './Stores'
 import { DUE_MARKS, DUE_MARK_LABELS, NO_STORE, calendarDay, dueMark, localDay } from './storeWork'
 import {
@@ -28,7 +30,7 @@ import {
   type TaskViewSetup,
 } from './taskViews'
 
-type View = 'inbox' | 'work' | 'together' | 'stores' | 'projects' | 'personal' | 'views'
+type View = 'inbox' | 'work' | 'verify' | 'together' | 'stores' | 'projects' | 'personal' | 'views'
 type DetailMode = 'compact' | 'inspector' | 'focus'
 
 interface Task {
@@ -48,6 +50,19 @@ interface Task {
   store: string | null
   start_date: string | null
   due_date: string | null
+  verifier: string | null
+  acknowledged_at: string | null
+  evidence_note: string | null
+  evidence_photo: string | null
+  submitted_by: string | null
+  submitted_at: string | null
+  verified_by: string | null
+  verified_at: string | null
+  return_reason: string | null
+  return_count: number | null
+  original_due_date: string | null
+  extension_count: number | null
+  cancel_reason: string | null
   updated_at: string
 }
 
@@ -55,6 +70,7 @@ interface Project {
   row_id: string
   project_name: string
   description: string | null
+  default_verifier: string | null
   updated_at: string
 }
 
@@ -91,6 +107,19 @@ const TASK_FIELDS = [
   'store',
   'start_date',
   'due_date',
+  'verifier',
+  'acknowledged_at',
+  'evidence_note',
+  'evidence_photo',
+  'submitted_by',
+  'submitted_at',
+  'verified_by',
+  'verified_at',
+  'return_reason',
+  'return_count',
+  'original_due_date',
+  'extension_count',
+  'cancel_reason',
   'created_at',
   'updated_at',
 ]
@@ -119,12 +148,13 @@ function sameDocumentHash(hash: string) {
   return `${location.pathname}${location.search}${hash}`
 }
 
-type TaskerIconName = 'inbox' | 'work' | 'together' | 'stores' | 'projects' | 'personal' | 'views'
+type TaskerIconName = 'inbox' | 'work' | 'verify' | 'together' | 'stores' | 'projects' | 'personal' | 'views'
 
 function TaskerIcon({ name }: { name: TaskerIconName }) {
   const paths: Record<TaskerIconName, ReactNode> = {
     inbox: <><path d="M4 5.5h16v13H4z" /><path d="M4 14h4l2 2h4l2-2h4" /></>,
     work: <><circle cx="12" cy="8" r="3" /><path d="M5.5 20c.6-4 2.7-6 6.5-6s5.9 2 6.5 6" /></>,
+    verify: <><circle cx="12" cy="12" r="8.5" /><path d="m8.2 12.3 2.6 2.6 5-5.4" /></>,
     together: <><circle cx="9" cy="8" r="2.5" /><circle cx="16.5" cy="9" r="2" /><path d="M3.5 19c.5-3.5 2.3-5.2 5.5-5.2s5 1.7 5.5 5.2" /><path d="M14.5 14.4c3.3-.4 5.3 1.1 6 4.1" /></>,
     stores: <><path d="M4 9.5 5.5 4.5h13L20 9.5" /><path d="M4 9.5c0 1.5 1.2 2.5 2.7 2.5S9.3 11 9.3 9.5c0 1.5 1.2 2.5 2.7 2.5s2.7-1 2.7-2.5c0 1.5 1.1 2.5 2.6 2.5S20 11 20 9.5" /><path d="M5.5 12v7.5h13V12M10 19.5v-4.5h4v4.5" /></>,
     projects: <><path d="M3.5 7.5h6l2-2h9v13h-17z" /><path d="M3.5 9.5h17" /></>,
@@ -192,7 +222,7 @@ export function TaskManagementPage() {
     queryKey: ['task-management', 'projects'],
     queryFn: () =>
       listAllResources<Project>('tasker.project', {
-        fields: ['row_id', 'project_name', 'description', 'updated_at'],
+        fields: ['row_id', 'project_name', 'description', 'default_verifier', 'updated_at'],
         order_by: 'project_name asc',
         limit_page_length: 200,
       }),
@@ -282,6 +312,8 @@ export function TaskManagementPage() {
   const people = peopleWithTaskResponsibility(users.data?.people ?? [], allTasks, me)
   const savedViews = parseSavedTaskViews(savedViewPreferences.data?.settings)
   const activeSavedView = savedViews.find((savedView) => savedView.id === activeSavedViewId)
+  const toVerify = waitingFor(allTasks, me)
+  const nameOf = (id: string) => personName(people.find(person => person.row_id === id))
   const activeTogetherTasks = allTasks.filter((task) => task.shared && !['Done', 'Cancelled'].includes(task.task_state))
 
   function copySetup(setup: TaskViewSetup): TaskViewSetup {
@@ -372,7 +404,7 @@ export function TaskManagementPage() {
     }
   }
 
-  async function patchTask(task: Task, patch: Partial<Task>) {
+  async function patchTask(task: Task, patch: Partial<Task> & { change_reason?: string }) {
     setError(null)
     try {
       await api.patch(
@@ -555,6 +587,7 @@ export function TaskManagementPage() {
   const primaryTabs: { id: View; label: string; icon: TaskerIconName; count?: number }[] = [
     { id: 'inbox', label: 'Inbox', icon: 'inbox', count: inbox.length },
     { id: 'work', label: 'My Work', icon: 'work', count: myWork.length },
+    { id: 'verify', label: 'To verify', icon: 'verify', count: toVerify.length },
     { id: 'together', label: 'Together', icon: 'together' },
     { id: 'stores', label: 'Stores', icon: 'stores' },
     {
@@ -713,6 +746,8 @@ export function TaskManagementPage() {
         </section>
       )}
 
+      {view === 'verify' && <ToVerifyPage tasks={toVerify} nameOf={nameOf} hrefFor={(id) => sameDocumentHash(`#task=${encodeURIComponent(id)}`)} />}
+
       {view === 'together' && (
         <section aria-labelledby="together-heading">
           <SectionTitle id="together-heading" title="Together" hint="Active work grouped by who has responsibility" />
@@ -753,6 +788,7 @@ export function TaskManagementPage() {
                   onMoveStar={(offset) => moveProjectStar(selectedProject, offset)}
                 />
                 <ProjectDescription key={selectedProject} project={projectById.get(selectedProject)!} onSaved={refresh} />
+                <ProjectVerifier project={projectById.get(selectedProject)!} people={people} nameOf={nameOf} onSaved={refresh} />
                 <form className="tasker-composer" onSubmit={async (event) => { event.preventDefault(); const title = projectTask; try { await createTask(title, { project: selectedProject }); setProjectTask('') } catch { /* shown above */ } }}>
                   <label className="sr-only" htmlFor="project-task">Add task to project</label>
                   <input id="project-task" readOnly={saving} value={projectTask} onChange={(event) => setProjectTask(event.target.value)} placeholder="Add a task, then press Enter" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 pointer-fine:text-sm" autoFocus />
@@ -1249,17 +1285,21 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
     setDraft(null); setError('')
     requestAnimationFrame(() => editButton.current?.focus())
   }
-  async function patch(patch: Partial<Task>, updatedAt: string) {
+  const [reasonFor, setReasonFor] = useState<{ kind: 'cancel' } | { kind: 'due'; due: string | null } | null>(null)
+  const nameOf = (person: string) => personName(people.find(user => user.row_id === person))
+  async function patch(patch: Record<string, unknown>, updatedAt: string): Promise<boolean> {
     setSaving(true); setError('')
     try {
       await api.patch(`/api/table/tasker.task/${encodeURIComponent(id)}`, { ...patch, updated_at: updatedAt })
       await onSaved()
-    } catch (error) { setError(error instanceof Error ? error.message : 'Could not update task') }
+      return true
+    } catch (error) { setError(error instanceof Error ? error.message : 'Could not update task'); return false }
     finally { setSaving(false) }
   }
   useEffect(() => {
     setDraft(null)
     setError('')
+    setReasonFor(null)
   }, [id])
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null
@@ -1314,7 +1354,7 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
     {task.data && !task.error && <>
       <fieldset className="tasker-detail-controls" disabled={saving || Boolean(draft)}>
         <legend className="sr-only">Task workflow</legend>
-        <label>State<select aria-label="Task state" value={task.data.task_state} onChange={(event) => void patch({ task_state: event.target.value }, task.data.updated_at)}>{STATES.map(state => <option key={state} disabled={state === 'Done' && completionBlocked}>{state}</option>)}</select></label>
+        <label>State<select aria-label="Task state" value={task.data.task_state} onChange={(event) => { if (event.target.value === 'Cancelled') setReasonFor({ kind: 'cancel' }); else void patch({ task_state: event.target.value }, task.data.updated_at) }}>{STATES.map(state => <option key={state} disabled={(state === 'Done' && (completionBlocked || Boolean(task.data.verifier && task.data.task_state !== 'Done'))) || (state === SUBMITTED && task.data.task_state !== SUBMITTED)}>{state}</option>)}</select></label>
         <label>Responsibility<select aria-label="Task responsibility" value={task.data.assigned_to ?? ''} onChange={(event) => void patch({ assigned_to: event.target.value || null }, task.data.updated_at)}>
           <option value="">Unassigned</option>{people.filter(user => effectiveShared || user.row_id === me).map(user => <option key={user.row_id} value={user.row_id}>{personName(user)}</option>)}
         </select></label>
@@ -1329,14 +1369,19 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
           {task.data.store && !stores.some(store => store.row_id === task.data.store) && <option value={task.data.store}>Unavailable store</option>}
         </select></label>
         <label>Start date<input type="date" value={calendarDay(task.data.start_date) ?? ''} onChange={(event) => void patch({ start_date: event.target.value || null }, task.data.updated_at)} /></label>
-        <label>Due date<input type="date" value={calendarDay(task.data.due_date) ?? ''} min={calendarDay(task.data.start_date) ?? undefined} onChange={(event) => void patch({ due_date: event.target.value || null }, task.data.updated_at)} /></label>
+        <label>Due date<input type="date" value={calendarDay(task.data.due_date) ?? ''} min={calendarDay(task.data.start_date) ?? undefined} onChange={(event) => { const due = event.target.value || null; if (task.data.due_date && due !== calendarDay(task.data.due_date)) setReasonFor({ kind: 'due', due }); else void patch({ due_date: due }, task.data.updated_at) }} /></label>
         {dueNote(task.data, localDay()) && <p className="tasker-due-note" data-mark={dueMark(task.data, localDay()) ?? undefined}>{dueNote(task.data, localDay())}</p>}
         <div className="tasker-detail-signals">
           {!task.data.assigned_to && <Button type="button"  onClick={() => void patch({ assigned_to: me }, task.data.updated_at)}>Take it</Button>}
           <Button type="button"  aria-pressed={task.data.urgent} onClick={() => void patch({ urgent: !task.data.urgent }, task.data.updated_at)}>{task.data.urgent ? 'Urgent' : 'Not urgent'}</Button>
-          <Button type="button" disabled={completionBlocked} onClick={() => void patch({ is_done: !task.data.is_done }, task.data.updated_at)}>{task.data.is_done ? 'Undo Done' : 'Mark Done'}</Button>
+          {(!task.data.verifier || task.data.is_done) && <Button type="button" disabled={completionBlocked} onClick={() => void patch({ is_done: !task.data.is_done }, task.data.updated_at)}>{task.data.is_done ? 'Undo Done' : 'Mark Done'}</Button>}
         </div>
       </fieldset>
+      {reasonFor?.kind === 'cancel' && <ReasonForm label="Reason for cancelling" action="Cancel task" onClose={() => setReasonFor(null)}
+        onSubmit={async (reason) => { if (await patch({ task_state: 'Cancelled', change_reason: reason }, task.data.updated_at)) setReasonFor(null) }} />}
+      {reasonFor?.kind === 'due' && <ReasonForm label="Reason for moving the due date" action="Move due date" note={reasonFor.due ? `Move the due date from ${fmtDate(calendarDay(task.data.due_date))} to ${fmtDate(reasonFor.due)}` : 'Remove the due date'} onClose={() => setReasonFor(null)}
+        onSubmit={async (reason) => { if (await patch({ due_date: reasonFor.due, change_reason: reason }, task.data.updated_at)) setReasonFor(null) }} />}
+      <VerificationPanel task={task.data} shared={effectiveShared} me={me} people={people} disabled={saving || Boolean(draft)} nameOf={nameOf} onPatch={(values) => patch(values, task.data.updated_at)} />
       {completionBlocked && <p className="mt-3 text-sm text-ink-muted">{unfinishedChildren.length ? 'Finish or cancel the open subtasks before marking this task Done.' : childProgress.error ? 'Subtasks could not be checked. Reopen this task to try again.' : 'Checking subtasks…'}</p>}
       {mode === 'compact' ? <div className="tasker-compact-summary">
         <Markdown>{task.data.description || 'No description yet.'}</Markdown>
@@ -1417,7 +1462,7 @@ function TaskList({ tasks, openChildren, users, projects, focusSet, me, explanat
   focusSet: Set<string>
   me: string
   explanations: Map<string, string>
-  onPatch: (task: Task, patch: Partial<Task>) => Promise<void>
+  onPatch: (task: Task, patch: Partial<Task> & { change_reason?: string }) => Promise<void>
   onFocus: (id: string) => Promise<void>
   onMove?: (id: string, offset: -1 | 1) => Promise<void>
   savedViewId?: string
@@ -1425,6 +1470,8 @@ function TaskList({ tasks, openChildren, users, projects, focusSet, me, explanat
   const queryClient = useQueryClient()
   const today = localDay()
   const [explaining, setExplaining] = useState<string | null>(null)
+  const [cancelling, setCancelling] = useState<string | null>(null)
+  const nameOf = (person: string) => personName(users.find(user => user.row_id === person))
   const [explanation, setExplanation] = useState('')
   const [posting, setPosting] = useState(false)
 
@@ -1455,13 +1502,17 @@ function TaskList({ tasks, openChildren, users, projects, focusSet, me, explanat
     </div>
     {tasks.map((task) => {
     const focused = focusSet.has(task.row_id)
-    const inactive = ['Blocked', 'On hold', 'Cancelled'].includes(task.task_state)
+    const inactive = ['Blocked', 'On hold'].includes(task.task_state)
+    const awaitsVerifier = Boolean(task.verifier) && !task.is_done
     return (
       <article key={task.row_id} className={`tasker-task-row ${task.is_done ? 'is-done' : ''}`}>
-        <input aria-label={`Mark ${task.task_title} done`} type="checkbox" disabled={!task.is_done && Boolean(openChildren.get(task.row_id))} title={openChildren.get(task.row_id) ? 'Finish or cancel the subtasks first' : undefined} checked={Boolean(task.is_done)} onChange={(event) => void onPatch(task, { is_done: event.target.checked })} className="tasker-task-checkbox" />
+        <input aria-label={`Mark ${task.task_title} done`} type="checkbox" disabled={(!task.is_done && Boolean(openChildren.get(task.row_id))) || awaitsVerifier} title={awaitsVerifier ? 'Its verifier closes this task. Submit it from the task details.' : openChildren.get(task.row_id) ? 'Finish or cancel the subtasks first' : undefined} checked={Boolean(task.is_done)} onChange={(event) => void onPatch(task, { is_done: event.target.checked })} className="tasker-task-checkbox" />
         <div className="tasker-task-copy">
           <a href={sameDocumentHash(savedViewId ? savedViewHash(savedViewId, task.row_id) : `#task=${encodeURIComponent(task.row_id)}`)} className={task.is_done ? 'line-through' : ''}>{task.task_title}</a>
           <TaskStoreAndDue task={task} today={today} />
+          <ClosureNotes task={task} nameOf={nameOf} />
+          {cancelling === task.row_id && <ReasonForm label="Reason for cancelling" action="Cancel task" onClose={() => setCancelling(null)}
+            onSubmit={async (reason) => { await onPatch(task, { task_state: 'Cancelled', change_reason: reason }); setCancelling(null) }} />}
           {explaining === task.row_id && (
             <form className="tasker-explanation-form" onSubmit={(event) => { event.preventDefault(); void addExplanation(task) }}>
               <label className="sr-only" htmlFor={`explain-${task.row_id}`}>Optional explanation</label>
@@ -1475,7 +1526,7 @@ function TaskList({ tasks, openChildren, users, projects, focusSet, me, explanat
           )}
         </div>
         <div className="tasker-task-metadata">
-          <select data-state={task.task_state} aria-label={`State for ${task.task_title}`} value={task.task_state ?? 'Not started'} onChange={(event) => { const taskState = event.target.value; void onPatch(task, { task_state: taskState }); if (['Blocked', 'On hold', 'Cancelled'].includes(taskState)) { setExplaining(task.row_id); setExplanation('') } }}>{STATES.map((state) => <option key={state}>{state}</option>)}</select>
+          <select data-state={task.task_state} aria-label={`State for ${task.task_title}`} value={task.task_state ?? 'Not started'} onChange={(event) => { const taskState = event.target.value; if (taskState === 'Cancelled') { setCancelling(task.row_id); return } void onPatch(task, { task_state: taskState }); if (['Blocked', 'On hold'].includes(taskState)) { setExplaining(task.row_id); setExplanation('') } }}>{STATES.map((state) => <option key={state} disabled={(state === 'Done' && awaitsVerifier) || (state === SUBMITTED && task.task_state !== SUBMITTED)}>{state}</option>)}</select>
           <select aria-label={`Destination for ${task.task_title}`} disabled={Boolean(task.parent_task)} value={!task.shared && task.personal_tasks_owner ? `personal:${task.personal_tasks_owner}` : task.project ? `project:${task.project}` : ''} onChange={(event) => { const [kind, value] = event.target.value.split(':', 2); void onPatch(task, kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null }) }}><option value="" disabled={task.shared}>{task.shared ? 'Shared work' : 'Inbox'}</option><optgroup label="Projects">{projects.map((project) => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}</optgroup><optgroup label="Personal tasks">{!task.shared && users.filter(user => user.row_id === me).map((user) => <option key={user.row_id} value={`personal:${user.row_id}`}>{personName(user)}</option>)}</optgroup></select>
           <div className="tasker-responsibility">
             <select aria-label={`Assign ${task.task_title}`} value={task.assigned_to ?? ''} onChange={(event) => void onPatch(task, { assigned_to: event.target.value || null })}><option value="">Unassigned</option>{users.filter(user => task.shared || user.row_id === me).map((user) => <option key={user.row_id} value={user.row_id}>{personName(user)}</option>)}</select>

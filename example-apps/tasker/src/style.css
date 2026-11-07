@@ -263,3 +263,29 @@ html:has(.tasker-focus-detail), html:has(.tasker-focus-detail) body { overflow: 
 .tasker-store-create div { display: flex; flex-wrap: wrap; gap: 8px; }
 .tasker-store-create input, .tasker-store-create select { min-width: 0; padding: 7px 10px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface); color: var(--color-ink); font-size: 13px; }
 .tasker-store-create input { flex: 1 1 220px; }
+
+/* Verified closure */
+.tasker-closure-notes { display: flex; flex-wrap: wrap; gap: 6px; margin: 5px 0 0; }
+.tasker-closure-chip { display: inline-flex; align-items: center; min-height: 22px; padding: 0 8px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-subtle); color: var(--color-ink-muted); font-size: 12px; }
+.tasker-closure-chip[data-kind="unacknowledged"], .tasker-closure-chip[data-kind="returned"] { border-color: var(--color-caution); background: var(--color-caution-tint); color: var(--color-ink); font-weight: 650; }
+.tasker-closure-chip[data-kind="waiting"] { border-color: var(--color-action); background: var(--color-action-tint); color: var(--color-action); font-weight: 650; }
+.tasker-closure-chip[data-kind="verified"] { border-color: var(--color-positive); background: var(--color-positive-tint); color: var(--color-positive); font-weight: 650; }
+.tasker-verification { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-surface); display: grid; gap: 10px; font-size: 13px; }
+.tasker-verification .tasker-closure-notes { margin: 0; }
+.tasker-verifier, .tasker-project-verifier label { display: grid; gap: 4px; max-width: 320px; font-weight: 650; }
+.tasker-verifier select, .tasker-project-verifier select { padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface); color: var(--color-ink); font-weight: 400; }
+.tasker-verification-actions, .tasker-reason-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.tasker-verification-actions:empty { display: none; }
+.tasker-submit-form, .tasker-reason-form { display: grid; gap: 8px; margin-top: 10px; padding: 12px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-subtle); font-size: 13px; }
+.tasker-submit-form label, .tasker-reason-form label { display: grid; gap: 4px; font-weight: 650; }
+.tasker-submit-form textarea, .tasker-reason-form input { padding: 7px 9px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface); color: var(--color-ink); font: inherit; font-weight: 400; }
+.tasker-reason-form p { margin: 0; color: var(--color-ink-muted); }
+.tasker-evidence { display: grid; gap: 4px; }
+.tasker-evidence-by { margin: 0; color: var(--color-ink-muted); font-size: 12px; }
+.tasker-evidence-note { margin: 0; white-space: pre-wrap; }
+.tasker-evidence-photo img { max-width: 220px; max-height: 160px; border-radius: 6px; border: 1px solid var(--color-border); }
+.tasker-project-verifier { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin: 0 0 14px; font-size: 13px; }
+.tasker-verify-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.tasker-verify-card { display: grid; gap: 6px; padding: 14px 16px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-surface); }
+.tasker-verify-card > a { color: var(--color-ink); font-weight: 650; text-decoration: none; }
+.tasker-verify-card > a:hover { color: var(--color-action); text-decoration: underline; }

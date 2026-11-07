@@ -1,6 +1,6 @@
 import type { PersonOption } from './people'
 
-const PERSON_FIELDS = new Set(['assigned_to', 'personal_tasks_owner'])
+const PERSON_FIELDS = new Set(['assigned_to', 'personal_tasks_owner', 'verifier', 'submitted_by', 'verified_by'])
 
 /** A value in a task's activity history, as a person reads it: names, never record ids. */
 export function describeHistoryValue(field: string, value: unknown,

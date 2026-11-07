@@ -45,9 +45,11 @@ test('the assignee acknowledges the task and submits it with a note', async ({ c
   const row = () => screen.getByRole('link', { name: 'Fix the billing counter lights' }).closest('article')!
   await waitFor(() => expect(row()).toHaveTextContent('Not acknowledged by Ravi'))
   expect(within(detail).queryByRole('button', { name: 'Mark Done' })).not.toBeInTheDocument()
-  await user.click(within(detail).getByRole('button', { name: 'Acknowledge' }))
+  await user.click(await within(detail).findByRole('button', { name: 'Acknowledge' }))
   await waitFor(() => expect(row()).not.toHaveTextContent('Not acknowledged'))
-  await user.click(within(detail).getByRole('button', { name: 'Submit for verification' }))
+  const submitForVerification = within(detail).getByRole('button', { name: 'Submit for verification' })
+  await waitFor(() => expect(submitForVerification).toBeEnabled())
+  await user.click(submitForVerification)
   await user.click(within(detail).getByRole('button', { name: 'Submit' }))
   expect(await within(detail).findByRole('alert')).toHaveTextContent('Add a note on what was done')
   await user.type(within(detail).getByRole('textbox', { name: 'What was done' }), 'Replaced both tube lights')
@@ -59,7 +61,7 @@ test('the assignee acknowledges the task and submits it with a note', async ({ c
 test('the verifier finds the task on To verify, returns it with a reason, then accepts it', async ({ createUser }) => {
   const { meena, ravi, task } = await team(createUser)
   const submitted = await ravi.post<Row>('/api/save_row', { table: 'tasker.task', row: { row_id: task.row_id, updated_at: task.updated_at, task_state: SUBMITTED, evidence_note: 'Replaced both tube lights' } })
-  renderTasker(meena)
+  const first = renderTasker(meena)
   const user = userEvent.setup()
   await user.click(await screen.findByRole('button', { name: /^To verify/ }))
   const page = await screen.findByRole('region', { name: 'To verify' })
@@ -74,7 +76,9 @@ test('the verifier finds the task on To verify, returns it with a reason, then a
   const again = await read(ravi, task)
   await ravi.post('/api/save_row', { table: 'tasker.task', row: { row_id: task.row_id, updated_at: again.updated_at, task_state: SUBMITTED, evidence_note: 'Replaced the starter too' } })
   expect(submitted.row_id).toBe(task.row_id)
-  await user.click(screen.getByRole('button', { name: /^To verify/ }))
+  first.unmount(); location.hash = ''
+  renderTasker(meena)
+  await user.click(await screen.findByRole('button', { name: /^To verify/ }))
   await user.click(await within(await screen.findByRole('region', { name: 'To verify' })).findByRole('link', { name: 'Fix the billing counter lights' }))
   const reopened = await screen.findByRole('region', { name: 'Task detail content' })
   await user.click(await within(reopened).findByRole('button', { name: 'Accept and close' }))

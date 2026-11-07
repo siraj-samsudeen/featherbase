@@ -11,6 +11,11 @@ describe('activity history values', () => {
     expect(describeHistoryValue('personal_tasks_owner', 'psn_a', names)).toBe('Shahul')
   })
 
+  it('names who verifies, submitted and verified a task', () => {
+    for (const field of ['verifier', 'submitted_by', 'verified_by'])
+      expect(describeHistoryValue(field, 'psn_a', names)).toBe('Shahul')
+  })
+
   it('names the project a task moved into', () => {
     expect(describeHistoryValue('project', 'TPROJ-0001', names)).toBe('Data quality')
   })
