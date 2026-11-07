@@ -6,6 +6,7 @@ import { discoverPackages } from '../src/runtime-packages'
 import { enqueue, drainJobs } from '../src/jobs'
 import { sql } from '../src/db'
 import { taskerClient } from './tasker-client'
+import { saveDoc } from '../src/document'
 
 type Row = { row_id: string; updated_at: string; [field: string]: unknown }
 type LogEntry = { kind: string; to?: string[]; by?: string; note?: string }
@@ -36,10 +37,12 @@ async function setup(createUser: (options: { roles: string[]; fullName?: string 
 }
 type Team = Awaited<ReturnType<typeof setup>>
 type Client = Team['meena']
-const raise = (client: Client, row: Record<string, unknown>) => client.post<Row>('/api/save_row', { table: ISSUE, row: {
-  issue_title: 'Dairy chiller 2 at 9°C', category: 'Equipment failure', severity: 'High', owner_function: 'Facilities', ...row } })
+// Saves at a chosen time go through the server's own save, rules included, as that person:
+// an HTTP session would expire under the faked clock.
+const raise = (client: Client, row: Record<string, unknown>) => saveDoc(ISSUE, {
+  issue_title: 'Dairy chiller 2 at 9°C', category: 'Equipment failure', severity: 'High', owner_function: 'Facilities', ...row }, client.user!) as Promise<Row>
 const change = (client: Client, issue: Row, values: Record<string, unknown>) =>
-  client.post<Row>('/api/save_row', { table: ISSUE, row: { row_id: issue.row_id, updated_at: issue.updated_at, ...values } })
+  saveDoc(ISSUE, { row_id: issue.row_id, updated_at: issue.updated_at, ...values }, client.user!) as Promise<Row>
 const read = (client: Client, issue: Row) => client.get<Row>(`/api/table/${ISSUE}/${issue.row_id}`)
 const log = (issue: Row) => JSON.parse(String(issue.issue_log || '[]')) as LogEntry[]
 const kinds = (issue: Row) => log(issue).map(entry => entry.kind)
@@ -48,9 +51,9 @@ test('a raised issue takes its deadlines from the SLA rule, and a category rule 
   const { meena, store } = await setup(createUser)
   const issue = await withTime(at('2026-11-09T21:00'), () => raise(meena, { store: store.row_id }))
   expect(issue).toMatchObject({ issue_state: 'Open', clock: 'Store hours', respond_minutes: 60, fix_minutes: 1440, opens_at: '09:00', closes_at: '22:00' })
-  // 1 hour from 21:00 in store hours: 21:00–22:00. 1 day (1440 minutes): 60 tonight, 720 Tuesday, 660 Wednesday.
+  // 1 hour from 21:00 in store hours: 21:00–22:00. 1 day (1440 minutes): 60 tonight, 780 Tuesday, 600 Wednesday.
   expect(new Date(String(issue.respond_by)).getTime()).toBe(at('2026-11-09T22:00').getTime())
-  expect(new Date(String(issue.fix_by)).getTime()).toBe(at('2026-11-11T20:00').getTime())
+  expect(new Date(String(issue.fix_by)).getTime()).toBe(at('2026-11-11T19:00').getTime())
   expect(kinds(issue)).toEqual(['raised'])
   await meena.post('/api/save_row', { table: 'tasker.sla_rule', row: { severity: 'High', category: 'Cash shortage', respond_minutes: 15, fix_minutes: 120, clock: 'Round the clock' } })
   const cash = await withTime(at('2026-11-09T21:00'), () => raise(meena, { store: store.row_id, category: 'Cash shortage', issue_title: 'Till 3 short by ₹4,000' }))
@@ -127,7 +130,8 @@ test('waiting for a vendor pauses the clock only once the store manager approves
   const resumed = await withTime(at('2026-11-09T15:00'), () => change(suresh, paused, { paused: false }))
   expect(resumed).toMatchObject({ paused: false, pause_requested: false, paused_minutes: 180, on_clock_minutes: 120 })
   expect(kinds(resumed)).toEqual(expect.arrayContaining(['pause_requested', 'paused', 'resumed']))
-  expect(new Date(String(resumed.fix_by)).getTime()).toBe(at('2026-11-10T21:00').getTime())
+  // 1 day of store hours from Monday 10:00 ends Tuesday 21:00; the 3 paused hours move it to Wednesday 11:00.
+  expect(new Date(String(resumed.fix_by)).getTime()).toBe(at('2026-11-11T11:00').getTime())
 })
 
 test('closure: submit with a note, the verifier accepts or returns, and a breach stays recorded', async ({ createUser }) => {
