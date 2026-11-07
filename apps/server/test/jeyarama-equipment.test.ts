@@ -24,7 +24,7 @@ async function install() {
 const HOUR = 3_600_000
 
 async function register(manager: TestClient) {
-  const avadi = await manager.post<Row>('/api/save_row', { table: 'equipment.place', row: { place_name: 'Avadi Store', place_type: 'Store' } })
+  const avadi = await manager.post<Row>('/api/save_row', { table: 'equipment.place', row: { place_name: 'ATK 1501', place_level: 'Site', site_kind: 'Store' } })
   const ac = await manager.post<Row>('/api/save_row', { table: 'equipment.asset_type', row: { type_name: 'AC' } })
   const asset = await manager.post<Row>('/api/save_row', { table: 'equipment.asset', row: {
     asset_name: 'Voltas 2-ton split AC', asset_type: ac.row_id, place: avadi.row_id, warranty_until: '2027-03-12',
@@ -93,7 +93,71 @@ test('a job is fixed only with a note of the work done, and keeps its cost', asy
   } })
   expect(fixed).toMatchObject({ job_state: 'Fixed', work_done: 'Refilled gas' })
   expect(Number(fixed.repair_cost)).toBe(2400)
-  expect(fixed.fixed_at).toBeTruthy()
+  expect(fixed.restored_at).toBeTruthy()
   const reopened = await ravi.post<Row>('/api/save_row', { table: 'equipment.job', row: { row_id: job.row_id, updated_at: fixed.updated_at, job_state: 'In progress' } })
-  expect(reopened.fixed_at).toBeNull()
+  expect(reopened.restored_at).toBeNull()
+})
+
+test('a job keeps when it failed, was reported, answered, started and restored', async ({ createUser }) => {
+  await install()
+  const manager = assetsClient(await createUser({ roles: ['Assets Manager'] }))
+  const ravi = await createUser({ roles: ['Assets Technician'] })
+  const { asset } = await register(manager)
+  const failed = new Date(Date.now() - 2 * HOUR).toISOString()
+  let job = await manager.post<Row>('/api/save_row', { table: 'equipment.job', row: { asset: asset.row_id, problem: 'Door seal torn', failure_started_at: failed } })
+  expect(job).toMatchObject({ responded_at: null, repair_started_at: null, restored_at: null })
+  expect(Date.parse(String(job.failure_started_at))).toBe(Date.parse(failed))
+  const step = (change: Record<string, unknown>) => manager.post<Row>('/api/save_row', { table: 'equipment.job', row: { row_id: job.row_id, updated_at: job.updated_at, ...change } })
+  job = await step({ assigned_to: ravi.user })
+  const responded = job.responded_at
+  expect(responded).toBeTruthy()
+  job = await step({ job_state: 'In progress' })
+  const started = job.repair_started_at
+  expect(started).toBeTruthy()
+  job = await step({ job_state: 'Waiting for parts', spares: 'Door gasket, 1 no.' })
+  job = await step({ job_state: 'In progress', cause: 'Seal worn out', outside_service: 'Blue Star AMC' })
+  expect(job).toMatchObject({ responded_at: responded, repair_started_at: started, cause: 'Seal worn out', spares: 'Door gasket, 1 no.', outside_service: 'Blue Star AMC' })
+  job = await step({ job_state: 'Fixed', work_done: 'Replaced the door gasket' })
+  expect(job.restored_at).toBeTruthy()
+})
+
+test('a fault cannot have started after it was reported', async ({ createUser }) => {
+  await install()
+  const manager = assetsClient(await createUser({ roles: ['Assets Manager'] }))
+  const { asset } = await register(manager)
+  await expect(manager.post('/api/save_row', { table: 'equipment.job', row: {
+    asset: asset.row_id, problem: 'Door seal torn', failure_started_at: new Date(Date.now() + 2 * HOUR).toISOString(),
+  } })).rejects.toThrow('It can’t have stopped working after it was reported')
+})
+
+test('someone other than the technician confirms the repair, and a confirmed job stays closed', async ({ createUser }) => {
+  await install()
+  const manager = assetsClient(await createUser({ roles: ['Assets Manager'] }))
+  const ravi = assetsClient(await createUser({ roles: ['Assets Technician'] }))
+  const staff = assetsClient(await createUser({ roles: ['Assets Member'] }))
+  const { asset } = await register(manager)
+  let job = await manager.post<Row>('/api/save_row', { table: 'equipment.job', row: { asset: asset.row_id, problem: 'Not cooling', priority: 'Urgent', assigned_to: ravi.user } })
+  await expect(staff.post('/api/save_row', { table: 'equipment.restoration', row: { job: job.row_id } }))
+    .rejects.toThrow('Confirm a job only once it is Fixed')
+  job = await ravi.post<Row>('/api/save_row', { table: 'equipment.job', row: { row_id: job.row_id, updated_at: job.updated_at, job_state: 'Fixed', work_done: 'Refilled gas' } })
+  await expect(ravi.post('/api/save_row', { table: 'equipment.restoration', row: { job: job.row_id } }))
+    .rejects.toThrow('Someone other than the technician who fixed it confirms the repair')
+  const confirmed = await staff.post<Row>('/api/save_row', { table: 'equipment.restoration', row: { job: job.row_id, note: 'Cooling again' } })
+  expect(confirmed).toMatchObject({ job: job.row_id, created_by: staff.user })
+  await expect(staff.post('/api/save_row', { table: 'equipment.restoration', row: { job: job.row_id } })).rejects.toBeTruthy()
+  await expect(ravi.post('/api/save_row', { table: 'equipment.job', row: { row_id: job.row_id, updated_at: job.updated_at, job_state: 'In progress' } }))
+    .rejects.toThrow('The store confirmed this repair; report a new fault instead')
+})
+
+test('places nest from site to building, floor and area', async ({ createUser }) => {
+  await install()
+  const manager = assetsClient(await createUser({ roles: ['Assets Manager'] }))
+  const place = (row: Record<string, unknown>) => manager.post<Row>('/api/save_row', { table: 'equipment.place', row })
+  const site = await place({ place_name: 'Enchakkal WH 9151', place_level: 'Site', site_kind: 'Warehouse', sap_plant: '9151' })
+  const building = await place({ place_name: 'Main building', place_level: 'Building', parent_place: site.row_id })
+  const floor = await place({ place_name: 'Ground floor', place_level: 'Floor', parent_place: building.row_id })
+  await place({ place_name: 'Cold chain', place_level: 'Area', parent_place: floor.row_id })
+  await expect(place({ place_name: 'Loose floor', place_level: 'Floor' })).rejects.toThrow('Choose the place this floor is inside')
+  await expect(place({ place_name: 'Site in a site', place_level: 'Site', parent_place: site.row_id })).rejects.toThrow('A site is not inside another place')
+  await expect(place({ place_name: 'Upside down', place_level: 'Building', parent_place: floor.row_id })).rejects.toThrow('A building sits inside a site')
 })

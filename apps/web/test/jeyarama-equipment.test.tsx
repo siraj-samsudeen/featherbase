@@ -35,15 +35,16 @@ function renderAssets(as: TestClient, roles: string[], hash = '') {
 
 async function register(manager: TestClient) {
   const save = (table: string, row: Record<string, unknown>) => manager.post<Row>('/api/save_row', { table, row })
-  const avadi = await save('equipment.place', { place_name: 'Avadi Store' })
-  const keel = await save('equipment.place', { place_name: 'Keelkattalai Store' })
+  const avadi = await save('equipment.place', { place_name: 'ATK 1501', place_level: 'Site', site_kind: 'Store', sap_plant: '1501' })
+  const billing = await save('equipment.place', { place_name: 'Billing area', place_level: 'Area', parent_place: avadi.row_id })
+  const keel = await save('equipment.place', { place_name: 'Enchakkal WH 9151', place_level: 'Site', site_kind: 'Warehouse' })
   const ac = await save('equipment.asset_type', { type_name: 'AC' })
   const pos = await save('equipment.asset_type', { type_name: 'POS terminal' })
   const cold = await save('equipment.asset_type', { type_name: 'Cold room' })
-  const voltas = await save('equipment.asset', { asset_name: 'Voltas 2-ton split AC', asset_type: ac.row_id, place: avadi.row_id, area: 'Billing area', warranty_until: '2027-03-12' })
+  const voltas = await save('equipment.asset', { asset_name: 'Voltas 2-ton split AC', asset_type: ac.row_id, place: billing.row_id, warranty_until: '2027-03-12' })
   const till = await save('equipment.asset', { asset_name: 'Billing PC, till 3', asset_type: pos.row_id, place: avadi.row_id })
   const room = await save('equipment.asset', { asset_name: 'Blue Star cold room', asset_type: cold.row_id, place: keel.row_id })
-  return { avadi, keel, voltas, till, room }
+  return { avadi, keel, billing, voltas, till, room }
 }
 
 test('store staff report a fault from the asset page and see it as an open job', async ({ createUser }) => {
@@ -53,7 +54,7 @@ test('store staff report a fault from the asset page and see it as an open job',
   const { voltas } = await register(manager)
   renderAssets(staff, ['Assets Member'], `#asset=${voltas.row_id}`)
   expect(await screen.findByRole('heading', { name: 'Voltas 2-ton split AC' })).toBeInTheDocument()
-  expect(await screen.findByText(`${voltas.row_id} · Avadi Store · Billing area`)).toBeInTheDocument()
+  expect(await screen.findByText(`${voltas.row_id} · ATK 1501 › Billing area`)).toBeInTheDocument()
   expect(screen.getByText('Warranty until 12-Mar-2027')).toBeInTheDocument()
   const user = userEvent.setup()
   const report = screen.getByRole('region', { name: 'Report a fault' })
@@ -67,15 +68,16 @@ test('store staff report a fault from the asset page and see it as an open job',
   expect(jobs.data).toEqual([{ problem: 'Not cooling', priority: 'Urgent', job_state: 'Reported' }])
 })
 
-test('the label sheet has a QR label for each asset in the chosen place only', async ({ createUser }) => {
+test('the label sheet has a QR label for each asset anywhere in the chosen site only', async ({ createUser }) => {
   await install()
   const manager = assetsClient(await createUser({ roles: ['Assets Manager'] }))
   const { avadi, voltas, till, room } = await register(manager)
   renderAssets(manager, ['Assets Manager'], '#labels')
   const user = userEvent.setup()
-  await screen.findByRole('option', { name: 'Avadi Store' })
+  await screen.findByRole('option', { name: 'ATK 1501' })
+  expect(screen.queryByRole('option', { name: 'Billing area' })).not.toBeInTheDocument()
   await user.selectOptions(screen.getByRole('combobox', { name: 'Place' }), avadi.row_id)
-  const sheet = await screen.findByRole('region', { name: 'Labels for Avadi Store' })
+  const sheet = await screen.findByRole('region', { name: 'Labels for ATK 1501' })
   for (const asset of [voltas, till])
     expect(await within(sheet).findByRole('img', { name: `QR code for ${asset.row_id}` })).toBeInTheDocument()
   expect(within(sheet).getByText('Voltas 2-ton split AC')).toBeInTheDocument()
@@ -135,4 +137,65 @@ test('the assets list shows each place’s assets with an open job or a warranty
   await waitFor(() => expect(row('Voltas 2-ton split AC')).toHaveTextContent('Open job'))
   expect(row('Billing PC, till 3')).toHaveTextContent('Warranty ends soon')
   expect(within(table).getByRole('link', { name: 'Voltas 2-ton split AC' })).toHaveAttribute('href', `#asset=${voltas.row_id}`)
+})
+
+test('the asset page shows its SAP numbers read-only, its four states and who owns and holds it', async ({ createUser }) => {
+  await install()
+  const manager = assetsClient(await createUser({ roles: ['Assets Manager'] }))
+  const suresh = await createUser({ roles: ['Assets Member'], fullName: 'Suresh K' })
+  const { voltas } = await register(manager)
+  const save = (table: string, row: Record<string, unknown>) => manager.post<Row>('/api/save_row', { table, row })
+  const kaipl = await save('equipment.entity', { entity_name: 'KAIPL', entity_status: 'Verified', sap_company_code: '2000' })
+  const operator = await save('equipment.entity', { entity_name: 'Kannammal Agro' })
+  const current = await manager.get<Row>(`/api/table/equipment.asset/${voltas.row_id}`)
+  await save('equipment.asset', { row_id: voltas.row_id, updated_at: current.updated_at,
+    sap_company_code: '2000', sap_asset_no: '210004512', sap_asset_sub: '0', sap_equipment_no: '10007731', legacy_id: 'ATK-AC-07',
+    sap_refreshed_at: '2026-11-07T00:30:00.000Z', book_status: 'Capitalized', condition: 'Under repair', custody_status: 'With vendor',
+    owner_entity: kaipl.row_id, operator_entity: operator.row_id, cost_centre: 'KA-ENC-410', custodian: suresh.user,
+  })
+  await save('equipment.job', { asset: voltas.row_id, problem: 'Door seal torn' })
+  renderAssets(manager, ['Assets Manager'], `#asset=${voltas.row_id}`)
+  const sap = await screen.findByRole('region', { name: 'From SAP' })
+  expect(sap).toHaveTextContent('Company code2000')
+  expect(sap).toHaveTextContent('Asset no. / sub210004512 / 0')
+  expect(sap).toHaveTextContent('Equipment no.10007731')
+  expect(sap).toHaveTextContent('Legacy IDATK-AC-07')
+  expect(sap).toHaveTextContent('Refreshed 07-Nov-2026 06:00 IST')
+  expect(within(sap).queryByRole('textbox')).not.toBeInTheDocument()
+  const states = screen.getByRole('list', { name: 'States' })
+  await waitFor(() => expect(within(states).getAllByRole('listitem').map(item => item.textContent)).toEqual([
+    'Books: Capitalized', 'Condition: Under repair', 'Custody: With vendor', 'Workflow: Repair job open',
+  ]))
+  const who = screen.getByRole('region', { name: 'Ownership' })
+  await waitFor(() => expect(who).toHaveTextContent('Legal ownerKAIPL · Verified'))
+  expect(who).toHaveTextContent('OperatorKannammal Agro · Draft')
+  expect(who).toHaveTextContent('Cost centreKA-ENC-410')
+  expect(who).toHaveTextContent('CustodianSuresh K')
+})
+
+test('store staff confirm a fixed repair, which closes it, and see its timeline and cover', async ({ createUser }) => {
+  await install()
+  const manager = assetsClient(await createUser({ roles: ['Assets Manager'] }))
+  const ravi = assetsClient(await createUser({ roles: ['Assets Technician'], fullName: 'Ravi' }))
+  const staff = assetsClient(await createUser({ roles: ['Assets Member'] }))
+  const { voltas } = await register(manager)
+  let job = await manager.post<Row>('/api/save_row', { table: 'equipment.job', row: { asset: voltas.row_id, problem: 'Not cooling', priority: 'Urgent', assigned_to: ravi.user } })
+  job = await ravi.post<Row>('/api/save_row', { table: 'equipment.job', row: { row_id: job.row_id, updated_at: job.updated_at, job_state: 'In progress', cause: 'Low gas' } })
+  await ravi.post<Row>('/api/save_row', { table: 'equipment.job', row: { row_id: job.row_id, updated_at: job.updated_at, job_state: 'Fixed', work_done: 'Refilled gas', spares: 'R32 gas, 1.2 kg' } })
+  const view = renderAssets(staff, ['Assets Member'], `#asset=${voltas.row_id}`)
+  const waiting = await screen.findByRole('region', { name: 'Waiting for you to confirm' })
+  const item = within(waiting).getByRole('article', { name: 'Not cooling' })
+  expect(within(item).getByRole('list', { name: 'Timeline' })).toHaveTextContent(/Reported.*Responded.*Repair started.*Restored/)
+  expect(item).toHaveTextContent('Cause: Low gas · Spares: R32 gas, 1.2 kg')
+  expect(item).toHaveTextContent('Under warranty until 12-Mar-2027')
+  const user = userEvent.setup()
+  await user.click(within(item).getByRole('button', { name: 'Confirm it works' }))
+  const past = await screen.findByRole('region', { name: 'Past jobs' })
+  expect(await within(past).findByText(/Closed · confirmed/)).toBeInTheDocument()
+  view.unmount()
+
+  renderAssets(manager, ['Assets Manager'], '#jobs')
+  const closed = await screen.findByRole('region', { name: 'Closed' })
+  expect(await within(closed).findByRole('article', { name: 'Not cooling' })).toBeInTheDocument()
+  expect(within(screen.getByRole('region', { name: 'Fixed' })).queryByRole('article', { name: 'Not cooling' })).not.toBeInTheDocument()
 })

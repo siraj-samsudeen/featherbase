@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fixByFor, isOpen, jobClock, warrantyNotice } from './jobRules'
+import { coverNotice, fixByFor, isOpen, jobClock, jobStage, placePath, warrantyNotice, workflowState } from './jobRules'
 
 describe('fix-by time', () => {
   it.each([
@@ -32,9 +32,9 @@ describe('job clock', () => {
   })
 
   it('says how long a fixed job took and whether it was on time', () => {
-    expect(jobClock({ ...urgent, job_state: 'Fixed', fixed_at: '2026-11-07T13:00:00.000Z' }, new Date('2026-11-08T00:00:00.000Z')))
+    expect(jobClock({ ...urgent, job_state: 'Fixed', restored_at: '2026-11-07T13:00:00.000Z' }, new Date('2026-11-08T00:00:00.000Z')))
       .toEqual({ tone: 'done', label: 'Fixed in 3h, on time' })
-    expect(jobClock({ ...urgent, job_state: 'Fixed', fixed_at: '2026-11-07T19:00:00.000Z' }, new Date('2026-11-08T00:00:00.000Z')))
+    expect(jobClock({ ...urgent, job_state: 'Fixed', restored_at: '2026-11-07T19:00:00.000Z' }, new Date('2026-11-08T00:00:00.000Z')))
       .toEqual({ tone: 'done', label: 'Fixed in 9h, 5h late' })
   })
 
@@ -64,5 +64,54 @@ describe('warranty notice', () => {
 
   it('says nothing without a warranty date', () => {
     expect(warrantyNotice(null, today)).toBeNull()
+  })
+})
+
+describe('place path', () => {
+  const places = [
+    { row_id: 'site', place_name: 'Enchakkal WH 9151', parent_place: null },
+    { row_id: 'bldg', place_name: 'Main building', parent_place: 'site' },
+    { row_id: 'floor', place_name: 'Ground floor', parent_place: 'bldg' },
+    { row_id: 'area', place_name: 'Cold chain', parent_place: 'floor' },
+  ]
+
+  it('reads a place from its site down', () => {
+    expect(placePath('area', places)).toBe('Enchakkal WH 9151 › Main building › Ground floor › Cold chain')
+    expect(placePath('site', places)).toBe('Enchakkal WH 9151')
+  })
+
+  it('stops on a loop or a missing parent rather than running forever', () => {
+    const looped = [{ row_id: 'a', place_name: 'A', parent_place: 'b' }, { row_id: 'b', place_name: 'B', parent_place: 'a' }]
+    expect(placePath('a', looped)).toBe('B › A')
+    expect(placePath('gone', places)).toBe('gone')
+  })
+})
+
+describe('workflow state and stage', () => {
+  it('works the workflow out from the asset’s jobs', () => {
+    expect(workflowState([], new Set())).toBe('No open work')
+    expect(workflowState([{ row_id: 'j1', job_state: 'In progress' }], new Set())).toBe('Repair job open')
+    expect(workflowState([{ row_id: 'j1', job_state: 'Fixed' }], new Set())).toBe('Waiting for the store to confirm')
+    expect(workflowState([{ row_id: 'j1', job_state: 'Fixed' }], new Set(['j1']))).toBe('No open work')
+  })
+
+  it('shows a confirmed fixed job as Closed', () => {
+    expect(jobStage({ row_id: 'j1', job_state: 'Fixed' }, new Set(['j1']))).toBe('Closed')
+    expect(jobStage({ row_id: 'j1', job_state: 'Fixed' }, new Set())).toBe('Fixed')
+    expect(jobStage({ row_id: 'j1', job_state: 'Assigned' }, new Set(['j1']))).toBe('Assigned')
+  })
+})
+
+describe('cover notice', () => {
+  const today = '2026-11-07'
+
+  it('names the warranty first, then an AMC, while either still runs', () => {
+    expect(coverNotice({ warranty_until: '2027-03-12', amc_until: '2027-06-30', amc_vendor: 'Voltas' }, today)).toBe('Under warranty until 12-Mar-2027')
+    expect(coverNotice({ warranty_until: '2026-10-01', amc_until: '2027-06-30', amc_vendor: 'Blue Star' }, today)).toBe('Under AMC with Blue Star until 30-Jun-2027')
+    expect(coverNotice({ warranty_until: '2026-11-07T00:00:00.000Z', amc_until: null, amc_vendor: null }, today)).toBe('Under warranty until 07-Nov-2026')
+  })
+
+  it('says nothing once cover has ended', () => {
+    expect(coverNotice({ warranty_until: '2026-10-01', amc_until: '2026-11-06', amc_vendor: 'Blue Star' }, today)).toBeNull()
   })
 })
