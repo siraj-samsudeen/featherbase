@@ -30,6 +30,10 @@ test("a person's role is picked from a list that the grid does not cut off", asy
     // The option itself is what a click at its centre lands on: not hidden
     // under the grid's frame or another element.
     expect(await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.textContent, [box.x + box.width / 2, box.y + box.height / 2])).toBe('System Manager')
+    // #1019: a list too long for the window scrolls inside itself, and stays open.
+    await page.getByTestId('link-options-role').evaluate((list) => list.dispatchEvent(new Event('scroll')))
+    await page.waitForTimeout(200)
+    await expect(option).toBeVisible()
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/role-picker-open.png` })
     await option.click()
     await expect(cell).toHaveValue('System Manager')

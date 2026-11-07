@@ -16,10 +16,19 @@ const current = () => within(pathNav()).getByRole('button', { current: 'step' })
 const pathParam = (router: { state: unknown }) =>
   new URLSearchParams((router.state as { location: { searchStr: string } }).location.searchStr).get('path')
 
-async function addRegionFilter() {
+// A link column's Value is its picker (#1019): the row is picked by its name.
+async function chooseRegion(name: string) {
   fireEvent.change(await screen.findByTestId('filter-field'), { target: { value: 'region' } })
-  fireEvent.change(screen.getByTestId('filter-value'), { target: { value: 'KL' } })
+  fireEvent.focus(screen.getByTestId('filter-value'))
+  const list = await screen.findByTestId('link-options-region')
+  fireEvent.mouseDown(await within(list).findByRole('button', { name }))
+  await waitFor(() => expect(screen.getByTestId('filter-value')).toHaveValue(name))
   fireEvent.click(screen.getByTestId('filter-add'))
+}
+
+async function addRegionFilter() {
+  fireEvent.click(await screen.findByTestId('filter-toggle'))
+  await chooseRegion('Kerala')
 }
 
 // #1013: one step is no path, and would only repeat the page's own heading.
@@ -27,7 +36,7 @@ async function addRegionFilter() {
 test('a list with one step shows no path bar', async ({ admin }) => {
   await seedSites(admin)
   await renderApp(tableHref(SITE), admin)
-  await screen.findByTestId('filter-field')
+  await screen.findByTestId('filter-toggle')
   await screen.findAllByTestId('row-check')
   expect(screen.queryByRole('navigation', { name: 'Path' })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Recent paths' })).not.toBeInTheDocument()
@@ -72,9 +81,7 @@ test("the path's Back is the browser's back, so a new step after it leaves no st
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(3))
   // Back went back through history: there is nothing before the list.
   expect(history.canGoBack()).toBe(false)
-  fireEvent.change(await screen.findByTestId('filter-field'), { target: { value: 'region' } })
-  fireEvent.change(screen.getByTestId('filter-value'), { target: { value: 'TN' } })
-  fireEvent.click(screen.getByTestId('filter-add'))
+  await chooseRegion('Tamil Nadu')
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(1))
   history.back()
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(3))
