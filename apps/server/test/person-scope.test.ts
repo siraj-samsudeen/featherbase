@@ -679,6 +679,13 @@ describe('declaring a scope provider', () => {
       ...m.tables.map((t: Record<string, any>) => ({ ...t, columns: [...t.columns, { column_name: 'lines', column_type: 'Sub-table', row_table: 'placeroster.line' }] })),
       { name: 'placeroster.line', label: 'line', kind: 'sub_table', columns: [{ column_name: 'code', column_type: 'Data' }] }] }, s],
       'A scope provider cannot read Tables with Sub-tables'],
+    // #967: an unmarked Table is one the provider reads, and never one of the app's own.
+    ['naming an unmarked Table it does not read', (m: Record<string, any>, s: string) =>
+      [{ ...m, scopeProvider: { ...m.scopeProvider, unmarkedTables: ['Somewhere Else'] } }, s],
+      "A scope provider's unmarked Table Somewhere Else is not one of the Tables it reads"],
+    ['naming one of its own Tables as unmarked', (m: Record<string, any>, s: string) =>
+      [{ ...m, scopeProvider: { ...m.scopeProvider, unmarkedTables: [m.scopeProvider.tables[0]] } }, s],
+      "A scope provider's own Table placeroster.position must be marked decides_scope"],
   ] as const)('an app declaring a provider %s is not loaded', async ([, change, error]) => {
     const copy = await variant(change as never)
     try {
