@@ -8,6 +8,7 @@ import { discoverAppLibrary } from 'server/src/app-library'
 import { loadInstalledApps } from 'server/src/apps'
 import { overrideVariable, withNamedVariable } from 'server/src/env'
 import { setSession } from '../src/lib/api'
+import taskerManifest from '../../../example-apps/tasker/featherbase.json'
 import { Apps } from '../src/pages/Apps'
 import { test, expect, renderApp } from './pg-test'
 
@@ -149,10 +150,12 @@ test('the page shows the build the instance runs and what changed in the selecte
     expect(within(build).getByRole('link', { name: 'Changes up to this build' })).toHaveAttribute('href', `https://github.com/example-owner/featherbase/commits/${sha}`)
     expect(build).toHaveTextContent(/Running since/)
     await userEvent.click(within(screen.getByRole('navigation', { name: 'Available apps' })).getByRole('button', { name: /Tasker/ }))
+    // The panel shows the three newest releases from the app's own manifest, newest first.
+    // Issue references link the same way as the build's commit title above (#903).
     const notes = within(screen.getByRole('region', { name: 'Tasker details' })).getByRole('region', { name: "What's new" })
-    expect(notes).toHaveTextContent('3.0.2')
-    expect(notes).toHaveTextContent('3.0.1')
-    expect(within(notes).getAllByRole('link', { name: '#563' })[0]).toHaveAttribute('href', 'https://github.com/example-owner/featherbase/issues/563')
+    const versions = taskerManifest.releaseNotes.map(note => note.version)
+    expect(within(notes).getAllByRole('heading', { level: 4 }).map(heading => heading.textContent)).toEqual(versions.slice(0, 3))
+    expect(notes).not.toHaveTextContent(versions[3])
   } finally {
     for (const name of Object.keys(host)) overrideVariable(name as keyof typeof host, undefined)
   }

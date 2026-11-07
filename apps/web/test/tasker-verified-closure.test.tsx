@@ -117,7 +117,10 @@ test('a project names its default verifier and task details change a task’s ve
   renderTasker(meena)
   const user = userEvent.setup()
   await user.click(await screen.findByRole('button', { name: 'Diwali readiness' }))
-  await user.selectOptions(await screen.findByRole('combobox', { name: 'Default verifier' }), 'Meena')
+  // People's names arrive after the task list; until then the options read "Former member".
+  const defaultVerifier = await screen.findByRole('combobox', { name: 'Default verifier' })
+  await within(defaultVerifier).findByRole('option', { name: 'Meena' })
+  await user.selectOptions(defaultVerifier, 'Meena')
   await waitFor(async () => expect((await meena.get<Row>(`/api/table/tasker.project/${project.row_id}`)).default_verifier).toBe(meena.user))
   await user.click(await screen.findByRole('link', { name: 'Fix the billing counter lights' }))
   const detail = await screen.findByRole('region', { name: 'Task detail content' })
