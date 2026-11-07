@@ -9,6 +9,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packages'
 import { sql } from '../src/db'
+import { reachGrants, reachOnlyWrite, reachWhere } from '../src/permissions'
 import { expectApiError, patchDoc, tableRef } from './fixtures'
 
 const fixture = resolve('../..', 'test-apps/fixtures/store-admin')
@@ -156,6 +157,19 @@ describe('a grant limited to reach', () => {
     expect(await list(meera)).toEqual([])
   })
 
+  test('gives nothing for an action, a Table or a person it does not cover', async ({ admin, createUser }) => {
+    const { meera } = await setup(admin, createUser)
+    expect(await reachGrants(meera.user!, SHELF.name, 'read')).toHaveLength(1)
+    expect(await reachGrants(meera.user!, SHELF.name, 'read_identifiers')).toEqual([])
+    expect(await reachGrants(meera.user!, SHELF.name, 'submit')).toEqual([])
+    expect(await reachGrants(meera.user!, 'No Such Table', 'read')).toEqual([])
+    expect(await reachOnlyWrite(meera.user!, 'No Such Table')).toBe(false)
+    expect(await sql`select count(*)::int as n from storeadmin.shelf where ${(await reachWhere(SHELF.name, [], 'shelf')).frag}`).toEqual([{ n: 0 }])
+    // A person who can no longer sign in reaches nothing.
+    await sql`update person set enabled = false where row_id = ${meera.user!}`
+    expect(await reachGrants(meera.user!, SHELF.name, 'read')).toEqual([])
+  })
+
   test('a path not taught about reach refuses', async ({ admin, createUser }) => {
     const { meera, a1 } = await setup(admin, createUser)
     await expectApiError(meera.post(`${SHELF.rowUrl(String(a1.row_id))}:rename`, { new_name: 'renamed' }), { status: 403 })
@@ -214,6 +228,7 @@ describe('a store administrator gives a narrower role', () => {
   test('refuses a malformed or unknown request, and takes back once', async ({ admin, createUser }) => {
     const { meera, arun } = await setup(admin, createUser)
     await expectApiError(meera.post(GIVEN, { person: arun.user!, role: 'Shelf Helper' }), { status: 417 })
+    expect((await meera.fetch(GIVEN, { method: 'POST', headers: { 'content-type': 'application/json' }, body: 'not json' })).status).toBe(417)
     await expectApiError(meera.post(GIVEN, { person: arun.user!, role: 'Shelf Helper', stores: ['A'], starts_on: '2026-12-01', ends_on: '2026-11-01' }), { status: 417 })
     await expectApiError(meera.post('/api/apps/nosuchapp/given_roles', { person: arun.user!, role: 'Shelf Helper', stores: ['A'] }), { status: 404 })
     await expectApiError(meera.post(`${GIVEN}/ra_missing/take_back`), { status: 404 })
