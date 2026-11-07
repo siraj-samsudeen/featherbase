@@ -4,6 +4,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { createUserWithRole, expectApiError, makeTable, patchDoc, type TableRef } from './fixtures'
 import { sql } from '../src/db'
 import { getList } from '../src/query'
+import { invalidateMeta } from '../src/meta'
 
 // #859 (ADR 0019): retire a row without deleting it, with a reason.
 const PLANT = 'Rt Plant'
@@ -173,6 +174,77 @@ describe('#859 a refused delete offers to retire', () => {
       message: expect.stringContaining('Retire it instead'),
       fields: { retire: 'available' },
     })
+  })
+})
+
+// #959: a refused delete names each row as people read it, not by its id.
+describe('#959 a refused delete names rows readably', () => {
+  const UNIT = 'Rt Named Unit'
+  const STORE = 'Rt Named Store'
+  async function units(admin: TestClient) {
+    const unit = await makeTable(admin, { name: UNIT, id_pattern: 'prompt', title_column: 'unit_name', columns: ['unit_name'] })
+    const store = await makeTable(admin, { name: STORE, id_pattern: 'prompt', title_column: 'store_name', columns: [
+      'store_name', { column_name: 'unit', column_type: 'Reference', reference_table: UNIT },
+    ] })
+    await admin.post(unit.url, { row_id: 'U-HIST', unit_name: 'Historic unit' })
+    await admin.post(unit.url, { row_id: 'U-LINK', unit_name: 'Linked unit' })
+    await admin.post(store.url, { row_id: 'S-ONE', store_name: 'Store one', unit: 'U-LINK' })
+    return { unit, store }
+  }
+
+  test('the row kept by its history and the row linking to it read by their titles', async ({ admin }) => {
+    const { unit } = await units(admin)
+    await admin.post('/api/table/Comment', { ref_table: UNIT, ref_name: 'U-HIST', content: 'keep' })
+    await expectApiError(admin.delete(unit.rowUrl('U-HIST')), {
+      status: 417, message: expect.stringContaining('Rt Named Unit "Historic unit" cannot be deleted: it has 1 comment.'),
+    })
+    await expectApiError(admin.delete(unit.rowUrl('U-LINK')), {
+      status: 417, message: expect.stringContaining('Cannot delete Rt Named Unit "Linked unit": it is linked from Rt Named Store "Store one".'),
+    })
+  })
+
+  test('a row with no title column, or the id as its title, keeps its id', async ({ admin }) => {
+    const { unit } = await units(admin)
+    await makeTable(admin, { name: 'Rt Named Shelf', id_pattern: 'prompt', columns: [
+      { column_name: 'unit', column_type: 'Reference', reference_table: UNIT },
+    ] })
+    await admin.post('/api/table/Rt%20Named%20Shelf', { row_id: 'SH-1', unit: 'U-HIST' })
+    // The migrated default: a title column of row_id means "show the id".
+    await makeTable(admin, { name: 'Rt Named Bin', id_pattern: 'prompt', columns: ['bin_name'] })
+    await sql`update table_def set title_column = 'row_id' where name = 'Rt Named Bin'`
+    invalidateMeta('Rt Named Bin')
+    await admin.post('/api/table/Rt%20Named%20Bin', { row_id: 'B-1', bin_name: 'Front bin' })
+    await admin.post('/api/table/Comment', { ref_table: 'Rt Named Bin', ref_name: 'B-1', content: 'keep' })
+    // A stand-in built from the shelf's values would read as the unit's own id.
+    await expectApiError(admin.delete(unit.rowUrl('U-HIST')), {
+      status: 417, message: expect.stringContaining('Cannot delete Rt Named Unit "Historic unit": it is linked from Rt Named Shelf SH-1.'),
+    })
+    await expectApiError(admin.delete('/api/table/Rt%20Named%20Bin/B-1'), {
+      status: 417, message: expect.stringContaining('Rt Named Bin B-1 cannot be deleted'),
+    })
+  })
+
+  test('a linking row the caller cannot read keeps its id, so its title is never shown', async ({ admin, createUser }) => {
+    const { unit } = await units(admin)
+    const deleter = await createUserWithRole(admin, createUser, { role: 'Rt Unit Only Deleter', table: UNIT, can_read: true, can_delete: true })
+    await expectApiError(deleter.delete(unit.rowUrl('U-LINK')), {
+      status: 417, message: expect.stringContaining('Cannot delete Rt Named Unit "Linked unit": it is linked from Rt Named Store S-ONE.'),
+    })
+  })
+})
+
+// #959: the Recent chips over a list leave a retired row out, as the list does.
+describe('#959 row titles say which rows are retired', () => {
+  test('a retired row is marked; a row in use is not', async ({ admin }) => {
+    const { plant } = await plants(admin)
+    await retire(admin, plant, 'Sample plant', 'Not a real location')
+    const rows = [{ table: PLANT, row_id: 'Riverside' }, { table: PLANT, row_id: 'Sample plant' }]
+    const { titles } = await admin.post<{ titles: Record<string, unknown>[] }>('/api/row_titles', { rows })
+    expect(titles).toEqual(expect.arrayContaining([
+      { table: PLANT, row_id: 'Riverside', title: 'Kochi' },
+      { table: PLANT, row_id: 'Sample plant', title: 'Nowhere', retired: true },
+    ]))
+    expect(titles).toHaveLength(2)
   })
 })
 

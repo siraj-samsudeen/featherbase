@@ -778,7 +778,7 @@ describe('a bound Table keeps its binding', () => {
     const stamp = async (id: string) => ((await admin.get(`/api/table/${encodeURIComponent(BOUND)}/${id}`)) as { updated_at: string }).updated_at
     const refused = await admin.fetch(`/api/table/${encodeURIComponent(BOUND)}/ACC-A?updated_at=${encodeURIComponent(await stamp('ACC-A'))}`, { method: 'DELETE' })
     expect(refused.status).toBe(417)
-    expect(await refused.json()).toMatchObject({ error: { message: `Cannot delete ${BOUND} ACC-A: it is linked from Sec Holder ${holder.row_id}` } })
+    expect(await refused.json()).toMatchObject({ error: { message: `Cannot delete ${BOUND} "Alpha": it is linked from Sec Holder ${holder.row_id}` } })
     const freed = await admin.fetch(`/api/table/${encodeURIComponent(BOUND)}/ACC-B?updated_at=${encodeURIComponent(await stamp('ACC-B'))}`, { method: 'DELETE' })
     expect(freed.status).toBe(200)
     expect(await cli`select id from sec_fixture.account order by id`).toEqual([{ id: 'ACC-A' }])
