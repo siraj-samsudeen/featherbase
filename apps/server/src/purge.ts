@@ -402,7 +402,8 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
       const all: Row[] = []
       for (const [t, list] of removedIds) {
         if (g.table_column) all.push(...((await db`select * from ${db(rel)} where ${db(g.table_column)} = ${t} and ${db(g.column)} = any(${list})`) as Row[]))
-        else if (t === String(col.reference_table)) all.push(...((await db`select * from ${db(rel)} where ${db(g.column)} = any(${list})`) as Row[]))
+        // #1021: a link to a view of t holds t's rows too.
+        else if ((await linkTargetNames(t, db as typeof sql)).includes(String(col.reference_table))) all.push(...((await db`select * from ${db(rel)} where ${db(g.column)} = any(${list})`) as Row[]))
       }
       // Only the row half of a link to any Table: its Table column may be
       // required, or shared with another link.

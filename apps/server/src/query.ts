@@ -456,7 +456,7 @@ async function attachedRowScopeCond(
     if (ownHistoryOnly && !(await seesEveryColumn(user, targetMeta, user))) continue
     if (isBound(targetMeta)) {
       const narrowed = scopes.has(target)
-        || targetMeta.columns.some((f) => f.column_type === 'Reference' && scopes.has(String(f.reference_table)))
+        || targetMeta.columns.some((f) => f.column_type === 'Reference' && scopes.has(String(linkBase(f))))
       if (scope === 'all' && !narrowed && !ownHistoryOnly) branches.push(sql`${rel}.ref_table = ${target}`)
       continue
     }
