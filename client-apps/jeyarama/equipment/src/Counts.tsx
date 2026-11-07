@@ -10,14 +10,14 @@ import { FreshCount } from './FreshCount'
 export interface Count {
   row_id: string; updated_at: string; count_name: string; scope_place: string; count_kind: string; sample_size: number | null
   starts_on: string | null; ends_on: string | null; reviewer: string; count_state: string; snapshot_at: string | null; expected_total: number | null; closed_at: string | null
-  freeze_from?: string | null; freeze_to?: string | null; recount_of?: string | null
+  freeze_from?: string | null; freeze_to?: string | null
 }
 interface Counter { row_id: string; count: string; person: string }
-interface Scan { row_id: string; count: string; asset: string | null; outcome: string; area: string; description: string | null; reason: string | null; manual: boolean; duplicate: boolean; differs?: boolean; created_by: string; created_at: string }
+interface Scan { row_id: string; count: string; asset: string | null; outcome: string; area: string; description: string | null; reason: string | null; manual: boolean; duplicate: boolean; created_by: string; created_at: string }
 interface Decision { row_id: string; updated_at: string; count: string; asset: string | null; scan: string | null; decision: string }
 
-const COUNT_FIELDS = ['row_id', 'updated_at', 'count_name', 'scope_place', 'count_kind', 'sample_size', 'starts_on', 'ends_on', 'reviewer', 'count_state', 'snapshot_at', 'expected_total', 'closed_at', 'freeze_from', 'freeze_to', 'recount_of']
-const SCAN_FIELDS = ['row_id', 'count', 'asset', 'outcome', 'area', 'description', 'reason', 'manual', 'duplicate', 'differs', 'created_by', 'created_at']
+const COUNT_FIELDS = ['row_id', 'updated_at', 'count_name', 'scope_place', 'count_kind', 'sample_size', 'starts_on', 'ends_on', 'reviewer', 'count_state', 'snapshot_at', 'expected_total', 'closed_at', 'freeze_from', 'freeze_to']
+const SCAN_FIELDS = ['row_id', 'count', 'asset', 'outcome', 'area', 'description', 'reason', 'manual', 'duplicate', 'created_by', 'created_at']
 
 export const useCounts = () => useQuery({ queryKey: ['assets', 'counts'], queryFn: () => listAll<Count>('equipment.count', { fields: COUNT_FIELDS, order_by: 'created_at desc' }) })
 const useCounters = () => useQuery({ queryKey: ['assets', 'counters'], queryFn: () => listAll<Counter>('equipment.counter', { fields: ['row_id', 'count', 'person'] }) })
@@ -80,14 +80,6 @@ export function CountsPage({ roles }: { roles: string[] }) {
     finally { setBusy(false) }
   }
 
-  async function startRecount(count: Count) {
-    setError('')
-    try {
-      await runAction('start_recount', { count: count.row_id })
-      await queryClient.invalidateQueries({ queryKey: ['assets'] })
-    } catch (err) { setError(err instanceof Error ? err.message : 'Could not start the recount') }
-  }
-
   async function start(count: Count) {
     setError('')
     try {
@@ -112,8 +104,6 @@ export function CountsPage({ roles }: { roles: string[] }) {
             <td className="counts-actions">
               {managerView && count.count_state === 'Planned' && <Button type="button" variant="primary" onClick={() => void start(count)}>Start count</Button>}
               {(countersOf(count.row_id).includes(me) || (count.count_kind === 'Fresh inventory' && managerView)) && count.count_state !== 'Planned' && <a href={`#count=${encodeURIComponent(count.row_id)}`}>{count.count_kind === 'Fresh inventory' ? 'Open count' : 'Record items'}</a>}
-              {managerView && count.count_kind === 'Fresh inventory' && count.count_state !== 'Planned' && !(counts.data ?? []).some(c => c.recount_of === count.row_id) &&
-                <Button type="button" onClick={() => void startRecount(count)}>Start independent recount</Button>}
               {(managerView || count.reviewer === me) && count.count_state !== 'Planned' && <a href={`#review=${encodeURIComponent(count.row_id)}`}>Review</a>}
             </td>
           </tr>)}
@@ -169,7 +159,6 @@ export function CountPage({ id }: { id: string }) {
   const [typed, setTyped] = useState(false)
   const [why, setWhy] = useState('')
   const [outcome, setOutcome] = useState<string>('Found here')
-  const [differs, setDiffers] = useState(false)
   const [condition, setCondition] = useState('')
   const [description, setDescription] = useState('')
   const [newTag, setNewTag] = useState('')
@@ -221,9 +210,9 @@ export function CountPage({ id }: { id: string }) {
           event.preventDefault()
           // A JRA tag opens its asset; older labels carry the asset's ID.
           const scanned = tag.trim().toUpperCase().startsWith('JRA-') ? (assets.data ?? []).find(a => a.tag_no === tag.trim().toUpperCase())?.row_id ?? tag.trim() : tag.trim()
-          void record({ outcome, ...(condition ? { condition } : {}), ...(c.count_kind === 'Recount' ? { differs } : {}),
+          void record({ outcome, ...(condition ? { condition } : {}),
             ...(typed ? { typed_tag: tag.trim().toUpperCase(), reason: why.trim() } : { asset: scanned }) },
-            () => { setTag(''); setTyped(false); setWhy(''); setCondition(''); setDiffers(false) })
+            () => { setTag(''); setTyped(false); setWhy(''); setCondition('') })
         }}>
           <label>Tag<input value={tag} onChange={event => setTag(event.target.value)} placeholder="JRA-000123" autoComplete="off" /></label>
           <label className="asset-radio"><input type="checkbox" checked={typed} onChange={event => setTyped(event.target.checked)} /> Typed by hand</label>
@@ -235,7 +224,6 @@ export function CountPage({ id }: { id: string }) {
             <option value="">Not noted</option>
             {['Working', 'Needs repair', 'Damaged'].map(value => <option key={value}>{value}</option>)}
           </select></label>
-          {c.count_kind === 'Recount' && <label className="asset-radio"><input type="checkbox" checked={differs} onChange={event => setDiffers(event.target.checked)} /> Details differ from the count line</label>}
           <Button type="submit" variant="primary" disabled={busy || !area || !tag.trim()}>Record</Button>
         </form>
       </section>
@@ -317,12 +305,6 @@ export function ReviewPage({ id }: { id: string }) {
     <h1>Review: {c.count_name}</h1>
     <p className="asset-sub">{placePath(c.scope_place, allPlaces)} · {c.count_kind} count · expected list fixed {fmtInstantIST(c.snapshot_at)}</p>
     <p>Stage: <strong>{c.count_state}</strong>{c.closed_at ? ` · closed ${fmtInstantIST(c.closed_at)}` : ''}</p>
-    {c.count_kind === 'Recount' && (() => {
-      const seen = new Set(scans.data!.filter(s => s.asset && !s.duplicate).map(s => s.asset))
-      const wrong = expected.data!.filter(e => !seen.has(e.asset)).length + scans.data!.filter(s => s.differs && !s.duplicate).length
-      const total = Math.max(1, expected.data!.length)
-      return <p className="recount-error-rate">Independent recount error rate: <strong>{Math.round((wrong / total) * 100)}%</strong> ({wrong} of {expected.data!.length} lines not found or different)</p>
-    })()}
     <div className="review-actions">
       {c.count_state === 'Counting' && <Button type="button" variant="primary" onClick={() => void setStage('In review')}>Move to review</Button>}
       {c.count_state === 'In review' && <Button type="button" variant="primary" onClick={() => void setStage('Closed')}>Close count</Button>}

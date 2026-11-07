@@ -280,7 +280,7 @@ if (!freshCounts.length) {
     for (const person of [staff.row_id, ravi.row_id]) await save('equipment.counter', { count: count.row_id, person })
     count = await request(`/api/table/equipment.count/${count.row_id}`)
     await act('start_count', { row_id: count.row_id, updated_at: count.updated_at })
-    const line = (area, values) => save('equipment.asset', { counted_in: count.row_id, place: places[area], tag_status: 'Tagged', condition: 'Working', usage: 'In use',
+    const line = (area, values) => save('equipment.count_line', { count: count.row_id, place: places[area], tag_status: 'Tagged', condition: 'Working', usage: 'In use',
       ownership: 'Group owned', custodian: staff.row_id, tagged_by: ravi.row_id, ...values }, asSuresh)
     const lines = {}
     lines.chiller1 = await line('ATK Dairy aisle', { tag_no: 'JRA-000301', asset_type: atkTypes['Display chiller'], asset_name: '3-door upright chiller', make: 'Blue Star', model: 'VC350', serial_no: 'SAMPLE-BS23K44871' })
@@ -305,12 +305,12 @@ if (!freshCounts.length) {
       ['dup1', 'SAMPLE-200090', 'Visi cooler single door', 38000, 1, { capitalized_on: '2023-05-02' }],
       ['dup2', 'SAMPLE-200091', 'Visi cooler single door', 38000, 1, { capitalized_on: '2023-05-02' }],
     ]) book[key] = await save('equipment.sap_book', { plant: '1501', sap_company_code: 'SAMPLE-1000', sap_asset_no, sap_asset_sub: '0', description, book_value, quantity, location_text: 'ATK 1501', ...extra })
-    await act('match_sap', { sap_book: book.chiller.row_id, assets: [lines.chiller1.row_id], method: 'Serial number' })
-    await act('match_sap', { sap_book: book.ac.row_id, assets: [lines.ac1.row_id, lines.ac2.row_id], method: 'Invoice or PO' })
-    await act('match_sap', { sap_book: book.dup1.row_id, assets: [lines.chiller2.row_id], method: 'Description, place and date', second_checker: meena.row_id })
+    await act('match_sap', { sap_book: book.chiller.row_id, lines: [lines.chiller1.row_id], method: 'Serial number' })
+    await act('match_sap', { sap_book: book.ac.row_id, lines: [lines.ac1.row_id, lines.ac2.row_id], method: 'Invoice or PO' })
+    await act('match_sap', { sap_book: book.dup1.row_id, lines: [lines.chiller2.row_id], method: 'Description, place and date', second_checker: meena.row_id })
     await save('equipment.exception', { outcome: 'In books, not found', sap_asset_no: 'SAMPLE-200081-0', detail: 'EAS gate pair not found in any ATK area', owner: staff.row_id, due_on: day(7) })
     await save('equipment.exception', { outcome: 'Duplicate SAP records', sap_asset_no: 'SAMPLE-200090-0 and SAMPLE-200091-0', detail: 'The same visi cooler is in the book twice', owner: meena.row_id, due_on: day(10) })
-    const found = await save('equipment.exception', { outcome: 'Found, not in books', asset: lines.gondola.row_id, detail: 'Gondola run in aisle 7 has no SAP record', owner: meena.row_id, due_on: day(10) })
+    const found = await save('equipment.exception', { outcome: 'Found, not in books', line: lines.gondola.row_id, detail: 'Gondola run in aisle 7 has no SAP record', owner: meena.row_id, due_on: day(10) })
     await save('equipment.exception', { row_id: found.row_id, updated_at: found.updated_at, exception_state: 'Approved', approval_ref: 'SAMPLE-FC/ATK/001' }, asMeena)
   } finally {
     for (const id of tokens) await request(`/api/access_tokens/${encodeURIComponent(id)}`, { method: 'DELETE' })

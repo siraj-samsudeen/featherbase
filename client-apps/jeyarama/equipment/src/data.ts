@@ -40,12 +40,19 @@ export interface Asset {
   quantity?: number | null
   usage?: string | null
   book_value?: string | null
-  counted_in?: string | null
-  counted_at?: string | null
-  tagged_by?: string | null
-  recorded_by?: string | null
   updated_at?: string
 }
+export interface CountLine {
+  row_id: string; updated_at: string; count: string; place: string; tag_no: string | null; tag_status: string; asset_type: string; asset_class: string | null
+  asset_name: string; make: string | null; model: string | null; serial_no: string | null; condition: string; usage: string | null; ownership: string
+  owner_name: string | null; quantity: number | null; custodian: string | null; tagged_by: string; recorded_by: string | null; counted_at: string | null
+  control_category: string | null; book_value: string | null; sap_asset_no: string | null; sap_asset_sub: string | null
+  for_recount: boolean; recount_result: string | null; recounted_by: string | null; asset: string | null
+}
+const LINE_FIELDS = ['row_id', 'updated_at', 'count', 'place', 'tag_no', 'tag_status', 'asset_type', 'asset_class', 'asset_name', 'make', 'model', 'serial_no', 'condition', 'usage',
+  'ownership', 'owner_name', 'quantity', 'custodian', 'tagged_by', 'recorded_by', 'counted_at', 'control_category', 'book_value', 'sap_asset_no', 'sap_asset_sub',
+  'for_recount', 'recount_result', 'recounted_by', 'asset']
+export const useLines = () => useQuery({ queryKey: ['assets', 'lines'], queryFn: () => listAll<CountLine>('equipment.count_line', { fields: LINE_FIELDS, order_by: 'counted_at asc' }) })
 export interface Job {
   row_id: string
   updated_at: string
@@ -75,7 +82,7 @@ export interface Person { row_id: string; full_name: string }
 const ASSET_FIELDS = ['row_id', 'asset_name', 'asset_type', 'place', 'book_status', 'condition', 'custody_status', 'owner_entity', 'operator_entity',
   'cost_centre', 'custodian', 'location_custodian', 'sap_company_code', 'sap_asset_no', 'sap_asset_sub', 'sap_equipment_no', 'legacy_id', 'sap_refreshed_at',
   'make', 'model', 'serial_no', 'warranty_until', 'amc_vendor', 'amc_until', 'tag_no', 'tag_status', 'asset_class', 'control_category', 'ownership', 'owner_name',
-  'quantity', 'usage', 'book_value', 'counted_in', 'counted_at', 'tagged_by', 'recorded_by', 'updated_at']
+  'quantity', 'usage', 'book_value', 'updated_at']
 const JOB_FIELDS = ['row_id', 'updated_at', 'asset', 'problem', 'details', 'priority', 'job_state', 'assigned_to', 'place', 'failure_started_at', 'reported_at',
   'fix_by', 'responded_at', 'repair_started_at', 'restored_at', 'cause', 'work_done', 'spares', 'outside_service', 'repair_cost', 'created_by']
 

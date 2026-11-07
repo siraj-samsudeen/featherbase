@@ -2,13 +2,13 @@ import { Button, fmtDate, fmtExact, fmtINR } from '@featherbase/shop-floor'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { listAll, myId, runAction, save } from './api'
-import { inSite, nameOf, sitesOf, useAssets, usePeople, usePlaces, type Place } from './data'
+import { inSite, nameOf, sitesOf, useLines, usePeople, usePlaces, type Place } from './data'
 import { reconciliation, sapStatus } from './tagRules'
 
 interface SapRecord { row_id: string; plant: string; sap_company_code: string | null; sap_asset_no: string; sap_asset_sub: string | null; description: string; sap_class_code: string | null
   capitalized_on: string | null; book_value: string | null; quantity: number | null; serial_no: string | null; old_tag: string | null; invoice_ref: string | null; location_text: string | null; cost_centre: string | null }
-interface SapMatch { row_id: string; updated_at: string; sap_book: string; asset: string; method: string; second_checker: string | null; checked: boolean; matched_by: string }
-export interface CountException { row_id: string; updated_at: string; outcome: string; asset: string | null; sap_asset_no: string | null; detail: string; owner: string | null; due_on: string | null
+interface SapMatch { row_id: string; updated_at: string; sap_book: string; line: string; method: string; second_checker: string | null; checked: boolean; matched_by: string }
+export interface CountException { row_id: string; updated_at: string; outcome: string; line: string | null; sap_asset_no: string | null; detail: string; owner: string | null; due_on: string | null
   approval_ref: string | null; exception_state: string; raised_by: string; approved_by: string | null }
 interface FinancePerson { row_id: string; person: string; finance_role: string }
 
@@ -17,9 +17,9 @@ const OUTCOMES = ['Matched', 'In books, not found', 'Found, not in books', 'Wron
 const BOOK_COLUMNS = ['sap_asset_no', 'sap_asset_sub', 'description', 'sap_class_code', 'capitalized_on', 'book_value', 'quantity', 'serial_no', 'old_tag', 'invoice_ref', 'location_text', 'cost_centre'] as const
 
 const useBook = () => useQuery({ queryKey: ['assets', 'sap-book'], queryFn: () => listAll<SapRecord>('equipment.sap_book', { fields: ['row_id', 'plant', 'sap_company_code', ...BOOK_COLUMNS], order_by: 'sap_asset_no asc' }) })
-const useMatches = () => useQuery({ queryKey: ['assets', 'sap-matches'], queryFn: () => listAll<SapMatch>('equipment.sap_match', { fields: ['row_id', 'updated_at', 'sap_book', 'asset', 'method', 'second_checker', 'checked', 'matched_by'] }) })
+const useMatches = () => useQuery({ queryKey: ['assets', 'sap-matches'], queryFn: () => listAll<SapMatch>('equipment.sap_match', { fields: ['row_id', 'updated_at', 'sap_book', 'line', 'method', 'second_checker', 'checked', 'matched_by'] }) })
 export const useExceptions = () => useQuery({ queryKey: ['assets', 'exceptions'], queryFn: () => listAll<CountException>('equipment.exception', {
-  fields: ['row_id', 'updated_at', 'outcome', 'asset', 'sap_asset_no', 'detail', 'owner', 'due_on', 'approval_ref', 'exception_state', 'raised_by', 'approved_by'], order_by: 'created_at desc' }) })
+  fields: ['row_id', 'updated_at', 'outcome', 'line', 'sap_asset_no', 'detail', 'owner', 'due_on', 'approval_ref', 'exception_state', 'raised_by', 'approved_by'], order_by: 'created_at desc' }) })
 export const useFinancePeople = () => useQuery({ queryKey: ['assets', 'finance-people'], queryFn: () => listAll<FinancePerson>('equipment.finance_person', { fields: ['row_id', 'person', 'finance_role'] }) })
 
 /** A pasted cell as a calendar day: 12-03-2023, 12/03/2023 or 2023-03-12. */
@@ -35,7 +35,7 @@ const recordNo = (r: SapRecord) => `${r.sap_asset_no}-${r.sap_asset_sub ?? '0'}`
 export function SapPage() {
   const queryClient = useQueryClient()
   const places = usePlaces()
-  const assets = useAssets()
+  const assets = useLines()
   const book = useBook()
   const matches = useMatches()
   const exceptions = useExceptions()
@@ -63,7 +63,7 @@ export function SapPage() {
   const recordMatches = (id: string) => (matches.data ?? []).filter(m => m.sap_book === id)
   const figures = reconciliation({
     book: records.map(r => ({ row_id: r.row_id, book_value: r.book_value, quantity: r.quantity })),
-    matches: (matches.data ?? []).filter(m => records.some(r => r.row_id === m.sap_book)),
+    matches: (matches.data ?? []).filter(m => records.some(r => r.row_id === m.sap_book)).map(m => ({ sap_book: m.sap_book, asset: m.line })),
     assets: siteAssets.map(a => ({ row_id: a.row_id, tag_status: a.tag_status ?? null })),
     exceptions: exceptions.data ?? [],
   })
@@ -89,10 +89,10 @@ export function SapPage() {
     const wanted = matching!.tags.split(/[\s,]+/).map(tag => tag.trim().toUpperCase()).filter(Boolean)
     const ids = wanted.map(tag => {
       const asset = (assets.data ?? []).find(a => a.tag_no === tag)
-      if (!asset) throw new Error(`${tag} is not in the count register; check the tag number`)
+      if (!asset) throw new Error(`${tag} is not on a count line; check the tag number`)
       return asset.row_id
     })
-    await runAction('match_sap', { sap_book: matching!.record, assets: ids, method: matching!.method, second_checker: matching!.checker || null })
+    await runAction('match_sap', { sap_book: matching!.record, lines: ids, method: matching!.method, second_checker: matching!.checker || null })
   }
 
   return <section aria-labelledby="sap-heading" className="sap-page">
@@ -112,7 +112,7 @@ export function SapPage() {
 
     {toCheck.length > 0 && <section aria-label="Matches for you to check" className="asset-report">
       <h2>Matches for you to check</h2>
-      {toCheck.map(m => <p key={m.row_id}>{assetById.get(m.asset)?.tag_no} to {recordNo((book.data ?? []).find(r => r.row_id === m.sap_book)!)} by {nameOf(people.data, m.matched_by, 'full_name')} ·
+      {toCheck.map(m => <p key={m.row_id}>{assetById.get(m.line)?.tag_no} to {recordNo((book.data ?? []).find(r => r.row_id === m.sap_book)!)} by {nameOf(people.data, m.matched_by, 'full_name')} ·
         <Button type="button" onClick={() => void run(() => save('equipment.sap_match', { row_id: m.row_id, updated_at: m.updated_at, checked: true }), () => {})}>Confirm check</Button></p>)}
     </section>}
 
@@ -120,12 +120,12 @@ export function SapPage() {
       <thead><tr><th scope="col">SAP no.</th><th scope="col">Book record</th><th scope="col">Book value</th><th scope="col">Qty</th><th scope="col">Tags · method</th><th scope="col">Status</th><th scope="col" /></tr></thead>
       <tbody>{records.map(r => {
         const found = recordMatches(r.row_id)
-        const status = sapStatus({ quantity: r.quantity, plant: r.plant }, found.map(m => ({ plant: plantOf(m.asset) })))
+        const status = sapStatus({ quantity: r.quantity, plant: r.plant }, found.map(m => ({ plant: plantOf(m.line) })))
         return <tr key={r.row_id}>
           <th scope="row">{recordNo(r)}</th>
           <td>{r.description}{r.capitalized_on ? ` · cap. ${fmtDate(String(r.capitalized_on).slice(0, 10))}` : ''}{r.serial_no ? ` · S/N ${r.serial_no}` : ''}</td>
           <td>{r.book_value ? fmtExact(Number(r.book_value)) : '—'}</td><td>{r.quantity ?? 1}</td>
-          <td>{found.map(m => `${assetById.get(m.asset)?.tag_no ?? m.asset} · ${m.method}${m.second_checker ? (m.checked ? ', checked' : ', check pending') : ''}`).join('; ') || '—'}</td>
+          <td>{found.map(m => `${assetById.get(m.line)?.tag_no ?? m.line} · ${m.method}${m.second_checker ? (m.checked ? ', checked' : ', check pending') : ''}`).join('; ') || '—'}</td>
           <td><span className="sap-status" data-status={status.startsWith('Found ') ? 'partial' : status}>{status}</span></td>
           <td><Button type="button" onClick={() => setMatching({ record: r.row_id, tags: '', method: 'Serial number', checker: '' })}>Match tags</Button></td>
         </tr>
@@ -156,7 +156,7 @@ export function SapPage() {
 export function ExceptionsPage({ roles }: { roles: string[] }) {
   const queryClient = useQueryClient()
   const exceptions = useExceptions()
-  const assets = useAssets()
+  const assets = useLines()
   const people = usePeople()
   const me = myId()
   const controller = roles.includes('Assets Finance Controller')
@@ -180,7 +180,7 @@ export function ExceptionsPage({ roles }: { roles: string[] }) {
     <div className="assets-table-wrap"><table className="assets-table" aria-label="Exceptions log">
       <thead><tr><th scope="col">Difference</th><th scope="col">Outcome</th><th scope="col">Owner</th><th scope="col">Due</th><th scope="col">Approval</th><th scope="col">State</th><th scope="col" /></tr></thead>
       <tbody>{(exceptions.data ?? []).map(x => <tr key={x.row_id}>
-        <th scope="row">{[x.asset ? assets.data?.find(a => a.row_id === x.asset)?.tag_no ?? '' : '', x.sap_asset_no].filter(Boolean).join(' · ')}{x.asset || x.sap_asset_no ? ' — ' : ''}{x.detail}</th>
+        <th scope="row">{[x.line ? assets.data?.find(a => a.row_id === x.line)?.tag_no ?? '' : '', x.sap_asset_no].filter(Boolean).join(' · ')}{x.line || x.sap_asset_no ? ' — ' : ''}{x.detail}</th>
         <td>{x.outcome}</td><td>{person(x.owner) || '—'}</td><td>{x.due_on ? fmtDate(String(x.due_on).slice(0, 10)) : '—'}</td>
         <td>{x.approval_ref ?? '—'}{x.approved_by ? ` · ${person(x.approved_by)}` : ''}</td>
         <td><span className="sap-status" data-status={x.exception_state}>{x.exception_state}</span></td>
@@ -202,8 +202,8 @@ export function ExceptionsPage({ roles }: { roles: string[] }) {
       e.preventDefault()
       const asset = draft.tag.trim() ? (assets.data ?? []).find(a => a.tag_no === draft.tag.trim().toUpperCase()) : undefined
       void run(async () => {
-        if (draft.tag.trim() && !asset) throw new Error(`${draft.tag.trim().toUpperCase()} is not in the register`)
-        await save('equipment.exception', { outcome: draft.outcome, asset: asset?.row_id ?? null, sap_asset_no: draft.sap_asset_no.trim() || null, detail: draft.detail.trim(),
+        if (draft.tag.trim() && !asset) throw new Error(`${draft.tag.trim().toUpperCase()} is not on a count line`)
+        await save('equipment.exception', { outcome: draft.outcome, line: asset?.row_id ?? null, sap_asset_no: draft.sap_asset_no.trim() || null, detail: draft.detail.trim(),
           owner: draft.owner || null, due_on: draft.due_on || null })
       }, () => setDraft({ outcome: 'In books, not found', tag: '', sap_asset_no: '', detail: '', owner: '', due_on: '' }))
     }}>

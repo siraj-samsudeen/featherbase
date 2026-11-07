@@ -52,16 +52,49 @@ async function areaClosedToday(ctx: Context, count: unknown, area: unknown) {
   return closes.some(close => String(close.close_day).slice(0, 10) === istDay(ctx.now) || instant(close.close_day).slice(0, 10) === istDay(ctx.now))
 }
 
-/** The register: JRA tags from issued rolls, the four labels, Finance-only fields, and count lines with two initials. */
+/** A tag is from an issued roll, not spoiled, and on no other count line or asset. */
+async function checkNewTag(ctx: Context, tag: string, table: string) {
+  const rolls = await all(ctx.documents, 'equipment.tag_roll', [], ['row_id', 'first_no', 'last_no'])
+  if (!rollOf(rolls.map(r => ({ row_id: String(r.row_id), first_no: Number(r.first_no), last_no: Number(r.last_no) })), tag)) ctx.reject(`${tag} is not on an issued tag roll`)
+  const spoiled = await all(ctx.documents, 'equipment.tag_event', [['tag_no', '=', tag]], ['event_kind'])
+  if (spoiled.some(event => event.event_kind === 'Spoiled' || event.event_kind === 'Skipped')) ctx.reject(`${tag} was spoiled; tag numbers are never reused`)
+  for (const other of ['equipment.count_line', 'equipment.asset']) {
+    const taken = await all(ctx.documents, other, [['tag_no', '=', tag]], ['row_id'])
+    // A line's own register asset carries its tag too.
+    if (taken.some(row => !(other === table && row.row_id === ctx.row.row_id) && !(other === 'equipment.asset' && row.row_id === ctx.row.asset)))
+      ctx.reject(`${tag} is already on another asset; tag numbers are never reused`)
+  }
+}
+
+/** The register: a tag, once set, never changes, and the class follows the type. */
 export async function prepareAsset(ctx: Context): Promise<void> {
+  const { row, old } = ctx
+  if (row.asset_type) row.asset_class = (await ctx.documents.get('equipment.asset_type', String(row.asset_type))).asset_class ?? null
+  const tag = text(row.tag_no) || null
+  row.tag_no = tag
+  if (old?.tag_no && tag !== old.tag_no) ctx.reject('A tag number never changes', { tag_no: 'Keep the tag number' })
+  if (tag && !isTag(tag)) ctx.reject('A tag is JRA- and six digits, as printed on the roll', { tag_no: 'Type it as JRA-000123' })
+  if (tag && tag !== (old?.tag_no ?? null)) {
+    const lines = await all(ctx.documents, 'equipment.count_line', [['tag_no', '=', tag]], ['row_id'])
+    const assets = await all(ctx.documents, 'equipment.asset', [['tag_no', '=', tag]], ['row_id'])
+    // Loading the register carries a counted line's tag onto its new asset.
+    if (assets.some(asset => asset.row_id !== row.row_id) || lines.length > 1) ctx.reject(`${tag} is already on another asset; tag numbers are never reused`)
+  }
+  if (!row.tag_status) row.tag_status = tag ? 'Tagged' : 'Needs a tag'
+}
+
+/** The count sheet: a JRA tag from an issued roll, the four labels, Finance-only fields, two initials, and the recount. */
+export async function prepareCountLine(ctx: Context): Promise<void> {
   const { row, old } = ctx
   const finance = (await isAccountant(ctx)) || (await isController(ctx))
   for (const field of ['control_category', 'tag_approved'])
     if (!same(row[field] || null, old?.[field] || null) && !finance) ctx.reject('Only Finance sets the control category and book value')
   if (money(row.book_value) !== money(old?.book_value) && !finance) ctx.reject('Only Finance sets the control category and book value')
+  for (const field of ['sap_asset_no', 'sap_asset_sub', 'asset'])
+    if (!same(row[field], old?.[field]) && !finance && !(await isManager(ctx))) ctx.reject('Matching and loading the register set these')
 
   if (row.asset_type) row.asset_class = (await ctx.documents.get('equipment.asset_type', String(row.asset_type))).asset_class ?? null
-  const status = String(row.tag_status || 'Needs a tag')
+  const status = String(row.tag_status || 'Tagged')
   row.tag_status = status
   const tag = text(row.tag_no) || null
   row.tag_no = tag
@@ -75,26 +108,23 @@ export async function prepareAsset(ctx: Context): Promise<void> {
   if (status === 'Tagged') {
     if (!tag) ctx.reject('Give the tag number', { tag_no: 'Scan or type the tag' })
     if (!isTag(tag)) ctx.reject('A tag is JRA- and six digits, as printed on the roll', { tag_no: 'Type it as JRA-000123' })
-    if (tag !== (old?.tag_no ?? null)) {
-      const rolls = await all(ctx.documents, 'equipment.tag_roll', [], ['row_id', 'first_no', 'last_no'])
-      if (!rollOf(rolls.map(r => ({ row_id: String(r.row_id), first_no: Number(r.first_no), last_no: Number(r.last_no) })), tag!)) ctx.reject(`${tag} is not on an issued tag roll`)
-      const spoiled = await all(ctx.documents, 'equipment.tag_event', [['tag_no', '=', tag]], ['event_kind'])
-      if (spoiled.some(event => event.event_kind === 'Spoiled' || event.event_kind === 'Skipped')) ctx.reject(`${tag} was spoiled; tag numbers are never reused`)
-      const taken = await all(ctx.documents, 'equipment.asset', [['tag_no', '=', tag]], ['row_id'])
-      if (taken.some(asset => asset.row_id !== row.row_id)) ctx.reject(`${tag} is already on another asset; tag numbers are never reused`)
-    }
+    if (tag !== (old?.tag_no ?? null)) await checkNewTag(ctx, tag!, 'equipment.count_line')
   }
   if (!(Number(row.quantity ?? 1) >= 1)) ctx.reject('A line counts at least one item', { quantity: 'Give the quantity' })
 
-  const countId = row.counted_in ?? old?.counted_in
-  if (!countId) {
-    if (!finance && !(await isManager(ctx))) ctx.reject(ctx.isNew ? 'Only Assets Managers add assets outside a count' : 'Only Assets Managers change the register')
-    return
-  }
-  if (old && !same(old.counted_in, row.counted_in)) ctx.reject('A count line stays in its count')
-  const count = await ctx.documents.get('equipment.count', String(countId))
+  if (old && !same(old.count, row.count)) ctx.reject('A count line stays in its count')
+  const count = await ctx.documents.get('equipment.count', String(row.count))
   if (count.count_kind !== 'Fresh inventory') ctx.reject('Count lines belong to a fresh inventory count')
-  const counters = await counterIds(ctx.documents, countId)
+  const counters = await counterIds(ctx.documents, row.count)
+
+  // The independent recount: only flagged lines, recorded by someone outside the count team.
+  if (!same(row.recount_result, old?.recount_result)) {
+    if (!old?.for_recount) ctx.reject('This line is not in the recount')
+    if (counters.includes(ctx.user) || [old?.tagged_by, old?.recorded_by].includes(ctx.user)) ctx.reject('Someone outside the count team recounts')
+    Object.assign(row, { recounted_by: ctx.user, recounted_at: ctx.now })
+  } else Object.assign(row, { recounted_by: old?.recounted_by ?? null, recounted_at: old?.recounted_at ?? null })
+  if (!same(Boolean(row.for_recount), Boolean(old?.for_recount)) && !(await isManager(ctx))) ctx.reject('Only an Assets Manager starts the independent recount')
+
   if (ctx.isNew) {
     if (count.count_state !== 'Counting') ctx.reject('This count is not counting')
     if (!counters.includes(ctx.user)) ctx.reject('Only this count’s team records lines')
@@ -102,15 +132,16 @@ export async function prepareAsset(ctx: Context): Promise<void> {
       ctx.reject('Both team members initial: choose the other team member who tagged it', { tagged_by: 'Choose who tagged it' })
     const places = await placeTree(ctx.documents)
     if (!withinPlace(String(row.place), String(count.scope_place), parents(places))) ctx.reject('Record lines only in the place being counted', { place: 'Choose an area inside the counted site' })
-    if (await areaClosedToday(ctx, countId, row.place)) ctx.reject(`${String(places.find(p => p.row_id === row.place)?.place_name ?? 'This area')} is closed for today`)
-    Object.assign(row, { recorded_by: ctx.user, counted_at: ctx.now, book_status: row.book_status || 'Not yet in SAP' })
+    if (await areaClosedToday(ctx, row.count, row.place)) ctx.reject(`${String(places.find(p => p.row_id === row.place)?.place_name ?? 'This area')} is closed for today`)
+    Object.assign(row, { recorded_by: ctx.user, counted_at: ctx.now, for_recount: false })
     return
   }
-  for (const field of ['recorded_by', 'counted_at']) row[field] = old?.[field] ?? null
-  if (finance) return
-  const ownLine = [old?.recorded_by, old?.tagged_by].includes(ctx.user) && count.count_state === 'Counting' && !(await areaClosedToday(ctx, countId, old?.place))
-  if (!ownLine && !counters.includes(ctx.user) && await isManager(ctx)) return
-  if (!ownLine) ctx.reject('Only the team who recorded this line changes it, until the area is closed')
+  for (const field of ['recorded_by', 'counted_at', 'tagged_by']) row[field] = old?.[field] ?? null
+  if (!same(row.place, old?.place) || !same(row.asset_type, old?.asset_type) || !same(row.asset_name, old?.asset_name) || !same(row.serial_no, old?.serial_no)
+      || !same(row.condition, old?.condition) || !same(row.make, old?.make) || !same(row.model, old?.model) || !same(row.quantity, old?.quantity) || !same(row.tag_no, old?.tag_no)) {
+    const ownLine = [old?.recorded_by, old?.tagged_by].includes(ctx.user) && count.count_state === 'Counting' && !(await areaClosedToday(ctx, row.count, old?.place))
+    if (!ownLine) ctx.reject('Only the team who recorded this line changes it, until the area is closed')
+  }
 }
 
 /** A spoiled, skipped or reprinted tag is logged once, with its reason. */
@@ -121,7 +152,7 @@ export async function prepareTagEvent(ctx: Context): Promise<void> {
   row.tag_no = tag
   if (!isTag(tag)) ctx.reject('A tag is JRA- and six digits, as printed on the roll', { tag_no: 'Type it as JRA-000123' })
   if (!text(row.reason)) ctx.reject('Give the reason', { reason: 'Say what happened' })
-  const used = await all(ctx.documents, 'equipment.asset', [['tag_no', '=', tag]], ['row_id'])
+  const used = [...await all(ctx.documents, 'equipment.count_line', [['tag_no', '=', tag]], ['row_id']), ...await all(ctx.documents, 'equipment.asset', [['tag_no', '=', tag]], ['row_id'])]
   if (row.event_kind === 'Reprinted' && !used.length) ctx.reject(`${tag} is not on an asset yet; only a used tag is reprinted`)
   if (row.event_kind !== 'Reprinted' && used.length) ctx.reject(`${tag} is on an asset; log a reprint instead`)
 }
@@ -148,7 +179,7 @@ export async function prepareAreaClose(ctx: Context): Promise<void> {
   if (!site?.site_manager || site.site_manager !== ctx.user) ctx.reject('Only the site manager signs an area')
   const today = istDay(ctx.now)
   if (await areaClosedToday(ctx, row.count, row.area)) ctx.reject(`${String(area!.place_name)} is already signed for today`)
-  const lines = (await all(ctx.documents, 'equipment.asset', [['counted_in', '=', row.count], ['place', '=', row.area]], ['tag_status', 'counted_at']))
+  const lines = (await all(ctx.documents, 'equipment.count_line', [['count', '=', row.count], ['place', '=', row.area]], ['tag_status', 'counted_at']))
     .filter(line => istDay(line.counted_at) === today)
   const events = (await all(ctx.documents, 'equipment.tag_event', [['count', '=', row.count], ['area', '=', row.area]], ['event_kind', 'created_at']))
     .filter(event => event.event_kind !== 'Reprinted' && istDay(event.created_at) === today)
@@ -187,7 +218,7 @@ export async function checkFreeze(ctx: Context): Promise<void> {
 export async function prepareSapMatch(ctx: Context): Promise<void> {
   const { row, old } = ctx
   if (!ctx.isNew) {
-    for (const field of ['sap_book', 'asset', 'method', 'second_checker', 'matched_by', 'matched_at'])
+    for (const field of ['sap_book', 'line', 'method', 'second_checker', 'matched_by', 'matched_at'])
       if (!same(instant(row[field]), instant(old?.[field]))) ctx.reject('A match is kept as it was made; only its check is added')
     if (row.checked && !old?.checked && ctx.user !== old?.second_checker) ctx.reject('Only the named second person checks this match')
     if (!row.checked && old?.checked) ctx.reject('A check stays recorded')
@@ -197,11 +228,11 @@ export async function prepareSapMatch(ctx: Context): Promise<void> {
     if (!row.second_checker) ctx.reject('A match by description, place and date needs a second person to check it', { second_checker: 'Choose who checks it' })
     if (row.second_checker === ctx.user) ctx.reject('Someone other than the matcher checks it')
   }
-  const asset = await ctx.documents.get('equipment.asset', String(row.asset))
-  const tag = String(asset.tag_no ?? asset.asset_name)
-  if (asset.counted_in && ([asset.tagged_by, asset.recorded_by].includes(ctx.user) || (await counterIds(ctx.documents, asset.counted_in)).includes(ctx.user)))
+  const line = await ctx.documents.get('equipment.count_line', String(row.line))
+  const tag = String(line.tag_no ?? line.asset_name)
+  if ([line.tagged_by, line.recorded_by].includes(ctx.user) || (await counterIds(ctx.documents, line.count)).includes(ctx.user))
     ctx.reject(`The count team never matches: you are on the team that counted ${tag}`)
-  const earlier = await all(ctx.documents, 'equipment.sap_match', [['asset', '=', row.asset]], ['sap_book'])
+  const earlier = await all(ctx.documents, 'equipment.sap_match', [['line', '=', row.line]], ['sap_book'])
   if (earlier.length) {
     const record = await ctx.documents.get('equipment.sap_book', String(earlier[0].sap_book))
     ctx.reject(`${tag} is already matched to ${String(record.sap_asset_no)}-${String(record.sap_asset_sub ?? '0')}`)
@@ -226,9 +257,9 @@ export async function prepareException(ctx: Context): Promise<void> {
   if (!(await isController(ctx)) || (await isAccountant(ctx))) ctx.reject('Only a Finance Controller approves; an asset accountant never approves')
   if (old?.raised_by === ctx.user) ctx.reject('Nobody approves an exception they raised')
   if (!text(row.approval_ref)) ctx.reject('Give the approval reference', { approval_ref: 'Give the reference' })
-  if (row.asset) {
-    const asset = await ctx.documents.get('equipment.asset', String(row.asset))
-    if ([asset.tagged_by, asset.recorded_by].includes(ctx.user)) ctx.reject('Nobody approves their own work: you counted this item')
+  if (row.line) {
+    const line = await ctx.documents.get('equipment.count_line', String(row.line))
+    if ([line.tagged_by, line.recorded_by].includes(ctx.user)) ctx.reject('Nobody approves their own work: you counted this item')
   }
   Object.assign(row, { approved_by: ctx.user, approved_at: ctx.now })
 }
@@ -242,23 +273,22 @@ interface ActionContext {
 }
 
 export const inventoryActions = {
-  /** Link one SAP record to one or more tags, then copy its number and share of book value to them. */
+  /** Link one SAP record to one or more count lines, then copy its number and share of book value to them. */
   async match_sap(ctx: ActionContext) {
     if (!ctx.roles.includes('Assets Accountant')) ctx.reject('Only an asset accountant matches SAP records')
-    const request = ctx.payload as { sap_book?: unknown; assets?: unknown; method?: unknown; second_checker?: unknown } | null
-    if (!request || typeof request.sap_book !== 'string' || !Array.isArray(request.assets) || !request.assets.length || typeof request.method !== 'string')
+    const request = ctx.payload as { sap_book?: unknown; lines?: unknown; method?: unknown; second_checker?: unknown } | null
+    if (!request || typeof request.sap_book !== 'string' || !Array.isArray(request.lines) || !request.lines.length || typeof request.method !== 'string')
       ctx.reject('Choose the SAP record, its tags and how they were matched')
     const record = await ctx.documents.get('equipment.sap_book', request.sap_book)
-    for (const asset of request.assets as unknown[])
-      await ctx.documents.create('equipment.sap_match', { sap_book: record.row_id, asset: String(asset), method: request.method, second_checker: request.second_checker || null })
-    const matched = await all(ctx.documents, 'equipment.sap_match', [['sap_book', '=', record.row_id]], ['asset'])
+    for (const line of request.lines as unknown[])
+      await ctx.documents.create('equipment.sap_match', { sap_book: record.row_id, line: String(line), method: request.method, second_checker: request.second_checker || null })
+    const matched = await all(ctx.documents, 'equipment.sap_match', [['sap_book', '=', record.row_id]], ['line'])
     const share = Number(record.book_value ?? 0) / Math.max(1, Number(record.quantity ?? 1))
-    for (const id of request.assets as unknown[]) {
-      const asset = await ctx.documents.get('equipment.asset', String(id))
-      await ctx.documents.update('equipment.asset', {
-        row_id: asset.row_id, updated_at: asset.updated_at, sap_asset_no: record.sap_asset_no, sap_asset_sub: record.sap_asset_sub ?? '0',
-        sap_company_code: record.sap_company_code ?? asset.sap_company_code ?? null, book_value: share.toFixed(2),
-        control_category: asset.control_category || 'Capital asset in SAP', book_status: asset.book_status === 'Not yet in SAP' ? 'Capitalized' : asset.book_status,
+    for (const id of request.lines as unknown[]) {
+      const line = await ctx.documents.get('equipment.count_line', String(id))
+      await ctx.documents.update('equipment.count_line', {
+        row_id: line.row_id, updated_at: line.updated_at, sap_asset_no: record.sap_asset_no, sap_asset_sub: record.sap_asset_sub ?? '0',
+        book_value: share.toFixed(2), control_category: line.control_category || 'Capital asset in SAP',
       })
     }
     return { matched: matched.length }
@@ -274,17 +304,38 @@ export const inventoryActions = {
     const site = await ctx.documents.get('equipment.place', String(count.scope_place))
     const [setting] = await all(ctx.documents, 'equipment.control_setting', [['site', '=', count.scope_place]], ['recount_threshold', 'recount_percent'])
     if (!setting?.recount_threshold) ctx.reject(`Set the recount threshold for ${String(site.place_name)} first`)
-    const lines = await all(ctx.documents, 'equipment.asset', [['counted_in', '=', count.row_id], ['tag_status', '=', 'Tagged']], ['row_id', 'book_value', 'place'])
+    const lines = await all(ctx.documents, 'equipment.count_line', [['count', '=', count.row_id], ['tag_status', '=', 'Tagged']], ['row_id', 'updated_at', 'book_value', 'for_recount'])
+    if (lines.some(line => line.for_recount)) ctx.reject('This count’s recount has already started')
     const picked = recountSample(lines.map(line => ({ row_id: String(line.row_id), book_value: line.book_value as string })),
       { percent: Number(setting.recount_percent || 10), threshold: Number(setting.recount_threshold) }, Math.random)
-    const recount = await ctx.documents.create('equipment.count', {
-      count_name: `${String(count.count_name)} · independent recount`, scope_place: count.scope_place, count_kind: 'Recount', reviewer: ctx.user, recount_of: count.row_id,
-    })
     for (const id of picked) {
       const line = lines.find(l => l.row_id === id)!
-      await ctx.documents.create('equipment.count_expected', { count: recount.row_id, asset: id, expected_place: line.place })
+      await ctx.documents.update('equipment.count_line', { row_id: line.row_id, updated_at: line.updated_at, for_recount: true })
     }
-    await ctx.documents.update('equipment.count', { row_id: recount.row_id, updated_at: recount.updated_at, snapshot_at: new Date().toISOString(), expected_total: picked.length })
-    return { count: String(recount.row_id), expected: picked.length }
+    return { sampled: picked.length }
+  },
+
+  /** Phase 7: the group's counted lines become register assets, with their tags, labels and SAP numbers. */
+  async load_register(ctx: ActionContext) {
+    if (!ctx.roles.some(role => role === 'Assets Manager' || role === 'System Manager')) ctx.reject('Only an Assets Manager loads the register')
+    const request = ctx.payload as { count?: unknown } | null
+    if (!request || typeof request.count !== 'string') ctx.reject('Choose the fresh count to load')
+    const lines = await all(ctx.documents, 'equipment.count_line', [['count', '=', request.count]], ['row_id'])
+    let loaded = 0
+    for (const { row_id } of lines) {
+      const line = await ctx.documents.get('equipment.count_line', String(row_id))
+      // Third-party items are recorded but are not group property.
+      if (line.asset || line.ownership !== GROUP_OWNED || line.tag_status === 'Third-party, not tagged') continue
+      const asset = await ctx.documents.create('equipment.asset', {
+        asset_name: line.asset_name, asset_type: line.asset_type, place: line.place, tag_no: line.tag_no ?? null, tag_status: line.tag_status,
+        make: line.make ?? null, model: line.model ?? null, serial_no: line.serial_no ?? null, condition: line.condition ?? 'Working',
+        usage: line.usage ?? null, ownership: line.ownership, quantity: line.quantity ?? 1, custodian: line.custodian ?? null, photo: line.photo ?? null,
+        control_category: line.control_category ?? null, book_value: line.book_value ?? null, sap_asset_no: line.sap_asset_no ?? null, sap_asset_sub: line.sap_asset_sub ?? null,
+        book_status: line.sap_asset_no ? 'Capitalized' : 'Not yet in SAP',
+      })
+      await ctx.documents.update('equipment.count_line', { row_id: line.row_id, updated_at: line.updated_at, asset: asset.row_id })
+      loaded++
+    }
+    return { loaded }
   },
 }

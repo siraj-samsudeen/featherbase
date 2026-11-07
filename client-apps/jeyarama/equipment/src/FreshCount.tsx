@@ -1,10 +1,10 @@
 import { Button, fmtDate, fmtInstantIST } from '@featherbase/shop-floor'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { listAll, myId, save, uploadAssetPhoto } from './api'
+import { listAll, myId, runAction, save, uploadAssetPhoto } from './api'
 import { withinPlace } from './countRules'
 import type { Count } from './Counts'
-import { nameOf, useAssets, useClasses, usePeople, usePlaces, useTypes, type Asset, type Place } from './data'
+import { nameOf, useClasses, useLines, usePeople, usePlaces, useTypes, type CountLine, type Place } from './data'
 import { placePath } from './jobRules'
 import { GROUP_OWNED, TAG_STATUSES } from './tagRules'
 
@@ -33,7 +33,7 @@ export function FreshCount({ count }: { count: Count & { freeze_from?: string | 
   const types = useTypes()
   const classes = useClasses()
   const people = usePeople()
-  const assets = useAssets()
+  const allLines = useLines()
   const counters = useQuery({ queryKey: ['assets', 'counters', count.row_id], queryFn: () => listAll<{ person: string }>('equipment.counter', { fields: ['person'], filters: [['count', '=', count.row_id]] }) })
   const closes = useQuery({ queryKey: ['assets', 'area-closes', count.row_id], queryFn: () => listAll<AreaClose>('equipment.area_close', {
     fields: ['row_id', 'area', 'close_day', 'labels_used', 'tagged_lines', 'other_lines', 'spoiled', 'signed_by', 'signed_at'], filters: [['count', '=', count.row_id]], order_by: 'signed_at desc' }) })
@@ -55,7 +55,7 @@ export function FreshCount({ count }: { count: Count & { freeze_from?: string | 
   const siteManager = site?.site_manager === me
   const counting = count.count_state === 'Counting'
   const person = (id: string | null | undefined) => nameOf(people.data, id, 'full_name')
-  const lines = (assets.data ?? []).filter(asset => asset.counted_in === count.row_id)
+  const lines = (allLines.data ?? []).filter(line => line.count === count.row_id)
   const areaLines = lines.filter(asset => asset.place === area)
   const today = istToday()
   const todayLines = areaLines.filter(asset => istDay(asset.counted_at) === today)
@@ -88,8 +88,8 @@ export function FreshCount({ count }: { count: Count & { freeze_from?: string | 
       event.preventDefault()
       void run(async () => {
         const photoUrl = photo ? await uploadAssetPhoto(photo) : null
-        await save('equipment.asset', {
-          counted_in: count.row_id, place: area, tag_status: line.tag_status, tag_no: line.tag_status === 'Tagged' ? line.tag_no.trim().toUpperCase() : null,
+        await save('equipment.count_line', {
+          count: count.row_id, place: area, tag_status: line.tag_status, tag_no: line.tag_status === 'Tagged' ? line.tag_no.trim().toUpperCase() : null,
           asset_type: line.asset_type, asset_name: line.asset_name.trim(), make: line.make.trim() || null, model: line.model.trim() || null, serial_no: line.serial_no.trim() || null,
           condition: line.condition, usage: line.usage, ownership: line.ownership, owner_name: line.ownership === GROUP_OWNED ? null : line.owner_name.trim(),
           custodian: line.custodian || null, quantity: Number(line.quantity || 1), tagged_by: line.tagged_by, photo: photoUrl,
@@ -133,9 +133,9 @@ export function FreshCount({ count }: { count: Count & { freeze_from?: string | 
       <h2>Lines in {areaPlace?.area_code ?? areaPlace?.place_name}</h2>
       <div className="assets-table-wrap"><table className="assets-table" aria-label="Count lines">
         <thead><tr><th scope="col">Tag</th><th scope="col">Type</th><th scope="col">Description</th><th scope="col">Make · model · serial</th><th scope="col">Condition</th><th scope="col">Ownership</th><th scope="col">Initials</th></tr></thead>
-        <tbody>{areaLines.map((a: Asset) => <tr key={a.row_id}>
+        <tbody>{areaLines.map((a: CountLine) => <tr key={a.row_id}>
           <td>{a.tag_no ?? a.tag_status}{a.tag_status === 'Bulk count, no tag' ? ` · ${a.quantity}` : ''}</td>
-          <td>{nameOf(types.data, a.asset_type, 'type_name')}</td><td><a href={`#asset=${encodeURIComponent(a.row_id)}`}>{a.asset_name}</a></td>
+          <td>{nameOf(types.data, a.asset_type, 'type_name')}</td><td>{a.asset ? <a href={`#asset=${encodeURIComponent(a.asset)}`}>{a.asset_name}</a> : a.asset_name}</td>
           <td>{[a.make, a.model, a.serial_no].filter(Boolean).join(' · ') || '—'}</td><td>{a.condition}</td>
           <td>{a.ownership}{a.owner_name ? ` · ${a.owner_name}` : ''}</td><td>Tagged {person(a.tagged_by)} · recorded {person(a.recorded_by)}</td>
         </tr>)}</tbody>
@@ -156,5 +156,45 @@ export function FreshCount({ count }: { count: Count & { freeze_from?: string | 
         </li>)}</ul>
       </section>
     </section>}
+    <Recount count={count} lines={lines} team={team} person={person} onChanged={() => queryClient.invalidateQueries({ queryKey: ['assets'] })} />
   </article>
+}
+
+/** The independent recount: someone outside the team checks each sampled line; the pilot lead then loads the register. */
+function Recount({ count, lines, team, person, onChanged }: { count: Count; lines: CountLine[]; team: string[]; person: (id: string | null | undefined) => string; onChanged: () => Promise<unknown> }) {
+  const me = myId()
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const sampled = lines.filter(line => line.for_recount)
+  const wrong = sampled.filter(line => line.recount_result && line.recount_result !== 'Found as counted').length
+  const done = sampled.filter(line => line.recount_result).length
+  const independent = !team.includes(me)
+  async function run(work: () => Promise<unknown>) {
+    setBusy(true); setError('')
+    try { await work(); await onChanged() } catch (err) { setError(err instanceof Error ? err.message : 'Could not save') } finally { setBusy(false) }
+  }
+  return <section aria-label="Independent recount" className="asset-report">
+    <h2>Independent recount</h2>
+    {error && <p role="alert" className="counts-error">{error}</p>}
+    {!sampled.length ? <>
+      <p className="asset-muted">Every line over Finance’s value threshold and a sample of the rest, checked by someone outside the count team.</p>
+      <Button type="button" disabled={busy} onClick={() => void run(() => runAction('start_recount', { count: count.row_id }))}>Start independent recount</Button>
+    </> : <>
+      <p className="recount-error-rate">Error rate: <strong>{done ? Math.round((wrong / done) * 100) : 0}%</strong> ({wrong} of {done} recounted lines not found or different; {sampled.length - done} still to check)</p>
+      <div className="assets-table-wrap"><table className="assets-table" aria-label="Recount sample">
+        <thead><tr><th scope="col">Tag</th><th scope="col">Description</th><th scope="col">Result</th></tr></thead>
+        <tbody>{sampled.map(line => <tr key={line.row_id}>
+          <th scope="row">{line.tag_no}</th><td>{line.asset_name}{line.serial_no ? ` · S/N ${line.serial_no}` : ''}</td>
+          <td>{independent
+            ? <select aria-label={`Recount ${line.tag_no}`} disabled={busy} value={line.recount_result ?? ''} onChange={e => void run(() => save('equipment.count_line', { row_id: line.row_id, updated_at: line.updated_at, recount_result: e.target.value }))}>
+              <option value="" disabled>Not checked yet</option>{['Found as counted', 'Found, details differ', 'Not found'].map(r => <option key={r}>{r}</option>)}</select>
+            : line.recount_result ?? 'Not checked yet'}{line.recounted_by ? ` · ${person(line.recounted_by)}` : ''}</td>
+        </tr>)}</tbody>
+      </table></div>
+      {!independent && <p className="asset-muted">You are on the count team, so someone else records the recount.</p>}
+    </>}
+    <h2>Load the register (phase 7)</h2>
+    <p className="asset-muted">After SAP is updated, the group’s lines become register assets with their tags and SAP numbers. Third-party items stay out. {lines.filter(l => l.asset).length} of {lines.length} lines loaded.</p>
+    <Button type="button" disabled={busy} onClick={() => void run(() => runAction('load_register', { count: count.row_id }))}>Load lines into the register</Button>
+  </section>
 }

@@ -57,7 +57,7 @@ export async function prepareCount(ctx: Context): Promise<void> {
     if (!row.snapshot_at || fixed.length !== Number(row.expected_total)) ctx.reject('Start the count from Assets to fix its expected list')
   }
   if (stage === 'Closed' && row.count_kind === 'Fresh inventory') {
-    const lines = await all(ctx.documents, 'equipment.asset', [['counted_in', '=', row.row_id]], ['place', 'counted_at'])
+    const lines = await all(ctx.documents, 'equipment.count_line', [['count', '=', row.row_id]], ['place', 'counted_at'])
     const closes = await all(ctx.documents, 'equipment.area_close', [['count', '=', row.row_id]], ['area', 'close_day'])
     const signed = new Set(closes.map(close => `${String(close.area)}|${(close.close_day instanceof Date ? close.close_day.toISOString() : String(close.close_day)).slice(0, 10)}`))
     if (lines.some(line => !signed.has(`${String(line.place)}|${istDay(line.counted_at)}`))) ctx.reject('Have the site manager close every area and day before closing the count')

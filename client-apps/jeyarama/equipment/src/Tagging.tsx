@@ -12,8 +12,10 @@ export const useRolls = () => useQuery({ queryKey: ['assets', 'rolls'], queryFn:
   fields: ['row_id', 'updated_at', 'roll_name', 'sticker', 'first_no', 'last_no', 'team', 'issued_on', 'roll_state'], order_by: 'first_no asc' }) })
 const useTagEvents = () => useQuery({ queryKey: ['assets', 'tag-events'], queryFn: () => listAll<TagEvent>('equipment.tag_event', {
   fields: ['row_id', 'tag_no', 'event_kind', 'reason', 'created_by', 'created_at'], order_by: 'created_at desc' }) })
-const useUsedTags = () => useQuery({ queryKey: ['assets', 'used-tags'], queryFn: async () =>
-  (await listAll<{ row_id: string; tag_no: string | null }>('equipment.asset', { fields: ['row_id', 'tag_no'] })).filter(asset => asset.tag_no) })
+const useUsedTags = () => useQuery({ queryKey: ['assets', 'used-tags'], queryFn: async () => [
+  ...await listAll<{ row_id: string; tag_no: string | null }>('equipment.count_line', { fields: ['row_id', 'tag_no'] }),
+  ...await listAll<{ row_id: string; tag_no: string | null }>('equipment.asset', { fields: ['row_id', 'tag_no'] }),
+].filter(row => row.tag_no) })
 
 /** The address a label's QR code opens: the asset with this tag. Rolls are printed before any asset exists. */
 export function tagAddress(tag: string, origin = location.origin) {
@@ -56,7 +58,7 @@ export function TagsPage({ roles }: { roles: string[] }) {
   const [event, setEvent] = useState({ tag_no: '', event_kind: 'Spoiled', reason: '' })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const usedTags = (used.data ?? []).map(asset => String(asset.tag_no))
+  const usedTags = [...new Set((used.data ?? []).map(row => String(row.tag_no)))]
 
   async function run(work: () => Promise<unknown>, reset: () => void) {
     setBusy(true); setError('')
@@ -133,12 +135,14 @@ export function TagsPage({ roles }: { roles: string[] }) {
 /** A scanned label: open the asset with that tag, or say it isn't recorded yet. */
 export function TagRoute({ tag }: { tag: string }) {
   const asset = useQuery({ queryKey: ['assets', 'by-tag', tag], queryFn: () => listAll<{ row_id: string }>('equipment.asset', { fields: ['row_id'], filters: [['tag_no', '=', tag]] }) })
+  const line = useQuery({ queryKey: ['assets', 'line-by-tag', tag], queryFn: () => listAll<{ row_id: string; asset_name: string; count: string }>('equipment.count_line', { fields: ['row_id', 'asset_name', 'count'], filters: [['tag_no', '=', tag]] }) })
   useEffect(() => {
     const found = asset.data?.[0]
     if (found) location.replace(`#asset=${encodeURIComponent(found.row_id)}`)
   }, [asset.data])
   if (asset.error) return <p role="alert">{asset.error.message}</p>
   if (!asset.data) return <p role="status">Finding {tag}…</p>
+  if (!asset.data.length && line.data?.length) return <section className="asset-page"><h1>{tag}</h1><p>{line.data[0].asset_name}: counted, not yet loaded into the register. <a href={`#count=${encodeURIComponent(line.data[0].count)}`}>Open its count</a></p></section>
   if (!asset.data.length) return <section className="asset-page"><h1>{tag}</h1><p>No asset carries this tag yet. Record it in the count, or check the number.</p></section>
   return <p role="status">Opening {tag}…</p>
 }
