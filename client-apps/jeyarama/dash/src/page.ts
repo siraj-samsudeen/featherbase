@@ -1,19 +1,18 @@
 // What the report page shows, decided from what its two reads answered, and
 // how it writes figures. Kept apart from the React code so it can be tested.
 export type Answer<T> = { ok: true; value: T } | { ok: false; status?: number }
-type Embed = { frame?: string; not_set_up?: boolean; unreachable?: boolean; too_large?: boolean; ready_signal?: boolean }
+type Embed = { frame?: string; not_set_up?: boolean; unreachable?: boolean; refused?: string; ready_signal?: boolean }
 
 /** Where the Dive is served from (featherbase.json's `frameOrigins`), and the message it posts once it has drawn (B7). */
 export const DIVE_ORIGIN = 'https://embed-motherduck.com'
 export const DIVE_READY_MESSAGE = 'dash:dive-ready'
-type ReportState = { state: string }
+type ReportState = { state: string; no_quick_view?: boolean }
 
 export type View =
   | { kind: 'opening' }
   | { kind: 'dive'; src: string }
-  /** `too_large`: the store's Dive state would pass MotherDuck's cap (#4453). */
-  | { kind: 'quick'; why?: 'too_large' }
-  | { kind: 'empty'; why: 'no_data_yet' | 'no_sections' | 'not_built' }
+  | { kind: 'quick' }
+  | { kind: 'empty'; why: 'no_data_yet' | 'no_sections' | 'not_built' | 'whole_stores_only' }
   | { kind: 'no_access' }
   | { kind: 'signed_out' }
   | { kind: 'failed' }
@@ -35,13 +34,16 @@ export function pageView({ embed, report, frameFailed = false }: {
   if (refusedBy(embed, 401) || refusedBy(report, 401)) return { kind: 'signed_out' }
   if (refusedBy(embed, 403) || refusedBy(report, 403)) return { kind: 'no_access' }
   const state = report?.ok ? report.value.state : undefined
-  if (state === 'no_data_yet' || state === 'no_sections') return { kind: 'empty', why: state }
+  if (state === 'no_access') return { kind: 'no_access' }
+  if (state === 'report_not_set_up') return { kind: 'failed' }
+  if (state === 'no_data_yet' || state === 'no_sections' || state === 'whole_stores_only') return { kind: 'empty', why: state }
   if (embed?.ok && embed.value.frame && !frameFailed) return { kind: 'dive', src: embed.value.frame }
   // Past the deadline the session request counts as failed, answered or not.
   if ((!embed && !frameFailed) || !report) return { kind: 'opening' }
   if (!report.ok) return { kind: 'failed' }
   if (state === 'not_built' || state === 'unconfirmed') return { kind: 'empty', why: 'not_built' }
-  return embed?.ok && embed.value.too_large ? { kind: 'quick', why: 'too_large' } : { kind: 'quick' }
+  // A report with no quick view has nothing to stand in for its Dive.
+  return report.value.no_quick_view ? { kind: 'failed' } : { kind: 'quick' }
 }
 
 /** What the platform tells a person about their own rights and this app's setup. */
@@ -514,4 +516,24 @@ export function whyLine({ name, reasons }: { name: string | null; reasons: reado
   const seen = [...new Set([...leads, ...(staff ? [staff] : [])].flatMap(r => r.sections))].sort((a, b) => a.localeCompare(b))
   const what = whole.length ? store : `${sectionsNamed(seen) ?? 'these subcategories'} at ${store}`
   return `You see ${what} because you ${listed(clauses)}.`
+}
+
+/** A report's address: the store and month stay, where the report uses them; a sub-page's view does not. */
+export function reportAddress(key: string, search: string): string {
+  const params = new URLSearchParams(search)
+  params.delete('view')
+  params.set('report', key)
+  return `?${params.toString()}`
+}
+
+/** What the page says for a job that reaches nothing; null: the no-access page says it. */
+export type ReachProblem = 'no_job' | 'no_section' | 'departments_not_filled' | 'head_office' | 'no_cluster' | 'nothing_placed'
+export function reachMessage(problems: readonly string[]): { text: string; sectionsLink: boolean } | null {
+  if (problems.includes('no_section') || problems.includes('nothing_placed'))
+    return { text: "You aren't set against a section yet, so there is no report to show.", sectionsLink: true }
+  if (problems.includes('departments_not_filled'))
+    return { text: "Your store's departments aren't filled in yet. Your report will open once they are.", sectionsLink: false }
+  if (problems.includes('no_cluster'))
+    return { text: "Your store isn't in a cluster yet, so there is no report to show.", sectionsLink: false }
+  return null
 }
