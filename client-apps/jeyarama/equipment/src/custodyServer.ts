@@ -1,6 +1,7 @@
 import { withinPlace } from './countRules'
 import { FINAL_LINE_STATES, defaultReceiptBy, isOpenTransfer } from './transferRules'
 import type { Context } from './server'
+import { checkFreeze } from './inventoryServer'
 
 type Row = Record<string, unknown>
 type Documents = Context['documents']
@@ -82,6 +83,7 @@ export async function prepareTransfer(ctx: Context): Promise<void> {
   if (kind === 'Repair with vendor' && !String(row.vendor ?? '').trim()) ctx.reject('Name the vendor for a repair', { vendor: 'Name the vendor' })
   if (kind === 'Between companies' && !row.to_entity) ctx.reject('Choose the new legal owner for a move between companies', { to_entity: 'Choose the new owner' })
   for (const field of TRANSFER_STAMPS) row[field] = ctx.isNew ? null : old?.[field] ?? null
+  await checkFreeze(ctx)
   if (ctx.isNew) {
     row.transfer_state = 'Requested'
     return

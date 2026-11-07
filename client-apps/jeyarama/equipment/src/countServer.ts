@@ -1,5 +1,6 @@
 import { MISSING_DECISIONS, UNLISTED_DECISIONS, pickSample, reviewLines, withinPlace } from './countRules'
 import type { Context } from './server'
+import { istDay } from './inventoryServer'
 
 type Row = Record<string, unknown>
 type Documents = Context['documents']
@@ -55,7 +56,13 @@ export async function prepareCount(ctx: Context): Promise<void> {
     const fixed = row.snapshot_at ? await all(ctx.documents, 'equipment.count_expected', [['count', '=', row.row_id]], ['row_id']) : []
     if (!row.snapshot_at || fixed.length !== Number(row.expected_total)) ctx.reject('Start the count from Assets to fix its expected list')
   }
-  if (stage === 'Closed') {
+  if (stage === 'Closed' && row.count_kind === 'Fresh inventory') {
+    const lines = await all(ctx.documents, 'equipment.asset', [['counted_in', '=', row.row_id]], ['place', 'counted_at'])
+    const closes = await all(ctx.documents, 'equipment.area_close', [['count', '=', row.row_id]], ['area', 'close_day'])
+    const signed = new Set(closes.map(close => `${String(close.area)}|${(close.close_day instanceof Date ? close.close_day.toISOString() : String(close.close_day)).slice(0, 10)}`))
+    if (lines.some(line => !signed.has(`${String(line.place)}|${istDay(line.counted_at)}`))) ctx.reject('Have the site manager close every area and day before closing the count')
+    row.closed_at = old?.closed_at ?? ctx.now
+  } else if (stage === 'Closed') {
     if (!(await countReview(ctx.documents, row.row_id)).closable) ctx.reject('Decide every missing and unlisted line before closing')
     row.closed_at = old?.closed_at ?? ctx.now
   }
@@ -95,9 +102,9 @@ export async function prepareScan(ctx: Context): Promise<void> {
   } else {
     if (typed) {
       if (!String(row.reason ?? '').trim()) ctx.reject('Say why the tag was typed', { reason: 'Say why the tag was typed' })
-      const found = await all(ctx.documents, 'equipment.asset', [['row_id', '=', typed]], ['row_id'])
+      const found = await all(ctx.documents, 'equipment.asset', [[typed.startsWith('JRA-') ? 'tag_no' : 'row_id', '=', typed]], ['row_id'])
       if (!found.length) ctx.reject(`No asset has the tag ${typed}; record it as not on the list`)
-      row.asset = typed
+      row.asset = found[0].row_id
       row.manual = true
     } else {
       row.manual = false
@@ -155,11 +162,16 @@ export const countActions = {
     const counters = await counterIds(ctx.documents, count.row_id)
     if (!counters.length) ctx.reject('Add at least one counter before starting')
     if (counters.includes(String(count.reviewer))) ctx.reject('The reviewer can’t also be a counter on this count')
+    // A recount's list was fixed when Finance started it; a fresh count starts with nothing expected.
+    if (count.snapshot_at) {
+      await ctx.documents.update('equipment.count', { row_id: count.row_id, updated_at: request.updated_at, count_state: 'Counting' })
+      return { expected: Number(count.expected_total) }
+    }
     const places = (await all(ctx.documents, 'equipment.place', [], ['row_id', 'parent_place']))
       .map(p => ({ row_id: String(p.row_id), parent_place: (p.parent_place as string) ?? null }))
     const inScope = (await all(ctx.documents, 'equipment.asset', [], ['row_id', 'place', 'book_status']))
       .filter(asset => asset.book_status !== 'Retired' && withinPlace(String(asset.place), String(count.scope_place), places))
-    const expected = count.count_kind === 'Sample' ? pickSample(inScope, Number(count.sample_size), Math.random) : inScope
+    const expected = count.count_kind === 'Fresh inventory' ? [] : count.count_kind === 'Sample' ? pickSample(inScope, Number(count.sample_size), Math.random) : inScope
     for (const asset of expected)
       await ctx.documents.create('equipment.count_expected', { count: count.row_id, asset: asset.row_id, expected_place: asset.place })
     await ctx.documents.update('equipment.count', {
