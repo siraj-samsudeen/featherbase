@@ -96,7 +96,7 @@ test('a counter records a line with both initials and the site manager closes th
   await screen.findByRole('option', { name: /ATK-GF-A03/ })
   await user.selectOptions(await screen.findByRole('combobox', { name: 'Area' }), p.dairy.row_id)
   const close = await screen.findByRole('region', { name: 'Close the area' })
-  await waitFor(() => expect(close).toHaveTextContent('Today: 1 tagged lines, 0 lines without a group tag, 0 spoiled labels.'))
+  await waitFor(() => expect(close).toHaveTextContent('Today: 1 tagged line, 0 lines without a group tag, 0 spoiled labels.'))
   await user.type(within(close).getByRole('spinbutton', { name: 'Labels used' }), '2')
   await user.click(within(close).getByRole('button', { name: 'Sign as site manager' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('2 labels used, but 1 tagged line and 0 spoiled labels: find the difference before signing')
