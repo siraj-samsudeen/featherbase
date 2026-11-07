@@ -102,10 +102,10 @@ Secret requirements SHALL be shown by name and presence, never by value.
 
 ```gherkin
 Given the user is a System Manager with Dash installed
-And its report identifier is file-managed while its report account is editable
+And its linked tables setting is file-managed while its report account is editable
 When the user configures Dash
 Then the user can change the report account
-And the report identifier is locked with an explanation
+And the linked tables setting is locked with an explanation
 And the app's packaged declaration is not editable
 ```
 

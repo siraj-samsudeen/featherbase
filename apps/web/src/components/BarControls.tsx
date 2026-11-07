@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter, useRouterState } from '@tanstack/react-router'
 import { api } from '../lib/api'
 import { announceBarChange, useBarAddress } from '../lib/bar-address'
@@ -28,19 +28,31 @@ interface BarControl {
   options: BarOption[]
   /** #975: stays away from a page whose address carries this key. */
   hiddenWhen?: string
+  /** #967: address keys the options depend on; the bar asks again when one changes. */
+  dependsOn?: string[]
 }
 
 /** The controls the bar shows for `app`: those with at least one option, on a page they apply to. */
 export function useBarControls(app: string | undefined) {
-  const bar = useQuery({
-    queryKey: ['app_bar', app],
-    queryFn: () => api.get<{ controls: BarControl[] }>(`/api/app_bar/${encodeURIComponent(app!)}`),
-    enabled: Boolean(app),
-    retry: false,
-  })
   const page = useBarAddress()
   const location = useRouterState({ select: (state) => state.location })
   const address = new URLSearchParams(page ? page.search : location.searchStr)
+  // Only a key this app's controls depend on asks again: the keys come from the last answer, and
+  // every value they hold goes with the request, so a key's change is a new query.
+  const queryClient = useQueryClient()
+  const known = queryClient.getQueryData<{ controls: BarControl[] }>(['app_bar', app, 'keys'])
+  const keys = [...new Set((known?.controls ?? []).flatMap((control) => control.dependsOn ?? []))].sort()
+  const depends = new URLSearchParams(keys.flatMap((key) => (address.has(key) ? [[key, address.get(key)!]] : []))).toString()
+  const bar = useQuery({
+    queryKey: ['app_bar', app, depends],
+    queryFn: async () => {
+      const answer = await api.get<{ controls: BarControl[] }>(`/api/app_bar/${encodeURIComponent(app!)}${depends ? `?${depends}` : ''}`)
+      queryClient.setQueryData(['app_bar', app, 'keys'], answer)
+      return answer
+    },
+    enabled: Boolean(app),
+    retry: false,
+  })
   return (bar.data?.controls ?? []).filter((control) =>
     control.options.length > 0 && !(control.hiddenWhen && address.has(control.hiddenWhen)))
 }
