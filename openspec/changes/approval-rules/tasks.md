@@ -8,8 +8,8 @@
 
 ## 2. Screens (PR 2, UI route)
 
-- [ ] 2.1 Mockups and a numbered checklist on the issue.
-- [ ] 2.2 The row's pending change strip, approve and reject with a reason, and the bulk, import and save messages that say "waiting for approval".
+- [x] 2.1 Mockups and a numbered checklist on the issue.
+- [x] 2.2 The row's pending change strip, approve and reject with a reason, and the bulk, import and save messages that say "waiting for approval".
 - [ ] 2.3 The independent verifier against the checklist.
 
 ## 3. Check and release

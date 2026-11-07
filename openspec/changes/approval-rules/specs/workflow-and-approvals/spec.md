@@ -94,3 +94,22 @@ The rules SHALL hold the same way for a new row and a change, however it is made
 
 - **WHEN** a Helper adds a shelf to site A
 - **THEN** the shelf is not in the Table until the site lead approves it
+
+### Requirement: People see what waits and who it waits for
+
+A held save SHALL tell the maker who it waits for. Everyone who can read a row SHALL see its pending proposals; only someone who may decide one SHALL see Approve and Reject. Bulk edits and imports SHALL say how many rows wait. An approver SHALL find everything waiting for them on one page, which a new row's approval email opens.
+
+#### Scenario: The maker is told who the change waits for
+
+- **WHEN** a Helper saves a new label on a shelf's form and a rule sends it to the site lead
+- **THEN** the form says the change is waiting for approval from the site lead and still shows the old label
+
+#### Scenario: Only an approver can decide
+
+- **WHEN** the Helper, a reader and the site lead open the shelf
+- **THEN** all three see the pending change, and only the site lead sees Approve and Reject
+
+#### Scenario: The approver's page
+
+- **WHEN** the site lead opens the page of what waits for their approval
+- **THEN** it lists the Helper's change and the Helper's new shelf, each with Approve and Reject

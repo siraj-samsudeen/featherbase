@@ -37,6 +37,7 @@ const COVERAGE: Record<string, string> = {
   '/featherbase/admin/script-report/$name': 'readable registered script reports',
   '/featherbase/admin/jobs': 'manager page catalogue',
   '/featherbase/admin/access-tokens': 'page catalogue',
+  '/featherbase/admin/approvals': 'page catalogue',
   '/featherbase/admin/find-person': 'page catalogue plus required Table reads',
   '/featherbase/admin/waiting-for-access': 'manager page catalogue',
   '/featherbase/admin/instance-health': 'manager page catalogue',

@@ -76,7 +76,9 @@ describe('a maker\'s change waits for the approver', () => {
     const { status, body } = await edit(w.helper, 'S-1', { label: 'Red box' })
     expect(status).toBe(202)
     expect(body.label).toBe('Blue box')
-    expect(body.pending_proposal).toMatchObject({ state: 'Pending' })
+    // The maker is told who it waits for, so the form can name them.
+    expect(body.pending_proposal).toMatchObject({ state: 'Pending', operation: 'update', can_decide: false,
+      changes: [{ column_name: 'label', proposed_value: 'Red box' }], waiting_for: [{ people: [w.lead.user], approved_by: null }] })
     expect((await w.shelf('S-1')).label).toBe('Blue box')
     const { proposals } = await w.lead.get<any>('/api/row_proposals/Shelf/S-1')
     expect(proposals).toHaveLength(1)
@@ -107,6 +109,9 @@ describe('a maker\'s change waits for the approver', () => {
     const [version] = await sql`select created_by, data from version where ref_table = 'Shelf' and ref_name = 'S-1' order by created_at desc limit 1`
     expect(version.created_by).toBe(w.helper.user)
     expect(version.data).toMatchObject({ change_proposal: body.pending_proposal.row_id, made_by: w.helper.user, approved_by: [w.lead.user] })
+    // The row's Activity says who approved it.
+    const activity = await w.lead.get<any>('/api/activity/Shelf/S-1')
+    expect(activity.versions.at(-1)).toMatchObject({ created_by: w.helper.user, data: { approved_by: [{ id: w.lead.user }] } })
     await expect(approve(w.lead, body.pending_proposal.row_id)).rejects.toMatchObject({ status: 417 })
   })
 
@@ -297,6 +302,9 @@ describe('every way of changing a row obeys the rules', () => {
     const held = await response.json() as any
     expect(held).toMatchObject({ row_id: null, pending_proposal: { state: 'Pending' } })
     expect(await w.shelf('S-20')).toBeUndefined()
+    // A new row has no page yet: the approver's email opens it on the approvals page.
+    const [mail] = await w.mails(w.lead)
+    expect(mail.body).toContain(`/featherbase/admin/approvals?proposal=${held.pending_proposal.row_id}`)
     const decided = await approve(w.lead, held.pending_proposal.row_id)
     expect(decided).toMatchObject({ state: 'Applied', operation: 'create', result_row: 'S-20' })
     expect(await w.shelf('S-20')).toMatchObject({ site: 'A', label: 'New box', created_by: w.helper.user })
