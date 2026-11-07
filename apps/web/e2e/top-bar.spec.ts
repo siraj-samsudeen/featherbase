@@ -347,7 +347,8 @@ for (const width of [1280, 375]) {
       await expect(page).toHaveURL(new RegExp(`^${ADMIN}/featherbase/admin`), { timeout: 15_000 })
       await page.goto(`${ADMIN}/featherbase/account/sign-in-methods`)
       await session.step('bar and tab say Featherbase, with no Open Admin', async () => {
-        await expect(page.getByTestId('top-bar-name')).toHaveText('Featherbase')
+        // Here the name is the Admin shell's switcher: what shows is the chosen option.
+        await expect(page.getByTestId('top-bar-name').locator('option:checked')).toHaveText('Featherbase')
         await expect(page).toHaveTitle('Featherbase')
         expect(await openAdminShown(page, phone)).toBe(0)
       })
