@@ -381,7 +381,7 @@ describe('runtime upgrades', () => {
     } finally { await rm(directory, { recursive: true, force: true }); await rm(duplicate, { recursive: true, force: true }) }
   })
 
-  test('disabled upgrade, checksum drift, downgrade, missing prior and code-only next version', async ({ admin }) => {
+  test('disabled upgrade, checksum drift, downgrade, unshipped prior and code-only next version', async ({ admin }) => {
     const source = resolve('../..', 'test-apps/other')
     const { directory, manifest } = await targetPackage()
     const next = await mkdtemp(resolve('test/.upgrade-next-'))
@@ -389,8 +389,9 @@ describe('runtime upgrades', () => {
       await discoverPackages([source])
       await admin.post('/api/install_app', { name: 'other' })
       await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
+      // #924: the installed version need not ship; the upgrade starts from its record.
       await discoverPackages([directory])
-      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417, message: expect.stringContaining('unavailable') })
+      expect(await admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).toMatchObject({ currentVersion: '0.0.1', targetVersion: '2.0.0' })
       await discoverPackages([source, directory])
       const first = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
       await admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: first.planId })
@@ -415,7 +416,7 @@ describe('runtime upgrades', () => {
 })
 
 describe('An upgrade never goes backward', () => {
-  test('upgrade preview requires an installed app whose recorded artifact matches', async ({ admin }) => {
+  test('upgrade preview requires an installed app, and starts from its record', async ({ admin }) => {
     const source = resolve('../..', 'test-apps/other')
     const { directory } = await targetPackage()
     try {
@@ -426,8 +427,10 @@ describe('An upgrade never goes backward', () => {
       await discoverPackages([source, directory])
       const [identity] = await sql`select artifact_digest from installed_app where name = 'other'`
       await sql`update installed_app set artifact_digest = 'mismatched' where name = 'other'`
-      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' }))
-        .rejects.toMatchObject({ status: 417, message: expect.stringContaining('recorded identity') })
+      // #924: the files on disk no longer decide the upgrade; the record does.
+      expect(await admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' }))
+        .toMatchObject({ currentVersion: '0.0.1', currentArtifact: 'mismatched' })
+      // Running it still needs its exact artifact.
       await expect(admin.post('/api/set_app_enabled', { name: 'other', enabled: true }))
         .rejects.toMatchObject({ status: 417, message: expect.stringContaining('exact installed artifact') })
       expect(await sql`select package_version, activation_pending from installed_app where name = 'other'`)

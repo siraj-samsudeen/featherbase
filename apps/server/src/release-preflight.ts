@@ -14,7 +14,7 @@ import { platformRelation } from './platform-schema'
 import { validateInstanceAddresses } from './instance-addresses'
 import { parseDomainList } from './identities'
 import { appSetupState } from './app-settings'
-import { shippedUpgrades, unshippedApps, upgradeLossWarning, whyUnshipped } from './runtime-packages'
+import { shippedUpgrades, unshippedApps, unshippedFate, upgradeLossWarning, whyUnshipped, type UnshippedFate } from './runtime-packages'
 import { followsAppFiles, unshippedRefusal } from './deploy-instance'
 import { appLibraryPaths } from './app-library'
 
@@ -195,29 +195,61 @@ async function assertOneScopeProvider(): Promise<string> {
  *  fingerprint this release does not ship refuses the release (and the
  *  server's start, outside development), so the running release keeps serving
  *  it. A disabled app serves nobody and never blocks. A row with no recorded
- *  version is mid-recovery, which no image can serve. */
+ *  version is mid-recovery, which no image can serve. #924: an instance
+ *  deploy's step upgrades an app from the declaration the instance recorded,
+ *  so there a newer version is enough; the old one need not ship. */
 export async function assertInstalledAppsShipped(instanceDeploy?: { followFiles: boolean }): Promise<string> {
   const found = await installedNotShipped()
   if (!found) return 'shipped app check skipped (no app versions recorded yet)'
-  const { installed, missing } = found
-  if (missing.length && instanceDeploy) {
-    const paths = await appLibraryPaths(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
-    const refusals: string[] = []
-    const followed: string[] = []
-    for (const row of found.missingRows) {
-      const reason = await whyUnshipped(row, paths)
-      if (reason === 'files' && instanceDeploy.followFiles) followed.push(String(row.name))
-      else refusals.push(unshippedRefusal(String(row.name), String(row.package_version), reason))
+  const { installed, missing, paths } = found
+  if (!missing.length)
+    return installed.length
+      ? `every installed, enabled app ships in this release: ${installed.map(({ name, version }) => `${name} ${version}`).join(', ')}`
+      : 'no installed, enabled app to find in this release'
+  const refusals: string[] = []
+  const followed: string[] = []
+  const upgraded: string[] = []
+  for (const row of found.missingRows) {
+    const name = String(row.name), version = String(row.package_version)
+    const reason = await whyUnshipped(row, paths)
+    if (reason !== 'absent') {
+      if (!instanceDeploy) refusals.push(notShippedRefusal(name, version))
+      else if (reason === 'files' && instanceDeploy.followFiles) followed.push(name)
+      else refusals.push(unshippedRefusal(name, version, reason))
+      continue
     }
-    if (refusals.length) throw new Error(refusals.join('\n'))
-    return `every installed, enabled app ships in this release; the deploy step re-pins ${followed.join(', ')}, whose files changed`
+    const fate = await unshippedFate(row, paths)
+    if (fate.kind === 'upgrade' && instanceDeploy) upgraded.push(`${name} ${version} to ${fate.to}`)
+    else refusals.push(fateRefusal(name, version, fate, Boolean(instanceDeploy)))
   }
-  if (missing.length)
-    throw new Error(missing.map(({ name, version }) =>
-      `App ${name} version ${version} is installed and enabled, but this release does not ship it. Ship ${name} ${version} in the image (FEATHERBASE_APP_PATHS), or disable the app, before releasing.`).join('\n'))
-  return installed.length
-    ? `every installed, enabled app ships in this release: ${installed.map(({ name, version }) => `${name} ${version}`).join(', ')}`
-    : 'no installed, enabled app to find in this release'
+  if (refusals.length) throw new Error(refusals.join('\n'))
+  return [
+    'every installed, enabled app ships in this release',
+    ...(upgraded.length ? [`the deploy step upgrades ${upgraded.join(', ')} from the declaration this instance recorded`] : []),
+    ...(followed.length ? [`the deploy step re-pins ${followed.join(', ')}, whose files changed`] : []),
+  ].join('; ')
+}
+
+const notShippedRefusal = (name: string, version: string) =>
+  `App ${name} version ${version} is installed and enabled, but this release does not ship it. Ship ${name} ${version} in the image (FEATHERBASE_APP_PATHS), or disable the app, before releasing.`
+
+/** #924: why a release refuses an installed version it does not ship, and
+ *  what to do; on an instance deploy, the exact step that needs the old
+ *  version's files, if one does. */
+function fateRefusal(name: string, version: string, fate: UnshippedFate, instanceDeploy: boolean): string {
+  switch (fate.kind) {
+    case 'rollback':
+      return `App ${name} version ${version} is installed and enabled, but this release ships only ${name} ${fate.shipped}, which is not newer. Rolling an app back is refused: ship ${name} ${version} or a newer version, or disable the app, before releasing.`
+    case 'needs-files':
+      return `App ${name} version ${version} is installed and enabled. This release ships ${name} ${fate.to}, but one step of the upgrade needs ${name} ${version}'s own files: ${fate.step}. List ${name} ${version} under previousVersions in the instance's instance.json so that the image holds both, or disable the app, before releasing.`
+    case 'history':
+      return `App ${name} version ${version} is installed and enabled, but ${name} ${fate.to}, which this release ships, cannot upgrade from it: ${fate.problem}. Give ${fate.to} a migration from ${version}, or disable the app, before releasing.`
+    case 'upgrade':
+      // Only a plain release: nothing upgrades the app before its server starts.
+      return notShippedRefusal(name, version)
+    default:
+      return instanceDeploy ? unshippedRefusal(name, version, 'absent') : notShippedRefusal(name, version)
+  }
 }
 
 /** The same check at the server's start: a refusal, except on a developer's
@@ -248,7 +280,7 @@ export async function installedAppsAtStart(environment = currentEnvironment()): 
  *  by explicit paths or the installed source library; null on a new database. */
 async function installedNotShipped() {
   if (!(await installed())) return null
-  const rows = await sql`select name, package_version, artifact_digest, manifest from installed_app
+  const rows = await sql`select name, package_version, artifact_digest, manifest, migration_ledger from installed_app
     where runtime_package and enabled and package_version is not null order by name`
   const named = (row: Record<string, unknown>) => ({ name: String(row.name), version: String(row.package_version) })
   const paths = await appLibraryPaths(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])

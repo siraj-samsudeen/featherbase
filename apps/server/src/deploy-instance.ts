@@ -45,7 +45,7 @@ export function unshippedRefusal(name: string, version: string, reason: 'files' 
     return `App ${name} version ${version}: its manifest (featherbase.json) changed, but its version did not. Bump the version, with a migration from ${version}, and deploy again.`
   if (reason === 'files')
     return `App ${name} version ${version}: its files changed, but its version did not, and production never re-pins. Bump the version, with a migration from ${version}, and deploy again.`
-  return `App ${name} version ${version} is installed and enabled, but this release does not ship it. To upgrade from it, list it under previousVersions in the instance's instance.json so that the image holds both; or disable the app before releasing.`
+  return `App ${name} version ${version} is installed and enabled, but this release does not ship it or any newer version. Ship ${name} ${version} or a version that upgrades from it, or disable the app, before releasing.`
 }
 
 /** Re-pin every installed, enabled app whose files changed under the same

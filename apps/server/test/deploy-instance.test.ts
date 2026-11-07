@@ -10,7 +10,7 @@ import { sql } from '../src/db'
 import { appOperation, DEPLOY_LOCK_WAIT, instanceDeployOperation } from '../src/app-lifecycle'
 import { deployInstance, followsAppFiles, instanceFolder, repinChangedApps, settingsSection } from '../src/deploy-instance'
 import { assertInstalledAppsShipped } from '../src/release-preflight'
-import { discoverPackages } from '../src/runtime-packages'
+import { discoverPackages, previewAppUpgrade, recordedPredecessor } from '../src/runtime-packages'
 import { captureIO } from './command-io'
 import '../src/index'
 
@@ -273,8 +273,92 @@ describe('a newer version in the image', () => {
     const [row] = await sql`select package_version, activation_pending from installed_app where name = ${name}`
     expect(row).toMatchObject({ package_version: nextVersion, activation_pending: false })
 
+    // #924: an image that ships only the older version would roll it back.
     rmSync(next, { recursive: true })
-    await expect(assertInstalledAppsShipped({ followFiles: true })).rejects.toThrow(/does not ship it.*previousVersions/)
+    await expect(assertInstalledAppsShipped({ followFiles: true })).rejects
+      .toThrow(`App ${name} version ${nextVersion} is installed and enabled, but this release ships only ${name} ${version}, which is not newer. Rolling an app back is refused`)
+  })
+})
+
+describe('the record an upgrade starts from', () => {
+  const row = (manifest: unknown) => ({ name: 'other', package_version: '0.0.1', artifact_digest: null, manifest })
+  it('says why a record cannot be read', () => {
+    expect(recordedPredecessor(row(null))).toEqual({ unreadable: "the instance's record of other 0.0.1 does not hold its manifest" })
+    expect(recordedPredecessor(row({ packageName: 'x', packageVersion: '0.0.2' }))).toEqual({ unreadable: "the instance's record of other 0.0.1 does not hold its manifest" })
+    expect(recordedPredecessor(row({ packageName: 'x', packageVersion: '0.0.1', title: 'Other' })))
+      .toMatchObject({ unreadable: expect.stringMatching(/^this platform cannot read the recorded manifest of other 0\.0\.1: /) })
+  })
+})
+
+// #924: an upgrade starts from the declaration the instance recorded at
+// install or upgrade, so an image ships only the new version.
+describe('an image that ships only the new version', () => {
+  const nextVersion = '99.0.0'
+  /** The next version, with a step that adds a column, alone in the image. */
+  function shipOnlyNext(migrations?: unknown[]) {
+    const next = join(apps, 'other-next')
+    cpSync(app, next, { recursive: true })
+    writeFileSync(join(next, 'package.json'), JSON.stringify({ ...readJson(packageFile), version: nextVersion }))
+    const manifest = readJson(manifestFile)
+    const note = { column_name: 'note', column_type: 'Data' }
+    writeFileSync(join(next, 'featherbase.json'), JSON.stringify({
+      ...manifest,
+      tables: [{ ...manifest.tables[0], columns: [...manifest.tables[0].columns, note] }],
+      migrations: migrations ?? [...(manifest.migrations ?? []), { id: 'add_note', fromVersion: version, toVersion: nextVersion,
+        operations: [{ kind: 'addColumn', table: 'other.task', column: note }] }],
+    }))
+    rmSync(app, { recursive: true })
+    return next
+  }
+
+  test('upgrades from the recorded declaration and keeps the rows', async () => {
+    await pretendTo('staging')
+    await deploy()
+    await sql`insert into other.task (row_id, quantity) values ('kept-924', 7)`
+    shipOnlyNext()
+    expect(await assertInstalledAppsShipped({ followFiles: true }))
+      .toContain(`the deploy step upgrades ${name} ${version} to ${nextVersion} from the declaration this instance recorded`)
+    // A plain release has no deploy step to upgrade it before the server starts.
+    await expect(assertInstalledAppsShipped()).rejects.toThrow(`App ${name} version ${version} is installed and enabled, but this release does not ship it.`)
+    expect(await deploy()).toContain(`upgraded ${name} from ${version} to ${nextVersion}`)
+    const [row] = await sql`select package_version, activation_pending, previous_artifact from installed_app where name = ${name}`
+    expect(row).toMatchObject({ package_version: nextVersion, activation_pending: false, previous_artifact: { version } })
+    expect(await sql`select quantity, note from other.task where row_id = 'kept-924'`).toEqual([{ quantity: 7, note: null }])
+    expect(await assertInstalledAppsShipped({ followFiles: true })).toContain(`${name} ${nextVersion}`)
+  })
+
+  test('an app removed from the image while it is installed is still refused, with the disable hint', async () => {
+    await pretendTo('staging')
+    await deploy()
+    rmSync(app, { recursive: true })
+    await expect(assertInstalledAppsShipped({ followFiles: true })).rejects
+      .toThrow(`App ${name} version ${version} is installed and enabled, but this release does not ship it or any newer version. Ship ${name} ${version} or a version that upgrades from it, or disable the app, before releasing.`)
+  })
+
+  test('a new version with no step from the installed one is refused, naming why', async () => {
+    await pretendTo('staging')
+    await deploy()
+    shipOnlyNext([])
+    await expect(assertInstalledAppsShipped({ followFiles: true })).rejects
+      .toThrow(`but ${name} ${nextVersion}, which this release ships, cannot upgrade from it: it has no migration from ${version}.`)
+  })
+
+  test('a record this platform cannot read names the step that needs the old files, which then may ship', async () => {
+    await pretendTo('staging')
+    await deploy()
+    await sql`update installed_app set manifest = manifest - 'packageName' where name = ${name}`
+    const old = join(root, 'old-version')
+    rmSync(old, { recursive: true, force: true })
+    cpSync(app, old, { recursive: true })
+    shipOnlyNext()
+    await expect(assertInstalledAppsShipped({ followFiles: true })).rejects
+      .toThrow(`one step of the upgrade needs ${name} ${version}'s own files: reading the installed declaration to replay the upgrade on it: the instance's record of ${name} ${version} does not hold its manifest. List ${name} ${version} under previousVersions`)
+    await discoverPackages(JSON.parse(String(process.env.FEATHERBASE_APP_PATHS)))
+    await expect(previewAppUpgrade(name, nextVersion)).rejects.toThrow(`Upgrading ${name} needs its installed version's files`)
+    // Shipped beside the new version, the old files stand in for the record.
+    cpSync(old, join(apps, 'other-current'), { recursive: true })
+    expect(await assertInstalledAppsShipped({ followFiles: true })).toContain('every installed, enabled app ships in this release')
+    expect(await deploy()).toContain(`upgraded ${name} from ${version} to ${nextVersion}`)
   })
 })
 
