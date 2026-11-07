@@ -113,7 +113,9 @@ export async function documentActivity(table: string, name: string, user: string
   // Only authors of this already-authorized row's activity are resolved.
   // This does not grant the caller access to the Person directory or emails.
   // #829: the row's own creator is resolved too. A source-bound row has none.
-  const ids = [...new Set([...comments, ...versions, visibleDoc].map(entry => entry.created_by).filter(id => id != null).map(String))]
+  // #627: and whoever approved a held change.
+  const approvers = versions.flatMap(version => (version.data as { approved_by?: unknown } | null)?.approved_by ?? []) as unknown[]
+  const ids = [...new Set([...[...comments, ...versions, visibleDoc].map(entry => entry.created_by), ...approvers].filter(id => id != null).map(String))]
   const actors = await sql`
     select row_id, full_name, username from person where row_id = any(${ids})
     union all select row_id, label as full_name, null as username from service_account where row_id = any(${ids})`
@@ -123,7 +125,7 @@ export async function documentActivity(table: string, name: string, user: string
     author_name: names.get(String(entry.created_by)) ?? SYSTEM_ACTOR_LABELS[String(entry.created_by)] ?? 'Unknown person',
   })
   const visibleVersions = versions.map((version) => {
-    const data = version.data as { changed?: [string, unknown, unknown][]; created?: boolean; import_run?: string; resolution?: { field: string; decision: string; incoming: unknown }; retirement?: { action: string; reason?: string } } | null
+    const data = version.data as { changed?: [string, unknown, unknown][]; created?: boolean; import_run?: string; resolution?: { field: string; decision: string; incoming: unknown }; retirement?: { action: string; reason?: string }; approved_by?: string[] } | null
     return {
       ...withAuthor(version),
       data: {
@@ -131,6 +133,8 @@ export async function documentActivity(table: string, name: string, user: string
         ...(data?.import_run ? { import_run: data.import_run } : {}),
         // #859: who retired or reactivated the row, and why.
         ...(data?.retirement ? { retirement: data.retirement } : {}),
+        // #627: a change an approval rule held, and who approved it.
+        ...(data?.approved_by?.length ? { approved_by: data.approved_by.map(id => ({ id, name: names.get(id) ?? SYSTEM_ACTOR_LABELS[id] ?? 'Unknown person' })) } : {}),
         ...(data?.resolution && visibleFields.has(data.resolution.field) ? { resolution: data.resolution } : {}),
         changed: (data?.changed ?? []).filter(([field]) => visibleFields.has(field)),
       },

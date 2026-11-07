@@ -30,6 +30,7 @@ import { ActionDisclosure } from './ActionDisclosure'
 import { RetireDialog, RetiredBadge, RetiredNotice, reactivateRow } from './RowRetirement'
 import { PurgeDialog } from './PurgeDialog'
 import { WorkflowActions } from './WorkflowActions'
+import { HeldNotice, PendingChanges, type RuleProposal } from './ChangeProposals'
 import { RowConnections } from './RowPane'
 import { RowMap } from './RowMap'
 import { RowTree } from './RowTree'
@@ -139,6 +140,8 @@ export function FormView({
   const overrideTarget = useMeta(editingOverride ? String(values.table_name ?? '') : '')
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [banner, setBanner] = useState<string | null>(null)
+  // #627: the save an approval rule held, until the person dismisses it.
+  const [held, setHeld] = useState<RuleProposal | null>(null)
   const [saving, setSaving] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
@@ -409,6 +412,7 @@ export function FormView({
     }
     setSaving(true)
     setBanner(null)
+    setHeld(null)
     setErrors({})
     try {
       const payload: Row = { ...json.values }
@@ -426,6 +430,18 @@ export function FormView({
       const saved = asksRowId
         ? await api.post<Row>(`/api/table/${encodeURIComponent(table)}`, payload)
         : await api.post<Row>('/api/save_row', { table, row: payload })
+      // #627: an approval rule held the change. Nothing changed yet, so the
+      // form goes back to the row as it is and says who the change waits for.
+      const pending = saved.pending_proposal as RuleProposal | undefined
+      if (pending) {
+        setHeld(pending)
+        const reset = isNew ? (prefill ? { ...prefill } : {}) : baseline
+        typedJson.current = new Set()
+        valuesRef.current = reset
+        setValues(reset)
+        if (!isNew) await queryClient.invalidateQueries({ queryKey: ['row-proposals', table, name] })
+        return
+      }
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       await queryClient.invalidateQueries({ queryKey: ['activity', table, name] })
@@ -905,6 +921,9 @@ export function FormView({
         />
       )}
       {!isNew && <RetiredNotice row={baseline} />}
+      <ResolverNames table={table} />
+      {held && <HeldNotice proposal={held} onDismiss={() => setHeld(null)} />}
+      {!isNew && <PendingChanges table={table} name={name} beforeDecide={() => { suppressStaleUntil.current = Date.now() + 4000 }} />}
       {banner && (
         <p
           className={`mb-3 text-sm ${banner === 'Saved' || banner === 'Done' ? 'text-positive' : 'text-negative'}`}
@@ -1323,11 +1342,44 @@ function FieldControl({
           value={String(value ?? '')}
           onChange={(e) => onChange(e.target.value || null)}
           className={base}
+          list={offersResolvers(meta.name, field.column_name) ? RESOLVER_LIST_ID : undefined}
           {...common}
         />,
       )
   }
 }
+
+// #627: the columns where a rule names "the person an app names for the row",
+// offered the names the running apps provide. Typed names still work; the
+// server refuses an unknown one.
+const RESOLVER_COLUMNS: Record<string, string> = {
+  'Approval Rule': 'maker_resolver',
+  'Approval Rule Approver': 'resolver',
+}
+const RESOLVER_LIST_ID = 'approval-resolver-names'
+
+function useResolverNames(enabled: boolean): string[] {
+  const q = useQuery({
+    queryKey: ['approval-resolvers'],
+    enabled,
+    staleTime: 60_000,
+    queryFn: () => api.get<{ resolvers: string[] }>('/api/approval_resolvers'),
+  })
+  return q.data?.resolvers ?? []
+}
+
+/** The resolver names a rule's form offers, once per form. */
+function ResolverNames({ table }: { table: string }) {
+  const names = useResolverNames(table === 'Approval Rule')
+  if (table !== 'Approval Rule') return null
+  return (
+    <datalist id={RESOLVER_LIST_ID} data-testid="approval-resolver-names">
+      {names.map((n) => <option key={n} value={n} />)}
+    </datalist>
+  )
+}
+
+const offersResolvers = (table: string, column: string) => RESOLVER_COLUMNS[table] === column
 
 // The settings file's name never breaks at its hyphen on a narrow screen.
 function withFileName(text: string): React.ReactNode {
@@ -1490,6 +1542,7 @@ function ChildGrid({
                     value={c.column_type === 'Check' ? undefined : String(row[c.column_name] ?? '')}
                     onChange={(e) => setCell(i, c.column_name, c.column_type === 'Check' ? e.target.checked : e.target.value)}
                     className={c.column_type === 'Check' ? 'size-4 pointer-coarse:size-5' : CHILD_CELL_CLASSES}
+                    list={field.row_table && offersResolvers(field.row_table, c.column_name) ? RESOLVER_LIST_ID : undefined}
                     data-childfield={c.column_name}
                     {...cellInvalid(i, row, c)}
                   />

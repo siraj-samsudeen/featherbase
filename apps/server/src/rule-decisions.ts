@@ -14,6 +14,8 @@ import { getDoc, saveDoc } from './document'
 import { comparable, decide, decideUpdate, writeRequirements, type Operation, type Requirement } from './approval-rules'
 import { readerFor, restrictRow, FULL_READER } from './row-readers'
 import { isSharedWith } from './permissions'
+import { displayName } from './people-directory'
+import { SYSTEM_ACTOR_LABELS } from 'shared'
 
 type Row = Record<string, unknown>
 const OPEN = ['Pending', 'Needs fresh review']
@@ -32,6 +34,8 @@ export interface RuleProposal {
   created_at: Date
   changes: { column_name: string; original_value: string | null; proposed_value: string | null; review_base_value: string | null }[]
   waiting_for: { key: string; people: string[]; roles: string[]; approved_by: string | null; approved_at: Date | null }[]
+  /** The names of the people it names (maker, approvers, decider), for whoever may see it. */
+  names: Record<string, string>
   can_decide?: boolean
 }
 
@@ -50,8 +54,15 @@ async function load(where: { ids?: string[]; table?: string; row?: string | null
     where parent in ${sql(ids)} order by "position", column_name`
   const approvers = await sql`select parent, requirement, person, role, approved_by, approved_at from change_proposal_approver
     where parent in ${sql(ids)} order by "position"`
+  const actorIds = [...new Set([...rows.flatMap(r => [r.maker, r.decided_by]), ...approvers.flatMap(a => [a.person, a.approved_by])]
+    .filter((id): id is string => typeof id === 'string'))]
+  const actors = actorIds.length ? await sql`select row_id, full_name, username from person where row_id in ${sql(actorIds)}
+    union all select row_id, label as full_name, null as username from service_account where row_id in ${sql(actorIds)}` : []
+  const named = new Map(actors.map(actor => [String(actor.row_id), displayName(actor)]))
+  const nameOf = (id: string) => named.get(id) ?? SYSTEM_ACTOR_LABELS[id] ?? 'Unnamed person'
   return rows.map(row => {
     const mine = approvers.filter(a => a.parent === row.row_id)
+    const people = [row.maker, row.decided_by, ...mine.flatMap(a => [a.person, a.approved_by])].filter((id): id is string => typeof id === 'string')
     const keys = [...new Set(mine.map(a => String(a.requirement)))]
     return {
       ...row,
@@ -62,6 +73,7 @@ async function load(where: { ids?: string[]; table?: string; row?: string | null
         return { key, people: entries.filter(a => a.person).map(a => String(a.person)), roles: entries.filter(a => a.role).map(a => String(a.role)),
           approved_by: (done?.approved_by as string | null) ?? null, approved_at: (done?.approved_at as Date | null) ?? null }
       }),
+      names: Object.fromEntries(people.map(id => [id, nameOf(id)])),
     } as unknown as RuleProposal
   })
 }

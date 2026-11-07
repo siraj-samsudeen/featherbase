@@ -226,6 +226,8 @@ export function ListView({
   const [bulkValue, setBulkValue] = useState('')
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkError, setBulkError] = useState<string | null>(null)
+  // #627: rows a bulk edit left waiting for approval, said after the bar goes.
+  const [bulkNotice, setBulkNotice] = useState<string | null>(null)
   // #327: bulk delete asks first, like deleting one row or the whole Table.
   const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false)
   const bulkDeleteButton = useRef<HTMLButtonElement>(null)
@@ -583,6 +585,7 @@ export function ListView({
   async function bulkEdit() {
     setBulkBusy(true)
     setBulkError(null)
+    setBulkNotice(null)
     const columnType = editableColumns.find((f) => f.column_name === bulkField)?.column_type
     const value: unknown =
       columnType === 'Check'
@@ -591,11 +594,17 @@ export function ListView({
           ? null
           : bulkValue
     try {
-      const result = await api.post<{ changed: number; failed?: BulkFailure[] }>(
+      const result = await api.post<{ changed: number; failed?: BulkFailure[]; waiting_for_approval?: string[] }>(
         `/api/table/${encodeURIComponent(table)}:bulk-edit`,
         { rows: [...selected], values: { [bulkField]: value } },
       )
-      await reportPartial('changed', result.changed, result.failed ?? [])
+      const waiting = result.waiting_for_approval?.length ?? 0
+      if (waiting)
+        setBulkNotice(
+          `${fmtCount(waiting)} row${waiting === 1 ? ' is' : 's are'} waiting for approval and did not change yet` +
+            (result.changed ? `; ${fmtCount(result.changed)} changed.` : '.'),
+        )
+      await reportPartial('changed', result.changed + waiting, result.failed ?? [])
     } catch (err) {
       setBulkError(err instanceof ApiError ? refusal(err) : 'Bulk edit failed')
     } finally {
@@ -1031,6 +1040,12 @@ export function ListView({
               {bulkError}
             </span>
           )}
+        </div>
+      )}
+      {bulkNotice && (
+        <div role="status" className="mb-3 flex items-start justify-between gap-2 rounded-md border border-caution/40 bg-caution-tint px-3 py-2 text-sm text-ink" data-testid="bulk-waiting">
+          <span>{bulkNotice} Each row's page shows who it waits for.</span>
+          <button onClick={() => setBulkNotice(null)} className="text-xs underline">dismiss</button>
         </div>
       )}
       {/* #910: the list's layouts, just above it. */}

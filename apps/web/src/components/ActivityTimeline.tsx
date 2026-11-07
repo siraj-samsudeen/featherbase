@@ -7,7 +7,7 @@ import { useChangeFormat } from '../lib/change-format'
 
 type Entry =
   | { kind: 'comment'; at: string; who: string; content: string }
-  | { kind: 'version'; at: string; who: string; changes: [string, unknown, unknown][]; created?: boolean; importRun?: string; resolution?: NonNullable<VersionRow['data']>['resolution']; retirement?: NonNullable<VersionRow['data']>['retirement'] }
+  | { kind: 'version'; at: string; who: string; whoName?: string; changes: [string, unknown, unknown][]; created?: boolean; importRun?: string; resolution?: NonNullable<VersionRow['data']>['resolution']; retirement?: NonNullable<VersionRow['data']>['retirement']; approvedBy?: { id: string; name: string }[] }
 
 // UI-019: activity timeline interleaving comments and versions (edits with
 // their column diff) chronologically. Workflow actions join here once WF
@@ -24,11 +24,13 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
         kind: 'version',
         at: v.created_at,
         who: v.created_by,
+        whoName: v.author_name,
         changes: v.data?.changed ?? [],
         created: v.data?.created,
         importRun: v.data?.import_run,
         resolution: v.data?.resolution,
         retirement: v.data?.retirement,
+        approvedBy: v.data?.approved_by,
       })
     return out.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
   }, [activity.data])
@@ -67,9 +69,14 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
             />}
             <div className="min-w-0 flex-1">
               <div className="text-xs text-ink-muted">
-                <span className="font-medium text-ink" data-testid={e.kind === 'comment' ? 'comment-author' : undefined}><PrincipalName id={e.who} /></span>{' '}
+                <span className="font-medium text-ink" data-testid={e.kind === 'comment' ? 'comment-author' : undefined}>{e.kind === 'version' && e.whoName ? e.whoName : <PrincipalName id={e.who} />}</span>{' '}
                 {e.kind === 'comment' ? 'commented' : e.retirement ? (e.retirement.action === 'retired' ? 'retired this' : 'reactivated this') : e.resolution ? (e.resolution.decision === 'keep' ? 'kept their correction' : 'adopted the import value') : e.importRun ? 'imported' : e.created ? 'created' : 'edited'} ·{' '}
                 <span className="whitespace-nowrap" data-testid="activity-time">{fmtInstant(e.at)}</span>
+                {e.kind === 'version' && e.approvedBy?.length ? (
+                  <span data-testid="activity-approved-by">
+                    {' '}· approved by {e.approvedBy.map((a, j) => <span key={a.id}>{j > 0 && ', '}<span className="font-medium text-ink">{a.name}</span></span>)}
+                  </span>
+                ) : null}
               </div>
               {e.kind === 'comment' ? (
                 <div className="whitespace-pre-wrap break-words text-ink" data-testid="comment-content">

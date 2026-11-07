@@ -2056,7 +2056,9 @@ app.post('/api/server_script/:method', async (c) => {
 // proposal waiting for approval. 202: accepted, not yet applied.
 async function heldForCaller(table: string, saved: Record<string, unknown>, user: string) {
   const { pending_proposal, ...row } = saved
-  return { ...(row.row_id ? await rowForCaller(table, row, user) : { table, row_id: null }), pending_proposal }
+  // #627: the whole proposal, so the form can say who the change waits for.
+  const held = await proposalFor(String((pending_proposal as { row_id: string }).row_id), user)
+  return { ...(row.row_id ? await rowForCaller(table, row, user) : { table, row_id: null }), pending_proposal: held }
 }
 
 // #627: Change Proposals made by approval rules, and their decisions.
