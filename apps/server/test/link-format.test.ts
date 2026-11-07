@@ -56,7 +56,7 @@ describe('a link as the name of a row', () => {
 describe('a view', () => {
   test("reads by its base's format, and cannot choose its own", async ({ admin }) => {
     await admin.post('/api/table_def', { name: 'Lf Base', link_format: 'code', columns: [{ column_name: 'label', column_type: 'Data' }] })
-    await admin.post('/api/table_def', { name: 'Lf Lens', kind: 'view', view_of: 'Lf Base', view_filters: [] })
+    await admin.post('/api/table_def', { name: 'Lf Lens', kind: 'view', view_of: 'Lf Base', view_filters: [['label', '=', 'x']] })
     expect((await meta(admin, 'Lf Lens')).link_format).toBe('code')
 
     await admin.put(url('Lf Base'), { link_format: 'code_name' })

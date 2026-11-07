@@ -934,6 +934,11 @@ A Table SHALL choose how links to its rows read: Name (code), the default; Code 
 - **WHEN** a linked row has no value that could name it
 - **THEN** a link reads as its Table when its ID is generated, and as its ID when people chose it
 
+#### Scenario: A view
+
+- **WHEN** a link points at a view, or someone tries to set a format on a view
+- **THEN** the link reads by its base Table's format, and a view can't choose its own
+
 #### Scenario: No separate code
 
 - **WHEN** a Table's rows are numbered by a series, or their ID already is their name
