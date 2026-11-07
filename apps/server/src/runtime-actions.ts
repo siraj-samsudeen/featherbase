@@ -6,8 +6,6 @@ import { appOperation, assertAppAvailable, assertStillServing, servingIdentity }
 import { canonicalJson, recordAppAccessRefusal, withAppAuthorization, type DeclaredAppOperation } from './app-access'
 import { AppError } from './errors'
 import { PLATFORM_ROLES, assertSystemManager, getRoles } from './permissions'
-import { accessApprovers } from './runtime-packages'
-import { settleAccessRequests } from './waiting-for-access'
 import { getMeta } from './meta'
 import { tableRelation } from './table-engine'
 import { assertUserPermissions, deleteDoc, getDoc, saveDoc } from './document'
@@ -66,10 +64,16 @@ function callerPeople(user: string, app: string): RuntimeActionContext['people']
     roleNames: async () => Object.freeze((await sql`select row_id from role where row_id not in ${sql(PLATFORM_ROLES)} order by row_id`).map((r) => String(r.row_id))),
     waitingForAccess: async () => {
       const roles = await getRoles(user)
+      // Imported when called: runtime-packages imports this module, and a static
+      // import back would run it before apps.ts has defined what it needs.
+      const [{ accessApprovers }, { settleAccessRequests }] = await Promise.all([import('./runtime-packages'), import('./waiting-for-access')])
       if (!roles.includes('System Manager') && !accessApprovers(app).roles.some((role) => roles.includes(role))) return Object.freeze([])
       await settleAccessRequests()
-      const rows = await sql`select person, created_at from access_request where app_name = ${app} order by created_at, person`
-      return Object.freeze(rows.map((r) => ({ person: String(r.person), asked_at: new Date(r.created_at as string).toISOString() })))
+      // Their name, so an approver who can't read people still sees who is waiting; a name that is still an address isn't shown.
+      const rows = await sql`select r.person, r.created_at, p.full_name from access_request r left join person p on p.row_id = r.person
+        where r.app_name = ${app} order by r.created_at, r.person`
+      return Object.freeze(rows.map((r) => ({ person: String(r.person), name: r.full_name && !String(r.full_name).includes('@') ? String(r.full_name) : null,
+        asked_at: new Date(r.created_at as string).toISOString() })))
     },
   })
 }

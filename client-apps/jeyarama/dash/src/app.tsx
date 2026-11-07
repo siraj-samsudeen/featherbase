@@ -235,8 +235,8 @@ function NoAccess({ otherReports }: { otherReports: boolean }) {
     )
   return (
     <Notice testid="manager-no-store">
-      <p><strong>Dash is set up, but your account covers no store</strong>, so it has no report to show you.</p>
-      <p>The report opens for people with the Dash Reader role and a job in the store org chart. Give yourself or someone else those, or sign in as someone who has them.</p>
+      <p><strong>Dash is set up, but it has no report to show you</strong>: none has been given to you, or your job reaches no store.</p>
+      <p>A report opens for people it has been given to, directly, through a role or through their job, and shows what their job in the store org chart reaches. Give reports on the <a href="?view=access">Report access</a> page, or sign in as someone who has one.</p>
       {help.command && (
         <p>On this machine, <code data-testid="next-command">{help.command}</code> prints made-up people to sign in as. reader-sm@example.test is a made-up Store Manager.</p>
       )}

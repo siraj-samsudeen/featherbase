@@ -27,6 +27,14 @@ Report Bundle Member links one bundle to one report, with a unique key. Taking a
 
 Report Access keeps the person's id in a plain column. A link column checks that whoever saves it can read the Person, and a Report Access Manager can't, by design. The page picks the person by name from Employee and shows names, never the id.
 
+### Removing marks a row removed
+
+A delete leaves no trace of who took access away. Removing instead ticks the row's Removed box, an update that version history records with who and when, and clears its key, so the same thing can be given again as a new row. Readers skip removed rows. Bundle members are taken out the same way.
+
+### Bundles are made on the Report access page
+
+The owner asked for the standard form (point 17), but a Report Access Manager can't open the Admin pages, so the page makes bundles, puts reports in and takes them out itself, through the same save path. System Managers can still use the Admin form.
+
 ### Additive only, with no dates
 
 A person's reports are the union of every route. A rule that subtracts would make "why can they see this?" depend on rule order, and dates would add states to read. Removing a row is the only removal.

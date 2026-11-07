@@ -6,7 +6,7 @@ import { orgChartProvider, reachOf, type Documents, type Place } from './provide
 import { diveFilters, storesOfReport, type ReportRecord } from './dive-filters.ts'
 import { MONTH_CHOICES, buildReport, monthLabel, headingOf, istToday, periodOf, storeLabels, storeShortName, type CachedAnswer, type Heading, type Month, type MonthChoice, type SalesRow } from './report.ts'
 import { actions as sectionActions, reads as sectionReads } from './my-sections.ts'
-import { accessPage, giveReport, managesAccess, personLookup, personSearch, removeAccess, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
+import { accessPage, addToBundle, giveReport, makeBundle, managesAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
 
 /** The save rules of Dash's own Tables. */
 export const validators = accessValidators
@@ -84,6 +84,18 @@ export async function reportsFor(ctx: ScopedContext): Promise<ReportRecord[]> {
   const rows = await ctx.documents.list('dash.report', { fields: REPORT_FIELDS, order_by: 'report_name asc', limit_page_length: 200 })
   const reports = rows.map(row => ({ ...row, ready_signal: checked(row.ready_signal) }) as unknown as ReportRecord).filter(report => given.has(report.report_key))
   return (await reachesSomething(ctx)) ? reports : reports.filter(report => report.filter_shape === 'No filter')
+}
+
+/**
+ * The reports offered to the reader, in the sidebar and for opening Dash: a whole-stores report
+ * isn't offered to someone without a whole store (#967 point 1); opened by its address, it still
+ * says why.
+ */
+async function offeredReports(ctx: ScopedContext): Promise<ReportRecord[]> {
+  const reports = await reportsFor(ctx)
+  const places = reports.some(report => report.filter_shape === 'Whole stores') ? await placesHeld(ctx) : []
+  const wholeStore = places.some(place => !place.filters.subcategory)
+  return reports.filter(report => report.filter_shape !== 'Whole stores' || wholeStore)
 }
 
 /** The reader's places: a person_scope read's, else worked out from the core Tables. Unreadable means none. */
@@ -220,6 +232,9 @@ export const actions = {
   ...sectionActions,
   give_report: (context: AccessContext) => giveReport(context),
   remove_report_access: (context: AccessContext) => removeAccess(context),
+  make_bundle: (context: AccessContext) => makeBundle(context),
+  add_to_bundle: (context: AccessContext) => addToBundle(context),
+  remove_from_bundle: (context: AccessContext) => removeFromBundle(context),
 }
 
 export const reads = {
@@ -233,7 +248,7 @@ export const reads = {
   /** The app's gate (#1046): Dash opens for someone with a report, or who manages report access. */
   async can_open(context: ReadContext) {
     const ctx = context as ScopedContext
-    return managesAccess(ctx) || (await reportsFor(ctx)).length > 0
+    return managesAccess(ctx) || (await offeredReports(ctx)).length > 0
   },
 
   /** Whether this person manages report access, for the sidebar's link. */
@@ -245,18 +260,15 @@ export const reads = {
   access_page: (context: ReadContext) => accessPage(context as AccessContext),
   person_search: (context: ReadContext) => personSearch(context as AccessContext),
   person_lookup: (context: ReadContext) => personLookup(context as AccessContext, istToday(), async person => {
-    try { return (await reachOf((context as ScopedContext).baseTables, person, istToday())).places.length > 0 } catch { return false }
+    try {
+      const { places } = await reachOf((context as ScopedContext).baseTables, person, istToday())
+      return { any: places.length > 0, wholeStore: places.some(place => !place.filters.subcategory) }
+    } catch { return { any: false, wholeStore: false } }
   }),
 
   /** The reports this person may open, for the sidebar. */
   async reports(context: ReadContext) {
-    const ctx = context as ScopedContext
-    // A whole-stores report isn't offered to someone without a whole store (#967 point 1); opened
-    // by its address, it still says why.
-    const reports = await reportsFor(ctx)
-    const places = reports.some(report => report.filter_shape === 'Whole stores') ? await placesHeld(ctx) : []
-    const wholeStore = places.some(place => !place.filters.subcategory)
-    return reports.filter(report => report.filter_shape !== 'Whole stores' || wholeStore).map(report => ({ key: report.report_key, name: report.report_name,
+    return (await offeredReports(context as ScopedContext)).map(report => ({ key: report.report_key, name: report.report_name,
       takes_store: report.filter_shape === 'One store and subcategories', takes_month: !!report.month_key, no_filter: report.filter_shape === 'No filter' }))
   },
 

@@ -70,7 +70,7 @@ A Report Access row SHALL give exactly one report or one bundle to exactly one p
 - **THEN** the save is refused
 
 ### Requirement: A Report Access Manager manages access without being a System Manager
-A Report Access Manager SHALL be able to write Report Bundle, Report Bundle Member and Report Access, and SHALL NOT be able to write Permission, Has Role, Data Scope or any other access Table. Every change to those Tables SHALL be in version history. Anyone without that role or System Manager SHALL NOT be shown the page, and their reads of it and writes SHALL be refused on the server.
+A Report Access Manager SHALL be able to write Report Bundle, Report Bundle Member and Report Access, and SHALL NOT be able to write Permission, Has Role, Data Scope or any other access Table. Anyone without that role or System Manager SHALL NOT be shown the page, and their reads of it and writes SHALL be refused on the server.
 
 #### Scenario: The manager can give but can't change roles
 
@@ -82,8 +82,16 @@ A Report Access Manager SHALL be able to write Report Bundle, Report Bundle Memb
 - **WHEN** Asha, who isn't a Report Access Manager, tries to give herself "Stock ageing" or to list who has what
 - **THEN** both are refused
 
+### Requirement: Each give and removal is kept with who and when
+A give SHALL be recorded by its row's creator and date. A removal SHALL mark the row removed, which version history records with who and when, rather than delete it. A removed row SHALL give nothing, and the same thing MAY be given again as a new row. Taking a report out of a bundle SHALL work the same way.
+
+#### Scenario: A removal is kept with who removed it
+
+- **WHEN** Meera removes the row giving "Stock ageing" to Asha, and later gives it to her again
+- **THEN** the first row stays, marked removed, with Meera and the time in its history, and Asha sees "Stock ageing" again through the new row
+
 ### Requirement: The page shows who has what, and why
-The Report access page SHALL give a report or bundle to a person, role or job, list who has what with its kind, who gave it and a Remove, confirm a removal by naming it, and look up a person to show each report they see and why.
+The Report access page SHALL give a report or bundle to a person, role or job, list who has what with its kind, who gave it and a Remove, confirm a removal by naming it, and look up a person to show each report they see and why, including a given report that won't open for them. It SHALL also make bundles and put reports into them or take them out, since a Report Access Manager can't open the Admin pages.
 
 #### Scenario: Looking up a person says why
 

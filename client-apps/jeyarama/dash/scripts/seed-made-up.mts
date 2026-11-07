@@ -106,6 +106,9 @@ async function person(email: string, full_name: string, roles: string[] = [], re
   return id
 }
 await keep('Role', 'Master Data Editor', { row_id: 'Master Data Editor' })
+// #1046: Dash Reader goes to everyone who signs in, and the reports given to each person decide
+// whether Dash opens for them. Local only: on a real instance a System Manager sets this.
+await save('System Settings', { everyone_roles: 'Dash Reader' })
 // One reader per state of the report page.
 let code = 3000
 for (const reader of org.readers as { key: string; name: string; jobs: [string, string, Record<string, string>][] | null }[]) {

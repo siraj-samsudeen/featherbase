@@ -3,7 +3,7 @@
 // take it away; look a person up to see what they see, and why. The rules are the server's
 // (report-access-server.ts): the page only asks.
 import { useCallback, useEffect, useState } from 'react'
-import { Button, Card, DataList, EmptyState, Field, KindTag, Notice, SearchInput, Select, Skeleton, type DataColumn } from '@featherbase/shop-floor'
+import { Button, Card, DataList, EmptyState, Field, KindTag, Notice, SearchInput, Select, Skeleton, TextInput, type DataColumn } from '@featherbase/shop-floor'
 import { act, read } from './api'
 import { DashSidebar } from './sections-page'
 
@@ -11,7 +11,7 @@ type Kind = 'Person' | 'Role' | 'Job'
 interface Row { id: string; updated_at: string; gives: { kind: 'Report' | 'Bundle'; name: string }; to: { kind: Kind; name: string }; given_by: string; given_on: string }
 interface Page {
   reports: { key: string; name: string }[]
-  bundles: { id: string; name: string; reports: string[] }[]
+  bundles: { id: string; name: string; reports: { member: string; updated_at: string; key: string; name: string }[] }[]
   roles: string[]
   jobs: string[]
   rows: Row[]
@@ -41,7 +41,7 @@ export function ReportAccess() {
           <h1 className="fd-title">Report access</h1>
           {!page && !failed && <Skeleton label="Opening report access" lines={6} />}
           {failed && !page && (
-            <Card data-testid="access-refused"><EmptyState title="This page couldn't open" body={failed} action={<Button onClick={() => void load()}>Try again</Button>} /></Card>
+            <Card data-testid="access-refused"><EmptyState title="This page couldn't open" body={failed} action={failed.startsWith('Only a Report Access Manager') ? undefined : <Button onClick={() => void load()}>Try again</Button>} /></Card>
           )}
           {page && (
             <>
@@ -49,7 +49,7 @@ export function ReportAccess() {
               <GiveBar page={page} onGiven={load} />
               <WhoHasWhat rows={page.rows} onRemoved={load} />
               <PersonLookup />
-              <Bundles bundles={page.bundles} />
+              <Bundles page={page} onChanged={load} />
               {page.waiting.length > 0 && <Waiting waiting={page.waiting} />}
             </>
           )}
@@ -262,17 +262,74 @@ function PersonLookup() {
   )
 }
 
-/** The bundles and their reports; each is made and changed in the standard form. */
-function Bundles({ bundles }: { bundles: Page['bundles'] }) {
+/**
+ * The bundles and their reports, made and changed here: a Report Access Manager can't open the
+ * Admin pages. Taking a report out names it first, as Remove does above.
+ */
+function Bundles({ page, onChanged }: { page: Page; onChanged: () => Promise<unknown> }) {
+  const [name, setName] = useState('')
+  const [adding, setAdding] = useState<Record<string, string>>({})
+  const [confirming, setConfirming] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  async function run(action: string, payload: Record<string, unknown>, after: () => void) {
+    setBusy(true)
+    setError(null)
+    try {
+      await act(action, payload)
+      after()
+      await onChanged()
+    } catch (failure) {
+      setError(messageOf(failure))
+    } finally {
+      setBusy(false)
+    }
+  }
   return (
-    <Card title="Bundles" data-testid="bundles"
-      actions={<a className="text-sm font-semibold text-action" href="/featherbase/admin/table/dash.report_bundle" data-testid="edit-bundles">Make or change a bundle</a>}>
-      <div className="flex flex-col gap-2 p-4">
-        {bundles.length === 0 && <p className="fd-muted">No bundles yet. A bundle gives several reports at once.</p>}
-        {bundles.map(bundle => (
-          <p key={bundle.id} data-testid="bundle"><span className="font-semibold">{bundle.name}</span>: {bundle.reports.length ? bundle.reports.join(', ') : 'no reports yet'}</p>
-        ))}
-        <p className="text-sm"><a className="text-action" href="/featherbase/admin/table/dash.report_bundle_member">Add a report to a bundle, or take one out</a></p>
+    <Card title="Bundles" data-testid="bundles">
+      <div className="flex flex-col gap-3 p-4">
+        {error && <Notice tone="negative">{error}</Notice>}
+        {page.bundles.length === 0 && <p className="fd-muted">No bundles yet. A bundle gives several reports at once.</p>}
+        {page.bundles.map(bundle => {
+          const missing = page.reports.filter(report => !bundle.reports.some(held => held.key === report.key))
+          return (
+            <div key={bundle.id} className="flex flex-col gap-2 border-b border-border pb-3" data-testid="bundle">
+              <p className="font-semibold">{bundle.name}</p>
+              {bundle.reports.length === 0 && <p className="fd-muted text-sm">No reports in it yet.</p>}
+              <ul className="flex flex-col gap-1">
+                {bundle.reports.map(held => (
+                  <li key={held.member} className="flex flex-wrap items-center gap-2" data-testid="bundle-report">
+                    <span>{held.name}</span>
+                    {confirming === held.member ? (
+                      <span className="inline-flex flex-wrap items-center gap-2" data-testid="take-out-confirm">
+                        <span className="text-sm">Take {held.name} out of {bundle.name}?</span>
+                        <Button variant="danger" loading={busy} onClick={() => void run('remove_from_bundle', { id: held.member, updated_at: held.updated_at }, () => setConfirming(null))} data-testid="take-out-yes">Take out</Button>
+                        <Button variant="quiet" disabled={busy} onClick={() => setConfirming(null)}>Cancel</Button>
+                      </span>
+                    ) : <Button variant="quiet" onClick={() => { setError(null); setConfirming(held.member) }} data-testid="take-out">Take out</Button>}
+                  </li>
+                ))}
+              </ul>
+              {missing.length > 0 && (
+                <div className="flex flex-wrap items-end gap-2">
+                  <Field label={`Add a report to ${bundle.name}`}>
+                    <Select value={adding[bundle.id] ?? ''} onChange={event => setAdding({ ...adding, [bundle.id]: event.target.value })} data-testid="bundle-add-choice">
+                      <option value="">Choose a report</option>
+                      {missing.map(report => <option key={report.key} value={report.key}>{report.name}</option>)}
+                    </Select>
+                  </Field>
+                  <Button disabled={busy || !adding[bundle.id]} onClick={() => void run('add_to_bundle', { bundle: bundle.id, report: adding[bundle.id] }, () => setAdding({ ...adding, [bundle.id]: '' }))} data-testid="bundle-add">Add</Button>
+                </div>
+              )}
+            </div>
+          )
+        })}
+        <div className="flex flex-wrap items-end gap-2">
+          <Field label="New bundle">
+            <TextInput value={name} onChange={event => setName(event.target.value)} placeholder="For example, Team leader pack" data-testid="bundle-name" />
+          </Field>
+          <Button disabled={busy || !name.trim()} onClick={() => void run('make_bundle', { name: name.trim() }, () => setName(''))} data-testid="bundle-make">Make bundle</Button>
+        </div>
       </div>
     </Card>
   )

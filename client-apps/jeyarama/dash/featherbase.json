@@ -464,7 +464,13 @@
           "column_type": "Data",
           "unique": true,
           "read_only": true,
-          "description": "Set on save: the bundle and the report. Unique, so a bundle holds a report once."
+          "description": "Set on save: the bundle and the report, while the report is in it. Unique, so a bundle holds a report once."
+        },
+        {
+          "column_name": "removed",
+          "label": "Removed",
+          "column_type": "Check",
+          "description": "Taken out of the bundle: the row stays so its history says who took it out and when."
         }
       ]
     },
@@ -517,7 +523,19 @@
           "column_type": "Data",
           "unique": true,
           "read_only": true,
-          "description": "Set on save: what is given and to whom. Unique, so the same thing is never given twice to the same receiver."
+          "description": "Set on save: what is given and to whom, while it is given. Unique, so the same thing is never given twice to the same receiver."
+        },
+        {
+          "column_name": "removed",
+          "label": "Removed",
+          "column_type": "Check",
+          "description": "Taken away: the row stays so its history says who removed it and when, and it gives nothing."
+        },
+        {
+          "column_name": "given_by_name",
+          "label": "Given by",
+          "column_type": "Data",
+          "description": "Set when given on the Report access page: the name of the person who gave it, as the page shows it."
         }
       ]
     }
@@ -932,7 +950,13 @@
                 "column_type": "Data",
                 "unique": true,
                 "read_only": true,
-                "description": "Set on save: the bundle and the report. Unique, so a bundle holds a report once."
+                "description": "Set on save: the bundle and the report, while the report is in it. Unique, so a bundle holds a report once."
+              },
+              {
+                "column_name": "removed",
+                "label": "Removed",
+                "column_type": "Check",
+                "description": "Taken out of the bundle: the row stays so its history says who took it out and when."
               }
             ]
           }
@@ -988,7 +1012,19 @@
                 "column_type": "Data",
                 "unique": true,
                 "read_only": true,
-                "description": "Set on save: what is given and to whom. Unique, so the same thing is never given twice to the same receiver."
+                "description": "Set on save: what is given and to whom, while it is given. Unique, so the same thing is never given twice to the same receiver."
+              },
+              {
+                "column_name": "removed",
+                "label": "Removed",
+                "column_type": "Check",
+                "description": "Taken away: the row stays so its history says who removed it and when, and it gives nothing."
+              },
+              {
+                "column_name": "given_by_name",
+                "label": "Given by",
+                "column_type": "Data",
+                "description": "Set when given on the Report access page: the name of the person who gave it, as the page shows it."
               }
             ]
           }
@@ -1824,14 +1860,19 @@
         "role",
         "job",
         "updated_at",
-        "updated_by"
+        "updated_by",
+        "removed",
+        "created_by",
+        "given_by_name"
       ],
       "dash.report_bundle": [
         "bundle_name"
       ],
       "dash.report_bundle_member": [
         "report_bundle",
-        "report"
+        "report",
+        "updated_at",
+        "removed"
       ]
     },
     "propose": {
@@ -1869,7 +1910,9 @@
     "version": 2,
     "tables": [
       "dash.report",
-      "dash.report_access"
+      "dash.report_access",
+      "dash.report_bundle",
+      "dash.report_bundle_member"
     ],
     "operations": {
       "propose_move": {
@@ -1913,6 +1956,30 @@
         }
       },
       "remove_report_access": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "make_bundle": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "add_to_bundle": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "remove_from_bundle": {
         "policy": {
           "kind": "table"
         },

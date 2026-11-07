@@ -116,6 +116,71 @@ describe('who sees which report, read fresh', () => {
   })
 })
 
+describe('removals and bundles keep their history', () => {
+  const act = (client: TestClient, name: string, payload: Record<string, unknown>) =>
+    client.post<{ result: { id: string } }>(`/api/app_actions/dash/${name}`, { idempotencyKey: crypto.randomUUID(), payload }).then(a => a.result)
+  const page = (client: TestClient) => client.post<{ result: {
+    rows: { id: string; updated_at: string; given_by: string }[]
+    bundles: { id: string; name: string; reports: { member: string; updated_at: string; key: string }[] }[]
+  } }>('/api/app_reads/dash/access_page', { payload: {} }).then(a => a.result)
+
+  test('a removed row stays, marked removed, with who removed it in its history, and the same thing can be given again', async ({ admin, createUser }) => {
+    const { leader, giver } = await setup(admin, createUser)
+    await sql`update person set full_name = 'Made-up Giver' where row_id = ${giver.user!}`
+    const { id } = await give(giver, { report: 'sales', person: leader.user })
+    const [row] = (await page(giver)).rows
+    expect(row.given_by).toBe('Made-up Giver')
+    await act(giver, 'remove_report_access', { id: row.id, updated_at: row.updated_at })
+    expect([await reports(leader), (await page(giver)).rows]).toEqual([[], []])
+    const [kept] = await sql`select removed, access_key, updated_by from dash.report_access where row_id = ${id}`
+    expect([Boolean(kept.removed), kept.access_key, kept.updated_by]).toEqual([true, null, giver.user])
+    const history = await sql`select created_by from version where ref_table = 'dash.report_access' and ref_name = ${id}`
+    expect(history.map(v => v.created_by)).toContain(giver.user)
+    await give(giver, { report: 'sales', person: leader.user })
+    expect(await reports(leader)).toEqual(['sales'])
+  })
+
+  test('a Report Access Manager makes a bundle, puts reports in it and takes one out, on the page', async ({ admin, createUser }) => {
+    const { leader, giver } = await setup(admin, createUser)
+    const { id: bundle } = await act(giver, 'make_bundle', { name: 'Team leader pack' })
+    await act(giver, 'add_to_bundle', { bundle, report: 'sales' })
+    await act(giver, 'add_to_bundle', { bundle, report: 'vendor_sales' })
+    await give(giver, { report_bundle: bundle, job: 'Team Leader' })
+    expect(await reports(leader)).toEqual(['sales', 'vendor_sales'])
+    const [pack] = (await page(giver)).bundles
+    const vendors = pack.reports.find(r => r.key === 'vendor_sales')!
+    await act(giver, 'remove_from_bundle', { id: vendors.member, updated_at: vendors.updated_at })
+    expect([await reports(leader), (await page(giver)).bundles[0].reports.map(r => r.key)]).toEqual([['sales'], ['sales']])
+    await act(giver, 'add_to_bundle', { bundle, report: 'vendor_sales' })
+    expect(await reports(leader)).toEqual(['sales', 'vendor_sales'])
+    const refused = await giver.fetch('/api/app_actions/dash/make_bundle', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ idempotencyKey: crypto.randomUUID(), payload: { name: 'Team leader pack' } }) })
+    expect(await refused.text()).toContain('There is already a bundle with that name')
+    const reader = await leader.fetch('/api/app_actions/dash/make_bundle', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ idempotencyKey: crypto.randomUUID(), payload: { name: 'Mine' } }) })
+    expect(reader.status).toBeGreaterThanOrEqual(400)
+  })
+
+  test("the lookup says a whole-stores report won't open for someone whose job reaches part of a store", async ({ admin, createUser }) => {
+    const { leader, giver } = await setup(admin, createUser)
+    await give(giver, { report: 'store_target', person: leader.user })
+    const lookup = await giver.post<{ result: { reports: { key: string; closed: string | null }[] } }>('/api/app_reads/dash/person_lookup', { payload: { person: leader.user } })
+    expect(lookup.result.reports.map(r => [r.key, r.closed])).toEqual([['store_target', 'Given, but it covers whole stores and their job reaches part of a store']])
+    expect([await reports(leader), await gate(leader)]).toEqual([[], false])
+  })
+
+  test('someone holding no role opens Dash once Dash Reader goes to everyone and a report reaches their job', async ({ admin, createUser }) => {
+    const { giver, save } = await setup(admin, createUser)
+    const plain = await createUser({ email: 'ra-plain@example.test', roles: [] })
+    await save('Employee', { employee_code: '4', name: 'Made-up Plain', person: plain.user, status: 'Current' })
+    await save('Job Assignment', { assignment_id: 'JA-4', employee: '4', job: 'Team Leader', site: 'LKS', section: 'LKS-S1', starts_on: '2026-01-01' })
+    await give(giver, { report: 'sales', job: 'Team Leader' })
+    expect((await catalog(plain)).includes('dash')).toBe(false)
+    await admin.post('/api/save_row', { table: 'System Settings', row: { everyone_roles: 'Dash Reader' } })
+    expect([(await catalog(plain)).includes('dash'), await reports(plain)]).toEqual([true, ['sales']])
+  })
+})
+
 describe('opening a report not given is refused before anything goes out', () => {
   test('the embed session for a report not given is refused and MotherDuck is never called', async ({ admin, createUser }) => {
     const { leader, giver } = await setup(admin, createUser)

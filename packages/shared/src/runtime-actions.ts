@@ -92,7 +92,7 @@ export interface RuntimeActionContext {
     roleNames(): Promise<readonly string[]>
     /** #1046: who is waiting for access to this app, oldest first. Only a
      *  System Manager or one of the app's access approvers is told. */
-    waitingForAccess(): Promise<readonly { person: string; asked_at: string }[]>
+    waitingForAccess(): Promise<readonly { person: string; name: string | null; asked_at: string }[]>
   }
   readonly payload: unknown
   readonly authorization: AppAuthorizationContext
