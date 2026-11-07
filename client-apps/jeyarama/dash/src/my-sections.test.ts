@@ -21,13 +21,13 @@ function matches(row: Row, [column, op, value]: [string, string, unknown]) {
 function world(over: Partial<Record<string, Row[]>> = {}) {
   return {
     Employee: [
-      { row_id: 'E1', name: 'Asha', employee_status: 'Current', person: 'asha' },
-      { row_id: 'E2', name: 'Mani', employee_status: 'Current', person: 'mani' },
+      { row_id: 'E1', name: 'Asha', status: 'Current', person: 'asha' },
+      { row_id: 'E2', name: 'Mani', status: 'Current', person: 'mani' },
     ],
     'Job Assignment': [{ row_id: 'J1', employee: 'E1', job: 'Team Leader', site: 'LKS', section: 'S1', reports_to: 'E2', starts_on: '2026-01-01', ends_on: null }],
     Section: [
-      { row_id: 'S1', name: 'Ladies', site: 'LKS', floor: 'F1', section_status: 'Active' },
-      { row_id: 'S2', name: 'Silk', site: 'LKS', floor: null, section_status: 'Active' },
+      { row_id: 'S1', name: 'Ladies', site: 'LKS', floor: 'F1', status: 'Active' },
+      { row_id: 'S2', name: 'Silk', site: 'LKS', floor: null, status: 'Active' },
     ],
     'Store Floor': [{ row_id: 'F1', name: 'First', site: 'LKS' }],
     'Section Subcategory': [{ row_id: 'P1', section_subcategory_id: 'P1', store: 'LKS', subcategory: 'C1', section: 'S1', starts_on: '2026-01-01', ends_on: null }],
@@ -149,7 +149,7 @@ describe('what is refused', () => {
     await refuses('propose_add', { job: 'J1' })
     await refuses('propose_add', { job: 'J1', subcategory: 7 })
     const closed = world()
-    closed.Section[0].section_status = 'Inactive'
+    closed.Section[0].status = 'Inactive'
     await refuses('propose_add', { job: 'J1', subcategory: 'C2' }, closed)
     await refuses('propose_add', { job: 'J1', subcategory: 'C2' }, world({ 'Section Subcategory': [
       { row_id: 'P2', store: 'LKS', subcategory: 'C2', section: 'S2', starts_on: '2026-01-01' }, { row_id: 'P3', store: 'LKS', subcategory: 'C2', section: 'S3', starts_on: '2026-01-01' }] }))
@@ -189,7 +189,7 @@ describe('approval sends it for a fresh review when', () => {
 
   it('the person left or no longer holds the job', async () => {
     const left = world()
-    left.Employee[0].employee_status = 'Left'
+    left.Employee[0].status = 'Left'
     expect((await decide(move, left)).call).toBe('needsFreshReview')
     const other = world()
     other.Employee[0].person = 'someone-else'

@@ -1437,7 +1437,7 @@
     "read": {
       "Employee": [
         "name",
-        "employee_status",
+        "status",
         "person"
       ],
       "Job Assignment": [
@@ -1455,7 +1455,7 @@
         "name",
         "site",
         "floor",
-        "section_status"
+        "status"
       ],
       "Store Floor": [
         "name",

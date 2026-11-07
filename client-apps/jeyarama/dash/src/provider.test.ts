@@ -30,7 +30,7 @@ const PLACEMENTS: Row[] = [
   { row_id: 'p5', store: 'BBB', section: 'BBB-GF-Tops', subcategory: '000000005', starts_on: '2026-01-01', ends_on: null },
 ]
 
-function fake(jobs: Row[], { employee = { row_id: 'E1', person: 'me', employee_status: 'Current' } as Row } = {}): Documents {
+function fake(jobs: Row[], { employee = { row_id: 'E1', person: 'me', status: 'Current' } as Row } = {}): Documents {
   const tables: Record<string, Row[]> = {
     Employee: [employee], 'Job Assignment': jobs.map((job, i) => ({ row_id: `J${i}`, employee: 'E1', starts_on: '2026-01-01', ends_on: null, ...job })),
     Site: SITES, Plant: PLANTS, Section: SECTIONS, 'Section Subcategory': PLACEMENTS,
@@ -96,7 +96,7 @@ describe('who sees what', () => {
   })
 
   it('a leaver has no job, whatever rows remain', async () => {
-    const left = fake([{ job: 'Store Manager', site: 'AAA' }], { employee: { row_id: 'E1', person: 'me', employee_status: 'Left' } })
+    const left = fake([{ job: 'Store Manager', site: 'AAA' }], { employee: { row_id: 'E1', person: 'me', status: 'Left' } })
     expect(await reachOf(left, 'me', ON)).toEqual({ places: [], problems: ['no_job'] })
   })
 
