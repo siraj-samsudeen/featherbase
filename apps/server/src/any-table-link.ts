@@ -52,14 +52,15 @@ export async function anyTableLinkCount(tx: typeof sql, table: string, rowId: st
   return (await holders(tx, table, rowId)).length
 }
 
-/** "Decision 3" (or the parent row of a Sub-table's row) linking to this row, if any. */
-export async function anyTableLinkHolder(tx: typeof sql, table: string, rowId: string): Promise<string | null> {
+/** The Table and id of the row (or the parent row of a Sub-table's row)
+ *  linking to this row, if any. */
+export async function anyTableLinkHolder(tx: typeof sql, table: string, rowId: string): Promise<{ table: string; row_id: string } | null> {
   const [first] = await holders(tx, table, rowId)
   if (!first) return null
   const { physicalRowKey } = await import('./meta')
   return first.kind === 'sub_table'
-    ? `${String(first.row.parenttype)} ${String(first.row.parent)}`
-    : `${first.table} ${String(first.row[physicalRowKey(first.table)])}`
+    ? { table: String(first.row.parenttype), row_id: String(first.row.parent) }
+    : { table: first.table, row_id: String(first.row[physicalRowKey(first.table)]) }
 }
 
 /** A row's id changed: every link to it through a link to any Table follows. */

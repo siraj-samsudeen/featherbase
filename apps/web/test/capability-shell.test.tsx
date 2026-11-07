@@ -250,6 +250,6 @@ test('a refused table list says the person cannot read it, rather than showing a
   const clerk = await createUser({ email: 'clerk.refused@example.com', roles: ['Shelf Clerk'] })
   await renderApp('/featherbase/admin/table/back-office', clerk)
   const refusal = await screen.findByRole('alert', {}, { timeout: 10_000 })
-  expect(refusal).toHaveTextContent(/You don't have read permission on Back Office/)
+  expect(refusal).toHaveTextContent(/don't have read permission on Back Office/i)
   expect(screen.queryByText('No rows')).not.toBeInTheDocument()
 })
