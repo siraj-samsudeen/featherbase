@@ -86,6 +86,12 @@ export async function reportsFor(ctx: ScopedContext): Promise<ReportRecord[]> {
   return (await reachesSomething(ctx)) ? reports : reports.filter(report => report.filter_shape === 'No filter')
 }
 
+/** The reader's places: a person_scope read's, else worked out from the core Tables. Unreadable means none. */
+async function placesHeld(ctx: ScopedContext): Promise<readonly Place[]> {
+  if (ctx.authorization?.places?.length) return ctx.authorization.places
+  try { return (await reachOf(ctx.baseTables, ctx.user, istToday())).places } catch { return [] }
+}
+
 /** A person_scope read already holds the reader's places; any other read works them out. Unreadable means nothing. */
 async function reachesSomething(ctx: ScopedContext): Promise<boolean> {
   if (ctx.authorization?.places?.length) return true
@@ -150,7 +156,8 @@ async function salesReport(ctx: ScopedContext, store: string) {
   const answer = await cachedRows(ctx, store, choice)
   const month = await monthOf(ctx, store, choice)
   const report = buildReport({ store, places: placesOf(ctx), answer, month, today: istToday(), choice })
-  return { ...report, heading: headingOf(placesOf(ctx), store, storeShortName(report, month)) }
+  const named = (await storeNames(ctx, [store])).get(store) ?? null
+  return { ...report, heading: headingOf(placesOf(ctx), store, storeShortName(report, month, named)) }
 }
 
 /** A store's name from the core Tables, for the page's header and the bar. */
@@ -244,7 +251,12 @@ export const reads = {
   /** The reports this person may open, for the sidebar. */
   async reports(context: ReadContext) {
     const ctx = context as ScopedContext
-    return (await reportsFor(ctx)).map(report => ({ key: report.report_key, name: report.report_name,
+    // A whole-stores report isn't offered to someone without a whole store (#967 point 1); opened
+    // by its address, it still says why.
+    const reports = await reportsFor(ctx)
+    const places = reports.some(report => report.filter_shape === 'Whole stores') ? await placesHeld(ctx) : []
+    const wholeStore = places.some(place => !place.filters.subcategory)
+    return reports.filter(report => report.filter_shape !== 'Whole stores' || wholeStore).map(report => ({ key: report.report_key, name: report.report_name,
       takes_store: report.filter_shape === 'One store and subcategories', takes_month: !!report.month_key, no_filter: report.filter_shape === 'No filter' }))
   },
 

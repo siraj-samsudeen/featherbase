@@ -185,12 +185,17 @@ describe("the reports read (Dash's sidebar)", () => {
   const ALL = [SALES, WHOLE, VENDORS]
 
   it('lists every report by name, saying which takes a store and which a month', async () => {
-    const { ctx } = context({ reports: ALL, core: jobOf({ job: 'Store Manager' }) })
+    const { ctx } = context({ places: [], reports: ALL, core: jobOf({ job: 'Store Manager' }) })
     expect(await reads.reports(ctx)).toEqual([
       { key: 'sales', name: 'Sales versus target', takes_store: true, takes_month: true, no_filter: false },
       { key: 'whole', name: 'Store target month to date', takes_store: false, takes_month: false, no_filter: false },
       { key: 'vendors', name: 'Vendor sales by city', takes_store: false, takes_month: false, no_filter: false },
     ])
+  })
+
+  it("doesn't offer a whole-stores report to someone without a whole store (#967 point 1)", async () => {
+    const { ctx } = context({ reports: ALL })
+    expect((await reads.reports(ctx)).map(report => report.key)).toEqual(['sales', 'vendors'])
   })
 
   it.each([
@@ -661,6 +666,7 @@ describe("the report read's heading", () => {
   it('still answers the heading while nothing is cached yet (the figures are being prepared)', async () => {
     const { ctx } = context({ places: PLACES, payload: { store: '9901' }, rows: null })
     const report = await reads.report(ctx) as Answered
-    expect([report.state, report.heading]).toEqual(['not_built', { name: null, sections: ['Sarees'], reasons: [{ basis: 'team_leader', sections: ['Sarees'] }] }])
+    // The store's name comes from the core Tables, never a code (#967 point 13).
+    expect([report.state, report.heading]).toEqual(['not_built', { name: 'Lakeside', sections: ['Sarees'], reasons: [{ basis: 'team_leader', sections: ['Sarees'] }] }])
   })
 })

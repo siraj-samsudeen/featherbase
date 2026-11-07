@@ -153,7 +153,7 @@ export function Dash() {
           {view.why === 'whole_stores_only' && "This report covers whole stores, so it isn't available for your job."}
         </Notice>
       )}
-      {view.kind === 'no_access' && <NoAccess />}
+      {view.kind === 'no_access' && <NoAccess otherReports={!!reports?.length} />}
       {view.kind === 'signed_out' && (
         <Notice testid="signed-out"><a href={`/featherbase/login?next=${encodeURIComponent('/dash/' + window.location.search)}`}>Sign in</a> to open your report.</Notice>
       )}
@@ -189,7 +189,7 @@ function ReportHeading({ heading, period, wide }: { heading: Heading; period: { 
 
 /** Why the report refused. Nothing is said until the platform has answered: a manager never
  *  flashes the reader's "ask your Store Manager". */
-function NoAccess() {
+function NoAccess({ otherReports }: { otherReports: boolean }) {
   const [help, setHelp] = useState<NoAccessHelp | undefined>(undefined)
   // Why this job reaches nothing, when it is something the person can act on or wait for.
   const [message, setMessage] = useState<ReturnType<typeof reachMessage>>(null)
@@ -201,6 +201,13 @@ function NoAccess() {
     return () => { live = false }
   }, [])
   if (!help) return <p className="fd-opening">Opening your report…</p>
+  // A report that isn't one of theirs, or doesn't exist, while others are (#967 point 7).
+  if (otherReports)
+    return (
+      <Notice testid="not-your-report">
+        <span>You can't open this report. Choose one of your reports from the list.</span>
+      </Notice>
+    )
   if (message)
     return (
       <Notice testid="reach-problem">
@@ -208,13 +215,7 @@ function NoAccess() {
         {message.sectionsLink && <a href={SECTIONS_ADDRESS} data-testid="fix-link">Open Your sections to see what is set against you, and correct it</a>}
       </Notice>
     )
-  if (help.kind === 'reader')
-    return (
-      <Notice testid="no-access">
-        <span>You don't have access to any store's report yet. Ask your Store Manager if you think you should.</span>
-        <a href={SECTIONS_ADDRESS} data-testid="fix-link">Open Your sections to see what is set against you, and correct it</a>
-      </Notice>
-    )
+  if (help.kind === 'reader') return <AskForAccess />
   const health = <p><a href="/featherbase/admin/instance-health">Open instance health</a></p>
   if (help.kind === 'not_set_up')
     return (
@@ -240,6 +241,19 @@ function NoAccess() {
         <p>On this machine, <code data-testid="next-command">{help.command}</code> prints made-up people to sign in as. reader-sm@example.test is a made-up Store Manager.</p>
       )}
       {health}
+    </Notice>
+  )
+}
+
+/**
+ * No report for this person (#967 point 11). Who gives reports, and recording the request when
+ * someone opens Dash with none, belong to report bundles (#1046): until then the page says so.
+ */
+function AskForAccess() {
+  return (
+    <Notice testid="no-access">
+      <span>You don't have a report to open yet. Ask the person who gives Dash reports in your company for access.</span>
+      <a href={SECTIONS_ADDRESS} data-testid="fix-link">If you work in a store, open Your sections to see what is set against you</a>
     </Notice>
   )
 }

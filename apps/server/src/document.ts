@@ -4,6 +4,7 @@ import { DEFAULT_ID_PATTERN, idFromColumn, namingColumn, tableSchemaToZod, zodFi
 import { assertMandatoryAccess, hasMandatoryRowAccess } from './mandatory-access'
 import { sql } from './db'
 import { AppError } from './errors'
+import { refusalSubject, tableWords } from './refusals'
 import { sessionMayAddWayIn } from './session-context'
 import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
@@ -460,24 +461,24 @@ async function assertAttachedRowReadable(table: string, row: RowValues, user: st
   const refTable = row.ref_table ? String(row.ref_table) : ''
   const refName = row.ref_name ? String(row.ref_name) : ''
   if (!refTable || !refName) return
-  const refused = () => new AppError('PermissionError', `No read permission on this ${table} row for ${user}`)
+  const refused = async () => new AppError('PermissionError', `${refusalSubject(user)} have read permission on the row this ${await tableWords(table)} is on.`)
   // A comment or file may sit on a comment, edit or file that is itself on a
   // plain row, one level deep (assertAttachedTarget); a deeper chain, which
   // only a direct write could leave, is refused rather than followed, so it
   // can never loop. The list leaves rows on such Tables out (the row's own
   // activity shows them).
-  if (ROW_ATTACHED_TABLES.has(refTable) && (await attachedToAttached(refTable, refName))) throw refused()
+  if (ROW_ATTACHED_TABLES.has(refTable) && (await attachedToAttached(refTable, refName))) throw await refused()
   const refMeta = await getMeta(refTable).catch(() => null)
-  if (!refMeta) throw refused()
+  if (!refMeta) throw await refused()
   let target: RowValues
   try {
     target = await getDoc(refTable, refName, user)
   } catch (err) {
-    if (err instanceof AppError) throw refused()
+    if (err instanceof AppError) throw await refused()
     throw err
   }
   if (SENSITIVE_HISTORY_TABLES.has(table) && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta, String(target.created_by))))
-    throw refused()
+    throw await refused()
 }
 
 // Whether a comment, edit or file is itself on another comment, edit or file.
