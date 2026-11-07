@@ -8,6 +8,7 @@ import { appPermissionSchema, registerApp, forgetRuntimePackages, listInstalledA
 import { applyJobPlan, bindAppJobs, jobsDeclaration, planJobChanges, validateAppJobs } from './app-jobs'
 import { tableDefSchema } from './table-engine'
 import { hasPermission } from './permissions'
+import { tableAccessPolicy } from './mandatory-access'
 import { AppError } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
 import { APP_ACCENTS, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
@@ -847,6 +848,21 @@ export async function appCatalog(user: string) {
         name: pkg.name, title: pkg.title, href: appHref(pkg.name),
         ...(pkg.manifest.tabs && { tabs: appTabLinks(appHref(pkg.name), pkg.manifest.tabs.items) }),
       })
+  }
+  return result
+}
+
+/** #1008: the installed apps this person can't open, and the roles that would
+ *  open each. Being without access must not read as the app not being there, so
+ *  a System Manager is told; nothing here decides what opens (appCatalog does).
+ *  Apps turned off aren't listed: the Apps page says so. */
+export async function closedApps(user: string) {
+  const open = new Set((await appCatalog(user)).map((entry) => entry.name))
+  const result = []
+  for (const item of await listInstalledApps()) {
+    const pkg = packages.get(item.name)
+    if (item.active && item.ownPages && pkg?.clientRoot && !open.has(pkg.name))
+      result.push({ name: pkg.name, title: pkg.title, roles: (await tableAccessPolicy(pkg.entryTable))?.roles ?? [] })
   }
   return result
 }
