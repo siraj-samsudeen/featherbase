@@ -154,6 +154,20 @@ describe('write-through to identifiers', () => {
     expect(await current(p, 'stylehr-employee-id')).toEqual([])
   })
 
+  test('a record number another person holds stops the link, and nothing is written', async ({ admin }) => {
+    await configureDelegated()
+    await sql`update identifier_system set one_holder_at_a_time = true where row_id = 'stylehr-employee-id'`
+    const holder = await makePerson({ full_name: 'Holds The Number' })
+    await sql`insert into person_identifier (id, person_id, system, assigner, value, valid, verified, one_holder, one_per_person, source, recorded_by)
+      values ('pid_holder_900002', ${holder}, 'stylehr-employee-id', '', '900002', daterange(current_date, null, '[)'), true, true, false, 'stylehr-roster-sync', 'test')`
+    const p = await makePerson({ full_name: 'Wants The Number' })
+    const res = await admin.fetch(`/api/people/${p}/identities`, { method: 'POST', body: JSON.stringify({ method: 'stylehr', subject: '900002', sign_in_name: 'taken_login' }) })
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ error: { type: 'ConflictError', fields: { code: 'overlap' } } })
+    expect(await current(p, 'stylehr-employee-id')).toEqual([])
+    expect(await sql`select 1 from sign_in_identity where person_id = ${p}`).toEqual([])
+  })
+
   test('the person’s address is an email row; changing it closes the old one and opens the new', async ({ admin }) => {
     const p = await makePerson({ email: 'first@x.test' })
     expect(await current(p, 'email')).toEqual([{ value: 'first@x.test', source: 'person-email' }])
