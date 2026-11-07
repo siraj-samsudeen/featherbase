@@ -24,6 +24,11 @@ export function opaqueId(prefix: string, length = 20): string {
 export const PERSON_ID_PREFIX = 'psn_'
 const SERVICE_ACCOUNT_ID_PREFIX = 'svc_'
 
+/** Whether a principal id names a service account rather than a person or a built-in. */
+export function isServiceAccountId(id: string): boolean {
+  return id.startsWith(SERVICE_ACCOUNT_ID_PREFIX)
+}
+
 /** A new service account's permanent id. */
 export function newServiceAccountId(): string {
   return opaqueId(SERVICE_ACCOUNT_ID_PREFIX)
