@@ -77,7 +77,7 @@ test('starting a count fixes its expected list, which counters cannot read', asy
     .rejects.toThrow('The expected list is fixed when the count starts')
   const [line] = (await manager.get<{ data: Row[] }>(`/api/table/equipment.count_expected?fields=["row_id","updated_at"]&filters=${encodeURIComponent(JSON.stringify([['count', '=', count.row_id]]))}`)).data
   await expect(save('equipment.count_expected', { row_id: line.row_id, updated_at: line.updated_at, expected_place: atk.row_id }))
-    .rejects.toThrow('The expected list is fixed when the count starts')
+    .rejects.toMatchObject({ status: 403 })
 })
 
 test('a count needs a counter to start, and a sample count expects only its sample', async ({ createUser }) => {

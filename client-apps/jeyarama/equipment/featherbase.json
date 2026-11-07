@@ -131,6 +131,7 @@
         { "column_name": "responded_at", "label": "Responded at", "column_type": "Datetime" },
         { "column_name": "repair_started_at", "label": "Repair started at", "column_type": "Datetime" },
         { "column_name": "restored_at", "label": "Restored at", "column_type": "Datetime" },
+        { "column_name": "fixed_by", "label": "Fixed by (person ID)", "column_type": "Data" },
         { "column_name": "cause", "label": "Cause", "column_type": "Data" },
         { "column_name": "work_done", "label": "Work done", "column_type": "Text" },
         { "column_name": "spares", "label": "Spares used", "column_type": "Text" },
@@ -304,6 +305,7 @@
         { "column_name": "transfer", "label": "Transfer", "column_type": "Reference", "reference_table": "equipment.transfer", "reqd": true, "in_list_view": true },
         { "column_name": "asset", "label": "Asset", "column_type": "Reference", "reference_table": "equipment.asset", "reqd": true, "in_list_view": true },
         { "column_name": "line_state", "label": "State", "column_type": "Choice", "choices": "Requested\nDispatched\nReceived good\nReceived damaged\nRefused\nReturned to source", "default_value": "Requested", "reqd": true, "in_list_view": true },
+        { "column_name": "source_place", "label": "Left from", "column_type": "Reference", "reference_table": "equipment.place" },
         { "column_name": "dispatched_at", "label": "Dispatched at", "column_type": "Datetime" },
         { "column_name": "received_at", "label": "Received at", "column_type": "Datetime" },
         { "column_name": "note", "label": "Note", "column_type": "Data" }

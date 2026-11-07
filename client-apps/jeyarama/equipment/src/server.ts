@@ -1,5 +1,5 @@
 import { fixByFor, isOpen } from './jobRules'
-import { countActions, prepareCount, prepareCounter, prepareDecision, prepareScan } from './countServer'
+import { countActions, prepareCount, prepareCounter, prepareDecision, prepareExpected, prepareScan } from './countServer'
 import { custodyActions, prepareClearance, prepareCustody, prepareTransfer, prepareTransferLine } from './custodyServer'
 
 // Featherbase runtime hook API v1. Structural contract; no core dependency.
@@ -50,9 +50,12 @@ async function prepareJob(ctx: Context): Promise<void> {
   } else {
     row.reported_at = old?.reported_at ?? ctx.now
     if (row.assigned_to && !old?.assigned_to && row.job_state === 'Reported') row.job_state = 'Assigned'
-    if (old?.job_state === 'Fixed' && row.job_state !== 'Fixed' && await confirmed(ctx, row.row_id))
+    const changed = ['job_state', 'assigned_to', 'work_done'].some(field => (row[field] ?? null) !== (old?.[field] ?? null))
+    if (old?.job_state === 'Fixed' && changed && await confirmed(ctx, row.row_id))
       ctx.reject('The store confirmed this repair; report a new fault instead')
   }
+  // Whoever marks it fixed, not whoever it is assigned to, is kept apart from the confirmation.
+  row.fixed_by = row.job_state !== 'Fixed' ? null : old?.job_state === 'Fixed' ? old.fixed_by ?? null : ctx.user
   const reported = instant(row.reported_at)
   row.fix_by = fixByFor(reported, String(row.priority))
 
@@ -80,7 +83,8 @@ async function prepareRestoration(ctx: Context): Promise<void> {
   if (!ctx.isNew) ctx.reject('A confirmation is kept as it was made')
   const job = await ctx.documents.get('equipment.job', String(ctx.row.job))
   if (job.job_state !== 'Fixed') ctx.reject('Confirm a job only once it is Fixed')
-  if (job.assigned_to && job.assigned_to === ctx.user) ctx.reject('Someone other than the technician who fixed it confirms the repair')
+  const fixer = job.fixed_by ?? job.assigned_to
+  if (fixer && fixer === ctx.user) ctx.reject('Someone other than the technician who fixed it confirms the repair')
 }
 
 const LEVELS = ['Site', 'Building', 'Floor', 'Area'] as const
@@ -108,7 +112,7 @@ async function preparePlace(ctx: Context): Promise<void> {
 export const platformVersion = '2026-10'
 export const validators = {
   'equipment.job': prepareJob, 'equipment.restoration': prepareRestoration, 'equipment.place': preparePlace,
-  'equipment.count': prepareCount, 'equipment.counter': prepareCounter, 'equipment.scan': prepareScan, 'equipment.count_decision': prepareDecision,
+  'equipment.count': prepareCount, 'equipment.counter': prepareCounter, 'equipment.scan': prepareScan, 'equipment.count_decision': prepareDecision, 'equipment.count_expected': prepareExpected,
   'equipment.custody': prepareCustody, 'equipment.clearance': prepareClearance, 'equipment.transfer': prepareTransfer, 'equipment.transfer_line': prepareTransferLine,
 }
 export const actions = { ...countActions, ...custodyActions }

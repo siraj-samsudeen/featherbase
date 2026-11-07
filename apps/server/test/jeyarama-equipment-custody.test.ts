@@ -195,7 +195,9 @@ test('custody keeps its times; only the custodian or a manager writes its note; 
   const answered = await answer(p.suresh, custody, 'Accepted')
   expect(await patch(p, 'equipment.custody', custody, { issued_at: '2026-01-01T00:00:00.000Z', responded_at: null, returned_at: '2026-01-01T00:00:00.000Z' }))
     .toMatchObject({ issued_at: custody.issued_at, responded_at: answered.responded_at, returned_at: null })
-  await expect(patch(p, 'equipment.custody', custody, { note: 'Mine now' }, p.other)).rejects.toThrow('Only the custodian or an Assets Manager writes the note')
+  // Validators can't see roles: someone else's save is refused by the manager check itself.
+  await expect(patch(p, 'equipment.custody', custody, { note: 'Mine now' }, p.other)).rejects.toMatchObject({ status: 403 })
+  expect((await p.get('equipment.custody', custody.row_id)).note).toBeNull()
   expect(await patch(p, 'equipment.custody', custody, { note: 'Kept at till 2' }, p.suresh)).toMatchObject({ note: 'Kept at till 2' })
 
   const transfer = await p.save('equipment.transfer', { transfer_kind: 'Between sites', from_place: p.atk.row_id, to_place: p.enchakkal.row_id, reason: 'Moves with Suresh' })

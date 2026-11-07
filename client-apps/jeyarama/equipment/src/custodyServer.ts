@@ -14,20 +14,32 @@ async function all(documents: Documents, table: string, filters: [string, string
   }
 }
 
+/**
+ * Assets Managers are the people who can read the expected lists. Validators don't see roles, so for
+ * anyone else this read is itself refused, and that refusal refuses their save.
+ */
 const isManagerId = async (documents: Documents, user: string) =>
   (await documents.members('equipment.count_expected')).some(person => person.row_id === user)
 
 const OPEN_CUSTODY = ['Pending', 'Accepted', 'Not with me', 'Return requested']
 
-/** Only the custodian answers an issue or hands it back; only a manager takes it back. */
+const same = (a: unknown, b: unknown) => (a ?? null) === (b ?? null)
+const AWAY = ['In transit', 'With vendor']
+
+/** Only the custodian answers an issue or hands it back; only a manager takes it back. The server keeps the times. */
 export async function prepareCustody(ctx: Context): Promise<void> {
   const { row, old } = ctx
   if (ctx.isNew) {
     row.custody_state = 'Pending'
     row.issued_at = ctx.now
+    row.responded_at = null
+    row.returned_at = null
     return
   }
-  if (row.asset !== old?.asset || row.custodian !== old?.custodian) ctx.reject('A custody record keeps its asset and custodian')
+  if (!same(row.asset, old?.asset) || !same(row.custodian, old?.custodian)) ctx.reject('A custody record keeps its asset and custodian')
+  for (const field of ['issued_at', 'responded_at', 'returned_at']) row[field] = old?.[field] ?? null
+  if (!same(row.note, old?.note) && ctx.user !== row.custodian && !(await isManagerId(ctx.documents, ctx.user)))
+    ctx.reject('Only the custodian or an Assets Manager writes the note')
   const before = String(old?.custody_state), after = String(row.custody_state)
   if (before === after) return
   if (before === 'Returned') ctx.reject('A returned custody is kept as it was')
@@ -52,45 +64,77 @@ export async function prepareClearance(ctx: Context): Promise<void> {
   }
 }
 
-const STAGES = ['Requested', 'Approved', 'Dispatched', 'Received']
+// A direct save can't set these: the server writes each one when its step happens.
+const TRANSFER_STAMPS = ['approver', 'approved_at', 'transporter', 'dispatched_at', 'received_at', 'finance_reference', 'finance_confirmed_at', 'finance_confirmed_by']
+const APPROVED_TERMS = ['transfer_kind', 'from_place', 'to_place', 'to_entity', 'vendor']
+const NEXT_STAGE: Record<string, string[]> = { Requested: ['Approved', 'Rejected', 'Cancelled'], Approved: ['Dispatched', 'Cancelled'], Dispatched: ['Received'] }
 
-/** Someone other than the requester approves; a transfer only moves forward. */
+const linesOf = (ctx: Context, transfer: unknown) => all(ctx.documents, 'equipment.transfer_line', [['transfer', '=', transfer]], ['line_state'])
+
+/**
+ * A transfer moves Requested → Approved (by someone else) → Dispatched (every item out) → Received (every
+ * item final), or is rejected or cancelled before dispatch. Once approved, its terms are fixed.
+ */
 export async function prepareTransfer(ctx: Context): Promise<void> {
   const { row, old } = ctx
+  const asked = { ...row }
   const kind = String(row.transfer_kind)
   if (kind === 'Repair with vendor' && !String(row.vendor ?? '').trim()) ctx.reject('Name the vendor for a repair', { vendor: 'Name the vendor' })
   if (kind === 'Between companies' && !row.to_entity) ctx.reject('Choose the new legal owner for a move between companies', { to_entity: 'Choose the new owner' })
+  for (const field of TRANSFER_STAMPS) row[field] = ctx.isNew ? null : old?.[field] ?? null
   if (ctx.isNew) {
     row.transfer_state = 'Requested'
     return
   }
   const before = String(old?.transfer_state), after = String(row.transfer_state)
-  if (before === after) return
-  if (['Rejected', 'Received', 'Cancelled'].includes(before)) ctx.reject(`A ${before.toLowerCase()} transfer stays as it is`)
-  if (after === 'Approved' || after === 'Rejected') {
-    if (before !== 'Requested') ctx.reject('Only a requested transfer can be approved or rejected')
-    if (ctx.user === old?.created_by) ctx.reject('Someone other than the requester approves a transfer')
-    row.approver = ctx.user
-    row.approved_at = ctx.now
-    return
+  if (before !== 'Requested' && APPROVED_TERMS.some(field => !same(row[field], old?.[field])))
+    ctx.reject('An approved transfer keeps its kind, places, new owner and vendor')
+
+  if (before !== after) {
+    if (!(NEXT_STAGE[before] ?? []).includes(after)) ctx.reject(`A ${before.toLowerCase()} transfer can’t become ${after}`)
+    if (after === 'Approved' || after === 'Rejected') {
+      if (ctx.user === old?.created_by) ctx.reject('Someone other than the requester approves a transfer')
+      row.approver = ctx.user
+      row.approved_at = ctx.now
+    }
+    if (after === 'Dispatched') {
+      const lines = await linesOf(ctx, row.row_id)
+      if (!lines.length || lines.some(line => line.line_state !== 'Dispatched')) ctx.reject('Dispatch every item before the transfer')
+      const transporter = String(asked.transporter ?? '').trim()
+      if (!transporter) ctx.reject('Name the transporter or vendor', { transporter: 'Name the transporter or vendor' })
+      row.transporter = transporter
+      row.dispatched_at = ctx.now
+      if (!row.expected_receipt_at) row.expected_receipt_at = defaultReceiptBy(kind, ctx.now)
+    }
+    if (after === 'Received') {
+      const lines = await linesOf(ctx, row.row_id)
+      if (lines.some(line => !(FINAL_LINE_STATES as readonly string[]).includes(String(line.line_state)))) ctx.reject('Receive every item before the transfer')
+      row.received_at = ctx.now
+    }
   }
-  if (after === 'Cancelled') {
-    if (before === 'Dispatched') ctx.reject('A dispatched transfer can’t be cancelled; receive or refuse its items')
-    return
+
+  if (asked.finance_reference && !same(asked.finance_reference, old?.finance_reference)) {
+    if (old?.finance_confirmed_at) ctx.reject('Finance has already confirmed this transfer')
+    if (kind !== 'Between companies') ctx.reject('Only a move between companies needs Finance')
+    if (row.transfer_state !== 'Received') ctx.reject('Confirm Finance only once the transfer is received')
+    if (ctx.user === old?.created_by) ctx.reject('Someone other than the requester confirms Finance')
+    row.finance_reference = String(asked.finance_reference).trim()
+    row.finance_confirmed_at = ctx.now
+    row.finance_confirmed_by = ctx.user
   }
-  if (STAGES.indexOf(after) < STAGES.indexOf(before)) ctx.reject(`A transfer can’t go back from ${before} to ${after}`)
-  if (after === 'Dispatched' && !row.dispatched_at) ctx.reject('Dispatch a transfer from Assets, scanning each item out')
 }
+
+const NEXT_LINE: Record<string, string[]> = { Requested: ['Dispatched'], Dispatched: ['Received good', 'Received damaged', 'Refused'], Refused: ['Returned to source'] }
 
 /** One open transfer per asset, and only assets from the place it leaves. */
 export async function prepareTransferLine(ctx: Context): Promise<void> {
   const { row } = ctx
-  if (!ctx.isNew) return
+  if (!ctx.isNew) return prepareLineChange(ctx)
   const transfer = await ctx.documents.get('equipment.transfer', String(row.transfer))
   if (transfer.transfer_state !== 'Requested') ctx.reject('Add items only while the transfer is requested')
   const asset = await ctx.documents.get('equipment.asset', String(row.asset))
   const name = String(asset.asset_name)
-  if (asset.custody_status === 'In transit') ctx.reject(`${name} is in transit and can’t go on another transfer`)
+  if (AWAY.includes(String(asset.custody_status))) ctx.reject(`${name} is ${String(asset.custody_status).toLowerCase()} and can’t go on another transfer`)
   const places = (await all(ctx.documents, 'equipment.place', [], ['row_id', 'parent_place'])).map(p => ({ row_id: String(p.row_id), parent_place: (p.parent_place as string) ?? null }))
   if (!withinPlace(String(asset.place), String(transfer.from_place), places)) ctx.reject(`${name} is not in the place this transfer leaves from`)
   for (const line of await all(ctx.documents, 'equipment.transfer_line', [['asset', '=', row.asset]], ['transfer', 'line_state'])) {
@@ -100,6 +144,41 @@ export async function prepareTransferLine(ctx: Context): Promise<void> {
     if (isOpenTransfer(String(other.transfer_state))) ctx.reject(`${name} is already on transfer ${other.row_id}`)
   }
   row.line_state = 'Requested'
+  row.dispatched_at = null
+  row.received_at = null
+  row.source_place = null
+}
+
+/**
+ * An item changes state only once its asset has: out of its place to be dispatched, at the
+ * destination to be received, back where it left to be returned. The actions move the asset first.
+ */
+async function prepareLineChange(ctx: Context): Promise<void> {
+  const { row, old } = ctx
+  if (!same(row.asset, old?.asset) || !same(row.transfer, old?.transfer)) ctx.reject('A transfer item keeps its asset and transfer')
+  for (const field of ['dispatched_at', 'received_at', 'source_place']) row[field] = old?.[field] ?? null
+  const before = String(old?.line_state), after = String(row.line_state)
+  if (before === after) return
+  if (!(NEXT_LINE[before] ?? []).includes(after)) ctx.reject(`This item can’t go from ${before} to ${after}`)
+  const transfer = await ctx.documents.get('equipment.transfer', String(row.transfer))
+  const asset = await ctx.documents.get('equipment.asset', String(row.asset))
+  const name = String(asset.asset_name)
+  const away = AWAY.includes(String(asset.custody_status))
+  if (after === 'Dispatched') {
+    if (transfer.transfer_state !== 'Approved') ctx.reject('Dispatch items once the transfer is approved')
+    if (!away) ctx.reject(`${name} must be scanned out before it is dispatched`)
+    row.source_place = asset.place ?? null
+    row.dispatched_at = ctx.now
+    return
+  }
+  if (transfer.transfer_state !== 'Dispatched') ctx.reject('Receive items once the transfer is dispatched')
+  if ((after === 'Received good' || after === 'Received damaged') && (away || asset.place !== transfer.to_place)) {
+    const to = await ctx.documents.get('equipment.place', String(transfer.to_place))
+    ctx.reject(`${name} must be at ${String(to.place_name)} before it is received`)
+  }
+  if (after === 'Returned to source' && (away || asset.place !== (old?.source_place ?? transfer.from_place)))
+    ctx.reject(`${name} must be back where it left before it is returned`)
+  row.received_at = ctx.now
 }
 
 interface ActionContext {
@@ -131,7 +210,7 @@ async function finishIfAllFinal(ctx: ActionContext, transfer: Row) {
   const lines = await all(ctx.documents, 'equipment.transfer_line', [['transfer', '=', transfer.row_id]], ['line_state'])
   if (lines.every(line => (FINAL_LINE_STATES as readonly string[]).includes(String(line.line_state)))) {
     const fresh = await current(ctx, 'equipment.transfer', transfer.row_id)
-    await ctx.documents.update('equipment.transfer', { row_id: fresh.row_id, updated_at: fresh.updated_at, transfer_state: 'Received', received_at: new Date().toISOString() })
+    await ctx.documents.update('equipment.transfer', { row_id: fresh.row_id, updated_at: fresh.updated_at, transfer_state: 'Received' })
   }
 }
 
@@ -158,8 +237,9 @@ export const custodyActions = {
     const request = payload<{ custody: string }>(ctx, ['custody'])
     const custody = await current(ctx, 'equipment.custody', request.custody)
     if (custody.custody_state === 'Returned') ctx.reject('This asset is already back')
-    const returned = await ctx.documents.update('equipment.custody', { row_id: custody.row_id, updated_at: custody.updated_at, custody_state: 'Returned' })
     const asset = await current(ctx, 'equipment.asset', custody.asset)
+    if (AWAY.includes(String(asset.custody_status))) ctx.reject(`${asset.asset_name} is ${String(asset.custody_status).toLowerCase()}; receive it before taking it back`)
+    const returned = await ctx.documents.update('equipment.custody', { row_id: custody.row_id, updated_at: custody.updated_at, custody_state: 'Returned' })
     await ctx.documents.update('equipment.asset', { row_id: asset.row_id, updated_at: asset.updated_at, custodian: null, location_custodian: false, custody_status: 'At location' })
     return returned
   },
@@ -179,16 +259,14 @@ export const custodyActions = {
       const asset = await current(ctx, 'equipment.asset', line.asset)
       ctx.reject(`Scan every item before dispatch: ${asset.asset_name} is not scanned`)
     }
-    const now = new Date().toISOString()
     const custody = transfer.transfer_kind === 'Repair with vendor' ? 'With vendor' : 'In transit'
     for (const line of lines) {
-      const fresh = await current(ctx, 'equipment.transfer_line', line.row_id)
-      await ctx.documents.update('equipment.transfer_line', { row_id: fresh.row_id, updated_at: fresh.updated_at, line_state: 'Dispatched', dispatched_at: now })
       const asset = await current(ctx, 'equipment.asset', line.asset)
       await ctx.documents.update('equipment.asset', { row_id: asset.row_id, updated_at: asset.updated_at, custody_status: custody })
+      const fresh = await current(ctx, 'equipment.transfer_line', line.row_id)
+      await ctx.documents.update('equipment.transfer_line', { row_id: fresh.row_id, updated_at: fresh.updated_at, line_state: 'Dispatched' })
     }
-    return ctx.documents.update('equipment.transfer', { row_id: transfer.row_id, updated_at: transfer.updated_at, transfer_state: 'Dispatched',
-      transporter: request.transporter.trim(), dispatched_at: now, expected_receipt_at: transfer.expected_receipt_at ?? defaultReceiptBy(String(transfer.transfer_kind), now) })
+    return ctx.documents.update('equipment.transfer', { row_id: transfer.row_id, updated_at: transfer.updated_at, transfer_state: 'Dispatched', transporter: request.transporter.trim() })
   },
 
   /** Receive one item: its place changes only now. Refused items go back to where they left. */
@@ -202,15 +280,16 @@ export const custodyActions = {
     if (outcome === 'Returned to source' ? line.line_state !== 'Refused' : line.line_state !== 'Dispatched')
       ctx.reject(outcome === 'Returned to source' ? 'Only a refused item comes back to where it left' : 'This item is not waiting to be received')
     if (!['Received good', 'Received damaged', 'Refused', 'Returned to source'].includes(outcome)) ctx.reject('Choose how the item was received')
-    const now = new Date().toISOString()
-    await ctx.documents.update('equipment.transfer_line', { row_id: line.row_id, updated_at: line.updated_at, line_state: outcome, received_at: now,
-      ...(typeof request.note === 'string' && request.note.trim() ? { note: request.note.trim() } : {}) })
+    // The asset moves first; the item's own rules then check it is where its new state says.
     const asset = await current(ctx, 'equipment.asset', line.asset)
+    const settled = asset.custodian && !asset.location_custodian ? 'With custodian' : 'At location'
     if (outcome === 'Received good' || outcome === 'Received damaged')
-      await ctx.documents.update('equipment.asset', { row_id: asset.row_id, updated_at: asset.updated_at, place: transfer.to_place, custody_status: 'At location',
+      await ctx.documents.update('equipment.asset', { row_id: asset.row_id, updated_at: asset.updated_at, place: transfer.to_place, custody_status: settled,
         ...(outcome === 'Received damaged' ? { condition: 'Damaged' } : {}) })
     else if (outcome === 'Returned to source')
-      await ctx.documents.update('equipment.asset', { row_id: asset.row_id, updated_at: asset.updated_at, place: transfer.from_place, custody_status: 'At location' })
+      await ctx.documents.update('equipment.asset', { row_id: asset.row_id, updated_at: asset.updated_at, place: line.source_place ?? transfer.from_place, custody_status: settled })
+    await ctx.documents.update('equipment.transfer_line', { row_id: line.row_id, updated_at: line.updated_at, line_state: outcome,
+      ...(typeof request.note === 'string' && request.note.trim() ? { note: request.note.trim() } : {}) })
     await finishIfAllFinal(ctx, transfer)
     return { line: line.row_id, outcome }
   },
@@ -229,7 +308,6 @@ export const custodyActions = {
       const asset = await current(ctx, 'equipment.asset', line.asset)
       await ctx.documents.update('equipment.asset', { row_id: asset.row_id, updated_at: asset.updated_at, owner_entity: transfer.to_entity })
     }
-    return ctx.documents.update('equipment.transfer', { row_id: transfer.row_id, updated_at: transfer.updated_at, finance_reference: request.sap_reference.trim(),
-      finance_confirmed_at: new Date().toISOString(), finance_confirmed_by: ctx.user })
+    return ctx.documents.update('equipment.transfer', { row_id: transfer.row_id, updated_at: transfer.updated_at, finance_reference: request.sap_reference.trim() })
   },
 }

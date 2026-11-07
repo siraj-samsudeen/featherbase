@@ -61,6 +61,13 @@ export async function prepareCount(ctx: Context): Promise<void> {
   }
 }
 
+/** The expected list is written once, by starting the count, and never changed. */
+export async function prepareExpected(ctx: Context): Promise<void> {
+  if (!ctx.isNew) ctx.reject('The expected list is fixed when the count starts')
+  const count = await ctx.documents.get('equipment.count', String(ctx.row.count))
+  if (count.count_state !== 'Planned' || count.snapshot_at) ctx.reject('The expected list is fixed when the count starts')
+}
+
 export async function prepareCounter(ctx: Context): Promise<void> {
   const count = await ctx.documents.get('equipment.count', String(ctx.row.count))
   if (count.count_state === 'Closed') ctx.reject('This count is closed')
