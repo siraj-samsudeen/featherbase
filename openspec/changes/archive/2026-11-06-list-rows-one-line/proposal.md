@@ -19,4 +19,4 @@ On a master Table with a long note, each row wrapped so far that only two fit on
 
 ## Impact
 
-- `ListView.tsx`, `FormView.tsx` (`LinkControl`), `AdminLayout.tsx`, new `list-one-line.tsx` and `not-a-login.ts`, and `packages/shop-floor/src/PathBar.tsx`. No server, schema or app version change.
+- `ListView.tsx`, `FormView.tsx` (`LinkControl`), new `list-one-line.tsx` and `not-a-login.ts`. No server, schema or app version change.

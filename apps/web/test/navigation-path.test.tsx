@@ -36,7 +36,7 @@ async function addRegionFilter() {
 test('a list with one step shows no path bar', async ({ admin }) => {
   await seedSites(admin)
   await renderApp(tableHref(SITE), admin)
-  await screen.findByTestId('filter-field')
+  await screen.findByTestId('filter-toggle')
   await screen.findAllByTestId('row-check')
   expect(screen.queryByRole('navigation', { name: 'Path' })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Recent paths' })).not.toBeInTheDocument()
