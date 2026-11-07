@@ -194,6 +194,12 @@ export const tableDefSchema = z.object({
   // System Manager work (security-tables.ts), and only a marked Table can be
   // read by an app's scope provider. Kept when an update leaves it out.
   decides_scope: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
+  // #246: the Reference columns Data Scope narrows this Table by. Left out,
+  // every Reference to a scoped Table narrows (Frappe's discovery). An empty
+  // list clears it. scope_required refuses a person with no Data Scope on
+  // those dimensions. Both are kept when an update leaves them out.
+  scope_on: z.array(z.string()).nullish(),
+  scope_required: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
   // EDS-3: binding to an external Data Source. Set only at creation (BV3) —
   // updateTable never touches these. A bound Table gets no DDL and no RLS
   // (BV1): its rows live on the source.
@@ -275,6 +281,11 @@ function validateDef(def: TableDef) {
     if (def.access_policy.inherit_column && !def.columns.some(c => c.column_name === def.access_policy!.inherit_column && c.column_type === 'Reference'))
       errs.access_policy = 'The inherited access column must be a Reference column'
   }
+  if (def.scope_on?.length) {
+    const bad = def.scope_on.find((name) => !def.columns.some((c) => c.column_name === name && c.column_type === 'Reference'))
+    if (bad) errs.scope_on = `${bad} is not a Reference column of this Table`
+  }
+  if (def.scope_required && !def.scope_on?.length) errs.scope_required = 'Name the columns it is scoped on first'
   const reading = def.reading_presentation
   if (reading) {
     const columns = new Set(def.columns.filter(f => !['Section Break', 'Column Break', 'Sub-table'].includes(f.column_type)).map(f => f.column_name))
@@ -554,6 +565,8 @@ export async function updateTable(
       hidden: true,
     })
   if (def.reading_presentation === undefined) def.reading_presentation = existing.reading_presentation
+  if (def.scope_on === undefined) def.scope_on = existing.scope_on
+  if (def.scope_required === undefined) def.scope_required = existing.scope_required
   validateDef(def)
   if (def.id_pattern)
     validateIdPattern(def.id_pattern, def.columns.map((f) => f.column_name))
@@ -634,6 +647,9 @@ export async function updateTable(
       ...(named.description !== undefined ? { description: def.description || null } : {}),
       // Only when given: an update that leaves it out keeps the Table's choice.
       ...(def.decides_scope !== undefined ? { decides_scope: def.decides_scope } : {}),
+      // Only once the definition has them: migrations before 0154 update Tables too.
+      ...(def.scope_on !== undefined ? { scope_on: def.scope_on?.length ? def.scope_on : null } : {}),
+      ...(def.scope_required !== undefined ? { scope_required: def.scope_required } : {}),
       ...(def.access_policy !== undefined ? { access_policy: def.access_policy } : {}),
       updated_at: new Date(),
     })} where name = ${name}`
@@ -1019,6 +1035,8 @@ export async function createTable(
     }
     await assertTableAddressAvailable(tx, def.name)
     if (def.decides_scope) tableRow.decides_scope = true
+    if (def.scope_on?.length) tableRow.scope_on = def.scope_on
+    if (def.scope_required) tableRow.scope_required = true
     if (def.access_policy) tableRow.access_policy = def.access_policy
     if (qualified) {
       tableRow.label = def.label ?? def.name.split('.')[1]
@@ -1310,6 +1328,9 @@ export async function renameColumn(
     // pattern would stop resolving and the list would lose its title.
     if (meta.title_column === from)
       await tx`update table_def set title_column = ${target} where name = ${meta.name}`
+    // #246: and the columns its Data Scope narrows by.
+    if (meta.scope_on?.includes(from))
+      await tx`update table_def set scope_on = ${meta.scope_on.map((c) => c === from ? target : c)} where name = ${meta.name}`
     // The column rules (`field:<column>`, `PREFIX-{<column>}`, see
     // document.ts) name a column. Left stale one stops resolving, and every new
     // row fails with "Naming field glor is required" for a column that is gone.
