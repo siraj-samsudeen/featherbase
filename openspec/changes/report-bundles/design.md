@@ -8,8 +8,8 @@ flowchart LR
   R[Role held] --> A
   J[Current job] --> A
   A -->|report| Rep[Report]
-  A -->|bundle| B[Report Bundle] --> Rep
-  Rep --> L[reportsVisibleTo]
+  A -->|bundle| B[Report Bundle] --> M[Report Bundle Member] --> Rep
+  Rep --> L[reportsGivenTo]
   L --> O[Open report, filters by job]
 ```
 
@@ -18,6 +18,14 @@ flowchart LR
 ### Assignment rows, not Permission rows
 
 A `Report Access` row names one report or bundle and one receiver. Permission rows reach whole Tables, can't name a person, and only a System Manager writes them.
+
+### A bundle's reports are rows of their own
+
+Report Bundle Member links one bundle to one report, with a unique key. Taking a report out of a bundle is removing one row, which version history records, and the same save rule stamps the key.
+
+### The person is stored as an id, not a link
+
+Report Access keeps the person's id in a plain column. A link column checks that whoever saves it can read the Person, and a Report Access Manager can't, by design. The page picks the person by name from Employee and shows names, never the id.
 
 ### Additive only, with no dates
 

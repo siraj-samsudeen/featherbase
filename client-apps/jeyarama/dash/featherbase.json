@@ -493,10 +493,9 @@
         {
           "column_name": "person",
           "label": "Person",
-          "column_type": "Reference",
-          "reference_table": "Person",
+          "column_type": "Data",
           "in_list_view": true,
-          "description": "Given to this person. Fill in one of Person, Role and Job."
+          "description": "Given to this person: their Featherbase id, which the Report access page shows by name. Fill in one of Person, Role and Job."
         },
         {
           "column_name": "role",
@@ -965,10 +964,9 @@
               {
                 "column_name": "person",
                 "label": "Person",
-                "column_type": "Reference",
-                "reference_table": "Person",
+                "column_type": "Data",
                 "in_list_view": true,
-                "description": "Given to this person. Fill in one of Person, Role and Job."
+                "description": "Given to this person: their Featherbase id, which the Report access page shows by name. Fill in one of Person, Role and Job."
               },
               {
                 "column_name": "role",

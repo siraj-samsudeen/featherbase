@@ -4,10 +4,10 @@ Dash is moving to opening any Dive, so someone has to decide who sees which repo
 
 ## What Changes
 
-- New Dash Tables `dash.report_bundle` and `dash.report_access`, next to `dash.report`. One access row gives one report or one bundle to one person, role or job.
+- New Dash Tables `dash.report_bundle`, `dash.report_bundle_member` and `dash.report_access`, next to `dash.report`. One access row gives one report or one bundle to one person, role or job.
 - A person sees the union of what reaches them by any route, read fresh on every request. No row means no report, for everyone, System Managers included. Nothing withholds and nothing has dates.
-- A Report Access Manager role writes only those two Tables, so the owner needn't be a System Manager. Every change is in version history.
-- Dash gains the check `reportsVisibleTo`, a refusal when opening a report outside the list, and a Report access page: give, who has what, remove, and a person lookup that says why.
+- A Report Access Manager role writes only those Tables, so the owner needn't be a System Manager. Every change is in version history.
+- Dash gains the check `reportsGivenTo`, a refusal when opening a report outside the list, and a Report access page: give, who has what, remove, and a person lookup that says why.
 - Dash opens only for someone with a report, or who manages access. Anyone else gets the existing no-access page, which records an Access Request. Report Access Managers are alerted, and the request clears once a report reaches them.
 
 ## Capabilities
@@ -18,7 +18,8 @@ Dash is moving to opening any Dive, so someone has to decide who sees which repo
 
 ### Modified Capabilities
 
-- `permissions-and-roles`: records Report Access as a deliberate exception to "only a System Manager changes who can do what".
+- `permissions-and-roles`: records an app's own assignment Tables as outside "only a System Manager changes who can do what".
+- `trusted-runtime-packages`: an app can add its own check to who opens it, and name approver roles.
 
 ## Impact
 
