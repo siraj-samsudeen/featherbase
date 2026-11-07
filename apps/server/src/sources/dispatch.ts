@@ -1,6 +1,7 @@
 import { sql } from '../db'
 import { assertNotPlatformRelation } from './platform-guard'
 import { AppError } from '../errors'
+import { permissionRefusal } from '../refusals'
 import { ROW_KEY, getMeta, type TableMeta } from '../meta'
 import { MAX_RELATED_DEPTH } from 'shared'
 import { MAX_RELATED_HOPS, parseRelatedSpec } from '../related-filter'
@@ -276,7 +277,7 @@ export async function assertBoundScope(
 ): Promise<void> {
   const scope = await permissionScope(user, meta.name, action)
   if (scope === 'none')
-    throw new AppError('PermissionError', `No ${action} permission on ${meta.name} for ${user}`)
+    throw await permissionRefusal(user, meta.name, action)
   if (scope === 'own_rows')
     throw new AppError(
       'PermissionError',

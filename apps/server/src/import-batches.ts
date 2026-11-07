@@ -8,6 +8,7 @@
 // #206 gave every part of one file-import a shared `batch_id`; this rolls
 // those rows back up into the thing the user actually did.
 import { AppError } from './errors'
+import { permissionRefusal } from './refusals'
 import { sql } from './db'
 import { deleteTable, tableName } from './table-engine'
 import { assertSystemManager, permissionScope } from './permissions'
@@ -87,7 +88,7 @@ export async function listBatches(
   // target Tables, counts and who ran them.
   const scope = await permissionScope(user, 'Import Log', 'read')
   if (scope === 'none')
-    throw new AppError('PermissionError', `No read permission on Import Log for ${user}`)
+    throw await permissionRefusal(user, 'Import Log', 'read')
   // PERM-007: an own_rows_only grant scopes to what this user created. The
   // filter goes on the LOG ROWS, not the batches, so a batch is visible only
   // through the parts its reader actually ran — a shared batch does not carry
