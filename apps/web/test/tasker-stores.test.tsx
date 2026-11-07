@@ -47,7 +47,7 @@ async function storeWork(admin: TestClient) {
   await task('Diwali display change-over', { store: keel.row_id, start_date: day(4) })
   await task('Check the cold room', { store: keel.row_id })
   await task('Price-tag audit', { store: keel.row_id, due_date: day(0) })
-  await task('Dropped supplier visit', { store: keel.row_id, task_state: 'Cancelled' })
+  await task('Dropped supplier visit', { store: keel.row_id, task_state: 'Cancelled', change_reason: 'Supplier closed' })
   await task('Fix the billing printer', { store: avadi.row_id, due_date: day(-1) })
   await task('Plan the next review', {})
   return { keel, avadi, project }

@@ -28,5 +28,6 @@ test('the revival upgrade keeps former personal work editable as shared tasks', 
   const client = taskerClient(admin)
   const migrated = await client.get<{ updated_at: string }>(`/api/table/tasker.task/${legacy.row_id}`)
   expect(migrated).toMatchObject({ task_title: 'Existing personal work', personal_tasks_owner: formerOwner.user, assigned_to: formerOwner.user, shared: true })
+  expect(migrated).toHaveProperty('acknowledged_at', expect.anything())
   expect(await client.post('/api/save_row', { table: 'tasker.task', row: { row_id: legacy.row_id, updated_at: migrated.updated_at, assigned_to: 'Administrator' } })).toMatchObject({ assigned_to: 'Administrator', shared: true })
 })

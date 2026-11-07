@@ -31,7 +31,7 @@ test.for(['Done', 'Cancelled'])('a %s subtask permits explicit parent completion
   const member = taskerClient(await createUser({ roles: ['Tasker Member'] }))
   const parent = await member.post<{ row_id: string; updated_at: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Monthly review' } })
   const child = await member.post<{ row_id: string; updated_at: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Collect figures', parent_task: parent.row_id } })
-  await member.post('/api/save_row', { table: 'tasker.task', row: { row_id: child.row_id, updated_at: child.updated_at, task_state: state } })
+  await member.post('/api/save_row', { table: 'tasker.task', row: { row_id: child.row_id, updated_at: child.updated_at, task_state: state, change_reason: 'No longer needed' } })
   expect(await member.get(`/api/table/tasker.task/${parent.row_id}`)).toMatchObject({ task_state: 'Not started', is_done: false })
   expect(await member.post('/api/save_row', { table: 'tasker.task', row: { row_id: parent.row_id, updated_at: parent.updated_at, is_done: true } })).toMatchObject({ task_state: 'Done', is_done: true })
 })

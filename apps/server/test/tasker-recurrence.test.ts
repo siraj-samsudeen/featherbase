@@ -24,7 +24,7 @@ databaseTest('cancelling the active occurrence pauses its recurring series', asy
     idempotencyKey: crypto.randomUUID(), payload: { row_id: task.row_id, updated_at: task.updated_at, schedule_mode: 'weekly', interval: 1, anchor_date: '2026-11-02' },
   })
   const active = await member.get<{ updated_at: string }>(`/api/table/tasker.task/${task.row_id}`)
-  await member.post('/api/save_row', { table: 'tasker.task', row: { row_id: task.row_id, updated_at: active.updated_at, task_state: 'Cancelled' } })
+  await member.post('/api/save_row', { table: 'tasker.task', row: { row_id: task.row_id, updated_at: active.updated_at, task_state: 'Cancelled', change_reason: 'No longer needed' } })
   await tick()
   expect(await member.get(`/api/table/tasker.recurrence/${result.seriesId}`)).toMatchObject({ paused: true, active_task: null, next_at: null })
 })
