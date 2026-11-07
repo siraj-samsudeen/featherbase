@@ -2,7 +2,7 @@ import { Button, fmtDate, fmtExact, fmtInstantIST } from '@featherbase/shop-floo
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { ApiError, api, save, uploadJobPhoto } from './api'
-import { nameOf, useEntities, useJobs, usePeople, usePlaces, useRestorations, useTypes, type Asset, type Job } from './data'
+import { nameOf, useClasses, useEntities, useJobs, usePeople, usePlaces, useRestorations, useTypes, type Asset, type Job } from './data'
 import { JobClock } from './JobClock'
 import { LastVerified } from './Counts'
 import { AssetMovements } from './Custody'
@@ -86,7 +86,8 @@ export function AssetPage({ id }: { id: string }) {
 
   return <article className="asset-page">
     <h1>{a.asset_name}</h1>
-    <p className="asset-sub">{`${a.row_id} · ${placePath(a.place, places.data ?? [])}`}</p>
+    <p className="asset-sub">{`${a.tag_no ?? a.row_id} · ${placePath(a.place, places.data ?? [])}`}</p>
+    <TagFacts asset={a} />
     <ul className="asset-states" aria-label="States">
       <li data-state="books">Books: {a.book_status}</li>
       <li data-state="condition">Condition: {a.condition}</li>
@@ -180,4 +181,16 @@ export function AssetPage({ id }: { id: string }) {
       })}</ul> : <p className="asset-muted">No past jobs.</p>}
     </section>
   </article>
+}
+
+/** The plan's four labels on every item, and its tag and SAP book value. */
+function TagFacts({ asset }: { asset: Asset }) {
+  const classes = useClasses()
+  return <dl className="asset-tag-facts" aria-label="Tag and labels">
+    <div><dt>Tag</dt><dd>{asset.tag_no ?? asset.tag_status ?? 'Needs a tag'}</dd></div>
+    <div><dt>Class</dt><dd>{nameOf(classes.data, asset.asset_class, 'class_name') || '—'}</dd></div>
+    <div><dt>Control category</dt><dd>{asset.control_category ?? 'Finance sets this during matching'}</dd></div>
+    <div><dt>Ownership</dt><dd>{asset.ownership ?? 'Group owned'}{asset.owner_name ? ` · ${asset.owner_name}` : ''}</dd></div>
+    {asset.book_value && <div><dt>Book value</dt><dd>{fmtExact(Number(asset.book_value))}</dd></div>}
+  </dl>
 }

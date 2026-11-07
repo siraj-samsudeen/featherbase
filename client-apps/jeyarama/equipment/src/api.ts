@@ -40,6 +40,18 @@ export async function listAll<T>(table: string, params: { fields: string[]; filt
   }
 }
 
+/** Upload a private photo for a count line, before the asset exists. */
+export async function uploadAssetPhoto(file: File): Promise<string> {
+  const form = new FormData()
+  form.set('file', file)
+  form.set('is_private', '1')
+  form.set('ref_table', 'equipment.asset')
+  const response = await fetch('/api/upload_file', { method: 'POST', credentials: 'same-origin', headers: headers(false), body: form })
+  const result = await response.json()
+  if (!response.ok) throw new ApiError(result.error?.message ?? 'Could not upload the photo', response.status)
+  return String(result.file_url)
+}
+
 /** Upload a private photo for the repair jobs Table, before the job exists. */
 export async function uploadJobPhoto(file: File): Promise<string> {
   const form = new FormData()

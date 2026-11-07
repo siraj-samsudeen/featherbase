@@ -64,6 +64,7 @@ export function TransfersPage({ roles }: { roles: string[] }) {
   const [toEntity, setToEntity] = useState('')
   const [reason, setReason] = useState('')
   const [receiveBy, setReceiveBy] = useState('')
+  const [freezeNote, setFreezeNote] = useState('')
   const [chosen, setChosen] = useState<string[]>([])
   const allPlaces = places.data ?? []
   const placeOptions = allPlaces.map(p => ({ id: p.row_id, label: placePath(p.row_id, allPlaces) })).sort((a, b) => a.label.localeCompare(b.label))
@@ -80,6 +81,7 @@ export function TransfersPage({ roles }: { roles: string[] }) {
         transfer_kind: kind, from_place: from, to_place: to, reason: reason.trim(),
         ...(kind === 'Repair with vendor' ? { vendor: vendor.trim() } : {}), ...(kind === 'Between companies' ? { to_entity: toEntity } : {}),
         ...(receiveBy ? { expected_receipt_at: new Date(`${receiveBy}T23:59:00+05:30`).toISOString() } : {}),
+        ...(freezeNote.trim() ? { freeze_note: freezeNote.trim() } : {}),
       })
       try {
         for (const asset of chosen) await save('equipment.transfer_line', { transfer: transfer.row_id, asset })
@@ -88,7 +90,7 @@ export function TransfersPage({ roles }: { roles: string[] }) {
         throw err
       }
     }, 'Could not request the transfer')
-    if (done) { setReason(''); setVendor(''); setToEntity(''); setReceiveBy(''); setChosen([]) }
+    if (done) { setReason(''); setVendor(''); setToEntity(''); setReceiveBy(''); setFreezeNote(''); setChosen([]) }
   }
 
   const decide = (t: Transfer, transfer_state: string) =>
@@ -150,6 +152,7 @@ export function TransfersPage({ roles }: { roles: string[] }) {
         </>}
         <label>Reason<input value={reason} onChange={event => setReason(event.target.value)} /></label>
         <label>Expected receipt date<input type="date" value={receiveBy} onChange={event => setReceiveBy(event.target.value)} /></label>
+        <label>Site manager’s note (only during a count freeze)<input aria-label="Freeze note" value={freezeNote} onChange={event => setFreezeNote(event.target.value)} placeholder="Why it may move while the site is counted" /></label>
         <p className="asset-muted">Left blank, it is a day after dispatch within a site and three days otherwise.</p>
         <fieldset>
           <legend>Items</legend>

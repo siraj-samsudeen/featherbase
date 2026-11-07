@@ -170,3 +170,41 @@ tr[data-state="Not with me"] .custody-state { color: var(--color-negative); }
 .transfer-facts { display: grid; grid-template-columns: 170px 1fr; gap: 6px 12px; max-width: 640px; margin: 0 0 12px; }
 .transfer-facts dt { color: var(--color-ink-muted); font-size: 13px; }
 .transfer-facts dd { margin: 0; font-weight: 600; }
+
+/* ATK tagging plan */
+.tag-label .tag-label-text { gap: 1px; }
+.tag-label-owner { font-size: 11px; font-weight: 600; letter-spacing: .02em; }
+.tag-label-number { font-size: 22px; font-weight: 800; letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+.tag-label-warning { font-size: 10px; color: #444; }
+.tags-page h2, .setup-page h2, .sap-page h2, .exceptions-page h2, .fresh-count h2 { margin: 22px 0 8px; font-size: 16px; }
+.tags-form { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; }
+.tags-form h2 { flex-basis: 100%; margin: 0 0 4px; }
+.tags-form label, .fresh-line label, .sap-page > label, .fresh-area { display: grid; gap: 4px; font-size: 13px; font-weight: 600; }
+.tags-form input, .tags-form select, .fresh-line input, .fresh-line select, .sap-page select, .sap-page textarea, .fresh-area select, .setup-page td input, .setup-page td select, .exception-approve input {
+  padding: 6px 8px; border: 1px solid var(--color-border-control); border-radius: 6px; background: var(--color-surface); color: var(--color-ink); font: inherit; font-weight: 400; min-width: 0; }
+.tags-events, .fresh-close ul { margin: 8px 0 0; padding-left: 18px; font-size: 13px; color: var(--color-ink-muted); }
+.fresh-line { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; }
+.fresh-line h2, .fresh-line .fresh-hint, .fresh-line button { grid-column: 1 / -1; }
+.fresh-line button { justify-self: start; }
+.fresh-hint { margin: 0; }
+.fresh-area { max-width: 420px; margin: 12px 0 6px; }
+.fresh-close form { display: flex; gap: 10px; align-items: end; }
+.fresh-close label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; }
+.sap-figures { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
+.sap-figures > div { display: grid; gap: 2px; padding: 10px 12px; border-radius: 8px; background: var(--color-subtle); }
+.sap-figures span { font-size: 12px; color: var(--color-ink-muted); }
+.sap-figures strong { font-size: 22px; }
+.sap-figures [data-tone="bad"] strong { color: var(--color-negative); }
+.sap-figures [data-tone="warn"] strong { color: var(--color-caution); }
+.sap-status { display: inline-flex; padding: 1px 8px; border: 1px solid var(--color-border); border-radius: 999px; font-size: 12px; white-space: nowrap; }
+.sap-status[data-status="Found"], .sap-status[data-status="Closed"] { border-color: var(--color-positive); background: var(--color-positive-tint); color: var(--color-positive); }
+.sap-status[data-status="Not found yet"] { border-color: var(--color-negative); background: var(--color-negative-tint); color: var(--color-negative); }
+.sap-status[data-status="Check tag no."], .sap-status[data-status="partial"], .sap-status[data-status="Open"] { border-color: var(--color-caution); background: var(--color-caution-tint); color: var(--color-ink); }
+.sap-status[data-status="Approved"] { border-color: var(--color-action); background: var(--color-action-tint); color: var(--color-action); }
+.sap-page textarea { width: 100%; font-family: var(--font-mono, monospace); }
+.exception-approve { display: flex; gap: 6px; }
+.asset-tag-facts { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 4px 0 12px; font-size: 13px; }
+.asset-tag-facts div { display: flex; gap: 6px; }
+.asset-tag-facts dt { color: var(--color-ink-muted); }
+.asset-tag-facts dd { margin: 0; font-weight: 600; }
+.recount-error-rate { padding: 8px 12px; border-radius: 8px; background: var(--color-caution-tint); }
