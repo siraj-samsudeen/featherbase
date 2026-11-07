@@ -17,6 +17,10 @@ export interface Store {
   row_id: string
   store_name: string
   store_type: 'Store' | 'Warehouse'
+  store_manager?: string | null
+  opens_at?: string | null
+  closes_at?: string | null
+  updated_at?: string
 }
 
 /** The group's stores, shared by every task list without threading them through each one. */

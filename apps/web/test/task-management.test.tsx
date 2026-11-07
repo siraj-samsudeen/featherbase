@@ -698,7 +698,7 @@ test('projects_landing_flow: the directory opens a project and keeps its context
     // custom element owns the navigation landmark in the running app.
     const navigation = await screen.findByLabelText('Task views')
     expect(Array.from(navigation.querySelectorAll(':scope > button')).map((button) => button.textContent?.replace(/\d+$/, ''))).toEqual([
-      'Inbox', 'My Work', 'To verify', 'Together', 'Stores', 'Personal tasks', 'Views', 'Projects',
+      'Inbox', 'My Work', 'To verify', 'Issues', 'Together', 'Stores', 'Personal tasks', 'Views', 'Projects',
     ])
     await user.click(await screen.findByRole('button', { name: 'Projects' }))
     await user.type(screen.getByRole('textbox', { name: 'New project' }), 'Warehouse review{Enter}')

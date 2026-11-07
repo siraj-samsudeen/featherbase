@@ -16,6 +16,7 @@ import { ProjectDescription } from './ProjectDescription'
 import { TaskActions } from './TaskActions'
 import { ClosureNotes, ProjectVerifier, ReasonForm, ToVerifyPage, VerificationPanel } from './Closure'
 import { SUBMITTED, waitingFor } from './verification'
+import { IssuesPage, useIssues } from './Issues'
 import { StoresContext, StoresPage, TaskStoreAndDue, dueNote, storeName, useStores, type Store } from './Stores'
 import { DUE_MARKS, DUE_MARK_LABELS, NO_STORE, calendarDay, dueMark, localDay } from './storeWork'
 import {
@@ -30,7 +31,7 @@ import {
   type TaskViewSetup,
 } from './taskViews'
 
-type View = 'inbox' | 'work' | 'verify' | 'together' | 'stores' | 'projects' | 'personal' | 'views'
+type View = 'inbox' | 'work' | 'verify' | 'issues' | 'together' | 'stores' | 'projects' | 'personal' | 'views'
 type DetailMode = 'compact' | 'inspector' | 'focus'
 
 interface Task {
@@ -148,13 +149,14 @@ function sameDocumentHash(hash: string) {
   return `${location.pathname}${location.search}${hash}`
 }
 
-type TaskerIconName = 'inbox' | 'work' | 'verify' | 'together' | 'stores' | 'projects' | 'personal' | 'views'
+type TaskerIconName = 'inbox' | 'work' | 'verify' | 'issues' | 'together' | 'stores' | 'projects' | 'personal' | 'views'
 
 function TaskerIcon({ name }: { name: TaskerIconName }) {
   const paths: Record<TaskerIconName, ReactNode> = {
     inbox: <><path d="M4 5.5h16v13H4z" /><path d="M4 14h4l2 2h4l2-2h4" /></>,
     work: <><circle cx="12" cy="8" r="3" /><path d="M5.5 20c.6-4 2.7-6 6.5-6s5.9 2 6.5 6" /></>,
     verify: <><circle cx="12" cy="12" r="8.5" /><path d="m8.2 12.3 2.6 2.6 5-5.4" /></>,
+    issues: <><path d="M12 4 3.5 19h17z" /><path d="M12 10v4M12 16.8v.2" /></>,
     together: <><circle cx="9" cy="8" r="2.5" /><circle cx="16.5" cy="9" r="2" /><path d="M3.5 19c.5-3.5 2.3-5.2 5.5-5.2s5 1.7 5.5 5.2" /><path d="M14.5 14.4c3.3-.4 5.3 1.1 6 4.1" /></>,
     stores: <><path d="M4 9.5 5.5 4.5h13L20 9.5" /><path d="M4 9.5c0 1.5 1.2 2.5 2.7 2.5S9.3 11 9.3 9.5c0 1.5 1.2 2.5 2.7 2.5s2.7-1 2.7-2.5c0 1.5 1.1 2.5 2.6 2.5S20 11 20 9.5" /><path d="M5.5 12v7.5h13V12M10 19.5v-4.5h4v4.5" /></>,
     projects: <><path d="M3.5 7.5h6l2-2h9v13h-17z" /><path d="M3.5 9.5h17" /></>,
@@ -181,7 +183,7 @@ function personName(person?: PersonOption) { return person?.full_name || 'Former
 export function TaskManagementPage() {
   const queryClient = useQueryClient()
   const me = getSessionUser()?.row_id ?? ''
-  const [view, setView] = useState<View>(() => hashSavedViewId() ? 'views' : 'work')
+  const [view, setView] = useState<View>(() => hashSavedViewId() ? 'views' : new URLSearchParams(location.hash.slice(1)).has('issue') ? 'issues' : 'work')
   const [capture, setCapture] = useState('')
   const [projectName, setProjectName] = useState('')
   const [projectTask, setProjectTask] = useState('')
@@ -204,6 +206,7 @@ export function TaskManagementPage() {
       const savedViewId = hashSavedViewId()
       setActiveSavedViewId(savedViewId)
       if (savedViewId) setView('views')
+      if (new URLSearchParams(location.hash.slice(1)).has('issue')) setView('issues')
     }
     window.addEventListener('hashchange', change)
     return () => window.removeEventListener('hashchange', change)
@@ -261,11 +264,12 @@ export function TaskManagementPage() {
     queryKey: ['task-management', 'stores'],
     queryFn: () =>
       listAllResources<Store>('tasker.store', {
-        fields: ['row_id', 'store_name', 'store_type'],
+        fields: ['row_id', 'store_name', 'store_type', 'store_manager', 'opens_at', 'closes_at', 'updated_at'],
         order_by: 'store_name asc',
         limit_page_length: 200,
       }),
   })
+  const issueRows = useIssues()
   const comments = useQuery({
     queryKey: ['task-management', 'comments'],
     queryFn: () =>
@@ -313,6 +317,7 @@ export function TaskManagementPage() {
   const savedViews = parseSavedTaskViews(savedViewPreferences.data?.settings)
   const activeSavedView = savedViews.find((savedView) => savedView.id === activeSavedViewId)
   const toVerify = waitingFor(allTasks, me)
+  const openIssues = (issueRows.data?.data ?? []).filter(issue => issue.issue_state !== 'Closed').length
   const nameOf = (id: string) => personName(people.find(person => person.row_id === id))
   const activeTogetherTasks = allTasks.filter((task) => task.shared && !['Done', 'Cancelled'].includes(task.task_state))
 
@@ -588,6 +593,7 @@ export function TaskManagementPage() {
     { id: 'inbox', label: 'Inbox', icon: 'inbox', count: inbox.length },
     { id: 'work', label: 'My Work', icon: 'work', count: myWork.length },
     { id: 'verify', label: 'To verify', icon: 'verify', count: toVerify.length },
+    { id: 'issues', label: 'Issues', icon: 'issues', count: openIssues },
     { id: 'together', label: 'Together', icon: 'together' },
     { id: 'stores', label: 'Stores', icon: 'stores' },
     {
@@ -745,6 +751,8 @@ export function TaskManagementPage() {
           {!filteredMyWork.length && <NoTaskMatches total={myWork.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
         </section>
       )}
+
+      {view === 'issues' && <IssuesPage me={me} people={people} nameOf={nameOf} onSaved={refresh} />}
 
       {view === 'verify' && <ToVerifyPage tasks={toVerify} nameOf={nameOf} hrefFor={(id) => sameDocumentHash(`#task=${encodeURIComponent(id)}`)} />}
 
