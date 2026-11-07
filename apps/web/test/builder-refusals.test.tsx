@@ -26,7 +26,7 @@ test('a Choice column with no options is refused, named by its column', async ({
   await user.type(cell(rows()[0], 'label'), 'Stage')
   await user.selectOptions(cell(rows()[0], 'column_type') as unknown as HTMLSelectElement, 'Choice')
   await user.click(screen.getByTestId('dt-create'))
-  expect(await screen.findByTestId('dt-error')).toHaveTextContent('Invalid Table definition — stage: Choice column requires choices')
+  expect(await screen.findByTestId('dt-error')).toHaveTextContent('Invalid Table definition — Column “Stage”: Choice column needs at least one choice')
 })
 
 test('names refused on two rows mark both; adding a row clears the marks', async ({ admin }) => {
