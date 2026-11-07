@@ -11,6 +11,11 @@ describe('activity history values', () => {
     expect(describeHistoryValue('personal_tasks_owner', 'psn_a', names)).toBe('Shahul')
   })
 
+  it('writes recorded times as a day and an Indian time, not a raw timestamp', () => {
+    expect(describeHistoryValue('submitted_at', '2026-11-07T05:21:03.590Z', names)).toBe('07-Nov-2026 10:51 IST')
+    expect(describeHistoryValue('completed_at', '2026-11-07T05:21:03.604Z', names)).toBe('07-Nov-2026 10:51 IST')
+  })
+
   it('names who verifies, submitted and verified a task', () => {
     for (const field of ['verifier', 'submitted_by', 'verified_by'])
       expect(describeHistoryValue(field, 'psn_a', names)).toBe('Shahul')
