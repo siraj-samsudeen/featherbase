@@ -1,7 +1,7 @@
 // LOCAL DEVELOPMENT ONLY. Fills a throwaway featherbase database, served by a
 // featherbase checkout's dev server with this app on its app path, with
-// made-up stores, people, an org chart and a cached copy of the report's
-// dataset, so every state of the report page can be seen without MotherDuck.
+// made-up core Tables (fixtures/made-up-org-chart.json), three `dash.report` rows and a cached
+// copy of the report's dataset, so every state of the report page can be seen without MotherDuck.
 // No real store, person, code or figure.
 //
 // Normally run for you: `pnpm dev jeyarama/dash --made-up-data` (instance.json's
@@ -26,10 +26,10 @@ const api = process.env.FEATHERBASE_API_URL
 const server = (path: string) => import(pathToFileURL(resolve(checkout, 'apps/server/src', path)).href)
 const { sql } = await server('db.ts')
 const { setUserPassword } = await server('auth.ts')
-const { applySeedPack } = await server('seed-packs.ts')
 const { datasetsDeclaration } = await server('app-datasets.ts')
 const { markScopeTables } = await import(pathToFileURL(resolve(appDir, 'platform-test/mark-scope-tables.mjs')).href)
-const { BASE_TABLES, LINKED_TABLES } = await import(pathToFileURL(resolve(appDir, 'platform-test/base-tables.mjs')).href)
+const { BASE_TABLES, LINKED_TABLES, REPORT_ROWS } = await import(pathToFileURL(resolve(appDir, 'platform-test/base-tables.mjs')).href)
+const org = JSON.parse(await readFile(resolve(appDir, 'fixtures/made-up-org-chart.json'), 'utf8'))
 
 /** The local password every made-up reader signs in with (this script's own test value). */
 const PASSWORD = 'dash-dev'
@@ -48,134 +48,77 @@ async function call<T = Record<string, unknown>>(path: string, init: RequestInit
 }
 const post = (path: string, body: unknown) => call(path, { method: 'POST', body: JSON.stringify(body) })
 const save = (table: string, row: Record<string, unknown>) => post('/api/save_row', { table, row }) as Promise<{ row_id: string }>
-/** The row these values name, made when it isn't there: what keeps a rerun safe. */
-async function ensure(table: string, row: Record<string, unknown>, create: () => Promise<{ row_id: unknown }> = () => save(table, row)) {
-  const filters = encodeURIComponent(JSON.stringify(Object.entries(row).map(([column, value]) => [column, '=', value])))
-  const found = await call<{ data: { row_id: string }[] }>(`/api/table/${encodeURIComponent(table)}?filters=${filters}`)
-  return found.data[0] ?? { row_id: String((await create()).row_id) }
+/** A row made only when its id isn't there: what keeps a rerun safe. */
+const keep = async (table: string, id: string, row: Record<string, unknown>) => {
+  if (await call(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(id)}`).then(() => false, () => true)) await save(table, row)
 }
-
-// The employee-code identifier system the scope provider declares.
-await applySeedPack('jeyarama')
 
 const [installed] = await sql`select 1 from installed_app where name = 'dash'`
 if (!installed) await post('/api/install_app', { name: 'dash' })
 
-// Until every store is live the provider reads the old Store Sections Tables, so they exist, marked.
-const OLD = [
-  ['Sales Target Assignment', [{ column_name: 'employee', column_type: 'Reference', reference_table: 'Person', reqd: true },
-    { column_name: 'plant_code', column_type: 'Data', reqd: true }, { column_name: 'store_label', column_type: 'Data' },
-    { column_name: 'material_group', column_type: 'Data', reqd: true }]],
-  ['Employee Section Map', ['store_code', 'employee_code', 'subcategory', 'section_name']],
-  ['Section Ownership', ['store_code', 'section_name', 'tl_employee_code', 'dm_employee_code', 'effective_from']],
-  ['Store Manager', ['store_code', 'employee_code', 'full_name', 'email']],
-  ['Section Merchandise Map', ['store_code', 'material_group', 'mch_subcategory', 'section_name']],
-  ['Section Name Alias', ['store_code', 'merch_section_name', 'roster_section_name']],
-] as const
-for (const [name, columns] of OLD) {
-  const exists = await call(`/api/table/${encodeURIComponent(name)}:meta`).then(() => true, () => false)
-  if (!exists) await post('/api/table_def', { name, module: 'Store Sections',
-    columns: columns.map(c => typeof c === 'string' ? { column_name: c, column_type: 'Data' } : c) })
+// The core Tables, which the warehouse loads on a real instance; the six the provider reads are
+// marked as deciding scope, and all are listed for the app to read.
+for (const table of BASE_TABLES as { name: string }[]) {
+  const exists = await call(`/api/table/${encodeURIComponent(table.name)}:meta`).then(() => true, () => false)
+  if (!exists) await post('/api/table_def', table)
 }
 await markScopeTables((path: string, init?: RequestInit) => call(path, init))
+const linked = await call<{ data: { updated_at: string }[] }>(`/api/table/App%20Setting?filters=${encodeURIComponent(JSON.stringify([['row_id', '=', 'dash.linked_tables']]))}&fields=${encodeURIComponent('["updated_at"]')}`)
+if (!linked.data.length) await save('App Setting', { row_id: 'dash.linked_tables', value: JSON.stringify(LINKED_TABLES) })
 
 // The instance's MotherDuck source, played by a local DuckDB path that nothing opens: the
 // platform serves the cached copy below without querying it.
 const sourceExists = await call('/api/table/Data%20Source/motherduck').then(() => true, () => false)
 if (!sourceExists) await post('/api/table/Data%20Source', { row_id: 'motherduck', engine: 'duckdb', url_env: 'DASH_LOCAL_DUCKDB', access: 'read_only' })
 
-// Made-up people, each a Dash Reader.
-const people: Record<string, string> = {}
-for (const [key, name] of [['many', 'Asha Many-Stores'], ['one', 'Ravi One-Store'], ['none', 'Nila No-Access'], ['bare', 'Kumar Bare-Store'],
-  ['quiet', 'Meena Quiet-Section'], ['sm', 'Selvi Store-Manager'], ['tl2', 'Tara Two-Sections'], ['tl4', 'Faiz Four-Sections'],
-  ['several', 'Vani Several-Roles'], ['assigned', 'Arun Assigned'], ['preparing', 'Priya Preparing'], ['dm2', 'Deepa Department-Manager'],
-  ['staff1', 'Siva Section-Staff'], ['tl3', 'Tamil Three-Sections'], ['smtl', 'Mohan Manager-And-Leader'],
-  ['smlarge', 'Bala Large-Store']]) {
-  const email = `reader-${key}@example.test`
-  const [found] = await sql`select row_id from person where lower(email) = ${email}`
-  const id = found ? String(found.row_id) : String((await post('/api/table/Person', { email, full_name: name, enabled: true,
-    roles: [{ role: 'Dash Reader' }] })).row_id)
-  await setUserPassword(id, PASSWORD)
-  people[key] = id
-}
+// Three made-up Dives, one per filter shape. No Dive of these ids exists and no service account is
+// set, so the sales report falls to its quick view and the other two to "This report couldn't open".
+for (const row of REPORT_ROWS as { report_key: string }[]) await keep('dash.report', row.report_key, row)
 
-// Stores: Lakeside 9901 and Hillview 9902 have sections; Riverside 9903 has none; Northgate 9905 has
-// a section but nothing cached (its figures are being prepared). All live. Parkside 9904 is not live:
-// it is on the old rules, where a subcategory can be assigned to a person (#4486).
-for (const store of ['9901', '9902', '9903', '9905', '9906']) await ensure('dash.store_rollout', { store, live_since: '2026-01-01' })
-const section = (store: string, name: string) => ensure('dash.section', { store, section_name: name })
-const place = (store: string, subcategory: string, sectionId: string) =>
-  ensure('dash.section_subcategory', { store, subcategory, section: sectionId, starts_on: '2026-01-01' })
-const sarees = await section('9901', 'Sarees')
-const kids = await section('9901', 'Kids Wear')
-const bags = await section('9901', 'Bags')
-const belts = await section('9902', 'Accessories')
-await place('9901', '010101001', sarees.row_id)
-await place('9901', '010101002', sarees.row_id)
-await place('9901', '010202001', kids.row_id)
-// Bags sold nothing and had no target this month: its Team Leader's scoped rows are empty.
-await place('9901', '010606001', bags.row_id)
-await place('9902', '010404001', belts.row_id)
-// #4486: enough sections at Lakeside for a Team Leader of four, and Northgate's one section.
-const footwear = await section('9901', 'Footwear')
-const watches = await section('9901', 'Watches')
-const sports = await section('9901', 'Sportswear')
-await place('9901', '010707001', footwear.row_id)
-await place('9901', '010808001', watches.row_id)
-await place('9901', '011010001', sports.row_id)
-// A department of two sections at Lakeside, for a Department Manager.
-const menswear = await ensure('dash.department', { store: '9901', department_key: 'menswear', name: 'Menswear' })
-const shirts = await ensure('dash.section', { store: '9901', section_name: 'Formal Shirts', department: menswear.row_id })
-const trousers = await ensure('dash.section', { store: '9901', section_name: 'Trousers', department: menswear.row_id })
-await place('9901', '011212001', shirts.row_id)
-await place('9901', '011313001', trousers.row_id)
-const toys = await section('9905', 'Toys')
-await place('9905', '011111001', toys.row_id)
-const job = (person: string, job: string, store: string, extra: Record<string, unknown> = {}) =>
-  ensure('dash.job_assignment', { person, job, store, starts_on: '2026-01-01', ...extra })
-// #928: a person's assignments share their time, one Primary at a time. Until the scopes derive a
-// cluster's stores (#683), the made-up Cluster Manager holds a row in each store, splitting the time.
-const second = (percentage: number) => ({ assignment_type: 'Secondary', percentage })
-const first = (percentage: number) => ({ assignment_type: 'Primary', percentage })
-await job(people.many, 'Cluster Manager', '9901', { cluster: 'DEMO-NORTH', ...first(50) })
-await job(people.many, 'Cluster Manager', '9902', { cluster: 'DEMO-NORTH', ...second(50) })
-await job(people.one, 'Team Leader', '9901', { section: sarees.row_id })
-await job(people.quiet, 'Team Leader', '9901', { section: bags.row_id })
-await job(people.bare, 'Store Manager', '9903')
-// #4486: one reader per reason, so the page's "why" sentence can be seen in each state.
-await job(people.sm, 'Store Manager', '9901')
-await job(people.tl2, 'Team Leader', '9901', { section: sarees.row_id, ...first(50) })
-await job(people.tl2, 'Team Leader', '9901', { section: kids.row_id, ...second(50) })
-for (const [i, s] of [bags, footwear, watches, sports].entries())
-  await job(people.tl4, 'Team Leader', '9901', { section: s.row_id, ...(i ? second(25) : first(25)) })
-await job(people.several, 'Team Leader', '9901', { section: sarees.row_id, ...first(50) })
-await job(people.several, 'Staff', '9901', { section: kids.row_id, ...second(50) })
-await job(people.preparing, 'Team Leader', '9905', { section: toys.row_id })
-await job(people.dm2, 'Department Manager', '9901', { department: menswear.row_id })
-await job(people.staff1, 'Staff', '9901', { section: sarees.row_id })
-for (const [i, s] of [bags, footwear, watches].entries())
-  await job(people.tl3, 'Team Leader', '9901', { section: s.row_id, ...(i ? second(33) : first(34)) })
-await job(people.smtl, 'Store Manager', '9901', first(50))
-await job(people.smtl, 'Team Leader', '9901', { section: sarees.row_id, ...second(50) })
+for (const [code, name] of org.clusters) await keep('Cluster', code, { code, name })
+for (const [code, name, is_store, cluster] of org.sites) await keep('Site', code, { code, name, is_store, cluster })
+for (const [plant_code, plant_type, site] of org.plants) await keep('Plant', plant_code, { plant_code, plant_type, site })
+for (const [row_id, name, site] of org.floors) await keep('Store Floor', row_id, { row_id, name, site })
+for (const [row_id, name, site, floor, status] of org.sections) await keep('Section', row_id, { row_id, name, site, floor, status })
+for (const [row_id, subcategory, subcategory_type] of org.subcategories) await keep('Subcategory', row_id, { row_id, subcategory, subcategory_type })
+const placement = (store: string, subcategory: string, section: string) => {
+  const section_subcategory_id = `${store}-${subcategory}-2026-01-01`
+  return keep('Section Subcategory', section_subcategory_id, { section_subcategory_id, store, subcategory, section, starts_on: '2026-01-01', source_key: 'Made-up' })
+}
+for (const [store, subcategory, section] of org.placements) await placement(store, subcategory, section)
 // #4453: a large store, Bayside 9906, with 1,600 made-up subcategories; two sections name a few of them.
 const LARGE = Array.from({ length: 1600 }, (_, i) => `02${String(Math.floor(i / 100)).padStart(2, '0')}${String(i % 100).padStart(5, '0')}`)
-const baysideHome = await section('9906', 'Home Linen')
-const baysideToys = await section('9906', 'Toys')
-for (const code of LARGE.slice(0, 3)) await place('9906', code, baysideHome.row_id)
-for (const code of LARGE.slice(3, 6)) await place('9906', code, baysideToys.row_id)
-await job(people.smlarge, 'Store Manager', '9906')
-// Parkside, on the old rules: its merchandise map, and one subcategory assigned to a person with no employee code.
-const oldRow = (table: string, row: Record<string, unknown>) =>
-  ensure(table, row, () => post(`/api/table/${encodeURIComponent(table)}`, row) as Promise<{ row_id: unknown }>)
-await oldRow('Section Merchandise Map', { store_code: '9904', material_group: '010101001', mch_subcategory: 'Silk sarees', section_name: 'Ethnic' })
-await oldRow('Section Merchandise Map', { store_code: '9904', material_group: '010202001', mch_subcategory: 'Boys shirts', section_name: 'Kids' })
-await oldRow('Sales Target Assignment', { employee: people.assigned, plant_code: '9904', store_label: 'Parkside', material_group: '010101001' })
+for (const code of LARGE.slice(0, 6)) await keep('Subcategory', code, { row_id: code, subcategory: `Made-up line ${Number(LARGE.indexOf(code)) + 1}`, subcategory_type: 'Merchandise' })
+for (const code of LARGE.slice(0, 3)) await placement('BAY', code, 'BAY-S1')
+for (const code of LARGE.slice(3, 6)) await placement('BAY', code, 'BAY-S2')
+
+/** A made-up person who can sign in, a Dash Reader, and whatever roles are named. */
+async function person(email: string, full_name: string, roles: string[] = []) {
+  const [found] = await sql`select row_id from person where lower(email) = ${email}`
+  const id = found ? String(found.row_id) : String((await post('/api/table/Person', { email, full_name, enabled: true,
+    roles: ['Dash Reader', ...roles].map(role => ({ role })) })).row_id)
+  await setUserPassword(id, PASSWORD)
+  return id
+}
+await keep('Role', 'Master Data Editor', { row_id: 'Master Data Editor' })
+// One reader per state of the report page.
+let code = 3000
+for (const reader of org.readers as { key: string; name: string; jobs: [string, string, Record<string, string>][] | null }[]) {
+  const employee = String(++code)
+  const id = await person(`reader-${reader.key}@example.test`, reader.name)
+  if (!reader.jobs) continue
+  await keep('Employee', employee, { employee_code: employee, name: reader.name, person: id, status: 'Current' })
+  for (const [i, [job, site, where]] of reader.jobs.entries()) {
+    const assignment_id = `JA-${employee}-${i + 1}`
+    await keep('Job Assignment', assignment_id, { assignment_id, employee, job, site, ...where, starts_on: '2026-01-01', source_key: 'Made-up' })
+  }
+}
 
 // Both copies describe the same made-up month to date, including today. Hillview
 // deliberately retains last month's figures to demonstrate the no-data-yet state.
 const { refreshedAt, dataThrough, periodStart, lastMonth, lastMonthEnd } = madeUpReportDates(Date.now())
-// Lakeside and Parkside carry a short code, as the warehouse's store master does; the header names them by it.
-const SHORT_CODES: Record<string, string> = { '9901': 'LKS', '9904': 'PKS', '9906': 'BYS' }
+// Lakeside and Bayside carry a short code, as the warehouse's store master does; the header names them by it.
+const SHORT_CODES: Record<string, string> = { '9901': 'LKS', '9906': 'BYS' }
 const row = (store: string, name: string, code: string, subcategory: string, target: number | null, actual: number | null, month = periodStart, through = dataThrough) => ({
   store_code: store, store_name: name, short_code: SHORT_CODES[store] ?? null, subcategory_code: code, subcategory, target, actual,
   days_with_actual: actual == null ? 0 : Number(through.slice(8, 10)), days: Number(through.slice(8, 10)), period_start: month, data_through: through, targets_available: true,
@@ -192,18 +135,15 @@ const facts = [
   row('9901', 'Lakeside', '011010001', 'Track pants', 45000, 30010.20),
   row('9901', 'Lakeside', '011212001', 'Formal shirts', 150000, 162500.75),
   row('9901', 'Lakeside', '011313001', 'Formal trousers', 110000, 98000.30),
-  row('9904', 'Parkside', '010101001', 'Silk sarees', 600000, 480000.35),
-  row('9904', 'Parkside', '010202001', 'Boys shirts', 90000, 70000),
   // Hillview's copy is of last month: the page says this month's figures haven't arrived.
   row('9902', 'Hillview', '010404001', 'Belts', 90000, 70000, lastMonth, lastMonthEnd),
   row('9903', 'Riverside', '010505001', 'Handbags', 50000, 40000),
   ...LARGE.map((code, i) => row('9906', 'Bayside', code, `Made-up line ${i + 1}`, 20000 + (i % 37) * 1000.25, 15000 + (i % 29) * 1100.5)),
 ]
-const STORE_NAMES: Record<string, string> = { '9901': 'Lakeside', '9902': 'Hillview', '9903': 'Riverside', '9904': 'Parkside', '9906': 'Bayside' }
+const STORE_NAMES: Record<string, string> = { '9901': 'Lakeside', '9902': 'Hillview', '9903': 'Riverside', '9906': 'Bayside' }
 // The month's metadata, one row per store and subcategory, of the same refresh. Hillview's is last month's too.
 const month = [
   ...['010101001', '010101002', '010202001', '010606001', '010909001', '010707001', '010808001', '011010001', '011212001', '011313001'].map(code => ['9901', code, periodStart, dataThrough]),
-  ...['010101001', '010202001'].map(code => ['9904', code, periodStart, dataThrough]),
   // Northgate 9905 has no row in either copy: its figures are being prepared.
   ['9902', '010404001', lastMonth, lastMonthEnd],
   ['9903', '010505001', periodStart, dataThrough],
@@ -235,7 +175,6 @@ const lastFacts = [
   row('9901', 'Lakeside', '010707001', 'Sandals', 150000, 98000.45, lastMonth, lastMonthEnd),
   row('9901', 'Lakeside', '010808001', 'Wrist watches', 230000, 241000, lastMonth, lastMonthEnd),
   row('9901', 'Lakeside', '011212001', 'Formal shirts', 290000, 301500.25, lastMonth, lastMonthEnd),
-  row('9904', 'Parkside', '010101001', 'Silk sarees', 1150000, 1201000.10, lastMonth, lastMonthEnd),
   row('9902', 'Hillview', '010404001', 'Belts', 90000, 70000, lastMonth, lastMonthEnd),
 ]
 await seed('sales_last_month', lastFacts)
@@ -244,53 +183,15 @@ await seed('sales_last_month_meta', [...new Set(month.map(m => `${m.store_code} 
   return { store_code, store_name: STORE_NAMES[store_code], subcategory_code, period_start: lastMonth, data_through: lastMonthEnd, targets_available: true }
 }))
 
-// Your sections (#975) reads the instance's base Tables: these, with made-up rows, stand in for
-// what the warehouse loads on a real instance.
-for (const table of BASE_TABLES as { name: string }[]) {
-  const exists = await call(`/api/table/${encodeURIComponent(table.name)}:meta`).then(() => true, () => false)
-  if (!exists) await post('/api/table_def', table)
-}
-const linked = await call<{ data: { updated_at: string }[] }>(`/api/table/App%20Setting?filters=${encodeURIComponent(JSON.stringify([['row_id', '=', 'dash.linked_tables']]))}&fields=${encodeURIComponent(JSON.stringify(['updated_at']))}`)
-if (!linked.data.length) await save('App Setting', { row_id: 'dash.linked_tables', value: JSON.stringify(LINKED_TABLES) })
-const keep = async (table: string, id: string, row: Record<string, unknown>) => {
-  if (await call(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(id)}`).then(() => false, () => true)) await save(table, row)
-}
-for (const [site_code, site_name, is_store] of [['LKS', 'Lakeside', true], ['HIL', 'Hillview', true], ['RIV', 'Riverside', true], ['HOF', 'Head Office', false]] as const)
-  await keep('Site Master', site_code, { site_code, site_name, is_store })
-for (const [floor_id, floor_name, site] of [['LKS-F1', 'First floor', 'LKS'], ['LKS-F2', 'Second floor', 'LKS']])
-  await keep('Store Floor', floor_id, { floor_id, floor_name, site })
-for (const [section_id, section_name, site, floor, section_status] of [
-  ['LKS-S1', 'Ladies Wear', 'LKS', 'LKS-F1', 'Active'], ['LKS-S2', 'Silk', 'LKS', 'LKS-F2', 'Active'], ['LKS-S3', 'Kids Wear', 'LKS', 'LKS-F2', 'Active'],
-  ['LKS-S4', 'Closed Corner', 'LKS', 'LKS-F2', 'Inactive'], ['HIL-S1', 'Hillview Accessories', 'HIL', null, 'Active']])
-  await keep('Section', section_id!, { section_id, section_name, site, floor, section_status })
-for (const [code, name, merchandise] of [['010101001', 'Silk sarees', true], ['010101002', 'Cotton sarees', true], ['010101003', 'Salwar sets', true], ['010202001', 'Boys shirts', true],
-  ['010202002', 'Girls frocks', true], ['010303001', 'Saree blouses', true], ['990101001', 'Saree hangers', false]] as const)
-  await keep('Subcategory', code, { row_id: code, subcategory: name, is_merchandise: merchandise })
-for (const [id, sub, section] of [['LKS-010101001-2026-10-01', '010101001', 'LKS-S1'], ['LKS-010101002-2026-10-01', '010101002', 'LKS-S1'], ['LKS-010101003-2026-10-01', '010101003', 'LKS-S1'],
-  ['LKS-010202001-2026-10-01', '010202001', 'LKS-S3'], ['LKS-010202002-2026-10-01', '010202002', 'LKS-S3']])
-  await keep('Section Subcategory', id, { placement_id: id, site: 'LKS', subcategory: sub, section, starts_on: '2026-10-01', source: 'Made-up' })
-await keep('Role', 'Master Data Editor', { row_id: 'Master Data Editor' })
 // Each person is a Reader and shows one state of Your sections.
-const staff: [string, string, string, string[]][] = [
-  ['leader', 'Asha Leader', '2001', []], ['manager', 'Mani Manager', '2002', []], ['nosection', 'Nila No-Section', '2003', []],
-  ['nomanager', 'Ravi No-Manager', '2004', []], ['riverside', 'Rekha Riverside', '2005', []], ['editor', 'Elan Editor', '2006', ['Master Data Editor']],
-  ['manager2', 'Selvi Other-Manager', '2008', []], ['stranger', 'Sara Stranger', '', []]]
-const sectionPeople: Record<string, string> = {}
-for (const [key, full_name, employee_id, roles] of staff) {
-  const email = `sections-${key}@example.test`
-  const [found] = await sql`select row_id from person where lower(email) = ${email}`
-  const id = found ? String(found.row_id) : String((await post('/api/table/Person', { email, full_name, enabled: true,
-    roles: ['Dash Reader', ...roles].map(role => ({ role })) })).row_id)
-  await setUserPassword(id, PASSWORD)
-  sectionPeople[key] = id
-  if (employee_id) await keep('Employee', employee_id, { employee_id, employee_name: full_name, person: id, employee_status: 'Current' })
+for (const staff of org.sectionPeople as { key: string; name: string; code: string | null; roles: string[]; jobs: [string, string, string, string | null, string | null][] }[]) {
+  const id = await person(`sections-${staff.key}@example.test`, staff.name, staff.roles)
+  if (staff.code) await keep('Employee', staff.code, { employee_code: staff.code, name: staff.name, person: id, status: 'Current' })
 }
-await keep('Employee', '2007', { employee_id: '2007', employee_name: 'Lata No-Sign-In', employee_status: 'Current' })
-for (const [id, employee, job, site, section, reports_to] of [
-  ['JA-2001-LKS-S1', '2001', 'Team Leader', 'LKS', 'LKS-S1', '2002'], ['JA-2002-LKS', '2002', 'Store Manager', 'LKS', null, '2008'],
-  ['JA-2003-LKS', '2003', 'Staff', 'LKS', null, '2002'], ['JA-2004-LKS-S3', '2004', 'Team Leader', 'LKS', 'LKS-S3', '2007'],
-  ['JA-2005-RIV', '2005', 'Staff', 'RIV', null, '2002'], ['JA-2006-HOF', '2006', 'Head office staff', 'HOF', null, null]])
-  await keep('Job Assignment', id!, { assignment_id: id, employee, job, site, section, reports_to, starts_on: '2026-10-01', source: 'Made-up' })
+for (const [employee_code, name] of org.noSignIn) await keep('Employee', employee_code, { employee_code, name, status: 'Current' })
+for (const staff of org.sectionPeople as { code: string | null; jobs: [string, string, string, string | null, string | null][] }[])
+  for (const [assignment_id, job, site, section, reports_to] of staff.jobs)
+    await keep('Job Assignment', assignment_id, { assignment_id, employee: staff.code, job, site, section, reports_to, starts_on: '2026-10-01', source_key: 'Made-up' })
 
 // The proof it worked: a made-up Store Manager opens Lakeside's report and gets figures.
 const signIn = await fetch(`${api}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' },
@@ -299,37 +200,18 @@ if (!signIn.ok) throw new Error(`Signing in as a made-up reader failed: HTTP ${s
 const version = JSON.parse(await readFile(resolve(appDir, 'package.json'), 'utf8')).version
 const opened = await fetch(`${api}/api/app_reads/dash/report`, { method: 'POST', headers: { 'content-type': 'application/json',
   authorization: `Bearer ${((await signIn.json()) as { token: string }).token}`, 'X-Featherbase-App-Version': `dash@${version}` },
-  body: JSON.stringify({ payload: { store: '9901' } }) })
+  body: JSON.stringify({ payload: { report: 'sales', store: '9901' } }) })
 const answer = await opened.json() as { result?: { state?: string; rows?: unknown[] } }
 if (!opened.ok || !answer.result?.rows?.length) throw new Error(`A made-up reader's report has no figures: HTTP ${opened.status} ${JSON.stringify(answer).slice(0, 300)}`)
 
+const says = (people: { key: string; says: string }[], prefix: string) =>
+  people.map(p => `  ${`${prefix}-${p.key}@example.test`.padEnd(36)} ${p.says}`).join('\n')
 console.log(`To see figures, sign in at /featherbase/login with:
   email:    reader-sm@example.test   (Store Manager of a made-up store, Lakeside)
   password: ${PASSWORD}
 Other made-up people, same password. Each shows one state of the page:
-  reader-many@example.test      Cluster Manager of two stores (Lakeside; Hillview: last month's copy only)
-  reader-one@example.test       one store, one section
-  reader-quiet@example.test     a section with no target and no sales this month (ready, nothing recorded)
-  reader-none@example.test      no access
-  reader-bare@example.test      a store with no sections
-  reader-tl2@example.test       Team Leader of 2 sections at Lakeside
-  reader-tl3@example.test       Team Leader of 3 sections at Lakeside (all three named)
-  reader-tl4@example.test       Team Leader of 4 sections at Lakeside ("4 sections")
-  reader-several@example.test   Team Leader of Sarees and staff in Kids Wear at Lakeside
-  reader-assigned@example.test  a subcategory assigned to them at Parkside (old rules)
-  reader-preparing@example.test Team Leader at Northgate, whose figures are being prepared (no short name)
-  reader-dm2@example.test       Department Manager of Menswear (2 sections) at Lakeside
-  reader-staff1@example.test    section staff in Sarees at Lakeside ("because you work in them")
-  reader-smtl@example.test      Store Manager of Lakeside and Team Leader of Sarees there
-  reader-smlarge@example.test   Store Manager of Bayside, a large store (1,600 subcategories)
+${says(org.readers, 'reader')}
 Your sections (/dash/?view=sections), same password:
-  sections-leader@example.test     Team Leader of Ladies Wear at Lakeside; asks Mani Manager
-  sections-manager@example.test    Mani Manager, who approves Asha, Nila and Rekha
-  sections-nosection@example.test  a job with no section against it
-  sections-nomanager@example.test  a manager with no sign-in: goes to the master data team
-  sections-riverside@example.test  a store with no sections
-  sections-editor@example.test     holds Master Data Editor
-  sections-stranger@example.test   not on the staff list
-  reader-none@example.test         no store's report; the link to Your sections`)
+${says(org.sectionPeople, 'sections')}`)
 await sql.end()
 process.exit(0)

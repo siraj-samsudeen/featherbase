@@ -316,7 +316,7 @@ export const actions = {
     const [other] = elsewhere ? await list(ctx, T.section, SECTION_FIELDS, [['row_id', '=', exact(elsewhere.section)]]) : []
     const { approvers, ...base } = await aboutTheJob(ctx, job, employee)
     const proposal = await ctx.changeProposals.propose({ table: T.placement, row: elsewhere ? exact(elsewhere.row_id) : null,
-      changes: elsewhere ? { section: exact(section.row_id) } : { site, subcategory: code, section: exact(section.row_id) },
+      changes: elsewhere ? { section: exact(section.row_id) } : { store: site, subcategory: code, section: exact(section.row_id) },
       reviewed: elsewhere ? ['store', 'subcategory'] : [], approvers,
       about: { ...base, kind: 'add', what: text(subcategory.subcategory), from: elsewhere ? text(other?.name) : 'No section', to: text(section.name), subcategory: code, from_section: exact(elsewhere?.section), to_section: exact(section.row_id) } })
     return view(proposal)

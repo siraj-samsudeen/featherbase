@@ -115,7 +115,7 @@ export function Dash() {
     <DashSidebar current="report" />
     <main className="fd-page" data-testid="dash" data-view={view.kind}>
       {/* The header, in every state with a store on show (#4486): the Dive, the quick view, and each empty state. */}
-      {(view.kind === 'dive' || view.kind === 'quick' || view.kind === 'empty') && report?.ok && report.value.heading?.name && (
+      {(view.kind === 'dive' || view.kind === 'quick' || view.kind === 'empty') && report?.ok && report.value.heading && (report.value.heading.name || report.value.heading.reasons.length > 0) && (
         <ReportHeading heading={report.value.heading} period={report.value} wide={view.kind === 'dive'} />
       )}
       {view.kind === 'opening' && <p className="fd-opening">Opening your report…</p>}
