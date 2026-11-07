@@ -4,7 +4,7 @@ import { decide, suitesFor } from './ci-scope.mjs'
 
 const pr = (...files) => decide({ event: 'pull_request', files })
 const on = (decision) => Object.keys(decision).filter(key => decision[key]).sort()
-const ALL = ['client_apps', 'coverage_merged', 'e2e', 'platform_checks', 'server', 'web']
+const ALL = ['acceptance', 'browser', 'client_apps', 'coverage_merged', 'platform_checks', 'server', 'web']
 
 test('prose runs only the fast checks', () => {
   assert.deepEqual(on(pr('README.md', 'adr/0014-x.md', 'openspec/changes/a/design.md', '.github/PULL_REQUEST_TEMPLATE.md',
@@ -18,7 +18,7 @@ test("the process template's files run only the fast checks", () => {
 
 test('a markdown file something reads is not prose', () => {
   assert.deepEqual(on(pr('docs/DEPLOY.md')), ['client_apps', 'platform_checks', 'server'])
-  assert.deepEqual(on(pr('apps/web/e2e/fixtures/zones.claims.md')), ['coverage_merged', 'e2e', 'platform_checks', 'web'])
+  assert.deepEqual(on(pr('apps/web/e2e/fixtures/zones.claims.md')), ['acceptance', 'browser', 'coverage_merged', 'platform_checks', 'web'])
   assert.deepEqual(on(pr('client-apps/c/instances/a/privacy-notice.md')), ['client_apps'])
 })
 
@@ -35,12 +35,12 @@ test('the server runs its suite and the client platform tests, not web or e2e', 
 })
 
 test('web runs web and e2e, and so the merged coverage, not the server suite', () => {
-  assert.deepEqual(on(pr('apps/web/src/x.tsx')), ['coverage_merged', 'e2e', 'platform_checks', 'web'])
+  assert.deepEqual(on(pr('apps/web/src/x.tsx')), ['acceptance', 'browser', 'coverage_merged', 'platform_checks', 'web'])
 })
 
 test('a change that can reach anything runs everything', () => {
   for (const file of ['packages/shared/src/x.ts', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', '.github/workflows/test.yml',
-    '.github/labeler.yml', 'tools/prepare-apps.mjs', 'test-apps/other/package.json', 'init.sh', '.railway/railway.ts', 'apps/new/x.ts', 'something-new', '"docs/\\303\\251.txt"'])
+    '.github/labeler.yml', '.github/actions/install-chromium/action.yml', 'tools/prepare-apps.mjs', 'test-apps/other/package.json', 'init.sh', '.railway/railway.ts', 'apps/new/x.ts', 'something-new', '"docs/\\303\\251.txt"'])
     assert.deepEqual(on(pr(file)), ALL, file)
 })
 
@@ -68,13 +68,13 @@ test('an empty diff tells us nothing, so everything runs', () => {
 test('labels ask for more', () => {
   assert.deepEqual(on(decide({ event: 'pull_request', labels: ['run-all'], files: ['README.md'] })), ALL)
   // No merged coverage: the web suite it also needs did not run.
-  assert.deepEqual(on(decide({ event: 'pull_request', labels: ['run-e2e'], files: ['apps/server/x.ts'] })), ['client_apps', 'e2e', 'platform_checks', 'server'])
+  assert.deepEqual(on(decide({ event: 'pull_request', labels: ['run-e2e'], files: ['apps/server/x.ts'] })), ['acceptance', 'browser', 'client_apps', 'platform_checks', 'server'])
 })
 
 test('merged coverage is only ever wanted when both its inputs run', () => {
   for (const files of [['README.md'], ['client-apps/c/a/x'], ['example-apps/t/x'], ['apps/server/x'], ['apps/web/x'], ['tools/x']]) {
     const d = pr(...files)
-    assert.equal(d.coverage_merged, d.web && d.e2e, files[0])
+    assert.equal(d.coverage_merged, d.web && d.browser && d.acceptance, files[0])
   }
 })
 
@@ -82,10 +82,54 @@ test('suitesFor returns no suites for prose', () => {
   assert.equal(suitesFor('docs/x.md').size, 0)
 })
 
-test('a spec or the acceptance suite runs e2e, where the acceptance suite runs (#738)', () => {
-  assert.deepEqual([...suitesFor('openspec/changes/x/specs/list-view/spec.md')], ['e2e'])
-  assert.deepEqual([...suitesFor('openspec/specs/list-view/spec.md')], ['e2e'])
-  assert.deepEqual([...suitesFor('acceptance-tests/step-definitions/list-view.steps.js')], ['e2e'])
-  assert.equal(suitesFor('openspec/changes/x/design.md').size, 0)
+test("a spec runs only its capability's scenarios: nothing else reads a spec", () => {
+  const d = pr('openspec/specs/list-view/spec.md', 'openspec/changes/x/specs/core-forms/spec.md', 'openspec/changes/x/design.md')
+  assert.deepEqual(on(d), ['acceptance', 'acceptance_capabilities'])
+  assert.equal(d.acceptance_capabilities, 'core-forms,list-view')
+  assert.equal(d.browser, false)
+  assert.equal(d.web, false)
+})
+
+test('a capability with no Gherkin runs no scenarios', () => {
+  const d = decide({ event: 'pull_request', files: ['openspec/specs/prose/spec.md'], hasScenarios: () => false })
+  assert.deepEqual(on(d), [])
+})
+
+test('an archived spec does not run', () => {
+  assert.deepEqual(on(pr('openspec/changes/archive/2026-11-05-x/specs/list-view/spec.md')), [])
+})
+
+test('a Dash change with its spec runs the app tests and that spec, not the platform suites', () => {
+  const d = pr('client-apps/jeyarama/dash/src/x.ts', 'openspec/specs/dash-people/spec.md')
+  assert.deepEqual(on(d), ['acceptance', 'acceptance_capabilities', 'client_apps'])
+})
+
+test('all of acceptance wins over a capability', () => {
+  for (const other of ['acceptance-tests/step-definitions/list-view.steps.js', 'apps/web/src/x.tsx', 'tools/x.mjs']) {
+    const d = pr('openspec/specs/list-view/spec.md', other)
+    assert.equal(d.acceptance, true, other)
+    assert.equal(d.acceptance_capabilities, '', other)
+  }
+})
+
+test('the step definitions run all of acceptance and not the browser suite', () => {
+  assert.deepEqual(on(pr('acceptance-tests/step-definitions/list-view.steps.js')), ['acceptance'])
   assert.equal(suitesFor('acceptance-tests/README.md').size, 0)
+})
+
+test('a spec in an unusual place runs all of acceptance rather than guessing', () => {
+  const d = pr('openspec/somewhere/spec.md')
+  assert.equal(d.acceptance, true)
+  assert.equal(d.acceptance_capabilities, '')
+})
+
+test('a workflow other than this one has no effect on these suites', () => {
+  assert.deepEqual(on(pr('.github/workflows/image-check.yml', '.github/workflows/publish-image.yml')), [])
+  assert.deepEqual(on(pr('.github/workflows/test.yml')), ALL)
+})
+
+test('a push runs all of acceptance, whatever changed', () => {
+  const d = decide({ event: 'push', files: ['openspec/specs/list-view/spec.md'] })
+  assert.deepEqual(on(d), ALL)
+  assert.equal(d.acceptance_capabilities, '')
 })
