@@ -120,6 +120,7 @@ test('Narrow the list with filters: a filter narrows the rows, shows as its own 
   await openList(admin, 'Lv Filtered')
   await waitFor(() => expect(cellTexts('title')).toHaveLength(4))
 
+  fireEvent.click(screen.getByTestId('filter-toggle'))
   fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'stage' } })
   expect(within(screen.getByRole('combobox', { name: 'Filter value' })).getByRole('option', { name: 'Awaiting response' })).toHaveValue('Open')
   fireEvent.change(screen.getByTestId('filter-value'), { target: { value: 'Open' } })

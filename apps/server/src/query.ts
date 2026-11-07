@@ -1,9 +1,10 @@
 import { sql } from './db'
 import { AppError } from './errors'
+import { permissionRefusal } from './refusals'
 import { appOperation } from './app-lifecycle'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { RETIREMENT_COLUMNS, STANDARD_COLUMNS, canRetire, tableRelation } from './table-engine'
-import { getScopeMap, includesColumn, isPrivileged, permissionScope, permittedColumns } from './permissions'
+import { getScopeMap, includesColumn, isPrivileged, permissionScope, permittedColumns, tableScope } from './permissions'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, childColumns, seesEveryColumn } from './row-readers'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
@@ -124,7 +125,7 @@ export async function scopedWhere(
     )
   const scope = await permissionScope(user, table, 'read')
   if (scope === 'none')
-    throw new AppError('PermissionError', `No read permission on ${table} for ${user}`)
+    throw await permissionRefusal(user, table, 'read')
   if (meta.kind === 'settings')
     throw new AppError(
       'ValidationError',
@@ -168,19 +169,14 @@ export async function scopedWhere(
   if (ROW_ATTACHED_TABLES.has(meta.name))
     extraConds.push((await attachedRowScopeCond(meta.name, user, callerFilters)).frag)
   if (!bypass) {
-    const upMap = await getScopeMap(user)
-    if (upMap.size) {
-      const own = upMap.get(table)
-      if (own) filters.push([ROW_KEY, 'in', [...own]])
-      for (const f of meta.columns) {
-        if (f.column_type !== 'Reference' || !f.reference_table) continue
-        // #1021: a link to a view holds its base's rows, scoped as such.
-        const allowed = upMap.get(linkBase(f)!)
-        if (allowed)
-          extraConds.push(
-            sql`(${sql(f.column_name)} is null or ${sql(f.column_name)} in ${sql([...allowed])})`,
-          )
-      }
+    const scope = tableScope(meta, await getScopeMap(user))
+    if (scope?.none) extraConds.push(sql`false`)
+    else if (scope) {
+      if (scope.own) filters.push([ROW_KEY, 'in', [...scope.own]])
+      for (const ref of scope.refs)
+        extraConds.push(ref.unsetPasses
+          ? sql`(${sql(ref.column)} is null or ${sql(ref.column)} in ${sql([...ref.allowed])})`
+          : sql`${sql(ref.column)} in ${sql([...ref.allowed])}`)
     }
   }
   // #432: history outlives its Table, but never attaches to a namesake
@@ -455,8 +451,7 @@ async function attachedRowScopeCond(
     const ownHistoryOnly = SENSITIVE_HISTORY_TABLES.has(table) && !(await seesEveryColumn(user, targetMeta))
     if (ownHistoryOnly && !(await seesEveryColumn(user, targetMeta, user))) continue
     if (isBound(targetMeta)) {
-      const narrowed = scopes.has(target)
-        || targetMeta.columns.some((f) => f.column_type === 'Reference' && scopes.has(String(linkBase(f))))
+      const narrowed = tableScope(targetMeta, scopes) !== null
       if (scope === 'all' && !narrowed && !ownHistoryOnly) branches.push(sql`${rel}.ref_table = ${target}`)
       continue
     }

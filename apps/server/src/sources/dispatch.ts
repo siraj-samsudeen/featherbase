@@ -1,7 +1,7 @@
-import { linkBase } from '../views'
 import { sql } from '../db'
 import { assertNotPlatformRelation } from './platform-guard'
 import { AppError } from '../errors'
+import { permissionRefusal } from '../refusals'
 import { ROW_KEY, getMeta, type TableMeta } from '../meta'
 import { MAX_RELATED_DEPTH } from 'shared'
 import { MAX_RELATED_HOPS, parseRelatedSpec } from '../related-filter'
@@ -11,6 +11,7 @@ import {
   isPrivileged,
   permissionScope,
   permittedColumns,
+  tableScope,
 } from '../permissions'
 import { isSensitiveColumn } from '../sensitive-columns'
 import { getDriver, getSource, assertAllowed } from './registry'
@@ -276,7 +277,7 @@ export async function assertBoundScope(
 ): Promise<void> {
   const scope = await permissionScope(user, meta.name, action)
   if (scope === 'none')
-    throw new AppError('PermissionError', `No ${action} permission on ${meta.name} for ${user}`)
+    throw await permissionRefusal(user, meta.name, action)
   if (scope === 'own_rows')
     throw new AppError(
       'PermissionError',
@@ -293,18 +294,15 @@ async function boundScopeFilters(
   bind: Binding,
 ): Promise<SourceFilter[]> {
   if (await isPrivileged(user)) return []
-  const upMap = await getScopeMap(user)
-  if (!upMap.size) return []
+  const scope = tableScope(meta, await getScopeMap(user))
+  if (!scope) return []
+  // #246: no Data Scope on a required dimension matches no row at all.
+  if (scope.none) return [{ column: bind.pk, op: 'in', value: [] }]
   const filters: SourceFilter[] = []
-  const own = upMap.get(meta.name)
-  if (own) filters.push({ column: bind.pk, op: 'in', value: [...own] })
-  for (const c of meta.columns) {
-    if (c.column_type !== 'Reference' || !c.reference_table) continue
-    // #1021: a link to a view holds its base's rows, scoped as such.
-    const allowed = upMap.get(linkBase(c)!)
-    if (!allowed) continue
-    const sc = sourceColumnFor(bind, c.column_name)
-    if (sc) filters.push({ column: sc, op: 'in_or_null', value: [...allowed] })
+  if (scope.own) filters.push({ column: bind.pk, op: 'in', value: [...scope.own] })
+  for (const ref of scope.refs) {
+    const sc = sourceColumnFor(bind, ref.column)
+    if (sc) filters.push({ column: sc, op: ref.unsetPasses ? 'in_or_null' : 'in', value: [...ref.allowed] })
   }
   return filters
 }

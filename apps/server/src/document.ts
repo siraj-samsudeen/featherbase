@@ -4,6 +4,7 @@ import { DEFAULT_ID_PATTERN, idFromColumn, namingColumn, tableSchemaToZod, zodFi
 import { assertMandatoryAccess, hasMandatoryRowAccess } from './mandatory-access'
 import { sql } from './db'
 import { AppError } from './errors'
+import { refusalSubject, tableWords } from './refusals'
 import { sessionMayAddWayIn } from './session-context'
 import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
@@ -24,7 +25,7 @@ import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { FULL_READER, ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, childColumns, readerFor, restrictRow, seesEveryColumn } from './row-readers'
 import { assertRowsWritable } from './system-written'
-import { assertNotView, linkBase, linkTargetNames, rowsInView } from './views'
+import { assertNotView, linkTargetNames, rowsInView } from './views'
 import { scopedWhere } from './query'
 import { assertManagedUnchanged, assertNoManagedReference, assertRowNotManaged, holdManagedSet } from './managed-settings'
 import { assertSecurityWriter, isSecurityTable, securityRefusal } from './security-tables'
@@ -419,13 +420,7 @@ export async function assertUserPermissions(
 ) {
   await assertMandatoryAccess(user, meta, { created_by: user, ...row })
   if (await isPrivileged(user)) return
-  const map = await getScopeMap(user)
-  if (!map.size) return
-  const linkFields = meta.columns
-    .filter((f) => f.column_type === 'Reference')
-    // #1021: a link to a view holds its base's rows, scoped as such.
-    .map((f) => ({ column_name: f.column_name, reference_table: linkBase(f) }))
-  checkUserPermissions(user, meta.name, linkFields, row, map)
+  checkUserPermissions(user, meta, row, await getScopeMap(user))
 }
 
 // PERM-007: a child row is only as readable as the row it hangs on. A grant
@@ -460,24 +455,24 @@ async function assertAttachedRowReadable(table: string, row: RowValues, user: st
   const refTable = row.ref_table ? String(row.ref_table) : ''
   const refName = row.ref_name ? String(row.ref_name) : ''
   if (!refTable || !refName) return
-  const refused = () => new AppError('PermissionError', `No read permission on this ${table} row for ${user}`)
+  const refused = async () => new AppError('PermissionError', `${refusalSubject(user)} have read permission on the row this ${await tableWords(table)} is on.`)
   // A comment or file may sit on a comment, edit or file that is itself on a
   // plain row, one level deep (assertAttachedTarget); a deeper chain, which
   // only a direct write could leave, is refused rather than followed, so it
   // can never loop. The list leaves rows on such Tables out (the row's own
   // activity shows them).
-  if (ROW_ATTACHED_TABLES.has(refTable) && (await attachedToAttached(refTable, refName))) throw refused()
+  if (ROW_ATTACHED_TABLES.has(refTable) && (await attachedToAttached(refTable, refName))) throw await refused()
   const refMeta = await getMeta(refTable).catch(() => null)
-  if (!refMeta) throw refused()
+  if (!refMeta) throw await refused()
   let target: RowValues
   try {
     target = await getDoc(refTable, refName, user)
   } catch (err) {
-    if (err instanceof AppError) throw refused()
+    if (err instanceof AppError) throw await refused()
     throw err
   }
   if (SENSITIVE_HISTORY_TABLES.has(table) && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta, String(target.created_by))))
-    throw refused()
+    throw await refused()
 }
 
 // Whether a comment, edit or file is itself on another comment, edit or file.
