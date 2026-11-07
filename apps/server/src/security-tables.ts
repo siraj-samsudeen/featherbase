@@ -38,6 +38,8 @@ export const SECURITY_TABLES: ReadonlySet<string> = new Set([
   'Server Script',
   'Workflow',
   'Assignment Rule',
+  // #627: who may change which rows, and who approves.
+  'Approval Rule',
 ])
 
 /** #559: a security Table is one named above, or one whose own definition

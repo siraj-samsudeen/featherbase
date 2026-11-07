@@ -30,6 +30,7 @@ import { metaQuery, type TableMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
 import { SIDEBAR_SHORTCUT, isEditingText, useSidebarCollapsed } from '../lib/sidebar-collapsed'
 import { KindIcon } from '../lib/kind-icons'
+import { waitingQuery } from './Approvals'
 import { DataSourcesSidebar } from '../components/DataSourcesSidebar'
 import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
@@ -229,6 +230,9 @@ export function AdminShell({ wide, fullWidth = false }: { wide: boolean; fullWid
     queryFn: () => api.get<{ count: number }>('/api/people/waiting_for_access/count'),
     enabled: canManage,
   })
+  // #627: what waits for this person's approval; the menu offers it only then.
+  const approvals = useQuery({ ...waitingQuery(), refetchInterval: 60_000 })
+  const approvalCount = approvals.data?.proposals.length ?? 0
 
   // #465 D9: right after the Administrator signs in, ask who looks after the
   // instance while no System Manager has an email address.
@@ -867,6 +871,20 @@ export function AdminShell({ wide, fullWidth = false }: { wide: boolean; fullWid
               { to: '/featherbase/admin/all-tables', label: 'All tables', icon: Table, testid: 'all-tables-link' },
               // #629: everyone signed in reads the glossary.
               { to: GLOSSARY_PATH, label: 'Glossary', icon: BookOpen, testid: 'glossary-link' },
+              ...(approvalCount > 0
+                ? [{
+                    to: '/featherbase/account/approvals',
+                    search: { proposal: undefined },
+                    label: 'Your approvals',
+                    icon: ListChecks,
+                    testid: 'approvals-link',
+                    badge: (
+                      <StatusPill tone="caution">
+                        <span data-testid="approvals-count" aria-label={`${approvalCount} waiting`}>{fmtCount(approvalCount)}</span>
+                      </StatusPill>
+                    ),
+                  }]
+                : []),
               // #206: an import is a thing you did, not just rows that appeared —
               // so it has a place to be found again.
               ...(canManage ? [{ to: '/featherbase/admin/imports', label: 'Past imports', icon: History, testid: 'past-imports-link' }] : []),

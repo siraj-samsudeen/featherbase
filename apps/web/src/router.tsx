@@ -66,6 +66,7 @@ import type { BrowseContext } from './lib/warehouse'
 import { ExploreView } from './pages/Explore'
 import { parseChain, parseSelect } from './lib/explore-steps'
 import { NavPathBar } from './components/NavPathBar'
+import { Approvals } from './pages/Approvals'
 import { PaneSplit } from './components/RowPane'
 import { NavigationProvider, useAddressNavigation, useLocalNavigation } from './lib/navigation'
 import type { NavStep } from './lib/nav-path'
@@ -677,6 +678,20 @@ const findPersonRoute = createRoute({
 // #429: people who signed in but hold no role yet (System Manager only).
 // #835: the standard Person list behind the waiting filter; the person's own
 // filters live in the address like any list's.
+// #627: the changes and new rows waiting for this person's approval. An account
+// page, so an approver without Admin access opens it too.
+const approvalsRoute = createRoute({
+  getParentRoute: () => accountRoute,
+  path: 'approvals',
+  validateSearch: (search: Record<string, unknown>) => ({
+    proposal: searchString(search.proposal),
+  }),
+  component: function ApprovalsPage() {
+    const { proposal } = approvalsRoute.useSearch()
+    return <Approvals proposal={proposal} />
+  },
+})
+
 const waitingForAccessRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'waiting-for-access',
@@ -1053,7 +1068,7 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   salesTargetRoute,
-  accountRoute.addChildren([signInMethodsRoute, accessExplanationRoute]),
+  accountRoute.addChildren([signInMethodsRoute, accessExplanationRoute, approvalsRoute]),
   printRoute,
   adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
 ])

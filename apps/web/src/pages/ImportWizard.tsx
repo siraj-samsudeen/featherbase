@@ -145,6 +145,8 @@ interface SheetPlan {
     updated: number
     inserted: number
     skipped: number
+    /** #627: rows an approval rule held for approval. */
+    waiting_for_approval?: number
     failed: { sheetIndex: number; sourceIndex: number; message: string }[]
     // RVT-R1: the run identity this import was recorded under — what the
     // revert control addresses.
@@ -1743,7 +1745,7 @@ export function ImportWizard() {
         // The Import Log already records sheet_name per part, and a failed
         // row's number is only true against the sheet it came from — both
         // are lost the moment members are concatenated.
-        const total = { updated: 0, inserted: 0, skipped: 0 }
+        const total = { updated: 0, inserted: 0, skipped: 0, waiting_for_approval: 0 }
         const failed: { sheetIndex: number; sourceIndex: number; message: string }[] = []
         // Stamped on the FIRST PART ACTUALLY SENT for this target, not on
         // member 0: a member whose projected rows are all blank is skipped
@@ -1780,13 +1782,14 @@ export function ImportWizard() {
           creationStamped = true
           total.updated += report.updated
           total.inserted += report.inserted
+          total.waiting_for_approval += report.waiting_for_approval
           failed.push(...report.failed.map((f) => ({ ...f, sheetIndex: m })))
         }
         failed.sort((a, b) => plan.members.indexOf(a.sheetIndex) - plan.members.indexOf(b.sheetIndex) || a.sourceIndex - b.sourceIndex)
         // Every row refused into a Table made for them: nothing landed, and its
         // columns may be why. So this target failed, and can be corrected and
         // imported again rather than leaving an empty Table with the wrong columns.
-        if (plan.mode === 'new' && failed.length && !total.inserted && !total.updated)
+        if (plan.mode === 'new' && failed.length && !total.inserted && !total.updated && !total.waiting_for_approval)
           throw new ApiError(417, 'ValidationError', `${failed.length === 1 ? 'the 1 row was' : `all ${fmtCount(failed.length)} rows were`} refused (first: ${failLabel(plan, failed[0])})`)
         rowsRefused += failed.length
         setPlans((ps) =>
@@ -3113,6 +3116,13 @@ export function ImportWizard() {
                       {plan.result.skipped > 0 &&
                         ` (${rowCount(plan.result.skipped)} had no data in the imported columns and ${plan.result.skipped === 1 ? 'was' : 'were'} skipped)`}
                     </span>
+                    {(plan.result.waiting_for_approval ?? 0) > 0 && (
+                      <p className="text-caution" data-testid={`iw-waiting-${i}`}>
+                        {fmtCount(plan.result.waiting_for_approval ?? 0)}{' '}
+                        {plan.result.waiting_for_approval === 1 ? 'row is' : 'rows are'} waiting for approval and{' '}
+                        {plan.result.waiting_for_approval === 1 ? 'is' : 'are'} not in {plan.table} yet.
+                      </p>
+                    )}
                     <RevertControl i={i} table={plan.table} runId={plan.result.run_id} />
                   </div>
                 )}

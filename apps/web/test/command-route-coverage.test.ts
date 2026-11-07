@@ -17,6 +17,7 @@ const COVERAGE: Record<string, string> = {
   '/featherbase/sales-target': 'report capability',
   '/featherbase/account': 'account layout',
   '/featherbase/account/sign-in-methods': 'own account page',
+  '/featherbase/account/approvals': 'own account page (#627)',
   '/featherbase/account/access/$person': 'a person\'s own access page, from the account menu or their Person row (#628)',
   '/featherbase/print/$table/$name': 'requires an existing row',
   '/featherbase/admin': 'Admin layout and existing home command',

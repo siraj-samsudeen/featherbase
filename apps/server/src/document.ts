@@ -2,7 +2,8 @@ import { randomBytes } from 'node:crypto'
 import { opaqueId } from './opaque-id'
 import { DEFAULT_ID_PATTERN, idFromColumn, namingColumn, tableSchemaToZod, zodFieldErrors, type RowCapabilities } from 'shared'
 import { assertMandatoryAccess, hasMandatoryRowAccess } from './mandatory-access'
-import { sql } from './db'
+import { sql, usingTransaction } from './db'
+import { RuleRefusal, changedColumns, decide, decideUpdate, holdChange, isChecked, mailProposal, noticeGap, type HeldChange } from './approval-rules'
 import { AppError } from './errors'
 import { refusalSubject, tableWords } from './refusals'
 import { sessionMayAddWayIn } from './session-context'
@@ -903,11 +904,23 @@ interface SaveOptions {
   // Trusted import/copy writers and version-backed undo only. This is NOT
   // read from HTTP args; permissions, tiers, validation and hooks still run.
   managedValues?: RowValues
+  // #627: the platform applying an approved Change Proposal, as its maker. The approval rules
+  // were checked again at the decision, so they are not asked a second time.
+  approvedProposal?: string
 }
 
 function assertStoredFileUrl(meta: TableMeta, row: RowValues, allowed: unknown) {
   if (meta.name === 'File' && String(row.file_url ?? '') !== String(allowed ?? ''))
     throw new AppError('ValidationError', 'file_url is managed by uploads and cannot be assigned or changed')
+}
+
+function childRowsCantWait(meta: TableMeta): AppError {
+  return new AppError('ValidationError', `This change to ${meta.label ?? meta.name} waits for approval, and its sub-table rows can't wait with it. Save them on their own.`)
+}
+
+/** #627: what a held save answers: the proposal, and whether it waits. */
+function publicHeld(change: HeldChange) {
+  return { row_id: change.proposal, state: change.state }
 }
 
 export function saveDoc(...args: Parameters<typeof saveDocImpl>) {
@@ -923,7 +936,13 @@ async function saveDocImpl(
   opts: SaveOptions = {},
 ): Promise<RowValues> {
   assertRowsWritable(await getMeta(table), mode === 'insert' ? 'created' : 'saved')
-  return writeDoc(table, values, user, mode, opts)
+  try {
+    return await writeDoc(table, values, user, mode, opts)
+  } catch (error) {
+    // #627 Q4: a change no rule covers tells System Managers, once its refusal has rolled back.
+    if (error instanceof RuleRefusal && error.gap) await noticeGap(error)
+    throw error
+  }
 }
 
 // #432: the trusted path for the server's own writers into a system-written
@@ -982,7 +1001,7 @@ async function writeDoc(
     if (exists) {
       if (mode === 'insert')
         throw new AppError('ConflictError', `${table} ${values[ROW_KEY]} already exists`)
-      return updateDoc(meta, String(values[ROW_KEY]), values, user, Boolean(opts.skipPermissions), opts.managedValues)
+      return updateDoc(meta, String(values[ROW_KEY]), values, user, Boolean(opts.skipPermissions), opts.managedValues, isChecked(user, opts))
     }
     // In upsert mode an unknown name on a generated-id Table is almost
     // certainly a mistyped update — refuse it. Insert mode is different:
@@ -1020,10 +1039,22 @@ async function writeDoc(
   const childInputs = pickChildInputs(meta, values)
   const tbl = await tableRelation(table)
   let attemptedRow: RowValues = {}
+  let held: HeldChange | undefined
   const [saved] = await afterCommitOf(() => sql
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
       await holdBeforeRowLock(stx, meta, user, { ...values }, true)
+      // #627: the approval rules, on the new row as the maker would save it, before any hook.
+      if (isChecked(user, opts)) {
+        const proposed: RowValues = { ...fieldValues, ...(values[ROW_KEY] != null && values[ROW_KEY] !== '' ? { [ROW_KEY]: values[ROW_KEY] } : {}) }
+        const decision = await usingTransaction(stx, () => decide(meta, 'create', proposed, Object.keys(fieldValues), user))
+        if (decision.kind === 'refuse') throw new RuleRefusal(decision.message, decision.gap, meta.name, user)
+        if (decision.kind === 'route') {
+          if (childInputs.length) throw childRowsCantWait(meta)
+          held = await usingTransaction(stx, () => holdChange(meta, 'create', null, null, proposed, Object.keys(fieldValues), user, decision.requirements))
+          return []
+        }
+      }
       const rowId = await resolveRowId(stx, meta, values)
       const now = new Date()
       const row: RowValues = {
@@ -1087,6 +1118,11 @@ async function writeDoc(
       return inserted
     })
     .catch((err) => mapDbError(meta, err, attemptedRow.ref_table)))
+  if (held) {
+    const change = held
+    await afterDocumentCommit(() => mailProposal(change.proposal, meta.name, null, user, change.waiting_for, change.repeated))
+    return { table, [ROW_KEY]: null, pending_proposal: publicHeld(change) }
+  }
   const insertResult = await loadChildren(meta, { table, ...(saved as RowValues) })
   // EML-004: fire matching email rules post-commit. A save covers inserts too,
   // so both on_create and on_save rules are evaluated here.
@@ -1252,8 +1288,10 @@ async function updateDoc(
   user: string,
   trusted = false,
   managedValues: RowValues = {},
+  checked = false,
 ): Promise<RowValues> {
   const table = await tableRelation(meta.name)
+  let held: HeldChange | undefined
   if (values.updated_at == null)
     throw new AppError(
       'ValidationError',
@@ -1328,6 +1366,21 @@ async function updateDoc(
           `${meta.name} ${name} is cancelled and cannot be modified`,
         )
       const writableValues = stripUnwritableFields(meta.columns, writeTiers, fieldValues, existing as RowValues)
+      // #627: the approval rules, on what this save would change, before any hook runs.
+      if (checked) {
+        const changed = changedColumns(meta, existing as RowValues, writableValues)
+        const children = pickChildInputs(meta, values)
+        if (changed.length || children.length) {
+          const decision = await usingTransaction(stx, () => decideUpdate(meta, existing as RowValues, { ...(existing as RowValues), ...writableValues }, changed, user))
+          if (decision.kind === 'refuse') throw new RuleRefusal(decision.message, decision.gap, meta.name, user)
+          if (decision.kind === 'route') {
+            if (children.length) throw childRowsCantWait(meta)
+            const proposed = Object.fromEntries(changed.map((column) => [column, writableValues[column]]))
+            held = await usingTransaction(stx, () => holdChange(meta, 'update', name, existing as RowValues, proposed, changed, user, decision.requirements))
+            return existing
+          }
+        }
+      }
       const row: RowValues = { ...(existing as RowValues), ...writableValues }
       // Expose child rows to hooks under their column names (see insert path).
       for (const ci of pickChildInputs(meta, values)) row[ci.columnName] = ci.rows
@@ -1383,6 +1436,11 @@ async function updateDoc(
       return updated
     })
     .catch((err) => mapDbError(meta, err, attemptedRow.ref_table)))
+  if (held) {
+    const change = held
+    await afterDocumentCommit(() => mailProposal(change.proposal, meta.name, name, user, change.waiting_for, change.repeated))
+    return { ...(await loadChildren(meta, { table: meta.name, ...(saved as RowValues) })), pending_proposal: publicHeld(change) }
+  }
   const updateResult = await loadChildren(meta, { table: meta.name, ...(saved as RowValues) })
   // EML-004: on_save rules fire post-commit; the pre-save snapshot lets a
   // conditional rule fire only when the value transitions into the match.

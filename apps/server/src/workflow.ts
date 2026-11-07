@@ -331,36 +331,41 @@ async function notifyPendingApprovers(
   const roles = [...new Set(outgoing.map((t) => t.allowed))]
   if (roles.length === 0) return
 
-  const holders = await sql<{ parent: string; email: string | null }[]>`
-    select distinct hr.parent, u.email from has_role hr
+  const holders = await sql<{ parent: string }[]>`
+    select distinct hr.parent from has_role hr
     join person u on u.row_id = hr.parent
     where hr.parenttype = 'Person' and hr.role in ${sql(roles)}
       and u.enabled = true`
-  // A person without an email gets no mail — a user id is not an address
-  // (person-identities: email is optional contact data).
-  const eligible = holders.filter((h) => h.parent !== actingUser)
-  const approvers = eligible.filter((h) => h.email).map((h) => ({ user: h.parent, email: h.email as string }))
-  const skipped = eligible.length - approvers.length
-  if (skipped) console.info(`[workflow] ${table} ${name}: ${skipped} approver(s) have no email and were not mailed`)
-  if (approvers.length === 0) return
+  const eligible = holders.map((h) => h.parent).filter((person) => person !== actingUser)
+  if (eligible.length === 0) return
 
   const actions = outgoing.map((t) => t.action).join(', ')
   const link = rowHref(table, name)
-  const subject = `Approval required: ${table} ${name}`
-  const body =
-    `${table} ${name} has entered the "${state}" state and is awaiting your action.\n\n` +
-    `Available actions: ${actions}\n` +
-    `Open the row: ${link}`
+  await mailApprovers(eligible, {
+    subject: `Approval required: ${table} ${name}`,
+    body:
+      `${table} ${name} has entered the "${state}" state and is awaiting your action.\n\n` +
+      `Available actions: ${actions}\n` +
+      `Open the row: ${link}`,
+    ref_table: table,
+    reference_name: name,
+  })
+}
 
-  for (const approver of approvers) {
-    await queueEmail({
-      to: approver.email,
-      subject,
-      body,
-      ref_table: table,
-      reference_name: name,
-    })
-  }
+/** WF-004, and #627's Change Proposals: the one approval mail. Each enabled person with an email
+ *  gets it; a person without one gets no mail, since a user id is not an address
+ *  (person-identities: email is optional contact data). */
+export async function mailApprovers(
+  people: string[],
+  message: { subject: string; body: string; ref_table: string; reference_name: string },
+): Promise<void> {
+  if (!people.length) return
+  const rows = await sql<{ row_id: string; email: string | null }[]>`
+    select row_id, email from person where enabled = true and row_id in ${sql([...new Set(people)])} order by row_id`
+  const skipped = rows.filter((r) => !r.email).length
+  if (skipped) console.info(`[workflow] ${message.ref_table} ${message.reference_name}: ${skipped} approver(s) have no email and were not mailed`)
+  for (const approver of rows.filter((r) => r.email))
+    await queueEmail({ to: approver.email as string, ...message })
 }
 
 // Ensure any existing row without a state starts at the first state.

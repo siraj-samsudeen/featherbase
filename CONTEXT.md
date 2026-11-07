@@ -212,6 +212,10 @@ _Avoid_: site, tenant, deployment (as the layer name)
 A change to a row that waits for approval: which row, each changed column's original and proposed value, who may approve it, and how it ended (Pending, Applied, Rejected, Needs fresh review). The row doesn't change until it is approved. Written only by the platform. First built for Dash (#975), in the shape of #627.
 _Avoid_: section change request, approval ticket
 
+**Approval Rule**:
+Data that says, for one Table, who may change which rows and what happens: the change applies at once and is logged, or it waits as a Change Proposal for approvers (roles, or people an app names for the row, all or any of them). Once a Table has a rule, a change no rule covers is refused (#627).
+_Avoid_: maker-checker rule, approval policy
+
 **Workflow**:
 A role-gated state machine over a Table, whose states map to a Row's status.
 _Avoid_: state machine (as the user-facing word), approval chain

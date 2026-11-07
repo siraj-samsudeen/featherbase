@@ -22,7 +22,9 @@ import { datasetsDeclaration, forgetAppDatasets, registerAppDatasets } from './a
 import { glossaryDeclaration, syncAppGlossary, validateGlossary } from './glossary'
 import { sql, withTransaction, usingTransaction } from './db'
 import { logActivity } from './audit'
-import { invalidateMeta } from './meta'
+import { getMeta, invalidateMeta } from './meta'
+import { getDoc } from './document'
+import { getList } from './query'
 import { migrationSchema, migrationLedger, packageVersion, validateMigrations, canonical, checksum, compareVersions, applyMigrations, countLosses, describeLoss, refuse, replayForward, sameDeclaration, type Loss, type Operation } from './runtime-migrations'
 
 // Public v1 hook contract is structural: packages never import core classes.
@@ -37,6 +39,50 @@ interface PackageHookContext {
   reject(message: string, fields?: Record<string, string>): never
 }
 type Validator = (context: PackageHookContext) => void | Promise<void>
+/** #627: an app's approval resolver: names the people (Person ids) for a row. */
+type RuntimeApprovalResolver = (context: {
+  readonly table: string
+  readonly row: Readonly<Record<string, unknown>>
+  readonly documents: Pick<import('shared').RuntimeActionContext['documents'], 'get' | 'list'>
+}) => unknown
+
+// #627: a resolver reads as the platform (an approver's identity is not the reader's to see), so
+// its reach is its declaration: only the Tables it named, ordinary ones without Sub-tables. Reads
+// are awaited one at a time and end when it returns; any failure means it names nobody.
+function bindApprovalResolver(app: string, version: string, tables: readonly string[], fn: RuntimeApprovalResolver) {
+  return (table: string, row: Record<string, unknown>) => withAppIdentity(app, version, async () => {
+    let open = true
+    let pending: Promise<unknown> | undefined
+    let failed = false
+    const read = async <R>(target: string, work: () => Promise<R>): Promise<R> => {
+      if (!open || pending) { failed = true; throw new Error('Approval resolver reads must be awaited one at a time') }
+      const run = (async () => {
+        if (!tables.includes(target)) throw new Error(`The approval resolver has not declared Table ${target}`)
+        const meta = await getMeta(target)
+        if (meta.system || meta.data_source || meta.kind !== 'table' || meta.columns.some(column => column.column_type === 'Sub-table'))
+          throw new Error(`Table ${target} cannot be read by an approval resolver`)
+        return JSON.parse(JSON.stringify(await work())) as R
+      })()
+      pending = run
+      try { return await run } catch (error) { failed = true; throw error } finally { pending = undefined }
+    }
+    const documents = Object.freeze({
+      get: (target: string, rowId: string) => read(target, () => getDoc(target, rowId)),
+      list: (target: string, args: import('shared').ActionListArgs = {}) => read(target, async () => {
+        if (args.filters?.some(([, operator]) => operator === 'related' || operator === 'not related')) throw new Error('Approval resolver lists do not support related filters')
+        return (await getList(target, args)).data
+      }),
+    }) as RuntimeApprovalResolverDocuments
+    try {
+      return await fn(Object.freeze({ table, row: Object.freeze(JSON.parse(JSON.stringify(row))), documents }))
+    } finally {
+      open = false
+      if (pending) { failed = true; await pending.catch(() => {}) }
+      if (failed) throw new Error('An approval resolver read failed')
+    }
+  })
+}
+type RuntimeApprovalResolverDocuments = Parameters<RuntimeApprovalResolver>[0]['documents']
 type DestructiveGuard = (context: Pick<PackageHookContext, 'row' | 'user' | 'isNew' | 'reject'>) => void | Promise<void>
 
 // #551 (ADR 0011): an app names the platform version it was built for, dated by
@@ -103,6 +149,12 @@ const manifestSchema = z.object({
   scopeProvider: scopeProviderDeclaration.optional(),
   // #975: the instance Tables the app reads and proposes changes on.
   baseTables: baseTablesDeclaration.optional(),
+  // #627: who counts as whom for approval rules: the server module's exports under
+  // `approvalResolvers`, and the Tables they may read, as the platform.
+  approvalResolvers: z.object({
+    names: z.array(z.string().regex(/^[a-z][a-z0-9_]{0,62}$/)).min(1).refine(names => new Set(names).size === names.length),
+    tables: z.array(z.string().min(1)).default([]).refine(tables => new Set(tables).size === tables.length),
+  }).strict().optional(),
   // #620 (E2): what the app reads per instance, and the deployment variables
   // it reads. D4: which of the instance's roles should carry each app role,
   // written as App Role Binding rows once, at install.
@@ -358,6 +410,8 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
   let authorizers = new Map<string, AppProductAuthorizer>()
   let providers = new Map<string, AppScopeProvider>()
   let jobHandlers = new Map<string, RuntimeJobHandler>()
+  let approvalFns = new Map<string, RuntimeApprovalResolver>()
+  if (manifest.approvalResolvers && !manifest.server) throw new Error('Approval resolvers require a server module')
   const provider = manifest.scopeProvider
   if (provider) {
     if (!manifest.server) throw new Error('A scope provider requires a server module')
@@ -407,6 +461,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     authorizers = namedFunctions(module.authorizers, allOperations.flatMap(o => o.authorization.kind === 'product' ? [o.authorization.name] : []))
     providers = namedFunctions(module.scopeProviders, provider ? [provider.name] : [])
     jobHandlers = namedFunctions(module.jobs, (manifest.jobs ?? []).map(job => job.name))
+    approvalFns = namedFunctions(module.approvalResolvers, manifest.approvalResolvers?.names ?? [])
     for (const [table, validator] of Object.entries(module.validators ?? {})) {
       if (!names.has(table) || typeof validator !== 'function')
         throw new Error('Validators must target owned Tables')
@@ -444,7 +499,9 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     roles: manifest.roles, permissions: manifest.permissions, doc_events, runtime_package: true,
     scheduler_events: bindAppJobs({ app: manifest.name, jobs: manifest.jobs ?? [], handlers: jobHandlers, setup, datasets: manifest.datasets ?? [] }),
     runtime_identity: { version: pkg.version, digest, ledger: migrationLedger(manifest.migrations) },
-    runtime_manifest: { ...manifest, packageName: pkg.name, packageVersion: pkg.version } }
+    runtime_manifest: { ...manifest, packageName: pkg.name, packageVersion: pkg.version },
+    approval_resolvers: Object.fromEntries([...approvalFns].map(([name, fn]) =>
+      [name, bindApprovalResolver(manifest.name, pkg.version, manifest.approvalResolvers!.tables, fn)])) }
   return { name: manifest.name, title: manifest.title,
     entryTable: manifest.entryTable, clientRoot, root, version: pkg.version, digest, manifest, app,
     scopeProvider: provider ? { app: manifest.name, title: manifest.title, version: pkg.version, tables: provider.tables, identifiers: provider.identifiers ?? [], provide: providers.get(provider.name)! } : undefined,

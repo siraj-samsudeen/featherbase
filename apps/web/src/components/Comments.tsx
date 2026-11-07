@@ -14,6 +14,8 @@ interface CommentRow {
 
 export interface VersionRow {
   created_by: string
+  /** The author's name, read by the server for whoever may read the row. */
+  author_name?: string
   created_at: string
   data: {
     changed?: [string, unknown, unknown][]
@@ -22,6 +24,8 @@ export interface VersionRow {
     resolution?: { field: string; decision: 'keep' | 'source'; incoming: unknown }
     // #859: a retirement or reactivation, with the reason given to retire.
     retirement?: { action: 'retired' | 'reactivated'; reason?: string }
+    // #627: a change an approval rule held, made once these people approved it.
+    approved_by?: { id: string; name: string }[]
   } | null
 }
 

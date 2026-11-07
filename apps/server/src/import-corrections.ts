@@ -99,7 +99,7 @@ export async function annotateHistory(meta: TableMeta, row: Row, user: string, p
   return String(event.row_id)
 }
 
-export async function saveImportedRow(meta: TableMeta, input: Row, user: string, runId: string, update: boolean, managedColumns: readonly string[] = []): Promise<{ saved: Row; version?: string; changed: boolean }> {
+export async function saveImportedRow(meta: TableMeta, input: Row, user: string, runId: string, update: boolean, managedColumns: readonly string[] = []): Promise<{ saved: Row; version?: string; changed: boolean; held?: boolean }> {
   return actionTransaction(async () => {
     // #693: the same pre-row locks, in the same order, as the saveDoc below.
     await holdBeforeRowLock(sql, meta, user, { ...input }, !update)
@@ -116,6 +116,9 @@ export async function saveImportedRow(meta: TableMeta, input: Row, user: string,
     const previous = await latestVersion(meta.name, String(input.row_id))
     const managedValues = Object.fromEntries(managedColumns.filter(field => Object.hasOwn(input, field)).map(field => [field, input[field]]))
     const saved = await saveDoc(meta.name, plan?.values ?? input, user, update ? 'upsert' : 'insert', { managedValues })
+    // #627: an approval rule held this row. Nothing was written, so there is nothing to observe,
+    // reconcile or record against it; its Change Proposal waits instead.
+    if (saved.pending_proposal) return { saved, changed: false, held: true }
     for (const [field, kept] of Object.entries(plan?.protected_values ?? {})) {
       const column = meta.columns.find(c => c.column_name === field)!
       if (!same(saved[field], kept, column.column_type)) throw new AppError('ValidationError', 'An automation changed a protected import field')
