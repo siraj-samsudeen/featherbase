@@ -12,10 +12,10 @@ const origin = arg('--url') ?? process.env.FEATHERBASE_URL ?? 'http://127.0.0.1:
 const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
 let token = ''
 
-async function request(path, { method = 'GET', body } = {}) {
+async function request(path, { method = 'GET', body, as = token } = {}) {
   const response = await fetch(`${origin}${path}`, {
     method, redirect: 'manual',
-    headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': `equipment@${version}`, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': `equipment@${version}`, ...(as ? { Authorization: `Bearer ${as}` } : {}) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
   const result = await response.json().catch(() => ({}))
@@ -124,5 +124,33 @@ const closed = await job(assets['Display chiller 1'], 'Not holding temperature',
   fix: { work_done: 'Replaced the thermostat', cause: 'Faulty thermostat', spares: 'Thermostat, 1 no.', outside_service: 'Western Refrigeration AMC', repair_cost: 1850 } })
 const confirmations = (await request(`/api/table/equipment.restoration${query([['job', '=', closed.row_id]], ['row_id'])}`)).data
 if (!confirmations.length) await request('/api/save_row', { method: 'POST', body: { table: 'equipment.restoration', row: { job: closed.row_id, note: 'Holding 4 °C again' } } })
+
+// A sample ATK count left in review, so a manager can open its review page. Administrator
+// reviews; Suresh counts, so his records are made as him, through a short-lived token.
+const countName = 'ATK full count (sample)'
+const existingCount = (await request(`/api/table/equipment.count${query([['count_name', '=', countName]], ['row_id'])}`)).data
+if (!existingCount.length) {
+  let count = await request('/api/save_row', { method: 'POST', body: { table: 'equipment.count', row: {
+    count_name: countName, scope_place: places['ATK 1501'], count_kind: 'Full', starts_on: day(-1), ends_on: day(0), reviewer: 'Administrator',
+  } } })
+  await request('/api/save_row', { method: 'POST', body: { table: 'equipment.counter', row: { count: count.row_id, person: staff.row_id } } })
+  await request('/api/app_actions/equipment/start_count', { method: 'POST', body: { idempotencyKey: crypto.randomUUID(), payload: { row_id: count.row_id, updated_at: count.updated_at } } })
+  const access = await request('/api/access_tokens', { method: 'POST', body: { label: 'Assets sample count (removed after seeding)', owner: staff.row_id, expires_at: new Date(Date.now() + 600_000).toISOString() } })
+  const record = (row) => request('/api/save_row', { method: 'POST', as: access.token, body: { table: 'equipment.scan', row: { count: count.row_id, ...row } } })
+  try {
+    await record({ asset: assets['Voltas 2-ton split AC'], outcome: 'Found here', area: places['ATK Billing'] })
+    await record({ asset: assets['Billing PC, till 3'], outcome: 'Found here', area: places['ATK Billing'] })
+    await record({ asset: assets['Billing PC, till 3'], outcome: 'Found here', area: places['ATK Billing'] })
+    await record({ asset: assets['Display chiller 1'], outcome: 'Damaged', condition: 'Damaged', area: places['ATK Dairy aisle'] })
+    await record({ asset: assets['Gondola shelving, aisle 4'], outcome: 'Idle', area: places['ATK ground floor'] })
+    await record({ asset: assets['EDC card terminal 2'], outcome: 'Belongs elsewhere', area: places['ATK Dairy aisle'] })
+    await record({ typed_tag: assets['Kirloskar 62.5 kVA DG'], reason: 'Label faded by heat', outcome: 'Found here', area: places['ATK main building'] })
+    await record({ outcome: 'Not on the list', description: 'Blue plastic crate stand', new_tag: 'AST-NEW-0001', reason: 'No tag found', area: places['ATK Dairy aisle'] })
+  } finally {
+    await request(`/api/access_tokens/${encodeURIComponent(access.id)}`, { method: 'DELETE' })
+  }
+  count = await request(`/api/table/equipment.count/${count.row_id}`)
+  await request('/api/save_row', { method: 'POST', body: { table: 'equipment.count', row: { row_id: count.row_id, updated_at: count.updated_at, count_state: 'In review' } } })
+}
 
 console.log(`Assets sample data ready at ${origin}/equipment/ (${Object.keys(places).length} places, ${Object.keys(assets).length} assets; SAP numbers are SAMPLE)`)
