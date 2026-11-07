@@ -58,6 +58,18 @@ export function workspaceDependencies(appRoot, sourceRoot) {
   return names
 }
 
+/** Builds an app from an unpacked source tree that has no install yet, and lays out its shipped files. */
+export function buildUnpacked(appRoot, sourceRoot, output, env) {
+  const packages = workspaceDependencies(appRoot, sourceRoot)
+  if (packages.length) {
+    const filters = packages.flatMap((name) => ['--filter', `${name}...`])
+    const installed = spawnSync('pnpm', ['install', '--frozen-lockfile', ...filters], { cwd: sourceRoot, env, stdio: 'inherit' })
+    if (installed.status !== 0) throw new DevError(`Could not install ${packages.join(', ')} under ${sourceRoot}`)
+  }
+  buildApp({ root: appRoot }, env)
+  return copyShipped(appRoot, output)
+}
+
 async function buildPrevious(entry, output, env) {
   const response = await fetch(entry.archive)
   if (!response.ok) throw new DevError(`${entry.archive} answered HTTP ${response.status}`)
@@ -70,14 +82,7 @@ async function buildPrevious(entry, output, env) {
   if (!existsSync(join(appRoot, 'package.json'))) throw new DevError(`${entry.archive} has no ${entry.path}`)
   const { version } = JSON.parse(readFileSync(join(appRoot, 'package.json'), 'utf8'))
   if (version !== entry.version) throw new DevError(`${entry.archive} holds ${entry.path} ${version}, not ${entry.version}`)
-  const packages = workspaceDependencies(appRoot, work)
-  if (packages.length) {
-    const filters = packages.flatMap((name) => ['--filter', `${name}...`])
-    const installed = spawnSync('pnpm', ['install', '--frozen-lockfile', ...filters], { cwd: work, env, stdio: 'inherit' })
-    if (installed.status !== 0) throw new DevError(`Could not install ${packages.join(', ')} from ${entry.archive}`)
-  }
-  buildApp({ root: appRoot }, env)
-  return copyShipped(appRoot, output)
+  return buildUnpacked(appRoot, work, output, env)
 }
 
 async function main([name, output]) {
