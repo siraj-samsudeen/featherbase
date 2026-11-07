@@ -82,13 +82,13 @@ describe('#246 scope_on: only the declared Reference columns narrow rows', () =>
     await makeTable(admin, { name: STORE, id_pattern: 'prompt', columns: ['city'] })
     await expectApiError(admin.post('/api/table_def', {
       name: 'Sr Bad', columns: [{ column_name: 'title', column_type: 'Data' }], scope_on: ['title'],
-    }), { status: 400 })
+    }), { status: 417 })
     await expectApiError(admin.post('/api/table_def', {
       name: 'Sr Bad', columns: [{ column_name: 'title', column_type: 'Data' }], scope_on: ['nowhere'],
-    }), { status: 400 })
+    }), { status: 417 })
     await expectApiError(admin.post('/api/table_def', {
       name: 'Sr Bad', columns: [{ column_name: 'title', column_type: 'Data' }], scope_required: true,
-    }), { status: 400 })
+    }), { status: 417 })
   })
 })
 
@@ -116,7 +116,7 @@ describe('#246 scope_required: no Data Scope means no rows', () => {
     await expectApiError(user.post(section.url, { title: 'x', store: 'North' }), { status: 403 })
     await expectApiError(user.post(section.url, { title: 'x' }), { status: 403 })
     const [current] = await sql.unsafe(`select updated_at from featherbase.sr_section where row_id = $1`, [n])
-    await expectApiError(user.put(section.rowUrl(n), { title: 'changed', updated_at: current.updated_at }), { status: 403 })
+    await expectApiError(user.fetch(section.rowUrl(n), { method: 'PATCH', body: JSON.stringify({ title: 'changed', updated_at: current.updated_at }) }), { status: 403 })
     await expectApiError(user.delete(section.rowUrl(n)), { status: 403 })
     const [still] = await sql.unsafe(`select title from featherbase.sr_section where row_id = $1`, [n])
     expect(still.title).toBe('n')

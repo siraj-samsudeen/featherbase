@@ -402,12 +402,7 @@ export async function assertUserPermissions(
 ) {
   await assertMandatoryAccess(user, meta, { created_by: user, ...row })
   if (await isPrivileged(user)) return
-  const map = await getScopeMap(user)
-  if (!map.size) return
-  const linkFields = meta.columns
-    .filter((f) => f.column_type === 'Reference')
-    .map((f) => ({ column_name: f.column_name, reference_table: f.reference_table }))
-  checkUserPermissions(user, meta.name, linkFields, row, map)
+  checkUserPermissions(user, meta, row, await getScopeMap(user))
 }
 
 // PERM-007: a child row is only as readable as the row it hangs on. A grant

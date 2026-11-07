@@ -10,6 +10,7 @@ import {
   isPrivileged,
   permissionScope,
   permittedColumns,
+  tableScope,
 } from '../permissions'
 import { isSensitiveColumn } from '../sensitive-columns'
 import { getDriver, getSource, assertAllowed } from './registry'
@@ -292,17 +293,15 @@ async function boundScopeFilters(
   bind: Binding,
 ): Promise<SourceFilter[]> {
   if (await isPrivileged(user)) return []
-  const upMap = await getScopeMap(user)
-  if (!upMap.size) return []
+  const scope = tableScope(meta, await getScopeMap(user))
+  if (!scope) return []
+  // #246: no Data Scope on a required dimension matches no row at all.
+  if (scope.none) return [{ column: bind.pk, op: 'in', value: [] }]
   const filters: SourceFilter[] = []
-  const own = upMap.get(meta.name)
-  if (own) filters.push({ column: bind.pk, op: 'in', value: [...own] })
-  for (const c of meta.columns) {
-    if (c.column_type !== 'Reference' || !c.reference_table) continue
-    const allowed = upMap.get(c.reference_table)
-    if (!allowed) continue
-    const sc = sourceColumnFor(bind, c.column_name)
-    if (sc) filters.push({ column: sc, op: 'in_or_null', value: [...allowed] })
+  if (scope.own) filters.push({ column: bind.pk, op: 'in', value: [...scope.own] })
+  for (const ref of scope.refs) {
+    const sc = sourceColumnFor(bind, ref.column)
+    if (sc) filters.push({ column: sc, op: ref.unsetPasses ? 'in_or_null' : 'in', value: [...ref.allowed] })
   }
   return filters
 }

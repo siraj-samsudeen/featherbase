@@ -276,31 +276,80 @@ export async function getScopeMap(
   return map
 }
 
+/** #246: how a principal's Data Scope narrows one Table. `own` limits the
+ *  Table's own rows; each `refs` entry limits one Reference column, where an
+ *  unset value passes unless the Table requires scope. `none` means the
+ *  Table requires scope on a dimension the principal has no rows for: no row
+ *  is theirs. Null when nothing narrows the Table. */
+export interface TableScope {
+  own?: Set<string>
+  refs: { column: string; table: string; allowed: Set<string>; unsetPasses: boolean }[]
+  none: boolean
+  /** The scoped Tables the principal has no Data Scope on (when `none`). */
+  missing: string[]
+}
+
+interface ScopedTable {
+  name: string
+  columns: { column_name: string; column_type: string; reference_table?: string | null }[]
+  scope_on?: string[] | null
+  scope_required?: boolean | null
+}
+
+/** The ONE reading of a Table's scope declaration. Without `scope_on`, every
+ *  Reference to a scoped Table narrows (Frappe's discovery); with it, only the
+ *  named columns do. `scope_required` is fail-closed: no rows on a declared
+ *  dimension means no rows, and a row naming no value on it is not theirs. */
+export function tableScope(meta: ScopedTable, map: Map<string, Set<string>>): TableScope | null {
+  const declared = meta.scope_on?.length ? new Set(meta.scope_on) : null
+  const required = Boolean(declared && meta.scope_required)
+  const scope: TableScope = { own: map.get(meta.name), refs: [], none: false, missing: [] }
+  for (const f of meta.columns) {
+    if (f.column_type !== 'Reference' || !f.reference_table) continue
+    if (declared && !declared.has(f.column_name)) continue
+    const allowed = map.get(f.reference_table)
+    if (allowed) scope.refs.push({ column: f.column_name, table: f.reference_table, allowed, unsetPasses: !required })
+    else if (required) {
+      scope.none = true
+      if (!scope.missing.includes(f.reference_table)) scope.missing.push(f.reference_table)
+    }
+  }
+  return scope.own || scope.refs.length || scope.none ? scope : null
+}
+
+/** Could this Table narrow anyone's rows, whatever their Data Scope? Lets a
+ *  reader skip the Data Scope lookup only when the answer cannot matter. */
+export function requiresScope(meta: ScopedTable): boolean {
+  return Boolean(meta.scope_on?.length && meta.scope_required)
+}
+
 // Throws when a row (or its reference values) falls outside the user's
 // permitted values.
 export function checkUserPermissions(
   user: string,
-  table: string,
-  linkFields: { column_name: string; reference_table: string | null | undefined }[],
+  meta: ScopedTable,
   row: Record<string, unknown>,
   map: Map<string, Set<string>>,
 ) {
-  const own = map.get(table)
-  if (own && row.row_id != null && !own.has(String(row.row_id)))
+  const scope = tableScope(meta, map)
+  if (!scope) return
+  if (scope.none)
+    throw new AppError('PermissionError', `${meta.name} rows are open only to people whose Data Scope names a ${scope.missing.join(' and a ')}`)
+  if (scope.own && row.row_id != null && !scope.own.has(String(row.row_id)))
     throw new AppError(
       'PermissionError',
-      `${table} ${String(row.row_id)} is outside your permitted values`,
+      `${meta.name} ${String(row.row_id)} is outside your permitted values`,
     )
-  for (const f of linkFields) {
-    if (!f.reference_table) continue
-    const allowed = map.get(f.reference_table)
-    if (!allowed) continue
-    const value = Object.hasOwn(row, f.column_name) ? row[f.column_name] : undefined
-    if (value == null || value === '') continue
-    if (!allowed.has(String(value)))
+  for (const ref of scope.refs) {
+    const value = Object.hasOwn(row, ref.column) ? row[ref.column] : undefined
+    if (value == null || value === '') {
+      if (ref.unsetPasses) continue
+      throw new AppError('PermissionError', `A ${meta.name} row must name a ${ref.table} within your permitted values`)
+    }
+    if (!ref.allowed.has(String(value)))
       throw new AppError(
         'PermissionError',
-        `${f.reference_table} ${String(value)} is outside your permitted values`,
+        `${ref.table} ${String(value)} is outside your permitted values`,
       )
   }
 }

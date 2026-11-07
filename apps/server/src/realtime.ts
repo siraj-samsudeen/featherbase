@@ -1,7 +1,7 @@
 import type { Server } from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { credentialFromCookieHeader, endedSessionIds, resolveToken, type SessionUser } from './auth'
-import { getRoles, getScopeMap, hasPermission, isPrivileged } from './permissions'
+import { getRoles, getScopeMap, hasPermission, isPrivileged, requiresScope, tableScope } from './permissions'
 import { REALTIME_MAX_FRAME_BYTES } from 'shared'
 import { needsMandatoryRowRead } from './mandatory-access'
 
@@ -46,7 +46,7 @@ interface Client {
 async function rowInScope(principal: string, table: string, rowId: string): Promise<boolean> {
   const protectedRow = await needsMandatoryRowRead(table)
   if (!protectedRow && await isPrivileged(principal)) return true
-  if (!protectedRow && !(await getScopeMap(principal)).size) return true
+  if (!protectedRow && !(await getScopeMap(principal)).size && !(await scopeRequired(table))) return true
   const { getDoc } = await import('./document')
   try {
     await getDoc(table, rowId, principal)
@@ -60,12 +60,20 @@ async function rowInScope(principal: string, table: string, rowId: string): Prom
  *  subscriber only when the Table's own scope names it and no Reference
  *  column points at a scoped Table (where membership is now unknowable). */
 async function deletedVisible(scope: Map<string, Set<string>>, table: string, rowId: string): Promise<boolean> {
-  const own = scope.get(table)
-  if (own && !own.has(rowId)) return false
   const { getMeta } = await import('./meta')
   const meta = await getMeta(table).catch(() => null)
   if (!meta) return false
-  return !meta.columns.some((c) => c.column_type === 'Reference' && c.reference_table && scope.has(c.reference_table))
+  const narrowed = tableScope(meta, scope)
+  if (!narrowed) return true
+  if (narrowed.none || (narrowed.own && !narrowed.own.has(rowId))) return false
+  return !narrowed.refs.length
+}
+
+/** #246: a Table that refuses everyone without a Data Scope on its dimensions. */
+async function scopeRequired(table: string): Promise<boolean> {
+  const { getMeta } = await import('./meta')
+  const meta = await getMeta(table).catch(() => null)
+  return meta ? requiresScope(meta) : false
 }
 
 /** May this subscriber see this list or row event? Decided against the
@@ -81,7 +89,7 @@ export async function eventVisibleTo(principal: string, msg: RealtimeEvent): Pro
   if (protectedRow) return msg.event !== 'deleted' && rowInScope(principal, payload.table, String(payload.row_id))
   if (await isPrivileged(principal)) return true
   const scope = await getScopeMap(principal)
-  if (!scope.size) return true
+  if (!scope.size && !(await scopeRequired(payload.table))) return true
   const rowId = String(payload.row_id)
   return msg.event === 'deleted' ? deletedVisible(scope, payload.table, rowId) : rowInScope(principal, payload.table, rowId)
 }
