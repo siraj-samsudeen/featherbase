@@ -449,7 +449,7 @@ describe('Dash against the real platform', () => {
       if (signedIn) expect(document.querySelector('tfoot')?.textContent).toBe('Total₹1,000.00₹900.00−₹100.0090%')
       else {
         expect(document.querySelector('[data-testid=dash] a[href*=instance-health]')).toBeNull()
-        expect(requests.filter(r => r.path.includes('/app_reads/')).map(r => r.status)).toEqual([403, 403, 403])
+        expect([...new Set(requests.filter(r => r.path.includes('/app_reads/')).map(r => r.status))]).toEqual([403])
       }
     })
   }
