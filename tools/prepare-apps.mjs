@@ -26,6 +26,8 @@ const steps = [
   ['run', 'build', '--prefix', 'test-apps/scope-proof'],
   ['ci', '--prefix', 'client-apps/jeyarama/dash', '--ignore-scripts'],
   ['run', 'build', '--prefix', 'client-apps/jeyarama/dash'],
+  ['ci', '--prefix', 'client-apps/jeyarama/equipment', '--ignore-scripts'],
+  ['run', 'build', '--prefix', 'client-apps/jeyarama/equipment'],
 ]
 for (const args of steps) {
   // npm is a .cmd file on Windows, which Node runs only through a shell. These

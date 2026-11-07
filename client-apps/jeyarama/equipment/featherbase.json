@@ -51,7 +51,7 @@
         { "column_name": "asset_type", "label": "Type", "column_type": "Reference", "reference_table": "equipment.asset_type", "reqd": true, "in_list_view": true },
         { "column_name": "place", "label": "Place", "column_type": "Reference", "reference_table": "equipment.place", "reqd": true, "in_list_view": true },
         { "column_name": "area", "label": "Area in the place", "column_type": "Data" },
-        { "column_name": "status", "label": "Status", "column_type": "Choice", "choices": "In use\nNot in use\nDisposed", "default_value": "In use", "reqd": true, "in_list_view": true },
+        { "column_name": "asset_status", "label": "Status", "column_type": "Choice", "choices": "In use\nNot in use\nDisposed", "default_value": "In use", "reqd": true, "in_list_view": true },
         { "column_name": "make", "label": "Make", "column_type": "Data" },
         { "column_name": "model", "label": "Model", "column_type": "Data" },
         { "column_name": "serial_no", "label": "Serial number", "column_type": "Data" },
