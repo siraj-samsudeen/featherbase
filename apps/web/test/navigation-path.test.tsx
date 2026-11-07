@@ -31,16 +31,30 @@ async function addRegionFilter() {
   await chooseRegion('Kerala')
 }
 
-test('a list shows a path bar whose one step names the list', async ({ admin }) => {
+// #1013: one step is no path, and would only repeat the page's own heading.
+// Someone with no remembered walk has nothing to reopen either.
+test('a list with one step shows no path bar', async ({ admin }) => {
   await seedSites(admin)
   await renderApp(tableHref(SITE), admin)
+  await screen.findByTestId('filter-field')
+  await screen.findAllByTestId('row-check')
+  expect(screen.queryByRole('navigation', { name: 'Path' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Recent paths' })).not.toBeInTheDocument()
+})
+
+test('going back to the first step of a walk keeps the bar, so Forward stays reachable', async ({ admin }) => {
+  await seedSites(admin)
+  await renderApp(tableHref(SITE), admin)
+  await addRegionFilter()
+  await waitFor(() => expect(current()).toHaveTextContent('Region: Kerala'))
+  fireEvent.click(screen.getByRole('button', { name: 'Back' }))
   await waitFor(() => expect(current()).toHaveTextContent(SITE))
+  expect(screen.getByRole('button', { name: 'Forward' })).toBeEnabled()
 })
 
 test('adding a filter is a new step named by the filter', async ({ admin }) => {
   await seedSites(admin)
   await renderApp(tableHref(SITE), admin)
-  await screen.findByRole('navigation', { name: 'Path' })
   await addRegionFilter()
   await waitFor(() => expect(current()).toHaveTextContent('Region: Kerala'))
   expect(within(pathNav()).getAllByRole('button')).toHaveLength(2)
@@ -49,19 +63,18 @@ test('adding a filter is a new step named by the filter', async ({ admin }) => {
 test("the browser's back button returns to the step before", async ({ admin }) => {
   await seedSites(admin)
   const { router } = await renderApp(tableHref(SITE), admin)
-  await screen.findByRole('navigation', { name: 'Path' })
   await addRegionFilter()
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(2))
   ;(router as unknown as { history: { back: () => void } }).history.back()
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(3))
-  expect(current()).toHaveTextContent(SITE)
+  // That entry's address holds no walk, so it reads as any plain list (#1013).
+  expect(screen.queryByRole('navigation', { name: 'Path' })).not.toBeInTheDocument()
 })
 
 test("the path's Back is the browser's back, so a new step after it leaves no stray history behind", async ({ admin }) => {
   await seedSites(admin)
   const { router } = await renderApp(tableHref(SITE), admin)
   const history = (router as unknown as { history: { back: () => void; canGoBack: () => boolean } }).history
-  await screen.findByRole('navigation', { name: 'Path' })
   await addRegionFilter()
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(2))
   fireEvent.click(screen.getByRole('button', { name: 'Back' }))
@@ -80,7 +93,6 @@ test("the path's Back is the browser's back, so a new step after it leaves no st
 test('choosing an earlier step brings back its filters', async ({ admin }) => {
   await seedSites(admin)
   await renderApp(tableHref(SITE), admin)
-  await screen.findByRole('navigation', { name: 'Path' })
   await addRegionFilter()
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(2))
   fireEvent.click(within(pathNav()).getByRole('button', { name: /Nv Site/ }))
@@ -92,7 +104,6 @@ test('choosing an earlier step brings back its filters', async ({ admin }) => {
 test('the address carries row ids and column names, never names', async ({ admin }) => {
   await seedSites(admin)
   const { router } = await renderApp(tableHref(SITE), admin)
-  await screen.findByRole('navigation', { name: 'Path' })
   await addRegionFilter()
   await waitFor(() => expect(pathParam(router)).toContain('"region"'))
   expect(pathParam(router)).not.toContain('Kerala')
@@ -111,14 +122,14 @@ test("a step on a row the viewer can't read is named neutrally, never by its id"
 
 test('a filter on several linked rows names each of them', async ({ admin }) => {
   await seedSites(admin)
-  const path: NavPath = { steps: [{ screen: 'list', table: SITE, filters: [['region', 'in', ['KL', 'TN']]] }], at: 0 }
+  const path: NavPath = { steps: [{ screen: 'list', table: SITE }, { screen: 'list', table: SITE, filters: [['region', 'in', ['KL', 'TN']]] }], at: 1 }
   await renderApp(`${tableHref(SITE)}?path=${encodeURIComponent(encodePath(path))}`, admin)
   await waitFor(() => expect(current()).toHaveTextContent('Region in Kerala · KL, Tamil Nadu · TN'))
 })
 
 test("a filter on rows the viewer can't read names them neutrally, never by their ids", async ({ admin }) => {
   await seedSites(admin)
-  const path: NavPath = { steps: [{ screen: 'list', table: SITE, filters: [['region', 'not in', ['no-such-77']]] }], at: 0 }
+  const path: NavPath = { steps: [{ screen: 'list', table: SITE }, { screen: 'list', table: SITE, filters: [['region', 'not in', ['no-such-77']]] }], at: 1 }
   await renderApp(`${tableHref(SITE)}?path=${encodeURIComponent(encodePath(path))}`, admin)
   await waitFor(() => expect(current()).toHaveTextContent('Region not in A row you cannot see'))
   expect(pathNav()).not.toHaveTextContent('no-such-77')
@@ -126,7 +137,7 @@ test("a filter on rows the viewer can't read names them neutrally, never by thei
 
 test('a filter on the row id names the row', async ({ admin }) => {
   await seedSites(admin)
-  const path: NavPath = { steps: [{ screen: 'list', table: SITE, filters: [['row_id', '=', 'ENK']] }], at: 0 }
+  const path: NavPath = { steps: [{ screen: 'list', table: SITE }, { screen: 'list', table: SITE, filters: [['row_id', '=', 'ENK']] }], at: 1 }
   await renderApp(`${tableHref(SITE)}?path=${encodeURIComponent(encodePath(path))}`, admin)
   await waitFor(() => expect(current()).toHaveTextContent('Row ID: Enchakkal · ENK'))
 })
@@ -136,7 +147,6 @@ test('Copy link copies the address of this step', async ({ admin }) => {
   const writeText = vi.fn().mockResolvedValue(undefined)
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
   const { router } = await renderApp(tableHref(SITE), admin)
-  await screen.findByRole('navigation', { name: 'Path' })
   await addRegionFilter()
   await waitFor(() => expect(pathParam(router)).toBeTruthy())
   fireEvent.click(screen.getByRole('button', { name: 'Copy link' }))
@@ -148,7 +158,6 @@ test('Copy link copies the address of this step', async ({ admin }) => {
 test('a walk is listed under Recent paths by its names after signing in again', async ({ admin }) => {
   await seedSites(admin)
   const first = await renderApp(tableHref(SITE), admin)
-  await screen.findByRole('navigation', { name: 'Path' })
   await addRegionFilter()
   await waitFor(() => expect(current()).toHaveTextContent('Region: Kerala'))
   // The walk is saved to the person's settings before the next sign-in.
@@ -158,8 +167,11 @@ test('a walk is listed under Recent paths by its names after signing in again', 
   })
   first.unmount()
 
-  await renderApp(tableHref(REGION), admin)
-  fireEvent.click(await screen.findByRole('button', { name: 'Recent paths' }))
+  // #1013: a plain list shows no bar, only the way back to remembered walks.
+  await renderApp(tableHref(SITE), admin)
+  const recent = await screen.findByRole('button', { name: 'Recent paths' })
+  expect(screen.queryByRole('navigation', { name: 'Path' })).not.toBeInTheDocument()
+  fireEvent.click(recent)
   const item = await screen.findByRole('menuitem', { name: `${SITE} › Region: Kerala · KL` })
   fireEvent.click(item)
   await waitFor(() => expect(current()).toHaveTextContent('Region: Kerala'))
@@ -168,6 +180,7 @@ test('a walk is listed under Recent paths by its names after signing in again', 
 
 test("a row page's path bar names the row", async ({ admin }) => {
   await seedSites(admin)
-  await renderApp(`${tableHref(PLANT)}/row/1503`, admin)
+  const path: NavPath = { steps: [{ screen: 'list', table: PLANT }, { screen: 'row', table: PLANT, row: '1503' }], at: 1 }
+  await renderApp(`${tableHref(PLANT)}/row/1503?path=${encodeURIComponent(encodePath(path))}`, admin)
   await waitFor(() => expect(current()).toHaveTextContent('Enchakkal Supermarket · 1503'))
 })
