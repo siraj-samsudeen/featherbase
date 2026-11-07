@@ -40,7 +40,7 @@
             "record_number_column": "employee_id_stylehr",
             "person_column": "person",
             "name_column": "name",
-            "status_column": "employee_status",
+            "status_column": "status",
             "current_status": "Current",
             "provider_record_key": "employee_id",
             "identifiers": {
