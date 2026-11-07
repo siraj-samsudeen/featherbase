@@ -179,3 +179,30 @@ test('a term saved elsewhere shows when the glossary is opened again (Codex revi
   await user.click(await screen.findByTestId('glossary-link'))
   expect(await screen.findByRole('heading', { level: 3, name: 'Planogram' })).toBeInTheDocument()
 })
+
+// #1037: a term may carry a picture. Checklist in #1037's first comment.
+test('a term\'s picture shows under its definition and opens full size; a term without one shows none (items 2, 3, 4, 5)', async ({ admin, createUser }) => {
+  await addTerm(admin, { term: 'Site', definition: 'A place the business works from.', picture: '/files/sites.png' })
+  await addTerm(admin, { term: 'Plant', definition: 'A SAP plant.' })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Glossary Reader' } })
+  await grantRole(admin, { table: 'Person', role: 'Glossary Reader', can_read: true })
+  const reader = await createUser({ email: 'reader@example.test', roles: ['Glossary Reader'] })
+  await renderApp('/featherbase/admin/glossary', reader)
+  await waitFor(() => expect(screen.getAllByTestId('glossary-term')).toHaveLength(2))
+  const [plant, site] = screen.getAllByTestId('glossary-term')
+  const picture = within(site).getByRole('img', { name: 'Picture for Site' })
+  expect(picture).toHaveAttribute('src', '/files/sites.png')
+  expect(within(site).getByRole('link', { name: 'Open the picture for Site full size' })).toHaveAttribute('href', '/files/sites.png')
+  expect(within(site).getByRole('link', { name: 'Open the picture for Site full size' })).toHaveAttribute('target', '_blank')
+  expect(within(plant).queryByRole('img')).not.toBeInTheDocument()
+})
+
+test('the term form offers a Picture right after the definition (item 1)', async ({ admin }) => {
+  await renderApp('/featherbase/admin/table/glossary-term/new', admin)
+  const definition = await screen.findByLabelText('Definition')
+  const attach = await screen.findByRole('button', { name: /Attach image — Picture/ })
+  const fields = [...document.querySelectorAll('[data-field]')].map((el) => el.getAttribute('data-field'))
+  expect(fields.indexOf('picture')).toBe(fields.indexOf('definition') + 1)
+  expect(definition).toBeInTheDocument()
+  expect(attach).toBeInTheDocument()
+})
