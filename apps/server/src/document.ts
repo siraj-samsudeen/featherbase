@@ -25,7 +25,7 @@ import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { FULL_READER, ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, childColumns, readerFor, restrictRow, seesEveryColumn } from './row-readers'
 import { assertRowsWritable } from './system-written'
-import { assertNotView, linkBase, linkTargetNames, rowsInView } from './views'
+import { assertNotView, linkTargetNames, rowsInView } from './views'
 import { scopedWhere } from './query'
 import { assertManagedUnchanged, assertNoManagedReference, assertRowNotManaged, holdManagedSet } from './managed-settings'
 import { assertSecurityWriter, isSecurityTable, securityRefusal } from './security-tables'
@@ -420,13 +420,7 @@ export async function assertUserPermissions(
 ) {
   await assertMandatoryAccess(user, meta, { created_by: user, ...row })
   if (await isPrivileged(user)) return
-  const map = await getScopeMap(user)
-  if (!map.size) return
-  const linkFields = meta.columns
-    .filter((f) => f.column_type === 'Reference')
-    // #1021: a link to a view holds its base's rows, scoped as such.
-    .map((f) => ({ column_name: f.column_name, reference_table: linkBase(f) }))
-  checkUserPermissions(user, meta.name, linkFields, row, map)
+  checkUserPermissions(user, meta, row, await getScopeMap(user))
 }
 
 // PERM-007: a child row is only as readable as the row it hangs on. A grant
