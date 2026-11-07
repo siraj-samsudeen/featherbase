@@ -278,7 +278,7 @@ export function FormView({
     fireHandler(fieldname, next)
   }
 
-  const status = String((baseline as Record<string, unknown>).status ?? 'draft')
+  const status = String((baseline as Record<string, unknown>).submission_status ?? 'draft')
   const submittable = Boolean(m.is_submittable) && !isNew
   // EDS-13: a bound Table on a read-only source renders with no write
   // affordance at all — every field read-only, Save/Rename absent.
@@ -1578,8 +1578,8 @@ export function LinkControl({
   // A filter has its own clear control and stays a filter: no pane or open.
   const hasValue = Boolean(value) && query === null && !forFilter && !(anyTable && targetMeta.isError)
 
-  // The floating list is placed once, under the box; scrolling or resizing
-  // would leave it behind, so either closes it.
+  // The floating list is placed once, beside the box; scrolling the page or
+  // resizing would leave it behind, so either closes it.
   useEffect(() => {
     if (!floating || !open) return
     // The list's own scrolling isn't the page moving away from it.
@@ -1603,18 +1603,16 @@ export function LinkControl({
 
   function openList() {
     const rect = floating ? box.current?.getBoundingClientRect() : undefined
-    if (!rect) setPlace(null)
-    else {
-      // Under the box, or over it where there's more room: never off the window.
-      const below = window.innerHeight - rect.bottom - 12
-      const above = rect.top - 12
-      setPlace({
-        left: rect.left,
-        width: Math.max(rect.width, 224),
-        ...(below >= 200 || below >= above
-          ? { top: rect.bottom + 4, maxHeight: below }
-          : { bottom: window.innerHeight - rect.top + 4, maxHeight: above }),
-      })
+    if (rect) {
+      // Scrolling closes the list, so it has to fit in the window where it opens.
+      const below = window.innerHeight - rect.bottom - 8
+      const above = rect.top - 8
+      const across = { left: rect.left, width: Math.max(rect.width, 224) }
+      setPlace(below < 240 && above > below
+        ? { ...across, bottom: window.innerHeight - rect.top + 4, maxHeight: above }
+        : { ...across, top: rect.bottom + 4, maxHeight: below })
+    } else {
+      setPlace(null)
     }
     setOpen(true)
   }

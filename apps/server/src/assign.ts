@@ -21,10 +21,9 @@ export async function createAssignment(
       ref_table: table,
       reference_name: name,
       description: description ?? `Assigned ${table} ${name}`,
-      // NOTE: ToDo's own open/closed state — renamed from `status` because the
-      // generic `status` (draft/submitted/cancelled) is now a reserved
-      // STANDARD_COLUMNS name every Table gets (see workflow.ts's
-      // WorkflowState.target_status for the same collision).
+      // NOTE: ToDo's own open/closed state — kept apart from the
+      // generic `submission_status` (draft/submitted/cancelled), a reserved
+      // STANDARD_COLUMNS name every Table gets.
       todo_status: 'Open',
     },
     assignedBy,

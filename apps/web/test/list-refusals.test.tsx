@@ -43,7 +43,7 @@ test('a bulk delete that meets a row the server will not delete deletes nothing 
   expect(await screen.findByTestId('bulk-error')).toHaveTextContent(
     'No rows were deleted. r2: Lrf Bulk r2 is submitted and cannot be deleted (cancel it first)',
   )
-  expect(((await admin.get(`/api/table/${enc('Lrf Bulk')}/r2`)) as { status: string }).status).toBe('submitted')
+  expect(((await admin.get(`/api/table/${enc('Lrf Bulk')}/r2`)) as { submission_status: string }).submission_status).toBe('submitted')
   // All-or-nothing: the rows before and after the refused one are still there.
   expect(((await admin.get(`/api/table/${enc('Lrf Bulk')}`)) as { data: unknown[] }).data).toHaveLength(3)
 })

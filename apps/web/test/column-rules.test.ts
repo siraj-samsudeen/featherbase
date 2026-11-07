@@ -40,10 +40,13 @@ describe('checkColumn', () => {
     expect(v?.error).toMatch(/database name/)
     expect(v?.fix).toBe('date_of_birth')
   })
+  it('leaves status free for a business column (#1022)', () => {
+    expect(checkColumn(col('status'), [], 'Employee')).toBeNull()
+  })
   it('flags reserved names and offers the table-prefixed fix', () => {
-    const v = checkColumn(col('status'), [], 'Employee')
+    const v = checkColumn(col('submission_status'), [], 'Employee')
     expect(v?.error).toMatch(/built-in/)
-    expect(v?.fix).toBe('employee_status')
+    expect(v?.fix).toBe('employee_submission_status')
   })
   // #132 / PR #174: the physical row key is row_id now, so `name` is the
   // affirmative case the whole rename exists for — it must pass clean.
@@ -61,21 +64,21 @@ describe('checkColumn', () => {
     expect(v?.fix).toBeUndefined()
   })
   it('offers a fix only when the resulting database name is legal', () => {
-    expect(checkColumn(col('status'), [])).toEqual({
-      error: '“status” is a built-in column every table gets', fix: undefined,
+    expect(checkColumn(col('submission_status'), [])).toEqual({
+      error: '“submission_status” is a built-in column every table gets', fix: undefined,
     })
-    expect(checkColumn(col('status'), [], 'x'.repeat(64))).toEqual({
-      error: '“status” is a built-in column every table gets', fix: undefined,
+    expect(checkColumn(col('submission_status'), [], 'x'.repeat(64))).toEqual({
+      error: '“submission_status” is a built-in column every table gets', fix: undefined,
     })
-    for (const name of ['!!!', ' Status ', '2'.repeat(64)]) {
+    for (const name of ['!!!', ' Position ', '2'.repeat(64)]) {
       const verdict = checkColumn(col(name), [])
       // Spaces around a reserved name are ignored; a slug that is empty,
       // reserved or too long is not a safe one-click repair.
       expect(verdict?.fix).toBeUndefined()
       expect(verdict?.error).toMatch(/built-in|database name/)
     }
-    const self = col('status')
-    expect(checkColumn(self, [self, col('other')], 'Employee')?.fix).toBe('employee_status')
+    const self = col('submission_status')
+    expect(checkColumn(self, [self, col('other')], 'Employee')?.fix).toBe('employee_submission_status')
   })
   it('flags duplicates', () => {
     const a = col('x')

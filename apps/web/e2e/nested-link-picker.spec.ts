@@ -47,3 +47,31 @@ test("a person's role is picked from a list that the grid does not cut off", asy
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/role-picked-saved.png` })
   })
 })
+
+// A role cell at the bottom of the window has no room below it, and scrolling
+// closes the list, so a list dropping below would be out of reach.
+test('a role cell at the bottom of the window opens its list upward', async ({ session, request }) => {
+  const auth = await adminAuth(request)
+  const made = await request.post('/api/save_row', {
+    headers: auth,
+    data: { table: 'Person', row: { email: `nested-link-low-${Date.now()}@example.com`, enabled: true } },
+  })
+  expect(made.status()).toBe(201)
+  const { row_id } = (await made.json()) as { row_id: string }
+
+  await session.visit(rowHref('Person', row_id)).assertHas('[data-testid="add-row-roles"]')
+
+  await session.step('the list for a cell at the very bottom is fully inside the window', async ({ page }) => {
+    await page.getByTestId('add-row-roles').click()
+    const cell = page.getByTestId('table-roles').locator('[data-childfield="role"]')
+    const at = (await cell.boundingBox())!
+    await page.setViewportSize({ width: 1280, height: Math.ceil(at.y + at.height) + 4 })
+    await cell.fill('Sys')
+    const option = page.getByTestId('link-options-role').getByTestId('link-option').filter({ hasText: 'System Manager' })
+    await expect(option).toBeVisible()
+    const box = (await option.boundingBox())!
+    expect(await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.textContent, [box.x + box.width / 2, box.y + box.height / 2])).toBe('System Manager')
+    await option.click()
+    await expect(cell).toHaveValue('System Manager')
+  })
+})

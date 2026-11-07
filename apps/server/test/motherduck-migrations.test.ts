@@ -35,7 +35,7 @@ const laterMain = ['0012_table_settings_storage_identity.sql', '0013_reading_pre
   '0141_any_table_link.sql', '0142_everyone_roles.sql', '0143_access_auditor_role.sql',
   '0144_access_request.sql', '0145_archived_tables.sql', '0146_one_motherduck_token.sql',
   '0147_row_retirement.ts', '0148_deletion_record.sql', '0149_roster_first_sign_in.sql',
-  '0150_operation_permissions.ts', '0151_change_proposal.sql']
+  '0150_operation_permissions.ts', '0151_change_proposal.sql', '0152_submission_status.ts']
 const pendingAfterLabels = [...additions, '0010_copy_refresh_schedule.sql', ...laterMain]
 const allMigrations = [...Object.keys(mainHistory), ...pendingAfterLabels]
 const oldLabels = { postgres: 'PostgreSQL', mysql: 'MySQL', duckdb: 'DuckDB', 'csv-folder': 'CSV folder' }
@@ -157,13 +157,14 @@ it('upgrades the historical branch ledger without replacing its data', async () 
     await scratch.db`insert into featherbase.import_log (row_id, ref_table, run_id) values ('migration-import', 'Person', 'historical-run')`
     await scratch.db`insert into featherbase.version (row_id, ref_table, ref_name, data)
       values ('migration-version', 'Person', 'Administrator', '{"fixture":true}')`
+    // Simple protocol: a prepared `select *` refuses to outlive a change of its columns.
     const snapshot = async () => ({
-      source: await scratch.db`select * from featherbase.data_source where row_id = 'migration-fixture'`,
-      catalog: await scratch.db`select * from featherbase.data_source_catalog`,
-      copy: await scratch.db`select * from featherbase.table_copy`,
-      log: await scratch.db`select * from featherbase.import_log where row_id = 'migration-import'`,
-      version: await scratch.db`select * from featherbase.version where row_id = 'migration-version'`,
-      native: await scratch.db`select row_id, full_name from featherbase.person where row_id = 'Administrator'`,
+      source: await scratch.db`select * from featherbase.data_source where row_id = 'migration-fixture'`.simple(),
+      catalog: await scratch.db`select * from featherbase.data_source_catalog`.simple(),
+      copy: await scratch.db`select * from featherbase.table_copy`.simple(),
+      log: await scratch.db`select * from featherbase.import_log where row_id = 'migration-import'`.simple(),
+      version: await scratch.db`select * from featherbase.version where row_id = 'migration-version'`.simple(),
+      native: await scratch.db`select row_id, full_name from featherbase.person where row_id = 'Administrator'`.simple(),
     })
     const before = await snapshot()
     expect(await scratch.migrate.pendingMigrations()).toEqual(['0006_readable_labels.sql', ...pendingAfterLabels])
@@ -171,10 +172,11 @@ it('upgrades the historical branch ledger without replacing its data', async () 
     // #969: everything but the source row survives; the token table is gone.
     const after = await snapshot()
     // #859: the upgrade also adds three empty retirement columns; every value stays.
+    // #1022: and the lifecycle column changes its name, keeping its value.
     const held = (snap: Record<string, readonly Record<string, unknown>[]>) => Object.fromEntries(Object.entries(snap).map(([k, rows]) =>
-      [k, rows.map(({ retired_at, retired_by, retired_reason, ...row }) => {
+      [k, rows.map(({ retired_at, retired_by, retired_reason, status, submission_status, ...row }) => {
         expect([retired_at ?? null, retired_by ?? null, retired_reason ?? null]).toEqual([null, null, null])
-        return row
+        return { ...row, lifecycle: status ?? submission_status }
       })]))
     expect(held({ ...after, source: [] } as never)).toEqual(held({ ...before, source: [] } as never))
     expect(after.source).toEqual([expect.objectContaining({ engine: 'motherduck', access: 'read_only', databases: [{ name: 'fixture', owner: 'This account' }] })])
