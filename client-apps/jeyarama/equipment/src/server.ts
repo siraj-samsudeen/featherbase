@@ -1,5 +1,6 @@
 import { fixByFor, isOpen } from './jobRules'
 import { countActions, prepareCount, prepareCounter, prepareDecision, prepareScan } from './countServer'
+import { custodyActions, prepareClearance, prepareCustody, prepareTransfer, prepareTransferLine } from './custodyServer'
 
 // Featherbase runtime hook API v1. Structural contract; no core dependency.
 export interface Context {
@@ -108,6 +109,7 @@ export const platformVersion = '2026-10'
 export const validators = {
   'equipment.job': prepareJob, 'equipment.restoration': prepareRestoration, 'equipment.place': preparePlace,
   'equipment.count': prepareCount, 'equipment.counter': prepareCounter, 'equipment.scan': prepareScan, 'equipment.count_decision': prepareDecision,
+  'equipment.custody': prepareCustody, 'equipment.clearance': prepareClearance, 'equipment.transfer': prepareTransfer, 'equipment.transfer_line': prepareTransferLine,
 }
-export const actions = { ...countActions }
+export const actions = { ...countActions, ...custodyActions }
 export const jobs = {}

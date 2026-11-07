@@ -9,9 +9,15 @@
   "actions": {
     "version": 2,
     "operations": {
-      "start_count": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } }
+      "start_count": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "issue_custody": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "return_custody": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "dispatch_transfer": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "receive_line": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "confirm_finance": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } }
     },
-    "tables": ["equipment.count", "equipment.counter", "equipment.count_expected", "equipment.asset", "equipment.place"]
+    "tables": ["equipment.count", "equipment.counter", "equipment.count_expected", "equipment.asset", "equipment.place",
+      "equipment.custody", "equipment.transfer", "equipment.transfer_line", "equipment.entity"]
   },
   "migrations": [],
   "releaseNotes": [
@@ -84,7 +90,7 @@
         { "column_name": "owner_entity", "label": "Legal owner", "column_type": "Reference", "reference_table": "equipment.entity", "in_list_view": true },
         { "column_name": "operator_entity", "label": "Operator", "column_type": "Reference", "reference_table": "equipment.entity" },
         { "column_name": "cost_centre", "label": "Cost centre", "column_type": "Data" },
-        { "column_name": "custodian", "label": "Custodian", "column_type": "Reference", "reference_table": "Person" },
+        { "column_name": "custodian", "label": "Custodian (person ID)", "column_type": "Data" },
         { "column_name": "location_custodian", "label": "Location custodian (shared equipment)", "column_type": "Check", "default_value": "0" },
         { "column_name": "sap_company_code", "label": "SAP company code", "column_type": "Data" },
         { "column_name": "sap_asset_no", "label": "SAP asset number", "column_type": "Data", "in_list_view": true },
@@ -227,6 +233,81 @@
         { "column_name": "decision", "label": "Decision", "column_type": "Choice", "choices": "Recount\nFound later\nMapping corrected\nTo Loss Prevention\nPropose retirement to Finance\nCapitalize\nControlled item\nThird-party", "reqd": true, "in_list_view": true },
         { "column_name": "note", "label": "Note", "column_type": "Data" }
       ]
+    },
+    {
+      "name": "equipment.custody",
+      "label": "Custody",
+      "module": "Assets",
+      "id_pattern": "CUS-.#####",
+      "title_column": "custody_state",
+      "access_policy": { "version": 1, "roles": ["Assets Member", "Assets Technician", "Assets Manager"] },
+      "columns": [
+        { "column_name": "asset", "label": "Asset", "column_type": "Reference", "reference_table": "equipment.asset", "reqd": true, "in_list_view": true },
+        { "column_name": "custodian", "label": "Custodian (person ID)", "column_type": "Data", "reqd": true, "in_list_view": true },
+        { "column_name": "custodian_kind", "label": "Kind", "column_type": "Choice", "choices": "Employee\nLocation custodian", "default_value": "Employee", "reqd": true },
+        { "column_name": "custody_state", "label": "State", "column_type": "Choice", "choices": "Pending\nAccepted\nNot with me\nReturn requested\nReturned", "default_value": "Pending", "reqd": true, "in_list_view": true },
+        { "column_name": "issued_at", "label": "Issued at", "column_type": "Datetime" },
+        { "column_name": "responded_at", "label": "Answered at", "column_type": "Datetime" },
+        { "column_name": "returned_at", "label": "Returned at", "column_type": "Datetime" },
+        { "column_name": "note", "label": "Note", "column_type": "Data" }
+      ]
+    },
+    {
+      "name": "equipment.clearance",
+      "label": "Clearance",
+      "module": "Assets",
+      "id_pattern": "CLR-.####",
+      "title_column": "person",
+      "access_policy": { "version": 1, "roles": ["Assets Member", "Assets Technician", "Assets Manager"] },
+      "columns": [
+        { "column_name": "person", "label": "Employee (person ID)", "column_type": "Data", "reqd": true, "in_list_view": true },
+        { "column_name": "reason", "label": "Reason", "column_type": "Choice", "choices": "Leaving\nMoving", "default_value": "Leaving", "reqd": true, "in_list_view": true },
+        { "column_name": "leaving_date", "label": "Leaving date", "column_type": "Date", "reqd": true, "in_list_view": true },
+        { "column_name": "clearance_state", "label": "State", "column_type": "Choice", "choices": "Open\nCleared", "default_value": "Open", "reqd": true, "in_list_view": true },
+        { "column_name": "note", "label": "Note", "column_type": "Data" }
+      ]
+    },
+    {
+      "name": "equipment.transfer",
+      "label": "Transfer",
+      "module": "Assets",
+      "id_pattern": "TRF-.#####",
+      "title_column": "reason",
+      "access_policy": { "version": 1, "roles": ["Assets Member", "Assets Technician", "Assets Manager"] },
+      "columns": [
+        { "column_name": "transfer_kind", "label": "Kind", "column_type": "Choice", "choices": "Within site\nBetween sites\nTemporary loan\nRepair with vendor\nBetween companies", "reqd": true, "in_list_view": true },
+        { "column_name": "from_place", "label": "From", "column_type": "Reference", "reference_table": "equipment.place", "reqd": true, "in_list_view": true },
+        { "column_name": "to_place", "label": "To", "column_type": "Reference", "reference_table": "equipment.place", "reqd": true, "in_list_view": true },
+        { "column_name": "vendor", "label": "Vendor", "column_type": "Data" },
+        { "column_name": "to_entity", "label": "New legal owner", "column_type": "Reference", "reference_table": "equipment.entity" },
+        { "column_name": "reason", "label": "Reason", "column_type": "Data", "reqd": true },
+        { "column_name": "expected_receipt_at", "label": "Expected receipt by", "column_type": "Datetime", "in_list_view": true },
+        { "column_name": "transfer_state", "label": "Stage", "column_type": "Choice", "choices": "Requested\nApproved\nRejected\nDispatched\nReceived\nCancelled", "default_value": "Requested", "reqd": true, "in_list_view": true },
+        { "column_name": "approver", "label": "Approved by (person ID)", "column_type": "Data" },
+        { "column_name": "approved_at", "label": "Approved at", "column_type": "Datetime" },
+        { "column_name": "transporter", "label": "Transporter or vendor", "column_type": "Data" },
+        { "column_name": "dispatched_at", "label": "Dispatched at", "column_type": "Datetime" },
+        { "column_name": "received_at", "label": "Received at", "column_type": "Datetime" },
+        { "column_name": "finance_reference", "label": "SAP document", "column_type": "Data" },
+        { "column_name": "finance_confirmed_at", "label": "Finance confirmed at", "column_type": "Datetime" },
+        { "column_name": "finance_confirmed_by", "label": "Finance confirmed by (person ID)", "column_type": "Data" }
+      ]
+    },
+    {
+      "name": "equipment.transfer_line",
+      "label": "Transfer item",
+      "module": "Assets",
+      "id_pattern": "TRL-.######",
+      "title_column": "asset",
+      "access_policy": { "version": 1, "roles": ["Assets Member", "Assets Technician", "Assets Manager"] },
+      "columns": [
+        { "column_name": "transfer", "label": "Transfer", "column_type": "Reference", "reference_table": "equipment.transfer", "reqd": true, "in_list_view": true },
+        { "column_name": "asset", "label": "Asset", "column_type": "Reference", "reference_table": "equipment.asset", "reqd": true, "in_list_view": true },
+        { "column_name": "line_state", "label": "State", "column_type": "Choice", "choices": "Requested\nDispatched\nReceived good\nReceived damaged\nRefused\nReturned to source", "default_value": "Requested", "reqd": true, "in_list_view": true },
+        { "column_name": "dispatched_at", "label": "Dispatched at", "column_type": "Datetime" },
+        { "column_name": "received_at", "label": "Received at", "column_type": "Datetime" },
+        { "column_name": "note", "label": "Note", "column_type": "Data" }
+      ]
     }
   ],
   "permissions": [
@@ -260,7 +341,19 @@
     { "table": "equipment.scan", "role": "Assets Manager", "can_read": true, "can_create": true },
     { "table": "equipment.count_decision", "role": "Assets Member", "can_read": true },
     { "table": "equipment.count_decision", "role": "Assets Technician", "can_read": true },
-    { "table": "equipment.count_decision", "role": "Assets Manager", "can_read": true, "can_create": true, "can_write": true }
+    { "table": "equipment.count_decision", "role": "Assets Manager", "can_read": true, "can_create": true, "can_write": true },
+    { "table": "equipment.custody", "role": "Assets Member", "can_read": true, "can_write": true },
+    { "table": "equipment.custody", "role": "Assets Technician", "can_read": true, "can_write": true },
+    { "table": "equipment.custody", "role": "Assets Manager", "can_read": true, "can_create": true, "can_write": true },
+    { "table": "equipment.clearance", "role": "Assets Member", "can_read": true },
+    { "table": "equipment.clearance", "role": "Assets Technician", "can_read": true },
+    { "table": "equipment.clearance", "role": "Assets Manager", "can_read": true, "can_create": true, "can_write": true },
+    { "table": "equipment.transfer", "role": "Assets Member", "can_read": true },
+    { "table": "equipment.transfer", "role": "Assets Technician", "can_read": true },
+    { "table": "equipment.transfer", "role": "Assets Manager", "can_read": true, "can_create": true, "can_write": true },
+    { "table": "equipment.transfer_line", "role": "Assets Member", "can_read": true },
+    { "table": "equipment.transfer_line", "role": "Assets Technician", "can_read": true },
+    { "table": "equipment.transfer_line", "role": "Assets Manager", "can_read": true, "can_create": true, "can_write": true }
   ],
   "roles": ["Assets Member", "Assets Technician", "Assets Manager"],
   "jobs": []
