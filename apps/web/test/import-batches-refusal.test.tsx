@@ -31,3 +31,22 @@ test('Keep them backs out; a Table another Table points at is kept, with the rea
   expect(outcome).toHaveTextContent(/^Kept Ibr Shelf: .+\.$/)
   await waitFor(async () => expect(await admin.get('/api/table/Ibr%20Shelf:meta')).toMatchObject({ name: 'Ibr Shelf' }))
 })
+
+// #993: one Table is "it", not "them".
+test('deleting the one Table an import created speaks of it in the singular', async ({ admin }) => {
+  const user = userEvent.setup()
+  await admin.post('/api/table_def', { name: 'Ibr Lone', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table/Ibr%20Lone:import', {
+    rows: [{ row_id: 'lone-1', title: 'only' }],
+    context: { batch_id: 'ibr-lone', run_id: 'ibr-lone-run', table_created: true },
+  })
+  await renderApp('/featherbase/admin/imports', admin)
+  await user.click(await screen.findByTestId('ib-delete-ibr-lone', {}, { timeout: 8000 }))
+  expect(screen.getByTestId('ib-confirm-ibr-lone')).toHaveTextContent(
+    'Delete Ibr Lone and every row in it? This also removes its import records, and cannot be undone.',
+  )
+  await user.click(screen.getByTestId('ib-confirm-go-ibr-lone'))
+  expect(await screen.findByTestId('ib-outcome')).toHaveTextContent(
+    'Deleted Ibr Lone. Its import records went with it, so that import is no longer listed.',
+  )
+})

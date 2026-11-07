@@ -12,7 +12,7 @@ import { AppError, errorResponse } from './errors'
 import { runInSession } from './session-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { createTable, deleteTable, renameColumn, renameCustomTable, setIdPattern, tableStorageIdentity, updateTable } from './table-engine'
-import { deleteDoc, getDoc, saveDoc } from './document'
+import { deleteDoc, getDoc, revokeGrant, saveDoc } from './document'
 import { rowForCaller } from './row-readers'
 import { countDocs, getList, groupCount } from './query'
 import { hasMandatoryRowAccess, mandatoryReferencesWhere } from './mandatory-access'
@@ -1888,7 +1888,7 @@ app.post('/api/permissions/:table', async (c) => {
             where requires_permission = ${String(row.row_id)} or parent_permission = ${String(row.row_id)} order by role`
           if (dependents.length)
             throw new AppError('ValidationError', `Deeper access of ${dependents.map((d) => String(d.role)).join(', ')} needs this grant: edit the individual Permission Rows`)
-          await deleteDoc('Permission', String(row.row_id), user)
+          await revokeGrant(String(row.row_id), user)
         }
       } else if (!contributions.length) {
         const saved = await saveDoc('Permission', {

@@ -4,6 +4,7 @@ import { DEFAULT_ID_PATTERN, idFromColumn, namingColumn, tableSchemaToZod, zodFi
 import { assertMandatoryAccess, hasMandatoryRowAccess } from './mandatory-access'
 import { sql } from './db'
 import { AppError } from './errors'
+import { refusalSubject, tableWords } from './refusals'
 import { sessionMayAddWayIn } from './session-context'
 import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
@@ -460,24 +461,24 @@ async function assertAttachedRowReadable(table: string, row: RowValues, user: st
   const refTable = row.ref_table ? String(row.ref_table) : ''
   const refName = row.ref_name ? String(row.ref_name) : ''
   if (!refTable || !refName) return
-  const refused = () => new AppError('PermissionError', `No read permission on this ${table} row for ${user}`)
+  const refused = async () => new AppError('PermissionError', `${refusalSubject(user)} have read permission on the row this ${await tableWords(table)} is on.`)
   // A comment or file may sit on a comment, edit or file that is itself on a
   // plain row, one level deep (assertAttachedTarget); a deeper chain, which
   // only a direct write could leave, is refused rather than followed, so it
   // can never loop. The list leaves rows on such Tables out (the row's own
   // activity shows them).
-  if (ROW_ATTACHED_TABLES.has(refTable) && (await attachedToAttached(refTable, refName))) throw refused()
+  if (ROW_ATTACHED_TABLES.has(refTable) && (await attachedToAttached(refTable, refName))) throw await refused()
   const refMeta = await getMeta(refTable).catch(() => null)
-  if (!refMeta) throw refused()
+  if (!refMeta) throw await refused()
   let target: RowValues
   try {
     target = await getDoc(refTable, refName, user)
   } catch (err) {
-    if (err instanceof AppError) throw refused()
+    if (err instanceof AppError) throw await refused()
     throw err
   }
   if (SENSITIVE_HISTORY_TABLES.has(table) && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta, String(target.created_by))))
-    throw refused()
+    throw await refused()
 }
 
 // Whether a comment, edit or file is itself on another comment, edit or file.
@@ -1621,14 +1622,23 @@ async function assertChildRowsWritable(tx: typeof sql, meta: TableMeta, name: st
 }
 
 // DOC-006: a row referenced by Reference columns anywhere cannot be deleted.
-export function deleteDoc(...args: Parameters<typeof deleteDocImpl>) {
-  return appOperation(() => deleteDocImpl(...args))
+export function deleteDoc(table: string, name: string, user = 'Administrator', opts: { expectUpdatedAt?: string | null } = {}) {
+  return appOperation(() => deleteDocImpl(table, name, user, opts))
+}
+// #1034: the permission matrix ends a grant even when the grant has history.
+// Clearing the old flag was an update, which history never blocked, and access
+// must not outlast the decision to end it. So everything on the row stays,
+// with one more entry saying who ended it and what it was. No other delete,
+// and no other Table, comes this way.
+export function revokeGrant(name: string, user: string) {
+  return appOperation(() => deleteDocImpl('Permission', name, user, {}, true))
 }
 async function deleteDocImpl(
   table: string,
   name: string,
-  user = 'Administrator',
-  opts: { expectUpdatedAt?: string | null } = {},
+  user: string,
+  opts: { expectUpdatedAt?: string | null },
+  revoking = false,
 ): Promise<void> {
   const meta = await getMeta(table)
   assertRowsWritable(meta, 'deleted')
@@ -1649,7 +1659,9 @@ async function deleteDocImpl(
     // open that row, as only they may read it (#342, #609).
     if (ROW_ATTACHED_TABLES.has(meta.name)) await assertAttachedRowReadable(meta.name, existing as RowValues, user)
     await assertRowNotManaged(stx, meta, name, user)
-    if (meta.owner_app) {
+    if (revoking) {
+      // Nothing held back and nothing removed: see revokeGrant.
+    } else if (meta.owner_app) {
       if (!opts.expectUpdatedAt || !Number.isFinite(Date.parse(opts.expectUpdatedAt))
         || new Date(existing.updated_at as string).getTime() !== Date.parse(opts.expectUpdatedAt))
         throw new AppError('ConflictError', `${table} ${name} has been modified after you loaded it; supply its current updated_at`)
@@ -1659,7 +1671,7 @@ async function deleteDocImpl(
       // by refusing the delete while it has any (links are checked below).
       assertNothingRetained(table, name, await retainedActivityCounts(stx, table, name), true)
     }
-    await tx`delete from version where ref_table = ${table} and ref_name = ${name} and data->>'created' = 'true'`
+    if (!revoking) await tx`delete from version where ref_table = ${table} and ref_name = ${name} and data->>'created' = 'true'`
     if ((existing.submission_status as string) === 'submitted')
       throw new AppError(
         'ValidationError',
@@ -1711,6 +1723,7 @@ async function deleteDocImpl(
       tx: stx,
     }
     await runHooks('on_trash', ctx)
+    if (revoking) await recordVersion(stx, meta, name, existing as RowValues, {}, user)
 
     // Remove this row's own child rows, then the row.
     await assertChildRowsWritable(stx, meta, name, user)
