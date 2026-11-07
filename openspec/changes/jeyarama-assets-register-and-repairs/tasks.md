@@ -34,7 +34,7 @@
 - [x] 2d.2 Tables: custody, clearance, transfer and its lines; custodian kept as a person ID
 - [x] 2d.3 Actions: issue, return, dispatch, receive, confirm Finance; validators for answers, approval, open transfers and clearance
 - [x] 2d.4 Pages: Custody (issue, your assets, clearances), Transfers (request, approve, dispatch, receive), history on the asset page
-- [ ] 2d.5 One isolated browser journey; sample custody and transfers for the owner
+- [x] 2d.5 One isolated browser journey; sample custody and transfers for the owner
 
 ## 3. Proof
 

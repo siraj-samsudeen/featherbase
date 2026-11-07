@@ -109,7 +109,7 @@ export function TransfersPage({ roles }: { roles: string[] }) {
             <td>{t.reason}</td>
             <td><span className="transfer-stage">{t.transfer_state}</span></td>
             <td><Clock transfer={t} /></td>
-            <td className="counts-actions">
+            <td><div className="counts-actions">
               {t.transfer_state === 'Requested' && (t.created_by === me
                 ? <span className="asset-muted">Waiting for another manager</span>
                 : managerView && <>
@@ -119,7 +119,7 @@ export function TransfersPage({ roles }: { roles: string[] }) {
               {managerView && t.transfer_state === 'Approved' && <a href={`#transfer=${encodeURIComponent(t.row_id)}`}>Dispatch</a>}
               {managerView && t.transfer_state === 'Dispatched' && <a href={`#transfer=${encodeURIComponent(t.row_id)}`}>Receive</a>}
               {t.transfer_state === 'Received' && t.transfer_kind === 'Between companies' && !t.finance_confirmed_at && <span className="transfer-finance">Needs Finance and tax approval</span>}
-            </td>
+            </div></td>
           </tr>)}
         </tbody>
       </table>
@@ -203,7 +203,7 @@ export function TransferPage({ id, roles }: { id: string; roles: string[] }) {
     <h1>{t.row_id} · {t.transfer_kind}</h1>
     <p className="transfer-route">{placePath(t.from_place, allPlaces)} → {t.vendor ? `${t.vendor} → ` : ''}{placePath(t.to_place, allPlaces)} · <span className="transfer-stage">{t.transfer_state}</span></p>
     {error && t.transfer_state !== 'Approved' && <p role="alert" className="counts-error">{error}</p>}
-    <dl className="asset-facts">
+    <dl className="transfer-facts">
       <dt>Reason</dt><dd>{t.reason}</dd>
       <dt>Requested by</dt><dd>{personName(t.created_by)} · {fmtInstantIST(t.created_at)}</dd>
       <dt>Approved by</dt><dd>{t.approver ? `${personName(t.approver)} · ${t.approved_at ? fmtInstantIST(t.approved_at) : ''}` : '—'}</dd>

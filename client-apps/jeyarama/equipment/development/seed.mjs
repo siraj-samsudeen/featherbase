@@ -77,13 +77,13 @@ const assets = {}
 let sapNo = 1
 for (const [name, type, at, owner, books, condition, custody, make, model, serial, warranty, amc] of [
   ['Voltas 2-ton split AC', 'AC', 'ATK Billing', 'JRPL', 'Capitalized', 'Working', 'At location', 'Voltas', '243V DZX', 'VT24-118230', '2027-03-12', null],
-  ['Billing PC, till 3', 'POS terminal', 'ATK Billing', 'JRPL', 'Capitalized', 'Working', 'With custodian', 'HP', 'ProDesk 400', 'HP4-99812', day(12), null],
+  ['Billing PC, till 3', 'POS terminal', 'ATK Billing', 'JRPL', 'Capitalized', 'Working', 'At location', 'HP', 'ProDesk 400', 'HP4-99812', day(12), null],
   ['Display chiller 1', 'Cold room', 'ATK Dairy aisle', 'JRPL', 'Fully depreciated', 'Working', 'At location', 'Western', 'SRC 450', 'WS-450-2211', '2026-09-20', ['Western Refrigeration', day(200)]],
   ['Weighing scale 2', 'Other', 'ATK Dairy aisle', 'JRPL', 'Controlled item', 'Working', 'At location', 'Essae', 'DS-852', 'ES852-7781', '2027-01-10', null],
   ['Gondola shelving, aisle 4', 'Fixture', 'ATK ground floor', 'JRPL', 'Capitalized', 'Working', 'At location', 'Kwality Racks', 'GR-5', null, null, null],
   ['Kirloskar 62.5 kVA DG', 'Generator', 'ATK main building', 'JRPL', 'Capitalized', 'Under repair', 'At location', 'Kirloskar', 'KG1-62.5AS', 'KOEL-62-30419', day(23), ['Kirloskar Service', day(300)]],
   ['EDC card terminal 2', 'POS terminal', 'ATK Billing', null, 'Leased or third party', 'Working', 'At location', 'Pine Labs', 'Plutus', 'PL-55102', null, null],
-  ['Blue Star walk-in cold room', 'Cold room', 'Enchakkal Cold chain', 'KAIPL', 'Capitalized', 'Under repair', 'With vendor', 'Blue Star', 'WICR 12x16', 'BS-WI-9912', '2026-06-18', ['Blue Star AMC', day(240)]],
+  ['Blue Star walk-in cold room', 'Cold room', 'Enchakkal Cold chain', 'KAIPL', 'Capitalized', 'Under repair', 'At location', 'Blue Star', 'WICR 12x16', 'BS-WI-9912', '2026-06-18', ['Blue Star AMC', day(240)]],
   ['Pallet racking, bay A', 'Fixture', 'Enchakkal Dispatch', 'KAIPL', 'Capitalized', 'Working', 'At location', 'Godrej', 'Selective 6m', null, null, null],
   ['Godrej electric forklift', 'Vehicle', 'Enchakkal Dispatch', 'KAIPL', 'Capitalized', 'Idle', 'At location', 'Godrej', 'GX 300E', 'GD-300E-1902', day(-10), null],
   ['Cummins 125 kVA DG', 'Generator', 'Enchakkal main building', 'KAIPL', 'Capitalized', 'Working', 'At location', 'Cummins', 'C125D5', 'CU-125-77810', '2025-11-30', null],
@@ -99,7 +99,6 @@ for (const [name, type, at, owner, books, condition, custody, make, model, seria
     asset_name: name, asset_type: types[type], place: places[at], book_status: books, condition, custody_status: custody,
     ...(owner ? { owner_entity: entities[owner], operator_entity: entities[owner] } : {}),
     cost_centre: owner === 'KAIPL' ? 'SAMPLE-CC-ENC-410' : 'SAMPLE-CC-ATK-110',
-    ...(custody === 'With custodian' ? { custodian: staff.row_id } : { custodian: staff.row_id, location_custodian: true }),
     make, model, serial_no: key, ...(warranty ? { warranty_until: warranty } : {}),
     ...(amc ? { amc_vendor: amc[0], amc_until: amc[1] } : {}), ...sap,
   })).row_id
@@ -151,6 +150,77 @@ if (!existingCount.length) {
   }
   count = await request(`/api/table/equipment.count/${count.row_id}`)
   await request('/api/save_row', { method: 'POST', body: { table: 'equipment.count', row: { row_id: count.row_id, updated_at: count.updated_at, count_state: 'In review' } } })
+}
+
+// Custody and transfers (BRD step 3). Meena is a second Assets Manager, so approvals and the
+// Finance confirmation come from someone other than the requester; she, Suresh and Karthik act
+// through short-lived tokens that are removed afterwards.
+const meena = await ensure('Person', 'email', 'meena.assets@example.test', { email: 'meena.assets@example.test', full_name: 'Meena (Assets Manager)', enabled: true })
+await withRole(meena.row_id, 'Assets Manager')
+const karthik = await ensure('Person', 'email', 'karthik.leaving@example.test', { email: 'karthik.leaving@example.test', full_name: 'Karthik R (leaving)', enabled: true })
+await withRole(karthik.row_id, 'Assets Member')
+const existingTransfers = (await request(`/api/table/equipment.transfer${query([], ['row_id'])}`)).data
+if (!existingTransfers.length) {
+  const tokens = []
+  const tokenFor = async (person) => {
+    const access = await request('/api/access_tokens', { method: 'POST', body: { label: 'Assets sample custody (removed after seeding)', owner: person, expires_at: new Date(Date.now() + 600_000).toISOString() } })
+    tokens.push(access.id)
+    return access.token
+  }
+  const save = (table, row, as) => request('/api/save_row', { method: 'POST', as, body: { table, row } })
+  const act = (name, payload, as) => request(`/api/app_actions/equipment/${name}`, { method: 'POST', as, body: { idempotencyKey: crypto.randomUUID(), payload } }).then(r => r.result)
+  const fresh = (table, id) => request(`/api/table/${table}/${encodeURIComponent(id)}`)
+  const linesOf = async (transfer) => (await request(`/api/table/equipment.transfer_line${query([['transfer', '=', transfer]], ['row_id'])}`)).data
+  const hours = (n) => new Date(Date.now() + n * 3_600_000).toISOString()
+  try {
+    const asMeena = await tokenFor(meena.row_id), asSuresh = await tokenFor(staff.row_id)
+    const transfer = async (by, values, items) => {
+      const t = await save('equipment.transfer', values, by)
+      for (const asset of items) await save('equipment.transfer_line', { transfer: t.row_id, asset: assets[asset] }, by)
+      return t
+    }
+    const approve = async (t, by) => save('equipment.transfer', { row_id: t.row_id, updated_at: (await fresh('equipment.transfer', t.row_id)).updated_at, transfer_state: 'Approved' }, by)
+    const dispatch = (t, transporter, items) => act('dispatch_transfer', { transfer: t.row_id, transporter, scanned: items.map(a => assets[a]) })
+
+    // Custody: one waiting for Suresh, one accepted, one waiting for the Administrator, and one
+    // returned (so the DG's history shows both custody and a move).
+    await act('issue_custody', { asset: assets['Billing PC, till 3'], person: staff.row_id, kind: 'Employee' })
+    const edc = await act('issue_custody', { asset: assets['EDC card terminal 2'], person: staff.row_id, kind: 'Location custodian' })
+    await save('equipment.custody', { row_id: edc.row_id, updated_at: edc.updated_at, custody_state: 'Accepted' }, asSuresh)
+    await act('issue_custody', { asset: assets['Daikin 1.5-ton split AC'], person: 'Administrator', kind: 'Location custodian' })
+    const dg = await act('issue_custody', { asset: assets['Cummins 125 kVA DG'], person: ravi.row_id, kind: 'Location custodian' })
+    await act('return_custody', { custody: dg.row_id })
+
+    // A leaver past the leaving date who still holds the store's AC.
+    await act('issue_custody', { asset: assets['Voltas 2-ton split AC'], person: karthik.row_id, kind: 'Location custodian' })
+    await save('equipment.clearance', { person: karthik.row_id, reason: 'Leaving', leaving_date: day(-3), note: 'Leaving date from HR (StyleHR feed comes later)' })
+
+    // Overdue between sites: the scale was due at the warehouse 20 hours ago.
+    const late = await transfer(undefined, { transfer_kind: 'Between sites', from_place: places['ATK 1501'], to_place: places['Enchakkal WH 9151'],
+      reason: 'Spare scale for the cold chain', expected_receipt_at: hours(-20) }, ['Weighing scale 2'])
+    await approve(late, asMeena)
+    await dispatch(late, 'TN 09 AB 1234, Murugan Transports', ['Weighing scale 2'])
+
+    // Waiting for approval: Meena asks to borrow the forklift, so the Administrator can approve it.
+    await transfer(asMeena, { transfer_kind: 'Temporary loan', from_place: places['Enchakkal WH 9151'], to_place: places['ATK 1501'],
+      reason: 'Loan the forklift for the Diwali stock unload' }, ['Godrej electric forklift'])
+
+    // With a vendor: the cold room's compressor went to Blue Star.
+    const repair = await transfer(undefined, { transfer_kind: 'Repair with vendor', from_place: places['Enchakkal WH 9151'], to_place: places['Enchakkal WH 9151'],
+      vendor: 'Blue Star service centre, Ambattur', reason: 'Compressor rewinding under AMC' }, ['Blue Star walk-in cold room'])
+    await approve(repair, asMeena)
+    await dispatch(repair, 'Blue Star service van TN 05 CK 7781', ['Blue Star walk-in cold room'])
+
+    // Between companies: Meena moved the DG from KAIPL to JRPL; it has arrived, and Finance's
+    // SAP transaction is still to be recorded, by the Administrator.
+    const sale = await transfer(asMeena, { transfer_kind: 'Between companies', from_place: places['Enchakkal WH 9151'], to_place: places['ATK 1501'],
+      to_entity: entities.JRPL, reason: 'DG moves to ATK; KAIPL sells it to JRPL' }, ['Cummins 125 kVA DG'])
+    await approve(sale, undefined)
+    await dispatch(sale, 'TN 22 Q 4410, Sri Balaji Cranes', ['Cummins 125 kVA DG'])
+    for (const line of await linesOf(sale.row_id)) await act('receive_line', { line: line.row_id, outcome: 'Received good', note: 'Unloaded by crane, no damage' })
+  } finally {
+    for (const id of tokens) await request(`/api/access_tokens/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
 }
 
 console.log(`Assets sample data ready at ${origin}/equipment/ (${Object.keys(places).length} places, ${Object.keys(assets).length} assets; SAP numbers are SAMPLE)`)

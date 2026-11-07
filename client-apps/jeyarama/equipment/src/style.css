@@ -166,3 +166,7 @@ tr[data-state="Not with me"] .custody-state { color: var(--color-negative); }
 .asset-movements li { display: flex; gap: 10px; padding: 6px 0; border-top: 1px solid var(--color-border); font-size: 13px; }
 .asset-movements li:first-child { border-top: 0; }
 .asset-movements time { flex: none; min-width: 150px; color: var(--color-ink-muted); }
+.transfers .assets-table td:first-child { white-space: nowrap; }
+.transfer-facts { display: grid; grid-template-columns: 170px 1fr; gap: 6px 12px; max-width: 640px; margin: 0 0 12px; }
+.transfer-facts dt { color: var(--color-ink-muted); font-size: 13px; }
+.transfer-facts dd { margin: 0; font-weight: 600; }
