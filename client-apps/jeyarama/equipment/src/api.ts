@@ -52,6 +52,15 @@ export async function uploadJobPhoto(file: File): Promise<string> {
   return String(result.file_url)
 }
 
+/** The signed-in person's ID, as stored at sign-in. */
+export function myId(): string {
+  try { return JSON.parse(localStorage.getItem('fc_user') ?? 'null')?.row_id ?? '' } catch { return '' }
+}
+
+export function runAction<T>(name: string, payload: unknown) {
+  return api.post<{ result: T }>(`/api/app_actions/equipment/${name}`, { idempotencyKey: crypto.randomUUID(), payload }).then(response => response.result)
+}
+
 export function save<T>(table: string, row: Record<string, unknown>) {
   return api.post<T>('/api/save_row', { table, row })
 }

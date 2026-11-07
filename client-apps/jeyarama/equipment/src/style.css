@@ -115,3 +115,20 @@ h2 { margin: 0 0 8px; font-size: 15px; font-weight: 650; }
 .confirm-item:first-of-type { border-top: 0; }
 .confirm-item p { margin: 0 0 4px; }
 .jobs-board { grid-template-columns: repeat(7, minmax(170px, 1fr)); }
+
+/* Verification counts */
+.counts-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.counts-error { margin: 0 0 12px; color: var(--color-negative); font-weight: 600; }
+.counts-plan { max-width: 640px; margin-top: 24px; }
+.counts-dates { display: flex; flex-wrap: wrap; gap: 12px; }
+.count-page, .review-page { max-width: 760px; }
+.count-area { display: grid; gap: 4px; max-width: 420px; margin: 0 0 10px; font-weight: 600; font-size: 13px; }
+.count-progress { margin: 0 0 14px; padding: 8px 12px; border-radius: 8px; background: var(--color-action-tint); color: var(--color-action); font-weight: 650; }
+.review-actions { display: flex; gap: 8px; margin: 0 0 12px; }
+.review-outcomes { max-width: 360px; margin: 0 0 18px; }
+.review-outcomes td { text-align: right; font-variant-numeric: tabular-nums; font-weight: 650; }
+.review-lines { list-style: none; padding: 0 !important; }
+.review-lines li { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; padding: 8px 0; border-top: 1px solid var(--color-border); }
+.review-lines li:first-child { border-top: 0; }
+.review-lines select { min-width: 220px; }
+.asset-verified { margin: 0 0 12px; font-weight: 600; }

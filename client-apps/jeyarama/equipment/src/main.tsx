@@ -16,6 +16,7 @@ async function boot() {
   try {
     const user = await api.get<{ row_id: string; theme: Theme; roles: string[] }>('/api/whoami')
     paintTheme(THEMES.includes(user.theme) ? user.theme : 'device')
+    localStorage.setItem('fc_user', JSON.stringify(user))
     root.render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: true } } })}>
       <AssetsApp roles={user.roles ?? []} />
     </QueryClientProvider>)
