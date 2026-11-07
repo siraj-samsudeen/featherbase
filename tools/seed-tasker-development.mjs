@@ -75,6 +75,8 @@ export async function seedTasker({ baseUrl, password = 'admin', expectedEnvironm
     people.set(user.email, person.row_id)
   }
   const personId = (value) => (value && people.has(value) ? people.get(value) : value)
+  for (const store of TASKER_SCENARIOS.stores)
+    await ensure('tasker.store', 'row_id', store.row_id, store, { store_name: store.store_name })
   const projects = new Map()
   for (const scenario of TASKER_SCENARIOS.projects) {
     const project = await ensure('tasker.project', 'row_id', scenario.row_id, scenario, { project_name: scenario.project_name })
@@ -82,20 +84,46 @@ export async function seedTasker({ baseUrl, password = 'admin', expectedEnvironm
   }
   const tasks = new Map()
   for (const scenario of TASKER_SCENARIOS.tasks) {
-    const { explanation, comments = [], project, ...values } = scenario
+    const { explanation, comments = [], project, after = [], ...values } = scenario
+    const existed = (await request(`/api/table/tasker.task${query([['row_id', '=', scenario.row_id]])}`)).data.length > 0
     const task = await ensure('tasker.task', 'row_id', scenario.row_id, {
       ...values,
       ...(values.assigned_to ? { assigned_to: personId(values.assigned_to) } : {}),
+      ...(values.verifier ? { verifier: personId(values.verifier) } : {}),
       ...(values.personal_tasks_owner ? { personal_tasks_owner: personId(values.personal_tasks_owner) } : {}),
       ...(project ? { project: projects.get(project) } : {}),
     }, { task_title: scenario.task_title })
     tasks.set(scenario.row_id, task.row_id)
+    // Later steps (submitting, moving a date) run once, when the task is first created.
+    let current = task
+    if (!existed) for (const step of after)
+      current = await request('/api/save_row', { method: 'POST', body: { table: 'tasker.task', row: { row_id: task.row_id, updated_at: current.updated_at, ...step } } })
     for (const content of [...(explanation ? [explanation] : []), ...comments]) {
       const filters = [['ref_table', '=', 'tasker.task'], ['ref_name', '=', task.row_id], ['content', '=', content]]
       const comments = (await request(`/api/table/Comment${query(filters)}`)).data
       if (!comments.length) await request('/api/save_row', { method: 'POST', body: { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: task.row_id, content } } })
     }
   }
+  // Issues: store managers and function heads are set only where none is named yet.
+  for (const [storeId, person] of Object.entries(TASKER_SCENARIOS.storeManagers ?? {})) {
+    const store = await request(`/api/table/tasker.store/${encodeURIComponent(storeId)}`)
+    if (!store.store_manager) await request('/api/save_row', { method: 'POST', body: { table: 'tasker.store', row: { row_id: store.row_id, updated_at: store.updated_at, store_manager: personId(person) } } })
+  }
+  for (const [owner_function, person] of Object.entries(TASKER_SCENARIOS.functionHeads ?? {}))
+    await ensure('tasker.function_head', 'owner_function', owner_function, { owner_function, head: personId(person) })
+  for (const rule of TASKER_SCENARIOS.slaRules ?? []) await ensure('tasker.sla_rule', 'row_id', rule.row_id, rule)
+  let issueCount = 0
+  for (const scenario of TASKER_SCENARIOS.issues ?? []) {
+    const { after = [], ...values } = scenario
+    const existed = (await request(`/api/table/tasker.issue${query([['row_id', '=', scenario.row_id]])}`)).data.length > 0
+    let issue = await ensure('tasker.issue', 'row_id', scenario.row_id, {
+      ...values, owner: personId(values.owner) ?? null, verifier: personId(values.verifier) ?? null,
+    }, { issue_title: scenario.issue_title })
+    if (!existed) for (const step of after)
+      issue = await request('/api/save_row', { method: 'POST', body: { table: 'tasker.issue', row: { row_id: issue.row_id, updated_at: issue.updated_at, ...step } } })
+    issueCount++
+  }
+  log(`Tasker issues ready (${issueCount} issues)`)
   const focusPath = `/api/user_settings/${encodeURIComponent('Task Management Focus')}`
   const current = (await request(focusPath)).settings?.task_ids ?? []
   const seededFocus = TASKER_SCENARIOS.focus.map((id) => tasks.get(id))
@@ -107,7 +135,7 @@ export async function seedTasker({ baseUrl, password = 'admin', expectedEnvironm
   await request(`/api/user_settings/${encodeURIComponent('tasker.preferences')}`, {
     method: 'PUT', body: { mode: TASKER_SCENARIOS.detailMode },
   })
-  log(`Tasker development scenarios ready at ${origin}/tasker/ (${tasks.size} tasks, ${projects.size} projects)`)
+  log(`Tasker development scenarios ready at ${origin}/tasker/ (${tasks.size} tasks, ${projects.size} projects, ${TASKER_SCENARIOS.stores.length} stores)`)
   return { origin, projects: Object.fromEntries(projects), tasks: Object.fromEntries(tasks), focus: task_ids }
 }
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { NO_STORE } from './storeWork'
 import {
   UNASSIGNED,
   emptyTaskViewSetup,
@@ -49,12 +50,13 @@ describe('task view criteria', () => {
     expect(taskViewSetupEquals(saved, reordered)).toBe(false)
   })
 
-  it.each(['states', 'responsiblePeople', 'urgencies', 'projects'] as const)(
+  it.each(['states', 'responsiblePeople', 'urgencies', 'projects', 'stores', 'dueMarks'] as const)(
     'detects a changed %s filter without modifying the saved setup', (dimension) => {
       const saved = emptyTaskViewSetup()
       saved.filters = {
         states: ['Blocked', 'In progress'], responsiblePeople: ['Shahul', 'Asha'],
         urgencies: ['urgent', 'not_urgent'], projects: ['stock', 'opening'],
+        stores: ['avadi', 'keelkattalai'], dueMarks: ['overdue', 'scheduled'],
       }
       const before = structuredClone(saved)
       const changed = structuredClone(saved)
@@ -93,6 +95,40 @@ describe('task view criteria', () => {
     ] })).toEqual(views)
     expect(parseSavedTaskViews(null)).toEqual([])
     expect(parseSavedTaskViews({ views: {} })).toEqual([])
+  })
+
+  it('narrows by store, including tasks with no store', () => {
+    const stored = [
+      { ...tasks[0], store: 'keelkattalai' },
+      { ...tasks[1], store: 'avadi' },
+      { ...tasks[2], store: null },
+    ]
+    const setup = emptyTaskViewSetup()
+    setup.filters.stores = ['keelkattalai']
+    expect(filterTasks(stored, setup).map((task) => task.id)).toEqual(['a'])
+    setup.filters.stores = ['keelkattalai', NO_STORE]
+    expect(filterTasks(stored, setup).map((task) => task.id)).toEqual(['a', 'c'])
+  })
+
+  it('narrows by when tasks are due, on the day given', () => {
+    const dated = [
+      { ...tasks[0], due_date: '2026-11-04' },
+      { ...tasks[1], start_date: '2026-11-10' },
+      { ...tasks[2], due_date: '2026-11-06' },
+      { ...tasks[3], due_date: '2026-11-01' },
+    ]
+    const setup = emptyTaskViewSetup()
+    setup.filters.dueMarks = ['overdue']
+    expect(filterTasks(dated, setup, '2026-11-06').map((task) => task.id)).toEqual(['a'])
+    setup.filters.dueMarks = ['scheduled', 'due_today']
+    expect(filterTasks(dated, setup, '2026-11-06').map((task) => task.id)).toEqual(['b', 'c'])
+  })
+
+  it('reads a view saved before store and due filters existed as having none', () => {
+    const setup = emptyTaskViewSetup()
+    const { stores: _stores, dueMarks: _dueMarks, ...older } = setup.filters
+    const saved = { id: 'old', name: 'Older view', scope: { kind: 'work' }, setup: { search: '', filters: older } }
+    expect(parseSavedTaskViews({ views: [saved] })).toEqual([{ ...saved, setup }])
   })
 
   it('keeps unavailable person and project criteria restrictive', () => {
