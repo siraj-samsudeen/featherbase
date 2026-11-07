@@ -5,9 +5,7 @@
 A System Manager SHALL be able to archive a custom table or an installed app's table, with an optional note of what replaced it, and to
 un-archive it. While archived, its rows and history SHALL stay readable to whoever could read them, and adding,
 changing, retiring, reactivating, deleting, permanently deleting, importing or merging its rows SHALL be refused for everyone, administrators included. Platform
-tables, settings, sub-tables, an app's entry table and tables that decide access SHALL NOT be archived, except that an
-installed app's table that decides access MAY be archived while it holds no rows. Archiving an app's table SHALL leave
-the app's reads and people's scope as they were, and SHALL last through a redeploy and an app upgrade.
+tables, settings, sub-tables, an app's entry table and tables that decide access SHALL NOT be archived, with one exception for an app's empty table.
 
 #### Scenario: Archive a replaced table
 
@@ -35,6 +33,12 @@ the app's reads and people's scope as they were, and SHALL last through a redepl
   table that decides who can see what, or
   someone who is not a System Manager tries to archive any table
 - **THEN** it is refused
+
+## ADDED Requirements
+
+### Requirement: An installed app's unused table can be archived
+
+An installed app's table, other than its entry table, SHALL be archivable. One that decides access SHALL be archivable only while it holds no rows. Archiving SHALL leave the app's reads and people's scope as they were, and SHALL last through a redeploy and an app upgrade.
 
 #### Scenario: An app's unused table
 
