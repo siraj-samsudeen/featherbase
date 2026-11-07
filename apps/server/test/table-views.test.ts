@@ -355,6 +355,16 @@ describe('#1021: a base keeps what its views stand on', () => {
       .rejects.toThrow('An app cannot define a view')
   })
 
+  test('a change only its base can take is refused, never silently dropped', async ({ admin }) => {
+    await sites(admin)
+    const refused = { status: 417, message: expect.stringContaining(`change it on ${SITE}`) }
+    await expectApiError(admin.put(store.defUrl, { columns: [{ column_name: 'sneaky', column_type: 'Data' }] }), refused)
+    await expectApiError(admin.put(store.defUrl, { remove_columns: ['region'] }), refused)
+    await expectApiError(admin.put(store.defUrl, { title_column: 'region' }), refused)
+    await expectApiError(admin.put(`${store.defUrl}/id_pattern`, { id_pattern: 'hash' }), refused)
+    expect((await admin.get<{ columns: { column_name: string }[] }>(site.metaUrl)).columns.map((c) => c.column_name)).not.toContain('sneaky')
+  })
+
   test('a view name cannot spell a relation that already holds rows', async ({ admin }) => {
     await sites(admin)
     await sql`create table featherbase.vw_orphan (row_id text primary key)`
