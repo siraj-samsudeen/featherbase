@@ -25,6 +25,8 @@ export async function refreshAfterRetirement(queryClient: ReturnType<typeof useQ
     queryClient.invalidateQueries({ queryKey: ['list', table] }),
     queryClient.invalidateQueries({ queryKey: ['activity', table, name] }),
     queryClient.invalidateQueries({ queryKey: ['row-capabilities'] }),
+    // #959: the Recent chips over the list ask again whether it is retired.
+    queryClient.invalidateQueries({ queryKey: ['recent-strip-rows', table] }),
   ])
 }
 

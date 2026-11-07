@@ -9,6 +9,7 @@ import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
 import { mayPurge } from './purge'
 import { RETIRE_INSTEAD, assertNothingRetained, repointRowActivity, retainedActivityCounts, retainedDocumentCounts } from './document-activity'
+import { rowLabel } from './row-titles'
 import { allowedTables, anyTableLinkHolder, linkableTable, repointAnyTableLinks } from './any-table-link'
 import { EVERYONE_ROLES_FIELD, checkEveryoneRoles, parseEveryoneRoles } from './everyone-roles'
 import { ROW_KEY, defaultValueFor, getMeta, physicalRowKey, type TableMeta } from './meta'
@@ -1602,6 +1603,12 @@ async function assertChildRowsWritable(tx: typeof sql, meta: TableMeta, name: st
   }
 }
 
+// #959: refuse a delete while the row keeps activity, naming the row as the
+// caller reads it (its title is looked up only when the delete is refused).
+async function refuseRetained(table: string, name: string, counts: Record<string, number>, label: () => Promise<string>, retirable = true) {
+  if (Object.values(counts).some((n) => n > 0)) assertNothingRetained(table, name, counts, retirable, await label())
+}
+
 // DOC-006: a row referenced by Reference columns anywhere cannot be deleted.
 export function deleteDoc(...args: Parameters<typeof deleteDocImpl>) {
   return appOperation(() => deleteDocImpl(...args))
@@ -1631,21 +1638,23 @@ async function deleteDocImpl(
     // open that row, as only they may read it (#342, #609).
     if (ROW_ATTACHED_TABLES.has(meta.name)) await assertAttachedRowReadable(meta.name, existing as RowValues, user)
     await assertRowNotManaged(stx, meta, name, user)
+    // #959: the refusals below name each row as this caller reads it.
+    const label = () => rowLabel(user, table, name)
     if (meta.owner_app) {
       if (!opts.expectUpdatedAt || !Number.isFinite(Date.parse(opts.expectUpdatedAt))
         || new Date(existing.updated_at as string).getTime() !== Date.parse(opts.expectUpdatedAt))
         throw new AppError('ConflictError', `${table} ${name} has been modified after you loaded it; supply its current updated_at`)
-      assertNothingRetained(table, name, await retainedDocumentCounts(stx, table, name), true)
+      await refuseRetained(table, name, await retainedDocumentCounts(stx, table, name), label)
     } else {
       // #321: a plain row keeps its comments, history, attachments and shares
       // by refusing the delete while it has any (links are checked below).
-      assertNothingRetained(table, name, await retainedActivityCounts(stx, table, name), true)
+      await refuseRetained(table, name, await retainedActivityCounts(stx, table, name), label)
     }
     await tx`delete from version where ref_table = ${table} and ref_name = ${name} and data->>'created' = 'true'`
     if ((existing.submission_status as string) === 'submitted')
       throw new AppError(
         'ValidationError',
-        `${table} ${name} is submitted and cannot be deleted (cancel it first)`,
+        `${await label()} is submitted and cannot be deleted (cancel it first)`,
       )
 
     // Any Reference column in any Table pointing at this table blocks deletion.
@@ -1666,11 +1675,11 @@ async function deleteDocImpl(
         where ${tx(lf.column_name as string)} = ${name} limit 1`
       if (ref) {
         const holder = parentMeta.kind === 'sub_table'
-          ? `${ref.parenttype as string} ${ref.parent as string}`
-          : `${parentTable} ${ref[parentKey] as string}`
+          ? await rowLabel(user, ref.parenttype as string, ref.parent as string)
+          : await rowLabel(user, parentTable, ref[parentKey] as string)
         throw new AppError(
           'ValidationError',
-          `Cannot delete ${table} ${name}: it is linked from ${holder}. ${RETIRE_INSTEAD}`,
+          `Cannot delete ${await label()}: it is linked from ${holder}. ${RETIRE_INSTEAD}`,
           { retire: 'available' },
         )
       }
@@ -1680,7 +1689,7 @@ async function deleteDocImpl(
     if (anyHolder)
       throw new AppError(
         'ValidationError',
-        `Cannot delete ${table} ${name}: it is linked from ${anyHolder}. ${RETIRE_INSTEAD}`,
+        `Cannot delete ${await label()}: it is linked from ${await rowLabel(user, anyHolder.table, anyHolder.row_id)}. ${RETIRE_INSTEAD}`,
         { retire: 'available' },
       )
 
@@ -1756,7 +1765,7 @@ async function deleteBoundDoc(
     if (ref)
       throw new AppError(
         'ValidationError',
-        `Cannot delete ${meta.name} ${name}: it is linked from ${parentTable} ${ref[parentKey] as string}`,
+        `Cannot delete ${await rowLabel(user, meta.name, name)}: it is linked from ${await rowLabel(user, parentTable, ref[parentKey] as string)}`,
       )
   }
   const hctx: HookContext = {
@@ -1768,7 +1777,7 @@ async function deleteBoundDoc(
   }
   // #321: a connected row's comments, history, attachments and shares live
   // here; the delete is refused while it has any, as for a stored row.
-  assertNothingRetained(meta.name, name, await retainedActivityCounts(sql, meta.name, name))
+  await refuseRetained(meta.name, name, await retainedActivityCounts(sql, meta.name, name), () => rowLabel(user, meta.name, name), false)
   await runHooks('on_trash', hctx)
   const outcome = await ctx.driver
     .remove(ctx.bind, name, expectUpdatedAt)

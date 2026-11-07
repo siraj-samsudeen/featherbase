@@ -947,7 +947,7 @@ export function ListView({
         </div>
       )}
       {onFiltersChange && !baseFilters.length && <SavedViewsBar table={table} filters={filters} onApply={onFiltersChange} />}
-      {onFiltersChange && !baseFilters.length && <RecentStrip table={table} meta={meta.data} onApply={onFiltersChange} />}
+      {onFiltersChange && !baseFilters.length && <RecentStrip table={table} meta={meta.data} withRetired={withRetired} onApply={onFiltersChange} />}
       {onFiltersChange && meta.data && (
         <>
           <StandardFilters meta={meta.data} filters={filters} onChange={onFiltersChange} />
@@ -1907,11 +1907,14 @@ export function FilterBar({
 function RecentStrip({
   table,
   meta,
+  withRetired,
   onApply,
 }: {
   table: string
   /** Names each filter's column; until it loads a filter reads as stored. */
   meta: import('../lib/meta').TableMeta | undefined
+  /** #959: offer retired rows only while the list shows them. */
+  withRetired: boolean
   onApply: (filters: Filter[]) => void
 }) {
   const { t } = useI18n()
@@ -1926,13 +1929,14 @@ function RecentStrip({
     queryKey: ['recent-strip-rows', table, ids],
     enabled: ids.length > 0,
     queryFn: async () => {
-      const { titles } = await api.post<{ titles: Array<{ table: string; row_id: string; title: string }> }>(
+      const { titles } = await api.post<{ titles: Array<{ table: string; row_id: string; title: string; retired?: true }> }>(
         '/api/row_titles', { rows: ids.map((row_id) => ({ table, row_id })) })
       for (const t of titles) queryClient.setQueryData(['row-title', table, t.row_id], t.title)
-      return new Set(titles.map((t) => t.row_id))
+      return new Map(titles.map((t) => [t.row_id, t.retired === true]))
     },
   })
-  const rows = remembered.filter((e) => present.data?.has(e.label)).slice(0, 4)
+  // #959: a retired row stays out of the chips while the list leaves it out.
+  const rows = remembered.filter((e) => present.data?.has(e.label) && (withRetired || !present.data.get(e.label))).slice(0, 4)
   const views = entries
     .map((e) => {
       if (e.kind !== 'list' || !e.key.startsWith(`list:${table}?`)) return null
