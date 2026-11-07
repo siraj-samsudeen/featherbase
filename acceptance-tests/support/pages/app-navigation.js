@@ -32,7 +32,7 @@ class AppNavigation {
     await restartAcceptance({ MOTHERDUCK_TOKEN: 'acceptance-unused-warehouse-token' });
     // Dash reads a reader's reach from the instance's core Tables: the same
     // ones its own platform tests create.
-    const { BASE_TABLES, LINKED_TABLES, REPORT_ROWS } = await import(pathToFileURL(path.resolve(__dirname, '../../../client-apps/jeyarama/dash/platform-test/base-tables.mjs')).href);
+    const { ACCESS_ROWS, BASE_TABLES, LINKED_TABLES, REPORT_ROWS } = await import(pathToFileURL(path.resolve(__dirname, '../../../client-apps/jeyarama/dash/platform-test/base-tables.mjs')).href);
     for (const table of BASE_TABLES) await api.call('POST', '/api/table_def', table, [201], `configure ${table.name}`);
     await api.call('POST', '/api/instance-settings/apply', { file: { settings: { 'App Setting': [{ row_id: 'dash.linked_tables', value: JSON.stringify(LINKED_TABLES) }] } } }, [200], 'list the core Tables Dash reads');
     const fields = encodeURIComponent(JSON.stringify(['row_id']));
@@ -47,6 +47,8 @@ class AppNavigation {
     }
     const dash = await AppNavigation.appApi(api, 'dash');
     for (const row of REPORT_ROWS) await dash.saveRow('dash.report', row);
+    // #1046: a report opens only for someone it is given to; these give each to Dash Reader.
+    for (const row of ACCESS_ROWS) await dash.saveRow('dash.report_access', row);
   }
   async tasker() { await this.page.goto('/tasker/'); }
   async dash() { await this.page.goto('/dash/'); }
