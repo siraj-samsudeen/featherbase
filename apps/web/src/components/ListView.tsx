@@ -21,6 +21,8 @@ import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { useStepOptions, type Step } from '../lib/explore-steps'
 import { ChecklistSwitch } from './ChecklistView'
 import { PrincipalName, usePrincipalLabels } from '../lib/people'
+import { NOT_A_LOGIN } from '../lib/not-a-login'
+import { MoreColumnsHint, OneLine, useMoreToTheRight } from './list-one-line'
 import { Button, DataCards, NARROW_QUERY, ViewToggle, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, touchRowClasses, useMediaQuery, type DataColumn } from '@featherbase/shop-floor'
 import { ArrowDown, ArrowUp, ChevronDown } from '@featherbase/shop-floor'
 import { RetiredBadge, tableCanRetire } from './RowRetirement'
@@ -96,10 +98,12 @@ export function indicatorColor(value: string): string {
 
 export function Indicator({ value, label = value }: { value: string; label?: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5">
+    // Not inline-flex: a browser drops an atomic box whole when it runs out of
+    // room, where plain text clips with an ellipsis (#1015).
+    <span>
       <span
         aria-hidden="true"
-        className="h-2 w-2 shrink-0 rounded-full"
+        className="mr-1.5 inline-block size-2 rounded-full align-[0.05em]"
         style={{ backgroundColor: indicatorColor(value) }}
       />
       {label}
@@ -110,6 +114,9 @@ export function Indicator({ value, label = value }: { value: string; label?: str
 const NO_FILTERS: Filter[] = []
 // A compact list: the row's name, then this many key values.
 const COMPACT_COLUMNS = 3
+// #1015: the row's name stays in view, so it may not take the whole window. Flex
+// keeps its Retired badge beside the link rather than clipped with it.
+const NAME_CLIP = 'flex max-w-64 items-center [&>a]:min-w-0 [&>a]:truncate'
 
 /** The link values a filtered list's new rows start with: each "= one row"
  *  filter on a link column the person may set. */
@@ -188,6 +195,10 @@ export function ListView({
   const [arrangement, setArrangement] = useState<Required<ColumnArrangement>>({ shownCols: [], hiddenCols: [] })
   // #910 checklist 1: Compact shows each row's name and two key values.
   const [compact, setCompact] = useState(false)
+  const [tableScroll, setTableScroll] = useState<HTMLDivElement | null>(null)
+  const moreToTheRight = useMoreToTheRight(tableScroll)
+  // #1017: the Add filter row waits until it's asked for.
+  const [addFilterOpen, setAddFilterOpen] = useState(false)
   const [colPickerOpen, setColPickerOpen] = useState(false)
   // #738: the Show columns menu grows into the space below its button and no
   // further, so it ends on screen; it scrolls inside only when that is short.
@@ -607,7 +618,7 @@ export function ListView({
     <div data-testid="list-view">
       {/* Top-aligned on desktop: however many rows the actions wrap to, the first
           row sits level with the title (listview.spec "share a vertical band"). */}
-      <div className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+      <div className="mb-2 flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
         <div>
           {breadcrumb ?? <div className="text-xs text-ink-subtle">
             <Link to="/featherbase/admin" className="hover:text-ink">
@@ -616,14 +627,15 @@ export function ListView({
             {' / '}
             {table}
           </div>}
+          {/* #1017: the count reads on the title's line, not one of its own. */}
+          <div className="flex flex-wrap items-baseline gap-x-2">
           <h1 className="text-xl font-semibold text-ink">{title ?? <>{table}<GlossaryHelp table={table} className="ml-1" /></>}</h1>
-          {subtitle && <p className="text-sm text-ink-muted">{subtitle}</p>}
           <span className="text-xs text-ink-muted" data-testid="list-total">
             {fmtCount(total)} total
           </span>
           {/* #859: beside the total it changes; the toolbar stays as it was. */}
           {retirable && (
-            <label className="ml-3 inline-flex cursor-pointer items-center gap-1 text-xs text-ink-muted" data-testid="list-show-retired">
+            <label className="ml-1 inline-flex cursor-pointer items-center gap-1 text-xs text-ink-muted" data-testid="list-show-retired">
               <input
                 type="checkbox"
                 checked={showRetired}
@@ -638,13 +650,15 @@ export function ListView({
           )}
           {meta.data?.data_source && (
             <span
-              className={pillClasses('ml-2 align-middle text-xs')}
+              className={pillClasses('text-xs')}
               data-testid="source-badge"
               title={`Rows live on data source ${meta.data.data_source}`}
             >
               {meta.data.data_source} · {meta.data.source_writable ? 'read-write' : 'read-only'}
             </span>
           )}
+          </div>
+          {subtitle && <p className="text-sm text-ink-muted">{subtitle}</p>}
         </div>
         <div
           className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1 sm:basis-64 sm:justify-end"
@@ -958,11 +972,28 @@ export function ListView({
       )}
       {onFiltersChange && !baseFilters.length && <SavedViewsBar table={table} filters={filters} onApply={onFiltersChange} />}
       {onFiltersChange && !baseFilters.length && <RecentStrip table={table} meta={meta.data} onApply={onFiltersChange} />}
-      {onFiltersChange && meta.data && (
-        <>
-          <StandardFilters meta={meta.data} filters={filters} onChange={onFiltersChange} />
-          <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} />
-        </>
+      {/* #1017: filters, Add filter and the list's layouts share a line, so the rows start high up. */}
+      <div className="mb-2 flex flex-wrap items-end gap-2">
+        {onFiltersChange && meta.data && (
+          <>
+            <StandardFilters meta={meta.data} filters={filters} onChange={onFiltersChange} />
+            <Button aria-expanded={addFilterOpen} onClick={() => setAddFilterOpen((open) => !open)} data-testid="filter-toggle">
+              Add filter
+              <ChevronDown aria-hidden data-chevron size={18} />
+            </Button>
+          </>
+        )}
+        <div className="ml-auto flex flex-wrap items-end gap-2">
+          <ViewToggle label="List layout" value={compact ? 'compact' : 'table'} onChange={(v) => {
+            setCompact(v === 'compact')
+            persist({ compact: v === 'compact' })
+          }} />
+          <Button aria-pressed={treeOn} onClick={() => setTree(!treeOn)}
+            className={treeOn ? 'border-action bg-action-tint text-action' : undefined}>Tree of all</Button>
+        </div>
+      </div>
+      {onFiltersChange && meta.data && (addFilterOpen || filters.length > 0) && (
+        <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} builderOpen={addFilterOpen} />
       )}
       {selected.size > 0 && !isRowsReadOnly(meta.data) && (
         <div
@@ -1033,15 +1064,6 @@ export function ListView({
           )}
         </div>
       )}
-      {/* #910: the list's layouts, just above it. */}
-      <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
-        <ViewToggle label="List layout" value={compact ? 'compact' : 'table'} onChange={(v) => {
-          setCompact(v === 'compact')
-          persist({ compact: v === 'compact' })
-        }} />
-        <Button aria-pressed={treeOn} onClick={() => setTree(!treeOn)}
-          className={treeOn ? 'border-action bg-action-tint text-action' : undefined}>Tree of all</Button>
-      </div>
       {treeOn ? (
         <div className={cardClasses('p-3')}>
           <TreeOfAll table={table} filters={queryFilters} expanded={treeExpanded}
@@ -1078,12 +1100,15 @@ export function ListView({
           }
         />
       ) : (
-      <div className={cardClasses('overflow-x-auto')} data-testid="list-table-scroll">
-        <table className="w-full text-sm">
+      <div className="relative">
+      <div className={cardClasses('overflow-x-auto')} ref={setTableScroll} data-testid="list-table-scroll">
+        {/* Separate borders: a collapsed one stays behind when its sticky cell scrolls. */}
+        <table className="w-full border-separate border-spacing-0 text-sm">
           <thead className="bg-subtle text-left">
             <tr>
               {/* Selection exists only to feed the bulk bar — a read-only
                   source has neither (EDS-13: absent, not disabled). */}
+              {expandable && <th className="w-7 border-b border-border" />}
               {!isRowsReadOnly(meta.data) && (
                 <th className="w-8 border-b border-border px-3 py-2">
                   <label className="cursor-pointer">
@@ -1101,19 +1126,21 @@ export function ListView({
                   </label>
                 </th>
               )}
-              {expandable && <th className="w-7 border-b border-border" />}
-              {columns.map((col) => (
-                <th key={col.column_name} className="border-b border-border">
+              {columns.map((col, i) => (
+                <th key={col.column_name} className={`border-b border-border ${i === 0 ? 'sticky left-0 z-[1] border-r bg-subtle' : ''}`}>
                   <button
-                    className={`w-full px-3 py-2 font-medium text-ink-muted hover:text-ink ${isFigure(col) ? 'text-right' : 'text-left'}`}
+                    className={`flex w-full px-3 py-2 font-medium text-ink-muted hover:text-ink ${isFigure(col) ? 'justify-end text-right' : 'text-left'}`}
                     data-testid={`col-${col.column_name}`}
                     onClick={() => toggleSort(col.column_name)}
                   >
-                    {col.label}
-                    {sort?.field === col.column_name && (sort.dir === 'asc' ? ' ↑' : ' ↓')}
+                    {/* The sort arrow sits outside the clip, so it always shows. */}
+                    <OneLine className={i === 0 ? NAME_CLIP : 'max-w-80'}>{col.label}</OneLine>
+                    {sort?.field === col.column_name && <span className="shrink-0 whitespace-pre">{sort.dir === 'asc' ? ' ↑' : ' ↓'}</span>}
                   </button>
                 </th>
               ))}
+              {/* Takes the spare width, so columns stay as wide as their content. */}
+              <td aria-hidden className="w-full border-b border-border p-0" />
             </tr>
           </thead>
           <tbody data-testid="list-rows">
@@ -1140,7 +1167,7 @@ export function ListView({
               <tr>
                 <td
                   colSpan={
-                    columns.length +
+                    columns.length + 1 +
                     (expandable ? 1 : 0) +
                     (isRowsReadOnly(meta.data) ? 0 : 1)
                   }
@@ -1153,6 +1180,8 @@ export function ListView({
             )}
           </tbody>
         </table>
+      </div>
+      {moreToTheRight && <MoreColumnsHint box={tableScroll} />}
       </div>
       )}
       <div className="mt-3 flex items-center gap-3 text-sm">
@@ -1236,9 +1265,9 @@ function ListRow({
           e.preventDefault()
           onOpenPane({ table, row: rowId })
         })}
-        className={`border-b border-border last:border-0 hover:bg-subtle focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus ${onOpenPane ? 'cursor-pointer' : ''} ${inPane ? 'bg-action-tint' : ''}`}>
+        className={`group ${inPane ? '' : 'hover:bg-subtle'} focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus ${onOpenPane ? 'cursor-pointer' : ''} ${inPane ? 'bg-action-tint' : ''}`}>
         {expandable && (
-          <td className="pl-2">
+          <td className="border-b border-border pl-2 group-last:border-b-0">
             <button
               onClick={onToggleExpand}
               aria-label={expanded ? 'Collapse child rows' : 'Expand child rows'}
@@ -1253,7 +1282,7 @@ function ListRow({
           </td>
         )}
         {selectable && (
-          <td className="px-3 py-2">
+          <td className="border-b border-border px-3 py-2 group-last:border-b-0">
             <label className="cursor-pointer">
               <input
                 type="checkbox"
@@ -1266,15 +1295,18 @@ function ListRow({
           </td>
         )}
         {columns.map((col, i) => (
-          <td key={col.column_name} className={`px-3 py-2 ${isFigure(col) ? 'text-right tabular-nums' : ''}`}>
-            <ListCell row={row} col={col} table={table} settings={settings} first={i === 0} />
+          <td key={col.column_name} className={`border-b border-border px-3 py-2 group-last:border-b-0 ${isFigure(col) ? 'text-right tabular-nums' : ''} ${i === 0 ? `sticky left-0 z-[1] border-r group-focus-visible:bg-action-tint ${inPane ? 'bg-action-tint' : 'bg-surface group-hover:bg-subtle'}` : ''}`}>
+            <OneLine className={i === 0 ? NAME_CLIP : 'max-w-80'}>
+              <ListCell row={row} col={col} table={table} settings={settings} first={i === 0} />
+            </OneLine>
           </td>
         ))}
+        <td aria-hidden className="border-b border-border p-0 group-last:border-b-0" />
       </tr>
       {expanded && (
         <tr data-testid="expanded-row">
           <td
-            colSpan={columns.length + 1 + (selectable ? 1 : 0)}
+            colSpan={columns.length + 2 + (selectable ? 1 : 0)}
             className="border-b border-border bg-subtle py-3 pl-10 pr-4"
           >
             <InlineChildren table={table} name={String(row.row_id)} childFields={childFields} />
@@ -1343,7 +1375,7 @@ function ListCell({
             : cell(row[col.column_name], col.column_type, settings)
         )}
       </Link>
-      {row.retired_at != null && <RetiredBadge className="ml-2 align-middle" />}
+      {row.retired_at != null && <RetiredBadge className="-my-1 ml-2 shrink-0 align-middle" />}
       </>
     )
   const value = row[col.column_name]
@@ -1469,14 +1501,16 @@ function PhoneList({
             Select all on this page
           </label>
         )}
-        <div className="ml-auto flex items-center gap-2">
-          <label htmlFor="list-sort-by" className="text-control text-ink-muted">
+        <div className="ml-auto flex min-w-0 max-w-full items-center gap-2">
+          <label htmlFor="list-sort-by" className="shrink-0 text-control text-ink-muted">
             Sort by
           </label>
           <Select
             id="list-sort-by"
             data-testid="list-sort-by"
-            className="w-auto"
+            // A long column label is cut, rather than pushing the page sideways.
+            wrapperClassName="min-w-0"
+            className="truncate"
             value={sort?.field ?? ''}
             onChange={(e) => onSort(e.target.value ? { field: e.target.value, dir: sort?.dir ?? 'asc' } : null)}
           >
@@ -1648,6 +1682,23 @@ function InlineChildGrid({
 // columns match with contains. They read and write the same URL-driven filter
 // list the advanced FilterBar manages, so chips stay in sync.
 const STANDARD_TEXT_TYPES = new Set(['Data', 'Reference', 'Email', 'Small Text'])
+// #1017: one width for every kind of box, so a long Choice can't stretch its own
+// and four of them share a line with the list's other controls.
+const FILTER_BOX = 'flex w-32 flex-col gap-0.5'
+const FILTER_LABEL = 'truncate text-xs font-semibold text-ink-subtle'
+
+// A value's box in the Add filter row suits its column, where the condition can use it (#1019).
+const NUMBER_TYPES = new Set(['Int', 'Float', 'Currency', 'Percent'])
+function filterBoxKind(col: import('../lib/meta').ColumnDef | undefined, op: string) {
+  const exact = op === '=' || op === '!='
+  if (!col || op === 'like') return 'text'
+  if (exact && col.column_type === 'Reference' && col.reference_table) return 'link'
+  if (exact && col.column_type === 'Choice') return 'choice'
+  if (col.column_type === 'Date') return 'date'
+  if (col.column_type === 'Datetime') return 'datetime-local'
+  if (NUMBER_TYPES.has(col.column_type)) return 'number'
+  return 'text'
+}
 
 function StandardFilters({
   meta,
@@ -1684,20 +1735,20 @@ function StandardFilters({
   }
 
   return (
-    <div className="mb-3 flex flex-wrap items-end gap-2" data-testid="standard-filters">
+    <div className="flex flex-wrap items-end gap-2" data-testid="standard-filters">
       {columns.map((f) =>
         f.column_type === 'Reference' && f.reference_table ? (
           // #793: a link filters by picking a row by its name, not by typing its id.
-          <label key={f.column_name} className="flex flex-col gap-0.5">
-            <span className="text-xs font-semibold text-ink-subtle">
+          <label key={f.column_name} className={FILTER_BOX}>
+            <span className={FILTER_LABEL} title={f.label ?? f.column_name}>
               {f.label ?? f.column_name}
             </span>
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1 [&>div]:min-w-0 [&>div]:flex-1">
               <LinkControl
                 field={f}
                 value={current(f.column_name, '=')}
                 onChange={(v) => apply(f.column_name, '=', String(v ?? ''))}
-                className={inputClasses('max-w-[10rem]')}
+                className={inputClasses('text-ellipsis')}
                 common={{ 'data-testid': `std-filter-${f.column_name}` }}
                 forFilter
               />
@@ -1715,15 +1766,15 @@ function StandardFilters({
             </span>
           </label>
         ) : f.column_type === 'Choice' ? (
-          <label key={f.column_name} className="flex flex-col gap-0.5">
-            <span className="text-xs font-semibold text-ink-subtle">
+          <label key={f.column_name} className={FILTER_BOX}>
+            <span className={FILTER_LABEL} title={f.label ?? f.column_name}>
               {f.label ?? f.column_name}
             </span>
             <select
               value={current(f.column_name, '=')}
               onChange={(e) => apply(f.column_name, '=', e.target.value)}
               data-testid={`std-filter-${f.column_name}`}
-              className={inputClasses('max-w-[20rem]')}
+              className={inputClasses()}
             >
               <option value="">All</option>
               {(f.choices ?? '')
@@ -1737,8 +1788,8 @@ function StandardFilters({
             </select>
           </label>
         ) : (
-          <label key={f.column_name} className="flex flex-col gap-0.5">
-            <span className="text-xs font-semibold text-ink-subtle">
+          <label key={f.column_name} className={FILTER_BOX}>
+            <span className={FILTER_LABEL} title={f.label ?? f.column_name}>
               {f.label ?? f.column_name}
             </span>
             <input
@@ -1753,7 +1804,8 @@ function StandardFilters({
               }}
               placeholder={`Filter ${f.label ?? f.column_name}…`}
               data-testid={`std-filter-${f.column_name}`}
-              className={inputClasses('max-w-[10rem]')}
+              className={inputClasses('text-ellipsis')}
+              {...NOT_A_LOGIN}
             />
           </label>
         ),
@@ -1800,10 +1852,13 @@ export function FilterBar({
   meta,
   filters,
   onChange,
+  builderOpen = true,
 }: {
   meta: import('../lib/meta').TableMeta
   filters: Filter[]
   onChange: (filters: Filter[]) => void
+  /** False leaves only the chips of the filters already applied (#1017). */
+  builderOpen?: boolean
 }) {
   const { t } = useI18n()
   const fields = [
@@ -1815,9 +1870,8 @@ export function FilterBar({
   const [field, setField] = useState('row_id')
   const [op, setOp] = useState<string>('=')
   const [value, setValue] = useState('')
-  const choice = ['=', '!='].includes(op)
-    ? meta.columns.find((c) => c.column_name === field && c.column_type === 'Choice')
-    : undefined
+  const column = meta.columns.find((c) => c.column_name === field)
+  const kind = filterBoxKind(column, op)
 
   function add() {
     if (!value.trim()) return
@@ -1828,7 +1882,7 @@ export function FilterBar({
 
   return (
     <div className="mb-3">
-      <div className="flex flex-wrap items-center gap-2">
+      {builderOpen && <div className="flex flex-wrap items-center gap-2">
         <select
           value={field}
           onChange={(e) => { setField(e.target.value); setValue('') }}
@@ -1844,7 +1898,10 @@ export function FilterBar({
         </select>
         <select
           value={op}
-          onChange={(e) => setOp(e.target.value)}
+          onChange={(e) => {
+            if (filterBoxKind(column, e.target.value) !== kind) setValue('')
+            setOp(e.target.value)
+          }}
           aria-label="Filter condition"
           data-testid="filter-op"
           className={inputClasses('max-w-[10rem]')}
@@ -1855,7 +1912,17 @@ export function FilterBar({
             </option>
           ))}
         </select>
-        {choice ? (
+        {kind === 'link' ? (
+          <LinkControl
+            key={field}
+            field={column!}
+            value={value}
+            onChange={(v) => setValue(String(v ?? ''))}
+            className={inputClasses('max-w-[10rem]')}
+            common={{ 'aria-label': 'Filter value', 'data-testid': 'filter-value' }}
+            forFilter
+          />
+        ) : kind === 'choice' ? (
           <select
             value={value}
             onChange={(e) => setValue(e.target.value)}
@@ -1864,11 +1931,13 @@ export function FilterBar({
             className={inputClasses('max-w-[20rem]')}
           >
             <option value="">Choose a value</option>
-            {(choice.choices ?? '').split('\n').filter(Boolean).map((raw) => (
-              <option key={raw} value={raw}>{choiceLabel(raw, choice.choice_labels, t)}</option>
+            {(column!.choices ?? '').split('\n').filter(Boolean).map((raw) => (
+              <option key={raw} value={raw}>{choiceLabel(raw, column!.choice_labels, t)}</option>
             ))}
           </select>
         ) : <input
+          type={kind}
+          step={kind === 'number' ? 'any' : undefined}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && add()}
@@ -1876,17 +1945,18 @@ export function FilterBar({
           aria-label="Filter value"
           data-testid="filter-value"
           className={inputClasses('max-w-[10rem]')}
+          {...NOT_A_LOGIN}
         />}
         <button
           onClick={add}
           data-testid="filter-add"
           className={buttonClasses()}
         >
-          Add filter
+          Add
         </button>
-      </div>
+      </div>}
       {filters.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-2" data-testid="filter-chips">
+        <div className={`flex flex-wrap gap-2 ${builderOpen ? 'mt-2' : ''}`} data-testid="filter-chips">
           {filters.map((f, i) => (
             <span
               key={i}

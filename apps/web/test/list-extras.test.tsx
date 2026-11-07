@@ -50,6 +50,7 @@ test('a text filter applies on Enter and on leaving the box; the filter bar adds
   fireEvent.blur(box)
   await waitFor(() => expect(listedIds()).toBe(3))
 
+  await user.click(screen.getByTestId('filter-toggle'))
   await user.selectOptions(screen.getByTestId('filter-field'), 'customer')
   await user.type(screen.getByTestId('filter-value'), '   {Enter}')
   expect(listedIds()).toBe(3)
