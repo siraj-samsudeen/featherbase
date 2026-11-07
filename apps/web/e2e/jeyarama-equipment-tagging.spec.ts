@@ -50,8 +50,8 @@ test('assets_atk_tagging: the team records a tagged line, the site manager signs
   for (const person of [suresh.id, ravi.id]) await save({ count: count.row_id, person }, 'equipment.counter')
   const current = await (await request.get(`/api/table/equipment.count/${count.row_id}`, { headers })).json() as { updated_at: string }
   expect((await request.post('/api/app_actions/equipment/start_count', { headers, data: { idempotencyKey: crypto.randomUUID(), payload: { row_id: count.row_id, updated_at: current.updated_at } } })).status()).toBe(200)
-  await save({ counted_in: count.row_id, place: dairy.row_id, tag_status: 'Tagged', tag_no: tag, asset_type: type.row_id, asset_name: `3-door chiller ${run}`,
-    serial_no: `SN-${run}`, condition: 'Working', ownership: 'Group owned', tagged_by: ravi.id }, 'equipment.asset', suresh.headers)
+  await save({ count: count.row_id, place: dairy.row_id, tag_status: 'Tagged', tag_no: tag, asset_type: type.row_id, asset_name: `3-door chiller ${run}`,
+    serial_no: `SN-${run}`, condition: 'Working', ownership: 'Group owned', tagged_by: ravi.id }, 'equipment.count_line', suresh.headers)
 
   await session.visit(`/equipment/#count=${count.row_id}`)
   await session.step('the site manager signs the area after the label count adds up', async ({ page }) => {

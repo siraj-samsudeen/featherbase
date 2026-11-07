@@ -47,7 +47,7 @@ async function pilot(createUser: (options: { roles: string[]; fullName?: string 
   for (const counter of [ravi, meena]) await save('equipment.counter', { count: count.row_id, person: counter.user })
   await manager.post('/api/app_actions/equipment/start_count', { idempotencyKey: crypto.randomUUID(),
     payload: { row_id: count.row_id, updated_at: (await manager.get<Row>(`/api/table/equipment.count/${count.row_id}`)).updated_at } })
-  const line = (tag_no: string) => save('equipment.asset', { counted_in: count.row_id, place: dairy.row_id, tag_status: 'Tagged', tag_no, asset_type: chiller.row_id,
+  const line = (tag_no: string) => save('equipment.count_line', { count: count.row_id, place: dairy.row_id, tag_status: 'Tagged', tag_no, asset_type: chiller.row_id,
     asset_name: '3-door upright chiller', serial_no: 'BS23K44871', tagged_by: ravi.user }, meena)
   return { manager, ravi, meena, senthil, accountant, controller, save, atk, dairy, count, line }
 }
