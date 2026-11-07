@@ -27,7 +27,7 @@ import { ApiError, api } from '../lib/api'
 import { COLUMN_TYPES, NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
 import { RESERVED, SNAKE, TARGET_REQUIRED_TYPES, slugify } from '../lib/column-rules'
 import { buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from '@featherbase/shop-floor'
-import { usePickableTables } from '../lib/session'
+import { tableOptionLabel, usePickableTables } from '../lib/session'
 
 // #1024: what can be chosen as a title. A link's value is the other row's id, so
 // a row headed by one reads as a bare id. A title already stored stays shown,
@@ -186,9 +186,25 @@ function LinkRow({ def, column, onDone }: {
     </span>
   )
 
+  // #1021: a link moves between a Table and its views; the server keeps the
+  // values only if each is a row of the new target, and says which are not.
+  const base = column.reference_base ?? column.reference_table
+  const family = (tables ?? []).filter((t) => t.row_id === base || (t.kind === 'view' && t.view_of === base))
   if (column.column_type === 'Reference' && column.reference_table && !column.table_column)
     return (
       <span className="inline-flex flex-wrap items-center gap-1">
+        {family.length > 1 && (
+          <select
+            className={inputClasses('w-48 py-0.5')}
+            aria-label={`Table ${name} links to`}
+            data-testid={`ce-link-target-${name}`}
+            value={column.reference_table}
+            disabled={change.isPending}
+            onChange={(e) => change.mutate({ column_type: 'Reference', reference_table: e.target.value })}
+          >
+            {family.map((t) => <option key={t.row_id} value={t.row_id}>{tableOptionLabel(t)}</option>)}
+          </select>
+        )}
         <button
           type="button"
           className={touchLinkClasses('underline')}
@@ -227,7 +243,7 @@ function LinkRow({ def, column, onDone }: {
         <option value="">Choose a Table…</option>
         {(tables ?? []).map((t) => (
           <option key={t.row_id} value={t.row_id}>
-            {t.row_id}
+            {tableOptionLabel(t)}
           </option>
         ))}
       </select>

@@ -37,6 +37,9 @@ export interface ColumnDef {
   label: string | null
   column_type: ColumnType
   reference_table: string | null
+  // #1021: set only when reference_table names a view: the base Table whose
+  // rows the link stores. Integrity and Data Scopes judge links by it.
+  reference_base?: string
   // #881: on a link whose Table is chosen per row, the column of this Table
   // that names it (a link to Table). Its `choices` lists the Tables allowed,
   // one per line; none means any Table that can be linked to.
@@ -107,7 +110,11 @@ export interface TableMeta {
   // the wire format is always `row_id`.
   row_key: string
   module: string
-  kind: 'table' | 'sub_table' | 'settings'
+  kind: 'table' | 'sub_table' | 'settings' | 'view'
+  // #1021: a view's base Table and the filters choosing its rows; null on
+  // every other kind. A view has no storage, grants or policy of its own.
+  view_of?: string | null
+  view_filters?: [string, string, unknown][] | null
   is_submittable: boolean
   id_pattern: string
   title_column: string | null
@@ -183,8 +190,11 @@ export function invalidateMeta(name?: string) {
 
 function clearMeta(name?: string) {
   generation++
-  if (name) cache.delete(name)
-  else cache.clear()
+  if (name) {
+    cache.delete(name)
+    // #1021: a view's columns are its base's; a change to the base is one to it.
+    for (const [key, meta] of cache) if (meta.view_of === name) cache.delete(key)
+  } else cache.clear()
   slugCache = null
   backlinksCache = null
 }
@@ -205,8 +215,11 @@ export async function getBacklinks(target: string): Promise<Backlink[]> {
     const targets = await sql<
       { parent: string; column_name: string; reference_table: string; kind: string }[]
     >`
-      select cd.parent, cd.column_name, cd.reference_table, td.kind
+      select cd.parent, cd.column_name, td.kind,
+        -- #1021: a link to a view is a link to its base's rows.
+        coalesce(to_jsonb(v)->>'view_of', cd.reference_table) as reference_table
       from column_def cd join table_def td on td.name = cd.parent
+      left join table_def v on v.name = cd.reference_table
       where cd.column_type = 'Reference' and cd.reference_table is not null`
     // owners of each sub-table: Table rows with a Sub-table column pointing at it
     const owners = await sql<{ parent: string; row_table: string; kind: string }[]>`
@@ -368,8 +381,13 @@ export async function getMeta(name: string): Promise<TableMeta> {
     }
     throw new AppError('NotFoundError', `Table ${name} not found`)
   }
+  // #1021: a view has no columns of its own; it shows its base's.
+  if (dt.kind === 'view') return viewMeta(dt as Record<string, unknown>, loadedAt)
   const columns = await sql<ColumnDef[]>`
-    select * from column_def where parent = ${name} order by position, column_name`
+    select cd.*, to_jsonb(v)->>'view_of' as reference_base from column_def cd
+    left join table_def v on v.name = cd.reference_table
+    where cd.parent = ${name} order by cd.position, cd.column_name`
+  for (const column of columns) if (column.reference_base == null) delete column.reference_base
   const meta = {
     ...(dt as unknown as Omit<TableMeta, 'columns' | 'row_key'>),
     enable_assignments: false,
@@ -410,5 +428,35 @@ export async function getMeta(name: string): Promise<TableMeta> {
 
   metaCacheStats.loads++
   if (generation === loadedAt) cache.set(name, meta)
+  return meta
+}
+
+// #1021: a view's meta is its own name, label and filters over its base's
+// columns, key, title and naming. Nothing that grants or protects access is
+// its own: every read resolves the view to its base first (views.ts).
+async function viewMeta(dt: Record<string, unknown>, loadedAt: number): Promise<TableMeta> {
+  const base = await getMeta(String(dt.view_of))
+  const meta: TableMeta = {
+    ...(dt as unknown as Omit<TableMeta, 'columns' | 'row_key'>),
+    kind: 'view',
+    access_policy: null,
+    system_written: false,
+    decides_scope: false,
+    data_source: null,
+    is_submittable: base.is_submittable,
+    id_pattern: base.id_pattern,
+    title_column: base.title_column,
+    reading_presentation: base.reading_presentation ?? null,
+    sort_column: base.sort_column,
+    sort_order: base.sort_order,
+    enable_assignments: false,
+    enable_tags: false,
+    enable_files: false,
+    enable_discussion: false,
+    row_key: base.row_key,
+    columns: base.columns.map((column) => ({ ...column })),
+  }
+  metaCacheStats.loads++
+  if (generation === loadedAt) cache.set(meta.name, meta)
   return meta
 }

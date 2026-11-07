@@ -276,6 +276,8 @@ describe('#432: every write entry point is covered', () => {
   // trusted internal writer, or a public writer that refuses audit tables.
   const READERS = ['assertUserPermissions', 'checkRowForInsert', 'duplicateValueFields', 'getDoc', 'rowCapabilities', 'validateRowForUpdate']
   const TRUSTED = ['saveSystemRow']
+  // #1034: names no Table, so it has no way to an audit table.
+  const PERMISSION_ONLY = ['revokeGrant']
   const PUBLIC_WRITERS: Record<string, (id: string) => Promise<unknown>> = {
     saveDoc: () => documentModule.saveDoc(AL, { user: 'Administrator', operation: 'forged' }),
     deleteDoc: (id) => documentModule.deleteDoc(AL, id),
@@ -293,8 +295,10 @@ describe('#432: every write entry point is covered', () => {
       .filter(([, v]) => typeof v === 'function')
       .map(([k]) => k)
       .sort()
-    expect(exported).toEqual([...READERS, ...TRUSTED, ...Object.keys(PUBLIC_WRITERS)].sort())
+    expect(exported).toEqual([...READERS, ...TRUSTED, ...PERMISSION_ONLY, ...Object.keys(PUBLIC_WRITERS)].sort())
     const id = await seedActivity()
+    await expect(documentModule.revokeGrant(id, 'Administrator')).rejects.toMatchObject({ type: 'NotFoundError', message: expect.stringContaining('Permission') })
+    expect(await sql`select 1 from activity_log where row_id = ${id}`).toHaveLength(1)
     for (const [name, call] of Object.entries(PUBLIC_WRITERS))
       await expect(call(id), name).rejects.toMatchObject({ type: 'PermissionError', message: expect.stringMatching(/written only by the platform/) })
   })
