@@ -114,6 +114,15 @@ describe('who sees what', () => {
       { store: ['9901'] }, { store: ['9902'], subcategory: ['000000005'] }])
   })
 
+  it('a Floor Manager with no floor gets no place, and the reason', async () => {
+    expect(await reach({ job: 'Floor Manager', site: 'AAA', floor: null })).toEqual({ places: [], problems: ['no_section'] })
+  })
+
+  it('a store reached by two jobs names both, in order', async () => {
+    const [place] = (await reach({ job: 'Store Manager', site: 'AAA' }, { job: 'Store Manager', site: 'AAA', acting: true })).places
+    expect(place.reasons.map(reason => reason.text)).toEqual(['Acting Store Manager job assignment', 'Store Manager job assignment'])
+  })
+
   it('a place says which job gives it, and an acting one says so', async () => {
     const [place] = (await reach({ job: 'Store Manager', site: 'AAA', acting: true })).places
     expect(place.basis).toBe('acting_store_manager')
