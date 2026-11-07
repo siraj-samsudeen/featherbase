@@ -14,6 +14,7 @@ import { COLUMN_NAME_RE, quoteIdent } from './sql-identifier'
 import { PLATFORM_SCHEMA, platformRelation, resolvedRelation, tableName } from './platform-schema'
 import { canRetire, readingPresentationSchema } from 'shared'
 import { allowedTables, anyTableLinkColumns, linkableTable } from './any-table-link'
+import { filterColumns, normaliseViewFilters, rowsInView, viewsOf } from './views'
 
 export { tableName }
 
@@ -109,7 +110,7 @@ async function assertValuesNameRows(
   const missing = (await tx.unsafe(
     `select distinct t.${col} as value from ${relation} t
      where t.${col} is not null and t.${col} <> ''
-       and not exists (select 1 from ${quoteRelation(await tableRelation(target))} r where r.row_id = t.${col})
+       and not exists (select 1 from ${quoteRelation(await tableRelation(targetMeta.kind === 'view' ? targetMeta.view_of! : target))} r where r.row_id = t.${col})
      order by 1 limit 20`,
   )) as unknown as { value: string }[]
   if (missing.length) {
@@ -117,6 +118,8 @@ async function assertValuesNameRows(
     const why = `${missing.map((m) => m.value).join(', ')} ${missing.length === 1 ? 'names' : 'name'} no ${target} row`
     throw new AppError('ValidationError', `${table}.${column} cannot become a link: ${why}`, { [column]: why })
   }
+  // #1021: a link to a view also needs every value to be one of its rows.
+  await assertValuesInView(table, relation, column, target)
   await tx.unsafe(`update ${relation} set ${col} = null where ${col} = ''`)
 }
 
@@ -254,6 +257,7 @@ export function seriesKey(table: string, prefix: string): string {
 // an omission there silently rewrites the schema.
 export async function setIdPattern(name: string, pattern: string): Promise<TableMeta> {
   const meta = await getMeta(name)
+  if (meta.kind === 'view') throw baseOnlyChange(meta)
   assertNotSystemWritten(meta, 'renamed or changed')
   validateIdPattern(pattern, meta.columns.map((c) => c.column_name))
   await sql`update table_def set id_pattern = ${pattern}, updated_at = ${new Date()}
@@ -313,7 +317,7 @@ function validateDef(def: TableDef) {
     if (['Reference', 'Sub-table', 'Choice'].includes(f.column_type) && !targetOf(f) && f.column_type !== 'Choice')
       errs[f.column_name] = `${f.column_type} column requires ${f.column_type === 'Reference' ? 'reference_table' : 'row_table'}`
     if (f.column_type === 'Choice' && !f.choices)
-      errs[f.column_name] = 'Choice column requires choices'
+      errs[f.column_name] = 'Choice column needs at least one choice'
     if (f.table_column) {
       // #881: a link to a row of any Table names the column of this Table
       // that holds the Table, a link to Table, and no fixed target of its own.
@@ -370,6 +374,8 @@ export async function tableRelation(name: string): Promise<string> {
 // Describe the same storage the row readers use, never a label-derived name.
 // Source bindings are not local relations; Settings share a composite-key store.
 export async function tableStorageIdentity(meta: TableMeta) {
+  // #1021: a view stores nothing; its rows are its base's.
+  if (meta.kind === 'view') return null
   if (meta.data_source) {
     if (!meta.external_table) return null
     return { schema: meta.external_schema ?? '', relation: meta.external_table,
@@ -495,6 +501,11 @@ export async function updateTable(
   if (input && typeof input === 'object' && 'name' in input && input.name !== name)
     throw new AppError('ValidationError', 'Body Table name must match the path', { name: 'Table renaming is not supported by this endpoint' })
   const existing = await getMeta(name)
+  // #1021: a view's columns are its base's; only its own definition changes.
+  if (existing.kind === 'view') {
+    if (opts.remove_columns?.length) throw baseOnlyChange(existing)
+    return updateView(name, input)
+  }
   assertNotSystemWritten(existing, 'changed')
   // #1025: an update changes what it names. Columns left out are the stored ones,
   // not the effective meta, so a Metadata Override is not written into the Table.
@@ -578,6 +589,14 @@ export async function updateTable(
     def,
     def.columns.filter((f) => before.get(f.column_name)?.reference_table !== f.reference_table),
   )
+  // #1021: a link moved onto a view keeps every value only if each is a row
+  // of it. A link moved back to the base always does.
+  if (existing.kind !== 'settings' && !existing.data_source)
+    for (const f of def.columns)
+      if (f.column_type === 'Reference' && f.reference_table && before.has(f.column_name)
+        && before.get(f.column_name)!.column_type === 'Reference'
+        && before.get(f.column_name)!.reference_table !== f.reference_table)
+        await assertValuesInView(name, quoteRelation(await tableRelation(name)), f.column_name, f.reference_table)
 
   // A bound Table's column changes are metadata-only (BV1: no DDL against
   // anyone's storage, ours included).
@@ -587,6 +606,7 @@ export async function updateTable(
 
   const removing = new Set(opts.remove_columns ?? [])
   if (removing.has(DELETED_AT_SOURCE)) await assertNotCopyMarker(existing.name, DELETED_AT_SOURCE, 'removed')
+  for (const column of removing) await assertNotViewFilterColumn(existing.name, column, 'removed')
   for (const column_name of removing) {
     if (!before.has(column_name)) errors[column_name] = 'not a column of this Table'
     else if (column_name === 'amended_from' && keptAmendedFrom)
@@ -765,11 +785,131 @@ async function assertTableAddressAvailable(tx: TxSql, name: string, from?: strin
     })
 }
 
+// #1021: a view is metadata only: a name, a base Table and filters. It makes
+// no storage, no RLS policy and no columns of its own (its columns are its
+// base's), and holds no grants: every read resolves it to its base first.
+const viewDefSchema = z.object({
+  name: z.string().regex(/^[A-Za-z][A-Za-z0-9 ]{0,60}$/, 'A view name starts with a letter and has only letters, digits and spaces'),
+  kind: z.literal('view'),
+  label: optionalString,
+  module: optionalString,
+  description: optionalString,
+  view_of: z.string().min(1),
+  view_filters: z.unknown(),
+})
+
+async function viewBase(name: string): Promise<TableMeta> {
+  const base = await getMeta(name)
+  if (base.kind !== 'table' || base.data_source || base.system_written || base.archived_at || base.name === 'Table' || base.name === 'Column')
+    throw new AppError('ValidationError', `${base.name} cannot have a view: a view is of a Table whose rows are stored here`, {
+      view_of: `${base.name} rows are not stored here`,
+    })
+  return base
+}
+
+export async function createView(input: unknown, user = 'Administrator'): Promise<TableMeta> {
+  const parsed = viewDefSchema.safeParse(input)
+  if (!parsed.success) {
+    const errs: Record<string, string> = {}
+    for (const issue of parsed.error.issues) errs[issue.path.join('.')] = issue.message
+    throw new AppError('ValidationError', 'Invalid view definition', errs)
+  }
+  const def = parsed.data
+  const base = await viewBase(def.view_of)
+  const filters = normaliseViewFilters(base, def.view_filters)
+  const [existing] = await sql`select 1 from table_def where name = ${def.name}`
+  if (existing) throw new AppError('ConflictError', `Table ${def.name} already exists`)
+  // A view has no storage, but its name must not spell a relation that does
+  // (#432): a read that reached tableRelation(view) would find those rows.
+  const [clash] = await sql`select 1 from information_schema.tables
+    where table_schema = ${PLATFORM_SCHEMA} and table_name = ${tableName(def.name)}`
+  if (clash) throw new AppError('ConflictError', `Table ${def.name} already exists`)
+  await sql.begin(async (tx) => {
+    await assertTableAddressAvailable(tx, def.name)
+    await tx`insert into table_def ${tx({
+      name: def.name,
+      label: def.label ?? null,
+      module: def.module ?? base.module,
+      kind: 'view',
+      view_of: base.name,
+      view_filters: tx.json(filters as never),
+      description: def.description ?? null,
+      custom: true,
+      created_by: user,
+      updated_by: user,
+    } as unknown as Record<string, never>)}`
+  })
+  invalidateMeta(def.name)
+  return getMeta(def.name)
+}
+
+function baseOnlyChange(view: TableMeta): AppError {
+  return new AppError('ValidationError', `${view.name} is a view of ${view.view_of}: its columns and settings are ${view.view_of}'s, so change it on ${view.view_of}`)
+}
+
+/** A view's label, description and filters change; its base never does. */
+export async function updateView(name: string, input: unknown, user = 'Administrator'): Promise<TableMeta> {
+  const meta = await getMeta(name)
+  if (meta.kind !== 'view') throw new AppError('ValidationError', `${name} is not a view`)
+  const body = (input ?? {}) as Record<string, unknown>
+  if (body.view_of !== undefined && body.view_of !== meta.view_of)
+    throw new AppError('ValidationError', `A view keeps its base; make a new view of ${String(body.view_of)} instead`, { view_of: 'cannot change' })
+  if (body.kind !== undefined && body.kind !== 'view') throw new AppError('ValidationError', 'kind cannot be changed after creation')
+  // Anything else is its base's: dropping it silently would report a change
+  // that never happened.
+  if (Object.keys(body).some((key) => !['name', 'kind', 'view_of', 'label', 'description', 'view_filters'].includes(key)))
+    throw baseOnlyChange(meta)
+  const base = await viewBase(meta.view_of!)
+  const filters = body.view_filters === undefined ? meta.view_filters ?? [] : normaliseViewFilters(base, body.view_filters)
+  const text = (key: string) => body[key] === undefined ? (meta as unknown as Record<string, unknown>)[key] ?? null
+    : typeof body[key] === 'string' && (body[key] as string).trim() ? (body[key] as string).trim() : null
+  await sql`update table_def set ${sql({
+    label: text('label'), description: text('description'),
+    view_filters: sql.json(filters as never), updated_by: user, updated_at: new Date(),
+  } as unknown as Record<string, never>)} where name = ${name}`
+  invalidateMeta(name)
+  return getMeta(name)
+}
+
+/** #1021: a base keeps the columns its views filter on. */
+async function assertNotViewFilterColumn(table: string, column: string, verb: string): Promise<void> {
+  const using = (await viewsOf(table)).filter((v) => filterColumns(v.filters).includes(column))
+  if (using.length)
+    throw new AppError('ValidationError',
+      `${table}.${column} cannot be ${verb}: the view${using.length === 1 ? '' : 's'} ${using.map((v) => v.name).join(', ')} filter${using.length === 1 ? 's' : ''} on it`,
+      { [column]: `used by ${using.map((v) => v.name).join(', ')}` })
+}
+
+/** #1021: a link column moving to a view keeps its values only if every one
+ *  is a row of the view; otherwise the move is refused, naming them, rather
+ *  than leaving rows that fail their next save. */
+async function assertValuesInView(table: string, relation: string, column: string, target: string): Promise<void> {
+  const view = await getMeta(target)
+  if (view.kind !== 'view') return
+  const baseRelation = await tableRelation(view.view_of!)
+  const col = quoteIdent(column)
+  const rows = await sql.unsafe(`select distinct t.${col} as value from ${relation} t
+    where t.${col} is not null and t.${col} <> '' order by 1`) as unknown as { value: string }[]
+  const values = rows.map((r) => String(r.value))
+  const inside = await rowsInView(sql, view, values, baseRelation)
+  const outside = values.filter((v) => !inside.has(v))
+  if (outside.length) {
+    const shown = outside.slice(0, 20).join(', ')
+    const why = `${shown}${outside.length > 20 ? ` and ${outside.length - 20} more` : ''} ${outside.length === 1 ? 'is' : 'are'} not ${target} rows`
+    throw new AppError('ValidationError', `${table}.${column} cannot link to ${target}: ${why}`, { [column]: why })
+  }
+}
+
 export async function createTable(
   input: unknown,
   ownerApp?: string,
   opts: { alongside?: readonly string[] } = {},
 ): Promise<TableMeta> {
+  // #1021: a view is defined by its base and filters, not by columns.
+  if (input && typeof input === 'object' && (input as { kind?: unknown }).kind === 'view') {
+    if (ownerApp) throw new AppError('ValidationError', 'An app cannot define a view yet')
+    return createView(input)
+  }
   const parsed = tableDefSchema.safeParse(input)
   if (!parsed.success) {
     const errs: Record<string, string> = {}
@@ -964,6 +1104,11 @@ export async function deleteTable(name: string, user = 'Administrator', opts: { 
   if (meta.access_policy) throw new AppError('PermissionError', 'A protected Table must retain its access policy for private history')
   if (meta.system)
     throw new AppError('ValidationError', `${meta.name} is a system table and cannot be deleted`)
+  // #1021: a Table goes only once no view is based on it.
+  const views = await viewsOf(meta.name)
+  if (views.length)
+    throw new AppError('ValidationError',
+      `Cannot delete ${meta.name}: the view${views.length === 1 ? '' : 's'} ${views.map((v) => v.name).join(', ')} ${views.length === 1 ? 'is' : 'are'} based on it. Delete ${views.length === 1 ? 'that view' : 'those views'} first.`)
 
   // #122: an installed app owns its tables as a set — the registry records
   // them, and uninstalling removes them and the record together. Deleting
@@ -1058,7 +1203,8 @@ export async function deleteTable(name: string, user = 'Administrator', opts: { 
     // storage; a settings Table never had a physical table. RLS policies
     // drop with the table. Series counters are deliberately untouched
     // (DEL-R5 / IMP-R6: the pattern is the promise, not the number).
-    if (!meta.data_source && meta.kind !== 'settings')
+    // #1021: nor did a view.
+    if (!meta.data_source && meta.kind !== 'settings' && meta.kind !== 'view')
       await tx.unsafe(`drop table if exists ${physical}`)
     return removedFiles
   })
@@ -1117,6 +1263,8 @@ export async function renameColumn(
   if (meta.system)
     throw new AppError('ValidationError', `${meta.name} is a system table and cannot be changed`)
   await assertNotCopyMarker(meta.name, from, 'renamed')
+  if (meta.kind === 'view') throw new AppError('ValidationError', `${meta.name} is a view; rename the column on ${meta.view_of}`)
+  await assertNotViewFilterColumn(meta.name, from, 'renamed')
   // BV1: a bound Table's storage belongs to the source. Renaming its column
   // here would rename nothing real and desynchronise the binding.
   if (meta.data_source)
@@ -1295,8 +1443,10 @@ async function moveTable(meta: TableMeta, to: string, relationName: string, user
   const [schemaName, fromRelation] = resolvedRelation(meta).split('.')
   const [taken] = await sql`select 1 from table_def where lower(name) = lower(${to}) and name <> ${from}`
   // A change of case alone ("Sap plant") keeps the same storage.
-  const sameRelation = relationName === fromRelation
-  const [clash] = sameRelation ? [] : await sql`select 1 from information_schema.tables where table_schema = ${schemaName} and table_name = ${relationName}`
+  // #1021: a view has no storage to move, only its definition.
+  const isView = meta.kind === 'view'
+  const sameRelation = relationName === fromRelation || isView
+  const [clash] = relationName === fromRelation ? [] : await sql`select 1 from information_schema.tables where table_schema = ${schemaName} and table_name = ${relationName}`
   if (taken || clash) throw new AppError('ConflictError', `Table ${to} already exists`)
   const pointers = await sql<{ parent: string; column_name: string }[]>`
     select cd.parent, cd.column_name from column_def cd join table_def td on td.name = cd.parent
@@ -1335,7 +1485,7 @@ async function moveTable(meta: TableMeta, to: string, relationName: string, user
       if (meta.kind === 'sub_table')
         await tx.unsafe(`alter index ${schema}.${quoteIdent(`${tableName(from)}_parent_idx`)} rename to ${quoteIdent(`${tableName(to)}_parent_idx`)}`)
     }
-    if (meta.kind !== 'sub_table') {
+    if (meta.kind !== 'sub_table' && !isView) {
       const [policy] = await tx`select 1 from pg_policies where schemaname = ${schemaName} and tablename = ${relationName} and policyname = 'fc_select'`
       if (policy) await tx.unsafe(`alter policy fc_select on ${relation} using (featherbase.fc_has_read('${to.replace(/'/g, "''")}'))`)
     }
@@ -1344,6 +1494,8 @@ async function moveTable(meta: TableMeta, to: string, relationName: string, user
     const [row] = await tx`select * from table_def where name = ${from}`
     await tx`insert into table_def ${tx({ ...row, name: to, ...(meta.owner_app ? { physical_relation: relationName } : {}), updated_at: new Date() } as unknown as Record<string, never>)}`
     await tx`update column_def set parent = ${to} where parent = ${from}`
+    // #1021: its views stay based on it, under its new name.
+    await tx`update table_def set view_of = ${to} where view_of = ${from}`
     // A copied Table's provenance follows it, before the old definition's
     // delete would cascade it away (#772: Copy again must survive a rename).
     await tx`update featherbase.table_copy set target_table = ${to} where target_table = ${from}`
@@ -1400,10 +1552,11 @@ export async function changeColumnType(table: string, column: string, to: string
   if (policyColumns(meta.access_policy).includes(column))
     throw new AppError('PermissionError', 'A column that defines mandatory access cannot change type')
   assertNotSystemWritten(meta, 'changed')
-  if (meta.system || meta.data_source)
+  if (meta.system || meta.data_source || meta.kind === 'view')
     throw new AppError('ValidationError', `${meta.name}'s column types are not changed here`)
   const current = meta.columns.find((c) => c.column_name === column)
   if (!current) throw new AppError('NotFoundError', `${meta.name} has no column ${column}`)
+  if (current.column_type !== to) await assertNotViewFilterColumn(meta.name, column, 'changed')
   if (current.column_type !== to) await assertNotCopyMarker(meta.name, column, 'changed')
   const from = current.column_type
   if (from === to) return meta

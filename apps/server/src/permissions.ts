@@ -291,7 +291,7 @@ export interface TableScope {
 
 interface ScopedTable {
   name: string
-  columns: { column_name: string; column_type: string; reference_table?: string | null }[]
+  columns: { column_name: string; column_type: string; reference_table?: string | null; reference_base?: string }[]
   scope_on?: string[] | null
   scope_required?: boolean | null
 }
@@ -307,11 +307,13 @@ export function tableScope(meta: ScopedTable, map: Map<string, Set<string>>): Ta
   for (const f of meta.columns) {
     if (f.column_type !== 'Reference' || !f.reference_table) continue
     if (declared && !declared.has(f.column_name)) continue
-    const allowed = map.get(f.reference_table)
-    if (allowed) scope.refs.push({ column: f.column_name, table: f.reference_table, allowed, unsetPasses: !required })
+    // #1021: a link to a view holds its base's rows, scoped as such.
+    const dimension = f.reference_base ?? f.reference_table
+    const allowed = map.get(dimension)
+    if (allowed) scope.refs.push({ column: f.column_name, table: dimension, allowed, unsetPasses: !required })
     else if (required) {
       scope.none = true
-      scope.missing.push(f.reference_table)
+      scope.missing.push(dimension)
     }
   }
   // Fail closed on a stale declaration too: a required column that is no
