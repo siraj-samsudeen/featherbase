@@ -69,7 +69,7 @@ test('saving a form keeps a link to a row the person cannot read', async ({ admi
   const name = await screen.findByLabelText('Site name', undefined, { timeout: 10_000 })
   await waitFor(() => expect(document.querySelector('[data-form-field="region"]')).toHaveTextContent('A row you cannot see'))
   fireEvent.change(name, { target: { value: 'Enchakkal North' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+  fireEvent.click(screen.getByTestId('form-save'))
   await waitFor(async () => expect((await admin.get<{ site_name: string }>(`/api/table/${encodeURIComponent(SITE)}/ENK`)).site_name).toBe('Enchakkal North'))
   expect((await admin.get<{ region: string }>(`/api/table/${encodeURIComponent(SITE)}/ENK`)).region).toBe('KL')
 })

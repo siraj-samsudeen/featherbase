@@ -459,13 +459,13 @@ function Pane({
   )
 }
 
-type CardColumn = { column_name: string; label: string; column_type: string; reference_table?: string | null }
+type CardColumn = { column_name: string; label: string; column_type: string; reference_table?: string | null; reference_base?: string | null }
 
 /** A card cell as a person reads it: a link shows its row's title, not its id. */
 function cellText(c: CardColumn, row: Row, settings: Settings) {
   const value = row[c.column_name]
   if (c.column_type === 'Reference' && c.reference_table && value != null && value !== '')
-    return <LinkedTitle table={c.reference_table} rowId={String(value)} />
+    return <LinkedTitle table={c.reference_base ?? c.reference_table} rowId={String(value)} />
   return formatValue(c.column_type, value, settings)
 }
 

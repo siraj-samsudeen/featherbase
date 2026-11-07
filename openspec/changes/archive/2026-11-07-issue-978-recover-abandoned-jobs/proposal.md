@@ -17,4 +17,4 @@ A server stopped while a job runs (a deploy replacing it, a crash) leaves that j
 
 ## Impact
 
-- Migration 0153 adds `background_job.lease_expires_at` and its read-only column.
+- Migration 0154 adds `background_job.lease_expires_at` and its read-only column.

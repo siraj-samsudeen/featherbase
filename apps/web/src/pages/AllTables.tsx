@@ -75,6 +75,10 @@ export function AllTablesPage() {
                 activeProps={{ className: activeClass }}
               >
                 {dt.row_id}
+                {/* #1021: a view says what it is a view of. */}
+                {dt.kind === 'view' && dt.view_of && (
+                  <span className="ml-2 text-xs text-ink-subtle" data-testid="all-tables-view-of">view of {dt.view_of}</span>
+                )}
               </Link>
             ))}
           </div>

@@ -2,7 +2,7 @@ import { useQueries, useQuery } from '@tanstack/react-query'
 import { listResource } from './api'
 import { useConnections, type Connection } from './connections'
 import { dataColumns } from './list-view-columns'
-import { metaQuery, type TableMeta } from './meta'
+import { linkRowsTable, metaQuery, type TableMeta } from './meta'
 import { rowTitleQuery } from './row-titles'
 
 // #910 D3: what the drill pane, the map and the tree show about one row,
@@ -34,7 +34,7 @@ export function forwardLinks(meta: TableMeta, row: Row): ForwardLink[] {
   for (const c of dataColumns(meta)) {
     if (c.column_type !== 'Reference' || isBlank(row[c.column_name])) continue
     // #881: a link to a row of any Table points into the Table its row names.
-    const table = c.reference_table ?? (c.table_column && !isBlank(row[c.table_column]) ? String(row[c.table_column]) : null)
+    const table = linkRowsTable(c) ?? (c.table_column && !isBlank(row[c.table_column]) ? String(row[c.table_column]) : null)
     if (table) links.push({ column: c.column_name, label: c.label ?? c.column_name, table, row_id: String(row[c.column_name]) })
   }
   return links

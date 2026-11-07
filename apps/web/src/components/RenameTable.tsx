@@ -8,7 +8,7 @@ import { renameTableInRecents } from '../lib/recents'
 
 // #871: rename a custom Table. The server carries its rows, history, links,
 // permissions and saved views; the list reopens under the new name.
-export function RenameTable({ table }: { table: string }) {
+export function RenameTable({ table, noun = 'Table' }: { table: string; noun?: 'Table' | 'view' }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
@@ -50,7 +50,7 @@ export function RenameTable({ table }: { table: string }) {
         className={buttonClasses()}
         data-testid="rename-table"
       >
-        Rename Table
+        Rename {noun}
       </button>
       {open && (
         <div

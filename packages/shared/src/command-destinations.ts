@@ -4,7 +4,7 @@ export interface CommandTableDestination {
   module: string
   system: boolean
   system_written: boolean
-  kind: 'table' | 'settings'
+  kind: 'table' | 'settings' | 'view'
   can_create: boolean
 }
 

@@ -65,7 +65,7 @@ async function deletedVisible(scope: Map<string, Set<string>>, table: string, ro
   const { getMeta } = await import('./meta')
   const meta = await getMeta(table).catch(() => null)
   if (!meta) return false
-  return !meta.columns.some((c) => c.column_type === 'Reference' && c.reference_table && scope.has(c.reference_table))
+  return !meta.columns.some((c) => c.column_type === 'Reference' && c.reference_table && scope.has(c.reference_base ?? c.reference_table))
 }
 
 /** May this subscriber see this list or row event? Decided against the
