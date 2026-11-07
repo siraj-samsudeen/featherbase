@@ -75,13 +75,13 @@ export const RETIRE_INSTEAD = 'Retire it instead to take it out of use and keep 
 
 /** Refuse a delete while the row has retained activity, naming each kind and
  *  its count, e.g. "it has 2 comments and 1 history entry". `label` names
- *  the row as the caller reads it (#959). */
-export function assertNothingRetained(table: string, rowId: string, counts: Record<string, number>, retirable = false, label = `${table} ${rowId}`): void {
+ *  the row as the caller reads it, looked up only on a refusal (#959). */
+export async function assertNothingRetained(counts: Record<string, number>, retirable: boolean, label: () => Promise<string>): Promise<void> {
   const held = Object.entries(counts).filter(([, n]) => n > 0)
     .map(([kind, n]) => `${n} ${KINDS[kind]?.[n === 1 ? 0 : 1] ?? kind}`)
   if (!held.length) return
   const list = held.length === 1 ? held[0] : `${held.slice(0, -1).join(', ')} and ${held.at(-1)}`
-  throw new AppError('ValidationError', `${label} cannot be deleted: it has ${list}${retirable ? `. ${RETIRE_INSTEAD}` : ''}`,
+  throw new AppError('ValidationError', `${await label()} cannot be deleted: it has ${list}${retirable ? `. ${RETIRE_INSTEAD}` : ''}`,
     { ...Object.fromEntries(Object.entries(counts).map(([key, count]) => [key, String(count)])), ...(retirable ? { retire: 'available' } : {}) })
 }
 

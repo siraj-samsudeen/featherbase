@@ -1622,12 +1622,6 @@ async function assertChildRowsWritable(tx: typeof sql, meta: TableMeta, name: st
   }
 }
 
-// #959: refuse a delete while the row keeps activity, naming the row as the
-// caller reads it (its title is looked up only when the delete is refused).
-async function refuseRetained(table: string, name: string, counts: Record<string, number>, label: () => Promise<string>, retirable = true) {
-  if (Object.values(counts).some((n) => n > 0)) assertNothingRetained(table, name, counts, retirable, await label())
-}
-
 // DOC-006: a row referenced by Reference columns anywhere cannot be deleted.
 export function deleteDoc(table: string, name: string, user = 'Administrator', opts: { expectUpdatedAt?: string | null } = {}) {
   return appOperation(() => deleteDocImpl(table, name, user, opts))
@@ -1674,11 +1668,11 @@ async function deleteDocImpl(
       if (!opts.expectUpdatedAt || !Number.isFinite(Date.parse(opts.expectUpdatedAt))
         || new Date(existing.updated_at as string).getTime() !== Date.parse(opts.expectUpdatedAt))
         throw new AppError('ConflictError', `${table} ${name} has been modified after you loaded it; supply its current updated_at`)
-      await refuseRetained(table, name, await retainedDocumentCounts(stx, table, name), label)
+      await assertNothingRetained(await retainedDocumentCounts(stx, table, name), true, label)
     } else {
       // #321: a plain row keeps its comments, history, attachments and shares
       // by refusing the delete while it has any (links are checked below).
-      await refuseRetained(table, name, await retainedActivityCounts(stx, table, name), label)
+      await assertNothingRetained(await retainedActivityCounts(stx, table, name), true, label)
     }
     if (!revoking) await tx`delete from version where ref_table = ${table} and ref_name = ${name} and data->>'created' = 'true'`
     if ((existing.submission_status as string) === 'submitted')
@@ -1809,7 +1803,7 @@ async function deleteBoundDoc(
   }
   // #321: a connected row's comments, history, attachments and shares live
   // here; the delete is refused while it has any, as for a stored row.
-  await refuseRetained(meta.name, name, await retainedActivityCounts(sql, meta.name, name), () => rowLabel(user, meta.name, name), false)
+  await assertNothingRetained(await retainedActivityCounts(sql, meta.name, name), false, () => rowLabel(user, meta.name, name))
   await runHooks('on_trash', hctx)
   const outcome = await ctx.driver
     .remove(ctx.bind, name, expectUpdatedAt)
