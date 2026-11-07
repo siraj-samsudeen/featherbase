@@ -136,6 +136,17 @@ describe("#1041: archiving an app's table", () => {
     expect(await search(admin, 'ARC-SEARCH-1')).toEqual([])
   })
 
+  test("search leaves out the table's own definition, and Explore's picker leaves it out, until un-archived", async ({ admin }) => {
+    await installActionProof(admin)
+    const definitionFound = async () => (await search(admin, DESTINATION)).some((hit) => hit.table === 'Table' && hit.row_id === DESTINATION)
+    const inPicker = async () => (await admin.get<{ tables: string[] }>('/api/navigable_tables')).tables.includes(DESTINATION)
+    expect([await definitionFound(), await inPicker()]).toEqual([true, true])
+    await archive(admin, DESTINATION)
+    expect([await definitionFound(), await inPicker()]).toEqual([false, false])
+    await unarchive(admin, DESTINATION)
+    expect([await definitionFound(), await inPicker()]).toEqual([true, true])
+  })
+
   test('it stays archived through a redeploy', async ({ admin }) => {
     await installActionProof(admin)
     await archive(admin, DESTINATION, 'Not in use yet')

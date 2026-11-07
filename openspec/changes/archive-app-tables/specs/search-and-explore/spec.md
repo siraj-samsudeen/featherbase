@@ -45,4 +45,4 @@ answering with matches from every other Table.
 #### Scenario: Search leaves out an archived table
 
 - **WHEN** a search matches a row of an archived table
-- **THEN** that row does not appear, and it appears again once the table is un-archived
+- **THEN** that row does not appear, nor does the table's own definition, and they appear again once the table is un-archived

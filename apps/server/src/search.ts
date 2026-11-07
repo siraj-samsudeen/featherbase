@@ -68,14 +68,16 @@ export async function globalSearch(query: string, user: string): Promise<SearchH
     const title = meta.title_column && cols.has(meta.title_column) ? meta.title_column : null
     // The wire key is always `row_id`; `Table` alone stores it as `name`.
     const key = sql(meta.row_key)
+    // #1041: an archived Table's own definition is out of search with its rows.
+    const live = meta.name === 'Table' ? sql`and archived_at is null` : sql``
     const rows = title
       ? await sql`
           select ${key} as row_id, ${readExpression(title)} as title from ${sql(table)}
-          where ${where} and (${key} ilike ${like} or ${readExpression(title)} ilike ${like})
+          where ${where} ${live} and (${key} ilike ${like} or ${readExpression(title)} ilike ${like})
           limit ${PER_TABLE}`
       : await sql`
           select ${key} as row_id, ${key} as title from ${sql(table)}
-          where ${where} and ${key} ilike ${like}
+          where ${where} ${live} and ${key} ilike ${like}
           limit ${PER_TABLE}`
     for (const row of rows) {
       hits.push({

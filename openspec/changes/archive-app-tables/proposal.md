@@ -6,7 +6,8 @@ An installed app's tables can sit unused for a while, for example until the app 
 
 - A System Manager can archive an installed app's table, reversibly, like a custom table. The app's entry table stays refused.
 - An app's table that decides access can be archived only while it holds no rows, so archiving never hides or freezes rules that are deciding someone's access. Platform security tables and custom tables that decide access stay refused.
-- Global search leaves out archived tables.
+- Global search leaves out archived tables' rows and their definitions, and Explore's table picker leaves them out.
+- A refusal shows in the Archive dialog: a dialog opened from a menu no longer closes when it loses focus.
 - Archiving an app's table leaves its reads and scope as they were, refuses its writes, and survives a redeploy and an upgrade.
 
 ## Capabilities
@@ -18,4 +19,4 @@ An installed app's tables can sit unused for a while, for example until the app 
 
 ## Impact
 
-- `apps/server/src/table-archive.ts`, `apps/server/src/search.ts`, and the Archive button's rule in `apps/web/src/components/ArchiveTable.tsx`. No migration and no app version change.
+- `apps/server/src/table-archive.ts`, `apps/server/src/search.ts`, `/api/navigable_tables`, the Archive button's rule in `apps/web/src/components/ArchiveTable.tsx`, and `ActionDisclosure`. No migration and no app version change.

@@ -2274,7 +2274,7 @@ app.get('/api/home_pages', async (c) => {
 app.get('/api/navigable_tables', async (c) => {
   const user = who(c)
   const rows = await sql<{ name: string }[]>`
-    select name from table_def where kind = 'table' order by name`
+    select name from table_def where kind = 'table' and archived_at is null order by name`
   const tables: string[] = []
   for (const r of rows)
     if ((await permissionScope(user, r.name, 'read')) !== 'none') tables.push(r.name)

@@ -78,6 +78,24 @@ test('a row of an archived Table opens read only, with the banner', async ({ adm
   expect(within(form).queryByTestId('unarchive-table')).not.toBeInTheDocument()
 })
 
+test('#1041: a refusal shows in the dialog, and clicking inside the dialog leaves it open', async ({ admin }) => {
+  const user = userEvent.setup()
+  await admin.post('/api/table_def', { name: 'Twa Roster', decides_scope: true, columns: [{ column_name: 'city', column_type: 'Data' }] })
+  await renderApp('/featherbase/admin/table/twa-roster', admin)
+  await user.click(await screen.findByRole('button', { name: 'Table administration' }, { timeout: 10_000 }))
+  await user.click(await screen.findByTestId('archive-table'))
+  const dialog = await screen.findByTestId('archive-table-dialog')
+  await user.type(within(dialog).getByTestId('archive-table-note'), 'Not in use')
+
+  // Blank space takes focus off the note; the dialog and the typed note stay.
+  await user.click(within(dialog).getByRole('heading'))
+  expect(screen.getByTestId('archive-table-note')).toHaveValue('Not in use')
+
+  await user.click(screen.getByTestId('archive-table-confirm'))
+  expect(await screen.findByTestId('archive-table-error')).toHaveTextContent('it decides who can see or do what')
+  expect(screen.getByTestId('archive-table-dialog')).toBeInTheDocument()
+})
+
 test("#1041: an app's table offers Archive; the platform's, a settings table and a sub-table don't", () => {
   const table = { name: 'dash.store_floor', kind: 'table', owner_app: 'dash' } as TableMeta
   expect(canArchive(table)).toBe(true)

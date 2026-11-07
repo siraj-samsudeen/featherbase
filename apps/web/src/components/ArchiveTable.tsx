@@ -89,7 +89,7 @@ export function ArchiveTable({ table }: { table: string }) {
               menus and the table pickers and is listed under Archived tables. You can un-archive it at any time.
             </p>
             <label className="mb-1 block text-sm text-ink" htmlFor="archive-table-note">
-              What replaced it? (optional)
+              What replaced it, or why isn't it in use? (optional)
             </label>
             <textarea
               id="archive-table-note"
