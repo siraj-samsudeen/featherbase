@@ -105,7 +105,7 @@ async function currentIdentifiers(user: string, systems: readonly string[]): Pro
 // grant on the roster), so its reach is the declaration: only the Tables it
 // named, and only those marked as deciding scope. Reads are awaited one at a
 // time and end when the provider returns; any failure fails the whole scope.
-async function withScopeReads<T>(binding: ScopeProviderBinding, fn: (documents: AppScopeProviderContext['documents']) => Promise<T>): Promise<T> {
+async function withScopeReads<T>(binding: Pick<ScopeProviderBinding, 'tables'>, fn: (documents: AppScopeProviderContext['documents']) => Promise<T>): Promise<T> {
   let open = true
   let pending: Promise<unknown> | undefined
   let failed = false
@@ -139,6 +139,13 @@ async function withScopeReads<T>(binding: ScopeProviderBinding, fn: (documents: 
     if (pending) { failed = true; await pending.catch(() => {}) }
     if (failed) throw new Error('A scope provider read failed')
   }
+}
+
+/** #919: an app's reach provider reads the way a scope provider does: as the
+ *  platform, only the Tables it declared, each marked decides_scope. */
+export function provideWithDeclaredReads<T>(binding: { app: string; version: string; tables: readonly string[] },
+  fn: (documents: AppScopeProviderContext['documents']) => Promise<T>): Promise<T> {
+  return withAppIdentity(binding.app, binding.version, () => withScopeReads(binding, fn))
 }
 
 // #559 (design E1): what a `person_scope` request may name — places by their

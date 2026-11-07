@@ -1,5 +1,5 @@
 import { getMeta, type TableMeta } from './meta'
-import { ALL_COLUMNS, filterReadFields, includesColumn, isPrivileged, isSharedWith, permissionGrants, permittedColumns, type ColumnSelection } from './permissions'
+import { ALL_COLUMNS, filterReadFields, grantsHolding, includesColumn, isPrivileged, isSharedWith, permissionGrants, permissionScope, permittedColumns, reachColumns, reachGrants, type ColumnSelection } from './permissions'
 
 type RowValues = Record<string, unknown>
 
@@ -38,9 +38,10 @@ export async function childColumns(user: string, table: string, childTable: stri
   return columns
 }
 
-export async function readerFor(user: string, table: string, action: 'read' | 'write', createdBy?: string): Promise<RowReader> {
+export async function readerFor(user: string, table: string, action: 'read' | 'write', createdBy?: string, reach: string[] = []): Promise<RowReader> {
   return {
-    columns: await permittedColumns(user, table, action, createdBy),
+    // #919: and the Columns of the reach grants that reach the row.
+    columns: new Set([...await permittedColumns(user, table, action, createdBy), ...reach]),
     childColumns: (childTable, parentColumn) => childColumns(user, table, childTable, parentColumn, action, createdBy),
   }
 }
@@ -63,7 +64,10 @@ export async function restrictRow(meta: TableMeta, row: RowValues, reader: RowRe
 // when the row is opened, a share shows every column.
 export async function rowForCaller(table: string, row: RowValues, user: string): Promise<RowValues> {
   const shared = row.row_id != null && (await isSharedWith(user, table, String(row.row_id), 'read'))
-  return restrictRow(await getMeta(table), row, shared ? FULL_READER : await readerFor(user, table, 'read', String(row.created_by)))
+  // #919: a row its caller reads through reach shows the Columns reach reads.
+  const reach = shared || (await permissionScope(user, table, 'read')) === 'all' ? []
+    : reachColumns(await grantsHolding(table, await reachGrants(user, table, 'read'), row, false))
+  return restrictRow(await getMeta(table), row, shared ? FULL_READER : await readerFor(user, table, 'read', String(row.created_by), reach))
 }
 
 // #342: Comment and Version rows are about one row each (ref_table,

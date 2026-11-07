@@ -9,7 +9,10 @@
   "roles": [
     "Dash Reader",
     "Dash Section Editor",
-    "Dash Section Reviewer"
+    "Dash Section Reviewer",
+    "Dash Store Administrator",
+    "Dash Store Editor",
+    "Dash HR"
   ],
   "roleDefaults": {},
   "settings": [
@@ -1064,6 +1067,73 @@
       "stylehr-employee-code"
     ]
   },
+  "administration": {
+    "provider": "store_reach",
+    "tables": [
+      "dash.job_assignment",
+      "Plant",
+      "Site Master"
+    ],
+    "jobRoles": [
+      "Dash Store Administrator"
+    ],
+    "targets": {
+      "dash.store_floor": {
+        "column": "store"
+      },
+      "dash.department": {
+        "column": "store"
+      },
+      "dash.section": {
+        "column": "store"
+      },
+      "dash.section_subcategory": {
+        "column": "store"
+      },
+      "dash.display_location": {
+        "column": "store"
+      },
+      "dash.section_alias": {
+        "column": "store"
+      },
+      "dash.floor_alias": {
+        "column": "store"
+      },
+      "dash.job_assignment": {
+        "column": "store",
+        "protect": {
+          "column": "job",
+          "values": [
+            "Director",
+            "Chief Operating Officer",
+            "Cluster Manager",
+            "Store Manager"
+          ]
+        }
+      },
+      "dash.employee": {
+        "person": "person"
+      },
+      "dash.employment": {
+        "person": "employee.person"
+      }
+    },
+    "memberships": {
+      "table": "dash.job_assignment",
+      "person": "person",
+      "column": "store",
+      "startsOn": "starts_on",
+      "endsOn": "ends_on"
+    },
+    "delegation": [
+      {
+        "authority": "Dash Store Administrator",
+        "grants": [
+          "Dash Store Editor"
+        ]
+      }
+    ]
+  },
   "permissions": [
     {
       "table": "dash.store_rollout",
@@ -1189,6 +1259,172 @@
       "table": "dash.designation_alias",
       "role": "Dash Section Reviewer",
       "can_read": true
+    },
+    {
+      "table": "dash.store_floor",
+      "role": "Dash Store Administrator",
+      "scope_mode": "reach",
+      "operations": {
+        "read": "*",
+        "create": "*",
+        "update": "*",
+        "delete": true
+      }
+    },
+    {
+      "table": "dash.department",
+      "role": "Dash Store Administrator",
+      "scope_mode": "reach",
+      "operations": {
+        "read": "*",
+        "create": "*",
+        "update": "*",
+        "delete": true
+      }
+    },
+    {
+      "table": "dash.section",
+      "role": "Dash Store Administrator",
+      "scope_mode": "reach",
+      "operations": {
+        "read": "*",
+        "create": "*",
+        "update": "*",
+        "delete": true
+      }
+    },
+    {
+      "table": "dash.section_subcategory",
+      "role": "Dash Store Administrator",
+      "scope_mode": "reach",
+      "operations": {
+        "read": "*",
+        "create": "*",
+        "update": "*",
+        "delete": true
+      }
+    },
+    {
+      "table": "dash.display_location",
+      "role": "Dash Store Administrator",
+      "scope_mode": "reach",
+      "operations": {
+        "read": "*",
+        "create": "*",
+        "update": "*",
+        "delete": true
+      }
+    },
+    {
+      "table": "dash.section_alias",
+      "role": "Dash Store Administrator",
+      "scope_mode": "reach",
+      "operations": {
+        "read": "*",
+        "create": "*",
+        "update": "*",
+        "delete": true
+      }
+    },
+    {
+      "table": "dash.floor_alias",
+      "role": "Dash Store Administrator",
+      "scope_mode": "reach",
+      "operations": {
+        "read": "*",
+        "create": "*",
+        "update": "*",
+        "delete": true
+      }
+    },
+    {
+      "table": "dash.job_assignment",
+      "role": "Dash Store Administrator",
+      "scope_mode": "reach",
+      "operations": {
+        "read": "*",
+        "create": "*",
+        "update": "*",
+        "delete": true
+      }
+    },
+    {
+      "table": "dash.employee",
+      "role": "Dash Store Administrator",
+      "scope_mode": "reach",
+      "operations": {
+        "read": "*"
+      }
+    },
+    {
+      "table": "dash.employment",
+      "role": "Dash Store Administrator",
+      "scope_mode": "reach",
+      "operations": {
+        "read": "*"
+      }
+    },
+    {
+      "table": "dash.store_floor",
+      "role": "Dash Store Editor",
+      "scope_mode": "reach",
+      "operations": {
+        "read": "*"
+      }
+    },
+    {
+      "table": "dash.department",
+      "role": "Dash Store Editor",
+      "scope_mode": "reach",
+      "operations": {
+        "read": "*"
+      }
+    },
+    {
+      "table": "dash.section",
+      "role": "Dash Store Editor",
+      "scope_mode": "reach",
+      "operations": {
+        "read": "*"
+      }
+    },
+    {
+      "table": "dash.section_subcategory",
+      "role": "Dash Store Editor",
+      "scope_mode": "reach",
+      "operations": {
+        "read": "*",
+        "create": "*",
+        "update": "*"
+      }
+    },
+    {
+      "table": "dash.display_location",
+      "role": "Dash Store Editor",
+      "scope_mode": "reach",
+      "operations": {
+        "read": "*",
+        "create": "*",
+        "update": "*"
+      }
+    },
+    {
+      "table": "dash.employee",
+      "role": "Dash HR",
+      "operations": {
+        "read": "*",
+        "create": "*",
+        "update": "*"
+      }
+    },
+    {
+      "table": "dash.employment",
+      "role": "Dash HR",
+      "operations": {
+        "read": "*",
+        "create": "*",
+        "update": "*"
+      }
     }
   ],
   "reads": {
@@ -1311,6 +1547,12 @@
       "id": "my_sections",
       "fromVersion": "0.10.4",
       "toVersion": "0.11.0",
+      "operations": []
+    },
+    {
+      "id": "store_administration",
+      "fromVersion": "0.11.0",
+      "toVersion": "0.12.0",
       "operations": []
     }
   ],

@@ -36,7 +36,8 @@ import { sendInvitation } from './invitation-email'
 import { ADMIN, addressRedirect, interimApp, linkAddress, matchAddress, requestHost } from './instance-addresses'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { buildInfo } from './build-info'
-import { assertPermission, assertSystemManager, getRoles, includesColumn, permissionScope, permittedColumns, tableAccessFor } from './permissions'
+import { giveRole, givenRolesFor, takeBackRole } from './administration'
+import { assertPermission, assertSystemManager, getRoles, includesColumn, permissionScope, permittedColumns, reachColumns, reachGrants, tableAccessFor } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
 import { EMBED_ORIGIN, VIEWER_ROLE, salesTargetRoutes } from './sales-target'
 import { landingAfterSignIn, openAdminFor } from './landing'
@@ -1914,6 +1915,15 @@ app.post('/api/permissions/:table', async (c) => {
 
 // PLAT-001: app management (System Manager only). Apps are code-defined; these
 // install/uninstall their Tables + doc_events and report installed state.
+// #919: an app's store administrators give its narrower roles to people who
+// work in their stores, and take them back. Every check is the platform's
+// (administration.ts); Role Assignment is never written through generic CRUD.
+app.get('/api/apps/:app/given_roles', async (c) => c.json({ data: await givenRolesFor(c.req.param('app'), who(c)) }))
+app.post('/api/apps/:app/given_roles', async (c) =>
+  c.json(await giveRole(c.req.param('app'), who(c), await c.req.json().catch(() => ({})))))
+app.post('/api/apps/:app/given_roles/:id/take_back', async (c) =>
+  c.json(await takeBackRole(c.req.param('app'), who(c), c.req.param('id'))))
+
 app.get('/api/apps', async (c) => {
   await assertSystemManager(who(c))
   c.header('Cache-Control', 'no-store')
@@ -2325,10 +2335,12 @@ app.get('/api/table/:table', async (c) => {
     const meta = await getMeta(table)
     // #1021: a view's meta answers to its base's read grant and levels.
     const stored = await storedTable(meta.name)
-    await assertPermission(user.row_id, stored, 'read')
+    // #919: a grant limited to the holder's reach describes the Table too.
+    const reach = await reachGrants(user.row_id, stored, 'read')
+    if (!reach.length) await assertPermission(user.row_id, stored, 'read')
     // #738: the caller's readable levels ride beside the cached meta, never
     // inside it — the meta object is shared by every caller.
-    const readable = await permittedColumns(user.row_id, stored, 'read')
+    const readable = new Set([...await permittedColumns(user.row_id, stored, 'read'), ...reachColumns(reach)])
     return c.json({ ...meta, readable_columns: meta.columns.filter((column) => includesColumn(readable, column)).map((column) => column.column_name), storage_identity: await tableStorageIdentity(meta) })
   }
   if (suffix === 'count') {

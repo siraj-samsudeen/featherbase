@@ -4,6 +4,7 @@
 // chart Tables' save rules are its `validators`.
 export { validators } from './validators.ts'
 import { orgChartProvider, type Place } from './provider.ts'
+import { storeReachProvider } from './reach.ts'
 import { EMBED_STATE_LIMIT_BYTES, MONTH_CHOICES, buildReport, monthLabel, headingOf, initialState, istToday, needsShortCodes, periodOf, storeLabels, storeShortName, storesOf, type CachedAnswer, type Month, type MonthChoice, type SalesRow } from './report.ts'
 import { gzipBase64 } from './compress.ts'
 import { actions as sectionActions, reads as sectionReads } from './my-sections.ts'
@@ -261,3 +262,6 @@ export const reads = {
     return { unreachable: true }
   },
 }
+
+/** Which stores each person administers (featherbase#919): featherbase.json's `administration`. */
+export const reachProviders = { store_reach: storeReachProvider() }

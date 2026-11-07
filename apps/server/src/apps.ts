@@ -48,7 +48,7 @@ export interface SchedulerEvent {
 export interface AppPermission {
   table: string
   role: string
-  scope_mode?: 'all' | 'creator'
+  scope_mode?: 'all' | 'creator' | 'reach'
   operations: Partial<Record<'read' | 'create' | 'update', string[] | ColumnLevel> &
     Record<'delete' | 'submit' | 'cancel' | 'amend', true>>
 }
@@ -642,7 +642,8 @@ export const appPermissionSchema = z.preprocess(readLegacyPermission, z
   .object({
     table: z.string().min(1),
     role: z.string().min(1),
-    scope_mode: z.enum(['all', 'creator']).optional(),
+    // #919: 'reach' covers only rows of the stores the holder administers.
+    scope_mode: z.enum(['all', 'creator', 'reach']).optional(),
     operations: z.object({
       read: columnSelection.optional(),
       create: columnSelection.optional(),

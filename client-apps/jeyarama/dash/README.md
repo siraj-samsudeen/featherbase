@@ -12,13 +12,16 @@ The instance's settings, the privacy notice and the one-off setup steps are in
 `../instances/dash/`. JeyaRama's conventions
 shared by its apps are in `../CLAUDE.md`.
 
-**Version 0.11.0.** It arrived here at 0.10.0, the version data-warehouse last
+**Version 0.12.0.** It arrived here at 0.10.0, the version data-warehouse last
 shipped, as a snapshot without its earlier git history and with no upgrade
 history: go-live is a fresh install, and the platform is fresh-install only.
 0.10.1 lists the published Sales Target Dive v13 as compact-aware, with one
 code-only upgrade step (`compact_sales_target_dive_v13`, 0.10.0 → 0.10.1). Its version changes only in a
 release PR (ADR 0014, section 4). A client image is built when the app is
-released, not here.
+released, not here. 0.12.0 adds store administration (featherbase#919): a
+Store Manager or Cluster Manager reads and changes the layout of the stores
+their job reaches (`src/reach.ts`), and gives their staff a Store Editor role
+there.
 
 **What the page does today.** The header names the store, the period, why the
 reader sees that store, and "Sales before tax, net of returns" (the `report`

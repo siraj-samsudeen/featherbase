@@ -95,7 +95,7 @@ describe('seeded `choices` never holds a literal backslash-n (#93)', () => {
 
     expect(options).toEqual({
       'Column.tier': ['basic', 'restricted'],
-      'Permission.scope_mode': ['all', 'creator'],
+      'Permission.scope_mode': ['all', 'creator', 'reach'],
       'Table.kind': ['table', 'sub_table', 'settings', 'view'],
     })
   })
