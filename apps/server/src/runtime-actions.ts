@@ -117,6 +117,8 @@ export function callerDocuments(app: string, allowed: string[], user: string, li
       await locked(values.ref_table, values.ref_name)
     }
     const saved = await saveDoc(table, values, user, insert ? 'insert' : 'upsert')
+    // #627: an approval rule held it; nothing was written to recheck. The app gets the proposal.
+    if (saved.pending_proposal) return saved as ActionRow
     // Recheck the finalized row, including defaults and trusted validation
     // hooks, rather than trusting only the incoming payload's references.
     await assertUserPermissions(user, meta, saved)

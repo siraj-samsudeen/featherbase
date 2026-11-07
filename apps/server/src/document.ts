@@ -1101,7 +1101,7 @@ async function writeDoc(
     .catch((err) => mapDbError(meta, err, attemptedRow.ref_table)))
   if (held) {
     const change = held
-    await afterDocumentCommit(() => mailProposal(change.proposal, meta.name, null, user, change.waiting_for))
+    await afterDocumentCommit(() => mailProposal(change.proposal, meta.name, null, user, change.waiting_for, change.repeated))
     return { table, [ROW_KEY]: null, pending_proposal: publicHeld(change) }
   }
   const insertResult = await loadChildren(meta, { table, ...(saved as RowValues) })
@@ -1419,7 +1419,7 @@ async function updateDoc(
     .catch((err) => mapDbError(meta, err, attemptedRow.ref_table)))
   if (held) {
     const change = held
-    await afterDocumentCommit(() => mailProposal(change.proposal, meta.name, name, user, change.waiting_for))
+    await afterDocumentCommit(() => mailProposal(change.proposal, meta.name, name, user, change.waiting_for, change.repeated))
     return { ...(await loadChildren(meta, { table: meta.name, ...(saved as RowValues) })), pending_proposal: publicHeld(change) }
   }
   const updateResult = await loadChildren(meta, { table: meta.name, ...(saved as RowValues) })

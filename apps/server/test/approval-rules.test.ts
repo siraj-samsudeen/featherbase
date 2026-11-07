@@ -133,6 +133,17 @@ describe('a maker\'s change waits for the approver', () => {
     expect((await w.shelf('S-1')).label).toBe('Blue box')
   })
 
+  test('asking for the same change twice is the one proposal, and one email', async ({ admin, createUser }) => {
+    const w = await setUp(admin, createUser)
+    await helperWaitsForLead(admin)
+    const first = (await edit(w.helper, 'S-1', { label: 'Red box', bay: 1 })).body.pending_proposal.row_id
+    // bay is resent unchanged, as a form sends the whole row: it is not part of the change.
+    const again = (await edit(w.helper, 'S-1', { label: 'Red box', bay: '1' })).body.pending_proposal.row_id
+    expect(again).toBe(first)
+    expect((await w.lead.get<any>(`/api/change_proposals/${first}`)).changes.map((c: any) => c.column_name)).toEqual(['label'])
+    expect(await w.mails(w.lead)).toHaveLength(1)
+  })
+
   test('nobody else could approve: the only approver is the maker, so the change is refused', async ({ admin, createUser }) => {
     const w = await setUp(admin, createUser)
     await helperWaitsForLead(admin)
@@ -415,6 +426,16 @@ describe('approval rules are data a System Manager keeps', () => {
     // "Any" with another approver than the maker is fine; "Apply and log" needs no approver.
     await rule(admin, { maker_resolver: SITE_LEAD, approvals_needed: 'Any', approvers: [{ resolver: SITE_LEAD }, { role: 'Region Lead' }] })
     await rule(admin, { maker_role: 'Helper', outcome: 'Apply and log' })
+  })
+
+  test('a maker condition that can\'t be worked out refuses the change, rather than letting a broader rule apply it', async ({ admin, createUser }) => {
+    const w = await setUp(admin, createUser)
+    await rule(admin, { maker_role: 'Helper', outcome: 'Apply and log' })
+    await rule(admin, { maker_resolver: 'approvalproof.broken', approvers: [{ role: 'Region Lead' }] })
+    const { status, body } = await edit(w.helper, 'S-1', { label: 'Red box' })
+    expect(status).toBe(403)
+    expect(JSON.stringify(body)).toMatch(/could not be worked out/)
+    expect((await w.shelf('S-1')).label).toBe('Blue box')
   })
 
   test('a resolver that reads outside its declaration names nobody', async ({ admin, createUser }) => {

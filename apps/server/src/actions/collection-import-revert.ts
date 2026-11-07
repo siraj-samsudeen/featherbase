@@ -213,6 +213,8 @@ registerCollectionAction('import-revert', {
           // not request args. Undo must restore managed columns as well.
           const managedValues = Object.fromEntries(meta.columns.filter(c => c.read_only && Object.hasOwn(values, c.column_name)).map(c => [c.column_name, values[c.column_name]]))
           const saved = await saveDoc(table, values, user.row_id, 'upsert', { managedValues })
+          // #627: an undo is a change like any other; one an approval rule holds is not restored.
+          if (saved.pending_proposal) throw new AppError('ValidationError', 'This restore waits for approval, so the row is not restored yet')
           await annotateHistory(meta, saved, user.row_id, previous, { import_revert: runId })
         })
         restored++

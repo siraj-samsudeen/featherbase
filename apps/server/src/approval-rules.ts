@@ -8,7 +8,7 @@ import { rowHref } from 'shared'
 import { sql, inAppTransaction, whenTransactionEnds } from './db'
 import { AppError } from './errors'
 import { getMeta, ROW_KEY, type TableMeta } from './meta'
-import { getRoles } from './permissions'
+import { getRoles, sameStoredValue } from './permissions'
 import { canSignInNow } from './identities'
 import { tableRelation } from './table-engine'
 import { mailApprovers } from './workflow'
@@ -121,22 +121,28 @@ export function rowMatches(meta: TableMeta, row: Row, filters: unknown[] | null)
   })
 }
 
-/** The people a resolver names for this row. A resolver that fails names nobody. */
-async function resolve(name: string, table: string, row: Row): Promise<string[]> {
+/** The people a resolver names for this row. A resolver that fails, or whose app isn't running,
+ *  names nobody; `strict` throws instead, so a maker condition never quietly fails to match. */
+async function resolve(name: string, table: string, row: Row, strict = false): Promise<string[]> {
   const fn = approvalResolver(name)
-  if (!fn) return []
+  if (!fn) {
+    if (strict) throw new RuleRefusal(`The app that says who ${name} is isn't running, so this change can't be checked`, false, table, '')
+    return []
+  }
   try {
     const people = await fn(table, row)
     return Array.isArray(people) ? [...new Set(people.filter((p): p is string => typeof p === 'string' && p.length > 0))] : []
   } catch (error) {
     console.warn(`[approval rules] resolver ${name} failed for ${table}:`, error instanceof Error ? error.message : error)
+    // A failed maker condition must not let a broader rule apply the change instead.
+    if (strict) throw new RuleRefusal(`Who ${name} is could not be worked out, so this change can't be checked`, false, table, '')
     return []
   }
 }
 
 async function makerMatches(rule: ApprovalRule, maker: string, roles: string[], table: string, row: Row): Promise<boolean> {
   if (rule.maker_role && !roles.includes(rule.maker_role)) return false
-  if (rule.maker_resolver && !(await resolve(rule.maker_resolver, table, row)).includes(maker)) return false
+  if (rule.maker_resolver && !(await resolve(rule.maker_resolver, table, row, true)).includes(maker)) return false
   return true
 }
 
@@ -236,7 +242,7 @@ export function isChecked(user: string, opts: { skipPermissions?: boolean; appro
 export function changedColumns(meta: TableMeta, before: Row, values: Row): string[] {
   return meta.columns.filter(column => !['Sub-table', 'Section Break', 'Column Break', 'Tab Break'].includes(column.column_type)
     && Object.hasOwn(values, column.column_name)
-    && comparable(values[column.column_name], column.column_type) !== comparable(before[column.column_name], column.column_type))
+    && !sameStoredValue(column.column_type, values[column.column_name], before[column.column_name]))
     .map(column => column.column_name)
 }
 
@@ -246,7 +252,7 @@ export class RuleRefusal extends AppError {
   }
 }
 
-export interface HeldChange { proposal: string; state: 'Pending'; waiting_for: Requirement[] }
+export interface HeldChange { proposal: string; state: 'Pending'; waiting_for: Requirement[]; repeated?: boolean }
 
 async function writeRequirements(id: string, requirements: Requirement[], actor: string, approvals: Map<string, { by: string; at: Date }> = new Map()) {
   await sql`delete from change_proposal_approver where parent = ${id}`
@@ -264,6 +270,11 @@ async function writeRequirements(id: string, requirements: Requirement[], actor:
 /** Hold a change as a Change Proposal, inside the save's transaction. The row is not touched. */
 export async function holdChange(meta: TableMeta, operation: Operation, target: string | null, before: Row | null, values: Row,
   changed: string[], maker: string, requirements: Requirement[]): Promise<HeldChange> {
+  // The same change asked for again (a second click, a re-save) is the proposal already waiting.
+  const [same] = await sql`select row_id from change_proposal where app is null and maker = ${maker} and target_table = ${meta.name}
+    and ${target === null ? sql`target_row is null` : sql`target_row = ${target}`} and operation = ${operation}
+    and proposal_state = 'Pending' and proposed_values = ${sql.json(values as never)}::jsonb limit 1`
+  if (same) return { proposal: String(same.row_id), state: 'Pending', waiting_for: requirements, repeated: true }
   const id = randomUUID().replaceAll('-', '').slice(0, 10)
   await sql`insert into ${sql(await tableRelation('Change Proposal'))} ${sql({ row_id: id, created_by: maker, updated_by: maker, submission_status: 'draft', position: 0,
     app: null, target_table: meta.name, target_row: target, maker, proposal_state: 'Pending', operation,
@@ -285,7 +296,8 @@ async function personName(id: string): Promise<string> {
 }
 
 /** Email who can approve, through the same approval mail a workflow state sends. */
-export async function mailProposal(proposal: string, table: string, target: string | null, maker: string, requirements: Requirement[]) {
+export async function mailProposal(proposal: string, table: string, target: string | null, maker: string, requirements: Requirement[], repeated = false) {
+  if (repeated) return
   try {
     const people = new Set<string>()
     for (const requirement of requirements) {
