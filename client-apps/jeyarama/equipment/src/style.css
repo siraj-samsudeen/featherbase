@@ -96,3 +96,22 @@ h2 { margin: 0 0 8px; font-size: 15px; font-weight: 650; }
   .label-sheet { grid-template-columns: repeat(3, 1fr); gap: 4mm; }
   .label { border-color: #999; }
 }
+
+/* BRD step 1: states, SAP block, ownership, timeline, confirmation */
+.asset-states { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; padding: 0; list-style: none; }
+.asset-states li { padding: 2px 10px; border-radius: 999px; background: var(--color-subtle); font-size: 12px; font-weight: 600; }
+.asset-states li[data-state="books"] { background: var(--color-action-tint); color: var(--color-action); }
+.asset-sap { margin: 0 0 18px; padding: 14px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-subtle); }
+.asset-sap p { margin: 0 0 8px; font-size: 12px; }
+.asset-sap .asset-facts { margin: 0; }
+.job-timeline { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px; margin: 8px 0; padding: 0; list-style: none; font-size: 12px; }
+.job-timeline li { padding-top: 5px; border-top: 3px solid var(--color-border); color: var(--color-ink-muted); }
+.job-timeline li[data-done="yes"] { border-top-color: var(--color-action); color: var(--color-ink); }
+.job-timeline b { display: block; font-weight: 600; }
+.job-details, .job-cover { margin: 4px 0; font-size: 12px; color: var(--color-ink-muted); }
+.job-cover { color: var(--color-ink); font-weight: 600; }
+.asset-confirm { border-color: var(--color-action); }
+.confirm-item { padding: 8px 0; border-top: 1px solid var(--color-border); }
+.confirm-item:first-of-type { border-top: 0; }
+.confirm-item p { margin: 0 0 4px; }
+.jobs-board { grid-template-columns: repeat(7, minmax(170px, 1fr)); }
