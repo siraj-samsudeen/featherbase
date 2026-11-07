@@ -4,15 +4,16 @@
 
 ### Requirement: Report a fault from the asset
 
-Any member SHALL be able to report a fault on an asset, saying what is wrong and how urgent it
-is. The report SHALL become a repair job for that asset and its place.
+Any member SHALL be able to report a fault on an asset, saying what is wrong, how urgent it is and,
+if earlier, when it stopped working. The report SHALL become a repair job for that asset and its
+place.
 
 #### Scenario: The AC stops cooling
 
 ```gherkin
 Given store staff open the "Voltas 2-ton split AC" page
 When they report "Not cooling" as Urgent
-Then a repair job "Not cooling" is waiting for the AC in Avadi Store
+Then a repair job "Not cooling" is waiting for the AC at ATK 1501
 ```
 
 ### Requirement: Every job has a fix-by time
@@ -37,11 +38,25 @@ When a manager raises it to High
 Then it is due for fixing at 10:00 the next day
 ```
 
+### Requirement: A job keeps its whole timeline
+
+A job SHALL record when the asset stopped working, when the fault was reported, when someone first
+responded, when repair started and when it was restored. Assets SHALL set these as the job moves,
+and they SHALL not move once set.
+
+#### Scenario: From failure to restoration
+
+```gherkin
+Given "Door seal torn" was reported at 06:20, saying the cold room stopped at 06:10
+When Ravi is assigned at 06:40, starts the repair at 08:15 and fixes it at 11:30
+Then the job shows failure 06:10, reported 06:20, responded 06:40, repair started 08:15 and restored 11:30
+```
+
 ### Requirement: Move a job from reported to fixed
 
-Technicians and managers SHALL be able to assign a job to a technician and move it through
-Reported, Assigned, In progress, Waiting for parts and Fixed, or cancel it. Store staff SHALL
-NOT change a job once reported.
+Technicians and managers SHALL be able to assign a job and move it through Reported, Assigned,
+In progress, Waiting for parts and Fixed, or cancel it. Store staff SHALL NOT change a job once
+reported.
 
 #### Scenario: Assigning a job
 
@@ -61,8 +76,8 @@ Then the change is refused
 
 ### Requirement: A fixed job says what was done
 
-A job SHALL become Fixed only with a note of the work done, and MAY record what it cost. The
-asset's page SHALL list its past jobs.
+A job SHALL become Fixed only with a note of the work done, and MAY record its cause, the spares
+used, any outside service and what it cost. The asset's page SHALL list its past jobs.
 
 #### Scenario: Fixing without a note
 
@@ -72,10 +87,36 @@ When Ravi marks it Fixed without saying what was done
 Then the change is refused, asking what was done
 ```
 
-#### Scenario: The asset's history
+### Requirement: The store confirms the repair
+
+A fixed job SHALL close only when someone other than the technician who did the work confirms the
+asset works again. A confirmed job SHALL NOT be reopened.
+
+#### Scenario: Store staff confirm
 
 ```gherkin
-Given Ravi fixed "Not cooling" by "Refilled gas" for ₹2,400
-When anyone opens the AC's page
-Then its past jobs show "Not cooling", fixed, "Refilled gas", ₹2,400
+Given Ravi fixed "Not cooling"
+When store staff confirm it works
+Then the job is closed, with who confirmed it and when
+```
+
+#### Scenario: The technician cannot confirm their own work
+
+```gherkin
+Given Ravi fixed "Not cooling"
+When Ravi tries to confirm it
+Then the confirmation is refused
+```
+
+### Requirement: Check cover before paying for work
+
+A job SHALL show when its asset is still under warranty or AMC, so the technician checks cover
+before chargeable work.
+
+#### Scenario: Under warranty
+
+```gherkin
+Given the AC's warranty runs until 12 March 2027
+When "Not cooling" is opened on 7 November 2026
+Then the job shows the AC is under warranty until 12-Mar-2027
 ```

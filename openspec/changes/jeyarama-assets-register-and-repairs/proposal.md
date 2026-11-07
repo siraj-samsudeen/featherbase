@@ -6,6 +6,11 @@ when its warranty ends, or which faults are waiting for a technician. The owner 
 Asset Infinity and asked for an asset app in Featherbase. They picked the core first: a register,
 QR labels, and fault reports that become repair jobs with a deadline.
 
+The group's Asset Management BRD (v1.1, 7 November 2026) then set the direction: SAP S/4HANA stays
+the record for the books and the equipment, and a thin layer handles QR scans, custody, counts,
+transfers and evidence. Assets follows that: it links to SAP numbers and does not try to replace
+SAP. Requirement IDs below are the BRD's.
+
 ## What Changes
 
 - A new Jeyarama app, Assets (`client-apps/jeyarama/equipment`, served at `/equipment/`; the
@@ -18,10 +23,22 @@ QR labels, and fault reports that become repair jobs with a deadline.
   Urgent within 4 hours, High within a day, Normal within 3 days.
 - A repair jobs board by stage. Managers and technicians assign jobs and move them on. A job is
   fixed only with a note of the work done, and it can record the cost.
-- Development sample data with Jeyarama's places, about twenty assets and a few jobs.
+- Each asset links to its SAP company code, asset number and sub-number, equipment number and
+  legacy ID, shown as coming from SAP (ORG-01). Until a live SAP extract is connected, these are
+  filled by importing an SAP export.
+- Four separate states: books, condition, custody, and a workflow state worked out from open
+  processes (DAT-04).
+- Legal entities with a mapping status; each asset records its legal owner, operator, cost centre
+  and custodian (ORG-02, DAT-01/02). Places nest from site to building, floor and area.
+- Repair jobs keep their whole timeline, cause, spares and outside service; someone other than the
+  technician confirms the repair before the job closes; cover under warranty or AMC is shown
+  (MNT-02, MNT-04).
+- Development sample data for the BRD's pilot: ATK 1501, Enchakkal WH 9151 and a Chennai store.
+  Its SAP numbers are made up.
 
-Not included: reporting without signing in, reporting by WhatsApp, scheduled servicing, sensors,
-and adding the app to the live Jeyarama instance.
+Not included: physical counts, custody hand-over and transfers (next steps), a live SAP
+connection, capitalization, depreciation and anything else SAP owns, reporting without signing in
+or by WhatsApp, scheduled servicing, sensors, and adding the app to the live Jeyarama instance.
 
 ## Capabilities
 

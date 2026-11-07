@@ -12,6 +12,14 @@
 - [x] 2.3 Pages: repair jobs board, assets list by place, asset page with report form and history, label sheet with QR codes
 - [x] 2.4 Development sample data with Jeyarama's places, assets and jobs
 
+## 2b. Follow the Asset Management BRD (step 1)
+
+- [ ] 2b.1 Tests first: place path, workflow state, cover notice (unit); timeline stamps, confirmation by someone else, no reopening after confirmation (server); SAP block, four states, ownership, timeline and confirm button (web)
+- [ ] 2b.2 Legal entities, place hierarchy, SAP links, owner, operator, cost centre, custodian, four states, AMC
+- [ ] 2b.3 Job timeline stamps, cause, spares, outside service; repair confirmations
+- [ ] 2b.4 Pages: asset page SAP block, states and ownership; job timeline, cover notice and confirm; board Closed column
+- [ ] 2b.5 Sample data for ATK 1501, Enchakkal WH 9151 and a Chennai store
+
 ## 3. Proof
 
 - [x] 3.1 Try every checklist item in the browser against the running app, with screenshots
