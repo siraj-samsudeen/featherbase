@@ -327,7 +327,7 @@
   "tables": [
     {
       "name": "dash.report",
-      "label": "Report",
+      "label": "Dash report",
       "module": "Dash",
       "description": "One Dive Dash can open: its name, its MotherDuck id, and how a reader's reach becomes that Dive's filters. Holds no business data.",
       "id_pattern": "field:report_key",
@@ -580,7 +580,7 @@
           "kind": "addTable",
           "table": {
             "name": "dash.report",
-            "label": "Report",
+            "label": "Dash report",
             "module": "Dash",
             "description": "One Dive Dash can open: its name, its MotherDuck id, and how a reader's reach becomes that Dive's filters. Holds no business data.",
             "id_pattern": "field:report_key",
@@ -697,42 +697,6 @@
                 "unique": true,
                 "read_only": true,
                 "description": "Set on save: the source and the alias. Unique."
-              }
-            ]
-          },
-          "destructive": true
-        },
-        {
-          "kind": "dropTable",
-          "table": {
-            "name": "dash.designation",
-            "label": "Designation",
-            "module": "Dash",
-            "title_column": "title",
-            "description": "The group's one clean list of HR titles. Each source system's spellings map to a title through designation_alias.",
-            "columns": [
-              {
-                "column_name": "title",
-                "label": "Designation",
-                "column_type": "Data",
-                "reqd": true,
-                "in_list_view": true
-              },
-              {
-                "column_name": "active",
-                "label": "Active",
-                "column_type": "Check",
-                "default_value": "1",
-                "in_list_view": true,
-                "description": "Cleared for a title no longer given; job assignments that name it keep it."
-              },
-              {
-                "column_name": "title_key",
-                "label": "Title key",
-                "column_type": "Data",
-                "unique": true,
-                "read_only": true,
-                "description": "Set on save: the title, trimmed and case-folded. Unique, so the list has each title once."
               }
             ]
           },
@@ -1108,6 +1072,42 @@
         {
           "kind": "dropTable",
           "table": {
+            "name": "dash.designation",
+            "label": "Designation",
+            "module": "Dash",
+            "title_column": "title",
+            "description": "The group's one clean list of HR titles. Each source system's spellings map to a title through designation_alias.",
+            "columns": [
+              {
+                "column_name": "title",
+                "label": "Designation",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "active",
+                "label": "Active",
+                "column_type": "Check",
+                "default_value": "1",
+                "in_list_view": true,
+                "description": "Cleared for a title no longer given; job assignments that name it keep it."
+              },
+              {
+                "column_name": "title_key",
+                "label": "Title key",
+                "column_type": "Data",
+                "unique": true,
+                "read_only": true,
+                "description": "Set on save: the title, trimmed and case-folded. Unique, so the list has each title once."
+              }
+            ]
+          },
+          "destructive": true
+        },
+        {
+          "kind": "dropTable",
+          "table": {
             "name": "dash.display_location",
             "label": "Display location",
             "module": "Dash",
@@ -1471,8 +1471,7 @@
       ],
       "Subcategory": [
         "subcategory",
-        "subcategory_type",
-        "deleted_at_source"
+        "subcategory_type"
       ],
       "Site": [
         "name",

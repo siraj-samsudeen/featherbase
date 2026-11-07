@@ -85,4 +85,4 @@ code {
 }
 
 /* The group label above the reader's reports in the sidebar. */
-.fd-sidebar-group { display: block; padding: 12px 12px 4px; font-size: 12px; font-weight: 600; color: var(--color-ink-muted, #6a6a6a); }
+.fd-sidebar-group { display: block; padding: 12px 12px 4px; font-size: 12px; font-weight: 600; color: var(--color-ink-muted); }

@@ -2,7 +2,7 @@
 // fresh on every person_scope request and reads only the Tables declared here, each marked
 // decides_scope on the instance. An empty answer is an empty scope, which the platform reads as
 // no access. Who sees what is #967's table; `reachOf` is the one place it is written.
-import { checked, day, exact, holdsOn, text } from './values.ts'
+import { EMPLOYEE_STATUS, checked, day, exact, holdsOn, text } from './values.ts'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
@@ -29,8 +29,9 @@ const T = { employee: 'Employee', job: 'Job Assignment', site: 'Site', plant: 'P
 /** Every Table the provider reads: featherbase.json's scopeProvider.tables. */
 export const PROVIDER_TABLES: string[] = Object.values(T)
 
-const FIELDS: Record<string, string[]> = {
-  [T.employee]: ['person', 'employee_status'],
+/** The columns the provider reads, Table by Table. */
+export const PROVIDER_FIELDS: Record<string, string[]> = {
+  [T.employee]: ['person', EMPLOYEE_STATUS],
   [T.job]: ['employee', 'job', 'site', 'floor', 'section', 'acting', 'starts_on', 'ends_on'],
   [T.site]: ['name', 'is_store', 'cluster'],
   [T.plant]: ['site', 'plant_type'],
@@ -43,7 +44,7 @@ const PAGE = 500
 async function all(documents: Documents, table: string, filters: Filter[] = []): Promise<Row[]> {
   const rows: Row[] = []
   for (;;) {
-    const page = await documents.list(table, { filters, fields: ['row_id', ...FIELDS[table]], order_by: 'row_id asc', limit_start: rows.length, limit_page_length: PAGE })
+    const page = await documents.list(table, { filters, fields: ['row_id', ...PROVIDER_FIELDS[table]], order_by: 'row_id asc', limit_start: rows.length, limit_page_length: PAGE })
     rows.push(...page)
     if (page.length < PAGE) return rows
   }
@@ -99,7 +100,7 @@ const reasonOf = (job: Row): Reason => ({ text: `${checked(job.acting) ? 'Acting
 
 /** What `person` reaches on `on`, by the who-sees-what table in #967. */
 export async function reachOf(documents: Documents, person: string, on: string): Promise<Reach> {
-  const employees = (await all(documents, T.employee, [['person', '=', person]])).filter(row => text(row.employee_status) === 'Current')
+  const employees = (await all(documents, T.employee, [['person', '=', person]])).filter(row => text(row[EMPLOYEE_STATUS]) === 'Current')
   const jobs = employees.length
     ? (await all(documents, T.job, [['employee', 'in', employees.map(id)]])).filter(row => holdsOn(row, on))
     : []

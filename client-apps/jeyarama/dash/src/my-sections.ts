@@ -3,7 +3,7 @@
 // Tables: Dash keeps no copy. These reads run as the app, so each answer here is limited to what
 // this person may see, by this code.
 import { istToday } from './report.ts'
-import { day, exact, text } from './values.ts'
+import { EMPLOYEE_STATUS, SECTION_STATUS, day, exact, text } from './values.ts'
 
 type Row = Record<string, unknown>
 // The platform's helpers, structurally: this module imports nothing from the platform.
@@ -94,13 +94,13 @@ const inForce = (row: Row, today: string) => {
 const notOver = (row: Row, today: string) => !day(row.ends_on) || day(row.ends_on) >= today
 const JOB_FIELDS = ['employee', 'job', 'site', 'floor', 'section', 'reports_to', 'starts_on', 'ends_on']
 const PLACEMENT_FIELDS = ['section_subcategory_id', 'store', 'subcategory', 'section', 'starts_on', 'ends_on']
-const SECTION_FIELDS = ['name', 'site', 'floor', 'section_status']
-const isActive = (section: Row | undefined) => exact(section?.section_status) === 'Active'
+const SECTION_FIELDS = ['name', 'site', 'floor', SECTION_STATUS]
+const isActive = (section: Row | undefined) => exact(section?.[SECTION_STATUS]) === 'Active'
 const byId = (rows: Row[]) => new Map(rows.map(row => [exact(row.row_id), row]))
 const unique = (values: string[]) => [...new Set(values.filter(Boolean))]
 
 /** The caller's current staff rows. A leaver or a test record is nobody on this screen. */
-const myEmployees = (ctx: BaseContext) => list(ctx, T.employee, ['name', 'employee_status', 'person'], [['person', '=', ctx.user], ['employee_status', '=', 'Current']])
+const myEmployees = (ctx: BaseContext) => list(ctx, T.employee, ['name', EMPLOYEE_STATUS, 'person'], [['person', '=', ctx.user], [EMPLOYEE_STATUS, '=', 'Current']])
 
 async function myJobs(ctx: BaseContext, employees: Row[], today: string): Promise<Row[]> {
   if (!employees.length) return []
@@ -118,8 +118,8 @@ async function myJob(ctx: ActionContext, id: unknown, today: string) {
 /** The approver of a job: its manager, while they are on the staff and have a sign-in; else the role. */
 async function approversOf(ctx: BaseContext, job: Row | undefined): Promise<{ approvers: ApproverRequest; manager: string | null; reportsTo: string | null }> {
   const managerId = exact(job?.reports_to)
-  const [manager] = managerId ? await list(ctx, T.employee, ['name', 'employee_status', 'person'], [['row_id', '=', managerId]]) : []
-  const person = exact(manager?.employee_status) === 'Current' ? exact(manager?.person) : ''
+  const [manager] = managerId ? await list(ctx, T.employee, ['name', EMPLOYEE_STATUS, 'person'], [['row_id', '=', managerId]]) : []
+  const person = exact(manager?.[EMPLOYEE_STATUS]) === 'Current' ? exact(manager?.person) : ''
   return { approvers: { people: person ? [person] : [], fallbackRoles: [FALLBACK_ROLE] }, manager: person ? text(manager.name) : null, reportsTo: text(manager?.name) || null }
 }
 
@@ -220,15 +220,14 @@ export const reads = {
     // Page by page until enough are left: what is already in this section isn't an answer, so a limit first could hide every real one.
     const shown: { code: string; name: string; now_in: string | null; asked: boolean }[] = []
     for (let start = 0; shown.length < 20; start += 100) {
-      const page = await ctx.baseTables.list(T.subcategory, { fields: ['row_id', 'subcategory', 'deleted_at_source'],
+      const page = await ctx.baseTables.list(T.subcategory, { fields: ['row_id', 'subcategory'],
         filters: [['subcategory', 'like', `%${typed}%`], ['subcategory_type', '=', 'Merchandise']], order_by: 'row_id asc', limit_start: start, limit_page_length: 100 })
-      const found = page.filter(row => row.deleted_at_source !== true)
-      if (found.length) {
-        const codes = found.map(row => exact(row.row_id))
+      if (page.length) {
+        const codes = page.map(row => exact(row.row_id))
         const placed = (await list(ctx, T.placement, PLACEMENT_FIELDS, [['store', '=', exact(job!.site)], ['subcategory', 'in', codes]])).filter(row => inForce(row, today))
         const where = new Map(placed.map(row => [exact(row.subcategory), exact(row.section)]))
         const sections = placed.length ? byId(await list(ctx, T.section, SECTION_FIELDS, [['row_id', 'in', unique(placed.map(row => exact(row.section)))]])) : new Map<string, Row>()
-        for (const row of found) {
+        for (const row of page) {
           const code = exact(row.row_id)
           if (where.get(code) === exact(job!.section)) continue
           const section = where.get(code)
@@ -303,8 +302,8 @@ export const actions = {
     const section = await heldSection(ctx, job)
     if (!isActive(section)) ctx.reject('Your section is no longer open')
     const code = typeof payload.subcategory === 'string' ? payload.subcategory : ''
-    const [subcategory] = code ? await list(ctx, T.subcategory, ['subcategory', 'subcategory_type', 'deleted_at_source'], [['row_id', '=', code]]) : []
-    if (!subcategory || subcategory.subcategory_type !== 'Merchandise' || subcategory.deleted_at_source === true) ctx.reject('Pick a subcategory from the list')
+    const [subcategory] = code ? await list(ctx, T.subcategory, ['subcategory', 'subcategory_type'], [['row_id', '=', code]]) : []
+    if (!subcategory || subcategory.subcategory_type !== 'Merchandise') ctx.reject('Pick a subcategory from the list')
     const site = exact(job.site)
     if (await scheduledLater(ctx, site, code, today)) ctx.reject(SCHEDULED)
     const seen = (await list(ctx, T.placement, PLACEMENT_FIELDS, [['store', '=', site], ['subcategory', '=', code]])).filter(row => inForce(row, today))
@@ -382,8 +381,8 @@ async function freeId(ctx: ActionContext, table: string, base: string): Promise<
 /** What the row comparison can't see: the person still holds the job, and the section still stands. */
 async function whyStale(ctx: ActionContext, proposal: ChangeProposal, a: About, job: Row | undefined, today: string): Promise<string | null> {
   if (!job || !inForce(job, today)) return 'The job behind this has ended.'
-  const [employee] = await list(ctx, T.employee, ['person', 'employee_status'], [['row_id', '=', exact(job.employee)]])
-  if (exact(employee?.person) !== proposal.maker || exact(employee?.employee_status) !== 'Current') return 'The person who asked no longer holds this job.'
+  const [employee] = await list(ctx, T.employee, ['person', EMPLOYEE_STATUS], [['row_id', '=', exact(job.employee)]])
+  if (exact(employee?.person) !== proposal.maker || exact(employee?.[EMPLOYEE_STATUS]) !== 'Current') return 'The person who asked no longer holds this job.'
   const [to] = await list(ctx, T.section, SECTION_FIELDS, [['row_id', '=', a.to_section]])
   if (!isActive(to) || exact(to?.site) !== a.site) return 'The section it would go to is no longer open.'
   // A job carrying a floor must match the section's, changed or not; a job with none has nothing to match.
@@ -396,8 +395,8 @@ async function whyStale(ctx: ActionContext, proposal: ChangeProposal, a: About, 
   }
   if (a.kind === 'add' && exact(job.section) !== a.to_section) return 'The person who asked no longer holds that section.'
   if (a.kind === 'add') {
-    const [subcategory] = await list(ctx, T.subcategory, ['subcategory_type', 'deleted_at_source'], [['row_id', '=', exact(a.subcategory)]])
-    if (subcategory?.subcategory_type !== 'Merchandise' || subcategory?.deleted_at_source === true) return 'That subcategory is no longer sold.'
+    const [subcategory] = await list(ctx, T.subcategory, ['subcategory_type'], [['row_id', '=', exact(a.subcategory)]])
+    if (subcategory?.subcategory_type !== 'Merchandise') return 'That subcategory is no longer sold.'
   }
   if (a.kind !== 'section') {
     const rows = await list(ctx, T.placement, PLACEMENT_FIELDS, [['store', '=', a.site], ['subcategory', '=', exact(a.subcategory)]])

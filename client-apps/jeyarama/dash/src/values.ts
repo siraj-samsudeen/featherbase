@@ -32,3 +32,7 @@ export function holdsOn(row: { starts_on?: unknown; ends_on?: unknown }, on: str
   const end = day(row.ends_on)
   return !!start && start <= on && (!end || on < end)
 }
+
+/** Status columns of core Tables whose names may change soon: each name is written here alone. */
+export const EMPLOYEE_STATUS = 'employee_status'
+export const SECTION_STATUS = 'section_status'
