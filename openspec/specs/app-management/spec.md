@@ -138,7 +138,7 @@ A System Manager SHALL see, on the Apps page, the commit the instance was built 
 #### Scenario: See what changed in an app
 
 - **WHEN** a System Manager chooses Tasker on the Apps page
-- **THEN** they see what changed in Tasker 3.0.2, 3.0.1 and 3.0.0, newest first
+- **THEN** they see what changed in each Tasker version, newest first
 - **AND** each issue a change names links to that issue
 
 #### Scenario: Others cannot see it
