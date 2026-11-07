@@ -87,7 +87,7 @@ import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled, isInstalled, installedAppNames } from './apps'
-import { packageTitle, appCatalog, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
+import { packageTitle, appCatalog, closedApps, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { discoverAppLibrary, appLibraryCatalog, prepareAndInstallApp } from './app-library'
 import { documentActivity } from './document-activity'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage, rowHref } from 'shared'
@@ -1927,6 +1927,10 @@ app.post('/api/apps/prepare-install', async c => {
   return c.json(await prepareAndInstallApp(body.name), 201)
 })
 app.get('/api/app_catalog', async (c) => c.json(await appCatalog(who(c))))
+app.get('/api/app_catalog/closed', async (c) => {
+  await assertSystemManager(who(c))
+  return c.json(await closedApps(who(c)))
+})
 // #629: the glossary everyone signed in reads, and an editor's way back to an
 // app's own wording of a term the instance reworded.
 app.get('/api/glossary', async (c) => c.json(await readGlossary(who(c))))

@@ -76,6 +76,14 @@ function useBarContext(home: string | undefined): { context?: string; brand?: Br
   return { context: home }
 }
 
+/** #1006: is this address an app's own, as far as is known yet. Admin's pages
+ *  aren't served to someone there, so their account pages keep the plain bar. */
+export function useOnAppAddress(): boolean | undefined {
+  const brand = useBrand()
+  if (brand.isError) return false
+  return brand.data ? Boolean(brand.data.opens && brand.data.opens !== ADMIN) : undefined
+}
+
 function nameOf(context: string, brand: Brand | undefined): string {
   if (context === ADMIN) return ADMIN_NAME
   if (brand?.opens === context) return brand.app_name
