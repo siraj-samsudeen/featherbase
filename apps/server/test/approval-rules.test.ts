@@ -106,12 +106,15 @@ describe('a maker\'s change waits for the approver', () => {
     const decided = await approve(w.lead, body.pending_proposal.row_id)
     expect(decided).toMatchObject({ state: 'Applied', decided_by: w.lead.user, result_row: 'S-1' })
     expect(await w.shelf('S-1')).toMatchObject({ label: 'Red box', bay: 4, updated_by: w.helper.user })
-    const [version] = await sql`select created_by, data from version where ref_table = 'Shelf' and ref_name = 'S-1' order by created_at desc limit 1`
+    const [version] = await sql`select row_id, created_by, data from version where ref_table = 'Shelf' and ref_name = 'S-1' order by created_at desc limit 1`
     expect(version.created_by).toBe(w.helper.user)
     expect(version.data).toMatchObject({ change_proposal: body.pending_proposal.row_id, made_by: w.helper.user, approved_by: [w.lead.user] })
     // The row's Activity says who approved it.
     const activity = await w.lead.get<any>('/api/activity/Shelf/S-1')
     expect(activity.versions.at(-1)).toMatchObject({ created_by: w.helper.user, data: { approved_by: [{ id: w.lead.user }] } })
+    // An app's own proposals (#975) record their approver as one id, not a list.
+    await sql`update version set data = jsonb_set(data, '{approved_by}', to_jsonb(${w.lead.user}::text)) where row_id = ${version.row_id}`
+    expect((await w.lead.get<any>('/api/activity/Shelf/S-1')).versions.at(-1).data.approved_by).toEqual([{ id: w.lead.user, name: expect.any(String) }])
     await expect(approve(w.lead, body.pending_proposal.row_id)).rejects.toMatchObject({ status: 417 })
   })
 
