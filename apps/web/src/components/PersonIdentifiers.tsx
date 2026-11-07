@@ -43,10 +43,10 @@ const SOURCES: Record<string, string> = {
   self: 'added by the person',
   manual: 'recorded by hand',
   migration: 'carried over at the upgrade',
-  'stylehr-roster-sync': 'StyleHR roster',
 }
 function sourceLabel(source: string): string {
-  return SOURCES[source] ?? source
+  // An instance's own feed (a roster sync) is named by its code, in words.
+  return SOURCES[source] ?? source.replace(/[-_]+/g, ' ')
 }
 
 function period(i: Identifier): string {
