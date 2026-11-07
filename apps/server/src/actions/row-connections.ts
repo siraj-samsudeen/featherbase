@@ -1,4 +1,5 @@
 import { AppError } from '../errors'
+import { permissionRefusal } from '../refusals'
 import { ROW_KEY, getBacklinks, getMeta } from '../meta'
 import { getDoc } from '../document'
 import { countDocs, type Filter } from '../query'
@@ -42,7 +43,7 @@ registerCollectionAction('backlinks', {
   description: 'Tables whose Reference columns point at this table (no per-row counts).',
   handler: async ({ table, user }) => {
     if ((await permissionScope(user.row_id, table, 'read')) === 'none')
-      throw new AppError('PermissionError', `No read permission on ${table} for ${user.row_id}`)
+      throw await permissionRefusal(user.row_id, table, 'read')
     const backlinks = []
     for (const bl of await getBacklinks(table))
       if ((await permissionScope(user.row_id, bl.table, 'read')) !== 'none') backlinks.push(bl)
