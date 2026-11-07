@@ -1,4 +1,5 @@
 import { fixByFor, isOpen } from './jobRules'
+import { countActions, prepareCount, prepareCounter, prepareDecision, prepareScan } from './countServer'
 
 // Featherbase runtime hook API v1. Structural contract; no core dependency.
 export interface Context {
@@ -7,6 +8,7 @@ export interface Context {
   readonly timeZone: string
   isNew: boolean
   documents: {
+    members(table: string): Promise<{ row_id: string; full_name: string }[]>
     get(table: string, id: string): Promise<Record<string, unknown>>
     list(table: string, args?: { filters?: [string, string, unknown][]; fields?: string[]; limit_page_length?: number }): Promise<Record<string, unknown>[]>
   }
@@ -103,6 +105,9 @@ async function preparePlace(ctx: Context): Promise<void> {
 }
 
 export const platformVersion = '2026-10'
-export const validators = { 'equipment.job': prepareJob, 'equipment.restoration': prepareRestoration, 'equipment.place': preparePlace }
-export const actions = {}
+export const validators = {
+  'equipment.job': prepareJob, 'equipment.restoration': prepareRestoration, 'equipment.place': preparePlace,
+  'equipment.count': prepareCount, 'equipment.counter': prepareCounter, 'equipment.scan': prepareScan, 'equipment.count_decision': prepareDecision,
+}
+export const actions = { ...countActions }
 export const jobs = {}

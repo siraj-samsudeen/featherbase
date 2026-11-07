@@ -6,6 +6,13 @@
   "server": "dist/server.mjs",
   "client": "dist/client",
   "entryTable": "equipment.asset",
+  "actions": {
+    "version": 2,
+    "operations": {
+      "start_count": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } }
+    },
+    "tables": ["equipment.count", "equipment.counter", "equipment.count_expected", "equipment.asset", "equipment.place"]
+  },
   "migrations": [],
   "releaseNotes": [
     {
@@ -136,6 +143,90 @@
         { "column_name": "job", "label": "Repair job", "column_type": "Reference", "reference_table": "equipment.job", "reqd": true, "unique": true, "in_list_view": true },
         { "column_name": "note", "label": "Note", "column_type": "Data" }
       ]
+    },
+    {
+      "name": "equipment.count",
+      "label": "Verification count",
+      "module": "Assets",
+      "id_pattern": "COUNT-.####",
+      "title_column": "count_name",
+      "access_policy": { "version": 1, "roles": ["Assets Member", "Assets Technician", "Assets Manager"] },
+      "columns": [
+        { "column_name": "count_name", "label": "Count", "column_type": "Data", "reqd": true, "in_list_view": true },
+        { "column_name": "scope_place", "label": "Place to count", "column_type": "Reference", "reference_table": "equipment.place", "reqd": true, "in_list_view": true },
+        { "column_name": "count_kind", "label": "Kind", "column_type": "Choice", "choices": "Full\nSample\nTargeted\nCustodian self-check", "default_value": "Full", "reqd": true, "in_list_view": true },
+        { "column_name": "sample_size", "label": "Sample size", "column_type": "Int" },
+        { "column_name": "starts_on", "label": "Starts on", "column_type": "Date" },
+        { "column_name": "ends_on", "label": "Ends on", "column_type": "Date" },
+        { "column_name": "reviewer", "label": "Reviewer (person ID)", "column_type": "Data", "reqd": true, "in_list_view": true },
+        { "column_name": "count_state", "label": "Stage", "column_type": "Choice", "choices": "Planned\nCounting\nIn review\nClosed", "default_value": "Planned", "reqd": true, "in_list_view": true },
+        { "column_name": "snapshot_at", "label": "Expected list fixed at", "column_type": "Datetime" },
+        { "column_name": "expected_total", "label": "Assets expected", "column_type": "Int" },
+        { "column_name": "closed_at", "label": "Closed at", "column_type": "Datetime" }
+      ]
+    },
+    {
+      "name": "equipment.counter",
+      "label": "Counter",
+      "module": "Assets",
+      "id_pattern": "CTR-.#####",
+      "title_column": "person",
+      "access_policy": { "version": 1, "roles": ["Assets Member", "Assets Technician", "Assets Manager"] },
+      "columns": [
+        { "column_name": "count", "label": "Count", "column_type": "Reference", "reference_table": "equipment.count", "reqd": true, "in_list_view": true },
+        { "column_name": "person", "label": "Counter", "column_type": "Reference", "reference_table": "Person", "reqd": true, "in_list_view": true }
+      ]
+    },
+    {
+      "name": "equipment.count_expected",
+      "label": "Expected in a count",
+      "module": "Assets",
+      "id_pattern": "EXP-.######",
+      "title_column": "asset",
+      "access_policy": { "version": 1, "roles": ["Assets Manager"] },
+      "columns": [
+        { "column_name": "count", "label": "Count", "column_type": "Reference", "reference_table": "equipment.count", "reqd": true, "in_list_view": true },
+        { "column_name": "asset", "label": "Asset", "column_type": "Reference", "reference_table": "equipment.asset", "reqd": true, "in_list_view": true },
+        { "column_name": "expected_place", "label": "Expected place", "column_type": "Reference", "reference_table": "equipment.place", "in_list_view": true }
+      ]
+    },
+    {
+      "name": "equipment.scan",
+      "label": "Count record",
+      "module": "Assets",
+      "id_pattern": "SCAN-.######",
+      "title_column": "outcome",
+      "access_policy": { "version": 1, "roles": ["Assets Member", "Assets Technician", "Assets Manager"] },
+      "columns": [
+        { "column_name": "count", "label": "Count", "column_type": "Reference", "reference_table": "equipment.count", "reqd": true, "in_list_view": true },
+        { "column_name": "asset", "label": "Asset", "column_type": "Reference", "reference_table": "equipment.asset", "in_list_view": true },
+        { "column_name": "typed_tag", "label": "Typed tag", "column_type": "Data" },
+        { "column_name": "outcome", "label": "Outcome", "column_type": "Choice", "choices": "Found here\nDamaged\nIdle\nBelongs elsewhere\nNot on the list", "reqd": true, "in_list_view": true },
+        { "column_name": "area", "label": "Area", "column_type": "Reference", "reference_table": "equipment.place", "reqd": true, "in_list_view": true },
+        { "column_name": "condition", "label": "Condition", "column_type": "Choice", "choices": "Working\nNeeds repair\nDamaged" },
+        { "column_name": "photo", "label": "Photo", "column_type": "Attach Image" },
+        { "column_name": "manual", "label": "Entered by hand", "column_type": "Check", "default_value": "0" },
+        { "column_name": "reason", "label": "Reason", "column_type": "Data" },
+        { "column_name": "description", "label": "Description", "column_type": "Data" },
+        { "column_name": "new_tag", "label": "New tag stuck", "column_type": "Data" },
+        { "column_name": "duplicate", "label": "Duplicate", "column_type": "Check", "default_value": "0", "in_list_view": true },
+        { "column_name": "for_recount", "label": "Recount", "column_type": "Check", "default_value": "0" }
+      ]
+    },
+    {
+      "name": "equipment.count_decision",
+      "label": "Count decision",
+      "module": "Assets",
+      "id_pattern": "DEC-.#####",
+      "title_column": "decision",
+      "access_policy": { "version": 1, "roles": ["Assets Member", "Assets Technician", "Assets Manager"] },
+      "columns": [
+        { "column_name": "count", "label": "Count", "column_type": "Reference", "reference_table": "equipment.count", "reqd": true, "in_list_view": true },
+        { "column_name": "asset", "label": "Missing asset", "column_type": "Reference", "reference_table": "equipment.asset", "in_list_view": true },
+        { "column_name": "scan", "label": "Item not on the list", "column_type": "Reference", "reference_table": "equipment.scan", "in_list_view": true },
+        { "column_name": "decision", "label": "Decision", "column_type": "Choice", "choices": "Recount\nFound later\nMapping corrected\nTo Loss Prevention\nPropose retirement to Finance\nCapitalize\nControlled item\nThird-party", "reqd": true, "in_list_view": true },
+        { "column_name": "note", "label": "Note", "column_type": "Data" }
+      ]
     }
   ],
   "permissions": [
@@ -156,7 +247,20 @@
     { "table": "equipment.job", "role": "Assets Manager", "can_read": true, "can_create": true, "can_write": true, "can_delete": true },
     { "table": "equipment.restoration", "role": "Assets Member", "can_read": true, "can_create": true },
     { "table": "equipment.restoration", "role": "Assets Technician", "can_read": true, "can_create": true },
-    { "table": "equipment.restoration", "role": "Assets Manager", "can_read": true, "can_create": true }
+    { "table": "equipment.restoration", "role": "Assets Manager", "can_read": true, "can_create": true },
+    { "table": "equipment.count", "role": "Assets Member", "can_read": true },
+    { "table": "equipment.count", "role": "Assets Technician", "can_read": true },
+    { "table": "equipment.count", "role": "Assets Manager", "can_read": true, "can_create": true, "can_write": true },
+    { "table": "equipment.counter", "role": "Assets Member", "can_read": true },
+    { "table": "equipment.counter", "role": "Assets Technician", "can_read": true },
+    { "table": "equipment.counter", "role": "Assets Manager", "can_read": true, "can_create": true, "can_delete": true },
+    { "table": "equipment.count_expected", "role": "Assets Manager", "can_read": true, "can_create": true },
+    { "table": "equipment.scan", "role": "Assets Member", "can_read": true, "can_create": true },
+    { "table": "equipment.scan", "role": "Assets Technician", "can_read": true, "can_create": true },
+    { "table": "equipment.scan", "role": "Assets Manager", "can_read": true, "can_create": true },
+    { "table": "equipment.count_decision", "role": "Assets Member", "can_read": true },
+    { "table": "equipment.count_decision", "role": "Assets Technician", "can_read": true },
+    { "table": "equipment.count_decision", "role": "Assets Manager", "can_read": true, "can_create": true, "can_write": true }
   ],
   "roles": ["Assets Member", "Assets Technician", "Assets Manager"],
   "jobs": []
