@@ -334,6 +334,53 @@ describe('every way of changing a row obeys the rules', () => {
   })
 })
 
+describe('approving rechecks the rules as they are now', () => {
+  test('a rule turned off since: approving is refused, saying so, and rejecting still works', async ({ admin, createUser }) => {
+    const w = await setUp(admin, createUser)
+    await helperWaitsForLead(admin)
+    const id = (await edit(w.helper, 'S-1', { label: 'Red box' })).body.pending_proposal.row_id
+    await sql`update approval_rule set enabled = false where maker_role = 'Helper'`
+    await expect(approve(w.lead, id)).rejects.toMatchObject({ status: 417, message: expect.stringMatching(/no longer let/) })
+    expect(await w.lead.post<any>(`/api/change_proposals/${id}/reject`, { reason: 'Rules changed' })).toMatchObject({ state: 'Rejected' })
+  })
+
+  test('the maker\'s change now applies at once: the approval applies it', async ({ admin, createUser }) => {
+    const w = await setUp(admin, createUser)
+    await helperWaitsForLead(admin)
+    const id = (await edit(w.helper, 'S-1', { label: 'Red box' })).body.pending_proposal.row_id
+    await sql`update approval_rule set outcome = 'Apply and log' where maker_role = 'Helper'`
+    // Only someone it was waiting for can apply it.
+    await expect(approve(w.region, id)).rejects.toMatchObject({ status: 403 })
+    expect(await approve(w.lead, id)).toMatchObject({ state: 'Applied' })
+  })
+
+  test('the row was deleted meanwhile: the proposal closes, changing nothing', async ({ admin, createUser }) => {
+    const w = await setUp(admin, createUser)
+    await helperWaitsForLead(admin)
+    const id = (await edit(w.helper, 'S-1', { label: 'Red box' })).body.pending_proposal.row_id
+    await sql`delete from ${sql(await tableRelation('Shelf'))} where row_id = 'S-1'`
+    expect(await approve(w.lead, id)).toMatchObject({ state: 'Rejected', decision_reason: 'The row no longer exists.' })
+  })
+
+  test('a reader of the row sees its proposals; someone who can\'t read it sees none', async ({ admin, createUser }) => {
+    const w = await setUp(admin, createUser)
+    await helperWaitsForLead(admin)
+    const id = (await edit(w.helper, 'S-1', { label: 'Red box' })).body.pending_proposal.row_id
+    expect((await w.region.get<any>(`/api/change_proposals/${id}`)).changes).toHaveLength(1)
+    const stranger = await createUser({ email: `stranger-${randomUUID()}@example.test`, roles: [] })
+    await expect(stranger.get(`/api/change_proposals/${id}`)).rejects.toMatchObject({ status: 403 })
+    await expect(stranger.get('/api/row_proposals/Shelf/S-1')).rejects.toMatchObject({ status: 403 })
+    await expect(w.lead.get('/api/change_proposals/nope')).rejects.toMatchObject({ status: 404 })
+    await expect(approve(w.lead, 'nope')).rejects.toMatchObject({ status: 404 })
+  })
+
+  test('System Managers see which resolvers a rule can name', async ({ admin, createUser }) => {
+    const w = await setUp(admin, createUser)
+    expect(await w.manager.get('/api/approval_resolvers')).toEqual({ resolvers: ['approvalproof.broken', 'approvalproof.site_lead'] })
+    await expect(w.helper.get('/api/approval_resolvers')).rejects.toMatchObject({ status: 403 })
+  })
+})
+
 describe('approval rules are data a System Manager keeps', () => {
   test('only a System Manager writes rules, and each change is in the history', async ({ admin, createUser }) => {
     const w = await setUp(admin, createUser)
