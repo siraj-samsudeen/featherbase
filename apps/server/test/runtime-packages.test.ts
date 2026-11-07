@@ -6,7 +6,7 @@ import { test as base } from './pg-test'
 import { committedTest } from './pg-test-shared'
 import type { TestClient, CreateUserFn } from 'feather-testing-postgres'
 import { admitTasker, taskerClient } from './tasker-client'
-import { discoverPackages, findScopeProvider, shippedUpgrades } from '../src/runtime-packages'
+import { artifactDigest, discoverPackages, findScopeProvider, shippedUpgrades } from '../src/runtime-packages'
 import { loadInstalledApps, uninstallApp } from '../src/apps'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
@@ -1011,4 +1011,15 @@ describe('An app names its accent', () => {
       expect(html).toContain('<html lang="en" data-featherbase-accent="green">')
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
+})
+
+test('the digest check before a release fingerprints an app as the server does (#1044)', async () => {
+  const folder = await mkdtemp(join(tmpdir(), 'digest-'))
+  await mkdir(join(folder, 'dist'))
+  await writeFile(join(folder, 'package.json'), '{"name":"é"}')
+  await writeFile(join(folder, 'dist', 'b.js'), 'two')
+  await writeFile(join(folder, 'dist', 'a.js'), 'one')
+  // @ts-expect-error a plain script outside this package's types
+  const tool = await import('../../../tools/check-app-digests.mjs')
+  expect(await tool.artifactDigest(folder)).toBe(await artifactDigest(folder))
 })
