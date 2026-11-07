@@ -6,6 +6,7 @@ import { isActingSystemActor } from './system-actor'
 import { asNameList, declaresOwnPages } from './installed-app-ledger'
 import { admittedToTable } from './mandatory-access'
 import { readOnce } from './permission-reads'
+import { permissionRefusal } from './refusals'
 
 // PERM-001: role resolution for a principal — a person or a service account
 // (person-rename R2). Every enabled principal implicitly holds 'All';
@@ -168,10 +169,7 @@ export async function assertDocPermission(
   const scope = await permissionScope(user, table, action)
   if (scope === 'all') return
   if (scope === 'own_rows' && createdBy === user) return
-  throw new AppError(
-    'PermissionError',
-    `No ${action} permission on ${table} for ${user}`,
-  )
+  throw await permissionRefusal(user, table, action)
 }
 
 export async function assertPermission(
@@ -180,10 +178,7 @@ export async function assertPermission(
   action: PermAction,
 ) {
   if (!(await hasPermission(user, table, action)))
-    throw new AppError(
-      'PermissionError',
-      `No ${action} permission on ${table} for ${user}`,
-    )
+    throw await permissionRefusal(user, table, action)
 }
 
 /**
