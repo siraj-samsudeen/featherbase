@@ -302,8 +302,6 @@ async function boundScopeFilters(
   for (const ref of scope.refs) {
     const sc = sourceColumnFor(bind, ref.column)
     if (sc) filters.push({ column: sc, op: ref.unsetPasses ? 'in_or_null' : 'in', value: [...ref.allowed] })
-    // A required scope column the binding cannot reach narrows to nothing.
-    else if (!ref.unsetPasses) return [{ column: bind.pk, op: 'in', value: [] }]
   }
   return filters
 }

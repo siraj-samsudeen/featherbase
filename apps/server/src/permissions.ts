@@ -311,7 +311,7 @@ export function tableScope(meta: ScopedTable, map: Map<string, Set<string>>): Ta
     if (allowed) scope.refs.push({ column: f.column_name, table: f.reference_table, allowed, unsetPasses: !required })
     else if (required) {
       scope.none = true
-      if (!scope.missing.includes(f.reference_table)) scope.missing.push(f.reference_table)
+      scope.missing.push(f.reference_table)
     }
   }
   // Fail closed on a stale declaration too: a required column that is no
@@ -320,7 +320,7 @@ export function tableScope(meta: ScopedTable, map: Map<string, Set<string>>): Ta
     for (const name of declared!)
       if (!meta.columns.some((f) => f.column_name === name && f.column_type === 'Reference' && f.reference_table)) {
         scope.none = true
-        if (!scope.missing.includes(name)) scope.missing.push(name)
+        scope.missing.push(name)
       }
   return scope.own || scope.refs.length || scope.none ? scope : null
 }
@@ -342,7 +342,7 @@ export function checkUserPermissions(
   const scope = tableScope(meta, map)
   if (!scope) return
   if (scope.none)
-    throw new AppError('PermissionError', `${meta.name} rows are open only to people whose Data Scope names a ${scope.missing.join(' and a ')}`)
+    throw new AppError('PermissionError', `${meta.name} rows are open only to people whose Data Scope names a ${[...new Set(scope.missing)].join(' and a ')}`)
   if (scope.own && row.row_id != null && !scope.own.has(String(row.row_id)))
     throw new AppError(
       'PermissionError',
