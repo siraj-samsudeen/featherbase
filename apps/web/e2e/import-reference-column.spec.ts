@@ -82,5 +82,5 @@ test('Check handles many long values', async ({ session, page, request }) => {
   await row.locator('[data-rowfield=column_type]').selectOption('Reference')
   await row.getByRole('combobox', { name: 'Table Zone links to' }).selectOption(LONG)
   await page.getByTestId('iw-check').click()
-  await expect(page.getByTestId('iw-check-0')).toContainText('1 rows ready, 599 with problems')
+  await expect(page.getByTestId('iw-check-0')).toContainText('1 row ready, 599 with problems')
 })

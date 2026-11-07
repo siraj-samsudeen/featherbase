@@ -306,7 +306,7 @@ function validateDef(def: TableDef) {
     if (['Reference', 'Sub-table', 'Choice'].includes(f.column_type) && !targetOf(f) && f.column_type !== 'Choice')
       errs[f.column_name] = `${f.column_type} column requires ${f.column_type === 'Reference' ? 'reference_table' : 'row_table'}`
     if (f.column_type === 'Choice' && !f.choices)
-      errs[f.column_name] = 'Choice column requires choices'
+      errs[f.column_name] = 'Choice column needs at least one choice'
     if (f.table_column) {
       // #881: a link to a row of any Table names the column of this Table
       // that holds the Table, a link to Table, and no fixed target of its own.
