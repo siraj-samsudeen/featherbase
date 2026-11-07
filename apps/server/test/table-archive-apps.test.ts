@@ -93,6 +93,13 @@ describe("#1041: archiving an app's table", () => {
     await expectApiError(archive(admin, 'Arc Custom Roster'), { status: 417, message: expect.stringContaining('who can see or do what') })
   })
 
+  test('a sub-table and a settings table are refused, each in plain words', async ({ admin }) => {
+    await makeTable(admin, { name: 'Arc Line', kind: 'sub_table', columns: ['code'] })
+    await expectApiError(archive(admin, 'Arc Line'), { status: 417, message: expect.stringContaining('it is a sub-table') })
+    await makeTable(admin, { name: 'Arc Preferences', kind: 'settings', columns: ['colour'] })
+    await expectApiError(archive(admin, 'Arc Preferences'), { status: 417, message: expect.stringContaining('it holds settings') })
+  })
+
   test("its rows stay readable, and its writes are refused saying it is archived, even from the app's own action", async ({ admin }) => {
     await installActionProof(admin)
     const kept = await saveRow(admin, DESTINATION, { title: 'Kept' })
