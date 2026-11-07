@@ -80,3 +80,16 @@ test("a link stored as a Table's title column gives its row's page no id and no 
   expect(heading).not.toHaveTextContent('·')
   expect(heading).not.toHaveTextContent('VLM')
 })
+
+test("a link to a Table the editor can't read is a closed box that says so, not one that drops what is typed", async ({ admin, createUser }) => {
+  await admin.post('/api/table_def', { name: 'Nv Hidden', id_pattern: 'prompt', columns: [{ column_name: 'label', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { name: 'Nv Ticket', columns: [
+    { column_name: 'title', column_type: 'Data' },
+    { column_name: 'place', column_type: 'Reference', reference_table: 'Nv Hidden', label: 'Place' },
+  ] })
+  const { row_id } = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Nv Ticket', row: { title: 'First' } })
+  const editor = await createUserWithRole(admin, createUser, { role: 'Nv Ticket Editor', table: 'Nv Ticket', can_read: true, can_write: true })
+  await renderApp(`${tableHref('Nv Ticket')}/row/${encodeURIComponent(row_id)}`, editor)
+  const box = await screen.findByPlaceholderText("You can't read Nv Hidden")
+  expect(box).toBeDisabled()
+})

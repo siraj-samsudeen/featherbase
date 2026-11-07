@@ -344,6 +344,7 @@ export function ReportView({
     const definition = available.find((f) => f.column_name === col)
     return definition?.column_type === 'Reference' ? definition.reference_table ?? null : null
   }
+  const barMark = (barLabel: string, i: number) => (linkTable(groupBy || chartLabelField) ? `link-${i}` : barLabel)
   async function unreadableLinks(list: Row[]): Promise<Set<string>> {
     const wanted = new Map<string, { table: string; row_id: string }>()
     for (const col of new Set([...columns, ...(groupBy ? [groupBy] : [])])) {
@@ -639,6 +640,7 @@ export function ReportView({
             {groupBy &&
               shownGroups.map((g) => (
                 <ReportGroup
+                  linked={Boolean(linkTable(groupBy))}
                   key={g.key}
                   group={g}
                   label={displayValue(g.key, groupBy)}
@@ -721,7 +723,7 @@ export function ReportView({
         )}
         <div className="space-y-2">
           {chartData.map((r, i) => (
-            <div key={`${r.label}-${i}`} className="flex items-center gap-2" data-testid={`chart-bar-${r.label}`}>
+            <div key={`${r.label}-${i}`} className="flex items-center gap-2" data-testid={`chart-bar-${barMark(r.label, i)}`}>
               <div className="w-24 shrink-0 truncate text-xs text-ink-muted">{displayValue(r.label, groupBy || chartLabelField) || '—'}</div>
               <div className="h-5 flex-1 rounded bg-subtle">
                 <div
@@ -729,7 +731,7 @@ export function ReportView({
                   style={{ width: `${Math.round((r.value / chartMax) * 100)}%`, minWidth: r.value ? '2px' : 0 }}
                 />
               </div>
-              <div className="w-10 shrink-0 text-right text-xs tabular-nums text-ink" data-testid={`chart-bar-value-${r.label}`}>
+              <div className="w-10 shrink-0 text-right text-xs tabular-nums text-ink" data-testid={`chart-bar-value-${barMark(r.label, i)}`}>
                 {r.value}
               </div>
             </div>
@@ -744,6 +746,7 @@ export function ReportView({
 }
 
 function ReportGroup({
+  linked,
   group,
   label,
   columns,
@@ -752,6 +755,8 @@ function ReportGroup({
   bodyRow,
 }: {
   group: GroupTotals
+  /** A group by a link: its value is a code, kept off the page (#1020). */
+  linked: boolean
   label: ReactNode
   columns: string[]
   numericCols: string[]
@@ -764,7 +769,7 @@ function ReportGroup({
       <tr
         className="cursor-pointer border-t border-border bg-action-tint/60"
         data-testid="group-header"
-        data-group={group.key}
+        data-group={linked ? undefined : group.key}
         onClick={() => setOpen((o) => !o)}
       >
         <td className="px-3 py-1.5 font-medium text-ink">

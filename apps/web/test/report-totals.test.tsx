@@ -184,6 +184,20 @@ test("#1020: the file keeps a readable link's value, and shows neutral words for
   expect(file).not.toContain('SEC')
 })
 
+test('#1020: a report grouped by a link keeps the code off the page', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Rpt Place', id_pattern: 'prompt', title_column: 'label', columns: [{ column_name: 'label', column_type: 'Data' }] })
+  await admin.post('/api/save_row', { table: 'Rpt Place', row: { row_id: 'SEC', label: 'Secret Place' } })
+  await admin.post('/api/table_def', { name: T, id_pattern: 'prompt', columns: [
+    { column_name: 'place', column_type: 'Reference', reference_table: 'Rpt Place', label: 'Place', in_list_view: true },
+  ] })
+  await admin.post('/api/save_row', { table: T, row: { row_id: 'one', place: 'SEC' } })
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(T))}/view/report`, admin)
+  await userEvent.selectOptions(await screen.findByTestId('report-groupby'), 'place')
+  await within(await screen.findByTestId('group-header')).findByText(/Secret Place/)
+  expect(screen.getByTestId('group-header')).not.toHaveAttribute('data-group')
+  expect(document.querySelector('[data-testid^="chart-bar-SEC"]')).toBeNull()
+})
+
 test('a summary that fits on the page says nothing about rows left out', async ({ admin }) => {
   await admin.post('/api/table_def', {
     name: T,

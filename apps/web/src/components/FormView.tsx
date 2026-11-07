@@ -1675,6 +1675,8 @@ export function LinkControl({
     if (picker.labelField) return linkedRowText(m, o.value, o.label)
     return m.system ? o.label : <StandInOption meta={m} table={target} rowId={o.value} />
   }
+  // A Table the person can't read offers nothing to pick: typing would go nowhere.
+  const cannotPick = !forFilter && !anyTable && targetMeta.isError
   const shown = query ?? (noAccess ? `${target} (no access)` : null) ?? (unseen ? UNSEEN_ROW : valueLabel ?? String(value ?? ''))
 
   // A link the person cannot see is not theirs to change: neutral words, no
@@ -1694,7 +1696,7 @@ export function LinkControl({
         type="text"
         role="combobox"
         aria-expanded={open}
-        placeholder={forFilter ? `Filter ${field.label ?? field.column_name}…` : `Reference: ${target}`}
+        placeholder={forFilter ? `Filter ${field.label ?? field.column_name}…` : cannotPick ? `You can't read ${target}` : `Reference: ${target}`}
         value={shown}
         onFocus={() => search(query ?? (picker.labelField || standInFields.length ? '' : String(value ?? '')))}
         onBlur={() => {
@@ -1718,6 +1720,7 @@ export function LinkControl({
         }}
         className={`${className} ${hasValue && !unseen ? 'pr-14' : ''}`}
         {...common}
+        disabled={cannotPick || Boolean(common.disabled)}
       />
       {hasValue && !unseen && (
         <span className="absolute inset-y-0 right-2 flex items-center gap-0.5">
