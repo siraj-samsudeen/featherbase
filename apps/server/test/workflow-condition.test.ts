@@ -89,7 +89,7 @@ describe('conditional workflow transitions', () => {
     // But it CAN auto-approve.
     const out = await applyWorkflowAction(DT, 'small', 'Auto Approve', 'Administrator')
     expect(out.workflow_state).toBe('Auto Approved')
-    expect(out.status).toBe('submitted')
+    expect(out.submission_status).toBe('submitted')
   })
 
   test('applies the transition whose condition holds', async ({ admin }) => {

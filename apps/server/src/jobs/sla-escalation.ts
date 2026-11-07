@@ -35,7 +35,8 @@ registerJob('check_sla', async () => {
       .map((s) => s.trim())
       .filter(Boolean)
     // The row's "state" is its workflow state when a workflow is active,
-    // else its `status` column when it has one.
+    // else its own `status` column when it has one (#1022: a business column;
+    // the submit lifecycle is `submission_status` and plays no part here).
     const wf = await getActiveWorkflow(table)
     const stateCol = wf ? stateField(wf) : has('status') ? 'status' : null
 

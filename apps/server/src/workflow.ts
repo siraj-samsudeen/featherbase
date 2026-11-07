@@ -21,7 +21,7 @@ import { runAsSystemActor } from './system-actor'
 export interface WorkflowState {
   state: string
   // Renamed from Frappe's doc_status: the row's *lifecycle* status while in
-  // this named state (distinct from the sub_table's own reserved `status`
+  // this named state (distinct from the sub_table's own reserved `submission_status`
   // column, which every Table gets and which isn't what this represents).
   target_status: 'draft' | 'submitted' | 'cancelled'
   waits_for_approval?: boolean
@@ -249,7 +249,7 @@ export async function applyWorkflowAction(
       throw new AppError('ValidationError', `Action "${action}" is not allowed: its condition is not met`)
 
     const target = wf.states.find((s) => s.state === transition.next_state)
-    const status = target ? target.target_status : ((row.status as 'draft' | 'submitted' | 'cancelled') ?? 'draft')
+    const status = target ? target.target_status : ((row.submission_status as 'draft' | 'submitted' | 'cancelled') ?? 'draft')
     // The whole row before the move, for the email rules below.
     const before = row
 
@@ -257,7 +257,7 @@ export async function applyWorkflowAction(
     await assertFieldNotManaged(sql, table, name, field, user)
     await sql`
       update ${sql(relation)}
-      set ${sql(field)} = ${transition.next_state}, status = ${status}, updated_at = now()
+      set ${sql(field)} = ${transition.next_state}, submission_status = ${status}, updated_at = now()
       where ${sql(physicalRowKey(table))} = ${name}`
 
     await sql`

@@ -18,7 +18,8 @@ interface ActionContext { user: string; payload: unknown; documents: Documents; 
 interface Snapshot { task: Row; subtasks: Row[] }
 const TASK = 'tasker.task'
 const SERIES = 'tasker.recurrence'
-const fields = ['task_title', 'description', 'assigned_to', 'urgent', 'project']
+// Dates are not copied: an absolute date would make every new occurrence overdue at once.
+const fields = ['task_title', 'description', 'assigned_to', 'urgent', 'project', 'store']
 const snapshotTask = (row: Row) => Object.fromEntries(fields.map(field => [field, row[field] ?? null]))
 async function all(documents: Documents, table: string, filters: [string, string, unknown][]) {
   const rows: Row[] = []
