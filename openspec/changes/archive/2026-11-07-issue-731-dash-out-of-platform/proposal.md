@@ -27,5 +27,5 @@ None.
 
 ## Impact
 
-- Migrations 0153 to 0155: the refresh job's wording, the platform's leaver job row, and the report's cached figures.
+- Migrations 0154 to 0156: the refresh job's wording, the platform's leaver job row, and the report's cached figures.
 - Dash 0.12.0, with an upgrade step from 0.11.0; the instance lists 0.11.0 as a previous version.

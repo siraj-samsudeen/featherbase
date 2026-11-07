@@ -111,7 +111,7 @@ function AdminLayoutForKind({ wide, fullWidth }: { wide: boolean; fullWidth: boo
   return <AdminShell wide={wide} fullWidth={fullWidth} />
 }
 
-function AdminShell({ wide, fullWidth }: { wide: boolean; fullWidth: boolean }) {
+export function AdminShell({ wide, fullWidth = false }: { wide: boolean; fullWidth?: boolean }) {
   const navigate = useNavigate()
   const router = useRouter()
   const queryClient = useQueryClient()

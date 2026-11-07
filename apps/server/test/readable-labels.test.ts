@@ -208,6 +208,8 @@ test('readable-label migration requires exact old platform choices', async ({ ad
     where parent = 'Data Source' and column_name = 'engine'`
   await sql`update column_def set choices = E'refuse\ncreate_if_email_domain_allowed\ncreate'
     where parent = 'Sign In Method' and column_name = 'new_person'`
+  // #1021 added view to Table kind after readable labels.
+  await sql`update column_def set choices = E'table\nsub_table\nsettings' where parent = 'Table' and column_name = 'kind'`
   await sql`update column_def set choices = 'changed' where parent = 'Data Source' and column_name = 'access'`
   await sql`update column_def set choice_labels = ${sql.json({ password: 'Our password' })} where parent = 'Sign In Method' and column_name = 'kind'`
   const app = await makeTable(admin, { name: 'Readable App Data', columns: [{ column_name: 'kind', column_type: 'Choice', choices: 'password\ngoogle\nexternal_password', label: 'kind' }] })

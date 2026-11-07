@@ -336,9 +336,21 @@
       "fromVersion": "3.0.1",
       "toVersion": "3.0.2",
       "operations": []
+    },
+    {
+      "id": "shared_packages",
+      "fromVersion": "3.0.2",
+      "toVersion": "3.0.3",
+      "operations": []
     }
   ],
   "releaseNotes": [
+    {
+      "version": "3.0.3",
+      "changes": [
+        "Takes the platform's latest shared interface updates; Tasker itself is unchanged (#1044)"
+      ]
+    },
     {
       "version": "3.0.2",
       "changes": [

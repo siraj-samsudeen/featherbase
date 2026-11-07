@@ -5,6 +5,7 @@ import { getMeta, type TableMeta } from './meta'
 import { getRoles } from './permissions'
 import { tableRelation } from './table-engine'
 import { ROW_ATTACHED_TABLES } from './row-readers'
+import { linkBase } from './views'
 
 const recordedReferences: Record<string, readonly [string, string]> = {
   Share: ['share_table', 'share_name'],
@@ -13,7 +14,7 @@ const recordedReferences: Record<string, readonly [string, string]> = {
 
 export async function needsMandatoryRowRead(table: string): Promise<boolean> {
   if (ROW_ATTACHED_TABLES.has(table) || Object.hasOwn(recordedReferences, table)) return true
-  const [row] = await sql`select kind, to_jsonb(d)->'access_policy' as policy from table_def d where name = ${table}`
+  const [row] = await sql`select kind, to_jsonb(d)->'access_policy' as policy from table_def d where name = ${await policyHolder(table)}`
   return !!row?.policy || row?.kind === 'sub_table'
 }
 
@@ -21,8 +22,15 @@ export async function tableAccessPolicy(table: string): Promise<AccessPolicy | u
   // Permission probes also name unavailable or absent Tables. Read only the
   // persisted ceiling here; metadata loading applies app availability later.
   // to_jsonb also works while older bootstrap migrations precede this column.
-  const [row] = await sql`select to_jsonb(d)->'access_policy' as policy from table_def d where name = ${table}`
+  const [row] = await sql`select to_jsonb(d)->'access_policy' as policy from table_def d where name = ${await policyHolder(table)}`
   return row?.policy == null ? undefined : accessPolicySchema.parse(row.policy)
+}
+
+/** #1021: a view has no policy of its own; its base's governs it. Read from
+ *  the persisted definition, like the policy itself. */
+async function policyHolder(table: string): Promise<string> {
+  const [view] = await sql`select to_jsonb(d)->>'view_of' as base from table_def d where name = ${table}`
+  return (view?.base as string | null) ?? table
 }
 
 /** Signed or public storage URLs never override a protected row's access. */
@@ -70,7 +78,7 @@ export async function assertMandatoryAccess(user: string, meta: TableMeta, row: 
   const parentId = policy.inherit_column && row[policy.inherit_column]
   if (parentId) {
     const reference = meta.columns.find(c => c.column_name === policy.inherit_column)!
-    const parent = await getMeta(reference.reference_table!)
+    const parent = await getMeta(linkBase(reference)!)
     const [value] = await sql`select * from ${sql(await tableRelation(parent.name))} where ${sql(parent.row_key)} = ${String(parentId)}`
     if (!value) throw new AppError('PermissionError', 'This work is not available to you')
     return assertMandatoryAccess(user, parent, value, depth + 1)
@@ -94,7 +102,8 @@ export async function mandatoryWhere(meta: TableMeta, user: string, alias?: stri
     : policy.inherit_column ? sql`false` : sql`true`
   if (!policy.inherit_column) return { frag: base }
   const reference = meta.columns.find(c => c.column_name === policy.inherit_column)!
-  const parent = await getMeta(reference.reference_table!)
+  // #1021: inherited through a view, it is its base's rows that are judged.
+  const parent = await getMeta(linkBase(reference)!)
   const parentAlias = `privacy_parent_${depth}`
   const inherited = await mandatoryWhere(parent, user, parentAlias, depth + 1)
   return { frag: sql`((${field(policy.inherit_column)} is null and ${base}) or ${field(policy.inherit_column)} in (

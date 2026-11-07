@@ -4,6 +4,7 @@ import {
   Outlet,
   createRootRoute,
   createRoute,
+  Navigate,
   redirect,
   useRouterState,
   useParams,
@@ -902,11 +903,14 @@ const docRoute = createRoute({
 })
 
 function TableFormPage() {
-  const { table } = useTableAddress()
+  const { table, tableMeta } = useTableAddress()
   const { name } = docRoute.useParams()
   const { prefill, path } = docRoute.useSearch()
   const here = useMemo<NavStep>(() => ({ screen: 'row', table, row: name }), [table, name])
   const nav = useAddressNavigation(here, path)
+  // #1021: a view's row is its base's row, and opens as one.
+  if (tableMeta.kind === 'view' && tableMeta.view_of)
+    return <Navigate to="/featherbase/admin/table/$table/row/$name" params={{ table: tableMeta.view_of, name }} search={{ prefill: undefined }} replace />
   // #102 review: the raw prefill string is part of the key — navigating
   // from one ?prefill= URL to another (or clearing it, e.g. g then n)
   // remounts the form instead of retaining the previous form's values.
@@ -947,9 +951,25 @@ const newRowRoute = createRoute({
 })
 
 function NewRowPage() {
-  const { table } = useTableAddress()
+  const { table, tableMeta } = useTableAddress()
   const { prefill } = newRowRoute.useSearch()
   const parsedPrefill = useMemo(() => parsePrefill(prefill), [prefill])
+  // #1021: a view holds no rows; a new row is added to its base.
+  if (tableMeta.kind === 'view' && tableMeta.view_of)
+    return (
+      <div data-testid="view-new-row">
+        <Notice tone="info">
+          <span>
+            {table} is a view of {tableMeta.view_of} and holds no rows of its own.{' '}
+            <Link to="/featherbase/admin/table/$table/new" params={{ table: tableMeta.view_of }} search={{ prefill: undefined }}
+              className="font-medium text-action hover:underline" data-testid="view-new-row-base">
+              Add a {tableMeta.view_of} row
+            </Link>{' '}
+            instead; it shows here when it matches the view.
+          </span>
+        </Notice>
+      </div>
+    )
   if (table === 'Data Source') return <div data-testid="doc-page"><ConnectSource /></div>
   return <div data-testid="doc-page"><FormView key={`${table}/new/${prefill ?? ''}`} table={table} name="" isNew prefill={parsedPrefill} /></div>
 }

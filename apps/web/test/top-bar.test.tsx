@@ -83,10 +83,12 @@ test("on an app's address the account page is named for the app", async ({ admin
   await waitFor(async () => expect(await barName()).toHaveTextContent('Bar proof'))
 })
 
-test('on the Admin address the account page is named Featherbase', async ({ admin }) => {
+// #1006: someone who can use Admin stays in its frame on their account pages.
+test('on the Admin address the account page has the Admin frame for someone who can use Admin', async ({ admin }) => {
   onAddressThatOpens('admin')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
-  await waitFor(async () => expect(await barName()).toHaveTextContent('Featherbase'))
+  expect(await screen.findByTestId('admin-sidebar')).toBeInTheDocument()
+  expect(await screen.findByTestId('sign-in-methods')).toBeInTheDocument()
 })
 
 // Verifier, round 2 on #495: on an app's address every page's tab says the
@@ -227,7 +229,8 @@ test("on an app's address whose app is not installed, the bar's name still leads
 
 // ---- 3. Admin menus on the Admin screens only ---------------------------------
 
-test('the account page has the bar and no Admin menus', async ({ admin }) => {
+test("on an app's address the account page has the bar and no Admin menus, even for someone who can use Admin", async ({ admin }) => {
+  onAddressThatOpens('dash')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
   await settledBar()
   expect(await screen.findByTestId('sign-in-methods')).toBeInTheDocument()

@@ -23,6 +23,7 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { getMeta } from './meta'
 import { getRoles, permissionScope } from './permissions'
+import { storedTable } from './views'
 
 // Legacy UI-027 shortcut shape, kept working: [{ label, type, link_to }].
 interface HomePageShortcut {
@@ -204,7 +205,8 @@ export async function getVisibleHomePages(user: string): Promise<VisibleHomePage
     if (isAdmin) return true
     let ok = readable.get(table)
     if (ok === undefined) {
-      ok = (await permissionScope(user, table, 'read')) !== 'none'
+      // #1021: a view's link shows to whoever may read its base.
+      ok = (await permissionScope(user, await storedTable(table), 'read')) !== 'none'
       readable.set(table, ok)
     }
     return ok

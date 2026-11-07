@@ -1,3 +1,4 @@
+import { storedTable } from './views'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, ADMIN_PAGES, type CommandDestinations, type CommandPageDestination } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
@@ -25,13 +26,14 @@ export async function commandDestinations(user: string): Promise<CommandDestinat
   const invalidMetadata = new Set<string>()
   const definitions = await sql<{
     name: string; owner_app: string | null; module: string; system: boolean;
-    system_written: boolean; kind: 'table' | 'settings'
+    system_written: boolean; kind: 'table' | 'settings' | 'view'
   }[]>`select name, owner_app, module, system, system_written, kind from table_def where kind != 'sub_table'
       -- #905: an archived table is out of the command bar; All tables lists it.
       and archived_at is null order by name`
   for (const definition of definitions) {
     const { name, owner_app } = definition
-    if ((await permissionScope(user, name, 'read')) === 'none') continue
+    // #1021: a view is reached by whoever may read its base.
+    if ((await permissionScope(user, definition.kind === 'view' ? await storedTable(name) : name, 'read')) === 'none') continue
     try {
       if (owner_app) await assertAppAvailable(`${owner_app}.__inventory`)
       // getMeta checks app availability even for privileged callers and only
