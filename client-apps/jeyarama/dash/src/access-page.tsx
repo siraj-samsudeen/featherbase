@@ -173,7 +173,7 @@ function PersonPicker({ chosen, onChoose, label }: { chosen: Found | null; onCho
           {found.length === 0 && <li className="px-3 py-2 text-sm text-ink-muted">No one on the staff list by that name</li>}
           {found.map(person => (
             <li key={person.person}>
-              <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-start hover:bg-subtle" onClick={() => onChoose(person)} data-testid="person-result">
+              <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-start hover:bg-subtle" onClick={() => { onChoose(person); setTyped('') }} data-testid="person-result">
                 <span>{person.name}</span><KindTag>Person</KindTag>
               </button>
             </li>
