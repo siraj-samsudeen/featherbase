@@ -239,6 +239,8 @@ describe('the report reads on the platform', () => {
       const called = await opening(admin)
       const reports = await headOffice.post<{ result: { key: string; no_filter: boolean }[] }>('/api/app_reads/dash/reports', { payload: {} })
       expect(reports.result.map(r => [r.key, r.no_filter])).toEqual([['open', true]])
+      expect(await headOffice.post('/api/app_reads/dash/report_open', { payload: { report: 'open' } }))
+        .toEqual({ result: { state: 'ready', no_quick_view: true, heading: { name: null, sections: [], reasons: [] } } })
       expect(await headOffice.post('/api/app_reads/dash/embed_open', { payload: { report: 'open' } }))
         .toEqual({ result: { frame: 'https://embed-motherduck.com/sandbox/#session=made-up-session' } })
       expect(called).toEqual([{ url: 'https://api.motherduck.com/v1/dives/made-up-open-dive/embed-session', body: { username: 'svc-made-up', initial_state: {} } }])

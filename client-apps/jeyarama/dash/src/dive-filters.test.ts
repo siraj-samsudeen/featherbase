@@ -99,3 +99,11 @@ describe('the store picker', () => {
     expect(storesOfReport(perStore, [wholeStore('9901')])).toEqual([])
   })
 })
+
+describe('what a place without a store, or an opening without one, gives', () => {
+  it('ignores a place naming no store, and refuses a one-store report opened without a store', () => {
+    const noStore: Place = { label: 'Head office', filters: {} }
+    expect(diveFilters(oneStore, [noStore, wholeStore('9901')], { ...period, store: undefined })).toEqual({ refused: 'not_your_store' })
+    expect(diveFilters(wholeStores, [noStore, wholeStore('9901')], period)).toEqual({ state: { store_codes: ['9901'] } })
+  })
+})
