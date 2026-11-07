@@ -408,9 +408,191 @@
           }
         }
       ]
+    },
+    {
+      "id": "verified_closure",
+      "fromVersion": "3.1.0",
+      "toVersion": "3.2.0",
+      "operations": [
+        {
+          "kind": "alterColumn",
+          "table": "tasker.task",
+          "column": "task_state",
+          "from": {
+            "choices": "Not started\nIn progress\nBlocked\nOn hold\nDone\nCancelled"
+          },
+          "to": {
+            "choices": "Not started\nIn progress\nBlocked\nOn hold\nSubmitted for verification\nDone\nCancelled"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "verifier",
+            "label": "Verifier",
+            "column_type": "Reference",
+            "reference_table": "Person"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "acknowledged_at",
+            "label": "Acknowledged at",
+            "column_type": "Datetime",
+            "hidden": true
+          },
+          "backfill": "2026-11-07 00:00:00"
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "evidence_note",
+            "label": "What was done",
+            "column_type": "Text"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "evidence_photo",
+            "label": "Evidence photo",
+            "column_type": "Attach Image"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "submitted_at",
+            "label": "Submitted at",
+            "column_type": "Datetime",
+            "hidden": true
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "submitted_by",
+            "label": "Submitted by",
+            "column_type": "Reference",
+            "reference_table": "Person",
+            "hidden": true
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "verified_by",
+            "label": "Verified by",
+            "column_type": "Reference",
+            "reference_table": "Person",
+            "hidden": true
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "verified_at",
+            "label": "Verified at",
+            "column_type": "Datetime",
+            "hidden": true
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "return_reason",
+            "label": "Returned because",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "return_count",
+            "label": "Times returned",
+            "column_type": "Int",
+            "default_value": "0"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "original_due_date",
+            "label": "First due date",
+            "column_type": "Date"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "extension_count",
+            "label": "Times extended",
+            "column_type": "Int",
+            "default_value": "0"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "extension_reason",
+            "label": "Last extension reason",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "cancel_reason",
+            "label": "Cancelled because",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "change_reason",
+            "label": "Reason for this change",
+            "column_type": "Data",
+            "hidden": true
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.project",
+          "column": {
+            "column_name": "default_verifier",
+            "label": "Default verifier",
+            "column_type": "Reference",
+            "reference_table": "Person"
+          }
+        }
+      ]
     }
   ],
   "releaseNotes": [
+    {
+      "version": "3.2.0",
+      "changes": [
+        "A task can have a verifier; it is submitted with a note and closed only when the verifier accepts it",
+        "Assignees acknowledge new work; due date moves and cancellations need a reason"
+      ]
+    },
     {
       "version": "3.1.0",
       "changes": [
@@ -460,6 +642,12 @@
           "column_name": "description",
           "label": "Description",
           "column_type": "Text"
+        },
+        {
+          "column_name": "default_verifier",
+          "label": "Default verifier",
+          "column_type": "Reference",
+          "reference_table": "Person"
         }
       ],
       "access_policy": {
@@ -492,7 +680,7 @@
           "column_name": "task_state",
           "label": "State",
           "column_type": "Choice",
-          "choices": "Not started\nIn progress\nBlocked\nOn hold\nDone\nCancelled",
+          "choices": "Not started\nIn progress\nBlocked\nOn hold\nSubmitted for verification\nDone\nCancelled",
           "default_value": "Not started",
           "in_list_view": true
         },
@@ -585,6 +773,92 @@
           "label": "Due date",
           "column_type": "Date",
           "in_list_view": true
+        },
+        {
+          "column_name": "verifier",
+          "label": "Verifier",
+          "column_type": "Reference",
+          "reference_table": "Person"
+        },
+        {
+          "column_name": "acknowledged_at",
+          "label": "Acknowledged at",
+          "column_type": "Datetime",
+          "hidden": true
+        },
+        {
+          "column_name": "evidence_note",
+          "label": "What was done",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "evidence_photo",
+          "label": "Evidence photo",
+          "column_type": "Attach Image"
+        },
+        {
+          "column_name": "submitted_at",
+          "label": "Submitted at",
+          "column_type": "Datetime",
+          "hidden": true
+        },
+        {
+          "column_name": "submitted_by",
+          "label": "Submitted by",
+          "column_type": "Reference",
+          "reference_table": "Person",
+          "hidden": true
+        },
+        {
+          "column_name": "verified_by",
+          "label": "Verified by",
+          "column_type": "Reference",
+          "reference_table": "Person",
+          "hidden": true
+        },
+        {
+          "column_name": "verified_at",
+          "label": "Verified at",
+          "column_type": "Datetime",
+          "hidden": true
+        },
+        {
+          "column_name": "return_reason",
+          "label": "Returned because",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "return_count",
+          "label": "Times returned",
+          "column_type": "Int",
+          "default_value": "0"
+        },
+        {
+          "column_name": "original_due_date",
+          "label": "First due date",
+          "column_type": "Date"
+        },
+        {
+          "column_name": "extension_count",
+          "label": "Times extended",
+          "column_type": "Int",
+          "default_value": "0"
+        },
+        {
+          "column_name": "extension_reason",
+          "label": "Last extension reason",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "cancel_reason",
+          "label": "Cancelled because",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "change_reason",
+          "label": "Reason for this change",
+          "column_type": "Data",
+          "hidden": true
         }
       ],
       "access_policy": {

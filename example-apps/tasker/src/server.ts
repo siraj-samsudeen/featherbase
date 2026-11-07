@@ -2,6 +2,7 @@ import { prepareRecurrence, recurrenceActions, runRecurrence } from './recurrenc
 import { actions as taskActions } from './actions'
 import { prepareSubtaskIdentity, validateSubtaskCompletion } from './subtasks-server'
 import { prepareDiscussion } from './discussion-server'
+import { prepareVerification } from './verification-server'
 // Featherbase runtime hook API v1. Structural contract; no core dependency.
 export interface Context {
   user: string
@@ -92,6 +93,7 @@ async function prepareTask(ctx: Context): Promise<void> {
     ctx.row.is_done = false
     ctx.row.state_before_done = null
   }
+  await prepareVerification(ctx)
   if (recurrenceSeries) {
     const settled = ['Done', 'Cancelled'].includes(String(ctx.row.task_state))
     const wasSettled = ['Done', 'Cancelled'].includes(String(ctx.old?.task_state))
