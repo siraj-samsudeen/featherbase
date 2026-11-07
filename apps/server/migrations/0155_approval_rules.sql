@@ -18,7 +18,11 @@ create table if not exists featherbase.approval_rule (
   maker_resolver varchar(140),
   outcome varchar(140),
   approvals_needed varchar(140),
-  description text
+  description text,
+  -- #859: every ordinary Table can retire a row.
+  retired_at timestamp with time zone,
+  retired_by varchar(140),
+  retired_reason text
 );
 create table if not exists featherbase.approval_rule_approver (
   row_id varchar(140) primary key,

@@ -401,6 +401,9 @@ describe('approval rules are data a System Manager keeps', () => {
     const saved = await w.manager.post<any>('/api/save_row', { table: 'Approval Rule', row: { ref_table: 'Shelf', operations: 'Changes', outcome: 'Apply and log', maker_role: 'Helper' } })
     await w.manager.post('/api/save_row', { table: 'Approval Rule', row: { row_id: saved.row_id, updated_at: saved.updated_at, enabled: false } })
     expect((await sql`select 1 from version where ref_table = 'Approval Rule' and ref_name = ${saved.row_id}`).length).toBeGreaterThan(0)
+    // The rules list in Admin reads like any Table's.
+    const listed = await w.manager.get<any>('/api/table/Approval Rule')
+    expect(listed.data.map((r: any) => r.row_id)).toContain(saved.row_id)
   })
 
   test('a rule that can\'t work is refused when saved', async ({ admin, createUser }) => {
