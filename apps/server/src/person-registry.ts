@@ -140,6 +140,8 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   report: { ref_table: code, config: text, report_type: code, report_script: code },
   revoked_session: { jti: code, person_id: id },
   role: { '*': code },
+  // #919: a role given within a store administrator's reach; stores are plant codes.
+  role_assignment: { person: id, given_by: id, revoked_by: id, app: code, role: code, stores: code, given_through: code },
   runtime_action_result: { caller: id, app: code, action: code, idempotency_key: code, payload: text, result: text, authorization: text },
   sales_target_snapshot_name: { '*': code },
   sales_target_snapshot_row: { '*': code },
