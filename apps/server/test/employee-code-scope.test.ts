@@ -12,6 +12,7 @@ import { configureDelegated } from './identity-fixtures'
 import { makePerson } from './fixtures'
 import { app } from '../src/index'
 import { issueSession } from '../src/auth'
+import { TEST_SEED_PACK } from './seed-pack'
 
 const savedToday = process.env.SALES_TARGET_TODAY
 beforeAll(() => { process.env.SALES_TARGET_TODAY = '2026-09-17' })
@@ -45,7 +46,7 @@ async function setUp(admin: TestClient) {
     { store_code: '1501', employee_code: 'RR-0103', subcategory: 'Kurti Set', section_name: 'Kurti' },
   ])
     await admin.post('/api/save_row', { table: 'Employee Section Map', row })
-  await applySeedPack('jeyarama')
+  await applySeedPack(TEST_SEED_PACK)
   await sql`delete from person_identifier where system = ${CODE} and source = 'stylehr-roster-sync'`
 }
 

@@ -34,6 +34,18 @@
         "new_person": "create_if_on_roster",
         "self_link": false,
         "settings": {
+          "id_field": "email",
+          "password_field": "password",
+          "nested_keys": ["data", "user", "employee", "result"],
+          "success_keys": ["token", "access", "access_token", "key", "employee_id", "employee_key", "id"],
+          "success_flags": ["success", "ok", "authenticated"],
+          "error_keys": ["error", "errors"],
+          "status_key": "status",
+          "error_statuses": ["error", "fail", "failed", "failure", "invalid"],
+          "left_date_keys": ["exit_date", "relieving_date", "date_of_relieving", "termination_date", "resignation_date", "last_working_date"],
+          "inactive_flags": ["is_active", "active"],
+          "left_status_keys": ["status", "employment_status", "employee_status"],
+          "left_words": ["resign", "terminat", "reliev", "exit", "inactive", "left", "separated"],
           "roster": {
             "table": "Employee",
             "sign_in_id_column": "employee_number",

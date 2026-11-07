@@ -17,6 +17,7 @@ import { main } from '../src/cli'
 import { invalidateMeta } from '../src/meta'
 import { captureIO, runMain } from './command-io'
 import { test } from './pg-test'
+import { TEST_SEED_PACK } from './seed-pack'
 
 const serverDir = join(dirname(fileURLToPath(import.meta.url)), '..')
 const DT = 'Cli Test Widget'
@@ -720,12 +721,11 @@ describe('the command line, command by command', () => {
     expect((await runMain(main, ['migrate:rehearse', '--database-url', missing.toString()])).code).toBe(1)
   }, 120_000)
 
-  test('seed-pack applies a named pack, and needs `apply <name>`', async () => {
-    expect((await failure(['seed-pack', 'jeyarama']))?.stderr).toBe('error: usage: cli seed-pack apply <name>\n')
-    expect((await failure(['seed-pack', 'apply', '../jeyarama']))?.stderr).toBe('error: Unknown seed pack "../jeyarama"\n')
-    expect((await failure(['seed-pack', 'apply', 'missing-backend-coverage-pack']))?.stderr)
-      .toBe(`error: Seed pack missing-backend-coverage-pack not found (${join(serverDir, 'seeds/missing-backend-coverage-pack/identifier-systems.json')})\n`)
-    expect(await cli(['seed-pack', 'apply', 'jeyarama'])).toMatch(/^seed pack jeyarama: added .*; kept .*; sign-in methods linked .*; people_review \w+\n$/)
+  test("seed-pack applies an instance's pack file, and needs `apply <file>`", async () => {
+    expect((await failure(['seed-pack', 'jeyarama']))?.stderr).toBe('error: usage: cli seed-pack apply <file>\n')
+    expect((await failure(['seed-pack', 'apply', 'missing-backend-coverage-pack.json']))?.stderr)
+      .toBe(`error: No seed pack at ${join(serverDir, 'missing-backend-coverage-pack.json')}\n`)
+    expect(await cli(['seed-pack', 'apply', TEST_SEED_PACK])).toMatch(/^seed pack .*test-hr\.json: added .*; kept .*; sign-in methods linked .*; people_review \w+\n$/)
   })
 
   test('console runs a piped script to the end, writing through the row API', async () => {

@@ -17,6 +17,7 @@ import {
   seedSalesTarget,
   type AssignmentRecord,
 } from '../src/sales-target'
+import { TEST_SEED_PACK } from './seed-pack'
 
 // The report is month to date in IST; these fixtures were cut on 17-Sep-2026,
 // so "today" is pinned there and every expected period below still means what it meant.
@@ -518,7 +519,7 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
   // #408: a person's employee code is a current `stylehr-employee-code` identifier row, recorded
   // the way the joiner procedure records it (by hand, with a note, while the roster sync is frozen).
   async function setEmployeeCode(admin: TestClient, username: string, code: string) {
-    await applySeedPack('jeyarama')
+    await applySeedPack(TEST_SEED_PACK)
     const res = await admin.fetch(`/api/people/${await idOf(username)}/identifiers`, {
       method: 'POST', body: JSON.stringify({ system: EMPLOYEE_CODE_SYSTEM, value: code, note: 'Joiner, HR mail' }),
     })
@@ -1018,7 +1019,7 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
 describe('#408 the scope follows the person\'s current employee-code identifier rows', () => {
   /** A code row written as a feed or the migration writes it: any period, any firm. */
   async function codeRow(username: string, value: string, opts: { from?: string; to?: string; assigner?: string } = {}) {
-    await applySeedPack('jeyarama')
+    await applySeedPack(TEST_SEED_PACK)
     await sql`
       insert into person_identifier (id, person_id, system, assigner, value, valid, verified, one_holder, source, recorded_by)
       values (${newIdentifierId()}, ${await idOf(username)}, ${EMPLOYEE_CODE_SYSTEM}, ${opts.assigner ?? ''}, ${value},

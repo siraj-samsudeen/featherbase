@@ -1,0 +1,39 @@
+{
+  "pack": "jeyarama",
+  "description": "This instance's identifier systems, the StyleHR sign-in's record system and its people review (person-resolution D2). pnpm dev applies it; elsewhere: cli seed-pack apply <this file>.",
+  "identifier_systems": [
+    {
+      "row_id": "stylehr-employee-id",
+      "label": "StyleHR record number",
+      "kind": "external-record",
+      "source": "stylehr-roster-sync",
+      "match": "Off",
+      "sensitivity": "Restricted, hidden"
+    },
+    {
+      "row_id": "stylehr-employee-code",
+      "label": "StyleHR employee code",
+      "kind": "employee-record",
+      "source": "stylehr-roster-sync",
+      "match": "Off",
+      "sensitivity": "Normal"
+    }
+  ],
+  "sign_in_methods": {
+    "stylehr": {
+      "identifier_system": "stylehr-employee-id"
+    }
+  },
+  "people_review": {
+    "compare_columns": [
+      "full_name",
+      "stylehr-employee-code",
+      "worker_type_from_roster",
+      "roles",
+      "data_scope",
+      "sign_in_methods",
+      "last_sign_in"
+    ],
+    "survivor_rule": "most-recent-employment"
+  }
+}

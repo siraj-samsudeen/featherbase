@@ -14,7 +14,7 @@ import { rosterFirstSignIn } from '../src/roster-first-sign-in'
 import { applyInstanceSettings } from '../src/instance-settings'
 import { getSignInMethod } from '../src/identities'
 import { makeTable } from './fixtures'
-import { configureDelegated, giveEmployeeCode, linkDelegated } from './identity-fixtures'
+import { HR_WIRE, configureDelegated, giveEmployeeCode, linkDelegated } from './identity-fixtures'
 
 const TABLE = 'Crew List'
 const PASSWORD = 'Made-Up-Pass-970!'
@@ -46,7 +46,7 @@ async function setUp(admin: TestClient, o: { rule?: string; roster?: unknown; ro
       { column_name: 'login', column_type: 'Reference', reference_table: 'Person' },
     ],
   })
-  await sql`update sign_in_method set new_person = ${o.rule ?? 'create_if_on_roster'}, settings = ${sql.json({ roster: (o.roster === undefined ? ROSTER : o.roster) as never })} where row_id = 'stylehr'`
+  await sql`update sign_in_method set new_person = ${o.rule ?? 'create_if_on_roster'}, settings = ${sql.json({ ...HR_WIRE, roster: (o.roster === undefined ? ROSTER : o.roster) } as never)} where row_id = 'stylehr'`
   for (const row of o.rows ?? [crewRow()]) await saveDoc(TABLE, row, 'Administrator', 'insert')
 }
 

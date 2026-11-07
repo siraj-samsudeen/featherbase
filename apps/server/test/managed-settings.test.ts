@@ -15,6 +15,7 @@ import { deleteDoc, getDoc, renameDoc, saveDoc } from '../src/document'
 import { expectApiError, patchDoc } from './fixtures'
 import { applySeedPack } from '../src/seed-packs'
 import { CORE_PEOPLE_REVIEW_JSON } from '../src/person-identifiers'
+import { TEST_SEED_PACK } from './seed-pack'
 
 const DOMAINS = 'example.com,example.org'
 const LOCKED = { status: 403, type: 'PermissionError', message: expect.stringContaining(`is set in the instance settings file (${INSTANCE_SETTINGS_FILE})`) }
@@ -185,7 +186,7 @@ describe('a seed pack leaves a locked field alone (Codex adversarial)', () => {
   test('the people review the file sets is kept, even at the core default', async () => {
     await sql`delete from single_value where table_name = 'System Settings' and field = 'people_review'`
     await apply({ settings: { 'System Settings': { people_review: JSON.parse(CORE_PEOPLE_REVIEW_JSON) } } })
-    const result = await applySeedPack('jeyarama')
+    const result = await applySeedPack(TEST_SEED_PACK)
     expect(result.peopleReview).toBe('kept')
     const [row] = await sql`select value from single_value where table_name = 'System Settings' and field = 'people_review'`
     expect(JSON.parse(String(row.value))).toEqual(JSON.parse(CORE_PEOPLE_REVIEW_JSON))

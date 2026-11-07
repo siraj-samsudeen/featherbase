@@ -10,6 +10,7 @@ import { applySeedPack } from '../src/seed-packs'
 import { addIdentifier } from '../src/person-identifiers'
 import { CORE_PEOPLE_REVIEW } from '../src/person-identifiers'
 import { makePerson } from './fixtures'
+import { TEST_SEED_PACK } from './seed-pack'
 
 const system = async (key: string) => (await sql`select * from identifier_system where row_id = ${key}`)[0]
 
@@ -249,14 +250,14 @@ describe('the Jeyarama seed pack', () => {
   test('adds the StyleHR systems, links the StyleHR sign-in to its record numbers, sets people_review; applying it again changes nothing', async () => {
     await sql`insert into sign_in_method (row_id, kind, label, enabled, new_person) values ('stylehr', 'delegated_password', 'StyleHR', false, 'refuse')
       on conflict (row_id) do nothing`
-    const first = await applySeedPack('jeyarama')
+    const first = await applySeedPack(TEST_SEED_PACK)
     expect(first.added.sort()).toEqual(['stylehr-employee-code', 'stylehr-employee-id'])
     expect(first.methodsLinked).toEqual(['stylehr'])
     expect(await system('stylehr-employee-id')).toMatchObject({ kind: 'external-record', sensitivity: 'Restricted, hidden', display: 'hidden', source: 'stylehr-roster-sync' })
     expect(await system('stylehr-employee-code')).toMatchObject({ kind: 'employee-record', assigner_scoped: true, one_holder_at_a_time: true, sensitivity: 'Normal' })
     const [settings] = await sql`select value from single_value where table_name = 'System Settings' and field = 'people_review'`
     expect(JSON.parse(String(settings.value)).compare_columns).toContain('worker_type_from_roster')
-    const again = await applySeedPack('jeyarama')
+    const again = await applySeedPack(TEST_SEED_PACK)
     expect(again).toMatchObject({ added: [], methodsLinked: [], peopleReview: 'kept' })
     expect(again.kept.sort()).toEqual(['stylehr-employee-code', 'stylehr-employee-id'])
   })

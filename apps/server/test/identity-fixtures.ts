@@ -5,8 +5,27 @@ import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { applySeedPack } from '../src/seed-packs'
 import { newIdentifierId } from '../src/person-identifiers'
+import { TEST_SEED_PACK } from './seed-pack'
 
 export const DELEGATED_URL = 'https://hr.example.test/api/login/'
+
+/** An HR service's own answer shape, as an instance configures it in the
+ *  method's settings: the ID goes in `email`, a record number answers yes, and
+ *  an exit date or a status naming a resignation says the person has left. */
+export const HR_WIRE = {
+  id_field: 'email',
+  password_field: 'password',
+  nested_keys: ['data', 'user', 'employee', 'result'],
+  success_keys: ['token', 'access', 'access_token', 'key', 'employee_id', 'employee_key', 'id'],
+  success_flags: ['success', 'ok', 'authenticated'],
+  error_keys: ['error', 'errors'],
+  status_key: 'status',
+  error_statuses: ['error', 'fail', 'failed', 'failure', 'invalid'],
+  left_date_keys: ['exit_date', 'relieving_date', 'date_of_relieving', 'termination_date', 'resignation_date', 'last_working_date'],
+  inactive_flags: ['is_active', 'active'],
+  left_status_keys: ['status', 'employment_status', 'employee_status'],
+  left_words: ['resign', 'terminat', 'reliev', 'exit', 'inactive', 'left', 'separated'],
+}
 
 /** Create or update a delegated-password method (default: StyleHR). */
 export async function configureDelegated(o: { key?: string; label?: string; url?: string; enabled?: boolean } = {}) {
@@ -19,14 +38,14 @@ export async function configureDelegated(o: { key?: string; label?: string; url?
   if (!have)
     await saveDoc(
       'Sign In Method',
-      { row_id: key, kind: 'delegated_password', label: label || key, enabled: true, new_person: 'refuse', self_link: false, service_url: DELEGATED_URL },
+      { row_id: key, kind: 'delegated_password', label: label || key, enabled: true, new_person: 'refuse', self_link: false, service_url: DELEGATED_URL, settings: HR_WIRE },
       'Administrator',
     )
   await sql`update sign_in_method set label = ${label}, service_url = ${url}, enabled = ${o.enabled ?? true} where row_id = ${key}`
   // person-resolution: the instance a StyleHR row lives on carries the
   // Jeyarama identifier systems (0102 applies the pack where there is
   // Jeyarama data; DEPLOY.md applies it anyway).
-  await applySeedPack('jeyarama')
+  await applySeedPack(TEST_SEED_PACK)
   return key
 }
 

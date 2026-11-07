@@ -21,6 +21,13 @@ test('an instance declares its apps, by folder', () => {
   assert.deepEqual(instance.apps.map((a) => a.name), ['store_app'])
 })
 
+test("an instance's seed pack is its own setup, applied only when it has one", () => {
+  const base = repoWith({ apps: ['client-apps/acme/store'] })
+  assert.equal(resolveInstance('acme/shop', base).seedPack, undefined)
+  writeFileSync(join(base, 'client-apps', 'acme', 'instances', 'shop', 'seed-pack.json'), '{"pack":"acme"}')
+  assert.equal(resolveInstance('acme/shop', base).seedPack, join(base, 'client-apps', 'acme', 'instances', 'shop', 'seed-pack.json'))
+})
+
 test('a named instance explicitly selects file-managed settings', () => {
   const instance = resolveInstance('acme/shop', repoWith({ apps: ['client-apps/acme/store'] }))
   assert.equal(instanceEnvironment(instance).FEATHERBASE_INSTANCE, 'acme/shop')

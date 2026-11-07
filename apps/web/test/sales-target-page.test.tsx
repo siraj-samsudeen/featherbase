@@ -10,6 +10,7 @@ import { _setSourceReader } from 'server/src/datasets/sales-target-mtd'
 import { applySeedPack } from 'server/src/seed-packs'
 import { quoteRelation, tableRelation } from 'server/src/table-engine'
 import { test, committedTest, expect, renderApp } from './pg-test'
+import { TEST_SEED_PACK } from 'server/test/seed-pack'
 
 const saved = { ...process.env }
 beforeEach(() => {
@@ -37,7 +38,7 @@ async function personId(admin: { fetch: (path: string, init?: RequestInit) => Pr
 
 // #408: a person's employee code is a current identifier row, recorded as the joiner procedure does.
 async function recordCode(admin: { fetch: (path: string, init?: RequestInit) => Promise<Response> }, id: string, code: string) {
-  await applySeedPack('jeyarama')
+  await applySeedPack(TEST_SEED_PACK)
   const res = await admin.fetch(`/api/people/${id}/identifiers`, {
     method: 'POST', body: JSON.stringify({ system: 'stylehr-employee-code', value: code, note: 'Joiner, HR mail' }),
   })

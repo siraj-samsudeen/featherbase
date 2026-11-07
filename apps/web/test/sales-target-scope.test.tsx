@@ -10,6 +10,7 @@ import { _setEmbedFetch, seedSalesTarget } from 'server/src/sales-target'
 import { _setSourceReader } from 'server/src/datasets/sales-target-mtd'
 import { applySeedPack } from 'server/src/seed-packs'
 import { test, expect, renderApp } from './pg-test'
+import { TEST_SEED_PACK } from 'server/test/seed-pack'
 
 type Client = { fetch: (path: string, init?: RequestInit) => Promise<Response> }
 
@@ -54,7 +55,7 @@ async function sections(admin: Client, rows: [section: string, subcategory: stri
 }
 
 async function signInWithCode(admin: Client, api: Client, username: string, password: string, code: string) {
-  await applySeedPack('jeyarama')
+  await applySeedPack(TEST_SEED_PACK)
   const filters = encodeURIComponent(JSON.stringify([['username', '=', username]]))
   const found = (await (await admin.fetch(`/api/table/Person?filters=${filters}`)).json()) as { data: { row_id: string }[] }
   const res = await post(admin, `/api/people/${found.data[0].row_id}/identifiers`, { system: 'stylehr-employee-code', value: code, note: 'Joiner, HR mail' })

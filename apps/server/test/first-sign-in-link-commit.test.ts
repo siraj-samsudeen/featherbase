@@ -9,6 +9,7 @@ import { app } from '../src/index'
 import { applySeedPack } from '../src/seed-packs'
 import { createTable } from '../src/table-engine'
 import { withCommittedDatabase } from './committed-database'
+import { TEST_SEED_PACK } from './seed-pack'
 
 const prove = process.env.FIRST_SIGN_IN_COMMIT_PROOF === '1' ? test : test.skip
 const TABLE = 'Commit Crew'
@@ -34,7 +35,7 @@ prove('sign-ins that were all confirmed at once make one person, and all land on
   const [db] = await sql`select current_database() as name, (select value from internal_metadata where key = 'environment') as environment`
   expect(db.environment).toBe('test')
   expect(String(db.name)).toMatch(/_first_sign_in_commit_e2e$/)
-  await applySeedPack('jeyarama')
+  await applySeedPack(TEST_SEED_PACK)
   await createTable({
     name: TABLE,
     columns: [
@@ -49,7 +50,7 @@ prove('sign-ins that were all confirmed at once make one person, and all land on
     row_id: 'stylehr', kind: 'delegated_password', label: 'StyleHR', enabled: true, self_link: false,
     new_person: 'create_if_on_roster', service_url: 'https://hr.example.test/api/login/', settings: JSON.stringify({ roster: ROSTER }),
   }, 'Administrator', 'insert')
-  await applySeedPack('jeyarama')
+  await applySeedPack(TEST_SEED_PACK)
   await saveDoc(TABLE, { crew_name: 'Made Up Crew', crew_no: 'TT-2001', hr_record: '8001', crew_state: 'Working' }, 'Administrator', 'insert')
 
   // The stand-in holds every sign-in until all of them have been asked, so all

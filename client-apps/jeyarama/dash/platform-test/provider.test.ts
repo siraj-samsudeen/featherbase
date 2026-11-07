@@ -13,7 +13,7 @@ import { applySeedPack } from '../../src/seed-packs'
 import { sql } from '../../src/db'
 import { tableRelation } from '../../src/table-engine'
 import { statusOf } from '../../src/errors'
-import { APP_DIR, OLD_TABLES, VERSION, installApp, pinned, saveRow } from './helpers'
+import { APP_DIR, SEED_PACK, OLD_TABLES, VERSION, installApp, pinned, saveRow } from './helpers'
 // @ts-expect-error a plain .mjs module, copied in beside this file by the runner
 import { markScopeTables } from './mark-scope-tables.mjs'
 
@@ -30,7 +30,7 @@ async function binding() {
 /** The app installed, the old Tables created and (unless told not to) marked, and a made-up org chart. */
 async function setup(admin: TestClient, createUser: (o: { email: string }) => Promise<TestClient>, { mark = true, codes = true } = {}) {
   // The instance's employee-code identifier system (the jeyarama seed pack), which the provider declares.
-  if (codes) await applySeedPack('jeyarama')
+  if (codes) await applySeedPack(SEED_PACK)
   await installApp(admin)
   for (const [name, columns] of OLD_TABLES) await admin.post('/api/table_def', { name, module: 'Store Sections', columns })
   if (mark) await markScopeTables((path: string, init?: RequestInit) =>

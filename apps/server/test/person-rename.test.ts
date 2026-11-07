@@ -11,6 +11,7 @@ import { issueAccessToken } from '../src/auth'
 import { getRoles, isPrivileged } from '../src/permissions'
 import { createUserWithRole, makePerson, grantRole } from './fixtures'
 import { personByEmail } from '../src/people-directory'
+import { TEST_SEED_PACK } from './seed-pack'
 
 const rel = async (name: string) => (await sql`select to_regclass(${'featherbase.' + name}) as r`)[0].r
 
@@ -204,7 +205,7 @@ describe('person-rename: names, not ids (review B-M2, B-M3)', () => {
     // person-resolution: the code a person is found by is a current
     // employee-record identifier row, not the employee_code Custom Field.
     const { applySeedPack } = await import('../src/seed-packs')
-    await applySeedPack('jeyarama')
+    await applySeedPack(TEST_SEED_PACK)
     const asha = await makePerson({ full_name: 'Asha Kumar', username: 'asha.k' })
     const mail = await makePerson({ email: 'only.mail@x.test' })
     const coded = await makePerson({ full_name: 'Coded Person' })

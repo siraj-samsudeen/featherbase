@@ -27,6 +27,8 @@ trap 'rm -rf "$target"' EXIT
 mkdir -p "$target/app"
 cp "$app_dir"/platform-test/*.ts "$app_dir"/platform-test/*.mjs "$target/"
 cp -R "$app_dir/package.json" "$app_dir/featherbase.json" "$app_dir/dist" "$target/app/"
+# The instance's own seed pack (its identifier systems), as an instance applies it.
+cp "$app_dir/../instances/dash/seed-pack.json" "$target/"
 if [[ "${DASH_BACKEND_COVERAGE:-}" = 1 ]]; then
   # Instrument canonical modules before bundling, only in the disposable copy.
   node "$app_dir/scripts/build-backend-coverage.mjs" "$target/app/dist/server.mjs"

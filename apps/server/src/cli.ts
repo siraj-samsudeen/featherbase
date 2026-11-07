@@ -51,7 +51,8 @@
 //                                     FEATHERBASE_APP_PATHS). Already installed: says so and succeeds; on a
 //                                     development database its files are re-pinned if they changed but its
 //                                     version and manifest did not
-//   cli seed-pack apply <name>        apply an organisation's identifier systems (e.g. jeyarama); idempotent
+//   cli seed-pack apply <file>        apply an instance's seed pack (its identifier systems), a JSON file of
+//                                     the instance's own setup; idempotent
 //   cli boot-check                    run the server's start-up refusal and the release preflight with this
 //                                     process's environment (rehearse a target's real variables); read-only
 //   cli console                       REPL with the row API in scope
@@ -633,11 +634,11 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       await cmdSettingsExport(io, flags)
       break
     case 'seed-pack': {
-      const [verb, name] = positional
-      if (verb !== 'apply' || !name) throw new Error('usage: cli seed-pack apply <name>')
+      const [verb, file] = positional
+      if (verb !== 'apply' || !file) throw new Error('usage: cli seed-pack apply <file>')
       const { applySeedPack } = await import('./seed-packs')
-      const r = await applySeedPack(name)
-      io.out(`seed pack ${name}: added ${r.added.join(', ') || 'none'}; kept ${r.kept.join(', ') || 'none'}; sign-in methods linked ${r.methodsLinked.join(', ') || 'none'}; people_review ${r.peopleReview}`)
+      const r = await applySeedPack(file)
+      io.out(`seed pack ${file}: added ${r.added.join(', ') || 'none'}; kept ${r.kept.join(', ') || 'none'}; sign-in methods linked ${r.methodsLinked.join(', ') || 'none'}; people_review ${r.peopleReview}`)
       break
     }
     case 'console':

@@ -1,18 +1,16 @@
 // Seed packs (person-resolution D2): an organisation's own configuration,
-// shipped as data and applied by `cli seed-pack apply <name>`. Idempotent: a
-// row already present is left as the administrator has it; only what is
-// missing is added. Core ships the generic rows; a pack adds the rest.
+// kept with its instance's setup (#731), never in the platform, and applied
+// by `cli seed-pack apply <file>`. Idempotent: a row already present is left
+// as the administrator has it; only what is missing is added. Core ships the
+// generic rows; a pack adds the rest.
 import { existsSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 import { sql } from './db'
 import { saveDoc } from './document'
 import { AppError } from './errors'
 import { CORE_PEOPLE_REVIEW_JSON } from './person-identifiers'
 import { completeSystemRow } from './identifiers'
 import { holdManagedSet, managedFieldsOf } from './managed-settings'
-
-const SEEDS = join(dirname(fileURLToPath(import.meta.url)), '..', 'seeds')
 
 /** Save a new Identifier System row with its kind's defaults filled in and
  *  its derived columns stamped — the same result as the controller, for
@@ -22,10 +20,6 @@ export async function saveIdentifierSystem(row: Record<string, unknown>): Promis
   await saveDoc('Identifier System', full, 'Administrator', 'insert')
   await sql`update identifier_system set storage = ${String(full.storage)}, display = ${String(full.display)}, tier = ${String(full.tier)}
     where row_id = ${String(full.row_id)}`
-}
-
-function seedPackFile(name: string): string {
-  return join(SEEDS, name, 'identifier-systems.json')
 }
 
 interface SeedPack {
@@ -42,10 +36,10 @@ interface SeedPackResult {
   peopleReview: 'set' | 'kept'
 }
 
-export async function applySeedPack(name: string): Promise<SeedPackResult> {
-  if (!/^[a-z0-9-]+$/.test(name)) throw new AppError('ValidationError', `Unknown seed pack "${name}"`)
-  const file = seedPackFile(name)
-  if (!existsSync(file)) throw new AppError('NotFoundError', `Seed pack ${name} not found (${file})`)
+/** Apply the pack in `path`, a JSON file of the instance's own setup. */
+export async function applySeedPack(path: string): Promise<SeedPackResult> {
+  const file = resolve(path)
+  if (!existsSync(file)) throw new AppError('NotFoundError', `No seed pack at ${file}`)
   const pack = JSON.parse(readFileSync(file, 'utf8')) as SeedPack
   const result: SeedPackResult = { added: [], kept: [], methodsLinked: [], peopleReview: 'kept' }
   for (const row of pack.identifier_systems ?? []) {

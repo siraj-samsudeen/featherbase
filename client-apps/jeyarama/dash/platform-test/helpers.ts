@@ -7,6 +7,8 @@ import { expect } from 'vitest'
 import { discoverPackages } from '../../src/runtime-packages'
 
 export const APP_DIR = process.env.DASH_DIR!
+/** The Dash instance's seed pack, copied beside these tests (scripts/platform-test.sh). */
+export const SEED_PACK = resolve(import.meta.dirname, 'seed-pack.json')
 /** The version under test: the app folder's own package.json. */
 export const VERSION: string = JSON.parse(readFileSync(resolve(APP_DIR, 'package.json'), 'utf8')).version
 
