@@ -142,3 +142,81 @@ test('a repair goes with the vendor and a move within a site is due in a day', a
   const sent = await p.act(p.manager, 'dispatch_transfer', { transfer: move.row_id, transporter: 'By hand', scanned: [p.pc.row_id] })
   expect(Date.parse(String(sent.expected_receipt_at)) - Date.parse(String(sent.dispatched_at))).toBe(24 * 3_600_000)
 })
+
+const patch = (p: Awaited<ReturnType<typeof pilot>>, table: string, row: Row, values: Record<string, unknown>, as?: TestClient) =>
+  p.get(table, row.row_id).then(current => p.save(table, { row_id: current.row_id, updated_at: current.updated_at, ...values }, as))
+
+test('a transfer moves only through approval, dispatch and receipt; saving its fields directly skips nothing', async ({ createUser }) => {
+  const p = await pilot(createUser)
+  const forged = await p.save('equipment.transfer', { transfer_kind: 'Between sites', from_place: p.atk.row_id, to_place: p.enchakkal.row_id, reason: 'Refit',
+    transfer_state: 'Approved', approver: p.manager.user, approved_at: '2026-01-01T00:00:00.000Z', dispatched_at: '2026-01-01T00:00:00.000Z' })
+  expect(forged).toMatchObject({ transfer_state: 'Requested', approver: null, approved_at: null, dispatched_at: null })
+  const line = await p.save('equipment.transfer_line', { transfer: forged.row_id, asset: p.ac1.row_id })
+
+  await expect(patch(p, 'equipment.transfer', forged, { transfer_state: 'Received' })).rejects.toThrow('A requested transfer can’t become Received')
+  await expect(patch(p, 'equipment.transfer', forged, { transfer_state: 'Dispatched', dispatched_at: new Date().toISOString() }))
+    .rejects.toThrow('A requested transfer can’t become Dispatched')
+  await expect(patch(p, 'equipment.transfer_line', line, { line_state: 'Received good' })).rejects.toThrow('This item can’t go from Requested to Received good')
+
+  await patch(p, 'equipment.transfer', forged, { transfer_state: 'Approved' }, p.meena)
+  expect(await patch(p, 'equipment.transfer', forged, { approver: p.manager.user, approved_at: '2026-01-01T00:00:00.000Z' })).toMatchObject({ approver: p.meena.user })
+  await expect(patch(p, 'equipment.transfer', forged, { transfer_state: 'Dispatched', transporter: 'Own van' })).rejects.toThrow('Dispatch every item before the transfer')
+  await expect(patch(p, 'equipment.transfer_line', line, { line_state: 'Dispatched' })).rejects.toThrow('Voltas AC 1 must be scanned out before it is dispatched')
+
+  const sent = await p.act(p.manager, 'dispatch_transfer', { transfer: forged.row_id, transporter: 'Own van', scanned: [p.ac1.row_id] })
+  expect(await patch(p, 'equipment.transfer', forged, { dispatched_at: '2026-01-01T00:00:00.000Z', received_at: '2026-01-01T00:00:00.000Z' }))
+    .toMatchObject({ dispatched_at: sent.dispatched_at, received_at: null })
+  await expect(patch(p, 'equipment.transfer', forged, { transfer_state: 'Received' })).rejects.toThrow('Receive every item before the transfer')
+  await expect(patch(p, 'equipment.transfer_line', line, { line_state: 'Received good' })).rejects.toThrow('Voltas AC 1 must be at Enchakkal WH 9151 before it is received')
+  expect(await p.get('equipment.asset', p.ac1.row_id)).toMatchObject({ place: p.atk.row_id, custody_status: 'In transit' })
+})
+
+test('once approved, a transfer and its items keep what was approved, and only Finance’s confirmer stamps it', async ({ createUser }) => {
+  const p = await pilot(createUser)
+  const transfer = await p.save('equipment.transfer', { transfer_kind: 'Between companies', from_place: p.atk.row_id, to_place: p.enchakkal.row_id, to_entity: p.kaipl.row_id, reason: 'DG moves' })
+  const line = await p.save('equipment.transfer_line', { transfer: transfer.row_id, asset: p.dg.row_id })
+  await expect(patch(p, 'equipment.transfer_line', line, { asset: p.ac1.row_id })).rejects.toThrow('A transfer item keeps its asset and transfer')
+  await patch(p, 'equipment.transfer', transfer, { transfer_state: 'Approved' }, p.meena)
+  for (const change of [{ to_place: p.atk.row_id }, { from_place: p.enchakkal.row_id }, { transfer_kind: 'Between sites' }, { to_entity: p.jrpl.row_id }])
+    await expect(patch(p, 'equipment.transfer', transfer, change)).rejects.toThrow('An approved transfer keeps its kind, places, new owner and vendor')
+  await expect(p.save('equipment.transfer_line', { transfer: transfer.row_id, asset: p.ac1.row_id })).rejects.toThrow('Add items only while the transfer is requested')
+
+  await p.act(p.manager, 'dispatch_transfer', { transfer: transfer.row_id, transporter: 'Own van', scanned: [p.dg.row_id] })
+  await p.act(p.manager, 'receive_line', { line: line.row_id, outcome: 'Received good' })
+  await expect(patch(p, 'equipment.transfer', transfer, { finance_reference: '4900012345' })).rejects.toThrow('Someone other than the requester confirms Finance')
+  expect(await patch(p, 'equipment.transfer', transfer, { finance_reference: '4900012345', finance_confirmed_by: p.manager.user }, p.meena))
+    .toMatchObject({ finance_reference: '4900012345', finance_confirmed_by: p.meena.user })
+  await expect(patch(p, 'equipment.transfer', transfer, { finance_reference: '4900099999' }, p.meena)).rejects.toThrow('Finance has already confirmed this transfer')
+})
+
+test('custody keeps its times; only the custodian or a manager writes its note; nothing comes back while it is away', async ({ createUser }) => {
+  const p = await pilot(createUser)
+  const custody = await p.act(p.manager, 'issue_custody', { asset: p.ac1.row_id, person: p.suresh.user, kind: 'Employee' })
+  const answered = await answer(p.suresh, custody, 'Accepted')
+  expect(await patch(p, 'equipment.custody', custody, { issued_at: '2026-01-01T00:00:00.000Z', responded_at: null, returned_at: '2026-01-01T00:00:00.000Z' }))
+    .toMatchObject({ issued_at: custody.issued_at, responded_at: answered.responded_at, returned_at: null })
+  await expect(patch(p, 'equipment.custody', custody, { note: 'Mine now' }, p.other)).rejects.toThrow('Only the custodian or an Assets Manager writes the note')
+  expect(await patch(p, 'equipment.custody', custody, { note: 'Kept at till 2' }, p.suresh)).toMatchObject({ note: 'Kept at till 2' })
+
+  const transfer = await p.save('equipment.transfer', { transfer_kind: 'Between sites', from_place: p.atk.row_id, to_place: p.enchakkal.row_id, reason: 'Moves with Suresh' })
+  const line = await p.save('equipment.transfer_line', { transfer: transfer.row_id, asset: p.ac1.row_id })
+  await patch(p, 'equipment.transfer', transfer, { transfer_state: 'Approved' }, p.meena)
+  await p.act(p.manager, 'dispatch_transfer', { transfer: transfer.row_id, transporter: 'Own van', scanned: [p.ac1.row_id] })
+  await expect(p.act(p.manager, 'return_custody', { custody: custody.row_id })).rejects.toThrow('Voltas AC 1 is in transit; receive it before taking it back')
+  await p.act(p.manager, 'receive_line', { line: line.row_id, outcome: 'Received good' })
+  expect(await p.get('equipment.asset', p.ac1.row_id)).toMatchObject({ place: p.enchakkal.row_id, custody_status: 'With custodian', custodian: p.suresh.user })
+})
+
+test('an item sent back returns to its own area, not just its site', async ({ createUser }) => {
+  const p = await pilot(createUser)
+  const billing = await p.save('equipment.place', { place_name: 'ATK Billing', place_level: 'Area', parent_place: p.atk.row_id })
+  await patch(p, 'equipment.asset', p.ac2, { place: billing.row_id })
+  const transfer = await p.save('equipment.transfer', { transfer_kind: 'Between sites', from_place: p.atk.row_id, to_place: p.enchakkal.row_id, reason: 'Refit' })
+  const line = await p.save('equipment.transfer_line', { transfer: transfer.row_id, asset: p.ac2.row_id })
+  await patch(p, 'equipment.transfer', transfer, { transfer_state: 'Approved' }, p.meena)
+  await p.act(p.manager, 'dispatch_transfer', { transfer: transfer.row_id, transporter: 'Own van', scanned: [p.ac2.row_id] })
+  expect((await p.get('equipment.transfer_line', line.row_id)).source_place).toBe(billing.row_id)
+  await p.act(p.manager, 'receive_line', { line: line.row_id, outcome: 'Refused' })
+  await p.act(p.manager, 'receive_line', { line: line.row_id, outcome: 'Returned to source' })
+  expect(await p.get('equipment.asset', p.ac2.row_id)).toMatchObject({ place: billing.row_id, custody_status: 'At location' })
+})

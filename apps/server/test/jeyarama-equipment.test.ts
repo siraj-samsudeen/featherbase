@@ -147,6 +147,23 @@ test('someone other than the technician confirms the repair, and a confirmed job
   await expect(staff.post('/api/save_row', { table: 'equipment.restoration', row: { job: job.row_id } })).rejects.toBeTruthy()
   await expect(ravi.post('/api/save_row', { table: 'equipment.job', row: { row_id: job.row_id, updated_at: job.updated_at, job_state: 'In progress' } }))
     .rejects.toThrow('The store confirmed this repair; report a new fault instead')
+  for (const change of [{ assigned_to: manager.user }, { work_done: 'Replaced the compressor' }])
+    await expect(manager.post('/api/save_row', { table: 'equipment.job', row: { row_id: job.row_id, updated_at: job.updated_at, ...change } }))
+      .rejects.toThrow('The store confirmed this repair; report a new fault instead')
+})
+
+test('whoever marks a job fixed can’t confirm it, even after reassigning it', async ({ createUser }) => {
+  await install()
+  const manager = assetsClient(await createUser({ roles: ['Assets Manager'] }))
+  const ravi = assetsClient(await createUser({ roles: ['Assets Technician'] }))
+  const { asset } = await register(manager)
+  let job = await manager.post<Row>('/api/save_row', { table: 'equipment.job', row: { asset: asset.row_id, problem: 'Not cooling', assigned_to: ravi.user } })
+  job = await manager.post<Row>('/api/save_row', { table: 'equipment.job', row: { row_id: job.row_id, updated_at: job.updated_at, job_state: 'Fixed', work_done: 'Refilled gas', fixed_by: ravi.user } })
+  expect(job.fixed_by).toBe(manager.user)
+  job = await manager.post<Row>('/api/save_row', { table: 'equipment.job', row: { row_id: job.row_id, updated_at: job.updated_at, assigned_to: null } })
+  expect(job.fixed_by).toBe(manager.user)
+  await expect(manager.post('/api/save_row', { table: 'equipment.restoration', row: { job: job.row_id } }))
+    .rejects.toThrow('Someone other than the technician who fixed it confirms the repair')
 })
 
 test('places nest from site to building, floor and area', async ({ createUser }) => {

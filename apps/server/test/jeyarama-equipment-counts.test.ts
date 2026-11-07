@@ -72,6 +72,12 @@ test('starting a count fixes its expected list, which counters cannot read', asy
   expect(expected.data).toHaveLength(3)
   await expect(suresh.get('/api/table/equipment.count_expected')).rejects.toMatchObject({ status: 403 })
   await expect(start(manager, count)).rejects.toThrow('This count has already started')
+  const chiller = (await manager.get<{ data: Row[] }>(`/api/table/equipment.asset?fields=["row_id"]&filters=${encodeURIComponent(JSON.stringify([['asset_name', '=', 'Display chiller 1']]))}`)).data[0]
+  await expect(save('equipment.count_expected', { count: count.row_id, asset: chiller.row_id, expected_place: atk.row_id }))
+    .rejects.toThrow('The expected list is fixed when the count starts')
+  const [line] = (await manager.get<{ data: Row[] }>(`/api/table/equipment.count_expected?fields=["row_id","updated_at"]&filters=${encodeURIComponent(JSON.stringify([['count', '=', count.row_id]]))}`)).data
+  await expect(save('equipment.count_expected', { row_id: line.row_id, updated_at: line.updated_at, expected_place: atk.row_id }))
+    .rejects.toThrow('The expected list is fixed when the count starts')
 })
 
 test('a count needs a counter to start, and a sample count expects only its sample', async ({ createUser }) => {
