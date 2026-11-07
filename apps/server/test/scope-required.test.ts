@@ -145,8 +145,8 @@ describe('#246 scope_required: no Data Scope means no rows', () => {
   test('realtime events on the Table stop for a person with no Data Scope', async ({ admin, createUser }) => {
     const { user, rowOf } = await setup(admin, createUser, required)
     const row_id = await rowOf('n')
-    expect(await eventVisibleTo(user.user, { event: 'updated', payload: { table: SECTION, row_id } } as never)).toBe(false)
-    expect(await eventVisibleTo(user.user, { event: 'deleted', payload: { table: SECTION, row_id } } as never)).toBe(false)
+    expect(await eventVisibleTo(user.user!, { event: 'updated', payload: { table: SECTION, row_id } } as never)).toBe(false)
+    expect(await eventVisibleTo(user.user!, { event: 'deleted', payload: { table: SECTION, row_id } } as never)).toBe(false)
   })
 
   test('an undeclared Table still shows everything to a person with no Data Scope', async ({ admin, createUser }) => {
