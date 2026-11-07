@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { createElement, useEffect, useState } from 'react'
 import { AssetPage } from './AssetPage'
 import { AssetsList } from './AssetsList'
 import { JobsBoard } from './JobsBoard'
@@ -29,11 +29,12 @@ export function AssetsApp({ roles }: { roles: string[] }) {
     return () => window.removeEventListener('hashchange', change)
   }, [])
 
+  // Featherbase's shared sidebar, as every app uses (app-navigation spec).
   return <div className="assets-shell">
-    <nav className="assets-nav" aria-label="Assets pages">
+    {createElement('featherbase-sidebar', { className: 'assets-nav', 'aria-label': 'Assets pages' }, <>
       {NAV.map(item => <a key={item.page} href={item.hash} aria-current={route.page === item.page ? 'page' : undefined}>{item.label}</a>)}
       <a className="assets-nav-admin" href="/featherbase/admin/table/equipment.asset">Edit the register in Featherbase ↗</a>
-    </nav>
+    </>)}
     <main className="assets-main">
       {route.page === 'jobs' && <JobsBoard roles={roles} />}
       {route.page === 'assets' && <AssetsList />}
