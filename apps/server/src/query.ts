@@ -1,5 +1,6 @@
 import { sql } from './db'
 import { AppError } from './errors'
+import { permissionRefusal } from './refusals'
 import { appOperation } from './app-lifecycle'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { RETIREMENT_COLUMNS, STANDARD_COLUMNS, canRetire, tableRelation } from './table-engine'
@@ -124,7 +125,7 @@ export async function scopedWhere(
     )
   const scope = await permissionScope(user, table, 'read')
   if (scope === 'none')
-    throw new AppError('PermissionError', `No read permission on ${table} for ${user}`)
+    throw await permissionRefusal(user, table, 'read')
   if (meta.kind === 'settings')
     throw new AppError(
       'ValidationError',
