@@ -137,6 +137,25 @@ describe('a grant limited to reach', () => {
     await expectApiError(meera.get(STAFF.rowUrl(String(priyaStaff.row_id))), { status: 403 })
   })
 
+  test('advises and retires within reach only', async ({ admin, createUser }) => {
+    const { meera, arun, a1 } = await setup(admin, createUser)
+    expect(await meera.get(`${SHELF.rowUrl(String(a1.row_id))}:capabilities`)).toMatchObject({ write: true, delete: true, retire: true, rename: false })
+    expect(await meera.post(`${SHELF.rowUrl(String(a1.row_id))}:retire`, { reason: 'Moved' })).toMatchObject({ retired_reason: 'Moved' })
+    expect(await meera.get(`${SHELF.rowUrl(String(a1.row_id))}:capabilities`)).toMatchObject({ retire: false, reactivate: true })
+    await meera.post(`${SHELF.rowUrl(String(a1.row_id))}:reactivate`, {})
+    // Someone with no reach is refused the same way.
+    await expectApiError(arun.post(`${SHELF.rowUrl(String(a1.row_id))}:retire`, { reason: 'x' }), { status: 403 })
+  })
+
+  test('a provider answer naming a role that is not a job role reaches nothing', async ({ admin, createUser }) => {
+    const { meera, module } = await setup(admin, createUser)
+    module.faults.result = [{ role: 'Shelf Helper', stores: ['A'] }]
+    await expectApiError(meera.get(SHELF.url), { status: 403 })
+    // A job role over no stores sees no rows.
+    module.faults.result = [{ role: 'Shelf Manager', stores: [] }]
+    expect(await list(meera)).toEqual([])
+  })
+
   test('a path not taught about reach refuses', async ({ admin, createUser }) => {
     const { meera, a1 } = await setup(admin, createUser)
     await expectApiError(meera.post(`${SHELF.rowUrl(String(a1.row_id))}:rename`, { new_name: 'renamed' }), { status: 403 })
@@ -190,6 +209,32 @@ describe('a store administrator gives a narrower role', () => {
     await expectApiError(arun.get(SHELF.url), { status: 403 })
     // Kept on record.
     expect(await sql`select given_by, revoked_by from role_assignment`).toEqual([{ given_by: meera.user!, revoked_by: priya.user! }])
+  })
+
+  test('refuses a malformed or unknown request, and takes back once', async ({ admin, createUser }) => {
+    const { meera, arun } = await setup(admin, createUser)
+    await expectApiError(meera.post(GIVEN, { person: arun.user!, role: 'Shelf Helper' }), { status: 417 })
+    await expectApiError(meera.post(GIVEN, { person: arun.user!, role: 'Shelf Helper', stores: ['A'], starts_on: '2026-12-01', ends_on: '2026-11-01' }), { status: 417 })
+    await expectApiError(meera.post('/api/apps/nosuchapp/given_roles', { person: arun.user!, role: 'Shelf Helper', stores: ['A'] }), { status: 404 })
+    await expectApiError(meera.post(`${GIVEN}/ra_missing/take_back`), { status: 404 })
+    await expectApiError(meera.post('/api/apps/nosuchapp/given_roles/ra_missing/take_back'), { status: 404 })
+    expect((await meera.get<{ data: Row[] }>('/api/apps/nosuchapp/given_roles')).data).toEqual([])
+    const given = await meera.post<Row>(GIVEN, { person: arun.user!, role: 'Shelf Helper', stores: ['A'] })
+    const first = await meera.post<Row>(`${GIVEN}/${String(given.row_id)}/take_back`)
+    expect(await meera.post<Row>(`${GIVEN}/${String(given.row_id)}/take_back`)).toMatchObject({ revoked_at: first.revoked_at })
+    // A System Manager sees every given role; the giver sees theirs.
+    expect((await admin.get<{ data: Row[] }>(GIVEN)).data).toHaveLength(1)
+    expect((await meera.get<{ data: Row[] }>(GIVEN)).data).toHaveLength(1)
+  })
+
+  test('a Head, reaching every store, gives in any store its staff work in, and sees what others gave', async ({ admin, createUser }) => {
+    const { meera, arun, priya, job } = await setup(admin, createUser)
+    await meera.post(GIVEN, { person: arun.user!, role: 'Shelf Helper', stores: ['A'] })
+    const head = await createUser({ email: 'head@example.test', roles: [] })
+    await job(head.user!, 'Head', 'HQ')
+    expect((await head.get<{ data: Row[] }>(GIVEN)).data).toHaveLength(1)
+    expect(await head.post<Row>(GIVEN, { person: priya.user!, role: 'Shelf Helper', stores: ['B'] })).toMatchObject({ stores: ['B'] })
+    expect((await list(priya)).map(row => row.store)).toEqual(['B'])
   })
 
   test('a holder who leaves the store loses its reach there', async ({ admin, createUser }) => {
