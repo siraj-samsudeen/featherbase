@@ -75,6 +75,10 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   assignment_rule_user: { user: id },
   auto_email_report: { '*': code },
   background_job: { method: code, payload: text, job_status: code, error: text, trigger: code },
+  // #975: a proposed change. Its values and the app's description are about the row, not a person.
+  change_proposal: { app: code, target_table: code, target_row: on('target_table'), maker: id, proposal_state: code, about: text, decided_by: id, decision_reason: text, result_row: on('target_table') },
+  change_proposal_column: { column_name: code, original_value: text, proposed_value: text, review_base_value: text },
+  change_proposal_approver: { person: id, role: code },
   client_script: { ref_table: code, script: text },
   column_def: { '*': code, label: text },
   comment: { ref_table: code, ref_name: on('ref_table'), content: text },
@@ -254,7 +258,7 @@ export async function classifyColumns(db: Sql | TxSql = sql): Promise<Classifica
       push(text, 'standard column')
       continue
     }
-    if (column === 'row_id' || column === 'status' || column === 'parentfield' || column === 'parenttype') {
+    if (column === 'row_id' || column === 'submission_status' || column === 'parentfield' || column === 'parenttype') {
       push(code, 'standard column')
       continue
     }

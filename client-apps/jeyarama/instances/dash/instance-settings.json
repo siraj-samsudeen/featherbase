@@ -24,6 +24,30 @@
         "new_person": "create_if_email_domain_allowed",
         "allowed_email_domains": "jeyarama.com",
         "self_link": false
+      },
+      {
+        "row_id": "stylehr",
+        "kind": "delegated_password",
+        "label": "StyleHR",
+        "enabled": true,
+        "service_url": "https://stylehr.in/api/login/",
+        "new_person": "create_if_on_roster",
+        "self_link": false,
+        "settings": {
+          "roster": {
+            "table": "Employee",
+            "sign_in_id_column": "employee_code",
+            "record_number_column": "employee_id_stylehr",
+            "person_column": "person",
+            "name_column": "name",
+            "status_column": "status",
+            "current_status": "Current",
+            "provider_record_key": "employee_id",
+            "identifiers": {
+              "stylehr-employee-code": "employee_code"
+            }
+          }
+        }
       }
     ],
     "Scheduled Job": [
@@ -54,8 +78,12 @@
         "engine": "motherduck",
         "default_schema": "gold.main",
         "databases": [
-          { "name": "gold" },
-          { "name": "marts" }
+          {
+            "name": "gold"
+          },
+          {
+            "name": "marts"
+          }
         ]
       }
     ]
@@ -98,6 +126,10 @@
             "value": {
               "env": "SERVICE_ACCOUNT"
             }
+          },
+          {
+            "row_id": "dash.linked_tables",
+            "value": "[\"Employee\", \"Job Assignment\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Site Master\"]"
           }
         ]
       }

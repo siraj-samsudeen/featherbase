@@ -590,3 +590,47 @@ When the connection is back and the user imports again
 Then the import says the table already holds 1 row and to delete it under Past imports
 And the new table holds 1 row
 ```
+
+### Requirement: Only Tables the person can read are offered
+
+The import targets SHALL leave out any Table the person is refused, such as an app's Table protected by a role they don't hold, and SHALL still offer the rest. Any other failure to load a Table's details SHALL stop the wizard and say so, rather than quietly offering fewer Tables.
+
+#### Scenario: A System Manager without an app's role
+
+- **WHEN** a System Manager who doesn't hold an app's role drops a file, with that app's protected Tables installed
+- **THEN** the wizard carries on, and offers every Table they can read
+- **AND** the protected Tables are not offered
+
+#### Scenario: An outage is not an empty list
+
+- **WHEN** a Table's details can't be fetched because of an outage
+- **THEN** the wizard reports the failure instead of leaving that Table out
+
+### Requirement: A new Table's link column names the Table it links to
+
+Choosing Reference for a column of a new Table SHALL show a picker of the Tables the person can read, and the Table SHALL be made with that link. Import SHALL wait until every link column in use has its Table, saying which columns need one.
+
+Check SHALL be offered on a new Table with a link column, and SHALL report each row whose value is not the row ID of a row of the target, making nothing.
+
+#### Scenario: Importing stores with a link to their cluster
+
+- **WHEN** a person imports a file as a new Table, sets a column to Reference and picks the cluster Table
+- **THEN** the new Table's column links to the cluster Table, and its rows open their cluster
+
+#### Scenario: No Table picked yet
+
+- **WHEN** a link column in use has no Table picked
+- **THEN** Import is disabled, and a message names the column
+
+#### Scenario: A value with no row
+
+- **WHEN** a person runs Check and a file value matches no row of the target
+- **THEN** that row is reported with the value and the Table, saying links match a row's ID
+- **AND** no Table is made
+- **AND** importing still lands the other rows and reports that one
+
+#### Scenario: A value matches by row ID alone
+
+- **WHEN** a file value is a target row's name
+- **THEN** it matches a target named by that name column, and is reported for a target keyed by a code
+- **AND** a retired target row still matches

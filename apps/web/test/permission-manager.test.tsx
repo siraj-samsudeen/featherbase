@@ -6,6 +6,7 @@ import { tableSlug } from 'shared'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
+import { grantRole } from 'server/test/fixtures'
 
 const DT = 'Pm Depots'
 const ENC = encodeURIComponent(DT)
@@ -51,8 +52,8 @@ test('the list leads to the matrix; ticking and saving stores the grant', async 
 test('someone who is not a System Manager is told why instead of shown the matrix', async ({ admin, createUser }) => {
   await seed(admin)
   // Person opens the Admin (#410); Table read resolves metadata but does not grant manager access.
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: ROLE, can_read: true } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: DT, role: ROLE, can_read: true } })
+  await grantRole(admin, { table: 'Person', role: ROLE, can_read: true })
+  await grantRole(admin, { table: DT, role: ROLE, can_read: true })
   const clerk = await createUser({ roles: [ROLE] })
   await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/permissions`, clerk)
   const error = await screen.findByTestId('perm-error')

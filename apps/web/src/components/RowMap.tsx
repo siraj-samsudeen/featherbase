@@ -2,7 +2,7 @@ import type { KeyboardEvent } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { api } from '../lib/api'
-import { metaQuery, useMeta, type ColumnDef } from '../lib/meta'
+import { linkRowsTable, metaQuery, useMeta, type ColumnDef } from '../lib/meta'
 import { useConnections, type Connection } from '../lib/connections'
 import { useStepOptions } from '../lib/explore-steps'
 import { buttonClasses, cardClasses, fmtCount } from '@featherbase/shop-floor'
@@ -82,7 +82,7 @@ export function RowMap({ table, name }: { table: string; name: string }) {
     forward.push({ label: 'parent', table: d.parenttype, row_id: d.parent })
   for (const f of m.columns) {
     // #881: a link to a row of any Table points into the Table its row names.
-    const target = f.reference_table ?? (f.table_column && d[f.table_column] ? String(d[f.table_column]) : null)
+    const target = linkRowsTable(f) ?? (f.table_column && d[f.table_column] ? String(d[f.table_column]) : null)
     if (f.column_type === 'Reference' && target && d[f.column_name])
       forward.push({
         label: linkWords(f),

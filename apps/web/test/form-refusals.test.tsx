@@ -11,6 +11,7 @@ import { afterEach, vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 import { pickedFile, useNodeMultipart } from './node-multipart'
 import { rowHref } from 'shared'
+import { grantRole } from 'server/test/fixtures'
 
 type Admin = Parameters<typeof renderApp>[1]
 const enc = encodeURIComponent
@@ -177,13 +178,13 @@ test('primary lifecycle actions reach the amended draft from a cancelled row', a
   await user.click(await screen.findByRole('tab', { name: 'Map' }))
   await user.click(await screen.findByRole('button', { name: 'Submit' }))
   await user.click(await screen.findByRole('button', { name: 'Cancel' }))
-  await waitFor(async () => expect(await admin.get(path)).toMatchObject({ status: 'cancelled', item: 'tea for north depot' }))
+  await waitFor(async () => expect(await admin.get(path)).toMatchObject({ submission_status: 'cancelled', item: 'tea for north depot' }))
   await user.click(await screen.findByRole('button', { name: 'Amend' }))
   await screen.findByRole('button', { name: 'Submit' })
   await user.click(screen.getByRole('tab', { name: 'Form' }))
   await waitFor(() => expect(field('item')).toHaveValue('tea for north depot'))
   expect(await admin.get(`${path}-1`)).toMatchObject({
-    status: 'draft', amended_from: saved.row_id, item: 'tea for north depot',
+    submission_status: 'draft', amended_from: saved.row_id, item: 'tea for north depot',
   })
   expect(screen.getByRole('button', { name: 'Submit' })).toBeVisible()
 })
@@ -203,7 +204,7 @@ test('submitting a row someone else already submitted is refused with the reason
   await user.click(submit)
   await waitFor(() => expect(screen.getByTestId('form-banner')).not.toBeEmptyDOMElement())
   expect(screen.getByTestId('form-banner')).toHaveTextContent('Frf Order ord-1 has status submitted; expected draft')
-  expect(((await admin.get(`/api/table/${enc('Frf Order')}/ord-1`)) as { status: string }).status).toBe('submitted')
+  expect(((await admin.get(`/api/table/${enc('Frf Order')}/ord-1`)) as { submission_status: string }).submission_status).toBe('submitted')
 })
 
 test('a Reference to a service account shows the account by its label, not its id', async ({ admin }) => {
@@ -229,10 +230,7 @@ test('a Reference search the server refuses offers no matches rather than failin
   })
   await admin.post('/api/save_row', { table: 'Frf Depot', row: { row_id: 'depot-1', city: 'Kochi' } })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Frf Visitor' } })
-  await admin.post('/api/save_row', {
-    table: 'Permission',
-    row: { ref_table: 'Frf Visit', role: 'Frf Visitor', can_read: true, can_write: true, can_create: true },
-  })
+  await grantRole(admin, { table: 'Frf Visit', role: 'Frf Visitor', can_read: true, can_write: true, can_create: true })
   await admin.post('/api/save_row', { table: 'Frf Visit', row: { row_id: 'visit-1' } })
   const clerk = await createUser({ roles: ['Frf Visitor'] })
   await expect(clerk.get(`/api/table/${enc('Frf Depot')}`)).rejects.toMatchObject({ status: 403 })

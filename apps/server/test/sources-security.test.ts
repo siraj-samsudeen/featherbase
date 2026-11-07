@@ -8,7 +8,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect } from 'vitest'
 import postgres from 'postgres'
 import type { TestClient } from 'feather-testing-postgres'
 import { test, patchDoc } from './pg-test'
-import { expectApiError } from './fixtures'
+import { expectApiError, grantRole } from './fixtures'
 import { EXTERNAL_DATABASE_URL } from './external-database'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
@@ -89,10 +89,7 @@ async function userWith(
 ): Promise<TestClient> {
   const role = 'Sec Role'
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: role } })
-  await admin.post('/api/save_row', {
-    table: 'Permission',
-    row: { ref_table: BOUND, role, ...perm },
-  })
+  await grantRole(admin, { table: BOUND, role, ...perm })
   return createUser({ roles: [role] })
 }
 
@@ -102,15 +99,11 @@ describe('finding 1: bound tables honor own-rows and Data Scope rules', () => {
     const url = `/api/table/${encodeURIComponent(BOUND)}/ACC-A`
     expect(await admin.get(`${url}:capabilities`)).toMatchObject({ write: true, delete: true, rename: false })
     const user = await userWith(admin, createUser, { can_read: true })
-    await admin.post('/api/save_row', {
-      table: 'Permission', row: { ref_table: BOUND, role: 'Sec Role', can_write: true, can_delete: true, own_rows_only: true },
-    })
+    await grantRole(admin, { table: BOUND, role: 'Sec Role', can_write: true, can_delete: true, own_rows_only: true })
     expect(await user.get(`${url}:capabilities`)).toMatchObject({ write: false, delete: false, rename: false })
     await expectApiError(patchDoc(user, url, { label: 'Forbidden' }), { status: 403 })
     await expectApiError(user.delete(url), { status: 403 })
-    await admin.post('/api/save_row', {
-      table: 'Permission', row: { ref_table: BOUND, role: 'Sec Role', can_write: true, can_delete: true },
-    })
+    await grantRole(admin, { table: BOUND, role: 'Sec Role', can_write: true, can_delete: true })
     expect(await user.get(`${url}:capabilities`)).toMatchObject({ write: true, delete: true, rename: false })
     const loaded = await user.get<Record<string, unknown>>(url)
     await patchDoc(user, url, { ...loaded, label: 'Saved through source' })
@@ -127,8 +120,8 @@ describe('finding 1: bound tables honor own-rows and Data Scope rules', () => {
     await bindAccount(admin)
     const user = await userWith(admin, createUser, { can_read: true, own_rows_only: true })
     // The grant itself saves (#543); only its use is refused.
-    expect(await sql`select own_rows_only from permission where ref_table = ${BOUND} and role = 'Sec Role'`)
-      .toEqual([{ own_rows_only: true }])
+    expect(await sql`select scope_mode from permission where ref_table = ${BOUND} and role = 'Sec Role'`)
+      .toEqual([{ scope_mode: 'creator' }])
     await expect(user.get(`/api/table/${encodeURIComponent(BOUND)}`)).rejects.toMatchObject({
       status: 403,
     })
@@ -463,17 +456,7 @@ describe('re-review findings', () => {
   }) => {
     const role = 'Sec Src Role'
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: role } })
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: {
-        ref_table: 'Data Source',
-        role,
-        can_read: true,
-        can_write: true,
-        can_create: true,
-        can_delete: true,
-      },
-    })
+    await grantRole(admin, { table: 'Data Source', role, can_read: true, can_write: true, can_create: true, can_delete: true })
     const user = await createUser({ roles: [role] })
     await expect(
       user.post('/api/table/Data%20Source', {

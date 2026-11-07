@@ -1,6 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { issueSession } from '../src/auth'
+import { grantRole } from './fixtures'
 
 // #101 Phase 6: saved views — owner-scoped CRUD, sharing, isolation.
 
@@ -43,10 +44,7 @@ describe('#101: /api/saved_views', () => {
       columns: [{ column_name: 'title', column_type: 'Data' }],
     })
     // The second user needs read on the Table itself to see its views.
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: DT, role: 'All', tier: 'basic', can_read: true },
-    })
+    await grantRole(admin, { table: DT, role: 'All', can_read: true })
     const created = await admin.post<{ row_id: string }>('/api/saved_views', {
       table: DT,
       label: 'Mine only',
@@ -114,10 +112,7 @@ describe('#101: /api/saved_views', () => {
     expect(create.status).toBe(403)
 
     // Granting read opens both.
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: DT, role: 'All', tier: 'basic', can_read: true },
-    })
+    await grantRole(admin, { table: DT, role: 'All', can_read: true })
     const listOk = await api.fetch(`/api/saved_views?table=${encodeURIComponent(DT)}`, {
       headers: auth,
     })
@@ -178,10 +173,7 @@ describe('#101: /api/saved_views', () => {
       id_pattern: 'prompt',
       columns: [{ column_name: 'title', column_type: 'Data' }],
     })
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: DT, role: 'All', tier: 'basic', can_read: true },
-    })
+    await grantRole(admin, { table: DT, role: 'All', can_read: true })
     const created = await admin.post<{ row_id: string }>('/api/saved_views', {
       table: DT,
       label: 'Brief share',

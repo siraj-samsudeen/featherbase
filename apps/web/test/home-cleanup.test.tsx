@@ -163,7 +163,7 @@ test('a System Manager sees Data and People and access, each link with a grey ic
 test('a person with only a Table grant keeps today’s links, and no management ones', async ({ admin, createUser }) => {
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Home Shelf Clerk' } })
   await admin.post('/api/table_def', { name: 'Home Shelf Note', columns: [{ column_name: 'title', column_type: 'Data' }] })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Home Shelf Note', role: 'Home Shelf Clerk', can_read: true } })
+  await grantRole(admin, { table: 'Home Shelf Note', role: 'Home Shelf Clerk', can_read: true })
   const clerk = await createUser({ email: 'home.clerk@example.com', roles: ['Home Shelf Clerk'] })
   await renderApp('/featherbase/admin', clerk)
   await screen.findByTestId('sidebar-group-data')

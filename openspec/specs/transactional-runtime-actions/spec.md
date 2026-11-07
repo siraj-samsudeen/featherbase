@@ -177,3 +177,37 @@ An action SHALL be able to make an enabled person the creator of one row of a Ta
 
 - **WHEN** the action runs for someone who does not hold the System Manager role
 - **THEN** the row stays with its creator
+
+### Requirement: An app reads and proposes only on Tables it declares and an administrator lists
+
+An app MAY declare base Tables of the instance, with the columns it reads and the columns it proposes on. It SHALL read and propose on one only when the Table is both declared and listed by an administrator in the app's linked Tables setting, and only the declared columns. These reads SHALL run as the app, so the caller needs no permission on the Table. A read SHALL NOT be able to propose or decide.
+
+#### Scenario: Not listed
+
+- **WHEN** an app reads a declared Table an administrator hasn't listed
+- **THEN** the read is refused
+
+#### Scenario: A column it didn't declare
+
+- **WHEN** an app asks for a column it didn't declare, or proposes on one
+- **THEN** it is refused
+
+### Requirement: An action can email a person after it commits
+A runtime action SHALL be able to queue an email to a person by Person ID, and to ask whether that person may read one row of the app's own Tables. The platform SHALL resolve the address, never handing it to the app, and SHALL queue the email only after the action's transaction commits. A failure to queue SHALL NOT undo the action.
+
+#### Scenario: A rolled-back action queues nothing
+
+- **WHEN** an action queues an email and its transaction then rolls back
+- **THEN** no email is queued
+- **WHEN** the same action is retried with the same idempotency key after it committed
+- **THEN** the handler does not run again and no second email is queued
+
+#### Scenario: A person who can't be emailed
+
+- **WHEN** an action emails a person who is unknown, disabled, built in, merged away or has no email
+- **THEN** no email is queued, the skip is logged without an address, and the action succeeds
+
+#### Scenario: An emailed link
+
+- **WHEN** an action's email links to the app
+- **THEN** the link uses the address that opens the app, or else the Admin address, never an address that would redirect the page away

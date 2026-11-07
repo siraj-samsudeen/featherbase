@@ -34,6 +34,12 @@ A Table whose Rows exist only inside a parent Row, reached through a parent
 Column of type Sub-table.
 _Avoid_: child table, grid, nested table
 
+**View**:
+A Table with no rows of its own: a named filter on one base Table, kept in
+metadata, that links can name. Its rows are the base's rows, under the base's
+access. Not a Summary View, which is one person's saved list filter.
+_Avoid_: virtual table, filtered table, lens
+
 **Settings Table**:
 A Table with exactly one instance and no generated database table — think
 System Settings.
@@ -201,6 +207,10 @@ that client's settings, data, people and choice of apps.
 _Avoid_: site, tenant, deployment (as the layer name)
 
 ## Extension
+
+**Change Proposal**:
+A change to a row that waits for approval: which row, each changed column's original and proposed value, who may approve it, and how it ended (Pending, Applied, Rejected, Needs fresh review). The row doesn't change until it is approved. Written only by the platform. First built for Dash (#975), in the shape of #627.
+_Avoid_: section change request, approval ticket
 
 **Workflow**:
 A role-gated state machine over a Table, whose states map to a Row's status.

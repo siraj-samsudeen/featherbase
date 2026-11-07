@@ -1,8 +1,9 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link as RouterLink, useNavigate } from '@tanstack/react-router'
+import { Link as RouterLink, useBlocker, useNavigate } from '@tanstack/react-router'
 import { choiceLabel, idFromColumn, tableHref, namingColumn, INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, rowDisplayTitle, tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
+import { NOT_A_LOGIN } from '../lib/not-a-login'
 import { pickerFor } from '../lib/pickers'
 import { changeOverride, overrideControl } from '../lib/metadata-override-editor'
 import { principalLabel, usePrincipalName, isOpaqueId } from '../lib/people'
@@ -38,8 +39,9 @@ import { GlossaryHelp } from './GlossaryHelp'
 import { ReadingPresentation } from './ReadingPresentation'
 import { ChangeRecord } from './ChangeRecord'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
+import { INSTANCE_HEALTH_QUERY_KEY } from '../pages/InstanceHealth'
 import { ArchivedBanner } from './ArchiveTable'
-import { ContentTabs, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
+import { ChevronDown, ContentTabs, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
 
 type Row = Record<string, unknown>
 
@@ -90,7 +92,14 @@ export function FormView({
   const storage = table === 'Table' && !isNew ? describedTable.data?.storage_identity : null
   const [storageCopy, setStorageCopy] = useState('')
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
+  const routerNavigate = useNavigate()
+  // #1009: where the form itself goes after an action (a new row saved, a row
+  // deleted) is no one walking away from their changes.
+  const leavingOnPurpose = useRef(false)
+  const navigate = ((options: never) => {
+    leavingOnPurpose.current = true
+    return routerNavigate(options)
+  }) as typeof routerNavigate
   const { t } = useI18n()
   const formSettings = useSettings()
   // #795: how this person arranges this Table's rows. A Table its builder
@@ -230,13 +239,25 @@ export function FormView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientScripts.handlers, values, rowLoaded, rowKey])
 
+  const dirty = JSON.stringify(values) !== JSON.stringify(baseline)
+  // #1009: what leaving would lose. Prefilled values save with the row (so Save
+  // is on), but nobody typed them; until the form takes its first values there
+  // is nothing to compare.
+  const unsaved = dirty && appliedBaseline.current === baseline
+    && !(isNew && JSON.stringify(values) === JSON.stringify(prefill ?? {}))
+  // Only a different page unmounts the form: a tab or the side pane keeps it.
+  const leaveGuard = useBlocker({
+    shouldBlockFn: ({ current, next }) => unsaved && !leavingOnPurpose.current && current.pathname !== next.pathname,
+    enableBeforeUnload: () => unsaved && !leavingOnPurpose.current,
+    withResolver: true,
+  })
+
   if (meta.isLoading || (!isNew && (doc.isLoading || access.isLoading)))
     return <p className="text-sm text-ink-subtle">Loading…</p>
   if (meta.isError || (!isNew && doc.isError))
     return <p className="text-sm text-negative">Cannot load {table} {name}</p>
 
   const m = meta.data!
-  const dirty = JSON.stringify(values) !== JSON.stringify(baseline)
 
   // Build the `frm` a client-script handler receives, over a given doc snapshot.
   function makeFrm(docSnapshot: Row): Frm {
@@ -276,7 +297,7 @@ export function FormView({
     fireHandler(fieldname, next)
   }
 
-  const status = String((baseline as Record<string, unknown>).status ?? 'draft')
+  const status = String((baseline as Record<string, unknown>).submission_status ?? 'draft')
   const submittable = Boolean(m.is_submittable) && !isNew
   // EDS-13: a bound Table on a read-only source renders with no write
   // affordance at all — every field read-only, Save/Rename absent.
@@ -409,6 +430,8 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       await queryClient.invalidateQueries({ queryKey: ['activity', table, name] })
+      // A save can settle a health check, and the banners shouldn't lag behind it (#1003).
+      void queryClient.invalidateQueries({ queryKey: INSTANCE_HEALTH_QUERY_KEY })
       if (editingOverride) {
         await queryClient.invalidateQueries({ queryKey: ['meta', String(saved.table_name)] })
         if (typeof baseline.table_name === 'string' && baseline.table_name !== saved.table_name)
@@ -455,7 +478,7 @@ export function FormView({
     return rowsReadOnly && !isNew ? (
       <ValueField key={f.column_name} field={f} value={value} meta={m} settings={formSettings} columns={arrangement.columns} />
     ) : (
-      <FieldControl key={f.column_name}
+      <FieldControl key={f.column_name} columns={isNew ? 2 : arrangement.columns}
         field={rowsReadOnly || (submittable && status !== 'draft') || managedFields.has(f.column_name) ? { ...f, read_only: true } : f}
         managedHint={managedFields.has(f.column_name) ? managed.data?.hint : undefined}
         value={value} error={errors[f.column_name]} errors={errors}
@@ -470,11 +493,14 @@ export function FormView({
 
   const work = <div className="flex flex-col gap-6 lg:flex-row">
     {/* Its columns follow its own width (a form beside the pane is narrow). */}
-    <div className={`@container min-w-0 flex-1 ${arrangement.columns === 1 && !isNew ? 'max-w-2xl' : 'max-w-3xl'}`}>
+    <div className="@container min-w-0 max-w-[50rem] flex-1">
       {!isNew && (
         <ArrangeBar mode={arrangement.mode} columns={arrangement.columns}
           onMode={arrangement.setMode} onColumns={arrangement.setColumns} />
       )}
+      {/* #1012: one column narrows the fields only, so the toolbar above stays put.
+          The wrapper is wider than the fields because the toolbar needs 50rem on one line in a wide font. */}
+      <div className={arrangement.columns === 1 && !isNew ? 'max-w-2xl' : 'max-w-3xl'} data-testid="form-fields">
       {!isNew && !arrangement.ready ? (
         <p className="text-sm text-ink-subtle">Loading…</p>
       ) : !isNew && arrangement.mode !== 'source' ? (() => {
@@ -510,6 +536,7 @@ export function FormView({
           ))}
         </div>
       )}
+      </div>
     </div>
     {/* Only the Tables with panels of their own give the form a side column. */}
     {!isNew && (table === 'Person' || table === 'Identifier System') && <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
@@ -525,13 +552,14 @@ export function FormView({
       {table === 'Identifier System' && <IdentifierSystemDefaults systemKey={name} />}
     </aside>}
   </div>
+  const saveDisabled = saving || !dirty || (submittable && status !== 'draft') || (editingOverride && !overrideTarget.data)
   const reading = !isNew && rowsReadOnly ? m.reading_presentation : null
   // #825: a Version row reads as the change it records; its fields fold away.
   const changeRecord = !isNew && table === 'Version'
   const RawDetails = reading || changeRecord ? 'details' : 'div'
 
   return (
-    <div data-testid="form-view" className="min-w-0 max-w-5xl [overflow-wrap:anywhere]">
+    <div data-testid="form-view" className={`min-w-0 max-w-5xl [overflow-wrap:anywhere] ${unsaved && !rowsReadOnly ? 'pb-20' : ''}`}>
       <nav className="mb-2 flex flex-wrap items-center gap-x-1 text-xs text-ink-muted" data-testid="breadcrumbs">
         <RouterLink to="/featherbase/admin" className={touchLinkClasses('hover:underline')}>Admin</RouterLink>
         <span aria-hidden="true">/</span>
@@ -709,7 +737,7 @@ export function FormView({
           {!rowsReadOnly && (
             <button
               onClick={save}
-              disabled={saving || !dirty || (submittable && status !== 'draft') || (editingOverride && !overrideTarget.data)}
+              disabled={saveDisabled}
               data-testid="form-save"
               className={buttonClasses({ variant: 'primary', className: 'disabled:opacity-40' })}
             >
@@ -989,6 +1017,32 @@ export function FormView({
         </div> },
       ]} />}
       </RawDetails>
+      {/* #1009: Save stays in view, wherever the person has scrolled to. Fixed,
+          since the page's split makes its own scroll box, which pins sticky. */}
+      {unsaved && !rowsReadOnly && (
+        <div role="status" data-testid="form-unsaved-bar"
+          className="fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-card border border-border bg-surface px-4 py-2 shadow-lg max-sm:left-4 max-sm:justify-between">
+          <span className="text-sm font-medium text-ink">{t('Unsaved changes')}</span>
+          <button onClick={save} disabled={saveDisabled} aria-label={saving ? undefined : t('Save changes')} className={buttonClasses({ variant: 'primary', className: 'disabled:opacity-40' })}>
+            {saving ? t('Saving…') : t('Save')}
+          </button>
+        </div>
+      )}
+      {leaveGuard.status === 'blocked' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40"
+          onClick={() => leaveGuard.reset()}
+          onKeyDown={(e) => e.key === 'Escape' && leaveGuard.reset()}>
+          <div role="dialog" aria-modal="true" aria-labelledby="unsaved-leave-title" data-testid="unsaved-leave-dialog"
+            className={cardClasses('w-full max-w-lg p-4')} onClick={(e) => e.stopPropagation()}>
+            <h2 id="unsaved-leave-title" className="mb-2 text-base font-semibold text-ink">{t('Leave without saving?')}</h2>
+            <p className="mb-3 text-sm text-ink-muted">{t("Your changes to this form haven't been saved.")}</p>
+            <div className="flex flex-wrap justify-end gap-2 [&>button]:whitespace-nowrap">
+              <button autoFocus onClick={() => leaveGuard.reset()} className={buttonClasses()}>{t('Stay')}</button>
+              <button onClick={() => leaveGuard.proceed()} className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}>{t('Leave without saving')}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1016,7 +1070,9 @@ function FieldControl({
   setField,
   managedHint,
   errors,
+  columns,
 }: {
+  columns: 1 | 2
   field: ColumnDef
   value: unknown
   error?: string
@@ -1076,6 +1132,14 @@ function FieldControl({
   const unlinkedTarget = unlinkedSourceTable(field, meta)
   const unlinkedId = `${controlId}-unlinked`
   const unlinkedNote = <UnlinkedNote id={unlinkedId} field={field} meta={meta} />
+  // #1021: a link to a view whose row has since left it keeps the link, and
+  // says so; a new value must still be one of the view's rows.
+  const outsideView = Array.isArray(values.links_outside_view) && values.links_outside_view.includes(field.column_name)
+  const outsideNote = outsideView ? (
+    <p className="mt-1 text-xs text-caution" data-testid={`outside-view-${field.column_name}`}>
+      No longer in the {field.reference_table} view. The link stays as it is; a new choice must be one of them.
+    </p>
+  ) : null
   const describedBy = [hintText ? hintId : null, managedHint ? managedId : null, unlinkedTarget ? unlinkedId : null]
     .filter(Boolean)
     .join(' ')
@@ -1091,12 +1155,13 @@ function FieldControl({
 
   const wide = ['Text', 'Long Text', 'JSON', 'Sub-table'].includes(field.column_type)
   const wrap = (control: React.ReactNode) => (
-    <div className={`min-w-0 ${wide ? '@2xl:col-span-2' : ''}`} data-form-field={field.column_name} data-label={field.label ?? field.column_name}>
+    <div className={`min-w-0 ${wide && columns === 2 ? '@2xl:col-span-2' : ''}`} data-form-field={field.column_name} data-label={field.label ?? field.column_name}>
       {label}
       {control}
       {hint}
       {managedNote}
       {unlinkedNote}
+      {outsideNote}
       {meta.name === 'Person' && field.column_name === 'roles' && <EveryoneRolesNote />}
       {preview}
       {err}
@@ -1478,13 +1543,13 @@ function ChildGrid({
 
 
 /** The target Table's title column, when it is one of its columns the
- *  caller may read: a column above the caller's readable levels can be
+ *  caller may read: a column the caller was not granted can be
  *  neither searched nor shown, and a title that is the row key itself (a
  *  Table named by its id) is already what row_id shows. */
 function readableTitleColumn(meta: TableMeta | undefined): string | undefined {
   const title = meta?.title_column
   const column = title ? meta.columns.find((c) => c.column_name === title) : undefined
-  if (!column || (meta?.readable_tiers && !meta.readable_tiers.includes(column.tier))) return undefined
+  if (!column || (meta?.readable_columns && !meta.readable_columns.includes(column.column_name))) return undefined
   return column.column_name
 }
 
@@ -1525,8 +1590,26 @@ export function LinkControl({
   anyTable?: boolean
 }) {
   const target = field.reference_table ?? ''
+  // #1021: a link to a view picks among the view's rows, but its value is a
+  // row of the base: it is named, shown and opened there, even once it has
+  // left the view.
+  const rowsTable = field.reference_base ?? target
   const box = useRef<HTMLInputElement>(null)
-  const [place, setPlace] = useState<{ top: number; left: number; width: number } | null>(null)
+  const searchBox = useRef<HTMLInputElement>(null)
+  // A click means "show me the list": the typing goes to its search box (#1019).
+  // Tabbing in stays on the box, so the keyboard walks a form as before.
+  const clicked = useRef(false)
+  const listBox = useRef<HTMLDivElement>(null)
+  // Focus handed back to the box from its list is not a new search (#1019).
+  const handingBack = useRef(false)
+  function backToBox() {
+    clearTimeout(timer.current)
+    searchVersion.current++
+    handingBack.current = true
+    box.current?.focus()
+    handingBack.current = false
+  }
+  const [place, setPlace] = useState<{ top?: number; bottom?: number; left: number; width: number; maxHeight: number } | null>(null)
   // #793: a Table with no picker of its own is searched and shown by its
   // title column, never by its row id — only when the caller may read that
   // column; otherwise it stays searched and shown by row id.
@@ -1541,9 +1624,9 @@ export function LinkControl({
   const [options, setOptions] = useState<{ value: string; label: string }[]>([])
   // An opaque id (a person's `psn_…`) is shown by its name.
   const current = useQuery({
-    queryKey: ['link-label', target, String(value ?? '')],
+    queryKey: ['link-label', rowsTable, String(value ?? '')],
     enabled: Boolean(picker.labelField) && !picker.peopleSearch && Boolean(value),
-    queryFn: () => api.get<Record<string, unknown>>(`/api/table/${encodeURIComponent(target)}/${encodeURIComponent(String(value))}`),
+    queryFn: () => api.get<Record<string, unknown>>(`/api/table/${encodeURIComponent(rowsTable)}/${encodeURIComponent(String(value))}`),
   })
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const blurTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -1560,11 +1643,15 @@ export function LinkControl({
   // A filter has its own clear control and stays a filter: no pane or open.
   const hasValue = Boolean(value) && query === null && !forFilter && !(anyTable && targetMeta.isError)
 
-  // The floating list is placed once, under the box; scrolling or resizing
-  // would leave it behind, so either closes it.
+  // The floating list is placed once, beside the box; scrolling the page or
+  // resizing would leave it behind, so either closes it.
   useEffect(() => {
     if (!floating || !open) return
-    const close = () => setOpen(false)
+    // The list's own scrolling isn't the page moving away from it.
+    const close = (event: Event) => {
+      if (event.target instanceof Node && listBox.current?.contains(event.target)) return
+      setOpen(false)
+    }
     window.addEventListener('scroll', close, true)
     window.addEventListener('resize', close)
     return () => {
@@ -1573,16 +1660,42 @@ export function LinkControl({
     }
   }, [floating, open])
 
+  useEffect(() => {
+    if (open && clicked.current && query === null) searchBox.current?.focus()
+    clicked.current = false
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
   function openList() {
     const rect = floating ? box.current?.getBoundingClientRect() : undefined
-    setPlace(rect ? { top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 224) } : null)
+    if (rect) {
+      // Scrolling closes the list, so it has to fit in the window where it opens.
+      const below = window.innerHeight - rect.bottom - 8
+      const above = rect.top - 8
+      const across = { left: rect.left, width: Math.max(rect.width, 224) }
+      setPlace(below < 240 && above > below
+        ? { ...across, bottom: window.innerHeight - rect.top + 4, maxHeight: above }
+        : { ...across, top: rect.bottom + 4, maxHeight: below })
+    } else {
+      setPlace(null)
+    }
     setOpen(true)
   }
+
+  // A click can beat the target's details here: the search reads the picker as
+  // it is by then, and runs again if the name column arrives after it.
+  const latestPicker = useRef(picker)
+  latestPicker.current = picker
+  useEffect(() => {
+    if (open) search(query ?? '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picker.labelField])
 
   function search(q: string) {
     const version = ++searchVersion.current
     clearTimeout(timer.current)
     timer.current = setTimeout(async () => {
+      const picker = latestPicker.current
       try {
         if (picker.peopleSearch) {
           // Name, @username, address or employee code — never the id.
@@ -1596,6 +1709,8 @@ export function LinkControl({
         const res = await listResource<Record<string, unknown> & { row_id: string }>(target, {
           filters: [...picker.filters, ...extraFilters, ...(q ? [[picker.searchField, 'like', `%${q}%`]] : [])],
           fields: label ? ['row_id', label] : ['row_id'],
+          // #1019: by the name shown. Row ids alone keep the list's own fast order.
+          ...(label ? { order_by: `${label} asc` } : {}),
           limit_page_length: 10,
         })
         if (version !== searchVersion.current) return
@@ -1615,7 +1730,7 @@ export function LinkControl({
   const noAccess = anyTable && Boolean(value) && targetMeta.isError
   // #910 D3: a row the viewer cannot read is named neutrally, never by its id,
   // and offers no way to it.
-  const linked = useLinkTitle(!picker.peopleSearch && value && target ? target : undefined, value ? String(value) : undefined)
+  const linked = useLinkTitle(!picker.peopleSearch && value && target ? rowsTable : undefined, value ? String(value) : undefined)
   const unseen = !picker.peopleSearch && Boolean(value) && !noAccess && linked.state === 'unreadable'
   const shown = query ?? (noAccess ? `${target} (no access)` : null) ?? (unseen ? UNSEEN_ROW : valueLabel ?? String(value ?? ''))
 
@@ -1629,8 +1744,47 @@ export function LinkControl({
       </div>
     )
 
+  // #1019: the arrows walk the list and Escape closes it; Tab leaves the box for
+  // the next field, so the list's own controls are off the Tab order.
+  function moveThroughList(event: KeyboardEvent<HTMLDivElement>) {
+    if (!open) {
+      // A grid's arrows move between its cells.
+      if (event.key === 'ArrowDown' && !floating) search(query ?? '')
+      return
+    }
+    if (event.key === 'Escape') {
+      event.stopPropagation()
+      setOpen(false)
+      // Whatever was being searched for was never picked.
+      setQuery(null)
+      backToBox()
+    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      event.stopPropagation()
+      const items = [...event.currentTarget.querySelectorAll<HTMLElement>('[data-testid="link-option"],[data-testid="link-create-new"]')]
+      const at = items.indexOf(document.activeElement as HTMLElement)
+      const next = event.key === 'ArrowDown' ? at + 1 : at - 1
+      if (next >= items.length) return
+      if (next < 0) searchBox.current?.focus()
+      else items[next].focus()
+    }
+  }
+
+  function leave() {
+    // A search still waiting must not reopen the list on a cell left behind.
+    clearTimeout(timer.current)
+    searchVersion.current++
+    clearTimeout(blurTimer.current)
+    blurTimer.current = setTimeout(() => {
+      setOpen(false)
+      // A filter shows only what it filters by, and a grid cell what will
+      // be saved: text typed but never picked goes.
+      if (forFilter || floating) setQuery(null)
+    }, 150)
+  }
+
   return (
-    <div className="relative">
+    <div className="relative" onKeyDown={moveThroughList}>
       <input
         ref={box}
         type="text"
@@ -1638,19 +1792,14 @@ export function LinkControl({
         aria-expanded={open}
         placeholder={forFilter ? `Filter ${field.label ?? field.column_name}…` : `Reference: ${target}`}
         value={shown}
-        onFocus={() => search(query ?? (picker.labelField ? '' : shown))}
-        onBlur={() => {
-          // A search still waiting must not reopen the list on a cell left behind.
-          clearTimeout(timer.current)
-          searchVersion.current++
+        onMouseDown={() => { clicked.current = true }}
+        // Focus doesn't fire again on a box that kept it, as after Escape.
+        onClick={() => { if (!open) search(query ?? (picker.labelField ? '' : shown)) }}
+        onFocus={() => {
           clearTimeout(blurTimer.current)
-          blurTimer.current = setTimeout(() => {
-            setOpen(false)
-            // A filter shows only what it filters by, and a grid cell what will
-            // be saved: text typed but never picked goes.
-            if (forFilter || floating) setQuery(null)
-          }, 150)
+          if (!handingBack.current) search(query ?? (picker.labelField ? '' : shown))
         }}
+        onBlur={leave}
         onChange={(e) => {
           setQuery(e.target.value)
           // In a grid, emptying the cell removes the link (Codex on #874);
@@ -1658,9 +1807,16 @@ export function LinkControl({
           if (floating && e.target.value === '') onChange(null)
           search(e.target.value)
         }}
-        className={`${className} ${hasValue && !unseen ? 'pr-14' : ''}`}
+        className={`${className} ${hasValue && !unseen ? 'pr-14' : 'pr-8'}`}
+        {...NOT_A_LOGIN}
         {...common}
       />
+      {/* It reads as a picker, not a box to know the value for (#1019). */}
+      {!(hasValue && !unseen) && (
+        <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-ink-subtle" data-testid={`link-chevron-${field.column_name}`}>
+          <ChevronDown aria-hidden size={16} />
+        </span>
+      )}
       {hasValue && !unseen && (
         <span className="absolute inset-y-0 right-2 flex items-center gap-0.5">
           {nav && (
@@ -1669,7 +1825,7 @@ export function LinkControl({
               tabIndex={-1}
               onMouseDown={(e) => {
                 e.preventDefault()
-                nav.push({ ...nav.step, pane: { table: target, row: String(value) } })
+                nav.push({ ...nav.step, pane: { table: rowsTable, row: String(value) } })
               }}
               title="Show in the pane"
               data-testid={`link-pane-${field.column_name}`}
@@ -1685,7 +1841,7 @@ export function LinkControl({
               e.preventDefault()
               navigate({
                 to: '/featherbase/admin/table/$table/row/$name',
-                params: { table: target, name: String(value) },
+                params: { table: rowsTable, name: String(value) },
                 search: { prefill: undefined },
               })
             }}
@@ -1699,20 +1855,52 @@ export function LinkControl({
       )}
       {open && (
         <div
-          className={place ? 'fixed z-30 rounded-md border border-border bg-surface shadow-lg' : 'absolute z-10 mt-1 w-full rounded-md border border-border bg-surface shadow-lg'}
+          ref={listBox}
+          // Off the Tab order, which a browser otherwise gives a list that scrolls.
+          tabIndex={-1}
+          className={place
+            ? 'fixed z-30 overflow-y-auto rounded-md border border-border bg-surface shadow-lg'
+            : 'absolute z-10 mt-1 max-h-80 w-full min-w-56 overflow-y-auto rounded-md border border-border bg-surface shadow-lg'}
           style={place ?? undefined}
+          onFocus={() => clearTimeout(blurTimer.current)}
+          onBlur={leave}
           data-testid={`link-options-${field.column_name}`}
         >
+          <input
+            ref={searchBox}
+            type="search"
+            aria-label={`Search ${field.label ?? field.column_name}`}
+            placeholder="Search…"
+            value={query ?? ''}
+            tabIndex={-1}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              search(e.target.value)
+            }}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault() }}
+            data-testid="link-search"
+            className="sticky top-0 block w-full border-b border-border bg-surface px-3 py-1.5 text-sm text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+            {...NOT_A_LOGIN}
+          />
           {options.map((o) => (
             <button
               key={o.value}
               type="button"
+              tabIndex={-1}
               onMouseDown={() => {
                 onChange(o.value)
                 setQuery(null)
                 setOpen(false)
               }}
-              className="block w-full px-3 py-1.5 text-left text-sm hover:bg-subtle"
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return
+                e.preventDefault()
+                onChange(o.value)
+                setQuery(null)
+                setOpen(false)
+                backToBox()
+              }}
+              className="block w-full px-3 py-1.5 text-left text-sm hover:bg-subtle focus-visible:bg-subtle focus-visible:outline-none"
               data-testid="link-option"
             >
               {o.label}
@@ -1722,11 +1910,13 @@ export function LinkControl({
             <p className="px-3 py-1.5 text-sm text-ink-subtle">No matches</p>
           )}
           {/* A Table column of a link to any Table picks among Tables; it never makes one (#881). */}
-          {!forFilter && !extraFilters.length && (
+          {/* A view holds no rows to create (#1021). */}
+          {!forFilter && !extraFilters.length && !field.reference_base && (
             <RouterLink
               to="/featherbase/admin/table/$table/new"
               params={{ table: target }}
               search={{ prefill: undefined }}
+              tabIndex={-1}
               className="block border-t border-border px-3 py-1.5 text-sm text-ink-muted hover:bg-subtle"
               data-testid="link-create-new"
             >

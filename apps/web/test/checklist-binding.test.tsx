@@ -20,6 +20,7 @@ import userEvent from '@testing-library/user-event'
 import { sql } from 'server/src/db'
 import { invalidateMeta } from 'server/src/meta'
 import { test, expect, renderApp } from './pg-test'
+import { grantRole } from 'server/test/fixtures'
 
 async function installChecklists() {
   const [have] = await sql`select 1 from table_def where name = 'Checklist Run'`
@@ -91,9 +92,7 @@ test('discovery reaches a checklist in the third Sub-table, past two near-misses
 
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Checklist Reader' } })
   for (const ref_table of ['Third Sub Parent', 'Third Sub Step'])
-    await admin.post('/api/save_row', {
-      table: 'Permission', row: { ref_table, role: 'Checklist Reader', can_read: true },
-    })
+    await grantRole(admin, { table: ref_table, role: 'Checklist Reader', can_read: true })
   const reader = await createUser({ roles: ['Checklist Reader'] })
   // The first two metadata reads now really fail permission checks. They
   // must not prevent discovery of the readable, qualifying third child.

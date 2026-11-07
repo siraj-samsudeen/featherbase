@@ -50,6 +50,15 @@ nothing until an Admin gives them one. Google must have verified the address and
 its Workspace domain. People can't link a Google account to themselves
 (`self_link: false`) until featherbase#693 checks the domain there.
 
+**StyleHR.** The method is in the file but switched off in every environment,
+because switching it on changes the sign-in page and sends staff passwords
+through that environment. To switch it on, add `{ "row_id": "stylehr", "enabled": true }`
+to that environment's `Sign In Method` list, deploy, then apply the seed pack
+below once so the method has its identifier system: until then it refuses
+everyone. Staff sign in with their employee number. Their first sign-in links
+them to their `Employee` row and gives them a person with no roles. The staff
+Table's columns are named in the method's `settings.roster`.
+
 ## Identifier systems
 
 The `jeyarama` seed pack (`apps/server/seeds/jeyarama/`) adds the employee

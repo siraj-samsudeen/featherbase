@@ -28,15 +28,16 @@ import { isOpaqueId } from '../lib/people'
 import { EntryLabel, useLiveDestinations } from '../lib/row-titles'
 import { metaQuery, type TableMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
+import { SIDEBAR_SHORTCUT, isEditingText, useSidebarCollapsed } from '../lib/sidebar-collapsed'
 import { KindIcon } from '../lib/kind-icons'
 import { DataSourcesSidebar } from '../components/DataSourcesSidebar'
 import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
-import { HealthBanner, INSTANCE_HEALTH_PATH } from './InstanceHealth'
+import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PATH, SetupBanner, useSetupNeeded } from './InstanceHealth'
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
 import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
-import { Bell, BookOpen, CalendarClock, Clock, Compass, Database, History, Key, ListChecks, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
+import { Bell, BookOpen, CalendarClock, Clock, Compass, Database, History, Key, ListChecks, Menu, PanelLeftClose, PanelLeftOpen, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 
 interface SearchHit {
@@ -80,16 +81,16 @@ connectEventSink({
 // home page sidebar. All Tables render inside <Outlet/>.
 // #410: pick the layout from the server-computed capabilities BEFORE mounting
 // the Admin shell, so a person who cannot use it never fires its API calls.
-export function AdminLayout({ wide = false }: { wide?: boolean } = {}) {
+export function AdminLayout({ wide = false, fullWidth = false }: { wide?: boolean; fullWidth?: boolean } = {}) {
   // #489: the signed-in person's theme choice outlives every toggle on the page.
   return (
     <ThemeChoiceProvider>
-      <AdminLayoutForKind wide={wide} />
+      <AdminLayoutForKind wide={wide} fullWidth={fullWidth} />
     </ThemeChoiceProvider>
   )
 }
 
-function AdminLayoutForKind({ wide }: { wide: boolean }) {
+function AdminLayoutForKind({ wide, fullWidth }: { wide: boolean; fullWidth: boolean }) {
   const kind = useShellKind()
   // #489 item 10: while whoami loads, the bar's frame and name are drawn and
   // its right side stays empty — no flash of the wrong items.
@@ -110,10 +111,10 @@ function AdminLayoutForKind({ wide }: { wide: boolean }) {
   // A report reader has no Admin page left: their sign-in methods are an
   // account page now (#489), so every Admin address sends them to the report.
   if (kind === 'report-only') return <Navigate to={REPORT_PATH} replace />
-  return <AdminShell wide={wide} />
+  return <AdminShell wide={wide} fullWidth={fullWidth} />
 }
 
-function AdminShell({ wide }: { wide: boolean }) {
+export function AdminShell({ wide, fullWidth = false }: { wide: boolean; fullWidth?: boolean }) {
   const navigate = useNavigate()
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -194,6 +195,10 @@ function AdminShell({ wide }: { wide: boolean }) {
   // toggled from the navbar; on md+ it is always shown.
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const isMobileSidebar = useMediaQuery(MOBILE_SIDEBAR_QUERY)
+  // #1018: on md+ the sidebar can be collapsed to give the page its width. A
+  // phone keeps its drawer, whatever was chosen on a wider window.
+  const [collapsedChoice, toggleSidebarCollapsed] = useSidebarCollapsed(user?.row_id)
+  const sidebarCollapsed = collapsedChoice && !isMobileSidebar
   // #489: on a phone the command bar takes its own row under the bar, so Tab
   // still follows what the eye reads: the bar's row first, then the search.
   const isPhone = useMediaQuery(PHONE_QUERY)
@@ -228,6 +233,7 @@ function AdminShell({ wide }: { wide: boolean }) {
   // #465 D9: right after the Administrator signs in, ask who looks after the
   // instance while no System Manager has an email address.
   useSetupOffer(canManage)
+  const setupNeeded = useSetupNeeded(canManage) !== null
 
   // ⌘K / Ctrl+K focuses the command bar (PR-2-style command palette entry).
   const searchRef = useRef<HTMLInputElement>(null)
@@ -247,8 +253,9 @@ function AdminShell({ wide }: { wide: boolean }) {
   // UI-015: global keyboard shortcuts.
   //   Ctrl/Cmd+K  focus the command bar (command palette)
   //   Ctrl/Cmd+S  save the current form
-  //   Ctrl/Cmd+B  new row of the current Table
+  //   Ctrl/Cmd+B  collapse or reopen the sidebar (#1018)
   //   g then d    go to the Admin home
+  //   g then n    new row of the current Table
   useEffect(() => {
     let leader = 0 // timestamp of a recent 'g' press
     // The metadata boundary and the shell share this QueryClient. A URL
@@ -280,10 +287,12 @@ function AdminShell({ wide }: { wide: boolean }) {
         document.querySelector<HTMLButtonElement>('[data-testid=form-save]')?.click()
         return
       }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
+      // With Shift it is the browser's bookmarks bar; in a field it is bold or
+      // the browser's own; a phone has its drawer instead.
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'b') {
+        if (isEditingText(e.target) || isMobileSidebar) return
         e.preventDefault()
-        const dt = currentTable()
-        if (dt) navigate({ to: '/featherbase/admin/table/$table/new', params: { table: dt }, search: { prefill: undefined } })
+        if (!e.repeat) toggleSidebarCollapsed()
         return
       }
       // Leader-key navigation only when not typing into a field.
@@ -294,13 +303,17 @@ function AdminShell({ wide }: { wide: boolean }) {
       } else if (e.key.toLowerCase() === 'd' && now - leader < 1000) {
         leader = 0
         navigate({ to: '/featherbase/admin' })
+      } else if (e.key.toLowerCase() === 'n' && now - leader < 1000) {
+        leader = 0
+        const dt = currentTable()
+        if (dt) navigate({ to: '/featherbase/admin/table/$table/new', params: { table: dt }, search: { prefill: undefined } })
       } else {
         leader = 0
       }
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [navigate, router, queryClient])
+  }, [navigate, router, queryClient, isMobileSidebar, toggleSidebarCollapsed])
 
   // #101 Phase 5: the "Last search" resume tile hands its query to the
   // command bar — prefilled and focused, ready to re-run.
@@ -700,6 +713,7 @@ function AdminShell({ wide }: { wide: boolean }) {
       {/* #465 D8: System Managers only, while a health check fails; above the
           top bar, beside the preview banner. */}
       <HealthBanner enabled={canManage} />
+      <SetupBanner enabled={canManage} />
       {/* #489: the shared top bar, with the Admin menus inside it: the app
           switcher in the name's place, the sidebar toggle, the command bar
           and the notification bell. md+: the left zone is exactly the
@@ -736,6 +750,18 @@ function AdminShell({ wide }: { wide: boolean }) {
         >
           <Menu aria-hidden size={20} />
         </button>
+        {/* #1018: stays put in the bar, so the way back is where the way out was. */}
+        <button
+          type="button"
+          onClick={toggleSidebarCollapsed}
+          data-testid="sidebar-collapse"
+          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-keyshortcuts="Meta+B Control+B"
+          title={`${sidebarCollapsed ? 'Expand' : 'Collapse'} sidebar (${SIDEBAR_SHORTCUT})`}
+          className={iconButtonClasses('hidden md:inline-flex')}
+        >
+          {sidebarCollapsed ? <PanelLeftOpen aria-hidden size={20} /> : <PanelLeftClose aria-hidden size={20} />}
+        </button>
         {!isPhone && commandBar}
       </TopBar>
 
@@ -752,6 +778,7 @@ function AdminShell({ wide }: { wide: boolean }) {
             link inside closes the drawer. */}
         <aside
           data-testid="admin-sidebar"
+          data-collapsed={sidebarCollapsed ? true : undefined}
           inert={isMobileSidebar && !sidebarOpen ? true : undefined}
           aria-hidden={isMobileSidebar && !sidebarOpen ? true : undefined}
           onClick={(e) => {
@@ -759,7 +786,7 @@ function AdminShell({ wide }: { wide: boolean }) {
           }}
           className={`absolute inset-y-0 left-0 z-30 flex w-64 flex-col overflow-y-auto border-r border-border bg-surface transition-transform md:static md:w-60 md:shrink-0 md:translate-x-0 ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-          }`}
+          }${sidebarCollapsed ? ' md:hidden' : ''}`}
         >
           {canManage && (
           <div className="px-3 pt-4">
@@ -879,6 +906,7 @@ function AdminShell({ wide }: { wide: boolean }) {
             items={canManage
               ? [
                   { to: '/featherbase/admin/setup', label: 'Welcome', icon: ListChecks, testid: 'welcome-link' },
+                  ...(setupNeeded ? [{ to: SETUP_PERSON_PATH, label: SETUP_PERSON_LABEL, icon: ListChecks, testid: 'setup-administrators-link' }] : []),
                   { to: '/featherbase/admin/apps', label: 'Apps', icon: Compass, testid: 'apps-link' },
                   { to: JOBS_PATH, label: 'Jobs', icon: CalendarClock, testid: 'jobs-link' },
                   { to: INSTANCE_HEALTH_PATH, label: 'Instance health', icon: ListChecks, testid: 'instance-health-link' },
@@ -889,7 +917,7 @@ function AdminShell({ wide }: { wide: boolean }) {
 
         {/* Page canvas */}
         <main className={`min-w-0 flex-1 overflow-auto bg-canvas p-4 sm:p-6${wide ? ' flex flex-col' : ''}`}>
-          <div className={wide ? 'flex min-h-0 w-full flex-1 flex-col' : 'mx-auto max-w-5xl has-data-[pane=right]:max-w-none'}>
+          <div className={wide ? 'flex min-h-0 w-full flex-1 flex-col' : fullWidth ? 'w-full' : 'mx-auto max-w-5xl has-data-[pane=right]:max-w-none'}>
             <Outlet />
           </div>
         </main>

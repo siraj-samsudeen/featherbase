@@ -1,7 +1,7 @@
 import type { ColumnDef, TableMeta } from '../lib/meta'
 
 // Synthetic metadata only. Nothing here reads an instance or external account.
-const stamp = { created_by: 'Administrator', updated_by: 'Administrator', created_at: '2026-11-01T00:00:00Z', updated_at: '2026-11-01T00:00:00Z', status: 'draft' }
+const stamp = { created_by: 'Administrator', updated_by: 'Administrator', created_at: '2026-11-01T00:00:00Z', updated_at: '2026-11-01T00:00:00Z', submission_status: 'draft' }
 function table(name: string, fields: { column_name: string; label: string; column_type: string; choices?: string; reference_table?: string }[]): TableMeta {
   return {
     ...stamp, name, module: 'UI Lab', kind: 'table', is_submittable: false, id_pattern: 'hash', title_column: 'name',

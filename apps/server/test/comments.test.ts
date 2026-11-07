@@ -3,7 +3,7 @@ import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
 import { onEvent } from '../src/realtime'
 import { test } from './pg-test'
-import { makePerson } from './fixtures'
+import { makePerson, grantRole } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
 
 // UI-018: an @mention in a comment creates a Notification Log for each
@@ -81,15 +81,9 @@ async function commentWorld(admin: TestClient) {
   })
   for (const r of ['Cmt Req Reader', 'Cmt Req Commenter'])
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: r } })
-  await admin.post('/api/save_row', {
-    table: 'Permission',
-    row: { ref_table: CMT_DT, role: 'Cmt Req Reader', tier: 'basic', can_read: true },
-  })
+  await grantRole(admin, { table: CMT_DT, role: 'Cmt Req Reader', can_read: true })
   for (const role of ['Cmt Req Reader', 'Cmt Req Commenter'])
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: 'Comment', role, tier: 'basic', can_read: true, can_create: true, can_write: true },
-    })
+    await grantRole(admin, { table: 'Comment', role, can_read: true, can_create: true, can_write: true })
   return admin.post<{ row_id: string; updated_at: string }>('/api/save_row', {
     table: CMT_DT,
     row: { title: 'discuss', due: '2026-11-01' },

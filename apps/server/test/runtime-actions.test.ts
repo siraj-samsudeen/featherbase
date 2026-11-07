@@ -144,7 +144,7 @@ describe('declared transactional runtime actions', () => {
     const request = { idempotencyKey: 'probe', payload: { operation: 'shape' } }
     expect((await app.request(action + 'probe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) })).status).toBe(401)
     await expect(admin.post(action + 'constructor', request)).rejects.toMatchObject({ status: 404 })
-    expect(await admin.post(action + 'probe', request)).toEqual({ result: ['authorization', 'documents', 'payload', 'people', 'reject', 'roles', 'secrets', 'settings', 'user', 'userName'] })
+    expect(await admin.post(action + 'probe', request)).toEqual({ result: ['authorization', 'baseTables', 'changeProposals', 'documents', 'mail', 'payload', 'people', 'reject', 'roles', 'secrets', 'settings', 'user', 'userName'] })
     expect(await admin.post(action + 'probe', { idempotencyKey: 'roles', payload: { operation: 'roles' } })).toEqual({ result: expect.arrayContaining(['System Manager']) })
     for (const table of ['Permission', 'runtime_action_result', 'other.task']) {
       await expect(admin.post(action + 'probe', { idempotencyKey: table, payload: { operation: 'create', table, values: { row_id: 'forbidden' } } })).rejects.toMatchObject({ status: 417 })
@@ -298,7 +298,7 @@ describe('real package extensions retain transactional helper boundaries', () =>
         manifest.actions.operations.delete_shared = policy
         manifest.actions.operations.forget_failed_write = policy
         manifest.actions.tables.push('Shared Action Note')
-        manifest.permissions.push({ table: 'Shared Action Note', role: 'All', can_read: true, can_delete: true })
+        manifest.permissions.push({ table: 'Shared Action Note', role: 'All', operations: { read: '*', delete: true } })
         manifest.reads = { version: 1, operations: { preview: policy }, tables: ['actionproof.work'] }
         await writeFile(manifestPath, JSON.stringify(manifest))
         const serverPath = resolve(root, 'server.mjs')

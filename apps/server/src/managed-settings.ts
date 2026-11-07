@@ -212,7 +212,7 @@ export async function assertNoManagedReference(
   for (const path of apply.managed_paths) {
     const meta = await getMeta(path.table)
     const column = meta.columns.find((c) => c.column_name === path.field)
-    if (column?.column_type !== 'Reference' || column.reference_table !== table) continue
+    if (column?.column_type !== 'Reference' || (column.reference_base ?? column.reference_table) !== table) continue
     let value: unknown
     if (meta.kind === 'settings') {
       const [row] = await db`select value from single_value where table_name = ${meta.name} and field = ${path.field}`

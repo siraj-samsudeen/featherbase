@@ -1,4 +1,4 @@
-import { AppError } from '../errors'
+import { permissionRefusal } from '../refusals'
 import { ROW_KEY, getBacklinks, getMeta } from '../meta'
 import { getDoc } from '../document'
 import { countDocs, type Filter } from '../query'
@@ -6,6 +6,7 @@ import { permissionScope } from '../permissions'
 import { registerCollectionAction, registerRowAction } from '../actions'
 import { sql } from '../db'
 import { anyTableBacklinks } from '../any-table-link'
+import { storedTable } from '../views'
 
 // Relational navigation (#100, pattern 1): every table that points at this
 // row, with a permission-scoped count and a ready-to-use ListView filter.
@@ -40,9 +41,11 @@ interface Connection {
 registerCollectionAction('backlinks', {
   effect: 'read',
   description: 'Tables whose Reference columns point at this table (no per-row counts).',
-  handler: async ({ table, user }) => {
+  handler: async ({ table: name, user }) => {
+    // #1021: a view's rows are its base's, and so are the links to them.
+    const table = await storedTable(name)
     if ((await permissionScope(user.row_id, table, 'read')) === 'none')
-      throw new AppError('PermissionError', `No read permission on ${table} for ${user.row_id}`)
+      throw await permissionRefusal(user.row_id, name, 'read')
     const backlinks = []
     for (const bl of await getBacklinks(table))
       if ((await permissionScope(user.row_id, bl.table, 'read')) !== 'none') backlinks.push(bl)

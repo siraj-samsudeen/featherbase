@@ -7,11 +7,12 @@ import { secureHeaders } from 'hono/secure-headers'
 import { config } from './config'
 import { sql, withTransaction } from './db'
 import { assertRowsWritable } from './system-written'
+import { assertNotView, storedTable } from './views'
 import { AppError, errorResponse } from './errors'
 import { runInSession } from './session-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { createTable, deleteTable, renameColumn, renameCustomTable, setIdPattern, tableStorageIdentity, updateTable } from './table-engine'
-import { deleteDoc, getDoc, saveDoc } from './document'
+import { deleteDoc, getDoc, revokeGrant, saveDoc } from './document'
 import { rowForCaller } from './row-readers'
 import { countDocs, getList, groupCount } from './query'
 import { hasMandatoryRowAccess, mandatoryReferencesWhere } from './mandatory-access'
@@ -28,13 +29,14 @@ import { resolvePreviewPerson } from './preview-person'
 import { personByEmail, pickPeople, principalNames, tableMembers } from './people-directory'
 import { countWaitingForAccess, noAccessYetPage, requestAccess } from './waiting-for-access'
 import { archiveTable, unarchiveTable } from './table-archive'
-import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
+import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser, noLinkCarries, recordToName } from './delegated-login'
+import { hold, rosterFirstSignIn } from './roster-first-sign-in'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
 import { sendInvitation } from './invitation-email'
 import { ADMIN, addressRedirect, interimApp, linkAddress, matchAddress, requestHost } from './instance-addresses'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { buildInfo } from './build-info'
-import { assertPermission, assertSystemManager, getRoles, permissionScope, permittedTiers, tableAccessFor } from './permissions'
+import { assertPermission, assertSystemManager, getRoles, includesColumn, permissionScope, permittedColumns, tableAccessFor } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
 import { EMBED_ORIGIN, VIEWER_ROLE, salesTargetRoutes } from './sales-target'
 import { landingAfterSignIn, openAdminFor } from './landing'
@@ -86,7 +88,7 @@ import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled, isInstalled, installedAppNames } from './apps'
-import { packageTitle, appCatalog, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
+import { packageTitle, appCatalog, closedApps, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { discoverAppLibrary, appLibraryCatalog, prepareAndInstallApp } from './app-library'
 import { documentActivity } from './document-activity'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage, rowHref } from 'shared'
@@ -273,11 +275,19 @@ app.post('/api/login/delegated', publicLimit('LOGIN'), async (c) => {
   if (attempt.refusal) return attempt.refusal
   // Before the provider call: never forward a password that cannot be bound.
   const id = usr.trim()
-  const account = await linkedUser(cfg, id)
-  // The shared pipeline (sign-in.ts) does the rest: an outage never falls
-  // back to another way in, and a leaver is disabled everywhere.
-  const status = await checkWithProvider(cfg, id, pwd)
-  const issued = await completeSignIn(cfg.method, { status }, account, { testMode: delegatedTestMode(), ipAddress: clientAddress(c) })
+  let issued
+  // #970: nobody linked to this ID, so only the method's roster rule can admit
+  // it. Test mode skips the provider, so it never makes anyone.
+  if (!delegatedTestMode() && (await noLinkCarries(cfg, id))) {
+    issued = await rosterFirstSignIn(cfg, id, pwd, clientAddress(c))
+  } else {
+    const account = await linkedUser(cfg, id)
+    // The shared pipeline (sign-in.ts) does the rest: an outage never falls
+    // back to another way in, and a leaver is disabled everywhere.
+    const status = await checkWithProvider(cfg, id, pwd, await recordToName(cfg, account.identity))
+    if (status === 'another_record') await hold(cfg.key, String(account.identity), 'service_named_another_record')
+    issued = await completeSignIn(cfg.method, { status: status === 'another_record' ? 'rejected' : status }, account, { testMode: delegatedTestMode(), ipAddress: clientAddress(c) })
+  }
   const session = { token: issued.token, user: issued.user }
   await forgive(attempt.ticket)
   setSidCookie(c, session.token, issued.maxAgeSeconds)
@@ -1835,19 +1845,24 @@ app.post('/api/pin_chart_to_dashboard', async (c) => {
   return c.json(await pinChartToDashboard(dashboard, chart, who(c)))
 })
 
-// SET-003: role & permission manager. Reads/writes the Permission matrix for
-// a Table at tier 'basic'. Editing permissions is System-Manager-only.
-// Writes go through the normal save lifecycle, and permissionScope reads
-// Permission live, so a change takes effect on the very next request.
-const PERM_FLAGS = ['can_read', 'can_write', 'can_create', 'can_delete', 'can_submit', 'can_cancel', 'can_amend'] as const
+// The existing simple matrix is a presentation of operation contributions.
+// Granular selections and scoped contributions are edited as Permission Rows;
+// this coarse editor must never replace them with broader permissions.
+const MATRIX_OPERATIONS = {
+  can_read: 'read', can_write: 'update', can_create: 'create', can_delete: 'delete',
+  can_submit: 'submit', can_cancel: 'cancel', can_amend: 'amend',
+} as const
 
 app.get('/api/permissions/:table', async (c) => {
   await assertSystemManager(who(c))
   const table = c.req.param('table')
   const roles = (await sql`select row_id from role order by row_id`).map((r) => r.row_id as string)
-  const perms = await sql`
-    select row_id, role, ${sql(PERM_FLAGS as unknown as string[])}
-    from permission where ref_table = ${table} and tier = 'basic' order by role`
+  // The basic Rows the matrix edits; a contribution that depends on another
+  // grant is not a tick of its own.
+  const rows = await sql`select role, operation from permission where ref_table = ${table}
+    and parent_permission is null and requires_permission is null`
+  const perms = roles.map((role) => ({ role, ...Object.fromEntries(Object.entries(MATRIX_OPERATIONS)
+    .map(([flag, operation]) => [flag, rows.some((row) => row.role === role && row.operation === operation)])) }))
   return c.json({ table, roles, perms })
 })
 
@@ -1857,17 +1872,43 @@ app.post('/api/permissions/:table', async (c) => {
   const table = c.req.param('table')
   const body = (await c.req.json().catch(() => ({}))) as { role?: string } & Record<string, unknown>
   if (!body.role) throw new AppError('ValidationError', 'Expected { role }')
-  const flags = Object.fromEntries(PERM_FLAGS.map((f) => [f, Boolean(body[f])]))
-  const [existing] = await sql`
-    select row_id, updated_at from permission
-    where ref_table = ${table} and role = ${body.role} and tier = 'basic'`
-  if (existing)
-    await saveDoc(
-      'Permission',
-      { row_id: existing.row_id as string, updated_at: existing.updated_at, ...flags },
-      user,
-    )
-  else await saveDoc('Permission', { ref_table: table, role: body.role, tier: 'basic', ...flags }, user)
+  await withTransaction(async () => {
+    // The matrix is the basic-level Rows of one role, as its one flag Row was:
+    // added operations keep that Row's creator restriction and app ownership.
+    const existing = await sql`select * from permission where ref_table = ${table} and role = ${body.role!}
+      and parent_permission is null and requires_permission is null for update`
+    const shapes = new Set(existing.map((row) => `${String(row.scope_mode)} ${String(row.owner_app ?? '')}`))
+    if (existing.some((row) => row.column_rule !== 'basic') || shapes.size > 1)
+      throw new AppError('ValidationError', 'Edit the individual Permission Rows to preserve their scopes and Column selections')
+    const [shape] = existing
+    // Clearing the last tick would forget the creator restriction or app
+    // ownership, and ticking again would grant wider than the role ever held.
+    if (shape && (shape.scope_mode !== 'all' || shape.owner_app) && !Object.keys(MATRIX_OPERATIONS).some((flag) => body[flag]))
+      throw new AppError('ValidationError', 'Edit the individual Permission Rows to preserve their scopes and app ownership')
+    for (const [flag, operation] of Object.entries(MATRIX_OPERATIONS)) {
+      const contributions = existing.filter((row) => row.operation === operation)
+      if (!body[flag]) {
+        for (const row of contributions) {
+          // A deeper grant that needs this one would be gone for good, where
+          // clearing the old flag left it to work again when ticked back.
+          const dependents = await sql`select distinct role from permission
+            where requires_permission = ${String(row.row_id)} or parent_permission = ${String(row.row_id)} order by role`
+          if (dependents.length)
+            throw new AppError('ValidationError', `Deeper access of ${dependents.map((d) => String(d.role)).join(', ')} needs this grant: edit the individual Permission Rows`)
+          await revokeGrant(String(row.row_id), user)
+        }
+      } else if (!contributions.length) {
+        const saved = await saveDoc('Permission', {
+          ref_table: table, role: body.role, operation, scope_mode: shape?.scope_mode ?? 'all', column_rule: 'basic',
+        }, user)
+        if (shape?.owner_app) {
+          await sql`update permission set owner_app = ${String(shape.owner_app)} where row_id = ${String(saved.row_id)}`
+          // On the install ledger, so uninstalling the app removes it too.
+          await sql`update installed_app set perms = coalesce(perms, '[]'::jsonb) || ${sql.json([String(saved.row_id)])} where name = ${String(shape.owner_app)}`
+        }
+      }
+    }
+  })
   return c.json({ ok: true })
 })
 
@@ -1887,6 +1928,10 @@ app.post('/api/apps/prepare-install', async c => {
   return c.json(await prepareAndInstallApp(body.name), 201)
 })
 app.get('/api/app_catalog', async (c) => c.json(await appCatalog(who(c))))
+app.get('/api/app_catalog/closed', async (c) => {
+  await assertSystemManager(who(c))
+  return c.json(await closedApps(who(c)))
+})
 // #629: the glossary everyone signed in reads, and an editor's way back to an
 // app's own wording of a term the instance reworded.
 app.get('/api/glossary', async (c) => c.json(await readGlossary(who(c))))
@@ -2060,6 +2105,8 @@ app.post('/api/assign', async (c) => {
   }
   if (!table || !name || typeof assign_to !== 'string' || !assign_to.trim())
     throw new AppError('ValidationError', 'Expected { table, row_id, assign_to }')
+  // #1021: assigned through its base row, never through a view.
+  assertNotView(await getMeta(table), 'assigned')
   // The assigner must be able to read the document.
   await getDoc(table, name, who(c))
   // Assignments go to people; a service account is not offered (person-rename).
@@ -2093,6 +2140,8 @@ app.post('/api/tags', async (c) => {
   }
   if (!table || !name || !tag?.trim())
     throw new AppError('ValidationError', 'Expected { table, row_id, tag }')
+  // #1021: tagged through its base row, never through a view.
+  assertNotView(await getMeta(table), 'tagged')
   await getDoc(table, name, who(c))
   await sql`
     insert into tag_link ${sql({ ref_table: table, ref_name: name, tag: tag.trim(), created_by: who(c) })}
@@ -2274,11 +2323,13 @@ app.get('/api/table/:table', async (c) => {
   if (suffix === 'actions') return c.json(listActions())
   if (suffix === 'meta') {
     const meta = await getMeta(table)
-    await assertPermission(user.row_id, meta.name, 'read')
+    // #1021: a view's meta answers to its base's read grant and levels.
+    const stored = await storedTable(meta.name)
+    await assertPermission(user.row_id, stored, 'read')
     // #738: the caller's readable levels ride beside the cached meta, never
     // inside it — the meta object is shared by every caller.
-    const readable = await permittedTiers(user.row_id, meta.name, 'read')
-    return c.json({ ...meta, readable_tiers: [...readable], storage_identity: await tableStorageIdentity(meta) })
+    const readable = await permittedColumns(user.row_id, stored, 'read')
+    return c.json({ ...meta, readable_columns: meta.columns.filter((column) => includesColumn(readable, column)).map((column) => column.column_name), storage_identity: await tableStorageIdentity(meta) })
   }
   if (suffix === 'count') {
     const filters = c.req.query('filters')

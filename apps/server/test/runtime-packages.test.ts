@@ -6,14 +6,13 @@ import { test as base } from './pg-test'
 import { committedTest } from './pg-test-shared'
 import type { TestClient, CreateUserFn } from 'feather-testing-postgres'
 import { admitTasker, taskerClient } from './tasker-client'
-import { discoverPackages, findScopeProvider, shippedUpgrades } from '../src/runtime-packages'
+import { artifactDigest, discoverPackages, findScopeProvider, shippedUpgrades } from '../src/runtime-packages'
 import { loadInstalledApps, uninstallApp } from '../src/apps'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { registerController, unregisterController, type TableController } from '../src/controllers'
 import { importCustomizations } from '../src/customizations'
 import { getMeta, invalidateMeta } from '../src/meta'
-import { permittedTiers } from '../src/permissions'
 import { app } from '../src/index'
 
 const test = base.extend<{ admin: TestClient; createUser: CreateUserFn }>({
@@ -96,7 +95,7 @@ describe('Rejected runtime artifacts never become applications', () => {
     { name: 'action names another app despite a permission', error: 'Shared action Tables require declared permissions; other apps are not allowed',
       change: ({ manifest }) => {
         manifest.actions = { ...actions, tables: ['tasker.task'] }
-        manifest.permissions.push({ table: 'tasker.task', role: 'All', can_read: true })
+        manifest.permissions.push({ table: 'tasker.task', role: 'All', operations: { read: '*' } })
       } },
     { name: 'absolute server path', error: 'Package paths must be relative',
       change: ({ root, manifest }) => { manifest.server = resolve(root, 'server.mjs') } },
@@ -273,7 +272,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
         await writeFile(file, JSON.stringify({ ...manifest, name }))
         expect(await discoverPackages([directory])).toEqual([expect.objectContaining({ error: expect.stringContaining('reserved') })])
       }
-      await writeFile(file, JSON.stringify({ ...manifest, permissions: [{ table: 'other.task', role: 'Role that does not exist', can_read: true }] }))
+      await writeFile(file, JSON.stringify({ ...manifest, permissions: [{ table: 'other.task', role: 'Role that does not exist', operations: { read: '*' } }] }))
       expect(await discoverPackages([directory])).toEqual([])
       await expect(admin.post('/api/install_app', { name: 'other' })).rejects.toMatchObject({ status: 417 })
       expect(await sql`select name from table_def where name = 'other.task'`).toHaveLength(0)
@@ -396,8 +395,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       const manifest = JSON.parse(await readFile(file, 'utf8'))
       manifest.permissions.push(
         // #437: a shared core Table both packages grant on (Tasker's Comment grant).
-        { table: 'Comment', role: 'Tasker Member', can_read: true },
-        { table: 'Comment', role: 'Tasker Member', tier: 'restricted', can_read: true },
+        { table: 'Comment', role: 'Tasker Member', operations: { read: ['content'] } },
       )
       await writeFile(file, JSON.stringify(manifest))
       expect(await discoverPackages([resolve('../..', 'example-apps/tasker'), other])).toEqual([])
@@ -405,25 +403,25 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       await admin.post('/api/install_app', { name: 'other' })
       // Each package owns its own declaration of the shared grant.
       expect(await sql`
-        select owner_app, tier from permission
-        where ref_table = 'Comment' and owner_app in ('tasker', 'other')
-        order by owner_app, tier`
+        select owner_app from permission
+        where ref_table = 'Comment' and operation = 'read' and owner_app in ('tasker', 'other')
+        order by owner_app`
       ).toEqual([
-        { owner_app: 'other', tier: 'basic' },
-        { owner_app: 'other', tier: 'restricted' },
-        { owner_app: 'tasker', tier: 'basic' },
+        { owner_app: 'other' },
+        { owner_app: 'tasker' },
       ])
       const member = await createUser({ email: 'shared-grants@example.com', roles: ['Tasker Member'] })
       expect((await member.get<{ data: unknown[] }>('/api/table/Comment')).data).toBeInstanceOf(Array)
-      expect(await permittedTiers(member.user!, 'Comment', 'read')).toEqual(new Set(['basic', 'restricted']))
+      expect(await member.get('/api/table/Comment?fields=%5B%22ref_name%22%5D')).toMatchObject({ data: [] })
 
       await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
       expect((await member.get<{ data: unknown[] }>('/api/table/Comment')).data).toBeInstanceOf(Array)
-      expect(await permittedTiers(member.user!, 'Comment', 'read')).toEqual(new Set(['basic']))
+      expect(await member.get('/api/table/Comment?fields=%5B%22ref_name%22%5D')).toMatchObject({ data: [] })
       await admin.post('/api/set_app_enabled', { name: 'other', enabled: true })
       await admin.post('/api/set_app_enabled', { name: 'tasker', enabled: false })
       expect((await member.get<{ data: unknown[] }>('/api/table/Comment')).data).toBeInstanceOf(Array)
-      expect(await permittedTiers(member.user!, 'Comment', 'read')).toEqual(new Set(['basic', 'restricted']))
+      await expect(member.get('/api/table/Comment?fields=%5B%22ref_name%22%5D')).rejects.toMatchObject({ status: 417 })
+      expect(await member.get('/api/table/Comment?fields=%5B%22content%22%5D')).toMatchObject({ data: [] })
       await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
       await expect(member.get('/api/table/Comment')).rejects.toMatchObject({ status: 403 })
     } finally {
@@ -608,6 +606,20 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     }
   })
 
+  // #1008: a System Manager can tell an app is installed when they lack its
+  // role, and why. Everyone else, and what opens an app, stays as it was.
+  test('#1008: the closed apps list names what a System Manager lacks, and is theirs alone', async ({ admin, createUser }) => {
+    await discoverPackages([resolve('../..', 'example-apps/tasker')])
+    await admin.post('/api/install_app', { name: 'tasker' })
+    const manager = await createUser({ email: 'closed-apps-manager@example.com', roles: ['System Manager'] })
+    expect(await manager.get('/api/app_catalog/closed')).toEqual([{ name: 'tasker', title: 'Tasker', roles: ['Tasker Member'] }])
+    expect(await manager.get('/api/app_catalog')).toEqual([])
+    const holder = await createUser({ email: 'closed-apps-holder@example.com', roles: ['System Manager', 'Tasker Member'] })
+    expect(await holder.get('/api/app_catalog/closed')).toEqual([])
+    const member = await createUser({ email: 'closed-apps-member@example.com', roles: [] })
+    await expect(member.get('/api/app_catalog/closed')).rejects.toMatchObject({ status: 403 })
+  })
+
   // #437: a new version may withdraw a grant its installed version declared.
   // Two synthetic copies of Tasker: the installed one also lets everyone read
   // Person; the next version, one migration on, does not.
@@ -615,7 +627,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   const everyoneReadsPerson = () => sql`select 1 from permission where owner_app = 'tasker' and role = 'All' and ref_table = 'Person'`
   async function taskerGrants() {
     const [app] = await sql`select perms from installed_app where name = 'tasker'`
-    return sql`select ref_table from permission where row_id in ${sql(app.perms as string[])} order by 1`
+    return sql`select distinct ref_table from permission where row_id in ${sql(app.perms as string[])} order by 1`
   }
   async function editJson(file: string, change: (value: Record<string, any>) => void) {
     const value = JSON.parse(await readFile(file, 'utf8'))
@@ -632,7 +644,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
         await cp(currentTasker, to, { recursive: true, filter: file => !file.split('/').includes('node_modules') })
       const { version: from } = JSON.parse(await readFile(resolve(installed, 'package.json'), 'utf8')) as { version: string }
       const to = '99.0.0'
-      await editJson(resolve(installed, 'featherbase.json'), m => { m.permissions.push({ table: 'Person', role: 'All', can_read: true }) })
+      await editJson(resolve(installed, 'featherbase.json'), m => { m.permissions.push({ table: 'Person', role: 'All', operations: { read: '*' } }) })
       await editJson(resolve(next, 'featherbase.json'), m => { m.migrations.push({ id: 'withdraw_person_read_probe', fromVersion: from, toVersion: to, operations: [] }) })
       await editJson(resolve(next, 'package.json'), p => { p.version = to })
 
@@ -649,7 +661,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       expect(await everyoneReadsPerson()).toHaveLength(1)
 
       const plan = await admin.post<{ planId: string; permissions: unknown[] }>('/api/preview_app_upgrade', { name: 'tasker', version: to })
-      expect(plan.permissions).toEqual([{ withdraw: { table: 'Person', role: 'All', can_read: true } }])
+      expect(plan.permissions).toEqual([{ withdraw: { table: 'Person', role: 'All', operations: { read: '*' } } }])
       await admin.post('/api/upgrade_app', { name: 'tasker', version: to, planId: plan.planId })
       await admin.post('/api/activate_app_upgrade', { name: 'tasker', version: to })
       expect(await admin.get('/api/runtime_app_versions')).toEqual([`tasker@${to}`])
@@ -661,6 +673,44 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       expect(await sql`select operation from activity_log where operation like ${`app_grant_withdrawn tasker@${to}: All on Person%`}`).toHaveLength(1)
       const [row] = await sql`select migration_ledger from installed_app where name = 'tasker'`
       expect((row.migration_ledger as { id: string }[]).map(m => m.id).at(-1)).toBe('withdraw_person_read_probe')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test('an upgrade will not withdraw a grant someone else\'s deeper grant depends on', async ({ admin }) => {
+    const root = await mkdtemp(resolve('test/.tasker-withdraw-held-'))
+    const installed = resolve(root, 'installed')
+    const next = resolve(root, 'next')
+    try {
+      for (const to of [installed, next])
+        await cp(currentTasker, to, { recursive: true, filter: file => !file.split('/').includes('node_modules') })
+      const { version: from } = JSON.parse(await readFile(resolve(installed, 'package.json'), 'utf8')) as { version: string }
+      const to = '99.0.0'
+      await editJson(resolve(installed, 'featherbase.json'), m => { m.permissions.push({ table: 'Person', role: 'All', operations: { read: '*' } }) })
+      await editJson(resolve(next, 'featherbase.json'), m => { m.migrations.push({ id: 'withdraw_person_read_probe', fromVersion: from, toVersion: to, operations: [] }) })
+      await editJson(resolve(next, 'package.json'), p => { p.version = to })
+      expect(await discoverPackages([installed])).toEqual([])
+      await admin.post('/api/install_app', { name: 'tasker' })
+      const [base] = await sql`select row_id from permission where owner_app = 'tasker' and role = 'All' and ref_table = 'Person' and operation = 'read'`
+      await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Manual Detail' } })
+      await sql`insert into permission (row_id, ref_table, role, operation, scope_mode, column_rule, requires_permission)
+        values ('manual-detail', 'Person', 'Manual Detail', 'read', 'all', 'every', ${String(base.row_id)})`
+      expect(await discoverPackages([installed, next])).toEqual([])
+      await loadInstalledApps()
+      const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'tasker', version: to })
+      await expect(admin.post('/api/upgrade_app', { name: 'tasker', version: to, planId: plan.planId }))
+        .rejects.toMatchObject({ status: 417, message: expect.stringMatching(/Deeper access of Manual Detail depends on the grant to All on Person/) })
+      expect(await sql`select 1 from permission where row_id = 'manual-detail'`).toHaveLength(1)
+      expect(await everyoneReadsPerson()).toHaveLength(1)
+      expect(await sql`select package_version from installed_app where name = 'tasker'`).toEqual([{ package_version: from }])
+      // The same when it depends on one of the app's line-item grants under that grant.
+      await sql`insert into permission (row_id, ref_table, role, operation, scope_mode, column_rule, parent_permission, owner_app)
+        values ('app-line', 'Comment', 'All', 'read', 'all', 'every', ${String(base.row_id)}, 'tasker')`
+      await sql`update permission set requires_permission = 'app-line' where row_id = 'manual-detail'`
+      await expect(admin.post('/api/upgrade_app', { name: 'tasker', version: to, planId: plan.planId }))
+        .rejects.toMatchObject({ status: 417, message: expect.stringMatching(/Deeper access of Manual Detail/) })
+      expect(await sql`select 1 from permission where row_id in ('manual-detail', 'app-line')`).toHaveLength(2)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -743,7 +793,7 @@ describe("Dashboards reach an app's data only while it is on", () => {
       .toEqual({ data: [{ label: '5', value: 2 }] })
     // Every member holds 'All', which the app's manifest lets read; take that
     // read away and the same member can no longer count or chart the table.
-    await sql`update permission set can_read = false where ref_table = 'other.task' and role = 'All'`
+    await sql`delete from permission where ref_table = 'other.task' and role = 'All' and operation = 'read'`
     await expect(reader.post('/api/dashboard/count', { table: 'other.task' })).rejects.toMatchObject({ status: 403 })
     await expect(reader.post('/api/dashboard/chart', { table: 'other.task', group_by: 'quantity' })).rejects.toMatchObject({ status: 403 })
   })
@@ -975,4 +1025,15 @@ describe('An app names its accent', () => {
       expect(html).toContain('<html lang="en" data-featherbase-accent="green">')
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
+})
+
+test('the digest check before a release fingerprints an app as the server does (#1044)', async () => {
+  const folder = await mkdtemp(join(tmpdir(), 'digest-'))
+  await mkdir(join(folder, 'dist'))
+  await writeFile(join(folder, 'package.json'), '{"name":"é"}')
+  await writeFile(join(folder, 'dist', 'b.js'), 'two')
+  await writeFile(join(folder, 'dist', 'a.js'), 'one')
+  // @ts-expect-error a plain script outside this package's types
+  const tool = await import('../../../tools/check-app-digests.mjs')
+  expect(await tool.artifactDigest(folder)).toBe(await artifactDigest(folder))
 })

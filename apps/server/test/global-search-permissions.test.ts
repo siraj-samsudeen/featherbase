@@ -322,7 +322,7 @@ describe('global search while an app is unavailable', () => {
     const t = await makeTable(admin, { name: 'Gs 648 Customer', id_pattern: 'prompt', columns: ['city'] })
     await admin.post(t.url, { row_id: 'gs-648-customer', city: 'x' })
     const reader = await createUserWithRole(admin, createUser, { role: 'Gs 648 Reader', table: t.name, can_read: true })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'placeroster.position', role: 'Gs 648 Reader', can_read: true } })
+    await grantRole(admin, { table: 'placeroster.position', role: 'Gs 648 Reader', can_read: true })
     expect(await tables(admin)).toEqual(['Gs 648 Customer', 'placeroster.position'])
     expect(await tables(reader)).toEqual(['Gs 648 Customer', 'placeroster.position'])
     return reader

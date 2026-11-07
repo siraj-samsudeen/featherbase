@@ -4,6 +4,7 @@ import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { notifyApproversOfNewRow, type WorkflowState } from '../src/workflow'
+import { grantRole } from './fixtures'
 
 // WF-004: only a state explicitly marked as waiting for approval emails
 // the roles on its outgoing transitions. The holders of those
@@ -25,10 +26,6 @@ async function setup(admin: TestClient, createUser: CreateUserFn, waitsForApprov
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: APPROVER_ROLE } })
-  await admin.post('/api/save_row', {
-    table: 'Permission',
-    row: { ref_table: DT, role: APPROVER_ROLE, tier: 'basic', can_read: true, can_write: true },
-  })
   const approver = await createUser({ email: APPROVER, roles: [APPROVER_ROLE] })
 
   // Draft --Submit(anyone)--> Pending --Approve(Approver)--> Approved.
@@ -49,6 +46,7 @@ async function setup(admin: TestClient, createUser: CreateUserFn, waitsForApprov
       ],
     },
   })
+  await grantRole(admin, { table: DT, role: APPROVER_ROLE, can_read: true, can_write: true })
   return approver
 }
 
@@ -137,7 +135,7 @@ describe('WF-004: pending-approval notifications', () => {
     )
     expect(res.workflow_state).toBe('Approved')
     expect(await admin.get(`/api/table/${encodeURIComponent(DT)}/wf-notify-1`))
-      .toMatchObject({ row_id: 'wf-notify-1', title: 'Widget order', workflow_state: 'Approved', status: 'submitted' })
+      .toMatchObject({ row_id: 'wf-notify-1', title: 'Widget order', workflow_state: 'Approved', submission_status: 'submitted' })
     expect(await sql`select * from email_queue where ref_table = ${DT} order by row_id`).toEqual(before)
     expect(await admin.get(flowPath)).toEqual(savedFlow)
     expect(await admin.get(`/api/table/${encodeURIComponent(DT)}/unrelated-draft`)).toEqual(unrelated)
@@ -166,14 +164,14 @@ describe('WF-004: pending-approval notifications', () => {
     const unrelated = await admin.get(`/api/table/${encodeURIComponent(DT)}/unrelated-draft`)
     await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'no-recipient', title: 'Only ineligible holders' })
     expect(await actor.post(`/api/table/${encodeURIComponent(DT)}/no-recipient:apply_workflow_action`, { action: 'Submit' }))
-      .toMatchObject({ title: 'Only ineligible holders', workflow_state: 'Pending', status: 'draft' })
+      .toMatchObject({ title: 'Only ineligible holders', workflow_state: 'Pending', submission_status: 'draft' })
     const waiting = await admin.get(`/api/table/${encodeURIComponent(DT)}/no-recipient`)
     expect(await sql`select * from email_queue where ref_table = ${DT}`).toEqual([])
 
     await createUser({ email: 'wf-distinct@x.com', roles: [APPROVER_ROLE] })
     await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'has-recipient', title: 'Another request' })
     expect(await actor.post(`/api/table/${encodeURIComponent(DT)}/has-recipient:apply_workflow_action`, { action: 'Submit' }))
-      .toMatchObject({ title: 'Another request', workflow_state: 'Pending', status: 'draft' })
+      .toMatchObject({ title: 'Another request', workflow_state: 'Pending', submission_status: 'draft' })
     expect(await sql`select recipient, subject, body, ref_table, reference_name, send_status from email_queue where ref_table = ${DT}`)
       .toEqual([{
         recipient: 'wf-distinct@x.com', subject: `Approval required: ${DT} has-recipient`,
@@ -272,10 +270,7 @@ describe('WF-004: pending-approval notifications', () => {
 
     test('the approver who creates it is not emailed', async ({ admin, createUser }) => {
       const approver = await setupStartsPending(admin, createUser)
-      await admin.post('/api/save_row', {
-        table: 'Permission',
-        row: { ref_table: DT, role: APPROVER_ROLE, tier: 'basic', can_read: true, can_create: true },
-      })
+      await grantRole(admin, { table: DT, role: APPROVER_ROLE, can_read: true, can_create: true })
       await createUser({ email: 'wf-notify-peer@x.com', roles: [APPROVER_ROLE] })
       await approver.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'wf-notify-own', title: 'Own request' })
       const emails = await sql`select recipient from email_queue where ref_table = ${DT} and reference_name = 'wf-notify-own'`

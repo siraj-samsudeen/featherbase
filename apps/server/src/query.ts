@@ -1,16 +1,18 @@
 import { sql } from './db'
 import { AppError } from './errors'
+import { permissionRefusal } from './refusals'
 import { appOperation } from './app-lifecycle'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { RETIREMENT_COLUMNS, STANDARD_COLUMNS, canRetire, tableRelation } from './table-engine'
-import { getScopeMap, isPrivileged, permissionScope, permittedTiers } from './permissions'
+import { getScopeMap, includesColumn, isPrivileged, permissionScope, permittedColumns } from './permissions'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
-import { ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, seesEveryColumn } from './row-readers'
+import { ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, childColumns, seesEveryColumn } from './row-readers'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
 import { mandatoryWhere, needsMandatoryRowRead } from './mandatory-access'
 import { MAX_RELATED_DEPTH, RELATED_OPS } from 'shared'
 import { MAX_RELATED_HOPS, parseRelatedSpec, type Filter } from './related-filter'
 import { linksTo } from './any-table-link'
+import { linkBase, resolveView, storedTable, viewCondition } from './views'
 
 export type { Filter } from './related-filter'
 
@@ -69,14 +71,14 @@ const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
 // column through the list API and read its values — list and detail
 // disagreeing about the same permission. Passing the permitted tiers closes
 // that for native and (via dispatch.ts) source-bound Tables alike.
-function columnSet(meta: TableMeta, readTiers?: Set<'basic' | 'restricted'>): Set<string> {
+function columnSet(meta: TableMeta, readable?: ReadonlySet<string>): Set<string> {
   const cols = new Set<string>(STANDARD_COLUMNS)
   if (canRetire(meta)) for (const c of RETIREMENT_COLUMNS) cols.add(c)
   for (const f of meta.columns)
     if (
       !NO_COLUMN_TYPES.has(f.column_type) &&
       !SENSITIVE_COLUMNS.has(f.column_name) &&
-      (!readTiers || readTiers.has(f.tier ?? 'basic'))
+      (!readable || includesColumn(readable, f))
     )
       cols.add(f.column_name)
   return cols
@@ -105,6 +107,11 @@ export async function scopedWhere(
 ) {
   if (!Array.isArray(callerFilters))
     throw new AppError('ValidationError', 'filters must be an array of [field, operator, value]')
+  // #1021: a view reads as its base, and only as its base: every check
+  // below names the base Table, and the view's filter is one more system
+  // condition on top.
+  const resolved = await resolveView(table)
+  table = resolved.table
   const meta = await getMeta(table)
   // scopedWhere compiles SQL against the local physical table, which a
   // source-bound Table does not have. Public entry points dispatch bound
@@ -118,22 +125,31 @@ export async function scopedWhere(
     )
   const scope = await permissionScope(user, table, 'read')
   if (scope === 'none')
-    throw new AppError('PermissionError', `No read permission on ${table} for ${user}`)
+    throw await permissionRefusal(user, table, 'read')
   if (meta.kind === 'settings')
     throw new AppError(
       'ValidationError',
       `${table} is a Settings Table and has no list — open it directly by its name`,
     )
-  const cols = columnSet(meta, await permittedTiers(user, table, 'read'))
+  const cols = columnSet(meta, await permittedColumns(user, table, 'read'))
   const tbl = await tableRelation(table)
   // Callers always speak the logical row key (`row_id`); only the SQL we emit
   // uses the physical one, which differs for `Table` alone (see meta.ts).
   const phys = (field: string) => (field === ROW_KEY ? meta.row_key : field)
+  const unrestricted = await permittedColumns(user, table, 'read', '')
+  const creatorColumns = new Set(meta.columns.filter((column) =>
+    cols.has(column.column_name) && !includesColumn(unrestricted, column)).map((column) => column.column_name))
+  // Apply the Column's own scope before selecting, sorting or aggregating.
+  // An unrelated unrestricted Row grant must never expose this value.
+  const readExpression = (field: string) => creatorColumns.has(field)
+    ? sql`case when ${sql(tbl)}.created_by = ${user} then ${sql(phys(field))} else null end`
+    : sql`${sql(phys(field))}`
 
   const filters = [...callerFilters]
   // Extra WHERE fragments that can't be expressed as plain [field, op, value]
   // filters (they need OR with IS NULL).
   const extraConds: ReturnType<typeof sql>[] = [(await mandatoryWhere(meta, user)).frag]
+  if (resolved.view) extraConds.push(viewCondition(tbl, resolved.filters))
   if (scope === 'own_rows') filters.push(['created_by', '=', user])
   // PERM-005: user permissions narrow by the table itself and by any
   // Reference column pointing at a restricted table. An UNSET reference does
@@ -159,7 +175,8 @@ export async function scopedWhere(
       if (own) filters.push([ROW_KEY, 'in', [...own]])
       for (const f of meta.columns) {
         if (f.column_type !== 'Reference' || !f.reference_table) continue
-        const allowed = upMap.get(f.reference_table)
+        // #1021: a link to a view holds its base's rows, scoped as such.
+        const allowed = upMap.get(linkBase(f)!)
         if (allowed)
           extraConds.push(
             sql`(${sql(f.column_name)} is null or ${sql(f.column_name)} in ${sql([...allowed])})`,
@@ -195,17 +212,20 @@ export async function scopedWhere(
     assertColumn(cols, field, 'filter')
     if (!OPS.includes(op as (typeof OPS)[number]))
       throw new AppError('ValidationError', `Unknown filter operator ${op}`)
-    if (op === 'related') return relatedCond(field, value)
+    let condition: { frag: ReturnType<typeof sql> }
+    if (op === 'related') condition = await relatedCond(field, value)
     // #835: rows holding NONE of a sub-table's matching rows ("people with no
     // role of their own"). Only the via shape: negating a Reference match
     // would also have to decide what an empty reference means.
-    if (op === 'not related') {
+    else if (op === 'not related') {
       const spec = parseRelatedSpec(value)
       if (!spec.via) throw new AppError('ValidationError', `'not related' needs a sub-table { via, column, table }`)
       const { frag } = await relatedCond(field, value)
-      return { frag: sql`not ${frag}` }
-    }
-    return { frag: plainCond(field, op, value) }
+      condition = { frag: sql`not ${frag}` }
+    } else condition = { frag: plainCond(field, op, value) }
+    return { frag: creatorColumns.has(field)
+      ? sql`(${sql(tbl)}.created_by = ${user} and ${condition.frag})`
+      : condition.frag }
   }
 
   function plainCond(logicalField: string, op: string, value: unknown): ReturnType<typeof sql> {
@@ -261,7 +281,7 @@ export async function scopedWhere(
         (f) =>
           f.column_name === spec.column &&
           f.column_type === 'Reference' &&
-          (f.reference_table === spec.table || (!!f.table_column && linksTo(f.choices, spec.table))),
+          ((!!f.reference_table && linkBase(f) === target.meta.name) || (!!f.table_column && linksTo(f.choices, spec.table))),
       )
       if (!viaCol)
         throw new AppError(
@@ -281,6 +301,20 @@ export async function scopedWhere(
             `${meta.name}.${spec.parentfield} is not a Sub-table column of ${spec.via} rows`,
           )
       }
+      // #917: a line-item Reference filters only through grids and line-item
+      // Columns this reader may read on every row; a hidden relationship must
+      // not shape the answer.
+      const grids: string[] = []
+      for (const link of meta.columns.filter((f) => f.column_type === 'Sub-table' && f.row_table === spec.via &&
+        (spec.parentfield === undefined || f.column_name === spec.parentfield))) {
+        // Rows limited to the caller's own may use their creator-scoped reach.
+        const ownOnly = scope === 'own_rows'
+        const linkReach = ownOnly ? await permittedColumns(user, table, 'read') : unrestricted
+        if (!includesColumn(linkReach, link)) continue
+        if (includesColumn(await childColumns(user, meta.name, spec.via, link.row_id, 'read', ownOnly ? user : ''), viaCol)) grids.push(link.column_name)
+      }
+      if (!grids.length)
+        throw new AppError('PermissionError', `No read permission on ${spec.via}.${spec.column}`)
       // Depth-indexed alias: self-referential or repeated-table nesting
       // resolves by construction, not by lexical-scoping luck (#106 review).
       const v = sql(`v${relatedDepth}`)
@@ -299,7 +333,7 @@ export async function scopedWhere(
             : sql`exists (
                 select 1 from ${sql(await tableRelation(spec.via))} ${v}
                 where ${v}.parent = ${owner} and ${v}.parenttype = ${meta.name}
-                  and ${inTarget})`,
+                  and ${v}.parentfield in ${sql(grids)} and ${inTarget})`,
       }
     }
 
@@ -322,7 +356,8 @@ export async function scopedWhere(
     const refCol = meta.columns.find(
       (f) => f.column_name === field && f.column_type === 'Reference',
     )
-    if (!refCol || refCol.reference_table !== spec.table)
+    // #1021: a link to a view and one to its base hold the same rows.
+    if (!refCol || !refCol.reference_table || linkBase(refCol) !== target.meta.name)
       throw new AppError(
         'ValidationError',
         `${meta.name}.${field} is not a Reference to ${spec.table}`,
@@ -334,7 +369,7 @@ export async function scopedWhere(
 
   const allConds = [...conds, ...extraConds]
   const where = allConds.length ? allConds.reduce((acc, c) => sql`${acc} and ${c}`) : sql`true`
-  return { meta, table: tbl, cols, where, phys }
+  return { meta, table: tbl, cols, where, phys, readExpression, creatorColumns }
 }
 
 // One OR-branch per Table that can own rows of this child Table: 'all' scope
@@ -418,20 +453,22 @@ async function attachedRowScopeCond(
         and (person = ${user} or service_account = ${user})))`)
     const scope = await permissionScope(user, target, 'read')
     if (scope === 'none') continue
-    if (SENSITIVE_HISTORY_TABLES.has(table) && !(await seesEveryColumn(user, targetMeta))) continue
+    const ownHistoryOnly = SENSITIVE_HISTORY_TABLES.has(table) && !(await seesEveryColumn(user, targetMeta))
+    if (ownHistoryOnly && !(await seesEveryColumn(user, targetMeta, user))) continue
     if (isBound(targetMeta)) {
       const narrowed = scopes.has(target)
-        || targetMeta.columns.some((f) => f.column_type === 'Reference' && scopes.has(String(f.reference_table)))
-      if (scope === 'all' && !narrowed) branches.push(sql`${rel}.ref_table = ${target}`)
+        || targetMeta.columns.some((f) => f.column_type === 'Reference' && scopes.has(String(linkBase(f))))
+      if (scope === 'all' && !narrowed && !ownHistoryOnly) branches.push(sql`${rel}.ref_table = ${target}`)
       continue
     }
     if (targetMeta.kind === 'settings') {
-      branches.push(sql`${rel}.ref_table = ${target}`)
+      if (!ownHistoryOnly) branches.push(sql`${rel}.ref_table = ${target}`)
       continue
     }
     const scoped = await scopedWhere(target, user, [])
+    const visible = ownHistoryOnly ? sql`${scoped.where} and created_by = ${user}` : scoped.where
     branches.push(sql`(${rel}.ref_table = ${target} and ${rel}.ref_name in (
-      select ${sql(scoped.meta.row_key)} from ${sql(scoped.table)} where ${scoped.where}))`)
+      select ${sql(scoped.meta.row_key)} from ${sql(scoped.table)} where ${visible}))`)
   }
   if (!branches.length) return { frag: sql`false` }
   return { frag: sql`(${branches.reduce((acc, b) => sql`${acc} or ${b}`)})` }
@@ -449,7 +486,7 @@ async function countDocsImpl(
   opts: { withRetired?: boolean } = {},
 ): Promise<number> {
   // M3 seam: source-bound Tables count on the source (spec EDS-5).
-  const meta = await getMeta(table)
+  const meta = await getMeta(await storedTable(table))
   if (isBound(meta)) return boundCountDocs(meta, filters, user)
   const { table: tbl, where } = await scopedWhere(table, user, hideRetired(meta, filters, opts.withRetired))
   const [{ count }] = await sql`select count(*)::int as count from ${sql(tbl)} where ${where}`
@@ -468,14 +505,15 @@ async function groupCountImpl(
   filters: Filter[] = [],
   user = 'Administrator',
 ): Promise<{ label: string; value: number }[]> {
-  const boundMeta = await getMeta(table)
+  const boundMeta = await getMeta(await storedTable(table))
   if (isBound(boundMeta)) return boundGroupCount(boundMeta, field, filters, user)
-  const { cols, table: tbl, where, phys } = await scopedWhere(table, user, hideRetired(boundMeta, filters))
+  const { cols, table:tbl, where, phys, readExpression } = await scopedWhere(table, user, hideRetired(boundMeta, filters))
   assertColumn(cols, field, 'group_by')
   const rows = await sql`
-    select ${sql(phys(field))}::text as label, count(*)::int as value
-    from ${sql(tbl)} where ${where}
-    group by ${sql(phys(field))}
+    select permission_group.group_value::text as label, count(*)::int as value
+    from ${sql(tbl)} cross join lateral (select ${readExpression(field)} as group_value) permission_group
+    where ${where}
+    group by permission_group.group_value
     order by value desc, label asc`
   return rows.map((r) => ({ label: (r.label as string) ?? '', value: r.value as number }))
 }
@@ -499,7 +537,7 @@ async function aggregateDocsImpl(
 ): Promise<{ count: number; sum: string | null }> {
   // Bound Tables: counts push down to the driver; sums are not implemented
   // on the source path yet — reject rather than 500 on a missing table.
-  const boundMeta = await getMeta(table)
+  const boundMeta = await getMeta(await storedTable(table))
   if (isBound(boundMeta)) {
     if (sumField)
       throw new AppError(
@@ -508,7 +546,7 @@ async function aggregateDocsImpl(
       )
     return { count: await boundCountDocs(boundMeta, filters, user), sum: null }
   }
-  const { meta, cols, table: tbl, where } = await scopedWhere(table, user, hideRetired(boundMeta, filters))
+  const { meta, cols, table:tbl, where, readExpression } = await scopedWhere(table, user, hideRetired(boundMeta, filters))
   if (!sumField) {
     const [row] = await sql`select count(*)::int as count from ${sql(tbl)} where ${where}`
     return { count: row.count as number, sum: null }
@@ -520,7 +558,7 @@ async function aggregateDocsImpl(
       sum: `${sumField} is not a summable column`,
     })
   const [row] = await sql`
-    select count(*)::int as count, coalesce(sum(${sql(sumField)}), 0)::text as sum
+    select count(*)::int as count, coalesce(sum(${readExpression(sumField)}), 0)::text as sum
     from ${sql(tbl)} where ${where}`
   return { count: row.count as number, sum: row.sum as string }
 }
@@ -548,7 +586,7 @@ async function summarizeDocsImpl(
 ): Promise<Summary> {
   // Bound Tables: counts push down to the driver; sums are not implemented
   // on the source path yet, as for :aggregate.
-  const boundMeta = await getMeta(table)
+  const boundMeta = await getMeta(await storedTable(table))
   if (isBound(boundMeta)) {
     if (sumFields.length)
       throw new AppError(
@@ -565,7 +603,7 @@ async function summarizeDocsImpl(
       : []
     return { count, sums: {}, groups }
   }
-  const { meta, cols, table: tbl, where, phys } = await scopedWhere(table, user, hideRetired(boundMeta, filters, opts.withRetired))
+  const { meta, cols, table:tbl, where, phys, readExpression } = await scopedWhere(table, user, hideRetired(boundMeta, filters, opts.withRetired))
   for (const f of sumFields) {
     assertColumn(cols, f, 'sum')
     const col = meta.columns.find((c) => c.column_name === f)
@@ -576,7 +614,7 @@ async function summarizeDocsImpl(
   }
   if (groupBy) assertColumn(cols, groupBy, 'group_by')
   const sumSelect = sumFields.reduce(
-    (acc, f, i) => sql`${acc}, coalesce(sum(${sql(phys(f))}), 0)::text as ${sql(`s${i}`)}`,
+    (acc, f, i) => sql`${acc}, coalesce(sum(${readExpression(f)}), 0)::text as ${sql(`s${i}`)}`,
     sql``,
   )
   const sumsOf = (row: Record<string, unknown>) =>
@@ -586,10 +624,11 @@ async function summarizeDocsImpl(
   const groups = groupBy
     ? (
         await sql`
-          select ${sql(phys(groupBy))}::text as value, count(*)::int as count ${sumSelect}
-          from ${sql(tbl)} where ${where}
-          group by ${sql(phys(groupBy))}
-          order by ${sql(phys(groupBy))} asc`
+          select permission_group.group_value::text as value, count(*)::int as count ${sumSelect}
+          from ${sql(tbl)} cross join lateral (select ${readExpression(groupBy)} as group_value) permission_group
+          where ${where}
+          group by permission_group.group_value
+          order by permission_group.group_value asc`
       ).map((r) => ({ value: (r.value as string | null) ?? null, count: r.count as number, sums: sumsOf(r) }))
     : []
   return { count: total.count as number, sums: sumsOf(total), groups }
@@ -601,22 +640,23 @@ export function getList(...args: Parameters<typeof getListImpl>) {
 async function getListImpl(table: string, args: ListArgs = {}, user = 'Administrator') {
   // M3 seam: source-bound Tables list from the source — filters, sort and
   // paging pushed down to the driver (spec EDS-5).
-  const boundMeta = await getMeta(table)
+  const boundMeta = await getMeta(await storedTable(table))
   if (isBound(boundMeta)) return boundGetList(boundMeta, args, user)
-  const { meta, table: tbl, cols, where, phys } = await scopedWhere(table, user, hideRetired(boundMeta, args.filters ?? [], args.with_retired === true))
+  const { meta, table:tbl, cols, where, phys, readExpression } = await scopedWhere(table, user, hideRetired(boundMeta, args.filters ?? [], args.with_retired === true))
 
   const fields = args.fields?.length ? args.fields : [ROW_KEY]
   for (const f of fields) assertColumn(cols, f, 'selected')
   // The wire format always names the key `row_id`; where the physical column
   // differs (`Table`), alias it back so callers see one shape.
   const selection = fields
-    .map((f) =>
-      phys(f) === f ? sql`${sql(f)}` : sql`${sql(phys(f))} as ${sql(f)}`,
-    )
+    .map((f) => sql`${readExpression(f)} as ${sql(f)}`)
     .reduce((acc, frag) => sql`${acc}, ${frag}`)
 
-  let orderField = meta.sort_column || 'updated_at'
-  let orderDir = (meta.sort_order || 'desc').toLowerCase()
+  // The Table's own sort applies only if this reader may read that Column; an
+  // order_by they ask for themselves is still refused below.
+  const defaultSort = meta.sort_column && cols.has(meta.sort_column)
+  let orderField = defaultSort ? meta.sort_column! : 'updated_at'
+  let orderDir = (defaultSort && meta.sort_order || 'desc').toLowerCase()
   if (args.order_by) {
     const m = args.order_by.trim().match(/^([a-z][a-z0-9_]*)\s*(asc|desc)?$/i)
     if (!m) throw new AppError('ValidationError', `Invalid order_by ${args.order_by}`)
@@ -631,7 +671,7 @@ async function getListImpl(table: string, args: ListArgs = {}, user = 'Administr
   const rows = await sql`
     select ${selection} from ${sql(tbl)}
     where ${where}
-    order by ${sql(phys(orderField))} ${orderDir === 'desc' ? sql`desc` : sql`asc`}${orderField === ROW_KEY ? sql`` : sql`, ${sql(phys(ROW_KEY))} asc`}
+    order by ${readExpression(orderField)} ${orderDir === 'desc' ? sql`desc` : sql`asc`}${orderField === ROW_KEY ? sql`` : sql`, ${sql(phys(ROW_KEY))} asc`}
     limit ${limit} offset ${offset}`
   const [{ count }] = await sql`
     select count(*)::int as count from ${sql(tbl)} where ${where}`

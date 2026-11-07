@@ -310,8 +310,8 @@ describe('release preflight: access configuration', () => {
     config.instanceAddresses = addressesBefore
   })
 
-  async function grant(role: string, refTable: string, flags: Record<string, boolean>) {
-    await sql`insert into permission ${sql({ row_id: `p437-${role}-${refTable}`.replaceAll(' ', '-'), ref_table: refTable, role, tier: 'basic', created_by: 'Administrator', updated_by: 'Administrator', ...flags })}`
+  async function grant(role: string, refTable: string, operation: string) {
+    await sql`insert into permission ${sql({ row_id: `p437-${role}-${refTable}`.replaceAll(' ', '-'), ref_table: refTable, role, operation, scope_mode: 'all', created_by: 'Administrator', updated_by: 'Administrator' })}`
   }
 
   test('a clean instance passes all three and says so', async () => {
@@ -320,24 +320,23 @@ describe('release preflight: access configuration', () => {
   })
 
   test('(a) All reading Person refuses, naming the row', async () => {
-    await grant('All', 'Person', { can_read: true })
+    await grant('All', 'Person', 'read')
     await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/role "All" on "Person" \(read\)/)
   })
 
   test('(a) Guest writing a security Table refuses', async () => {
-    await grant('Guest', 'Data Scope', { can_create: true })
+    await grant('Guest', 'Data Scope', 'create')
     await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/role "Guest" on "Data Scope" \(create\)/)
   })
 
   test('(a) All writing a Table marked as deciding scope refuses (#559)', async () => {
     await createTable({ name: 'Shift Roster 559', decides_scope: true, columns: [{ column_name: 'place', column_type: 'Data' }] })
-    await grant('All', 'Shift Roster 559', { can_write: true })
-    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/role "All" on "Shift Roster 559" \(write\)/)
+    await grant('All', 'Shift Roster 559', 'update')
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/role "All" on "Shift Roster 559" \(update\)/)
   })
 
-  test('(a) a grant with every action off, or to another role, passes', async () => {
-    await grant('All', 'Share', {})
-    await grant('Sales Target Viewer', 'Person', { can_read: true })
+  test('(a) a grant to a non-open role passes', async () => {
+    await grant('Sales Target Viewer', 'Person', 'read')
     expect(await preflightRelease({ environment: 'test' })).toContain(ACCESS_OK)
   })
 

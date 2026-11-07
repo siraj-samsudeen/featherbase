@@ -6,6 +6,7 @@ import * as metadata from '../src/meta'
 import * as query from '../src/query'
 import * as reports from '../src/script-report'
 import { AppError } from '../src/errors'
+import { grantRole } from './fixtures'
 
 // Public inventory contract: Table names stay canonical; pages carry their
 // existing href. The browser never derives resource identities from slugs.
@@ -83,14 +84,14 @@ describe('#737 command destinations', () => {
   test('a reader receives only permitted destinations', async ({ admin, createUser }) => {
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Inventory Reader' } })
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Sales Target Viewer' } })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Inventory Reader', can_read: true } })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'System Settings', role: 'Inventory Reader', can_read: true } })
+    await grantRole(admin, { table: 'Person', role: 'Inventory Reader', can_read: true })
+    await grantRole(admin, { table: 'System Settings', role: 'Inventory Reader', can_read: true })
     await admin.post('/api/save_row', { table: 'Home Page', row: { row_id: 'inventory-hidden', label: 'Secret inventory page', roles: [{ role: 'System Manager' }] } })
     const reader = await createUser({ roles: ['Inventory Reader', 'Sales Target Viewer'] })
     const inventory = await reader.get<Inventory>(PATH)
     expect(inventory.tables.map((t) => t.row_id)).toEqual(['Glossary Term', 'Person', 'System Settings'])
     expect(inventory.tables.every((t) => !t.can_create)).toBe(true)
-    for (const slug of ['jobs', 'instance-health', 'apps', 'import', 'imports', 'waiting-for-access', 'setup', 'setup/people', 'find-person'])
+    for (const slug of ['jobs', 'instance-health', 'apps', 'import', 'imports', 'waiting-for-access', 'setup', 'setup/person', 'find-person'])
       expect(inventory.pages.map((p) => p.href)).not.toContain(`/featherbase/admin/${slug}`)
     expect(inventory.pages.map((p) => p.label)).not.toContain('Secret inventory page')
     expect(inventory.pages.map((p) => p.href)).toContain('/featherbase/admin/glossary')
@@ -106,7 +107,7 @@ describe('#737 command destinations', () => {
 
   test('a legacy override refusal preserves the permitted navigation inventory', async ({ admin, createUser }) => {
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Legacy Inventory Reader' } })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Legacy Inventory Reader', can_read: true } })
+    await grantRole(admin, { table: 'Person', role: 'Legacy Inventory Reader', can_read: true })
     const reader = await createUser({ roles: ['Legacy Inventory Reader'] })
     await sql`insert into metadata_override (row_id, table_name, property, value)
       values ('inventory-legacy-person', 'Person', 'autoname', 'legacy'),
@@ -183,7 +184,7 @@ describe('#737 command destinations', () => {
 
   test('a named page is narrowed by the same row scope as its underlying read', async ({ admin, createUser }) => {
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Inventory Author' } })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Dashboard', role: 'Inventory Author', can_read: true, own_rows_only: true } })
+    await grantRole(admin, { table: 'Dashboard', role: 'Inventory Author', can_read: true, own_rows_only: true })
     const reader = await createUser({ roles: ['Inventory Author'] })
     await admin.post('/api/save_row', { table: 'Dashboard', row: { row_id: 'Hidden inventory dashboard', config: '{}' } })
     await sql`insert into dashboard (row_id, created_by, config) values ('Own / Inventory', ${reader.user}, '{}')`

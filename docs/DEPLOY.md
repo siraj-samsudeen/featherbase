@@ -270,7 +270,12 @@ deploy.
 | A newer app version | upgraded | upgraded |
 
 So moving prod is merging into its release branch, whose history is the deploy
-log. `cli repin-apps` is the re-pin by hand. It refuses a production server or
+log. An app's built files include the shared packages it uses, so a change to
+`packages/` can stop prod's deploy with nothing changed in the app's own folder.
+`pnpm check:app-digests` builds each app at the release branch and at head and
+names any that would stop it; the `app-digests` workflow runs it. After a failed
+deploy, the release branch has already moved, so name the last commit that
+deployed: `pnpm check:app-digests --release <sha>`. `cli repin-apps` is the re-pin by hand. It refuses a production server or
 database.
 
 **Upgrading needs both versions in the image.** An upgrade replays the installed
@@ -819,6 +824,16 @@ form's Sign-in methods panel or `POST /api/people/<person>/identities`.
 `https://stylehr.in/api/login/` (keep the trailing slash: StyleHR redirects
 without it, and a redirected POST loses its body). Another HR system is a new
 row with its own `settings` JSON, not code.
+
+**Staff who sign in for the first time.** With `new_person` set to
+`create_if_on_roster`, someone with no link can sign in if their ID is on one
+current row of the staff Table named in the row's `settings.roster`, and the
+service confirms them and names that row's record. Their first sign-in makes
+their person with no roles, links them and writes the person onto the row. Any
+other ID is refused without the service being asked. Rows an administrator must
+settle are in the Activity Log as `first_sign_in_held <method> <row or link> <reason>`.
+The rule needs the method's `identifier_system` (the seed pack sets it once the
+row exists) and refuses everyone until it is set. Test mode never makes anyone.
 
 **`DELEGATED_LOGIN_TEST_MODE=trust-any-password` lets anyone sign in as any
 linked staff member by employee code, with no password.** It is allowed only

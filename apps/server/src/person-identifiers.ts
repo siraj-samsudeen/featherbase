@@ -6,7 +6,7 @@
 import { sql, type Sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { logActivity } from './audit'
-import { getRoles, hasPermission, isPrivileged, permittedTiers } from './permissions'
+import { getRoles, hasPermission, isPrivileged, permissionScope } from './permissions'
 import { opaqueId } from './opaque-id'
 import {
   SENSITIVITY,
@@ -90,10 +90,14 @@ function isoDate(v: unknown, field: string): string | null {
 // ------------------------------------------------------------- who may
 
 /** Can this principal read restricted identifiers (D9)? */
-async function readsRestricted(viewer: string): Promise<boolean> {
+async function readsRestricted(viewer: string, person?: string): Promise<boolean> {
   if (await isPrivileged(viewer)) return true
   if ((await getRoles(viewer)).includes('Data Quality Manager')) return true
-  return (await permittedTiers(viewer, 'Person', 'read')).has('restricted')
+  const scope = await permissionScope(viewer, 'Person', 'read_identifiers')
+  if (scope === 'none') return false
+  if (scope === 'all' || person === undefined) return true
+  const rows = await sql`select 1 from person where row_id = ${person} and created_by = ${viewer}`
+  return rows.length > 0
 }
 
 /** Has this system's source (the roster sync) written any row yet? Until it
@@ -181,7 +185,7 @@ interface PanelRow {
  *  (and the person themself); Restricted-hidden never in panels; Secret by
  *  its last four digits. */
 export async function listIdentifiers(person: string, viewer: string): Promise<PanelRow[]> {
-  const restricted = viewer === person || (await readsRestricted(viewer))
+  const restricted = viewer === person || (await readsRestricted(viewer, person))
   // One column list (rowFields) for every read; the panel's extra columns join on.
   const rows = await sql`
     select i.*, s.label as system_label, s.kind, s.sensitivity, s.edited_by, s.source as system_source, s.row_id as system_key
@@ -288,6 +292,7 @@ export async function findByIdentifier(systemKey: string, raw: string, viewer: s
   const readable: Record<string, unknown>[] = []
   for (const r of rows) {
     try {
+      if (s.tier === 'restricted' && !(await readsRestricted(viewer, String(r.person_id)))) continue
       await getDoc('Person', String(r.person_id), viewer)
       readable.push(r)
     } catch {

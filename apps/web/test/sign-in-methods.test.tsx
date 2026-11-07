@@ -7,6 +7,7 @@ import { configureDelegated, inviteGoogleRaw, linkDelegated } from 'server/test/
 import { VIEWER_ROLE } from 'server/src/sales-target'
 import { test, expect, renderApp } from './pg-test'
 import { rowHref } from 'shared'
+import { grantRole } from 'server/test/fixtures'
 
 // A Team Leader holds the Sales Target Viewer role (#410): their sign-in
 // methods are an account page outside the Admin screens (#489).
@@ -72,7 +73,7 @@ test('on a Person form a System Manager links a service, invites Google and unli
 test('a person without the System Manager role sees no admin panel on a Person form', async ({ admin, createUser }) => {
   // Holds a read grant on Person, so the Admin opens for them (#410) - without the System Manager role.
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Person Reader' } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Person Reader', can_read: true } })
+  await grantRole(admin, { table: 'Person', role: 'Person Reader', can_read: true })
   const plain = await createUser({ email: 'plain.panel@example.com', roles: ['Person Reader'] })
   await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(plain.user!)}`, plain)
   await screen.findByTestId('session-user')

@@ -38,13 +38,13 @@ describe('DOC-007: submittable documents', () => {
         table: DT,
         row: { amount: 100 },
       })
-      expect(doc.status).toBe('draft')
+      expect(doc.submission_status).toBe('draft')
 
       fired.length = 0
       const submitted = await admin.post<Record<string, unknown>>(
         `/api/table/${encodeURIComponent(DT)}/${doc.row_id}:submit`,
       )
-      expect(submitted.status).toBe('submitted')
+      expect(submitted.submission_status).toBe('submitted')
       expect(fired).toEqual(['on_submit'])
 
       // Immutable while submitted
@@ -71,7 +71,7 @@ describe('DOC-007: submittable documents', () => {
       const cancelled = await admin.post<Record<string, unknown>>(
         `/api/table/${encodeURIComponent(DT)}/${doc.row_id}:cancel`,
       )
-      expect(cancelled.status).toBe('cancelled')
+      expect(cancelled.submission_status).toBe('cancelled')
       expect(fired).toEqual(['on_submit', 'on_cancel'])
 
       // Cancelled is terminal for edits
@@ -124,7 +124,7 @@ describe('DOC-007: submittable documents', () => {
     const after = await admin.get<Record<string, unknown>>(
       `/api/table/${encodeURIComponent(DT)}/${doc.row_id}`,
     )
-    expect(after.status).toBe('draft')
+    expect(after.submission_status).toBe('draft')
   })
 })
 
@@ -137,6 +137,6 @@ describe('A submitted row must be cancelled first', () => {
       status: 417,
       message: expect.stringMatching(/cancel it first/),
     })
-    expect(await admin.get(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}`)).toMatchObject({ status: 'submitted' })
+    expect(await admin.get(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}`)).toMatchObject({ submission_status: 'submitted' })
   })
 })

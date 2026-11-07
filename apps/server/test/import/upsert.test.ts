@@ -3,6 +3,7 @@ import fc from 'fast-check'
 import { test } from '../pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../../src/db'
+import { grantRole } from '../fixtures'
 
 // Spec 0004 (import upsert) — the contract, rule, and invariant layers.
 // UPS-R1: the import boundary learns update (key_column, permissions,
@@ -149,10 +150,7 @@ describe('UPS-R1: the import boundary learns update', () => {
     await setup(admin)
     await seed(admin)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: DT, role: ROLE, can_read: true, can_create: true },
-    })
+    await grantRole(admin, { table: DT, role: ROLE, can_read: true, can_create: true })
     const user = await createUser({ roles: [ROLE] })
     const before = await rowsByZone(admin)
     const res = await user.fetch(PATH, {
@@ -183,10 +181,7 @@ describe('UPS-R1: the import boundary learns update', () => {
     await setup(admin)
     await seed(admin)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: DT, role: ROLE, can_read: true, can_write: true },
-    })
+    await grantRole(admin, { table: DT, role: ROLE, can_read: true, can_write: true })
     const user = await createUser({ roles: [ROLE] })
     const res = await user.fetch(PATH, {
       method: 'POST',
@@ -210,17 +205,7 @@ describe('UPS-R1: the import boundary learns update', () => {
   }) => {
     await setup(admin)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: {
-        ref_table: DT,
-        role: ROLE,
-        can_read: true,
-        can_create: true,
-        can_write: true,
-        own_rows_only: true,
-      },
-    })
+    await grantRole(admin, { table: DT, role: ROLE, can_read: true, can_create: true, can_write: true, own_rows_only: true })
     const user = await createUser({ roles: [ROLE] })
     // One row the caller owns, one the admin owns.
     await user.fetch(PATH, {
@@ -920,9 +905,7 @@ describe('#851 permission-safe matching suggestions', () => {
     await setup(admin)
     await seed(admin)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
-    await admin.post('/api/save_row', { table: 'Permission', row: {
-      ref_table: DT, role: ROLE, can_read: true, can_create: true, can_write: false,
-    } })
+    await grantRole(admin, { table: DT, role: ROLE, can_read: true, can_create: true, can_write: false })
     const user = await createUser({ roles: [ROLE] })
     const readable = await user.get<{ data: { zone: string }[] }>(
       `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["zone"]')}&order_by=zone%20asc`,
@@ -949,12 +932,8 @@ describe('#851 permission-safe matching suggestions', () => {
     const writer = `${ROLE} Writer`
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: writer } })
-    await admin.post('/api/save_row', { table: 'Permission', row: {
-      ref_table: DT, role: ROLE, can_read: true, can_create: true,
-    } })
-    await admin.post('/api/save_row', { table: 'Permission', row: {
-      ref_table: DT, role: writer, can_write: true, own_rows_only: true,
-    } })
+    await grantRole(admin, { table: DT, role: ROLE, can_read: true, can_create: true })
+    await grantRole(admin, { table: DT, role: writer, can_write: true, own_rows_only: true })
     const user = await createUser({ roles: [ROLE, writer] })
     const response = await user.fetch(PATH, { method: 'POST', body: JSON.stringify({
       analyze_keys: true, columns: ['zone'], rows: [{ zone: 'Alpha' }, { zone: 'Bravo' }],
@@ -981,9 +960,7 @@ describe('#851 permission-safe matching suggestions', () => {
     ] })
     await admin.post(PATH, { rows: [{ zone: 'Alpha', pop: 12000 }] })
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
-    await admin.post('/api/save_row', { table: 'Permission', row: {
-      ref_table: DT, role: ROLE, can_read: true, can_write: true, can_create: true,
-    } })
+    await grantRole(admin, { table: DT, role: ROLE, can_read: true, can_write: true, can_create: true })
     const user = await createUser({ roles: [ROLE] })
     const response = await user.fetch(PATH, { method: 'POST', body: JSON.stringify({
       analyze_keys: true, columns: ['zone'], rows: [{ zone: 'Alpha' }],
@@ -999,12 +976,8 @@ describe('#851 permission-safe matching suggestions', () => {
     ] })
     await admin.post(PATH, { rows: [{ zone: 'Alpha', pop: 12000 }, { zone: 'Bravo', pop: 8400 }] })
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
-    await admin.post('/api/save_row', { table: 'Permission', row: {
-      ref_table: DT, role: ROLE, tier: 'basic', can_read: true, can_write: true, can_create: true,
-    } })
-    await admin.post('/api/save_row', { table: 'Permission', row: {
-      ref_table: DT, role: ROLE, tier: 'restricted', can_read: true, can_write: false,
-    } })
+    await grantRole(admin, { table: DT, role: ROLE, tier: 'basic', can_read: true, can_write: true, can_create: true })
+    await grantRole(admin, { table: DT, role: ROLE, tier: 'restricted', can_read: true, can_write: false })
     const user = await createUser({ roles: [ROLE] })
     const before = await importState()
     const report = await user.post(PATH, {
@@ -1017,18 +990,30 @@ describe('#851 permission-safe matching suggestions', () => {
     expect(await importState()).toEqual(before)
   })
 
+  test('a rehearsal accepts an unchanged value the person cannot read, as the real import does', async ({ admin, createUser }) => {
+    await setup(admin, { columns: [
+      { column_name: 'zone', column_type: 'Data' },
+      { column_name: 'pop', column_type: 'Int', tier: 'restricted' },
+    ] })
+    await admin.post(PATH, { rows: [{ zone: 'Alpha', pop: 12000 }] })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await grantRole(admin, { table: DT, role: ROLE, can_read: true, can_write: true, can_create: true })
+    const user = await createUser({ roles: [ROLE] })
+    const run = { key_column: 'zone', columns: ['zone', 'pop'], rows: [{ zone: 'Alpha', pop: 12000 }] }
+    const rehearsal = await user.post<{ failed: unknown[] }>(PATH, { ...run, dry_run: true })
+    expect(rehearsal.failed).toEqual([])
+    const real = await user.post<{ failed: unknown[] }>(PATH, run)
+    expect(real.failed).toEqual([])
+  })
+
   test('analysis does not disclose overlap with another person’s rows', async ({ admin, createUser }) => {
     await setup(admin)
     await seed(admin)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
     const writer = `${ROLE} Writer`
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: writer } })
-    await admin.post('/api/save_row', { table: 'Permission', row: {
-      ref_table: DT, role: ROLE, can_read: true, can_create: true, own_rows_only: true,
-    } })
-    await admin.post('/api/save_row', { table: 'Permission', row: {
-      ref_table: DT, role: writer, can_write: true, own_rows_only: false,
-    } })
+    await grantRole(admin, { table: DT, role: ROLE, can_read: true, can_create: true, own_rows_only: true })
+    await grantRole(admin, { table: DT, role: writer, can_write: true, own_rows_only: false })
     const user = await createUser({ roles: [ROLE, writer] })
     await user.post(PATH, { rows: [{ zone: 'Mine', pop: 1 }] })
     const mine = await user.post(PATH, { analyze_keys: true, columns: ['zone'], rows: [{ zone: 'Mine' }] })
