@@ -194,8 +194,8 @@ at the repository root.
 - **The cached dataset, `sales_to_date`**, on the instance's `motherduck` Data
   Source (which must be marked "Read-scaling token"): one row per store and
   subcategory, month to date in India Standard Time, with target, sales, the
-  day the data runs to and whether the month has targets. It is today's
-  featherbase query (`datasets/sales-target-mtd.ts`) moved here, cut to month
+  day the data runs to and whether the month has targets. It is the old
+  featherbase sales-target query moved here, cut to month
   to date. The platform refreshes it, keeps the last good copy, and limits it
   to each reader's places through `filters` (`store` → `store_code`,
   `subcategory` → `subcategory_code`). Its `guard` keeps the last good copy
@@ -315,9 +315,5 @@ in the old Tables that match no one; old section names that match no section or
 section alias). `--json` answers JSON. A store goes live only when both lists
 are empty and the comparison is accepted. Use the repository's Node 26.13.0 LTS runtime.
 
-**Known interim on an app address.** Until featherbase's cut-over retires
-today's Sales Target page (design D8, B9), the platform routes an address that
-opens `dash` to that page (`INTERIM_APPS` in featherbase's
-`packages/shared/src/app-routes.ts`). The app itself is served at
-`/dash/` on the Admin address, and on a dev machine with
-`INSTANCE_ADDRESSES` unset.
+**An address that opens `dash`** sends `/` and the Admin pages to `/dash/`,
+the app's root (featherbase #731 retired the interim Sales Target page).

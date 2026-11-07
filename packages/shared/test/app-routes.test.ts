@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { APP_ROOT_PATTERN, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, LEGACY_HUMAN_ROOT_PATTERN, RESERVED_APP_ROOTS, appHref, appTabLinks, ownFramePolicyPage, tableHref, rowHref } from '../src/index'
+import { APP_ROOT_PATTERN, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, FEATHERBASE_ADMIN_DESTINATION, LEGACY_HUMAN_ROOT_PATTERN, RESERVED_APP_ROOTS, appHref, appTabLinks, tableHref, rowHref } from '../src/index'
 
 test.each([
   ['Sign In Method', '/featherbase/admin/table/sign-in-method'],
@@ -24,14 +24,6 @@ test('the canonical Featherbase destination has its product label and path', () 
   })
 })
 
-test('only the exact report page, with an optional trailing slash, has its own frame policy', () => {
-  expect(ownFramePolicyPage('/featherbase/sales-target')).toBe('/featherbase/sales-target')
-  expect(ownFramePolicyPage('/featherbase/sales-target/')).toBe('/featherbase/sales-target')
-  for (const path of ['/', '', '/featherbase/admin', '/featherbase/sales-target-extra', '/featherbase/sales-target/nested', '/featherbase/sales-target//']) {
-    expect(ownFramePolicyPage(path)).toBeNull()
-  }
-})
-
 test('PKG-R4: app routes and reserved platform prefixes are disjoint', () => {
   const app = new RegExp(APP_ROOT_PATTERN)
   const legacyHuman = new RegExp(LEGACY_HUMAN_ROOT_PATTERN)
@@ -40,7 +32,7 @@ test('PKG-R4: app routes and reserved platform prefixes are disjoint', () => {
     expect(app.test(`/${root}/nested`)).toBe(false)
     expect(app.test(`/${root}?query=reserved`)).toBe(false)
   }
-  for (const root of ['admin', 'login', 'form', 'portal', 'print', 'oauth-callback', 'reset-password', 'sales-target']) {
+  for (const root of ['admin', 'login', 'form', 'portal', 'print', 'oauth-callback', 'reset-password']) {
     expect(legacyHuman.test(`/${root}`)).toBe(true)
     expect(legacyHuman.test(`/${root}/nested`)).toBe(true)
     expect(legacyHuman.test(`/${root}?query=preserved`)).toBe(true)
@@ -86,26 +78,10 @@ describe('interim app tabs', () => {
     }
   })
 
-  test('every interim app declares no tabs or 2-5 drawable tabs under its own root', () => {
-    for (const [name, interim] of Object.entries(INTERIM_APPS)) {
-      const tabs = interim.tabs ?? []
-      if (!tabs.length) continue
-      expect(tabs.length, name).toBeGreaterThanOrEqual(2)
-      expect(tabs.length, name).toBeLessThanOrEqual(5)
-      expect(new Set(tabs.map((t) => t.path)).size, name).toBe(tabs.length)
-      for (const tab of tabs) {
-        expect(tab.path, name).toMatch(APP_TAB_PATH)
-        expect(tab.label.trim().length, name).toBeGreaterThan(0)
-        expect(tab.label.length, name).toBeLessThanOrEqual(APP_TAB_LABEL_MAX)
-        expect(APP_TAB_ICONS, name).toContain(tab.icon)
-      }
-    }
-  })
-
   test('tab links sit under the app root, with or without its trailing slash', () => {
     expect(appTabLinks('/other/', [{ label: 'Today', icon: 'home', path: '' }, { label: 'Targets', icon: 'target', path: 'targets' }]))
       .toEqual([{ label: 'Today', icon: 'home', href: '/other/' }, { label: 'Targets', icon: 'target', href: '/other/targets' }])
-    expect(appTabLinks('/featherbase/sales-target', [{ label: 'Report', icon: 'report', path: '' }, { label: 'Me', icon: 'person', path: 'me' }]))
-      .toEqual([{ label: 'Report', icon: 'report', href: '/featherbase/sales-target' }, { label: 'Me', icon: 'person', href: '/featherbase/sales-target/me' }])
+    expect(appTabLinks('/shop', [{ label: 'Report', icon: 'report', path: '' }, { label: 'Me', icon: 'person', path: 'me' }]))
+      .toEqual([{ label: 'Report', icon: 'report', href: '/shop' }, { label: 'Me', icon: 'person', href: '/shop/me' }])
   })
 })

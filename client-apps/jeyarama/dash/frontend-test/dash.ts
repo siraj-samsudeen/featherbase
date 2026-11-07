@@ -10,7 +10,7 @@ import { datasetsDeclaration } from '../../../../apps/server/src/app-datasets'
 import { sql } from '../../../../apps/server/src/db'
 
 export async function setupDash(admin: TestClient, createUser: CreateUserFn) {
-  await applySeedPack('jeyarama')
+  await applySeedPack(new URL('../../instances/dash/seed-pack.json', import.meta.url).pathname)
   expect(await discoverPackages([new URL('..', import.meta.url).pathname])).toEqual([])
   await admin.post('/api/install_app', { name: 'dash' })
   for (const [name, fields] of Object.entries({

@@ -10,6 +10,7 @@ import { applySeedPack } from '../src/seed-packs'
 import { addIdentifier } from '../src/person-identifiers'
 import { CORE_PEOPLE_REVIEW } from '../src/person-identifiers'
 import { makePerson } from './fixtures'
+import { TEST_SEED_PACK } from './seed-pack'
 
 const system = async (key: string) => (await sql`select * from identifier_system where row_id = ${key}`)[0]
 
@@ -191,7 +192,7 @@ describe('identifier system guards', () => {
 
   test('a system a sign-in method points at cannot be deleted, and the method is named by the link check', async ({ admin }) => {
     await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'probe-linked', label: 'Linked probe', kind: 'external-record' } })
-    await sql`insert into sign_in_method (row_id, kind, label, enabled, new_person, identifier_system) values ('probe-method', 'delegated_password', 'Probe', false, 'refuse', 'probe-linked')`
+    await sql`insert into sign_in_method (row_id, kind, label, enabled, new_person, identifier_system) values ('probe-method', 'external_password', 'Probe', false, 'refuse', 'probe-linked')`
     const res = await admin.fetch('/api/table/Identifier%20System/probe-linked', { method: 'DELETE' })
     expect(res.status).toBe(417)
     expect(await res.json()).toMatchObject({ error: { message: 'Cannot delete Identifier System probe-linked: it is linked from Sign In Method probe-method. Retire it instead to take it out of use and keep its history.' } })
@@ -247,16 +248,16 @@ describe('identifier systems: Advanced settings and their presets', () => {
 
 describe('the Jeyarama seed pack', () => {
   test('adds the StyleHR systems, links the StyleHR sign-in to its record numbers, sets people_review; applying it again changes nothing', async () => {
-    await sql`insert into sign_in_method (row_id, kind, label, enabled, new_person) values ('stylehr', 'delegated_password', 'StyleHR', false, 'refuse')
+    await sql`insert into sign_in_method (row_id, kind, label, enabled, new_person) values ('stylehr', 'external_password', 'StyleHR', false, 'refuse')
       on conflict (row_id) do nothing`
-    const first = await applySeedPack('jeyarama')
+    const first = await applySeedPack(TEST_SEED_PACK)
     expect(first.added.sort()).toEqual(['stylehr-employee-code', 'stylehr-employee-id'])
     expect(first.methodsLinked).toEqual(['stylehr'])
     expect(await system('stylehr-employee-id')).toMatchObject({ kind: 'external-record', sensitivity: 'Restricted, hidden', display: 'hidden', source: 'stylehr-roster-sync' })
     expect(await system('stylehr-employee-code')).toMatchObject({ kind: 'employee-record', assigner_scoped: true, one_holder_at_a_time: true, sensitivity: 'Normal' })
     const [settings] = await sql`select value from single_value where table_name = 'System Settings' and field = 'people_review'`
     expect(JSON.parse(String(settings.value)).compare_columns).toContain('worker_type_from_roster')
-    const again = await applySeedPack('jeyarama')
+    const again = await applySeedPack(TEST_SEED_PACK)
     expect(again).toMatchObject({ added: [], methodsLinked: [], peopleReview: 'kept' })
     expect(again.kept.sort()).toEqual(['stylehr-employee-code', 'stylehr-employee-id'])
   })

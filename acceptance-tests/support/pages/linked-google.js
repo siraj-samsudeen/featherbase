@@ -16,7 +16,7 @@ class LinkedGoogle {
     let google = null;
     for (const id of ids) {
       const row = await api.row('Sign In Method', id);
-      if (row.kind === 'google') google = row;
+      if (row.kind === 'google_oauth') google = row;
     }
     if (!google) throw new Error('The platform must provide the Google sign-in method');
     if (!google.enabled) await api.call('POST', '/api/save_row', { table: 'Sign In Method', row: { ...google, enabled: true } }, [200, 201], 'turn Google on');

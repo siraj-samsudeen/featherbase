@@ -9,11 +9,12 @@ import { sql } from 'server/src/db'
 import { applySeedPack } from 'server/src/seed-packs'
 import type { CreateUserFn } from 'feather-testing-postgres'
 import { test, expect, renderApp } from './pg-test'
+import { TEST_SEED_PACK } from 'server/test/seed-pack'
 
 afterEach(() => vi.restoreAllMocks())
 
 async function joinerWithHandCode(admin: Parameters<typeof renderApp>[1], createUser: CreateUserFn) {
-  await applySeedPack('jeyarama')
+  await applySeedPack(TEST_SEED_PACK)
   await sql`delete from person_identifier where source = 'stylehr-roster-sync'`
   const joiner = await createUser({ email: 'joiner.end@example.com', fullName: 'Joiner Jaya' })
   await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(joiner.user!)}`, admin)

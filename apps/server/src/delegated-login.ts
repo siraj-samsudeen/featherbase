@@ -1,8 +1,8 @@
 // Delegated password sign-in (OpenSpec change `delegated-password-login`).
 //
 // An outside service the administrator set up as a Sign In Method checks a
-// person's ID and password — StyleHR is the first, for store Team Leaders who
-// have no Google identity. Featherbase forwards the pair once and binds the
+// person's ID and password, for staff who have no Google identity (an HR
+// system's own login, say). Featherbase forwards the pair once and binds the
 // result to the ONE User whose linked identity carries that sign-in name
 // (person-identities) — looked up BEFORE the provider is asked, so Featherbase never checks a password for an
 // ID it would not sign in (no password oracle for unlinked IDs).
@@ -10,9 +10,8 @@
 // Fail closed (review of #363): only a 200-family JSON object carrying a
 // positive success signal verifies. An empty body, HTML, an unreadable body or
 // an unrecognised shape is "could not confirm", never a sign-in. A body that
-// says the person has left is refused even with a right password — StyleHR
-// keeps authenticating leavers (data-warehouse report_server/stylehr_auth.py,
-// whose rules this ports). Binding depends on the body only for a link a roster
+// says the person has left is refused even with a right password: an HR
+// service may keep authenticating leavers. Binding depends on the body only for a link a roster
 // first sign-in made (#970), which must name its record.
 //
 // The password is held for one outbound request and never stored, logged,
@@ -24,7 +23,7 @@ import { listSignInMethods, type SignInMethod } from './identities'
 import { switchedOn, TEST_MODE_PHRASE } from './env'
 
 // person-identities: the connected service is a Sign In Method row of kind
-// `delegated_password`, and the person is found through a linked identity,
+// `external_password`, and the person is found through a linked identity,
 // not a User column.
 export interface DelegatedLoginConfig {
   key: string
@@ -37,9 +36,10 @@ export interface DelegatedLoginConfig {
 
 /** A delegated provider's wire format, from its row's `settings` JSON
  *  (review: genericity). Every field is optional there; anything left out
- *  takes StyleHR's value, which is what DEFAULT_WIRE holds. A second HR
- *  provider with a different request body or answer shape is configuration
- *  only. Values are matched against JSON keys case-insensitively. */
+ *  takes the generic value DEFAULT_WIRE holds. A provider's own shape (its
+ *  ID field, its answer's keys, how it says someone has left) is the
+ *  instance's configuration, never the platform's (#731). Values are matched
+ *  against JSON keys case-insensitively. */
 export interface DelegatedWire {
   /** Request body field names for the typed ID and the password. */
   id_field: string
@@ -63,18 +63,19 @@ export interface DelegatedWire {
 }
 
 export const DEFAULT_WIRE: DelegatedWire = {
-  id_field: 'email',
+  id_field: 'username',
   password_field: 'password',
-  nested_keys: ['data', 'user', 'employee', 'result'],
-  success_keys: ['token', 'access', 'access_token', 'key', 'employee_id', 'employee_key', 'id'],
+  nested_keys: ['data', 'user', 'result'],
+  success_keys: ['token', 'access_token', 'id'],
   success_flags: ['success', 'ok', 'authenticated'],
   error_keys: ['error', 'errors'],
   status_key: 'status',
   error_statuses: ['error', 'fail', 'failed', 'failure', 'invalid'],
-  left_date_keys: ['exit_date', 'relieving_date', 'date_of_relieving', 'termination_date', 'resignation_date', 'last_working_date'],
+  // How a provider says someone has left is its own: none by default.
+  left_date_keys: [],
   inactive_flags: ['is_active', 'active'],
-  left_status_keys: ['status', 'employment_status', 'employee_status'],
-  left_words: ['resign', 'terminat', 'reliev', 'exit', 'inactive', 'left', 'separated'],
+  left_status_keys: [],
+  left_words: [],
 }
 
 /** The row's settings over the defaults; refuses a malformed shape. */
@@ -170,7 +171,7 @@ function usable(raw: string): URL | null {
 export async function delegatedMethods(): Promise<DelegatedLoginConfig[]> {
   const out: DelegatedLoginConfig[] = []
   for (const m of await listSignInMethods()) {
-    if (m.kind !== 'delegated_password' || !m.enabled) continue
+    if (m.kind !== 'external_password' || !m.enabled) continue
     const url = usable(m.service_url)
     let wire: DelegatedWire
     try {
@@ -207,7 +208,7 @@ export function announceDelegatedTestMode(log: (message: string) => void = conso
 }
 
 // Injectable for the sandboxed suite — the real provider is never contacted
-// from a test (same seam as `_setEmbedFetch` in sales-target.ts).
+// from a test.
 let delegatedFetch: typeof fetch | null = null
 export function _setDelegatedFetch(f: typeof fetch | null) {
   delegatedFetch = f
@@ -240,8 +241,8 @@ function saysYes(o: Obj, w: DelegatedWire): boolean {
   return w.success_flags.some((k) => o[k] === true) || w.success_keys.some((k) => filled(o[k]))
 }
 
-// Ported from report_server/stylehr_auth.py looks_resigned: an exit date, an
-// inactive flag, or a status that reads as gone — as configured.
+// An exit date, an inactive flag, or a status that reads as gone, as the
+// method's settings configure them.
 function saysLeft(o: Obj, w: DelegatedWire): boolean {
   if (w.left_date_keys.some((k) => filled(o[k]) && o[k] !== 'None')) return true
   if (w.inactive_flags.some((k) => o[k] === false)) return true

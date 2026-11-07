@@ -1,9 +1,7 @@
 // ADR 0011, one-way knowledge: the platform never names an app. Which app an
 // address opens, and the name its bar shows, come from the instance's
-// INSTANCE_ADDRESSES `opens` and the installed app itself. Until B9 (#550,
-// task 2.19) the interim Feather Dash coupling keeps the literal in platform
-// code, so this pin is `test.fails`; B9 removes the literals, the pin starts
-// failing, and it flips to a plain test in the same change.
+// INSTANCE_ADDRESSES `opens` and the installed app itself. #550 B9 (with
+// #731) removed the interim Feather Dash coupling, and this pin keeps it out.
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, expect, test } from 'vitest'
@@ -32,7 +30,7 @@ describe('platform code names no app (ADR 0011)', () => {
     for (const dir of PLATFORM_SOURCES) expect(sourceFiles(join(ROOT, dir)).length).toBeGreaterThan(10)
   })
 
-  test.fails('#550 B9: no platform source names an app or the interim app table', () => {
+  test('no platform source names an app or the interim app table', () => {
     expect(filesNamingAnApp()).toEqual([])
   })
 })

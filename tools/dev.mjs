@@ -62,7 +62,9 @@ export function resolveInstance(name, base = root) {
   const madeUpData = declared.madeUpData === undefined ? undefined : resolve(base, String(declared.madeUpData))
   if (madeUpData !== undefined && (relative(base, madeUpData).startsWith('..') || isAbsolute(relative(base, madeUpData)) || !existsSync(madeUpData)))
     throw new DevError(`${name}: instance.json's madeUpData names ${declared.madeUpData}, which is not a file in this repository`)
-  return { name, client, instance, settingsFile: join(folder, 'instance-settings.json'), apps, madeUpData }
+  // The instance's seed pack (its identifier systems), when it has one (#731).
+  const seedPack = existsSync(join(folder, 'seed-pack.json')) ? join(folder, 'seed-pack.json') : undefined
+  return { name, client, instance, settingsFile: join(folder, 'instance-settings.json'), seedPack, apps, madeUpData }
 }
 
 /** --made-up-data: what must hold before anything is touched. */
@@ -444,6 +446,8 @@ export async function prepareInstance(instance, env, environment = 'local') {
   serverCommand(env, 'migrate')
   for (const app of instance.apps) serverCommand(env, 'install-app', app.name)
   if (instance.settingsFile) serverCommand(env, 'settings:apply', '--file', instance.settingsFile, '--environment', environment)
+  // After the settings: a pack links a sign-in method the settings file adds.
+  if (instance.seedPack) serverCommand(env, 'seed-pack', 'apply', instance.seedPack)
   console.log('Platform schema is up to date. Existing data and installed apps are preserved.')
   console.log('Next: featherbase start (or pnpm featherbase start from the checkout)')
 }

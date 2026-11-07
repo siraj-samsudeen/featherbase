@@ -4,12 +4,12 @@ import { vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { configureDelegated, inviteGoogleRaw, linkDelegated } from 'server/test/identity-fixtures'
-import { VIEWER_ROLE } from 'server/src/sales-target'
+const VIEWER_ROLE = 'Team Leader'
 import { test, expect, renderApp } from './pg-test'
 import { rowHref } from 'shared'
 import { grantRole } from 'server/test/fixtures'
 
-// A Team Leader holds the Sales Target Viewer role (#410): their sign-in
+// A Team Leader holds a role that opens no Admin (#410): their sign-in
 // methods are an account page outside the Admin screens (#489).
 async function viewerRole(admin: Parameters<typeof renderApp>[1]) {
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: VIEWER_ROLE } })

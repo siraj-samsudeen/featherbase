@@ -61,12 +61,20 @@ Table's columns are named in the method's `settings.roster`.
 
 ## Identifier systems
 
-The `jeyarama` seed pack (`apps/server/seeds/jeyarama/`) adds the employee
-identifier systems the scope provider reads. It is idempotent:
+`seed-pack.json`, beside this file, adds the employee identifier systems the
+scope provider and the leaver check read, links the StyleHR sign-in to its
+record system and sets the people review. `pnpm dev jeyarama/dash` applies it.
+On a deployed instance, apply it once; it is idempotent:
 
 ```bash
-pnpm --filter server cli seed-pack apply jeyarama
+pnpm --filter server cli seed-pack apply "$PWD/client-apps/jeyarama/instances/dash/seed-pack.json"
 ```
+
+## Leaver check
+
+Dash's `dash.disable_leavers` job disables people whose StyleHR record in the
+warehouse shows they have left. It installs switched off; a System Manager
+turns it on in Scheduled Jobs after reading a run's result.
 
 ## Cut-over
 

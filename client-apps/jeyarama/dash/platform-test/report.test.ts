@@ -17,7 +17,7 @@ import { withNamedVariable } from '../../src/env'
 import { sql } from '../../src/db'
 import { activeSnapshot, buildSnapshot } from '../../src/dataset-snapshot'
 import { drainJobs, enqueue, loadJobs } from '../../src/jobs'
-import { APP_DIR, createOldTables, installApp, pinned, saveRow } from './helpers'
+import { APP_DIR, SEED_PACK, createOldTables, installApp, pinned, saveRow } from './helpers'
 import { FOUR_TARGETS, addSource, answerWithoutPeriod, closeWarehouse, fillWarehouse, openWarehouse } from './warehouse'
 // @ts-expect-error a plain .mjs module, copied in beside this file by the runner
 import { markScopeTables } from './mark-scope-tables.mjs'
@@ -54,7 +54,7 @@ async function seedSnapshot(rows: Record<string, unknown>[], name = 'sales_to_da
 }
 
 async function setup(admin: TestClient, createUser: CreateUserFn, facts?: Record<string, unknown>[]) {
-  await applySeedPack('jeyarama')
+  await applySeedPack(SEED_PACK)
   await installApp(admin)
   // Until every store is live the provider reads the old Tables, so an instance has them, marked.
   await createOldTables(admin, markScopeTables)

@@ -158,13 +158,13 @@ export function LoginPage() {
       })
       .catch(() => {})
   }, [])
-  const delegatedMethods = (methods ?? []).filter((m) => m.kind === 'delegated_password')
+  const delegatedMethods = (methods ?? []).filter((m) => m.kind === 'external_password')
   const mode = chosenMode ?? (delegatedMethods.length ? 'delegated' : 'password')
   const delegatedKey = chosenMode ? chosenKey : (delegatedMethods[0]?.key ?? null)
   const delegated = delegatedMethods.find((m) => m.key === delegatedKey) ?? null
   const delegatedLabel = delegated?.label ?? null
   // If the brand cannot be read, offer Google as before; the server decides.
-  const google = methods === null ? { key: 'google', label: 'Google' } : methods.find((m) => m.kind === 'google')
+  const google = methods === null ? { key: 'google', label: 'Google' } : methods.find((m) => m.kind === 'google_oauth')
   // Until the brand answers, and if it cannot, the password form stays.
   const passwordOn = methods === null || methods.some((m) => m.kind === 'password')
   const [error, setError] = useState<string | null>(null)
@@ -493,7 +493,7 @@ export function LoginPage() {
             </a>
           )}
           {/* Delegated sign-in: one button per connected service (a Sign In
-              Method row of kind delegated_password). */}
+              Method row of kind external_password). */}
           {delegatedMethods.map((m) => (
             <button
               key={m.key}

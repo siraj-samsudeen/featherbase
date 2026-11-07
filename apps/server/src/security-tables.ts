@@ -5,12 +5,10 @@ import { getMeta } from './meta'
 // #437: the Tables that decide who may do what. Writing them is System
 // Manager work whatever the Permission rows say: a grant on one of them must
 // never be what stands between an ordinary role and every other grant. Reads
-// stay governed by the normal permission checks. The Sales Target scope
-// Tables are ordinary instance Tables, but their rows decide which stores and
-// groups a person's report covers, so they sit here too — until the go-live
-// cut-over, when the instance's setup marks them `decides_scope` (#559) and
-// their names leave this list (task 2.1 of feather-dash-installed-app). A
-// Table marked `decides_scope` is guarded the same way (isSecurityTable). Server Scripts,
+// stay governed by the normal permission checks. Six named instance Tables
+// below decide which stores and groups a person's report covers, so they sit
+// here too, until the go-live cut-over (#735), when the instance's setup marks
+// them `decides_scope` (#559) and their names leave this list. A Table marked `decides_scope` is guarded the same way (isSecurityTable). Server Scripts,
 // Workflows and Assignment Rules make the system act on other people's rows
 // on their behalf, so writing them is System Manager work as well.
 //

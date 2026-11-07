@@ -61,7 +61,7 @@ export function SignInMethods() {
   })
   const outcome = LINK_OUTCOMES[new URLSearchParams(window.location.search).get('link') ?? '']
   const labelOf = (key: string) => data?.methods.find((m) => m.key === key)?.label ?? key
-  const google = data?.methods.find((m) => m.kind === 'google' && m.self_link)
+  const google = data?.methods.find((m) => m.kind === 'google_oauth' && m.self_link)
   const hasGoogle = data?.identities.some((i) => i.linked && i.method === google?.key)
   const { t } = useI18n()
   // #72: changing one's own password. #489 moved it here from the Account

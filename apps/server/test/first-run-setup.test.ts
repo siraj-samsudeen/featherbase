@@ -32,7 +32,7 @@ async function noManagerEmails() {
 }
 
 async function googleOn() {
-  await sql`update sign_in_method set enabled = true, allowed_email_domains = 'example.com' where kind = 'google'`
+  await sql`update sign_in_method set enabled = true, allowed_email_domains = 'example.com' where kind = 'google_oauth'`
 }
 
 const rolesOf = async (email: string) =>
@@ -132,7 +132,7 @@ describe('first-run setup (6.1)', () => {
 
   test('without a Google sign-in method the people are still made System Managers, and the result says so', async ({ admin }) => {
     await noManagerEmails()
-    await sql`update sign_in_method set enabled = false where kind = 'google'`
+    await sql`update sign_in_method set enabled = false where kind = 'google_oauth'`
     const res = await admin.post<{ people: Outcome[] }>(SETUP, { people: [{ full_name: 'Asha', email: 'asha@example.com' }] })
     expect(res.people[0].invitation.status).toBe('no_method')
     expect(await rolesOf('asha@example.com')).toContain('System Manager')

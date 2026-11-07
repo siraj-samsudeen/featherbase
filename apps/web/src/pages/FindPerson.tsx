@@ -25,11 +25,12 @@ export function FindPerson() {
   const systems = useQuery({
     queryKey: ['identifier-systems-for-find'],
     // A list read returns only row_id unless asked for fields.
-    queryFn: () => api.get<{ data: { row_id: string; label: string }[] }>(`/api/table/${encodeURIComponent('Identifier System')}?fields=${encodeURIComponent(JSON.stringify(['row_id', 'label']))}&order_by=label&limit_page_length=500`),
+    queryFn: () => api.get<{ data: { row_id: string; label: string; kind?: string }[] }>(`/api/table/${encodeURIComponent('Identifier System')}?fields=${encodeURIComponent(JSON.stringify(['row_id', 'label', 'kind']))}&order_by=label&limit_page_length=500`),
   })
   const options = systems.data?.data ?? []
   const [system, setSystem] = useState<string | null>(null)
-  const chosen = system ?? (options.some((s) => s.row_id === 'stylehr-employee-code') ? 'stylehr-employee-code' : options[0]?.row_id)
+  // An employee code is what HR mails, so an employee-record system comes first.
+  const chosen = system ?? (options.find((s) => s.kind === 'employee-record') ?? options[0])?.row_id
   const [found, setFound] = useState<Found[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 

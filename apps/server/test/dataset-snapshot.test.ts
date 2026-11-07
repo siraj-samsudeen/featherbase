@@ -1,13 +1,9 @@
-// Query-grained dataset snapshots (src/dataset-snapshot.ts, src/datasets/sales-target-mtd.ts,
-// src/sales-target-report.ts) — the contract in
-// data-warehouse openspec/changes/query-grained-dataset-snapshots and siraj-samsudeen#281.
-//
-// The source is injected, so nothing here touches MotherDuck; what is being
-// pinned is the lifecycle, the grain and the read-time personalisation, not the
-// warehouse's arithmetic (baseline agreement is measured separately by
-// scripts/measure-sales-target-snapshot.ts against real data).
+// The dataset snapshot lifecycle (src/dataset-snapshot.ts): build a candidate,
+// validate it, activate it atomically, keep the last good one, and count the
+// readers who asked before it built. App datasets (app-datasets.test.ts) build
+// on this; here a probe dataset of the test's own drives it directly.
 import { randomUUID } from 'node:crypto'
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { drainJobs, enqueue, loadJobs } from '../src/jobs'
@@ -18,491 +14,188 @@ import {
   pruneSnapshots,
   recordMiss,
   registerDataset,
+  unregisterDataset,
 } from '../src/dataset-snapshot'
-import { SALES_TARGET_DATASET, _setSourceReader, definitionSql } from '../src/datasets/sales-target-mtd'
-import { reportFor, snapshotStoreNames } from '../src/sales-target-report'
-import type { Assignment } from '../src/sales-target'
 
-// The report is month to date in IST; these fixtures were cut on 17-Sep-2026,
-// so "today" is pinned there and every expected period below still means what it meant.
-const savedToday = process.env.SALES_TARGET_TODAY
-beforeAll(() => { process.env.SALES_TARGET_TODAY = '2026-09-17' })
-afterAll(() => {
-  if (savedToday === undefined) delete process.env.SALES_TARGET_TODAY
-  else process.env.SALES_TARGET_TODAY = savedToday
-})
+const PROBE = 'snapshot_probe'
 
-const EMP1: Assignment = { plant_code: '1501', store_label: 'ATK', material_groups: ['010101001', '010101003'], sections: [], section_by_material_group: {}, scope_basis: ['assignment'] }
-const EMP3: Assignment = { plant_code: '1515', store_label: 'Kattakada', material_groups: ['010101001', '010101003'], sections: [], section_by_material_group: {}, scope_basis: ['assignment'] }
+/** What the probe's source answers next: rows, or a failure. */
+let source: () => Promise<unknown[][]> = async () => []
+const answer = (rows: unknown[][]) => { source = async () => rows }
+const rows = (n: number) => Array.from({ length: n }, (_, i) => [`r${i}`])
 
-/** One snapshot row in the dataset's 7-column shape (the name is the hierarchy's, read apart: #4344). */
-const row = (plant: string, code: string, date: string, target: number | null, actual: number | null) =>
-  [plant, plant === '1501' ? 'Attakulangara' : 'Kattakada', plant === '1501' ? 'ATK' : 'KTK', code, date, target, actual]
-
-/** Two stores x two codes x two days, with known sums. */
-function sampleRows() {
-  const out: unknown[][] = []
-  for (const plant of ['1501', '1515'])
-    for (const code of ['010101001', '010101003'])
-      for (const date of ['2026-09-01', '2026-09-02'])
-        out.push(row(plant, code, date, 100, plant === '1501' ? 60 : 40))
-  return out
-}
-
-/** The names query answers with every code the rows carry; the as-of query with the day; the rest with the rows. */
-function stub(rows: unknown[][], asOf = '2026-09-17') {
-  _setSourceReader(async (text: string) => {
-    if (/merchandise_hierarchy/.test(text) && !/with cutoff/.test(text))
-      return [...new Set(rows.map((r) => String(r[3])))].map((code) => [code, `Sub ${code}`])
-    // The as-of day, and the period's target-row count the live path checks.
-    return /max\(actuals_as_of_date\)/.test(text) && !/with cutoff/.test(text) ? [[asOf, rows.length]] : rows
-  })
-}
-
-afterEach(() => _setSourceReader(null))
-
-describe('dataset definition', () => {
-  test('the definition carries no personalisation predicate', () => {
-    const s = definitionSql('2026-09-01', '2026-09-17')
-    // The property the whole design rests on: strip the per-reader scope and one
-    // snapshot serves every reader. A comment cannot enforce this; this can.
-    expect(s).not.toMatch(/plant_code\s*=\s*'/)
-    expect(s).not.toMatch(/hierarchy_code\s+in\s*\(/)
-    // ...while the non-personal scope it MUST keep is still there.
-    expect(s).toMatch(/hierarchy_level\s*=\s*'material_group'/)
-    expect(s).toMatch(/business_date between/)
+beforeAll(() => {
+  registerDataset({
+    name: PROBE,
+    version: '1',
+    fetch: async () => ({ rows: await source(), sourceAsOf: '2026-09-17' }),
+    load: async (_id, fetched) => fetched.length,
+    // The same two gates a real dataset carries: never activate nothing, never a collapse.
+    validate: (count, previous) => {
+      if (count === 0) return 'the candidate is empty'
+      if (previous?.row_count && count < previous.row_count / 2) return `${count} rows against ${previous.row_count}: a >50% drop`
+      return null
+    },
+    sizeOf: async () => 8192,
   })
 })
+afterAll(() => unregisterDataset(PROBE))
+beforeEach(() => answer(rows(8)))
 
 describe('snapshot lifecycle', () => {
-  // #409: a store switcher whose stores carry no assignment label names them from the active snapshot.
-  test('store names come from the active snapshot, and only for stores it holds', async () => {
-    expect(await snapshotStoreNames(['1501'])).toEqual({})
-    stub(sampleRows())
-    await buildSnapshot(SALES_TARGET_DATASET)
-    expect(await snapshotStoreNames(['1501', '9999'])).toEqual({ '1501': 'Attakulangara' })
-    expect(await snapshotStoreNames([])).toEqual({})
-  })
-
   test('a build activates and carries the source as-of', async () => {
-    stub(sampleRows())
-    const out = await buildSnapshot(SALES_TARGET_DATASET)
+    const out = await buildSnapshot(PROBE)
     expect(out.status).toBe('activated')
     expect(out.rowCount).toBe(8)
-    const snap = await activeSnapshot(SALES_TARGET_DATASET)
+    const snap = await activeSnapshot(PROBE)
     expect(snap?.source_as_of).toBe('2026-09-17') // ISO day, not "Thu Sep 17"
     expect(snap?.row_count).toBe(8)
   })
 
   test('exactly one snapshot is active after a rebuild, and the old one is superseded', async () => {
-    stub(sampleRows())
-    const first = await buildSnapshot(SALES_TARGET_DATASET)
-    const second = await buildSnapshot(SALES_TARGET_DATASET)
+    const first = await buildSnapshot(PROBE)
+    const second = await buildSnapshot(PROBE)
     expect(second.status).toBe('activated')
-    const actives = await sql`select row_id from dataset_snapshot where dataset = ${SALES_TARGET_DATASET} and state = 'active'`
+    const actives = await sql`select row_id from dataset_snapshot where dataset = ${PROBE} and state = 'active'`
     expect(actives).toHaveLength(1)
     expect(String(actives[0].row_id)).toBe(second.snapshotId)
     const [old] = await sql`select state from dataset_snapshot where row_id = ${first.snapshotId!}`
     expect(old.state).toBe('superseded')
   })
 
-  test('an empty candidate is refused and the previous snapshot keeps serving', async () => {
-    stub(sampleRows())
-    const good = await buildSnapshot(SALES_TARGET_DATASET)
-    stub([])
-    const bad = await buildSnapshot(SALES_TARGET_DATASET)
-    expect(bad.status).toBe('refused')
-    expect(bad.reason).toMatch(/empty/)
-    // Last-good is still the one readers resolve — a failed refresh is never
-    // more destructive than not running at all.
-    expect((await activeSnapshot(SALES_TARGET_DATASET))?.row_id).toBe(good.snapshotId)
-  })
-
-  test('a collapsed candidate is refused rather than activated', async () => {
-    stub(sampleRows())
-    await buildSnapshot(SALES_TARGET_DATASET)
-    stub([row('1501', '010101001', '2026-09-01', 100, 60)]) // 1 row against 8
-    const bad = await buildSnapshot(SALES_TARGET_DATASET)
-    expect(bad.status).toBe('refused')
-    expect(bad.reason).toMatch(/>50% drop/)
+  test('a refused candidate leaves the previous snapshot serving, and says why', async () => {
+    const good = await buildSnapshot(PROBE)
+    answer([])
+    const empty = await buildSnapshot(PROBE)
+    expect(empty).toMatchObject({ status: 'refused', reason: 'the candidate is empty' })
+    answer(rows(1))
+    const collapsed = await buildSnapshot(PROBE)
+    expect(collapsed.status).toBe('refused')
+    expect(collapsed.reason).toMatch(/>50% drop/)
+    // A failed refresh is never more destructive than not running at all.
+    expect((await activeSnapshot(PROBE))?.row_id).toBe(good.snapshotId)
   })
 
   test('a source failure leaves the build failed and the last good active', async () => {
-    stub(sampleRows())
-    const good = await buildSnapshot(SALES_TARGET_DATASET)
-    _setSourceReader(async () => { throw new Error('upstream is down') })
-    const bad = await buildSnapshot(SALES_TARGET_DATASET)
+    const good = await buildSnapshot(PROBE)
+    source = async () => { throw new Error('upstream is down') }
+    const bad = await buildSnapshot(PROBE)
     expect(bad.status).toBe('failed')
     expect(bad.reason).toMatch(/upstream is down/)
-    expect((await activeSnapshot(SALES_TARGET_DATASET))?.row_id).toBe(good.snapshotId)
+    expect((await activeSnapshot(PROBE))?.row_id).toBe(good.snapshotId)
     const [r] = await sql`select state, error from dataset_snapshot where row_id = ${bad.snapshotId!}`
     expect(r.state).toBe('failed')
   })
 
-  test('with no stub and no MotherDuck token the build fails naming the missing token', async () => {
-    vi.stubEnv('MOTHERDUCK_TOKEN', undefined)
-    try {
-      const out = await buildSnapshot(SALES_TARGET_DATASET)
-      expect(out.status).toBe('failed')
-      expect(out.reason).toContain('MOTHERDUCK_TOKEN is not set (required to refresh sales_target_mtd)')
-    } finally {
-      vi.unstubAllEnvs()
-    }
-  })
-
-  test('a dataset with no registered definition has no snapshot a reader may use', async () => {
-    stub(sampleRows())
-    const built = await buildSnapshot(SALES_TARGET_DATASET)
+  test('a dataset with no registered definition builds nothing and has no snapshot a reader may use', async () => {
+    expect(await buildSnapshot('unregistered_probe')).toEqual({ status: 'failed', reason: 'no dataset registered as unregistered_probe' })
+    const built = await buildSnapshot(PROBE)
     await sql`update dataset_snapshot set dataset = 'unregistered_probe' where row_id = ${built.snapshotId!}`
     expect(await activeSnapshot('unregistered_probe')).toBeNull()
   })
 
   test('an interrupted build is never resolved by a reader', async () => {
-    stub(sampleRows())
-    await buildSnapshot(SALES_TARGET_DATASET)
-    const active = await activeSnapshot(SALES_TARGET_DATASET)
+    await buildSnapshot(PROBE)
+    const active = await activeSnapshot(PROBE)
     // A process that dies mid-build leaves exactly this: a 'building' row.
     await sql`insert into dataset_snapshot (row_id, dataset, definition_version, state, built_at)
-              values ('half-built', ${SALES_TARGET_DATASET}, '1', 'building', now())`
-    expect((await activeSnapshot(SALES_TARGET_DATASET))?.row_id).toBe(active?.row_id)
+              values ('half-built', ${PROBE}, '1', 'building', now())`
+    expect((await activeSnapshot(PROBE))?.row_id).toBe(active?.row_id)
+  })
+
+  // Review, 19-Sep-2026: a deployed definition with the old row still active
+  // was served as a hit, an incompatible shape passed off as current.
+  test('an active snapshot built under a retired definition version is not a hit', async () => {
+    const out = await buildSnapshot(PROBE)
+    await sql`update dataset_snapshot set definition_version = 'retired' where row_id = ${out.snapshotId!}`
+    expect(await activeSnapshot(PROBE)).toBeNull()
   })
 
   test('pruning keeps the last good superseded snapshot', async () => {
-    stub(sampleRows())
-    await buildSnapshot(SALES_TARGET_DATASET)
-    await buildSnapshot(SALES_TARGET_DATASET)
-    await buildSnapshot(SALES_TARGET_DATASET)
-    await pruneSnapshots(SALES_TARGET_DATASET)
-    const kept = await sql`select state from dataset_snapshot where dataset = ${SALES_TARGET_DATASET} and state = 'superseded'`
+    await buildSnapshot(PROBE)
+    await buildSnapshot(PROBE)
+    await buildSnapshot(PROBE)
+    await pruneSnapshots(PROBE)
+    const kept = await sql`select state from dataset_snapshot where dataset = ${PROBE} and state = 'superseded'`
     expect(kept).toHaveLength(1)
   })
 })
 
-describe('personalisation is applied at read time', () => {
-  test('two readers share one snapshot and each sees only their own store', async () => {
-    stub(sampleRows())
-    const built = await buildSnapshot(SALES_TARGET_DATASET)
-
-    const r1 = await reportFor(EMP1)
-    const r3 = await reportFor(EMP3)
-
-    expect(r1.snapshot_id).toBe(built.snapshotId)
-    expect(r3.snapshot_id).toBe(built.snapshotId) // one snapshot, both readers
-    expect(r1.store_name).toBe('Attakulangara')
-    expect(r3.store_name).toBe('Kattakada')
-    // 2 codes x 2 days x 60 (1501) vs 40 (1515)
-    expect(r1.total.actual).toBe(240)
-    expect(r3.total.actual).toBe(160)
-    expect(r1.total.target).toBe(400)
-  })
-
-  test('a changed assignment takes effect with nothing rebuilt', async () => {
-    stub(sampleRows())
-    const built = await buildSnapshot(SALES_TARGET_DATASET)
-    const before = await reportFor(EMP1)
-    expect(before.rows).toHaveLength(2)
-
-    const narrowed: Assignment = { ...EMP1, material_groups: ['010101001'] }
-    const after = await reportFor(narrowed)
-
-    expect(after.rows).toHaveLength(1)
-    expect(after.total.actual).toBe(120)
-    expect(after.snapshot_id).toBe(built.snapshotId) // same snapshot, no rebuild
-  })
-
-  // #4344: the rows carry every sale, so a selected code with no row neither had a target nor
-  // sold. It still appears — classed as such, not as a missing actual.
-  test('a selected code with no rows still appears, as "no target, no sale"', async () => {
-    stub(sampleRows())
-    await buildSnapshot(SALES_TARGET_DATASET)
-    const withUnknown: Assignment = { ...EMP1, material_groups: ['010101001', '019999999'] }
-    const r = await reportFor(withUnknown)
-    expect(r.rows).toHaveLength(2)
-    const idle = r.rows.find((x) => x.code === '019999999')!
-    expect(idle).toMatchObject({ target: 0, actual: 0, noTargetNoSale: true, missingActual: false })
-    expect(idle.subcategory).toBe('(name not in hierarchy)') // and now that label is true: the stub's hierarchy lacks it
-    expect(r.total).toMatchObject({ missing: 0, no_target_no_sale: 1 })
-  })
-})
-
 describe('publish before cache', () => {
-  test('with no snapshot the report serves live and records the miss', async () => {
-    stub(sampleRows())
-    expect(await activeSnapshot(SALES_TARGET_DATASET)).toBeNull()
+  const dueRefreshes = () => sql`
+    select row_id from background_job
+    where method = 'refresh_datasets' and job_status = 'queued' and run_at <= statement_timestamp()`
 
-    const r = await reportFor(EMP1)
-
-    expect(r.source).toBe('live')
-    expect(r.snapshot_id).toBeNull()
-    expect(r.source_as_of).toBe('2026-09-17')
-    expect(await pendingMisses()).toContain(SALES_TARGET_DATASET)
+  test('building clears the miss', async () => {
+    await recordMiss(PROBE)
+    expect(await pendingMisses()).toContain(PROBE)
+    await buildSnapshot(PROBE)
+    expect(await pendingMisses()).not.toContain(PROBE)
   })
 
-  test('building clears the miss and the next read is served from the snapshot', async () => {
-    stub(sampleRows())
-    await reportFor(EMP1)
-    expect(await pendingMisses()).toHaveLength(1)
-
-    await buildSnapshot(SALES_TARGET_DATASET)
-
-    expect(await pendingMisses()).toHaveLength(0)
-    expect((await reportFor(EMP1)).source).toBe('snapshot')
-  })
-
-  test('a miss wakes the refresh worker immediately', async () => {
-    stub(sampleRows())
-    await reportFor(EMP1)
-    // Otherwise the first reader of a newly published report pays the live price
-    // until the next scheduled interval — up to four hours (observed on
-    // featherbase-dev, 18-Sep-2026: the boot run fires before anyone has asked
-    // for anything, finds nothing due, and re-enqueues four hours out).
-    const jobs = await sql`
-      select row_id from background_job
-      where method = 'refresh_datasets' and job_status = 'queued'
-        and run_at <= statement_timestamp()`
-    expect(jobs).toHaveLength(1)
-  })
-
-  test('a burst of misses schedules one build, not one per reader', async () => {
-    stub(sampleRows())
-    await reportFor(EMP1)
-    await reportFor(EMP3)
-    await reportFor(EMP1)
-    const jobs = await sql`
-      select row_id from background_job
-      where method = 'refresh_datasets' and job_status = 'queued'
-        and run_at <= statement_timestamp()`
-    expect(jobs).toHaveLength(1)
+  test('a miss wakes the refresh worker immediately, and a burst of misses schedules one build', async () => {
+    // Otherwise the first reader of a newly published report pays the live
+    // price until the next scheduled interval (featherbase-dev, 18-Sep-2026).
+    await sql`delete from background_job where method = 'refresh_datasets'`
+    await recordMiss(PROBE)
+    await recordMiss(PROBE)
+    await recordMiss(PROBE)
+    expect(await dueRefreshes()).toHaveLength(1)
   })
 
   test('a miss while a refresh is already running schedules nothing more', async () => {
-    stub(sampleRows())
+    await sql`delete from background_job where method = 'refresh_datasets'`
     const running = await enqueue('refresh_datasets')
     await sql`update background_job set job_status = 'running' where row_id = ${running}`
-    await reportFor(EMP1)
+    await recordMiss(PROBE)
     const queued = await sql`select row_id from background_job where method = 'refresh_datasets' and job_status = 'queued'`
     expect(queued).toHaveLength(0)
-    expect(await pendingMisses()).toContain(SALES_TARGET_DATASET) // still recorded, so the running build's successor sees it
+    expect(await pendingMisses()).toContain(PROBE) // still recorded, so the running build's successor sees it
   })
 
   test('repeated misses count rather than duplicate', async () => {
-    stub(sampleRows())
-    await reportFor(EMP1)
-    await reportFor(EMP3)
-    await recordMiss(SALES_TARGET_DATASET)
-    const rows = await sql`select hits from dataset_miss where dataset = ${SALES_TARGET_DATASET}`
-    expect(rows).toHaveLength(1)
-    expect(Number(rows[0].hits)).toBe(3)
-  })
-})
-
-describe('freshness', () => {
-  test('a snapshot read carries the refresh instant as well as the source as-of', async () => {
-    stub(sampleRows(), '2026-09-15')
-    const before = Date.now()
-    await buildSnapshot(SALES_TARGET_DATASET)
-    const r = await reportFor(EMP1)
-    // Both facts, never one standing in for the other: a snapshot refreshed a
-    // moment ago from 15-Sep data is fresh by one measure and stale by the other.
-    expect(r.source_as_of).toBe('2026-09-15')
-    expect(r.generated_at).not.toBeNull()
-    const refreshed = new Date(r.generated_at as string).getTime()
-    expect(refreshed).toBeGreaterThanOrEqual(before - 1000)
-    expect(refreshed).toBeLessThanOrEqual(Date.now() + 1000)
-  })
-
-  test('a live read has no refresh instant, because there is nothing to be stale', async () => {
-    stub(sampleRows())
-    const r = await reportFor(EMP1)
-    expect(r.source).toBe('live')
-    expect(r.generated_at).toBeNull()
-    expect(r.source_as_of).toBe('2026-09-17')
-  })
-
-  test('a snapshot read states the source as-of, not the build time', async () => {
-    stub(sampleRows(), '2026-09-15')
-    await buildSnapshot(SALES_TARGET_DATASET)
-    const r = await reportFor(EMP1)
-    expect(r.source).toBe('snapshot')
-    expect(r.source_as_of).toBe('2026-09-15')
-    // The cutoff actually applied to both sides, and the report says it is early.
-    expect(r.data_through).toBe('2026-09-15')
-    expect(r.cutoff_early).toBe(true)
-  })
-})
-
-describe('Section subtotals', () => {
-  test('rows read Section by Section with unmapped groups last, and the Section subtotals add up to the total', async () => {
-    const rows = sampleRows()
-    for (const date of ['2026-09-01', '2026-09-02']) rows.push(row('1501', '010102001', date, 50, 20))
-    rows.push(row('1501', '010102002', '2026-09-01', 30, null)) // a target with no actual yet
-    stub(rows)
-    await buildSnapshot(SALES_TARGET_DATASET)
-    const a: Assignment = {
-      ...EMP1,
-      material_groups: ['010101001', '010101003', '010102001', '010102002'],
-      // 010101003 is in no Section: it must still be shown, after the named ones.
-      section_by_material_group: { '010101001': 'Boys Tops', '010102001': 'Boys Bottoms', '010102002': 'Boys Bottoms' },
-    }
-    const r = await reportFor(a)
-    expect(r.rows.map((x) => [x.section, x.code])).toEqual([
-      ['Boys Bottoms', '010102001'],
-      ['Boys Bottoms', '010102002'],
-      ['Boys Tops', '010101001'],
-      [null, '010101003'],
-    ])
-    // The missing actual is counted, never summed as ₹0 — the subtotal carries its own count.
-    expect(r.sections).toEqual([
-      { section: 'Boys Bottoms', target: 130, actual: 40, gap: -90, achievement: (100 * 40) / 130, missing: 1, no_target_no_sale: 0, n: 2 },
-      { section: 'Boys Tops', target: 200, actual: 120, gap: -80, achievement: 60, missing: 0, no_target_no_sale: 0, n: 1 },
-      { section: null, target: 200, actual: 120, gap: -80, achievement: 60, missing: 0, no_target_no_sale: 0, n: 1 },
-    ])
-    expect(r.total).toMatchObject({ target: 530, actual: 280, n: 4, missing: 1 })
-  })
-})
-
-describe('Achievement is the ratio of the sums', () => {
-  test('a total across a large and a small subcategory is total sales over total target, not the mean of the row percentages', async () => {
-    // One subcategory at 50% of a large target, one at 200% of a small one: the mean of the two
-    // percentages is 125, the ratio of the sums is 75.
-    stub([row('1501', '010101001', '2026-09-01', 100, 50), row('1501', '010101003', '2026-09-01', 20, 40)])
-    await buildSnapshot(SALES_TARGET_DATASET)
-    const r = await reportFor(EMP1)
-    const byCode = Object.fromEntries(r.rows.map((x) => [x.code, x.achievement]))
-    expect(byCode).toEqual({ '010101001': 50, '010101003': 200 })
-    expect(r.total).toMatchObject({ target: 120, actual: 90, achievement: 75 })
-  })
-
-  test('a target of zero shows no achievement rather than a division', async () => {
-    stub([row('1501', '010101001', '2026-09-01', 0, 30), row('1501', '010101003', '2026-09-01', 20, 10)])
-    await buildSnapshot(SALES_TARGET_DATASET)
-    const r = await reportFor(EMP1)
-    expect(r.rows.find((x) => x.code === '010101001')?.achievement).toBeNull()
-    expect(r.rows.find((x) => x.code === '010101001')?.actual).toBe(30)
-  })
-})
-
-describe('the month is part of the snapshot identity', () => {
-  test('a snapshot built in September is not a hit on 01-Oct (IST): the reader goes live and the miss is recorded', async () => {
-    stub(sampleRows())
-    const out = await buildSnapshot(SALES_TARGET_DATASET)
-    expect(out.status).toBe('activated')
-    expect((await reportFor(EMP1)).source).toBe('snapshot')
-
-    process.env.SALES_TARGET_TODAY = '2026-10-01'
-    try {
-      // Nothing about the row changed; the period did. Serving it would show September's
-      // figures under an October heading.
-      expect(await activeSnapshot(SALES_TARGET_DATASET)).toBeNull()
-      await sql`delete from dataset_miss where dataset = ${SALES_TARGET_DATASET}`
-      const r = await reportFor(EMP1)
-      expect(r.source).toBe('live')
-      expect(r.period_start).toBe('2026-10-01')
-      const [miss] = await sql`select hits from dataset_miss where dataset = ${SALES_TARGET_DATASET}`
-      expect(Number(miss.hits)).toBe(1)
-      // The first October build is judged on its own: September's larger row count is not
-      // "the previous snapshot", so the >50% drop guard does not refuse it.
-      stub([row('1501', '010101001', '2026-10-01', 100, 60)], '2026-10-01')
-      expect((await buildSnapshot(SALES_TARGET_DATASET)).status).toBe('activated')
-      expect((await reportFor(EMP1)).source).toBe('snapshot')
-    } finally {
-      process.env.SALES_TARGET_TODAY = '2026-09-17'
-    }
-  })
-})
-
-describe('the hours after IST midnight on the 1st', () => {
-  test('with the warehouse still on last month, the build says why it did not run and the report says no data yet', async () => {
-    // This stub HONOURS the cutoff, as MotherDuck does: actuals end 30-Sep, so nothing of October.
-    _setSourceReader(async (text: string) => {
-      if (/max\(actuals_as_of_date\)/.test(text) && !/with cutoff/.test(text)) return [['2026-09-30']]
-      return /between date '2026-10-01'/.test(text) ? [] : sampleRows()
-    })
-    process.env.SALES_TARGET_TODAY = '2026-10-01'
-    try {
-      const out = await buildSnapshot(SALES_TARGET_DATASET)
-      expect(out.status).toBe('failed')
-      expect(out.reason).toMatch(/no actuals yet for the period starting 2026-10-01: the warehouse has data through 2026-09-30/)
-      const r = await reportFor(EMP1)
-      expect(r.source).toBe('live')
-      expect(r.no_data_yet).toBe(true)
-      expect(r.rows.every((x) => x.missingActual)).toBe(true)
-    } finally {
-      process.env.SALES_TARGET_TODAY = '2026-09-17'
-    }
-    // An ordinary day is not "no data yet".
-    stub(sampleRows())
-    expect((await reportFor(EMP1)).no_data_yet).toBe(false)
+    await recordMiss(PROBE)
+    await recordMiss(PROBE)
+    await recordMiss(PROBE)
+    const misses = await sql`select hits from dataset_miss where dataset = ${PROBE}`
+    expect(misses).toHaveLength(1)
+    expect(Number(misses[0].hits)).toBe(3)
   })
 })
 
 describe('registry as Tables (migration 0087)', () => {
-  // Review, 19-Sep-2026: activeSnapshot() resolved by dataset + state='active'
-  // only, so a deployed DatasetDefinition.version bump with the OLD row still
-  // 'active' (the refresh job hasn't run since deploy) was served as a normal
-  // hit — an incompatible shape passed off as current.
-  test('an active snapshot built under a retired definition_version is not a hit — the reader falls back to live', async () => {
-    stub(sampleRows())
-    const out = await buildSnapshot(SALES_TARGET_DATASET, { trigger: 'schedule' })
-    expect(out.status).toBe('activated')
-    expect(await activeSnapshot(SALES_TARGET_DATASET)).toBeTruthy()
-
-    // Simulate a deploy that bumped the dataset's version without a rebuild
-    // yet: the row on disk still says the old one.
-    await sql`update dataset_snapshot set definition_version = 'retired' where row_id = ${out.snapshotId!}`
-    expect(await activeSnapshot(SALES_TARGET_DATASET)).toBeNull()
-
-    // reportFor already has a path for "never built": live, with a miss
-    // recorded so the worker rebuilds under the current definition. Reused,
-    // not reinvented, for the version-mismatch case.
-    await sql`delete from dataset_miss where dataset = ${SALES_TARGET_DATASET}`
-    const r = await reportFor(EMP1)
-    expect(r.source).toBe('live')
-    expect(await pendingMisses()).toContain(SALES_TARGET_DATASET)
-  })
-
   test('a build records what it cost and what caused it', async () => {
-    stub(sampleRows())
-    const out = await buildSnapshot(SALES_TARGET_DATASET, { trigger: 'demand' })
+    const out = await buildSnapshot(PROBE, { trigger: 'demand' })
     expect(out.status).toBe('activated')
-    const snap = await activeSnapshot(SALES_TARGET_DATASET)
+    const snap = await activeSnapshot(PROBE)
     expect(snap?.triggered_by).toBe('demand')
     expect(snap?.fetch_ms).toBeGreaterThanOrEqual(0)
     expect(snap?.load_ms).toBeGreaterThanOrEqual(0)
-    // Eight rows on disk are more than zero bytes; the exact figure is Postgres's.
-    expect(snap?.bytes).toBeGreaterThan(0)
+    expect(snap?.bytes).toBe(8192)
   })
 
   test('a failed build still records its timings — the cost of a refusal is a fact too', async () => {
-    _setSourceReader(async () => { throw new Error('upstream is down') })
-    const bad = await buildSnapshot(SALES_TARGET_DATASET, { trigger: 'schedule' })
+    source = async () => { throw new Error('upstream is down') }
+    const bad = await buildSnapshot(PROBE, { trigger: 'schedule' })
     const [r] = await sql`
       select state, triggered_by, fetch_ms from dataset_snapshot where row_id = ${bad.snapshotId!}`
     expect(r).toMatchObject({ state: 'failed', triggered_by: 'schedule' })
     expect(Number(r.fetch_ms)).toBeGreaterThanOrEqual(0)
   })
 
-  test('the registry is a Table a System Manager reads through the generic API; the rows table is not', async ({ admin }) => {
-    stub(sampleRows())
-    const out = await buildSnapshot(SALES_TARGET_DATASET)
+  test('the registry and the misses are Tables a System Manager reads through the generic API', async ({ admin }) => {
+    const out = await buildSnapshot(PROBE)
+    await recordMiss(PROBE)
     const list = await admin.get<{ data: Record<string, unknown>[] }>(
       `/api/table/${encodeURIComponent('Dataset Snapshot')}?fields=${encodeURIComponent(JSON.stringify(['row_id', 'dataset', 'state', 'row_count', 'triggered_by']))}`,
     )
     const mine = list.data.find((r) => r.row_id === out.snapshotId)
-    expect(mine).toMatchObject({ dataset: SALES_TARGET_DATASET, state: 'active' })
+    expect(mine).toMatchObject({ dataset: PROBE, state: 'active' })
     expect(Number(mine?.row_count)).toBe(8)
-    // The rows table holds every store's figures and has no Table: unreachable generically.
-    const rows = await admin.fetch(`/api/table/${encodeURIComponent('Sales Target Snapshot Row')}`)
-    expect(rows.status).toBe(404)
-  })
-
-  test('a miss is a Dataset Miss row the Admin can see', async ({ admin }) => {
-    stub(sampleRows())
-    await reportFor(EMP1)
-    const list = await admin.get<{ data: Record<string, unknown>[] }>(
+    const misses = await admin.get<{ data: Record<string, unknown>[] }>(
       `/api/table/${encodeURIComponent('Dataset Miss')}?fields=${encodeURIComponent(JSON.stringify(['dataset', 'hits']))}`,
     )
-    expect(list.data.find((r) => r.dataset === SALES_TARGET_DATASET)).toBeTruthy()
+    expect(misses.data.find((r) => r.dataset === PROBE)).toBeTruthy()
   })
 })
 
@@ -523,19 +216,16 @@ describe('refresh_datasets job: a build that does not activate is a failed run',
     await loadJobs()
     await sql`delete from background_job where method = 'refresh_datasets'`
     await sql`delete from job_execution where method = 'refresh_datasets'`
-    await sql`delete from dataset_miss where dataset = ${SALES_TARGET_DATASET}`
+    await sql`delete from dataset_miss where dataset = ${PROBE}`
 
     // A good snapshot first, so there is a "last good" to preserve.
-    stub(sampleRows())
-    const first = await buildSnapshot(SALES_TARGET_DATASET, { trigger: 'script' })
+    const first = await buildSnapshot(PROBE, { trigger: 'script' })
     expect(first.status).toBe('activated')
 
     // Now the source breaks, and a reader's miss asks for a refresh — the
     // same path recordMiss uses to wake the worker between scheduled runs.
-    _setSourceReader(async () => {
-      throw new Error('warehouse unreachable')
-    })
-    await recordMiss(SALES_TARGET_DATASET)
+    source = async () => { throw new Error('warehouse unreachable') }
+    await recordMiss(PROBE)
     await nudgeDueJobs()
     expect(await drainJobs()).toBeGreaterThanOrEqual(1)
 
@@ -543,9 +233,9 @@ describe('refresh_datasets job: a build that does not activate is a failed run',
       select outcome, error from job_execution
       where method = 'refresh_datasets' order by started_at desc limit 1`
     expect(exec.outcome).toBe('error')
-    expect(String(exec.error)).toContain(SALES_TARGET_DATASET)
+    expect(String(exec.error)).toContain(PROBE)
 
-    const stillActive = await activeSnapshot(SALES_TARGET_DATASET)
+    const stillActive = await activeSnapshot(PROBE)
     expect(stillActive?.row_id).toBe(first.snapshotId) // untouched — last-good is still serving
   })
 })

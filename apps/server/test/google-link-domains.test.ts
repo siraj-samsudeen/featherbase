@@ -326,7 +326,7 @@ describe('a link with no verified address', () => {
     await sql`update sign_in_identity set email_verified = true where id = 'uid_693_stale'`
     const { completeSignIn } = await import('../src/sign-in')
     const { methodOfKind } = await import('../src/identities')
-    const google = (await methodOfKind('google'))!
+    const google = (await methodOfKind('google_oauth'))!
     await completeSignIn(google, { status: 'verified', subject: 'g-693-stale', email: 'sm.stale@gmail.com', email_verified: false }, null)
     expect(await sql`select email, email_verified from sign_in_identity where id = 'uid_693_stale'`).toEqual([
       { email: 'sm.stale@gmail.com', email_verified: false },

@@ -426,6 +426,9 @@ describe('#395: delivery through a real SMTP server', () => {
   async function queueOne(to: string) {
     await loadJobs()
     await setupAccount()
+    // drainDue(1) must run this email's job, not a recurring job (check_sla)
+    // that an earlier file's real commit left queued.
+    await sql`delete from background_job where job_status = 'queued'`
     return await queueEmail({ to, subject: 's', body: 'b' })
   }
   const statusOf = async (name: string) =>

@@ -18,8 +18,6 @@ import { ADMIN, adminAddress, appRoot, matchAddress, type InstanceAddress } from
 import { mintHandoffTicket } from './oauth'
 import { getRoles, tableAccessFor } from './permissions'
 import { appCatalog, appEntryTable } from './runtime-packages'
-import { isInstalled } from './apps'
-import { VIEWER_ROLE } from './sales-target'
 
 /** What a sign-in answer carries besides the session: a path on this address
  *  to open (`landing`), or a URL on another address to go to (`handoff`).
@@ -40,12 +38,10 @@ export async function canUseAdmin(person: string): Promise<boolean> {
   return (await tableAccessFor(person, roles)).admin
 }
 
-/** Can this person open the app an address opens. Until an app named
- *  dash is installed (#671), Dash's interim gate is today's
- *  report gate (design D8); an installed app is open to whoever its catalog
- *  lists, and to no one while it is disabled or not loaded here. */
+/** Can this person open the app an address opens: an installed app is open
+ *  to whoever its catalog lists, and to no one while it is disabled or not
+ *  loaded here. */
 export async function canOpenApp(person: string, app: string): Promise<boolean> {
-  if (app === 'dash' && !(await isInstalled(app))) return (await getRoles(person)).includes(VIEWER_ROLE)
   return (await appCatalog(person)).some((entry) => entry.name === app)
 }
 
@@ -70,9 +66,9 @@ export async function landingAfterSignIn(session: SignedInSession, host: string,
 
   // An app's address.
   if (here && here.opens !== ADMIN) {
-    if (await canOpenApp(person, here.opens)) return { landing: appRoot(here.opens, await isInstalled(here.opens)) }
+    if (await canOpenApp(person, here.opens)) return { landing: appRoot(here.opens) }
     if (handOff && list && (await canUseAdmin(person))) return handTo(session, here, adminAddress(list))
-    return { landing: appRoot(here.opens, await isInstalled(here.opens)) }
+    return { landing: appRoot(here.opens) }
   }
 
   if (await canUseAdmin(person)) return {}
@@ -82,22 +78,23 @@ export async function landingAfterSignIn(session: SignedInSession, host: string,
     for (const entry of list)
       if (entry.opens !== ADMIN && (await canOpenApp(person, entry.opens))) return handTo(session, here, entry)
 
-  // No list (development and test), or a host the list does not name: that
-  // host is served as one address holding everything, as before #488, so a
-  // report viewer opens the report right here.
-  if (!here && (await canOpenApp(person, 'dash'))) return { landing: appRoot('dash', await isInstalled('dash')) }
-
   // #659: no Admin and no address handed them on, but an app they can open
   // through a role of their own is served right here (the Admin address
-  // serves every app's root, as an unlisted host does): its root, the first by
-  // title when they have several. An app open to everyone (All) is no one's in
-  // particular, so it never claims a person with no role of use. Chosen from
-  // the catalog, so the platform names no app (ADR 0011).
+  // serves every app's root, as an unlisted host does).
+  const own = await ownApp(person)
+  return own ? { landing: appRoot(own) } : {}
+}
+
+/** The app a person belongs to: one they can open through a role of their
+ *  own, the first by title when they have several. An app open to everyone
+ *  (All) is no one's in particular, so it never claims a person with no role
+ *  of use. Chosen from the catalog, so the platform names no app (ADR 0011). */
+export async function ownApp(person: string): Promise<string | null> {
   const { readableByOwnRole } = await tableAccessFor(person, await getRoles(person))
   const [first] = (await appCatalog(person))
     .filter((entry) => readableByOwnRole.includes(appEntryTable(entry.name) ?? ''))
     .sort((a, b) => a.title.localeCompare(b.title) || a.name.localeCompare(b.name))
-  return first ? { landing: appRoot(first.name, true) } : {}
+  return first?.name ?? null
 }
 
 const ADMIN_ROOT = '/featherbase/admin'

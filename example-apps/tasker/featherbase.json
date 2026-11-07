@@ -342,9 +342,21 @@
       "fromVersion": "3.0.2",
       "toVersion": "3.0.3",
       "operations": []
+    },
+    {
+      "id": "shared_packages_731",
+      "fromVersion": "3.0.3",
+      "toVersion": "3.0.4",
+      "operations": []
     }
   ],
   "releaseNotes": [
+    {
+      "version": "3.0.4",
+      "changes": [
+        "Takes the platform's shared sign-in kind names and drops the retired sales-target page; Tasker itself is unchanged (#731)"
+      ]
+    },
     {
       "version": "3.0.3",
       "changes": [

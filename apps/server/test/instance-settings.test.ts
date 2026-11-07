@@ -195,29 +195,29 @@ describe('apply (D4)', () => {
 
   test('a sign-in method row the file names but the environment lacks is created', async () => {
     const result = await applyInstanceSettings({
-      settings: { 'Sign In Method': [{ row_id: 'stylehr', kind: 'delegated_password', label: 'StyleHR', enabled: false, service_url: 'https://hr.example.com/login' }] },
+      settings: { 'Sign In Method': [{ row_id: 'stylehr', kind: 'external_password', label: 'StyleHR', enabled: false, service_url: 'https://hr.example.com/login' }] },
     }, { by: 'Administrator' })
     expect(result.changes).toContainEqual({ table: 'Sign In Method', row_id: 'stylehr', field: 'label', old: null, new: 'StyleHR', created: true })
     const [row] = await sql`select kind, created_by from sign_in_method where row_id = 'stylehr'`
-    expect(row).toEqual({ kind: 'delegated_password', created_by: INSTANCE_SETTINGS_ACTOR })
+    expect(row).toEqual({ kind: 'external_password', created_by: INSTANCE_SETTINGS_ACTOR })
   })
 })
 
 describe('values that differ by environment', () => {
   const file: InstanceSettingsFile = {
-    settings: { 'Scheduled Job': [{ row_id: 'disable_leavers', enabled: true }] },
+    settings: { 'Scheduled Job': [{ row_id: 'check_sla', enabled: true }] },
     environments: {
-      dev: { settings: { 'Scheduled Job': [{ row_id: 'disable_leavers', enabled: false }] } },
+      dev: { settings: { 'Scheduled Job': [{ row_id: 'check_sla', enabled: false }] } },
       production: {},
     },
   }
 
   test('a job is off only on dev', async () => {
     await applyInstanceSettings(file, { by: 'Administrator', environment: 'production' })
-    const [prod] = await sql`select enabled from scheduled_job where row_id = 'disable_leavers'`
+    const [prod] = await sql`select enabled from scheduled_job where row_id = 'check_sla'`
     expect(prod.enabled).toBe(true)
     const dev = await applyInstanceSettings(file, { by: 'Administrator', environment: 'dev' })
-    expect(dev.changes).toEqual([{ table: 'Scheduled Job', row_id: 'disable_leavers', field: 'enabled', old: true, new: false }])
+    expect(dev.changes).toEqual([{ table: 'Scheduled Job', row_id: 'check_sla', field: 'enabled', old: true, new: false }])
   })
 
   test('an environment the file does not list is refused, so a typo cannot apply the base alone', async () => {
@@ -310,7 +310,7 @@ describe('export (D9)', () => {
   test('a JSON column holding a JSON string round-trips as that string (Codex P2)', async () => {
     await sql`insert into sign_in_method ${sql({
       row_id: 'stringy', created_by: 'Administrator', updated_by: 'Administrator', created_at: new Date(), updated_at: new Date(), submission_status: 'draft', position: 0,
-      kind: 'delegated_password', label: 'Stringy', enabled: false, new_person: 'refuse', self_link: false, settings: sql.json('{}'),
+      kind: 'external_password', label: 'Stringy', enabled: false, new_person: 'refuse', self_link: false, settings: sql.json('{}'),
     } as never)}`
     const exported = await exportInstanceSettings()
     expect((exported.file.settings['Sign In Method'] as Record<string, unknown>[]).find((r) => r.row_id === 'stringy')).toMatchObject({ settings: '{}' })
@@ -334,7 +334,7 @@ describe('export (D9)', () => {
       on conflict (table_name, field) do update set value = excluded.value`
     await sql`insert into sign_in_method ${sql({
       row_id: 'leaky', created_by: 'Administrator', updated_by: 'Administrator', created_at: new Date(), updated_at: new Date(), submission_status: 'draft', position: 0,
-      kind: 'delegated_password', label: 'Leaky', enabled: false, new_person: 'refuse', self_link: false,
+      kind: 'external_password', label: 'Leaky', enabled: false, new_person: 'refuse', self_link: false,
       service_url: 'https://bot:hunter2-url-password@hr.example.com/login',
       settings: sql.json({ username_key: 'user', api_token: 'tok-in-json-1234', nested: { client_secret: 'nested-secret-5678' } }),
     } as never)}`
@@ -364,7 +364,7 @@ describe('export: credentials no deployment variable holds', () => {
     }
     await sql`insert into sign_in_method ${sql({
       row_id: 'leaky2', created_by: 'Administrator', updated_by: 'Administrator', created_at: new Date(), updated_at: new Date(), submission_status: 'draft', position: 0,
-      kind: 'delegated_password', label: 'Leaky Two', enabled: false, new_person: 'refuse', self_link: false, service_url: leaks.query,
+      kind: 'external_password', label: 'Leaky Two', enabled: false, new_person: 'refuse', self_link: false, service_url: leaks.query,
     } as never)}`
     for (const [field, value] of [['time_zone', leaks.dsn], ['invitation_email_intro', leaks.bearer], ['app_name', leaks.jsonText]])
       await sql`insert into single_value ${sql({ table_name: 'System Settings', field, value })}
@@ -510,7 +510,7 @@ describe('over HTTP (D3)', () => {
 })
 
 describe('an environment section adds to the base', () => {
-  const row = (row_id: string, label: string) => ({ row_id, kind: 'delegated_password', label, enabled: false, service_url: 'https://hr.example.com/login' })
+  const row = (row_id: string, label: string) => ({ row_id, kind: 'external_password', label, enabled: false, service_url: 'https://hr.example.com/login' })
 
   test('rows only the section names are added, a row it shares with the base takes the section\'s fields, and the rest of the base stays', async () => {
     const file: InstanceSettingsFile = {
@@ -520,7 +520,7 @@ describe('an environment section adds to the base', () => {
           settings: {
             'Sign In Method': [{ row_id: 'base_one', label: 'Base one (dev)' }, row('dev_only', 'Dev only')],
             'System Settings': { app_name: 'Dev Name' },
-            'Scheduled Job': [{ row_id: 'disable_leavers', enabled: false }],
+            'Scheduled Job': [{ row_id: 'check_sla', enabled: false }],
           },
         },
       },
@@ -547,9 +547,9 @@ describe('a refusal that names no field', () => {
   test('is reported against the row, in the refusal\'s own words, and nothing is saved', async () => {
     const before = await snapshot()
     const err = await problemsOf(applyInstanceSettings({
-      settings: { 'Sign In Method': [{ row_id: 'second_google', kind: 'google', label: 'Second Google', enabled: false }] },
+      settings: { 'Sign In Method': [{ row_id: 'second_google', kind: 'google_oauth', label: 'Second Google', enabled: false }] },
     }, { by: 'Administrator' }))
-    expect(err.fields).toEqual({ 'Sign In Method.second_google': expect.stringContaining('already a google sign-in method') })
+    expect(err.fields).toEqual({ 'Sign In Method.second_google': expect.stringContaining('already a Google sign-in method') })
     expect(await snapshot()).toEqual(before)
   })
 })

@@ -1,5 +1,5 @@
 // #464: the Jobs page and the job alert email name a scheduled job the same
-// way, from its method: "disable_leavers" reads "Disable leavers".
+// way, from its method: "auto_email_reports" reads "Auto email reports".
 
 export const JOBS_PATH = '/featherbase/admin/jobs'
 

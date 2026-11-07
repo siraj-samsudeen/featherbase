@@ -2,14 +2,14 @@
 // instance opens, and which one emailed links use. It is the only place the
 // server learns its own addresses.
 //
-//   [{ "address": "https://dash.example.com", "opens": "dash", "emails": true },
+//   [{ "address": "https://shop.example.com", "opens": "shop", "emails": true },
 //    { "address": "https://featherbase.example.com", "opens": "admin" }]
 //
 // Read at boot, before the database, so nothing here may touch it. The list is
 // configuration: a request's Host header can only SELECT one of its entries,
 // never add one, and every absolute URL the server builds comes from here.
 
-import { ACCOUNT_ROOT, APP_ROOT_PATTERN, INTERIM_APPS, RESERVED_APP_ROOTS, appHref } from 'shared'
+import { ACCOUNT_ROOT, APP_ROOT_PATTERN, RESERVED_APP_ROOTS, appHref } from 'shared'
 import { DEV_ENVIRONMENTS } from './env'
 import { BAR_SCRIPT } from './runtime-shell'
 
@@ -17,7 +17,7 @@ import { BAR_SCRIPT } from './runtime-shell'
 export const ADMIN = 'admin'
 
 export interface InstanceAddress {
-  /** The absolute origin, lowercased, no trailing slash (`https://dash.example.com`). */
+  /** The absolute origin, lowercased, no trailing slash (`https://shop.example.com`). */
   address: string
   /** The hostname alone, port stripped — what a request's Host is matched against. */
   host: string
@@ -152,17 +152,9 @@ function emailedLinkOrigin(
   return requestOrigin ?? DEV_WEB_ORIGIN
 }
 
-/** The page standing in for an app that is not yet installed (design D8,
- *  shared INTERIM_APPS): none once an app of that name is installed (#671).
- *  `installed` comes from the caller, since nothing here may touch the
- *  database or the loaded apps. */
-export function interimApp(app: string, installed: boolean): { root: string; title: string } | undefined {
-  return installed ? undefined : INTERIM_APPS[app]
-}
-
 /** Where an app's address keeps people: the app's own root. */
-export function appRoot(app: string, installed: boolean): string {
-  return interimApp(app, installed)?.root ?? appHref(app)
+export function appRoot(app: string): string {
+  return appHref(app)
 }
 
 // The Featherbase pages an app's address still serves: signing in, resetting a
@@ -186,10 +178,9 @@ const under = (path: string, root: string) => {
 const appRootPattern = new RegExp(APP_ROOT_PATTERN)
 
 /** On an address that opens an app, where a GET of `path` is sent instead,
- *  or null when it is served as it is. `installed`: whether the app it opens
- *  is installed. */
-export function addressRedirect(entry: InstanceAddress, path: string, installed: boolean): string | null {
-  const root = appRoot(entry.opens, installed)
+ *  or null when it is served as it is. */
+export function addressRedirect(entry: InstanceAddress, path: string): string | null {
+  const root = appRoot(entry.opens)
   if (path === '/') return root
   if (under(path, root) || SERVED_EVERYWHERE.some((page) => under(path, page))) return null
   if (under(path, '/featherbase') || appRootPattern.test(path)) return root

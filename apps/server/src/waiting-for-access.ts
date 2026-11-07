@@ -1,10 +1,9 @@
 // #429, #955: who is waiting for access, per app. A person waits for an app
-// only after opening it without access: an installed app's pages, Feather
-// Dash, or Featherbase itself. Opening it records one Access Request row;
+// only after opening it without access: an installed app's pages, or
+// Featherbase itself. Opening it records one Access Request row;
 // System Managers list them, get one email per person and app, and one
 // reminder a day later. A request goes once the person can open that app,
 // however they came to.
-import { INTERIM_APPS } from 'shared'
 import { sql, withTransaction } from './db'
 import { logActivity } from './audit'
 import { queueEmail, type MailMessage } from './email'
@@ -12,10 +11,7 @@ import { recordUndeliveredNotice, systemManagerEmails } from './system-notice'
 import { config } from './config'
 import { adminLinkOrigin } from './instance-addresses'
 import { canOpenApp, canUseAdmin } from './landing'
-import { getRoles } from './permissions'
 import { servedApp } from './runtime-packages'
-import { isInstalled } from './apps'
-import { VIEWER_ROLE } from './sales-target'
 
 export const ALERT_SUBJECT = 'Someone is waiting for access'
 export const REMINDER_SUBJECT = 'Still waiting for access'
@@ -37,20 +33,18 @@ interface AccessTarget {
   title: string
 }
 
-/** The app `name` names, as a person can ask for it: Featherbase, Feather
- *  Dash until it is installed, or an installed app whose pages are served
- *  here. Null for anything else, which nobody can ask for. */
+/** The app `name` names, as a person can ask for it: Featherbase, or an
+ *  installed app whose pages are served here. Null for anything else, which
+ *  nobody can ask for. */
 export async function accessTarget(name: string): Promise<AccessTarget | null> {
   if (name === FEATHERBASE_APP.name) return FEATHERBASE_APP
-  const interim = Object.hasOwn(INTERIM_APPS, name) ? INTERIM_APPS[name] : undefined
-  if (interim && !(await isInstalled(name))) return { name, title: interim.title }
   return servedApp(name)
 }
 
 /** Can `person` open `app` now: the same rule as the page they opened. */
 async function canOpen(person: string, app: string): Promise<boolean> {
   if (app !== FEATHERBASE_APP.name) return canOpenApp(person, app)
-  return (await canUseAdmin(person)) || (await getRoles(person)).includes(VIEWER_ROLE)
+  return canUseAdmin(person)
 }
 
 /** Removes every request whose person can now open its app, or who can no

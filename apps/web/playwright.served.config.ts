@@ -9,15 +9,9 @@ import { fileURLToPath } from 'node:url'
 // production does (#57, one origin), and its specs read real headers.
 //
 // Like the main isolated stack it owns everything: its own database (the
-// developer's name with `_served_e2e`, dropped and recreated per run), its own
-// port, and the in-process MotherDuck stand-in (e2e/sales-target-stub.ts),
-// which the API server reaches through MOTHERDUCK_API_BASE and the page frames
-// through MOTHERDUCK_EMBED_ORIGIN. Nothing remote is touched: the dataset
-// refresh never ticks (JOB_POLL_MS) and the spec answers the report's cached
-// read itself.
+// developer's name with `_served_e2e`, dropped and recreated per run) and its
+// own port. Nothing remote is touched: no job ticks (JOB_POLL_MS).
 const port = Number(process.env.E2E_SERVED_PORT ?? 8030)
-export const STUB_PORT = Number(process.env.E2E_SERVED_STUB_PORT ?? 8031)
-export const STUB_ORIGIN = `http://127.0.0.1:${STUB_PORT}`
 
 function servedDatabaseUrl(): string {
   const url = new URL(process.env.DATABASE_URL ?? 'postgres://postgres:postgres@127.0.0.1:5432/featherbase')
@@ -62,19 +56,6 @@ export default defineConfig({
       ALLOW_MOCK_OAUTH: '1',
       PREAUTH_LOGIN_MAX: '10000',
       JOB_POLL_MS: '3600000',
-      // The embed, pointed at the local stand-in (never MotherDuck).
-      MOTHERDUCK_API_BASE: STUB_ORIGIN,
-      MOTHERDUCK_EMBED_ORIGIN: STUB_ORIGIN,
-      MOTHERDUCK_TOKEN: 'served-e2e-stub-token',
-      DIVE_ID: 'served-e2e-dive',
-      SERVICE_ACCOUNT: 'served-e2e-service',
-      SALES_TARGET_SHARED_ENV: '/nonexistent/served-e2e.env',
-      // #488 stage A: one address opens the interim Feather Dash, one the
-      // Admin. Plain `localhost` is not listed, so it holds everything.
-      INSTANCE_ADDRESSES: JSON.stringify([
-        { address: `http://admin.localhost:${port}`, opens: 'admin', emails: true },
-        { address: `http://dash.localhost:${port}`, opens: 'dash' },
-      ]),
     },
   },
   reporter: [['list']],

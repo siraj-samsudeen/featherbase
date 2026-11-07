@@ -336,7 +336,7 @@ describe('release preflight: access configuration', () => {
   })
 
   test('(a) a grant to a non-open role passes', async () => {
-    await grant('Sales Target Viewer', 'Person', 'read')
+    await grant('Shelf Viewer', 'Person', 'read')
     expect(await preflightRelease({ environment: 'test' })).toContain(ACCESS_OK)
   })
 
@@ -351,8 +351,8 @@ describe('release preflight: access configuration', () => {
 
   test('(b) a Google method that creates anyone it admits refuses outside development or test', async () => {
     vi.stubEnv('DISABLE_DATABASE_ENVIRONMENT_CHECK', '1')
-    await sql`update sign_in_method set new_person = 'create', allowed_email_domains = 'example.com' where kind = 'google'`
-    await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(/google sign-in method "google" creates a new person/)
+    await sql`update sign_in_method set new_person = 'create', allowed_email_domains = 'example.com' where kind = 'google_oauth'`
+    await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(/Google sign-in method "google" creates a new person/)
     expect(await preflightRelease({ environment: 'test' })).toContain(SIGNUP_OK)
   })
 
@@ -491,16 +491,16 @@ describe('release preflight: deployment variables', () => {
 
   test('an enabled Google method with a client id needs GOOGLE_CLIENT_SECRET', async () => {
     // Without a client id the method is not a real Google client: nothing to require.
-    await sql`update sign_in_method set enabled = true, client_id = null where kind = 'google'`
+    await sql`update sign_in_method set enabled = true, client_id = null where kind = 'google_oauth'`
     expect(await preflightRelease({ environment: 'production' })).not.toContain('GOOGLE_CLIENT_SECRET set')
-    await sql`update sign_in_method set enabled = true, client_id = 'client.apps.googleusercontent.com' where kind = 'google'`
+    await sql`update sign_in_method set enabled = true, client_id = 'client.apps.googleusercontent.com' where kind = 'google_oauth'`
     await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(
       /GOOGLE_CLIENT_SECRET is not set on a "production" server\. \(required while a Google sign-in method is enabled with a client id\)/)
     vi.stubEnv('GOOGLE_CLIENT_SECRET', 'the-google-secret')
     expect(await preflightRelease({ environment: 'production' })).toContain('GOOGLE_CLIENT_SECRET set')
     // Disabled again: not required.
     vi.stubEnv('GOOGLE_CLIENT_SECRET', '')
-    await sql`update sign_in_method set enabled = false where kind = 'google'`
+    await sql`update sign_in_method set enabled = false where kind = 'google_oauth'`
     expect(await preflightRelease({ environment: 'production' })).not.toContain('GOOGLE_CLIENT_SECRET set')
   })
 
@@ -580,7 +580,7 @@ describe('where a missing variable refuses', () => {
     // a client id needs its secret at boot. A Data Source's url_env only warns.
     const db = postgres(url.toString(), { max: 1, onnotice: () => {} })
     try {
-      await db`update featherbase.sign_in_method set enabled = true, client_id = 'client.apps.googleusercontent.com' where kind = 'google'`
+      await db`update featherbase.sign_in_method set enabled = true, client_id = 'client.apps.googleusercontent.com' where kind = 'google_oauth'`
       await db`insert into featherbase.data_source (row_id, engine, url_env) values ('fb_boot_warehouse', 'postgres', 'FB_BOOT_WAREHOUSE_URL')`
     } finally {
       await db.end()

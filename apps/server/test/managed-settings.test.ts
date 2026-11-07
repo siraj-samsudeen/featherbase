@@ -15,6 +15,7 @@ import { deleteDoc, getDoc, renameDoc, saveDoc } from '../src/document'
 import { expectApiError, patchDoc } from './fixtures'
 import { applySeedPack } from '../src/seed-packs'
 import { CORE_PEOPLE_REVIEW_JSON } from '../src/person-identifiers'
+import { TEST_SEED_PACK } from './seed-pack'
 
 const DOMAINS = 'example.com,example.org'
 const LOCKED = { status: 403, type: 'PermissionError', message: expect.stringContaining(`is set in the instance settings file (${INSTANCE_SETTINGS_FILE})`) }
@@ -23,7 +24,7 @@ const FILE = {
   settings: {
     'System Settings': { app_name: 'Locked Name' },
     'Sign In Method': [{ row_id: 'google', allowed_email_domains: DOMAINS }],
-    'Scheduled Job': [{ row_id: 'disable_leavers', enabled: false }],
+    'Scheduled Job': [{ row_id: 'check_sla', enabled: false }],
   },
 }
 
@@ -137,8 +138,8 @@ describe('Admin saves of a locked field are refused (D5)', () => {
 
   test('a locked scheduled job switch cannot be flipped from Admin', async ({ admin }) => {
     await apply()
-    const [job] = await sql`select updated_at from scheduled_job where row_id = 'disable_leavers'`
-    await expectApiError(patchDoc(admin, '/api/table/Scheduled%20Job/disable_leavers', { enabled: true, updated_at: job.updated_at }), LOCKED)
+    const [job] = await sql`select updated_at from scheduled_job where row_id = 'check_sla'`
+    await expectApiError(patchDoc(admin, '/api/table/Scheduled%20Job/check_sla', { enabled: true, updated_at: job.updated_at }), LOCKED)
   })
 
   test('the Administrator calling the engine directly is refused too', async () => {
@@ -164,11 +165,11 @@ describe('Admin saves of a locked field are refused (D5)', () => {
 
   test('a locked row cannot be deleted or renamed, and a row cannot be created under a locked id', async ({ admin }) => {
     await apply()
-    await expect(deleteDoc('Scheduled Job', 'disable_leavers', 'Administrator')).rejects.toMatchObject(LOCKED_ROW)
-    await expect(renameDoc('Scheduled Job', 'disable_leavers', 'renamed_job', 'Administrator')).rejects.toMatchObject(LOCKED_ROW)
-    await expectApiError(admin.post('/api/table/Scheduled%20Job/disable_leavers:rename', { new_name: 'renamed_job' }), { status: 403 })
-    await sql`delete from scheduled_job where row_id = 'disable_leavers'`
-    await expect(saveDoc('Scheduled Job', { row_id: 'disable_leavers', method: 'disable_leavers', cadence: 'daily', enabled: true }, 'Administrator', 'insert'))
+    await expect(deleteDoc('Scheduled Job', 'check_sla', 'Administrator')).rejects.toMatchObject(LOCKED_ROW)
+    await expect(renameDoc('Scheduled Job', 'check_sla', 'renamed_job', 'Administrator')).rejects.toMatchObject(LOCKED_ROW)
+    await expectApiError(admin.post('/api/table/Scheduled%20Job/check_sla:rename', { new_name: 'renamed_job' }), { status: 403 })
+    await sql`delete from scheduled_job where row_id = 'check_sla'`
+    await expect(saveDoc('Scheduled Job', { row_id: 'check_sla', method: 'check_sla', cadence: 'daily', enabled: true }, 'Administrator', 'insert'))
       .rejects.toMatchObject(LOCKED_ROW)
   })
 
@@ -185,7 +186,7 @@ describe('a seed pack leaves a locked field alone (Codex adversarial)', () => {
   test('the people review the file sets is kept, even at the core default', async () => {
     await sql`delete from single_value where table_name = 'System Settings' and field = 'people_review'`
     await apply({ settings: { 'System Settings': { people_review: JSON.parse(CORE_PEOPLE_REVIEW_JSON) } } })
-    const result = await applySeedPack('jeyarama')
+    const result = await applySeedPack(TEST_SEED_PACK)
     expect(result.peopleReview).toBe('kept')
     const [row] = await sql`select value from single_value where table_name = 'System Settings' and field = 'people_review'`
     expect(JSON.parse(String(row.value))).toEqual(JSON.parse(CORE_PEOPLE_REVIEW_JSON))
@@ -258,7 +259,7 @@ describe('how a locked value is compared (D5)', () => {
 
 describe('a workflow step cannot rewrite a locked field', () => {
   test('applying a workflow action whose state field the file sets is refused, and nothing changes', async ({ admin }) => {
-    await apply({ settings: { 'Scheduled Job': [{ row_id: 'disable_leavers', enabled: false }] } })
+    await apply({ settings: { 'Scheduled Job': [{ row_id: 'check_sla', enabled: false }] } })
     await admin.post('/api/save_row', {
       table: 'Workflow',
       row: {
@@ -271,11 +272,11 @@ describe('a workflow step cannot rewrite a locked field', () => {
       },
     })
     const { applyWorkflowAction } = await import('../src/workflow')
-    await expect(applyWorkflowAction('Scheduled Job', 'disable_leavers', 'Switch on', 'Administrator')).rejects.toMatchObject({
+    await expect(applyWorkflowAction('Scheduled Job', 'check_sla', 'Switch on', 'Administrator')).rejects.toMatchObject({
       type: 'PermissionError',
       message: expect.stringContaining(INSTANCE_SETTINGS_FILE),
     })
-    const [job] = await sql`select enabled from scheduled_job where row_id = 'disable_leavers'`
+    const [job] = await sql`select enabled from scheduled_job where row_id = 'check_sla'`
     expect(job.enabled).toBe(false)
   })
 })
@@ -321,9 +322,9 @@ describe('direct writes wait for an apply in progress (#493)', () => {
         transitions: [{ state: 'true', action: 'Switch off', next_state: 'false', allowed: 'System Manager' }],
       },
     })
-    await sql`update scheduled_job set enabled = true where row_id = 'disable_leavers'`
+    await sql`update scheduled_job set enabled = true where row_id = 'check_sla'`
     const { applyWorkflowAction } = await import('../src/workflow')
-    const moved = await waitsForAnApply(() => applyWorkflowAction('Scheduled Job', 'disable_leavers', 'Switch off', 'Administrator'))
+    const moved = await waitsForAnApply(() => applyWorkflowAction('Scheduled Job', 'check_sla', 'Switch off', 'Administrator'))
     expect(moved.enabled).toBe(false)
   })
 
@@ -335,8 +336,8 @@ describe('direct writes wait for an apply in progress (#493)', () => {
       users: [{ user: 'Administrator' }],
     })
     const { evaluateAssignmentRules } = await import('../src/assignment-rules')
-    await waitsForAnApply(() => evaluateAssignmentRules('Scheduled Job', { row_id: 'disable_leavers' }))
-    const [job] = await sql`select description from scheduled_job where row_id = 'disable_leavers'`
+    await waitsForAnApply(() => evaluateAssignmentRules('Scheduled Job', { row_id: 'check_sla' }))
+    const [job] = await sql`select description from scheduled_job where row_id = 'check_sla'`
     expect(job.description).toBe('Administrator')
   })
 })

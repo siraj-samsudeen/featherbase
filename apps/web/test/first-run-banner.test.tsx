@@ -17,7 +17,7 @@ const pathOf = (router: unknown) => (router as { state: { location: { pathname: 
 
 async function noManagerEmails() {
   await sql`update person set email = null where row_id in (select parent from has_role where role = 'System Manager')`
-  await sql`update sign_in_method set enabled = true, allowed_email_domains = 'example.com' where kind = 'google'`
+  await sql`update sign_in_method set enabled = true, allowed_email_domains = 'example.com' where kind = 'google_oauth'`
 }
 
 test('items 1, 2, 3: the Administrator is told on a page they went to directly, and cannot dismiss it', async ({ admin }) => {

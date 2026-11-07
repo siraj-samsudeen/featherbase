@@ -38,6 +38,12 @@ const jobSchema = z.object({
     .refine(distinct, 'A job names each grant once').optional(),
   // The identifier systems, by key, whose values `read_people` hands it.
   identifiers: z.array(z.string().regex(IDENTIFIER_SYSTEM_KEY)).refine(distinct).optional(),
+  // The Sign In Methods, by row id, whose live sign-ins' subjects
+  // `read_people` hands it (#731): a provider's own record of the person.
+  sign_in_methods: z.array(z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/)).refine(distinct).optional(),
+  // #731: a job that acts on people may ship off; an administrator turns it
+  // on. Only the first install reads it: the row is the administrator's after.
+  enabled: z.boolean().optional(),
   // The app's own datasets the job reads.
   datasets: z.array(identifier).refine(distinct).optional(),
   documents: z.object({ owner_table: z.string(), tables: z.array(z.string()).min(1).refine(distinct) }).strict().optional(),
@@ -72,6 +78,8 @@ export function validateAppJobs(app: string, manifest: {
   for (const job of jobs) {
     if (job.identifiers?.length && !jobGrants(job).has('read_people'))
       throw new Error(`The job ${job.name} names identifier systems, which only a job granted read_people reads`)
+    if (job.sign_in_methods?.length && !jobGrants(job).has('read_people'))
+      throw new Error(`The job ${job.name} names sign-in methods, which only a job granted read_people reads`)
     for (const dataset of job.datasets ?? [])
       if (!datasets.has(dataset)) throw new Error(`The job ${job.name} reads the dataset ${dataset}, which the app does not declare in its datasets`)
     for (const secret of job.needs ?? [])
@@ -114,6 +122,7 @@ export function bindAppJobs({ app, jobs, handlers, setup, datasets }: BindReques
     method: appJobMethod(app, job.name),
     cadence: job.cadence,
     description: job.description,
+    enabled: job.enabled ?? true,
     handler: runAppJob(app, job, handlers.get(job.name)!, setup, datasets.filter((d) => job.datasets?.includes(d.name))),
   }))
 }
@@ -233,7 +242,7 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
         live: (name: string, filters?: Parameters<typeof readable.live>[1]) => dataset(name, () => readable.live(name, filters)),
       }),
       people: Object.freeze({
-        list: () => need('read_people', () => listPeople(job.identifiers ?? [])),
+        list: () => need('read_people', () => listPeople(job.identifiers ?? [], job.sign_in_methods ?? [])),
         disable: (person: string, reason: string) => need('disable_people', () => {
           assertNoSecret(ready.kept, reason)
           return disablePerson(actor, person, reason)
@@ -289,8 +298,9 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
 // ------------------------------------------------------------- capabilities
 
 /** `read_people`: every enabled, current person, with the current values of
- *  the identifier systems the job declares that are on and not secret, valid today. */
-async function listPeople(systems: string[]): Promise<AppJobPerson[]> {
+ *  the identifier systems the job declares that are on and not secret, valid
+ *  today, and the subjects of their live sign-ins with the methods it declares. */
+async function listPeople(systems: string[], methods: string[]): Promise<AppJobPerson[]> {
   const people = await sql`
     select p.row_id, p.full_name, p.email,
       (p.row_id = 'Administrator' or exists (
@@ -315,12 +325,25 @@ async function listPeople(systems: string[]): Promise<AppJobPerson[]> {
     ;(held[String(v.system)] ??= []).push(String(v.value))
     byPerson.set(String(v.person_id), held)
   }
+  // A pending invitation has no subject yet; an ended sign-in is no one's.
+  const subjects = methods.length
+    ? await sql`select person_id, method, subject from sign_in_identity
+        where method in ${sql(methods)} and ended_at is null and subject is not null
+        order by person_id, method, subject`
+    : []
+  const signIns = new Map<string, Record<string, string[]>>()
+  for (const s of subjects) {
+    const held = signIns.get(String(s.person_id)) ?? {}
+    ;(held[String(s.method)] ??= []).push(String(s.subject))
+    signIns.set(String(s.person_id), held)
+  }
   return people.map((p) => ({
     person: String(p.row_id),
     full_name: (p.full_name as string | null) ?? null,
     email: (p.email as string | null) ?? null,
     privileged: p.privileged === true,
     identifiers: Object.fromEntries(systems.map((system) => [system, byPerson.get(String(p.row_id))?.[system] ?? []])),
+    sign_ins: Object.fromEntries(methods.map((method) => [method, signIns.get(String(p.row_id))?.[method] ?? []])),
   }))
 }
 
@@ -376,7 +399,7 @@ async function emailSystemManagers(actor: string, message: Readonly<{ subject: s
 // ------------------------------------------------------------- upgrades
 
 export type JobPlanStep =
-  | { add: { name: string; cadence: string; description: string; grants: AppJobGrant[]; documents?: JobDeclaration['documents'] } }
+  | { add: { name: string; cadence: string; description: string; grants: AppJobGrant[]; enabled?: boolean; documents?: JobDeclaration['documents'] } }
   | { change: { name: string; cadence?: string; description?: string; grants?: AppJobGrant[]; documents?: JobDeclaration['documents'] | null } }
   | { remove: { name: string } }
 
@@ -389,7 +412,8 @@ export function planJobChanges(app: string, prior: JobDeclaration[], target: Job
   for (const job of target) {
     const before = prior.find((p) => p.name === job.name)
     if (!before) {
-      steps.push({ add: { name: job.name, cadence: job.cadence, description: job.description, grants: [...jobGrants(job)], ...(job.documents ? { documents: job.documents } : {}) } })
+      steps.push({ add: { name: job.name, cadence: job.cadence, description: job.description, grants: [...jobGrants(job)],
+        ...(job.enabled === false ? { enabled: false } : {}), ...(job.documents ? { documents: job.documents } : {}) } })
       continue
     }
     // Grants, identifier systems, datasets and optional secrets are all
@@ -399,6 +423,7 @@ export function planJobChanges(app: string, prior: JobDeclaration[], target: Job
     const wider = [
       ...gained([...jobGrants(job)], [...jobGrants(before)]),
       ...gained(job.identifiers, before.identifiers),
+      ...gained(job.sign_in_methods, before.sign_in_methods).map((m) => `the sign-in method ${m}`),
       ...gained(job.datasets, before.datasets).map((d) => `the dataset ${d}`),
       ...gained(job.needs, before.needs).map((n) => `the secret ${n}`),
       ...gained(job.documents?.tables, before.documents?.tables).map(name => `the Table ${name}`),
@@ -444,7 +469,7 @@ export async function applyJobPlan(app: string, steps: JobPlanStep[], prior: Job
       await assertJobClaimable(app, method)
       await sql`insert into scheduled_job ${sql({
         row_id: method, created_by: actor, updated_by: actor, method, cadence: step.add.cadence,
-        enabled: true, description: step.add.description, owner_app: app,
+        enabled: step.add.enabled ?? true, description: step.add.description, owner_app: app,
       })} on conflict (method) do nothing`
     } else if ('remove' in step) {
       const method = appJobMethod(app, step.remove.name)

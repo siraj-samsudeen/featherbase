@@ -85,8 +85,8 @@ export async function pinChartToDashboard(
 ): Promise<Record<string, unknown>> {
   if (!chart?.report || !chart?.label)
     throw new AppError('ValidationError', 'Expected chart { label, report }')
-  const dash = await getDoc('Dashboard', dashboard, user)
-  const cfgRaw = dash.config
+  const board = await getDoc('Dashboard', dashboard, user)
+  const cfgRaw = board.config
   const config: DashboardConfig =
     typeof cfgRaw === 'string' ? (JSON.parse(cfgRaw || '{}') as DashboardConfig) : ((cfgRaw as DashboardConfig) ?? {})
   const charts = Array.isArray(config.charts) ? [...config.charts] : []
@@ -96,5 +96,5 @@ export async function pinChartToDashboard(
   const nextConfig = { ...config, charts }
   // Carry the loaded `updated_at` stamp so the optimistic-concurrency check on
   // the update passes; saveDoc normalizes it.
-  return saveDoc('Dashboard', { row_id: dashboard, updated_at: dash.updated_at, config: nextConfig }, user)
+  return saveDoc('Dashboard', { row_id: dashboard, updated_at: board.updated_at, config: nextConfig }, user)
 }

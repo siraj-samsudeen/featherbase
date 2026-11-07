@@ -32,7 +32,7 @@ class AppNavigation {
     // Satisfy the app's declared host secret without a real warehouse token;
     // navigation reads the local cached dataset configured below.
     await restartAcceptance({ MOTHERDUCK_TOKEN: 'acceptance-unused-warehouse-token' });
-    const systems = JSON.parse(readFileSync(path.resolve(__dirname, '../../../apps/server/seeds/jeyarama/identifier-systems.json')));
+    const systems = JSON.parse(readFileSync(path.resolve(__dirname, '../../../client-apps/jeyarama/instances/dash/seed-pack.json')));
     await api.saveRow('Identifier System', { ...systems.identifier_systems.find(system => system.row_id === 'stylehr-employee-code'), enabled: true });
     // The shipped scope provider still declares the legacy chart during its
     // rollout. These empty, scope-marked tables are instance configuration.

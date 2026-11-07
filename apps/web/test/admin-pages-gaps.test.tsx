@@ -6,6 +6,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { applySeedPack } from 'server/src/seed-packs'
 import { test, expect, renderApp } from './pg-test'
+import { TEST_SEED_PACK } from 'server/test/seed-pack'
 
 const enc = encodeURIComponent
 
@@ -36,7 +37,7 @@ test('Explore of a Table deleted meanwhile says it cannot be loaded', async ({ a
 })
 
 test('Find a person by mobile phone: a value that is not a phone number is refused with the reason', async ({ admin }) => {
-  await applySeedPack('jeyarama')
+  await applySeedPack(TEST_SEED_PACK)
   await renderApp('/featherbase/admin/find-person', admin)
   const page = await screen.findByTestId('find-person', {}, { timeout: 8000 })
   const select = within(page).getByLabelText('Identifier')

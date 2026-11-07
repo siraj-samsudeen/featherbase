@@ -44,7 +44,6 @@ describe('#737 command destinations', () => {
       expect(pages.map((p) => p.href)).toContain(`/featherbase/admin/${slug}`)
     expect(pages.filter((p) => p.label.startsWith('Inventory board '))).toHaveLength(501)
     expect(pages.map((p) => p.href)).toContain('/featherbase/account/sign-in-methods')
-    expect(pages.map((p) => p.href)).not.toContain('/featherbase/sales-target')
     expect(pages.every((p) => !p.href.includes('$'))).toBe(true)
     expect(new Set(pages.map((p) => p.href)).size).toBe(pages.length)
   })
@@ -83,11 +82,10 @@ describe('#737 command destinations', () => {
 
   test('a reader receives only permitted destinations', async ({ admin, createUser }) => {
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Inventory Reader' } })
-    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Sales Target Viewer' } })
     await grantRole(admin, { table: 'Person', role: 'Inventory Reader', can_read: true })
     await grantRole(admin, { table: 'System Settings', role: 'Inventory Reader', can_read: true })
     await admin.post('/api/save_row', { table: 'Home Page', row: { row_id: 'inventory-hidden', label: 'Secret inventory page', roles: [{ role: 'System Manager' }] } })
-    const reader = await createUser({ roles: ['Inventory Reader', 'Sales Target Viewer'] })
+    const reader = await createUser({ roles: ['Inventory Reader'] })
     const inventory = await reader.get<Inventory>(PATH)
     expect(inventory.tables.map((t) => t.row_id)).toEqual(['Glossary Term', 'Person', 'System Settings'])
     expect(inventory.tables.every((t) => !t.can_create)).toBe(true)
@@ -96,7 +94,6 @@ describe('#737 command destinations', () => {
     expect(inventory.pages.map((p) => p.label)).not.toContain('Secret inventory page')
     expect(inventory.pages.map((p) => p.href)).toContain('/featherbase/admin/glossary')
     expect(inventory.pages.map((p) => p.href)).toContain('/featherbase/account/sign-in-methods')
-    expect(inventory.pages).toContainEqual({ label: 'Dash', href: '/featherbase/sales-target', kind: 'Report' })
   })
 
   test('people without Admin access cannot obtain the Admin inventory', async ({ createUser }) => {

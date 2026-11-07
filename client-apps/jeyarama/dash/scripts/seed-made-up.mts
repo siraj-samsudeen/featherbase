@@ -56,7 +56,7 @@ async function ensure(table: string, row: Record<string, unknown>, create: () =>
 }
 
 // The employee-code identifier system the scope provider declares.
-await applySeedPack('jeyarama')
+await applySeedPack(resolve(appDir, '../instances/dash/seed-pack.json'))
 
 const [installed] = await sql`select 1 from installed_app where name = 'dash'`
 if (!installed) await post('/api/install_app', { name: 'dash' })

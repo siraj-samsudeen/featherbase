@@ -150,9 +150,9 @@ test('the page shows the build the instance runs and what changed in the selecte
     expect(build).toHaveTextContent(/Running since/)
     await userEvent.click(within(screen.getByRole('navigation', { name: 'Available apps' })).getByRole('button', { name: /Tasker/ }))
     const notes = within(screen.getByRole('region', { name: 'Tasker details' })).getByRole('region', { name: "What's new" })
-    expect(notes).toHaveTextContent('3.0.2')
-    expect(notes).toHaveTextContent('3.0.1')
-    expect(within(notes).getAllByRole('link', { name: '#563' })[0]).toHaveAttribute('href', 'https://github.com/example-owner/featherbase/issues/563')
+    expect(notes).toHaveTextContent('3.0.4')
+    expect(notes).toHaveTextContent('3.0.3')
+    expect(within(notes).getAllByRole('link', { name: '#731' })[0]).toHaveAttribute('href', 'https://github.com/example-owner/featherbase/issues/731')
   } finally {
     for (const name of Object.keys(host)) overrideVariable(name as keyof typeof host, undefined)
   }

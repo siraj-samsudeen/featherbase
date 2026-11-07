@@ -156,9 +156,8 @@ the server from their current roles and grants.
 #### Normative details for the whole requirement
 
 Someone whose only access is
-the Sales Target report SHALL get a bare screen — the report, their name,
-their own sign-in methods and sign-out — with no administration menu, and
-without the page asking for anything they would be refused. Someone with no
+an app with pages of its own SHALL be taken to that app when they sign in, and
+SHALL meet no administration menu and no request they would be refused. Someone with no
 role of use at all SHALL get a plain page saying they have no access yet and
 to ask their administrator, with sign-out; until they are given a role they
 cannot manage their own sign-in methods. Building tables and importing data
@@ -174,10 +173,10 @@ screen.
 
 #### Scenario: A report-only person never meets the administration menu
 
-- **WHEN** someone holding only the Sales Target Viewer role opens an
+- **WHEN** someone whose only role opens one app signs in on an
   administration address
-- **THEN** they are taken to their report, and no administration menu or
-  refused request appears
+- **THEN** they are taken to that app, and no administration menu or refused
+  request appears
 
 #### Scenario: A person with no access is told so
 

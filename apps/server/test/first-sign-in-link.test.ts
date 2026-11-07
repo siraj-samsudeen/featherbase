@@ -14,7 +14,7 @@ import { rosterFirstSignIn } from '../src/roster-first-sign-in'
 import { applyInstanceSettings } from '../src/instance-settings'
 import { getSignInMethod } from '../src/identities'
 import { makeTable } from './fixtures'
-import { configureDelegated, giveEmployeeCode, linkDelegated } from './identity-fixtures'
+import { HR_WIRE, configureDelegated, giveEmployeeCode, linkDelegated } from './identity-fixtures'
 
 const TABLE = 'Crew List'
 const PASSWORD = 'Made-Up-Pass-970!'
@@ -46,7 +46,7 @@ async function setUp(admin: TestClient, o: { rule?: string; roster?: unknown; ro
       { column_name: 'login', column_type: 'Reference', reference_table: 'Person' },
     ],
   })
-  await sql`update sign_in_method set new_person = ${o.rule ?? 'create_if_on_roster'}, settings = ${sql.json({ roster: (o.roster === undefined ? ROSTER : o.roster) as never })} where row_id = 'stylehr'`
+  await sql`update sign_in_method set new_person = ${o.rule ?? 'create_if_on_roster'}, settings = ${sql.json({ ...HR_WIRE, roster: (o.roster === undefined ? ROSTER : o.roster) } as never)} where row_id = 'stylehr'`
   for (const row of o.rows ?? [crewRow()]) await saveDoc(TABLE, row, 'Administrator', 'insert')
 }
 
@@ -568,7 +568,7 @@ describe('what cannot be read is refused', () => {
 })
 
 describe('the rule is configuration', () => {
-  const method = { row_id: 'hr_two', kind: 'delegated_password', label: 'HR Two', enabled: false }
+  const method = { row_id: 'hr_two', kind: 'external_password', label: 'HR Two', enabled: false }
   const METHODS = `/api/table/${encodeURIComponent('Sign In Method')}`
   async function patchMethod(admin: TestClient, key: string, change: Record<string, unknown>) {
     const [r] = await sql`select updated_at from sign_in_method where row_id = ${key}`
@@ -590,18 +590,18 @@ describe('the rule is configuration', () => {
     expect((await patchMethod(admin, 'stylehr', { settings: JSON.stringify({}) })).status).toBe(417)
   })
 
-  test('the instance file ships the method off, needing no variable', async () => {
+  test('the instance file ships the method on (#1061), needing no variable', async () => {
     const file = JSON.parse(readFileSync(new URL('../../../client-apps/jeyarama/instances/dash/instance-settings.json', import.meta.url), 'utf8')) as {
       settings: { 'Sign In Method': { row_id: string }[] }
       environments: Record<string, { settings: { 'Sign In Method'?: { row_id: string }[] } }>
     }
     const stylehr = file.settings['Sign In Method'].find((m) => m.row_id === 'stylehr')
-    expect(stylehr).toMatchObject({ kind: 'delegated_password', enabled: false, new_person: 'create_if_on_roster' })
+    expect(stylehr).toMatchObject({ kind: 'external_password', enabled: true, new_person: 'create_if_on_roster' })
     for (const section of Object.values(file.environments))
       expect((section.settings['Sign In Method'] ?? []).some((m) => m.row_id === 'stylehr')).toBe(false)
     await applyInstanceSettings({ settings: { 'Sign In Method': [stylehr!] } }, { by: 'Administrator' })
     const [row] = await sql`select enabled, new_person from sign_in_method where row_id = 'stylehr'`
-    expect(row).toEqual({ enabled: false, new_person: 'create_if_on_roster' })
+    expect(row).toEqual({ enabled: true, new_person: 'create_if_on_roster' })
     expect((await getSignInMethod('stylehr'))?.settings).toMatchObject({ roster: { table: 'Employee', provider_record_key: 'employee_id' } })
   })
 })

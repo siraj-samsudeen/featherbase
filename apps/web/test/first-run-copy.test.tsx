@@ -17,7 +17,7 @@ afterEach(() => {
 
 async function noManagerEmails() {
   await sql`update person set email = null where row_id in (select parent from has_role where role = 'System Manager')`
-  await sql`update sign_in_method set enabled = true, allowed_email_domains = 'example.com' where kind = 'google'`
+  await sql`update sign_in_method set enabled = true, allowed_email_domains = 'example.com' where kind = 'google_oauth'`
 }
 
 async function invite() {

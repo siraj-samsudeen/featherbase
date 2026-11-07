@@ -52,7 +52,7 @@ describe('Scheduled Job: the queue is derived from the rows', () => {
 
     await syncScheduledJobs()
     await syncScheduledJobs() // idempotent: a restart stacks nothing
-    // A row seeded off (disable_leavers) is queued only once someone turns it on.
+    // A row that is off is queued only once someone turns it on.
     for (const r of rows.filter((x) => x.enabled)) {
       const live = await liveEntries(String(r.method))
       expect(live, String(r.method)).toHaveLength(1)

@@ -10,13 +10,14 @@ import { sql } from 'server/src/db'
 import { applySeedPack } from 'server/src/seed-packs'
 import { addIdentifier } from 'server/src/person-identifiers'
 import { configureDelegated, linkDelegated } from 'server/test/identity-fixtures'
-import { VIEWER_ROLE } from 'server/src/sales-target'
+const VIEWER_ROLE = 'Team Leader'
 import { test, expect, renderApp } from './pg-test'
+import { TEST_SEED_PACK } from 'server/test/seed-pack'
 
 const ROSTER = { internal: { source: 'stylehr-roster-sync', verified: true } }
 
 test('a System Manager sees codes with their periods and the address; a roster value has no End button', async ({ admin, createUser }) => {
-  await applySeedPack('jeyarama')
+  await applySeedPack(TEST_SEED_PACK)
   const tl = await createUser({ email: 'tl.ids@example.com' })
   await addIdentifier(tl.user!, { system: 'stylehr-employee-code', assigner: '7', value: '30654', valid_from: '2024-06-01', valid_to: '2026-03-03' }, 'sync', ROSTER)
   await addIdentifier(tl.user!, { system: 'stylehr-employee-code', assigner: '12', value: 'RR-0102', valid_from: '2026-03-03' }, 'sync', ROSTER)
@@ -62,7 +63,7 @@ test('a merged-away record names its survivor (never its id) and offers no chang
 })
 
 test('until the roster sync runs, a System Manager records a joiner’s code by hand with a note', async ({ admin, createUser }) => {
-  await applySeedPack('jeyarama')
+  await applySeedPack(TEST_SEED_PACK)
   await sql`delete from person_identifier where source = 'stylehr-roster-sync'`
   const joiner = await createUser({ email: 'joiner.ids@example.com', fullName: 'Joiner Jaya' })
   await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(joiner.user!)}`, admin)
@@ -104,7 +105,7 @@ test('revert to default puts back the kind’s setting', async ({ admin }) => {
 // Prod 24-Oct-2026: the list endpoint returns only row_id unless asked for
 // fields, so every option rendered blank. Assert the visible labels.
 test('Find a person lists each identifier system by name for a System Manager; no match explains the exact-value rule', async ({ createUser }) => {
-  await applySeedPack('jeyarama')
+  await applySeedPack(TEST_SEED_PACK)
   const manager = await createUser({ email: 'sm.find@example.com', roles: ['System Manager'] })
   await renderApp('/featherbase/admin/find-person', manager)
   const page = await screen.findByTestId('find-person')
@@ -126,7 +127,7 @@ test('Find a person lists each identifier system by name for a System Manager; n
 })
 
 test('the Person list links to Find by code; an old code finds the person, shown by name', async ({ admin, createUser }) => {
-  await applySeedPack('jeyarama')
+  await applySeedPack(TEST_SEED_PACK)
   const leaver = await createUser({ email: 'leaver.find@example.com', fullName: 'Leaving Latha' })
   await addIdentifier(leaver.user!, { system: 'stylehr-employee-code', value: 'RR-777', valid_from: '2024-01-01', valid_to: '2025-01-01' }, 'sync', ROSTER)
   await renderApp('/featherbase/admin/table/person', admin)

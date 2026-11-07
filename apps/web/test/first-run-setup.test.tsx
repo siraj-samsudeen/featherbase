@@ -15,7 +15,7 @@ afterEach(() => {
 
 async function noManagerEmails() {
   await sql`update person set email = null where row_id in (select parent from has_role where role = 'System Manager')`
-  await sql`update sign_in_method set enabled = true, allowed_email_domains = 'example.com' where kind = 'google'`
+  await sql`update sign_in_method set enabled = true, allowed_email_domains = 'example.com' where kind = 'google_oauth'`
 }
 
 /** What the sign-in page leaves behind for the Administrator. */
@@ -23,7 +23,7 @@ const justSignedIn = () => sessionStorage.setItem(OFFER_SETUP_KEY, '1')
 
 test('a pending sign-in offer never takes over a new-row deep link after readiness resolves', async ({ admin }) => {
   await noManagerEmails()
-  await sql`update scheduled_job set enabled = true, last_run_at = now(), last_outcome = 'error' where method = 'disable_leavers'`
+  await sql`update scheduled_job set enabled = true, last_run_at = now(), last_outcome = 'error' where method = 'check_sla'`
   justSignedIn()
   let release: () => void = () => {}
   const held = new Promise<void>((resolve) => { release = resolve })
@@ -49,7 +49,7 @@ test('a pending sign-in offer never takes over a new-row deep link after readine
 
 test('an absent sign-in offer leaves Admin home available with setup unfinished', async ({ admin }) => {
   await noManagerEmails()
-  await sql`update scheduled_job set enabled = true, last_run_at = now(), last_outcome = 'error' where method = 'disable_leavers'`
+  await sql`update scheduled_job set enabled = true, last_run_at = now(), last_outcome = 'error' where method = 'check_sla'`
   const { router } = await renderApp('/featherbase/admin/home/system', admin)
   await screen.findByTestId('health-banner')
   expect((router.state as { location: { pathname: string } }).location.pathname).toBe('/featherbase/admin/home/system')
@@ -69,7 +69,7 @@ test('signing in welcomes the first administrator with optional next steps', asy
 
 test('exploring past setup keeps a genuine job failure visible', async ({ admin }) => {
   await noManagerEmails()
-  await sql`update scheduled_job set enabled = true, last_run_at = now(), last_outcome = 'error' where method = 'disable_leavers'`
+  await sql`update scheduled_job set enabled = true, last_run_at = now(), last_outcome = 'error' where method = 'check_sla'`
   justSignedIn()
   await renderApp('/featherbase/admin', admin)
   await userEvent.click(await screen.findByRole('link', { name: 'Explore Featherbase' }))
@@ -158,7 +158,7 @@ test('a row can be removed, and a server problem with no field of its own is sti
 
 test('a slow health answer never pulls the Administrator off a page they moved on to (Codex review)', async ({ admin }) => {
   await noManagerEmails()
-  await sql`update scheduled_job set enabled = true, last_run_at = now(), last_outcome = 'error' where method = 'disable_leavers'`
+  await sql`update scheduled_job set enabled = true, last_run_at = now(), last_outcome = 'error' where method = 'check_sla'`
   justSignedIn()
   let release: () => void = () => {}
   const held = new Promise<void>((resolve) => { release = resolve })

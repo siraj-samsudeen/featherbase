@@ -19,7 +19,7 @@ export interface SessionUser {
   email: string | null
   full_name: string | null
   // Where this account lands after sign-in on this address when it is not the
-  // Admin (#3755, #488: on Feather Dash's address, its report). Absent = /admin.
+  // Admin (#3755, #488: on an app's address, that app). Absent = /admin.
   landing?: string
 }
 
@@ -165,7 +165,7 @@ export async function login(usr: string, pwd: string): Promise<SignedIn> {
 }
 
 /** Sign in through a connected service (a Sign In Method row of kind
- *  `delegated_password`, e.g. StyleHR) named by its key. Same session shape. */
+ *  `external_password`, e.g. StyleHR) named by its key. Same session shape. */
 export async function loginDelegated(usr: string, pwd: string, method: string): Promise<SignedIn> {
   return rememberLogin(await api.post<LoginResponse>('/api/login/delegated', { usr, pwd, method }))
 }

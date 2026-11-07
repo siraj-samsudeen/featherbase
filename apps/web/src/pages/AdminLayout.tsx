@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, type CommandDestinations, type CommandPageDestination } from 'shared'
+import { FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, type CommandDestinations, type CommandPageDestination } from 'shared'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import {
   actionForLocation,
@@ -31,7 +31,7 @@ import { useI18n } from '../lib/i18n'
 import { SIDEBAR_SHORTCUT, isEditingText, useSidebarCollapsed } from '../lib/sidebar-collapsed'
 import { KindIcon } from '../lib/kind-icons'
 import { DataSourcesSidebar } from '../components/DataSourcesSidebar'
-import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
+import { NoAccessPage, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
 import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PATH, SetupBanner, useSetupNeeded } from './InstanceHealth'
 import { GLOSSARY_PATH } from '../lib/glossary'
@@ -108,9 +108,6 @@ function AdminLayoutForKind({ wide, fullWidth }: { wide: boolean; fullWidth: boo
       </div>
     )
   if (kind === 'no-access') return <NoAccessPage />
-  // A report reader has no Admin page left: their sign-in methods are an
-  // account page now (#489), so every Admin address sends them to the report.
-  if (kind === 'report-only') return <Navigate to={REPORT_PATH} replace />
   return <AdminShell wide={wide} fullWidth={fullWidth} />
 }
 
@@ -424,8 +421,8 @@ export function AdminShell({ wide, fullWidth = false }: { wide: boolean; fullWid
   function openPage(page: CommandPageDestination) {
     recordSearch(search.trim())
     dismissSearch()
-    // Runtime apps and pages with their own frame policy need a full load.
-    if (page.kind === 'App' || page.kind === 'App tab' || ownFramePolicyPage(page.href)) window.location.assign(page.href)
+    // Runtime apps are pages of their own: they need a full load.
+    if (page.kind === 'App' || page.kind === 'App tab') window.location.assign(page.href)
     else router.history.push(page.href)
   }
 

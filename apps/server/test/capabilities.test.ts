@@ -5,10 +5,9 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
-import { VIEWER_ROLE } from '../src/sales-target'
 import { grantRole } from './fixtures'
 
-type Caps = { manage: boolean; report: boolean; admin: boolean; own_grant: boolean; tables: string[]; creatable: string[]; archived: string[] }
+type Caps = { manage: boolean; admin: boolean; own_grant: boolean; tables: string[]; creatable: string[]; archived: string[] }
 type Admin = TestClient
 // Everyone signed in reads the glossary (#629), so its Table is always listed.
 const GLOSSARY = 'Glossary Term'
@@ -18,7 +17,6 @@ async function capsOf(client: { get: <T>(path: string) => Promise<T> }): Promise
 }
 
 async function seedRoleAndTable(admin: Admin) {
-  await admin.post('/api/save_row', { table: 'Role', row: { row_id: VIEWER_ROLE } })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Shelf Clerk' } })
   await admin.post('/api/table_def', {
     name: 'Shelf Note',
@@ -29,26 +27,20 @@ async function seedRoleAndTable(admin: Admin) {
 describe('#410 capabilities in whoami', () => {
   test('a System Manager can manage; the Table list is not repeated in whoami', async ({ admin }) => {
     await seedRoleAndTable(admin)
-    expect(await capsOf(admin)).toEqual({ manage: true, report: false, admin: true, own_grant: true, tables: [], creatable: [], archived: [] })
-  })
-
-  test('a person holding only the Sales Target Viewer role gets the report and nothing else', async ({ admin, createUser }) => {
-    await seedRoleAndTable(admin)
-    const tl = await createUser({ email: 'tl.viewer@example.com', roles: [VIEWER_ROLE] })
-    expect(await capsOf(tl)).toEqual({ manage: false, report: true, admin: false, own_grant: false, tables: [GLOSSARY], creatable: [], archived: [] })
+    expect(await capsOf(admin)).toEqual({ manage: true, admin: true, own_grant: true, tables: [], creatable: [], archived: [] })
   })
 
   test('a person with a read grant sees exactly the tables they can read', async ({ admin, createUser }) => {
     await seedRoleAndTable(admin)
     await grantRole(admin, { table: 'Shelf Note', role: 'Shelf Clerk', can_read: true })
     const clerk = await createUser({ email: 'clerk@example.com', roles: ['Shelf Clerk'] })
-    expect(await capsOf(clerk)).toEqual({ manage: false, report: false, admin: true, own_grant: true, tables: [GLOSSARY, 'Shelf Note'], creatable: [], archived: [] })
+    expect(await capsOf(clerk)).toEqual({ manage: false, admin: true, own_grant: true, tables: [GLOSSARY, 'Shelf Note'], creatable: [], archived: [] })
   })
 
   test('a person with no role beyond the implicit one has no capability at all', async ({ admin, createUser }) => {
     await seedRoleAndTable(admin)
     const nobody = await createUser({ email: 'nobody@example.com' })
-    expect(await capsOf(nobody)).toEqual({ manage: false, report: false, admin: false, own_grant: false, tables: [GLOSSARY], creatable: [], archived: [] })
+    expect(await capsOf(nobody)).toEqual({ manage: false, admin: false, own_grant: false, tables: [GLOSSARY], creatable: [], archived: [] })
   })
 
   test('a grant removed mid-session is reflected on the next call', async ({ admin, createUser }) => {
@@ -78,15 +70,15 @@ describe('#410 capabilities in whoami', () => {
     // A grant left behind for a Table that no longer exists.
     await sql`insert into permission (row_id, ref_table, role, operation, scope_mode) values ('ghost-grant', 'Gone Table', 'Shelf Clerk', 'read', 'all')`
     const clerk = await createUser({ email: 'clerk4@example.com', roles: ['Shelf Clerk'] })
-    expect(await capsOf(clerk)).toEqual({ manage: false, report: false, admin: false, own_grant: false, tables: [GLOSSARY], creatable: [], archived: [] })
+    expect(await capsOf(clerk)).toEqual({ manage: false, admin: false, own_grant: false, tables: [GLOSSARY], creatable: [], archived: [] })
   })
 
   test('a grant to the built-in All role lists the Table but does not earn the Admin shell', async ({ admin, createUser }) => {
     await seedRoleAndTable(admin)
     // Runtime apps write these straight to the table; `All` is implicit, not a Role row.
     await sql`insert into permission (row_id, ref_table, role, operation, scope_mode) values ('all-grant', 'Shelf Note', 'All', 'read', 'all')`
-    const viewer = await createUser({ email: 'viewer-all@example.com', roles: [VIEWER_ROLE] })
-    expect(await capsOf(viewer)).toEqual({ manage: false, report: true, admin: false, own_grant: false, tables: [GLOSSARY, 'Shelf Note'], creatable: [], archived: [] })
+    const viewer = await createUser({ email: 'viewer-all@example.com' })
+    expect(await capsOf(viewer)).toEqual({ manage: false, admin: false, own_grant: false, tables: [GLOSSARY, 'Shelf Note'], creatable: [], archived: [] })
     // With a grant of their own, the same person earns the shell and still sees the All-granted Table.
     await admin.post('/api/table_def', { name: 'Back Office', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
     await grantRole(admin, { table: 'Back Office', role: 'Shelf Clerk', can_read: true })
@@ -137,6 +129,26 @@ describe('whoami lists the installed apps the person can open', () => {
       const reader = await createUser({ email: 'dash.whoami.disabled@example.com' })
       const whoami = await reader.get<{ apps: unknown; installed_apps: string[] }>('/api/whoami')
       expect({ apps: whoami.apps, installed: whoami.installed_apps?.includes('dash') }).toEqual({ apps: [], installed: true })
+    } finally {
+      await discoverPackages([])
+    }
+  })
+
+  // #731: the top bar names the app a person belongs to (landing.ts ownApp),
+  // chosen from the catalog: a role of their own opens it; All claims no one.
+  test('own_app names the app a role of the person\'s own opens, and no app for anyone else', async ({ admin, createUser }) => {
+    const { discoverPackages } = await import('../src/runtime-packages')
+    const { resolve } = await import('node:path')
+    try {
+      expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/bar-proof'), resolve('../..', 'test-apps/fixtures/dash-stand-in')])).toEqual([])
+      await admin.post('/api/install_app', { name: 'barproof' })
+      await admin.post('/api/install_app', { name: 'dash' })
+      const reader = await createUser({ email: 'bar.own.app@example.com', roles: ['Bar Reader'] })
+      const nobody = await createUser({ email: 'all.own.app@example.com' })
+      const ownOf = async (c: { get: <T>(p: string) => Promise<T> }) => (await c.get<{ own_app: string | null }>('/api/whoami')).own_app
+      expect(await ownOf(reader)).toBe('barproof')
+      expect(await ownOf(nobody)).toBeNull()
+      expect(await ownOf(admin)).toBeNull()
     } finally {
       await discoverPackages([])
     }

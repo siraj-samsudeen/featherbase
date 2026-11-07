@@ -64,7 +64,7 @@ describe('Codex P2: Google is never enabled while it cannot work', () => {
   test('a delegated method cannot be turned on with an unusable address', async ({ admin }) => {
     const res = await admin.fetch('/api/save_row', {
       method: 'POST',
-      body: JSON.stringify({ table: 'Sign In Method', row: { row_id: 'plain_http', kind: 'delegated_password', label: 'HR', enabled: true, service_url: 'http://hr.example.test/login' } }),
+      body: JSON.stringify({ table: 'Sign In Method', row: { row_id: 'plain_http', kind: 'external_password', label: 'HR', enabled: true, service_url: 'http://hr.example.test/login' } }),
     })
     expect(res.status).toBe(417)
   })

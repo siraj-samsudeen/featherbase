@@ -11,6 +11,7 @@ import { applySeedPack } from '../src/seed-packs'
 import { expectApiError, makePerson, grantRole } from './fixtures'
 import { configureDelegated, inviteGoogleRaw } from './identity-fixtures'
 import { saveIdentifierSystem } from '../src/seed-packs'
+import { TEST_SEED_PACK } from './seed-pack'
 
 const ROSTER = { internal: { source: 'stylehr-roster-sync', verified: true } }
 
@@ -100,7 +101,7 @@ describe('normalising', () => {
 describe('identifiers with history', () => {
   // #407: the panel's timestamps are ISO 8601 like every other time on the wire, not a locale string.
   test('a panel row carries recorded_at as an ISO 8601 instant', async () => {
-    await applySeedPack('jeyarama')
+    await applySeedPack(TEST_SEED_PACK)
     const p = await makePerson({ full_name: 'T. Iso' })
     await addIdentifier(p, { system: 'stylehr-employee-code', assigner: '12', value: 'rr-20001' }, 'sync', ROSTER)
     const [row] = (await listIdentifiers(p, 'Administrator')).filter((r) => r.system === 'stylehr-employee-code')
@@ -108,7 +109,7 @@ describe('identifiers with history', () => {
   })
 
   test('an agency code that became a company code: both kept, each with its period; two live employments are allowed', async () => {
-    await applySeedPack('jeyarama')
+    await applySeedPack(TEST_SEED_PACK)
     const p = await makePerson({ full_name: 'A. Kumar' })
     await addIdentifier(p, { system: 'stylehr-employee-code', assigner: '7', value: '30654', valid_from: '2024-06-01', valid_to: '2026-03-03', worker_type: 'Agency' }, 'sync', ROSTER)
     await addIdentifier(p, { system: 'stylehr-employee-code', assigner: '12', value: 'rr-0102', valid_from: '2026-03-03', worker_type: 'Regular' }, 'sync', ROSTER)
@@ -122,7 +123,7 @@ describe('identifiers with history', () => {
   })
 
   test('one holder at a time, scoped by assigner: an overlapping holder is refused; another firm, or a later spell, is not', async () => {
-    await applySeedPack('jeyarama')
+    await applySeedPack(TEST_SEED_PACK)
     const a = await makePerson({ full_name: 'A' })
     const b = await makePerson({ full_name: 'B' })
     await addIdentifier(a, { system: 'stylehr-employee-code', assigner: '12', value: 'RR-1', valid_from: '2025-01-01', valid_to: '2026-01-01' }, 'sync', ROSTER)
@@ -158,7 +159,7 @@ describe('identifiers with history', () => {
   })
 
   test('a value fed by the HR roster is corrected there, not here — even by a System Manager', async ({ admin }) => {
-    await applySeedPack('jeyarama')
+    await applySeedPack(TEST_SEED_PACK)
     const p = await makePerson({ full_name: 'Fed' })
     const { identifier } = await addIdentifier(p, { system: 'stylehr-employee-code', value: 'RR-9' }, 'sync', ROSTER)
     const res = await admin.fetch(`/api/identifiers/${identifier.id}`, { method: 'PATCH', body: JSON.stringify({ valid_to: '2030-01-01' }) })
@@ -168,7 +169,7 @@ describe('identifiers with history', () => {
   })
 
   test('a code row points at the HR record it belongs to; a record of someone else is refused', async () => {
-    await applySeedPack('jeyarama')
+    await applySeedPack(TEST_SEED_PACK)
     const p = await makePerson({ full_name: 'Rec' })
     const other = await makePerson({ full_name: 'Other' })
     const rec = await addIdentifier(p, { system: 'stylehr-employee-id', value: '900001' }, 'sync', ROSTER)
@@ -280,7 +281,7 @@ describe('dates and audit (Codex review on #385)', () => {
   })
 
   test('a search of restricted values is recorded without the value', async ({ admin }) => {
-    await applySeedPack('jeyarama')
+    await applySeedPack(TEST_SEED_PACK)
     const p = await makePerson({ full_name: 'Searched' })
     await addIdentifier(p, { system: 'stylehr-employee-id', value: '77001' }, 'sync', ROSTER)
     await admin.get('/api/identifiers?system=stylehr-employee-id&value=77001')
@@ -311,7 +312,7 @@ describe('who sees what', () => {
   })
 
   test('restricted values are shown only to restricted readers; hidden ones never in a panel, but found by exact value', async ({ admin, createUser }) => {
-    await applySeedPack('jeyarama')
+    await applySeedPack(TEST_SEED_PACK)
     const p = await makePerson({ full_name: 'Shown', email: 'shown@x.test' })
     await addIdentifier(p, { system: 'phone', value: '9847012345' }, 'Administrator')
     await addIdentifier(p, { system: 'stylehr-employee-id', value: '900001' }, 'sync', ROSTER)
@@ -463,7 +464,7 @@ describe('the freeze: employee codes by hand until the roster sync runs (review 
   const STYLEHR_CODE = 'stylehr-employee-code'
 
   test('a joiner: a System Manager records the code with a note; it is unverified, and test mode signs them in by it', async ({ admin, api }) => {
-    await applySeedPack('jeyarama')
+    await applySeedPack(TEST_SEED_PACK)
     await sql`delete from person_identifier where system = ${STYLEHR_CODE} and source = 'stylehr-roster-sync'`
     const p = await makePerson({ full_name: 'New Joiner' })
     const addable = (await admin.get<{ addable: { row_id: string; note_required: boolean }[] }>(`/api/people/${p}/identifiers`)).addable
@@ -491,7 +492,7 @@ describe('the freeze: employee codes by hand until the roster sync runs (review 
   })
 
   test('a correction: a carried-over code is ended with a note, never erased; a hand-recorded one may be removed', async ({ admin }) => {
-    await applySeedPack('jeyarama')
+    await applySeedPack(TEST_SEED_PACK)
     await sql`delete from person_identifier where system = ${STYLEHR_CODE} and source = 'stylehr-roster-sync'`
     const p = await makePerson({ full_name: 'Wrong Code' })
     const { identifier: carried } = await addIdentifier(p, { system: STYLEHR_CODE, value: 'RR-1' }, 'migration', { internal: { source: 'migration', verified: true } })
@@ -504,7 +505,7 @@ describe('the freeze: employee codes by hand until the roster sync runs (review 
   })
 
   test('once the roster sync has written a code, the hand path closes; a non-manager never had it', async ({ admin, createUser }) => {
-    await applySeedPack('jeyarama')
+    await applySeedPack(TEST_SEED_PACK)
     const p = await makePerson({ full_name: 'After Sync' })
     const someoneElse = await makePerson({ full_name: 'Synced' })
     const clerk = await createUser({ email: 'clerk.codes@x.test' })
@@ -535,7 +536,7 @@ describe('changing a value needs a read of its person (review on #385)', () => {
 
 describe('the Person picker finds people by their current employee code (review B-M3)', () => {
   test('by a current code row, with the code as the label’s detail; an ended code or a replaced record is not offered', async ({ admin }) => {
-    await applySeedPack('jeyarama')
+    await applySeedPack(TEST_SEED_PACK)
     const coded = await makePerson({ full_name: 'Coded Kala' })
     await addIdentifier(coded, { system: 'stylehr-employee-code', value: 'RR-41001' }, 'sync', ROSTER)
     const ended = await makePerson({ full_name: 'Ended Eswar' })

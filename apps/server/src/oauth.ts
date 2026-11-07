@@ -15,10 +15,10 @@ import { readVariable } from './env'
 
 const secret = () => readVariable('JWT_SECRET') ?? 'dev-secret-change-me'
 
-// Google is the Sign In Method row of kind `google` (person-identities). Real
+// Google is the Sign In Method row of kind `google_oauth` (person-identities). Real
 // Google is used only when that row carries a client id; otherwise the mock.
 async function googleMethod(): Promise<SignInMethod | null> {
-  return methodOfKind('google')
+  return methodOfKind('google_oauth')
 }
 
 export async function oauthClientId(): Promise<string> {
@@ -217,7 +217,7 @@ const CONSUMER_DOMAINS = new Set(GOOGLE_CONSUMER_DOMAINS)
  *  account ID (`sub`); the email is display data and an admission signal. */
 
 // Injectable for the sandboxed suite — Google itself is never contacted from a
-// test (same seam as `_setEmbedFetch` in sales-target.ts).
+// test.
 let googleFetch: typeof fetch | null = null
 export function _setGoogleFetch(f: typeof fetch | null) {
   googleFetch = f

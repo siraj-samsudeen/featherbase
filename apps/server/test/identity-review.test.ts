@@ -205,7 +205,7 @@ describe('sign-in details', () => {
     const { completeSignIn } = await import('../src/sign-in')
     const { methodOfKind } = await import('../src/identities')
     await configureGoogle({ new_person: 'create' })
-    const google = (await methodOfKind('google'))!
+    const google = (await methodOfKind('google_oauth'))!
     const issued = await completeSignIn(google, { status: 'verified', subject: '1234567890', email: 'unverified@gmail.com', email_verified: false }, null)
     expect(issued.user.row_id).toMatch(/^psn_[a-z2-7]{20}$/)
     expect(issued.user.email).toBeNull()
@@ -214,7 +214,7 @@ describe('sign-in details', () => {
   test('a second Google row is refused', async ({ admin }) => {
     const res = await admin.fetch('/api/save_row', {
       method: 'POST',
-      body: JSON.stringify({ table: 'Sign In Method', row: { row_id: 'google2', kind: 'google', label: 'Google 2' } }),
+      body: JSON.stringify({ table: 'Sign In Method', row: { row_id: 'google2', kind: 'google_oauth', label: 'Google 2' } }),
     })
     expect(res.status).toBe(409)
   })
@@ -225,7 +225,7 @@ describe('a delegated provider is configuration only (genericity)', () => {
     await admin.post('/api/save_row', {
       table: 'Sign In Method',
       row: {
-        row_id: 'payroll', kind: 'delegated_password', label: 'Payroll', enabled: true, new_person: 'refuse',
+        row_id: 'payroll', kind: 'external_password', label: 'Payroll', enabled: true, new_person: 'refuse',
         service_url: 'https://payroll.example.test/login',
         settings: { id_field: 'username', password_field: 'secret', success_keys: ['session_id'], nested_keys: ['payload'], left_status_keys: ['state'], left_words: ['gone'] },
       },
@@ -250,7 +250,7 @@ describe('a delegated provider is configuration only (genericity)', () => {
   test('a malformed wire format is refused when saved', async ({ admin }) => {
     const res = await admin.fetch('/api/save_row', {
       method: 'POST',
-      body: JSON.stringify({ table: 'Sign In Method', row: { row_id: 'bad', kind: 'delegated_password', label: 'Bad', settings: { success_keys: 'token' } } }),
+      body: JSON.stringify({ table: 'Sign In Method', row: { row_id: 'bad', kind: 'external_password', label: 'Bad', settings: { success_keys: 'token' } } }),
     })
     expect(res.status).toBe(417)
   })
@@ -260,7 +260,7 @@ describe('a delegated method\'s settings may arrive as JSON text', () => {
   const save = (admin: TestClient, row_id: string, settings: unknown) =>
     admin.fetch('/api/save_row', {
       method: 'POST',
-      body: JSON.stringify({ table: 'Sign In Method', row: { row_id, kind: 'delegated_password', label: row_id, enabled: false, settings } }),
+      body: JSON.stringify({ table: 'Sign In Method', row: { row_id, kind: 'external_password', label: row_id, enabled: false, settings } }),
     })
 
   test('JSON text is parsed and checked like an object, and text that is not JSON is refused naming the field', async ({ admin }) => {
@@ -277,7 +277,7 @@ describe('a delegated method\'s settings may arrive as JSON text', () => {
 describe('third review round', () => {
   test('a delegated row with malformed settings is skipped with a warning naming it', async ({ api }) => {
     await sql`insert into sign_in_method (row_id, kind, label, enabled, new_person, self_link, service_url, settings, created_at, updated_at)
-      values ('broken_hr', 'delegated_password', 'Broken HR', true, 'refuse', false, 'https://broken.example.test/login', ${sql.json({ success_keys: 'not-a-list' })}, now(), now())`
+      values ('broken_hr', 'external_password', 'Broken HR', true, 'refuse', false, 'https://broken.example.test/login', ${sql.json({ success_keys: 'not-a-list' })}, now(), now())`
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const brand = (await (await api.fetch('/api/brand')).json()) as { sign_in_methods: { key: string }[] }
     expect(brand.sign_in_methods.map((m) => m.key)).not.toContain('broken_hr')
@@ -290,7 +290,7 @@ describe('third review round', () => {
     const rr80 = await person('RR-80')
     await linkDelegated(rr80, 'tl_80', { subject: 'RR-80' })
     const res = await admin.get<{ methods: { key: string; label: string; enabled: boolean }[] }>(`/api/people/${rr80}/identities`)
-    expect(res.methods).toContainEqual({ key: 'stylehr', kind: 'delegated_password', label: 'StyleHR', enabled: false })
+    expect(res.methods).toContainEqual({ key: 'stylehr', kind: 'external_password', label: 'StyleHR', enabled: false })
   })
 
   test('a failed Google link always comes back to the Sign-in methods page, never raw JSON', async ({ api }) => {

@@ -8,8 +8,8 @@ import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { _setDelegatedFetch } from '../src/delegated-login'
-import { grantRole } from './fixtures'
-import { VIEWER_ROLE } from '../src/sales-target'
+import { resolve } from 'node:path'
+import { discoverPackages } from '../src/runtime-packages'
 import { DELEGATED_URL, configureDelegated, linkDelegated, removeDelegated } from './identity-fixtures'
 import { CLIENT, FROM_CLIENT, signInAddresses } from './sign-in-address-utils'
 
@@ -75,13 +75,18 @@ describe('delegated password sign-in', () => {
 
   test('the landing page follows the account, as for password sign-in', async ({ api, admin, createUser }) => {
     await configure()
-    await grantRole(admin, { role: VIEWER_ROLE, table: [] })
-    const tl = await createUser({ email: 'tl.viewer@example.com', roles: [VIEWER_ROLE] })
-    await link(tl.user!, 'viewer_1')
-    provider(() => Response.json({ token: 'opaque' }))
-    const res = await signIn(api, 'viewer_1')
-    expect(res.status).toBe(200)
-    expect(((await res.json()) as { landing?: string }).landing).toBe('/featherbase/sales-target')
+    try {
+      expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/bar-proof')])).toEqual([])
+      await admin.post('/api/install_app', { name: 'barproof' })
+      const tl = await createUser({ email: 'tl.viewer@example.com', roles: ['Bar Reader'] })
+      await link(tl.user!, 'viewer_1')
+      provider(() => Response.json({ token: 'opaque' }))
+      const res = await signIn(api, 'viewer_1')
+      expect(res.status).toBe(200)
+      expect(((await res.json()) as { landing?: string }).landing).toBe('/barproof/')
+    } finally {
+      await discoverPackages([])
+    }
   })
 
   test('a provider rejection is the password-login refusal, with no session', async ({ api, admin, createUser }) => {
@@ -377,7 +382,7 @@ describe('delegated password sign-in', () => {
   })
 })
 
-// Test mode (#3783): while a sales-target rollout is being tried out, the
+// Test mode (#3783): while a rollout is being tried out, the
 // provider is not asked, and the tester types the person's EMPLOYEE CODE (the
 // account's ID) — the StyleHR login name is what the person themself would
 // type, and a tester does not know it. Only accounts linked to the service
@@ -554,7 +559,7 @@ describe('public brand names the connected service', () => {
     await removeDelegated()
     const label = async () =>
       ((await (await api.fetch('/api/brand')).json()) as { sign_in_methods: { kind: string; label: string }[] })
-        .sign_in_methods.find((m) => m.kind === 'delegated_password')?.label
+        .sign_in_methods.find((m) => m.kind === 'external_password')?.label
     expect(await label()).toBeUndefined()
     await configure()
     expect(await label()).toBe('StyleHR')

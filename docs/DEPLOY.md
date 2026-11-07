@@ -115,13 +115,9 @@ only a source using `MOTHERDUCK_URL` or marked as holding a read-scaling token.
 | `FEATHERBASE_INSTANCE` | no | no |  | the client instance this image was built for (`<client>/<instance>`), as a build argument and a variable. Set, the pre-deploy step installs or upgrades its apps and applies its settings. See [A client instance](#a-client-instance) |
 | `JOB_POLL_MS` | no | no | `500` | background worker poll interval |
 | `SERVER_URL` | no | no | `http://localhost:8000` | the server `pnpm smoke` probes |
-| `MOTHERDUCK_TOKEN` | no | yes |  | the one MotherDuck token: every MotherDuck source, app dataset and the sales-target embed use it. Featherbase only reads the warehouse, whatever rights the token has. Never logged, returned or stored |
-| `MOTHERDUCK_API_BASE` | no | no | `https://api.motherduck.com` | MotherDuck API base |
-| `MOTHERDUCK_EMBED_ORIGIN` | no | no | `https://embed-motherduck.com` | the embed sandbox origin, framed by the Sales Target page alone (#642); overridable only for a local stub |
-| `DIVE_ID` | no | no |  | the sales-target Dive |
-| `SERVICE_ACCOUNT` | no | no |  | the MotherDuck service account the embed runs as |
-| `SALES_TARGET_TODAY` | no | no |  | pins "today" (YYYY-MM-DD) for the sales target; for tests and rehearsals |
-| `SALES_TARGET_SHARED_ENV` | no | no |  | path of a local `.env.local` the sales-target experiment reads `DIVE_ID` and `SERVICE_ACCOUNT` from |
+| `MOTHERDUCK_TOKEN` | no | yes |  | the one MotherDuck token: every MotherDuck source and app dataset use it. Featherbase only reads the warehouse, whatever rights the token has. Never logged, returned or stored |
+| `DIVE_ID` | no | no |  | a value an instance settings file reads with `{ "env": "DIVE_ID" }`: the Dive an app embeds |
+| `SERVICE_ACCOUNT` | no | no |  | a value an instance settings file reads with `{ "env": "SERVICE_ACCOUNT" }`: the MotherDuck service account an app's embed runs as |
 
 <!-- generated:variables:end -->
 
@@ -820,7 +816,7 @@ linked to outside accounts by the provider's permanent ID, from the Person
 form's Sign-in methods panel or `POST /api/people/<person>/identities`.
 
 **StyleHR delegated sign-in.** As a System Manager, add a Sign In Method row:
-`row_id` `stylehr`, kind `delegated_password`, label `StyleHR`, service URL
+`row_id` `stylehr`, kind `external_password`, label `StyleHR`, service URL
 `https://stylehr.in/api/login/` (keep the trailing slash: StyleHR redirects
 without it, and a redirected POST loses its body). Another HR system is a new
 row with its own `settings` JSON, not code.
