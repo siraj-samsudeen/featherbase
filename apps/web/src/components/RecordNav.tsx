@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { buttonClasses } from '@featherbase/shop-floor'
+import { buttonClasses, fmtCount } from '@featherbase/shop-floor'
 import { listResource } from '../lib/api'
 import { useNavigation } from '../lib/navigation'
 
@@ -91,7 +91,7 @@ export function RecordNav({ table, name, dirty }: { table: string; name: string;
         ‹
       </button>
       <span className="whitespace-nowrap px-1 text-xs text-ink-muted tabular-nums" data-testid="record-position">
-        {(position + 1).toLocaleString('en-IN')} of {near.data.total.toLocaleString('en-IN')}
+        {fmtCount(position + 1)} of {fmtCount(near.data.total)}
       </span>
       <button type="button" aria-label="Next record" title="Next record" disabled={!next}
         onClick={() => go(next)} className={buttonClasses({ className: 'disabled:opacity-40' })}>
