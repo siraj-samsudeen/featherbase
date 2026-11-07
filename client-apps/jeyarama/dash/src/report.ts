@@ -76,7 +76,7 @@ export interface Totals {
 }
 
 /** `unconfirmed`: the reader has no row, and no metadata compatible with the figures says whether the month has arrived. */
-export type ReportState = 'ready' | 'not_built' | 'no_data_yet' | 'no_sections' | 'unconfirmed'
+export type ReportState = 'ready' | 'not_built' | 'no_data_yet' | 'unconfirmed'
 
 /** The month a reader chose (#750): this month to date, or last month whole. */
 export type MonthChoice = 'this' | 'last'
@@ -239,7 +239,6 @@ export function buildReport({ store, places, answer, month = null, today, choice
     refreshed_at: answer?.at ?? null, data_through: known?.data_through ?? null, targets_available: known?.targets_available ?? true,
     rows: [] as ReportRow[], sections: [], total: empty }
   if (!answer) return { ...base, state: 'not_built' }
-  if (scope.wholeStore && !scope.hasSections) return { ...base, state: 'no_sections' }
   // Figures cut before the month began can't hold its figures.
   if (!first && istDay(answer.at) < period.period_start) return { ...base, state: 'no_data_yet' }
   // An empty scope with nothing compatible to say whether the month has arrived: not claimed

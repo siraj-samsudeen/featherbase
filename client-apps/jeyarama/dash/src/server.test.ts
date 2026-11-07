@@ -129,7 +129,7 @@ describe('the ready-message origin', () => {
 // A person's job, in the core Tables the provider reads.
 const jobOf = (job: Record<string, unknown>) => ({
   ...STORES,
-  Employee: [{ row_id: 'E1', person: 'psn_103', employee_status: 'Current' }],
+  Employee: [{ row_id: 'E1', person: 'psn_103', status: 'Current' }],
   'Job Assignment': [{ row_id: 'J1', employee: 'E1', site: 'LKS', floor: null, section: null, acting: 0, starts_on: '2026-01-01', ends_on: null, ...job }],
   Section: [],
   'Section Subcategory': [],
@@ -274,6 +274,11 @@ describe('the report read', () => {
   it('answers no_access for a one-store report when the reader has no store', async () => {
     const { ctx } = context({ places: [] })
     expect(await reads.report(ctx)).toEqual({ state: 'no_access' })
+  })
+
+  it("opens the one-store report for a Store Manager, whose place names the store and no section", async () => {
+    const { ctx } = context({ places: [place('9901', '9901')], payload: { store: '9901' } })
+    expect(await reads.report(ctx)).toMatchObject({ state: 'ready', rows: [{ code: '010101001', section: null }] })
   })
 
   it("says a whole-stores report isn't for someone without a whole store", async () => {

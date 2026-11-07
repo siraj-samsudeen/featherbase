@@ -12,7 +12,7 @@ export type View =
   | { kind: 'opening' }
   | { kind: 'dive'; src: string }
   | { kind: 'quick' }
-  | { kind: 'empty'; why: 'no_data_yet' | 'no_sections' | 'not_built' | 'whole_stores_only' }
+  | { kind: 'empty'; why: 'no_data_yet' | 'not_built' | 'whole_stores_only' }
   | { kind: 'no_access' }
   | { kind: 'signed_out' }
   | { kind: 'failed' }
@@ -21,7 +21,7 @@ const refusedBy = (answer: Answer<unknown> | undefined, status: number) => answe
 
 /**
  * The Dive is the report. Before it opens, the cached report says whether there is
- * anything to show (no figures yet for the month, no sections in the store); the
+ * anything to show (no figures yet for the month); the
  * quick view stands in only when the Dive can't load, and the plain message only
  * when the quick view can't load either.
  */
@@ -36,7 +36,7 @@ export function pageView({ embed, report, frameFailed = false }: {
   const state = report?.ok ? report.value.state : undefined
   if (state === 'no_access') return { kind: 'no_access' }
   if (state === 'report_not_set_up') return { kind: 'failed' }
-  if (state === 'no_data_yet' || state === 'no_sections' || state === 'whole_stores_only') return { kind: 'empty', why: state }
+  if (state === 'no_data_yet' || state === 'whole_stores_only') return { kind: 'empty', why: state }
   if (embed?.ok && embed.value.frame && !frameFailed) return { kind: 'dive', src: embed.value.frame }
   // Past the deadline the session request counts as failed, answered or not.
   if ((!embed && !frameFailed) || !report) return { kind: 'opening' }

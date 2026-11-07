@@ -139,12 +139,6 @@ export function Dash() {
       {view.kind === 'empty' && (
         <Notice testid={`empty-${view.why}`}>
           {view.why === 'no_data_yet' && notArrivedLine(month)}
-          {view.why === 'no_sections' && (
-            <>
-              <span>This store has no sections set up yet, so there is nothing to show.</span>
-              <a href={SECTIONS_ADDRESS} data-testid="fix-link">Open Your sections to see what is set against you</a>
-            </>
-          )}
           {view.why === 'not_built' && 'The figures are being prepared. Try again in a few minutes.'}
           {view.why === 'whole_stores_only' && "This report covers whole stores, so it isn't available for your job."}
         </Notice>

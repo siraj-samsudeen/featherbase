@@ -144,8 +144,10 @@ describe('the report for one store', () => {
     expect(buildReport({ store: '9901', places: sarees, answer: { at: '2026-09-30T00:19:00.000Z', rows: [] }, month, today: TODAY }).state).toBe('no_data_yet')
   })
 
-  it('says the store has no sections yet when a whole-store reader has no section place in it', () => {
-    expect(buildReport({ store: '9901', places: [place('9901', '9901')], answer: { at: AT, rows: [row('010101001')] }, today: TODAY }).state).toBe('no_sections')
+  // #967: a whole-store place names no section, so a Store Manager's rows carry none.
+  it("answers a whole-store reader's rows when their place names no section", () => {
+    const report = buildReport({ store: '9901', places: [place('9901', '9901')], answer: { at: AT, rows: [row('010101001')] }, today: TODAY })
+    expect([report.state, report.rows.map(r => [r.code, r.section])]).toEqual(['ready', [['010101001', null]]])
   })
 
   it('shows each row with its gap and achievement', () => {

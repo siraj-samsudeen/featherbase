@@ -43,10 +43,6 @@ describe('the page', () => {
     expect(pageView({ embed: frame, report: report('no_data_yet') })).toEqual({ kind: 'empty', why: 'no_data_yet' })
   })
 
-  it('says why there is nothing to show before opening the Dive: the store has no sections yet', () => {
-    expect(pageView({ embed: frame, report: report('no_sections') })).toEqual({ kind: 'empty', why: 'no_sections' })
-  })
-
   it("opens the Dive when the month can't be confirmed for an empty scope: nothing is hidden needlessly", () => {
     expect(pageView({ embed: frame, report: report('unconfirmed') })).toMatchObject({ kind: 'dive' })
   })
