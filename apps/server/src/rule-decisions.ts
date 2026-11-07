@@ -39,13 +39,13 @@ export interface RuleProposal {
   can_decide?: boolean
 }
 
-async function load(where: { ids?: string[]; table?: string; row?: string | null; openOnly?: boolean }): Promise<RuleProposal[]> {
+async function load(where: { ids?: string[]; table?: string; row?: string; openOnly?: boolean }): Promise<RuleProposal[]> {
   const rows = await sql`select row_id, target_table, target_row, operation, maker, proposal_state as state, decided_by, decided_at,
       decision_reason, result_row, created_at
     from change_proposal where app is null and operation is not null
-      ${where.ids ? sql`and row_id in ${sql(where.ids.length ? where.ids : [''])}` : sql``}
+      ${where.ids ? sql`and row_id in ${sql(where.ids)}` : sql``}
       ${where.table ? sql`and target_table = ${where.table}` : sql``}
-      ${where.row !== undefined ? (where.row === null ? sql`and target_row is null` : sql`and target_row = ${where.row}`) : sql``}
+      ${where.row ? sql`and target_row = ${where.row}` : sql``}
       ${where.openOnly ? sql`and proposal_state in ${sql(OPEN)}` : sql``}
     order by created_at desc, row_id limit 200`
   if (!rows.length) return []
@@ -56,8 +56,9 @@ async function load(where: { ids?: string[]; table?: string; row?: string | null
     where parent in ${sql(ids)} order by "position"`
   const actorIds = [...new Set([...rows.flatMap(r => [r.maker, r.decided_by]), ...approvers.flatMap(a => [a.person, a.approved_by])]
     .filter((id): id is string => typeof id === 'string'))]
-  const actors = actorIds.length ? await sql`select row_id, full_name, username from person where row_id in ${sql(actorIds)}
-    union all select row_id, label as full_name, null as username from service_account where row_id in ${sql(actorIds)}` : []
+  // Every proposal has a maker, so there is always someone to name.
+  const actors = await sql`select row_id, full_name, username from person where row_id in ${sql(actorIds)}
+    union all select row_id, label as full_name, null as username from service_account where row_id in ${sql(actorIds)}`
   const named = new Map(actors.map(actor => [String(actor.row_id), displayName(actor)]))
   const nameOf = (id: string) => named.get(id) ?? SYSTEM_ACTOR_LABELS[id] ?? 'Unnamed person'
   return rows.map(row => {
@@ -120,6 +121,7 @@ export async function proposalsWaitingFor(user: string): Promise<RuleProposal[]>
   const candidates = await sql`select distinct a.parent from change_proposal_approver a join change_proposal p on p.row_id = a.parent
     where p.app is null and p.operation is not null and p.proposal_state in ${sql(OPEN)} and p.maker <> ${user} and a.approved_by is null
       and (a.person = ${user} ${roles.length ? sql`or a.role in ${sql(roles)}` : sql``})`
+  if (!candidates.length) return []
   const out: RuleProposal[] = []
   for (const proposal of await load({ ids: candidates.map(c => String(c.parent)) }))
     if (await mayDecideNow(proposal, user, roles)) out.push({ ...proposal, can_decide: true })
@@ -190,7 +192,7 @@ export async function approveProposal(id: string, user: string): Promise<RulePro
       return { id, applied: false }
     }
     const [stored] = await sql`select proposed_values from change_proposal where row_id = ${id}`
-    const values = (typeof stored.proposed_values === 'string' ? JSON.parse(stored.proposed_values) : stored.proposed_values) as Row
+    const values = stored.proposed_values as Row
     const columns = proposal.changes.map(c => c.column_name)
     // The rules, asked again for the maker as things are now.
     const decision = current

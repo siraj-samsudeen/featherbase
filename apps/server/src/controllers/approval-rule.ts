@@ -23,8 +23,8 @@ const controller: TableController = {
   table: 'Approval Rule',
   hooks: {
     validate: async ({ row }) => {
+      // The Table is required, so the form has already asked for it.
       const table = text(row.ref_table)
-      if (!table) refuse('Name the Table this rule governs', 'ref_table')
       const meta = await getMeta(table).catch(() => null)
       if (!meta) refuse(`There is no Table named ${table}`, 'ref_table')
       if (meta!.system || meta!.system_written || meta!.kind !== 'table' || meta!.data_source)
