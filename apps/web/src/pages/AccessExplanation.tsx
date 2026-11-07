@@ -28,11 +28,11 @@ interface Explanation {
 }
 
 /** Why an app gives no places, in words. */
-const NO_PLACES = {
+const noPlaces = (problem: 'configuration' | 'provider' | 'scope', them: string) => ({
   configuration: 'is not set up yet, so it gives no places.',
   provider: 'could not answer, so it gives no places.',
-  scope: 'gives them no places.',
-} as const
+  scope: `gives ${them} no places.`,
+})[problem]
 
 function Reason({ text, since, until }: { text: string; since: string | null; until: string | null }) {
   return (
@@ -85,6 +85,9 @@ function TableList({ label, tables, testid }: { label: string; tables: TableReac
 
 export function AccessExplanation({ person }: { person: string }) {
   const self = getSessionUser()?.row_id === person
+  // #1006: on your own page, every section says "you".
+  const they = self ? 'you' : 'they'
+  const them = self ? 'you' : 'them'
   const { data, error } = useQuery({
     queryKey: ['access-explanation', person],
     queryFn: () => api.get<Explanation>(`/api/access_explanation/${encodeURIComponent(person)}`),
@@ -110,7 +113,7 @@ export function AccessExplanation({ person }: { person: string }) {
       {error && !refused && !missing && <Notice tone="negative">{(error as Error).message}</Notice>}
       {data && (
         <>
-          <Section title="Roles" testid="access-roles" empty={data.roles.length ? null : 'No roles of their own: only what every account can see.'}>
+          <Section title="Roles" testid="access-roles" empty={data.roles.length ? null : `No roles of ${self ? 'your' : 'their'} own: only what every account can see.`}>
             <ul className="space-y-1 text-sm">
               {data.roles.map((r) => (
                 <li key={`${r.app ?? ''}/${r.role}/${r.through ?? ''}`} data-testid="access-role">
@@ -124,7 +127,7 @@ export function AccessExplanation({ person }: { person: string }) {
               ))}
             </ul>
           </Section>
-          <Section title="Tables they reach" testid="access-tables" empty={null}>
+          <Section title={`Tables ${they} reach`} testid="access-tables" empty={null}>
             {data.every_table ? (
               <p className="text-sm text-ink" data-testid="access-every-table">Every Table, to read and to change — through System Manager.</p>
             ) : (
@@ -146,7 +149,7 @@ export function AccessExplanation({ person }: { person: string }) {
           </Section>
           {data.scope && (
             <Section title={`Places from ${data.scope.title}`} testid="access-places"
-              empty={data.scope.problem ? `${data.scope.title} ${NO_PLACES[data.scope.problem]}` : null}>
+              empty={data.scope.problem ? `${data.scope.title} ${noPlaces(data.scope.problem, them)}` : null}>
               <ul className="space-y-1 text-sm">
                 {data.scope.places.map((p) => (
                   <li key={p.label} data-testid="access-place">
@@ -160,7 +163,7 @@ export function AccessExplanation({ person }: { person: string }) {
               </ul>
             </Section>
           )}
-          <Section title="Shared with them" testid="access-shares" empty={data.shares.length ? null : 'No rows are shared directly with them.'}>
+          <Section title={`Shared with ${them}`} testid="access-shares" empty={data.shares.length ? null : `No rows are shared directly with ${them}.`}>
             <ul className="space-y-1 text-sm">
               {data.shares.map((s) => (
                 <li key={`${s.table}/${s.row_id}`} data-testid="access-share">

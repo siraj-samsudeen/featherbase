@@ -1,3 +1,4 @@
+import { linkBase } from '../views'
 import { sql } from '../db'
 import { assertNotPlatformRelation } from './platform-guard'
 import { AppError } from '../errors'
@@ -300,7 +301,8 @@ async function boundScopeFilters(
   if (own) filters.push({ column: bind.pk, op: 'in', value: [...own] })
   for (const c of meta.columns) {
     if (c.column_type !== 'Reference' || !c.reference_table) continue
-    const allowed = upMap.get(c.reference_table)
+    // #1021: a link to a view holds its base's rows, scoped as such.
+    const allowed = upMap.get(linkBase(c)!)
     if (!allowed) continue
     const sc = sourceColumnFor(bind, c.column_name)
     if (sc) filters.push({ column: sc, op: 'in_or_null', value: [...allowed] })

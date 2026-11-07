@@ -12,6 +12,7 @@ import { mandatoryWhere, needsMandatoryRowRead } from './mandatory-access'
 import { MAX_RELATED_DEPTH, RELATED_OPS } from 'shared'
 import { MAX_RELATED_HOPS, parseRelatedSpec, type Filter } from './related-filter'
 import { linksTo } from './any-table-link'
+import { linkBase, resolveView, storedTable, viewCondition } from './views'
 
 export type { Filter } from './related-filter'
 
@@ -106,6 +107,11 @@ export async function scopedWhere(
 ) {
   if (!Array.isArray(callerFilters))
     throw new AppError('ValidationError', 'filters must be an array of [field, operator, value]')
+  // #1021: a view reads as its base, and only as its base: every check
+  // below names the base Table, and the view's filter is one more system
+  // condition on top.
+  const resolved = await resolveView(table)
+  table = resolved.table
   const meta = await getMeta(table)
   // scopedWhere compiles SQL against the local physical table, which a
   // source-bound Table does not have. Public entry points dispatch bound
@@ -143,6 +149,7 @@ export async function scopedWhere(
   // Extra WHERE fragments that can't be expressed as plain [field, op, value]
   // filters (they need OR with IS NULL).
   const extraConds: ReturnType<typeof sql>[] = [(await mandatoryWhere(meta, user)).frag]
+  if (resolved.view) extraConds.push(viewCondition(tbl, resolved.filters))
   if (scope === 'own_rows') filters.push(['created_by', '=', user])
   // PERM-005: user permissions narrow by the table itself and by any
   // Reference column pointing at a restricted table. An UNSET reference does
@@ -168,7 +175,8 @@ export async function scopedWhere(
       if (own) filters.push([ROW_KEY, 'in', [...own]])
       for (const f of meta.columns) {
         if (f.column_type !== 'Reference' || !f.reference_table) continue
-        const allowed = upMap.get(f.reference_table)
+        // #1021: a link to a view holds its base's rows, scoped as such.
+        const allowed = upMap.get(linkBase(f)!)
         if (allowed)
           extraConds.push(
             sql`(${sql(f.column_name)} is null or ${sql(f.column_name)} in ${sql([...allowed])})`,
@@ -273,7 +281,7 @@ export async function scopedWhere(
         (f) =>
           f.column_name === spec.column &&
           f.column_type === 'Reference' &&
-          (f.reference_table === spec.table || (!!f.table_column && linksTo(f.choices, spec.table))),
+          ((!!f.reference_table && linkBase(f) === target.meta.name) || (!!f.table_column && linksTo(f.choices, spec.table))),
       )
       if (!viaCol)
         throw new AppError(
@@ -348,7 +356,8 @@ export async function scopedWhere(
     const refCol = meta.columns.find(
       (f) => f.column_name === field && f.column_type === 'Reference',
     )
-    if (!refCol || refCol.reference_table !== spec.table)
+    // #1021: a link to a view and one to its base hold the same rows.
+    if (!refCol || !refCol.reference_table || linkBase(refCol) !== target.meta.name)
       throw new AppError(
         'ValidationError',
         `${meta.name}.${field} is not a Reference to ${spec.table}`,
@@ -448,7 +457,7 @@ async function attachedRowScopeCond(
     if (ownHistoryOnly && !(await seesEveryColumn(user, targetMeta, user))) continue
     if (isBound(targetMeta)) {
       const narrowed = scopes.has(target)
-        || targetMeta.columns.some((f) => f.column_type === 'Reference' && scopes.has(String(f.reference_table)))
+        || targetMeta.columns.some((f) => f.column_type === 'Reference' && scopes.has(String(linkBase(f))))
       if (scope === 'all' && !narrowed && !ownHistoryOnly) branches.push(sql`${rel}.ref_table = ${target}`)
       continue
     }
@@ -477,7 +486,7 @@ async function countDocsImpl(
   opts: { withRetired?: boolean } = {},
 ): Promise<number> {
   // M3 seam: source-bound Tables count on the source (spec EDS-5).
-  const meta = await getMeta(table)
+  const meta = await getMeta(await storedTable(table))
   if (isBound(meta)) return boundCountDocs(meta, filters, user)
   const { table: tbl, where } = await scopedWhere(table, user, hideRetired(meta, filters, opts.withRetired))
   const [{ count }] = await sql`select count(*)::int as count from ${sql(tbl)} where ${where}`
@@ -496,7 +505,7 @@ async function groupCountImpl(
   filters: Filter[] = [],
   user = 'Administrator',
 ): Promise<{ label: string; value: number }[]> {
-  const boundMeta = await getMeta(table)
+  const boundMeta = await getMeta(await storedTable(table))
   if (isBound(boundMeta)) return boundGroupCount(boundMeta, field, filters, user)
   const { cols, table:tbl, where, phys, readExpression } = await scopedWhere(table, user, hideRetired(boundMeta, filters))
   assertColumn(cols, field, 'group_by')
@@ -528,7 +537,7 @@ async function aggregateDocsImpl(
 ): Promise<{ count: number; sum: string | null }> {
   // Bound Tables: counts push down to the driver; sums are not implemented
   // on the source path yet — reject rather than 500 on a missing table.
-  const boundMeta = await getMeta(table)
+  const boundMeta = await getMeta(await storedTable(table))
   if (isBound(boundMeta)) {
     if (sumField)
       throw new AppError(
@@ -577,7 +586,7 @@ async function summarizeDocsImpl(
 ): Promise<Summary> {
   // Bound Tables: counts push down to the driver; sums are not implemented
   // on the source path yet, as for :aggregate.
-  const boundMeta = await getMeta(table)
+  const boundMeta = await getMeta(await storedTable(table))
   if (isBound(boundMeta)) {
     if (sumFields.length)
       throw new AppError(
@@ -631,7 +640,7 @@ export function getList(...args: Parameters<typeof getListImpl>) {
 async function getListImpl(table: string, args: ListArgs = {}, user = 'Administrator') {
   // M3 seam: source-bound Tables list from the source — filters, sort and
   // paging pushed down to the driver (spec EDS-5).
-  const boundMeta = await getMeta(table)
+  const boundMeta = await getMeta(await storedTable(table))
   if (isBound(boundMeta)) return boundGetList(boundMeta, args, user)
   const { meta, table:tbl, cols, where, phys, readExpression } = await scopedWhere(table, user, hideRetired(boundMeta, args.filters ?? [], args.with_retired === true))
 
