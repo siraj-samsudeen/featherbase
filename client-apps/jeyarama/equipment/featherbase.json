@@ -1,0 +1,105 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "equipment",
+  "title": "Assets",
+  "server": "dist/server.mjs",
+  "client": "dist/client",
+  "entryTable": "equipment.asset",
+  "migrations": [],
+  "releaseNotes": [
+    {
+      "version": "0.1.0",
+      "changes": [
+        "Asset register by place, QR labels, and fault reports that become repair jobs with a fix-by time"
+      ]
+    }
+  ],
+  "tables": [
+    {
+      "name": "equipment.place",
+      "label": "Place",
+      "module": "Assets",
+      "id_pattern": "PLACE-.###",
+      "title_column": "place_name",
+      "access_policy": { "version": 1, "roles": ["Assets Member", "Assets Technician", "Assets Manager"] },
+      "columns": [
+        { "column_name": "place_name", "label": "Place", "column_type": "Data", "reqd": true, "unique": true, "in_list_view": true },
+        { "column_name": "place_type", "label": "Type", "column_type": "Choice", "choices": "Store\nWarehouse\nOffice", "default_value": "Store", "reqd": true, "in_list_view": true }
+      ]
+    },
+    {
+      "name": "equipment.asset_type",
+      "label": "Asset type",
+      "module": "Assets",
+      "id_pattern": "TYPE-.###",
+      "title_column": "type_name",
+      "access_policy": { "version": 1, "roles": ["Assets Member", "Assets Technician", "Assets Manager"] },
+      "columns": [
+        { "column_name": "type_name", "label": "Asset type", "column_type": "Data", "reqd": true, "unique": true, "in_list_view": true }
+      ]
+    },
+    {
+      "name": "equipment.asset",
+      "label": "Asset",
+      "module": "Assets",
+      "id_pattern": "AST-.####",
+      "title_column": "asset_name",
+      "access_policy": { "version": 1, "roles": ["Assets Member", "Assets Technician", "Assets Manager"] },
+      "columns": [
+        { "column_name": "asset_name", "label": "Asset", "column_type": "Data", "reqd": true, "in_list_view": true },
+        { "column_name": "asset_type", "label": "Type", "column_type": "Reference", "reference_table": "equipment.asset_type", "reqd": true, "in_list_view": true },
+        { "column_name": "place", "label": "Place", "column_type": "Reference", "reference_table": "equipment.place", "reqd": true, "in_list_view": true },
+        { "column_name": "area", "label": "Area in the place", "column_type": "Data" },
+        { "column_name": "status", "label": "Status", "column_type": "Choice", "choices": "In use\nNot in use\nDisposed", "default_value": "In use", "reqd": true, "in_list_view": true },
+        { "column_name": "make", "label": "Make", "column_type": "Data" },
+        { "column_name": "model", "label": "Model", "column_type": "Data" },
+        { "column_name": "serial_no", "label": "Serial number", "column_type": "Data" },
+        { "column_name": "purchase_date", "label": "Purchase date", "column_type": "Date" },
+        { "column_name": "purchase_cost", "label": "Purchase cost", "column_type": "Currency" },
+        { "column_name": "warranty_until", "label": "Warranty until", "column_type": "Date", "in_list_view": true },
+        { "column_name": "photo", "label": "Photo", "column_type": "Attach Image" },
+        { "column_name": "notes", "label": "Notes", "column_type": "Text" }
+      ]
+    },
+    {
+      "name": "equipment.job",
+      "label": "Repair job",
+      "module": "Assets",
+      "id_pattern": "JOB-.#####",
+      "title_column": "problem",
+      "access_policy": { "version": 1, "roles": ["Assets Member", "Assets Technician", "Assets Manager"] },
+      "columns": [
+        { "column_name": "asset", "label": "Asset", "column_type": "Reference", "reference_table": "equipment.asset", "reqd": true, "in_list_view": true },
+        { "column_name": "problem", "label": "What's wrong", "column_type": "Data", "reqd": true, "in_list_view": true },
+        { "column_name": "details", "label": "Details", "column_type": "Text" },
+        { "column_name": "photo", "label": "Photo", "column_type": "Attach Image" },
+        { "column_name": "priority", "label": "Priority", "column_type": "Choice", "choices": "Urgent\nHigh\nNormal", "default_value": "Normal", "reqd": true, "in_list_view": true },
+        { "column_name": "job_state", "label": "Stage", "column_type": "Choice", "choices": "Reported\nAssigned\nIn progress\nWaiting for parts\nFixed\nCancelled", "default_value": "Reported", "reqd": true, "in_list_view": true },
+        { "column_name": "assigned_to", "label": "Assigned to", "column_type": "Reference", "reference_table": "Person", "in_list_view": true },
+        { "column_name": "place", "label": "Place", "column_type": "Reference", "reference_table": "equipment.place", "in_list_view": true },
+        { "column_name": "reported_at", "label": "Reported at", "column_type": "Datetime" },
+        { "column_name": "fix_by", "label": "Fix by", "column_type": "Datetime", "in_list_view": true },
+        { "column_name": "fixed_at", "label": "Fixed at", "column_type": "Datetime" },
+        { "column_name": "work_done", "label": "Work done", "column_type": "Text" },
+        { "column_name": "repair_cost", "label": "Repair cost", "column_type": "Currency" }
+      ]
+    }
+  ],
+  "permissions": [
+    { "table": "equipment.place", "role": "Assets Member", "can_read": true },
+    { "table": "equipment.place", "role": "Assets Technician", "can_read": true },
+    { "table": "equipment.place", "role": "Assets Manager", "can_read": true, "can_write": true, "can_create": true, "can_delete": true },
+    { "table": "equipment.asset_type", "role": "Assets Member", "can_read": true },
+    { "table": "equipment.asset_type", "role": "Assets Technician", "can_read": true },
+    { "table": "equipment.asset_type", "role": "Assets Manager", "can_read": true, "can_write": true, "can_create": true, "can_delete": true },
+    { "table": "equipment.asset", "role": "Assets Member", "can_read": true },
+    { "table": "equipment.asset", "role": "Assets Technician", "can_read": true },
+    { "table": "equipment.asset", "role": "Assets Manager", "can_read": true, "can_write": true, "can_create": true, "can_delete": true },
+    { "table": "equipment.job", "role": "Assets Member", "can_read": true, "can_create": true },
+    { "table": "equipment.job", "role": "Assets Technician", "can_read": true, "can_create": true, "can_write": true },
+    { "table": "equipment.job", "role": "Assets Manager", "can_read": true, "can_create": true, "can_write": true, "can_delete": true }
+  ],
+  "roles": ["Assets Member", "Assets Technician", "Assets Manager"],
+  "jobs": []
+}
