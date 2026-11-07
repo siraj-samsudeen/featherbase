@@ -1,6 +1,6 @@
 // #1020: nested rows on a row the viewer can only read show each row's values,
 // and a link among them reads as its Table's links read.
-import { configure, screen, waitFor } from '@testing-library/react'
+import { configure, fireEvent, screen, waitFor } from '@testing-library/react'
 import { tableHref } from 'shared'
 import { createUserWithRole, grantRole } from 'server/test/fixtures'
 import { sql } from 'server/src/db'
@@ -93,3 +93,21 @@ test("a link to a Table the editor can't read is a closed box that says so, not 
   const box = await screen.findByPlaceholderText("You can't read Nv Hidden")
   expect(box).toBeDisabled()
 })
+
+test("a link to a view reads by its base's format, in the box and its options", async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Nv City', id_pattern: 'field:code', title_column: 'label', link_format: 'code_name', columns: [
+    { column_name: 'code', column_type: 'Data' }, { column_name: 'label', column_type: 'Data' },
+  ] })
+  await admin.post('/api/save_row', { table: 'Nv City', row: { code: 'VLM', label: 'Vellayambalam' } })
+  await admin.post('/api/table_def', { name: 'Nv Big City', kind: 'view', view_of: 'Nv City', view_filters: [['code', '=', 'VLM']] })
+  await admin.post('/api/table_def', { name: 'Nv Visit', columns: [
+    { column_name: 'city', column_type: 'Reference', reference_table: 'Nv Big City', label: 'City' },
+  ] })
+  const { row_id } = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Nv Visit', row: { city: 'VLM' } })
+  await renderApp(`${tableHref('Nv Visit')}/row/${encodeURIComponent(row_id)}`, admin)
+  const box = await screen.findByRole('combobox', { name: 'City' })
+  await waitFor(() => expect(box).toHaveValue('VLM (Vellayambalam)'))
+  fireEvent.change(box, { target: { value: 'Vell' } })
+  await waitFor(() => expect(screen.getByTestId('link-option')).toHaveTextContent('VLM (Vellayambalam)'))
+})
+

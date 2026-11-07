@@ -1137,6 +1137,14 @@ function FieldControl({
   const unlinkedTarget = unlinkedSourceTable(field, meta)
   const unlinkedId = `${controlId}-unlinked`
   const unlinkedNote = <UnlinkedNote id={unlinkedId} field={field} meta={meta} />
+  // #1021: a link to a view whose row has since left it keeps the link, and
+  // says so; a new value must still be one of the view's rows.
+  const outsideView = Array.isArray(values.links_outside_view) && values.links_outside_view.includes(field.column_name)
+  const outsideNote = outsideView ? (
+    <p className="mt-1 text-xs text-caution" data-testid={`outside-view-${field.column_name}`}>
+      No longer in the {field.reference_table} view. The link stays as it is; a new choice must be one of them.
+    </p>
+  ) : null
   const describedBy = [hintText ? hintId : null, managedHint ? managedId : null, unlinkedTarget ? unlinkedId : null]
     .filter(Boolean)
     .join(' ')
@@ -1158,6 +1166,7 @@ function FieldControl({
       {hint}
       {managedNote}
       {unlinkedNote}
+      {outsideNote}
       {meta.name === 'Person' && field.column_name === 'roles' && <EveryoneRolesNote />}
       {preview}
       {err}
@@ -1601,6 +1610,10 @@ export function LinkControl({
   anyTable?: boolean
 }) {
   const target = field.reference_table ?? ''
+  // #1021: a link to a view picks among the view's rows, but its value is a
+  // row of the base: it is named, shown and opened there, even once it has
+  // left the view.
+  const rowsTable = field.reference_base ?? target
   const box = useRef<HTMLInputElement>(null)
   const list = useRef<HTMLDivElement>(null)
   const [place, setPlace] = useState<{ top?: number; bottom?: number; left: number; width: number; maxHeight: number } | null>(null)
@@ -1629,9 +1642,9 @@ export function LinkControl({
   const [options, setOptions] = useState<{ value: string; label: string }[]>([])
   // An opaque id (a person's `psn_…`) is shown by its name.
   const current = useQuery({
-    queryKey: ['link-label', target, String(value ?? '')],
-    enabled: Boolean(own.labelField) && !picker.peopleSearch && Boolean(value),
-    queryFn: () => api.get<Record<string, unknown>>(`/api/table/${encodeURIComponent(target)}/${encodeURIComponent(String(value))}`),
+    queryKey: ['link-label', rowsTable, String(value ?? '')],
+    enabled: Boolean(picker.labelField) && !picker.peopleSearch && Boolean(value),
+    queryFn: () => api.get<Record<string, unknown>>(`/api/table/${encodeURIComponent(rowsTable)}/${encodeURIComponent(String(value))}`),
   })
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const blurTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -1711,7 +1724,7 @@ export function LinkControl({
 
   const principalName = usePrincipalName(picker.peopleSearch && value ? String(value) : null)
   // #1020: a set link reads as its Table's links read.
-  const linked = useRowName(!picker.peopleSearch && value && target ? target : undefined, value ? String(value) : undefined)
+  const linked = useRowName(!picker.peopleSearch && value && target ? rowsTable : undefined, value ? String(value) : undefined)
   const valueLabel = picker.peopleSearch
     ? value ? principalLabel(String(value), principalName, principalName === null) : null
     : own.labelField ? (current.data ? String(current.data[own.labelField] ?? '') || null : null)
@@ -1725,7 +1738,7 @@ export function LinkControl({
   const optionText = (o: { value: string; label: string }) => {
     if (!m || own.labelField || picker.peopleSearch) return o.label
     if (picker.labelField) return linkedRowText(m, o.value, o.label)
-    return m.system ? o.label : <StandInOption meta={m} table={target} rowId={o.value} />
+    return m.system ? o.label : <StandInOption meta={m} table={rowsTable} rowId={o.value} />
   }
   // A Table the person can't read offers nothing to pick: typing would go nowhere.
   const cannotPick = !forFilter && !anyTable && targetMeta.isError
@@ -1782,7 +1795,7 @@ export function LinkControl({
               tabIndex={-1}
               onMouseDown={(e) => {
                 e.preventDefault()
-                nav.push({ ...nav.step, pane: { table: target, row: String(value) } })
+                nav.push({ ...nav.step, pane: { table: rowsTable, row: String(value) } })
               }}
               title="Show in the pane"
               data-testid={`link-pane-${field.column_name}`}
@@ -1798,7 +1811,7 @@ export function LinkControl({
               e.preventDefault()
               navigate({
                 to: '/featherbase/admin/table/$table/row/$name',
-                params: { table: target, name: String(value) },
+                params: { table: rowsTable, name: String(value) },
                 search: { prefill: undefined },
               })
             }}
@@ -1836,7 +1849,8 @@ export function LinkControl({
             <p className="px-3 py-1.5 text-sm text-ink-subtle">No matches</p>
           )}
           {/* A Table column of a link to any Table picks among Tables; it never makes one (#881). */}
-          {!forFilter && !extraFilters.length && (
+          {/* A view holds no rows to create (#1021). */}
+          {!forFilter && !extraFilters.length && !field.reference_base && (
             <RouterLink
               to="/featherbase/admin/table/$table/new"
               params={{ table: target }}

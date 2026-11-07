@@ -104,6 +104,9 @@ export interface TableSummary {
   system_written?: boolean
   // #905: archived: listed under Archived, never offered in a picker.
   archived?: boolean
+  // #1021: a view, and the Table it is a view of.
+  kind?: string
+  view_of?: string | null
 }
 
 /**
@@ -120,7 +123,7 @@ export function useShellTables(): TableSummary[] | undefined {
     queryFn: () =>
       listResource<TableSummary>('Table', {
         filters: [['kind', '!=', 'sub_table']],
-        fields: ['row_id', 'module', 'system', 'system_written'],
+        fields: ['row_id', 'module', 'system', 'system_written', 'kind', 'view_of'],
         order_by: 'row_id asc',
         limit_page_length: 200,
       }),
@@ -129,6 +132,11 @@ export function useShellTables(): TableSummary[] | undefined {
   const archived = new Set(caps.archived ?? [])
   if (manage) return list.data?.data.map((t) => ({ ...t, archived: archived.has(t.row_id) }))
   return caps.tables.map((row_id) => ({ row_id, module: '', system: false, archived: archived.has(row_id) }))
+}
+
+/** #1021: how a picker names a Table: a view says what it is a view of. */
+export function tableOptionLabel(t: TableSummary): string {
+  return t.kind === 'view' && t.view_of ? `${t.row_id} (view of ${t.view_of})` : t.row_id
 }
 
 /** #905: the Tables a picker may offer: the shell's list without archived ones. */

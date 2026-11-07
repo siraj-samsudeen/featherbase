@@ -17,6 +17,7 @@ export interface ListColumn {
   label: string
   column_type: string
   reference_table?: string | null
+  reference_base?: string | null
   /** #881: a link to a row of any Table names the column holding its Table. */
   table_column?: string | null
   choice_labels?: Record<string, string> | null
@@ -30,6 +31,7 @@ function toListColumn(c: ColumnDef): ListColumn {
     label: c.label ?? c.column_name,
     column_type: c.column_type,
     reference_table: c.reference_table ?? null,
+    ...(c.reference_base ? { reference_base: c.reference_base } : {}),
     ...(c.table_column ? { table_column: c.table_column } : {}),
     choice_labels: c.choice_labels,
   }

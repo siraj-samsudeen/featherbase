@@ -53,6 +53,20 @@ describe('a link as the name of a row', () => {
   })
 })
 
+describe('a view', () => {
+  test("reads by its base's format, and cannot choose its own", async ({ admin }) => {
+    await admin.post('/api/table_def', { name: 'Lf Base', link_format: 'code', columns: [{ column_name: 'label', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { name: 'Lf Lens', kind: 'view', view_of: 'Lf Base', view_filters: [] })
+    expect((await meta(admin, 'Lf Lens')).link_format).toBe('code')
+
+    await admin.put(url('Lf Base'), { link_format: 'code_name' })
+    expect((await meta(admin, 'Lf Lens')).link_format).toBe('code_name')
+
+    await expect(admin.put(url('Lf Lens'), { link_format: 'name' })).rejects.toMatchObject({ status: 417 })
+    expect((await meta(admin, 'Lf Lens')).link_format).toBe('code_name')
+  })
+})
+
 describe('a PUT that names only the format', () => {
   test('changes the format and leaves everything else', async ({ admin }) => {
     await admin.post('/api/table_def', {
