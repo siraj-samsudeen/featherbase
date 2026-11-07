@@ -204,6 +204,18 @@ describe('opening a report not given is refused before anything goes out', () =>
       body: JSON.stringify({ idempotencyKey: crypto.randomUUID(), payload: { report: 'sales', person: leader.user } }) })
     expect(refused.status).toBeGreaterThanOrEqual(400)
   })
+
+  test("a Report Access Manager can't give themselves a role, a permission or a data scope", async ({ admin, createUser }) => {
+    const { giver } = await setup(admin, createUser)
+    for (const [table, row] of [
+      ['Permission', { ref_table: 'dash.report', role: 'Dash Reader', operation: 'write' }],
+      ['Has Role', { parent: giver.user, parenttype: 'Person', role: 'System Manager' }],
+      ['Data Scope', { name: 'ra-widen' }],
+    ] as const) {
+      const response = await giver.fetch('/api/save_row', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ table, row }) })
+      expect([table, response.status]).toEqual([table, 403])
+    }
+  })
 })
 
 describe('the save rule', () => {
