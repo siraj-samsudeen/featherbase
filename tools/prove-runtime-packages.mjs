@@ -465,7 +465,7 @@ try {
   await expect(page.getByRole('heading', { name: 'Tasker v1 upgrade fixture' })).toBeVisible()
   const plan = await api('/api/preview_app_upgrade', { name: 'tasker', version: taskerPackage.version })
   assert.equal(plan.currentVersion, '0.0.1')
-  assert.deepEqual(plan.tables, ['tasker.project', 'tasker.discussion', 'tasker.task', 'tasker.recurrence'])
+  assert.deepEqual(plan.tables, ['tasker.project', 'tasker.discussion', 'tasker.task', 'tasker.recurrence', 'tasker.store', 'tasker.issue', 'tasker.sla_rule', 'tasker.function_head'])
   assert.equal(plan.migrations[0].id, 'project_description')
   // Restart before commit does not silently upgrade.
   await stop()
@@ -496,7 +496,7 @@ try {
   assert.equal(staleBrowser.status, 409)
   assert.match(staleBrowser.body.error.message, /was upgraded/)
   const upgradedProject = await api(`/api/table/tasker.project/${projectId}`)
-  assert.deepEqual(upgradedProject, { ...projectBefore, description: null })
+  assert.deepEqual(upgradedProject, { ...projectBefore, description: null, default_verifier: null })
   const description = '## Upgrade proof\n\n**37** cartons; keep the original project.'
   await api('/api/save_row', { table: 'tasker.project', row: { ...upgradedProject, description } }, 201)
   assert.deepEqual(await api('/api/user_settings/tasker.preferences'), preferencesBefore)
@@ -513,7 +513,19 @@ try {
   }, { id: projectId, version: taskerPackage.version })
   assert.equal(browserRead.status, 200)
   assert.equal(browserRead.row.description, description)
-  assert.deepEqual(await api(`/api/table/tasker.task/${preservedTask.row_id}`), { ...preservedTask, shared: true, parent_task: null, recurrence: null, occurrence_key: null, completed_at: null })
+  const upgradedTask = await api(`/api/table/tasker.task/${preservedTask.row_id}`)
+  // 3.2.0 counts existing tasks as acknowledged at midnight on 7 Nov 2026, in the
+  // database's time zone, so the instant moves with where the proof runs.
+  const acknowledgedOffset = Date.parse(upgradedTask.acknowledged_at) - Date.parse('2026-11-07T00:00:00Z')
+  assert.ok(Math.abs(acknowledgedOffset) <= 14 * 3600_000, `Existing tasks count as acknowledged: ${upgradedTask.acknowledged_at}`)
+  assert.deepEqual(upgradedTask, {
+    ...preservedTask, shared: true, parent_task: null, recurrence: null, occurrence_key: null, completed_at: null,
+    store: null, start_date: null, due_date: null,
+    verifier: null, acknowledged_at: upgradedTask.acknowledged_at, evidence_note: null, evidence_photo: null,
+    submitted_at: null, submitted_by: null, verified_by: null, verified_at: null, return_reason: null, return_count: null,
+    original_due_date: null, extension_count: null, extension_reason: null, cancel_reason: null, change_reason: null,
+    issue: null,
+  })
   const coreFilesFilter = encodeURIComponent(JSON.stringify([['ref_table', '=', 'tasker.task'], ['ref_name', '=', preservedTask.row_id]]))
   assert.equal((await api(`/api/table/File?filters=${coreFilesFilter}`)).total, 0, 'Refused stale uploads left a File document')
   await page.setViewportSize({ width: 1440, height: 960 })
