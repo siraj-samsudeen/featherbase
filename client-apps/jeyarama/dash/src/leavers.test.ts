@@ -3,7 +3,7 @@
 // ever disables, skips System Managers, and refuses on a stale or implausible feed.
 import { describe, expect, it } from 'vitest'
 import {
-  FEED_DAY_DATASET, LEAVER_CHECK_SUBJECT, RECORDS_DATASET, dayIn, disableLeavers, linkedPeople, planLeavers,
+  FEED_DAY_DATASET, LEAVER_CHECK_SUBJECT, RECORDS_DATASET, dayIn, disableLeavers, linkedPeople, planLeavers, summaryBody,
   type EmployeeRecord, type LeaverJobContext, type LinkedPerson,
 } from './leavers.ts'
 import { jobs } from './server.ts'
@@ -170,6 +170,31 @@ describe('the job', () => {
     none.ctx.datasets.live = async () => { throw new Error('read the warehouse') }
     await disableLeavers(none.ctx)
     expect(none.done.result).toBe('leaver check: nobody is linked to StyleHR; nothing to check')
+  })
+
+  it('reads blank warehouse fields as unknown, counts an already-disabled person as not disabled, and reports a thrown value', async () => {
+    const { ctx, done } = fakeJob([
+      person('blank', { sign_ins: { stylehr: ['701'] } }),
+      person('ghost', { identifiers: { 'stylehr-employee-code': ['C-404'] } }),
+      person('already', { sign_ins: { stylehr: ['702'] } }),
+      person('odd', { sign_ins: { stylehr: ['703'] } }),
+      ...crowd(40).map((p) => person(p.person, { sign_ins: { stylehr: p.record_ids } })),
+    ], TODAY, [
+      { employee_key: '701', employee_code: null, payroll_active: null, movement_active: null, date_of_joining: null, exit_date: null },
+      rec('702', 'C-702', { movement_active: false }), rec('703', 'C-703', { movement_active: false }), ...crowdRecords(40),
+    ])
+    ctx.people.disable = async (id) => {
+      if (id === 'odd') throw 'locked'
+      return false
+    }
+    await expect(disableLeavers(ctx)).rejects.toThrow(/could not disable 1: odd: locked/)
+    expect(done.mail[0].body).toContain('1 linked people have no StyleHR record')
+    expect(done.mail[0].body).not.toContain('Disabled')
+  })
+
+  it('a summary with no feed day says so', () => {
+    const plan = planLeavers([who('a', { record_ids: ['1'] })], [rec('1', 'C-1')], null, TODAY)
+    expect(summaryBody(plan, [])).toContain('(latest day none)')
   })
 
   it("counts today in the instance's time zone", () => {
