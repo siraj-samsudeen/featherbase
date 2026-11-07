@@ -1,10 +1,10 @@
 ## 1. Rules engine (server, PR 1)
 
-- [ ] 1.1 Test first (`apps/server/test/approval-rules.test.ts`, the issue's Shelf fixtures and a resolver proof app): the 12 acceptance cases of #627, held creates, bulk edit and import, fresh review, the coverage-gap email.
-- [ ] 1.2 Migration 0155: the Approval Rule and Approval Rule Approver Tables (System Manager only, with history); generic proposal columns on Change Proposal.
-- [ ] 1.3 The rule check in the save path (create and update), the held change, and the decisions API: list, approve, reject.
-- [ ] 1.4 Approval resolvers: an app declares them, the platform calls them for a row; a rule's names are checked when it is saved.
-- [ ] 1.5 Approver mail through the workflow approval mail; the gap notice to System Managers.
+- [x] 1.1 Test first (`apps/server/test/approval-rules.test.ts`, the issue's Shelf fixtures and a resolver proof app): the 12 acceptance cases of #627, held creates, bulk edit and import, fresh review, the coverage-gap email.
+- [x] 1.2 Migration 0155: the Approval Rule and Approval Rule Approver Tables (System Manager only, with history); generic proposal columns on Change Proposal.
+- [x] 1.3 The rule check in the save path (create and update), the held change, and the decisions API: list, approve, reject.
+- [x] 1.4 Approval resolvers: an app declares them, the platform calls them for a row; a rule's names are checked when it is saved.
+- [x] 1.5 Approver mail through the workflow approval mail; the gap notice to System Managers.
 
 ## 2. Screens (PR 2, UI route)
 
