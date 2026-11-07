@@ -72,8 +72,8 @@ async function deletedVisible(scope: Map<string, Set<string>>, table: string, ro
 /** #246: a Table that refuses everyone without a Data Scope on its dimensions. */
 async function scopeRequired(table: string): Promise<boolean> {
   const { getMeta } = await import('./meta')
-  const meta = await getMeta(table).catch(() => null)
-  return meta ? requiresScope(meta) : false
+  // Only reached once the principal may read the Table, so it exists.
+  return requiresScope(await getMeta(table))
 }
 
 /** May this subscriber see this list or row event? Decided against the
