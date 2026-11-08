@@ -63,7 +63,14 @@ fixing all 22 gaps ("Fix all ticked"). They chose a Tasker project for the plan'
 
 ### Modified Capabilities
 
-None.
+None in `openspec/specs`. Two promises of the open change `jeyarama-assets-register-and-repairs`,
+which ships in the same PR, change in that change's own specs, because every open change's
+scenarios run in CI:
+
+- `asset-labels`: the per-place label sheet becomes printing labels by tag range, and a scanned
+  label opens the asset that carries its tag.
+- `asset-register`: an asset's tag number is its JRA- tag, not the internal AST- ID, which stays
+  hidden. An asset not yet tagged says it needs a tag.
 
 ## Impact
 

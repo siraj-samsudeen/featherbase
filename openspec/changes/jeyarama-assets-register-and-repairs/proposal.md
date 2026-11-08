@@ -18,7 +18,9 @@ SAP. Requirement IDs below are the BRD's.
 - A register of assets, each tied to a store, warehouse or office, with its type, area, make,
   model, serial number, purchase date and cost, warranty end and photo. Managers keep it in
   Featherbase's own list and form, so filters, saved views and spreadsheet import come for free.
-- A printable sheet of QR labels for one place. Scanning a label opens that asset's page.
+- QR labels printed by tag range. Scanning a label opens that asset's page. (This change first
+  promised a sheet of labels for one place; `jeyarama-assets-atk-tagging` replaced it with
+  printing by roll, as the ATK 1501 tagging plan does.)
 - On an asset's page, staff report a fault. Each report becomes a repair job with a fix-by time:
   Urgent within 4 hours, High within a day, Normal within 3 days.
 - A repair jobs board by stage. Managers and technicians assign jobs and move them on. A job is
@@ -57,7 +59,7 @@ or by WhatsApp, scheduled servicing, sensors, and adding the app to the live Jey
 ### New Capabilities
 
 - `asset-register`: places, asset types, assets and who may change them.
-- `asset-labels`: the QR label sheet and what scanning a label opens.
+- `asset-labels`: printing QR labels by tag range and what scanning a label opens.
 - `asset-repair-jobs`: reporting a fault, the fix-by clock, and moving a job to fixed.
 - `asset-verification-counts`: planning a count, the fixed expected list, blind recording, review,
   recount and decisions.

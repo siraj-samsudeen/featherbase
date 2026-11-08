@@ -4,16 +4,25 @@
 
 ### Requirement: Keep one register of the group's assets
 
-Each asset SHALL belong to one place and have a type, and SHALL get its own tag number when it is
-added. The tag number SHALL never change. Every member SHALL be able to see the register.
+Each asset SHALL belong to one place and have a type. Its tag number SHALL be the JRA- tag stuck on
+it, from the group's one tag series, and SHALL never change; the internal ID stays hidden. An asset
+not yet tagged SHALL say it needs a tag. Every member SHALL be able to see the register.
 
 #### Scenario: An AC in a store
 
 ```gherkin
 Given ATK 1501 is one of the group's sites
-When a manager adds the "Voltas 2-ton split AC" of type AC to ATK 1501
-Then the AC gets a tag number such as AST-0001
+When a manager adds the "Voltas 2-ton split AC" of type AC to ATK 1501 with tag JRA-000501
+Then the register lists the AC under tag JRA-000501
 And every member sees it in ATK 1501
+```
+
+#### Scenario: An asset not yet tagged
+
+```gherkin
+Given the "Billing PC, till 3" in ATK 1501 has no tag yet
+When a member opens the register
+Then the billing PC's tag reads "Needs a tag"
 ```
 
 ### Requirement: Places nest from site to area

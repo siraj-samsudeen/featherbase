@@ -2,30 +2,32 @@
 
 ## ADDED Requirements
 
-### Requirement: Print a sheet of labels for one place
+### Requirement: Print labels by tag range
 
-A member SHALL be able to print a sheet with one label for each asset in a chosen place. Each
-label SHALL carry a QR code, the tag number, the asset's name and its place.
+A member SHALL be able to print labels for a range of tag numbers from the group's one tag series,
+before any asset carries them, with no place to choose. Each label SHALL read "Jeyarama Group
+property" and "Please do not remove", and carry the tag number in large print and a QR code for
+that tag. This replaces the per-place label sheet, as the ATK 1501 tagging plan prints labels by
+roll (change `jeyarama-assets-atk-tagging`).
 
-#### Scenario: Labels for one store
+#### Scenario: Labels for part of a roll
 
 ```gherkin
-Given Avadi Store has the "Voltas 2-ton split AC" and the "Billing PC, till 3"
-And Keelkattalai Store has the "Blue Star cold room"
-When the user prints the label sheet for Avadi Store
-Then the sheet has a label for the AC and one for the billing PC
-And no label for the cold room
+Given roll R-03 holds tags JRA-000301 to JRA-000400
+When the user prints labels from JRA-000301 to JRA-000306
+Then the sheet has six labels, JRA-000301 to JRA-000306
+And each label reads "Jeyarama Group property" and "Please do not remove" and has a QR code
 ```
 
 ### Requirement: Scanning a label opens the asset
 
-Scanning an asset's QR code SHALL open that asset's page. Someone not signed in SHALL sign in
-first and then land on the same asset.
+Scanning a label's QR code SHALL open the page of the asset that carries its tag. Someone not
+signed in SHALL sign in first and then land on the same asset.
 
 #### Scenario: Scan a label
 
 ```gherkin
-Given the "Voltas 2-ton split AC" has a printed label
-When a member scans it with a phone
+Given the "Voltas 2-ton split AC" carries tag JRA-000301
+When a member scans its label with a phone
 Then the AC's page opens, with its place, warranty and any open repair job
 ```
