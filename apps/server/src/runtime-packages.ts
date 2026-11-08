@@ -88,6 +88,18 @@ const barControl = z.object({
 // the address, so it is text.
 const barOptions = z.array(z.object({ value: z.string().min(1), label: z.string().min(1) }).strict())
 
+// #1046: an app's own say in who opens it, on top of its entry Table's
+// grants. `gate` names one of its reads, run as the person: only an answer of
+// exactly `true` opens the app, and anything else (a refusal, an error, any
+// other answer) keeps it closed. `approvers` are app roles told about, and
+// shown, the people waiting for access to the app, beside System Managers.
+const accessDeclaration = z.object({
+  gate: z.string().min(1).optional(),
+  approvers: z.array(z.string().min(1)).optional(),
+  /** Where on the app's own pages approvers see who is waiting: a query string, like ?view=access. */
+  page: z.string().regex(/^\?[a-z0-9_=&-]{1,100}$/).optional(),
+}).strict()
+
 const manifestSchema = z.object({
   manifestVersion: z.literal(1),
   platformVersion: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'platformVersion must be a month, like 2026-10'),
@@ -117,6 +129,8 @@ const manifestSchema = z.object({
   frameOrigins: z.array(frameOrigin).optional(),
   // #642 (E8): the app's controls in the shared top bar.
   bar: z.array(barControl).optional(),
+  // #1046: the app's own gate check and who approves access to it.
+  access: accessDeclaration.optional(),
   tabs: tabsDeclaration.optional(),
   // #941 (ADR 0019): the app's accent, one of the platform's named set. Any
   // text is accepted here so the app is still found; installing (or upgrading
@@ -385,6 +399,10 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     if (barKeys.has(control.sets)) throw new Error(`Two bar controls set ${control.sets}; each sets its own key`)
     barKeys.add(control.sets)
   }
+  if (manifest.access?.gate && !Object.hasOwn(readOperations, manifest.access.gate))
+    throw new Error(`The app's gate is its read ${manifest.access.gate}, which is not one of the app's reads`)
+  const strangers = (manifest.access?.approvers ?? []).filter(role => !(manifest.roles ?? []).includes(role))
+  if (strangers.length) throw new Error(`The app's access approvers must be its own roles: ${strangers.join(', ')}`)
   // #666: an operation needs only secrets the app declares.
   const declaredSecrets = new Set(secretEntries(manifest.secrets).map(entry => entry.name))
   for (const [kind, operations] of [['read', readOperations], ['action', actionOperations]] as const)
@@ -837,13 +855,33 @@ export async function appCatalog(user: string) {
     const pkg = packages.get(item.name)
     // Its installation declares pages of its own (#659's classification), and
     // this process holds them to serve.
-    if (item.active && item.ownPages && pkg?.clientRoot && await hasPermission(user, pkg.entryTable, 'read'))
+    if (item.active && item.ownPages && pkg?.clientRoot && await hasPermission(user, pkg.entryTable, 'read') && await passesGate(pkg, user))
       result.push({
         name: pkg.name, title: pkg.title, href: appHref(pkg.name),
         ...(pkg.manifest.tabs && { tabs: appTabLinks(appHref(pkg.name), pkg.manifest.tabs.items) }),
       })
   }
   return result
+}
+
+/** #1046: the app's own gate check, as `user`, failing closed: only an
+ *  answer of exactly `true` passes. An app without one passes. */
+async function passesGate(pkg: RuntimePackage, user: string): Promise<boolean> {
+  const gate = pkg.manifest.access?.gate
+  if (!gate) return true
+  try {
+    const answer = await withAppIdentity(pkg.name, pkg.version, () => runPackageRead(pkg.name, gate, { payload: {} }, user)) as { result?: unknown }
+    return answer?.result === true
+  } catch {
+    return false
+  }
+}
+
+/** #1046: the roles an app names as approving access to it, and the page of
+ *  its own where they see who is waiting. */
+export function accessApprovers(name: string): { roles: readonly string[]; page?: string } {
+  const access = packages.get(name)?.manifest.access
+  return { roles: access?.approvers ?? [], ...(access?.page ? { page: `${appHref(name)}${access.page}` } : {}) }
 }
 
 /** #1008: the installed apps this person can't open, and the roles that would

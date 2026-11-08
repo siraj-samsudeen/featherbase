@@ -32,21 +32,31 @@ class AppNavigation {
     await restartAcceptance({ MOTHERDUCK_TOKEN: 'acceptance-unused-warehouse-token' });
     // Dash reads a reader's reach from the instance's core Tables: the same
     // ones its own platform tests create.
-    const { BASE_TABLES, LINKED_TABLES, REPORT_ROWS } = await import(pathToFileURL(path.resolve(__dirname, '../../../client-apps/jeyarama/dash/platform-test/base-tables.mjs')).href);
-    for (const table of BASE_TABLES) await api.call('POST', '/api/table_def', table, [201], `configure ${table.name}`);
+    const { ACCESS_ROWS, BASE_TABLES, LINKED_TABLES, REPORT_ROWS } = await import(pathToFileURL(path.resolve(__dirname, '../../../client-apps/jeyarama/dash/platform-test/base-tables.mjs')).href);
+    // Scenarios share the database's Tables (their rows are cleared), so a Table may already exist.
+    for (const table of BASE_TABLES) await api.call('POST', '/api/table_def', table, [201, 409], `configure ${table.name}`);
     await api.call('POST', '/api/instance-settings/apply', { file: { settings: { 'App Setting': [{ row_id: 'dash.linked_tables', value: JSON.stringify(LINKED_TABLES) }] } } }, [200], 'list the core Tables Dash reads');
+    const dash = await AppNavigation.appApi(api, 'dash');
+    // Rows survive between scenarios too: make the stores and reports only once.
+    const sites = encodeURIComponent(JSON.stringify([['code', '=', 'HIL']]));
+    const made = (await (await api.call('GET', `/api/table/Site?filters=${sites}`, undefined, [200], 'look for the store')).json()).data.length > 0;
+    if (!made) {
+      for (const [plant_code, code, name] of [['9901', 'HIL', 'Hill Road'], ['9902', 'LKS', 'Lakeside']]) {
+        await api.saveRow('Site', { code, name, is_store: true });
+        await api.saveRow('Plant', { plant_code, plant_type: 'Store', site: code });
+      }
+      for (const row of REPORT_ROWS) await dash.saveRow('dash.report', row);
+      // #1046: a report opens only for someone it is given to; these give each to Dash Reader.
+      for (const row of ACCESS_ROWS) await dash.saveRow('dash.report_access', row);
+    }
     const fields = encodeURIComponent(JSON.stringify(['row_id']));
     const filters = encodeURIComponent(JSON.stringify([['email', '=', email]]));
     const res = await api.call('GET', `/api/table/Person?fields=${fields}&filters=${filters}`, undefined, [200], 'find reader');
     const { data } = await res.json();
-    await api.saveRow('Employee', { employee_code: '501', name: 'Made-up Manager', person: data[0].row_id, status: 'Current' });
-    for (const [plant_code, code, name] of [['9901', 'HIL', 'Hill Road'], ['9902', 'LKS', 'Lakeside']]) {
-      await api.saveRow('Site', { code, name, is_store: true });
-      await api.saveRow('Plant', { plant_code, plant_type: 'Store', site: code });
-      await api.saveRow('Job Assignment', { assignment_id: `JA-${code}`, employee: '501', job: 'Store Manager', site: code, starts_on: '2026-01-01' });
-    }
-    const dash = await AppNavigation.appApi(api, 'dash');
-    for (const row of REPORT_ROWS) await dash.saveRow('dash.report', row);
+    const employee = `E-${data[0].row_id}`;
+    await api.saveRow('Employee', { employee_code: employee, name: 'Made-up Manager', person: data[0].row_id, status: 'Current' });
+    for (const code of ['HIL', 'LKS'])
+      await api.saveRow('Job Assignment', { assignment_id: `JA-${employee}-${code}`, employee, job: 'Store Manager', site: code, starts_on: '2026-01-01' });
   }
   async tasker() { await this.page.goto('/tasker/'); }
   async dash() { await this.page.goto('/dash/'); }

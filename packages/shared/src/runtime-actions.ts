@@ -85,6 +85,14 @@ export interface RuntimeActionContext {
     /** #963: which of these ids are enabled people, as the caller may see them:
      *  never a built-in or merged-away account, nor a service account. */
     enabled(ids: string[]): Promise<string[]>
+    /** #1046: the roles an enabled person holds now, read fresh; none for
+     *  anyone else. For an app that gives things to roles, to say why. */
+    rolesOf(person: string): Promise<readonly string[]>
+    /** #1046: every role on the instance, platform roles left out. */
+    roleNames(): Promise<readonly string[]>
+    /** #1046: who is waiting for access to this app, oldest first. Only a
+     *  System Manager or one of the app's access approvers is told. */
+    waitingForAccess(): Promise<readonly { person: string; name: string | null; asked_at: string }[]>
   }
   readonly payload: unknown
   readonly authorization: AppAuthorizationContext

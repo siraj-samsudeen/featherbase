@@ -5,7 +5,7 @@ import { resolve } from 'node:path'
 import { makeClient, type TestClient } from 'feather-testing-postgres'
 import { expect } from 'vitest'
 import { discoverPackages } from '../../src/runtime-packages'
-import { BASE_TABLES, LINKED_TABLES, REPORT_ROWS } from './base-tables.mjs'
+import { ACCESS_ROWS, BASE_TABLES, LINKED_TABLES, REPORT_ROWS } from './base-tables.mjs'
 // @ts-expect-error a plain .mjs module, copied in beside this file by the runner
 
 export const APP_DIR = process.env.DASH_DIR!
@@ -36,4 +36,4 @@ export async function createCoreTables(admin: TestClient) {
   await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'dash.linked_tables', value: JSON.stringify(LINKED_TABLES) } })
 }
 
-export { REPORT_ROWS }
+export { ACCESS_ROWS, REPORT_ROWS }

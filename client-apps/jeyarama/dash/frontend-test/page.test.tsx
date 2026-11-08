@@ -124,8 +124,8 @@ describe('Dash against the real platform', () => {
   test('gives an instance manager with no store the health link and local setup command', async ({ admin }) => {
     token = admin.token
     await open()
-    await waitForText('your account covers no store')
-    expect(document.querySelector('[data-testid=manager-no-store] a')?.getAttribute('href')).toBe('/featherbase/admin/instance-health')
+    await waitForText('it has no report to show you')
+    expect([...document.querySelectorAll('[data-testid=manager-no-store] a')].map(a => a.getAttribute('href'))).toEqual(['?view=access', '/featherbase/admin/instance-health'])
     expect(document.querySelector('code')?.textContent).toBe('pnpm dev jeyarama/dash --made-up-data')
     const once = (path: string) => requests.filter(r => r.path === path)
     expect(['/api/app_reads/dash/embed_session', '/api/app_reads/dash/report', '/api/instance-health', '/api/whoami'].map(path => once(path).map(r => r.status)))
@@ -189,7 +189,7 @@ describe('Dash against the real platform', () => {
     await waitForText("You don't have a report to open yet.")
     expect(document.querySelector('[data-testid=dash] a[href*=instance-health]')).toBeNull()
     expect([...new Set(requests.map(r => r.path))].sort()).toEqual([
-      '/api/app_reads/dash/approvals', '/api/app_reads/dash/embed_session', '/api/app_reads/dash/reach_problem', '/api/app_reads/dash/report', '/api/app_reads/dash/reports', '/api/whoami',
+      '/api/app_reads/dash/approvals', '/api/app_reads/dash/embed_session', '/api/app_reads/dash/manages_access', '/api/app_reads/dash/reach_problem', '/api/app_reads/dash/report', '/api/app_reads/dash/reports', '/api/whoami',
     ])
   })
 
@@ -482,10 +482,10 @@ describe('Dash against the real platform', () => {
       dom.reconfigure({ url: 'https://dash.example.test/dash/' })
       await withNamedVariable('MOTHERDUCK_TOKEN', missing ? undefined : 'made-up-local-ui-test-token', async () => {
         await open()
-        await waitForText(missing ? "Dash isn't set up on this instance yet" : 'your account covers no store')
+        await waitForText(missing ? "Dash isn't set up on this instance yet" : 'it has no report to show you')
         expect(document.querySelector('code')).toBeNull()
         expect(document.body.textContent).not.toContain('this machine')
-        expect(document.querySelector('[data-testid=dash] a')?.getAttribute('href')).toBe('/featherbase/admin/instance-health')
+        expect([...document.querySelectorAll('[data-testid=dash] a')].map(a => a.getAttribute('href')).filter(href => href !== '?view=access')).toEqual(['/featherbase/admin/instance-health'])
       })
     })
   }

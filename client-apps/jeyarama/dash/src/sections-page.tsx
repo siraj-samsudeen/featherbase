@@ -5,11 +5,13 @@ import { Button, Card, EmptyState, Field, fmtDate, Notice, SearchInput, Select, 
 import { act, read } from './api'
 import { reportAddress } from './page'
 
-export type DashView = 'report' | 'sections' | 'approvals'
+export type DashView = 'report' | 'sections' | 'approvals' | 'access'
 export function currentView(search = window.location.search): DashView {
   const view = new URLSearchParams(search).get('view')
-  return view === 'sections' || view === 'approvals' ? view : 'report'
+  return view === 'sections' || view === 'approvals' || view === 'access' ? view : 'report'
 }
+/** The Report access page (#1046), for Report Access Managers and System Managers. */
+export const ACCESS_ADDRESS = '?view=access'
 export const SECTIONS_ADDRESS = '?view=sections'
 export const APPROVALS_ADDRESS = '?view=approvals'
 
@@ -92,6 +94,9 @@ export function DashSidebar({ current, count }: { current: DashView; count?: num
     read<Waiting>('approvals').then(answer => { if (live && answer.state === 'ok') setWaiting(answer.proposals.length) }, () => {})
     return () => { live = false }
   }, [count])
+  // #1046: the Report access link shows only to someone who manages it.
+  const [manages, setManages] = useState(false)
+  useEffect(() => { let live = true; read<boolean>('manages_access').then(answer => { if (live) setManages(answer === true) }, () => {}); return () => { live = false } }, [])
   const here = (view: DashView) => (current === view ? { 'aria-current': 'page' as const } : {})
   return createElement('featherbase-sidebar', { 'aria-label': 'Dash navigation' },
     reports.length > 0 && <span className="fd-sidebar-group" data-testid="reports-group">Reports</span>,
@@ -110,6 +115,12 @@ export function DashSidebar({ current, count }: { current: DashView; count?: num
         <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6 9 17l-5-5" /></svg>
         <span className="max-sm:hidden">Waiting for your approval{waiting > 0 ? ` (${waiting})` : ''}</span>
         <span className="sm:hidden">Approve{waiting > 0 ? ` (${waiting})` : ''}</span>
+      </a>
+    ),
+    (manages || current === 'access') && (
+      <a href={ACCESS_ADDRESS} {...here('access')} data-testid="access-link">
+        <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8m13 10v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8" /></svg>
+        <span>Report access</span>
       </a>
     ))
 }

@@ -24,11 +24,11 @@ const VENDORS = { report_key: 'vendors', report_name: 'Vendor sales by city', di
   subcategory_key: null, whole_store_key: null, month_key: null, ready_signal: 0, quick_view: null }
 
 /** The platform's table reads: the filters and paging `list` is given, over in-memory rows. */
-function reader(tables: Record<string, Row[]>, throws = false) {
+function reader(tables: Record<string, Row[]>, throws: boolean | string[] = false) {
   return {
     async list(table: string, args: { filters?: [string, string, unknown][]; order_by?: string; limit_start?: number; limit_page_length?: number }) {
-      if (throws) throw new Error('not set up')
-      const found = (tables[table] ?? []).filter(r => (args.filters ?? []).every(([column, op, value]) => (op === 'in' ? (value as unknown[]).includes(r[column]) : r[column] === value)))
+      if (throws === true || (Array.isArray(throws) && throws.includes(table))) throw new Error('not set up')
+      const found = (tables[table] ?? []).filter(r => (args.filters ?? []).every(([column, op, value]) => (op === 'in' ? (value as unknown[]).includes(r[column]) : op === 'like' ? String(r[column]).includes(String(value).replaceAll('%', '')) : r[column] === value)))
       const start = args.limit_start ?? 0
       return found.slice(start, start + (args.limit_page_length ?? 500))
     },
@@ -54,7 +54,8 @@ interface Options {
   reports?: Row[]
   /** The core Tables as the app's base Table reads see them. */
   core?: Record<string, Row[]>
-  coreThrows?: boolean
+  /** Every core Table read throws, or only these. */
+  coreThrows?: boolean | string[]
 }
 const DIVE = { embed_service_account: 'svc-made-up' }
 
@@ -67,8 +68,11 @@ function context({ places = [place('9901 / Section: Sarees', '9901', ['010101001
     ctx: {
       user: 'psn_103', payload, settings, secrets: { MOTHERDUCK_TOKEN: 'token-made-up' },
       authorization: { places },
+      roles: ['Dash Reader'],
       documents: reader({ 'dash.report': reports }),
-      baseTables: reader(core, coreThrows),
+      // #1046: every report given to everyone holding Dash Reader, unless a test says otherwise.
+      baseTables: reader({ 'dash.report_access': reports.map(r => ({ row_id: `a-${String(r.report_key)}`, report: r.report_key, role: 'Dash Reader' })),
+        'dash.report_bundle_member': [], ...core }, coreThrows),
       reject(message: string): never { throw new Error(message) },
       datasets: {
         async active(name: string, filters?: Record<string, unknown>) {
@@ -207,6 +211,12 @@ describe("the reports read (Dash's sidebar)", () => {
   it('answers nothing for someone with no job at all', async () => {
     const { ctx } = context({ reports: ALL, core: { ...STORES, Employee: [] }, places: [] })
     expect(await reads.reports(ctx)).toEqual([])
+  })
+
+  it('answers only a report taking no filter when the reader\'s reach can\'t be read', async () => {
+    const OPEN = { ...SALES, report_key: 'open', report_name: 'Open', filter_shape: 'No filter', store_key: null, subcategory_key: null, whole_store_key: null, month_key: null, quick_view: null }
+    const { ctx } = context({ reports: [...ALL, OPEN], core: jobOf({ job: 'Store Manager' }), coreThrows: ['Site'], places: [] })
+    expect((await reads.reports(ctx)).map(r => r.key)).toEqual(['open'])
   })
 
   it('answers nothing, never an error, when the core Tables can\'t be read yet', async () => {
@@ -547,6 +557,13 @@ describe('the embed_session read', () => {
     expect(await embedSession(ctx)).toEqual({ unreachable: true })
   })
 
+  it('says the Dive is unreachable when MotherDuck answers something that is not JSON', async () => {
+    upstream(() => Promise.resolve(new Response('<html>busy</html>', { status: 200 })))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { ctx } = context({ payload: { store: '9901' } })
+    expect(await embedSession(ctx)).toEqual({ unreachable: true })
+  })
+
   it('says the Dive is unreachable when MotherDuck cannot be reached', async () => {
     upstream(() => Promise.reject(new TypeError('fetch failed')))
     vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -665,5 +682,29 @@ describe("the report read's heading", () => {
     const report = await reads.report(ctx) as Answered
     // The store's name comes from the core Tables, never a code (#967 point 13).
     expect([report.state, report.heading]).toEqual(['not_built', { name: 'Lakeside', sections: ['Sarees'], reasons: [{ basis: 'team_leader', sections: ['Sarees'] }] }])
+  })
+})
+
+describe('the Report access reads (#1046)', () => {
+  const manager = (core: Record<string, Row[]>, coreThrows: boolean | string[] = false, payload: Record<string, unknown> = {}) => {
+    const { ctx } = context({ core: { ...jobOf({ job: 'Store Manager' }), ...core }, coreThrows, payload, places: [] })
+    return { ...ctx, roles: ['Report Access Manager'], people: { async names() { return {} }, async rolesOf() { return ['Dash Reader'] } } }
+  }
+
+  it('says whether the reader manages report access', () => {
+    expect([reads.manages_access(manager({})), reads.manages_access(context().ctx)]).toEqual([true, false])
+  })
+
+  it('lists bundles by name, and searches the staff list', async () => {
+    const ctx = manager({ 'dash.report_bundle': [{ row_id: 'b2', bundle_name: 'Store pack' }, { row_id: 'b1', bundle_name: 'Leader pack' }],
+      Employee: [{ row_id: 'E1', person: 'psn_103', name: 'Made-up Manager', status: 'Current' }] }, false, { q: 'Made' })
+    expect((await reads.access_page(ctx)).bundles.map(b => b.name)).toEqual(['Leader pack', 'Store pack'])
+    expect(await reads.person_search({ ...ctx, payload: { q: 'Made-up Manager' } })).toEqual([{ person: 'psn_103', name: 'Made-up Manager' }])
+  })
+
+  it('looks a person up by what their job reaches, and as reaching nothing when that can\'t be read', async () => {
+    const lookup = (coreThrows: boolean | string[]) => reads.person_lookup(manager({}, coreThrows, { person: 'psn_103' }))
+    expect((await lookup(false)).reports.map(r => [r.key, r.closed])).toEqual([['sales', null]])
+    expect((await lookup(['Site'])).reports.map(r => [r.key, r.closed])).toEqual([['sales', 'Given, but their job reaches no store']])
   })
 })

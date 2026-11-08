@@ -9,7 +9,8 @@
   "roles": [
     "Dash Reader",
     "Dash Section Editor",
-    "Dash Section Reviewer"
+    "Dash Section Reviewer",
+    "Report Access Manager"
   ],
   "roleDefaults": {},
   "settings": [
@@ -48,6 +49,13 @@
       ]
     }
   ],
+  "access": {
+    "gate": "can_open",
+    "approvers": [
+      "Report Access Manager"
+    ],
+    "page": "?view=access"
+  },
   "datasets": [
     {
       "name": "sales_to_date",
@@ -403,6 +411,133 @@
           "description": "The built-in table shown when the Dive can't load. Empty: a message instead."
         }
       ]
+    },
+    {
+      "name": "dash.report_bundle",
+      "label": "Report bundle",
+      "module": "Dash",
+      "description": "A named group of reports, given together. Its reports are its Report bundle member rows.",
+      "title_column": "bundle_name",
+      "columns": [
+        {
+          "column_name": "bundle_name",
+          "label": "Name",
+          "column_type": "Data",
+          "reqd": true,
+          "unique": true,
+          "in_list_view": true,
+          "description": "What the Report access page calls it, for example Team leader pack."
+        },
+        {
+          "column_name": "notes",
+          "label": "Notes",
+          "column_type": "Text",
+          "description": "Who it is for, in a line."
+        }
+      ]
+    },
+    {
+      "name": "dash.report_bundle_member",
+      "label": "Report bundle member",
+      "module": "Dash",
+      "description": "One report in one bundle. Taking the row away takes the report out of the bundle for everyone given it, on their next request.",
+      "columns": [
+        {
+          "column_name": "report_bundle",
+          "label": "Bundle",
+          "column_type": "Reference",
+          "reference_table": "dash.report_bundle",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "report",
+          "label": "Report",
+          "column_type": "Reference",
+          "reference_table": "dash.report",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "member_key",
+          "label": "Member key",
+          "column_type": "Data",
+          "unique": true,
+          "read_only": true,
+          "description": "Set on save: the bundle and the report, while the report is in it. Unique, so a bundle holds a report once."
+        },
+        {
+          "column_name": "removed",
+          "label": "Removed",
+          "column_type": "Check",
+          "description": "Taken out of the bundle: the row stays so its history says who took it out and when."
+        }
+      ]
+    },
+    {
+      "name": "dash.report_access",
+      "label": "Report access",
+      "module": "Dash",
+      "description": "Gives one report or one bundle to one person, one role or one job. A person sees every report given to them by any route; no row means no report.",
+      "columns": [
+        {
+          "column_name": "report",
+          "label": "Report",
+          "column_type": "Reference",
+          "reference_table": "dash.report",
+          "in_list_view": true,
+          "description": "The report given. Fill in this or Bundle, not both."
+        },
+        {
+          "column_name": "report_bundle",
+          "label": "Bundle",
+          "column_type": "Reference",
+          "reference_table": "dash.report_bundle",
+          "in_list_view": true,
+          "description": "The bundle given. Fill in this or Report, not both."
+        },
+        {
+          "column_name": "person",
+          "label": "Person",
+          "column_type": "Data",
+          "in_list_view": true,
+          "description": "Given to this person: their Featherbase id, which the Report access page shows by name. Fill in one of Person, Role and Job."
+        },
+        {
+          "column_name": "role",
+          "label": "Role",
+          "column_type": "Data",
+          "in_list_view": true,
+          "description": "Given to everyone holding this role."
+        },
+        {
+          "column_name": "job",
+          "label": "Job",
+          "column_type": "Data",
+          "in_list_view": true,
+          "description": "Given to everyone whose current job assignment is this job, for example Team Leader."
+        },
+        {
+          "column_name": "access_key",
+          "label": "Access key",
+          "column_type": "Data",
+          "unique": true,
+          "read_only": true,
+          "description": "Set on save: what is given and to whom, while it is given. Unique, so the same thing is never given twice to the same receiver."
+        },
+        {
+          "column_name": "removed",
+          "label": "Removed",
+          "column_type": "Check",
+          "description": "Taken away: the row stays so its history says who removed it and when, and it gives nothing."
+        },
+        {
+          "column_name": "given_by_name",
+          "label": "Given by",
+          "column_type": "Data",
+          "description": "Set when given on the Report access page: the name of the person who gave it, as the page shows it."
+        }
+      ]
     }
   ],
   "scopeProvider": {
@@ -439,6 +574,41 @@
       "table": "dash.report",
       "role": "Dash Section Reviewer",
       "can_read": true
+    },
+    {
+      "table": "dash.report",
+      "role": "Report Access Manager",
+      "can_read": true
+    },
+    {
+      "table": "dash.report_bundle",
+      "role": "Report Access Manager",
+      "operations": {
+        "read": "@basic",
+        "create": "@basic",
+        "update": "@basic",
+        "delete": true
+      }
+    },
+    {
+      "table": "dash.report_bundle_member",
+      "role": "Report Access Manager",
+      "operations": {
+        "read": "@basic",
+        "create": "@basic",
+        "update": "@basic",
+        "delete": true
+      }
+    },
+    {
+      "table": "dash.report_access",
+      "role": "Report Access Manager",
+      "operations": {
+        "read": "@basic",
+        "create": "@basic",
+        "update": "@basic",
+        "delete": true
+      }
     }
   ],
   "reads": {
@@ -562,6 +732,46 @@
           "kind": "generic"
         },
         "outbound": true
+      },
+      "can_open": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "access_page": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "person_search": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "person_lookup": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "manages_access": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
       }
     }
   },
@@ -679,6 +889,142 @@
                 "column_type": "Choice",
                 "choices": "\nSales target",
                 "description": "The built-in table shown when the Dive can't load. Empty: a message instead."
+              }
+            ]
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "dash.report_bundle",
+            "label": "Report bundle",
+            "module": "Dash",
+            "description": "A named group of reports, given together. Its reports are its Report bundle member rows.",
+            "title_column": "bundle_name",
+            "columns": [
+              {
+                "column_name": "bundle_name",
+                "label": "Name",
+                "column_type": "Data",
+                "reqd": true,
+                "unique": true,
+                "in_list_view": true,
+                "description": "What the Report access page calls it, for example Team leader pack."
+              },
+              {
+                "column_name": "notes",
+                "label": "Notes",
+                "column_type": "Text",
+                "description": "Who it is for, in a line."
+              }
+            ]
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "dash.report_bundle_member",
+            "label": "Report bundle member",
+            "module": "Dash",
+            "description": "One report in one bundle. Taking the row away takes the report out of the bundle for everyone given it, on their next request.",
+            "columns": [
+              {
+                "column_name": "report_bundle",
+                "label": "Bundle",
+                "column_type": "Reference",
+                "reference_table": "dash.report_bundle",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "report",
+                "label": "Report",
+                "column_type": "Reference",
+                "reference_table": "dash.report",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "member_key",
+                "label": "Member key",
+                "column_type": "Data",
+                "unique": true,
+                "read_only": true,
+                "description": "Set on save: the bundle and the report, while the report is in it. Unique, so a bundle holds a report once."
+              },
+              {
+                "column_name": "removed",
+                "label": "Removed",
+                "column_type": "Check",
+                "description": "Taken out of the bundle: the row stays so its history says who took it out and when."
+              }
+            ]
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "dash.report_access",
+            "label": "Report access",
+            "module": "Dash",
+            "description": "Gives one report or one bundle to one person, one role or one job. A person sees every report given to them by any route; no row means no report.",
+            "columns": [
+              {
+                "column_name": "report",
+                "label": "Report",
+                "column_type": "Reference",
+                "reference_table": "dash.report",
+                "in_list_view": true,
+                "description": "The report given. Fill in this or Bundle, not both."
+              },
+              {
+                "column_name": "report_bundle",
+                "label": "Bundle",
+                "column_type": "Reference",
+                "reference_table": "dash.report_bundle",
+                "in_list_view": true,
+                "description": "The bundle given. Fill in this or Report, not both."
+              },
+              {
+                "column_name": "person",
+                "label": "Person",
+                "column_type": "Data",
+                "in_list_view": true,
+                "description": "Given to this person: their Featherbase id, which the Report access page shows by name. Fill in one of Person, Role and Job."
+              },
+              {
+                "column_name": "role",
+                "label": "Role",
+                "column_type": "Data",
+                "in_list_view": true,
+                "description": "Given to everyone holding this role."
+              },
+              {
+                "column_name": "job",
+                "label": "Job",
+                "column_type": "Data",
+                "in_list_view": true,
+                "description": "Given to everyone whose current job assignment is this job, for example Team Leader."
+              },
+              {
+                "column_name": "access_key",
+                "label": "Access key",
+                "column_type": "Data",
+                "unique": true,
+                "read_only": true,
+                "description": "Set on save: what is given and to whom, while it is given. Unique, so the same thing is never given twice to the same receiver."
+              },
+              {
+                "column_name": "removed",
+                "label": "Removed",
+                "column_type": "Check",
+                "description": "Taken away: the row stays so its history says who removed it and when, and it gives nothing."
+              },
+              {
+                "column_name": "given_by_name",
+                "label": "Given by",
+                "column_type": "Data",
+                "description": "Set when given on the Report access page: the name of the person who gave it, as the page shows it."
               }
             ]
           }
@@ -1506,6 +1852,27 @@
       "Plant": [
         "site",
         "plant_type"
+      ],
+      "dash.report_access": [
+        "report",
+        "report_bundle",
+        "person",
+        "role",
+        "job",
+        "updated_at",
+        "updated_by",
+        "removed",
+        "created_by",
+        "given_by_name"
+      ],
+      "dash.report_bundle": [
+        "bundle_name"
+      ],
+      "dash.report_bundle_member": [
+        "report_bundle",
+        "report",
+        "updated_at",
+        "removed"
       ]
     },
     "propose": {
@@ -1542,7 +1909,10 @@
   "actions": {
     "version": 2,
     "tables": [
-      "dash.report"
+      "dash.report",
+      "dash.report_access",
+      "dash.report_bundle",
+      "dash.report_bundle_member"
     ],
     "operations": {
       "propose_move": {
@@ -1570,6 +1940,46 @@
         }
       },
       "decide": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "give_report": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "remove_report_access": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "make_bundle": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "add_to_bundle": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "remove_from_bundle": {
         "policy": {
           "kind": "table"
         },
