@@ -7,6 +7,8 @@ dist/
 !.env.example
 test-results/
 playwright-report/
+# pnpm --filter web build-storybook
+storybook-static/
 # Snapshots written by the Playwright MCP browser during agent sessions.
 .playwright-mcp/
 coverage/
