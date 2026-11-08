@@ -13,6 +13,9 @@
     "e2e": "E2E_ISOLATED=1 playwright test",
     "e2e:served": "playwright test --config playwright.served.config.ts",
     "tour": "playwright test --config playwright.tours.config.ts",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build",
+    "test:stories": "vitest run --config vitest.storybook.config.ts",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {

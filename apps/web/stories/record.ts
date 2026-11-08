@@ -1,7 +1,7 @@
 // Records what the real server answers for a screen, so its story replays the
 // same data without a server (MSW). Run against a dev instance (./init.sh):
 //
-//   pnpm --filter web exec tsx stories/record.ts
+//   pnpm --filter server exec tsx ../web/stories/record.ts [screen...]
 //
 // It seeds the tables a story needs through the API, opens the screen as the
 // Administrator in a headless browser, and writes every /api answer to
@@ -93,10 +93,21 @@ async function record(name: string, url: string, settle: (page: import('@playwri
   await browser.close()
 }
 
-await seed()
-await record('wide-list', `/featherbase/admin/table/${tableSlug(WIDE)}`, async (page) => {
-  await page.getByTestId('list-total').filter({ hasText: '3 total' }).waitFor()
-  // The link filter's values and the Compact layout are part of the screen's story.
-  await page.getByRole('group', { name: 'List layout' }).getByRole('button', { name: 'Compact' }).click()
-  await page.getByRole('group', { name: 'List layout' }).getByRole('button', { name: 'Table' }).click()
-})
+// Each screen a story replays: `tsx stories/record.ts [name...]` (all when none given).
+const SCREENS: Record<string, () => Promise<void>> = {
+  'wide-list': async () => {
+    await seed()
+    await record('wide-list', `/featherbase/admin/table/${tableSlug(WIDE)}`, async (page) => {
+      await page.getByTestId('list-total').filter({ hasText: '3 total' }).waitFor()
+      // The link filter's values and the Compact layout are part of the screen's story.
+      await page.getByRole('group', { name: 'List layout' }).getByRole('button', { name: 'Compact' }).click()
+      await page.getByRole('group', { name: 'List layout' }).getByRole('button', { name: 'Table' }).click()
+    })
+  },
+  'admin-home': async () => {
+    await record('admin-home', '/featherbase/admin', async (page) => {
+      await page.getByTestId('theme-dark').waitFor()
+    })
+  },
+}
+for (const name of process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(SCREENS)) await SCREENS[name]!()
