@@ -6,13 +6,15 @@ import { describe, expect, it } from 'vitest'
 import manifest from '../featherbase.json' with { type: 'json' }
 import { EMBED_ORIGIN, LAST_MONTH_DATASET, LAST_SALES_DATASET, MONTH_DATASET, SALES_DATASET, reads } from './server.ts'
 import type { SalesRow } from './report.ts'
+import { PROVIDER_FIELDS, PROVIDER_TABLES } from './provider.ts'
+import { BASE_TABLES } from './my-sections.ts'
 
 type Dataset = { name: string; source: string; query: string; columns: { name: string; type: string }[]; keys: string[]; filters: Record<string, string>
   guard?: { kind: string; column?: string; value?: number; within?: string }[] }
 const datasets = (manifest as unknown as { datasets: Dataset[] }).datasets
 const sales = () => datasets.find(d => d.name === SALES_DATASET)!
 const operations = manifest.reads.operations as Record<string, { policy: { kind: string; readRoles?: string[] }; outbound?: boolean }>
-const ROLES = ['Dash Reader', 'Dash Section Editor', 'Dash Section Reviewer']
+const ROLES = ['Dash Reader', 'Dash Section Editor', 'Dash Section Reviewer', 'Report Access Manager']
 
 describe("the app's name in the manifest", () => {
   it('is Dash everywhere: title, identifier, roles and Table group', () => {
@@ -73,15 +75,15 @@ describe('the report in the manifest', () => {
 
   it("scopes the report's reads by the reader's places", () => {
     expect(['stores', 'report', 'embed_session'].map(name => [name, operations[name].policy.kind, operations[name].policy.readRoles]))
-      .toEqual(['stores', 'report', 'embed_session'].map(name => [name, 'person_scope', ROLES]))
+      .toEqual(['stores', 'report', 'embed_session'].map(name => [name, 'person_scope', ROLES.filter(role => role !== 'Report Access Manager')]))
   })
 
-  it('declares only embed_session as calling out', () => {
-    expect(Object.entries(operations).filter(([, o]) => o.outbound).map(([name]) => name)).toEqual(['embed_session'])
+  it('declares only the two Dive openers as calling out', () => {
+    expect(Object.entries(operations).filter(([, o]) => o.outbound).map(([name]) => name).sort()).toEqual(['embed_open', 'embed_session'])
   })
 
   it('draws the store picker and the month picker (#750) in the top bar, setting ?store= and ?month=', () => {
-    expect(manifest.bar).toEqual([{ picker: 'Store', options: 'stores', sets: 'store', hiddenWhen: 'view' }, { picker: 'Month', options: 'months', sets: 'month', hiddenWhen: 'view' }])
+    expect(manifest.bar).toEqual([{ picker: 'Store', options: 'stores', sets: 'store', hiddenWhen: 'view', dependsOn: ['report'] }, { picker: 'Month', options: 'months', sets: 'month', hiddenWhen: 'view', dependsOn: ['report'] }])
   })
 
   it("lets anyone who can open the app read the month picker's options: they hold no figure", () => {
@@ -92,10 +94,8 @@ describe('the report in the manifest', () => {
     expect(manifest.frameOrigins).toEqual([EMBED_ORIGIN])
   })
 
-  it('reads the Dive from optional settings, so an instance without one gets the quick view', () => {
-    expect(manifest.settings).toEqual([
-      { name: 'dive_id', required: false }, { name: 'embed_service_account', required: false },
-      { name: 'dive_ready_signal', required: false }, { name: 'linked_tables', required: false }])
+  it("takes the Dive's account from an optional setting, so an instance without one gets the quick view; each Dive's id is on its report's row", () => {
+    expect(manifest.settings).toEqual([{ name: 'embed_service_account', required: false }, { name: 'linked_tables', required: false }])
   })
 
   it('reads the MotherDuck token as a secret', () => {
@@ -135,33 +135,64 @@ describe("last month's datasets", () => {
   })
 })
 
+describe('what Dash owns and what it reads', () => {
+  it('owns its list of Dives, its entry Table, and the report access Tables (#1046)', () => {
+    expect([manifest.entryTable, manifest.tables.map(table => table.name)])
+      .toEqual(['dash.report', ['dash.report', 'dash.report_bundle', 'dash.report_bundle_member', 'dash.report_access']])
+  })
+
+  it('decides scope with none of its own Tables, so role grants decide who gives reports', () => {
+    expect(manifest.tables.filter(table => (table as { decides_scope?: boolean }).decides_scope)).toEqual([])
+  })
+
+  it("declares a read of every Table its scope provider and Your sections read, and of nothing else", () => {
+    // #1046: and its own report access Tables, read as the app so a reader needs no grant on them.
+    expect(Object.keys(manifest.baseTables.read).sort()).toEqual([...new Set([...PROVIDER_TABLES, ...BASE_TABLES,
+      'dash.report_access', 'dash.report_bundle', 'dash.report_bundle_member'])].sort())
+  })
+
+  it('declares the Tables the scope provider reads, as the provider lists them', () => {
+    expect(manifest.scopeProvider.tables).toEqual(PROVIDER_TABLES)
+  })
+
+  it('asks for every column the provider reads', () => {
+    const read = manifest.baseTables.read as Record<string, string[]>
+    for (const table of PROVIDER_TABLES) expect(read[table], table).toEqual(expect.arrayContaining(PROVIDER_FIELDS[table]))
+  })
+
+  it("says Dash report, so people don't take it for the platform's Report Table", () => {
+    const added = manifest.migrations.flatMap(m => m.operations as { kind: string; table?: { name: string; label: string } }[]).filter(o => o.kind === 'addTable' && o.table?.name === 'dash.report')
+    expect([manifest.tables[0].label, added.map(o => o.table?.label)]).toEqual(['Dash report', ['Dash report']])
+  })
+
+  it('offers the three filter shapes and no filter on a report', () => {
+    const shape = manifest.tables[0].columns.find(column => column.column_name === 'filter_shape') as { choices?: string } | undefined
+    expect(shape?.choices?.split('\n')).toEqual(['One store and subcategories', 'Whole stores', 'Stores and subcategories', 'No filter'])
+  })
+})
+
 describe('the read grants, declared before the first install', () => {
-  const ORG_CHART = ['dash.store_floor', 'dash.department', 'dash.section', 'dash.section_subcategory',
-    'dash.display_location', 'dash.job_assignment', 'dash.section_alias', 'dash.floor_alias', 'dash.job_alias',
-    'dash.designation', 'dash.designation_alias']
   const granted = (role: string) => manifest.permissions.filter(p => p.role === role).map(p => p.table).sort()
 
   it('give every app role a read of the entry Table, which opening the app needs', () => {
-    expect(ROLES.every(role => granted(role).includes('dash.store_rollout'))).toBe(true)
+    expect(ROLES.every(role => granted(role).includes('dash.report'))).toBe(true)
   })
 
   it('give the Reader nothing else: the report reads the cached dataset through its places, never a Table', () => {
-    expect(granted('Dash Reader')).toEqual(['dash.store_rollout'])
+    expect(granted('Dash Reader')).toEqual(['dash.report'])
   })
 
-  it("give stage D's Section Editor a read of every org chart Table", () => {
-    expect(granted('Dash Section Editor')).toEqual([...ORG_CHART, 'dash.store_rollout'].sort())
-  })
-
-  it("give stage D's Section Reviewer a read of every org chart Table", () => {
-    expect(granted('Dash Section Reviewer')).toEqual([...ORG_CHART, 'dash.store_rollout'].sort())
+  it.each(['Dash Section Editor', 'Dash Section Reviewer'])('give %s nothing else: Your sections reads the core Tables as declared base Tables', role => {
+    expect(granted(role)).toEqual(['dash.report'])
   })
 
   it('give no app role the people Tables: who reads contacts and stints is the scopes\' to decide (#683)', () => {
-    expect(manifest.permissions.filter(p => ['dash.employee', 'dash.employment'].includes(p.table))).toEqual([])
+    expect(manifest.permissions.filter(p => ['Employee', 'Job Assignment'].includes(p.table))).toEqual([])
   })
 
-  it('grant reads only: writing a Table that decides scope waits for featherbase #462', () => {
-    expect(manifest.permissions.every(p => Object.keys(p).sort().join() === 'can_read,role,table' && p.can_read === true)).toBe(true)
+  it('grant reads only, apart from the Report Access Manager on the report access Tables (#1046)', () => {
+    const writes = manifest.permissions.filter(p => Object.keys(p).sort().join() !== 'can_read,role,table' || (p as { can_read?: boolean }).can_read !== true)
+    expect(writes.map(p => [p.role, p.table])).toEqual([
+      ['Report Access Manager', 'dash.report_bundle'], ['Report Access Manager', 'dash.report_bundle_member'], ['Report Access Manager', 'dash.report_access']])
   })
 })
