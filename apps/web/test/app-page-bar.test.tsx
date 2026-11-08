@@ -123,6 +123,18 @@ test("the app-name dropdown offers Featherbase to a person who can open it", asy
   expect(bar.queryByTestId('open-admin')).toBeNull()
 })
 
+// Moved from the deleted e2e/runtime-host-shell.spec.ts.
+test("choosing Featherbase in the app-name dropdown leaves the app for the Admin", async ({ admin }) => {
+  expect(await discoverPackages([BAR_PROOF, ROSTER])).toEqual([])
+  await admin.post('/api/install_app', { name: 'barproof' })
+  const left: string[] = []
+  const bar = openAppPage(admin, '/barproof/', (href) => left.push(href))
+  const choices = await bar.findByRole('combobox', { name: 'Switch application' })
+  await within(choices).findByRole('option', { name: FEATHERBASE_ADMIN_DESTINATION.label })
+  await userEvent.selectOptions(choices, FEATHERBASE_ADMIN_DESTINATION.href)
+  await waitFor(() => expect(left).toEqual([FEATHERBASE_ADMIN_DESTINATION.href]))
+})
+
 // #659 (owner decision, 28-Oct-2026): an app's own Tables do not open the
 // Admin. A Bar Reader reads only the app's Tables, so the bar offers no Admin.
 test("the app-name dropdown excludes Featherbase for an app-only reader", async ({ admin, createUser }) => {
