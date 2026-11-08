@@ -193,6 +193,35 @@ Every non-sandboxed test file says why in its header comment.
   to `dist/runtime-proof-*/`. It uses only `featherbase_runtime_proof_e2e`
   (override with `RUNTIME_PROOF_DATABASE_URL` / `RUNTIME_PROOF_PORT`).
 
+## Spec scenarios
+
+A fenced scenario in `openspec/**/spec.md` is proven by one Vitest test bound
+to it (#1070): `scenarioFor(test, '<capability>')` from
+`apps/server/test/scenario.ts`, then `scenario('<the scenario's name>', …)`.
+The body walks the scenario's Gherkin in order. Each `step(...)` names the
+next line, by its exact text or a pattern, and a step out of order, changed or
+left out fails the test. Put it at the fastest layer that proves it:
+`apps/server/test/scenarios/` for the server, `apps/web/test/scenarios/` for
+what a person reads on screen.
+
+```ts
+const scenario = scenarioFor(test, 'naming-and-numbering')
+describe('naming-and-numbering', () => {
+  scenario('An imported row already holds the next number', async ({ admin }, step) => {
+    await step('a table "Bin" whose rows are numbered 1, 2, 3', () => makeTable(admin, { … }))
+    …
+  })
+})
+```
+
+`pnpm check:scenarios` (CI's `checks` job) runs every fenced scenario of the
+effective spec on exactly one runner. A capability with any bound test is
+Vitest's: each of its fenced scenarios needs a test, and the cucumber suite
+(`acceptance-tests/`) leaves it out. `pnpm scenarios:report` runs the bound
+tests and writes `scenarios-report/index.html`. It lists every capability,
+requirement and scenario with its Gherkin, where it runs and whether it
+passed, prose scenarios included.
+
 ## Tours
 
 A tour (`apps/web/tours/*.tour.ts`, #1070) is one long browser test that tells
