@@ -14,6 +14,7 @@ describe('canRetire (#859)', () => {
     ['a system-written Table', { name: 'Version', kind: 'table', system_written: true }],
     ['the engine\'s Table', { name: 'Table', kind: 'table' }],
     ['the engine\'s Column', { name: 'Column', kind: 'table' }],
+    ['a Permission grant (#1060)', { name: 'Permission', kind: 'table' }],
   ])('%s cannot', (_label, meta) => {
     expect(canRetire(meta)).toBe(false)
   })

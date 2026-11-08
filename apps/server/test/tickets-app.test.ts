@@ -10,7 +10,7 @@ import { sql } from '../src/db'
 
 const directory = resolve('../..', 'example-apps/tickets')
 const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
-  ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': 'tickets@0.2.5' },
+  ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': 'tickets@0.2.6' },
 }) }, client.token, client.user)
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(pinned(admin)),
@@ -69,7 +69,7 @@ describe('Tickets independently installed product contract (#810)', () => {
     const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
     const pkg = JSON.parse(await readFile(resolve(directory, 'package.json'), 'utf8'))
     expect(manifest).toMatchObject({ name: 'tickets', entryTable: 'tickets.ticket' })
-    expect(pkg.version).toBe('0.2.5')
+    expect(pkg.version).toBe('0.2.6')
   })
 
   test('app-free discovery has no tickets; explicit install has no samples or fake integrations', async ({ admin, createUser }) => {
@@ -216,7 +216,7 @@ describe('Tickets independently installed product contract (#810)', () => {
     try { await create(owner, 'generic', {}) } catch (error) { failure = error }
     expect(failure?.status).toBe(403)
     expect(failure.message).not.toContain('Application access refused')
-    expect(failure.message).toMatch(/tickets 0\.2\.5.*files changed.*same version/i)
+    expect(failure.message).toMatch(/tickets 0\.2\.6.*files changed.*same version/i)
     expect(failure.message).toMatch(/new version|install-app tickets/)
     const listed = (await listInstalledApps()).find(app => app.name === 'tickets')
     expect(listed).toMatchObject({ active: false })
@@ -264,6 +264,23 @@ describe('Tickets independently installed product contract (#810)', () => {
     expect(session.capabilities.support).toBe(false)
     expect(session.people).toBeUndefined()
     await refused(act(w.other, 'edit', { ...revision(ticket), public_update: 'Looking' }))
+  })
+
+  test('people named in the settings are offered by name before they have used Tickets (#1097)', async ({ admin, createUser }) => {
+    const w = await setup(admin, createUser)
+    const newcomer = await createUser({ email: 'newcomer@tickets.example.test', fullName: 'Newcomer' })
+    const stranger = await createUser({ email: 'stranger@tickets.example.test', fullName: 'Stranger' })
+    await settings(admin, { assignees: [newcomer.user] })
+    const people = (await read(w.support, 'session')).people as { row_id: string; full_name: string }[]
+    expect(people).toEqual(expect.arrayContaining([{ row_id: newcomer.user, full_name: 'Newcomer' }]))
+    // Someone the settings don't name stays as hidden as before from a viewer who can't read Person.
+    let ticket = await create(w.owner, 'generic', {})
+    ticket = (await act(w.support, 'edit', { ...revision(ticket), assigned_to: stranger.user })).ticket
+    expect((await detail(w.support, ticket)).names[stranger.user!]).toBeUndefined()
+    // A retired person left in a setting is not named that way.
+    await sql`update person set retired_at = now() where row_id = ${newcomer.user!}`
+    const after = (await read(w.support, 'session')).people as { row_id: string }[]
+    expect(after.map(p => p.row_id)).not.toContain(newcomer.user)
   })
 
   test("after the requester's own scope change only re-approval is needed; a recipient change needs verification", async ({ admin, createUser }) => {

@@ -51,6 +51,32 @@ test('the Naming page of a Table that is not there says so', async ({ admin }) =
   expect(screen.queryByTestId('naming-save')).not.toBeInTheDocument()
 })
 
+// Moved from the deleted e2e/naming-series.spec.ts (NAM-001): an existing
+// Table, say one an import left on random ids, can be switched to a series.
+test('the Naming page opens from the Table administration menu of the list', async ({ admin }) => {
+  const user = userEvent.setup()
+  await seed(admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(T))}`, admin)
+  await user.click(await screen.findByRole('button', { name: 'Table administration' }, { timeout: 8000 }))
+  await user.click(screen.getByTestId('open-naming'))
+  expect(await screen.findByTestId('table-naming', {}, { timeout: 8000 })).toBeInTheDocument()
+})
+
+test('switching a random-id Table to a series offers the prefix taken from its name, and stores the series', async ({ admin }) => {
+  const user = userEvent.setup()
+  await admin.post('/api/table_def', { name: 'Naming Demo', id_pattern: 'hash', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await renderApp('/featherbase/admin/table/naming-demo/naming', admin)
+  const naming = await screen.findByTestId('naming-naming', {}, { timeout: 8000 })
+  expect(naming).toHaveValue('hash')
+  await user.selectOptions(naming, 'series')
+  expect(screen.getByTestId('naming-naming-prefix')).toHaveValue('NAMING-DEMO-')
+  await user.clear(screen.getByTestId('naming-naming-prefix'))
+  await user.type(screen.getByTestId('naming-naming-prefix'), 'EXISTING-')
+  await user.click(screen.getByTestId('naming-save'))
+  expect(await screen.findByTestId('naming-saved')).toHaveTextContent('Saved')
+  expect(((await admin.get(`/api/table/${encodeURIComponent('Naming Demo')}:meta`)) as { id_pattern: string }).id_pattern).toBe('EXISTING-.###')
+})
+
 test('choosing a random id stores that rule', async ({ admin }) => {
   const user = userEvent.setup()
   await admin.post('/api/table_def', { name: 'Tnm Bin', id_pattern: 'prompt', columns: [{ column_name: 'code', column_type: 'Data' }] })

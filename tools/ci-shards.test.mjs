@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { enumerate, shardCount, validate } from './ci-shards.mjs'
 
-function collectorFixture(t, suite) {
+function collectorFixture(t, suite = 'component') {
   const root = resolve(import.meta.dirname, '..')
   const directory = mkdtempSync(resolve(tmpdir(), 'ci-shards-'))
   t.after(() => rmSync(directory, { recursive: true, force: true }))
@@ -21,35 +21,27 @@ function collectorFixture(t, suite) {
   writeFileSync(resolve(directory, 'pnpm-workspace.yaml'), 'packages:\n  - apps/*\n')
   const web = resolve(directory, 'apps/web')
   mkdirSync(resolve(web, 'src'), { recursive: true })
-  mkdirSync(resolve(web, 'e2e'))
   symlinkSync(resolve(root, 'apps/web/node_modules'), resolve(web, 'node_modules'))
   writeFileSync(resolve(web, 'package.json'), '{"name":"web","type":"module"}')
   writeFileSync(resolve(web, 'vitest.config.mjs'), 'export default { test: { include: ["src/*.test.ts"] } }')
-  writeFileSync(resolve(web, 'playwright.config.mjs'), 'export default { testDir: "./e2e" }')
   for (let shard = 1; shard <= shardCount; shard++) {
-    const file = suite === 'component' ? `src/${shard}.test.ts` : `e2e/${shard}.spec.ts`
-    const runner = suite === 'component' ? 'vitest' : '@playwright/test'
-    writeFileSync(resolve(web, file), `import { test } from '${runner}'; test('example', () => {})`)
+    const file = `src/${shard}.test.ts`
+    writeFileSync(resolve(web, file), `import { test } from 'vitest'; test('example', () => {})`)
     const producer = resolve(directory, '.ci-shards', `${suite}-${shard}`)
-    const artifact = suite === 'component' ? 'blob.json' : 'coverage/e2e-example.json'
-    mkdirSync(resolve(producer, 'coverage'), { recursive: true })
+    const artifact = 'blob.json'
+    mkdirSync(producer, { recursive: true })
     writeFileSync(resolve(producer, artifact), '{}')
     writeFileSync(resolve(producer, 'receipt.json'), JSON.stringify({
       suite, head, total: shardCount, shard, files: [file],
       artifacts: { [artifact]: createHash('sha256').update('{}').digest('hex') },
     }))
   }
-  // Prepare the fresh workspace before the CLI captures its JSON listing.
-  const prepared = spawnSync('pnpm', ['--filter', 'web', 'exec', 'playwright', '--version'], {
-    cwd: directory, encoding: 'utf8',
-  })
-  assert.equal(prepared.status, 0, prepared.stderr)
   return { directory, web, collect: () => spawnSync(process.execPath,
     ['tools/ci-shards.mjs', 'collect', suite], { cwd: directory, encoding: 'utf8' }) }
 }
 
 test('collector CLI ignores merged coverage artifacts from previous attempts', async t => {
-  for (const suite of ['component', 'browser']) {
+  for (const suite of ['component']) {
     const { directory, web, collect } = collectorFixture(t, suite)
     const aggregate = resolve(directory, '.ci-shards', `${suite}-coverage`)
     mkdirSync(aggregate)
@@ -59,23 +51,21 @@ test('collector CLI ignores merged coverage artifacts from previous attempts', a
       assert.equal(result.status, 0, result.stderr)
       assert.match(result.stdout, new RegExp(`Verified ${shardCount} .* producers: exact-once inventory`))
     }
-    assert.equal(readFileSync(resolve(web, suite === 'component'
-      ? '.vitest-web-reports/component-3.json' : '.nyc_output/e2e-browser-3-e2e-example.json'), 'utf8'), '{}')
+    assert.equal(readFileSync(resolve(web, '.vitest-web-reports/component-3.json'), 'utf8'), '{}')
   }
 })
 
 test('collector CLI rejects invalid producer inputs', async t => {
-  for (const suite of ['component', 'browser']) {
+  for (const suite of ['component']) {
     const cases = [
       ['missing producer', /Missing or duplicate producers/, dir => rmSync(dir, { recursive: true })],
       ['failed producer without receipt', /ENOENT/, dir => rmSync(resolve(dir, 'receipt.json'))],
       ['duplicate producer', /Unexpected producer directory/, dir => cpSync(dir,
         resolve(dir, '..', `${suite}-${shardCount + 1}`), { recursive: true })],
-      ['altered artifact', /Altered or missing artifacts/, dir => writeFileSync(resolve(dir,
-        suite === 'component' ? 'blob.json' : 'coverage/e2e-example.json'), '{"changed":true}')],
+      ['altered artifact', /Altered or missing artifacts/, dir => writeFileSync(resolve(dir, 'blob.json'), '{"changed":true}')],
       ['previous-head producer', /Stale producer/, null, receipt => { receipt.head = 'previous-head' }],
       ['duplicate file', /A file ran more than once/, null, receipt => {
-        receipt.files = [suite === 'component' ? 'src/1.test.ts' : 'e2e/1.spec.ts']
+        receipt.files = ['src/1.test.ts']
       }],
       ['unexpectedly skipped producer', /Empty producer/, null, receipt => { receipt.files = [] }],
     ]
@@ -92,13 +82,13 @@ test('collector CLI rejects invalid producer inputs', async t => {
       const result = collect()
       assert.notEqual(result.status, 0)
       assert.match(result.stderr, error)
-      assert(!existsSync(resolve(web, suite === 'component' ? '.vitest-web-reports' : '.nyc_output')))
+      assert(!existsSync(resolve(web, '.vitest-web-reports')))
     })
   }
 })
 
-test('configured component and browser files partition exactly once, including fixture groups within a file', async () => {
-  for (const suite of ['component', 'browser']) {
+test('configured component files partition exactly once', async () => {
+  for (const suite of ['component']) {
     const all = await enumerate(suite)
     const shards = []
     for (let shard = 1; shard <= shardCount; shard++) shards.push(await enumerate(suite, shard))

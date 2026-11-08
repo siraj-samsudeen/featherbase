@@ -125,6 +125,13 @@ export interface RuntimeActionContext {
     /** #963: makes an enabled person the creator of one row of the app's own
      *  Table, so an own-rows grant follows the row. Only for a System Manager. */
     handOver(table: string, rowId: string, person: string): Promise<void>
+    /** #925: whether setReaders names the caller as a reader of this row
+     *  (and it still reads for them). Never fails the handler. */
+    isReader(table: string, rowId: string): Promise<boolean>
+    /** #925: who besides its usual readers reads one row of the app's own
+     *  Table, read only, replacing the people set before. The caller must be
+     *  able to read the row; a person who is not enabled is left out. */
+    setReaders(table: string, rowId: string, people: string[]): Promise<void>
   }
   readonly baseTables: BaseTablesHelper
   readonly changeProposals: ChangeProposalsHelper
@@ -145,7 +152,7 @@ export interface DatasetAnswer {
 }
 
 export interface RuntimeReadContext extends Omit<RuntimeActionContext, 'documents' | 'mail' | 'changeProposals'> {
-  readonly documents: Pick<RuntimeActionContext['documents'], 'get' | 'list' | 'activity'>
+  readonly documents: Pick<RuntimeActionContext['documents'], 'get' | 'list' | 'activity' | 'isReader'>
   /** #967: what this outbound read's `prepare` answered; undefined everywhere else. */
   readonly prepared?: unknown
   /** #975: a read can list proposals, never make or decide one. */

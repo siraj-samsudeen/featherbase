@@ -81,6 +81,39 @@ test("a person's role is picked from the roles that exist", async ({ admin }) =>
   for (const option of within(options).getAllByTestId('link-option')) expect(option.textContent).toMatch(/sys/i)
 })
 
+// Moved from e2e/nested-link-picker.spec.ts (#832, #1019; #1080).
+test("a person's role picked in the grid is saved as that role", async ({ admin }) => {
+  const person = await admin.post<Saved>('/api/save_row', { table: 'Person', row: { email: 'nested-role-saved@example.test', enabled: true } })
+  await renderApp(rowHref('Person', person.row_id), admin)
+  fireEvent.click(await screen.findByTestId('add-row-roles', {}, { timeout: 8000 }))
+  const cell = await screen.findByRole('combobox', { name: /Role, row 1$/ })
+  fireEvent.change(cell, { target: { value: 'Sys' } })
+  const options = await screen.findByTestId('link-options-role')
+  const option = await waitFor(() => {
+    const hit = within(options).getAllByTestId('link-option').find((o) => o.textContent === 'System Manager')
+    if (!hit) throw new Error('no System Manager yet')
+    return hit
+  })
+  fireEvent.mouseDown(option)
+  await waitFor(() => expect(screen.getByRole('combobox', { name: /Role, row 1$/ })).toHaveValue('System Manager'))
+  fireEvent.click(screen.getByTestId('form-save'))
+  await waitFor(() => expect(screen.getByTestId('form-banner').textContent).toBe('Saved'))
+  const stored = await admin.get<{ roles: { role: string }[] }>(`/api/table/Person/${enc(person.row_id)}`)
+  expect(stored.roles.map((r) => r.role)).toEqual(['System Manager'])
+})
+
+test('a floating link list that scrolls itself stays open', async ({ admin }) => {
+  const person = await admin.post<Saved>('/api/save_row', { table: 'Person', row: { email: 'nested-role-scroll@example.test', enabled: true } })
+  await renderApp(rowHref('Person', person.row_id), admin)
+  fireEvent.click(await screen.findByTestId('add-row-roles', {}, { timeout: 8000 }))
+  fireEvent.change(await screen.findByRole('combobox', { name: /Role, row 1$/ }), { target: { value: 'Sys' } })
+  const options = await screen.findByTestId('link-options-role')
+  await within(options).findAllByTestId('link-option')
+  options.dispatchEvent(new Event('scroll'))
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  expect(screen.getByTestId('link-options-role')).toBeInTheDocument()
+})
+
 test("a cell's error goes once the grid changes, and unpicked text leaves the cell when it is left", async ({ admin }) => {
   const order = await seedOrders(admin)
   await renderApp(rowHref('Nest Order', order.row_id), admin)

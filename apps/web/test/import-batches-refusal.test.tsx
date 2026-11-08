@@ -1,7 +1,7 @@
 // #207: deleting the Tables an import created — backing out of the question,
 // and a Table the server keeps because another Table points at it, named with
-// the reason. Gaps the merged web coverage report (ADR 0012) showed; e2e
-// covers the case where every Table goes. The import is made through the
+// the reason. Gaps the merged web coverage report (ADR 0012) showed;
+// import-batches.test.tsx covers the case where every Table goes. The import is made through the
 // real import endpoint, the refusal is the server's.
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'

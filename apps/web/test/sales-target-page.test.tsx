@@ -841,3 +841,99 @@ committedTest('retrying the live report while the cached numbers are still loadi
   await waitFor(() => expect(screen.getByTestId('snapshot-report')).toHaveAttribute('data-state', 'ready'))
   expect(reportCalls.n).toBe(1)
 })
+
+// #1080, from e2e/sales-target-unavailable.spec.ts: the connection is lost at
+// the network edge (fetch rejects, as a browser's does offline) while the
+// reader switches stores, then comes back.
+test('losing the connection while switching stores reports both failures and permits a real retry', async ({ admin, createUser }) => {
+  const reader = await twoStoreReader(admin, createUser as never)
+  let offline = false
+  // One spy: Vitest re-spies a spy in place, so a second pass-through would call itself.
+  const { urls, spy } = recordFetches()
+  const recording = globalThis.fetch as unknown as { getMockImplementation(): typeof fetch; mockImplementation(f: typeof fetch): void }
+  const record = recording.getMockImplementation()
+  recording.mockImplementation(async (input, init) => {
+    if (offline) throw new TypeError('Failed to fetch')
+    return record(input, init)
+  })
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    await renderApp('/featherbase/sales-target', reader as never)
+    const picker = (await screen.findByTestId('store-switcher')) as HTMLSelectElement
+    await waitFor(() => expect(screen.getByTestId('snapshot-report')).toHaveAttribute('data-state', 'ready'))
+    expect(await screen.findByTestId('report-frame')).toBeInTheDocument()
+
+    offline = true
+    await userEvent.selectOptions(picker, '1515')
+    expect(await screen.findByTestId('snapshot-error')).toHaveTextContent(PLAIN_NUMBERS)
+    await waitFor(() => expect(screen.getByTestId('embed-state')).toHaveTextContent(PLAIN_UNAVAILABLE))
+    expect(picker).toHaveValue('1515')
+
+    // Back online: one Try again reaches both real endpoints for that store, without signing in again.
+    offline = false
+    const before = urls.length
+    await userEvent.click(within(screen.getByTestId('snapshot-error')).getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(screen.getByTestId('snapshot-report')).toHaveAttribute('data-state', 'ready'))
+    expect(await screen.findByTestId('report-frame')).toBeInTheDocument()
+    const retried = urls.slice(before)
+    expect(retried.some((u) => u.includes('/api/sales_target/report') && u.includes('store=1515'))).toBe(true)
+    expect(retried.some((u) => u.includes('/api/sales_target/embed_session?store=1515'))).toBe(true)
+    expect(screen.queryByTestId('snapshot-error')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('embed-state')).not.toBeInTheDocument()
+    expect(picker).toHaveValue('1515')
+  } finally {
+    offline = false
+    await spy.mockRestore()
+  }
+})
+
+// #1080, from e2e/sales-target-unavailable.spec.ts: the numbers card's own
+// Try again, with both cards failed, retries both reads, and both stay busy
+// until both have answered.
+committedTest("one press of the numbers card's Try again retries both reads, and both cards show they are working", async ({ admin, api }) => {
+  let reads = 0
+  let embeds = 0
+  // Each held answer waits for its own release; a release before the call starts sticks.
+  const hold = () => {
+    let released = false
+    let wake: () => void = () => {}
+    return {
+      wait: () => (released ? Promise.resolve() : new Promise<void>((resolve) => (wake = resolve))),
+      release: () => { released = true; wake() },
+    }
+  }
+  const read = hold()
+  const embed = hold()
+  _setSourceReader(async () => {
+    if (++reads === 1) return failingSource()
+    await read.wait()
+    return []
+  })
+  _setEmbedFetch(async () => {
+    if (++embeds === 1) return failingUpstream()
+    await embed.wait()
+    return Response.json({ session: 'stub-session' })
+  })
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await openAsViewer(admin, api)
+  const numbers = await numbersUnavailableCard()
+  const report = await unavailableCard()
+  expect(numbers).toHaveTextContent(`Numbers unavailable${PLAIN_NUMBERS}`)
+  expect(document.body).not.toHaveTextContent(/HTTP|Internal server error|connection reset/)
+  await userEvent.click(within(numbers).getByRole('button', { name: 'Try again' }))
+  try {
+    await waitFor(() => expect(reads).toBe(2))
+    await waitFor(() => expect(embeds).toBe(2))
+    expect(within(numbers).getByRole('button', { name: 'Try again', hidden: true })).toHaveAttribute('aria-busy', 'true')
+    expect(within(report).getByRole('button', { name: 'Try again', hidden: true })).toHaveAttribute('aria-busy', 'true')
+    // The live report answers first: the numbers are still being read, so their card stays busy.
+    embed.release()
+    expect(await screen.findByTestId('report-frame')).toBeInTheDocument()
+    expect(within(numbers).getByRole('button', { name: 'Try again', hidden: true })).toHaveAttribute('aria-busy', 'true')
+  } finally {
+    embed.release()
+    read.release()
+  }
+  await waitFor(() => expect(screen.queryByTestId('snapshot-error')).not.toBeInTheDocument())
+  expect(screen.queryByTestId('embed-state')).not.toBeInTheDocument()
+})

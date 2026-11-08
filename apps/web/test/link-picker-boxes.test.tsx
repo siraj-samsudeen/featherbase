@@ -3,6 +3,7 @@
 // managers leave it alone, its values sort by name, and the Add filter row
 // offers the same box as the quick filters. Made-up rows only.
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { tableHref } from 'shared'
 import { test, expect, renderApp } from './pg-test'
 
@@ -97,6 +98,33 @@ test('a link filter lists values by name, and the search box in the list narrows
   fireEvent.mouseDown(within(list).getByTestId('link-option'))
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(1))
   await waitFor(() => expect(box).toHaveValue('Tamil Nadu'))
+})
+
+// Moved from e2e/list-one-line.spec.ts (#1019, #1080): what a click on a
+// link filter does with the keyboard.
+test('a link filter opened by a click takes what is typed into its search box', async ({ admin }) => {
+  const user = userEvent.setup()
+  await seed(admin)
+  await renderApp(tableHref(SHOP), admin)
+  await user.click(await screen.findByTestId('std-filter-region'))
+  const list = await screen.findByTestId('link-options-region')
+  await waitFor(() => expect(options(list)).toEqual(['Andhra', 'Kerala', 'Tamil Nadu']))
+  const search = within(list).getByRole('searchbox')
+  expect(search).toHaveFocus()
+  await user.keyboard('ker')
+  expect(search).toHaveValue('ker')
+  await waitFor(() => expect(options(list)).toEqual(['Kerala']))
+})
+
+test('a link filter search that finds nothing says No matches', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(tableHref(SHOP), admin)
+  fireEvent.focus(await screen.findByTestId('std-filter-region'))
+  const list = await screen.findByTestId('link-options-region')
+  await within(list).findAllByTestId('link-option')
+  fireEvent.change(within(list).getByRole('searchbox'), { target: { value: 'zzz' } })
+  await waitFor(() => expect(list).toHaveTextContent('No matches'))
+  expect(within(list).queryByTestId('link-option')).not.toBeInTheDocument()
 })
 
 // Past the picker's 150ms search delay, so a stray search would have reopened it.

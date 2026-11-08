@@ -5,6 +5,7 @@
 import { resolve } from 'node:path'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { vi } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from 'server/src/db'
 import { discoverPackages } from 'server/src/runtime-packages'
@@ -205,4 +206,31 @@ test('the term form offers a Picture right after the definition (item 1)', async
   expect(fields.indexOf('picture')).toBe(fields.indexOf('definition') + 1)
   expect(definition).toBeInTheDocument()
   expect(attach).toBeInTheDocument()
+})
+
+// Moved from the deleted e2e/glossary.spec.ts. jsdom does not scroll, so the
+// scroll itself is stood in for: what is checked is that the page asks for
+// the chosen term, the one the address names, to be brought into view.
+test('in-place help opens its term in the glossary, closing the help and bringing that term into view', async ({ admin }) => {
+  await stockCount(admin)
+  const scrolled: Element[] = []
+  Element.prototype.scrollIntoView = vi.fn(function (this: Element) { scrolled.push(this) })
+  try {
+    const { router } = await renderApp('/featherbase/admin/table/stock-count', admin)
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'What is Stock count?' }))
+    await user.click(within(await screen.findByRole('dialog')).getByRole('link', { name: 'Open in the glossary' }))
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Glossary' })).toBeInTheDocument()
+    const location = (router as { state: { location: { pathname: string; hash: string } } }).state.location
+    expect(location.pathname).toBe('/featherbase/admin/glossary')
+    expect(location.hash).toMatch(/^term-/)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    const chosen = screen.getAllByTestId('glossary-term').find((t) => within(t).queryByRole('heading', { name: 'Stock count' }))!
+    expect(chosen).toHaveTextContent('One walk along an aisle, counting what is on the shelves.')
+    expect(chosen.id).toBe(location.hash)
+    await waitFor(() => expect(scrolled).toContain(chosen))
+  } finally {
+    Reflect.deleteProperty(Element.prototype, 'scrollIntoView')
+  }
 })
