@@ -175,6 +175,9 @@ jobs:
 
       - name: Validate E2E suite uses DSL fixtures
         run: pnpm check:e2e-dsl
+      # #1070: each fenced spec scenario runs on exactly one runner.
+      - name: Every spec scenario has one runner
+        run: pnpm check:scenarios
 
       # This repository is public. Covers tracked text files only: Aadhaar-like
       # numbers (Verhoeff-valid), Indian mobile numbers and client-domain

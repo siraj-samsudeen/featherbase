@@ -15,6 +15,7 @@
     "check:openspec:changes": "openspec validate --changes --strict --no-interactive",
     "check:specs": "pnpm check:openspec:specs && pnpm check:openspec:changes && pnpm check:unarchived-changes",
     "check:unarchived-changes": "node --test tools/check-unarchived-changes.test.mjs && node tools/check-unarchived-changes.mjs",
+    "check:scenarios": "node --test tools/scenarios/check.test.cjs && node tools/scenarios/check.cjs",
     "check:e2e-dsl": "node --test tools/check-e2e-dsl.test.mjs && node tools/check-e2e-dsl.mjs",
     "check:sensitive": "node --test tools/check-sensitive.test.mjs && node tools/check-sensitive.mjs",
     "check:dev": "node --test tools/dev.test.mjs tools/build-instance-apps.test.mjs tools/check-app-digests.test.mjs tools/featherbase.test.mjs",
