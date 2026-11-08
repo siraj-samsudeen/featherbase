@@ -31,6 +31,11 @@
       "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/e8fa3306561104a6aaa87de276150bb9cb991f2f"
     },
     {
+      "path": "example-apps/tickets",
+      "version": "0.2.4",
+      "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/af12483fec6c9f17b32bd2f3ef916899c875fbaa"
+    },
+    {
       "path": "example-apps/tasker",
       "version": "3.0.1",
       "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/ace7d8f12fc53dc595f7dbd74e5a46448c7a5bbf"
@@ -44,6 +49,11 @@
       "path": "client-apps/jeyarama/dash",
       "version": "0.10.4",
       "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/c6f08c542b67f95bc8bc58dc946725de656f1ac8"
+    },
+    {
+      "path": "client-apps/jeyarama/dash",
+      "version": "0.11.0",
+      "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/aa3bea17375b8590d1b3a520bb3dfd723a879817"
     }
   ],
   "madeUpData": "client-apps/jeyarama/dash/scripts/seed-made-up.mts"

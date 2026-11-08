@@ -116,12 +116,6 @@
         ],
         "App Setting": [
           {
-            "row_id": "dash.dive_id",
-            "value": {
-              "env": "DIVE_ID"
-            }
-          },
-          {
             "row_id": "dash.embed_service_account",
             "value": {
               "env": "SERVICE_ACCOUNT"
@@ -129,7 +123,7 @@
           },
           {
             "row_id": "dash.linked_tables",
-            "value": "[\"Employee\", \"Job Assignment\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Site Master\"]"
+            "value": "[\"Employee\", \"Job Assignment\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Site\", \"Plant\"]"
           }
         ]
       }
@@ -144,16 +138,14 @@
         ],
         "App Setting": [
           {
-            "row_id": "dash.dive_id",
-            "value": {
-              "env": "DIVE_ID"
-            }
-          },
-          {
             "row_id": "dash.embed_service_account",
             "value": {
               "env": "SERVICE_ACCOUNT"
             }
+          },
+          {
+            "row_id": "dash.linked_tables",
+            "value": "[\"Employee\", \"Job Assignment\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Site\", \"Plant\"]"
           }
         ]
       }

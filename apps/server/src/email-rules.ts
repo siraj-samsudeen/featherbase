@@ -1,4 +1,6 @@
 import { sql } from './db'
+import { platformTableExists } from './platform-tables'
+import { readOnce } from './permission-reads'
 import { queueEmail, renderTemplate } from './email'
 import { getMeta } from './meta'
 import { OUTSIDE_READER, restrictRow } from './row-readers'
@@ -24,14 +26,12 @@ export async function evaluateEmailRules(
   old?: Record<string, unknown>,
 ): Promise<void> {
   // The Email Rule Table may not exist yet during early migrations.
-  const [tableOk] = await sql`
-    select 1 from information_schema.tables where table_name = 'email_rule'`
-  if (!tableOk) return
+  if (!(await platformTableExists('email_rule'))) return
 
-  const rules = await sql`
+  const rules = await readOnce(JSON.stringify(['email rules', table, event]), () => sql`
     select row_id, condition_field, condition_value, recipient, subject, message
     from email_rule
-    where ref_table = ${table} and event = ${event} and enabled = true`
+    where ref_table = ${table} and event = ${event} and enabled = true`)
 
   let visible: Record<string, unknown> | undefined
   for (const rule of rules) {
