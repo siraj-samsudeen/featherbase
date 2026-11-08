@@ -12,21 +12,17 @@ const ACTIONS = (
   </>
 )
 
+/**
+ * A button ("More actions") that opens a small panel of further actions below it: the less used actions of a
+ * form or list, kept out of the toolbar. The links and buttons inside keep their own keyboard behaviour; Escape
+ * or focus leaving closes it and returns focus to the button. Open state can be held by the caller (`open`,
+ * `onOpenChange`).
+ */
 const meta = {
   title: 'Admin/ActionDisclosure',
   component: ActionDisclosure,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'A button ("More actions") that opens a small panel of further actions below it: the less used actions of a form or list, kept out ' +
-          'of the toolbar. The links and buttons inside keep their own keyboard behaviour; Escape or focus leaving closes it and returns ' +
-          'focus to the button. Open state can be held by the caller (`open`, `onOpenChange`).',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   decorators: [(Story) => <div className="flex h-72 justify-end"><Story /></div>],
   args: { label: 'More actions', children: ACTIONS },
 } satisfies Meta<typeof ActionDisclosure>

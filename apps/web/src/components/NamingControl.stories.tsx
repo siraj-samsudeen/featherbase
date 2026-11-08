@@ -15,21 +15,17 @@ function Naming({ initial }: { initial: string }) {
   return <NamingControl value={value} onChange={setValue} columns={COLUMNS} defaultPrefix="STORE-" />
 }
 
+/**
+ * Edits a Table's id pattern, the rule that names its new rows: numbers 1, 2, 3; a series with a prefix
+ * (STORE-001); a random id; set by the user; or taken from a column, optionally after fixed text
+ * (PLANT-{plant_code}). One select holds the kinds and the columns; a line under it shows what the ids will look
+ * like. Use it wherever a Table is created or renamed.
+ */
 const meta = {
   title: 'Admin/NamingControl',
   component: NamingControl,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          "Edits a Table's id pattern, the rule that names its new rows: numbers 1, 2, 3; a series with a prefix (STORE-001); a random id; " +
-          'set by the user; or taken from a column, optionally after fixed text (PLANT-{plant_code}). One select holds the kinds and the ' +
-          'columns; a line under it shows what the ids will look like. Use it wherever a Table is created or renamed.',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   args: { value: 'integer', onChange: () => {}, columns: COLUMNS, defaultPrefix: 'STORE-' },
   render: (args) => <Naming initial={args.value} />,
 } satisfies Meta<typeof NamingControl>

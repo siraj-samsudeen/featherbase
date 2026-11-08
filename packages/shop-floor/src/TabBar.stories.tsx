@@ -3,21 +3,17 @@ import { expect, within } from 'storybook/test'
 import { ChartColumn, House, ListChecks, Target, UserRound } from './icons'
 import { TabBar } from './TabBar'
 
+/**
+ * An app's main pages as tabs fixed to the bottom of a phone screen, within reach of a thumb: an icon over a
+ * one-line label, the current page marked by a bar, a bolder label and `current`. Phone only: from the `sm`
+ * width up it is not drawn, and the page keeps its own navigation. Use 3 to 5 tabs. `preview` draws it in place
+ * at any width, as these stories do; leave it off in an app.
+ */
 const meta = {
   title: 'Shop floor/TabBar',
   component: TabBar,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          "An app's main pages as tabs fixed to the bottom of a phone screen, within reach of a thumb: an icon over a one-line label, the " +
-          'current page marked by a bar, a bolder label and `current`. Phone only: from the `sm` width up it is not drawn, and the page ' +
-          'keeps its own navigation. Use 3 to 5 tabs. `preview` draws it in place at any width, as these stories do; leave it off in an app.',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   decorators: [(Story) => <div className="mx-auto w-full max-w-sm overflow-hidden rounded-card border border-border"><Story /></div>],
   args: {
     preview: true,

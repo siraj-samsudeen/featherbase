@@ -30,21 +30,16 @@ const POINTED_AT_BY = (
   </PaneSection>
 )
 
+/**
+ * The side or bottom pane that shows one row without leaving the list: its table (`kind`) above its name, the
+ * pane's `actions`, a Close button, and the content in `PaneSection`s ("Points at", "Pointed at by"). It takes
+ * focus when it opens and Escape closes it. Put it in `SplitWithPane` as the `pane`, at the `place` that
+ * `resolvePanePlace` gives (right on a wide window, bottom otherwise); `PanePlace` lets the person choose.
+ */
 const meta = {
   title: 'Shop floor/DrillPane',
   component: DrillPane,
   tags: ['autodocs'],
-  parameters: {
-    docs: {
-      description: {
-        component:
-          'The side or bottom pane that shows one row without leaving the list: its table (`kind`) above its name, the pane\'s `actions`, ' +
-          'a Close button, and the content in `PaneSection`s ("Points at", "Pointed at by"). It takes focus when it opens and Escape ' +
-          'closes it. Put it in `SplitWithPane` as the `pane`, at the `place` that `resolvePanePlace` gives (right on a wide window, ' +
-          'bottom otherwise); `PanePlace` lets the person choose.',
-      },
-    },
-  },
   args: {
     kind: 'Bin',
     title: 'North bay · B-104',

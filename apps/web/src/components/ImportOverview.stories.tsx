@@ -29,21 +29,17 @@ function Overview({ sheets = WORKBOOK, initial = sheets.map(() => false), refuse
   )
 }
 
+/**
+ * The first step of importing a spreadsheet: what is in the file, one line per sheet with its rows, columns and
+ * first headers. Nothing is selected when it opens; hidden sheets are listed in their own collapsed section.
+ * With two or more sheets ticked the person chooses one Table each or one merged Table. The import wizard holds
+ * the selection and mode; use it only there.
+ */
 const meta = {
   title: 'Admin/Import/ImportOverview',
   component: ImportOverview,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'The first step of importing a spreadsheet: what is in the file, one line per sheet with its rows, columns and first headers. ' +
-          'Nothing is selected when it opens; hidden sheets are listed in their own collapsed section. With two or more sheets ticked the ' +
-          'person chooses one Table each or one merged Table. The import wizard holds the selection and mode; use it only there.',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   args: {
     fileName: 'October store sales.xlsx', sheets: WORKBOOK, selected: WORKBOOK.map(() => false), onSelect: fn(), onContinue: fn(),
     refused: false, mode: 'separate', onMode: fn(), mergeName: 'Store sales', onMergeName: fn(),

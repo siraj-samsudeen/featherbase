@@ -7,21 +7,17 @@ import { expect, userEvent, within } from 'storybook/test'
 import { Gallery } from './Gallery'
 import { ChipsDemo, DrillPaneDemo, FieldGridDemo, PathBarDemo, TreeDemo, ViewToggleDemo } from './RelationalExamples'
 
+/**
+ * The component gallery served at /gallery.html: every shared Shop Floor component live in the current theme,
+ * searchable by name or purpose. Each component also has its own stories under "Shop floor"; reach for those to
+ * pick a component, and for these to see the components working together (a drill pane with chips, a field grid
+ * and a view toggle; a path bar; a tree).
+ */
 const meta = {
   title: 'Gallery',
   component: Gallery,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'The component gallery served at /gallery.html: every shared Shop Floor component live in the current theme, searchable by name ' +
-          'or purpose. Each component also has its own stories under "Shop floor"; reach for those to pick a component, and for these to ' +
-          'see the components working together (a drill pane with chips, a field grid and a view toggle; a path bar; a tree).',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
 } satisfies Meta<typeof Gallery>
 export default meta
 type Story = StoryObj

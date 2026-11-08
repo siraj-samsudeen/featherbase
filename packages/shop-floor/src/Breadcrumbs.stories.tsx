@@ -2,21 +2,16 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect, within } from 'storybook/test'
 import { Breadcrumbs } from './Breadcrumbs'
 
+/**
+ * Where this page sits, as links back up the way: give each earlier item an `href` that keeps its context
+ * (filters, tab) and the last item none, which marks it the current page. Use it at the top of a page reached by
+ * drilling down. For the path a person walked through linked rows (with Back and Forward), use `PathBar`.
+ */
 const meta = {
   title: 'Shop floor/Breadcrumbs',
   component: Breadcrumbs,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'Where this page sits, as links back up the way: give each earlier item an `href` that keeps its context (filters, tab) and the ' +
-          'last item none, which marks it the current page. Use it at the top of a page reached by drilling down. For the path a person ' +
-          'walked through linked rows (with Back and Forward), use `PathBar`.',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   args: { items: [{ label: 'Library', href: '#library' }, { label: 'Navigation examples' }] },
 } satisfies Meta<typeof Breadcrumbs>
 export default meta

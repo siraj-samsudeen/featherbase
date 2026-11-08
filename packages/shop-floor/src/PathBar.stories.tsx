@@ -42,23 +42,18 @@ function Walk({ steps = STEPS, at = steps.length - 1, recent = RECENT }: { steps
   )
 }
 
+/**
+ * The path a person walked through linked rows and lists: Back and Forward (disabled at the ends), each step as
+ * a button (the current one marked), Copy link with an inline "Copied", and a slot for `RecentPaths`, a menu of
+ * up to ten earlier paths. Steps show whole or not at all; those that do not fit sit behind a "…" menu on their
+ * side, and a single step wider than the bar is shortened at a word with its full name as its title. Use it
+ * above a screen reached by drilling through relations; for a fixed place in a hierarchy use `Breadcrumbs`.
+ */
 const meta = {
   title: 'Shop floor/PathBar',
   component: PathBar,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'The path a person walked through linked rows and lists: Back and Forward (disabled at the ends), each step as a button (the ' +
-          'current one marked), Copy link with an inline "Copied", and a slot for `RecentPaths`, a menu of up to ten earlier paths. Steps ' +
-          'show whole or not at all; those that do not fit sit behind a "…" menu on their side, and a single step wider than the bar is ' +
-          'shortened at a word with its full name as its title. Use it above a screen reached by drilling through relations; for a fixed ' +
-          'place in a hierarchy use `Breadcrumbs`.',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   args: { steps: STEPS, current: STEPS.length - 1, onStep: fn(), onBack: fn(), onForward: fn(), onCopyLink: fn() },
   render: () => <Walk />,
 } satisfies Meta<typeof PathBar>

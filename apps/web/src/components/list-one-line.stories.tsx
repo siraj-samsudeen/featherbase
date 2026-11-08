@@ -5,22 +5,17 @@ import { MoreColumnsHint, OneLine, useMoreToTheRight } from './list-one-line'
 
 const NOTE = 'The site sits beside the old canal road, past the second bus stop after Attakulangara junction; the gate is on the left.'
 
+/**
+ * One list value on one line: as wide as its content up to a maximum (`className`, max-w-80 by default), clipped
+ * with an ellipsis past it, and its full text as a tooltip on hover only when it is clipped. `MoreColumnsHint`
+ * is the fade and arrow at the right edge of a list that scrolls sideways, shown while `useMoreToTheRight(box)`
+ * says there is more. The Admin list view uses both; use them in any table whose rows must stay one line.
+ */
 const meta = {
   title: 'Admin/List/OneLine',
   component: OneLine,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'One list value on one line: as wide as its content up to a maximum (`className`, max-w-80 by default), clipped with an ellipsis ' +
-          'past it, and its full text as a tooltip on hover only when it is clipped. `MoreColumnsHint` is the fade and arrow at the right ' +
-          'edge of a list that scrolls sideways, shown while `useMoreToTheRight(box)` says there is more. The Admin list view uses both; ' +
-          'use them in any table whose rows must stay one line.',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   args: { children: NOTE },
 } satisfies Meta<typeof OneLine>
 export default meta

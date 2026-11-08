@@ -18,21 +18,17 @@ const STORE_TABS: Props['tabs'] = [
   { id: 'notes', label: 'Notes', content: <TextInput aria-label="Store note" placeholder="Type a note, then switch tabs and back" /> },
 ]
 
+/**
+ * Sections of one page as tabs (Details, Staff, Notes), with arrow, Home and End keys between them. Hidden
+ * panels stay mounted, so a draft or a search inside one survives switching. The caller holds `value`. Use it to
+ * split a page into sections; for moving between pages on a phone use `TabBar`, and for a small exclusive choice
+ * that changes a view use `Segmented`.
+ */
 const meta = {
   title: 'Shop floor/ContentTabs',
   component: ContentTabs,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'Sections of one page as tabs (Details, Staff, Notes), with arrow, Home and End keys between them. Hidden panels stay mounted, ' +
-          'so a draft or a search inside one survives switching. The caller holds `value`. Use it to split a page into sections; for moving ' +
-          'between pages on a phone use `TabBar`, and for a small exclusive choice that changes a view use `Segmented`.',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   args: { label: 'Store', tabs: STORE_TABS, value: 'details', onChange: () => {} },
   render: (args) => <Tabs label={args.label} tabs={args.tabs} initial={args.value} />,
 } satisfies Meta<typeof ContentTabs>

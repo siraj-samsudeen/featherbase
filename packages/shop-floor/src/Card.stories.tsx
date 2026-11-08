@@ -5,21 +5,17 @@ import { Card } from './Card'
 import { EmptyState } from './EmptyState'
 import { Skeleton } from './Skeleton'
 
+/**
+ * A bordered surface for one group of related content: a Home card, a report section, a form block. Give it a
+ * `title` (it becomes a named region) and optional header `actions`; leave both out for a plain surface and pad
+ * it yourself (`className="p-4"`). Do not put a whole list or table screen in a card: screens use the full
+ * canvas. `cardClasses()` gives the look to another element.
+ */
 const meta = {
   title: 'Shop floor/Card',
   component: Card,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'A bordered surface for one group of related content: a Home card, a report section, a form block. Give it a `title` (it becomes ' +
-          'a named region) and optional header `actions`; leave both out for a plain surface and pad it yourself (`className="p-4"`). ' +
-          'Do not put a whole list or table screen in a card: screens use the full canvas. `cardClasses()` gives the look to another element.',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   args: { title: 'Checklists', children: <p className="p-4 text-sm text-ink">Opening checklist for 1501 Attakulangara, due by 10:00.</p> },
 } satisfies Meta<typeof Card>
 export default meta

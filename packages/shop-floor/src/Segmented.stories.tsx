@@ -16,21 +16,17 @@ function Periods({ initial = 'month' }: { initial?: Period }) {
   return <Segmented label="Period" options={PERIODS} value={value} onChange={setValue} />
 }
 
+/**
+ * Two to five mutually exclusive choices that change the view in place (Today / This week / Month to date; Table
+ * / Compact). The chosen one is `aria-pressed`, so its look is never the only signal. The caller holds `value`.
+ * For more choices, or ones that take a sentence, use a `Select`; for sections of a page, `ContentTabs`.
+ * `ViewToggle` and `PanePlace` are ready-made Segmenteds.
+ */
 const meta = {
   title: 'Shop floor/Segmented',
   component: Segmented,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'Two to five mutually exclusive choices that change the view in place (Today / This week / Month to date; Table / Compact). The ' +
-          'chosen one is `aria-pressed`, so its look is never the only signal. The caller holds `value`. For more choices, or ones that ' +
-          'take a sentence, use a `Select`; for sections of a page, `ContentTabs`. `ViewToggle` and `PanePlace` are ready-made Segmenteds.',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   render: () => <Periods />,
 } satisfies Meta<typeof Segmented>
 export default meta

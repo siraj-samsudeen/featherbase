@@ -2,22 +2,18 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect, userEvent, within } from 'storybook/test'
 import { Field, PasswordInput, SearchInput, Select, TextInput } from './Field'
 
+/**
+ * A labelled form control with an optional hint and error. Wrap exactly one control: `TextInput`,
+ * `PasswordInput` (with show/hide), `Select` (a real select with the design system chevron) or `SearchInput`.
+ * The label names the control and the hint and error describe it, so a screen reader reads them together; an
+ * error also marks the control invalid. Use `inputClasses()` / `labelClasses()` only for a control this kit has
+ * no component for.
+ */
 const meta = {
   title: 'Shop floor/Field',
   component: Field,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'A labelled form control with an optional hint and error. Wrap exactly one control: `TextInput`, `PasswordInput` (with show/hide), ' +
-          '`Select` (a real select with the design system chevron) or `SearchInput`. The label names the control and the hint and error describe ' +
-          'it, so a screen reader reads them together; an error also marks the control invalid. Use `inputClasses()` / `labelClasses()` only ' +
-          'for a control this kit has no component for.',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   decorators: [(Story) => <div className="max-w-sm"><Story /></div>],
   args: { label: 'Employee code', children: <TextInput placeholder="RR-0107" autoCapitalize="characters" /> },
 } satisfies Meta<typeof Field>

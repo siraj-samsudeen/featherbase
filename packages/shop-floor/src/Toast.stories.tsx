@@ -16,21 +16,17 @@ function Triggers() {
   )
 }
 
+/**
+ * A short confirmation of what just happened ("Checklist saved"), in a corner of the screen. Mount
+ * `ToastProvider` once near the root and call `useToast()({ tone, message })` below it. `positive` and `info`
+ * leave after 5 seconds (paused while pointed at or focused); `negative` is an alert that stays until dismissed.
+ * For a message that belongs to the page, use `Notice`.
+ */
 const meta = {
   title: 'Shop floor/Toast',
   component: ToastProvider,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'A short confirmation of what just happened ("Checklist saved"), in a corner of the screen. Mount `ToastProvider` once near the ' +
-          'root and call `useToast()({ tone, message })` below it. `positive` and `info` leave after 5 seconds (paused while pointed at or ' +
-          'focused); `negative` is an alert that stays until dismissed. For a message that belongs to the page, use `Notice`.',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   args: { children: <Triggers /> },
 } satisfies Meta<typeof ToastProvider>
 export default meta

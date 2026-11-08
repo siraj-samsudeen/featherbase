@@ -31,21 +31,17 @@ function Split({ initial = 'auto' }: { initial?: PanePlaceValue }) {
   )
 }
 
+/**
+ * Where the drill pane sits: Auto / Right / Bottom, Auto naming where it resolved ("Auto (right)").
+ * `resolvePanePlace(value, width)` turns the choice into a place (right from 1200px wide). `SplitWithPane` lays
+ * the content and the pane out at that place: right, sticky and about 40% wide; or bottom, docked in the room
+ * below; focus returns to the opener when the pane closes.
+ */
 const meta = {
   title: 'Shop floor/PanePlace',
   component: PanePlace,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'Where the drill pane sits: Auto / Right / Bottom, Auto naming where it resolved ("Auto (right)"). `resolvePanePlace(value, ' +
-          'width)` turns the choice into a place (right from 1200px wide). `SplitWithPane` lays the content and the pane out at that place: ' +
-          'right, sticky and about 40% wide; or bottom, docked in the room below; focus returns to the opener when the pane closes.',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   args: { value: 'auto', resolved: 'right', onChange: () => {} },
   render: (args) => <Split initial={args.value} />,
 } satisfies Meta<typeof PanePlace>

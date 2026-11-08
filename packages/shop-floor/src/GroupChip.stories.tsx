@@ -14,20 +14,16 @@ function Groups() {
   )
 }
 
+/**
+ * One group of related rows with its count ("Shelf 3"), pressed while chosen. A row of them picks which related
+ * rows a pane or row page shows ("Pointed at by"); a group with no rows stays listed, quieter. One is chosen at
+ * a time; the caller holds which.
+ */
 const meta = {
   title: 'Shop floor/GroupChip',
   component: GroupChip,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'One group of related rows with its count ("Shelf 3"), pressed while chosen. A row of them picks which related rows a pane or ' +
-          'row page shows ("Pointed at by"); a group with no rows stays listed, quieter. One is chosen at a time; the caller holds which.',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   args: { label: 'Shelf', count: 3, selected: false, onSelect: fn() },
 } satisfies Meta<typeof GroupChip>
 export default meta

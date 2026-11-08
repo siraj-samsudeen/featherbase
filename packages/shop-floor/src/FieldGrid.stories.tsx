@@ -17,21 +17,17 @@ const BIN_FIELDS: FieldGridGroup[] = [
   ] },
 ]
 
+/**
+ * A row's fields, read only: label and value in two columns, in titled groups. Every `empty` field gathers under
+ * one closed "n empty fields"; a `long` value is clamped to three lines with Show more. Long codes wrap rather
+ * than widen the page. Use it to show a row in a drill pane or a summary; editing goes through the Admin form
+ * view.
+ */
 const meta = {
   title: 'Shop floor/FieldGrid',
   component: FieldGrid,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          "A row's fields, read only: label and value in two columns, in titled groups. Every `empty` field gathers under one closed " +
-          '"n empty fields"; a `long` value is clamped to three lines with Show more. Long codes wrap rather than widen the page. Use it to ' +
-          'show a row in a drill pane or a summary; editing goes through the Admin form view.',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   decorators: [(Story) => <div className="max-w-xl"><Story /></div>],
   args: { groups: BIN_FIELDS },
 } satisfies Meta<typeof FieldGrid>

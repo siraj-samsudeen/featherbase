@@ -20,21 +20,16 @@ function Stores({ items = STORES, initial = '' }: { items?: string[]; initial?: 
   )
 }
 
+/**
+ * A search box over a list the screen already holds in full, with "n of m" and Clear search; the children render
+ * the matching items. Use it for short, fully loaded lists (examples, settings, a few dozen stores). A paginated
+ * Table must search on the server instead (the Admin list view does).
+ */
 const meta = {
   title: 'Shop floor/SearchableList',
   component: SearchableList,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'A search box over a list the screen already holds in full, with "n of m" and Clear search; the children render the matching ' +
-          'items. Use it for short, fully loaded lists (examples, settings, a few dozen stores). A paginated Table must search on the ' +
-          'server instead (the Admin list view does).',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   render: () => <Stores />,
 } satisfies Meta<typeof SearchableList>
 export default meta

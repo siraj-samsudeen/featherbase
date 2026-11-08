@@ -2,22 +2,18 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect, fn, userEvent, within } from 'storybook/test'
 import { KindTag, LinkChip } from './LinkChip'
 
+/**
+ * A value that points at another row: its name and code ("Aisle 4 · A-04") as a button that opens it, an
+ * optional `kind` tag naming its table, and optional small actions, Go there and Filter. Give
+ * `filterDisabledReason` when the list behind cannot filter by it. A row the viewer may not read is
+ * `unreadable`: it shows only "Not visible to you". Use it wherever a field links to a row (drill pane, row
+ * page, tree).
+ */
 const meta = {
   title: 'Shop floor/LinkChip',
   component: LinkChip,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'A value that points at another row: its name and code ("Aisle 4 · A-04") as a button that opens it, an optional `kind` tag ' +
-          'naming its table, and optional small actions, Go there and Filter. Give `filterDisabledReason` when the list behind cannot ' +
-          'filter by it. A row the viewer may not read is `unreadable`: it shows only "Not visible to you". Use it wherever a field ' +
-          'links to a row (drill pane, row page, tree).',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   args: { label: 'Aisle 4', code: 'A-04', kind: 'Aisle', onOpen: fn(), onGoThere: fn(), onFilter: fn() },
 } satisfies Meta<typeof LinkChip>
 export default meta

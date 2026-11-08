@@ -34,22 +34,18 @@ function AroundBin({ open = ['shelves', 's1'], loading = false }: { open?: strin
   )
 }
 
+/**
+ * An expandable outline of related rows (an ARIA tree): what a row links to and what links to it, grouped with
+ * counts, opened level by level. Captions (`heading`) are not lines; a line can show `loading` while its
+ * children arrive, and a capped group says "first 20 · show all 40" (`more`). One line is in the tab order: Up
+ * and Down move, Right opens, Left closes, Enter activates. The caller holds `expanded` and `selected`. Use it
+ * for a tree view of a row; for one level of related rows use `GroupChip`s.
+ */
 const meta = {
   title: 'Shop floor/TreeOutline',
   component: TreeOutline,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'An expandable outline of related rows (an ARIA tree): what a row links to and what links to it, grouped with counts, opened ' +
-          'level by level. Captions (`heading`) are not lines; a line can show `loading` while its children arrive, and a capped group says ' +
-          '"first 20 · show all 40" (`more`). One line is in the tab order: Up and Down move, Right opens, Left closes, Enter activates. ' +
-          'The caller holds `expanded` and `selected`. Use it for a tree view of a row; for one level of related rows use `GroupChip`s.',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   render: () => <AroundBin />,
 } satisfies Meta<typeof TreeOutline>
 export default meta

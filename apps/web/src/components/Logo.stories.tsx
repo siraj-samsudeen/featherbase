@@ -1,20 +1,16 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { Logo } from './Logo'
 
+/**
+ * The Featherbase mark: a notched feather on a tile in the action colour, legible down to 16px. Decorative
+ * (aria-hidden), so put the product name beside it in text. Sized by `className`; use it in the top bar and
+ * sign-in page only.
+ */
 const meta = {
   title: 'Admin/Logo',
   component: Logo,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'The Featherbase mark: a notched feather on a tile in the action colour, legible down to 16px. Decorative (aria-hidden), so put ' +
-          'the product name beside it in text. Sized by `className`; use it in the top bar and sign-in page only.',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
 } satisfies Meta<typeof Logo>
 export default meta
 type Story = StoryObj<typeof meta>

@@ -3,22 +3,18 @@ import { expect, within } from 'storybook/test'
 import { Button, buttonClasses, iconButtonClasses } from './Button'
 import { ChevronDown, ExternalLink, Plus, X } from './icons'
 
+/**
+ * The one button of every screen. `primary` for the single main action of a screen or dialog, `secondary` (the
+ * default) for the others, `quiet` for low-weight actions inside cards and panes, `danger` for deleting or
+ * discarding. `loading` shows a spinner, keeps the label and refuses clicks; `block` fills the width (a sign-in
+ * form). For a router Link or an anchor that must read as a button, use `buttonClasses()` on that element
+ * instead; for an icon-only control, `iconButtonClasses()` with an aria-label.
+ */
 const meta = {
   title: 'Shop floor/Button',
   component: Button,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'The one button of every screen. `primary` for the single main action of a screen or dialog, `secondary` (the default) for the others, ' +
-          '`quiet` for low-weight actions inside cards and panes, `danger` for deleting or discarding. `loading` shows a spinner, keeps the label ' +
-          'and refuses clicks; `block` fills the width (a sign-in form). For a router Link or an anchor that must read as a button, use ' +
-          '`buttonClasses()` on that element instead; for an icon-only control, `iconButtonClasses()` with an aria-label.',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   args: { children: 'Save checklist' },
 } satisfies Meta<typeof Button>
 export default meta

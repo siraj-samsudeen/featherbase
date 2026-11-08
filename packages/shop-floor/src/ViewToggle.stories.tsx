@@ -26,20 +26,16 @@ function Shelves({ initial = 'table' }: { initial?: ViewMode }) {
   )
 }
 
+/**
+ * Table / Compact for a related list: every column, or the name and a few key fields. A `Segmented` with those
+ * two choices; the caller holds `value` and draws the list in that shape. Use it above a list of related rows (a
+ * drill pane, a row page).
+ */
 const meta = {
   title: 'Shop floor/ViewToggle',
   component: ViewToggle,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'Table / Compact for a related list: every column, or the name and a few key fields. A `Segmented` with those two choices; the ' +
-          'caller holds `value` and draws the list in that shape. Use it above a list of related rows (a drill pane, a row page).',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   args: { value: 'table', onChange: () => {} },
   render: (args) => <Shelves initial={args.value} />,
 } satisfies Meta<typeof ViewToggle>

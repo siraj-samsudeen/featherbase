@@ -2,21 +2,17 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect, within } from 'storybook/test'
 import { Notice } from './Notice'
 
+/**
+ * An inline message about the screen it sits on, in words: `info` (the default) for guidance, `caution` for a
+ * mode or a risk, `positive` for a finished action, `negative` for a failure (announced as an alert). Use it for
+ * a lasting message on the page; use a toast (`useToast`) for a short confirmation of what just happened, and
+ * `EmptyState` for a list with nothing in it.
+ */
 const meta = {
   title: 'Shop floor/Notice',
   component: Notice,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'An inline message about the screen it sits on, in words: `info` (the default) for guidance, `caution` for a mode or a risk, ' +
-          '`positive` for a finished action, `negative` for a failure (announced as an alert). Use it for a lasting message on the page; ' +
-          'use a toast (`useToast`) for a short confirmation of what just happened, and `EmptyState` for a list with nothing in it.',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   args: { children: 'Forgot your password? Reset it in StyleHR, or ask your Store Manager.' },
 } satisfies Meta<typeof Notice>
 export default meta

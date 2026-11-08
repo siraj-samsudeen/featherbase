@@ -2,21 +2,17 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect, within } from 'storybook/test'
 import { StatusPill } from './StatusPill'
 
+/**
+ * A short status in words ("Overdue", "Done", "No target set") as a coloured pill; the colour only repeats the
+ * words. Tones: `negative`, `caution`, `positive`, `opportunity`, `missing`, `neutral` (the default). It never
+ * wraps, so keep the words short. For a sales achievement, pick the tone with `achievementTone(pct)`.
+ * `pillClasses()` gives the shape alone for a pill of another colour.
+ */
 const meta = {
   title: 'Shop floor/StatusPill',
   component: StatusPill,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'A short status in words ("Overdue", "Done", "No target set") as a coloured pill; the colour only repeats the words. Tones: ' +
-          '`negative`, `caution`, `positive`, `opportunity`, `missing`, `neutral` (the default). It never wraps, so keep the words short. ' +
-          'For a sales achievement, pick the tone with `achievementTone(pct)`. `pillClasses()` gives the shape alone for a pill of another colour.',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   args: { children: 'In progress' },
 } satisfies Meta<typeof StatusPill>
 export default meta

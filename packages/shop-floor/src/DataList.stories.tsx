@@ -51,23 +51,19 @@ const LONG_ROWS: Line[] = [{ name: 'SKU-0123456789012345678901234567890123456789
 
 const EMPTY = { title: 'No targets this month', body: 'Targets appear here once they are set for your Sections.' }
 
+/**
+ * A list of rows for a screen built by hand (a report, a dashboard section): a table on a wide screen and one
+ * card per row on a phone, so a phone never scrolls sideways. Each column's `phone` role places it on the card
+ * (`title`, `status`, `meta`, `value`, `hidden`); `align: "end"` for numbers. `state` covers `loading` (a
+ * Skeleton), `error` (a Notice with "Try again" from `onRetry`) and an empty list (the `empty` EmptyState).
+ * Metadata Tables use the Admin list view instead. `DataCards` is the phone shape on its own, with optional row
+ * selection and expansion.
+ */
 const meta = {
   title: 'Shop floor/DataList',
   component: DataList,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'A list of rows for a screen built by hand (a report, a dashboard section): a table on a wide screen and one card per row on a ' +
-          "phone, so a phone never scrolls sideways. Each column's `phone` role places it on the card (`title`, `status`, `meta`, `value`, " +
-          '`hidden`); `align: "end"` for numbers. `state` covers `loading` (a Skeleton), `error` (a Notice with "Try again" from `onRetry`) ' +
-          'and an empty list (the `empty` EmptyState). Metadata Tables use the Admin list view instead. `DataCards` is the phone shape on its ' +
-          'own, with optional row selection and expansion.',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
 } satisfies Meta<typeof DataList>
 export default meta
 // Each story renders its own rows: the list is generic over them.

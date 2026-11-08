@@ -3,21 +3,17 @@ import { expect, within } from 'storybook/test'
 import { fmtINR } from './format'
 import { achievementTone, Headline } from './Headline'
 
+/**
+ * The answer-first block at the top of a report page: the period (`label`), the conclusion in words ("₹72,000
+ * behind"), the supporting figures (`detail`) and, optionally, progress toward a target as a meter with a marker
+ * line. Pick the `tone` from the figure with `achievementTone(pct)` (below 90% negative, 90 to 99.9% caution,
+ * 100% and over positive, no target missing). One per report.
+ */
 const meta = {
   title: 'Shop floor/Headline',
   component: Headline,
   tags: ['autodocs'],
-  parameters: {
-    layout: 'padded',
-    docs: {
-      description: {
-        component:
-          'The answer-first block at the top of a report page: the period (`label`), the conclusion in words ("₹72,000 behind"), the ' +
-          'supporting figures (`detail`) and, optionally, progress toward a target as a meter with a marker line. Pick the `tone` from the ' +
-          'figure with `achievementTone(pct)` (below 90% negative, 90 to 99.9% caution, 100% and over positive, no target missing). One per report.',
-      },
-    },
-  },
+  parameters: { layout: 'padded' },
   args: {
     label: 'Month to date · 01-Oct-2026 to 21-Oct-2026',
     conclusion: `${fmtINR(72_000)} behind`,
