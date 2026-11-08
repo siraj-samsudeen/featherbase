@@ -218,7 +218,7 @@ amounts of data, and steps that are too slow.
 
 ```bash
 pnpm tour                                   # every tour, as CI runs them
-VIDEO=1 pnpm tour --grep "messy workbook"   # slow, captioned: test-results/tours/**/video.webm
+VIDEO=1 pnpm tour --grep "Featherbase:"     # slow, captioned: test-results/tours/**/video.webm
 TOUR_URL=https://<preview> pnpm tour        # against a running instance, before a demo
 TOUR_ROWS=500 pnpm tour                     # the base tour with bigger sheets
 ```
@@ -228,8 +228,9 @@ recording can serve as a product video. Playwright records it with its own
 ffmpeg (`pnpm --filter web exec playwright install ffmpeg`). Each chapter's time
 is printed and kept in the HTML report (`apps/web/tours-report/`).
 
-The **Featherbase base tour** (`featherbase.tour.ts`) goes from a messy workbook
-to an app you can navigate. Each app gets its own tour, and that tour shows the
+The **Featherbase base tour** (`featherbase.tour.ts`) goes from a spreadsheet to
+an app you can navigate: first the simple path with one clean sheet, then the
+stores' own messy sheets layered on top. Each app gets its own tour, and that tour shows the
 platform features the app relies on.
 
 ## E2E specs
