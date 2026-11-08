@@ -93,12 +93,15 @@ test('record nav: unsaved changes are kept unless the user agrees to leave', asy
     await expect(title).not.toHaveValue('')
     await title.fill('edited, not saved')
 
-    page.once('dialog', (d) => d.dismiss())
+    // The form's own leave question asks, as before any other page (#1009).
+    const ask = page.getByTestId('unsaved-leave-dialog')
     await page.getByRole('button', { name: 'Next record' }).click()
+    await ask.getByRole('button', { name: 'Stay' }).click()
+    await expect(ask).toBeHidden()
     await expect(page.locator('[data-field=title]')).toHaveValue('edited, not saved')
 
-    page.once('dialog', (d) => d.accept())
     await page.getByRole('button', { name: 'Next record' }).click()
+    await ask.getByRole('button', { name: 'Leave without saving' }).click()
     await formTitle(page, titles[1])
   })
 })

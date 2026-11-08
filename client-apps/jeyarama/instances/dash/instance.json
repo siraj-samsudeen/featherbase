@@ -33,7 +33,12 @@
     {
       "path": "example-apps/tickets",
       "version": "0.2.4",
-      "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/ba9f6bc78ddeafa11a4a87d8ed841e0387ea25f1"
+      "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/af12483fec6c9f17b32bd2f3ef916899c875fbaa"
+    },
+    {
+      "path": "example-apps/tickets",
+      "version": "0.2.5",
+      "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/26f2bf929001ea54fcb5248f93799a049c7f0909"
     },
     {
       "path": "example-apps/tasker",

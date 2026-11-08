@@ -19,5 +19,5 @@ On a ticket type whose details are private, only the raiser and support read the
 
 ## Impact
 
-- Tickets 0.2.5, with an empty upgrade step from 0.2.4. No schema or grant change. The dash instance's previous versions list 0.2.4.
+- Tickets 0.2.6, with an empty upgrade step from 0.2.5. No schema or grant change. The dash instance's previous versions list 0.2.5.
 - A private ticket raised before this version gets its readers the next time it is assigned or edited.
