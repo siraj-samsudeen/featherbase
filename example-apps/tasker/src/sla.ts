@@ -77,14 +77,12 @@ export interface ClockedIssue {
   submitted_at?: string | null
 }
 
-const instant = (value: unknown) => Date.parse(value instanceof Date ? value.toISOString() : String(value))
-
 /** The resolution clock: it stops while paused and once the issue is submitted. */
 export function issueClock(issue: ClockedIssue, now: number) {
   const hours = { opens: issue.opens_at || DEFAULT_HOURS.opens, closes: issue.closes_at || DEFAULT_HOURS.closes }
-  const raised = instant(issue.raised_at)
-  const stop = issue.submitted_at ? instant(issue.submitted_at) : now
-  const pausedNow = issue.paused && issue.paused_since && !issue.submitted_at ? clockMinutes(instant(issue.paused_since), stop, issue.clock, hours) : 0
+  const raised = Date.parse(issue.raised_at)
+  const stop = issue.submitted_at ? Date.parse(issue.submitted_at) : now
+  const pausedNow = issue.paused && issue.paused_since && !issue.submitted_at ? clockMinutes(Date.parse(issue.paused_since), stop, issue.clock, hours) : 0
   const onClock = Math.max(0, clockMinutes(raised, stop, issue.clock, hours) - Number(issue.paused_minutes ?? 0) - pausedNow)
   const left = Number(issue.fix_minutes) - onClock
   return {
