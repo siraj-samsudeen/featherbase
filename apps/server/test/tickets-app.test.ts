@@ -277,6 +277,10 @@ describe('Tickets independently installed product contract (#810)', () => {
     let ticket = await create(w.owner, 'generic', {})
     ticket = (await act(w.support, 'edit', { ...revision(ticket), assigned_to: stranger.user })).ticket
     expect((await detail(w.support, ticket)).names[stranger.user!]).toBeUndefined()
+    // A retired person left in a setting is not named that way.
+    await sql`update person set retired_at = now() where row_id = ${newcomer.user!}`
+    const after = (await read(w.support, 'session')).people as { row_id: string }[]
+    expect(after.map(p => p.row_id)).not.toContain(newcomer.user)
   })
 
   test("after the requester's own scope change only re-approval is needed; a recipient change needs verification", async ({ admin, createUser }) => {

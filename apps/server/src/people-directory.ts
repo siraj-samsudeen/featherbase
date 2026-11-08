@@ -64,7 +64,8 @@ export async function namesForApp(ids: unknown, viewer: string, settings: Readon
   const out = await principalNames(ids, viewer)
   const named = new Set(Object.values(settings).join(' ').match(/\bpsn_[A-Za-z0-9]+\b/g) ?? [])
   const missing = Object.keys(out).filter((id) => out[id] === null && named.has(id))
-  if (missing.length) for (const r of await sql`select row_id, full_name, username from person where row_id in ${sql(missing)}`)
+  if (missing.length) for (const r of await sql`select row_id, full_name, username from person
+    where row_id in ${sql(missing)} and replaced_by is null and retired_at is null and not coalesce(built_in, false)`)
     out[String(r.row_id)] = displayName(r)
   return out
 }
