@@ -53,7 +53,7 @@ test.beforeAll(async ({ request }) => {
 //
 // The forgot-password/reset-password screens are testid-addressed, so that
 // mechanics stays in named steps; the real login form at the end IS
-// label-friendly, so it becomes DSL verbs (mirrors admin.spec.ts).
+// label-friendly, so it becomes DSL verbs (mirrors the fixtures' `signIn`).
 test('SET-002: password reset via emailed link works end to end', async ({ session, request }) => {
   await session.visit('/login')
   await session.step("request a password reset via the login page's Forgot password flow", async ({ page }) => {

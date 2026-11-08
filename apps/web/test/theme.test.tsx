@@ -1,8 +1,8 @@
 // UI-024 / #380: the per-person theme — light, dark, or follow the device — at
 // the component layer: the real AdminLayout in jsdom, talking through the fetch
-// bridge to the in-process server inside a rolled-back transaction. What stays
-// in e2e (dark-mode.spec.ts) is the one assertion jsdom cannot make, that the
-// canvas actually repaints, because jsdom loads no stylesheet.
+// bridge to the in-process server inside a rolled-back transaction. The one
+// assertion jsdom cannot make, that the canvas actually repaints, is a layout
+// check (jsdom loads no stylesheet), left for a Storybook layout test (#1080).
 //
 // Three representations must agree: the painted `data-theme` on the root, the
 // server row the choice is stored on, and a fresh load reading it back.
