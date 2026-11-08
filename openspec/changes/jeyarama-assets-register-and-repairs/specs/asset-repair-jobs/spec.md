@@ -47,9 +47,10 @@ and they SHALL not move once set.
 #### Scenario: From failure to restoration
 
 ```gherkin
-Given "Door seal torn" was reported at 06:20, saying the cold room stopped at 06:10
-When Ravi is assigned at 06:40, starts the repair at 08:15 and fixes it at 11:30
-Then the job shows failure 06:10, reported 06:20, responded 06:40, repair started 08:15 and restored 11:30
+Given "Door seal torn" was reported, saying the cold room stopped 10 minutes earlier
+When Ravi is assigned, starts the repair and fixes it
+Then the job shows when the cold room stopped, was reported, was responded to, repair started and was restored, in that order
+And none of those times changes when the job is saved again
 ```
 
 ### Requirement: Move a job from reported to fixed

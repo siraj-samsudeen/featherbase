@@ -50,9 +50,9 @@ site manager's written note.
 #### Scenario: Transfer during the freeze
 
 ```gherkin
-Given ATK 1501 is counting from 01-Dec to 03-Dec
-When a manager requests a transfer out of ATK 1501 on 02-Dec without a note
-Then it is refused
+Given ATK 1501's count freeze runs from yesterday to tomorrow
+When a manager requests a transfer out of ATK 1501 without the site manager's note
+Then it is refused, saying ATK 1501 is in its count freeze
 ```
 
 ### Requirement: Match the SAP book separately from counting
