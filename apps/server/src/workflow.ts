@@ -1,3 +1,4 @@
+import { readOnce } from './permission-reads'
 import { randomBytes } from 'node:crypto'
 import { rowHref } from 'shared'
 import { sql, withTransaction } from './db'
@@ -83,6 +84,10 @@ export async function rethrowWorkflowConflict(err: unknown, refTable: unknown): 
 
 // The active workflow for a Table (at most one), with its child rows.
 export async function getActiveWorkflow(table: string): Promise<Workflow | null> {
+  return readOnce(JSON.stringify(['active workflow', table]), () => readActiveWorkflow(table))
+}
+
+async function readActiveWorkflow(table: string): Promise<Workflow | null> {
   if (!(await hasWorkflowSchema())) return null
   const workflows = await sql`
     select row_id, ref_table, state_field from workflow
