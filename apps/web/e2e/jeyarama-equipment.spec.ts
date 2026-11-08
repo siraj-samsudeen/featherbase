@@ -43,6 +43,19 @@ test('assets_fault_report: an asset opened by its label address takes a fault re
     expect(found.data[0].place).toBe(place.row_id)
     expect(Date.parse(found.data[0].fix_by) - Date.parse(found.data[0].reported_at)).toBe(4 * 3_600_000)
   })
+
+  await session.step('the board fits a desktop window, and dragging the card moves the job', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 })
+    const board = page.locator('.jobs-board')
+    expect(await board.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    const card = page.locator('section[aria-label="Reported"]').getByRole('article', { name: problem })
+    await card.dragTo(page.locator('[data-stage="In progress"]'))
+    await expect(page.locator('section[aria-label="In progress"]').getByRole('article', { name: problem })).toBeVisible()
+    const filters = encodeURIComponent(JSON.stringify([['problem', '=', problem]]))
+    const found = await (await request.get(`/api/table/equipment.job?filters=${filters}&fields=["job_state"]`, { headers })).json() as { data: { job_state: string }[] }
+    expect(found.data[0].job_state).toBe('In progress')
+  })
 })
 
 test('assets_verification_count: a planned count starts, and its counter records an item blind', async ({ session, request }) => {

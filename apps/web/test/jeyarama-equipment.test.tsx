@@ -113,7 +113,7 @@ test('the board is compact: one-line places, a chip row, collapsed empty and clo
   const user = userEvent.setup()
   const reported = await screen.findByRole('region', { name: 'Reported' })
   const card = await within(reported).findByRole('article', { name: 'Not cooling' })
-  const place = within(card).getByText('Billing area')
+  const place = await within(card).findByText('Billing area')
   expect(place).toHaveAttribute('title', 'ATK 1501 › Billing area')
   expect(card).not.toHaveTextContent('ATK 1501 › Billing area')
   const chips = within(card).getByRole('list', { name: 'Not cooling at a glance' })
@@ -259,7 +259,9 @@ test('store staff confirm a fixed repair, which closes it, and see its timeline 
   view.unmount()
 
   renderAssets(manager, ['Assets Manager'], '#jobs')
-  const closed = await screen.findByRole('region', { name: 'Closed' })
+  // Closed is folded until opened; the confirmed job has left Fixed, which folds empty.
+  await userEvent.setup().click(await screen.findByRole('button', { name: 'Show Closed, 1 job' }))
+  const closed = screen.getByRole('region', { name: 'Closed' })
   expect(await within(closed).findByRole('article', { name: 'Not cooling' })).toBeInTheDocument()
-  expect(within(screen.getByRole('region', { name: 'Fixed' })).queryByRole('article', { name: 'Not cooling' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Show Fixed, 0 jobs' })).toBeInTheDocument()
 })
