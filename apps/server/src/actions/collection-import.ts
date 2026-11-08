@@ -4,7 +4,7 @@ import { getDoc } from '../document'
 import { createHash } from 'node:crypto'
 import { quoteIdent } from '../sql-identifier'
 import { AppError } from '../errors'
-import { checkRowForInsert, saveDoc, saveSystemRow, validateRowForUpdate } from '../document'
+import { checkLinksForUpdate, checkRowForInsert, saveDoc, saveSystemRow, validateRowForUpdate } from '../document'
 import { ROW_KEY, getMeta, type TableMeta } from '../meta'
 import { assertDocPermission, assertPermission, permissionScope, permittedColumns, includesColumn } from '../permissions'
 import { registerCollectionAction, type CollectionActionContext } from '../actions'
@@ -396,6 +396,8 @@ export async function importRows({ table, args, user }: CollectionActionContext,
             await getDoc(table, resolution.row_id!, user.row_id)
             const current = await getDoc(table, resolution.row_id!)
             const plan = await planImport(meta, current, updateValues(row as Record<string, unknown>, upsert!, resolution), user.row_id)
+            // A value kept as someone's correction is not written, so only the planned values are checked.
+            await checkLinksForUpdate(meta, plan.values, user.row_id, current)
             fieldsUpdated += plan.fields_updated
             fieldsKept += plan.fields_kept
             if (plan.fields_updated > 0) changed++

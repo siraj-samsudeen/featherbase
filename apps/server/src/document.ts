@@ -852,7 +852,11 @@ export async function checkRowForInsert(meta: TableMeta, values: RowValues, user
     const childReach = await childWriteColumns(user, reach, meta.name, childMeta.name, link.row_id, 'create', user)
     for (const line of values[link.column_name] as RowValues[]) stripUnwritableFields(childMeta.columns, childReach, pickFieldValues(childMeta, line))
   }
-  validateValues(meta, applyDefaults(meta, pickFieldValues(meta, values)), 'insert')
+  const inserted = applyDefaults(meta, pickFieldValues(meta, values))
+  validateValues(meta, inserted, 'insert')
+  // #1072: the save refuses a link to no row; a rehearsal that passed one
+  // would let Check say "ready" about a row the import then refuses.
+  await validateLinks(sql, meta, inserted, user)
   // #231: the real import inserts through saveDoc, so the dry run has to
   // apply the same required-children rule or it would pass rows the import
   // then refuses.
@@ -875,6 +879,11 @@ export async function checkRowForInsert(meta: TableMeta, values: RowValues, user
     if (exists) throw new AppError('ConflictError', `${meta.name} ${rowId} already exists`)
   }
   return rowId
+}
+
+/** #1072: a rehearsed update checks its links as the save will, against the row it changes. */
+export async function checkLinksForUpdate(meta: TableMeta, values: RowValues, user: string, current: RowValues): Promise<void> {
+  await validateLinks(sql, meta, values, user, '', current)
 }
 
 // UPS-R1: the dry-run counterpart for rows an upsert will UPDATE — the same
