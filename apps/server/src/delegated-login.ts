@@ -12,8 +12,9 @@
 // an unrecognised shape is "could not confirm", never a sign-in. A body that
 // says the person has left is refused even with a right password — StyleHR
 // keeps authenticating leavers (data-warehouse report_server/stylehr_auth.py,
-// whose rules this ports). Binding depends on the body only for a link a roster
-// first sign-in made (#970), which must name its record.
+// whose rules this ports). Binding depends on the body for a link a roster
+// first sign-in made (#970), and for every link once the method says where its
+// answers name the record (#376): the answer must name the link's record.
 //
 // The password is held for one outbound request and never stored, logged,
 // thrown or echoed. Failures are logged as label + outcome only.
@@ -365,14 +366,35 @@ function eligibleOne(cfg: DelegatedLoginConfig, rows: Record<string, unknown>[])
   return { user: String(rows[0].row_id), identity: String(rows[0].identity) }
 }
 
-/** What a sign-in through this link must have the provider name (#970): a link
- *  a roster first sign-in made is keyed on the row's record, and stays held to
- *  it on every sign-in, so an ID that comes to answer for someone else cannot
- *  open this person's account. Refused when the method no longer says where
- *  the provider names it, rather than stop checking. */
+/** Where the method's answers name the person's record, for every link
+ *  (#376): `settings.provider_record_key`. Null when the method has none;
+ *  refuses a malformed one. */
+export function recordKeyFrom(settings: Record<string, unknown> | null): string | null {
+  const raw = settings?.provider_record_key
+  if (raw === undefined || raw === null) return null
+  if (typeof raw !== 'string' || !raw.trim()) throw new Error('settings.provider_record_key must be a string')
+  return raw.trim().toLowerCase()
+}
+
+/** What a sign-in through this link must have the provider name. A link a
+ *  roster first sign-in made is keyed on the row's record (#970); any other
+ *  link is held to its subject, the person's record at the service, when the
+ *  method says where its answers name it (#376). Either way an ID that comes
+ *  to answer for someone else cannot open this person's account. Refused when
+ *  the method's settings no longer say where, rather than stop checking. */
 export async function recordToName(cfg: DelegatedLoginConfig, identity: string | null): Promise<{ key: string; record: string } | undefined> {
-  const [link] = await sql`select subject from sign_in_identity where id = ${identity} and linked_by = ${ROSTER_LINK}`
+  const [link] = await sql`select subject, linked_by from sign_in_identity where id = ${identity}`
   if (!link) return undefined
+  if (link.linked_by !== ROSTER_LINK) {
+    let key: string | null
+    try {
+      key = recordKeyFrom(cfg.method.settings)
+    } catch {
+      console.warn(`[delegated-login] ${cfg.label}: a sign-in refused, settings.provider_record_key is malformed`)
+      throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
+    }
+    return key ? { key, record: String(link.subject) } : undefined
+  }
   let roster: RosterLink | null = null
   try {
     roster = rosterFrom(cfg.method.settings)
