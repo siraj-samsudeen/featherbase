@@ -10,15 +10,37 @@
 //
 // It also writes scenarios-report/index.html: every capability, requirement
 // and scenario with its Gherkin and where it runs — the view cucumber's HTML
-// report gave, for both runners. Whether a bound test passed is Vitest's
-// output; the test is named after the scenario.
+// report gave, for both runners. `pnpm scenarios:report` also runs the bound
+// tests and marks each scenario passed or failed.
 
 const fs = require('node:fs');
 const path = require('node:path');
 const { effectiveScenarios, ROOT } = require('./spec-index.cjs');
 const { scenarioBindings } = require('./bindings.cjs');
 
-function check({ scenarios = effectiveScenarios(), bound = scenarioBindings() } = {}) {
+/**
+ * Outcomes from Vitest JSON reports (`--reporter=json --outputFile=…`): a
+ * test's title is its scenario's name (an Outline row adds " [values]").
+ */
+function readResults(files) {
+  const outcomes = new Map();
+  for (const file of files) {
+    const json = JSON.parse(fs.readFileSync(file, 'utf8'));
+    for (const suite of json.testResults ?? []) {
+      for (const t of suite.assertionResults ?? []) {
+        const capability = t.ancestorTitles?.[0];
+        const name = t.title.replace(/ \[[^\]]*\]$/, '');
+        const k = `${capability} › ${name}`;
+        const was = outcomes.get(k);
+        // An Outline passes only when every row does.
+        outcomes.set(k, was === 'failed' || t.status === 'failed' ? 'failed' : t.status);
+      }
+    }
+  }
+  return outcomes;
+}
+
+function check({ scenarios = effectiveScenarios(), bound = scenarioBindings(), outcomes = new Map() } = {}) {
   const { bindings, problems: bindingProblems } = bound;
   const problems = [...bindingProblems];
   const migrated = new Set(bindings.map((b) => b.capability));
@@ -41,7 +63,7 @@ function check({ scenarios = effectiveScenarios(), bound = scenarioBindings() } 
     else runner = 'cucumber';
     if (runner === 'unbound')
       problems.push(`${s.capability} › "${s.scenario}" (${s.file}:${s.line}) has no test; ${s.capability} runs on Vitest, so each fenced scenario needs a scenario(...) test`);
-    return { ...s, runner, binding };
+    return { ...s, runner, binding, outcome: outcomes.get(key(s.capability, s.scenario)) };
   });
   return { rows, problems, migrated };
 }
@@ -57,7 +79,8 @@ function report(rows) {
     reqs.get(r.requirement).push(r);
   }
   const count = (runner) => rows.filter((r) => r.runner === runner).length;
-  const badge = (r) => `<span class="b ${r.runner}">${r.runner}</span>`;
+  const badge = (r) =>
+    `<span class="b ${r.runner}">${r.runner}</span>` + (r.outcome ? ` <span class="o ${r.outcome}">${r.outcome === 'passed' ? '✓' : r.outcome === 'failed' ? '✗' : r.outcome}</span>` : '');
   const where = (r) =>
     r.binding ? `<code>${esc(r.binding.file)}:${r.binding.line}</code>` : r.runner === 'cucumber' ? '<code>acceptance-tests/</code>' : '';
   const body = [...caps]
@@ -82,12 +105,15 @@ function report(rows) {
     })
     .join('');
   return `<!doctype html><meta charset="utf-8"><title>Spec scenarios</title>
-<style>body{font:14px system-ui,sans-serif;max-width:1100px;margin:24px auto;padding:0 16px;color:#111}h2{margin-top:32px;border-bottom:1px solid #ddd}h2 small{font-weight:400;color:#666;font-size:13px}h3{font-size:14px;margin:14px 0 4px;color:#333}details{margin:2px 0 2px 12px}pre{background:#f6f6f6;padding:8px;margin:4px 0 8px}code{color:#555;font-size:12px}.b{display:inline-block;min-width:64px;text-align:center;border-radius:4px;font-size:11px;padding:1px 4px;color:#fff}.vitest{background:#2f7d32}.cucumber{background:#6d4c9f}.unbound{background:#c62828}.prose{background:#999}</style>
+<style>body{font:14px system-ui,sans-serif;max-width:1100px;margin:24px auto;padding:0 16px;color:#111}h2{margin-top:32px;border-bottom:1px solid #ddd}h2 small{font-weight:400;color:#666;font-size:13px}h3{font-size:14px;margin:14px 0 4px;color:#333}details{margin:2px 0 2px 12px}pre{background:#f6f6f6;padding:8px;margin:4px 0 8px}code{color:#555;font-size:12px}.b{display:inline-block;min-width:64px;text-align:center;border-radius:4px;font-size:11px;padding:1px 4px;color:#fff}.vitest{background:#2f7d32}.cucumber{background:#6d4c9f}.unbound{background:#c62828}.prose{background:#999}.o{font-weight:700}.passed{color:#2f7d32}.failed{color:#c62828}</style>
 <h1>Spec scenarios</h1><p>${rows.length} scenarios: ${count('vitest')} on Vitest, ${count('cucumber')} on cucumber, ${count('unbound')} unbound, ${count('prose')} prose.</p>${body}`;
 }
 
 if (require.main === module) {
-  const { rows, problems, migrated } = check();
+  // `--results a.json b.json`: Vitest JSON reports, to show each bound scenario's outcome.
+  const at = process.argv.indexOf('--results');
+  const outcomes = at >= 0 ? readResults(process.argv.slice(at + 1)) : new Map();
+  const { rows, problems, migrated } = check({ outcomes });
   const out = path.join(ROOT, 'scenarios-report');
   fs.mkdirSync(out, { recursive: true });
   fs.writeFileSync(path.join(out, 'index.html'), report(rows));
@@ -95,10 +121,12 @@ if (require.main === module) {
   console.log(
     `check-scenarios: ${rows.length} scenarios — ${n('vitest')} on Vitest (${[...migrated].sort().join(', ') || 'none yet'}), ${n('cucumber')} on cucumber, ${n('prose')} prose. Report: scenarios-report/index.html`,
   );
+  const failed = rows.filter((r) => r.outcome === 'failed');
+  for (const r of failed) problems.push(`${r.capability} › "${r.scenario}" failed (${r.binding.file}:${r.binding.line})`);
   if (problems.length) {
     for (const p of problems) console.error(`  ✗ ${p}`);
     process.exit(1);
   }
 }
 
-module.exports = { check, report };
+module.exports = { check, report, readResults };

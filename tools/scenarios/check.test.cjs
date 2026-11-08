@@ -74,3 +74,28 @@ test('a spec is read into requirements, scenarios, steps and outline examples', 
   assert.deepEqual(req.scenarios.map((x) => [x.name, x.fenced, x.steps.length]), [['First rows', true, 3], ['Still prose', false, 0], ['Each prefix', true, 2]]);
   assert.deepEqual(req.scenarios[2].examples.rows, [{ prefix: 'PL-', first: 'PL-1' }]);
 });
+
+test('Vitest outcomes mark each bound scenario, and a failed one is a problem', () => {
+  const { readResults } = require('./check.cjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scenarios-'));
+  const file = path.join(dir, 'server.json');
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      testResults: [
+        {
+          assertionResults: [
+            { ancestorTitles: ['naming'], title: 'One', status: 'passed' },
+            { ancestorTitles: ['naming'], title: 'Each prefix [PL-, PL-1]', status: 'passed' },
+            { ancestorTitles: ['naming'], title: 'Each prefix [ST-, ST-1]', status: 'failed' },
+          ],
+        },
+      ],
+    }),
+  );
+  const outcomes = readResults([file]);
+  assert.equal(outcomes.get('naming › One'), 'passed');
+  assert.equal(outcomes.get('naming › Each prefix'), 'failed', 'an Outline fails when any row does');
+  const { rows } = check({ scenarios: [s('naming', 'One')], bound: { bindings: [b('naming', 'One')], problems: [] }, outcomes });
+  assert.equal(rows[0].outcome, 'passed');
+});
