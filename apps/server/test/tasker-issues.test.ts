@@ -200,6 +200,14 @@ test('giving an issue a new owner keeps its verifier and tells the new owner', a
   expect(log(handedOver).filter(entry => entry.kind === 'assigned').map(entry => entry.to)).toEqual([[suresh.user], [kumar.user]])
 })
 
+test('only a Tasker member can verify an issue', async ({ createUser }) => {
+  const { meena, suresh, kumar, store } = await setup(createUser)
+  const issue = await raise(meena, { store: store.row_id, owner: suresh.user })
+  const outsider = await createUser({ roles: [], fullName: 'Visitor' })
+  await expect(change(meena, issue, { verifier: outsider.user })).rejects.toThrow('Choose a Tasker member')
+  expect(await change(meena, issue, { verifier: kumar.user })).toMatchObject({ owner: suresh.user, verifier: kumar.user })
+})
+
 test('only a Tasker member can own an issue', async ({ createUser }) => {
   const { meena, store } = await setup(createUser)
   const outsider = await createUser({ roles: [], fullName: 'Visitor' })
