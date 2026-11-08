@@ -5,15 +5,17 @@ import { tableSlug } from 'shared'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
+import { grantRole } from 'server/test/fixtures'
+import type { TestClient } from 'feather-testing-postgres'
 
 const DT = 'Pms Depots'
 const ENC = encodeURIComponent(DT)
 const ROLE = 'Pms Depot Clerk'
 
-async function seed(admin: { post: (p: string, b: unknown) => Promise<unknown> }) {
+async function seed(admin: TestClient) {
   await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'depot', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: DT, role: ROLE, can_read: true } })
+  await grantRole(admin, { table: DT, role: ROLE, can_read: true })
 }
 
 test('a stored grant shows ticked when the matrix opens', async ({ admin }) => {

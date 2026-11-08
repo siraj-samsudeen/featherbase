@@ -11,9 +11,10 @@ import { MATERIAL_GROUP, PLANT_CODE, currentPeriod, type Assignment, type Period
 //
 // The snapshot ROWS table is app-internal and is never read through the generic
 // list/document APIs: it holds every store's rows, and generic row scoping is
-// fail-open for a principal with no `data_scope` rows (`query.ts:180`). Until
-// #246's `scope_required` lands, the only safe reader is this one, which cannot
-// be reached without an assignment. (The registry — which snapshot is active,
+// fail-open for a principal with no `data_scope` rows unless a Table sets
+// `scope_required` (#246), which this rows table, not being a Table, cannot.
+// The only safe reader is this one, which cannot be reached without an
+// assignment. (The registry — which snapshot is active,
 // what it cost — holds no figures and IS a Table, since migration 0087.)
 
 export interface ReportRow {

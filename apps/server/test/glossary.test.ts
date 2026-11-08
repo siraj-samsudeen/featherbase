@@ -11,7 +11,9 @@ import { test } from './pg-test'
 import { discoverPackages, packageFailures } from '../src/runtime-packages'
 import { uninstallApp } from '../src/apps'
 import { glossaryDeclaration } from '../src/glossary'
-import { expectApiError } from './fixtures'
+import { expectApiError, grantRole } from './fixtures'
+import { sql } from '../src/db'
+import { deleteStored } from '../src/storage'
 
 const v1 = resolve('../..', 'test-apps/fixtures/shelves-v1')
 const v2 = resolve('../..', 'test-apps/fixtures/shelves-v2')
@@ -27,6 +29,7 @@ interface Term {
   examples: string[]
   avoid: { word: string; reason: string | null }[]
   describes: { table: string; column: string | null; columnLabel: string | null }[]
+  picture: string | null
   editedHere: boolean
   appWordingChanged: boolean
 }
@@ -101,7 +104,7 @@ describe('reading the glossary', () => {
   test('a role granted write on Glossary Term may edit it', async ({ admin, createUser }) => {
     await install(admin)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Glossary Editor' } })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Glossary Term', role: 'Glossary Editor', can_read: true, can_write: true, can_create: true } })
+    await grantRole(admin, { table: 'Glossary Term', role: 'Glossary Editor', can_read: true, can_write: true, can_create: true })
     const editor = await createUser({ email: 'editor@example.test', roles: ['Glossary Editor'] })
     expect((await glossary(editor)).canEdit).toBe(true)
     await reword(editor, 'Coverage', 'The aisles you answer for.')
@@ -208,5 +211,65 @@ describe('terms follow their app', () => {
     await install(admin)
     expect(await named(admin, 'Coverage')).toMatchObject({ definition: 'The aisles you answer for.', editedHere: true })
     expect((await glossary(admin)).terms).toHaveLength(2)
+  })
+})
+
+// #1037: a term may carry a picture, such as a diagram of how words relate.
+const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+
+async function uploadPicture(as: TestClient, id: string, isPrivate = false): Promise<string> {
+  const form = new FormData()
+  form.append('file', new File([Buffer.from(PNG, 'base64')], 'sites.png', { type: 'image/png' }))
+  form.append('ref_table', 'Glossary Term')
+  form.append('ref_name', id)
+  if (isPrivate) form.append('is_private', '1')
+  const res = await as.fetch('/api/upload_file', { method: 'POST', body: form })
+  expect(res.status).toBe(201)
+  return ((await res.json()) as { file_url: string }).file_url
+}
+
+async function setPicture(client: TestClient, id: string, picture: string | null) {
+  await client.post('/api/save_row', { table: 'Glossary Term', row: { row_id: id, updated_at: (await loaded(client, id)).updated_at, picture } })
+}
+
+describe('a term carries a picture', () => {
+  test('the picture is an image column right after the definition', async () => {
+    const columns = await sql`select column_name, label, column_type from column_def where parent = 'Glossary Term' order by position`
+    expect(columns.slice(0, 5).map(c => c.column_name)).toEqual(['term', 'app', 'definition', 'picture', 'examples'])
+    expect(columns.find(c => c.column_name === 'picture')).toMatchObject({ label: 'Picture', column_type: 'Attach Image' })
+  })
+
+  test('a term has no picture until one is set; everyone who reads the glossary sees it and can open it', async ({ admin, createUser }) => {
+    await install(admin)
+    const staff = await createUser({ email: 'staff@example.test' })
+    const id = (await named(admin, 'Coverage'))!.id
+    expect((await named(staff, 'Coverage'))!.picture).toBeNull()
+    for (const isPrivate of [false, true]) {
+      const url = await uploadPicture(admin, id, isPrivate)
+      try {
+        await setPicture(admin, id, url)
+        // A picture is not wording: setting one leaves an app's term unedited.
+        expect(await named(staff, 'Coverage')).toMatchObject({ picture: url, editedHere: false })
+        const res = await staff.fetch(url)
+        expect(res.status).toBe(200)
+        expect(res.headers.get('content-type')).toBe('image/png')
+      } finally {
+        await deleteStored(url)
+      }
+    }
+  })
+
+  test('an upgrade, and taking the app\'s wording, keep the picture', async ({ admin }) => {
+    await install(admin)
+    const shelfLead = (await named(admin, 'Shelf Lead'))!.id
+    const coverage = (await named(admin, 'Coverage'))!.id
+    await setPicture(admin, shelfLead, '/files/lead.png')
+    await setPicture(admin, coverage, '/files/coverage.png')
+    await reword(admin, 'Coverage', 'The aisles you answer for.')
+    await upgrade(admin)
+    expect(await named(admin, 'Shelf Lead')).toMatchObject({ editedHere: false, picture: '/files/lead.png',
+      definition: 'The person who keeps one aisle\'s shelves full and tidy for a whole shift.' })
+    await admin.post('/api/glossary/take_app_wording', { id: coverage })
+    expect(await named(admin, 'Coverage')).toMatchObject({ editedHere: false, picture: '/files/coverage.png' })
   })
 })

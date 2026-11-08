@@ -49,7 +49,7 @@ test.for([
     await admin.post('/api/install_app', { name: 'other' })
     expect(await discoverPackages([source, target])).toEqual([])
     const preview = admin.post<{ permissions: unknown[] }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
-    if (allowed) expect(await preview).toMatchObject({ permissions: expect.arrayContaining([{ grant: { table: 'other.task', role: 'Members', can_read: true } }]) })
+    if (allowed) expect(await preview).toMatchObject({ permissions: expect.arrayContaining([{ grant: { table: 'other.task', role: 'Members', operations: { read: '@basic' } } }]) })
     else await expect(preview).rejects.toMatchObject({ status: 417, message: expect.stringContaining('Permission or package identity changes are unsupported') })
   } finally { await rm(target, { recursive: true, force: true }) }
 })

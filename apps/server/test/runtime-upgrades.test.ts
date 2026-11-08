@@ -148,7 +148,8 @@ describe('runtime upgrades', () => {
         tasks: await sql`select * from tasker.task order by row_id`,
         other: await sql`select * from other.task order by row_id`,
         comments: await sql`select * from comment where ref_table = 'tasker.task' order by row_id`,
-        grants: await sql`select * from permission where owner_app = 'tasker' order by row_id`,
+        // Wildcard selections refresh to include new Columns; authority and provenance stay fixed.
+        grants: await sql`select to_jsonb(p) - 'updated_at' as grant from permission p where owner_app = 'tasker' order by row_id`,
         preferences: await admin.get('/api/user_settings/tasker.preferences'),
       }
       await discoverPackages([source, directory, resolve('../..', 'test-apps/other')])
@@ -163,7 +164,7 @@ describe('runtime upgrades', () => {
       expect(await sql`select * from tasker.task order by row_id`).toEqual(before.tasks)
       expect(await sql`select * from other.task order by row_id`).toEqual(before.other)
       expect(await sql`select * from comment where ref_table = 'tasker.task' order by row_id`).toEqual(before.comments)
-      expect(await sql`select * from permission where owner_app = 'tasker' order by row_id`).toEqual(before.grants)
+      expect(await sql`select to_jsonb(p) - 'updated_at' as grant from permission p where owner_app = 'tasker' order by row_id`).toEqual(before.grants)
       expect(await admin.get('/api/user_settings/tasker.preferences')).toEqual(before.preferences)
       for (const description of ['## Count\n\n**37** cartons, not 83.', '', null]) {
         const response = await admin.fetch('/api/save_row', { method: 'POST', headers: {
@@ -186,7 +187,7 @@ describe('runtime upgrades', () => {
       await discoverPackages([source])
       await admin.post('/api/install_app', { name: 'other' })
       await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'kept', quantity: 37 } })
-      const grants = await sql`select * from permission where owner_app = 'other' order by row_id`
+      const grants = await sql`select to_jsonb(p) - 'updated_at' as grant from permission p where owner_app = 'other' order by row_id`
       expect(await discoverPackages([source, directory])).toEqual([])
       await loadInstalledApps()
       const member = await createUser({ email: 'upgrade-reader@example.com', roles: [] })
@@ -225,7 +226,7 @@ describe('runtime upgrades', () => {
       }, body: JSON.stringify({ table: 'other.task', row: { row_id: 'new', quantity: 19, notes: '**markdown**' } }) })
       expect(response.status).toBe(201)
       expect(await response.json()).toMatchObject({ quantity: 19, notes: '**markdown**', validation_runs: 1 })
-      expect(await sql`select * from permission where owner_app = 'other' order by row_id`).toEqual(grants)
+      expect(await sql`select to_jsonb(p) - 'updated_at' as grant from permission p where owner_app = 'other' order by row_id`).toEqual(grants)
       expect(await sql`select quantity, validation_runs, notes from other.task where row_id = 'kept'`).toEqual([{ quantity: 37, validation_runs: 1, notes: null }])
       await discoverPackages([source])
       await loadInstalledApps()
@@ -284,7 +285,7 @@ describe('runtime upgrades', () => {
       for (const changed of [
         { ...manifest, migrations: [{ ...manifest.migrations[0], fromVersion: '1.5.0' }] },
         // #437: withdrawing a grant is allowed; adding one never is.
-        { ...manifest, permissions: [...manifest.permissions, { table: 'Comment', role: 'All', can_read: true }] },
+        { ...manifest, permissions: [...manifest.permissions, { table: 'Comment', role: 'All', operations: { read: '*' } }] },
         { ...manifest, tables: manifest.tables.map((t: { columns: unknown[] }) => ({ ...t, columns: t.columns.slice(1) })) },
       ]) {
         await writeFile(resolve(directory, 'featherbase.json'), JSON.stringify(changed))

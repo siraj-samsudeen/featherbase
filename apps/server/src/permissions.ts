@@ -1,9 +1,12 @@
+import { isDeepStrictEqual } from 'node:util'
 import { sql } from './db'
 import { AppError } from './errors'
 import { activeApps } from './app-lifecycle'
 import { isActingSystemActor } from './system-actor'
 import { asNameList, declaresOwnPages } from './installed-app-ledger'
 import { admittedToTable } from './mandatory-access'
+import { readOnce } from './permission-reads'
+import { permissionRefusal } from './refusals'
 
 // PERM-001: role resolution for a principal — a person or a service account
 // (person-rename R2). Every enabled principal implicitly holds 'All';
@@ -16,7 +19,7 @@ export async function getRoles(principal: string): Promise<string[]> {
   if (isActingSystemActor(principal)) return ['All', 'System Manager']
   // One round trip: the roles held directly (app null), then the app roles
   // bound to them (#620, D4). getRoles runs on nearly every permission check.
-  const rows = await sql`
+  const rows = await readOnce(JSON.stringify(['roles', principal]), () => sql`
     with held as (
       select role from has_role
       where parent = ${principal} and parenttype in ('Person', 'Service Account')
@@ -38,7 +41,7 @@ export async function getRoles(principal: string): Promise<string[]> {
       and b.bound_role not in ${sql(OPEN_ROLES)}
       and b.app_role not in ${sql(PLATFORM_ROLES)}
       and jsonb_typeof(a.manifest->'roles') = 'array' and a.manifest->'roles' ? b.app_role
-    order by app nulls first, role`
+    order by app nulls first, role`)
   const held = ['All', ...rows.filter((r) => r.app === null).map((r) => r.role as string)]
   // The same availability assertAppAvailable requires: enabled, not pending
   // activation, and its exact files loaded (activeApps).
@@ -68,20 +71,56 @@ type PermAction =
   | 'submit'
   | 'cancel'
   | 'amend'
-
-const ACTION_COLUMN: Record<PermAction, string> = {
-  read: 'can_read',
-  write: 'can_write',
-  create: 'can_create',
-  delete: 'can_delete',
-  submit: 'can_submit',
-  cancel: 'can_cancel',
-  amend: 'can_amend',
-}
+  | 'read_identifiers'
 
 // PERM-007: an own_rows_only grant applies only to rows the user created.
 // 'all' = unconditional grant, 'own_rows' = created_by-scoped only, 'none' = denied.
 type PermScope = 'all' | 'own_rows' | 'none'
+
+export interface PermissionGrant {
+  id: string
+  scope: Exclude<PermScope, 'none'>
+  columns: string[]
+}
+
+/** A grant's Columns: the listed metadata Column ids, or the level marker
+ *  that keeps following its Columns as metadata changes. An unknown rule
+ *  reaches nothing. */
+function columnsOf(rule: string, listed: string[]): string[] {
+  if (rule === 'every') return ['*']
+  if (rule === 'basic') return ['@basic']
+  return rule === 'listed' ? listed : []
+}
+
+/** Resolve whole contributions, including their prerequisites. A missing or
+ * cyclic prerequisite contributes nothing; it never becomes an open grant. */
+export async function permissionGrants(user: string, table: string, action: PermAction, parentPermission?: string, parentColumn?: string): Promise<PermissionGrant[]> {
+  const roles = await getRoles(user)
+  const rows = await readOnce(JSON.stringify(['grants', roles, table, action]), () => sql`
+    select p.row_id, p.scope_mode, p.column_rule, p.owner_app, p.requires_permission, p.parent_permission, p.parent_column,
+      coalesce(array_agg(c.target_column) filter (where c.target_column is not null), '{}') as columns
+    from permission p left join featherbase.permission_column c on c.parent = p.row_id
+    where p.ref_table = ${table} and p.operation = ${action === 'write' ? 'update' : action}
+      and p.role in ${sql(roles)}
+    group by p.row_id`)
+  const active = new Map(rows.filter((row) => row.owner_app == null || activeApps.has(String(row.owner_app)))
+    .map((row) => [String(row.row_id), row]))
+  function resolve(id: string, seen = new Set<string>()): PermissionGrant | undefined {
+    const row = active.get(id)
+    if (!row || seen.has(id) || !['all', 'creator'].includes(String(row.scope_mode))) return
+    seen.add(id)
+    let scope: PermissionGrant['scope'] = row.scope_mode === 'creator' ? 'own_rows' : 'all'
+    if (row.requires_permission) {
+      const prerequisite = resolve(String(row.requires_permission), seen)
+      if (!prerequisite) return
+      if (prerequisite.scope === 'own_rows') scope = 'own_rows'
+    }
+    return { id, scope, columns: columnsOf(String(row.column_rule), row.columns as string[]) }
+  }
+  return rows.filter((row) => (row.parent_permission ?? undefined) === parentPermission &&
+      (row.parent_column ?? undefined) === parentColumn)
+    .flatMap((row) => { const grant = resolve(String(row.row_id)); return grant ? [grant] : [] })
+}
 
 export async function permissionScope(
   user: string,
@@ -89,16 +128,9 @@ export async function permissionScope(
   action: PermAction,
 ): Promise<PermScope> {
   if (!(await admittedToTable(user, table))) return 'none'
-  if (user === 'Administrator') return 'all'
-  const roles = await getRoles(user)
-  if (roles.includes('System Manager')) return 'all'
-  const rows = await sql`
-    select own_rows_only, owner_app from permission
-    where ref_table = ${table} and tier = 'basic'
-      and role in ${sql(roles)}
-      and ${sql(ACTION_COLUMN[action])} = true`
-  const active = rows.filter((r) => r.owner_app == null || activeApps.has(String(r.owner_app)))
-  if (active.some((r) => !r.own_rows_only)) return 'all'
+  if (await isPrivileged(user)) return 'all'
+  const active = await permissionGrants(user, table, action)
+  if (active.some((grant) => grant.scope === 'all')) return 'all'
   if (active.length) return 'own_rows'
   return 'none'
 }
@@ -137,10 +169,7 @@ export async function assertDocPermission(
   const scope = await permissionScope(user, table, action)
   if (scope === 'all') return
   if (scope === 'own_rows' && createdBy === user) return
-  throw new AppError(
-    'PermissionError',
-    `No ${action} permission on ${table} for ${user}`,
-  )
+  throw await permissionRefusal(user, table, action)
 }
 
 export async function assertPermission(
@@ -149,10 +178,7 @@ export async function assertPermission(
   action: PermAction,
 ) {
   if (!(await hasPermission(user, table, action)))
-    throw new AppError(
-      'PermissionError',
-      `No ${action} permission on ${table} for ${user}`,
-    )
+    throw await permissionRefusal(user, table, action)
 }
 
 /**
@@ -181,17 +207,17 @@ export async function tableAccessFor(
   roles: string[],
 ): Promise<{ readable: string[]; readableByOwnRole: string[]; creatable: string[]; ownGrant: boolean; admin: boolean }> {
   const rows = await sql`
-    select p.ref_table, p.role, p.can_read, p.owner_app,
+    select p.ref_table, p.role, (p.operation = 'read') as can_read, p.owner_app,
       -- #432: a grant never makes a system-written Table creatable.
       -- #905: nor an archived one.
-      (p.can_create and not d.system_written and d.archived_at is null) as can_create,
-      (p.can_read or p.can_write or p.can_create or p.can_delete
-        or p.can_submit or p.can_cancel or p.can_amend) as any_action
+      (p.operation = 'create' and not d.system_written and d.archived_at is null) as can_create
     from permission p
     join table_def d on d.name = p.ref_table and d.kind = 'table'
-    where p.tier = 'basic' and p.role in ${sql(roles)}`
+    where p.parent_permission is null and p.requires_permission is null and p.role in ${sql(roles)}
+      -- Reading identifiers says nothing about using a Table: it opens no Admin.
+      and p.operation <> 'read_identifiers'`
   const active = rows.filter(
-    (r) => r.any_action && (r.owner_app == null || activeApps.has(String(r.owner_app))),
+    (r) => r.owner_app == null || activeApps.has(String(r.owner_app)),
   )
   const names = (pick: (r: (typeof active)[number]) => boolean) =>
     [...new Set(active.filter(pick).map((r) => r.ref_table as string))].sort()
@@ -235,9 +261,9 @@ export async function getScopeMap(
   principal: string,
 ): Promise<Map<string, Set<string>>> {
   const map = new Map<string, Set<string>>()
-  const rows = await sql`
+  const rows = await readOnce(JSON.stringify(['scopes', principal]), () => sql`
     select allow_table, for_value from data_scope
-    where person = ${principal} or service_account = ${principal}`
+    where person = ${principal} or service_account = ${principal}`)
   for (const r of rows) {
     const key = r.allow_table as string
     if (!map.has(key)) map.set(key, new Set())
@@ -246,103 +272,178 @@ export async function getScopeMap(
   return map
 }
 
+/** #246: how a principal's Data Scope narrows one Table. `own` limits the
+ *  Table's own rows; each `refs` entry limits one Reference column, where an
+ *  unset value passes unless the Table requires scope. `none` means the
+ *  Table requires scope on a dimension the principal has no rows for: no row
+ *  is theirs. Null when nothing narrows the Table. */
+export interface TableScope {
+  own?: Set<string>
+  refs: { column: string; table: string; allowed: Set<string>; unsetPasses: boolean }[]
+  none: boolean
+  /** The scoped Tables the principal has no Data Scope on (when `none`). */
+  missing: string[]
+}
+
+interface ScopedTable {
+  name: string
+  columns: { column_name: string; column_type: string; reference_table?: string | null; reference_base?: string }[]
+  scope_on?: string[] | null
+  scope_required?: boolean | null
+}
+
+/** The ONE reading of a Table's scope declaration. Without `scope_on`, every
+ *  Reference to a scoped Table narrows (Frappe's discovery); with it, only the
+ *  named columns do. `scope_required` is fail-closed: no rows on a declared
+ *  dimension means no rows, and a row naming no value on it is not theirs. */
+export function tableScope(meta: ScopedTable, map: Map<string, Set<string>>): TableScope | null {
+  const declared = meta.scope_on?.length ? new Set(meta.scope_on) : null
+  const required = Boolean(declared && meta.scope_required)
+  const scope: TableScope = { own: map.get(meta.name), refs: [], none: false, missing: [] }
+  for (const f of meta.columns) {
+    if (f.column_type !== 'Reference' || !f.reference_table) continue
+    if (declared && !declared.has(f.column_name)) continue
+    // #1021: a link to a view holds its base's rows, scoped as such.
+    const dimension = f.reference_base ?? f.reference_table
+    const allowed = map.get(dimension)
+    if (allowed) scope.refs.push({ column: f.column_name, table: dimension, allowed, unsetPasses: !required })
+    else if (required) {
+      scope.none = true
+      scope.missing.push(dimension)
+    }
+  }
+  // Fail closed on a stale declaration too: a required column that is no
+  // longer a Reference (its type changed) narrows to nothing, not to everything.
+  if (required)
+    for (const name of declared!)
+      if (!meta.columns.some((f) => f.column_name === name && f.column_type === 'Reference' && f.reference_table)) {
+        scope.none = true
+        scope.missing.push(name)
+      }
+  return scope.own || scope.refs.length || scope.none ? scope : null
+}
+
+/** Could this Table narrow anyone's rows, whatever their Data Scope? Lets a
+ *  reader skip the Data Scope lookup only when the answer cannot matter. */
+export function requiresScope(meta: ScopedTable): boolean {
+  return Boolean(meta.scope_on?.length && meta.scope_required)
+}
+
 // Throws when a row (or its reference values) falls outside the user's
 // permitted values.
 export function checkUserPermissions(
   user: string,
-  table: string,
-  linkFields: { column_name: string; reference_table: string | null | undefined }[],
+  meta: ScopedTable,
   row: Record<string, unknown>,
   map: Map<string, Set<string>>,
 ) {
-  const own = map.get(table)
-  if (own && row.row_id != null && !own.has(String(row.row_id)))
+  const scope = tableScope(meta, map)
+  if (!scope) return
+  if (scope.none)
+    throw new AppError('PermissionError', `${meta.name} rows are open only to people whose Data Scope names a ${[...new Set(scope.missing)].join(' and a ')}`)
+  if (scope.own && row.row_id != null && !scope.own.has(String(row.row_id)))
     throw new AppError(
       'PermissionError',
-      `${table} ${String(row.row_id)} is outside your permitted values`,
+      `${meta.name} ${String(row.row_id)} is outside your permitted values`,
     )
-  for (const f of linkFields) {
-    if (!f.reference_table) continue
-    const allowed = map.get(f.reference_table)
-    if (!allowed) continue
-    const value = Object.hasOwn(row, f.column_name) ? row[f.column_name] : undefined
-    if (value == null || value === '') continue
-    if (!allowed.has(String(value)))
+  for (const ref of scope.refs) {
+    const value = Object.hasOwn(row, ref.column) ? row[ref.column] : undefined
+    if (value == null || value === '') {
+      if (ref.unsetPasses) continue
+      throw new AppError('PermissionError', `A ${meta.name} row must name a ${ref.table} within your permitted values`)
+    }
+    if (!ref.allowed.has(String(value)))
       throw new AppError(
         'PermissionError',
-        `${f.reference_table} ${String(value)} is outside your permitted values`,
+        `${ref.table} ${String(value)} is outside your permitted values`,
       )
   }
 }
 
-// PERM-006: the set of tiers a user may READ / WRITE on a Table. 'basic' is
-// the base grant; 'restricted' needs an explicit Permission row at that
-// tier. Because 'restricted' access implies 'basic' access (the old
-// "higher permlevel implies lower levels" rule, with two levels instead of
-// ten), a restricted grant is expanded to include 'basic' when the set is
-// built. Admins/System Managers get both tiers.
-export async function permittedTiers(
+export type ColumnSelection = Set<string>
+export const ALL_COLUMNS: ReadonlySet<string> = new Set(['*'])
+
+/** Metadata Column IDs, never names or levels. With no Row this describes
+ * potential visibility for metadata; Row access must still check its scope. */
+export async function permittedColumns(
   user: string,
   table: string,
   action: 'read' | 'write' | 'create',
-): Promise<Set<'basic' | 'restricted'>> {
-  if (await isPrivileged(user)) return new Set(['basic', 'restricted'])
-  const roles = await getRoles(user)
-  const rows = await sql`
-    select tier, owner_app from permission
-    where ref_table = ${table}
-      and role in ${sql(roles)}
-      and ${sql(ACTION_COLUMN[action])} = true`
-  const tiers = new Set<'basic' | 'restricted'>()
-  for (const r of rows) {
-    if (r.owner_app != null && !activeApps.has(String(r.owner_app))) continue
-    const tier = r.tier as 'basic' | 'restricted'
-    tiers.add(tier)
-    if (tier === 'restricted') tiers.add('basic')
-  }
-  return tiers
+  createdBy?: string,
+): Promise<ColumnSelection> {
+  if (await isPrivileged(user)) return new Set(ALL_COLUMNS)
+  const grants = await permissionGrants(user, table, action)
+  return new Set(grants.filter((grant) => createdBy === undefined || grant.scope === 'all' || createdBy === user)
+    .flatMap((grant) => grant.columns))
 }
 
-// #608: the columns a new row may set — those its creator's create or edit
-// grant reaches. A create-only grant carries no edit tier, yet what was typed
-// into a new row is what creating it means.
-export async function insertTiers(user: string, table: string): Promise<Set<'basic' | 'restricted'>> {
-  return new Set([...(await permittedTiers(user, table, 'create')), ...(await permittedTiers(user, table, 'write'))])
+export function includesColumn(selection: ReadonlySet<string>, column: { row_id: string; tier: 'basic' | 'restricted' }): boolean {
+  // @basic: every basic-level Column (a basic-level grant, or what leaves the
+  // platform for nobody in particular).
+  return selection.has('*') || selection.has(column.row_id) || (selection.has('@basic') && column.tier === 'basic')
 }
 
-function allowsTier(tiers: Set<'basic' | 'restricted'>, tier: 'basic' | 'restricted'): boolean {
-  return tiers.has(tier)
-}
-
-// Strip columns the user can't read at their tier from an outgoing row.
+// Strip Columns the reader was not granted, keeping system Row metadata.
 export function filterReadFields(
-  columns: { column_name: string; tier: 'basic' | 'restricted' }[],
-  tiers: Set<'basic' | 'restricted'>,
+  columns: { row_id: string; column_name: string; tier: 'basic' | 'restricted' }[],
+  selection: ReadonlySet<string>,
   row: Record<string, unknown>,
 ): Record<string, unknown> {
-  if (tiers.has('basic') && tiers.has('restricted')) return row
+  if (selection.has('*')) return row
   const out: Record<string, unknown> = {}
   const hidden = new Set(
-    columns.filter((f) => !allowsTier(tiers, f.tier)).map((f) => f.column_name),
+    columns.filter((column) => !includesColumn(selection, column)).map((column) => column.column_name),
   )
   for (const [k, v] of Object.entries(row)) if (!hidden.has(k)) out[k] = v
   return out
 }
 
-// Drop writes to columns above the user's write tier (silently ignored,
-// like read_only) so a client can't escalate via restricted-tier columns.
+// An ordinary column outside the grant rejects the whole correction. Silently
+// discarding it would report success after saving only part of the request.
+/** Whether a submitted value is the stored one, whatever form each arrived
+ *  in: Currency is stored as text, a Date may come back as a Date, Check as
+ *  '1', and an empty field as '' or null. */
+export function sameStoredValue(columnType: string | undefined, submitted: unknown, stored: unknown): boolean {
+  const empty = (value: unknown) => value === undefined || value === null || value === ''
+  if (empty(submitted) || empty(stored)) return empty(submitted) && empty(stored)
+  if (isDeepStrictEqual(submitted, stored)) return true
+  switch (columnType) {
+    case 'Int': case 'Float': case 'Currency': case 'Percent':
+      return Number(submitted) === Number(stored) && !Number.isNaN(Number(stored))
+    case 'Check': {
+      const flag = (value: unknown) => value === true || value === 1 || value === '1' || value === 'true'
+      return flag(submitted) === flag(stored)
+    }
+    case 'Date': case 'Datetime': case 'Time': {
+      const at = (value: unknown) => (value instanceof Date ? value : new Date(String(value))).getTime()
+      return !Number.isNaN(at(submitted)) && at(submitted) === at(stored)
+    }
+    case 'JSON': {
+      const parse = (value: unknown) => { try { return typeof value === 'string' ? JSON.parse(value) : value } catch { return value } }
+      return isDeepStrictEqual(parse(submitted), parse(stored))
+    }
+    default:
+      return typeof submitted !== 'object' && typeof stored !== 'object' && String(submitted) === String(stored)
+  }
+}
+
 export function stripUnwritableFields(
-  columns: { column_name: string; tier: 'basic' | 'restricted' }[],
-  tiers: Set<'basic' | 'restricted'>,
+  columns: { row_id: string; column_name: string; tier: 'basic' | 'restricted'; column_type?: string }[],
+  selection: ReadonlySet<string>,
   values: Record<string, unknown>,
+  stored?: Record<string, unknown>,
 ): Record<string, unknown> {
-  if (tiers.has('basic') && tiers.has('restricted')) return values
-  const writable = new Set(
-    columns.filter((f) => allowsTier(tiers, f.tier)).map((f) => f.column_name),
-  )
-  const out: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(values)) if (writable.has(k)) out[k] = v
-  return out
+  if (selection.has('*')) return values
+  const allowed = { ...values }
+  for (const column of columns) {
+    const name = column.column_name
+    if (!Object.hasOwn(values, name) || includesColumn(selection, column)) continue
+    // With nothing stored (a new row), only an empty value is "no change".
+    if (!sameStoredValue(column.column_type, values[name], stored?.[name]))
+      throw new AppError('PermissionError', `No write permission on column ${name}`)
+    delete allowed[name]
+  }
+  return allowed
 }
 
 export async function assertSystemManager(user: string) {

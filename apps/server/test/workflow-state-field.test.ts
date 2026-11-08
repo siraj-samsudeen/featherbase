@@ -6,8 +6,7 @@ import { saveDoc } from '../src/document'
 import { applyWorkflowAction, getActiveWorkflow, stateField } from '../src/workflow'
 
 // Workflow state binding: a Workflow with `state_field` drives an EXISTING
-// column on the target Table (e.g. a `ticket_status` Choice — 'status' itself
-// is reserved for the standard lifecycle column) instead of adding the
+// column on the target Table (e.g. a `ticket_status` Choice) instead of adding the
 // parallel workflow_state column — so the document's real business status and
 // its workflow state are one and the same. Direct saves cannot change the
 // bound column; inserts are forced to the initial state.

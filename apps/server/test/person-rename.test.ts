@@ -9,7 +9,7 @@ import { sql } from '../src/db'
 import { getMeta } from '../src/meta'
 import { issueAccessToken } from '../src/auth'
 import { getRoles, isPrivileged } from '../src/permissions'
-import { createUserWithRole, makePerson } from './fixtures'
+import { createUserWithRole, makePerson, grantRole } from './fixtures'
 import { personByEmail } from '../src/people-directory'
 
 const rel = async (name: string) => (await sql`select to_regclass(${'featherbase.' + name}) as r`)[0].r
@@ -193,7 +193,7 @@ describe('person-rename: names, not ids (review B-M2, B-M3)', () => {
     const ids = { ids: [inScope, outOfScope] }
     expect((await none.post<{ names: Record<string, string | null> }>('/api/people/names', ids)).names).toEqual({ [inScope]: null, [outOfScope]: null })
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Name Reader' } })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Name Reader', can_read: true } })
+    await grantRole(admin, { table: 'Person', role: 'Name Reader', can_read: true })
     const reader = await createUser({ email: 'names.reader@x.test', roles: ['Name Reader'] })
     await admin.post('/api/save_row', { table: 'Data Scope', row: { person: reader.user, allow_table: 'Person', for_value: inScope } })
     expect((await reader.post<{ names: Record<string, string | null> }>('/api/people/names', ids)).names).toEqual({ [inScope]: 'Named In Scope', [outOfScope]: null })
@@ -224,7 +224,7 @@ describe('person-rename: names, not ids (review B-M2, B-M3)', () => {
     const none = await createUser({ email: 'no.read@x.test' })
     await expect(none.get('/api/people/pick?q=scope')).rejects.toMatchObject({ status: 403 })
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Pick Reader' } })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Pick Reader', can_read: true } })
+    await grantRole(admin, { table: 'Person', role: 'Pick Reader', can_read: true })
     const reader = await createUser({ email: 'pick.reader@x.test', roles: ['Pick Reader'] })
     await admin.post('/api/save_row', { table: 'Data Scope', row: { person: reader.user, allow_table: 'Person', for_value: a } })
     expect((await reader.get<{ people: { row_id: string }[] }>('/api/people/pick?q=scope pick')).people.map((p) => p.row_id)).toEqual([a])
@@ -232,7 +232,7 @@ describe('person-rename: names, not ids (review B-M2, B-M3)', () => {
 
   test('an own-rows Person grant offers only the people this viewer created (review A-b)', async ({ admin, createUser }) => {
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Own People' } })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Own People', can_read: true, can_create: true, own_rows_only: true } })
+    await grantRole(admin, { table: 'Person', role: 'Own People', can_read: true, can_create: true, own_rows_only: true })
     const recruiter = await createUser({ email: 'own.people@x.test', roles: ['Own People'] })
     const mine = await recruiter.post<{ row_id: string }>('/api/save_row', { table: 'Person', row: { email: 'own.pick.mine@x.test' } })
     const { sql: db } = await import('../src/db')

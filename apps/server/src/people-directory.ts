@@ -37,17 +37,17 @@ export async function principalNames(ids: unknown, viewer: string): Promise<Reco
   const wanted = [...new Set(ids as string[])].slice(0, MAX_NAMES)
   const out: Record<string, string | null> = Object.fromEntries(wanted.map((id) => [id, null]))
   if (!wanted.length) return out
-  let readable: { table: string; where: unknown; cols: Set<string> } | null = null
+  let readable: Awaited<ReturnType<typeof scopedWhere>> | null = null
   try {
     readable = await scopedWhere('Person', viewer, [['row_id', 'in', wanted]])
   } catch (err) {
     if (!(err instanceof AppError && err.type === 'PermissionError')) throw err
   }
   if (readable) {
-    const { table, where, cols } = readable
+    const { table, where, cols, readExpression } = readable
     const rows = await sql`
-      select row_id, ${cols.has('full_name') ? sql`full_name` : sql`null::text`} as full_name,
-        ${cols.has('username') ? sql`username` : sql`null::text`} as username
+      select row_id, ${cols.has('full_name') ? readExpression('full_name') : sql`null::text`} as full_name,
+        ${cols.has('username') ? readExpression('username') : sql`null::text`} as username
       from ${sql(table)} where ${where as ReturnType<typeof sql>}`
     for (const r of rows) out[String(r.row_id)] = displayName(r)
   }
@@ -68,7 +68,7 @@ export async function enabledPeople(ids: string[], viewer: string): Promise<stri
     if (!(err instanceof AppError && err.type === 'PermissionError')) throw err
     return []
   }
-  const rows = await sql`select p.row_id from ${sql(scoped.table)} p where ${scoped.where} and p.replaced_by is null order by p.row_id`
+  const rows = await sql`select row_id from ${sql(scoped.table)} where ${scoped.where} and replaced_by is null order by row_id`
   return rows.map((row) => String(row.row_id))
 }
 
@@ -79,15 +79,18 @@ export async function enabledPeople(ids: string[], viewer: string): Promise<stri
 export async function personByEmail(address: string, viewer: string): Promise<string | null> {
   let scoped
   try {
-    scoped = await scopedWhere('Person', viewer, [['built_in', '=', false]])
+    scoped = await scopedWhere('Person', viewer, [])
   } catch (error) {
     if (error instanceof AppError && error.type === 'PermissionError') return null
     throw error
   }
   if (!scoped.cols.has('email')) return null
   const [row] = await sql`
-    select p.row_id from ${sql(scoped.table)} p
-    where ${scoped.where} and p.replaced_by is null and lower(trim(p.email)) = lower(${address.trim()})
+    select p.row_id from (
+      select row_id, replaced_by, ${scoped.readExpression('email')} as email
+      from ${sql(scoped.table)} where ${scoped.where} and not coalesce(built_in, false)
+    ) p
+    where p.replaced_by is null and lower(trim(p.email)) = lower(${address.trim()})
     order by p.row_id
     limit 1`
   return row ? String(row.row_id) : null
@@ -109,16 +112,19 @@ interface PickedPerson {
 export async function pickPeople(q: string, viewer: string, limit = 10): Promise<PickedPerson[]> {
   // #859: a retired person is not offered either (names of people already
   // chosen resolve through the names lookup, which is unaffected).
-  const { table, where, cols } = await scopedWhere('Person', viewer, hideRetired(await getMeta('Person'), [['built_in', '=', false]]))
+  const { table, where, cols, readExpression } = await scopedWhere('Person', viewer, hideRetired(await getMeta('Person'), []))
   // Only the columns this viewer may read are shown or searched.
   const col = (c: string) => (cols.has(c) ? sql`p.${sql(c)}` : sql`null::text`)
+  const selected = (c: string) => cols.has(c) ? readExpression(c) : sql`null::text`
   const like = `%${q.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%`
   const rows = await sql`
     select p.row_id, ${col('full_name')} as full_name, ${col('username')} as username, ${col('email')} as email,
       (select min(i.value) from person_identifier i join identifier_system s on s.row_id = i.system and s.kind = 'employee-record'
        where i.person_id = p.row_id and upper_inf(i.valid)) as code
-    from ${sql(table)} p
-    where ${where} and p.replaced_by is null
+    from (select row_id, replaced_by, ${selected('full_name')} as full_name,
+      ${selected('username')} as username, ${selected('email')} as email
+      from ${sql(table)} where ${where} and not coalesce(built_in, false)) p
+    where p.replaced_by is null
       and (${q.trim() === ''}::boolean or ${col('full_name')} ilike ${like} or ${col('username')} ilike ${like}
         or ${col('email')} ilike ${like}
         or exists (

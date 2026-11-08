@@ -22,7 +22,7 @@ const MANIFEST = {
     },
   ],
   roles: [ROLE],
-  permissions: [{ table: DT, role: ROLE, can_read: true, can_write: true, can_create: true }],
+  permissions: [{ table: DT, role: ROLE, operations: { read: '*', update: '*', create: '*' } }],
 }
 
 async function unwire() {

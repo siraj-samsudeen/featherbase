@@ -134,10 +134,10 @@ test('the Sign-in methods page is served on the Admin address too', async ({ ses
     await page.getByTestId('session-user').click()
     await page.getByTestId('account-sign-in-methods').click()
   })
-  await session.step('it opens under a bar named Featherbase, with no Admin menus', async () => {
+  await session.step('it opens in the Admin frame the person came from (#1006)', async () => {
     await expect(page).toHaveURL(`${ADMIN}/featherbase/account/sign-in-methods`)
-    await expect(page.getByTestId('top-bar-name')).toHaveText('Featherbase')
-    await expect(page.getByTestId('admin-sidebar')).toHaveCount(0)
+    await expect(page.getByTestId('sign-in-methods')).toBeVisible()
+    await expect(page.getByTestId('admin-sidebar')).toBeVisible()
   })
 })
 
@@ -347,7 +347,8 @@ for (const width of [1280, 375]) {
       await expect(page).toHaveURL(new RegExp(`^${ADMIN}/featherbase/admin`), { timeout: 15_000 })
       await page.goto(`${ADMIN}/featherbase/account/sign-in-methods`)
       await session.step('bar and tab say Featherbase, with no Open Admin', async () => {
-        await expect(page.getByTestId('top-bar-name')).toHaveText('Featherbase')
+        // Here the name is the Admin shell's switcher: what shows is the chosen option.
+        await expect(page.getByTestId('top-bar-name').locator('option:checked')).toHaveText('Featherbase')
         await expect(page).toHaveTitle('Featherbase')
         expect(await openAdminShown(page, phone)).toBe(0)
       })

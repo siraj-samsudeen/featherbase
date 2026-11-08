@@ -13,6 +13,7 @@ import { queueEmail } from './email'
 import { evaluateEmailRules } from './email-rules'
 import { publishDocEvent } from './realtime'
 import { evalCondition } from './server-scripts'
+import { runAsSystemActor } from './system-actor'
 
 // WF-001/002/003: workflow definition, execution, and server-side
 // transition enforcement.
@@ -20,7 +21,7 @@ import { evalCondition } from './server-scripts'
 export interface WorkflowState {
   state: string
   // Renamed from Frappe's doc_status: the row's *lifecycle* status while in
-  // this named state (distinct from the sub_table's own reserved `status`
+  // this named state (distinct from the sub_table's own reserved `submission_status`
   // column, which every Table gets and which isn't what this represents).
   target_status: 'draft' | 'submitted' | 'cancelled'
   waits_for_approval?: boolean
@@ -227,7 +228,9 @@ export async function applyWorkflowAction(
     const [held] = await sql`select 1 from ${sql(relation)}
       where ${sql(physicalRowKey(table))} = ${name} for update`
     if (!held) throw new AppError('NotFoundError', `${table} ${name} not found`)
-    const row = await getDoc(table, name, user)
+    await getDoc(table, name, user)
+    // Transition rules evaluate stored state, not the caller's redacted view.
+    const row = await runAsSystemActor('workflow-read', () => getDoc(table, name, 'workflow-read'))
     const from = currentState(wf, row)
     const transition = wf.transitions.find((t) => t.state === from && t.action === action)
     if (!transition)
@@ -246,15 +249,15 @@ export async function applyWorkflowAction(
       throw new AppError('ValidationError', `Action "${action}" is not allowed: its condition is not met`)
 
     const target = wf.states.find((s) => s.state === transition.next_state)
-    const status = target ? target.target_status : ((row.status as 'draft' | 'submitted' | 'cancelled') ?? 'draft')
+    const status = target ? target.target_status : ((row.submission_status as 'draft' | 'submitted' | 'cancelled') ?? 'draft')
     // The whole row before the move, for the email rules below.
-    const before = await getDoc(table, name)
+    const before = row
 
     // A workflow legitimately moves submitted rows between states/statuses.
     await assertFieldNotManaged(sql, table, name, field, user)
     await sql`
       update ${sql(relation)}
-      set ${sql(field)} = ${transition.next_state}, status = ${status}, updated_at = now()
+      set ${sql(field)} = ${transition.next_state}, submission_status = ${status}, updated_at = now()
       where ${sql(physicalRowKey(table))} = ${name}`
 
     await sql`
@@ -284,7 +287,8 @@ export async function applyWorkflowAction(
   // it, and list subscribers get the update over realtime.
   // The whole row, as on any save: a rule may match on, or address from, a
   // column the acting user cannot see; it strips those from what it sends.
-  await evaluateEmailRules('on_save', table, await getDoc(table, name), before)
+  const after = await runAsSystemActor('workflow-read', () => getDoc(table, name, 'workflow-read'))
+  await evaluateEmailRules('on_save', table, after, before)
   publishDocEvent(table, name, 'updated')
   return result
 }

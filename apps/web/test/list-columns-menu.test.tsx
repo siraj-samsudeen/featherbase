@@ -14,6 +14,7 @@ import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
 import { issueSession } from 'server/src/auth'
 import { setSession } from '../src/lib/api'
+import { grantRole } from 'server/test/fixtures'
 
 const DT = 'Lc Mapping'
 const URL = `/api/user_settings/${encodeURIComponent(DT)}`
@@ -136,7 +137,7 @@ test('an arrangement saved before shown columns existed still hides its column',
 test('a reader of basic columns only is not offered a restricted column', async ({ admin, createUser }) => {
   await seedTable(admin)
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Lc Reader' } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: DT, role: 'Lc Reader', tier: 'basic', can_read: true } })
+  await grantRole(admin, { table: DT, role: 'Lc Reader', tier: 'basic', can_read: true })
   const reader = await createUser({ email: 'lc.reader@example.com', roles: ['Lc Reader'] })
   await openList(reader)
   const menu = await openMenu()
@@ -186,7 +187,7 @@ test('a System Manager is offered "Make this the default for everyone" at the fo
 test('a reader who is not a System Manager is not offered it, nor "Edit columns"', async ({ admin, createUser }) => {
   await seedTable(admin)
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Lc Reader' } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: DT, role: 'Lc Reader', tier: 'basic', can_read: true } })
+  await grantRole(admin, { table: DT, role: 'Lc Reader', tier: 'basic', can_read: true })
   const reader = await createUser({ email: 'lc.reader@example.com', roles: ['Lc Reader'] })
   await openList(reader)
   const menu = await openMenu()

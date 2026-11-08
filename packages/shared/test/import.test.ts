@@ -82,10 +82,11 @@ describe('IMP-001: sanitizeHeaders', () => {
   })
 
   test('reserved standard columns step aside', () => {
-    expect(sanitizeHeaders(['row_id', 'status', 'parent', 'title'])).toEqual([
+    expect(sanitizeHeaders(['row_id', 'submission_status', 'parent', 'status', 'title'])).toEqual([
       'row_id_1',
-      'status_1',
+      'submission_status_1',
       'parent_1',
+      'status',
       'title',
     ])
   })

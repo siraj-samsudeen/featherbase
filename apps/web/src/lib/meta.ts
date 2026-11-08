@@ -11,6 +11,8 @@ export interface ColumnDef {
   label: string | null
   column_type: string
   reference_table: string | null
+  /** #1021: when reference_table is a view, the base Table its rows are of. */
+  reference_base?: string
   /** #881: on a link to a row of any Table, the column holding its Table;
    *  its `choices` then lists the Tables allowed, one per line. */
   table_column?: string | null
@@ -33,13 +35,17 @@ export interface ColumnDef {
   updated_by: string
   created_at: string
   updated_at: string
-  status: string
+  submission_status: string
 }
 
 export interface TableMeta {
   name: string
   module: string
-  kind: 'table' | 'sub_table' | 'settings'
+  kind: 'table' | 'sub_table' | 'settings' | 'view'
+  /** #1021: a view's base Table and the filters choosing its rows. A view
+   *  holds no rows of its own: its rows open and save as base rows. */
+  view_of?: string | null
+  view_filters?: [string, string, unknown][] | null
   is_submittable: boolean
   id_pattern: string
   title_column: string | null
@@ -83,12 +89,11 @@ export interface TableMeta {
   updated_by: string
   created_at: string
   updated_at: string
-  status: string
+  submission_status: string
   position: number
   columns: ColumnDef[]
-  /** #738: the levels of column the caller may read; served per request
-   *  beside the cached meta. */
-  readable_tiers?: ('basic' | 'restricted')[]
+  /** Column names the caller may read; served per request beside cached metadata. */
+  readable_columns?: string[]
   /** Server-resolved storage, never inferred from a display label. */
   storage_identity?: {
     schema: string
@@ -133,7 +138,31 @@ export function isSystemWritten(meta: TableMeta | undefined): boolean {
 // hangs on this: absent when a read-only source owns the rows or when the
 // platform does.
 export function isRowsReadOnly(meta: TableMeta | undefined): boolean {
-  return isSourceReadOnly(meta) || isSystemWritten(meta) || isArchived(meta)
+  return isSourceReadOnly(meta) || isSystemWritten(meta) || isArchived(meta) || isView(meta)
+}
+
+/** #1021: the Table a link's values are rows of: a view's base, since a
+ *  link to a view stores and opens base rows. */
+export function linkRowsTable(column: { reference_table?: string | null; reference_base?: string | null }): string | null {
+  return column.reference_base ?? column.reference_table ?? null
+}
+
+/** #1021: a view: a filtered lens on its base, whose rows are its base's. */
+export function isView(meta: TableMeta | undefined): meta is TableMeta & { kind: 'view'; view_of: string } {
+  return meta?.kind === 'view' && Boolean(meta.view_of)
+}
+
+/** One plain line for a view's filter: "Is Store is Yes, Region is North". */
+export function describeViewFilters(meta: Pick<TableMeta, 'columns' | 'view_filters'>): string {
+  const words: Record<string, string> = {
+    '=': 'is', '!=': 'is not', '>': 'is more than', '<': 'is less than', '>=': 'is at least', '<=': 'is at most',
+    like: 'is like', 'not like': 'is not like', in: 'is one of', 'not in': 'is none of',
+  }
+  const shown = (v: unknown) => v === true ? 'Yes' : v === false ? 'No' : v === null ? 'empty' : Array.isArray(v) ? v.map(String).join(', ') : String(v)
+  return (meta.view_filters ?? []).map(([column, op, value]) => {
+    const col = meta.columns.find((c) => c.column_name === column)
+    return `${col?.label ?? column} ${words[op] ?? op} ${shown(value)}`
+  }).join(', ')
 }
 
 /** #905: archived: its rows read only for everyone, until it is un-archived. */

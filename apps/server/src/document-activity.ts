@@ -1,3 +1,4 @@
+import { linkTargetNames } from './views'
 import { sql } from './db'
 import { getDoc } from './document'
 import { getMeta } from './meta'
@@ -16,6 +17,8 @@ import { SYSTEM_ACTOR_LABELS } from 'shared'
 // registry's conditional ids, so a new such column cannot be missed.
 export const ROW_ID_HOLDERS = [
   { relation: 'access_log', tableColumn: 'ref_table', nameColumn: 'reference_name' },
+  { relation: 'change_proposal', tableColumn: 'target_table', nameColumn: 'target_row' },
+  { relation: 'change_proposal', tableColumn: 'target_table', nameColumn: 'result_row' },
   { relation: 'comment', tableColumn: 'ref_table', nameColumn: 'ref_name' },
   { relation: 'data_scope', tableColumn: 'allow_table', nameColumn: 'for_value' },
   { relation: 'email_queue', tableColumn: 'ref_table', nameColumn: 'reference_name' },
@@ -71,20 +74,22 @@ const KINDS: Record<string, [string, string]> = {
 export const RETIRE_INSTEAD = 'Retire it instead to take it out of use and keep its history.'
 
 /** Refuse a delete while the row has retained activity, naming each kind and
- *  its count, e.g. "it has 2 comments and 1 history entry". */
-export function assertNothingRetained(table: string, rowId: string, counts: Record<string, number>, retirable = false): void {
+ *  its count, e.g. "it has 2 comments and 1 history entry". `label` names
+ *  the row as the caller reads it, looked up only on a refusal (#959). */
+export async function assertNothingRetained(counts: Record<string, number>, retirable: boolean, label: () => Promise<string>): Promise<void> {
   const held = Object.entries(counts).filter(([, n]) => n > 0)
     .map(([kind, n]) => `${n} ${KINDS[kind]?.[n === 1 ? 0 : 1] ?? kind}`)
   if (!held.length) return
   const list = held.length === 1 ? held[0] : `${held.slice(0, -1).join(', ')} and ${held.at(-1)}`
-  throw new AppError('ValidationError', `${table} ${rowId} cannot be deleted: it has ${list}${retirable ? `. ${RETIRE_INSTEAD}` : ''}`,
+  throw new AppError('ValidationError', `${await label()} cannot be deleted: it has ${list}${retirable ? `. ${RETIRE_INSTEAD}` : ''}`,
     { ...Object.fromEntries(Object.entries(counts).map(([key, count]) => [key, String(count)])), ...(retirable ? { retire: 'available' } : {}) })
 }
 
 export async function retainedDocumentCounts(tx: typeof sql, table: string, rowId: string) {
   const activity = await retainedActivityCounts(tx, table, rowId)
   let references = 0
-  const columns = await tx`select parent, column_name from column_def where column_type = 'Reference' and reference_table = ${table}`
+  // #1021: a link to a view of it counts too.
+  const columns = await tx`select parent, column_name from column_def where column_type = 'Reference' and reference_table in ${tx(await linkTargetNames(table, tx))}`
   for (const column of columns) {
     const meta = await getMeta(String(column.parent))
     if (meta.data_source || meta.kind === 'settings') throw new AppError('ValidationError', 'Deletion cannot prove references from nonlocal Tables')

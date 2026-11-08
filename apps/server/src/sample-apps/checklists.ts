@@ -86,7 +86,7 @@ async function prepareRun(ctx: HookContext): Promise<void> {
   // A submitted run is finished: no late ticks, no added or removed items,
   // no photos, and no way back to Open. run_status is an ordinary Choice
   // column, so the engine's immutability guard — which watches the standard
-  // `status` column — never sees this transition; the app owns the rule.
+  // `submission_status` column — never sees this transition; the app owns the rule.
   if (!ctx.isNew && ctx.old?.run_status === 'Submitted')
     throw new AppError(
       'ValidationError',
@@ -227,16 +227,16 @@ const checklists: AppManifest = {
   // the files THEY uploaded, and reaching anyone else's is refused at
   // /api/signed_url, which authorizes the row the photo hangs on.
   permissions: [
-    { table: 'Checklist Template', role: 'Store Manager', can_read: true, can_write: true, can_create: true, can_delete: true },
-    { table: 'Checklist Template', role: 'Team Leader', can_read: true },
-    { table: 'Checklist Template Item', role: 'Store Manager', can_read: true },
-    { table: 'Checklist Template Item', role: 'Team Leader', can_read: true },
-    { table: 'Checklist Run', role: 'Store Manager', can_read: true, can_write: true, can_create: true, can_delete: true },
-    { table: 'Checklist Run', role: 'Team Leader', own_rows_only: true, can_read: true, can_write: true, can_create: true },
-    { table: 'Checklist Run Item', role: 'Store Manager', can_read: true },
-    { table: 'Checklist Run Item', role: 'Team Leader', can_read: true },
-    { table: 'File', role: 'Store Manager', can_read: true, can_write: true, can_create: true },
-    { table: 'File', role: 'Team Leader', own_rows_only: true, can_read: true, can_write: true, can_create: true },
+    { table: 'Checklist Template', role: 'Store Manager', operations: { read: '@basic', update: '@basic', create: '@basic', delete: true } },
+    { table: 'Checklist Template', role: 'Team Leader', operations: { read: '@basic' } },
+    { table: 'Checklist Template Item', role: 'Store Manager', operations: { read: '@basic' } },
+    { table: 'Checklist Template Item', role: 'Team Leader', operations: { read: '@basic' } },
+    { table: 'Checklist Run', role: 'Store Manager', operations: { read: '@basic', update: '@basic', create: '@basic', delete: true } },
+    { table: 'Checklist Run', role: 'Team Leader', scope_mode: 'creator', operations: { read: '@basic', update: '@basic', create: '@basic' } },
+    { table: 'Checklist Run Item', role: 'Store Manager', operations: { read: '@basic' } },
+    { table: 'Checklist Run Item', role: 'Team Leader', operations: { read: '@basic' } },
+    { table: 'File', role: 'Store Manager', operations: { read: '@basic', update: '@basic', create: '@basic' } },
+    { table: 'File', role: 'Team Leader', scope_mode: 'creator', operations: { read: '@basic', update: '@basic', create: '@basic' } },
   ],
 
   doc_events: {

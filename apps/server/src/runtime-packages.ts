@@ -4,14 +4,16 @@ import { createHash } from 'node:crypto'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { z } from 'zod'
-import { registerApp, forgetRuntimePackages, listInstalledApps, suspendRuntimeApp, loadInstalledApps, provisionGrants, syncAppJobs, type AppManifest } from './apps'
+import { appPermissionSchema, registerApp, forgetRuntimePackages, listInstalledApps, suspendRuntimeApp, loadInstalledApps, provisionGrants, syncAppJobs, type AppManifest } from './apps'
 import { applyJobPlan, bindAppJobs, jobsDeclaration, planJobChanges, validateAppJobs } from './app-jobs'
 import { tableDefSchema } from './table-engine'
 import { hasPermission } from './permissions'
+import { tableAccessPolicy } from './mandatory-access'
 import { AppError } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
 import { APP_ACCENTS, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
 import { callerDocuments, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
+import { baseTablesDeclaration } from './change-proposals'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import type { ScopeProviderBinding } from './person-scope'
 import { loadAppSetup, secretEntries, secretsDeclaration, settingsDeclaration } from './app-settings'
@@ -75,12 +77,28 @@ const frameOrigin = z.string().refine((value) => {
 const barControl = z.object({
   picker: z.string().min(1),
   options: z.string().min(1),
+  /** #975: the control stays away from a page whose address carries this key. */
+  hiddenWhen: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).optional(),
+  /** #967: address keys this picker's options depend on: its read gets their values as its payload. */
+  dependsOn: z.array(z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)).optional(),
   sets: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/, 'A bar control sets a query-string key: lower case letters, digits and _, starting with a letter'),
 }).strict()
 
 // What a picker's read answers: its options, in order. The value goes into
 // the address, so it is text.
 const barOptions = z.array(z.object({ value: z.string().min(1), label: z.string().min(1) }).strict())
+
+// #1046: an app's own say in who opens it, on top of its entry Table's
+// grants. `gate` names one of its reads, run as the person: only an answer of
+// exactly `true` opens the app, and anything else (a refusal, an error, any
+// other answer) keeps it closed. `approvers` are app roles told about, and
+// shown, the people waiting for access to the app, beside System Managers.
+const accessDeclaration = z.object({
+  gate: z.string().min(1).optional(),
+  approvers: z.array(z.string().min(1)).optional(),
+  /** Where on the app's own pages approvers see who is waiting: a query string, like ?view=access. */
+  page: z.string().regex(/^\?[a-z0-9_=&-]{1,100}$/).optional(),
+}).strict()
 
 const manifestSchema = z.object({
   manifestVersion: z.literal(1),
@@ -89,15 +107,7 @@ const manifestSchema = z.object({
   title: z.string().min(1),
   tables: z.array(tableDefSchema).min(1),
   roles: z.array(z.string().min(1)).optional(),
-  permissions: z.array(z.object({
-    table: z.string(), role: z.string(),
-    tier: z.enum(['basic', 'restricted']).optional(),
-    own_rows_only: z.boolean().optional(),
-    can_read: z.boolean().optional(), can_write: z.boolean().optional(),
-    can_create: z.boolean().optional(), can_delete: z.boolean().optional(),
-    can_submit: z.boolean().optional(), can_cancel: z.boolean().optional(),
-    can_amend: z.boolean().optional(),
-  }).strict()).default([]),
+  permissions: z.array(appPermissionSchema).default([]),
   server: z.string().optional(),
   client: z.string().optional(),
   entryTable: z.string(),
@@ -105,6 +115,8 @@ const manifestSchema = z.object({
   reads: readDeclaration.optional(),
   // #559: this app provides people's scope for the instance (one app at most).
   scopeProvider: scopeProviderDeclaration.optional(),
+  // #975: the instance Tables the app reads and proposes changes on.
+  baseTables: baseTablesDeclaration.optional(),
   // #620 (E2): what the app reads per instance, and the deployment variables
   // it reads. D4: which of the instance's roles should carry each app role,
   // written as App Role Binding rows once, at install.
@@ -117,6 +129,8 @@ const manifestSchema = z.object({
   frameOrigins: z.array(frameOrigin).optional(),
   // #642 (E8): the app's controls in the shared top bar.
   bar: z.array(barControl).optional(),
+  // #1046: the app's own gate check and who approves access to it.
+  access: accessDeclaration.optional(),
   tabs: tabsDeclaration.optional(),
   // #941 (ADR 0019): the app's accent, one of the platform's named set. Any
   // text is accepted here so the app is still found; installing (or upgrading
@@ -365,6 +379,10 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     if (!manifest.server) throw new Error('A scope provider requires a server module')
     // An owned Table the provider reads must carry the mark; another
     // Table's mark is checked on every read.
+    const notDeclared = provider.unmarkedTables?.find(table => !provider.tables.includes(table))
+    if (notDeclared) throw new Error(`A scope provider's unmarked Table ${notDeclared} is not one of the Tables it reads`)
+    const ownUnmarked = provider.unmarkedTables?.find(table => manifest.tables.some(t => t.name === table))
+    if (ownUnmarked) throw new Error(`A scope provider's own Table ${ownUnmarked} must be marked decides_scope`)
     for (const table of provider.tables) {
       const owned = manifest.tables.find(t => t.name === table)
       if (owned && !owned.decides_scope) throw new Error('A scope provider reads only Tables marked decides_scope')
@@ -381,6 +399,10 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     if (barKeys.has(control.sets)) throw new Error(`Two bar controls set ${control.sets}; each sets its own key`)
     barKeys.add(control.sets)
   }
+  if (manifest.access?.gate && !Object.hasOwn(readOperations, manifest.access.gate))
+    throw new Error(`The app's gate is its read ${manifest.access.gate}, which is not one of the app's reads`)
+  const strangers = (manifest.access?.approvers ?? []).filter(role => !(manifest.roles ?? []).includes(role))
+  if (strangers.length) throw new Error(`The app's access approvers must be its own roles: ${strangers.join(', ')}`)
   // #666: an operation needs only secrets the app declares.
   const declaredSecrets = new Set(secretEntries(manifest.secrets).map(entry => entry.name))
   for (const [kind, operations] of [['read', readOperations], ['action', actionOperations]] as const)
@@ -449,10 +471,10 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     runtime_manifest: { ...manifest, packageName: pkg.name, packageVersion: pkg.version } }
   return { name: manifest.name, title: manifest.title,
     entryTable: manifest.entryTable, clientRoot, root, version: pkg.version, digest, manifest, app,
-    scopeProvider: provider ? { app: manifest.name, title: manifest.title, version: pkg.version, tables: provider.tables, identifiers: provider.identifiers ?? [], provide: providers.get(provider.name)! } : undefined,
+    scopeProvider: provider ? { app: manifest.name, title: manifest.title, version: pkg.version, tables: provider.tables, unmarkedTables: provider.unmarkedTables ?? [], identifiers: provider.identifiers ?? [], provide: providers.get(provider.name)! } : undefined,
     // V1 stays recognizable as an exact upgrade predecessor, never gets a default policy.
-    actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations), setup } : undefined,
-    reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations), setup, datasets: manifest.datasets } : undefined }
+    actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations), setup, baseTables: manifest.baseTables } : undefined,
+    reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations), setup, datasets: manifest.datasets, baseTables: manifest.baseTables } : undefined }
 }
 
 // The apps on `paths`, by name@version, as boot takes them: each loaded and
@@ -677,14 +699,31 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
         // Only the grants this app owns: an adopted, pre-existing grant stays.
         // Withdrawn first, under the names the Tables have before any rename.
         for (const p of prepared.withdrawn) {
-          const gone = await sql`
-            delete from permission
-            where owner_app = ${name} and ref_table = ${p.table} and role = ${p.role} and tier = ${p.tier ?? 'basic'}
-            returning row_id`
+          // The app's grant and its own line-item grants under it.
+          const closure = (await sql`
+            with recursive withdrawn as (
+              select row_id from permission
+              where owner_app = ${name} and ref_table = ${p.table} and role = ${p.role}
+                and scope_mode = ${p.scope_mode ?? 'all'} and operation in ${sql(Object.keys(p.operations))}
+              union
+              select p.row_id from permission p join withdrawn w on p.parent_permission = w.row_id
+                where p.owner_app = ${name}
+            )
+            select row_id from withdrawn`).map((row) => String(row.row_id))
+          // Someone's deeper grant needs one of these: deleting it would end that
+          // too, with nothing to show for it. Refused while nothing has changed.
+          const held = closure.length ? await sql`select distinct role from permission
+            where (requires_permission in ${sql(closure)} or parent_permission in ${sql(closure)})
+              and owner_app is distinct from ${name} order by role` : []
+          if (held.length)
+            refuse(`Deeper access of ${held.map((d) => String(d.role)).join(', ')} depends on the grant to ${p.role} on ${p.table} that this upgrade withdraws. Remove those Permission Rows first, then upgrade`)
+          const gone = closure.length ? await sql`delete from permission where row_id in ${sql(closure)} returning row_id` : []
           for (const g of gone) {
+            await sql`delete from featherbase.permission_column where parent = ${String(g.row_id)}`
             await sql`update installed_app set perms = perms - ${String(g.row_id)} where name = ${name}`
-            await logActivity(actor, `app_grant_withdrawn ${name}@${version}: ${p.role} on ${p.table} (${p.tier ?? 'basic'}, ${String(g.row_id)})`.slice(0, 140))
           }
+          if (gone.length)
+            await logActivity(actor, `app_grant_withdrawn ${name}@${version}: ${p.role} on ${p.table} (${gone.length} contributions)`.slice(0, 140))
         }
         const losses = await applyMigrations(prepared.pending, name, actor, { ownsClient: typeof prepared.target.manifest.client === 'string' })
         // Counts only, never values: what each destructive step removed.
@@ -694,7 +733,7 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
           const created = await provisionGrants({ name, roles: prepared.target.manifest.roles, runtime_package: true }, prepared.granted)
           await sql`update installed_app set roles = roles || ${sql.json(created.roles)}, perms = perms || ${sql.json(created.perms)} where name = ${name}`
           for (const p of prepared.granted)
-            await logActivity(actor, `app_grant_added ${name}@${version}: ${p.role} on ${p.table} (${p.tier ?? 'basic'})`.slice(0, 140))
+            await logActivity(actor, `app_grant_added ${name}@${version}: ${p.role} on ${p.table}`.slice(0, 140))
         }
         await sql`update installed_app set package_version = ${version}, artifact_digest = ${prepared.target.digest},
           manifest = ${sql.json(prepared.target.app.runtime_manifest as never)},
@@ -816,7 +855,7 @@ export async function appCatalog(user: string) {
     const pkg = packages.get(item.name)
     // Its installation declares pages of its own (#659's classification), and
     // this process holds them to serve.
-    if (item.active && item.ownPages && pkg?.clientRoot && await hasPermission(user, pkg.entryTable, 'read'))
+    if (item.active && item.ownPages && pkg?.clientRoot && await hasPermission(user, pkg.entryTable, 'read') && await passesGate(pkg, user))
       result.push({
         name: pkg.name, title: pkg.title, href: appHref(pkg.name),
         ...(pkg.manifest.tabs && { tabs: appTabLinks(appHref(pkg.name), pkg.manifest.tabs.items) }),
@@ -825,11 +864,46 @@ export async function appCatalog(user: string) {
   return result
 }
 
+/** #1046: the app's own gate check, as `user`, failing closed: only an
+ *  answer of exactly `true` passes. An app without one passes. */
+async function passesGate(pkg: RuntimePackage, user: string): Promise<boolean> {
+  const gate = pkg.manifest.access?.gate
+  if (!gate) return true
+  try {
+    const answer = await withAppIdentity(pkg.name, pkg.version, () => runPackageRead(pkg.name, gate, { payload: {} }, user)) as { result?: unknown }
+    return answer?.result === true
+  } catch {
+    return false
+  }
+}
+
+/** #1046: the roles an app names as approving access to it, and the page of
+ *  its own where they see who is waiting. */
+export function accessApprovers(name: string): { roles: readonly string[]; page?: string } {
+  const access = packages.get(name)?.manifest.access
+  return { roles: access?.approvers ?? [], ...(access?.page ? { page: `${appHref(name)}${access.page}` } : {}) }
+}
+
+/** #1008: the installed apps this person can't open, and the roles that would
+ *  open each. Being without access must not read as the app not being there, so
+ *  a System Manager is told; nothing here decides what opens (appCatalog does).
+ *  Apps turned off aren't listed: the Apps page says so. */
+export async function closedApps(user: string) {
+  const open = new Set((await appCatalog(user)).map((entry) => entry.name))
+  const result = []
+  for (const item of await listInstalledApps()) {
+    const pkg = packages.get(item.name)
+    if (item.active && item.ownPages && pkg?.clientRoot && !open.has(pkg.name))
+      result.push({ name: pkg.name, title: pkg.title, roles: (await tableAccessPolicy(pkg.entryTable))?.roles ?? [] })
+  }
+  return result
+}
+
 /** #642 (E8): an app's controls for the shared top bar, each picker with its
  *  options: the answer of the app's own read, run for `user` under their own
  *  scope, as the serving version (the platform draws the bar, not the app's
  *  client, so there is no client version to name). */
-export async function appBar(name: string, user: string) {
+export async function appBar(name: string, user: string, address: Readonly<Record<string, string>> = {}) {
   // The bar is drawn on the app's own pages: the same gate as serving them.
   // The request holds no lifecycle lock (index.ts), so the check takes its
   // own; each read below takes it again only while it authorizes.
@@ -839,10 +913,11 @@ export async function appBar(name: string, user: string) {
     return packages.get(name)!
   })
   const controls = []
-  for (const { picker, options, sets } of pkg.manifest.bar ?? []) {
+  for (const { picker, options, sets, hiddenWhen, dependsOn } of pkg.manifest.bar ?? []) {
+    const payload = Object.fromEntries((dependsOn ?? []).filter(key => address[key]).map(key => [key, address[key]]))
     let result: unknown
     try {
-      ({ result } = await withAppIdentity(name, pkg.version, () => runPackageRead(name, options, { payload: {} }, user)) as { result: unknown })
+      ({ result } = await withAppIdentity(name, pkg.version, () => runPackageRead(name, options, { payload }, user)) as { result: unknown })
     } catch (error) {
       // A person the read refuses (no role for it, no places) has nothing to
       // choose; the read has already logged the refusal.
@@ -852,7 +927,7 @@ export async function appBar(name: string, user: string) {
     const parsed = barOptions.safeParse(result)
     if (!parsed.success)
       throw new AppError('InternalError', `App ${name}'s read ${options} answered options the bar cannot show: it must answer a list of { value, label }, both text`)
-    controls.push({ picker, sets, options: parsed.data })
+    controls.push({ picker, sets, options: parsed.data, ...(hiddenWhen ? { hiddenWhen } : {}), ...(dependsOn ? { dependsOn } : {}) })
   }
   return { controls }
 }

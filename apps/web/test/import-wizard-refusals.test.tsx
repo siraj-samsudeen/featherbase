@@ -7,10 +7,12 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router'
 import userEvent from '@testing-library/user-event'
+import { afterEach, vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 import { clearSession } from '../src/lib/import-session'
 import { setSession } from '../src/lib/api'
 import { ImportWizard } from '../src/pages/ImportWizard'
+import { grantRole, makeTable } from 'server/test/fixtures'
 
 async function upload(csv: string, name = 'zones.csv') {
   const bytes = new TextEncoder().encode(csv).buffer
@@ -41,6 +43,48 @@ async function openOnZones(admin: Admin) {
   await waitFor(() => expect(screen.getByTestId('iw-target-0')).toHaveValue('Iwr Zone'), { timeout: 8000 })
 }
 
+afterEach(() => vi.unstubAllGlobals())
+
+// #1007: an app's mandatory access refuses even a System Manager who lacks the
+// app's role, and one such Table used to stop the whole wizard.
+test('a System Manager with no app role imports, and a Table they cannot read is not offered', async ({ admin, createUser }) => {
+  clearSession()
+  await zoneTable(admin)
+  const secret = await makeTable(admin, {
+    name: 'Iwr Secret',
+    access_policy: { version: 1, roles: ['Iwr Member'] },
+    columns: ['zone_name', 'pop', 'note'],
+  })
+  const manager = await createUser({ roles: ['System Manager'] })
+  await expect(manager.get(`${secret.url}:meta`)).rejects.toMatchObject({ status: 403 })
+
+  await renderApp('/featherbase/admin/import', manager)
+  await upload('zone_name,pop,note\nA,5,x\n')
+  const target = await screen.findByTestId('iw-target-0', undefined, { timeout: 8000 })
+  expect(screen.queryByTestId('iw-error')).not.toBeInTheDocument()
+  await waitFor(() => expect(target).toHaveValue('Iwr Zone'))
+  await userEvent.setup().click(target)
+  const menu = screen.getByTestId('iw-target-menu-0')
+  expect(within(menu).getByTestId('iw-target-opt-0-Iwr Zone')).toBeInTheDocument()
+  expect(within(menu).queryByTestId('iw-target-opt-0-Iwr Secret')).not.toBeInTheDocument()
+  clearSession()
+})
+
+test('a Table whose details cannot be fetched during an outage stops the wizard and says so', async ({ admin }) => {
+  clearSession()
+  await zoneTable(admin)
+  const bridged = globalThis.fetch
+  vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) =>
+    String(input).includes('Iwr%20Zone:meta')
+      ? Promise.reject(new TypeError('Failed to fetch'))
+      : bridged(input, init))
+  await renderApp('/featherbase/admin/import', admin)
+  await upload('zone_name,pop,note\nA,5,x\n')
+  expect(await screen.findByTestId('iw-error', undefined, { timeout: 8000 })).toHaveTextContent('Failed to fetch')
+  expect(screen.queryByTestId('iw-target-0')).not.toBeInTheDocument()
+  clearSession()
+})
+
 test('a match preview refused by the server disappears, while Check reports the refusal', async ({ admin }) => {
   const user = userEvent.setup()
   await openOnZones(admin)
@@ -63,7 +107,7 @@ test('rows with data only in an excluded column are skipped by both Check and ke
   await user.selectOptions(screen.getByTestId('iw-key-0'), 'zone_name')
   await user.click(screen.getByTestId('iw-check'))
   expect(await screen.findByTestId('iw-check-0')).toHaveTextContent('All 0 rows are ready to import')
-  expect(screen.getByTestId('iw-check-skipped-0')).toHaveTextContent('1 rows have no data in the imported columns and will be skipped')
+  expect(screen.getByTestId('iw-check-skipped-0')).toHaveTextContent('1 row has no data in the imported columns and will be skipped')
   await user.click(screen.getByTestId('iw-import'))
   await screen.findByTestId('list-view')
   expect(await admin.get('/api/table/Iwr%20Zone?fields=["zone_name","pop"]')).toMatchObject({ total: 1, data: [{ zone_name: 'A', pop: 1 }] })
@@ -79,7 +123,7 @@ test('a remembered match key is not suggested when the file does not map that co
   await waitFor(() => expect(screen.getByTestId('iw-target-0')).toHaveValue('Iwr Zone'))
   const user = userEvent.setup()
   await user.click(screen.getByTestId('iw-check'))
-  expect(await screen.findByTestId('iw-check-0')).toHaveTextContent('All 1 rows are ready to import')
+  expect(await screen.findByTestId('iw-check-0')).toHaveTextContent('The 1 row is ready to import')
   expect(screen.getByTestId('iw-key-0')).toHaveValue('')
   expect(screen.queryByTestId('iw-key-suggested-0')).not.toBeInTheDocument()
   expect(await admin.get('/api/table/Iwr%20Zone?fields=["zone_name","pop"]')).toMatchObject({ total: 1, data: [{ zone_name: 'A', pop: 2 }] })
@@ -263,14 +307,10 @@ test('#851 a mapped-column choice invalidates acknowledged append despite the sa
 test('#851 readable append-only coverage warns without offering a matching action', async ({ admin, createUser }) => {
   const rows = await consentZones(admin, 2)
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Iwr Appender' } })
-  await admin.post('/api/save_row', { table: 'Permission', row: {
-    ref_table: 'Iwr Zone', role: 'Iwr Appender', can_read: true, can_create: true, can_write: false,
-  } })
+  await grantRole(admin, { table: 'Iwr Zone', role: 'Iwr Appender', can_read: true, can_create: true, can_write: false })
   // The generic target picker reads Table metadata; this is a read grant,
   // not System Manager or write access to the imported rows.
-  await admin.post('/api/save_row', { table: 'Permission', row: {
-    ref_table: 'Table', role: 'Iwr Appender', can_read: true,
-  } })
+  await grantRole(admin, { table: 'Table', role: 'Iwr Appender', can_read: true })
   const appender = await createUser({ roles: ['Iwr Appender'] })
   await admin.post('/api/save_row', { table: 'Data Scope', row: {
     person: appender.user, allow_table: 'Table', for_value: 'Iwr Zone',

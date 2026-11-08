@@ -5,7 +5,7 @@
 import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
-import { expectApiError, makeTable } from './fixtures'
+import { expectApiError, grantRole, makeTable } from './fixtures'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
 
@@ -110,7 +110,7 @@ describe('#905: archiving a Table', () => {
   test('a reader sees it under archived and cannot add rows; only a System Manager archives', async ({ admin, createUser }) => {
     await plants(admin)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Arc Clerk' } })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: T, role: 'Arc Clerk', can_read: true, can_write: true, can_create: true } })
+    await grantRole(admin, { table: T, role: 'Arc Clerk', can_read: true, can_write: true, can_create: true })
     const clerk = await createUser({ email: 'arc.clerk@example.com', roles: ['Arc Clerk'] })
     await expectApiError(archive(clerk), { status: 403 })
     await archive(admin)

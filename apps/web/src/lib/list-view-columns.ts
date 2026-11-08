@@ -17,6 +17,7 @@ export interface ListColumn {
   label: string
   column_type: string
   reference_table?: string | null
+  reference_base?: string | null
   /** #881: a link to a row of any Table names the column holding its Table. */
   table_column?: string | null
   choice_labels?: Record<string, string> | null
@@ -30,18 +31,18 @@ function toListColumn(c: ColumnDef): ListColumn {
     label: c.label ?? c.column_name,
     column_type: c.column_type,
     reference_table: c.reference_table ?? null,
+    ...(c.reference_base ? { reference_base: c.reference_base } : {}),
     ...(c.table_column ? { table_column: c.table_column } : {}),
     choice_labels: c.choice_labels,
   }
 }
 
-/** The data columns a list may show, in the Table's column order: never one
- *  above the caller's readable levels (Decision 2). A meta without levels
- *  (none is served without them) withholds nothing. */
+/** The data columns a list may show, in the Table's column order, limited to
+ * the caller's explicit readable Column selection. */
 export function dataColumns(meta: TableMeta): ColumnDef[] {
-  const readable = meta.readable_tiers ? new Set<string>(meta.readable_tiers) : null
+  const readable = meta.readable_columns ? new Set(meta.readable_columns) : null
   return meta.columns.filter(
-    (c) => !NO_COLUMN_TYPES.has(c.column_type) && !c.hidden && (!readable || readable.has(c.tier)),
+    (c) => !NO_COLUMN_TYPES.has(c.column_type) && !c.hidden && (!readable || readable.has(c.column_name)),
   )
 }
 

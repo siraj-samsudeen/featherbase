@@ -193,7 +193,7 @@ test('TLC-J2 / TLC-R3 / TLC-R4: delete a row from its own form, behind a confirm
   await session
     .clickButton('Delete')
     .assertHas('[data-testid="delete-row-dialog"]')
-    .assertText(`Delete ${NOTE} note-2?`)
+    .assertText(`Delete ${NOTE}: a mistake?`)
     .assertText('This cannot be undone')
 
   // Branch at J2.2 — cancel leaves the row exactly where it was.

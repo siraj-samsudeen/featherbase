@@ -91,8 +91,9 @@ class CommandBar {
   }
 
   async choosePersonResult(kind) {
+    // Person's own new-row choice: an installed app may offer another, such as "+ New Finance person row".
     const target = kind === 'new'
-      ? this.page.getByTestId('awesomebar-new')
+      ? this.page.getByTestId('awesomebar-new').and(this.page.getByRole('option', { name: '+ New Person row', exact: true }))
       : this.page.getByRole('option', { name: 'Person Table definition', exact: true });
     const count = await this.dropdown().getByRole('option').count();
     for (let i = 0; i < count; i++) {

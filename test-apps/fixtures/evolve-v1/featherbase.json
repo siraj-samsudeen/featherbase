@@ -26,7 +26,7 @@
     }
   ],
   "permissions": [
-    { "table": "evolve.item", "role": "Evolve Clerk", "can_read": true, "can_write": true, "can_create": true },
-    { "table": "evolve.note", "role": "Evolve Clerk", "can_read": true }
+    { "table": "evolve.item", "role": "Evolve Clerk", "operations": { "read": "*", "update": "*", "create": "*" } },
+    { "table": "evolve.note", "role": "Evolve Clerk", "operations": { "read": "*" } }
   ]
 }

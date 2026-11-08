@@ -7,6 +7,7 @@ import { assertPermission, getRoles, getScopeMap } from './permissions'
 import { getMeta } from './meta'
 import { tableRelation, type TableDef } from './table-engine'
 import { AppError } from './errors'
+import { ArchivedTableError } from './system-written'
 import { logAccess } from './audit'
 import { coversPersonScope, narrowPersonScope, resolvePersonScope, NoPersonScope, type ScopeProviderBinding } from './person-scope'
 import { personScopeSchema } from 'shared'
@@ -46,6 +47,9 @@ const operationSchema = z.union([
  *  `scopeProviders`, and the Tables it reads. #660: and the identifier
  *  systems, by key, whose current values it gets for the person. */
 export const scopeProviderDeclaration = z.object({ name, tables: z.array(text).min(1).refine(distinct),
+  /** #967: of `tables`, the instance's own Tables it reads without their carrying `decides_scope`,
+   *  so role grants decide who edits them. The app names each one; a Table it owns stays marked. */
+  unmarkedTables: z.array(text).refine(distinct).optional(),
   identifiers: z.array(z.string().regex(IDENTIFIER_SYSTEM_KEY)).refine(distinct).optional() }).strict()
 export const readDeclaration = z.object({ version: z.literal(1), tables: z.array(text).refine(distinct),
   operations: z.record(name, operationSchema).refine(o => Object.keys(o).length > 0),
@@ -292,6 +296,7 @@ export function withAppAuthorization<T>(request: AccessRequest,
         return handler(authorization, payload, freezeJson(metadata), !!previous, resolved?.providerKeys)
       })
     } catch (error) {
+      if (error instanceof ArchivedTableError) throw error
       // Outside the failed business transaction so the audit survives rollback.
       if (error instanceof AccessRefusal || (error instanceof AppError && error.type === 'PermissionError')) {
         return recordAppAccessRefusal(request.user, request.app, request.operation, error instanceof AccessRefusal ? error.reason : 'permission', error)

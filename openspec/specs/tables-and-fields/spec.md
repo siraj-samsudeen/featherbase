@@ -862,10 +862,10 @@ A nested row SHALL be able to hold a link to a row of any table, chosen as on a 
 
 ### Requirement: Archive a table without deleting it
 
-A System Manager SHALL be able to archive a custom table, with an optional note of what replaced it, and to
-un-archive it. While archived, its rows and history SHALL stay readable to whoever could read them, and adding,
-changing, retiring, reactivating, deleting, permanently deleting, importing or merging its rows SHALL be refused for everyone, administrators included. Platform
-tables, settings, sub-tables, an installed app's tables and tables that decide access SHALL NOT be archived.
+A System Manager SHALL be able to archive a custom table or an app's table, with an optional note, and to
+un-archive it. While archived, its rows and history SHALL stay readable to whoever could read them, and every change
+to its rows SHALL be refused for everyone, administrators included. Platform
+tables, settings and sub-tables SHALL NOT be archived, nor tables that decide access, except as the next requirement allows.
 
 #### Scenario: Archive a replaced table
 
@@ -889,10 +889,30 @@ tables, settings, sub-tables, an installed app's tables and tables that decide a
 
 #### Scenario: Only a custom table
 
-- **WHEN** someone tries to archive a platform table, a settings table, a sub-table, an installed app's table or a
+- **WHEN** someone tries to archive a platform table, a settings table, a sub-table, an app's entry table or a
   table that decides who can see what, or
   someone who is not a System Manager tries to archive any table
 - **THEN** it is refused
+
+### Requirement: An installed app's unused table can be archived
+
+An installed app's table, other than its entry table, SHALL be archivable. One that decides access SHALL be archivable only while it holds no rows. Archiving SHALL leave the app's reads and people's scope as they were, and SHALL last through a redeploy and an app upgrade.
+
+#### Scenario: An app's unused table
+
+- **WHEN** a System Manager archives Store floor, a table the Dash app installed and does not use yet
+- **THEN** it is archived, Dash's own reads of it still work, and a Dash action that writes to it is refused, saying the table is archived
+
+#### Scenario: An app's table that decides access
+
+- **WHEN** a System Manager archives an app's table that decides who can see what
+- **THEN** it is archived if it holds no rows, people's scope stays the same, and no rows can be added until it is un-archived
+- **AND** it is refused if it holds rows
+
+#### Scenario: Archived through an upgrade
+
+- **WHEN** an app is redeployed or upgraded while one of its tables is archived, even by a version that renames that table or changes its columns
+- **THEN** the upgrade succeeds and the table is still archived, with its note
 
 ### Requirement: An archived table is out of everyday use
 
@@ -914,3 +934,69 @@ under "Archived" on All tables. Its list and its rows SHALL say it is archived, 
 
 - **WHEN** a System Manager un-archives it
 - **THEN** it is back in its module's menu
+
+### Requirement: A column can be called status
+
+A Table SHALL be able to hold its own column called `status`, whose values mean nothing to the platform. Whether a row is a draft, submitted or cancelled SHALL be held only in `submission_status`, a name no Table's own column can take.
+
+#### Scenario: A status that reads like the lifecycle
+
+- **WHEN** a row's own `status` column holds `cancelled`
+- **THEN** the row can still be edited and deleted
+
+#### Scenario: Submitting leaves the column alone
+
+- **WHEN** a row with its own `status` column is submitted, or moved by a workflow
+- **THEN** its `submission_status` changes and its `status` stays as it was
+
+#### Scenario: The lifecycle's name is reserved
+
+- **WHEN** a builder adds a column called `submission_status`
+- **THEN** the column is refused
+
+### Requirement: An SLA reads a Table's own status when no workflow decides
+
+With no active workflow on a Table, a Service Level Agreement's fulfilled states SHALL be matched against the Table's own `status` column, when it has one.
+
+#### Scenario: A resolved row past its deadline
+
+- **WHEN** a row past its deadline has `status` set to one of the agreement's fulfilled states
+- **THEN** the row is not marked overdue
+
+### Requirement: An update to a Table changes only what it names
+
+An update to a Table's definition SHALL change only what it names. A setting or the columns left out SHALL stay as they were, and only an explicit empty value SHALL clear a setting.
+
+#### Scenario: Only the columns
+
+- **WHEN** an update names only a Table's columns
+- **THEN** the columns change, and its title column, description and every other setting stay
+
+#### Scenario: Only a setting
+
+- **WHEN** an update names only a Table's description
+- **THEN** the description changes, and its columns and other settings stay
+
+#### Scenario: An explicit empty value
+
+- **WHEN** an update sends an empty title column
+- **THEN** the Table has no title column
+
+### Requirement: A Table's title column is chosen on its Columns page
+
+The Columns page SHALL offer one Title choice per column that can name a row, save the choice at once, and let it be cleared. It SHALL take effect straight away in the Table's list, its row headings and every link to its rows.
+
+#### Scenario: Choosing a title
+
+- **WHEN** a System Manager chooses the "Zone name" column as the title
+- **THEN** the page says so, and a link to a row of that Table reads the row's zone name
+
+#### Scenario: Columns that can't be a title
+
+- **WHEN** a column is hidden, or holds a date, a tick, a link or another type that can't name a row by its own value
+- **THEN** it has no Title choice, unless it is the title now
+
+#### Scenario: Removing the title column
+
+- **WHEN** the title column is removed
+- **THEN** the Table has no title column

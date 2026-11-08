@@ -189,11 +189,31 @@ export async function grantRole(admin: TestClient, spec: GrantSpec): Promise<str
   const tables = Array.isArray(table) ? table : [table]
   const ids: string[] = []
   for (const ref_table of tables) {
-    const row = await admin.post<{ row_id: string }>('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table, role, ...perms },
-    })
-    ids.push(String(row.row_id))
+    for (const [flag, operation] of Object.entries({
+      can_read: 'read', can_write: 'update', can_create: 'create', can_delete: 'delete',
+      can_submit: 'submit', can_cancel: 'cancel', can_amend: 'amend',
+    })) {
+      if (!perms[flag]) continue
+      // A basic-level grant follows the basic-level Columns; a restricted one
+      // reaches every Column on top of a basic grant of the same operation,
+      // as the old restricted level did, never as Row access of its own.
+      let requires_permission: string | undefined
+      if (perms.tier === 'restricted') {
+        const filters = JSON.stringify([['ref_table', '=', ref_table], ['operation', '=', operation],
+          ['column_rule', '=', 'basic'], ['parent_permission', '=', null], ['requires_permission', '=', null]])
+        const bases = await admin.get<{ data: { row_id: string; role: string }[] }>(
+          `/api/table/Permission?filters=${encodeURIComponent(filters)}&fields=${encodeURIComponent(JSON.stringify(['row_id', 'role']))}`)
+        const base = bases.data.find((row) => row.role === role) ?? bases.data[0]
+        if (!base) throw new Error(`grantRole: a restricted ${operation} grant on ${ref_table} needs a basic one first`)
+        requires_permission = base.row_id
+      }
+      const row = await admin.post<{ row_id: string }>('/api/save_row', {
+        table: 'Permission',
+        row: { ref_table, role, operation, requires_permission, scope_mode: perms.own_rows_only ? 'creator' : 'all',
+          column_rule: perms.tier === 'restricted' ? 'every' : 'basic' },
+      })
+      ids.push(String(row.row_id))
+    }
   }
   return ids
 }

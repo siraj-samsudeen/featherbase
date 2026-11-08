@@ -12,6 +12,7 @@ import { test, patchDoc } from './pg-test'
 import { EXTERNAL_DATABASE_URL } from './external-database'
 import { sql } from '../src/db'
 import { invalidateSources } from '../src/sources/registry'
+import { invalidateMeta } from '../src/meta'
 import type { ReflectionCandidate } from '../src/sources/reflect'
 import { grantRole, makeTable } from './fixtures'
 
@@ -313,7 +314,7 @@ describe('EDS-5: reading bound rows', () => {
     const doc = (await admin.get(`/api/table/Ext%20Tenant/${name}`)) as Record<string, unknown>
     expect(doc.slug).toBe('acme')
     expect(Date.parse(doc.updated_at as string)).not.toBeNaN()
-    expect(doc.status).toBe('draft')
+    expect(doc.submission_status).toBe('draft')
   })
 
   // #541: a bigint on the source is a whole-number column, read back as a number.
@@ -521,9 +522,9 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
       const required = await admin.fetch(path, { method: 'POST', body: JSON.stringify({ business_code: 1 }) })
       expect(required.status).toBe(417)
       const r = (await required.json()) as { error: { message: string; fields?: Record<string, string> } }
-      expect(r.error.fields).toEqual({ status_1: 'Required' })
+      expect(r.error.fields).toEqual({ status: 'Required' })
       expect(r.error.message).not.toMatch(/violates|null value/)
-      const broken = await admin.fetch(path, { method: 'POST', body: JSON.stringify({ status_1: 'ok', business_code: 999 }) })
+      const broken = await admin.fetch(path, { method: 'POST', body: JSON.stringify({ status: 'ok', business_code: 999 }) })
       expect(broken.status).toBe(417)
       const b = (await broken.json()) as { error: { message: string; fields?: Record<string, string> } }
       expect(b.error.fields).toEqual({ business_code: expect.any(String) })
@@ -568,7 +569,7 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
     await cli.unsafe(`create or replace function ext_fixture.refuse_gauge() returns trigger language plpgsql as $$ begin raise exception using errcode = '${code}', message = 'private source diagnostic', ${diagnostic}; end $$`)
     await cli.unsafe('create trigger refuse_gauge before insert on ext_fixture.gauge for each row execute function ext_fixture.refuse_gauge()')
     try {
-      const response = await admin.fetch('/api/table/Ext%20Gauge', { method: 'POST', body: JSON.stringify({ status_1: 'new' }) })
+      const response = await admin.fetch('/api/table/Ext%20Gauge', { method: 'POST', body: JSON.stringify({ status: 'new' }) })
       expect(response.status).toBe(417)
       expect(await response.json()).toMatchObject({ error: { type: 'ValidationError', message } })
     } finally {
@@ -719,6 +720,14 @@ describe('EDS-2: foreign keys reflect as References', () => {
       expect(await cli`select * from ext_fixture.garage order by id`).toEqual(before.garages)
       expect(await cli`select * from ext_fixture.accident order by id`).toEqual(before.accidents)
       expect(await Promise.all(metaPaths.map((p) => admin.get(p)))).toEqual(allMetadata)
+      // #246: scoped on the garage alone, and required. An accident naming no
+      // garage leaves the reader's list, and with no Data Scope nothing is left.
+      await sql`update table_def set scope_on = ${['garage_id']}, scope_required = true where name = ${accident}`
+      invalidateMeta(accident)
+      const scopedQuery = new URLSearchParams({ fields: JSON.stringify(fields), filters: JSON.stringify([['row_id', 'in', ids]]), order_by: 'row_id asc' })
+      expect((await reader.get<{ data: unknown[] }>(`${path}?${scopedQuery}`)).data).toEqual([rows[0], rows[2]])
+      await sql`delete from data_scope where person = ${reader.user!}`
+      expect(await reader.get(`${path}?${scopedQuery}`)).toEqual({ data: [], total: 0, limit_start: 0, limit_page_length: 20 })
     } finally {
       await cli`delete from ext_fixture.accident where vehicle_id in ${cli(vehicles.map((v) => v.id))}`
       await cli`delete from ext_fixture.vehicle where id in ${cli(vehicles.map((v) => v.id))}`

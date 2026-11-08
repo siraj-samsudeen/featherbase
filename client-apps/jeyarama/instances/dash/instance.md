@@ -21,10 +21,9 @@ The base applies everywhere. `local`, `dev` and `prod` hold what differs:
 - **Google sign-in.** The client id is set on dev and prod and empty locally,
   so the development mock sign-in serves. The client secret is never in the
   file; it is the `GOOGLE_CLIENT_SECRET` deployment variable.
-- **The Dive.** `DIVE_ID` and `SERVICE_ACCOUNT` are read when dev or prod
-  settings are applied and saved into the App Settings. Local boots with neither.
-  No version is pinned: the report opens the Dive's latest saved version, so
-  saving a Dive releases it (#937).
+- **The Dive.** `SERVICE_ACCOUNT` is read when dev or prod settings are applied and saved into the
+  App Settings; local boots without it. Each Dive's id is on its `dash.report` row. No version is
+  pinned: a report opens its Dive's latest saved version, so saving a Dive releases it (#937).
 - **Refreshing the cached figures.** Off locally: there is no warehouse to
   refresh from, and a refresh would only fail.
 - **The warehouse.** The `motherduck` Data Source names the databases it reads.
@@ -59,15 +58,7 @@ everyone. Staff sign in with their employee number. Their first sign-in links
 them to their `Employee` row and gives them a person with no roles. The staff
 Table's columns are named in the method's `settings.roster`.
 
-## Identifier systems
+## Scope
 
-The `jeyarama` seed pack (`apps/server/seeds/jeyarama/`) adds the employee
-identifier systems the scope provider reads. It is idempotent:
-
-```bash
-pnpm --filter server cli seed-pack apply jeyarama
-```
-
-## Cut-over
-
-`instance-setup/mark-scope-tables.mjs` runs once at go-live; its header says how.
+Dash's scope provider reads six core Tables without marking them `decides_scope` (`unmarkedTables` in
+its manifest), so role grants decide who edits them. Keep the grants on `Job Assignment` tight: they change who sees what.

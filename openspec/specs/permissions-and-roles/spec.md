@@ -98,10 +98,10 @@ on the table it belongs to.
 A column SHALL be markable so that only roles with the deeper access it
 requires can see, search or change it. Wherever rows are listed, searched,
 opened, printed or returned after a save, that column is omitted for
-everyone else, and a write to it from them is silently dropped rather than
-saved. A sensitive column in a row's line items is treated the same way: it
-shows to someone whose access to the row, or to the line items themselves,
-reaches it.
+everyone else, and a change to it from them is refused, with nothing in that
+change saved. A sensitive column in a row's line items is treated the same
+way: it shows to someone whose access to the row, or to the line items
+themselves, reaches it.
 
 #### Scenario: A sensitive column is hidden
 
@@ -382,6 +382,23 @@ Creating a person with roles SHALL record one history entry naming who created t
 - **WHEN** a person created with a role, and not changed since, is deleted
 - **THEN** the person and their roles are removed, and no history is left behind
 
+### Requirement: A grant can reach only some columns
+
+A role's grant to read, create or change a table's rows SHALL say which columns it
+reaches: every ordinary column, every column including sensitive ones, or only the
+columns it lists. The first two keep reaching columns the table gains later; a list
+reaches only what it names.
+
+#### Scenario: A detail that may be read but not changed
+
+```gherkin
+Given a role may read a quote's title and unit cost but may change only its title
+And the user holds that role
+When the user changes the title and the unit cost of the quote "Q-1" and saves
+Then the save is refused
+And the quote "Q-1" keeps its old title and unit cost
+```
+
 ### Requirement: Roles given to everyone who signs in
 
 A System Manager SHALL be able to name, in System Settings, roles that every person holds without adding them to each Person. Only a System Manager SHALL change them, each SHALL be an existing role other than a platform role, and an instance settings file SHALL NOT carry them.
@@ -410,3 +427,40 @@ A System Manager SHALL be able to name, in System Settings, roles that every per
 
 - **WHEN** a System Manager opens the access page or the Person form of someone holding a role only through the setting
 - **THEN** the access page says "everyone who signs in holds it (System Settings)", and the Person form says "Everyone who signs in also holds Tasker Member, set in System Settings."
+
+### Requirement: A table names what narrows it
+
+A table SHALL be able to name which of its references narrow its rows. Once it does, only those references narrow it. A table that names none is narrowed by every reference, as before.
+
+#### Scenario: A supplier store does not hide a row
+
+- **WHEN** a sections table is narrowed by its store alone, and a user narrowed to the North store opens it
+- **THEN** they see North's sections, including one whose supplier store is South
+
+### Requirement: A table can stay closed without narrowing
+
+A table SHALL be able to require narrowing. Someone who has none on the references it names then sees none of its rows and can neither open, add, change nor delete any, and a row that names nothing on those references is closed to them too. This SHALL NOT apply to a System Manager.
+
+#### Scenario: A store manager whose scope never arrived
+
+- **WHEN** a store manager has no narrowing at all and opens a sections table that requires it
+- **THEN** the list is empty, and opening, adding or changing a section is refused
+
+#### Scenario: A section that names no store
+
+- **WHEN** a store manager narrowed to the North store opens that table
+- **THEN** they see North's sections, and not one that names no store
+### Requirement: Taking a grant away keeps its history
+
+Unticking a grant where a table's grants are set SHALL end the access on the next request, even when the grant has history, comments, attachments or shares. What the grant holds SHALL stay, with one more history entry naming who ended it and what it was. This SHALL hold only there: any other delete of a grant keeps the rule that a row with history cannot be deleted.
+
+#### Scenario: A grant that was edited
+
+- **WHEN** a System Manager unticks read for a role, on a grant that was edited before
+- **THEN** a person holding that role is refused the table on their next request
+- **AND** the grant's history can still be read, ending with who took it away and what it was
+
+#### Scenario: Deleting the same grant any other way
+
+- **WHEN** a System Manager deletes that grant from its own row instead
+- **THEN** the delete is refused and the grant stays

@@ -32,11 +32,11 @@ test('rows with nothing in any mapped column are counted and skipped, before and
   await user.click(await screen.findByTestId('iw-check'))
   const check = await screen.findByTestId('iw-check-0')
   await waitFor(() => expect(check).toHaveTextContent('All 2 rows are ready to import'))
-  expect(screen.getByTestId('iw-check-skipped-0')).toHaveTextContent('1 rows have no data in the imported columns and will be skipped')
+  expect(screen.getByTestId('iw-check-skipped-0')).toHaveTextContent('1 row has no data in the imported columns and will be skipped')
 
   await user.click(screen.getByTestId('iw-import'))
   // The finished import says the same.
-  await waitFor(() => expect(screen.getByTestId('iw-result-0')).toHaveTextContent('1 rows had no data in the imported columns and were skipped'), { timeout: 8000 })
+  await waitFor(() => expect(screen.getByTestId('iw-result-0')).toHaveTextContent('1 row had no data in the imported columns and was skipped'), { timeout: 8000 })
   await waitFor(async () => {
     const rows = await admin.get<{ total: number }>(`/api/table/${encodeURIComponent(DT)}`)
     expect(rows.total).toBe(2)

@@ -9,6 +9,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { sql } from 'server/src/db'
 import { discoverPackages } from 'server/src/runtime-packages'
 import { test, expect, renderApp } from './pg-test'
+import { grantRole } from 'server/test/fixtures'
 
 const shelves = resolve(process.cwd(), '../..', 'test-apps/fixtures/shelves-v1')
 
@@ -83,12 +84,12 @@ test('with no terms, the page says so (item 9)', async ({ admin }) => {
 test('a failed glossary read can be retried after access is restored without leaving the page', async ({ admin, createUser }) => {
   await addTerm(admin, { term: 'Planogram', definition: 'The drawing of what goes on each shelf.' })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Glossary Retry Reader' } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Glossary Retry Reader', can_read: true } })
+  await grantRole(admin, { table: 'Person', role: 'Glossary Retry Reader', can_read: true })
   const reader = await createUser({ email: 'glossary-retry@example.test', roles: ['Glossary Retry Reader'] })
-  await sql`update permission set can_read = false where ref_table = 'Glossary Term'`
+  await sql`delete from permission where ref_table = 'Glossary Term' and operation = 'read'`
   await renderApp('/featherbase/admin/glossary', reader)
   expect(await screen.findByText('The glossary could not be loaded.')).toBeInTheDocument()
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Glossary Term', role: 'Glossary Retry Reader', can_read: true } })
+  await grantRole(admin, { table: 'Glossary Term', role: 'Glossary Retry Reader', can_read: true })
   await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
   expect(await screen.findByRole('heading', { level: 3, name: 'Planogram' })).toBeInTheDocument()
   expect(screen.getByText('The drawing of what goes on each shelf.')).toBeInTheDocument()
@@ -104,7 +105,7 @@ test('an editor can add and edit terms; a reader cannot (items 1, 8)', async ({ 
   unmount()
   // A person with any grant of their own enters the Admin (#410); none on Glossary Term.
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Glossary Reader' } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Glossary Reader', can_read: true } })
+  await grantRole(admin, { table: 'Person', role: 'Glossary Reader', can_read: true })
   const reader = await createUser({ email: 'reader@example.test', roles: ['Glossary Reader'] })
   await renderApp('/featherbase/admin/glossary', reader)
   await waitFor(() => expect(screen.getAllByTestId('glossary-term')).toHaveLength(2))
@@ -177,4 +178,31 @@ test('a term saved elsewhere shows when the glossary is opened again (Codex revi
   await addTerm(admin, { term: 'Planogram', definition: 'The drawing of what goes on each shelf.' })
   await user.click(await screen.findByTestId('glossary-link'))
   expect(await screen.findByRole('heading', { level: 3, name: 'Planogram' })).toBeInTheDocument()
+})
+
+// #1037: a term may carry a picture. Checklist in #1037's first comment.
+test('a term\'s picture shows under its definition and opens full size; a term without one shows none (items 2, 3, 4, 5)', async ({ admin, createUser }) => {
+  await addTerm(admin, { term: 'Site', definition: 'A place the business works from.', picture: '/files/sites.png' })
+  await addTerm(admin, { term: 'Plant', definition: 'A SAP plant.' })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Glossary Reader' } })
+  await grantRole(admin, { table: 'Person', role: 'Glossary Reader', can_read: true })
+  const reader = await createUser({ email: 'reader@example.test', roles: ['Glossary Reader'] })
+  await renderApp('/featherbase/admin/glossary', reader)
+  await waitFor(() => expect(screen.getAllByTestId('glossary-term')).toHaveLength(2))
+  const [plant, site] = screen.getAllByTestId('glossary-term')
+  const picture = within(site).getByRole('img', { name: 'Picture for Site' })
+  expect(picture).toHaveAttribute('src', '/files/sites.png')
+  expect(within(site).getByRole('link', { name: 'Open the picture for Site full size' })).toHaveAttribute('href', '/files/sites.png')
+  expect(within(site).getByRole('link', { name: 'Open the picture for Site full size' })).toHaveAttribute('target', '_blank')
+  expect(within(plant).queryByRole('img')).not.toBeInTheDocument()
+})
+
+test('the term form offers a Picture right after the definition (item 1)', async ({ admin }) => {
+  await renderApp('/featherbase/admin/table/glossary-term/new', admin)
+  const definition = await screen.findByLabelText('Definition')
+  const attach = await screen.findByRole('button', { name: /Attach image — Picture/ })
+  const fields = [...document.querySelectorAll('[data-field]')].map((el) => el.getAttribute('data-field'))
+  expect(fields.indexOf('picture')).toBe(fields.indexOf('definition') + 1)
+  expect(definition).toBeInTheDocument()
+  expect(attach).toBeInTheDocument()
 })

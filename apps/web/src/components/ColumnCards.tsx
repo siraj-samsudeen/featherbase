@@ -2,7 +2,7 @@
 // friendly chips, and the type-specific detail control labelled inside the
 // card. Shares the grid view's column state; the grid remains the power
 // view (full engine type list), the cards speak spreadsheet.
-import { usePickableTables } from '../lib/session'
+import { tableOptionLabel, usePickableTables } from '../lib/session'
 import { BuilderColumn, ColumnVerdict, slugify } from '../lib/column-rules'
 import { buttonClasses, cardClasses, iconButtonClasses, inputClasses, labelClasses, pillClasses } from '@featherbase/shop-floor'
 
@@ -122,7 +122,7 @@ export function ColumnCards({
                   <option value="">Choose a table…</option>
                   {(tables ?? []).map((t) => (
                     <option key={t.row_id} value={t.row_id}>
-                      {t.row_id}
+                      {tableOptionLabel(t)}
                     </option>
                   ))}
                 </select>

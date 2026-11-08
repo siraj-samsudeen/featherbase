@@ -16,6 +16,8 @@ import { sql, withTransaction } from '../src/db'
 import { invalidateMeta } from '../src/meta'
 import { preflightRelease } from '../src/release-preflight'
 import { rehearse } from '../src/migrate-rehearse'
+import { grantRole } from './fixtures'
+import type { TestClient } from 'feather-testing-postgres'
 
 type Client = { post: <T = unknown>(path: string, body: unknown) => Promise<T> }
 const fixture = (v: number) => resolve('../..', `test-apps/fixtures/evolve-v${v}`)
@@ -62,8 +64,12 @@ async function schema() {
     constraints: await sql`select conrelid::regclass::text as relation, conname, pg_get_constraintdef(oid) as definition
       from pg_constraint where connamespace = 'evolve'::regnamespace order by conname`,
     policies: await sql`select tablename, policyname, qual from pg_policies where schemaname = 'evolve' order by tablename`,
-    grants: await sql`select ref_table, role, tier, can_read, can_write, can_create, owner_app from permission
-      where owner_app = 'evolve' order by ref_table, role`,
+    grants: await sql`select ref_table, role, operation, scope_mode, owner_app from permission
+      where owner_app = 'evolve' order by ref_table, role, operation`,
+    columnGrants: await sql`select p.ref_table, p.role, p.operation, link.column_name as parent_column, c.column_name
+      from permission p join featherbase.permission_column pc on pc.parent = p.row_id
+      join column_def c on c.row_id = pc.target_column left join column_def link on link.row_id = p.parent_column
+      where p.owner_app = 'evolve' order by p.ref_table, p.role, p.operation, link.column_name, c.column_name`,
     registered: (await sql`select tables from installed_app where name = 'evolve'`).map(r => [...(r.tables as string[])].sort()),
   }
 }
@@ -108,15 +114,16 @@ describe('app schema evolution', () => {
     await seed(admin)
     await upgrade(admin, '0.2.0')
     expect(await sql`select ref_table from comment where ref_name = 'n1' and content = 'Confirmed by the night shift'`).toEqual([{ ref_table: 'evolve.memo' }])
-    expect(await sql`select ref_table, can_read from permission where owner_app = 'evolve' and ref_table like 'evolve.%' order by ref_table`).toEqual([
-      { ref_table: 'evolve.item', can_read: true }, { ref_table: 'evolve.memo', can_read: true }, { ref_table: 'evolve.supplier', can_read: true },
+    expect(await sql`select ref_table, operation from permission where owner_app = 'evolve' and ref_table like 'evolve.%' order by ref_table, operation`).toEqual([
+      { ref_table: 'evolve.item', operation: 'create' }, { ref_table: 'evolve.item', operation: 'read' }, { ref_table: 'evolve.item', operation: 'update' },
+      { ref_table: 'evolve.memo', operation: 'read' }, { ref_table: 'evolve.supplier', operation: 'read' },
     ])
   })
 
   test('a new Table arrives with the grant its version declares, shown in the preview', async ({ admin }) => {
     await install(admin)
     const plan = await admin.post<{ permissions: unknown[] }>('/api/preview_app_upgrade', { name: 'evolve', version: '0.2.0' })
-    expect(plan.permissions).toEqual([{ grant: { table: 'evolve.supplier', role: 'Evolve Clerk', can_read: true } }])
+    expect(plan.permissions).toEqual([{ grant: { table: 'evolve.supplier', role: 'Evolve Clerk', operations: { read: '*' } } }])
   })
 
   test('after the upgrade the role the new Table is granted to can read it', async ({ admin, createUser }) => {
@@ -129,10 +136,39 @@ describe('app schema evolution', () => {
     expect(await response.json()).toMatchObject({ supplier_name: 'Acme Pallets' })
   })
 
+  test.for(['unchanged', 'narrowed', 'removed'] as const)('an upgrade preserves a %s wildcard read grant', async (mode, { admin, createUser }) => {
+    await install(admin)
+    await seed(admin)
+    const [permission] = await sql`select row_id from permission where owner_app = 'evolve' and ref_table = 'evolve.item' and operation = 'read'`
+    const path = `/api/table/Permission/${String(permission.row_id)}`
+    if (mode === 'removed') await admin.delete(path)
+    if (mode === 'narrowed') {
+      const current = await admin.get<Record<string, unknown>>(path)
+      const [title] = await sql`select row_id from column_def where parent = 'evolve.item' and column_name = 'title'`
+      await admin.post('/api/save_row', { table: 'Permission', row: { ...current, column_rule: 'listed', columns: [{ target_column: title.row_id }] } })
+    }
+    await upgrade(admin, '0.2.0')
+    const clerk = await createUser({ roles: ['Evolve Clerk'] })
+    const response = await clerk.fetch('/api/table/evolve.item/i1', { headers: { 'X-Featherbase-App-Version': 'evolve@0.2.0' } })
+    if (mode === 'removed') {
+      expect(response.status).toBe(403)
+    } else {
+      expect(response.status).toBe(200)
+      const row = await response.json()
+      expect(row).toMatchObject({ title: 'Pallet jack' })
+      if (mode === 'unchanged') expect(row).toMatchObject({ quantity: 3, priority: 'Low', lines: [] })
+      else {
+        expect(row).not.toHaveProperty('quantity')
+        expect(row).not.toHaveProperty('priority')
+        expect(row).not.toHaveProperty('lines')
+      }
+    }
+  })
+
   test('a renamed Table keeps its scope mark and the security guard', async ({ admin, createUser }) => {
     await install(admin)
     await upgrade(admin, '0.2.0')
-    await sql`insert into permission (row_id, ref_table, role, can_read, can_write, can_create) values ('p651', 'evolve.region', 'Evolve Clerk', true, true, true)`
+    await grantRole(admin, { table: 'evolve.region', role: 'Evolve Clerk', can_read: true, can_write: true, can_create: true })
     const clerk = await createUser({ email: 'evolve-clerk@example.com', roles: ['Evolve Clerk'] })
     const response = await clerk.fetch('/api/save_row', { method: 'POST', headers: {
       'Content-Type': 'application/json', 'X-Featherbase-App-Version': 'evolve@0.2.0',
@@ -165,7 +201,9 @@ describe('app schema evolution', () => {
     ])
     expect(await sql`select column_name from information_schema.columns where table_schema = 'evolve' and column_name = 'legacy_code'`).toEqual([])
     expect(await sql`select to_regclass('evolve.memo') as relation`).toEqual([{ relation: null }])
-    expect(await sql`select ref_table from permission where owner_app = 'evolve' order by ref_table`).toEqual([{ ref_table: 'evolve.item' }, { ref_table: 'evolve.supplier' }])
+    expect(await sql`select distinct ref_table from permission where owner_app = 'evolve' order by ref_table`).toEqual([
+      { ref_table: 'evolve.item' }, { ref_table: 'evolve.supplier' },
+    ])
   })
 
   test('on a database without rows every destructive step reports nothing to lose', async ({ admin }) => {
@@ -182,7 +220,7 @@ describe('app schema evolution', () => {
 
 // #663: a description or label change is display-only.
 describe('an upgrade that changes only what people read', () => {
-  async function onThree(admin: Client) {
+  async function onThree(admin: TestClient) {
     await install(admin)
     await seed(admin)
     await upgrade(admin, '0.2.0')
@@ -219,7 +257,7 @@ describe('an upgrade that changes only what people read', () => {
 
   test('every grant stays as it was', async ({ admin }) => {
     await onThree(admin)
-    const grants = () => sql`select ref_table, role, can_read, can_write, can_create from permission where owner_app = 'evolve' order by ref_table, role`
+    const grants = () => sql`select ref_table, role, operation, scope_mode from permission where owner_app = 'evolve' order by ref_table, role, operation`
     const before = await grants()
     await upgrade(admin, '0.4.0')
     expect(await grants()).toEqual(before)
@@ -252,7 +290,7 @@ describe('refusals', () => {
   })
 
   test('a wider grant on a Table the app already had is still refused', async ({ admin }) => {
-    const wider = await variant(2, (m) => { m.permissions[1].can_write = true })
+    const wider = await variant(2, (m) => { m.permissions[1].operations.update = '*' })
     try {
       await install(admin)
       await discoverPackages([fixture(1), wider])
@@ -346,7 +384,7 @@ describe('a dropped Table takes its grants with it', () => {
   // swap 0.1.0: Tables a (no grants) and b (Clerk may read).
   const a = { name: 'swap.a', label: 'A', id_pattern: 'prompt', columns: [{ column_name: 'x', label: 'X', column_type: 'Data' }] }
   const b = { name: 'swap.b', label: 'B', id_pattern: 'prompt', columns: [{ column_name: 'y', label: 'Y', column_type: 'Data' }] }
-  const clerkReadsB = { table: 'swap.b', role: 'Swap Clerk', can_read: true }
+  const clerkReadsB = { table: 'swap.b', role: 'Swap Clerk', operations: { read: '*' } }
   const base = { manifestVersion: 1, platformVersion: '2026-10', name: 'swap', title: 'Swap', roles: ['Swap Clerk'] }
   const directories: string[] = []
   async function version(v: string, manifest: Record<string, unknown>) {
@@ -365,7 +403,7 @@ describe('a dropped Table takes its grants with it', () => {
     await discoverPackages([v1, ...later])
     await loadInstalledApps()
   }
-  const grants = () => sql`select ref_table, role, can_read from permission where owner_app = 'swap' order by ref_table, role`
+  const grants = () => sql`select ref_table, role, operation from permission where owner_app = 'swap' order by ref_table, role`
 
   test('a Table renamed into a dropped Table\'s name does not inherit its grants', async ({ admin }) => {
     try {
@@ -395,7 +433,7 @@ describe('a dropped Table takes its grants with it', () => {
       const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'swap', version: '0.2.0' })
       await admin.post('/api/upgrade_app', { name: 'swap', version: '0.2.0', planId: plan.planId })
       expect(await grants()).toEqual(installed)
-      expect(installed).toEqual([{ ref_table: 'swap.b', role: 'Swap Clerk', can_read: true }])
+      expect(installed).toEqual([{ ref_table: 'swap.b', role: 'Swap Clerk', operation: 'read' }])
     } finally { for (const d of directories.splice(0)) await rm(d, { recursive: true, force: true }) }
   })
 })

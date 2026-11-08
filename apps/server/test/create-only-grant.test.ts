@@ -27,7 +27,10 @@ describe('#608: a create-only grant saves what was typed', () => {
       can_read: true,
       can_create: true,
     })
-    const saved = await planner.post<Record<string, any>>('/api/save_row', { table: DT, row: { title: 'Planner order', cost: 99, lines: [{ item: 'Bolts' }] } })
+    await expect(planner.post('/api/save_row', { table: DT, row: { title: 'Forbidden order', cost: 99, lines: [{ item: 'Bolts' }] } }))
+      .rejects.toMatchObject({ status: 403 })
+    expect(await admin.get(orders.listUrl({}))).toMatchObject({ data: [], total: 0 })
+    const saved = await planner.post<Record<string, any>>('/api/save_row', { table: DT, row: { title: 'Planner order', lines: [{ item: 'Bolts' }] } })
     const stored = await admin.get<Record<string, any>>(orders.rowUrl(saved.row_id))
     expect(stored.title).toBe('Planner order')
     expect(stored.cost ?? null).toBeNull()

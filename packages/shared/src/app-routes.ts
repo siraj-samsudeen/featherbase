@@ -93,7 +93,7 @@ export const ADMIN_PAGES: readonly { slug: string; title: string; manage?: true;
   { slug: 'all-tables', title: 'All tables', unrecorded: true },
   { slug: 'import', title: 'Import Data', manage: true, unrecorded: true },
   { slug: 'setup', title: 'Welcome', manage: true, unrecorded: true },
-  { slug: 'setup/people', title: 'Set up people', administrator: true, unrecorded: true },
+  { slug: 'setup/person', title: 'Set up administrators', administrator: true, unrecorded: true },
 ]
 
 // Keep the recent-actions catalogue's existing membership unchanged.

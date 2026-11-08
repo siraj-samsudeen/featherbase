@@ -11,11 +11,11 @@ import { getRoles } from './permissions'
 // It decides each Table the way permissionScope (permissions.ts) does, from
 // one read of the owner's matching grants: a Table's mandatory access policy
 // must admit one of the owner's roles, only grants of available apps count,
-// and a Table reached only through own_rows_only grants is marked as such.
+// and a Table reached only through creator-scoped grants is marked as such.
 // The reach test checks the answer against real token requests.
 export interface TableReach {
   table: string
-  /** Reached only for rows the owner created (own_rows_only grants). */
+  /** Reached only for rows the owner created (creator-scoped grants). */
   own_rows: boolean
   /** #628: the owner's roles whose grants reach it, by name. */
   roles: string[]
@@ -44,14 +44,15 @@ export async function principalReach(owner: string): Promise<Reach> {
   if (owner === 'Administrator' || roles.includes('System Manager'))
     return { every_table: true, own_roles: true, own_reach: true, read: [], change: [] }
   const rows = await sql`
-    select p.ref_table as name, p.role, p.own_rows_only,
-      p.can_read, (p.can_write or p.can_create or p.can_delete) as can_change,
+    select p.ref_table as name, p.role, p.scope_mode = 'creator' as own_rows_only,
+      p.operation = 'read' as can_read, p.operation in ('update', 'create', 'delete') as can_change,
       to_jsonb(t)->'access_policy' as policy
     from permission p
     join table_def t on t.name = p.ref_table
-    where p.tier = 'basic' and p.role in ${sql(roles)} and t.kind <> 'sub_table'
+    where p.parent_permission is null and p.requires_permission is null
+      and p.role in ${sql(roles)} and t.kind <> 'sub_table'
       and (p.owner_app is null or p.owner_app = any(${[...activeApps]}::text[]))
-      and (p.can_read or p.can_write or p.can_create or p.can_delete)
+      and p.operation in ('read', 'update', 'create', 'delete')
     order by p.ref_table`
   let own_reach = false
   const read = new Map<string, Grant>()

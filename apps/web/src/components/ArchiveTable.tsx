@@ -5,13 +5,14 @@ import { ApiError, api } from '../lib/api'
 import { PrincipalName } from '../lib/people'
 import { isArchived, type TableMeta } from '../lib/meta'
 
-// #905: archive a custom Table that something else replaced. Its rows and
+// #905: archive a Table that something else replaced, or (#1041) an app's unused one. Its rows and
 // history stay readable; it takes no new rows or edits, and leaves the menus
 // and pickers until a System Manager un-archives it. Deleting stays separate.
 
-/** Only a custom Table people write: the server refuses the rest too. */
+/** A Table people write, custom or an app's. The server refuses the rest and
+ *  has the last word: an app's entry Table, one that decides access. */
 export function canArchive(meta: TableMeta | undefined): boolean {
-  return Boolean(meta && meta.kind === 'table' && !meta.system && !meta.system_written && !meta.owner_app)
+  return Boolean(meta && meta.kind === 'table' && !meta.system && !meta.system_written)
 }
 
 async function refreshTable(queryClient: ReturnType<typeof useQueryClient>, table: string) {
@@ -88,7 +89,7 @@ export function ArchiveTable({ table }: { table: string }) {
               menus and the table pickers and is listed under Archived tables. You can un-archive it at any time.
             </p>
             <label className="mb-1 block text-sm text-ink" htmlFor="archive-table-note">
-              What replaced it? (optional)
+              What replaced it, or why isn't it in use? (optional)
             </label>
             <textarea
               id="archive-table-note"

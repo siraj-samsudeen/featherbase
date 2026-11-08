@@ -5,11 +5,15 @@
 // effect never draws the previous store's figures under the new one. Made-up stores and figures.
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 type Deferred = { resolve: (body: unknown) => void }
 const calls: { name: string; store?: string; payload: Record<string, unknown>; answer: Deferred }[] = []
 let teardown: () => void = () => {}
+const SALES = { key: 'sales', name: 'Sales versus target', takes_store: true, takes_month: true }
+const WHOLE = { key: 'whole', name: 'Store target month to date', takes_store: false, takes_month: false }
+let reportsAnswer: unknown = [SALES, WHOLE]
+let problemsAnswer: unknown = { problems: [] }
 
 beforeAll(() => {
   // This repository's root (client-apps/jeyarama/dash/src → four levels up), with `pnpm install` run.
@@ -34,6 +38,8 @@ beforeAll(() => {
       const answer: Deferred = { resolve: body => resolveCall(new Response(JSON.stringify({ result: body }), { status: 200 })) }
       calls.push({ name, store, payload, answer })
       if (name === 'stores') answer.resolve([{ value: '9901', label: 'Lakeside · 9901' }, { value: '9902', label: 'Hillview · 9902' }])
+      if (name === 'reports') answer.resolve(reportsAnswer)
+      if (name === 'reach_problem') answer.resolve(problemsAnswer)
     })
   }
   teardown = () => { for (const key of added) delete (globalThis as Record<string, unknown>)[key]; dom.window.close() }
@@ -152,17 +158,9 @@ describe('choosing another store on the rendered page', () => {
     await unmount()
   })
 
-  // #4453: a store whose Dive state would pass MotherDuck's cap gets the cached table, and is told why.
-  it("says the store is too large for the interactive report when the Dive's state is too large", async () => {
-    const { container, unmount } = await openOn9901({ embed: { too_large: true } })
-    expect(container.querySelector('[data-testid=quick-label]')?.textContent)
-      .toBe('This store is too large for the interactive report yet. Showing the cached table.')
-    await unmount()
-  })
-
   // #950 checklist 7: the top of the page goes to the figures; the cached table says what it is in one line.
   it('says why the cached table shows and how fresh it is in one line, under no title of its own', async () => {
-    const { container, unmount } = await openOn9901({ embed: { too_large: true } })
+    const { container, unmount } = await openOn9901({ embed: { unreachable: true } })
     const quick = container.querySelector('[data-testid=quick-view]')!
     expect(quick.querySelector('h1, h2, h3')).toBeNull()
     const label = quick.querySelector('[data-testid=quick-label]')!
@@ -197,7 +195,7 @@ describe('choosing another store on the rendered page', () => {
     const root = createRoot(container)
     await act(async () => { root.render(<Dash />) })
     await act(async () => { await settle() })
-    expect(calls.filter(c => c.name !== 'stores').map(c => c.payload.month)).toEqual(['last', 'last'])
+    expect(calls.filter(c => c.name === 'report' || c.name === 'embed_session').map(c => c.payload.month)).toEqual(['last', 'last'])
     await act(async () => root.unmount())
   })
 })
@@ -320,5 +318,112 @@ describe("the page's header", () => {
     expect(lines).toEqual(['heading-title', 'period-line', 'measure-line'])
     expect(container.textContent).not.toContain('because')
     await act(async () => root.unmount())
+  })
+})
+
+// #967's UI checklist: any report, whatever it takes.
+describe('a report on the rendered page', () => {
+  async function open(address: string) {
+    const { act } = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { Dash } = await import('./app')
+    history.replaceState(null, '', address)
+    calls.length = 0
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => { root.render(<Dash />) })
+    await act(async () => { await settle() })
+    const answer = async (name: string, body: unknown) => {
+      for (const c of calls.filter(c => c.name === name)) c.answer.resolve(body)
+      await act(async () => { await settle() })
+    }
+    const view = () => container.querySelector('[data-testid=dash]')?.getAttribute('data-view')
+    return { container, answer, view, unmount: () => act(async () => root.unmount()) }
+  }
+  const asked = (name: string) => calls.filter(c => c.name === name).map(c => c.payload)
+  const plain = { state: 'ready', no_quick_view: true, heading: { name: null, sections: [], reasons: [] } }
+  const frame = { frame: 'https://embed-motherduck.com/sandbox/#session=made-up' }
+
+  it('opens a report taking no store at once, naming the report, with no store and no store check', async () => {
+    const { answer, view, container, unmount } = await open('?report=whole')
+    expect([asked('report'), asked('stores')]).toEqual([[{ report: 'whole', month: 'this' }], []])
+    await answer('report', plain)
+    await answer('embed_session', frame)
+    expect(view()).toBe('dive')
+    expect(container.querySelector('[data-testid=report-frame]')?.getAttribute('title')).toBe('Store target month to date')
+    await unmount()
+  })
+
+  it("opens the reader's first report when the address names none, leaving the server to choose it", async () => {
+    reportsAnswer = [WHOLE, SALES]
+    const { unmount } = await open('?')
+    reportsAnswer = [SALES, WHOLE]
+    expect([asked('report'), asked('stores')]).toEqual([[{ month: 'this' }], []])
+    await unmount()
+  })
+
+  it('checks the store against the report named', async () => {
+    const { unmount } = await open('?report=sales&store=9901')
+    expect(asked('stores')).toEqual([{ report: 'sales' }])
+    expect(asked('report')).toEqual([{ report: 'sales', store: '9901', month: 'this' }])
+    await unmount()
+  })
+
+  it('shows no-access for a report that does not exist', async () => {
+    const { answer, view, unmount } = await open('?report=nope')
+    await answer('report', { state: 'no_access' })
+    await answer('embed_session', { refused: 'no_access' })
+    expect(view()).toBe('no_access')
+    await unmount()
+  })
+
+  it("says a whole-stores report isn't available for this job", async () => {
+    const { answer, container, unmount } = await open('?report=whole')
+    await answer('report', { state: 'whole_stores_only' })
+    expect(container.querySelector('[data-testid=empty-whole_stores_only]')?.textContent).toBe("This report covers whole stores, so it isn't available for your job.")
+    await unmount()
+  })
+
+  it("says this report couldn't open, with Try again, when it has no quick view and its Dive fails", async () => {
+    const { answer, container, unmount } = await open('?report=whole')
+    await answer('report', plain)
+    await answer('embed_session', { unreachable: true })
+    expect(container.querySelector('[data-testid=failed]')?.textContent).toBe("This report couldn't open.Try again")
+    await unmount()
+  })
+
+  describe('for someone whose job reaches nothing', () => {
+    const refusing = async (problems: string[]) => {
+      reportsAnswer = []
+      problemsAnswer = { problems }
+      const page = await open('?')
+      await page.answer('report', { state: 'no_access' })
+      await page.answer('embed_session', { refused: 'no_access' })
+      const { act } = await import('react')
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+      return page
+    }
+    afterEach(() => { reportsAnswer = [SALES, WHOLE]; problemsAnswer = { problems: [] } })
+
+    it('says Staff with no section why, with a link to Your sections', async () => {
+      const { container, unmount } = await refusing(['no_section'])
+      expect(container.querySelector('[data-testid=reach-problem]')?.textContent).toContain("You aren't set against a section yet")
+      expect(container.querySelector('[data-testid=fix-link]')?.getAttribute('href')).toBe('?view=sections')
+      await unmount()
+    })
+
+    it("says a Department Manager's report waits for the departments, with no link", async () => {
+      const { container, unmount } = await refusing(['departments_not_filled'])
+      expect(container.querySelector('[data-testid=reach-problem]')?.textContent).toContain("Your store's departments aren't filled in yet")
+      expect(container.querySelector('[data-testid=fix-link]')).toBeNull()
+      await unmount()
+    })
+
+    it('shows Head office staff the no-access page', async () => {
+      const { container, unmount } = await refusing(['head_office'])
+      expect([container.querySelector('[data-testid=reach-problem]'), container.querySelector('[data-testid=no-access]') !== null]).toEqual([null, true])
+      await unmount()
+    })
   })
 })

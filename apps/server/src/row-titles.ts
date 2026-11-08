@@ -6,7 +6,7 @@ import { scopedWhere } from './query'
 import { principalNames } from './people-directory'
 import { getMeta, ROW_KEY, type TableMeta } from './meta'
 import { boundGetList, isBound } from './sources/dispatch'
-import { permittedTiers } from './permissions'
+import { includesColumn, permittedColumns } from './permissions'
 import { isSensitiveColumn } from './sensitive-columns'
 
 // Home cleanup: what a person reads for each referenced row (Home tiles,
@@ -21,6 +21,8 @@ interface RowRef {
 }
 interface RowTitle extends RowRef {
   title: string
+  /** #959: set only on a retired row, so a caller can leave it out. */
+  retired?: true
 }
 
 const bodySchema = z.object({
@@ -33,14 +35,14 @@ export function validateRowTitleRequest(body: unknown): RowRef[] {
   return parsed.data.rows
 }
 
-export async function rowTitles(user: string, refs: RowRef[]): Promise<RowTitle[]> {
+export async function rowTitles(user: string, refs: RowRef[], opts: { titleColumnOnly?: boolean } = {}): Promise<RowTitle[]> {
   const byTable = new Map<string, Set<string>>()
   for (const r of refs) byTable.set(r.table, (byTable.get(r.table) ?? new Set()).add(r.row_id))
   const out: RowTitle[] = []
   for (const [table, ids] of byTable) {
     const bound = await getMeta(table).then((m) => (isBound(m) ? m : null), () => null)
     if (bound) {
-      out.push(...(await boundTitles(bound, [...ids], user)))
+      out.push(...(await boundTitles(bound, [...ids], user, opts)))
       continue
     }
     // A Table this caller cannot read here (an AppError) is left out; any
@@ -48,7 +50,7 @@ export async function rowTitles(user: string, refs: RowRef[]): Promise<RowTitle[
     const scoped = await scopedWhere(table, user, [['row_id', 'in', [...ids]]])
       .catch((err: unknown) => (err instanceof AppError ? null : Promise.reject(err)))
     if (!scoped) continue
-    const { meta, table: relation, where, cols } = scoped
+    const { meta, table: relation, where, cols, creatorColumns } = scoped
     const rows = await sql`select * from ${sql(relation)} where ${where}`
     // Only the columns this caller may read take part in the title.
     const readable = { ...meta, columns: meta.columns.filter((c) => cols.has(c.column_name)) }
@@ -57,6 +59,7 @@ export async function rowTitles(user: string, refs: RowRef[]): Promise<RowTitle[
     const titleReadable = meta.title_column && (cols.has(meta.title_column)
       || (meta.title_column === meta.row_key && cols.has('row_id')))
     const titleMeta = { ...readable, title_column: titleReadable ? meta.title_column : null }
+    if (opts.titleColumnOnly && (!titleMeta.title_column || titleMeta.title_column === 'row_id')) continue
     const principalTitle = titleMeta.columns.find((c) => c.column_name === titleMeta.title_column
       && c.column_type === 'Reference' && (c.reference_table === 'Person' || c.reference_table === 'Service Account'))
     // Resolve only a readable title column, through the same permission-aware
@@ -64,24 +67,38 @@ export async function rowTitles(user: string, refs: RowRef[]): Promise<RowTitle[
     const names = principalTitle
       ? await principalNames(rows.map((row) => String(row[principalTitle.column_name] ?? '')).filter(Boolean), user)
       : {}
-    for (const row of rows) {
-      const rowId = String(row[meta.row_key])
+    for (const stored of rows) {
+      // A Column reached only through a creator-scoped grant is read only on
+      // the caller's own rows, here as in every list.
+      const row = stored.created_by === user ? stored
+        : Object.fromEntries(Object.entries(stored).filter(([name]) => !creatorColumns.has(name)))
+      const rowId = String(stored[meta.row_key])
       const principal = principalTitle && row[principalTitle.column_name]
       const titled = principal && principalTitle
         ? { ...row, [principalTitle.column_name]: names[String(principal)] ?? 'Unnamed person' }
         : row
-      out.push({ table, row_id: rowId, title: rowDisplayTitle(titleMeta, titled, rowId) })
+      out.push({ table, row_id: rowId, title: rowDisplayTitle(titleMeta, titled, rowId),
+        ...(stored.retired_at != null ? { retired: true as const } : {}) })
     }
   }
   return out
 }
 
+/** #959: a row as a message names it to this caller: its Table and the
+ *  value of its title column (Unit "Historic unit"). Its Table and id when
+ *  it has no title column the caller may read, or that title is the id: a
+ *  stand-in built from other values could be another row's id. */
+export async function rowLabel(user: string, table: string, rowId: string): Promise<string> {
+  const [found] = await rowTitles(user, [{ table, row_id: rowId }], { titleColumnOnly: true })
+  return found && found.title !== rowId ? `${table} "${found.title}"` : `${table} ${rowId}`
+}
+
 // A source-bound Table's rows live at its data source, so they are read
 // through the same scoped list a bound Table's list view uses. A source that
 // refuses or is down leaves these rows out, like any unreadable Table.
-async function boundTitles(meta: TableMeta, ids: string[], user: string): Promise<RowTitle[]> {
-  const tiers = await permittedTiers(user, meta.name, 'read')
-  const columns = meta.columns.filter((c) => tiers.has(c.tier ?? 'basic')
+async function boundTitles(meta: TableMeta, ids: string[], user: string, opts: { titleColumnOnly?: boolean }): Promise<RowTitle[]> {
+  const granted = await permittedColumns(user, meta.name, 'read', '')
+  const columns = meta.columns.filter((c) => includesColumn(granted, c)
     && !['Sub-table', 'Section Break', 'Column Break'].includes(c.column_type)
     && !isSensitiveColumn(c.column_name) && !isSensitiveColumn(c.source_column || ''))
   const fields = columns.map((c) => c.column_name)
@@ -90,6 +107,7 @@ async function boundTitles(meta: TableMeta, ids: string[], user: string): Promis
   if (!list) return []
   const readable = new Set(Object.keys(list.data[0] ?? {}))
   const titleMeta = { ...meta, columns, title_column: meta.title_column && readable.has(meta.title_column) ? meta.title_column : null }
+  if (opts.titleColumnOnly && !titleMeta.title_column) return []
   return list.data.map((row) => {
     const rowId = String(row[ROW_KEY])
     return { table: meta.name, row_id: rowId, title: rowDisplayTitle(titleMeta, row, rowId) }

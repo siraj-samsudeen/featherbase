@@ -8,6 +8,7 @@ import { rowHref } from 'shared'
 import { resolve } from 'node:path'
 import { discoverPackages } from 'server/src/runtime-packages'
 import { test, expect, renderApp } from './pg-test'
+import { grantRole } from 'server/test/fixtures'
 
 type Admin = Parameters<typeof renderApp>[1]
 const WAIT = { timeout: 10_000 }
@@ -16,7 +17,7 @@ const pageOf = (person: string) => `/featherbase/account/access/${encodeURICompo
 async function seed(admin: Admin) {
   await admin.post('/api/table_def', { name: 'Ax Site', title_column: 'site_name', columns: [{ column_name: 'site_name', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Ax Site Reader' } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Ax Site', role: 'Ax Site Reader', can_read: true } })
+  await grantRole(admin, { table: 'Ax Site', role: 'Ax Site Reader', can_read: true })
   const north = await admin.post<{ row_id: string }>(`/api/table/${encodeURIComponent('Ax Site')}`, { site_name: 'North' })
   return { north }
 }
@@ -35,6 +36,26 @@ test('#628 a System Manager sees a person\'s roles, Tables, limits and shares, e
     .toContainEqual('Ax Site — through Ax Site Reader')
   expect(screen.getByTestId('access-limit')).toHaveTextContent(/Ax Site: North — set by Administrator, /)
   expect(screen.getByTestId('access-share')).toHaveTextContent(/Ax Site: North \(can change\) — shared by Administrator, /)
+  // #1006: someone else's page still speaks of them.
+  expect(within(screen.getByTestId('access-tables')).getByRole('heading', { level: 2 })).toHaveTextContent('Tables they reach')
+  expect(within(screen.getByTestId('access-shares')).getByRole('heading', { level: 2 })).toHaveTextContent('Shared with them')
+})
+
+// #1006: the account pages keep the frame of the product the person came from.
+test('#1006 someone who can use Admin reads the account pages in the Admin frame', async ({ admin }) => {
+  await renderApp(pageOf('Administrator'), admin)
+  expect(await screen.findByTestId('access-explanation', {}, WAIT)).toBeInTheDocument()
+  expect(await screen.findByTestId('admin-sidebar', {}, WAIT)).toBeInTheDocument()
+  expect(screen.getByTestId('awesomebar')).toBeInTheDocument()
+  expect(screen.queryByTestId('account-layout')).not.toBeInTheDocument()
+})
+
+test('#1006 someone who cannot use Admin keeps the plain top bar', async ({ createUser }) => {
+  const me = await createUser({ roles: [] })
+  await renderApp(pageOf(me.user!), me)
+  expect(await screen.findByTestId('access-explanation', {}, WAIT)).toBeInTheDocument()
+  expect(screen.getByTestId('account-layout')).toBeInTheDocument()
+  expect(screen.queryByTestId('admin-sidebar')).not.toBeInTheDocument()
 })
 
 test('#628 the account menu opens your own page; an empty section says so', async ({ createUser }) => {
@@ -43,8 +64,10 @@ test('#628 the account menu opens your own page; an empty section says so', asyn
   await userEvent.click(await screen.findByTestId('session-user', {}, WAIT))
   await userEvent.click(within(await screen.findByTestId('account-menu')).getByRole('menuitem', { name: 'What can I see?' }))
   await waitFor(() => expect(screen.getByTestId('access-explanation-heading')).toHaveTextContent('What you can see'), WAIT)
-  expect(await screen.findByTestId('access-shares-empty', {}, WAIT)).toHaveTextContent('No rows are shared directly with them.')
-  expect(screen.getByTestId('access-roles-empty')).toHaveTextContent('No roles of their own')
+  expect(await screen.findByTestId('access-shares-empty', {}, WAIT)).toHaveTextContent('No rows are shared directly with you.')
+  expect(screen.getByTestId('access-roles-empty')).toHaveTextContent('No roles of your own')
+  expect(within(screen.getByTestId('access-tables')).getByRole('heading', { level: 2 })).toHaveTextContent('Tables you reach')
+  expect(within(screen.getByTestId('access-shares')).getByRole('heading', { level: 2 })).toHaveTextContent('Shared with you')
 })
 
 test('#628 a person limited to a row they cannot read sees its id, not its title', async ({ admin, createUser }) => {
