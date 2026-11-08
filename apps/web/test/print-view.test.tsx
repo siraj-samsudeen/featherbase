@@ -76,3 +76,52 @@ test('a value containing markup is shown as text on the print page, not run as m
   expect(body).toHaveTextContent('<img src="x" alt="injected" data-injected="1">')
   expect(body).toHaveTextContent('Paid: Yes; Sent: No; Notes:')
 })
+
+// Moved from the deleted e2e/print-formats.spec.ts (PRN-002): two formats for
+// one Table print differently, and the default one is used when none is named.
+async function formats(admin: TestClient) {
+  await setup(admin, 'Stark Industries')
+  await admin.post('/api/save_row', {
+    table: 'Print Format',
+    row: { row_id: 'Pv Invoice', ref_table: DT, is_default: true, template: '<div data-testid="tpl-invoice"><h2>INVOICE</h2><p>Bill to: {{ customer }}</p></div>' },
+  })
+  await admin.post('/api/save_row', {
+    table: 'Print Format',
+    row: { row_id: 'Pv Receipt', ref_table: DT, is_default: false, template: '<div data-testid="tpl-receipt">RECEIPT — {{ customer }} paid</div>' },
+  })
+}
+
+test('PRN-002: with no format named, the print page uses the default format, filled in', async ({ admin }) => {
+  await formats(admin)
+  await renderApp(printUrl(), admin)
+  expect(await screen.findByTestId('print-format-body')).toHaveAttribute('data-format', 'Pv Invoice')
+  expect(screen.getByTestId('tpl-invoice')).toHaveTextContent('Bill to: Stark Industries')
+  expect(screen.getByTestId('print-view')).not.toHaveTextContent('RECEIPT')
+})
+
+test('PRN-002: picking another format prints its wording instead', async ({ admin }) => {
+  await formats(admin)
+  const user = userEvent.setup()
+  await renderApp(printUrl(), admin)
+  await screen.findByTestId('tpl-invoice')
+  await user.selectOptions(screen.getByTestId('print-format-picker'), 'Pv Receipt')
+  expect(await screen.findByTestId('tpl-receipt')).toHaveTextContent('RECEIPT — Stark Industries paid')
+  expect(screen.queryByTestId('tpl-invoice')).toBeNull()
+})
+
+test('PRN-002: a format named in the address is the one printed', async ({ admin }) => {
+  await formats(admin)
+  await renderApp(`${printUrl()}?format=${encodeURIComponent('Pv Receipt')}`, admin)
+  expect(await screen.findByTestId('tpl-receipt')).toHaveTextContent('RECEIPT — Stark Industries paid')
+  expect(screen.queryByTestId('tpl-invoice')).toBeNull()
+})
+
+test('PRN-002: choosing Standard prints the layout made from the Table, not a format', async ({ admin }) => {
+  await formats(admin)
+  const user = userEvent.setup()
+  await renderApp(printUrl(), admin)
+  await screen.findByTestId('tpl-invoice')
+  await user.selectOptions(screen.getByTestId('print-format-picker'), 'standard')
+  expect(await screen.findByTestId('print-auto-layout')).toHaveTextContent('Stark Industries')
+  expect(screen.queryByTestId('tpl-invoice')).toBeNull()
+})
