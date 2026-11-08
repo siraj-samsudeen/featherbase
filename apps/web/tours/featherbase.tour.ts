@@ -8,7 +8,12 @@ import { ensurePerson, expect, tour, type Person } from './tour'
 import { assetsWorkbook, storesWorkbook, tNagarUpdate } from './data/workbooks'
 
 const ROWS = Number(process.env.TOUR_ROWS ?? 120)
+// Chapter limits are about 3× the real times at 120 rows a store, so a 2–3×
+// slowdown fails the tour. Bigger sheets (TOUR_ROWS) stretch them in step.
+const limit = (ms: number) => Math.round(ms * Math.max(1, ROWS / 120))
 const PRIYA: Person = { user: 'priya@stores.example', password: 'tour-priya-pw', fullName: 'Priya Raman' }
+/** A count as the app writes it: 1,500. */
+const n = (x: number) => x.toLocaleString('en-US')
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
 async function dropFile(page: Page, name: string, buffer: Buffer): Promise<void> {
@@ -98,7 +103,7 @@ tour('Featherbase: from a messy workbook to an app you can navigate', async ({ s
   const s = await story(PRIYA)
   const page = () => s.page
 
-  await s.chapter('Bring in the store list', 60_000, async () => {
+  await s.chapter('Bring in the store list', limit(20_000), async () => {
     await s.step("Priya drops head office's store list onto Import Data", async () => {
       await dropFile(page(), 'stores.xlsx', storesWorkbook())
     })
@@ -113,7 +118,7 @@ tour('Featherbase: from a messy workbook to an app you can navigate', async ({ s
     })
   }, 'Head office keeps one clean list of stores.')
 
-  await s.chapter('Bring in three stores\' asset sheets', 120_000, async () => {
+  await s.chapter('Bring in three stores\' asset sheets', limit(60_000), async () => {
     await s.step('The asset register has one sheet per store, each typed up differently', async () => {
       await dropFile(page(), 'asset register.xlsx', assetsWorkbook(ROWS))
       await expect(page().getByTestId('iw-overview')).toContainText('Tag No')
@@ -145,9 +150,9 @@ tour('Featherbase: from a messy workbook to an app you can navigate', async ({ s
       // A few distinct values are offered as a Choice; only text can later become a link.
       await setType(page(), 'Store', 'Data')
     })
-    await s.step(`All ${3 * ROWS} assets go in`, async () => {
+    await s.step(`All ${n(3 * ROWS)} assets go in`, async () => {
       await page().getByTestId('iw-import').click()
-      await expect(page().getByTestId('iw-result-0')).toContainText(`Imported ${3 * ROWS} rows`)
+      await expect(page().getByTestId('iw-result-0')).toContainText(`Imported ${n(3 * ROWS)} rows`, { timeout: 60_000 })
     })
   }, 'Anna Nagar, T Nagar and Velachery each keep their own sheet.')
 
@@ -157,7 +162,7 @@ tour('Featherbase: from a messy workbook to an app you can navigate', async ({ s
     'When each sheet is a store, merging the sheets loses the store. These sheets happen to carry a store column; most real ones do not.',
   )
 
-  await s.chapter('Tidy the columns', 60_000, async () => {
+  await s.chapter('Tidy the columns', limit(20_000), async () => {
     await s.step('Section is called Department at these stores', async () => {
       await openTable(page(), 'Assets')
       await openColumns(page())
@@ -171,7 +176,7 @@ tour('Featherbase: from a messy workbook to an app you can navigate', async ({ s
   await s.gap('change a column\'s type after import', 1071, 'A column\'s type is fixed once the Table exists; only text-to-link and back can change.')
   await s.gap('merge two columns', 1071, 'Floor and Department could be one Location column, but columns combine only inside the import wizard.')
 
-  await s.chapter('Make the floors say the same thing', 120_000, async () => {
+  await s.chapter('Make the floors say the same thing', limit(45_000), async () => {
     await s.step('T Nagar wrote "FF" and "1st Floor" for First Floor', async () => {
       await openTable(page(), 'Assets')
       await replaceEverywhere(page(), 'floor', 'FF', 'First Floor')
@@ -187,7 +192,7 @@ tour('Featherbase: from a messy workbook to an app you can navigate', async ({ s
     'One rule such as "GF, ground floor, 1st Floor → the right name", kept for the next import too. Bulk edit acts on one page of 20 rows at a time.',
   )
 
-  await s.chapter('Link every asset to its store', 120_000, async () => {
+  await s.chapter('Link every asset to its store', limit(30_000), async () => {
     await s.step('Turning Store into a link to Stores is refused, and the refusal names the odd spelling', async () => {
       await openColumns(page())
       const row = page().getByTestId('ce-row-store')
@@ -211,7 +216,7 @@ tour('Featherbase: from a messy workbook to an app you can navigate', async ({ s
   }, 'A link only takes values that name a real store.')
 
   const update = tNagarUpdate(ROWS)
-  await s.chapter('Bring in next month\'s sheet', 90_000, async () => {
+  await s.chapter('Bring in next month\'s sheet', limit(60_000), async () => {
     await s.step('T Nagar sends its whole sheet again: two prices fixed, three new assets', async () => {
       await dropFile(page(), 't nagar update.xlsx', update.file)
     })
@@ -219,7 +224,7 @@ tour('Featherbase: from a messy workbook to an app you can navigate', async ({ s
       await page().getByTestId('iw-target-0').click()
       await page().getByTestId('iw-target-opt-0-Assets').click()
       await page().getByTestId('iw-key-0').selectOption('asset_tag')
-      await expect(page().getByTestId('iw-preview-0')).toContainText(`2 rows change · ${ROWS - 2} unchanged · 2 added`)
+      await expect(page().getByTestId('iw-preview-0')).toContainText(`2 rows change · ${n(ROWS - 2)} unchanged · 2 added`, { timeout: 60_000 })
     })
     await s.step('The sheet still says "FF" and "T. Nagar", but her clean-up is kept', async () => {
       await expect(page().getByTestId('iw-preview-0')).toContainText('rows keep your corrections')
@@ -231,7 +236,7 @@ tour('Featherbase: from a messy workbook to an app you can navigate', async ({ s
     })
     await s.step('She imports the rest; the refused row says why', async () => {
       await page().getByTestId('iw-import').click()
-      await expect(page().getByTestId('iw-result-0')).toContainText('added 2 rows')
+      await expect(page().getByTestId('iw-result-0')).toContainText('added 2 rows', { timeout: 60_000 })
       await expect(page().getByTestId('iw-result-0')).toContainText('T. Nagar does not exist')
     })
   })
@@ -241,7 +246,7 @@ tour('Featherbase: from a messy workbook to an app you can navigate', async ({ s
     'An alias kept with the link, so next month\'s sheet links by itself instead of refusing the row.',
   )
 
-  await s.chapter('Change her mind', 60_000, async () => {
+  await s.chapter('Change her mind', limit(20_000), async () => {
     await s.step('The import history holds the run; undoing it is previewed first', async () => {
       await openTable(page(), 'Assets')
       await page().getByRole('button', { name: 'List actions' }).click()
@@ -257,15 +262,16 @@ tour('Featherbase: from a messy workbook to an app you can navigate', async ({ s
     })
   })
 
-  await s.chapter('Find your way around', 60_000, async () => {
-    await s.step('Down: T Nagar counts 120 assets, now that "T. Nagar" is T Nagar too', async () => {
+  const assetsChip = new RegExp(`^Assets\\s*${n(ROWS)}$`)
+  await s.chapter('Find your way around', limit(20_000), async () => {
+    await s.step(`Down: T Nagar counts ${n(ROWS)} assets, now that "T. Nagar" is T Nagar too`, async () => {
       await openTable(page(), 'Stores')
       await page().getByRole('link', { name: 'T Nagar', exact: true }).first().click()
-      await expect(page().getByRole('button', { name: /^Assets\s*120$/ }).first()).toBeVisible()
+      await expect(page().getByRole('button', { name: assetsChip }).first()).toBeVisible()
     })
     await s.step('They open beside the store, without leaving it', async () => {
-      await page().getByRole('button', { name: /^Assets\s*120$/ }).first().click()
-      await expect(page().getByRole('complementary', { name: 'T Nagar' })).toContainText('Assets · 120 rows')
+      await page().getByRole('button', { name: assetsChip }).first().click()
+      await expect(page().getByRole('complementary', { name: 'T Nagar' })).toContainText(`Assets · ${n(ROWS)} rows`)
     })
     await s.step('One more click drills into an asset; the path keeps the way back', async () => {
       const pane = page().getByRole('complementary', { name: 'T Nagar' })
@@ -285,13 +291,13 @@ tour('Featherbase: from a messy workbook to an app you can navigate', async ({ s
       const tree = page().getByRole('tree', { name: 'Around TN-0001' })
       await tree.getByRole('treeitem', { name: 'T Nagar' }).focus()
       await page().keyboard.press('ArrowRight')
-      await tree.getByRole('treeitem', { name: /^Assets\s*120$/ }).focus()
+      await tree.getByRole('treeitem', { name: assetsChip }).focus()
       await page().keyboard.press('ArrowRight')
       await expect(tree.getByRole('treeitem', { name: 'TN-0002' })).toBeVisible()
     })
   }, 'Down from a store to its assets, up from an asset to its store, and across to its neighbours.')
 
-  await s.chapter('Make links read as what they are', 60_000, async () => {
+  await s.chapter('Make links read as what they are', limit(20_000), async () => {
     await s.step('An asset is shown by its item, not its tag', async () => {
       await openTable(page(), 'Assets')
       await openColumns(page())

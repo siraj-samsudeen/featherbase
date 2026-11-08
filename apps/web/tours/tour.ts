@@ -158,7 +158,9 @@ export const tour = base.extend<{ story: (lead: Person) => Promise<Story> }>({
               await overlay(current, 'caption', text)
               await current.waitForTimeout(CAPTION_MS)
             }
+            const started = Date.now()
             await body()
+            if (process.env.TOUR_STEP_TIMES) console.log(`    step: ${text} — ${((Date.now() - started) / 1000).toFixed(1)} s`)
             if (VIDEO) {
               await overlay(current, 'caption', text)
               await current.waitForTimeout(CAPTION_MS)
