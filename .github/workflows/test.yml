@@ -998,6 +998,8 @@ jobs:
           node-version: '26.13.0'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The apps a tour installs (Tasker) are offered from their built packages.
+      - run: pnpm apps:prepare
       - run: pnpm --filter web exec playwright install --with-deps chromium
       # Builds the web app, resets its own database and serves both from the
       # API server, as an instance does (playwright.tours.config.ts).

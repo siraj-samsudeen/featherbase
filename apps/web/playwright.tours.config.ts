@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 // Tours (#1070): demo-length acceptance tests, one story each, that double as
 // product videos. See docs/TESTING.md, "Tours".
@@ -87,6 +88,9 @@ export default defineConfig({
           FEATHERBASE_ENV: 'test',
           // A tour signs in many times over; the login limiter is not its subject.
           PREAUTH_LOGIN_MAX: '10000',
+          // The apps an instance offers to install (built by `pnpm apps:prepare`).
+          // Offered, not installed: a tour installs what its story needs.
+          FEATHERBASE_APP_PATHS: JSON.stringify([fileURLToPath(new URL('../../example-apps/tasker', import.meta.url))]),
         },
       },
 })

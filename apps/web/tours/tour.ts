@@ -89,6 +89,10 @@ export interface Story {
   gap(title: string, issue: number, what: string): Promise<void>
   /** Another person's browser, signed in, watched like the first. */
   as(person: Person): Promise<Page>
+  /** Go back to a page opened earlier (the lead's is `lead`). */
+  show(page: Page): void
+  /** The lead's page. */
+  readonly lead: Page
   /** The page the story is currently shown on. */
   readonly page: Page
 }
@@ -118,7 +122,13 @@ export async function ensurePerson(request: APIRequestContext, p: Person & { rol
   if (made.status() !== 201 && !/already exists|duplicate/i.test(await made.text())) {
     throw new Error(`create ${p.user}: ${made.status()} ${await made.text()}`)
   }
-  const id = made.status() === 201 ? ((await made.json()) as { row_id: string }).row_id : p.user
+  let id: string
+  if (made.status() === 201) id = ((await made.json()) as { row_id: string }).row_id
+  else {
+    // An earlier tour of the same run made them already; people have opaque ids.
+    const found = await request.get(`/api/table/Person?filters=${encodeURIComponent(JSON.stringify([['email', '=', p.user]]))}&fields=${encodeURIComponent('["row_id"]')}`, { headers })
+    id = ((await found.json()) as { data: { row_id: string }[] }).data[0]!.row_id
+  }
   const pw = await request.post('/api/set_password', { headers, data: { user: id, password: p.password } })
   expect(pw.ok(), `set ${p.user}'s password: ${await pw.text()}`).toBe(true)
 }
@@ -136,6 +146,12 @@ export const tour = base.extend<{ story: (lead: Person) => Promise<Story> }>({
         get page() {
           return current
         },
+        get lead() {
+          return page
+        },
+        show(p) {
+          current = p
+        },
         async chapter(title, limitMs, body, subtitle = '') {
           await base.step(title, async () => {
             if (VIDEO) {
@@ -145,7 +161,14 @@ export const tour = base.extend<{ story: (lead: Person) => Promise<Story> }>({
             }
             const started = Date.now()
             const before = problems.length
-            await body()
+            try {
+              await body()
+            } catch (err) {
+              // The story may be on another person's page: keep what *they* saw.
+              await testInfo.attach('page at failure', { body: await current.screenshot({ fullPage: true }).catch(() => Buffer.from('')), contentType: 'image/png' })
+              await testInfo.attach('page at failure (aria)', { body: await current.locator('body').ariaSnapshot().catch(() => ''), contentType: 'text/plain' })
+              throw err
+            }
             const took = Date.now() - started
             const timing = `${title} — ${(took / 1000).toFixed(1)} s (limit ${limitMs / 1000} s)`
             testInfo.annotations.push({ type: 'chapter', description: timing })
