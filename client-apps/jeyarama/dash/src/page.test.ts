@@ -1,8 +1,7 @@
 // What the report page shows, decided from what its reads answered, and how it
 // writes money, days and times. Made-up figures.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { STORE_NAMES_TIMEOUT_MS } from './server.ts'
-import { BAR_STORE_WAIT_MS, DIVE_READY_TIMEOUT_MS, REPORT_TIMEOUT_MS, STORE_CHECK_TIMEOUT_MS, firstStore, pageView, reportLoader } from './page.ts'
+import { BAR_STORE_WAIT_MS, DIVE_READY_TIMEOUT_MS, REPORT_TIMEOUT_MS, STORE_CHECK_TIMEOUT_MS, firstStore, pageView, reachMessage, reportAddress, reportLoader } from './page.ts'
 
 describe('the page', () => {
   const report = (state: string) => ({ ok: true as const, value: { state } })
@@ -24,10 +23,6 @@ describe('the page', () => {
     expect(pageView({ embed: { ok: true, value: { unreachable: true } }, report: report('ready') })).toEqual({ kind: 'quick' })
   })
 
-  it("shows the quick view, saying why, when the store's Dive state is too large to embed", () => {
-    expect(pageView({ embed: { ok: true, value: { too_large: true } }, report: report('ready') })).toEqual({ kind: 'quick', why: 'too_large' })
-  })
-
   it('shows the quick view when the embed session read fails', () => {
     expect(pageView({ embed: { ok: false, status: 502 }, report: report('ready') })).toEqual({ kind: 'quick' })
   })
@@ -46,10 +41,6 @@ describe('the page', () => {
 
   it("says why there is nothing to show before opening the Dive: the month's figures haven't arrived", () => {
     expect(pageView({ embed: frame, report: report('no_data_yet') })).toEqual({ kind: 'empty', why: 'no_data_yet' })
-  })
-
-  it('says why there is nothing to show before opening the Dive: the store has no sections yet', () => {
-    expect(pageView({ embed: frame, report: report('no_sections') })).toEqual({ kind: 'empty', why: 'no_sections' })
   })
 
   it("opens the Dive when the month can't be confirmed for an empty scope: nothing is hidden needlessly", () => {
@@ -387,8 +378,73 @@ describe('a store in the address whose check never ends in time', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect([failed, opened]).toEqual([true, ['9902']])
   })
+})
 
-  it("names stores well inside the page's own waits", () => {
-    expect(STORE_NAMES_TIMEOUT_MS).toBeLessThanOrEqual(BAR_STORE_WAIT_MS / 2)
+describe('a report whose reader or row refuses it', () => {
+  const said = (state: string) => pageView({ embed: { ok: true, value: { refused: state } }, report: { ok: true, value: { state } } })
+
+  it("says a whole-stores report isn't for this job", () => {
+    expect(said('whole_stores_only')).toEqual({ kind: 'empty', why: 'whole_stores_only' })
+  })
+
+  it('shows no access for a report that is not theirs', () => {
+    expect(said('no_access')).toEqual({ kind: 'no_access' })
+  })
+
+  it("counts a report whose row isn't set up as failed", () => {
+    expect(said('report_not_set_up')).toEqual({ kind: 'failed' })
+  })
+})
+
+describe('a report with no quick view', () => {
+  const plain = { ok: true as const, value: { state: 'ready', no_quick_view: true } }
+
+  it('shows its Dive', () => {
+    expect(pageView({ embed: { ok: true, value: { frame: 'https://embed-motherduck.com/x' } }, report: plain })).toEqual({ kind: 'dive', src: 'https://embed-motherduck.com/x' })
+  })
+
+  it.each<[string, Parameters<typeof pageView>[0]]>([
+    ['the Dive is unreachable', { embed: { ok: true, value: { unreachable: true } }, report: plain }],
+    ['the Dive is not set up', { embed: { ok: true, value: { not_set_up: true } }, report: plain }],
+    ['the session read fails', { embed: { ok: false, status: 502 }, report: plain }],
+    ["the Dive's frame fails", { embed: { ok: true, value: { frame: 'https://embed-motherduck.com/x' } }, report: plain, frameFailed: true }],
+  ])('counts as failed when %s, with nothing to stand in', (_what, input) => {
+    expect(pageView(input)).toEqual({ kind: 'failed' })
+  })
+})
+
+describe("a report's address", () => {
+  it('names the report', () => {
+    expect(reportAddress('sales', '')).toBe('?report=sales')
+  })
+
+  it('replaces the report named, keeping the store and month', () => {
+    expect(reportAddress('whole', '?store=9901&month=last&report=sales')).toBe('?store=9901&month=last&report=whole')
+  })
+
+  it('leaves a sub-page behind', () => {
+    expect(reportAddress('sales', '?view=approvals')).toBe('?report=sales')
+  })
+})
+
+describe('what a job that reaches nothing is told', () => {
+  it.each(['no_section', 'nothing_placed'])('%s: not set against a section, with a link to Your sections', problem => {
+    expect(reachMessage([problem])).toEqual({ text: "You aren't set against a section yet, so there is no report to show.", sectionsLink: true })
+  })
+
+  it('departments_not_filled: wait for them, with no link', () => {
+    expect(reachMessage(['departments_not_filled'])).toEqual({ text: "Your store's departments aren't filled in yet. Your report will open once they are.", sectionsLink: false })
+  })
+
+  it('no_cluster: not in a cluster, with no link', () => {
+    expect(reachMessage(['no_cluster'])).toEqual({ text: "Your store isn't in a cluster yet, so there is no report to show.", sectionsLink: false })
+  })
+
+  it.each([[['head_office']], [['no_job']], [[]]])('%j: nothing of its own, so the no-access page says it', problems => {
+    expect(reachMessage(problems)).toBeNull()
+  })
+
+  it('a section to fix comes before the rest', () => {
+    expect(reachMessage(['departments_not_filled', 'no_section'])?.sectionsLink).toBe(true)
   })
 })

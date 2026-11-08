@@ -34,7 +34,7 @@ beforeAll(() => {
     const [, kind, name] = /app_(reads|actions)\/dash\/(.+)$/.exec(String(url))!
     const body = JSON.parse(String(init.body))
     calls.push({ kind: kind as Call['kind'], name, payload: body.payload })
-    const answer = answers[name]
+    const answer = name === 'reports' ? answers[name] ?? [] : answers[name]
     if (answer instanceof Error) return new Response(JSON.stringify({ error: { message: answer.message } }), { status: 417 })
     return new Response(JSON.stringify({ result: answer ?? { state: 'ok', proposals: [] } }), { status: 200 })
   }
@@ -247,5 +247,56 @@ describe('Waiting for your approval', () => {
     const page = await render('Approvals')
     expect(page.q('nothing-waiting')?.textContent).toContain('Nothing is waiting for you')
     await page.done()
+  })
+})
+
+// #967's UI checklist: the Reports group lists what the reader may open.
+describe("Dash's sidebar", () => {
+  const REPORTS = [{ key: 'sales', name: 'Sales versus target', takes_store: true, takes_month: true }, { key: 'whole', name: 'Store target month to date', takes_store: false, takes_month: false }]
+  const links = () => [...document.querySelectorAll('[data-testid=report-link]')]
+  async function sidebar(address: string, current: 'report' | 'sections' = 'report') {
+    const { act } = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { DashSidebar } = await import('./sections-page')
+    history.replaceState(null, '', address)
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    await act(async () => { createRoot(container).render(<DashSidebar current={current} />) })
+    await act(async () => { await Promise.resolve() })
+    return container
+  }
+
+  it('lists each report by name, above Your sections', async () => {
+    answers = { reports: REPORTS }
+    const container = await sidebar('/dash/')
+    const texts = [...container.querySelectorAll('featherbase-sidebar > *')].map(e => e.textContent)
+    expect(texts).toEqual(['Reports', 'Sales versus target', 'Store target month to date', 'Your sections'])
+  })
+
+  it('marks the first report when the address names none, and the one it names otherwise', async () => {
+    answers = { reports: REPORTS }
+    await sidebar('/dash/')
+    expect(links().map(a => a.getAttribute('aria-current'))).toEqual(['page', null])
+    document.body.innerHTML = ''
+    await sidebar('/dash/?report=whole')
+    expect(links().map(a => a.getAttribute('aria-current'))).toEqual([null, 'page'])
+  })
+
+  it('keeps the store chosen in each report\'s address', async () => {
+    answers = { reports: REPORTS }
+    await sidebar('/dash/?store=9901&report=sales')
+    expect(links().map(a => a.getAttribute('href'))).toEqual(['?store=9901&report=sales', '?store=9901&report=whole'])
+  })
+
+  it('marks no report on another page, and leaves that page behind in the address', async () => {
+    answers = { reports: REPORTS }
+    await sidebar('/dash/?view=sections', 'sections')
+    expect(links().map(a => [a.getAttribute('aria-current'), a.getAttribute('href')])).toEqual([[null, '?report=sales'], [null, '?report=whole']])
+  })
+
+  it('draws no Reports group for someone with none', async () => {
+    answers = { reports: [] }
+    await sidebar('/dash/')
+    expect(document.querySelector('[data-testid=reports-group]')).toBeNull()
   })
 })

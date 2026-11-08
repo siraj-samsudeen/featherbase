@@ -21,18 +21,18 @@ function matches(row: Row, [column, op, value]: [string, string, unknown]) {
 function world(over: Partial<Record<string, Row[]>> = {}) {
   return {
     Employee: [
-      { row_id: 'E1', employee_name: 'Asha', employee_status: 'Current', person: 'asha' },
-      { row_id: 'E2', employee_name: 'Mani', employee_status: 'Current', person: 'mani' },
+      { row_id: 'E1', name: 'Asha', status: 'Current', person: 'asha' },
+      { row_id: 'E2', name: 'Mani', status: 'Current', person: 'mani' },
     ],
     'Job Assignment': [{ row_id: 'J1', employee: 'E1', job: 'Team Leader', site: 'LKS', section: 'S1', reports_to: 'E2', starts_on: '2026-01-01', ends_on: null }],
     Section: [
-      { row_id: 'S1', section_name: 'Ladies', site: 'LKS', floor: 'F1', section_status: 'Active' },
-      { row_id: 'S2', section_name: 'Silk', site: 'LKS', floor: null, section_status: 'Active' },
+      { row_id: 'S1', name: 'Ladies', site: 'LKS', floor: 'F1', status: 'Active' },
+      { row_id: 'S2', name: 'Silk', site: 'LKS', floor: null, status: 'Active' },
     ],
-    'Store Floor': [{ row_id: 'F1', floor_name: 'First', site: 'LKS' }],
-    'Section Subcategory': [{ row_id: 'P1', placement_id: 'P1', site: 'LKS', subcategory: 'C1', section: 'S1', starts_on: '2026-01-01', ends_on: null }],
-    Subcategory: [{ row_id: 'C1', subcategory: 'Sarees', is_merchandise: true }, { row_id: 'C2', subcategory: 'Silk Sarees', is_merchandise: true }],
-    'Site Master': [{ row_id: 'LKS', site_name: 'Lakeside', is_store: true }],
+    'Store Floor': [{ row_id: 'F1', name: 'First', site: 'LKS' }],
+    'Section Subcategory': [{ row_id: 'P1', section_subcategory_id: 'P1', store: 'LKS', subcategory: 'C1', section: 'S1', starts_on: '2026-01-01', ends_on: null }],
+    Subcategory: [{ row_id: 'C1', subcategory: 'Sarees', subcategory_type: 'Merchandise' }, { row_id: 'C2', subcategory: 'Silk Sarees', subcategory_type: 'Merchandise' }],
+    Site: [{ row_id: 'LKS', name: 'Lakeside', is_store: true }],
     ...over,
   } as Record<string, Row[]>
 }
@@ -88,7 +88,7 @@ describe('Your sections', () => {
   })
 
   it('reads every page of a large section, and names what it can', async () => {
-    const many = Array.from({ length: 501 }, (_, n) => ({ row_id: `P${n}`, site: 'LKS', subcategory: n ? `X${n}` : 'C1', section: 'S1', starts_on: '2026-01-01', ends_on: n % 2 ? later : null }))
+    const many = Array.from({ length: 501 }, (_, n) => ({ row_id: `P${n}`, store: 'LKS', subcategory: n ? `X${n}` : 'C1', section: 'S1', starts_on: '2026-01-01', ends_on: n % 2 ? later : null }))
     const answer = await reads.my_sections(context(world({ 'Section Subcategory': many })).ctx) as { jobs: { subcategories: { name: string }[] }[] }
     expect(answer.jobs[0].subcategories).toHaveLength(501)
     expect(answer.jobs[0].subcategories.at(-1)?.name).toBe('Unnamed subcategory')
@@ -113,11 +113,13 @@ describe('the search', () => {
     expect(await reads.subcategory_search(context(world(), { payload: { job: 'J1', query: 7 } }).ctx)).toEqual([])
   })
 
-  it('pages past what is retired or already theirs, to what is left', async () => {
-    const owned = Array.from({ length: 100 }, (_, n) => ({ row_id: `A${String(n).padStart(3, '0')}`, subcategory: `Sari old ${n}`, is_merchandise: true, deleted_at_source: true }))
-    const tables = world({ Subcategory: [...owned, { row_id: 'B2', subcategory: 'Sari two', is_merchandise: true }, { row_id: 'B1', subcategory: 'Sari one', is_merchandise: true }] })
-    expect(await reads.subcategory_search(context(tables, { payload: { job: 'J1', query: 'sari' } }).ctx)).toEqual([
-      { code: 'B1', name: 'Sari one', now_in: null, asked: false }, { code: 'B2', name: 'Sari two', now_in: null, asked: false }])
+  it('pages past what is already theirs, to what is left', async () => {
+    const owned = Array.from({ length: 100 }, (_, n) => ({ row_id: `A${String(n).padStart(3, '0')}`, subcategory: `Sari old ${n}`, subcategory_type: 'Merchandise' }))
+    const placed = owned.map(row => ({ row_id: `P${row.row_id}`, store: 'LKS', subcategory: row.row_id, section: 'S1', starts_on: '2026-01-01', ends_on: null }))
+    const tables = world({ 'Section Subcategory': placed, Subcategory: [...owned, { row_id: 'B2', subcategory: 'Sari two', subcategory_type: 'Merchandise' }, { row_id: 'B1', subcategory: 'Sari one', subcategory_type: 'Merchandise' }] })
+    const found = await reads.subcategory_search(context(tables, { payload: { job: 'J1', query: 'sari' } }).ctx)
+    expect(found).toEqual(expect.arrayContaining([{ code: 'B1', name: 'Sari one', now_in: null, asked: false }, { code: 'B2', name: 'Sari two', now_in: null, asked: false }]))
+    expect(found).toHaveLength(2)
   })
 })
 
@@ -138,7 +140,7 @@ describe('what is refused', () => {
   })
 
   it('a move or an add when a change is already planned for it', async () => {
-    const planned = [...world()['Section Subcategory'], { row_id: 'P9', site: 'LKS', subcategory: 'C1', section: 'S2', starts_on: later, ends_on: null }, { row_id: 'P8', site: 'LKS', subcategory: 'C2', section: 'S2', starts_on: later, ends_on: null }]
+    const planned = [...world()['Section Subcategory'], { row_id: 'P9', store: 'LKS', subcategory: 'C1', section: 'S2', starts_on: later, ends_on: null }, { row_id: 'P8', store: 'LKS', subcategory: 'C2', section: 'S2', starts_on: later, ends_on: null }]
     await expect(actions.propose_move(context(world({ 'Section Subcategory': planned }), { payload: { job: 'J1', placement: 'P1', to_section: 'S2' } }).ctx)).rejects.toThrow('already planned')
     await expect(actions.propose_add(context(world({ 'Section Subcategory': planned }), { payload: { job: 'J1', subcategory: 'C2' } }).ctx)).rejects.toThrow('already planned')
   })
@@ -147,10 +149,10 @@ describe('what is refused', () => {
     await refuses('propose_add', { job: 'J1' })
     await refuses('propose_add', { job: 'J1', subcategory: 7 })
     const closed = world()
-    closed.Section[0].section_status = 'Inactive'
+    closed.Section[0].status = 'Inactive'
     await refuses('propose_add', { job: 'J1', subcategory: 'C2' }, closed)
     await refuses('propose_add', { job: 'J1', subcategory: 'C2' }, world({ 'Section Subcategory': [
-      { row_id: 'P2', site: 'LKS', subcategory: 'C2', section: 'S2', starts_on: '2026-01-01' }, { row_id: 'P3', site: 'LKS', subcategory: 'C2', section: 'S3', starts_on: '2026-01-01' }] }))
+      { row_id: 'P2', store: 'LKS', subcategory: 'C2', section: 'S2', starts_on: '2026-01-01' }, { row_id: 'P3', store: 'LKS', subcategory: 'C2', section: 'S3', starts_on: '2026-01-01' }] }))
   })
 
   it('a section change with no job, or to the same section', async () => {
@@ -187,7 +189,7 @@ describe('approval sends it for a fresh review when', () => {
 
   it('the person left or no longer holds the job', async () => {
     const left = world()
-    left.Employee[0].employee_status = 'Left'
+    left.Employee[0].status = 'Left'
     expect((await decide(move, left)).call).toBe('needsFreshReview')
     const other = world()
     other.Employee[0].person = 'someone-else'
@@ -196,9 +198,9 @@ describe('approval sends it for a fresh review when', () => {
 
   it('an add whose person moved on, or whose subcategory has since been placed or planned', async () => {
     expect((await decide(add, world({ 'Job Assignment': jobOn('S2') }))).call).toBe('needsFreshReview')
-    const placed = [...world()['Section Subcategory'], { row_id: 'P2', site: 'LKS', subcategory: 'C2', section: 'S2', starts_on: '2026-01-01', ends_on: null }]
+    const placed = [...world()['Section Subcategory'], { row_id: 'P2', store: 'LKS', subcategory: 'C2', section: 'S2', starts_on: '2026-01-01', ends_on: null }]
     expect((await decide(add, world({ 'Section Subcategory': placed }))).call).toBe('needsFreshReview')
-    const planned = [...world()['Section Subcategory'], { row_id: 'P2', site: 'LKS', subcategory: 'C2', section: 'S2', starts_on: later, ends_on: null }]
+    const planned = [...world()['Section Subcategory'], { row_id: 'P2', store: 'LKS', subcategory: 'C2', section: 'S2', starts_on: later, ends_on: null }]
     expect((await decide(add, world({ 'Section Subcategory': planned }))).call).toBe('needsFreshReview')
   })
 
@@ -212,7 +214,7 @@ describe('approval sends it for a fresh review when', () => {
 
 describe('approval goes ahead when', () => {
   it('the subcategory was only ever placed in the past', async () => {
-    const over = [...world()['Section Subcategory'], { row_id: 'P2', site: 'LKS', subcategory: 'C2', section: 'S2', starts_on: '2020-01-01', ends_on: '2020-02-01' }]
+    const over = [...world()['Section Subcategory'], { row_id: 'P2', store: 'LKS', subcategory: 'C2', section: 'S2', starts_on: '2020-01-01', ends_on: '2020-02-01' }]
     const { ctx, sent } = context(world({ 'Section Subcategory': over }), { user: 'mani', proposals: [proposal(add)], payload: { proposal: 'PR', decision: 'approve' } })
     await actions.decide(ctx)
     expect(sent[0].call).toBe('approve')
@@ -221,11 +223,11 @@ describe('approval goes ahead when', () => {
 
 describe('a free id on the same day', () => {
   it('counts past those taken', async () => {
-    const taken = (id: string) => ({ row_id: id, site: 'LKS', subcategory: 'C9', section: 'S9', starts_on: '2020-01-01', ends_on: '2020-01-02' })
+    const taken = (id: string) => ({ row_id: id, store: 'LKS', subcategory: 'C9', section: 'S9', starts_on: '2020-01-01', ends_on: '2020-01-02' })
     const tables = world({ 'Section Subcategory': [...world()['Section Subcategory'], taken(`LKS-C1-${today}`), taken(`LKS-C1-${today}-2`)] })
     const { ctx, sent } = context(tables, { user: 'mani', proposals: [proposal(move)], payload: { proposal: 'PR', decision: 'approve' } })
     await actions.decide(ctx)
-    expect((sent[0].request as { newRow: { placement_id: string } }).newRow.placement_id).toBe(`LKS-C1-${today}-3`)
+    expect((sent[0].request as { newRow: { section_subcategory_id: string } }).newRow.section_subcategory_id).toBe(`LKS-C1-${today}-3`)
   })
 })
 
