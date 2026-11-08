@@ -32,6 +32,7 @@ import { RetireDialog, RetiredBadge, RetiredNotice, reactivateRow } from './RowR
 import { PurgeDialog } from './PurgeDialog'
 import { WorkflowActions } from './WorkflowActions'
 import { RowConnections } from './RowPane'
+import { RecordNav } from './RecordNav'
 import { RowMap } from './RowMap'
 import { RowTree } from './RowTree'
 import { useNavigation } from '../lib/navigation'
@@ -597,6 +598,7 @@ export function FormView({
           )}
         </div>
         <div className="flex max-w-full flex-wrap items-center gap-2">
+          {!isNew && <RecordNav table={table} name={name} />}
           {table === 'Data Source' && !isNew && (
             <RouterLink
               to="/featherbase/admin/source/$name"
