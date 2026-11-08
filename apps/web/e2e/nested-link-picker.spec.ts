@@ -69,8 +69,11 @@ test('a role cell at the bottom of the window opens its list upward', async ({ s
     await cell.fill('Sys')
     const option = page.getByTestId('link-options-role').getByTestId('link-option').filter({ hasText: 'System Manager' })
     await expect(option).toBeVisible()
-    const box = (await option.boundingBox())!
-    expect(await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.textContent, [box.x + box.width / 2, box.y + box.height / 2])).toBe('System Manager')
+    // The list places itself after it first shows; read the option where it settles.
+    await expect.poll(async () => {
+      const box = (await option.boundingBox())!
+      return page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.textContent, [box.x + box.width / 2, box.y + box.height / 2])
+    }).toBe('System Manager')
     await option.click()
     await expect(cell).toHaveValue('System Manager')
   })
