@@ -2,8 +2,9 @@
 // platform, on the Admin screens, the Sales Target page, the Portal, the
 // no-access page and the account pages. The address names it; the right side
 // is "Open Admin" (app addresses, people who can use Admin), the theme toggle
-// and the Account menu. What jsdom cannot see (widths, pixels, the hand-off's
-// cross-host navigation) is in e2e/top-bar.spec.ts.
+// and the Account menu. What jsdom cannot see (pixels: the bar's height and
+// frame on both addresses, sideways scroll, wrapping, and a real browser
+// following the hand-off across hosts) is not claimed here.
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { resolve } from 'node:path'
@@ -560,4 +561,63 @@ test('Space on the avatar opens the Account menu', async ({ admin }) => {
   ;(await screen.findByTestId('session-user')).focus()
   await userEvent.keyboard(' ')
   expect(await screen.findByTestId('account-menu')).toBeInTheDocument()
+})
+
+test('signed out, the sign-in page has no bar', async () => {
+  await renderApp('/featherbase/login', { user: null, token: null } as never)
+  expect(await screen.findByTestId('login-form', {}, { timeout: 8000 })).toBeInTheDocument()
+  expect(screen.queryByTestId('top-bar')).not.toBeInTheDocument()
+})
+
+test('the Admin bar stays named and its Account menu usable when the brand endpoint fails', async ({ admin }) => {
+  // The outage is the server's answer for this one public endpoint; every
+  // other request reaches the in-process server.
+  const bridge = globalThis.fetch
+  let failures = 0
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input) === '/api/brand') {
+      failures++
+      return new Response('Brand temporarily unavailable', { status: 503, headers: { 'content-type': 'text/plain' } })
+    }
+    return bridge(input, init)
+  })
+  await renderApp('/featherbase/admin', admin)
+  expect(await screen.findByTestId('admin-sidebar', {}, { timeout: 8000 })).toBeInTheDocument()
+  await waitFor(() => expect(failures).toBeGreaterThan(0))
+  // A picker when apps are installed: what the person sees is the selected option.
+  await waitFor(async () => {
+    const name = await barName()
+    expect(name instanceof HTMLSelectElement ? name.selectedOptions[0]?.textContent : name.textContent).toBe('Featherbase')
+  })
+  expect(within(await openAccountMenu()).getByTestId('logout')).toBeInTheDocument()
+})
+
+test("Tab walks the bar on an app's address: Open Admin, the three theme choices, then the Account menu", async ({ admin }) => {
+  onAddressThatOpens('dash')
+  await renderApp('/featherbase/sales-target', admin)
+  await within(await settledBar()).findByTestId('open-admin')
+  ;(await barName()).focus()
+  const reached: string[] = []
+  for (let i = 0; i < 5; i++) {
+    await userEvent.tab()
+    reached.push(document.activeElement?.getAttribute('data-testid') ?? '')
+  }
+  expect(reached).toEqual(['open-admin', 'theme-light', 'theme-dark', 'theme-device', 'session-user'])
+
+  // Space opens the Account menu; after a Tab into it, Escape closes it and
+  // focus returns to the avatar.
+  await userEvent.keyboard(' ')
+  expect(await screen.findByTestId('account-menu')).toBeInTheDocument()
+  await userEvent.tab()
+  await userEvent.keyboard('{Escape}')
+  await waitFor(() => expect(screen.queryByTestId('account-menu')).not.toBeInTheDocument())
+  expect(screen.getByTestId('session-user')).toHaveFocus()
+})
+
+test('at phone width the account page on the Admin address has no Open Admin in the Account menu', async ({ admin }) => {
+  phoneWidth()
+  onAddressThatOpens('admin')
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
+  await settledName('Featherbase')
+  expect(within(await openAccountMenu()).queryByTestId('open-admin')).not.toBeInTheDocument()
 })
