@@ -598,7 +598,7 @@ export function FormView({
           )}
         </div>
         <div className="flex max-w-full flex-wrap items-center gap-2">
-          {!isNew && <RecordNav table={table} name={name} dirty={dirty} />}
+          {!isNew && <RecordNav table={table} name={name} />}
           {table === 'Data Source' && !isNew && (
             <RouterLink
               to="/featherbase/admin/source/$name"

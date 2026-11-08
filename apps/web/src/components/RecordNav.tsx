@@ -38,7 +38,9 @@ function readListPlace(table: string): ListPlace | null {
   }
 }
 
-export function RecordNav({ table, name, dirty }: { table: string; name: string; dirty: boolean }) {
+// Unsaved changes are the form's to guard: its leave question asks before a
+// step to another record, as before any other page.
+export function RecordNav({ table, name }: { table: string; name: string }) {
   const navigate = useNavigate()
   const nav = useNavigation()
   // Read once per record shown; a step below rewrites it for the next one.
@@ -79,7 +81,6 @@ export function RecordNav({ table, name, dirty }: { table: string; name: string;
 
   const go = (id: string | undefined) => {
     if (!id) return
-    if (dirty && !window.confirm('You have unsaved changes. Leave this record without saving them?')) return
     if (nav?.addressed) nav.replace({ screen: 'row', table, row: id })
     else void navigate({ to: '/featherbase/admin/table/$table/row/$name', params: { table, name: id }, search: { prefill: undefined } })
   }
