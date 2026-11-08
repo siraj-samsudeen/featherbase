@@ -16,7 +16,7 @@
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "test:stories": "vitest run --config vitest.storybook.config.ts",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit && tsc -p tsconfig.stories.json --noEmit"
   },
   "dependencies": {
     "@featherbase/shop-floor": "workspace:*",
