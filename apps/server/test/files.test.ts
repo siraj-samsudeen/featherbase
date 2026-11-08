@@ -1,8 +1,11 @@
+import { readdirSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { describe, expect } from 'vitest'
 import { sql } from '../src/db'
 import { deleteStored } from '../src/storage'
 import { test } from './pg-test'
-import type { TestClient } from 'feather-testing-postgres'
+import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
+import { createUserWithRole, makeTable } from './fixtures'
 
 // FILE-001: multipart upload writes a storage object and a File doc with
 // size, type, and URL; public files serve without auth, private files
@@ -414,5 +417,74 @@ describe('Find and manage a file on its own', () => {
     } finally {
       await cleanupDisk(uploaded)
     }
+  })
+})
+
+// Changing a row includes attaching a file to it: whoever may change the row
+// may upload onto it without any grant on File. Attaching to a whole table,
+// or to nothing, still needs create on File.
+describe('Attach a file to a row you may change', () => {
+  const privateObjects = () => readdirSync(join(process.env.FILE_STORAGE_DIR ?? resolve('storage'), 'private')).length
+
+  async function world(admin: TestClient, createUser: CreateUserFn) {
+    await makeTable(admin, { name: 'Att Wr Doc', columns: ['title'] })
+    const doc = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Att Wr Doc', row: { title: 'Counter lights' } })
+    const writer = await createUserWithRole(admin, createUser, { role: 'Att Wr Writer', table: 'Att Wr Doc', can_read: true, can_write: true })
+    const reader = await createUserWithRole(admin, createUser, { role: 'Att Wr Reader', table: 'Att Wr Doc', can_read: true })
+    const stranger = await createUser({ roles: [] })
+    return { doc, writer, reader, stranger }
+  }
+
+  const photo = (as: TestClient, extra: Record<string, string>) => upload(as, 'lights.jpg', 'jpeg bytes', 'image/jpeg', { is_private: '1', ...extra })
+
+  test('someone who may change a row attaches a private photo to it and opens it', async ({ admin, createUser }) => {
+    const { doc, writer, reader } = await world(admin, createUser)
+    const res = await photo(writer, { ref_table: 'Att Wr Doc', ref_name: doc.row_id })
+    const file = (await res.json()) as Record<string, unknown>
+    try {
+      expect(res.status).toBe(201)
+      expect(file).toMatchObject({ file_name: 'lights.jpg', is_private: true, ref_table: 'Att Wr Doc', ref_name: doc.row_id, created_by: writer.user })
+      expect(await (await writer.fetch(String(file.file_url))).text()).toBe('jpeg bytes')
+      const { signed_url } = await writer.get<{ signed_url: string }>(`/api/signed_url?file_url=${encodeURIComponent(String(file.file_url))}`)
+      expect(signed_url).toContain(`${String(file.file_url)}?expires=`)
+      // Opening follows the row: someone who may only read it opens the photo too.
+      expect((await reader.fetch(String(file.file_url))).status).toBe(200)
+    } finally {
+      if (file.file_url) await cleanupDisk([String(file.file_url)])
+    }
+  })
+
+  test('someone who cannot open the row cannot open its photo', async ({ admin, createUser }) => {
+    const { doc, writer, stranger } = await world(admin, createUser)
+    const res = await photo(writer, { ref_table: 'Att Wr Doc', ref_name: doc.row_id })
+    const file = (await res.json()) as Record<string, unknown>
+    try {
+      expect(res.status).toBe(201)
+      expect((await stranger.fetch(String(file.file_url))).status).toBe(403)
+      expect((await stranger.fetch(`/api/signed_url?file_url=${encodeURIComponent(String(file.file_url))}`)).status).toBe(403)
+    } finally {
+      if (file.file_url) await cleanupDisk([String(file.file_url)])
+    }
+  })
+
+  test('someone who may only read a row cannot attach to it, and nothing is stored', async ({ admin, createUser }) => {
+    const { doc, reader } = await world(admin, createUser)
+    const [{ n: before }] = await sql`select count(*)::int as n from file`
+    const objects = privateObjects()
+    expect((await photo(reader, { ref_table: 'Att Wr Doc', ref_name: doc.row_id })).status).toBe(403)
+    const [{ n: after }] = await sql`select count(*)::int as n from file`
+    expect(after).toBe(before)
+    expect(privateObjects()).toBe(objects)
+  })
+
+  test('without a row, attaching still needs create on File', async ({ admin, createUser }) => {
+    const { writer } = await world(admin, createUser)
+    const [{ n: before }] = await sql`select count(*)::int as n from file`
+    const objects = privateObjects()
+    expect((await photo(writer, { ref_table: 'Att Wr Doc' })).status).toBe(403)
+    expect((await photo(writer, {})).status).toBe(403)
+    const [{ n: after }] = await sql`select count(*)::int as n from file`
+    expect(after).toBe(before)
+    expect(privateObjects()).toBe(objects)
   })
 })
