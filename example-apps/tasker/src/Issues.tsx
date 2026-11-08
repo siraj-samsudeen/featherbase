@@ -2,7 +2,7 @@ import { Button, fmtDate, fmtInstantIST } from '@featherbase/shop-floor'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type ReactNode } from 'react'
 import manifest from '../featherbase.json'
-import { api, listAllResources, uploadTaskFile } from './api'
+import { api, listAllResources, uploadRowFile } from './api'
 import { ReasonForm } from './Closure'
 import { DEFAULT_RULES, SEVERITIES, clockMinutes, duration, type ClockMode, type SlaRule } from './sla'
 import { useStores, type Store } from './Stores'
@@ -113,7 +113,7 @@ function Choice({ label, value, options, onChange, required, blank }: { label: s
   </select></label>
 }
 
-function RaiseIssue({ people, nameOf, onRaised, onCancel }: { people: { row_id: string }[]; nameOf: NameOf; onRaised: () => Promise<void>; onCancel: () => void }) {
+function RaiseIssue({ people, nameOf, onRaised, onCancel }: { people: { row_id: string }[]; nameOf: NameOf; onRaised: (notice: string) => Promise<void>; onCancel: () => void }) {
   const stores = useStores()
   const [draft, setDraft] = useState({ issue_title: '', category: CATEGORIES[0], severity: 'Medium', store: '', occurred_at: '', asset_area: '', impact: '', containment: '', owner_function: FUNCTIONS[0], owner: '', verifier: '' })
   const [photo, setPhoto] = useState<File | null>(null)
@@ -123,15 +123,23 @@ function RaiseIssue({ people, nameOf, onRaised, onCancel }: { people: { row_id: 
   const personOptions = people.map(person => [person.row_id, nameOf(person.row_id)] as [string, string])
   return <form aria-label="Raise an issue" className="tasker-issue-form" onSubmit={async (event) => {
     event.preventDefault(); setBusy(true); setError('')
+    let raised: { row_id: string; updated_at: string }
     try {
-      const photoUrl = photo ? await uploadTaskFile(photo) : null
-      await api.post('/api/save_row', { table: ISSUE, row: {
+      raised = await api.post('/api/save_row', { table: ISSUE, row: {
         ...draft, store: draft.store || null, owner: draft.owner || null, verifier: draft.verifier || null,
-        occurred_at: draft.occurred_at ? new Date(draft.occurred_at).toISOString() : null, photo: photoUrl,
+        occurred_at: draft.occurred_at ? new Date(draft.occurred_at).toISOString() : null,
       } })
-      await onRaised()
-    } catch (failure) { setError(failure instanceof Error ? failure.message : 'Could not raise the issue') }
-    finally { setBusy(false) }
+    } catch (failure) { setError(failure instanceof Error ? failure.message : 'Could not raise the issue'); setBusy(false); return }
+    // The photo hangs on the raised issue, so whoever can open the issue opens it.
+    let notice = ''
+    if (photo) {
+      try {
+        const photoUrl = await uploadRowFile(photo, ISSUE, raised.row_id)
+        await api.patch(`/api/table/${ISSUE}/${encodeURIComponent(raised.row_id)}`, { photo: photoUrl, updated_at: raised.updated_at })
+      } catch (failure) { notice = `The issue was raised, but its photo was not added: ${failure instanceof Error ? failure.message : 'the upload failed'}` }
+    }
+    setBusy(false)
+    await onRaised(notice)
   }}>
     <label className="tasker-issue-wide">What happened<input aria-label="What happened" required value={draft.issue_title} onChange={(event) => set('issue_title')(event.target.value)} placeholder="Dairy chiller 2 at 9°C" /></label>
     <Choice label="Category" value={draft.category} options={CATEGORIES.map(value => [value, value])} onChange={set('category')} required />
@@ -388,6 +396,7 @@ export function IssuesPage({ me, people, nameOf, onSaved }: { me: string; people
   const [selected, setSelected] = useState(hashIssueId)
   const [mode, setMode] = useState<'list' | 'rules'>('list')
   const [raising, setRaising] = useState(false)
+  const [notice, setNotice] = useState('')
   const [showClosed, setShowClosed] = useState(false)
   useEffect(() => {
     const change = () => { setSelected(hashIssueId()); if (hashIssueId()) setMode('list') }
@@ -420,6 +429,7 @@ export function IssuesPage({ me, people, nameOf, onSaved }: { me: string; people
     </div>
     {mode === 'rules' ? <SlaRules people={people} nameOf={nameOf} onSaved={refresh} /> : <>
       {issues.error && <p role="alert">Could not load issues: {issues.error.message}</p>}
+      {notice && <p role="alert">{notice}</p>}
       <div role="group" aria-label="Issue counts" className="tasker-issue-counts">
         {counts.map(([label, value]) => <div key={label} data-tone={label === 'Breached' && value ? 'breached' : label === 'Past 75%' && value ? 'warning' : undefined}><span>{label}</span><strong>{value}</strong></div>)}
       </div>
@@ -430,8 +440,8 @@ export function IssuesPage({ me, people, nameOf, onSaved }: { me: string; people
         </li>)}</ul>
       </section>}
       {current && <IssueDetail key={current.row_id} issue={current} me={me} people={people} nameOf={nameOf} onSaved={refresh} />}
-      {raising ? <RaiseIssue people={people} nameOf={nameOf} onCancel={() => setRaising(false)} onRaised={async () => { setRaising(false); await refresh() }} />
-        : <Button type="button" variant="primary" onClick={() => setRaising(true)}>Raise an issue</Button>}
+      {raising ? <RaiseIssue people={people} nameOf={nameOf} onCancel={() => setRaising(false)} onRaised={async (raisedNotice) => { setRaising(false); setNotice(raisedNotice); await refresh() }} />
+        : <Button type="button" variant="primary" onClick={() => { setRaising(true); setNotice('') }}>Raise an issue</Button>}
       <div className="tasker-issue-list-head">
         <h3>{showClosed ? 'All issues' : 'Open issues'}</h3>
         <label className="tasker-issue-show-closed"><input type="checkbox" checked={showClosed} onChange={(event) => setShowClosed(event.target.checked)} /> Show closed</label>

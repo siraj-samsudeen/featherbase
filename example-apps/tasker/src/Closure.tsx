@@ -1,6 +1,6 @@
 import { Button, fmtInstantIST } from '@featherbase/shop-floor'
 import { useState } from 'react'
-import { api, uploadTaskFile } from './api'
+import { api, uploadRowFile } from './api'
 import { SUBMITTED, closureNotes, type ClosureFields } from './verification'
 
 type NameOf = (person: string) => string
@@ -98,7 +98,7 @@ export function VerificationPanel({ task, shared, me, people, disabled, onPatch,
       event.preventDefault(); setUploadError('')
       let evidencePhoto: string | undefined
       if (photo) {
-        try { evidencePhoto = await uploadTaskFile(photo) } catch (error) { setUploadError(error instanceof Error ? error.message : 'Could not upload the photo'); return }
+        try { evidencePhoto = await uploadRowFile(photo, 'tasker.task', task.row_id) } catch (error) { setUploadError(error instanceof Error ? error.message : 'Could not upload the photo'); return }
       }
       if (await onPatch({ task_state: SUBMITTED, evidence_note: note.trim() || null, ...(evidencePhoto ? { evidence_photo: evidencePhoto } : {}) })) setSubmitting(false)
     }}>

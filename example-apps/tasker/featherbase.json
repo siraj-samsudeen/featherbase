@@ -1074,7 +1074,7 @@
     {
       "version": "3.3.1",
       "changes": [
-        "Tasker members can attach a photo when they submit a task or raise an issue"
+        "A photo added when submitting a task or raising an issue is attached to it, so anyone who can open the task or issue can open the photo"
       ]
     },
     {
