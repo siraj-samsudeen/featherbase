@@ -143,7 +143,7 @@ export default defineConfig({
             DATABASE_URL: e2eDatabaseUrl(),
             FEATHERBASE_APP_PATHS: JSON.stringify([
               resolve('../../example-apps/tasker'), resolve('../../test-apps/other'),
-              // Jeyarama's Assets app (jeyarama-equipment.spec.ts).
+              // Jeyarama's Assets app.
               resolve('../../client-apps/jeyarama/equipment'),
             ]),
             // FEATHERBASE_ENV rather than NODE_ENV: the migrator must stamp this
