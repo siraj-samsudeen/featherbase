@@ -174,3 +174,113 @@ test('a corrective task links to its issue, shares it and takes its store', asyn
   const task = await meena.post<Row>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Call Blue Star for a compressor check', issue: issue.row_id, assigned_to: suresh.user } })
   expect(task).toMatchObject({ issue: issue.row_id, shared: true, store: store.row_id, assigned_to: suresh.user })
 })
+
+test('clearing an open issue’s state leaves it Open', async ({ createUser }) => {
+  const { meena, suresh, store } = await setup(createUser)
+  const issue = await raise(meena, { store: store.row_id, owner: suresh.user })
+  expect(await change(meena, issue, { issue_state: null })).toMatchObject({ issue_state: 'Open', acknowledged_at: null })
+})
+
+test('an issue with no store runs on default store hours, and its escalation says no store manager was told', async ({ createUser }) => {
+  const { meena, suresh, kumar } = await setup(createUser)
+  const issue = await withTime(at('2026-11-09T10:00'), () => raise(meena, { owner: suresh.user }))
+  expect(issue).toMatchObject({ store: null, clock: 'Store hours', opens_at: '09:00', closes_at: '22:00' })
+  await withTime(at('2026-11-12T21:00'), escalate)
+  const now = await read(meena, issue)
+  expect(now).toMatchObject({ fix_breached: true, needs_owner: true })
+  expect(log(now).find(entry => entry.kind === 'breach')).toMatchObject({ to: [kumar.user] })
+  expect(log(now).find(entry => entry.kind === 'missing')?.note).toBe('Escalation has no store manager for this issue')
+})
+
+test('giving an issue a new owner keeps its verifier and tells the new owner', async ({ createUser }) => {
+  const { meena, suresh, kumar, store } = await setup(createUser)
+  const issue = await raise(meena, { store: store.row_id, owner: suresh.user, verifier: meena.user })
+  const handedOver = await change(meena, issue, { owner: kumar.user })
+  expect(handedOver).toMatchObject({ issue_state: 'Open', owner: kumar.user, verifier: meena.user })
+  expect(log(handedOver).filter(entry => entry.kind === 'assigned').map(entry => entry.to)).toEqual([[suresh.user], [kumar.user]])
+})
+
+test('only a Tasker member can own an issue', async ({ createUser }) => {
+  const { meena, store } = await setup(createUser)
+  const outsider = await createUser({ roles: [], fullName: 'Visitor' })
+  await expect(raise(meena, { store: store.row_id, owner: outsider.user })).rejects.toThrow('Choose a Tasker member')
+})
+
+test('only the owner submits an issue', async ({ createUser }) => {
+  const { meena, suresh, kumar, store } = await setup(createUser)
+  const issue = await raise(meena, { store: store.row_id, owner: suresh.user, verifier: meena.user })
+  await expect(change(kumar, issue, { issue_state: 'Submitted for verification', evidence_note: 'Reset the breaker' })).rejects.toThrow('Only the owner submits this issue')
+})
+
+test('submitting a paused issue ends the pause and counts the paused time', async ({ createUser }) => {
+  const { meena, suresh, store } = await setup(createUser)
+  const issue = await withTime(at('2026-11-09T10:00'), () => raise(meena, { store: store.row_id, owner: suresh.user, verifier: meena.user }))
+  const asked = await withTime(at('2026-11-09T11:00'), () => change(suresh, issue, { pause_requested: true, pause_reason: 'Blue Star visit booked', pause_review_on: '2026-11-10' }))
+  const paused = await withTime(at('2026-11-09T12:00'), () => change(meena, asked, { paused: true }))
+  const submitted = await withTime(at('2026-11-09T15:00'), () => change(suresh, paused, { issue_state: 'Submitted for verification', evidence_note: 'Blue Star replaced the relay' }))
+  expect(submitted).toMatchObject({ paused: false, paused_since: null, pause_requested: false, paused_minutes: 180, on_clock_minutes: 120 })
+})
+
+test('editing a paused issue keeps its clock stopped', async ({ createUser }) => {
+  const { meena, suresh, store } = await setup(createUser)
+  const issue = await withTime(at('2026-11-09T10:00'), () => raise(meena, { store: store.row_id, owner: suresh.user }))
+  const asked = await withTime(at('2026-11-09T11:00'), () => change(suresh, issue, { pause_requested: true, pause_reason: 'Blue Star visit booked', pause_review_on: '2026-11-10' }))
+  const paused = await withTime(at('2026-11-09T12:00'), () => change(meena, asked, { paused: true }))
+  const stored = await read(meena, paused)
+  const edited = await withTime(at('2026-11-09T15:00'), () => change(meena, stored, { impact: '40 crates of milk at risk' }))
+  expect(edited).toMatchObject({ paused: true, impact: '40 crates of milk at risk', on_clock_minutes: 120 })
+})
+
+test('the person who submitted an issue can’t verify it, even after it changes hands', async ({ createUser }) => {
+  const { meena, suresh, kumar, store } = await setup(createUser)
+  const issue = await raise(meena, { store: store.row_id, owner: suresh.user, verifier: meena.user })
+  const submitted = await change(suresh, issue, { issue_state: 'Submitted for verification', evidence_note: 'Reset the breaker' })
+  const handedOver = await change(meena, submitted, { owner: kumar.user, verifier: suresh.user })
+  await expect(change(suresh, handedOver, { issue_state: 'Closed' })).rejects.toThrow('Nobody verifies an issue they submitted')
+})
+
+test('only the verifier returns a submitted issue', async ({ createUser }) => {
+  const { meena, suresh, kumar, store } = await setup(createUser)
+  const issue = await raise(meena, { store: store.row_id, owner: suresh.user, verifier: meena.user })
+  const submitted = await change(suresh, issue, { issue_state: 'Submitted for verification', evidence_note: 'Reset the breaker' })
+  await expect(change(kumar, submitted, { issue_state: 'Acknowledged', change_reason: 'Still warm' })).rejects.toThrow('Waiting for the verifier to accept or return this issue')
+})
+
+test('reopening a closed issue needs a reason', async ({ createUser }) => {
+  const { meena, suresh, store } = await setup(createUser)
+  const issue = await raise(meena, { store: store.row_id, owner: suresh.user })
+  const closed = await change(suresh, issue, { issue_state: 'Submitted for verification', evidence_note: 'Reset the breaker' })
+  expect(closed.issue_state).toBe('Closed')
+  await expect(change(meena, closed, { issue_state: 'Acknowledged' })).rejects.toThrow('Give a reason for reopening this issue')
+})
+
+test('a pause nobody asked for can’t be approved', async ({ createUser }) => {
+  const { meena, suresh, store } = await setup(createUser)
+  const issue = await raise(meena, { store: store.row_id, owner: suresh.user })
+  await expect(change(meena, issue, { paused: true })).rejects.toThrow('Ask for the pause first, with a reason and a next review date')
+})
+
+test('an issue submitted after its fix time records the breach', async ({ createUser }) => {
+  const { meena, suresh, store } = await setup(createUser)
+  // Critical: 4 hours round the clock, so 10:00 breaches at 14:00; no escalation check runs before the submission.
+  const issue = await withTime(at('2026-11-09T10:00'), () => raise(meena, { store: store.row_id, owner: suresh.user, verifier: meena.user, severity: 'Critical' }))
+  const submitted = await withTime(at('2026-11-09T15:00'), () => change(suresh, issue, { issue_state: 'Submitted for verification', evidence_note: 'Compressor relay replaced' }))
+  expect(submitted.fix_breached).toBe(true)
+  expect(new Date(String(submitted.breached_at)).getTime()).toBe(at('2026-11-09T15:00').getTime())
+})
+
+test('an issue with no owner moves past 75% without a reminder to anyone', async ({ createUser }) => {
+  const { meena, store } = await setup(createUser)
+  const issue = await withTime(at('2026-11-09T10:00'), () => raise(meena, { store: store.row_id, severity: 'Critical' }))
+  await withTime(at('2026-11-09T13:10'), escalate)
+  const now = await read(meena, issue)
+  expect(now).toMatchObject({ escalation_level: 1, used_pct: 79, needs_owner: true })
+  expect(kinds(now)).not.toContain('reminder')
+})
+
+test('a corrective task for an issue with no store has no store', async ({ createUser }) => {
+  const { meena, suresh } = await setup(createUser)
+  const issue = await raise(meena, { owner: suresh.user })
+  const task = await meena.post<Row>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Call Blue Star for a compressor check', issue: issue.row_id } })
+  expect(task).toMatchObject({ issue: issue.row_id, shared: true, store: null })
+})
