@@ -107,6 +107,31 @@ describe('the /preview route', () => {
     }
   })
 
+  // Moved from the deleted e2e/preview-login.spec.ts: the session the SPA
+  // redeems is the named person's, never Administrator's.
+  sandboxTest('the redeemed session is the configured person, not Administrator', async ({ api }) => {
+    const email = 'preview-whoami@example.com'
+    const id = 'psn_previewwhoamiaaaaaaa'
+    await sql`
+      insert into person (row_id, email, full_name, enabled)
+      values (${id}, ${email}, 'Preview Whoami', true)`
+    configure(GOOD_KEY, email)
+    const res = await api.fetch(`/preview?key=${GOOD_KEY}`)
+    expect(res.status).toBe(302)
+    const code = new URLSearchParams((res.headers.get('location') ?? '').split('?')[1] ?? '').get('code')
+    const sid = res.headers.getSetCookie().find((c) => c.startsWith('sid='))!.split(';')[0]
+    const redeemed = await api.fetch('/api/oauth/session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: sid },
+      body: JSON.stringify({ code }),
+    })
+    expect(redeemed.status).toBe(200)
+    const session = (await redeemed.json()) as { token: string; user: { row_id: string } }
+    expect(session.user.row_id).toBe(id)
+    const whoami = await api.fetch('/api/whoami', { headers: { authorization: `Bearer ${session.token}` } })
+    expect(((await whoami.json()) as { row_id: string }).row_id).toBe(id)
+  })
+
   test('404s when previews are off — it does not advertise itself', async () => {
     configure(undefined, undefined)
     const res = await app.request(`/preview?key=${GOOD_KEY}`)
