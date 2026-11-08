@@ -4,7 +4,7 @@
 // with the stored JSON kept collapsed for engineers.
 process.env.TZ = 'Asia/Kolkata'
 
-import { screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
 import { rowHref } from 'shared'
@@ -66,6 +66,18 @@ test('#825: the header says what changed, by whom and when, and links to the row
   expect(header).toHaveTextContent(T)
   expect(header).toHaveTextContent('03-Nov-2026 11:10 IST')
   expect(within(header).getByRole('link', { name: rowId })).toHaveAttribute('href', `/featherbase/admin/table/vr-plant/row/${encodeURIComponent(rowId)}`)
+})
+
+// Moved from the deleted e2e/formview.spec.ts: the link leads to the row as it
+// stands now, under its unchanged id.
+test('#825: following the header\'s row link opens that row\'s form with its current values', async ({ admin }) => {
+  const { rowId, versionId } = await editedPlant(admin)
+  const record = await openVersion(admin, versionId)
+  const header = within(record).getByTestId('change-header')
+  fireEvent.click(await within(header).findByRole('link', { name: rowId }))
+  await screen.findByTestId('form-view', {}, { timeout: 10_000 })
+  await waitFor(() => expect(document.querySelector('[data-field=region]')).toHaveValue('South'))
+  expect(document.querySelector('[data-field=plant_name]')).toHaveValue('North wing')
 })
 
 test('#825: the stored JSON stays available, collapsed, and is no longer the main view', async ({ admin }) => {

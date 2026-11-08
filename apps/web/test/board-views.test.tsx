@@ -152,6 +152,30 @@ test('Calendar: next and previous month page the grid', async ({ admin }) => {
   await waitFor(() => expect(screen.getByTestId('cal-month').textContent).toBe(first))
 })
 
+// From the deleted e2e/calendar.spec.ts (UI-021): the calendar is reached from
+// the list's View menu, and its header keeps the Table's name and a way back.
+const pathOf = (r: { router: unknown }) =>
+  (r.router as { state: { location: { pathname: string } } }).state.location.pathname
+
+test('Calendar: the View menu of the list opens the calendar', async ({ admin }) => {
+  await seedSchedule(admin)
+  const app = await renderApp(`/featherbase/admin/table/${tableSlug(SCHED)}`, admin)
+  fireEvent.click(await screen.findByRole('button', { name: 'View: List' }))
+  fireEvent.click(await screen.findByRole('link', { name: 'Calendar' }))
+  expect(await screen.findByTestId('calendar-view')).toBeInTheDocument()
+  expect(pathOf(app)).toBe(`/featherbase/admin/table/${tableSlug(SCHED)}/view/calendar`)
+})
+
+test('Calendar: the header names the Table, and its List view link goes back to the list', async ({ admin }) => {
+  await seedSchedule(admin)
+  const app = await renderApp(`/featherbase/admin/table/${tableSlug(SCHED)}/view/calendar`, admin)
+  const heading = await screen.findByRole('heading', { level: 1 })
+  expect(heading.textContent).toBe(`${SCHED} — Calendar`)
+  fireEvent.click(screen.getByTestId('cal-to-list'))
+  expect(await screen.findByTestId('list-view')).toBeInTheDocument()
+  expect(pathOf(app)).toBe(`/featherbase/admin/table/${tableSlug(SCHED)}`)
+})
+
 test('Calendar: the next month shows the rows dated in it', async ({ admin }) => {
   await seedSchedule(admin)
   const now = new Date()

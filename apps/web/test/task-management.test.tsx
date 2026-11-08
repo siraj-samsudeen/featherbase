@@ -1655,6 +1655,35 @@ describe('Saved views stay within their list', () => {
 })
 
 describe('Task details keep your place', () => {
+  // Moved from the deleted e2e/runtime-host-shell.spec.ts: under the shared
+  // bar Tasker owns its deep address; opening and closing a task changes only
+  // its #task= hash, never the path or query before it.
+  test('at a deep app address, opening and closing a task changes only the hash', async ({ admin }) => {
+    await install()
+    const deep = '/tasker/review/37?filter=a%26b&owner=me'
+    try {
+      const task = await admin.post<{ row_id: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Host shell deep-link proof' } })
+      window.history.replaceState(null, '', deep)
+      renderTasker(admin)
+      const user = userEvent.setup()
+      await user.click(await screen.findByRole('button', { name: /^Inbox/ }))
+      const link = await screen.findByRole('link', { name: 'Host shell deep-link proof' })
+      expect(link).toHaveAttribute('href', `${deep}#task=${task.row_id}`)
+      await user.click(link)
+      await waitFor(() => expect(`${location.pathname}${location.search}${location.hash}`).toBe(`${deep}#task=${task.row_id}`))
+      const details = await screen.findByRole('complementary', { name: 'Task details' })
+      const close = within(details).getByRole('link', { name: 'Close' })
+      expect(close).toHaveAttribute('href', `${deep}#`)
+      await user.click(close)
+      await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Task details' })).not.toBeInTheDocument())
+      expect(`${location.pathname}${location.search}`).toBe(deep)
+      expect(location.hash).toBe('')
+    } finally {
+      window.history.replaceState(null, '', '/')
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+
   test('closing a project task’s details returns to the same project', async ({ admin }) => {
     await install()
     try {
