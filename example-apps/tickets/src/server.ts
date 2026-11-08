@@ -22,6 +22,7 @@ interface ReadContext {
   documents: {
     get(table: string, id: string): Promise<Row>
     list(table: string, args?: ListArgs): Promise<Row[]>
+    isReader(table: string, id: string): Promise<boolean>
   }
 }
 interface Context extends ReadContext {
@@ -33,6 +34,7 @@ interface Context extends ReadContext {
     create(table: string, row: Row): Promise<Row>
     update(table: string, row: Row): Promise<Row>
     handOver(table: string, id: string, person: string): Promise<void>
+    setReaders(table: string, id: string, people: string[]): Promise<void>
   }
 }
 interface Validation {
@@ -290,6 +292,13 @@ async function place(ctx: ReadContext, ticketId: unknown): Promise<Place> {
 function history_of(request: Row): Row[] {
   try { const list = JSON.parse(String(request.original_history ?? '[]')); return Array.isArray(list) ? list : [] } catch { return [] }
 }
+// #925: a private ticket's assignee and the person it is raised for read its
+// request as the raiser does, and stop when they are no longer named.
+async function keepReaders(ctx: Context, ticket: Row, structured: Row, type: TicketType | undefined) {
+  const raisedFor = type?.fields.some(f => f.name === 'raised_for' && f.type === 'person') ? structured.raised_for : undefined
+  const people = [ticket.assigned_to, raisedFor].filter((p): p is string => typeof p === 'string' && !!p && p !== ticket.owner)
+  await ctx.documents.setReaders(PRIVATE.request, String(ticket.row_id), people)
+}
 async function current(ctx: Context, p: Row, supportOnly = true) {
   const ticket = await ctx.documents.get('tickets.ticket', text(ctx, p.row_id, 'Ticket'))
   if (String(ticket.updated_at) !== text(ctx, p.updated_at, 'Revision')) ctx.reject('This ticket changed; reload before trying again')
@@ -365,7 +374,8 @@ function available(ctx: ReadContext, ticket: Row, type: TicketType | undefined, 
 // goes in only when the ticket screen would show it to them.
 async function tellAssignee(ctx: Context, ticket: Row, assignee: string, description: unknown, where: Place) {
   const id = String(ticket.row_id)
-  const visible = (where.open || ticket.owner === assignee || capabilitiesOf(ctx, assignee).support) && await ctx.mail.mayRead(assignee, where.request, id)
+  // #925: a private ticket's new assignee now reads its request too.
+  const visible = await ctx.mail.mayRead(assignee, where.request, id)
   await ctx.mail.toPerson(assignee, {
     subject: `Ticket assigned to you: ${String(ticket.title)}`,
     body: `${ctx.userName} assigned this ticket to you.\n\nTicket: ${String(ticket.title)}\n\n${visible ? `Description:\n${String(description)}` : 'Its description is private, so it is left out of this email.'}`,
@@ -387,6 +397,7 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     // Access gates' keys belong to private requests only.
     await ctx.documents.create(type?.visibility === 'everyone' ? OPEN.request : PRIVATE.request, { row_id: ticket.row_id, original, details_json: JSON.stringify(structured),
       ...(type?.visibility === 'everyone' ? {} : { verification_key: randomUUID(), approval_key: randomUUID() }) })
+    if (type?.visibility !== 'everyone') await keepReaders(ctx, ticket, structured, type)
     return { ticket }
   },
   async edit(ctx) {
@@ -460,6 +471,7 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
       }
     }
     const saved = await bump(ctx, ticket, values)
+    if (!where.open) await keepReaders(ctx, saved, next, type)
     // Only here, never in `create`: a load through `create` stays quiet.
     const assignee = values.assigned_to
     if (typeof assignee === 'string' && assignee !== ticket.assigned_to && assignee !== ctx.user)
@@ -617,7 +629,9 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     const name = (await ctx.people.names([raiser]))[raiser]
     if (!known && name) await ctx.documents.create('tickets.member', { row_id: raiser, full_name: name })
     await event(ctx, ticket, 'change_raiser', { old_raiser: ticket.owner, new_raiser: raiser, reason })
-    return { ticket: await bump(ctx, ticket, { owner: raiser }) }
+    const saved = await bump(ctx, ticket, { owner: raiser })
+    if (kept) await keepReaders(ctx, saved, parse((await ctx.documents.get(PRIVATE.request, String(ticket.row_id))).details_json), (await configuredTypes(ctx)).get(String(ticket.kind)))
+    return { ticket: saved }
   },
   async reopen(ctx) {
     const p = input(ctx, ['row_id', 'updated_at', 'reason'])
@@ -693,7 +707,8 @@ export const reads = {
     const answer: Row = { ticket, events: await all(ctx, 'tickets.progress', progressFields, [['ticket', '=', id]]) }
     const support = capabilities(ctx).support
     const where = await place(ctx, id)
-    if (where.open || ticket.owner === ctx.user || support) {
+    // #925: a private ticket's assignee and raised-for person read what its raiser reads.
+    if (where.open || ticket.owner === ctx.user || support || (!where.open && await ctx.documents.isReader(where.request, id))) {
       const request = await ctx.documents.get(where.request, id)
       answer.details = { ...parse(request.details_json), original: request.original }
       // Whoever reads the request reads its earlier wordings, with who replaced each and when.

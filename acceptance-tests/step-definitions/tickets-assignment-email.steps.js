@@ -45,10 +45,7 @@ steps(Then, [
     assert.ok(body.includes('assigned this ticket to you.'), body);
     assert.ok(body.includes(`/tickets/?ticket=${x.t.ticket.row_id}`), body);
   }],
-  ['the email to Colleague leaves out the private description', async x => {
-    assert.ok(!(await x.mailTo('Colleague'))[0].body.includes(x.description));
-  }],
-  ['the email to Verifier includes the description', async x => {
-    assert.ok((await x.mailTo('Verifier'))[0].body.includes(x.description));
+  ['the email to {word} includes the description', async (x, name) => {
+    assert.ok((await x.mailTo(name))[0].body.includes(x.description));
   }],
 ]);
