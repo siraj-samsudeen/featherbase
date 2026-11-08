@@ -25,6 +25,9 @@ const BASE_URL = `http://localhost:${WEB_PORT}`;
 const API_URL = `http://localhost:${API_PORT}`;
 const PROTOTYPE_URL = `http://localhost:${PROTOTYPE_PORT}`;
 const BOOT_TIMEOUT_MS = 240_000;
+// The API's clock: while this file holds an instant, that is the time on the
+// server (server-clock.cjs, preloaded into the API process); app-clock.js sets it.
+const CLOCK_FILE = path.join(require('node:os').tmpdir(), `featherbase-acceptance-clock-${API_PORT}`);
 
 // Same host and credentials as the developer's database, under its own name.
 function acceptanceDatabaseUrl() {
@@ -86,6 +89,8 @@ function isolatedEnvironment(overrides = {}) {
     GOOGLE_CLIENT_SECRET: 'acceptance-private-secret',
     ALLOW_MOCK_OAUTH: '1', PREAUTH_LOGIN_MAX: '10000', WEB_ORIGINS: BASE_URL,
     [EXTERNAL_URL_ENV]: externalDatabaseUrl({ asReader: true }),
+    ACCEPTANCE_CLOCK_FILE: CLOCK_FILE,
+    NODE_OPTIONS: [process.env.NODE_OPTIONS, `--require ${path.join(__dirname, 'server-clock.cjs')}`].filter(Boolean).join(' '),
     ...overrides,
   };
 }
@@ -217,6 +222,7 @@ BeforeAll({ timeout: BOOT_TIMEOUT_MS + 30_000 }, async function () {
       );
   }
   // #772 design D4: a local stand-in for MotherDuck, made fresh for each run.
+  require('node:fs').rmSync(CLOCK_FILE, { force: true });
   process.env.MOTHERDUCK_STANDIN = motherDuckStandin('build');
   const env = isolatedEnvironment();
   for (const command of ['e2e:reset', 'migrate'])
@@ -239,12 +245,13 @@ BeforeAll({ timeout: BOOT_TIMEOUT_MS + 30_000 }, async function () {
 
 AfterAll(async function () {
   stopAll();
+  require('node:fs').rmSync(CLOCK_FILE, { force: true });
   if (scenarioEnvironment) await acceptanceSql("update featherbase.internal_metadata set value = 'test' where key = 'environment'");
 });
 
 process.on('exit', stopAll);
 
 module.exports = {
-  BASE_URL, API_URL, PROTOTYPE_URL, resetAcceptance, restartAcceptance, useInstanceToken, acceptanceSql, acceptanceDatabaseUrl, isolatedEnvironment, REPO_ROOT,
+  BASE_URL, API_URL, PROTOTYPE_URL, CLOCK_FILE, resetAcceptance, restartAcceptance, useInstanceToken, acceptanceSql, acceptanceDatabaseUrl, isolatedEnvironment, REPO_ROOT,
   externalSql, EXTERNAL_URL_ENV, EXTERNAL_READER, EXTERNAL_READER_PASSWORD, addStandinTable, changeStandin,
 };
