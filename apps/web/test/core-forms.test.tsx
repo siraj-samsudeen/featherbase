@@ -434,6 +434,8 @@ test('An invalid value blocks the save, in place: correcting it and saving again
 // rejects fetch itself (TypeError), never answering with an error envelope.
 // That boundary is stood in for here: the matching requests are refused before
 // they leave, everything else reaches the real server.
+const pathOf = (router: unknown) => (router as { state: { location: { pathname: string } } }).state.location.pathname
+
 function goOffline(refuse: (path: string, method: string) => boolean) {
   const connected = globalThis.fetch
   let online = false
@@ -483,14 +485,14 @@ test('A rename that cannot reach the server keeps the new name to retry, and ren
   const network = goOffline((path, method) => path === `/api/table/${enc('Core Bin')}/bin-old:rename` && method === 'POST')
   fireEvent.click(screen.getByTestId('rename-confirm'))
   await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Rename failed'))
-  expect(router.state.location.pathname).toBe('/featherbase/admin/table/core-bin/row/bin-old')
+  expect(pathOf(router)).toBe('/featherbase/admin/table/core-bin/row/bin-old')
   expect(screen.getByTestId('rename-input')).toHaveValue('bin-new')
   expect(screen.getByTestId('rename-confirm')).toBeEnabled()
   expect(await admin.get(`/api/table/${enc('Core Bin')}/bin-old`)).toMatchObject({ title: 'rename target' })
 
   network.reconnect()
   fireEvent.click(screen.getByTestId('rename-confirm'))
-  await waitFor(() => expect(router.state.location.pathname).toBe('/featherbase/admin/table/core-bin/row/bin-new'))
+  await waitFor(() => expect(pathOf(router)).toBe('/featherbase/admin/table/core-bin/row/bin-new'))
   expect(await admin.get(`/api/table/${enc('Core Bin')}/bin-new`)).toMatchObject({ title: 'rename target' })
   await expect(admin.get(`/api/table/${enc('Core Bin')}/bin-old`)).rejects.toMatchObject({ status: 404 })
 })
@@ -510,11 +512,11 @@ test('A delete that cannot reach the server keeps its confirmation to retry, and
   await waitFor(() => expect(screen.getByTestId('delete-row-error')).toHaveTextContent('Delete failed'))
   expect(screen.getByTestId('delete-row-dialog')).toHaveTextContent('Delete Core Note: first?')
   expect(screen.getByTestId('delete-row-confirm')).toBeEnabled()
-  expect(router.state.location.pathname).toBe(`/featherbase/admin/table/core-note/row/${row.row_id}`)
+  expect(pathOf(router)).toBe(`/featherbase/admin/table/core-note/row/${row.row_id}`)
   expect(await titleOf(admin, row.row_id)).toBe('first')
 
   network.reconnect()
   fireEvent.click(screen.getByTestId('delete-row-confirm'))
-  await waitFor(() => expect(router.state.location.pathname).toBe('/featherbase/admin/table/core-note'))
+  await waitFor(() => expect(pathOf(router)).toBe('/featherbase/admin/table/core-note'))
   await expect(admin.get(`/api/table/${enc('Core Note')}/${row.row_id}`)).rejects.toMatchObject({ status: 404 })
 })

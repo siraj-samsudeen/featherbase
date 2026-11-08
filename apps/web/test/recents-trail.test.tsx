@@ -81,7 +81,7 @@ test('#101: a filtered list chosen from the empty search bar opens with its filt
 test('#101: in the empty search bar, an arrow key and Enter replay a recent row', async ({ admin }) => {
   const app = await buildTrail(admin)
   // Revisit the list, so the row is second in the trail.
-  await app.router.navigate({ to: LIST, search: { filters: FILTERS } as never })
+  await (app.router as unknown as { navigate(o: { href: string }): Promise<void> }).navigate({ href: `${LIST}?filters=${encodeURIComponent(FILTERS)}` })
   await screen.findByTestId('list-view', {}, WAIT)
   await app.router.navigate({ to: '/featherbase/admin' })
   const bar = await openEmptyBar()

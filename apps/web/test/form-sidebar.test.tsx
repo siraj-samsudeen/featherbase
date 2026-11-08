@@ -145,7 +145,7 @@ test('an attached picture shows its small preview beside its name; a text file s
   const rowId = await seedRow(admin, ['enable_files'])
   await openCollaboration(admin, rowId)
   await useNodeMultipart()
-  await attach(pickedFile('picture.png', makePng(240, 160), 'image/png'))
+  await attach(pickedFile('picture.png', new Uint8Array(makePng(240, 160)), 'image/png'))
   const rowOf = (name: string) => screen.getAllByTestId('attachment-row').find((r) => r.textContent?.includes(name))
   await waitFor(() => expect(rowOf('picture.png')).toBeDefined(), { timeout: 15_000 })
   await attach(pickedFile('note.txt', 'not an image'))
