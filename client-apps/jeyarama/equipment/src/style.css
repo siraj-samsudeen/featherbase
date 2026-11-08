@@ -208,3 +208,4 @@ tr[data-state="Not with me"] .custody-state { color: var(--color-negative); }
 .asset-tag-facts dt { color: var(--color-ink-muted); }
 .asset-tag-facts dd { margin: 0; font-weight: 600; }
 .recount-error-rate { padding: 8px 12px; border-radius: 8px; background: var(--color-caution-tint); }
+.assets-tag { white-space: nowrap; }

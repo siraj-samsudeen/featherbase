@@ -33,7 +33,7 @@ export function AssetsList() {
           {shown.map(asset => {
             const warranty = warrantyNotice(asset.warranty_until, today)
             return <tr key={asset.row_id}>
-              <td>{asset.tag_no ?? 'Needs a tag'}</td>
+              <td className="assets-tag">{asset.tag_no ?? 'Needs a tag'}</td>
               <td><a href={`#asset=${encodeURIComponent(asset.row_id)}`}>{asset.asset_name}</a></td>
               <td>{nameOf(types.data, asset.asset_type, 'type_name')}</td>
               <td>{placePath(asset.place, places.data ?? [])}</td>
