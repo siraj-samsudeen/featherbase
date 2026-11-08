@@ -34,3 +34,5 @@ apps/server/test/.migration-0125-*/
 # .relabel-*, .tasker-upgrade-*, .app-jobs-*, ...): each is removed when its
 # test finishes, but a run killed partway through leaves it behind (#700).
 apps/server/test/.*/
+# Tours (apps/web/tours): the HTML report
+apps/web/tours-report/

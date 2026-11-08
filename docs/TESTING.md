@@ -193,6 +193,45 @@ Every non-sandboxed test file says why in its header comment.
   to `dist/runtime-proof-*/`. It uses only `featherbase_runtime_proof_e2e`
   (override with `RUNTIME_PROOF_DATABASE_URL` / `RUNTIME_PROOF_PORT`).
 
+## Tours
+
+A tour (`apps/web/tours/*.tour.ts`, #1070) is one long browser test that tells
+one story the way a demo does. It catches what narrow tests miss: one feature
+handing over to the next, a normal user rather than Administrator, realistic
+amounts of data, and steps that are too slow.
+
+- **Through the screen only.** The one setup is the people who sign in.
+  Everything else is done the way a person does it, and later chapters use what
+  earlier chapters made.
+- **The watchdog.** A tour fails on any uncaught page error, server error
+  (5xx) or request that got no answer, even if every assertion passes. It also
+  fails on any chapter slower than its time limit.
+  `tours/harness.tour.ts` proves the watchdog itself still works.
+- **Gaps.** A step the platform can't do yet is a `gap(...)` naming its issue.
+  It shows as a card in the video and a note in the report, and never fails the
+  tour.
+- **One install per run.** `playwright.tours.config.ts` builds the web app,
+  resets its own database (`<name>_tours_e2e`) and serves both from the API
+  server, as an instance does.
+- **Every CI run.** The `tours` job runs on every push and PR, whatever the
+  change touches. It is part of the required `e2e` check.
+
+```bash
+pnpm tour                                   # every tour, as CI runs them
+VIDEO=1 pnpm tour --grep "messy workbook"   # slow, captioned: test-results/tours/**/video.webm
+TOUR_URL=https://<preview> pnpm tour        # against a running instance, before a demo
+TOUR_ROWS=500 pnpm tour                     # the base tour with bigger sheets
+```
+
+`VIDEO=1` shows each chapter as a title card and each step as a caption, so the
+recording can serve as a product video. Playwright records it with its own
+ffmpeg (`pnpm --filter web exec playwright install ffmpeg`). Each chapter's time
+is printed and kept in the HTML report (`apps/web/tours-report/`).
+
+The **Featherbase base tour** (`featherbase.tour.ts`) goes from a messy workbook
+to an app you can navigate. Each app gets its own tour, and that tour shows the
+platform features the app relies on.
+
 ## E2E specs
 
 Every spec imports `test` or `anonymousTest` from `./fixtures`, and which one
