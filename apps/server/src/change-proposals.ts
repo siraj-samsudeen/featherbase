@@ -69,8 +69,10 @@ function sequential() {
 /** The Table, when the app may reach it at all. */
 async function reachable(app: string, table: string, declared: boolean, linked: readonly string[]): Promise<TableMeta> {
   if (!declared) reject(`The app has not declared Table ${table}`)
-  if (!linked.includes(table)) reject(`Table ${table} is not listed in this app's linked Tables setting`)
   const meta = await getMeta(table)
+  // #1046: an app reads its own Tables as itself without the instance listing
+  // them; an instance Table is read only once the instance links it.
+  if (!linked.includes(table) && meta.owner_app !== app) reject(`Table ${table} is not listed in this app's linked Tables setting`)
   if (meta.system || meta.data_source || meta.kind !== 'table' || (meta.owner_app && meta.owner_app !== app)
     || meta.columns.some(column => column.column_type === 'Sub-table')) reject(`Table ${table} is not supported as a base Table`)
   return meta

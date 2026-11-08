@@ -9,8 +9,9 @@ import { pathToFileURL } from 'node:url'
 import { makeClient, type CreateUserFn, type TestClient } from 'feather-testing-postgres'
 import { describe, expect } from 'vitest'
 import { test as pgTest } from './pg-test'
-import { availableRuntimeVersions, discoverPackages, runPackageRead } from '../src/runtime-packages'
+import { availableRuntimeVersions, discoverPackages, findScopeProvider, runPackageRead } from '../src/runtime-packages'
 import { sql } from '../src/db'
+import { resolvePersonScope } from '../src/person-scope'
 import { expectApiError, tableRef } from './fixtures'
 import { newIdentifierId } from '../src/person-identifiers'
 import { runHealthChecks } from '../src/instance-health'
@@ -137,6 +138,17 @@ describe("the scope provider's read context", () => {
     roster.faults.readUndeclared = true
     await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 403 })
     expect(await refusals(user)).toEqual(['scopeproof.places:provider'])
+  })
+
+  // #967: an app may name an instance Table it reads without the mark, so role grants decide who edits it.
+  test('reads an unmarked instance Table the app names, and still not one it only declares', async ({ admin, createUser }) => {
+    const { user, roster } = await setup(admin, createUser)
+    await admin.post('/api/table_def', { name: 'Roster Extra', columns: [{ column_name: 'note', column_type: 'Data' }] })
+    await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+    roster.faults.readInstance = true
+    const binding = await findScopeProvider()
+    await expect(resolvePersonScope(user.user!, binding)).rejects.toMatchObject({ reason: 'provider' })
+    await expect(resolvePersonScope(user.user!, { ...binding!, unmarkedTables: ['Roster Extra'] })).resolves.toEqual(expect.any(Array))
   })
 
   test.for([[false, 403], [true, 200]] as const)('reads a declared instance Table only when it is marked as deciding scope (marked: %s)', async ([marked, status], { admin, createUser }) => {
@@ -667,6 +679,13 @@ describe('declaring a scope provider', () => {
       ...m.tables.map((t: Record<string, any>) => ({ ...t, columns: [...t.columns, { column_name: 'lines', column_type: 'Sub-table', row_table: 'placeroster.line' }] })),
       { name: 'placeroster.line', label: 'line', kind: 'sub_table', columns: [{ column_name: 'code', column_type: 'Data' }] }] }, s],
       'A scope provider cannot read Tables with Sub-tables'],
+    // #967: an unmarked Table is one the provider reads, and never one of the app's own.
+    ['naming an unmarked Table it does not read', (m: Record<string, any>, s: string) =>
+      [{ ...m, scopeProvider: { ...m.scopeProvider, unmarkedTables: ['Somewhere Else'] } }, s],
+      "A scope provider's unmarked Table Somewhere Else is not one of the Tables it reads"],
+    ['naming one of its own Tables as unmarked', (m: Record<string, any>, s: string) =>
+      [{ ...m, scopeProvider: { ...m.scopeProvider, unmarkedTables: [m.scopeProvider.tables[0]] } }, s],
+      "A scope provider's own Table placeroster.position must be marked decides_scope"],
   ] as const)('an app declaring a provider %s is not loaded', async ([, change, error]) => {
     const copy = await variant(change as never)
     try {
