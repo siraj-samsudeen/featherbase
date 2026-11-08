@@ -7,6 +7,7 @@ import { assertPermission, getRoles, getScopeMap } from './permissions'
 import { getMeta } from './meta'
 import { tableRelation, type TableDef } from './table-engine'
 import { AppError } from './errors'
+import { ArchivedTableError } from './system-written'
 import { logAccess } from './audit'
 import { coversPersonScope, narrowPersonScope, resolvePersonScope, NoPersonScope, type ScopeProviderBinding } from './person-scope'
 import { personScopeSchema } from 'shared'
@@ -292,6 +293,7 @@ export function withAppAuthorization<T>(request: AccessRequest,
         return handler(authorization, payload, freezeJson(metadata), !!previous, resolved?.providerKeys)
       })
     } catch (error) {
+      if (error instanceof ArchivedTableError) throw error
       // Outside the failed business transaction so the audit survives rollback.
       if (error instanceof AccessRefusal || (error instanceof AppError && error.type === 'PermissionError')) {
         return recordAppAccessRefusal(request.user, request.app, request.operation, error instanceof AccessRefusal ? error.reason : 'permission', error)

@@ -42,8 +42,9 @@ export async function globalSearch(query: string, user: string): Promise<SearchH
   // Source-bound Tables are excluded: they have no physical table here (the
   // old query 500'd the whole search the moment one existed), and fanning a
   // per-keystroke ilike out to every foreign store is not a typeahead's job.
+  // #1041: an archived Table is out of everyday use, so out of search too.
   const tables = await sql`
-    select name, owner_app from table_def where kind = 'table' and data_source is null
+    select name, owner_app from table_def where kind = 'table' and data_source is null and archived_at is null
     order by name`
   // Stable sort: ordinary Tables first, registries last (#431).
   const isRegistry = (n: unknown) => (registryLabel(String(n)) ? 1 : 0)
@@ -67,14 +68,16 @@ export async function globalSearch(query: string, user: string): Promise<SearchH
     const title = meta.title_column && cols.has(meta.title_column) ? meta.title_column : null
     // The wire key is always `row_id`; `Table` alone stores it as `name`.
     const key = sql(meta.row_key)
+    // #1041: an archived Table's own definition is out of search with its rows.
+    const live = meta.name === 'Table' ? sql`and archived_at is null` : sql``
     const rows = title
       ? await sql`
           select ${key} as row_id, ${readExpression(title)} as title from ${sql(table)}
-          where ${where} and (${key} ilike ${like} or ${readExpression(title)} ilike ${like})
+          where ${where} ${live} and (${key} ilike ${like} or ${readExpression(title)} ilike ${like})
           limit ${PER_TABLE}`
       : await sql`
           select ${key} as row_id, ${key} as title from ${sql(table)}
-          where ${where} and ${key} ilike ${like}
+          where ${where} ${live} and ${key} ilike ${like}
           limit ${PER_TABLE}`
     for (const row of rows) {
       hits.push({
