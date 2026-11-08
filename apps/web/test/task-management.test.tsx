@@ -1823,3 +1823,18 @@ test('parent completion is unavailable while a subtask remains open', async ({ a
   await detail.findByRole('button', { name: 'Collect figures first' })
   expect(detail.getByRole('button', { name: 'Mark Done' })).toBeDisabled()
 })
+
+// #1080, from e2e/runtime-login-return.spec.ts: the address a sign-in returns
+// to opens Tasker with its selected task in the details.
+test('a #task= address opens Tasker with that task in its details', async ({ admin }) => {
+  await install()
+  const task = await admin.post<{ row_id: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Selected through sign-in' } })
+  location.hash = `#task=${task.row_id}`
+  try {
+    renderTasker(admin)
+    expect(await screen.findByRole('heading', { name: 'Selected through sign-in' }, { timeout: 8000 })).toBeInTheDocument()
+    expect(screen.getByRole('complementary', { name: 'Task details' })).toBeInTheDocument()
+  } finally {
+    location.hash = ''
+  }
+})
