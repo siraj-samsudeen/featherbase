@@ -16,6 +16,6 @@ export async function useNodeMultipart(): Promise<void> {
 }
 
 /** A file as the person would pick it. Call after useNodeMultipart(). */
-export function pickedFile(name: string, content = 'bytes', type = 'text/plain'): File {
+export function pickedFile(name: string, content: string | Uint8Array = 'bytes', type = 'text/plain'): File {
   return new NodeFile([content], name, { type }) as unknown as File
 }
