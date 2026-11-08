@@ -1914,11 +1914,14 @@ export function LinkControl({
           )}
           {/* A Table column of a link to any Table picks among Tables; it never makes one (#881). */}
           {/* A view holds no rows to create (#1021). */}
+          {/* A new tab keeps what was typed on this form (#1033). */}
           {!forFilter && !extraFilters.length && !field.reference_base && (
             <RouterLink
               to="/featherbase/admin/table/$table/new"
               params={{ table: target }}
               search={{ prefill: undefined }}
+              target="_blank"
+              rel="noopener"
               tabIndex={-1}
               className="block border-t border-border px-3 py-1.5 text-sm text-ink-muted hover:bg-subtle"
               data-testid="link-create-new"

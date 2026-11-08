@@ -93,19 +93,15 @@ test('record nav: unsaved changes are kept unless the user agrees to leave', asy
     await expect(title).not.toHaveValue('')
     await title.fill('edited, not saved')
 
-    // One question, the form's own: a browser dialog on top of it would ask twice.
-    let browserDialogs = 0
-    page.on('dialog', (d) => { browserDialogs++; void d.accept() })
-    const leave = page.getByTestId('unsaved-leave-dialog')
-
+    // The form's own leave question asks, as before any other page (#1009).
+    const ask = page.getByTestId('unsaved-leave-dialog')
     await page.getByRole('button', { name: 'Next record' }).click()
-    await leave.getByRole('button', { name: 'Stay' }).click()
-    await expect(leave).toHaveCount(0)
+    await ask.getByRole('button', { name: 'Stay' }).click()
+    await expect(ask).toBeHidden()
     await expect(page.locator('[data-field=title]')).toHaveValue('edited, not saved')
 
     await page.getByRole('button', { name: 'Next record' }).click()
-    await leave.getByRole('button', { name: 'Leave without saving' }).click()
+    await ask.getByRole('button', { name: 'Leave without saving' }).click()
     await formTitle(page, titles[1])
-    expect(browserDialogs).toBe(0)
   })
 })
