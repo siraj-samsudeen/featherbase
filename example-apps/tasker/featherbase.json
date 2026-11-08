@@ -1062,9 +1062,21 @@
           }
         }
       ]
+    },
+    {
+      "id": "member_photo_uploads",
+      "fromVersion": "3.3.0",
+      "toVersion": "3.3.1",
+      "operations": []
     }
   ],
   "releaseNotes": [
+    {
+      "version": "3.3.1",
+      "changes": [
+        "Tasker members can attach a photo when they submit a task or raise an issue"
+      ]
+    },
     {
       "version": "3.3.0",
       "changes": [
@@ -1984,6 +1996,11 @@
       "role": "Tasker Member",
       "can_read": true,
       "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "File",
+      "role": "Tasker Member",
       "can_create": true
     },
     {
