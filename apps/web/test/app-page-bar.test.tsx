@@ -3,8 +3,10 @@
 // first in the app's body and loads the bar bundle (src/bar), which draws the
 // real TopBar into the host's shadow root. The app owns its document; the bar
 // never runs app code, and its styles and theme never reach the app's page.
-// Widths, real styles and the fixture app's own page are in
-// e2e/app-page-bar.spec.ts.
+// Widths, real styles and the fixture app's own page are layout and
+// browser-only checks, not tested here (#1080); the served document and the
+// signed-out redirect are apps/server/test/runtime-shell.test.ts and
+// runtime-packages.test.ts.
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { act, waitFor, within } from '@testing-library/react'
