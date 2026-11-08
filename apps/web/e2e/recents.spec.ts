@@ -21,7 +21,8 @@ test('#827: typed results follow keyboard selection across groups', async ({ ses
       await bar.fill('person')
       const record = page.getByRole('option', { name: 'Person Table definition', exact: true })
       await expect(record).toBeVisible()
-      const targetChoice = target === 'awesomebar-doc' ? record : page.getByTestId(target)
+      // Person's own Table and new-row results: an installed app may offer others, such as Finance person.
+      const targetChoice = target === 'awesomebar-doc' ? record : page.getByTestId(target).and(page.locator(`[href="${path}"]`))
       const choices = page.getByTestId('awesomebar-results').locator('a, button')
       const count = await choices.count()
       for (let i = 0; i < count; i++) {

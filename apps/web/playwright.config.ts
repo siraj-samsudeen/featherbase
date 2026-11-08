@@ -146,6 +146,8 @@ export default defineConfig({
               // #642: an app that declares a top-bar picker, and the app that
               // gives its readers their places (top-bar-picker.spec.ts).
               resolve('../../test-apps/fixtures/bar-proof'), resolve('../../test-apps/fixtures/place-roster'),
+              // Jeyarama's Assets app (jeyarama-equipment.spec.ts).
+              resolve('../../client-apps/jeyarama/equipment'),
             ]),
             // FEATHERBASE_ENV rather than NODE_ENV: the migrator must stamp this
             // database for the 'test' environment (which is what lets the reset

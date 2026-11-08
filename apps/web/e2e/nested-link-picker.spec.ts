@@ -64,8 +64,20 @@ test('a role cell at the bottom of the window opens its list upward', async ({ s
   await session.step('the list for a cell at the very bottom is fully inside the window', async ({ page }) => {
     await page.getByTestId('add-row-roles').click()
     const cell = page.getByTestId('table-roles').locator('[data-childfield="role"]')
-    const at = (await cell.boundingBox())!
-    await page.setViewportSize({ width: 1280, height: Math.ceil(at.y + at.height) + 4 })
+    // The form can still move after the cell appears: the related-row chips load later and may wrap
+    // to a second row. Size the window until the cell is its last line on two checks in a row.
+    await page.waitForLoadState('networkidle')
+    let settled = -1
+    await expect.poll(async () => {
+      const at = (await cell.boundingBox())!
+      const height = Math.ceil(at.y + at.height) + 4
+      if (page.viewportSize()!.height !== height) await page.setViewportSize({ width: 1280, height })
+      const now = (await cell.boundingBox())!
+      const bottom = Math.ceil(now.y + now.height) + 4 === height ? height : -1
+      const steady = bottom > 0 && bottom === settled
+      settled = bottom
+      return steady
+    }).toBe(true)
     await cell.fill('Sys')
     const option = page.getByTestId('link-options-role').getByTestId('link-option').filter({ hasText: 'System Manager' })
     await expect(option).toBeVisible()
