@@ -34,7 +34,7 @@ export const Deep: Story = {
     items: [
       { label: 'Stores', href: '#stores' },
       { label: 'Kerala', href: '#kerala' },
-      { label: '1501 Attakulangara', href: '#1501' },
+      { label: '1501 Attakulangara', href: '#store-1501' },
       { label: 'Stock counts', href: '#counts' },
       { label: '02-Nov-2026' },
     ],
