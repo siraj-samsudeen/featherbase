@@ -1,2 +1,3 @@
 @import '@featherbase/shop-floor/styles.css';
 @source '../../../packages/shop-floor/src';
+@source not '../../../packages/shop-floor/src/**/*.stories.tsx';
