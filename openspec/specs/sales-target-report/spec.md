@@ -13,42 +13,6 @@ its figures are, and never show a missing figure as zero.
 
 ## Requirements
 
-### Requirement: Team Leaders see the Sections they lead
-
-A Section is an area of a store's floor, such as Kurti or Home Décor, that holds a set of subcategories. A Team Leader SHALL see every subcategory of every Section that the store's staff roster names them as leading.
-
-#### Scenario: Team Leader opens the report
-
-- **WHEN** a Team Leader whose Section holds ninety subcategories opens the report
-- **THEN** all ninety subcategories are shown, not only the few rostered to them personally
-
-### Requirement: Department Managers see the Sections they manage
-
-A Department Manager SHALL see every subcategory of every Section that the roster names them as managing.
-
-#### Scenario: Department Manager opens the report
-
-- **WHEN** a Department Manager who manages six Sections opens the report
-- **THEN** the subcategories of all six Sections are shown
-
-### Requirement: Personal subcategories still count
-
-A reader SHALL also see the subcategories rostered to them personally and any assigned to them directly, in addition to the Sections they lead or manage.
-
-#### Scenario: Leader also rostered on another subcategory
-
-- **WHEN** a Team Leader is also rostered on a subcategory outside their Section
-- **THEN** that subcategory is shown along with their Section
-
-### Requirement: The roster is read as of today, Section by Section
-
-Who leads or manages a Section SHALL be decided by that Section's most recent roster entry dated on or before today, so a handover changes only the Section handed over.
-
-#### Scenario: A Section changes hands
-
-- **WHEN** one Section gets a new Team Leader from a given day
-- **THEN** from that day the new Team Leader sees it and the previous one does not, while every other Section keeps its leader
-
 ### Requirement: Month to date in India time
 
 The report SHALL cover the current month from the first through today in India Standard Time, and SHALL move to the new month at midnight India time.
@@ -283,52 +247,6 @@ Only people who hold the report's viewer role SHALL open the report or see anyth
 - **WHEN** an administrator removes the role from a reader who has the report open, and the reader's page makes its next request
 - **THEN** that request is refused and the page shows the "no access" message
 
-### Requirement: A reader with nothing assigned is told so
-
-A reader whose scope holds no subcategory SHALL be told that no subcategories are assigned to them and to ask their manager, and SHALL see no figures.
-
-#### Scenario: An account with no assignment
-
-- **WHEN** a person with the viewer role but no assignment and no mapped Section opens the report
-- **THEN** they are told no subcategories are assigned to them, and no figures appear
-
-### Requirement: A shared employee code gives no scope
-
-When the employee code that would give a person their scope is also current on another person, the report SHALL give neither person any scope, and SHALL raise an alert for an administrator, rather than guess whose it is.
-
-#### Scenario: One code on two people
-
-- **WHEN** the same employee code is current on two people, for example in two firms
-- **THEN** neither of them sees any subcategory, and an alert is raised
-
-### Requirement: The scope follows the person's current employee codes
-
-A reader's Section-based scope SHALL come from every employee code currently recorded for them, and SHALL ignore a code that has ended. Changing a code SHALL change the next opening, with nothing rebuilt.
-
-#### Scenario: Two current codes
-
-- **WHEN** a person has two current employee codes that each lead different Sections
-- **THEN** they see the Sections of both, and each reason once
-
-#### Scenario: A code that has ended
-
-- **WHEN** one of a person's codes has ended and another is current
-- **THEN** only the current code's Sections are shown
-
-### Requirement: A roster Section can cover several merchandise Sections
-
-The roster names Sections in its own words, and the report SHALL match them to the store's merchandise Sections regardless of spacing or capital letters, using the store's Section alias list where the roster's Section spans several merchandise Sections. Two leaders rostered on one Section from the same day SHALL both see it, and a roster row with no date SHALL count as in force.
-
-#### Scenario: A roster Section that spans two merchandise Sections
-
-- **WHEN** the roster's "Home Décor & Stationery" is aliased to Home Décor and Stationery at a store, and its Team Leader opens the report
-- **THEN** they see the subcategories of both
-
-#### Scenario: Two leaders from the same day
-
-- **WHEN** two Team Leaders are rostered on one Section from the same day
-- **THEN** both see that Section
-
 ### Requirement: Achievement is the ratio of the sums
 
 A row's, a Section's and the total's achievement SHALL be its sales as a percentage of its target, so a total reflects the amounts rather than an average of the rows' percentages. A target of zero or no target SHALL show no achievement.
@@ -439,43 +357,6 @@ The report's header SHALL show the reader by full name, else username, else emai
 
 - **WHEN** a reader with no full name opens the report
 - **THEN** the header shows their email, not an internal id
-
-### Requirement: Administrators assign subcategories one owner at a time
-
-An administrator SHALL be able to assign a subcategory of a store to one employee, and SHALL be refused a second owner for the same store and subcategory. Store codes SHALL be exactly four digits and subcategory codes exactly nine. Moving a subcategory to another employee SHALL change the next opening of both, and nobody else's.
-
-#### Scenario: A second owner
-
-- **WHEN** an administrator assigns a store's subcategory that already belongs to another employee
-- **THEN** the save is refused
-
-#### Scenario: A malformed code
-
-- **WHEN** an administrator saves a three-digit store code
-- **THEN** the save is refused with a plain reason
-
-#### Scenario: A transfer
-
-- **WHEN** an administrator moves a subcategory from one employee to another
-- **THEN** the next time each opens the report the first no longer has it and the second does
-
-### Requirement: A badly entered subcategory code is left out, not guessed
-
-A subcategory code in the store's maps that is not exactly nine digits SHALL be left out of the reader's report and logged, and SHALL NOT reach any query. The rest of the reader's subcategories SHALL still show.
-
-#### Scenario: A mistyped code in the merchandise map
-
-- **WHEN** a Section's merchandise map holds a code that is not nine digits
-- **THEN** that code is left out and the reader's other subcategories in the Section still show
-
-### Requirement: A badly entered store code is refused in plain words
-
-When the maps give a reader a store code that is not exactly four digits, the report SHALL stop for that reader with a plain message asking them to tell their administrator, and SHALL NOT read any figure for it.
-
-#### Scenario: A mistyped store code
-
-- **WHEN** a reader's map names a store with a three-digit code
-- **THEN** the reader is told their account maps to a store code that is not four digits and to ask an administrator to correct it
 
 ### Requirement: The interactive report is the latest saved Dive
 

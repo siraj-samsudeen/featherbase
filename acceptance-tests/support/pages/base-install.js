@@ -334,8 +334,8 @@ class BaseInstall {
     await this.inspect('dash');
     await this.details('Dash').getByRole('link', { name: 'Configure settings', exact: true }).click();
   }
-  async manageDashIdentifier() {
-    await this.applySettings({ 'App Setting': [{ row_id: 'dash.dive_id', value: 'acceptance-report' }] });
+  async manageDashLinkedTables() {
+    await this.applySettings({ 'App Setting': [{ row_id: 'dash.linked_tables', value: '[]' }] });
     await this.call('POST', '/api/save_row', { table: 'App Setting', row: { row_id: 'dash.embed_service_account', value: 'initial-account' } }, [201]);
   }
   async editableAccount() {
@@ -350,8 +350,8 @@ class BaseInstall {
     const row = await this.api.row('App Setting', 'dash.embed_service_account');
     assert.equal(row.value, 'acceptance-account');
   }
-  async lockedIdentifier() {
-    await this.open(`${ADMIN}/table/app-setting/row/dash.dive_id`);
+  async lockedLinkedTables() {
+    await this.open(`${ADMIN}/table/app-setting/row/dash.linked_tables`);
     const input = this.page.getByLabel('Value', { exact: true });
     await input.waitFor();
     assert.ok(await input.isDisabled() || await input.getAttribute('readonly') !== null);

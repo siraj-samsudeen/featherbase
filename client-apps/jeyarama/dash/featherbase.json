@@ -5,24 +5,17 @@
   "title": "Dash",
   "server": "dist/server.mjs",
   "client": "dist/client",
-  "entryTable": "dash.store_rollout",
+  "entryTable": "dash.report",
   "roles": [
     "Dash Reader",
     "Dash Section Editor",
-    "Dash Section Reviewer"
+    "Dash Section Reviewer",
+    "Report Access Manager"
   ],
   "roleDefaults": {},
   "settings": [
     {
-      "name": "dive_id",
-      "required": false
-    },
-    {
       "name": "embed_service_account",
-      "required": false
-    },
-    {
-      "name": "dive_ready_signal",
       "required": false
     },
     {
@@ -41,15 +34,28 @@
       "picker": "Store",
       "options": "stores",
       "sets": "store",
-      "hiddenWhen": "view"
+      "hiddenWhen": "view",
+      "dependsOn": [
+        "report"
+      ]
     },
     {
       "picker": "Month",
       "options": "months",
       "sets": "month",
-      "hiddenWhen": "view"
+      "hiddenWhen": "view",
+      "dependsOn": [
+        "report"
+      ]
     }
   ],
+  "access": {
+    "gate": "can_open",
+    "approvers": [
+      "Report Access Manager"
+    ],
+    "page": "?view=access"
+  },
   "datasets": [
     {
       "name": "sales_to_date",
@@ -328,718 +334,208 @@
   ],
   "tables": [
     {
-      "name": "dash.store_rollout",
-      "label": "Store rollout",
+      "name": "dash.report",
+      "label": "Dash report",
       "module": "Dash",
-      "description": "Stores whose people are scoped by the new store org chart, and since when. Only a System Manager writes it.",
-      "id_pattern": "field:store",
-      "title_column": "store",
-      "decides_scope": true,
+      "description": "One Dive Dash can open: its name, its MotherDuck id, and how a reader's reach becomes that Dive's filters. Holds no business data.",
+      "id_pattern": "field:report_key",
+      "title_column": "report_name",
       "columns": [
         {
-          "column_name": "store",
-          "label": "Store",
+          "column_name": "report_key",
+          "label": "Report key",
           "column_type": "Data",
           "reqd": true,
           "unique": true,
-          "in_list_view": true,
-          "description": "The store's plant code, as the scope filters name it."
+          "description": "A readable key that stays the same, used in the page's address and by report bundles."
         },
         {
-          "column_name": "live_since",
-          "label": "Live since",
-          "column_type": "Date",
-          "reqd": true,
-          "in_list_view": true
-        }
-      ]
-    },
-    {
-      "name": "dash.store_floor",
-      "label": "Store floor",
-      "module": "Dash",
-      "description": "The floors of a store. A section names its floor; a Floor Manager's job assignment names one.",
-      "title_column": "floor_name",
-      "decides_scope": true,
-      "columns": [
-        {
-          "column_name": "store",
-          "label": "Store",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The store's plant code, as the scope filters name it."
-        },
-        {
-          "column_name": "floor_name",
-          "label": "Floor",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "display_order",
-          "label": "Display order",
-          "column_type": "Int"
-        },
-        {
-          "column_name": "floor_key",
-          "label": "Floor key",
-          "column_type": "Data",
-          "unique": true,
-          "read_only": true,
-          "description": "Set on save: the store and the floor name. Unique, so a store has each floor once."
-        }
-      ]
-    },
-    {
-      "name": "dash.department",
-      "label": "Department",
-      "module": "Dash",
-      "description": "A named group of sections in one store, which may span floors. A Department Manager's job assignment names one.",
-      "title_column": "display_name",
-      "decides_scope": true,
-      "columns": [
-        {
-          "column_name": "store",
-          "label": "Store",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The store's plant code, as the scope filters name it."
-        },
-        {
-          "column_name": "department_key",
-          "label": "Department key",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The department's identity in its store. Loads match on it, and it never changes."
-        },
-        {
-          "column_name": "name",
+          "column_name": "report_name",
           "label": "Name",
           "column_type": "Data",
-          "in_list_view": true,
-          "description": "Optional until the store names the department; then unique in the store."
-        },
-        {
-          "column_name": "display_name",
-          "label": "Department",
-          "column_type": "Data",
-          "read_only": true,
-          "in_list_view": true,
-          "description": "Set on save: the name, or the key while the name is blank."
-        },
-        {
-          "column_name": "department_store_key",
-          "label": "Department store key",
-          "column_type": "Data",
-          "unique": true,
-          "read_only": true,
-          "description": "Set on save: the store and the department key. Unique per store."
-        },
-        {
-          "column_name": "name_store_key",
-          "label": "Name store key",
-          "column_type": "Data",
-          "unique": true,
-          "read_only": true,
-          "description": "Set on save: the store and the name, empty while the name is blank. Unique per store."
-        }
-      ]
-    },
-    {
-      "name": "dash.section",
-      "label": "Section",
-      "module": "Dash",
-      "description": "One area of one store, named uniquely in that store. Its subcategories come from section_subcategory.",
-      "title_column": "section_name",
-      "decides_scope": true,
-      "columns": [
-        {
-          "column_name": "store",
-          "label": "Store",
-          "column_type": "Data",
           "reqd": true,
           "in_list_view": true,
-          "description": "The store's plant code, as the scope filters name it."
+          "description": "What people read in the sidebar."
         },
         {
-          "column_name": "section_name",
-          "label": "Section",
+          "column_name": "dive_id",
+          "label": "MotherDuck Dive",
           "column_type": "Data",
           "reqd": true,
-          "in_list_view": true
+          "description": "The Dive's id. Dash opens its latest saved version."
         },
         {
-          "column_name": "floor",
-          "label": "Floor",
-          "column_type": "Reference",
-          "reference_table": "dash.store_floor",
-          "in_list_view": true,
-          "description": "One of this store's floors. Optional for a store without floors."
-        },
-        {
-          "column_name": "department",
-          "label": "Department",
-          "column_type": "Reference",
-          "reference_table": "dash.department",
-          "in_list_view": true,
-          "description": "One of this store's departments. Plain and undated."
-        },
-        {
-          "column_name": "section_type",
-          "label": "Section type",
+          "column_name": "filter_shape",
+          "label": "Filters",
           "column_type": "Choice",
-          "choices": "selling\nsupport",
-          "in_list_view": true
-        },
-        {
-          "column_name": "team_leaders_allowed",
-          "label": "Team Leaders allowed",
-          "column_type": "Int",
+          "choices": "One store and subcategories\nWhole stores\nStores and subcategories\nNo filter",
           "reqd": true,
-          "default_value": "1",
-          "description": "How many non-acting Team Leaders this section may have. More are listed as a conflict."
+          "in_list_view": true,
+          "description": "How a reader's reach is sent. A reach the shape can't express is refused, never widened."
         },
         {
-          "column_name": "approved_headcount_min",
-          "label": "Approved headcount, minimum",
-          "column_type": "Int",
-          "description": "The fewest people the section is approved to have deployed. Blank until approved."
-        },
-        {
-          "column_name": "approved_headcount_max",
-          "label": "Approved headcount, maximum",
-          "column_type": "Int",
-          "description": "The most people the section is approved to have deployed; at least the minimum. A range, not named slots."
-        },
-        {
-          "column_name": "section_key",
-          "label": "Section key",
+          "column_name": "store_key",
+          "label": "Store key",
           "column_type": "Data",
-          "unique": true,
-          "read_only": true,
-          "description": "Set on save: the store and the section name. Unique, so a store has each section name once."
+          "description": "The Dive's state key for the store, the list of stores, or each store's reach."
+        },
+        {
+          "column_name": "subcategory_key",
+          "label": "Subcategory key",
+          "column_type": "Data",
+          "description": "One store only: the Dive's state key for a section reader's subcategories."
+        },
+        {
+          "column_name": "whole_store_key",
+          "label": "Whole store key",
+          "column_type": "Data",
+          "description": "One store only: the Dive's state key saying the reader covers the whole store."
+        },
+        {
+          "column_name": "month_key",
+          "label": "Month key",
+          "column_type": "Data",
+          "description": "The Dive's state key for the last day of the chosen month. Empty: the report has no month picker."
+        },
+        {
+          "column_name": "ready_signal",
+          "label": "Says when drawn",
+          "column_type": "Check",
+          "description": "The Dive posts dash:dive-ready once it has drawn."
+        },
+        {
+          "column_name": "quick_view",
+          "label": "Quick view",
+          "column_type": "Choice",
+          "choices": "\nSales target",
+          "description": "The built-in table shown when the Dive can't load. Empty: a message instead."
         }
-      ],
-      "track_changes": true
+      ]
     },
     {
-      "name": "dash.section_subcategory",
-      "label": "Section subcategory",
+      "name": "dash.report_bundle",
+      "label": "Report bundle",
       "module": "Dash",
-      "description": "Which section owns a subcategory in a store, from starts_on up to but not including ends_on. All its credit and coverage go to that section.",
-      "title_column": "subcategory",
-      "decides_scope": true,
+      "description": "A named group of reports, given together. Its reports are its Report bundle member rows.",
+      "title_column": "bundle_name",
       "columns": [
         {
-          "column_name": "store",
-          "label": "Store",
+          "column_name": "bundle_name",
+          "label": "Name",
           "column_type": "Data",
           "reqd": true,
+          "unique": true,
           "in_list_view": true,
-          "description": "The store's plant code, as the scope filters name it."
+          "description": "What the Report access page calls it, for example Team leader pack."
         },
         {
-          "column_name": "subcategory",
-          "label": "Subcategory",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "SAP's nine-digit subcategory code (`material_group_code`)."
-        },
+          "column_name": "notes",
+          "label": "Notes",
+          "column_type": "Text",
+          "description": "Who it is for, in a line."
+        }
+      ]
+    },
+    {
+      "name": "dash.report_bundle_member",
+      "label": "Report bundle member",
+      "module": "Dash",
+      "description": "One report in one bundle. Taking the row away takes the report out of the bundle for everyone given it, on their next request.",
+      "columns": [
         {
-          "column_name": "section",
-          "label": "Section",
+          "column_name": "report_bundle",
+          "label": "Bundle",
           "column_type": "Reference",
-          "reference_table": "dash.section",
+          "reference_table": "dash.report_bundle",
           "reqd": true,
           "in_list_view": true
         },
         {
-          "column_name": "starts_on",
-          "label": "Starts on",
-          "column_type": "Date",
+          "column_name": "report",
+          "label": "Report",
+          "column_type": "Reference",
+          "reference_table": "dash.report",
           "reqd": true,
           "in_list_view": true
         },
         {
-          "column_name": "ends_on",
-          "label": "Ends on",
-          "column_type": "Date",
-          "in_list_view": true,
-          "description": "Exclusive: the first day it no longer holds. Empty means current."
-        },
-        {
-          "column_name": "placement_key",
-          "label": "Placement key",
+          "column_name": "member_key",
+          "label": "Member key",
           "column_type": "Data",
           "unique": true,
           "read_only": true,
-          "description": "Set on save: the store, the subcategory and starts_on. Unique."
+          "description": "Set on save: the bundle and the report, while the report is in it. Unique, so a bundle holds a report once."
+        },
+        {
+          "column_name": "removed",
+          "label": "Removed",
+          "column_type": "Check",
+          "description": "Taken out of the bundle: the row stays so its history says who took it out and when."
         }
       ]
     },
     {
-      "name": "dash.display_location",
-      "label": "Display location",
+      "name": "dash.report_access",
+      "label": "Report access",
       "module": "Dash",
-      "description": "An extra place a subcategory is shown, for floor audits. It never moves credit or coverage.",
-      "title_column": "location_name",
+      "description": "Gives one report or one bundle to one person, one role or one job. A person sees every report given to them by any route; no row means no report.",
       "columns": [
         {
-          "column_name": "store",
-          "label": "Store",
-          "column_type": "Data",
-          "reqd": true,
+          "column_name": "report",
+          "label": "Report",
+          "column_type": "Reference",
+          "reference_table": "dash.report",
           "in_list_view": true,
-          "description": "The store's plant code, as the scope filters name it."
+          "description": "The report given. Fill in this or Bundle, not both."
         },
         {
-          "column_name": "subcategory",
-          "label": "Subcategory",
-          "column_type": "Data",
-          "reqd": true,
+          "column_name": "report_bundle",
+          "label": "Bundle",
+          "column_type": "Reference",
+          "reference_table": "dash.report_bundle",
           "in_list_view": true,
-          "description": "SAP's nine-digit subcategory code (`material_group_code`)."
+          "description": "The bundle given. Fill in this or Report, not both."
         },
-        {
-          "column_name": "location_name",
-          "label": "Location",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "starts_on",
-          "label": "Starts on",
-          "column_type": "Date",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "ends_on",
-          "label": "Ends on",
-          "column_type": "Date",
-          "in_list_view": true,
-          "description": "Exclusive: the first day it no longer holds. Empty means current."
-        }
-      ]
-    },
-    {
-      "name": "dash.job_assignment",
-      "label": "Job assignment",
-      "module": "Dash",
-      "description": "Who holds which job, where and when, with the HR designation beside the job. A person's coverage is worked out from their current rows, acting included.",
-      "decides_scope": true,
-      "columns": [
         {
           "column_name": "person",
           "label": "Person",
-          "column_type": "Reference",
-          "reference_table": "Person",
-          "reqd": true,
-          "in_list_view": true
+          "column_type": "Data",
+          "in_list_view": true,
+          "description": "Given to this person: their Featherbase id, which the Report access page shows by name. Fill in one of Person, Role and Job."
+        },
+        {
+          "column_name": "role",
+          "label": "Role",
+          "column_type": "Data",
+          "in_list_view": true,
+          "description": "Given to everyone holding this role."
         },
         {
           "column_name": "job",
           "label": "Job",
-          "column_type": "Choice",
-          "choices": "Director\nChief Operating Officer\nCluster Manager\nStore Manager\nFloor Manager\nDepartment Manager\nTeam Leader\nStaff",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The org-chart role. Separate from the designation: a promotion closes one assignment and opens the next."
-        },
-        {
-          "column_name": "designation",
-          "label": "Designation",
-          "column_type": "Reference",
-          "reference_table": "dash.designation",
-          "in_list_view": true,
-          "description": "The HR title, from the group's one designation list. Separate from the job."
-        },
-        {
-          "column_name": "store",
-          "label": "Store",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The plant code of the site the person works at, as the scope filters name it. Director, Chief Operating Officer and Cluster Manager name the site they are based at, such as the corporate office."
-        },
-        {
-          "column_name": "cluster",
-          "label": "Cluster",
           "column_type": "Data",
           "in_list_view": true,
-          "description": "Cluster Manager only: the code of the cluster they manage, as the organisation's Cluster master names it. A store's staff get their Cluster Manager through the store's cluster, never typed in per person."
+          "description": "Given to everyone whose current job assignment is this job, for example Team Leader."
         },
         {
-          "column_name": "floor",
-          "label": "Floor",
-          "column_type": "Reference",
-          "reference_table": "dash.store_floor",
-          "in_list_view": true,
-          "description": "Floor Manager only."
+          "column_name": "access_key",
+          "label": "Access key",
+          "column_type": "Data",
+          "unique": true,
+          "read_only": true,
+          "description": "Set on save: what is given and to whom, while it is given. Unique, so the same thing is never given twice to the same receiver."
         },
         {
-          "column_name": "department",
-          "label": "Department",
-          "column_type": "Reference",
-          "reference_table": "dash.department",
-          "in_list_view": true,
-          "description": "Department Manager only: one row per department."
-        },
-        {
-          "column_name": "section",
-          "label": "Section",
-          "column_type": "Reference",
-          "reference_table": "dash.section",
-          "in_list_view": true,
-          "description": "Team Leader and Staff only."
-        },
-        {
-          "column_name": "reports_to",
-          "label": "Reports to",
-          "column_type": "Reference",
-          "reference_table": "Person"
-        },
-        {
-          "column_name": "acting",
-          "label": "Acting",
+          "column_name": "removed",
+          "label": "Removed",
           "column_type": "Check",
-          "in_list_view": true,
-          "description": "Acting cover; the absent person's row stays open."
+          "description": "Taken away: the row stays so its history says who removed it and when, and it gives nothing."
         },
         {
-          "column_name": "assignment_type",
-          "label": "Assignment type",
-          "column_type": "Choice",
-          "choices": "Primary\nSecondary\nTemporary deployment",
-          "reqd": true,
-          "default_value": "Primary",
-          "in_list_view": true,
-          "description": "Primary is the person's home assignment and cost centre; it stays Primary during a temporary deployment. A temporary deployment's sales count against the store the person works in."
-        },
-        {
-          "column_name": "percentage",
-          "label": "Percentage",
-          "column_type": "Float",
-          "reqd": true,
-          "default_value": "100",
-          "in_list_view": true,
-          "description": "The share of the person's time. Primary and Secondary together take at most 100%; a temporary deployment takes its share out of the Primary's. Acting cover takes none."
-        },
-        {
-          "column_name": "starts_on",
-          "label": "Starts on",
-          "column_type": "Date",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "ends_on",
-          "label": "Ends on",
-          "column_type": "Date",
-          "in_list_view": true,
-          "description": "Exclusive: the first day it no longer holds. Empty means current."
-        }
-      ]
-    },
-    {
-      "name": "dash.section_alias",
-      "label": "Section alias",
-      "module": "Dash",
-      "description": "Another system's name for a section.",
-      "title_column": "alias",
-      "columns": [
-        {
-          "column_name": "store",
-          "label": "Store",
+          "column_name": "given_by_name",
+          "label": "Given by",
           "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The store's plant code, as the scope filters name it."
-        },
-        {
-          "column_name": "source",
-          "label": "Source",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "alias",
-          "label": "Alias",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "section",
-          "label": "Section",
-          "column_type": "Reference",
-          "reference_table": "dash.section",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "alias_key",
-          "label": "Alias key",
-          "column_type": "Data",
-          "unique": true,
-          "read_only": true,
-          "description": "Set on save: the store, the source and the alias. Unique."
-        }
-      ]
-    },
-    {
-      "name": "dash.floor_alias",
-      "label": "Floor alias",
-      "module": "Dash",
-      "description": "Another system's name for a floor.",
-      "title_column": "alias",
-      "columns": [
-        {
-          "column_name": "store",
-          "label": "Store",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The store's plant code, as the scope filters name it."
-        },
-        {
-          "column_name": "source",
-          "label": "Source",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "alias",
-          "label": "Alias",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "floor",
-          "label": "Floor",
-          "column_type": "Reference",
-          "reference_table": "dash.store_floor",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "alias_key",
-          "label": "Alias key",
-          "column_type": "Data",
-          "unique": true,
-          "read_only": true,
-          "description": "Set on save: the store, the source and the alias. Unique."
-        }
-      ]
-    },
-    {
-      "name": "dash.job_alias",
-      "label": "Job alias",
-      "module": "Dash",
-      "description": "Another system's name for a job, matched as a whole value. Central: the same in every store.",
-      "title_column": "alias",
-      "columns": [
-        {
-          "column_name": "source",
-          "label": "Source",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "alias",
-          "label": "Alias",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "job",
-          "label": "Job",
-          "column_type": "Choice",
-          "choices": "Director\nChief Operating Officer\nCluster Manager\nStore Manager\nFloor Manager\nDepartment Manager\nTeam Leader\nStaff",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "alias_key",
-          "label": "Alias key",
-          "column_type": "Data",
-          "unique": true,
-          "read_only": true,
-          "description": "Set on save: the source and the alias. Unique."
-        }
-      ]
-    },
-    {
-      "name": "dash.employee",
-      "label": "Employee",
-      "module": "Dash",
-      "title_column": "name",
-      "track_changes": true,
-      "description": "A person who works, or has worked, for the group, with their operational contacts. Changes here never change sign-in or account-recovery identifiers. Employee numbers belong to employments, never to the person.",
-      "columns": [
-        {
-          "column_name": "person",
-          "label": "Person",
-          "column_type": "Reference",
-          "reference_table": "Person",
-          "reqd": true,
-          "unique": true,
-          "description": "The person, who keeps their own permanent number across every employment."
-        },
-        {
-          "column_name": "name",
-          "label": "Name",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "phone",
-          "label": "Operational phone",
-          "column_type": "Data",
-          "in_list_view": true
-        },
-        {
-          "column_name": "emergency_contact",
-          "label": "Emergency contact",
-          "column_type": "Data"
-        }
-      ]
-    },
-    {
-      "name": "dash.employment",
-      "label": "Employment",
-      "module": "Dash",
-      "title_column": "employee_number",
-      "track_changes": true,
-      "description": "One stint of a person working for one legal company, from joined_on up to but not including left_on. A rejoin is a new row; one person's stints at one company never overlap.",
-      "columns": [
-        {
-          "column_name": "employee",
-          "label": "Employee",
-          "column_type": "Reference",
-          "reference_table": "dash.employee",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "legal_company",
-          "label": "Legal company",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The employing company's code, as the organisation's Legal Company master names it."
-        },
-        {
-          "column_name": "employee_number",
-          "label": "Employee number",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The number this company issued for this stint. A rejoin may carry a new number; one number never belongs to two people at one company."
-        },
-        {
-          "column_name": "joined_on",
-          "label": "Joined on",
-          "column_type": "Date",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "left_on",
-          "label": "Left on",
-          "column_type": "Date",
-          "in_list_view": true,
-          "description": "Exclusive: the first day the person no longer works here, the day after their last working day. Empty means current."
-        },
-        {
-          "column_name": "leaving_reason",
-          "label": "Leaving reason",
-          "column_type": "Data",
-          "description": "Why the stint ended, as the HR system gives it. Empty while current."
-        }
-      ]
-    },
-    {
-      "name": "dash.designation",
-      "label": "Designation",
-      "module": "Dash",
-      "title_column": "title",
-      "description": "The group's one clean list of HR titles. Each source system's spellings map to a title through designation_alias.",
-      "columns": [
-        {
-          "column_name": "title",
-          "label": "Designation",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "active",
-          "label": "Active",
-          "column_type": "Check",
-          "default_value": "1",
-          "in_list_view": true,
-          "description": "Cleared for a title no longer given; job assignments that name it keep it."
-        },
-        {
-          "column_name": "title_key",
-          "label": "Title key",
-          "column_type": "Data",
-          "unique": true,
-          "read_only": true,
-          "description": "Set on save: the title, trimmed and case-folded. Unique, so the list has each title once."
-        }
-      ]
-    },
-    {
-      "name": "dash.designation_alias",
-      "label": "Designation alias",
-      "module": "Dash",
-      "title_column": "alias",
-      "description": "A source system's spelling of a designation, matched as a whole value. Central: the same in every company and store.",
-      "columns": [
-        {
-          "column_name": "source",
-          "label": "Source",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "alias",
-          "label": "Alias",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true,
-          "description": "The title exactly as the source system spells it."
-        },
-        {
-          "column_name": "designation",
-          "label": "Designation",
-          "column_type": "Reference",
-          "reference_table": "dash.designation",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "alias_key",
-          "label": "Alias key",
-          "column_type": "Data",
-          "unique": true,
-          "read_only": true,
-          "description": "Set on save: the source and the alias. Unique."
+          "description": "Set when given on the Report access page: the name of the person who gave it, as the page shows it."
         }
       ]
     }
@@ -1047,154 +543,78 @@
   "scopeProvider": {
     "name": "org_chart",
     "tables": [
-      "dash.store_rollout",
-      "dash.store_floor",
-      "dash.department",
-      "dash.section",
-      "dash.section_subcategory",
-      "dash.job_assignment",
-      "Sales Target Assignment",
-      "Employee Section Map",
-      "Section Ownership",
-      "Store Manager",
-      "Section Merchandise Map",
-      "Section Name Alias"
+      "Employee",
+      "Job Assignment",
+      "Site",
+      "Plant",
+      "Section",
+      "Section Subcategory"
     ],
-    "identifiers": [
-      "stylehr-employee-code"
+    "unmarkedTables": [
+      "Employee",
+      "Job Assignment",
+      "Site",
+      "Plant",
+      "Section",
+      "Section Subcategory"
     ]
   },
   "permissions": [
     {
-      "table": "dash.store_rollout",
+      "table": "dash.report",
       "role": "Dash Reader",
       "can_read": true
     },
     {
-      "table": "dash.store_rollout",
+      "table": "dash.report",
       "role": "Dash Section Editor",
       "can_read": true
     },
     {
-      "table": "dash.store_rollout",
+      "table": "dash.report",
       "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
-      "table": "dash.store_floor",
-      "role": "Dash Section Editor",
+      "table": "dash.report",
+      "role": "Report Access Manager",
       "can_read": true
     },
     {
-      "table": "dash.department",
-      "role": "Dash Section Editor",
-      "can_read": true
+      "table": "dash.report_bundle",
+      "role": "Report Access Manager",
+      "operations": {
+        "read": "@basic",
+        "create": "@basic",
+        "update": "@basic",
+        "delete": true
+      }
     },
     {
-      "table": "dash.section",
-      "role": "Dash Section Editor",
-      "can_read": true
+      "table": "dash.report_bundle_member",
+      "role": "Report Access Manager",
+      "operations": {
+        "read": "@basic",
+        "create": "@basic",
+        "update": "@basic",
+        "delete": true
+      }
     },
     {
-      "table": "dash.section_subcategory",
-      "role": "Dash Section Editor",
-      "can_read": true
-    },
-    {
-      "table": "dash.display_location",
-      "role": "Dash Section Editor",
-      "can_read": true
-    },
-    {
-      "table": "dash.job_assignment",
-      "role": "Dash Section Editor",
-      "can_read": true
-    },
-    {
-      "table": "dash.section_alias",
-      "role": "Dash Section Editor",
-      "can_read": true
-    },
-    {
-      "table": "dash.floor_alias",
-      "role": "Dash Section Editor",
-      "can_read": true
-    },
-    {
-      "table": "dash.job_alias",
-      "role": "Dash Section Editor",
-      "can_read": true
-    },
-    {
-      "table": "dash.store_floor",
-      "role": "Dash Section Reviewer",
-      "can_read": true
-    },
-    {
-      "table": "dash.department",
-      "role": "Dash Section Reviewer",
-      "can_read": true
-    },
-    {
-      "table": "dash.section",
-      "role": "Dash Section Reviewer",
-      "can_read": true
-    },
-    {
-      "table": "dash.section_subcategory",
-      "role": "Dash Section Reviewer",
-      "can_read": true
-    },
-    {
-      "table": "dash.display_location",
-      "role": "Dash Section Reviewer",
-      "can_read": true
-    },
-    {
-      "table": "dash.job_assignment",
-      "role": "Dash Section Reviewer",
-      "can_read": true
-    },
-    {
-      "table": "dash.section_alias",
-      "role": "Dash Section Reviewer",
-      "can_read": true
-    },
-    {
-      "table": "dash.floor_alias",
-      "role": "Dash Section Reviewer",
-      "can_read": true
-    },
-    {
-      "table": "dash.job_alias",
-      "role": "Dash Section Reviewer",
-      "can_read": true
-    },
-    {
-      "table": "dash.designation",
-      "role": "Dash Section Editor",
-      "can_read": true
-    },
-    {
-      "table": "dash.designation",
-      "role": "Dash Section Reviewer",
-      "can_read": true
-    },
-    {
-      "table": "dash.designation_alias",
-      "role": "Dash Section Editor",
-      "can_read": true
-    },
-    {
-      "table": "dash.designation_alias",
-      "role": "Dash Section Reviewer",
-      "can_read": true
+      "table": "dash.report_access",
+      "role": "Report Access Manager",
+      "operations": {
+        "read": "@basic",
+        "create": "@basic",
+        "update": "@basic",
+        "delete": true
+      }
     }
   ],
   "reads": {
     "version": 1,
     "tables": [
-      "dash.store_rollout"
+      "dash.report"
     ],
     "operations": {
       "me": {
@@ -1279,6 +699,79 @@
         "authorization": {
           "kind": "generic"
         }
+      },
+      "reports": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "reach_problem": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "report_open": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "embed_open": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        },
+        "outbound": true
+      },
+      "can_open": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "access_page": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "person_search": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "person_lookup": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "manages_access": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
       }
     }
   },
@@ -1312,13 +805,1010 @@
       "fromVersion": "0.10.4",
       "toVersion": "0.11.0",
       "operations": []
+    },
+    {
+      "id": "dash_owns_only_report",
+      "fromVersion": "0.11.0",
+      "toVersion": "0.12.0",
+      "operations": [
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "dash.report",
+            "label": "Dash report",
+            "module": "Dash",
+            "description": "One Dive Dash can open: its name, its MotherDuck id, and how a reader's reach becomes that Dive's filters. Holds no business data.",
+            "id_pattern": "field:report_key",
+            "title_column": "report_name",
+            "columns": [
+              {
+                "column_name": "report_key",
+                "label": "Report key",
+                "column_type": "Data",
+                "reqd": true,
+                "unique": true,
+                "description": "A readable key that stays the same, used in the page's address and by report bundles."
+              },
+              {
+                "column_name": "report_name",
+                "label": "Name",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "What people read in the sidebar."
+              },
+              {
+                "column_name": "dive_id",
+                "label": "MotherDuck Dive",
+                "column_type": "Data",
+                "reqd": true,
+                "description": "The Dive's id. Dash opens its latest saved version."
+              },
+              {
+                "column_name": "filter_shape",
+                "label": "Filters",
+                "column_type": "Choice",
+                "choices": "One store and subcategories\nWhole stores\nStores and subcategories\nNo filter",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "How a reader's reach is sent. A reach the shape can't express is refused, never widened."
+              },
+              {
+                "column_name": "store_key",
+                "label": "Store key",
+                "column_type": "Data",
+                "description": "The Dive's state key for the store, the list of stores, or each store's reach."
+              },
+              {
+                "column_name": "subcategory_key",
+                "label": "Subcategory key",
+                "column_type": "Data",
+                "description": "One store only: the Dive's state key for a section reader's subcategories."
+              },
+              {
+                "column_name": "whole_store_key",
+                "label": "Whole store key",
+                "column_type": "Data",
+                "description": "One store only: the Dive's state key saying the reader covers the whole store."
+              },
+              {
+                "column_name": "month_key",
+                "label": "Month key",
+                "column_type": "Data",
+                "description": "The Dive's state key for the last day of the chosen month. Empty: the report has no month picker."
+              },
+              {
+                "column_name": "ready_signal",
+                "label": "Says when drawn",
+                "column_type": "Check",
+                "description": "The Dive posts dash:dive-ready once it has drawn."
+              },
+              {
+                "column_name": "quick_view",
+                "label": "Quick view",
+                "column_type": "Choice",
+                "choices": "\nSales target",
+                "description": "The built-in table shown when the Dive can't load. Empty: a message instead."
+              }
+            ]
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "dash.report_bundle",
+            "label": "Report bundle",
+            "module": "Dash",
+            "description": "A named group of reports, given together. Its reports are its Report bundle member rows.",
+            "title_column": "bundle_name",
+            "columns": [
+              {
+                "column_name": "bundle_name",
+                "label": "Name",
+                "column_type": "Data",
+                "reqd": true,
+                "unique": true,
+                "in_list_view": true,
+                "description": "What the Report access page calls it, for example Team leader pack."
+              },
+              {
+                "column_name": "notes",
+                "label": "Notes",
+                "column_type": "Text",
+                "description": "Who it is for, in a line."
+              }
+            ]
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "dash.report_bundle_member",
+            "label": "Report bundle member",
+            "module": "Dash",
+            "description": "One report in one bundle. Taking the row away takes the report out of the bundle for everyone given it, on their next request.",
+            "columns": [
+              {
+                "column_name": "report_bundle",
+                "label": "Bundle",
+                "column_type": "Reference",
+                "reference_table": "dash.report_bundle",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "report",
+                "label": "Report",
+                "column_type": "Reference",
+                "reference_table": "dash.report",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "member_key",
+                "label": "Member key",
+                "column_type": "Data",
+                "unique": true,
+                "read_only": true,
+                "description": "Set on save: the bundle and the report, while the report is in it. Unique, so a bundle holds a report once."
+              },
+              {
+                "column_name": "removed",
+                "label": "Removed",
+                "column_type": "Check",
+                "description": "Taken out of the bundle: the row stays so its history says who took it out and when."
+              }
+            ]
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "dash.report_access",
+            "label": "Report access",
+            "module": "Dash",
+            "description": "Gives one report or one bundle to one person, one role or one job. A person sees every report given to them by any route; no row means no report.",
+            "columns": [
+              {
+                "column_name": "report",
+                "label": "Report",
+                "column_type": "Reference",
+                "reference_table": "dash.report",
+                "in_list_view": true,
+                "description": "The report given. Fill in this or Bundle, not both."
+              },
+              {
+                "column_name": "report_bundle",
+                "label": "Bundle",
+                "column_type": "Reference",
+                "reference_table": "dash.report_bundle",
+                "in_list_view": true,
+                "description": "The bundle given. Fill in this or Report, not both."
+              },
+              {
+                "column_name": "person",
+                "label": "Person",
+                "column_type": "Data",
+                "in_list_view": true,
+                "description": "Given to this person: their Featherbase id, which the Report access page shows by name. Fill in one of Person, Role and Job."
+              },
+              {
+                "column_name": "role",
+                "label": "Role",
+                "column_type": "Data",
+                "in_list_view": true,
+                "description": "Given to everyone holding this role."
+              },
+              {
+                "column_name": "job",
+                "label": "Job",
+                "column_type": "Data",
+                "in_list_view": true,
+                "description": "Given to everyone whose current job assignment is this job, for example Team Leader."
+              },
+              {
+                "column_name": "access_key",
+                "label": "Access key",
+                "column_type": "Data",
+                "unique": true,
+                "read_only": true,
+                "description": "Set on save: what is given and to whom, while it is given. Unique, so the same thing is never given twice to the same receiver."
+              },
+              {
+                "column_name": "removed",
+                "label": "Removed",
+                "column_type": "Check",
+                "description": "Taken away: the row stays so its history says who removed it and when, and it gives nothing."
+              },
+              {
+                "column_name": "given_by_name",
+                "label": "Given by",
+                "column_type": "Data",
+                "description": "Set when given on the Report access page: the name of the person who gave it, as the page shows it."
+              }
+            ]
+          }
+        },
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "dash.designation_alias",
+            "label": "Designation alias",
+            "module": "Dash",
+            "title_column": "alias",
+            "description": "A source system's spelling of a designation, matched as a whole value. Central: the same in every company and store.",
+            "columns": [
+              {
+                "column_name": "source",
+                "label": "Source",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "alias",
+                "label": "Alias",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The title exactly as the source system spells it."
+              },
+              {
+                "column_name": "designation",
+                "label": "Designation",
+                "column_type": "Reference",
+                "reference_table": "dash.designation",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "alias_key",
+                "label": "Alias key",
+                "column_type": "Data",
+                "unique": true,
+                "read_only": true,
+                "description": "Set on save: the source and the alias. Unique."
+              }
+            ]
+          },
+          "destructive": true
+        },
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "dash.employment",
+            "label": "Employment",
+            "module": "Dash",
+            "title_column": "employee_number",
+            "track_changes": true,
+            "description": "One stint of a person working for one legal company, from joined_on up to but not including left_on. A rejoin is a new row; one person's stints at one company never overlap.",
+            "columns": [
+              {
+                "column_name": "employee",
+                "label": "Employee",
+                "column_type": "Reference",
+                "reference_table": "dash.employee",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "legal_company",
+                "label": "Legal company",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The employing company's code, as the organisation's Legal Company master names it."
+              },
+              {
+                "column_name": "employee_number",
+                "label": "Employee number",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The number this company issued for this stint. A rejoin may carry a new number; one number never belongs to two people at one company."
+              },
+              {
+                "column_name": "joined_on",
+                "label": "Joined on",
+                "column_type": "Date",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "left_on",
+                "label": "Left on",
+                "column_type": "Date",
+                "in_list_view": true,
+                "description": "Exclusive: the first day the person no longer works here, the day after their last working day. Empty means current."
+              },
+              {
+                "column_name": "leaving_reason",
+                "label": "Leaving reason",
+                "column_type": "Data",
+                "description": "Why the stint ended, as the HR system gives it. Empty while current."
+              }
+            ]
+          },
+          "destructive": true
+        },
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "dash.employee",
+            "label": "Employee",
+            "module": "Dash",
+            "title_column": "name",
+            "track_changes": true,
+            "description": "A person who works, or has worked, for the group, with their operational contacts. Changes here never change sign-in or account-recovery identifiers. Employee numbers belong to employments, never to the person.",
+            "columns": [
+              {
+                "column_name": "person",
+                "label": "Person",
+                "column_type": "Reference",
+                "reference_table": "Person",
+                "reqd": true,
+                "unique": true,
+                "description": "The person, who keeps their own permanent number across every employment."
+              },
+              {
+                "column_name": "name",
+                "label": "Name",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "phone",
+                "label": "Operational phone",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "emergency_contact",
+                "label": "Emergency contact",
+                "column_type": "Data"
+              }
+            ]
+          },
+          "destructive": true
+        },
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "dash.job_alias",
+            "label": "Job alias",
+            "module": "Dash",
+            "description": "Another system's name for a job, matched as a whole value. Central: the same in every store.",
+            "title_column": "alias",
+            "columns": [
+              {
+                "column_name": "source",
+                "label": "Source",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "alias",
+                "label": "Alias",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "job",
+                "label": "Job",
+                "column_type": "Choice",
+                "choices": "Director\nChief Operating Officer\nCluster Manager\nStore Manager\nFloor Manager\nDepartment Manager\nTeam Leader\nStaff",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "alias_key",
+                "label": "Alias key",
+                "column_type": "Data",
+                "unique": true,
+                "read_only": true,
+                "description": "Set on save: the source and the alias. Unique."
+              }
+            ]
+          },
+          "destructive": true
+        },
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "dash.floor_alias",
+            "label": "Floor alias",
+            "module": "Dash",
+            "description": "Another system's name for a floor.",
+            "title_column": "alias",
+            "columns": [
+              {
+                "column_name": "store",
+                "label": "Store",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The store's plant code, as the scope filters name it."
+              },
+              {
+                "column_name": "source",
+                "label": "Source",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "alias",
+                "label": "Alias",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "floor",
+                "label": "Floor",
+                "column_type": "Reference",
+                "reference_table": "dash.store_floor",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "alias_key",
+                "label": "Alias key",
+                "column_type": "Data",
+                "unique": true,
+                "read_only": true,
+                "description": "Set on save: the store, the source and the alias. Unique."
+              }
+            ]
+          },
+          "destructive": true
+        },
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "dash.section_alias",
+            "label": "Section alias",
+            "module": "Dash",
+            "description": "Another system's name for a section.",
+            "title_column": "alias",
+            "columns": [
+              {
+                "column_name": "store",
+                "label": "Store",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The store's plant code, as the scope filters name it."
+              },
+              {
+                "column_name": "source",
+                "label": "Source",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "alias",
+                "label": "Alias",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "section",
+                "label": "Section",
+                "column_type": "Reference",
+                "reference_table": "dash.section",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "alias_key",
+                "label": "Alias key",
+                "column_type": "Data",
+                "unique": true,
+                "read_only": true,
+                "description": "Set on save: the store, the source and the alias. Unique."
+              }
+            ]
+          },
+          "destructive": true
+        },
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "dash.job_assignment",
+            "label": "Job assignment",
+            "module": "Dash",
+            "description": "Who holds which job, where and when, with the HR designation beside the job. A person's coverage is worked out from their current rows, acting included.",
+            "decides_scope": true,
+            "columns": [
+              {
+                "column_name": "person",
+                "label": "Person",
+                "column_type": "Reference",
+                "reference_table": "Person",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "job",
+                "label": "Job",
+                "column_type": "Choice",
+                "choices": "Director\nChief Operating Officer\nCluster Manager\nStore Manager\nFloor Manager\nDepartment Manager\nTeam Leader\nStaff",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The org-chart role. Separate from the designation: a promotion closes one assignment and opens the next."
+              },
+              {
+                "column_name": "designation",
+                "label": "Designation",
+                "column_type": "Reference",
+                "reference_table": "dash.designation",
+                "in_list_view": true,
+                "description": "The HR title, from the group's one designation list. Separate from the job."
+              },
+              {
+                "column_name": "store",
+                "label": "Store",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The plant code of the site the person works at, as the scope filters name it. Director, Chief Operating Officer and Cluster Manager name the site they are based at, such as the corporate office."
+              },
+              {
+                "column_name": "cluster",
+                "label": "Cluster",
+                "column_type": "Data",
+                "in_list_view": true,
+                "description": "Cluster Manager only: the code of the cluster they manage, as the organisation's Cluster master names it. A store's staff get their Cluster Manager through the store's cluster, never typed in per person."
+              },
+              {
+                "column_name": "floor",
+                "label": "Floor",
+                "column_type": "Reference",
+                "reference_table": "dash.store_floor",
+                "in_list_view": true,
+                "description": "Floor Manager only."
+              },
+              {
+                "column_name": "department",
+                "label": "Department",
+                "column_type": "Reference",
+                "reference_table": "dash.department",
+                "in_list_view": true,
+                "description": "Department Manager only: one row per department."
+              },
+              {
+                "column_name": "section",
+                "label": "Section",
+                "column_type": "Reference",
+                "reference_table": "dash.section",
+                "in_list_view": true,
+                "description": "Team Leader and Staff only."
+              },
+              {
+                "column_name": "reports_to",
+                "label": "Reports to",
+                "column_type": "Reference",
+                "reference_table": "Person"
+              },
+              {
+                "column_name": "acting",
+                "label": "Acting",
+                "column_type": "Check",
+                "in_list_view": true,
+                "description": "Acting cover; the absent person's row stays open."
+              },
+              {
+                "column_name": "assignment_type",
+                "label": "Assignment type",
+                "column_type": "Choice",
+                "choices": "Primary\nSecondary\nTemporary deployment",
+                "reqd": true,
+                "default_value": "Primary",
+                "in_list_view": true,
+                "description": "Primary is the person's home assignment and cost centre; it stays Primary during a temporary deployment. A temporary deployment's sales count against the store the person works in."
+              },
+              {
+                "column_name": "percentage",
+                "label": "Percentage",
+                "column_type": "Float",
+                "reqd": true,
+                "default_value": "100",
+                "in_list_view": true,
+                "description": "The share of the person's time. Primary and Secondary together take at most 100%; a temporary deployment takes its share out of the Primary's. Acting cover takes none."
+              },
+              {
+                "column_name": "starts_on",
+                "label": "Starts on",
+                "column_type": "Date",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "ends_on",
+                "label": "Ends on",
+                "column_type": "Date",
+                "in_list_view": true,
+                "description": "Exclusive: the first day it no longer holds. Empty means current."
+              }
+            ]
+          },
+          "destructive": true
+        },
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "dash.designation",
+            "label": "Designation",
+            "module": "Dash",
+            "title_column": "title",
+            "description": "The group's one clean list of HR titles. Each source system's spellings map to a title through designation_alias.",
+            "columns": [
+              {
+                "column_name": "title",
+                "label": "Designation",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "active",
+                "label": "Active",
+                "column_type": "Check",
+                "default_value": "1",
+                "in_list_view": true,
+                "description": "Cleared for a title no longer given; job assignments that name it keep it."
+              },
+              {
+                "column_name": "title_key",
+                "label": "Title key",
+                "column_type": "Data",
+                "unique": true,
+                "read_only": true,
+                "description": "Set on save: the title, trimmed and case-folded. Unique, so the list has each title once."
+              }
+            ]
+          },
+          "destructive": true
+        },
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "dash.display_location",
+            "label": "Display location",
+            "module": "Dash",
+            "description": "An extra place a subcategory is shown, for floor audits. It never moves credit or coverage.",
+            "title_column": "location_name",
+            "columns": [
+              {
+                "column_name": "store",
+                "label": "Store",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The store's plant code, as the scope filters name it."
+              },
+              {
+                "column_name": "subcategory",
+                "label": "Subcategory",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "SAP's nine-digit subcategory code (`material_group_code`)."
+              },
+              {
+                "column_name": "location_name",
+                "label": "Location",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "starts_on",
+                "label": "Starts on",
+                "column_type": "Date",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "ends_on",
+                "label": "Ends on",
+                "column_type": "Date",
+                "in_list_view": true,
+                "description": "Exclusive: the first day it no longer holds. Empty means current."
+              }
+            ]
+          },
+          "destructive": true
+        },
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "dash.section_subcategory",
+            "label": "Section subcategory",
+            "module": "Dash",
+            "description": "Which section owns a subcategory in a store, from starts_on up to but not including ends_on. All its credit and coverage go to that section.",
+            "title_column": "subcategory",
+            "decides_scope": true,
+            "columns": [
+              {
+                "column_name": "store",
+                "label": "Store",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The store's plant code, as the scope filters name it."
+              },
+              {
+                "column_name": "subcategory",
+                "label": "Subcategory",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "SAP's nine-digit subcategory code (`material_group_code`)."
+              },
+              {
+                "column_name": "section",
+                "label": "Section",
+                "column_type": "Reference",
+                "reference_table": "dash.section",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "starts_on",
+                "label": "Starts on",
+                "column_type": "Date",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "ends_on",
+                "label": "Ends on",
+                "column_type": "Date",
+                "in_list_view": true,
+                "description": "Exclusive: the first day it no longer holds. Empty means current."
+              },
+              {
+                "column_name": "placement_key",
+                "label": "Placement key",
+                "column_type": "Data",
+                "unique": true,
+                "read_only": true,
+                "description": "Set on save: the store, the subcategory and starts_on. Unique."
+              }
+            ]
+          },
+          "destructive": true
+        },
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "dash.section",
+            "label": "Section",
+            "module": "Dash",
+            "description": "One area of one store, named uniquely in that store. Its subcategories come from section_subcategory.",
+            "title_column": "section_name",
+            "decides_scope": true,
+            "columns": [
+              {
+                "column_name": "store",
+                "label": "Store",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The store's plant code, as the scope filters name it."
+              },
+              {
+                "column_name": "section_name",
+                "label": "Section",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "floor",
+                "label": "Floor",
+                "column_type": "Reference",
+                "reference_table": "dash.store_floor",
+                "in_list_view": true,
+                "description": "One of this store's floors. Optional for a store without floors."
+              },
+              {
+                "column_name": "department",
+                "label": "Department",
+                "column_type": "Reference",
+                "reference_table": "dash.department",
+                "in_list_view": true,
+                "description": "One of this store's departments. Plain and undated."
+              },
+              {
+                "column_name": "section_type",
+                "label": "Section type",
+                "column_type": "Choice",
+                "choices": "selling\nsupport",
+                "in_list_view": true
+              },
+              {
+                "column_name": "team_leaders_allowed",
+                "label": "Team Leaders allowed",
+                "column_type": "Int",
+                "reqd": true,
+                "default_value": "1",
+                "description": "How many non-acting Team Leaders this section may have. More are listed as a conflict."
+              },
+              {
+                "column_name": "approved_headcount_min",
+                "label": "Approved headcount, minimum",
+                "column_type": "Int",
+                "description": "The fewest people the section is approved to have deployed. Blank until approved."
+              },
+              {
+                "column_name": "approved_headcount_max",
+                "label": "Approved headcount, maximum",
+                "column_type": "Int",
+                "description": "The most people the section is approved to have deployed; at least the minimum. A range, not named slots."
+              },
+              {
+                "column_name": "section_key",
+                "label": "Section key",
+                "column_type": "Data",
+                "unique": true,
+                "read_only": true,
+                "description": "Set on save: the store and the section name. Unique, so a store has each section name once."
+              }
+            ],
+            "track_changes": true
+          },
+          "destructive": true
+        },
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "dash.department",
+            "label": "Department",
+            "module": "Dash",
+            "description": "A named group of sections in one store, which may span floors. A Department Manager's job assignment names one.",
+            "title_column": "display_name",
+            "decides_scope": true,
+            "columns": [
+              {
+                "column_name": "store",
+                "label": "Store",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The store's plant code, as the scope filters name it."
+              },
+              {
+                "column_name": "department_key",
+                "label": "Department key",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The department's identity in its store. Loads match on it, and it never changes."
+              },
+              {
+                "column_name": "name",
+                "label": "Name",
+                "column_type": "Data",
+                "in_list_view": true,
+                "description": "Optional until the store names the department; then unique in the store."
+              },
+              {
+                "column_name": "display_name",
+                "label": "Department",
+                "column_type": "Data",
+                "read_only": true,
+                "in_list_view": true,
+                "description": "Set on save: the name, or the key while the name is blank."
+              },
+              {
+                "column_name": "department_store_key",
+                "label": "Department store key",
+                "column_type": "Data",
+                "unique": true,
+                "read_only": true,
+                "description": "Set on save: the store and the department key. Unique per store."
+              },
+              {
+                "column_name": "name_store_key",
+                "label": "Name store key",
+                "column_type": "Data",
+                "unique": true,
+                "read_only": true,
+                "description": "Set on save: the store and the name, empty while the name is blank. Unique per store."
+              }
+            ]
+          },
+          "destructive": true
+        },
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "dash.store_floor",
+            "label": "Store floor",
+            "module": "Dash",
+            "description": "The floors of a store. A section names its floor; a Floor Manager's job assignment names one.",
+            "title_column": "floor_name",
+            "decides_scope": true,
+            "columns": [
+              {
+                "column_name": "store",
+                "label": "Store",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "The store's plant code, as the scope filters name it."
+              },
+              {
+                "column_name": "floor_name",
+                "label": "Floor",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "display_order",
+                "label": "Display order",
+                "column_type": "Int"
+              },
+              {
+                "column_name": "floor_key",
+                "label": "Floor key",
+                "column_type": "Data",
+                "unique": true,
+                "read_only": true,
+                "description": "Set on save: the store and the floor name. Unique, so a store has each floor once."
+              }
+            ]
+          },
+          "destructive": true
+        },
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "dash.store_rollout",
+            "label": "Store rollout",
+            "module": "Dash",
+            "description": "Stores whose people are scoped by the new store org chart, and since when. Only a System Manager writes it.",
+            "id_pattern": "field:store",
+            "title_column": "store",
+            "decides_scope": true,
+            "columns": [
+              {
+                "column_name": "store",
+                "label": "Store",
+                "column_type": "Data",
+                "reqd": true,
+                "unique": true,
+                "in_list_view": true,
+                "description": "The store's plant code, as the scope filters name it."
+              },
+              {
+                "column_name": "live_since",
+                "label": "Live since",
+                "column_type": "Date",
+                "reqd": true,
+                "in_list_view": true
+              }
+            ]
+          },
+          "destructive": true
+        }
+      ]
     }
   ],
   "baseTables": {
     "read": {
       "Employee": [
-        "employee_name",
-        "employee_status",
+        "name",
+        "status",
         "person"
       ],
       "Job Assignment": [
@@ -1328,22 +1818,23 @@
         "floor",
         "section",
         "reports_to",
+        "acting",
         "starts_on",
         "ends_on"
       ],
       "Section": [
-        "section_name",
+        "name",
         "site",
         "floor",
-        "section_status"
+        "status"
       ],
       "Store Floor": [
-        "floor_name",
+        "name",
         "site"
       ],
       "Section Subcategory": [
-        "placement_id",
-        "site",
+        "section_subcategory_id",
+        "store",
         "subcategory",
         "section",
         "starts_on",
@@ -1351,24 +1842,49 @@
       ],
       "Subcategory": [
         "subcategory",
-        "is_merchandise",
-        "deleted_at_source"
+        "subcategory_type"
       ],
-      "Site Master": [
-        "site_name",
-        "is_store"
+      "Site": [
+        "name",
+        "is_store",
+        "cluster"
+      ],
+      "Plant": [
+        "site",
+        "plant_type"
+      ],
+      "dash.report_access": [
+        "report",
+        "report_bundle",
+        "person",
+        "role",
+        "job",
+        "updated_at",
+        "updated_by",
+        "removed",
+        "created_by",
+        "given_by_name"
+      ],
+      "dash.report_bundle": [
+        "bundle_name"
+      ],
+      "dash.report_bundle_member": [
+        "report_bundle",
+        "report",
+        "updated_at",
+        "removed"
       ]
     },
     "propose": {
       "Section Subcategory": {
         "columns": [
           "section",
-          "site",
+          "store",
           "subcategory"
         ],
         "stamp": [
-          "placement_id",
-          "source"
+          "section_subcategory_id",
+          "source_key"
         ],
         "startsOn": "starts_on",
         "endsOn": "ends_on"
@@ -1383,7 +1899,7 @@
         ],
         "stamp": [
           "assignment_id",
-          "source"
+          "source_key"
         ],
         "startsOn": "starts_on",
         "endsOn": "ends_on"
@@ -1393,7 +1909,10 @@
   "actions": {
     "version": 2,
     "tables": [
-      "dash.store_rollout"
+      "dash.report",
+      "dash.report_access",
+      "dash.report_bundle",
+      "dash.report_bundle_member"
     ],
     "operations": {
       "propose_move": {
@@ -1421,6 +1940,46 @@
         }
       },
       "decide": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "give_report": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "remove_report_access": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "make_bundle": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "add_to_bundle": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "remove_from_bundle": {
         "policy": {
           "kind": "table"
         },
