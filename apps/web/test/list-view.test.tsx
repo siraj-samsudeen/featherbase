@@ -74,14 +74,50 @@ test('Browse a table\'s rows: the list pages through the rows and the total keep
   await openList(admin, 'Lv Paged')
   await waitFor(() => expect(cellTexts('title')).toHaveLength(20))
   expect(screen.getByTestId('list-total')).toHaveTextContent('25 total')
+  expect(screen.getByTestId('page-info')).toHaveTextContent('1–20 of 25')
 
   fireEvent.click(screen.getByTestId('next-page'))
   await waitFor(() => expect(cellTexts('title')).toHaveLength(5))
   expect(screen.getByTestId('list-total')).toHaveTextContent('25 total')
+  expect(screen.getByTestId('page-info')).toHaveTextContent('21–25 of 25')
   expect(screen.getByTestId('next-page')).toBeDisabled()
+  expect(screen.getByTestId('prev-page')).toBeEnabled()
 
   fireEvent.click(screen.getByTestId('prev-page'))
   await waitFor(() => expect(cellTexts('title')).toHaveLength(20))
+})
+
+// Moved from the deleted e2e/listview.spec.ts (UI-002): the one list takes its
+// columns from each Table's own metadata.
+test('Browse a table\'s rows: each listed column is headed by its label', async ({ admin }) => {
+  await admin.post('/api/table_def', {
+    name: 'Lv Cities',
+    columns: [
+      { column_name: 'city', column_type: 'Data', label: 'City', in_list_view: true },
+      { column_name: 'active', column_type: 'Check', label: 'Active', in_list_view: true },
+    ],
+  })
+  await openList(admin, 'Lv Cities')
+  expect(screen.getByTestId('col-city')).toHaveTextContent('City')
+  expect(screen.getByTestId('col-active')).toHaveTextContent('Active')
+})
+
+test('Browse a table\'s rows: a ticked yes/no reads as a tick, an unticked one as no tick', async ({ admin }) => {
+  await admin.post('/api/table_def', {
+    name: 'Lv Ticks',
+    columns: [
+      { column_name: 'city', column_type: 'Data', label: 'City', in_list_view: true },
+      { column_name: 'active', column_type: 'Check', label: 'Active', in_list_view: true },
+    ],
+  })
+  await admin.post('/api/save_row', { table: 'Lv Ticks', row: { city: 'ticked', active: true } })
+  await admin.post('/api/save_row', { table: 'Lv Ticks', row: { city: 'unticked', active: false } })
+  await openList(admin, 'Lv Ticks')
+  await waitFor(() => expect(cellTexts('city')).toHaveLength(2))
+  const activeOf = (city: string) =>
+    within(within(rowsEl()).getByText(city).closest('tr') as HTMLElement).getByTestId('cell-active').textContent
+  expect(activeOf('ticked')).toContain('✓')
+  expect(activeOf('unticked')).not.toContain('✓')
 })
 
 test('Browse a table\'s rows: opening a row takes the user to its full form', async ({ admin }) => {
