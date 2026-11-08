@@ -131,6 +131,12 @@ export async function settingsRequirements(): Promise<Pick<CheckVariablesOptions
   return { conditions, named }
 }
 
+/** The check below needs PostgreSQL 18's publish_generated_columns; an older
+ *  server can't have the problem, so the check is skipped and says so. */
+export function publicationCheckSkipped(serverVersionNum: number): string | null {
+  return serverVersionNum < 180000 ? 'publication generated-column check skipped (PostgreSQL before 18)' : null
+}
+
 /** 4. On PostgreSQL 18, a published table whose replica identity is FULL and
  *  that holds stored generated columns refuses EVERY update and delete (42P10
  *  "Replica identity must not contain unpublished generated columns") unless
@@ -140,7 +146,8 @@ export async function settingsRequirements(): Promise<Pick<CheckVariablesOptions
  *  (#399), so refuse before migrating. Insert-only publications are harmless. */
 async function assertPublicationsPublishGeneratedColumns(): Promise<string> {
   const [{ version }] = await sql`select current_setting('server_version_num')::int as version`
-  if (version < 180000) return 'publication generated-column check skipped (PostgreSQL before 18)'
+  const skipped = publicationCheckSkipped(version)
+  if (skipped) return skipped
   const blocking = await sql`
     with published as (
       select p.pubname, p.pubgencols, pt.schemaname, pt.tablename, c.oid as relid,
