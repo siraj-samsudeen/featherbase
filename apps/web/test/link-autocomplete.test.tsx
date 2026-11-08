@@ -42,14 +42,22 @@ test('UI-006: a picked and saved row shows in the field when the form opens agai
   await waitFor(() => expect(field('customer')).toHaveValue('Globex Ltd'))
 })
 
-test('UI-006: typing what matches nothing says so, and Create new opens a blank form of the linked Table', async ({ admin }) => {
+test('UI-006: a no-match query offers create-new in a new tab, keeping the form', async ({ admin }) => {
   await seed(admin)
   const { router } = await open(admin)
+  const here = `/featherbase/admin/table/${tableSlug('Lac Order')}/row/o1`
+  fireEvent.change(field('label'), { target: { value: 'typed before create-new' } })
   fireEvent.change(field('customer'), { target: { value: 'zzz-no-match' } })
   const options = await screen.findByTestId('link-options-customer')
   await waitFor(() => expect(options).toHaveTextContent('No matches'))
-  await userEvent.click(within(options).getByTestId('link-create-new'))
-  await waitFor(() => expect((router.state as { location: { pathname: string } }).location.pathname)
-    .toBe(`/featherbase/admin/table/${tableSlug('Lac Customer')}/new`))
-  expect(await screen.findByTestId('form-status', {}, WAIT)).toHaveTextContent('New document')
+  const create = within(options).getByTestId('link-create-new')
+  // The second tab itself is browser-only; here the link must aim at one (#1033).
+  expect(create).toHaveAttribute('target', '_blank')
+  expect(new URL(create.getAttribute('href')!, 'http://x').pathname)
+    .toBe(`/featherbase/admin/table/${tableSlug('Lac Customer')}/new`)
+  await userEvent.click(create)
+  await new Promise((r) => setTimeout(r, 300)) // a same-tab navigation would land by now
+  expect(screen.queryByTestId('unsaved-leave-dialog')).toBeNull()
+  expect((router.state as { location: { pathname: string } }).location.pathname).toBe(here)
+  expect(field('label')).toHaveValue('typed before create-new')
 })
