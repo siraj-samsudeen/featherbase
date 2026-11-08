@@ -49,7 +49,7 @@ tour('Tasker: a team runs its work', async ({ story, request }) => {
       // #1076: and, until the page was reloaded, for anyone who had just installed it.
       await page().getByRole('link', { name: 'Import Data' }).first().click()
       await expect(page().getByTestId('iw-dropzone')).toBeVisible()
-      await page().getByTestId('iw-file-input').setInputFiles({ name: 'contacts.csv', mimeType: 'text/csv', buffer: Buffer.from('Name,Phone\nRavi,98400 00001\n') })
+      await page().getByTestId('iw-file-input').setInputFiles({ name: 'contacts.csv', mimeType: 'text/csv', buffer: Buffer.from('Name,City\nRavi,Chennai\n') })
       await expect(page().getByTestId('iw-new-grid-0').or(page().getByTestId('iw-overview')).first()).toBeVisible()
       await page().getByTestId('iw-target-0').click()
       await expect(page().getByTestId('iw-target-menu-0')).toBeVisible()
@@ -61,7 +61,7 @@ tour('Tasker: a team runs its work', async ({ story, request }) => {
       await page().getByRole('button', { name: 'Start over' }).click().catch(() => undefined)
       await page().reload()
       await expect(page().getByTestId('iw-dropzone')).toBeVisible()
-      await page().getByTestId('iw-file-input').setInputFiles({ name: 'contacts.csv', mimeType: 'text/csv', buffer: Buffer.from('Name,Phone\nRavi,98400 00001\n') })
+      await page().getByTestId('iw-file-input').setInputFiles({ name: 'contacts.csv', mimeType: 'text/csv', buffer: Buffer.from('Name,City\nRavi,Chennai\n') })
       await page().getByTestId('iw-target-0').click()
       await expect(page().getByTestId('iw-target-menu-0')).toBeVisible()
       await expect(page().getByTestId(/^iw-target-opt-0-tasker\./)).toHaveCount(0)
