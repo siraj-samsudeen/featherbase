@@ -1074,7 +1074,8 @@
     {
       "version": "3.3.1",
       "changes": [
-        "A photo added when submitting a task or raising an issue is attached to it, so anyone who can open the task or issue can open the photo"
+        "A photo added when submitting a task or raising an issue is attached to it, so anyone who can open the task or issue can open the photo",
+        "An acknowledged issue can be given a new owner, who acknowledges it afresh"
       ]
     },
     {
