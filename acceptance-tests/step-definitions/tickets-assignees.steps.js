@@ -22,6 +22,7 @@ const steps = (keyword, definitions) => {
 steps(Given, [
   ['Colleague is listed only as someone tickets can be assigned to', x => x.list(['Colleague'])],
   ['no one is listed as someone tickets can be assigned to', x => x.list([])],
+  ['Colleague is listed as someone tickets can be assigned to before using Tickets', x => x.listBeforeUse(['Colleague'])],
 ]);
 
 steps(When, [
@@ -40,6 +41,11 @@ steps(Then, [
     assert.equal(session.people, undefined);
     await x.t.action('edit', { public_update: 'Looking' }, 'Colleague', true);
     assert.ok([403, 417].includes(x.t.last.status), JSON.stringify(x.t.last.body));
+  }],
+  ['the assign picker offers Colleague by name', async x => {
+    const listed = (await x.t.read('session', {}, 'Support')).people.find(person => person.row_id === x.t.ids.Colleague);
+    // The acceptance people have no full name, so the platform's display name for them stands in.
+    assert.ok(listed && typeof listed.full_name === 'string' && listed.full_name, `Colleague is offered: ${JSON.stringify(listed)}`);
   }],
   ['the assign picker offers Support and not Colleague', async x => {
     const offered = await x.offered();
