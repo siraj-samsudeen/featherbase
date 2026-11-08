@@ -11,7 +11,7 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { config } from '../src/config'
 import { parseInstanceAddresses } from '../src/instance-addresses'
-import { ADMIN_PASSWORD_MISMATCH_WARNING, NO_NOTICE_RECIPIENTS_WARNING, preflightRelease } from '../src/release-preflight'
+import { ADMIN_PASSWORD_MISMATCH_WARNING, NO_NOTICE_RECIPIENTS_WARNING, preflightRelease, publicationCheckSkipped } from '../src/release-preflight'
 import { hashPassword } from '../src/auth'
 import { makePerson } from './fixtures'
 import { withNamedVariable } from '../src/env'
@@ -22,7 +22,7 @@ import { cp, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 afterEach(() => vi.unstubAllEnvs())
 
 const PASSES = 'no publication blocks updates on a table with stored generated columns'
-// publish_generated_columns exists from PostgreSQL 18 (CI also runs 17).
+// publish_generated_columns exists from PostgreSQL 18.
 const probe = postgres(config.databaseUrl, { max: 1, onnotice: () => {} })
 const [{ server_version_num }] = await probe`show server_version_num`
 await probe.end()
@@ -92,8 +92,11 @@ describe('release preflight', () => {
     await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/publication "fb_test_list_pub".*column list/)
   })
 
-  test.skipIf(pg18)('before PostgreSQL 18 the publication check is skipped and says so', async () => {
-    expect(await preflightRelease({ environment: 'test' })).toContain('publication generated-column check skipped (PostgreSQL before 18)')
+  // CI runs PostgreSQL 18.6 only (#1081), so the version is passed in: an
+  // instance on an older server still has its check skipped, and says so.
+  test('before PostgreSQL 18 the publication check is skipped and says so', () => {
+    expect(publicationCheckSkipped(170006)).toBe('publication generated-column check skipped (PostgreSQL before 18)')
+    expect(publicationCheckSkipped(180006)).toBeNull()
   })
 
   test('where test mode is allowed, every check passes and says so', async () => {
