@@ -123,6 +123,22 @@ describe("declared bar controls: the picker's options", () => {
     expect(await pending).toEqual({ controls: [{ picker: 'Store', sets: 'store', options: [{ value: 'N1', label: 'North' }] }] })
   })
 
+  test('a picker depending on an address key gets its value, and no other key', async ({ admin }) => {
+    const directory = await barProof((manifest) => ({ ...manifest, bar: [{ picker: 'Part', options: 'by_report', sets: 'part', dependsOn: ['report'] }] }))
+    expect(await discoverPackages([directory, ROSTER])).toEqual([])
+    await admin.post('/api/install_app', { name: 'barproof' })
+    expect(await admin.get('/api/app_bar/barproof?report=r1&other=x')).toEqual({ controls: [{ picker: 'Part', sets: 'part', dependsOn: ['report'], options: [{ value: 'r1', label: '{"report":"r1"}' }] }] })
+    expect(await admin.get('/api/app_bar/barproof?report=none')).toEqual({ controls: [{ picker: 'Part', sets: 'part', dependsOn: ['report'], options: [] }] })
+  })
+
+  test('an outbound read gets what its prepare step read in the transaction, and reads nothing itself', async ({ admin }) => {
+    const directory = await barProof((manifest) => ({ ...manifest, bar: [{ picker: 'Note', options: 'prepared_outbound', sets: 'note' }] }))
+    expect(await discoverPackages([directory, ROSTER])).toEqual([])
+    await admin.post('/api/install_app', { name: 'barproof' })
+    await admin.post('/api/save_row', { table: 'barproof.note', row: { row_id: 'n1', body: 'from the transaction' } })
+    expect(await admin.get('/api/app_bar/barproof')).toEqual({ controls: [{ picker: 'Note', sets: 'note', options: [{ value: 'from the transaction', label: 'refused' }] }] })
+  })
+
   test('an app that declared no bar controls has none', async ({ admin }) => {
     expect(await discoverPackages([resolve('../..', 'test-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'other' })
