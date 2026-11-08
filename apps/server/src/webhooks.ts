@@ -1,5 +1,7 @@
 import { createHmac } from 'node:crypto'
 import { sql } from './db'
+import { platformTableExists } from './platform-tables'
+import { readOnce } from './permission-reads'
 import { registerJob, enqueue } from './jobs'
 import { getMeta } from './meta'
 import { OUTSIDE_READER, restrictRow } from './row-readers'
@@ -22,12 +24,10 @@ export async function evaluateWebhooks(
   table: string,
   row: Record<string, unknown>,
 ): Promise<void> {
-  const [tableOk] = await sql`
-    select 1 from information_schema.tables where table_name = 'webhook'`
-  if (!tableOk) return
-  const hooks = await sql`
+  if (!(await platformTableExists('webhook'))) return
+  const hooks = await readOnce(JSON.stringify(['webhooks', table, event]), () => sql`
     select row_id from webhook
-    where webhook_table = ${table} and webhook_event = ${event} and enabled = true`
+    where webhook_table = ${table} and webhook_event = ${event} and enabled = true`)
   if (!hooks.length) return
   // #340: the receiving system reads the row as nobody in particular, so a
   // restricted column never leaves, on the row or its sub-table rows.

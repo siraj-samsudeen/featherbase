@@ -1,4 +1,4 @@
-import { enabledPeople, ownDisplayName, principalNames, tableMembers } from './people-directory'
+import { enabledPeople, namesForApp, ownDisplayName, tableMembers } from './people-directory'
 import { z } from 'zod'
 import type { ActionRow, AppAuthorizationContext, RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, RuntimeReadHandler } from 'shared'
 import { inAppTransaction, sql } from './db'
@@ -50,10 +50,11 @@ export function linkedTables(settings: Readonly<Record<string, string>>): string
   } catch { return [] }
 }
 
-/** #912: names of people, read as the caller (the Person permission applies). */
-function callerPeople(user: string, app: string): RuntimeActionContext['people'] {
+/** #912: names of people, read as the caller (the Person permission applies),
+ *  except people the app's own settings name (#1097). */
+function callerPeople(user: string, app: string, settings: Readonly<Record<string, string>>): RuntimeActionContext['people'] {
   return Object.freeze({
-    names: (ids: string[]) => principalNames(ids, user),
+    names: (ids: string[]) => namesForApp(ids, user, settings),
     enabled: (ids: string[]) => enabledPeople(ids, user),
     // #1046: an app that gives things to roles says why someone has one.
     rolesOf: async (person: string) => {
@@ -229,7 +230,7 @@ export function executeRuntimeAction(app: string, name: string, input: unknown, 
       // Serialized inside the guard (Codex round 2 on #670): a getter on the
       // result is the app's code running, and may log or throw a secret.
       const json = await withSecretsKept(kept, async () => {
-        try { return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), roles: await callerRoles(user), people: callerPeople(user, app), payload: normalized, authorization, settings, secrets, mail: callerMail(app, contribution.tables), documents: context.documents, baseTables: base.helper, changeProposals: proposals.helper, reject }))) }
+        try { return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), roles: await callerRoles(user), people: callerPeople(user, app, settings), payload: normalized, authorization, settings, secrets, mail: callerMail(app, contribution.tables), documents: context.documents, baseTables: base.helper, changeProposals: proposals.helper, reject }))) }
         finally { await context.close(); await base.close(); await proposals.close() }
       })
       assertNoSecret(kept, JSON.parse(json))
@@ -336,7 +337,7 @@ async function runRead(app: string, name: string, user: string, handler: Runtime
     places: authorization.places, outbound: !inAppTransaction(), deferWrite, provenance })
   const json = await withSecretsKept(kept, async () => {
     try {
-      return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), roles: await callerRoles(user), people: callerPeople(user, app), payload, prepared, authorization, settings, secrets, reject, documents, baseTables, changeProposals, datasets, recordView })))
+      return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), roles: await callerRoles(user), people: callerPeople(user, app, settings), payload, prepared, authorization, settings, secrets, reject, documents, baseTables, changeProposals, datasets, recordView })))
     } finally { await close() }
   })
   assertNoSecret(kept, JSON.parse(json))
