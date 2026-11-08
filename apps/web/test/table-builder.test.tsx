@@ -111,6 +111,28 @@ describe('Choose how each new row gets its id', () => {
     expect(screen.getByTestId('dt-create')).toBeInTheDocument()
   })
 
+  // Moved from the deleted e2e/naming-series.spec.ts (NAM-001): the pattern
+  // the builder composes from the prefix and digit count is what is stored.
+  test('NAM-001: a one-digit series numbers ND-1, ND-2, ND-3, and the new table stores that pattern', async ({ admin }) => {
+    const user = userEvent.setup()
+    await renderApp('/featherbase/admin/new-table', admin)
+    await screen.findByTestId('table-builder')
+
+    await user.type(screen.getByTestId('dt-name'), 'Naming Demo')
+    await user.selectOptions(screen.getByTestId('dt-naming'), 'series')
+    expect(screen.getByTestId('dt-naming-prefix')).toHaveValue('NAMING-DEMO-')
+    expect(screen.getByTestId('dt-naming-preview')).toHaveTextContent('NAMING-DEMO-001')
+    await user.clear(screen.getByTestId('dt-naming-prefix'))
+    await user.type(screen.getByTestId('dt-naming-prefix'), 'ND-')
+    await user.selectOptions(screen.getByTestId('dt-naming-digits'), '1')
+    expect(screen.getByTestId('dt-naming-preview')).toHaveTextContent('ND-1, ND-2, ND-3')
+    await user.type(cell(gridRows()[0], 'column_name'), 'title')
+    await user.click(screen.getByTestId('dt-create'))
+
+    await screen.findByTestId('list-view', undefined, { timeout: 10_000 })
+    expect(await admin.get(`/api/table/${encodeURIComponent('Naming Demo')}:meta`)).toMatchObject({ id_pattern: 'ND-.#' })
+  })
+
   test('#858: a prefix plus a column shows a sample id, and the new table names its rows that way', async ({ admin }) => {
     const user = userEvent.setup()
     await renderApp('/featherbase/admin/new-table', admin)
