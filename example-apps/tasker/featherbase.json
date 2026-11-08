@@ -1999,11 +1999,6 @@
       "can_create": true
     },
     {
-      "table": "File",
-      "role": "Tasker Member",
-      "can_create": true
-    },
-    {
       "table": "tasker.discussion",
       "role": "Tasker Member",
       "can_read": true,
