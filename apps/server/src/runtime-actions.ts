@@ -15,7 +15,7 @@ import { documentActivity, retainedDocumentCounts } from './document-activity'
 import { getList } from './query'
 import { logActivity } from './audit'
 import { assertNoSecret, readyAppSetup, withSecretsKept, type AppSetup, type ReadySetup } from './app-settings'
-import { callerMail } from './runtime-mail'
+import { callerMail, readsRow } from './runtime-mail'
 import { appDatasets, recordPlaceDrops, type DatasetDeclaration, type DropProvenance, type DropVersions, type PlaceDrop } from './app-datasets'
 import { baseTablesReader, proposalsReader, proposalsWriter, type BaseTablesDeclaration } from './change-proposals'
 
@@ -185,14 +185,7 @@ export function callerDocuments(app: string, allowed: string[], user: string, li
       await metaFor(table)
       const [shared] = await sql`select 1 from share where share_table = ${table} and share_name = ${id} and person = ${user}
         and read and not coalesce(write, false) and not coalesce(share, false) limit 1`
-      if (!shared) return false
-      try {
-        await getDoc(table, id, user)
-        return true
-      } catch (error) {
-        if (error instanceof AppError && (error.type === 'PermissionError' || error.type === 'NotFoundError')) return false
-        throw error
-      }
+      return !!shared && readsRow(user, table, id)
     }),
     // #925: the people who read one row of the app's own Table besides those
     // its grants already let read it: read-only shares, replaced as a set.
