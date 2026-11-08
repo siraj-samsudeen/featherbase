@@ -139,8 +139,11 @@ function makePng(w: number, h: number): Buffer {
   return Buffer.concat([signature, chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))])
 }
 
-// FILE-004: the preview's size and decoding are the server's
-// (apps/server/test/thumbnails.test.ts); here, which rows show one.
+// FILE-004: making the preview is the server's, in a headless browser
+// (apps/server/test/thumbnails.test.ts, which runs where Chromium is installed).
+// Here, which rows show one: the stored preview is written directly, so this
+// test needs no browser.
+const PREVIEW = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ=='
 test('an attached picture shows its small preview beside its name; a text file shows none', async ({ admin }) => {
   const rowId = await seedRow(admin, ['enable_files'])
   await openCollaboration(admin, rowId)
@@ -151,7 +154,10 @@ test('an attached picture shows its small preview beside its name; a text file s
   await attach(pickedFile('note.txt', 'not an image'))
   await waitFor(() => expect(rowOf('note.txt')).toBeDefined(), { timeout: 15_000 })
   await rememberStored(rowId)
+  await sql`update file set thumbnail_url = ${PREVIEW} where ref_table = ${DT} and ref_name = ${rowId} and file_name = 'picture.png'`
 
-  expect(within(rowOf('picture.png')!).getByTestId('attachment-thumb').getAttribute('src')).toMatch(/^data:image\/jpeg;base64,/)
+  await openCollaboration(admin, rowId)
+  await waitFor(() => expect(rowOf('note.txt')).toBeDefined(), { timeout: 15_000 })
+  expect(within(rowOf('picture.png')!).getByTestId('attachment-thumb').getAttribute('src')).toBe(PREVIEW)
   expect(within(rowOf('note.txt')!).queryByTestId('attachment-thumb')).not.toBeInTheDocument()
 }, 30_000)
