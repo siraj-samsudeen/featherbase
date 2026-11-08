@@ -36,3 +36,5 @@ apps/server/test/.migration-0125-*/
 apps/server/test/.*/
 # Tours (apps/web/tours): the HTML report
 apps/web/tours-report/
+# pnpm check:scenarios: which runner proves each spec scenario
+scenarios-report/
