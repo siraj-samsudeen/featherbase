@@ -130,3 +130,88 @@ test('a project names its default verifier and task details change a task’s ve
   await waitFor(async () => expect((await read(meena, task)).verifier).toBeNull())
   expect(ravi.user).toBeTruthy()
 })
+
+const acknowledge = (ravi: TestClient, task: Row) =>
+  ravi.post('/api/save_row', { table: 'tasker.task', row: { row_id: task.row_id, updated_at: task.updated_at, acknowledged_at: new Date().toISOString() } })
+
+async function startSubmitting(detail: HTMLElement, user: ReturnType<typeof userEvent.setup>) {
+  const submitForVerification = await within(detail).findByRole('button', { name: 'Submit for verification' })
+  await waitFor(() => expect(submitForVerification).toBeEnabled())
+  await user.click(submitForVerification)
+}
+
+test('Not yet closes the submit form and leaves the task unsubmitted', async ({ createUser }) => {
+  const { ravi, task } = await team(createUser)
+  await acknowledge(ravi, task)
+  renderTasker(ravi)
+  const user = userEvent.setup()
+  const detail = await openTask(user)
+  await startSubmitting(detail, user)
+  await user.click(within(detail).getByRole('button', { name: 'Not yet' }))
+  expect(within(detail).queryByRole('textbox', { name: 'What was done' })).not.toBeInTheDocument()
+  expect(within(detail).getByRole('button', { name: 'Submit for verification' })).toBeInTheDocument()
+  expect((await read(ravi, task)).task_state).not.toBe(SUBMITTED)
+})
+
+test('the verifier changes their mind about returning, and the task stays submitted', async ({ createUser }) => {
+  const { meena, ravi, task } = await team(createUser)
+  await ravi.post('/api/save_row', { table: 'tasker.task', row: { row_id: task.row_id, updated_at: task.updated_at, task_state: SUBMITTED, evidence_note: 'Replaced both tube lights' } })
+  renderTasker(meena)
+  const user = userEvent.setup()
+  const detail = await openTask(user)
+  await user.click(await within(detail).findByRole('button', { name: 'Return' }))
+  await user.click(within(detail).getByRole('button', { name: 'Never mind' }))
+  expect(within(detail).queryByRole('textbox', { name: 'Reason for returning' })).not.toBeInTheDocument()
+  expect(within(detail).getByRole('button', { name: 'Accept and close' })).toBeInTheDocument()
+  expect((await read(meena, task)).task_state).toBe(SUBMITTED)
+})
+
+test('Never mind in task details keeps the task when cancelling is abandoned', async ({ createUser }) => {
+  const { meena, task } = await team(createUser)
+  renderTasker(meena)
+  const user = userEvent.setup()
+  const detail = await openTask(user)
+  const state = await within(detail).findByRole('combobox', { name: 'Task state' })
+  await waitFor(() => expect(state).toBeEnabled())
+  await user.selectOptions(state, 'Cancelled')
+  await user.click(within(detail).getByRole('button', { name: 'Never mind' }))
+  expect(within(detail).queryByRole('textbox', { name: 'Reason for cancelling' })).not.toBeInTheDocument()
+  expect((await read(meena, task)).task_state).toBe('Not started')
+})
+
+test('Never mind in task details keeps the due date when moving it is abandoned', async ({ createUser }) => {
+  const { ravi, task } = await team(createUser)
+  renderTasker(ravi)
+  const user = userEvent.setup()
+  const detail = await openTask(user)
+  await waitFor(() => expect(within(detail).getByLabelText('Due date')).toBeEnabled())
+  fireEvent.change(within(detail).getByLabelText('Due date'), { target: { value: '2026-11-10' } })
+  await within(detail).findByRole('textbox', { name: 'Reason for moving the due date' })
+  await user.click(within(detail).getByRole('button', { name: 'Never mind' }))
+  expect(within(detail).queryByRole('textbox', { name: 'Reason for moving the due date' })).not.toBeInTheDocument()
+  expect(String((await read(ravi, task)).due_date).slice(0, 10)).toBe('2026-11-07')
+})
+
+test('Never mind on the task row keeps the task when cancelling is abandoned', async ({ createUser }) => {
+  const { meena, task } = await team(createUser)
+  renderTasker(meena)
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('button', { name: 'Diwali readiness' }))
+  await user.selectOptions(await screen.findByRole('combobox', { name: 'State for Fix the billing counter lights' }), 'Cancelled')
+  await user.click(await screen.findByRole('button', { name: 'Never mind' }))
+  expect(screen.queryByRole('textbox', { name: 'Reason for cancelling' })).not.toBeInTheDocument()
+  expect((await read(meena, task)).task_state).toBe('Not started')
+})
+
+test('the default verifier says why it was not saved when someone changed the project first', async ({ createUser }) => {
+  const { meena, project } = await team(createUser)
+  renderTasker(meena)
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('button', { name: 'Diwali readiness' }))
+  const defaultVerifier = await screen.findByRole('combobox', { name: 'Default verifier' })
+  await within(defaultVerifier).findByRole('option', { name: 'Meena' })
+  await meena.post('/api/save_row', { table: 'tasker.project', row: { row_id: project.row_id, updated_at: project.updated_at, description: 'Lights and counters before Diwali' } })
+  await user.selectOptions(defaultVerifier, 'Meena')
+  expect(await screen.findByRole('alert')).toHaveTextContent(`tasker.project ${project.row_id} has been modified after you loaded it`)
+  expect((await meena.get<Row>(`/api/table/tasker.project/${project.row_id}`)).default_verifier).toBeNull()
+})

@@ -119,6 +119,33 @@ test('a member adds a store from the Stores page', async ({ admin }) => {
   expect(stores.data).toEqual([{ store_name: 'Manimangalam WH', store_type: 'Warehouse' }])
 })
 
+test('adding a store whose name is taken says why it was refused', async ({ admin }) => {
+  await install()
+  await admin.post<Row>('/api/save_row', { table: 'tasker.store', row: { store_name: 'Avadi Store' } })
+  renderTasker(admin)
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('button', { name: 'Stores' }))
+  await user.type(await screen.findByRole('textbox', { name: 'New store' }), 'Avadi Store')
+  await user.click(screen.getByRole('button', { name: 'Add store' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('Duplicate value for store_name')
+  const stores = await admin.get<{ data: { store_name: string }[] }>('/api/table/tasker.store?fields=["store_name"]')
+  expect(stores.data).toEqual([{ store_name: 'Avadi Store' }])
+})
+
+test('task details set a start date', async ({ admin }) => {
+  await install()
+  const task = await admin.post<Row>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Diwali display change-over' } })
+  renderTasker(admin)
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('button', { name: /^Inbox/ }))
+  await user.click(await screen.findByRole('link', { name: 'Diwali display change-over' }))
+  const detail = await screen.findByRole('region', { name: 'Task detail content' })
+  await waitFor(() => expect(within(detail).getByLabelText('Start date')).toBeEnabled())
+  fireEvent.change(within(detail).getByLabelText('Start date'), { target: { value: day(4) } })
+  await waitFor(async () => expect(String((await admin.get<{ start_date: string }>(`/api/table/tasker.task/${task.row_id}`)).start_date).slice(0, 10)).toBe(day(4)))
+  expect(await within(detail).findByText(/^Scheduled/)).toBeInTheDocument()
+})
+
 test('task filters narrow a list by store and by when tasks are due', async ({ admin }) => {
   await install()
   const { project } = await storeWork(admin)
