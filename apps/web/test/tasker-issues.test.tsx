@@ -481,17 +481,42 @@ test('a member raises an issue with a photo, and its details show the photo', as
   await user.click(within(form).getByRole('button', { name: 'Raise issue' }))
   let photo = ''
   try {
+    let issueId = ''
     await waitFor(async () => {
       const [saved] = (await suresh.get<{ data: Row[] }>(`/api/table/${ISSUE}?fields=["row_id","photo"]`)).data
       photo = String(saved?.photo ?? '')
+      issueId = String(saved?.row_id)
       expect(saved).toMatchObject({ photo: expect.stringMatching(/^\/private\/files\//) })
     })
+    // The photo hangs on the issue, so whoever can open the issue opens it.
+    expect(await sql`select ref_table, ref_name from file where file_url = ${photo}`).toEqual([{ ref_table: ISSUE, ref_name: issueId }])
+    expect((await suresh.fetch(photo)).status).toBe(200)
     await user.click(await within(await screen.findByRole('list', { name: 'Open issues' })).findByRole('link', { name: 'Dairy chiller 2 at 9°C' }))
     expect(within(await screen.findByRole('region', { name: 'Issue detail' })).getByRole('img', { name: 'Issue photo' })).toHaveAttribute('src', photo)
   } finally {
     // Database rows roll back; uploaded disk objects do not.
     if (photo.startsWith('/private/files/')) await deleteStored(photo)
   }
+})
+
+test('an issue whose photo can’t be stored is still raised, and the page says the photo is missing', async ({ createUser }) => {
+  const { suresh } = await team(createUser)
+  await useNodeMultipart()
+  // Storage refuses the bytes (a full disk, say); everything else is the real server.
+  const bridged = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => String(input).startsWith('/api/upload_file')
+    ? Promise.resolve(new Response(JSON.stringify({ error: { type: 'InternalError', message: 'Storage is full' } }), { status: 507 }))
+    : bridged(input, init))
+  const user = await openIssues(suresh)
+  await user.click(await screen.findByRole('button', { name: 'Raise an issue' }))
+  const form = await screen.findByRole('form', { name: 'Raise an issue' })
+  await user.type(within(form).getByRole('textbox', { name: 'What happened' }), 'Dairy chiller 2 at 9°C')
+  fireEvent.change(within(form).getByLabelText('Issue photo'), { target: { files: [pickedFile('chiller-display.jpg', 'jpeg bytes', 'image/jpeg')] } })
+  await user.click(within(form).getByRole('button', { name: 'Raise issue' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('The issue was raised, but its photo was not added: Storage is full')
+  expect(screen.queryByRole('form', { name: 'Raise an issue' })).not.toBeInTheDocument()
+  expect(await within(await screen.findByRole('list', { name: 'Open issues' })).findByRole('link', { name: 'Dairy chiller 2 at 9°C' })).toBeInTheDocument()
+  expect((await suresh.get<{ data: Row[] }>(`/api/table/${ISSUE}?fields=["photo"]`)).data).toEqual([{ photo: null }])
 })
 
 test('Never mind closes the raise form without raising anything', async ({ createUser }) => {

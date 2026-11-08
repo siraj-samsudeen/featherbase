@@ -12,6 +12,7 @@ import { taskerClient } from '../../server/test/tasker-client'
 import { afterEach, vi } from 'vitest'
 import { deleteStored } from 'server/src/storage'
 import { getDoc, saveDoc } from 'server/src/document'
+import { sql } from 'server/src/db'
 import { pickedFile, useNodeMultipart } from './node-multipart'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -147,7 +148,7 @@ async function startSubmitting(detail: HTMLElement, user: ReturnType<typeof user
 }
 
 test('the assignee attaches a photo when submitting, and the task shows it as evidence', async ({ createUser }) => {
-  const { ravi, task } = await team(createUser)
+  const { meena, ravi, task } = await team(createUser)
   await acknowledge(ravi, task)
   await useNodeMultipart()
   renderTasker(ravi)
@@ -165,6 +166,9 @@ test('the assignee attaches a photo when submitting, and the task shows it as ev
       expect(saved).toMatchObject({ task_state: SUBMITTED, evidence_photo: expect.stringMatching(/^\/private\/files\//) })
     })
     expect(await within(detail).findByRole('img', { name: 'Evidence photo' })).toHaveAttribute('src', photo)
+    // The photo hangs on the task, so its verifier opens it too.
+    expect(await sql`select ref_table, ref_name from file where file_url = ${photo}`).toEqual([{ ref_table: 'tasker.task', ref_name: task.row_id }])
+    expect((await meena.fetch(photo)).status).toBe(200)
   } finally {
     // Database rows roll back; uploaded disk objects do not.
     if (photo.startsWith('/private/files/')) await deleteStored(photo)
