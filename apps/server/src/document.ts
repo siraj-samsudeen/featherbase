@@ -1,3 +1,4 @@
+import { readOnce } from './permission-reads'
 import { randomBytes } from 'node:crypto'
 import { opaqueId } from './opaque-id'
 import { DEFAULT_ID_PATTERN, idFromColumn, namingColumn, tableSchemaToZod, zodFieldErrors, type RowCapabilities } from 'shared'
@@ -316,7 +317,7 @@ async function validateLinks(
     const linked = f.reference_table
     if (!linked) continue
     // select *: early migrations save rows before table_def has data_source.
-    const [linkedDef] = await tx`select * from table_def where name = ${linked}`
+    const [linkedDef] = await readOnce(JSON.stringify(['table definition', linked]), () => tx`select * from table_def where name = ${linked}`)
     if (!linkedDef) {
       errors[prefix + f.column_name] = `Reference target Table ${linked} does not exist`
       continue
