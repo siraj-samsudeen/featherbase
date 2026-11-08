@@ -1,7 +1,7 @@
 import type { TableController } from '../controllers'
 import { AppError } from '../errors'
 import { KINDS, METHOD_TABLE, SIGN_IN_METHOD_KINDS, assertNoAdminLockout, domainListProblem, endSessionsNoLongerAdmitted, lockWaysIn, methodUsable, type MethodKind } from '../identities'
-import { rosterFrom, usableServiceUrl, wireFrom } from '../delegated-login'
+import { recordKeyFrom, rosterFrom, usableServiceUrl, wireFrom } from '../delegated-login'
 
 // person-identities (D2): a Sign In Method row is configuration. Its policy
 // values are checked against what the kind's adapter can vouch for, a unique
@@ -69,6 +69,7 @@ const controller: TableController = {
           const settings = parseSettings(row.settings)
           wireFrom(settings)
           rosterFrom(settings)
+          recordKeyFrom(settings)
         } catch (err) {
           throw new AppError('ValidationError', (err as Error).message, { settings: (err as Error).message })
         }
