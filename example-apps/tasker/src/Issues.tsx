@@ -73,7 +73,7 @@ export function useIssues() {
   return useQuery({ queryKey: ['task-management', 'issues'], refetchInterval: 60_000,
     queryFn: () => listAllResources<Issue>(ISSUE, { fields: FIELDS, order_by: 'raised_at desc', limit_page_length: 500 }) })
 }
-const logOf = (issue: Issue): LogEntry[] => { try { return JSON.parse(issue.issue_log || '[]') } catch { return [] } }
+const logOf = (issue: Issue): LogEntry[] => JSON.parse(issue.issue_log || '[]')
 const hashIssueId = () => new URLSearchParams(location.hash.slice(1)).get('issue')
 const left = (issue: Issue) => issue.fix_minutes - Number(issue.on_clock_minutes ?? 0)
 const breached = (issue: Issue) => issue.fix_breached || (ACTIVE.includes(issue.issue_state) && left(issue) < 0)
