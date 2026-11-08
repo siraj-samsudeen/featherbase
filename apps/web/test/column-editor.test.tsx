@@ -335,7 +335,7 @@ test("the Table's list opens its column editor from Table administration", async
   await user.click(await screen.findByRole('link', { name: 'Edit columns' }))
   expect(await screen.findByTestId('column-editor')).toBeInTheDocument()
   expect(await screen.findByTestId('ce-row-glor')).toBeInTheDocument()
-  expect(router.state.location.pathname).toBe(`/featherbase/admin/table/${tableSlug(DT)}/columns`)
+  expect((router.state as { location: { pathname: string } }).location.pathname).toBe(`/featherbase/admin/table/${tableSlug(DT)}/columns`)
 })
 
 // Moved from e2e/column-editor.spec.ts (#1080): a list of another Table, read
