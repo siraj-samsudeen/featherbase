@@ -143,9 +143,6 @@ export default defineConfig({
             DATABASE_URL: e2eDatabaseUrl(),
             FEATHERBASE_APP_PATHS: JSON.stringify([
               resolve('../../example-apps/tasker'), resolve('../../test-apps/other'),
-              // #642: an app that declares a top-bar picker, and the app that
-              // gives its readers their places (top-bar-picker.spec.ts).
-              resolve('../../test-apps/fixtures/bar-proof'), resolve('../../test-apps/fixtures/place-roster'),
               // Jeyarama's Assets app (jeyarama-equipment.spec.ts).
               resolve('../../client-apps/jeyarama/equipment'),
             ]),
@@ -172,8 +169,6 @@ export default defineConfig({
             INSTANCE_ADDRESSES: JSON.stringify([
               { address: `http://admin.localhost:${webPort}`, opens: 'admin', emails: true },
               { address: `http://dash.localhost:${webPort}`, opens: 'dash' },
-              // #642: an installed app's own address, for its top-bar picker.
-              { address: `http://barproof.localhost:${webPort}`, opens: 'barproof' },
             ]),
           },
         },
