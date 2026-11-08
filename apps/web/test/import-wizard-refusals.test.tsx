@@ -278,6 +278,25 @@ test('#851 a keep-clear choice invalidates pending typed consent despite the sam
   clearSession()
 })
 
+// UPS-H1 (moved from e2e/import-typed-confirmation.spec.ts, #1080): only the
+// exact count arms the run; until then nothing is written.
+test('UPS-H1: a number other than the update count keeps the import disarmed', async ({ admin }) => {
+  const rows = await consentZones(admin)
+  await renderApp('/featherbase/admin/import?table=Iwr%20Zone', admin)
+  await upload(consentCsv(rows, 1000))
+  const user = userEvent.setup()
+  await user.selectOptions(await screen.findByTestId('iw-key-0'), 'zone_name')
+  await user.click(screen.getByTestId('iw-import'))
+  expect(await screen.findByTestId('iw-confirm-updates')).toHaveTextContent('change 21 existing rows')
+  await user.type(screen.getByTestId('iw-confirm-input'), '20')
+  expect(screen.getByTestId('iw-confirm-go')).toBeDisabled()
+  await user.clear(screen.getByTestId('iw-confirm-input'))
+  await user.type(screen.getByTestId('iw-confirm-input'), '21')
+  expect(screen.getByTestId('iw-confirm-go')).toBeEnabled()
+  expect(await admin.get('/api/table/Iwr%20Zone?fields=["zone_name","pop"]&order_by=zone_name%20asc&limit_page_length=100')).toMatchObject({ total: 21, data: rows })
+  clearSession()
+})
+
 test('#851 a mapped-column choice invalidates acknowledged append despite the same overlap', async ({ admin }) => {
   const rows = await consentZones(admin)
   await renderApp('/featherbase/admin/import?table=Iwr%20Zone', admin)

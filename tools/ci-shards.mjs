@@ -1,4 +1,4 @@
-// File partitioning, with successful-execution receipts. The merge
+// Component-suite file partitioning, with successful-execution receipts. The merge
 // validates the complete file inventory and every artifact before reading it.
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
@@ -11,31 +11,13 @@ import { pathToFileURL } from 'node:url'
 const root = resolve(import.meta.dirname, '..')
 const web = resolve(root, 'apps/web')
 export const shardCount = 4
-const suites = ['component', 'browser']
-function run(args, capture = false) {
-  const result = spawnSync('pnpm', ['--filter', 'web', 'exec', ...args], {
-    cwd: root, encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit',
-  })
-  assert.equal(result.status, 0, `${args.join(' ')} failed\n${result.stderr ?? ''}`)
-  return capture ? JSON.parse(result.stdout) : undefined
-}
-function browserFiles(report) {
-  const files = new Set()
-  function visit(suite) {
-    for (const spec of suite.specs ?? []) files.add(`e2e/${spec.file}`)
-    for (const child of suite.suites ?? []) visit(child)
-  }
-  visit(report)
-  return [...files].sort()
+const suites = ['component']
+function run(args) {
+  const result = spawnSync('pnpm', ['--filter', 'web', 'exec', ...args], { cwd: root, stdio: 'inherit' })
+  assert.equal(result.status, 0, `${args.join(' ')} failed`)
 }
 export async function enumerate(suite, shard) {
   assert(suites.includes(suite), 'Unknown suite')
-  if (suite === 'browser') {
-    // Playwright's native shard groups can split a file across runners (e.g.
-    // tests with different fixture options). Keep the entire file together.
-    const files = browserFiles(run(['playwright', 'test', '--list', '--reporter=json'], true))
-    return shard ? files.filter((_, index) => index % shardCount === shard - 1) : files
-  }
   // Vitest's `list --filesOnly` ignores --shard. Use its public sequencer
   // with real specifications instead of copying its hash/range algorithm.
   const requireWeb = createRequire(resolve(web, 'package.json'))
@@ -87,30 +69,14 @@ async function execute(suite, shard) {
   mkdirSync(directory, { recursive: true })
   const selection = `--shard=${shard}/${shardCount}`
   const report = resolve(directory, 'results.json')
-  if (suite === 'component') {
-    run(['vitest', 'run', selection, '--coverage', '--maxWorkers=1',
-      '--coverage.thresholds.lines=0', '--coverage.thresholds.statements=0',
-      '--coverage.thresholds.functions=0', '--coverage.thresholds.branches=0',
-      '--reporter=default', '--reporter=blob', '--reporter=json',
-      `--outputFile.blob=${directory}/blob.json`, `--outputFile.json=${report}`])
-    const result = JSON.parse(readFileSync(report))
-    assert(result.success && result.numPassedTests > 0, 'No successful component execution')
-    assert.deepEqual([...new Set(result.testResults.map(test => relative(web, test.name)))].sort(), files)
-  } else {
-    const filters = files.map(file => `/${file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`)
-    const result = spawnSync('pnpm', ['--filter', 'web', 'coverage:e2e', ...filters,
-      '--trace=retain-on-failure', '--reporter=list,json'], {
-      cwd: root, stdio: 'inherit', env: { ...process.env, PLAYWRIGHT_JSON_OUTPUT_FILE: report },
-    })
-    assert.equal(result.status, 0, 'Browser shard failed')
-    const results = JSON.parse(readFileSync(report))
-    assert(results.stats.expected > 0 && results.stats.unexpected === 0, 'No successful browser execution')
-    assert.deepEqual(browserFiles(results), files)
-    mkdirSync(resolve(directory, 'coverage'))
-    for (const file of readdirSync(resolve(web, '.nyc_output')).filter(file => /^e2e-.*\.json$/.test(file)))
-      cpSync(resolve(web, '.nyc_output', file), resolve(directory, 'coverage', file))
-    assert(readdirSync(resolve(directory, 'coverage')).some(file => /^e2e-.*\.json$/.test(file)), 'Missing browser coverage')
-  }
+  run(['vitest', 'run', selection, '--coverage', '--maxWorkers=1',
+    '--coverage.thresholds.lines=0', '--coverage.thresholds.statements=0',
+    '--coverage.thresholds.functions=0', '--coverage.thresholds.branches=0',
+    '--reporter=default', '--reporter=blob', '--reporter=json',
+    `--outputFile.blob=${directory}/blob.json`, `--outputFile.json=${report}`])
+  const result = JSON.parse(readFileSync(report))
+  assert(result.success && result.numPassedTests > 0, 'No successful component execution')
+  assert.deepEqual([...new Set(result.testResults.map(test => relative(web, test.name)))].sort(), files)
   writeFileSync(resolve(directory, 'receipt.json'), JSON.stringify({
     suite, shard, total: shardCount, head: head(), files, artifacts: hashes(directory),
   }, null, 2))
@@ -127,29 +93,15 @@ async function collect(suite) {
     return receipt
   })
   validate(receipts, suite, await enumerate(suite), head())
-  if (suite === 'component') rmSync(resolve(web, '.vitest-web-reports'), { recursive: true, force: true })
-  else {
-    mkdirSync(resolve(web, '.nyc_output'), { recursive: true })
-    for (const file of readdirSync(resolve(web, '.nyc_output')).filter(file => /^e2e-.*\.json$/.test(file)))
-      rmSync(resolve(web, '.nyc_output', file))
-  }
-  for (const name of directories) {
-    if (suite === 'component') {
-      mkdirSync(resolve(web, '.vitest-web-reports'), { recursive: true })
-      cpSync(resolve(base, name, 'blob.json'), resolve(web, '.vitest-web-reports', `${name}.json`))
-    } else {
-      mkdirSync(resolve(web, '.nyc_output'), { recursive: true })
-      for (const file of readdirSync(resolve(base, name, 'coverage'))) {
-        assert(/^e2e-.*\.json$/.test(file), `Unexpected browser coverage: ${file}`)
-        cpSync(resolve(base, name, 'coverage', file), resolve(web, '.nyc_output', `e2e-${name}-${file}`))
-      }
-    }
-  }
+  rmSync(resolve(web, '.vitest-web-reports'), { recursive: true, force: true })
+  mkdirSync(resolve(web, '.vitest-web-reports'), { recursive: true })
+  for (const name of directories)
+    cpSync(resolve(base, name, 'blob.json'), resolve(web, '.vitest-web-reports', `${name}.json`))
   console.log(`Verified ${receipts.length} ${suite} producers: exact-once inventory`)
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const [command, suite, shard] = process.argv.slice(2)
-  assert(suites.includes(suite), 'Expected component or browser')
+  assert(suites.includes(suite), 'Expected component')
   if (command === 'run') await execute(suite, Number(shard))
   else if (command === 'collect') await collect(suite)
   else if (command === 'list') console.log(JSON.stringify(await enumerate(suite, shard && Number(shard))))

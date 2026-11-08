@@ -5,18 +5,19 @@
 //
 // Component layer (docs/TESTING.md layer 2): the folding proposal, the
 // mapping form, the tally, and what actually reached the server are all
-// React-side. `e2e/table-merge.spec.ts` keeps what the browser adds — the
-// route, and arriving from the source Table's list view.
+// React-side, as are arriving from the source Table's list and the merge's
+// place in the import history.
 //
 // The server is the real in-process one, so "every row lands under the
 // target's spelling" is checked against the database the merge wrote to.
 
 import { tableSlug } from 'shared'
-import { screen, waitFor, within } from '@testing-library/react'
+import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, vi } from 'vitest'
 import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
+import { clearSession } from '../src/lib/import-session'
 
 const SRC = 'Tm Source Zones'
 const DST = 'Tm Target Zones'
@@ -173,6 +174,48 @@ test('nothing can be merged until a target and a column are chosen', async ({ ad
     await user.selectOptions(screen.getByTestId(`tm-map-${column}`), '')
   await waitFor(() => expect(screen.getByTestId('tm-go')).toHaveTextContent('Map at least one'))
   expect(screen.getByTestId('tm-go')).toBeDisabled()
+})
+
+// Moved from the deleted e2e/table-merge.spec.ts: the screen is reached from
+// the source Table's list, and a finished merge is recorded as an import.
+test('the merge screen opens from the source Table\'s administration menu', async ({ admin }) => {
+  const user = userEvent.setup()
+  await seed(admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(SRC))}`, admin)
+  await user.click(await screen.findByRole('button', { name: 'Table administration' }, { timeout: 8000 }))
+  await user.click(screen.getByTestId('open-merge'))
+  expect(await screen.findByTestId('table-merge', {}, { timeout: 8000 })).toBeInTheDocument()
+})
+
+async function mergeGlorIntoFloor(admin: Admin) {
+  const user = userEvent.setup()
+  await seed(admin)
+  await openMerge(admin)
+  await chooseTarget(user)
+  await user.selectOptions(screen.getByTestId('tm-map-glor'), 'floor')
+  await user.click(screen.getByTestId('tm-go'))
+  await waitFor(() => expect(screen.getByTestId('tm-outcome')).toHaveTextContent('Merged 2 rows'))
+  cleanup()
+}
+
+test('a finished merge is listed among the imports as merged from the source into the existing target', async ({ admin }) => {
+  await mergeGlorIntoFloor(admin)
+  await renderApp('/featherbase/admin/imports', admin)
+  const card = await waitFor(() => {
+    const found = [...document.querySelectorAll<HTMLElement>('[data-testid^="ib-batch-"]')].find((c) => c.textContent?.includes(`Merged from ${SRC}`))
+    expect(found).toBeDefined()
+    return found!
+  }, { timeout: 10_000 })
+  expect(within(card).getByTestId(`ib-target-${DST}`)).toBeInTheDocument()
+  expect(within(card).getByTestId(`ib-appended-${DST}`)).toHaveTextContent('existing Table')
+})
+
+test('a finished merge is in the target\'s import run history, where imports are undone', async ({ admin }) => {
+  await mergeGlorIntoFloor(admin)
+  await renderApp(`/featherbase/admin/import?table=${encodeURIComponent(DST)}`, admin)
+  const history = await screen.findByTestId('iw-run-history', {}, { timeout: 10_000 })
+  expect(within(history).getByTestId('iw-run-0')).toHaveTextContent(`Merged from ${SRC}`)
+  clearSession()
 })
 
 test('changing the target throws away a mapping made against the old one', async ({ admin }) => {

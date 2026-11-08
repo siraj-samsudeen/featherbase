@@ -8,7 +8,7 @@
 import { vi } from 'vitest'
 import { onEvent } from 'server/src/realtime'
 
-export function bridgeRealtime(): () => void {
+export function bridgeRealtime(): (() => void) & { cut: () => void } {
   const sockets = new Set<BridgeSocket>()
   class BridgeSocket {
     static CONNECTING = 0
@@ -42,7 +42,21 @@ export function bridgeRealtime(): () => void {
     }
   }
   vi.stubGlobal('WebSocket', BridgeSocket)
-  return onEvent((e) => {
+  const unlisten = onEvent((e) => {
     for (const s of sockets) if (s.channels.has(e.channel)) s.onmessage?.({ data: JSON.stringify(e) })
   })
+  /** Drop every open connection the way a lost network does: the page sees
+   *  its socket close. */
+  const cut = () => {
+    for (const s of [...sockets]) {
+      s.close()
+      s.onclose?.()
+    }
+  }
+  // The page's realtime client is one per module, so a socket left open here
+  // would be the next test's, delivering nothing once this bridge stops.
+  return Object.assign(() => {
+    unlisten()
+    cut()
+  }, { cut })
 }

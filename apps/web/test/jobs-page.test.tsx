@@ -3,6 +3,7 @@
 // result) and Run now. Item numbers refer to the UI checklist on #464.
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { vi } from 'vitest'
 import { sql } from 'server/src/db'
 import { syncScheduledJobs } from 'server/src/jobs'
 import { test, expect, renderApp } from './pg-test'
@@ -181,4 +182,27 @@ test('someone without the System Manager role is sent to the Admin home (item 1)
   await screen.findByTestId('all-tables-link')
   expect(screen.queryByTestId('jobs-page')).not.toBeInTheDocument()
   expect(screen.queryByTestId('jobs-link')).not.toBeInTheDocument()
+})
+
+// Moved from the deleted e2e/jobs.spec.ts (item 11): at phone width each job is
+// a card whose switch sits beside its name, a different control from the
+// desktop table's. Only the list's own breakpoint answers "narrow".
+test('on a phone a job card carries one switch, and it changes the stored schedule (item 11)', async ({ admin }) => {
+  vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
+    matches: query === '(width < 40rem)', media: query, onchange: null,
+    addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false,
+  }) as MediaQueryList)
+  await seed()
+  await renderApp('/featherbase/admin/jobs', admin)
+  const card = await entry('jp_refused')
+  // Cards, not the desktop table's rows.
+  expect(card.closest('table')).toBeNull()
+  const toggle = within(card).getByRole('switch', { name: 'Run Jp refused on its schedule' })
+  expect(within(card).getAllByRole('switch')).toHaveLength(1)
+  expect(toggle).toHaveAttribute('aria-checked', 'false')
+
+  await userEvent.click(toggle)
+  await waitFor(() => expect(within(card).getByRole('switch')).toHaveAttribute('aria-checked', 'true'))
+  const [row] = await sql`select enabled from scheduled_job where method = 'jp_refused'`
+  expect(row.enabled).toBe(true)
 })
