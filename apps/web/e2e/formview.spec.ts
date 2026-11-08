@@ -214,7 +214,7 @@ test('offline_row_recovery: rename and delete retain their target and succeed on
     expect(renamedRow).toMatchObject({ row_id: newId, title: original.title, qty: original.qty })
     expect((await request.get(endpoint, { headers })).status()).toBe(404)
 
-    await session.clickButton('Delete').assertHas('[data-testid="delete-row-dialog"]', { text: `Delete ${DT} ${newId}?` })
+    await session.clickButton('Delete').assertHas('[data-testid="delete-row-dialog"]', { text: `Delete ${DT}: ${original.title}?` })
     await session.step('disconnect and confirm deletion of the renamed row', async ({ page }) => {
       await page.context().setOffline(true)
       const failed = page.waitForEvent('requestfailed', {
@@ -225,7 +225,7 @@ test('offline_row_recovery: rename and delete retain their target and succeed on
     })
     await session
       .assertHas('[data-testid="delete-row-error"]', { text: 'Delete failed' })
-      .assertHas('[data-testid="delete-row-dialog"]', { text: `Delete ${DT} ${newId}?` })
+      .assertHas('[data-testid="delete-row-dialog"]', { text: `Delete ${DT}: ${original.title}?` })
       .assertPath(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${encodeURIComponent(newId)}`)
     await session.step('the failed delete can be retried without losing its target', async ({ page }) => {
       await expect(page.getByTestId('delete-row-confirm')).toBeEnabled()

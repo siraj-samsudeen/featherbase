@@ -194,7 +194,7 @@ describe('identifier system guards', () => {
     await sql`insert into sign_in_method (row_id, kind, label, enabled, new_person, identifier_system) values ('probe-method', 'delegated_password', 'Probe', false, 'refuse', 'probe-linked')`
     const res = await admin.fetch('/api/table/Identifier%20System/probe-linked', { method: 'DELETE' })
     expect(res.status).toBe(417)
-    expect(await res.json()).toMatchObject({ error: { message: 'Cannot delete Identifier System probe-linked: it is linked from Sign In Method probe-method. Retire it instead to take it out of use and keep its history.' } })
+    expect(await res.json()).toMatchObject({ error: { message: 'Cannot delete Identifier System "Linked probe": it is linked from Sign In Method "Probe". Retire it instead to take it out of use and keep its history.' } })
     expect(await system('probe-linked')).toBeDefined()
   })
 })
