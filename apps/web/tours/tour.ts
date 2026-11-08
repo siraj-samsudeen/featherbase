@@ -83,6 +83,8 @@ export interface Story {
   chapter(title: string, limitMs: number, body: () => Promise<void>, subtitle?: string): Promise<void>
   /** One action or check inside a chapter; its text is the video's caption. */
   step(text: string, body: () => Promise<void>): Promise<void>
+  /** The start of a part of the story: a card in the video and a note in the report. */
+  part(title: string, subtitle?: string): Promise<void>
   /** A step the platform can't do yet: a card in the video and a note in the report. */
   gap(title: string, issue: number, what: string): Promise<void>
   /** Another person's browser, signed in, watched like the first. */
@@ -167,6 +169,15 @@ export const tour = base.extend<{ story: (lead: Person) => Promise<Story> }>({
               await clearOverlay(current)
             }
           })
+        },
+        async part(title, subtitle = '') {
+          testInfo.annotations.push({ type: 'part', description: title })
+          console.log(`  part: ${title}`)
+          if (VIDEO) {
+            await overlay(current, 'card', title, subtitle)
+            await current.waitForTimeout(CARD_MS * 1.5)
+            await clearOverlay(current)
+          }
         },
         async gap(title, issue, what) {
           await base.step(`Not yet: ${title} (#${issue})`, async () => {

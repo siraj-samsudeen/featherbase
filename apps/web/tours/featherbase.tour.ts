@@ -1,11 +1,15 @@
-// Featherbase, the base tour (#1070): from a messy workbook to an app you can
+// Featherbase, the base tour (#1070): from a spreadsheet to an app you can
 // navigate. One builder, Priya, who keeps the stores' asset register. She is a
 // System Manager, not the Administrator who installed the instance.
+//
+// Part 1 is the simple path: a clean sheet becomes a linked app she can move
+// around in. Part 2 layers on the sheets as the stores really keep them: one
+// sheet each, columns and values spelt their own way, and the clean-up.
 //
 // Steps the platform can't do yet are `gap` chapters naming #1071.
 import type { Page } from '@playwright/test'
 import { ensurePerson, expect, tour, type Person } from './tour'
-import { assetsWorkbook, storesWorkbook, tNagarUpdate } from './data/workbooks'
+import { assetsWorkbook, cleanRegisterWorkbook, storesWorkbook, tNagarUpdate } from './data/workbooks'
 
 const ROWS = Number(process.env.TOUR_ROWS ?? 120)
 // Chapter limits are about 3× the real times at 120 rows a store, so a 2–3×
@@ -36,11 +40,16 @@ async function combine(page: Page, a: string, b: string, as: string): Promise<vo
   await expect(page.getByRole('checkbox', { name: `Combine ${as}`, exact: true })).toHaveCount(1)
 }
 
-/** The type of a column in the wizard's grid, found by its file column. */
+/** A column of the wizard's grid, found by its file column. */
+const gridRow = (page: Page, fileColumn: string) =>
+  page.getByTestId('iw-new-grid-0').locator('tbody tr[data-columnrow]').filter({ hasText: fileColumn }).first()
+
 async function setType(page: Page, fileColumn: string, type: string): Promise<void> {
-  const row = page.getByTestId('iw-new-grid-0').locator('tbody tr[data-columnrow]').filter({ hasText: fileColumn }).first()
-  await row.locator('[data-rowfield=column_type]').selectOption(type)
+  await gridRow(page, fileColumn).locator('[data-rowfield=column_type]').selectOption(type)
 }
+
+const openTree = (page: Page) =>
+  page.getByRole('tab', { name: 'Tree' }).or(page.getByRole('link', { name: 'Tree', exact: true })).or(page.getByRole('button', { name: 'Tree', exact: true })).first().click()
 
 /** Open a Table from All tables, as someone who doesn't know its address would. */
 async function openTable(page: Page, label: string): Promise<void> {
@@ -98,10 +107,14 @@ async function replaceEverywhere(page: Page, column: string, from: string, to: s
   return rounds
 }
 
-tour('Featherbase: from a messy workbook to an app you can navigate', async ({ story, request }) => {
+tour('Featherbase: from a spreadsheet to an app you can navigate', async ({ story, request }) => {
   await ensurePerson(request, { ...PRIYA, roles: ['System Manager'] })
   const s = await story(PRIYA)
   const page = () => s.page
+
+  // ---------------------------------------------------------------- Part 1
+
+  await s.part('Part 1: the simple path', 'A clean sheet becomes an app in a few clicks.')
 
   await s.chapter('Bring in the store list', limit(20_000), async () => {
     await s.step("Priya drops head office's store list onto Import Data", async () => {
@@ -118,16 +131,98 @@ tour('Featherbase: from a messy workbook to an app you can navigate', async ({ s
     })
   }, 'Head office keeps one clean list of stores.')
 
-  await s.chapter('Bring in three stores\' asset sheets', limit(60_000), async () => {
-    await s.step('The asset register has one sheet per store, each typed up differently', async () => {
-      await dropFile(page(), 'asset register.xlsx', assetsWorkbook(ROWS))
+  await s.chapter('Bring in the asset register', limit(60_000), async () => {
+    await s.step("Head office's asset register is one tidy sheet", async () => {
+      await dropFile(page(), 'assets.xlsx', cleanRegisterWorkbook(ROWS))
+      await expect(page().getByTestId('iw-new-name-0')).toHaveValue('Assets')
+    })
+    await s.step('Each asset is known by its tag, and its cost is money', async () => {
+      await page().getByTestId(/-naming$/).first().selectOption('field:asset_tag')
+      await setType(page(), 'Cost', 'Currency')
+    })
+    await s.step('Its Store column becomes a link to Stores', async () => {
+      await setType(page(), 'Store', 'Reference')
+      await gridRow(page(), 'Store').locator('[data-rowfield=reference_table]').selectOption('Stores')
+    })
+    await s.step('Check confirms every asset names a real store', async () => {
+      await page().getByTestId('iw-check').click()
+      await expect(page().getByTestId('iw-check-0')).toContainText(`All ${n(3 * ROWS)} rows link to a row in their Table`, { timeout: 60_000 })
+    })
+    await s.step(`${n(3 * ROWS)} assets make a new Table, Assets`, async () => {
+      await page().getByTestId('iw-import').click()
+      await expect(page()).toHaveURL(/\/admin\/table\/[^/]+$/, { timeout: 60_000 })
+      await expect(page().getByTestId('list-total')).toContainText(`${n(3 * ROWS)} total`)
+    })
+  }, 'One sheet, one way of spelling everything.')
+
+  const assetsChip = new RegExp(`^Assets\\s*${n(ROWS)}$`)
+  await s.chapter('Find your way around', limit(20_000), async () => {
+    await s.step(`Down: T Nagar counts its ${n(ROWS)} assets`, async () => {
+      await openTable(page(), 'Stores')
+      await page().getByRole('link', { name: 'T Nagar', exact: true }).first().click()
+      await expect(page().getByRole('button', { name: assetsChip }).first()).toBeVisible()
+    })
+    await s.step('They open beside the store, without leaving it', async () => {
+      await page().getByRole('button', { name: assetsChip }).first().click()
+      await expect(page().getByRole('complementary', { name: 'T Nagar' })).toContainText(`Assets · ${n(ROWS)} rows`)
+    })
+    let tag = ''
+    await s.step('One more click drills into an asset; the path keeps the way back', async () => {
+      const pane = page().getByRole('complementary', { name: 'T Nagar' })
+      const first = pane.getByRole('table').getByRole('row').filter({ hasText: /TN-\d{4}/ }).first()
+      tag = /TN-\d{4}/.exec((await first.textContent()) ?? '')![0]
+      await first.getByRole('cell').first().click()
+      const asset = page().getByRole('complementary', { name: tag })
+      await expect(asset.getByRole('heading', { name: 'Points at' }).locator('xpath=..')).toContainText('T Nagar')
+      await expect(page().getByRole('navigation', { name: 'Path' })).toContainText('T Nagar')
+    })
+    await s.step("Up: the asset's page names its store", async () => {
+      const asset = page().getByRole('complementary', { name: tag })
+      await asset.getByRole('link', { name: 'Open row page' }).or(asset.getByRole('button', { name: 'Open row page' })).first().click()
+      await expect(page().getByRole('heading', { name: `Assets: ${tag}` })).toBeVisible()
+      await expect(page().getByText(/^Store\s*T Nagar$/).first()).toBeVisible()
+    })
+    await s.step('Sideways: the tree unfolds its store, and every other asset there', async () => {
+      await openTree(page())
+      const tree = page().getByRole('tree', { name: `Around ${tag}` })
+      await tree.getByRole('treeitem', { name: 'T Nagar' }).focus()
+      await page().keyboard.press('ArrowRight')
+      await tree.getByRole('treeitem', { name: assetsChip }).focus()
+      await page().keyboard.press('ArrowRight')
+      const siblings = tree.getByRole('treeitem', { name: /^TN-\d{4}$/ })
+      await expect(siblings.filter({ hasNotText: tag }).first()).toBeVisible()
+    })
+  }, 'Down from a store to its assets, up from an asset to its store, and across to its neighbours.')
+
+  await s.chapter('Make links read as what they are', limit(20_000), async () => {
+    await s.step('An asset is shown by its item, not its tag', async () => {
+      await openTable(page(), 'Assets')
+      await openColumns(page())
+      await page().getByRole('radio', { name: 'Title: Item' }).click()
+      await expect(page().getByTestId('ce-saved')).toContainText('is now the title')
+    })
+    await s.step('The tree around T Nagar now reads like the shop floor', async () => {
+      await openTable(page(), 'Stores')
+      await page().getByRole('link', { name: 'T Nagar', exact: true }).first().click()
+      await openTree(page())
+      await expect(page().getByRole('tree', { name: 'Around T Nagar' }).getByRole('treeitem', { name: 'Billing counter' }).first()).toBeVisible()
+    })
+  })
+
+  // ---------------------------------------------------------------- Part 2
+
+  await s.part('Part 2: real sheets are messier', 'Each store keeps its own sheet, and spells things its own way.')
+
+  await s.chapter("Bring in the stores' own sheets", limit(60_000), async () => {
+    await s.step('The stores send one sheet each, each typed up differently', async () => {
+      await dropFile(page(), 'store sheets.xlsx', assetsWorkbook(ROWS))
       await expect(page().getByTestId('iw-overview')).toContainText('Tag No')
       await expect(page().getByTestId('iw-overview')).toContainText('store name')
     })
-    await s.step('All three sheets go into one Table, Assets', async () => {
+    await s.step('All three sheets go into one Table, Store Assets', async () => {
       await page().getByTestId('iw-ov-master').check()
       await page().getByTestId('iw-ov-mode-merge').check()
-      await page().getByTestId('iw-ov-merge-name').fill('Assets')
+      await page().getByTestId('iw-ov-merge-name').fill('Store Assets')
       await page().getByTestId('iw-ov-continue').click()
       await expect(page().getByTestId('iw-new-grid-0')).toBeVisible()
     })
@@ -164,7 +259,7 @@ tour('Featherbase: from a messy workbook to an app you can navigate', async ({ s
 
   await s.chapter('Tidy the columns', limit(20_000), async () => {
     await s.step('Section is called Department at these stores', async () => {
-      await openTable(page(), 'Assets')
+      await openTable(page(), 'Store Assets')
       await openColumns(page())
       const row = page().getByTestId('ce-row-section')
       await row.getByRole('button', { name: 'Rename section' }).click()
@@ -178,7 +273,7 @@ tour('Featherbase: from a messy workbook to an app you can navigate', async ({ s
 
   await s.chapter('Make the floors say the same thing', limit(45_000), async () => {
     await s.step('T Nagar wrote "FF" and "1st Floor" for First Floor', async () => {
-      await openTable(page(), 'Assets')
+      await openTable(page(), 'Store Assets')
       await replaceEverywhere(page(), 'floor', 'FF', 'First Floor')
       await replaceEverywhere(page(), 'floor', '1st Floor', 'First Floor')
     })
@@ -202,7 +297,7 @@ tour('Featherbase: from a messy workbook to an app you can navigate', async ({ s
       await expect(page().getByTestId('ce-link-error-store')).toContainText('T. Nagar')
     })
     await s.step('"T. Nagar" becomes "T Nagar"', async () => {
-      await openTable(page(), 'Assets')
+      await openTable(page(), 'Store Assets')
       await replaceEverywhere(page(), 'store', 'T. Nagar', 'T Nagar')
     })
     await s.step('Now every asset links to its store', async () => {
@@ -220,9 +315,9 @@ tour('Featherbase: from a messy workbook to an app you can navigate', async ({ s
     await s.step('T Nagar sends its whole sheet again: two prices fixed, three new assets', async () => {
       await dropFile(page(), 't nagar update.xlsx', update.file)
     })
-    await s.step('It goes into Assets, matched on Asset Tag: nothing is duplicated', async () => {
+    await s.step('It goes into Store Assets, matched on Asset Tag: nothing is duplicated', async () => {
       await page().getByTestId('iw-target-0').click()
-      await page().getByTestId('iw-target-opt-0-Assets').click()
+      await page().getByTestId('iw-target-opt-0-Store Assets').click()
       await page().getByTestId('iw-key-0').selectOption('asset_tag')
       await expect(page().getByTestId('iw-preview-0')).toContainText(`2 rows change · ${n(ROWS - 2)} unchanged · 2 added`, { timeout: 60_000 })
     })
@@ -248,7 +343,7 @@ tour('Featherbase: from a messy workbook to an app you can navigate', async ({ s
 
   await s.chapter('Change her mind', limit(20_000), async () => {
     await s.step('The import history holds the run; undoing it is previewed first', async () => {
-      await openTable(page(), 'Assets')
+      await openTable(page(), 'Store Assets')
       await page().getByRole('button', { name: 'List actions' }).click()
       await page().getByTestId('open-import').click()
       await expect(page().getByTestId('iw-run-history')).toBeVisible()
@@ -259,56 +354,6 @@ tour('Featherbase: from a messy workbook to an app you can navigate', async ({ s
       await expect(page().getByTestId(`iw-revert-preview-${key}`)).toContainText('delete 2 added rows')
       await page().getByTestId(`iw-revert-confirm-${key}`).click()
       await expect(page().getByTestId(`iw-revert-result-${key}`)).toContainText('2 restored, 2 deleted')
-    })
-  })
-
-  const assetsChip = new RegExp(`^Assets\\s*${n(ROWS)}$`)
-  await s.chapter('Find your way around', limit(20_000), async () => {
-    await s.step(`Down: T Nagar counts ${n(ROWS)} assets, now that "T. Nagar" is T Nagar too`, async () => {
-      await openTable(page(), 'Stores')
-      await page().getByRole('link', { name: 'T Nagar', exact: true }).first().click()
-      await expect(page().getByRole('button', { name: assetsChip }).first()).toBeVisible()
-    })
-    await s.step('They open beside the store, without leaving it', async () => {
-      await page().getByRole('button', { name: assetsChip }).first().click()
-      await expect(page().getByRole('complementary', { name: 'T Nagar' })).toContainText(`Assets · ${n(ROWS)} rows`)
-    })
-    await s.step('One more click drills into an asset; the path keeps the way back', async () => {
-      const pane = page().getByRole('complementary', { name: 'T Nagar' })
-      await pane.getByRole('table').getByRole('row').filter({ hasText: 'TN-0001' }).first().getByRole('cell').first().click()
-      const asset = page().getByRole('complementary', { name: 'TN-0001' })
-      await expect(asset.getByRole('heading', { name: 'Points at' }).locator('xpath=..')).toContainText('T Nagar')
-      await expect(page().getByRole('navigation', { name: 'Path' })).toContainText('T Nagar')
-    })
-    await s.step('Up: the asset\'s page names its store', async () => {
-      await page().getByRole('complementary', { name: 'TN-0001' }).getByRole('link', { name: 'Open row page' })
-        .or(page().getByRole('complementary', { name: 'TN-0001' }).getByRole('button', { name: 'Open row page' })).first().click()
-      await expect(page().getByRole('heading', { name: 'Assets: TN-0001' })).toBeVisible()
-      await expect(page().getByText(/^Store\s*T Nagar$/).first()).toBeVisible()
-    })
-    await s.step('Sideways: the tree unfolds its store, and every other asset there', async () => {
-      await page().getByRole('tab', { name: 'Tree' }).or(page().getByRole('link', { name: 'Tree', exact: true })).or(page().getByRole('button', { name: 'Tree', exact: true })).first().click()
-      const tree = page().getByRole('tree', { name: 'Around TN-0001' })
-      await tree.getByRole('treeitem', { name: 'T Nagar' }).focus()
-      await page().keyboard.press('ArrowRight')
-      await tree.getByRole('treeitem', { name: assetsChip }).focus()
-      await page().keyboard.press('ArrowRight')
-      await expect(tree.getByRole('treeitem', { name: 'TN-0002' })).toBeVisible()
-    })
-  }, 'Down from a store to its assets, up from an asset to its store, and across to its neighbours.')
-
-  await s.chapter('Make links read as what they are', limit(20_000), async () => {
-    await s.step('An asset is shown by its item, not its tag', async () => {
-      await openTable(page(), 'Assets')
-      await openColumns(page())
-      await page().getByRole('radio', { name: 'Title: Item' }).click()
-      await expect(page().getByTestId('ce-saved')).toContainText('is now the title')
-    })
-    await s.step('The tree around T Nagar now reads like the shop floor', async () => {
-      await openTable(page(), 'Stores')
-      await page().getByRole('link', { name: 'T Nagar', exact: true }).first().click()
-      await page().getByRole('tab', { name: 'Tree' }).or(page().getByRole('link', { name: 'Tree', exact: true })).or(page().getByRole('button', { name: 'Tree', exact: true })).first().click()
-      await expect(page().getByRole('tree', { name: 'Around T Nagar' }).getByRole('treeitem', { name: 'Billing counter' }).first()).toBeVisible()
     })
   })
 })

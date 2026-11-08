@@ -107,6 +107,21 @@ export function assetsWorkbook(rowsPerStore: number): Buffer {
 }
 
 /**
+ * The same register as head office keeps it once it is tidy: one sheet, one
+ * set of column names, every store and floor spelt the same way.
+ */
+export function cleanRegisterWorkbook(rowsPerStore: number): Buffer {
+  const rows: (string | number)[][] = [['Asset Tag', 'Item', 'Store', 'Floor', 'Room', 'Purchase Date', 'Cost']]
+  for (const [store, list] of assets(rowsPerStore)) {
+    for (const a of list) {
+      const floor = /g|ground/i.test(a.floor.trim()) ? 'Ground Floor' : 'First Floor'
+      rows.push([a.tag, a.item, store, floor, a.room, a.bought, a.cost])
+    }
+  }
+  return workbook([['Assets', rows]])
+}
+
+/**
  * A month later, T Nagar sends its whole sheet again, now in the cleaned-up
  * column names: two prices corrected and three new assets. The rest is
  * unchanged, as a monthly export is, and still spelt the clerk's way.
