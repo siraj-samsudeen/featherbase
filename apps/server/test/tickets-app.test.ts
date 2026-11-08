@@ -266,6 +266,19 @@ describe('Tickets independently installed product contract (#810)', () => {
     await refused(act(w.other, 'edit', { ...revision(ticket), public_update: 'Looking' }))
   })
 
+  test('people named in the settings are offered by name before they have used Tickets (#1097)', async ({ admin, createUser }) => {
+    const w = await setup(admin, createUser)
+    const newcomer = await createUser({ email: 'newcomer@tickets.example.test', fullName: 'Newcomer' })
+    const stranger = await createUser({ email: 'stranger@tickets.example.test', fullName: 'Stranger' })
+    await settings(admin, { assignees: [newcomer.user] })
+    const people = (await read(w.support, 'session')).people as { row_id: string; full_name: string }[]
+    expect(people).toEqual(expect.arrayContaining([{ row_id: newcomer.user, full_name: 'Newcomer' }]))
+    // Someone the settings don't name stays as hidden as before from a viewer who can't read Person.
+    let ticket = await create(w.owner, 'generic', {})
+    ticket = (await act(w.support, 'edit', { ...revision(ticket), assigned_to: stranger.user })).ticket
+    expect((await detail(w.support, ticket)).names[stranger.user!]).toBeUndefined()
+  })
+
   test("after the requester's own scope change only re-approval is needed; a recipient change needs verification", async ({ admin, createUser }) => {
     const w = await setup(admin, createUser)
     let ticket = await approve(w.bala, await verify(w.verifier, await create(w.owner)))
