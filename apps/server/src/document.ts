@@ -895,6 +895,11 @@ interface SaveOptions {
   // Only the upload route supplies the exact path returned by storage.
   // Never derive this option from a client row or request body.
   uploadedFileUrl?: string
+  // Only the upload route sets this, after rowCapabilities found that the
+  // uploader may write the row the new File is attached to: that write stands
+  // in for create on File. Every other check still runs. Never derive it from
+  // a client row or request body.
+  attachedRowWritable?: boolean
   // Trusted import/copy writers and version-backed undo only. This is NOT
   // read from HTTP args; permissions, tiers, validation and hooks still run.
   managedValues?: RowValues
@@ -986,11 +991,13 @@ async function writeDoc(
     if (meta.id_pattern !== 'prompt' && values.amended_from == null && mode !== 'insert')
       throw new AppError('NotFoundError', `${table} ${values[ROW_KEY]} not found`)
   }
+  // The upload route fills every column of a File on a writable row itself.
+  const attachedWrite = Boolean(opts.attachedRowWritable) && meta.name === 'File' && Boolean(values.ref_table) && Boolean(values.ref_name)
   if (!opts.skipPermissions) {
-    await assertPermission(user, table, 'create')
+    if (!attachedWrite) await assertPermission(user, table, 'create')
     await assertUserPermissions(user, meta, { ...values, created_by: user })
   }
-  const writeTiers = opts.skipPermissions
+  const writeTiers = opts.skipPermissions || attachedWrite
     ? new Set(ALL_COLUMNS)
     : await insertColumns(user, table)
   const fieldValues = validateValues(
