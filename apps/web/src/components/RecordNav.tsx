@@ -38,6 +38,8 @@ function readListPlace(table: string): ListPlace | null {
   }
 }
 
+// Unsaved changes are the form's to guard: its leave question asks before a
+// step to another record, as before any other page.
 export function RecordNav({ table, name }: { table: string; name: string }) {
   const navigate = useNavigate()
   const nav = useNavigation()
@@ -79,7 +81,6 @@ export function RecordNav({ table, name }: { table: string; name: string }) {
 
   const go = (id: string | undefined) => {
     if (!id) return
-    // Unsaved changes: the form's own leave guard asks, as for any other way out.
     if (nav?.addressed) nav.replace({ screen: 'row', table, row: id })
     else void navigate({ to: '/featherbase/admin/table/$table/row/$name', params: { table, name: id }, search: { prefill: undefined } })
   }
