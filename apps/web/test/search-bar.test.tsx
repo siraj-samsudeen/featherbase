@@ -41,6 +41,7 @@ test('The search bar opens what it finds: picking a matching record opens its fo
   fireEvent.change(bar, { target: { value: 'Zebrafinch' } })
   const hit = await screen.findByTestId('awesomebar-doc')
   expect(hit).toHaveTextContent('Zebrafinch-widget')
+  expect(hit).toHaveTextContent('Sb Gadget')
   fireEvent.click(hit)
 
   await waitFor(() => expect(field('title')).toHaveValue('Zebrafinch widget'))
