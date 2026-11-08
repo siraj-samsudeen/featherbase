@@ -391,3 +391,120 @@ test('naming a function head someone else named meanwhile says why it was refuse
   expect(heads.data).toEqual([{ owner_function: 'IT', head: kumar.user }])
   expect(suresh.user).toBeTruthy()
 })
+
+/** A Critical issue (4 hours round the clock) raised some minutes ago, then checked by the escalation job. */
+async function issueRaisedAgo(meena: TestClient, minutes: number, values: Record<string, unknown>) {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  try {
+    vi.setSystemTime(Date.now() - minutes * 60_000)
+    await saveDoc(ISSUE, { ...issueFields, severity: 'Critical', ...values }, meena.user!)
+  } finally { vi.useRealTimers() }
+  await enqueue('tasker.escalate_issues', {})
+  await sql`update background_job set run_at = now() - interval '1 second' where job_status = 'queued'`
+  await drainJobs()
+}
+
+test('an issue past 75% of its fix time shows how much is used', async ({ createUser }) => {
+  const { meena, suresh, store } = await team(createUser)
+  await issueRaisedAgo(meena, 190, { store: store.row_id, owner: suresh.user })
+  const user = await openIssues(meena)
+  const row = await within(await screen.findByRole('list', { name: 'Open issues' })).findByRole('listitem', { name: 'Dairy chiller 2 at 9°C' })
+  expect(within(row).getByText(/% used$/)).toHaveAttribute('data-tone', 'warning')
+  expect(within(row).getByText(/% used$/)).toHaveTextContent('Fix in 50m · 79% used')
+  expect(within(screen.getByRole('group', { name: 'Issue counts' })).getByText('Past 75%').closest('div')).toHaveTextContent('1')
+  expect(user).toBeTruthy()
+})
+
+test('the escalation log says when there is no one to escalate to', async ({ createUser }) => {
+  const { meena, suresh, store } = await team(createUser)
+  await breachedIssue(meena, { store: store.row_id, owner: suresh.user, owner_function: 'IT' })
+  const { detail } = await openIssue(meena)
+  await waitFor(() => expect(within(detail).getByRole('list', { name: 'Escalation log' })).toHaveTextContent('Escalation has no IT head'))
+})
+
+test('the issue’s verifier is changed from its details', async ({ createUser }) => {
+  const { meena, suresh, kumar } = await team(createUser)
+  const issue = await meena.post<Row>('/api/save_row', { table: ISSUE, row: { ...issueFields, owner: suresh.user } })
+  const { user, detail } = await openIssue(meena)
+  const verifier = within(detail).getByRole('combobox', { name: 'Issue verifier' })
+  await within(verifier).findByRole('option', { name: 'Kumar' })
+  await user.selectOptions(verifier, 'Kumar')
+  await waitFor(async () => expect((await read(meena, issue.row_id)).verifier).toBe(kumar.user))
+})
+
+test('Never mind on returning keeps the issue waiting for the verifier', async ({ createUser }) => {
+  const { meena, suresh } = await team(createUser)
+  const issue = await submittedIssue(meena, suresh)
+  const { user, detail } = await openIssue(meena)
+  await user.click(await within(detail).findByRole('button', { name: 'Return' }))
+  await user.click(within(detail).getByRole('button', { name: 'Never mind' }))
+  expect(within(detail).queryByRole('textbox', { name: 'Reason for returning' })).not.toBeInTheDocument()
+  expect((await read(meena, issue.row_id)).issue_state).toBe('Submitted for verification')
+})
+
+test('Never mind on reopening keeps the issue closed', async ({ createUser }) => {
+  const { meena, suresh } = await team(createUser)
+  const submitted = await submittedIssue(meena, suresh)
+  await meena.post('/api/save_row', { table: ISSUE, row: { row_id: submitted.row_id, updated_at: submitted.updated_at, issue_state: 'Closed' } })
+  const user = await openIssues(meena)
+  await user.click(await screen.findByRole('checkbox', { name: 'Show closed' }))
+  await user.click(await within(await screen.findByRole('list', { name: 'All issues' })).findByRole('link', { name: 'Dairy chiller 2 at 9°C' }))
+  const detail = await screen.findByRole('region', { name: 'Issue detail' })
+  await user.click(within(detail).getByRole('button', { name: 'Reopen' }))
+  await user.click(within(detail).getByRole('button', { name: 'Never mind' }))
+  expect(within(detail).queryByRole('textbox', { name: 'Reason for reopening' })).not.toBeInTheDocument()
+  expect((await read(meena, submitted.row_id)).issue_state).toBe('Closed')
+})
+
+test('pressing Enter on an empty corrective task adds nothing', async ({ createUser }) => {
+  const { meena } = await team(createUser)
+  await meena.post<Row>('/api/save_row', { table: ISSUE, row: issueFields })
+  const { user, detail } = await openIssue(meena)
+  await user.type(within(detail).getByRole('textbox', { name: 'New corrective task' }), '   {Enter}')
+  expect(within(within(detail).getByRole('list', { name: 'Corrective tasks' })).queryAllByRole('listitem')).toEqual([])
+  expect(within(detail).queryByRole('alert')).not.toBeInTheDocument()
+  expect((await meena.get<{ data: Row[] }>('/api/table/tasker.task')).data).toEqual([])
+})
+
+test('Never mind closes the raise form without raising anything', async ({ createUser }) => {
+  const { meena } = await team(createUser)
+  const user = await openIssues(meena)
+  await user.click(await screen.findByRole('button', { name: 'Raise an issue' }))
+  const form = await screen.findByRole('form', { name: 'Raise an issue' })
+  await user.click(within(form).getByRole('button', { name: 'Never mind' }))
+  expect(screen.queryByRole('form', { name: 'Raise an issue' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Raise an issue' })).toBeInTheDocument()
+})
+
+test('a severity’s director is saved from the SLA rules page', async ({ createUser }) => {
+  const { meena, kumar } = await team(createUser)
+  const user = await openRules(meena)
+  const critical = within(await screen.findByRole('table', { name: 'SLA rules' })).getByRole('row', { name: /Critical/ })
+  const director = within(critical).getByRole('combobox', { name: 'Critical: director' })
+  await within(director).findByRole('option', { name: 'Kumar' })
+  await user.selectOptions(director, 'Kumar')
+  await user.click(within(critical).getByRole('button', { name: 'Save Critical' }))
+  await waitFor(async () => expect((await meena.get<{ data: Row[] }>('/api/table/tasker.sla_rule?fields=["severity","director"]')).data)
+    .toEqual([{ severity: 'Critical', director: kumar.user }]))
+})
+
+test('a store’s manager is saved from the SLA rules page', async ({ createUser }) => {
+  const { meena, suresh, store } = await team(createUser)
+  const user = await openRules(meena)
+  const manager = await within(await screen.findByRole('table', { name: 'Store managers and hours' })).findByRole('combobox', { name: 'ATK Avadi manager' })
+  await within(manager).findByRole('option', { name: 'Suresh' })
+  await user.selectOptions(manager, 'Suresh')
+  await waitFor(async () => expect((await meena.get<Row>(`/api/table/tasker.store/${store.row_id}`)).store_manager).toBe(suresh.user))
+})
+
+for (const [field, column, value] of [['opens at', 'opens_at', '08:30'], ['closes at', 'closes_at', '23:00']] as const) {
+  test(`a store’s ${field} time is saved when you leave the field`, async ({ createUser }) => {
+    const { meena, store } = await team(createUser)
+    const user = await openRules(meena)
+    const input = await within(await screen.findByRole('table', { name: 'Store managers and hours' })).findByRole('textbox', { name: `ATK Avadi ${field}` })
+    await user.clear(input)
+    await user.type(input, value)
+    await user.tab()
+    await waitFor(async () => expect((await meena.get<Row>(`/api/table/tasker.store/${store.row_id}`))[column]).toBe(value))
+  })
+}

@@ -146,6 +146,38 @@ test('task details set a start date', async ({ admin }) => {
   expect(await within(detail).findByText(/^Scheduled/)).toBeInTheDocument()
 })
 
+test('task details say when a task is due today', async ({ admin }) => {
+  await install()
+  await admin.post<Row>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Price-tag audit', due_date: day(0) } })
+  renderTasker(admin)
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('button', { name: /^Inbox/ }))
+  await user.click(await screen.findByRole('link', { name: 'Price-tag audit' }))
+  const detail = await screen.findByRole('region', { name: 'Task detail content' })
+  expect(await within(detail).findByText('Due today', { selector: '.tasker-due-note' })).toBeInTheDocument()
+})
+
+test('removing the store and due filters brings their tasks back', async ({ admin }) => {
+  await install()
+  await storeWork(admin)
+  renderTasker(admin)
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('button', { name: 'September stock review' }))
+  const printer = (await screen.findByRole('link', { name: 'Fix the billing printer' })).closest('article')!
+  await waitFor(() => expect(printer).toHaveTextContent('Avadi Store'))
+  await user.click(screen.getByRole('button', { name: /^Filter/ }))
+  const filters = await screen.findByRole('dialog', { name: 'Filter tasks' })
+  await user.click(within(within(filters).getByRole('group', { name: 'Due' })).getByRole('checkbox', { name: 'Overdue' }))
+  await user.click(within(within(filters).getByRole('group', { name: 'Store' })).getByRole('checkbox', { name: 'Avadi Store' }))
+  await waitFor(() => expect(screen.queryByRole('link', { name: 'Reconcile stock variance' })).not.toBeInTheDocument())
+  await user.keyboard('{Escape}')
+  await user.click(await screen.findByRole('button', { name: 'Remove Avadi Store filter' }))
+  expect(await screen.findByRole('link', { name: 'Reconcile stock variance' })).toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: 'Check the cold room' })).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Remove Overdue filter' }))
+  expect(await screen.findByRole('link', { name: 'Check the cold room' })).toBeInTheDocument()
+})
+
 test('task filters narrow a list by store and by when tasks are due', async ({ admin }) => {
   await install()
   const { project } = await storeWork(admin)
