@@ -89,6 +89,19 @@ describe('Tickets: the assignee and raised-for person of a private ticket read i
     expect(await shares(ticket)).toEqual([w.otherFor.user])
   })
 
+  test('an action that records who it is raised for moves the reading too', async ({ admin, createUser }) => {
+    const w = await world(admin, createUser)
+    const [type] = await sql`select row_id, updated_at from tickets.ticket_type where type_key = 'data_quality_issue'`
+    await save(admin, 'tickets.ticket_type', { row_id: type.row_id, updated_at: type.updated_at,
+      transitions: JSON.stringify([{ state: 'Raised', action: 'Hand to', next_state: 'Raised', allowed: 'requester', fields: ['raised_for'] }]) })
+    let ticket = await w.raise({ current_value: '78/499/1' })
+    ticket = (await act(w.raiser, 'transition', { ...revision(ticket), action: 'Hand to', values: { raised_for: w.raisedFor.user } })).ticket
+    expect((await detail(w.raisedFor, ticket)).details.raised_for).toBe(w.raisedFor.user)
+    ticket = (await act(w.raiser, 'transition', { ...revision(ticket), action: 'Hand to', values: { raised_for: w.otherFor.user } })).ticket
+    expect((await detail(w.otherFor, ticket)).details.raised_for).toBe(w.otherFor.user)
+    expect((await detail(w.raisedFor, ticket)).details).toBeUndefined()
+  })
+
   test('the routed assignee reads it from the start, and the raiser is never shared their own ticket', async ({ admin, createUser }) => {
     const w = await world(admin, createUser)
     await makeTable(admin, { name: 'Example System', title_column: 'system_name', columns: ['system_name'] })

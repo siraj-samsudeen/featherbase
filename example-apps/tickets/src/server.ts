@@ -587,6 +587,8 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
       const request = await ctx.documents.get(where.request, String(ticket.row_id))
       await ctx.documents.update(where.request, { row_id: request.row_id, updated_at: request.updated_at,
         details_json: JSON.stringify({ ...parse(request.details_json), ...recorded }) })
+      // An action may record who it is raised for.
+      if (!where.open) await keepReaders(ctx, ticket, { ...parse(request.details_json), ...recorded }, type)
     }
     const from = String(ticket.ticket_state), to = transition.next_state
     await event(ctx, ticket, 'transition', { action, from, to, values: recorded })
