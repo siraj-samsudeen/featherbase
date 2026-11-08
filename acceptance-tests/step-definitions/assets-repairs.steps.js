@@ -247,5 +247,5 @@ When('{string} is opened on 7 November 2026', async function (problem) {
 Then('the job shows the AC is under warranty until 12-Mar-2027', async function () {
   const { app, assetId, now } = repairs(this);
   const card = await app.boardCard('Ravi', assetId, now);
-  assert.match(card.text, /Under warranty until 12-Mar-2027/);
+  assert.match(card.text, /Warranty to 12-Mar-2027/);
 });

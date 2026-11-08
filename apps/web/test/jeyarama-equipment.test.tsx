@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { installApp, isInstalled, uninstallApp } from 'server/src/apps'
 import { discoverPackages } from 'server/src/runtime-packages'
@@ -77,24 +77,67 @@ test('a manager assigns a job and a technician fixes it with a note and a cost',
   const managerView = renderAssets(manager, ['Assets Manager'], '#jobs')
   const user = userEvent.setup()
   const reported = await screen.findByRole('region', { name: 'Reported' })
-  await within(reported).findByText('Not cooling')
-  await within(reported).findByRole('option', { name: 'Ravi' })
-  await user.selectOptions(within(reported).getByRole('combobox', { name: 'Assign Not cooling' }), ravi.user!)
-  const assigned = screen.getByRole('region', { name: 'Assigned' })
-  expect(await within(assigned).findByText('Not cooling')).toBeInTheDocument()
+  const card = await within(reported).findByRole('article', { name: 'Not cooling' })
+  expect(within(card).getByText('Unassigned')).toBeInTheDocument()
+  await user.click(within(card).getByRole('button', { name: 'Open Not cooling' }))
+  const panel = await screen.findByRole('dialog', { name: 'Not cooling' })
+  await within(panel).findByRole('option', { name: 'Ravi' })
+  await user.selectOptions(within(panel).getByRole('combobox', { name: 'Assign Not cooling' }), ravi.user!)
+  const assigned = await screen.findByRole('region', { name: 'Assigned' })
+  const assignedCard = await within(assigned).findByRole('article', { name: 'Not cooling' })
+  expect(within(assignedCard).getByTitle('Ravi')).toHaveTextContent('R')
   managerView.unmount()
 
   renderAssets(ravi, ['Assets Technician'], '#jobs')
-  const card = await within(await screen.findByRole('region', { name: 'Assigned' })).findByRole('article', { name: 'Not cooling' })
-  await user.selectOptions(within(card).getByRole('combobox', { name: 'Stage for Not cooling' }), 'Fixed')
-  await user.click(within(card).getByRole('button', { name: 'Mark fixed' }))
-  expect(await within(card).findByRole('alert')).toHaveTextContent('Say what was done to fix it')
-  await user.type(within(card).getByRole('textbox', { name: 'Work done' }), 'Refilled gas')
-  await user.type(within(card).getByRole('spinbutton', { name: 'Repair cost' }), '2400')
-  await user.click(within(card).getByRole('button', { name: 'Mark fixed' }))
+  const mine = await within(await screen.findByRole('region', { name: 'Assigned' })).findByRole('article', { name: 'Not cooling' })
+  await user.click(within(mine).getByRole('button', { name: 'Open Not cooling' }))
+  const sheet = await screen.findByRole('dialog', { name: 'Not cooling' })
+  await user.selectOptions(within(sheet).getByRole('combobox', { name: 'Stage for Not cooling' }), 'Fixed')
+  await user.click(within(sheet).getByRole('button', { name: 'Mark fixed' }))
+  expect(await within(sheet).findByRole('alert')).toHaveTextContent('Say what was done to fix it')
+  await user.type(within(sheet).getByRole('textbox', { name: 'Work done' }), 'Refilled gas')
+  await user.type(within(sheet).getByRole('spinbutton', { name: 'Repair cost' }), '2400')
+  await user.click(within(sheet).getByRole('button', { name: 'Mark fixed' }))
   const fixed = await screen.findByRole('region', { name: 'Fixed' })
-  expect(await within(fixed).findByText('Not cooling')).toBeInTheDocument()
-  expect(within(fixed).getByText(/^Fixed in .*, on time$/)).toBeInTheDocument()
+  const done = await within(fixed).findByRole('article', { name: 'Not cooling' })
+  expect(done).toHaveTextContent('Fixed on time · Refilled gas')
+})
+
+test('the board is compact: one-line places, a chip row, collapsed empty and closed columns, and drag to move', async ({ createUser }) => {
+  await install()
+  const manager = assetsClient(await createUser({ roles: ['Assets Manager'], fullName: 'Meena' }))
+  const { voltas, till } = await register(manager)
+  await manager.post('/api/save_row', { table: 'equipment.job', row: { asset: voltas.row_id, problem: 'Not cooling', priority: 'Urgent' } })
+  await manager.post('/api/save_row', { table: 'equipment.job', row: { asset: till.row_id, problem: 'Receipt printer jams', priority: 'High' } })
+  renderAssets(manager, ['Assets Manager'], '#jobs')
+  const user = userEvent.setup()
+  const reported = await screen.findByRole('region', { name: 'Reported' })
+  const card = await within(reported).findByRole('article', { name: 'Not cooling' })
+  const place = within(card).getByText('Billing area')
+  expect(place).toHaveAttribute('title', 'ATK 1501 › Billing area')
+  expect(card).not.toHaveTextContent('ATK 1501 › Billing area')
+  const chips = within(card).getByRole('list', { name: 'Not cooling at a glance' })
+  expect(within(chips).getAllByRole('listitem').map(chip => chip.textContent)).toEqual(['Urgent', expect.stringMatching(/^(3h|4h) left$/), 'Warranty to 12-Mar-2027'])
+  expect(within(card).queryByRole('combobox')).not.toBeInTheDocument()
+
+  // Empty columns, and Closed and Cancelled always, fold to a strip that names the column and its count.
+  for (const stage of ['Assigned', 'In progress', 'Waiting for parts', 'Fixed', 'Closed', 'Cancelled'])
+    expect(screen.getByRole('button', { name: `Show ${stage}, 0 jobs` })).toBeInTheDocument()
+  expect(screen.queryByRole('region', { name: 'Closed' })).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Show Closed, 0 jobs' }))
+  expect(screen.getByRole('region', { name: 'Closed' })).toBeInTheDocument()
+
+  // Dragging a card onto a column moves the job there.
+  const transfer = new Map<string, string>()
+  const dataTransfer = { setData: (type: string, value: string) => transfer.set(type, value), getData: (type: string) => transfer.get(type) ?? '', effectAllowed: 'move', dropEffect: 'move' }
+  fireEvent.dragStart(card, { dataTransfer })
+  const target = screen.getByRole('button', { name: 'Show In progress, 0 jobs' })
+  fireEvent.dragOver(target, { dataTransfer })
+  fireEvent.drop(target, { dataTransfer })
+  const moving = await screen.findByRole('region', { name: 'In progress' })
+  expect(await within(moving).findByRole('article', { name: 'Not cooling' })).toBeInTheDocument()
+  const stored = await manager.get<{ data: Row[] }>(`/api/table/equipment.job?fields=["job_state"]&filters=${encodeURIComponent('[["problem","=","Not cooling"]]')}`)
+  expect(stored.data[0].job_state).toBe('In progress')
 })
 
 test('store staff see jobs but get no controls to change them', async ({ createUser }) => {
@@ -106,6 +149,11 @@ test('store staff see jobs but get no controls to change them', async ({ createU
   renderAssets(staff, ['Assets Member'], '#jobs')
   const card = await within(await screen.findByRole('region', { name: 'Reported' })).findByRole('article', { name: 'Not cooling' })
   expect(within(card).queryByRole('combobox')).not.toBeInTheDocument()
+  expect(card).not.toHaveAttribute('draggable', 'true')
+  await userEvent.setup().click(within(card).getByRole('button', { name: 'Open Not cooling' }))
+  const panel = await screen.findByRole('dialog', { name: 'Not cooling' })
+  expect(within(panel).queryByRole('combobox')).not.toBeInTheDocument()
+  expect(within(panel).getByRole('list', { name: 'Timeline' })).toBeInTheDocument()
 })
 
 test('the assets list shows each place’s assets with an open job or a warranty about to end', async ({ createUser }) => {
