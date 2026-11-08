@@ -129,6 +129,36 @@ test('a task without a verifier is marked Done as before', async ({ createUser }
   expect(await change(ravi, task, { is_done: true })).toMatchObject({ task_state: 'Done', is_done: true, verified_by: null })
 })
 
+/** Upload a photo the way Tasker's screens do: private, attached to the task Table. */
+async function uploadPhoto(client: Client, name: string) {
+  const form = new FormData()
+  form.set('file', new File(['jpeg bytes'], name, { type: 'image/jpeg' }))
+  form.set('is_private', '1')
+  form.set('ref_table', 'tasker.task')
+  const response = await client.fetch('/api/upload_file', { method: 'POST', body: form })
+  return { status: response.status, body: await response.json() as Row & { file_url: string; error?: { message: string } } }
+}
+
+test('a member uploads a private photo that other members can neither read nor change', async ({ createUser }) => {
+  const { meena, ravi } = await team(createUser)
+  const { status, body } = await uploadPhoto(ravi, 'counter-lights.jpg')
+  try {
+    expect(status).toBe(201)
+    expect(body).toMatchObject({ file_name: 'counter-lights.jpg', is_private: true, ref_table: 'tasker.task', file_url: expect.stringMatching(/^\/private\/files\//) })
+    await expect(meena.get(`/api/table/File/${body.row_id}`)).rejects.toThrow('You don\'t have read permission on File')
+    await expect(meena.get('/api/table/File')).rejects.toThrow('You don\'t have read permission on File')
+    await expect(meena.get(`/api/signed_url?file_url=${encodeURIComponent(body.file_url)}`)).rejects.toThrow('You don\'t have read permission on File')
+    expect((await meena.fetch(body.file_url)).status).toBe(403)
+    await expect(meena.post('/api/save_row', { table: 'File', row: { row_id: body.row_id, updated_at: body.updated_at, file_name: 'renamed.jpg' } }))
+      .rejects.toThrow('You don\'t have write permission on File')
+    await expect(meena.delete(`/api/table/File/${body.row_id}`)).rejects.toThrow('You don\'t have delete permission on File')
+  } finally {
+    // Database rows roll back; uploaded disk objects do not.
+    const { deleteStored } = await import('../src/storage')
+    await deleteStored(body.file_url)
+  }
+})
+
 test('undoing Done on a verified task starts the work over in progress', async ({ createUser }) => {
   const { meena, ravi, task } = await assignedAndVerified(createUser)
   const submitted = await change(ravi, task, { task_state: SUBMITTED, evidence_note: 'Replaced both tube lights' })
