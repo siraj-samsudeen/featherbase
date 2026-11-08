@@ -23,7 +23,7 @@ test('the real catalog offers example and client apps, keeps the list alongside 
   await discoverAppLibrary([])
   renderApps(admin)
   const list = await screen.findByRole('navigation', { name: 'Available apps' })
-  expect(within(list).getAllByRole('button')).toHaveLength(3)
+  expect(within(list).getAllByRole('button').map(button => button.textContent)).toEqual([expect.stringMatching(/Assets/), expect.stringMatching(/Dash/), expect.stringMatching(/Tasker/), expect.stringMatching(/Tickets/)])
   await userEvent.click(within(list).getByRole('button', { name: /Tickets/ }))
   const tickets = screen.getByRole('region', { name: 'Tickets details' })
   expect(tickets).toHaveTextContent('tickets.ticket')
