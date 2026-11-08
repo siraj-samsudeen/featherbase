@@ -1,8 +1,12 @@
 // #1009: a change that looks done but isn't saved must be hard to miss. Every
 // form keeps Save in view while it has unsaved changes, and asks before leaving.
-import { screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { RouterProvider, createBrowserHistory, createRouter } from '@tanstack/react-router'
 import { rowHref, tableHref } from 'shared'
+import { afterEach } from 'vitest'
+import { routeTree } from '../src/router'
 import { test, expect, renderApp } from './pg-test'
 import { grantRole } from 'server/test/fixtures'
 
@@ -119,4 +123,51 @@ test('adding a role row on a Person brings up the bar', async ({ admin, createUs
   expect(bar()).not.toBeInTheDocument()
   await userEvent.click(add)
   await waitFor(() => expect(bar()).toBeInTheDocument())
+})
+
+// Moved from e2e/form-unsaved.spec.ts (#1080): reloading or closing the page
+// with unsaved changes has the browser warn — the page cancels beforeunload.
+// The browser's own dialog that follows is the browser's. renderApp mounts a
+// memory history, which has no page to unload, so these mount the router on
+// the window's history, as main.tsx does.
+let browserHistory: ReturnType<typeof createBrowserHistory> | undefined
+afterEach(() => {
+  browserHistory?.destroy()
+  browserHistory = undefined
+  window.history.replaceState(null, '', '/')
+})
+
+function renderOnWindowHistory(path: string, as: Admin) {
+  localStorage.setItem('fc_token', as.token!)
+  localStorage.setItem('fc_user', JSON.stringify({ email: as.user, full_name: null, row_id: as.user }))
+  window.history.replaceState(null, '', path)
+  browserHistory = createBrowserHistory()
+  const router = createRouter({ routeTree, history: browserHistory })
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } })
+  render(
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router as never} />
+    </QueryClientProvider>,
+  )
+}
+
+const unloadCancelled = () => {
+  const event = new Event('beforeunload', { cancelable: true })
+  window.dispatchEvent(event)
+  return event.defaultPrevented
+}
+
+test('reloading with unsaved changes asks the browser to warn', async ({ admin }) => {
+  await seed(admin)
+  renderOnWindowHistory(rowHref(TABLE, 'D-1'), admin)
+  await userEvent.type(await note(), ' new')
+  expect(unloadCancelled()).toBe(true)
+  expect(await note()).toHaveValue('old new')
+})
+
+test('reloading with nothing unsaved asks nothing', async ({ admin }) => {
+  await seed(admin)
+  renderOnWindowHistory(rowHref(TABLE, 'D-1'), admin)
+  await note()
+  expect(unloadCancelled()).toBe(false)
 })
