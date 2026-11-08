@@ -68,14 +68,18 @@ export async function prepareIssue(ctx: Context): Promise<void> {
     for (const person of [owner !== old.owner ? owner : null, verifier !== old.verifier ? verifier : null])
       if (person && !members.some(member => member.row_id === person)) ctx.reject('Choose a Tasker member')
   }
-  if (!ctx.isNew && owner !== (old.owner ?? null) && ACTIVE.includes(from)) {
+  // A new owner acknowledges the issue afresh.
+  const reassigned = !ctx.isNew && owner !== (old.owner ?? null) && ACTIVE.includes(from)
+  if (reassigned) {
     row.acknowledged_at = null
     if (to === 'Acknowledged') to = 'Open'
   }
 
   // State changes.
   if (to !== from) {
-    if (from === 'Open' && to === 'Acknowledged') {
+    if (reassigned && to === 'Open') {
+      // Back to Open, waiting for the new owner; their assignment notice follows below.
+    } else if (from === 'Open' && to === 'Acknowledged') {
       if (ctx.user !== owner) ctx.reject('Only the owner can acknowledge this issue')
       row.acknowledged_at = ctx.now
       if (now > instant(row.respond_by)) row.response_breached = true
