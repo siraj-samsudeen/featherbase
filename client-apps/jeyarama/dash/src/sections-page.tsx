@@ -3,6 +3,7 @@
 import { createElement, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Button, Card, EmptyState, Field, fmtDate, Notice, SearchInput, Select, Skeleton, StatusPill, TextInput, touchLinkClasses, type StatusTone } from '@featherbase/shop-floor'
 import { act, read } from './api'
+import { reportAddress } from './page'
 
 export type DashView = 'report' | 'sections' | 'approvals'
 export function currentView(search = window.location.search): DashView {
@@ -74,7 +75,15 @@ const approvalsLabel = (waiting: number) => (waiting === 1 ? '1 change is waitin
 
 /** The app's navigation. The approvals row appears only when something waits for this person.
  *  A page that already knows the count passes it, so the row follows what the page shows. */
+/** One report the reader may open, as the `reports` read answers it. */
+export interface ReportLink { key: string; name: string; takes_store: boolean; takes_month: boolean; no_filter?: boolean }
+export const readReports = () => read<ReportLink[]>('reports')
+
 export function DashSidebar({ current, count }: { current: DashView; count?: number }) {
+  const [reports, setReports] = useState<ReportLink[]>([])
+  useEffect(() => { let live = true; readReports().then(list => { if (live) setReports(list) }, () => {}); return () => { live = false } }, [])
+  const named = new URLSearchParams(window.location.search).get('report')
+  const shown = current === 'report' ? (named ?? reports[0]?.key) : null
   const [fromRead, setWaiting] = useState(0)
   const waiting = count ?? fromRead
   useEffect(() => {
@@ -85,10 +94,13 @@ export function DashSidebar({ current, count }: { current: DashView; count?: num
   }, [count])
   const here = (view: DashView) => (current === view ? { 'aria-current': 'page' as const } : {})
   return createElement('featherbase-sidebar', { 'aria-label': 'Dash navigation' },
-    <a href={current === 'report' ? `${window.location.pathname}${window.location.search}` : window.location.pathname} {...here('report')}>
-      <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 3v18h18M7 14v3m5-8v8m5-12v12" /></svg>
-      <span>Sales report</span>
-    </a>,
+    reports.length > 0 && <span className="fd-sidebar-group" data-testid="reports-group">Reports</span>,
+    ...reports.map(report => (
+      <a key={report.key} href={reportAddress(report.key, window.location.search)} data-testid="report-link" {...(shown === report.key ? { 'aria-current': 'page' as const } : {})}>
+        <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 3v18h18M7 14v3m5-8v8m5-12v12" /></svg>
+        <span>{report.name}</span>
+      </a>
+    )),
     <a href={SECTIONS_ADDRESS} {...here('sections')}>
       <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6h16M4 12h16M4 18h10" /></svg>
       <span>Your sections</span>
