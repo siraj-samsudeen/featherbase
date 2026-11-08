@@ -10,11 +10,13 @@
  * step (ADR 0014, the change-modes skill). So a finished, unarchived change
  * (every task in tasks.md ticked, still under openspec/changes/ and not
  * archive/) is expected only on its own branch, between the commit that ticks
- * its last task and the archive commit, and is only reported there.
- * It fails a PR only when the change was already finished on the PR's base:
- * it reached main finished and nobody archived it. Failing the next PR,
- * rather than main itself, keeps main green, since every main commit is a
- * deploy.
+ * its last task and the archive commit.
+ *
+ * #1085: in a pull request it fails until that PR archives it, so a change
+ * can't reach main finished and unarchived (#1065 did, and every other PR
+ * went red). Locally it is only a reminder: the work is still going on.
+ * A change already finished on the base fails every PR, and main itself
+ * stays green, since every main commit is a deploy.
  */
 
 import fs from 'node:fs'
@@ -50,6 +52,14 @@ export function classify(finishedHere, finishedOnBase) {
   const stale = finishedOnBase ? finishedHere.filter((c) => finishedOnBase.has(c.name)) : []
   const fresh = finishedHere.filter((c) => !stale.includes(c))
   return { stale, fresh }
+}
+
+/**
+ * The changes that fail the check: those the base already had finished, and,
+ * in a pull request, those this branch finishes without archiving.
+ */
+export function blocking({ stale, fresh }, { pullRequest }) {
+  return pullRequest ? [...stale, ...fresh] : stale
 }
 
 function git(args, opts = {}) {
@@ -106,12 +116,16 @@ function main() {
     return
   }
   const base = baseRef(process.env)
-  const { stale, fresh } = classify(finishedHere, base ? finishedOn(base, finishedHere.map((c) => c.name)) : null)
+  const sorted = classify(finishedHere, base ? finishedOn(base, finishedHere.map((c) => c.name)) : null)
+  const { stale, fresh } = sorted
+  const pullRequest = process.env.GITHUB_EVENT_NAME === 'pull_request'
   if (fresh.length > 0) {
-    console.log('check:unarchived-changes: finished, to be archived on this branch before it merges:')
-    for (const f of fresh) console.log(`  ${f.name} (${f.done}/${f.total})  →  pnpm exec openspec archive ${f.name} --yes`)
+    const say = pullRequest ? console.error : console.log
+    say(`check:unarchived-changes: finished on this branch, ${pullRequest ? 'so this PR must archive them before it merges' : 'to be archived on this branch before it merges'}:`)
+    for (const f of fresh) say(`  ${f.name} (${f.done}/${f.total})  →  pnpm exec openspec archive ${f.name} --yes`)
   }
-  if (stale.length === 0) return
+  if (blocking(sorted, { pullRequest }).length === 0) return
+  if (stale.length === 0) process.exit(1)
   console.error(`Finished OpenSpec changes that reached ${base === 'HEAD^1' ? 'the base branch' : base} and were never archived:`)
   for (const f of stale) console.error(`  ${f.name} (${f.done}/${f.total})`)
   console.error('\nArchive each on a branch (sync the specs, then archive) and merge it, then update this branch:')
