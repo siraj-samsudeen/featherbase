@@ -155,6 +155,13 @@ test('closure: submit with a note, the verifier accepts or returns, and a breach
   expect(kinds(reopened)).toEqual(expect.arrayContaining(['submitted', 'returned', 'closed', 'reopened']))
 })
 
+test('an open issue cannot be closed without being submitted first', async ({ createUser }) => {
+  const { meena, suresh, store } = await setup(createUser)
+  const issue = await raise(meena, { store: store.row_id, owner: suresh.user, verifier: meena.user })
+  await expect(change(meena, issue, { issue_state: 'Closed' })).rejects.toThrow('Submit this issue for verification first')
+  expect((await read(meena, issue)).issue_state).toBe('Open')
+})
+
 test('without a verifier, the owner’s submission closes the issue', async ({ createUser }) => {
   const { meena, suresh, store } = await setup(createUser)
   const issue = await raise(meena, { store: store.row_id, owner: suresh.user })
