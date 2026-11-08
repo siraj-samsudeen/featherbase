@@ -72,17 +72,27 @@ const KINDS: Record<string, [string, string]> = {
 
 // #859: what a refused delete offers, on a Table whose rows can be retired.
 export const RETIRE_INSTEAD = 'Retire it instead to take it out of use and keep its history.'
+// #1060: a grant is never retired, since retiring never changes who may see
+// what. It ends in the permission matrix, which keeps its history (#1034).
+export const UNTICK_INSTEAD = 'To end the grant, untick it in the permission matrix: its history stays.'
+
+/** What a refused delete of a row of `table` offers instead, if anything. */
+export type DeleteInstead = { advice: string; fields: Record<string, string> } | null
+export function deleteInstead(table: string, retirable: boolean): DeleteInstead {
+  if (table === 'Permission') return { advice: UNTICK_INSTEAD, fields: {} }
+  return retirable ? { advice: RETIRE_INSTEAD, fields: { retire: 'available' } } : null
+}
 
 /** Refuse a delete while the row has retained activity, naming each kind and
  *  its count, e.g. "it has 2 comments and 1 history entry". `label` names
  *  the row as the caller reads it, looked up only on a refusal (#959). */
-export async function assertNothingRetained(counts: Record<string, number>, retirable: boolean, label: () => Promise<string>): Promise<void> {
+export async function assertNothingRetained(counts: Record<string, number>, instead: DeleteInstead, label: () => Promise<string>): Promise<void> {
   const held = Object.entries(counts).filter(([, n]) => n > 0)
     .map(([kind, n]) => `${n} ${KINDS[kind]?.[n === 1 ? 0 : 1] ?? kind}`)
   if (!held.length) return
   const list = held.length === 1 ? held[0] : `${held.slice(0, -1).join(', ')} and ${held.at(-1)}`
-  throw new AppError('ValidationError', `${await label()} cannot be deleted: it has ${list}${retirable ? `. ${RETIRE_INSTEAD}` : ''}`,
-    { ...Object.fromEntries(Object.entries(counts).map(([key, count]) => [key, String(count)])), ...(retirable ? { retire: 'available' } : {}) })
+  throw new AppError('ValidationError', `${await label()} cannot be deleted: it has ${list}${instead ? `. ${instead.advice}` : ''}`,
+    { ...Object.fromEntries(Object.entries(counts).map(([key, count]) => [key, String(count)])), ...instead?.fields })
 }
 
 export async function retainedDocumentCounts(tx: typeof sql, table: string, rowId: string) {
