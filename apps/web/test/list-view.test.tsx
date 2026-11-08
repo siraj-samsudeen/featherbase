@@ -16,6 +16,7 @@ import path from 'node:path'
 import { invalidateSources } from 'server/src/sources/registry'
 import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
+import { decodePath } from '../src/lib/nav-path'
 
 // A cold first render on a busy machine can take longer than the 1s default.
 
@@ -42,9 +43,23 @@ async function seedTickets(admin: Admin, name: string, count = 3, choice_labels?
 }
 
 async function openList(admin: Admin, name: string, search = '') {
-  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(name))}${search}`, admin)
+  const app = await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(name))}${search}`, admin)
   await screen.findByTestId('list-view', {}, { timeout: 8000 })
   await screen.findByTestId('list-rows')
+  return app
+}
+
+/** The filters the page's address carries, as [field, op, value] triples:
+ *  in the navigation path once the list has written them, or the typed
+ *  `filters` parameter of an address opened cold. */
+const filtersIn = (app: { router: unknown }) => {
+  const searchStr = (app.router as { state: { location: { searchStr: string } } }).state.location.searchStr
+  const params = new URLSearchParams(searchStr)
+  const path = decodePath(params.get('path') ?? undefined)
+  let value: unknown = path ? path.steps[path.at]?.filters ?? [] : params.get('filters')
+  // The router writes each search value as JSON, so a string value is encoded twice.
+  while (typeof value === 'string') value = JSON.parse(value)
+  return Array.isArray(value) ? value.map((f) => (f as unknown[]).map(String)) : []
 }
 
 async function sortSettled(admin: Admin, name: string, want: { field: string; dir: string }) {
@@ -158,10 +173,69 @@ test('Narrow the list with filters: a quick filter box above the list filters it
 test('Filters live in the page address: opening an address that carries filters shows the narrowed list', async ({ admin }) => {
   await seedTickets(admin, 'Lv Address', 4)
   const filters = JSON.stringify([['stage', '=', 'Closed']])
-  await openList(admin, 'Lv Address', `?filters=${enc(filters)}`)
+  const app = await openList(admin, 'Lv Address', `?filters=${enc(filters)}`)
   await waitFor(() => expect(cellTexts('title')).toEqual(['row-04', 'row-02']))
   expect(screen.getAllByTestId('filter-chip')).toHaveLength(1)
   expect(screen.getByTestId('list-total')).toHaveTextContent('2 total')
+  // #87: the parameter stays in the address, not silently stripped.
+  expect(filtersIn(app)).toEqual([['stage', '=', 'Closed']])
+})
+
+// From the deleted e2e/filters.spec.ts (UI-003): filters added in the list are
+// the address, so opening that address again (a reload, a shared link) shows
+// the same narrowed list.
+test('Filters live in the page address: filters added in the list are written into the address, and opening it again restores them', async ({ admin }) => {
+  await seedTickets(admin, 'Lv Written', 4)
+  const app = await openList(admin, 'Lv Written')
+  await waitFor(() => expect(cellTexts('title')).toHaveLength(4))
+  fireEvent.click(screen.getByTestId('filter-toggle'))
+  fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'rank' } })
+  fireEvent.change(screen.getByTestId('filter-op'), { target: { value: '>=' } })
+  fireEvent.change(screen.getByTestId('filter-value'), { target: { value: '3' } })
+  fireEvent.click(screen.getByTestId('filter-add'))
+  await waitFor(() => expect(cellTexts('title')).toEqual(['row-04', 'row-03']))
+  fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'stage' } })
+  fireEvent.change(screen.getByTestId('filter-op'), { target: { value: '=' } })
+  fireEvent.change(screen.getByTestId('filter-value'), { target: { value: 'Closed' } })
+  fireEvent.click(screen.getByTestId('filter-add'))
+  await waitFor(() => expect(cellTexts('title')).toEqual(['row-04']))
+  await waitFor(() => expect(filtersIn(app)).toHaveLength(2))
+  expect(filtersIn(app)).toContainEqual(['rank', '>=', '3'])
+  expect(filtersIn(app)).toContainEqual(['stage', '=', 'Closed'])
+
+  const href = (app.router as { state: { location: { href: string } } }).state.location.href
+  app.unmount()
+  await renderApp(href, admin)
+  await screen.findByTestId('list-rows')
+  await waitFor(() => expect(cellTexts('title')).toEqual(['row-04']))
+  expect(screen.getAllByTestId('filter-chip')).toHaveLength(2)
+  expect(screen.getByTestId('list-total')).toHaveTextContent('1 total')
+})
+
+test('Narrow the list with filters: a "like" filter matches its text anywhere in the value', async ({ admin }) => {
+  await seedTickets(admin, 'Lv Like', 12)
+  await openList(admin, 'Lv Like')
+  await waitFor(() => expect(cellTexts('title')).toHaveLength(12))
+  fireEvent.click(screen.getByTestId('filter-toggle'))
+  fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'title' } })
+  fireEvent.change(screen.getByTestId('filter-op'), { target: { value: 'like' } })
+  fireEvent.change(screen.getByTestId('filter-value'), { target: { value: 'w-1' } })
+  fireEvent.click(screen.getByTestId('filter-add'))
+  await waitFor(() => expect(cellTexts('title').sort()).toEqual(['row-10', 'row-11', 'row-12']))
+  expect(screen.getByTestId('list-total')).toHaveTextContent('3 total')
+})
+
+// #87: a URL is user input. Values that parse as JSON but are the wrong shape
+// are dropped, not handed to the list, which would throw and blank the page.
+test('Filters live in the page address: an address whose filters are the wrong shape shows every row, unfiltered', async ({ admin }) => {
+  await seedTickets(admin, 'Lv Bad Address', 3)
+  for (const bad of ['{}', '[null]', '["stage","=","Closed"]', '[["stage"]]', 'not json']) {
+    const app = await openList(admin, 'Lv Bad Address', `?filters=${enc(bad)}`)
+    await waitFor(() => expect(cellTexts('title')).toHaveLength(3))
+    expect(screen.getByTestId('list-total')).toHaveTextContent('3 total')
+    expect(screen.queryByTestId('filter-chip')).not.toBeInTheDocument()
+    app.unmount()
+  }
 })
 
 test('Act on many rows at once: setting a field on selected rows changes all of them', async ({ admin }) => {
