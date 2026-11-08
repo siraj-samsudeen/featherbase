@@ -10,7 +10,7 @@ import { sessionMayAddWayIn } from './session-context'
 import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
 import { mayPurge } from './purge'
-import { RETIRE_INSTEAD, assertNothingRetained, repointRowActivity, retainedActivityCounts, retainedDocumentCounts } from './document-activity'
+import { UNTICK_INSTEAD, assertNothingRetained, deleteInstead, repointRowActivity, retainedActivityCounts, retainedDocumentCounts } from './document-activity'
 import { rowLabel } from './row-titles'
 import { allowedTables, anyTableLinkHolder, linkableTable, repointAnyTableLinks } from './any-table-link'
 import { EVERYONE_ROLES_FIELD, checkEveryoneRoles, parseEveryoneRoles } from './everyone-roles'
@@ -1657,17 +1657,18 @@ async function deleteDocImpl(
     await assertRowNotManaged(stx, meta, name, user)
     // #959: the refusals below name each row as this caller reads it.
     const label = () => rowLabel(user, table, name)
+    const instead = deleteInstead(table, true)
     if (revoking) {
       // Nothing held back and nothing removed: see revokeGrant.
     } else if (meta.owner_app) {
       if (!opts.expectUpdatedAt || !Number.isFinite(Date.parse(opts.expectUpdatedAt))
         || new Date(existing.updated_at as string).getTime() !== Date.parse(opts.expectUpdatedAt))
         throw new AppError('ConflictError', `${table} ${name} has been modified after you loaded it; supply its current updated_at`)
-      await assertNothingRetained(await retainedDocumentCounts(stx, table, name), true, label)
+      await assertNothingRetained(await retainedDocumentCounts(stx, table, name), instead, label)
     } else {
       // #321: a plain row keeps its comments, history, attachments and shares
       // by refusing the delete while it has any (links are checked below).
-      await assertNothingRetained(await retainedActivityCounts(stx, table, name), true, label)
+      await assertNothingRetained(await retainedActivityCounts(stx, table, name), instead, label)
     }
     if (!revoking) await tx`delete from version where ref_table = ${table} and ref_name = ${name} and data->>'created' = 'true'`
     if ((existing.submission_status as string) === 'submitted')
@@ -1699,8 +1700,8 @@ async function deleteDocImpl(
           : await rowLabel(user, parentTable, ref[parentKey] as string)
         throw new AppError(
           'ValidationError',
-          `Cannot delete ${await label()}: it is linked from ${holder}. ${RETIRE_INSTEAD}`,
-          { retire: 'available' },
+          `Cannot delete ${await label()}: it is linked from ${holder}. ${instead!.advice}`,
+          instead!.fields,
         )
       }
     }
@@ -1709,8 +1710,8 @@ async function deleteDocImpl(
     if (anyHolder)
       throw new AppError(
         'ValidationError',
-        `Cannot delete ${await label()}: it is linked from ${await rowLabel(user, anyHolder.table, anyHolder.row_id)}. ${RETIRE_INSTEAD}`,
-        { retire: 'available' },
+        `Cannot delete ${await label()}: it is linked from ${await rowLabel(user, anyHolder.table, anyHolder.row_id)}. ${instead!.advice}`,
+        instead!.fields,
       )
 
     const ctx: HookContext = {
@@ -1798,7 +1799,7 @@ async function deleteBoundDoc(
   }
   // #321: a connected row's comments, history, attachments and shares live
   // here; the delete is refused while it has any, as for a stored row.
-  await assertNothingRetained(await retainedActivityCounts(sql, meta.name, name), false, () => rowLabel(user, meta.name, name))
+  await assertNothingRetained(await retainedActivityCounts(sql, meta.name, name), null, () => rowLabel(user, meta.name, name))
   await runHooks('on_trash', hctx)
   const outcome = await ctx.driver
     .remove(ctx.bind, name, expectUpdatedAt)
@@ -1833,7 +1834,7 @@ async function setRetirement(
   const meta = await getMeta(table)
   assertRowsWritable(meta, retire ? 'retired' : 'reactivated')
   if (!canRetire(meta))
-    throw new AppError('ValidationError', `${table} rows cannot be retired`)
+    throw new AppError('ValidationError', `${table} rows cannot be retired${table === 'Permission' ? `. ${UNTICK_INSTEAD}` : ''}`)
   await assertSecurityWriter(table, user)
   let reason: string | null = null
   if (retire) {
