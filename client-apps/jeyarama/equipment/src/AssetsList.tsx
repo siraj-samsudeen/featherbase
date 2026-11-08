@@ -14,7 +14,7 @@ export function AssetsList() {
   const openAssets = new Set((jobs.data ?? []).filter(job => isOpen(job.job_state)).map(job => job.asset))
   const query = search.trim().toLowerCase()
   const shown = (assets.data ?? []).filter(asset => (!place || inSite(asset.place, place, places.data))
-    && (!query || `${asset.row_id} ${asset.asset_name} ${asset.serial_no ?? ''} ${asset.sap_asset_no ?? ''} ${asset.legacy_id ?? ''}`.toLowerCase().includes(query)))
+    && (!query || `${asset.tag_no ?? ''} ${asset.asset_name} ${asset.serial_no ?? ''} ${asset.sap_asset_no ?? ''} ${asset.legacy_id ?? ''}`.toLowerCase().includes(query)))
 
   return <section aria-labelledby="assets-heading">
     <div className="assets-heading">
@@ -33,7 +33,7 @@ export function AssetsList() {
           {shown.map(asset => {
             const warranty = warrantyNotice(asset.warranty_until, today)
             return <tr key={asset.row_id}>
-              <td>{asset.row_id}</td>
+              <td>{asset.tag_no ?? 'Needs a tag'}</td>
               <td><a href={`#asset=${encodeURIComponent(asset.row_id)}`}>{asset.asset_name}</a></td>
               <td>{nameOf(types.data, asset.asset_type, 'type_name')}</td>
               <td>{placePath(asset.place, places.data ?? [])}</td>

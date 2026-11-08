@@ -86,7 +86,7 @@ export function AssetPage({ id }: { id: string }) {
 
   return <article className="asset-page">
     <h1>{a.asset_name}</h1>
-    <p className="asset-sub">{`${a.tag_no ?? a.row_id} · ${placePath(a.place, places.data ?? [])}`}</p>
+    <p className="asset-sub">{[a.tag_no, placePath(a.place, places.data ?? [])].filter(Boolean).join(' · ')}</p>
     <TagFacts asset={a} />
     <ul className="asset-states" aria-label="States">
       <li data-state="books">Books: {a.book_status}</li>
