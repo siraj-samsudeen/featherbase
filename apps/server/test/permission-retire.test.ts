@@ -30,7 +30,9 @@ describe('#1060: a grant is ended in the matrix, not retired', () => {
     })
     expect(refused.status).toBe(417)
     expect(await refused.text()).toContain('untick it in the permission matrix')
-    expect(await sql`select retired_at from permission where row_id = ${id}`).toEqual([{ retired_at: null }])
+    // A grant has nowhere to keep a retirement: the columns are gone (0156).
+    expect(await sql`select column_name from information_schema.columns
+      where table_schema = 'featherbase' and table_name = 'permission' and column_name like 'retired%'`).toEqual([])
     expect((await holder.fetch(list)).status).toBe(200)
   })
 

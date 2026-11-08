@@ -6,7 +6,7 @@ Retiring a Permission row marked it retired, but the holder kept the access (#10
 
 - Permission rows cannot be retired. Retiring one is refused, saying to untick it in the permission matrix; the row offers no Retire.
 - A refused delete of a grant says to untick it in the permission matrix, and no longer offers Retire.
-- Grants marked retired before this change are unmarked. They always kept granting, so nobody's access changes; the history entry of each retirement stays.
+- A grant has no retirement columns: a new database never had them (0147 skips Tables that cannot retire), and an existing one drops them. Grants retired before this always kept granting, so nobody's access changes; the history entry of each retirement stays.
 
 ## Capabilities
 
@@ -18,4 +18,4 @@ Retiring a Permission row marked it retired, but the holder kept the access (#10
 ## Impact
 
 - `packages/shared/src/row-retirement.ts`, `apps/server/src/document.ts`, `apps/server/src/document-activity.ts`.
-- Migration `0156_permission_not_retired.sql` clears retirement marks on Permission rows.
+- Migration `0156_permission_not_retired.sql` drops the retirement columns from `permission`.
