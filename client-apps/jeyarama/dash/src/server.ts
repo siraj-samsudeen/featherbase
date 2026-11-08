@@ -1,14 +1,17 @@
-// Feather Dash's server module, loaded by the Featherbase platform at boot.
-// The platform's app contract is structural: this module imports nothing from
-// the platform. Reads are declared in featherbase.json under "reads"; the org
-// chart Tables' save rules are its `validators`.
-export { validators } from './validators.ts'
-import { orgChartProvider, type Place } from './provider.ts'
-import { EMBED_STATE_LIMIT_BYTES, MONTH_CHOICES, buildReport, monthLabel, headingOf, initialState, istToday, needsShortCodes, periodOf, storeLabels, storeShortName, storesOf, type CachedAnswer, type Month, type MonthChoice, type SalesRow } from './report.ts'
-import { gzipBase64 } from './compress.ts'
+// Dash's server module, loaded by the Featherbase platform at boot. The platform's app contract
+// is structural: this module imports nothing from the platform. Reads are declared in
+// featherbase.json under "reads". A report is a row of `dash.report`; nothing here knows one Dive.
+import { checked } from './values.ts'
+import { orgChartProvider, reachOf, type Documents, type Place } from './provider.ts'
+import { diveFilters, storesOfReport, type ReportRecord } from './dive-filters.ts'
+import { MONTH_CHOICES, buildReport, monthLabel, headingOf, istToday, periodOf, storeLabels, storeShortName, type CachedAnswer, type Heading, type Month, type MonthChoice, type SalesRow } from './report.ts'
 import { actions as sectionActions, reads as sectionReads } from './my-sections.ts'
+import { accessPage, addToBundle, giveReport, makeBundle, managesAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
 
-/** The places each person covers (featherbase B2), per store: the new org chart or today's derivation. */
+/** The save rules of Dash's own Tables. */
+export const validators = accessValidators
+
+/** The places each person covers, from the core Tables. */
 export const scopeProviders = { org_chart: orgChartProvider() }
 
 /** The cached dataset the report reads (featherbase.json's `datasets`). */
@@ -27,12 +30,6 @@ const DATASETS: Readonly<Record<MonthChoice, { sales: string; month: string }>> 
   last: { sales: LAST_SALES_DATASET, month: LAST_MONTH_DATASET },
 }
 
-/**
- * How long the store picker waits for the stores' names before offering them by code: well
- * inside the page's own waits, since the bar reads its options once and can't fill names later.
- */
-export const STORE_NAMES_TIMEOUT_MS = 800
-
 /** Where MotherDuck serves embedded Dives (featherbase.json's `frameOrigins`) and mints their sessions. */
 export const EMBED_ORIGIN = 'https://embed-motherduck.com'
 const EMBED_API = 'https://api.motherduck.com'
@@ -43,8 +40,14 @@ export const EMBED_API_TIMEOUT_MS = 10_000
 /** What the platform hands a read handler (the part this module uses). */
 interface ReadContext {
   user: string
+  roles?: readonly string[]
+  people?: AccessContext['people']
   payload?: unknown
   authorization?: { places?: readonly Place[] }
+  /** What this outbound read's prepare step read in its transaction. */
+  prepared?: unknown
+  documents?: Documents
+  baseTables?: Documents
   settings?: Readonly<Record<string, string>>
   secrets?: Readonly<Record<string, string>>
   reject?(message: string): never
@@ -66,9 +69,57 @@ export function setEmbedFetch(f: typeof fetch | null) {
 
 const placesOf = (ctx: ScopedContext) => ctx.authorization.places ?? []
 
+const REPORT_FIELDS = ['report_key', 'report_name', 'dive_id', 'filter_shape', 'store_key', 'subcategory_key', 'whole_store_key', 'month_key', 'ready_signal', 'quick_view']
+
+/**
+ * The one place that decides which reports this person may open: the reports given to them by
+ * any route (#1046), read fresh on every request. No row means no report, for everyone. Someone
+ * whose job reaches nothing gets only a given report that takes no filter: a grant never widens
+ * which stores a person sees. Unreadable means nothing.
+ */
+export async function reportsFor(ctx: ScopedContext): Promise<ReportRecord[]> {
+  let given: Set<string>
+  try { given = new Set((await reportsGivenTo(ctx.baseTables, ctx.user, ctx.roles ?? [], istToday())).keys()) } catch { return [] }
+  if (!given.size) return []
+  const rows = await ctx.documents.list('dash.report', { fields: REPORT_FIELDS, order_by: 'report_name asc', limit_page_length: 200 })
+  const reports = rows.map(row => ({ ...row, ready_signal: checked(row.ready_signal) }) as unknown as ReportRecord).filter(report => given.has(report.report_key))
+  return (await reachesSomething(ctx)) ? reports : reports.filter(report => report.filter_shape === 'No filter')
+}
+
+/**
+ * The reports offered to the reader, in the sidebar and for opening Dash: a whole-stores report
+ * isn't offered to someone without a whole store (#967 point 1); opened by its address, it still
+ * says why.
+ */
+async function offeredReports(ctx: ScopedContext): Promise<ReportRecord[]> {
+  const reports = await reportsFor(ctx)
+  const places = reports.some(report => report.filter_shape === 'Whole stores') ? await placesHeld(ctx) : []
+  const wholeStore = places.some(place => !place.filters.subcategory)
+  return reports.filter(report => report.filter_shape !== 'Whole stores' || wholeStore)
+}
+
+/** The reader's places: a person_scope read's, else worked out from the core Tables. Unreadable means none. */
+async function placesHeld(ctx: ScopedContext): Promise<readonly Place[]> {
+  if (ctx.authorization?.places?.length) return ctx.authorization.places
+  try { return (await reachOf(ctx.baseTables, ctx.user, istToday())).places } catch { return [] }
+}
+
+/** A person_scope read already holds the reader's places; any other read works them out. Unreadable means nothing. */
+async function reachesSomething(ctx: ScopedContext): Promise<boolean> {
+  if (ctx.authorization?.places?.length) return true
+  try { return (await reachOf(ctx.baseTables, ctx.user, istToday())).places.length > 0 } catch { return false }
+}
+
+/** The report the read is for: the one the payload names, or the reader's first. Undefined when it isn't one of theirs. */
+async function chosenReport(ctx: ScopedContext): Promise<ReportRecord | undefined> {
+  const reports = await reportsFor(ctx)
+  const named = (ctx.payload as { report?: unknown } | undefined)?.report
+  return named === undefined || named === null || named === '' ? reports[0] : reports.find(report => report.report_key === named)
+}
+
 /** The store the read is for: the one the payload names, which must be the reader's own, or their first. */
-function chosenStore(ctx: ScopedContext): string {
-  const stores = storesOf(placesOf(ctx))
+function chosenStore(ctx: ScopedContext, report: ReportRecord): string | undefined {
+  const stores = storesOfReport(report, placesOf(ctx))
   const named = (ctx.payload as { store?: unknown } | undefined)?.store
   if (named === undefined || named === null || named === '') return stores[0]
   if (typeof named !== 'string' || !stores.includes(named)) ctx.reject('That store is not one of your stores')
@@ -98,8 +149,8 @@ export function appOrigin(value: unknown): string | null {
 }
 
 
-async function cachedRows(ctx: ScopedContext, store: string | undefined, month: MonthChoice): Promise<CachedAnswer> {
-  const answer = await ctx.datasets.active(DATASETS[month].sales, store ? { store_code: store } : undefined)
+async function cachedRows(ctx: ScopedContext, store: string, month: MonthChoice): Promise<CachedAnswer> {
+  const answer = await ctx.datasets.active(DATASETS[month].sales, { store_code: store })
   return answer ? { at: answer.at, rows: answer.rows as SalesRow[] } : null
 }
 
@@ -111,18 +162,80 @@ async function monthOf(ctx: ScopedContext, store: string, month: MonthChoice): P
     store_name: row.store_name ?? null } : null
 }
 
-async function storeReport(ctx: ScopedContext) {
-  const store = chosenStore(ctx)
+/** The sales target quick view's figures for one store and month. */
+async function salesReport(ctx: ScopedContext, store: string) {
   const choice = chosenMonth(ctx)
   const answer = await cachedRows(ctx, store, choice)
   const month = await monthOf(ctx, store, choice)
-  const today = istToday()
-  const report = buildReport({ store, places: placesOf(ctx), answer, month, today, choice })
-  return { answer, today, report, heading: headingOf(placesOf(ctx), store, storeShortName(report, month)) }
+  const report = buildReport({ store, places: placesOf(ctx), answer, month, today: istToday(), choice })
+  const named = (await storeNames(ctx, [store])).get(store) ?? null
+  return { ...report, heading: headingOf(placesOf(ctx), store, storeShortName(report, month, named)) }
 }
 
-/** Your sections and its approvals (#975). */
-export const actions = sectionActions
+/** A store's name from the core Tables, for the page's header and the bar. */
+async function storeNames(ctx: ScopedContext, stores: readonly string[]): Promise<Map<string, string>> {
+  const names = new Map<string, string>()
+  if (!stores.length) return names
+  const plants = await ctx.baseTables.list('Plant', { fields: ['row_id', 'site'], filters: [['row_id', 'in', [...stores]]], limit_page_length: 500 })
+  const sites = await ctx.baseTables.list('Site', { fields: ['row_id', 'name'], filters: [['row_id', 'in', plants.map(plant => String(plant.site))]], limit_page_length: 500 })
+  const siteName = new Map(sites.map(site => [String(site.row_id), String(site.name)]))
+  for (const plant of plants) {
+    const name = siteName.get(String(plant.site))
+    if (name) names.set(String(plant.row_id), name)
+  }
+  return names
+}
+
+/** What a report's first answer says, for a report with no quick view: whether it can open, and its header. */
+type Plain = { state: 'ready'; no_quick_view: true; heading: Heading; period_start?: string; period_end?: string }
+
+/** A fresh MotherDuck embed session for a report's Dive, opening its latest saved version, with only filters in its state. */
+async function openDive(ctx: ScopedContext, report: ReportRecord | null) {
+  if (!report) return { refused: 'no_access' }
+  const { embed_service_account: account } = ctx.settings
+  if (!report.dive_id || !account) return { not_set_up: true }
+  const store = chosenStore(ctx, report)
+  const period = periodOf(istToday(), chosenMonth(ctx))
+  const origin = appOrigin((ctx.payload as { app_origin?: unknown } | undefined)?.app_origin)
+  const filters = diveFilters(report, placesOf(ctx), { store, periodEnd: period.period_end, appOrigin: origin })
+  if ('refused' in filters) return { refused: filters.refused }
+  const body = JSON.stringify({ username: account, initial_state: filters.state })
+  let failure: string
+  const abort = new AbortController()
+  const timer = setTimeout(() => abort.abort(), EMBED_API_TIMEOUT_MS)
+  try {
+    const response = await (embedFetch ?? fetch)(`${EMBED_API}/v1/dives/${encodeURIComponent(report.dive_id)}/embed-session`, {
+      method: 'POST', headers: { authorization: `Bearer ${ctx.secrets.MOTHERDUCK_TOKEN}`, 'content-type': 'application/json' }, body,
+      signal: abort.signal,
+    })
+    const answered = await response.json().catch(() => null) as { session?: unknown } | null
+    if (response.ok && typeof answered?.session === 'string') {
+      // `ready_signal`: the Dive posts { type: 'dash:dive-ready' } once it has drawn, and the
+      // page waits for it rather than trusting the frame's load event.
+      return { frame: `${EMBED_ORIGIN}/sandbox/#session=${encodeURIComponent(answered.session)}`,
+        ...(report.ready_signal ? { ready_signal: true } : {}) }
+    }
+    failure = `embed API answered HTTP ${response.status}`
+  } catch (error) {
+    failure = abort.signal.aborted ? `embed API gave no answer in ${EMBED_API_TIMEOUT_MS} ms`
+      : `embed API unreachable: ${(error as Error)?.constructor?.name ?? 'error'}`
+  } finally {
+    clearTimeout(timer)
+  }
+  // For whoever runs the instance: the person's opaque id and the status, never the token or the upstream text.
+  console.error(JSON.stringify({ event: 'dash_embed_session_failed', person: ctx.user, message: failure }))
+  return { unreachable: true }
+}
+
+/** Your sections and its approvals (#975), and giving reports (#1046). */
+export const actions = {
+  ...sectionActions,
+  give_report: (context: AccessContext) => giveReport(context),
+  remove_report_access: (context: AccessContext) => removeAccess(context),
+  make_bundle: (context: AccessContext) => makeBundle(context),
+  add_to_bundle: (context: AccessContext) => addToBundle(context),
+  remove_from_bundle: (context: AccessContext) => removeFromBundle(context),
+}
 
 export const reads = {
   ...sectionReads,
@@ -132,132 +245,105 @@ export const reads = {
     return { user }
   },
 
-  /**
-   * The bar's store picker (the platform's bar draws these labels, the single-store label too):
-   * the reader's stores from their places alone. Each is named from the month's metadata
-   * (`sales_month`, which names every store for every reader of it alike) by its name alone,
-   * never its plant code (#4531). Only when names are missing or shared are the reader's cached
-   * figures asked for short codes to tell the stores apart (`storeLabels`). When the names are
-   * slow (STORE_NAMES_TIMEOUT_MS) or fail, the stores are "Store 1", "Store 2" or "Your store".
-   */
+  /** The app's gate (#1046): Dash opens for someone with a report, or who manages report access. */
+  async can_open(context: ReadContext) {
+    const ctx = context as ScopedContext
+    return managesAccess(ctx) || (await offeredReports(ctx)).length > 0
+  },
+
+  /** Whether this person manages report access, for the sidebar's link. */
+  manages_access(context: ReadContext) {
+    return managesAccess(context as AccessContext)
+  },
+
+  /** The Report access page (#1046). Managers only. */
+  access_page: (context: ReadContext) => accessPage(context as AccessContext),
+  person_search: (context: ReadContext) => personSearch(context as AccessContext),
+  person_lookup: (context: ReadContext) => personLookup(context as AccessContext, istToday(), async person => {
+    try {
+      const { places } = await reachOf((context as ScopedContext).baseTables, person, istToday())
+      return { any: places.length > 0, wholeStore: places.some(place => !place.filters.subcategory) }
+    } catch { return { any: false, wholeStore: false } }
+  }),
+
+  /** The reports this person may open, for the sidebar. */
+  async reports(context: ReadContext) {
+    return (await offeredReports(context as ScopedContext)).map(report => ({ key: report.report_key, name: report.report_name,
+      takes_store: report.filter_shape === 'One store and subcategories', takes_month: !!report.month_key, no_filter: report.filter_shape === 'No filter' }))
+  },
+
+  /** Why this person's job reaches nothing, for the page's message. */
+  async reach_problem(context: ReadContext) {
+    const ctx = context as ScopedContext
+    return { problems: (await reachOf(ctx.baseTables, ctx.user, istToday())).problems }
+  },
+
+  /** The bar's store picker on the chosen report: the reader's stores by name, none on a report taking no store. */
   async stores(context: ReadContext) {
     const ctx = context as ScopedContext
-    const stores = storesOf(placesOf(ctx))
-    const names = new Map<string, string>()
-    let timer: ReturnType<typeof setTimeout> | undefined
-    let named = false
-    try {
-      const answer = await Promise.race([
-        ctx.datasets.active(MONTH_DATASET),
-        new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), STORE_NAMES_TIMEOUT_MS) }),
-      ])
-      for (const row of (answer?.rows ?? []) as { store_code: string; store_name: string | null }[])
-        if (row.store_name && !names.has(row.store_code)) names.set(row.store_code, row.store_name)
-      named = !!answer
-    } catch {
-      // Labelled by code: the names are a convenience, the stores are the reader's places.
-    } finally {
-      clearTimeout(timer)
-    }
-    // Short codes come from the reader's own cached rows, asked only when the names can't tell
-    // the stores apart, and only when the names answered in time (else the budget is spent).
-    const shorts = new Map<string, string>()
-    if (named && needsShortCodes(stores, names)) {
-      try {
-        const answer = await Promise.race([
-          ctx.datasets.active(SALES_DATASET),
-          new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), STORE_NAMES_TIMEOUT_MS) }),
-        ])
-        for (const row of (answer?.rows ?? []) as SalesRow[])
-          if (row.short_code && stores.includes(row.store_code) && !shorts.has(row.store_code)) shorts.set(row.store_code, row.short_code)
-      } catch {
-        // Numbered instead: the labels are a convenience, the stores are the reader's places.
-      } finally {
-        clearTimeout(timer)
-      }
-    }
-    return storeLabels(stores, names, shorts)
+    const report = await chosenReport(ctx)
+    const stores = report ? storesOfReport(report, placesOf(ctx)) : []
+    return storeLabels(stores, await storeNames(ctx, stores))
   },
 
   /**
-   * The bar's month picker (#750): this month and last month, each named by its month
-   * ("This month · Nov'26"). The values are the choice, not the month, so an address keeps its
-   * meaning ("last month") from one month to the next.
+   * The bar's month picker: this month and last month, each named by its month ("This month ·
+   * Nov'26"), none on a report taking no month. The values are the choice, not the month, so an
+   * address keeps its meaning ("last month") from one month to the next.
    */
-  months() {
+  async months(context: ReadContext) {
+    const report = await chosenReport(context as ScopedContext)
+    if (!report?.month_key) return []
     const today = istToday()
     return MONTH_CHOICES.map(choice => ({ value: choice,
       label: `${choice === 'this' ? 'This month' : 'Last month'} · ${monthLabel(periodOf(today, choice).period_start)}` }))
   },
 
-  /** One store's report from the cached rows (what the quick view shows), with the page's header (#4486). */
+  /** Whether the chosen report can open for this reader, its header, and its quick view's figures if it has one. */
   async report(context: ReadContext) {
     const ctx = context as ScopedContext
-    const { report, heading } = await storeReport(ctx)
-    await ctx.recordView({ dataset: DATASETS[report.month].sales })
-    return { ...report, heading }
+    const report = await chosenReport(ctx)
+    if (!report) return { state: 'no_access' }
+    const store = chosenStore(ctx, report)
+    const period = periodOf(istToday(), chosenMonth(ctx))
+    const filters = diveFilters(report, placesOf(ctx), { store, periodEnd: period.period_end, appOrigin: null })
+    if ('refused' in filters) return { state: filters.refused === 'not_your_store' ? 'no_access' : filters.refused }
+    if (report.quick_view && store) {
+      const figures = await salesReport(ctx, store)
+      await ctx.recordView({ dataset: DATASETS[figures.month].sales })
+      return figures
+    }
+    const names = await storeNames(ctx, store ? [store] : [])
+    const plain: Plain = { state: 'ready', no_quick_view: true, heading: store ? headingOf(placesOf(ctx), store, names.get(store) ?? null) : { name: null, sections: [], reasons: [] },
+      ...(report.month_key ? { period_start: period.period_start, period_end: period.period_end } : {}) }
+    return plain
   },
 
   /**
-   * A fresh MotherDuck embed session for the reader's Dive (outbound: it runs after the
-   * platform's transaction has closed). The Dive's state carries the reader's store,
-   * scope (a section reader's subcategories, or the whole store) and the cached month to date
-   * under `cached`, on the first rung of the 56 KB ladder that fits (`initialState`).
+   * A fresh MotherDuck embed session for the chosen report's Dive, opening its latest saved version
+   * (outbound: it runs after the platform's transaction has closed, so `prepare` reads the row). The
+   * Dive's state carries only filters.
    */
-  async embed_session(context: ReadContext) {
-    const ctx = context as ScopedContext
-    const store = chosenStore(ctx)
-    const choice = chosenMonth(ctx)
-    // The latest saved Dive, always (#937): MotherDuck renders it when no version is asked for,
-    // so publishing a Dive is its release, and the Dive reads every state this app sends.
-    const { dive_id: diveId, embed_service_account: account } = ctx.settings
-    if (!diveId || !account) return { not_set_up: true }
-    let answer: CachedAnswer = null
-    let month: Month | null = null
-    try {
-      answer = await cachedRows(ctx, store, choice)
-      month = await monthOf(ctx, store, choice)
-    } catch {
-      // The Dive reads the warehouse itself; without a cached copy it opens without one.
-    }
-    const today = istToday()
-    const report = buildReport({ store, places: placesOf(ctx), answer, month, today, choice })
-    const origin = appOrigin((ctx.payload as { app_origin?: unknown } | undefined)?.app_origin)
-    const state = initialState(report, answer, placesOf(ctx), today, { appOrigin: origin, compress: gzipBase64, format: 'compact' })
-    // Past MotherDuck's cap the session would be refused: never trimmed, the page shows the cached
-    // table. The operator log names the store, never the person.
-    const stateBytes = new TextEncoder().encode(JSON.stringify(state)).length
-    if (stateBytes > EMBED_STATE_LIMIT_BYTES) {
-      console.warn(JSON.stringify({ event: 'dash_embed_state_too_large', store, bytes: stateBytes, limit: EMBED_STATE_LIMIT_BYTES,
-        message: `Store ${store}'s interactive report exceeds the embed size limit; readers see the cached table.` }))
-      return { too_large: true }
-    }
-    const body = JSON.stringify({ username: account, initial_state: state })
-    let failure: string
-    const abort = new AbortController()
-    const timer = setTimeout(() => abort.abort(), EMBED_API_TIMEOUT_MS)
-    try {
-      const response = await (embedFetch ?? fetch)(`${EMBED_API}/v1/dives/${encodeURIComponent(diveId)}/embed-session`, {
-        method: 'POST', headers: { authorization: `Bearer ${ctx.secrets.MOTHERDUCK_TOKEN}`, 'content-type': 'application/json' }, body,
-        signal: abort.signal,
-      })
-      const answered = await response.json().catch(() => null) as { session?: unknown } | null
-      if (response.ok && typeof answered?.session === 'string') {
-        await ctx.recordView({ dataset: DATASETS[choice].sales })
-        // `dive_ready_signal: on`: the Dive posts { type: 'dash:dive-ready' } once it has drawn
-        // (B7), and the page waits for it rather than trusting the frame's load event.
-        return { frame: `${EMBED_ORIGIN}/sandbox/#session=${encodeURIComponent(answered.session)}`,
-          ...(ctx.settings.dive_ready_signal === 'on' ? { ready_signal: true } : {}) }
-      }
-      failure = `embed API answered HTTP ${response.status}`
-    } catch (error) {
-      failure = abort.signal.aborted ? `embed API gave no answer in ${EMBED_API_TIMEOUT_MS} ms`
-        : `embed API unreachable: ${(error as Error)?.constructor?.name ?? 'error'}`
-    } finally {
-      clearTimeout(timer)
-    }
-    // For whoever runs the instance: the person's opaque id and the status, never the token or the upstream text.
-    console.error(JSON.stringify({ event: 'dash_embed_session_failed', person: ctx.user, message: failure }))
-    return { unreachable: true }
+  embed_session: Object.assign(async (context: ReadContext) => openDive(context as ScopedContext, (context as ScopedContext).prepared as ReportRecord | null), {
+    /** In the transaction: the report's row, which the handler can no longer read. */
+    prepare: async (context: ReadContext) => (await chosenReport(context as ScopedContext)) ?? null,
+  }),
+
+  /**
+   * A report taking no filter, for someone given it whatever their job reaches (#1046). These two
+   * reads run without the reader's places, so they refuse every other report: a store-filtered
+   * Dive is only ever opened by `report` and `embed_session`, under the reader's scope.
+   */
+  async report_open(context: ReadContext) {
+    const report = await chosenReport(context as ScopedContext)
+    if (report?.filter_shape !== 'No filter') return { state: 'no_access' }
+    return { state: 'ready', no_quick_view: true, heading: { name: null, sections: [], reasons: [] } } satisfies Plain
   },
+
+  embed_open: Object.assign(async (context: ReadContext) => {
+    const report = (context as ScopedContext).prepared as ReportRecord | null
+    return report?.filter_shape === 'No filter' ? openDive(context as ScopedContext, report) : { refused: 'no_access' }
+  }, {
+    prepare: async (context: ReadContext) => (await chosenReport(context as ScopedContext)) ?? null,
+  }),
 }

@@ -10,6 +10,8 @@ Given('the user can open Featherbase, Tasker and Dash', async function () {
 Given('the user can open Tasker and Dash but cannot open Featherbase', async function () {
   await this.withApi(AppNavigation.install);
   await this.person('the user', ['Dash Reader', 'Tasker Member']);
+  // #1046: Dash opens only for someone with a report they can open.
+  await this.withApi(api => AppNavigation.store(api, this.people.get('the user').email));
   this.navigation = new AppNavigation(await this.actor());
 });
 When("the user chooses Featherbase from Tasker's application name", async function () { await this.navigation.chooseBase(); });
@@ -23,7 +25,6 @@ When('the user opens September stock review through the shared navigation', asyn
 Then("the project's two tasks are shown", async function () { await this.navigation.expectTasks(); });
 Then('the shared navigation identifies September stock review as current', async function () { await this.navigation.expectProjectCurrent(); });
 Given('the user has selected Lakeside in Dash', async function () {
-  await this.withApi(api => AppNavigation.store(api, this.people.get('the user').email));
   await this.navigation.selectStore();
 });
 When('the user opens the report through the shared navigation', async function () { await this.navigation.openReport(); });
