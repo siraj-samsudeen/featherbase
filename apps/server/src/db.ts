@@ -185,6 +185,12 @@ export function _getRootSql(): Sql {
   return root
 }
 
+// #1074: one qualified copy per call site. A tagged template's strings array
+// is the same object on every call, and postgres.js caches a query's origin
+// stack by that object: a fresh copy per query made it capture a stack trace
+// every time, which was about a sixth of an import's time.
+const qualifiedStrings = new WeakMap<TemplateStringsArray, TemplateStringsArray>()
+
 function qualifiedClient(client: Sql): Sql {
   // The client itself is the proxy target (it is callable); every call and
   // property read goes through the traps below.
@@ -192,8 +198,12 @@ function qualifiedClient(client: Sql): Sql {
   apply(_target, _thisArg, args) {
     if (Array.isArray(args[0]) && Object.prototype.hasOwnProperty.call(args[0], 'raw')) {
       const strings = args[0] as unknown as TemplateStringsArray
-      const qualified = strings.map(qualifyPlatformSql) as unknown as TemplateStringsArray
-      Object.defineProperty(qualified, 'raw', { value: qualified })
+      let qualified = qualifiedStrings.get(strings)
+      if (!qualified) {
+        qualified = strings.map(qualifyPlatformSql) as unknown as TemplateStringsArray
+        Object.defineProperty(qualified, 'raw', { value: qualified })
+        qualifiedStrings.set(strings, qualified)
+      }
       return (client as unknown as (...a: unknown[]) => unknown)(qualified, ...args.slice(1))
     }
     return (client as unknown as (...a: unknown[]) => unknown)(...args)

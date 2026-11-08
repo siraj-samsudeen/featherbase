@@ -1,5 +1,6 @@
 import { holdManagedSet, managedFieldsOf } from './managed-settings'
 import { sql } from './db'
+import { platformTableExists } from './platform-tables'
 import { tableRelation } from './table-engine'
 import { getMeta } from './meta'
 import { createAssignment } from './assign'
@@ -18,10 +19,9 @@ export async function evaluateAssignmentRules(
   row: Record<string, unknown>,
 ): Promise<void> {
   // The Assignment Rule Table may not exist yet during early migrations.
-  const [tableOk] = await sql`
-    select 1 from information_schema.tables where table_name = 'assignment_rule'`
-  if (!tableOk) return
+  if (!(await platformTableExists('assignment_rule'))) return
 
+  // Not remembered across a run's rows: each assignment moves last_user.
   const rules = await sql`
     select row_id, assign_condition, assign_to_field, last_user, description
     from assignment_rule
