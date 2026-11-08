@@ -66,7 +66,7 @@ export async function prepareVerification(ctx: Context): Promise<void> {
       ctx.row.task_state = 'In progress'
       ctx.row.is_done = false
       ctx.row.return_reason = reason
-      ctx.row.return_count = Number(old.return_count ?? 0) + 1
+      ctx.row.return_count = Number(old.return_count) + 1
     }
   } else if (to === 'Done' && from !== 'Done' && verifier)
     ctx.reject('Submit this task for verification; its verifier closes it')
@@ -79,7 +79,7 @@ export async function prepareVerification(ctx: Context): Promise<void> {
   if (!ctx.isNew && oldDue && nextDue !== oldDue) {
     if (!reason) ctx.reject('Give a reason for moving the due date', { due_date: 'Say why the date moves' })
     ctx.row.original_due_date = old.original_due_date ?? old.due_date
-    ctx.row.extension_count = Number(old.extension_count ?? 0) + 1
+    ctx.row.extension_count = Number(old.extension_count) + 1
     ctx.row.extension_reason = reason
   }
 

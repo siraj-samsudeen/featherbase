@@ -36,12 +36,12 @@ export async function prepareIssue(ctx: Context): Promise<void> {
   for (const [field, empty] of Object.entries(STAMPED)) row[field] = ctx.isNew ? empty : old[field] ?? empty
   const log: Row[] = JSON.parse(String(old.issue_log || '[]'))
   const add = (kind: string, extra: Row = {}) => log.push({ at: ctx.now, kind, by: ctx.user, ...extra })
-  const from = ctx.isNew ? 'Open' : String(old.issue_state ?? 'Open')
+  const from = ctx.isNew ? 'Open' : String(old.issue_state)
   let to = String(row.issue_state ?? 'Open')
   const owner = row.owner ? String(row.owner) : null
   const verifier = row.verifier ? String(row.verifier) : null
   const store = row.store ? await ctx.documents.get('tasker.store', String(row.store)) : null
-  const hours = () => ({ opens: String(row.opens_at || DEFAULT_HOURS.opens), closes: String(row.closes_at || DEFAULT_HOURS.closes) })
+  const hours = () => ({ opens: String(row.opens_at), closes: String(row.closes_at) })
   const clock = () => String(row.clock) as ClockMode
   const recountDeadlines = () => {
     const raised = instant(row.raised_at)
@@ -56,7 +56,7 @@ export async function prepareIssue(ctx: Context): Promise<void> {
     add('raised')
   }
   if (ctx.isNew || row.severity !== old.severity || row.category !== old.category) {
-    const rule = ruleFor(await rules(ctx), String(row.severity), row.category ? String(row.category) : null)
+    const rule = ruleFor(await rules(ctx), String(row.severity), String(row.category))
     Object.assign(row, { clock: rule.clock, respond_minutes: rule.respond_minutes, fix_minutes: rule.fix_minutes,
       opens_at: String(store?.opens_at || DEFAULT_HOURS.opens), closes_at: String(store?.closes_at || DEFAULT_HOURS.closes) })
     recountDeadlines()
@@ -110,12 +110,10 @@ export async function prepareIssue(ctx: Context): Promise<void> {
       Object.assign(row, { submitted_at: null, closed_at: null, verified_by: null })
       to = 'Acknowledged'
       add('reopened', { note: reason })
-    } else if (from === SUBMITTED) ctx.reject('Waiting for the verifier to accept or return this issue')
-    else ctx.reject('Submit this issue for verification first')
+    } else ctx.reject('Submit this issue for verification first')
     if (to !== from && ACTIVE.includes(to) && ACTIVE.includes(from) === false) recountDeadlines()
   }
   row.issue_state = to
-  if (to === 'Acknowledged' && !row.acknowledged_at) row.acknowledged_at = ctx.now
 
   // Waiting for a vendor stops the clock only once the store manager approves.
   if (row.pause_requested && !old.pause_requested) {
@@ -158,7 +156,7 @@ export async function prepareIssue(ctx: Context): Promise<void> {
       level = 2
     }
     if (level === 2) {
-      const rule = ruleFor(await rules(ctx), String(row.severity), row.category ? String(row.category) : null)
+      const rule = ruleFor(await rules(ctx), String(row.severity), String(row.category))
       if (rule.director_after_minutes && now - instant(row.breached_at) >= rule.director_after_minutes * 60_000) {
         if (rule.director) add('director', { to: [String(rule.director)] })
         else { row.missing_contact = true; add('missing', { note: `No director is named for ${String(row.severity)} issues` }) }
