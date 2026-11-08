@@ -384,8 +384,7 @@ export function recordKeyFrom(settings: Record<string, unknown> | null): string 
  *  the method's settings no longer say where, rather than stop checking. */
 export async function recordToName(cfg: DelegatedLoginConfig, identity: string | null): Promise<{ key: string; record: string } | undefined> {
   const [link] = await sql`select subject, linked_by from sign_in_identity where id = ${identity}`
-  if (!link) return undefined
-  if (link.linked_by !== ROSTER_LINK) {
+  if (link?.linked_by !== ROSTER_LINK) {
     let key: string | null
     try {
       key = recordKeyFrom(cfg.method.settings)
@@ -393,7 +392,7 @@ export async function recordToName(cfg: DelegatedLoginConfig, identity: string |
       console.warn(`[delegated-login] ${cfg.label}: a sign-in refused, settings.provider_record_key is malformed`)
       throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
     }
-    return key ? { key, record: String(link.subject) } : undefined
+    return key && link ? { key, record: String(link.subject) } : undefined
   }
   let roster: RosterLink | null = null
   try {
