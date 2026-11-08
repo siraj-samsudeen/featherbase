@@ -11,7 +11,7 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { config } from '../src/config'
 import { parseInstanceAddresses } from '../src/instance-addresses'
-import { ADMIN_PASSWORD_MISMATCH_WARNING, NO_NOTICE_RECIPIENTS_WARNING, preflightRelease, publicationCheckSkipped } from '../src/release-preflight'
+import { ADMIN_PASSWORD_MISMATCH_WARNING, NO_NOTICE_RECIPIENTS_WARNING, assertPublicationsPublishGeneratedColumns, preflightRelease } from '../src/release-preflight'
 import { hashPassword } from '../src/auth'
 import { makePerson } from './fixtures'
 import { withNamedVariable } from '../src/env'
@@ -94,9 +94,8 @@ describe('release preflight', () => {
 
   // CI runs PostgreSQL 18.6 only (#1081), so the version is passed in: an
   // instance on an older server still has its check skipped, and says so.
-  test('before PostgreSQL 18 the publication check is skipped and says so', () => {
-    expect(publicationCheckSkipped(170006)).toBe('publication generated-column check skipped (PostgreSQL before 18)')
-    expect(publicationCheckSkipped(180006)).toBeNull()
+  test('before PostgreSQL 18 the publication check is skipped and says so', async () => {
+    expect(await assertPublicationsPublishGeneratedColumns(170006)).toBe('publication generated-column check skipped (PostgreSQL before 18)')
   })
 
   test('where test mode is allowed, every check passes and says so', async () => {
