@@ -743,6 +743,12 @@ function CaseFile({
     Boolean(detail.details) &&
     (support || ticket.owner === (typeof session.user === 'string' ? session.user : session.user.row_id))
   const [rewording, setRewording] = useState(false)
+  // #1069: support assigns from the header. Picking only asks; Assign saves.
+  const current = ticket.assigned_to ?? '',
+    people = session.people ?? [],
+    me = typeof session.user === 'string' ? session.user : session.user.row_id
+  const [picked, setPicked] = useState(current)
+  useEffect(() => setPicked(current), [current, ticket.updated_at, ticket.row_id])
   const actions = availableActions({
     support,
     rewordable: canReword,
@@ -777,8 +783,27 @@ function CaseFile({
         <h2>{ticket.title}</h2>
         <dl className="ticket-facts">
           <div>
-            <dt>Assigned to</dt>
-            <dd>{assignee(ticket)}</dd>
+            <dt id="assigned-to-label">Assigned to</dt>
+            <dd>
+              {support ? (
+                <select
+                  aria-labelledby="assigned-to-label"
+                  value={picked}
+                  disabled={busy}
+                  onChange={(e) => setPicked(e.target.value)}
+                >
+                  <option value="">Unassigned</option>
+                  {current && !people.some((p) => p.row_id === current) && (
+                    <option value={current}>{person(current)}</option>
+                  )}
+                  {people.map((p) => (
+                    <option key={p.row_id} value={p.row_id}>{p.full_name}</option>
+                  ))}
+                </select>
+              ) : (
+                assignee(ticket)
+              )}
+            </dd>
           </div>
           <div>
             <dt>Raised by</dt>
@@ -789,6 +814,31 @@ function CaseFile({
             <dd>{time(ticket.updated_at)}</dd>
           </div>
         </dl>
+        {support && picked !== current && (
+          <div className="assign-confirm" role="group" aria-label="Confirm the assignee">
+            <span>
+              {picked === ''
+                ? 'Remove the assignee?'
+                : picked === me
+                  ? 'Assign to yourself?'
+                  : `Assign to ${people.find((p) => p.row_id === picked)?.full_name ?? person(picked)} and email them?`}
+            </span>
+            <button
+              type="button"
+              className="primary"
+              disabled={busy}
+              onClick={async () => {
+                // A refused save (someone changed the ticket first) keeps nothing.
+                if (!(await mutate('edit', { assigned_to: picked || null }))) setPicked(current)
+              }}
+            >
+              Assign
+            </button>
+            <button type="button" className="secondary" disabled={busy} onClick={() => setPicked(current)}>
+              Cancel
+            </button>
+          </div>
+        )}
         <TicketActions
           actions={actions}
           choose={(chosen) => {
@@ -897,7 +947,6 @@ function CaseFile({
                                     configuredTypes[kind].fields.some((field) => field.name === key)),
                               ),
                             ),
-                            assigned_to: data.get('assigned_to'),
                             ...(configuredTypes[kind] && data.get('state') && data.get('state') !== ticket.ticket_state
                               ? { state: data.get('state') }
                               : {}),
@@ -935,17 +984,6 @@ function CaseFile({
                               </select>
                             </Label>
                           )}
-                          <Label title="Assign to">
-                            <select name="assigned_to" defaultValue={ticket.assigned_to ?? ''}>
-                              <option value="">Unassigned</option>
-                              {ticket.assigned_to && !(session.people ?? []).some((p) => p.row_id === ticket.assigned_to) && (
-                                <option value={ticket.assigned_to}>{person(ticket.assigned_to)}</option>
-                              )}
-                              {(session.people ?? []).map((p) => (
-                                <option key={p.row_id} value={p.row_id}>{p.full_name}</option>
-                              ))}
-                            </select>
-                          </Label>
                           <Label title="Public progress update">
                             <textarea
                               name="public_update"

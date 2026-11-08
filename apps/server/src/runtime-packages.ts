@@ -79,12 +79,26 @@ const barControl = z.object({
   options: z.string().min(1),
   /** #975: the control stays away from a page whose address carries this key. */
   hiddenWhen: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).optional(),
+  /** #967: address keys this picker's options depend on: its read gets their values as its payload. */
+  dependsOn: z.array(z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)).optional(),
   sets: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/, 'A bar control sets a query-string key: lower case letters, digits and _, starting with a letter'),
 }).strict()
 
 // What a picker's read answers: its options, in order. The value goes into
 // the address, so it is text.
 const barOptions = z.array(z.object({ value: z.string().min(1), label: z.string().min(1) }).strict())
+
+// #1046: an app's own say in who opens it, on top of its entry Table's
+// grants. `gate` names one of its reads, run as the person: only an answer of
+// exactly `true` opens the app, and anything else (a refusal, an error, any
+// other answer) keeps it closed. `approvers` are app roles told about, and
+// shown, the people waiting for access to the app, beside System Managers.
+const accessDeclaration = z.object({
+  gate: z.string().min(1).optional(),
+  approvers: z.array(z.string().min(1)).optional(),
+  /** Where on the app's own pages approvers see who is waiting: a query string, like ?view=access. */
+  page: z.string().regex(/^\?[a-z0-9_=&-]{1,100}$/).optional(),
+}).strict()
 
 const manifestSchema = z.object({
   manifestVersion: z.literal(1),
@@ -115,6 +129,8 @@ const manifestSchema = z.object({
   frameOrigins: z.array(frameOrigin).optional(),
   // #642 (E8): the app's controls in the shared top bar.
   bar: z.array(barControl).optional(),
+  // #1046: the app's own gate check and who approves access to it.
+  access: accessDeclaration.optional(),
   tabs: tabsDeclaration.optional(),
   // #941 (ADR 0019): the app's accent, one of the platform's named set. Any
   // text is accepted here so the app is still found; installing (or upgrading
@@ -363,6 +379,10 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     if (!manifest.server) throw new Error('A scope provider requires a server module')
     // An owned Table the provider reads must carry the mark; another
     // Table's mark is checked on every read.
+    const notDeclared = provider.unmarkedTables?.find(table => !provider.tables.includes(table))
+    if (notDeclared) throw new Error(`A scope provider's unmarked Table ${notDeclared} is not one of the Tables it reads`)
+    const ownUnmarked = provider.unmarkedTables?.find(table => manifest.tables.some(t => t.name === table))
+    if (ownUnmarked) throw new Error(`A scope provider's own Table ${ownUnmarked} must be marked decides_scope`)
     for (const table of provider.tables) {
       const owned = manifest.tables.find(t => t.name === table)
       if (owned && !owned.decides_scope) throw new Error('A scope provider reads only Tables marked decides_scope')
@@ -379,6 +399,10 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     if (barKeys.has(control.sets)) throw new Error(`Two bar controls set ${control.sets}; each sets its own key`)
     barKeys.add(control.sets)
   }
+  if (manifest.access?.gate && !Object.hasOwn(readOperations, manifest.access.gate))
+    throw new Error(`The app's gate is its read ${manifest.access.gate}, which is not one of the app's reads`)
+  const strangers = (manifest.access?.approvers ?? []).filter(role => !(manifest.roles ?? []).includes(role))
+  if (strangers.length) throw new Error(`The app's access approvers must be its own roles: ${strangers.join(', ')}`)
   // #666: an operation needs only secrets the app declares.
   const declaredSecrets = new Set(secretEntries(manifest.secrets).map(entry => entry.name))
   for (const [kind, operations] of [['read', readOperations], ['action', actionOperations]] as const)
@@ -447,7 +471,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     runtime_manifest: { ...manifest, packageName: pkg.name, packageVersion: pkg.version } }
   return { name: manifest.name, title: manifest.title,
     entryTable: manifest.entryTable, clientRoot, root, version: pkg.version, digest, manifest, app,
-    scopeProvider: provider ? { app: manifest.name, title: manifest.title, version: pkg.version, tables: provider.tables, identifiers: provider.identifiers ?? [], provide: providers.get(provider.name)! } : undefined,
+    scopeProvider: provider ? { app: manifest.name, title: manifest.title, version: pkg.version, tables: provider.tables, unmarkedTables: provider.unmarkedTables ?? [], identifiers: provider.identifiers ?? [], provide: providers.get(provider.name)! } : undefined,
     // V1 stays recognizable as an exact upgrade predecessor, never gets a default policy.
     actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations), setup, baseTables: manifest.baseTables } : undefined,
     reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations), setup, datasets: manifest.datasets, baseTables: manifest.baseTables } : undefined }
@@ -831,13 +855,33 @@ export async function appCatalog(user: string) {
     const pkg = packages.get(item.name)
     // Its installation declares pages of its own (#659's classification), and
     // this process holds them to serve.
-    if (item.active && item.ownPages && pkg?.clientRoot && await hasPermission(user, pkg.entryTable, 'read'))
+    if (item.active && item.ownPages && pkg?.clientRoot && await hasPermission(user, pkg.entryTable, 'read') && await passesGate(pkg, user))
       result.push({
         name: pkg.name, title: pkg.title, href: appHref(pkg.name),
         ...(pkg.manifest.tabs && { tabs: appTabLinks(appHref(pkg.name), pkg.manifest.tabs.items) }),
       })
   }
   return result
+}
+
+/** #1046: the app's own gate check, as `user`, failing closed: only an
+ *  answer of exactly `true` passes. An app without one passes. */
+async function passesGate(pkg: RuntimePackage, user: string): Promise<boolean> {
+  const gate = pkg.manifest.access?.gate
+  if (!gate) return true
+  try {
+    const answer = await withAppIdentity(pkg.name, pkg.version, () => runPackageRead(pkg.name, gate, { payload: {} }, user)) as { result?: unknown }
+    return answer?.result === true
+  } catch {
+    return false
+  }
+}
+
+/** #1046: the roles an app names as approving access to it, and the page of
+ *  its own where they see who is waiting. */
+export function accessApprovers(name: string): { roles: readonly string[]; page?: string } {
+  const access = packages.get(name)?.manifest.access
+  return { roles: access?.approvers ?? [], ...(access?.page ? { page: `${appHref(name)}${access.page}` } : {}) }
 }
 
 /** #1008: the installed apps this person can't open, and the roles that would
@@ -859,7 +903,7 @@ export async function closedApps(user: string) {
  *  options: the answer of the app's own read, run for `user` under their own
  *  scope, as the serving version (the platform draws the bar, not the app's
  *  client, so there is no client version to name). */
-export async function appBar(name: string, user: string) {
+export async function appBar(name: string, user: string, address: Readonly<Record<string, string>> = {}) {
   // The bar is drawn on the app's own pages: the same gate as serving them.
   // The request holds no lifecycle lock (index.ts), so the check takes its
   // own; each read below takes it again only while it authorizes.
@@ -869,10 +913,11 @@ export async function appBar(name: string, user: string) {
     return packages.get(name)!
   })
   const controls = []
-  for (const { picker, options, sets, hiddenWhen } of pkg.manifest.bar ?? []) {
+  for (const { picker, options, sets, hiddenWhen, dependsOn } of pkg.manifest.bar ?? []) {
+    const payload = Object.fromEntries((dependsOn ?? []).filter(key => address[key]).map(key => [key, address[key]]))
     let result: unknown
     try {
-      ({ result } = await withAppIdentity(name, pkg.version, () => runPackageRead(name, options, { payload: {} }, user)) as { result: unknown })
+      ({ result } = await withAppIdentity(name, pkg.version, () => runPackageRead(name, options, { payload }, user)) as { result: unknown })
     } catch (error) {
       // A person the read refuses (no role for it, no places) has nothing to
       // choose; the read has already logged the refusal.
@@ -882,7 +927,7 @@ export async function appBar(name: string, user: string) {
     const parsed = barOptions.safeParse(result)
     if (!parsed.success)
       throw new AppError('InternalError', `App ${name}'s read ${options} answered options the bar cannot show: it must answer a list of { value, label }, both text`)
-    controls.push({ picker, sets, options: parsed.data, ...(hiddenWhen ? { hiddenWhen } : {}) })
+    controls.push({ picker, sets, options: parsed.data, ...(hiddenWhen ? { hiddenWhen } : {}), ...(dependsOn ? { dependsOn } : {}) })
   }
   return { controls }
 }

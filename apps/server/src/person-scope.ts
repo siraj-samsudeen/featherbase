@@ -15,6 +15,8 @@ export interface ScopeProviderBinding {
   /** The provider app's installed version, verified against its artifact. */
   version: string
   tables: readonly string[]
+  /** #967: of `tables`, those read without the `decides_scope` mark. */
+  unmarkedTables?: readonly string[]
   /** #660: the identifier systems whose current values the provider gets. */
   identifiers: readonly string[]
   provide: AppScopeProvider
@@ -103,7 +105,7 @@ async function currentIdentifiers(user: string, systems: readonly string[]): Pro
 
 // The provider reads as the platform, not as the person (a manager needs no
 // grant on the roster), so its reach is the declaration: only the Tables it
-// named, and only those marked as deciding scope. Reads are awaited one at a
+// named, and only those marked as deciding scope or named as read unmarked. Reads are awaited one at a
 // time and end when the provider returns; any failure fails the whole scope.
 async function withScopeReads<T>(binding: ScopeProviderBinding, fn: (documents: AppScopeProviderContext['documents']) => Promise<T>): Promise<T> {
   let open = true
@@ -114,7 +116,8 @@ async function withScopeReads<T>(binding: ScopeProviderBinding, fn: (documents: 
     const run = (async () => {
       if (!binding.tables.includes(table)) throw new Error('Scope provider read an undeclared Table')
       const meta = await getMeta(table)
-      if (!meta.decides_scope || meta.system || meta.data_source || meta.kind !== 'table') throw new Error('Scope provider read a Table not marked as deciding scope')
+      const allowedUnmarked = binding.unmarkedTables?.includes(table) && !meta.owner_app
+      if ((!meta.decides_scope && !allowedUnmarked) || meta.system || meta.data_source || meta.kind !== 'table') throw new Error('Scope provider read a Table not marked as deciding scope')
       // A row read loads its Sub-table rows, from a Table never declared or
       // marked; refused, as action documents refuse them.
       if (meta.columns.some((column) => column.column_type === 'Sub-table')) throw new Error('Scope provider read a Table with Sub-tables')

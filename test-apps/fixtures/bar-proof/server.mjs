@@ -18,4 +18,17 @@ export const reads = {
     await hooks.wait()
     return [{ value: 'N1', label: 'North' }]
   },
+  by_report({ payload }) {
+    return payload.report === 'none' ? [] : [{ value: payload.report, label: JSON.stringify(payload) }]
+  },
+  prepared_outbound: Object.assign(async function preparedOutbound({ prepared, documents }) {
+    let own_read = 'allowed'
+    try { await documents.list('barproof.note', { fields: ['body'] }) } catch { own_read = 'refused' }
+    return [{ value: prepared[0], label: own_read }]
+  }, {
+    // #967: an outbound read's first step, in the transaction.
+    async prepare({ documents }) {
+      return (await documents.list('barproof.note', { fields: ['body'] })).map(row => row.body)
+    },
+  }),
 }
