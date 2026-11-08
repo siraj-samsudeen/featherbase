@@ -73,7 +73,7 @@ for (const f of files.sort()) {
 // that silently omits executable files; type declarations and pure re-export
 // barrels have no Istanbul counters and are identified by syntax, not names.
 const missing = fs.readdirSync(src, { recursive: true })
-  .filter((file) => /\.tsx?$/.test(file) && !/\.d\.ts$|\.test\.tsx?$/.test(file))
+  .filter((file) => /\.tsx?$/.test(file) && !/\.d\.ts$|\.test\.tsx?$|\.stories\.tsx?$/.test(file))
   .map((file) => path.join(src, file))
   .filter((file) => !merged.files().includes(file))
   .filter((file) => {
