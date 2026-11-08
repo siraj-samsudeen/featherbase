@@ -2,7 +2,8 @@
 // and the grid are React-side; creating the table goes through the real
 // in-process server, so what lands is checked against its metadata.
 
-import { screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
+import { tableSlug } from 'shared'
 import userEvent from '@testing-library/user-event'
 import { describe } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
@@ -151,5 +152,113 @@ describe('Choose how each new row gets its id', () => {
     await screen.findByTestId('list-view', undefined, { timeout: 10_000 })
     expect(await admin.get(`/api/table/${encodeURIComponent('Tb Plant')}:meta`)).toMatchObject({ id_pattern: 'PLANT-{plant_code}' })
     expect(await admin.post('/api/save_row', { table: 'Tb Plant', row: { plant_code: '8151' } })).toMatchObject({ row_id: 'PLANT-8151' })
+  })
+})
+
+// Moved down from e2e/table-builder.spec.ts (#1080).
+describe('Build a table in the grid and use it at once', () => {
+  const here = (r: { router: unknown }) =>
+    (r.router as { state: { location: { pathname: string } } }).state.location.pathname
+
+  test('UI-011: create a Table with 5 fields from the Admin; list+form work immediately', async ({ admin }) => {
+    const user = userEvent.setup()
+    const T = 'Builder Widget'
+    const app = await renderApp('/featherbase/admin', admin)
+    await user.click(await screen.findByTestId('new-table-link', {}, { timeout: 8000 }))
+    await screen.findByTestId('table-builder', {}, { timeout: 8000 })
+    await user.type(screen.getByTestId('dt-name'), T)
+
+    // NAM-002: the row id is column one, locked above the editable rows.
+    const first = screen.getByTestId('dt-fields').querySelector('tbody tr')!
+    expect(first).toHaveAttribute('data-testid', 'dt-row-id')
+    expect(first).not.toHaveAttribute('data-columnrow')
+
+    const defs = [
+      ['title', 'Title', 'Data', '', true, true],
+      ['count', 'Count', 'Int', '', false, true],
+      ['active', 'Active', 'Check', '', false, false],
+      ['stage', 'Stage', 'Choice', 'New, Done', false, true],
+      ['notes', 'Notes', 'Text', '', false, false],
+    ] as const
+    for (const [i, [name, label, type, target, reqd, list]] of defs.entries()) {
+      if (i > 0) await user.click(screen.getByTestId('dt-add-field'))
+      const row = gridRows()[i]
+      fireEvent.change(cell(row, 'column_name'), { target: { value: name } })
+      fireEvent.change(cell(row, 'label'), { target: { value: label } })
+      await user.selectOptions(cell(row, 'column_type') as HTMLSelectElement, type)
+      if (target) fireEvent.change(cell(gridRows()[i], 'target'), { target: { value: target } })
+      const box = (f: string) => cell(gridRows()[i], f) as HTMLInputElement
+      if (box('reqd').checked !== reqd) await user.click(box('reqd'))
+      if (box('in_list_view').checked !== list) await user.click(box('in_list_view'))
+    }
+    await user.click(screen.getByTestId('dt-create'))
+
+    // Lands on the new Table's empty list.
+    await screen.findByTestId('list-view', {}, { timeout: 10_000 })
+    expect(here(app)).toBe(`/featherbase/admin/table/${tableSlug(T)}`)
+    expect(await screen.findByTestId('col-title')).toHaveTextContent('Title')
+
+    // #80: the Table appears on its module's home page without a reload.
+    await user.click(await screen.findByTestId('home-page-link-custom', {}, { timeout: 8000 }))
+    await waitFor(() => expect(screen.getByTestId('home-page-title')).toHaveTextContent(/^Custom$/), { timeout: 8000 })
+    await user.click(await screen.findByTestId(`home-link-${T}`))
+    await screen.findByTestId('list-view', {}, { timeout: 8000 })
+    expect(here(app)).toBe(`/featherbase/admin/table/${tableSlug(T)}`)
+
+    // The form works at once.
+    await user.click(screen.getByTestId('list-new'))
+    await screen.findByTestId('form-view', {}, { timeout: 8000 })
+    const title = await waitFor(() => document.querySelector<HTMLInputElement>('[data-field=title]')!)
+    fireEvent.change(title, { target: { value: 'first doc' } })
+    await user.selectOptions(document.querySelector<HTMLSelectElement>('select[data-field=stage]')!, 'Done')
+    await user.click(screen.getByTestId('form-save'))
+    await waitFor(() => expect(screen.getByTestId('form-status')).toHaveTextContent('Saved'), { timeout: 8000 })
+
+    cleanup()
+    await renderApp(`/featherbase/admin/table/${tableSlug(T)}`, admin)
+    await waitFor(() => expect(screen.getByTestId('list-rows')).toHaveTextContent('first doc'), { timeout: 8000 })
+
+    // The metadata is real; #74: a real module, and never a system table.
+    const meta = await admin.get<{ module: string; system: boolean; columns: { column_name: string }[] }>(
+      `/api/table/${encodeURIComponent(T)}:meta`,
+    )
+    expect(meta.columns.map((c) => c.column_name)).toEqual(expect.arrayContaining(['title', 'count', 'active', 'stage', 'notes']))
+    expect(meta.module).toBe('Custom')
+    expect(meta.system).toBe(false)
+  })
+
+  // #128: the payload drops blank-named rows, so the server's `columns.0` is
+  // the SECOND row on screen. A blank row above a bad column is the witness.
+  test('#128: a blank row above a bad column does not shift the blame', async ({ admin }) => {
+    const user = userEvent.setup()
+    await renderApp('/featherbase/admin/new-table', admin)
+    await screen.findByTestId('table-builder', {}, { timeout: 8000 })
+    await user.type(screen.getByTestId('dt-name'), 'Offset Probe')
+    await user.click(screen.getByTestId('dt-add-field'))
+    fireEvent.change(cell(gridRows()[1], 'column_name'), { target: { value: 'Bad Name' } })
+    fireEvent.change(cell(gridRows()[1], 'label'), { target: { value: 'Price' } })
+    await user.click(screen.getByTestId('dt-create'))
+
+    // The banner names the column, announces itself, and leaks no index path.
+    const banner = await screen.findByTestId('dt-error', {}, { timeout: 8000 })
+    expect(banner).toHaveAttribute('role', 'alert')
+    expect(banner).toHaveTextContent('Price')
+    expect(banner).toHaveTextContent('snake_case')
+    expect(banner).not.toHaveTextContent('columns.0')
+    expect(banner).not.toHaveTextContent('columns.1')
+
+    // The mark lands on row 1, never the blank row 0; the input is described by it and holds focus.
+    await waitFor(() => expect(screen.getByTestId('dt-col-error-1')).toBeInTheDocument())
+    expect(screen.queryByTestId('dt-col-error-0')).not.toBeInTheDocument()
+    const bad = cell(gridRows()[1], 'column_name')
+    expect(bad).toHaveAttribute('aria-invalid', 'true')
+    expect(bad).toHaveAttribute('aria-describedby', 'dt-col-error-1')
+    await waitFor(() => expect(bad).toHaveFocus())
+    expect(cell(gridRows()[0], 'column_name')).not.toHaveAttribute('aria-invalid', 'true')
+
+    // The accusation dies with the correction, not at the next submit.
+    fireEvent.change(bad, { target: { value: 'price' } })
+    await waitFor(() => expect(screen.queryByTestId('dt-col-error-1')).not.toBeInTheDocument())
+    expect(screen.queryByTestId('dt-error')).not.toBeInTheDocument()
   })
 })

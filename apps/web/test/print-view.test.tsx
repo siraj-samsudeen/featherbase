@@ -125,3 +125,50 @@ test('PRN-002: choosing Standard prints the layout made from the Table, not a fo
   expect(await screen.findByTestId('print-auto-layout')).toHaveTextContent('Stark Industries')
   expect(screen.queryByTestId('tpl-invoice')).toBeNull()
 })
+
+// PRN-001, moved down from e2e/print-view.spec.ts (#1080): reached from the
+// form's Print action, the print view shows labels, values and child tables,
+// with none of the app's chrome.
+test('PRN-001: print view shows labels, values, and child tables with no chrome', async ({ admin }) => {
+  const user = userEvent.setup()
+  await admin.post('/api/table_def', {
+    name: 'Pv Item',
+    kind: 'sub_table',
+    columns: [
+      { column_name: 'product', column_type: 'Data' },
+      { column_name: 'qty', column_type: 'Int' },
+    ],
+  })
+  await admin.post('/api/table_def', {
+    name: 'Pv Lined',
+    id_pattern: 'prompt',
+    columns: [
+      { column_name: 'customer', column_type: 'Data', label: 'Customer' },
+      { column_name: 'lines', column_type: 'Sub-table', row_table: 'Pv Item', label: 'Lines' },
+    ],
+  })
+  await admin.post('/api/save_row', {
+    table: 'Pv Lined',
+    row: { row_id: 'prn-doc', customer: 'Wayne Enterprises', lines: [{ product: 'Widget', qty: 3 }, { product: 'Gadget', qty: 7 }] },
+  })
+  const app = await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug('Pv Lined'))}/row/prn-doc`, admin)
+  await user.click(await screen.findByRole('button', { name: 'Record actions' }, { timeout: 8000 }))
+  await user.click(await screen.findByTestId('form-print'))
+  await waitFor(() =>
+    expect((app.router as { state: { location: { pathname: string } } }).state.location.pathname)
+      .toBe(`/featherbase/print/${tableSlug('Pv Lined')}/prn-doc`),
+  )
+
+  await screen.findByTestId('print-view', {}, { timeout: 8000 })
+  expect(screen.queryByTestId('awesomebar')).toBeNull()
+  expect(screen.queryByTestId('table-nav')).toBeNull()
+  expect(screen.queryByTestId('top-bar')).toBeNull()
+  expect(screen.queryByTestId('admin-sidebar')).toBeNull()
+  expect(screen.getByTestId('print-docname')).toHaveTextContent('prn-doc')
+  expect(screen.getByTestId('print-field-customer')).toHaveTextContent('Customer')
+  expect(screen.getByTestId('print-field-customer')).toHaveTextContent('Wayne Enterprises')
+  const lines = await screen.findByTestId('print-table-lines')
+  expect(screen.getAllByTestId('print-table-row')).toHaveLength(2)
+  expect(lines).toHaveTextContent('Widget')
+  expect(lines).toHaveTextContent('Gadget')
+})
