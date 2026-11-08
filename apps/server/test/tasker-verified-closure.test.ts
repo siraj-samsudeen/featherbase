@@ -128,3 +128,37 @@ test('a task without a verifier is marked Done as before', async ({ createUser }
   const task = await save(ravi, { task_title: 'Check the generator', project: project.row_id })
   expect(await change(ravi, task, { is_done: true })).toMatchObject({ task_state: 'Done', is_done: true, verified_by: null })
 })
+
+test('undoing Done on a verified task starts the work over in progress', async ({ createUser }) => {
+  const { meena, ravi, task } = await assignedAndVerified(createUser)
+  const submitted = await change(ravi, task, { task_state: SUBMITTED, evidence_note: 'Replaced both tube lights' })
+  const accepted = await change(meena, submitted, { task_state: 'Done' })
+  expect(await change(meena, accepted, { is_done: false })).toMatchObject({ task_state: 'In progress', is_done: false, verified_by: null, verified_at: null })
+})
+
+test('only a Tasker member can verify a task', async ({ createUser }) => {
+  const { meena, project } = await team(createUser)
+  const outsider = await createUser({ roles: [] })
+  await expect(save(meena, { task_title: 'Count the cold room', project: project.row_id, verifier: outsider.user }))
+    .rejects.toThrow('Choose a Tasker member to verify this task')
+})
+
+test('a task without a verifier can’t be submitted for verification', async ({ createUser }) => {
+  const { ravi, project } = await team(createUser)
+  const task = await save(ravi, { task_title: 'Check the generator', project: project.row_id })
+  await expect(change(ravi, task, { task_state: SUBMITTED, evidence_note: 'Generator runs' })).rejects.toThrow('Choose a verifier before submitting this task')
+})
+
+test('the person who submitted a task can’t make themselves its verifier and accept it', async ({ createUser }) => {
+  const { meena, project, ids } = await team(createUser)
+  const task = await save(meena, { task_title: 'Count the cold room', project: project.row_id, verifier: ids.ravi })
+  const submitted = await change(meena, task, { task_state: SUBMITTED, evidence_note: 'Counted 42 crates' })
+  await expect(change(meena, submitted, { task_state: 'Done', verifier: ids.meena })).rejects.toThrow('Nobody verifies a task they submitted')
+})
+
+test('editing a cancelled task keeps its reason', async ({ createUser }) => {
+  const { meena, project } = await team(createUser)
+  const task = await save(meena, { task_title: 'Dropped supplier visit', project: project.row_id })
+  const cancelled = await change(meena, task, { task_state: 'Cancelled', change_reason: 'Supplier closed for Diwali' })
+  expect(await change(meena, cancelled, { task_title: 'Dropped supplier visit (Diwali)' })).toMatchObject({ task_state: 'Cancelled', cancel_reason: 'Supplier closed for Diwali' })
+})
