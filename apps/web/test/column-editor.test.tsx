@@ -6,8 +6,8 @@
 // This is the component layer, not e2e, because everything here is what
 // docs/TESTING.md puts on layer 2: rendering from metadata, form-interaction
 // logic, and what did or did not reach the server. The browser adds nothing
-// to any of it. `e2e/column-editor.spec.ts` keeps the part a browser does
-// add — arriving from the Table's own list view, and the route.
+// to any of it. Arriving from the Table's own list view came down from the
+// e2e spec too (#1080); only its phone-width layout checks wait for a layout test.
 //
 // The server is the real in-process one against the sandboxed database, so
 // a rename here performs the real DDL and the assertion that the rows came
@@ -323,4 +323,42 @@ test('a refused title shows why, and the stored choice stays selected', async ({
   } finally {
     globalThis.fetch = bridged
   }
+})
+
+// Moved from e2e/column-editor.spec.ts (#1080): the editor is reached from
+// the Table's own list.
+test("the Table's list opens its column editor from Table administration", async ({ admin }) => {
+  const user = userEvent.setup()
+  await seed(admin)
+  const { router } = await renderApp(`/featherbase/admin/table/${tableSlug(DT)}`, admin)
+  await user.click(await screen.findByRole('button', { name: 'Table administration' }, { timeout: 8000 }))
+  await user.click(await screen.findByRole('link', { name: 'Edit columns' }))
+  expect(await screen.findByTestId('column-editor')).toBeInTheDocument()
+  expect(await screen.findByTestId('ce-row-glor')).toBeInTheDocument()
+  expect(router.state.location.pathname).toBe(`/featherbase/admin/table/${tableSlug(DT)}/columns`)
+})
+
+// Moved from e2e/column-editor.spec.ts (#1080): a list of another Table, read
+// once with the raw ids, shows the new title after moving within the app.
+test("a title chosen here replaces the id in another Table's list already read", async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Ce Title Zone', id_pattern: 'field:zone_code', columns: [
+    { column_name: 'zone_code', label: 'Zone code', column_type: 'Data', in_list_view: true },
+    { column_name: 'zone_name', label: 'Zone name', column_type: 'Data', in_list_view: true },
+  ] })
+  await admin.post('/api/save_row', { table: 'Ce Title Zone', row: { zone_code: 'VLM', zone_name: 'Vellayambalam' } })
+  await admin.post('/api/table_def', { name: 'Ce Title Store', columns: [
+    { column_name: 'store_name', column_type: 'Data', in_list_view: true },
+    { column_name: 'zone', column_type: 'Reference', reference_table: 'Ce Title Zone', in_list_view: true },
+  ] })
+  await admin.post('/api/save_row', { table: 'Ce Title Store', row: { store_name: 'East', zone: 'VLM' } })
+  const user = userEvent.setup()
+  const { router } = await renderApp(`/featherbase/admin/table/${tableSlug('Ce Title Store')}`, admin)
+  await waitFor(() => expect(screen.getByTestId('cell-zone')).toHaveTextContent('VLM'), { timeout: 8000 })
+
+  await router.navigate({ to: `/featherbase/admin/table/${tableSlug('Ce Title Zone')}/columns` })
+  await user.click(await screen.findByTestId('ce-title-zone_name', undefined, { timeout: 8000 }))
+  expect(await screen.findByTestId('ce-saved')).toHaveTextContent('Zone name is now the title')
+
+  await router.navigate({ to: `/featherbase/admin/table/${tableSlug('Ce Title Store')}` })
+  await waitFor(() => expect(screen.getByTestId('cell-zone')).toHaveTextContent('Vellayambalam'), { timeout: 8000 })
 })
