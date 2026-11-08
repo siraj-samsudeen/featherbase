@@ -231,3 +231,14 @@ test('Board: with two choice columns the user picks which one the board follows'
   await waitFor(() => expect(within(screen.getByTestId('kanban-column-High')).getByText('Deal One')).toBeInTheDocument())
   expect(screen.queryByTestId('kanban-column-Open')).not.toBeInTheDocument()
 })
+
+// Moved from e2e/kanban.spec.ts (#1080): the Board is reached from the list.
+test('Board: the list\'s view menu opens the Board', async ({ admin }) => {
+  await seedBoard(admin)
+  const { router } = await renderApp(`/featherbase/admin/table/${tableSlug(BOARD)}`, admin)
+  fireEvent.click(await screen.findByRole('button', { name: 'View: List' }))
+  fireEvent.click(await screen.findByTestId('open-kanban'))
+  await screen.findByTestId('kanban-view')
+  await waitFor(() => expect(within(screen.getByTestId('kanban-column-Open')).getAllByTestId('kanban-card')).toHaveLength(2))
+  expect((router.state as { location: { pathname: string } }).location.pathname).toBe(`/featherbase/admin/table/${tableSlug(BOARD)}/view/kanban`)
+})
