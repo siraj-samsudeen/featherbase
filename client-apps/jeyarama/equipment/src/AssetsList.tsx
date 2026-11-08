@@ -38,11 +38,11 @@ export function AssetsList() {
               <td>{nameOf(types.data, asset.asset_type, 'type_name')}</td>
               <td>{placePath(asset.place, places.data ?? [])}</td>
               <td>{asset.warranty_until ? fmtDate(asset.warranty_until.slice(0, 10)) : '—'}</td>
-              <td className="assets-flags">
+              <td><div className="assets-flags">
                 {openAssets.has(asset.row_id) && <span className="assets-flag" data-flag="job">Open job</span>}
                 {warranty === 'soon' && <span className="assets-flag" data-flag="soon">Warranty ends soon</span>}
                 {warranty === 'ended' && <span className="assets-flag" data-flag="ended">Warranty ended</span>}
-              </td>
+              </div></td>
             </tr>
           })}
         </tbody>
