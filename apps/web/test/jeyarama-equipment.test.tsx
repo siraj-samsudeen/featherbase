@@ -54,7 +54,7 @@ test('store staff report a fault from the asset page and see it as an open job',
   const { voltas } = await register(manager)
   renderAssets(staff, ['Assets Member'], `#asset=${voltas.row_id}`)
   expect(await screen.findByRole('heading', { name: 'Voltas 2-ton split AC' })).toBeInTheDocument()
-  expect(await screen.findByText(`${voltas.row_id} · ATK 1501 › Billing area`)).toBeInTheDocument()
+  expect(await screen.findByText('ATK 1501 › Billing area', { selector: '.asset-sub' })).toBeInTheDocument()
   expect(screen.getByText('Warranty until 12-Mar-2027')).toBeInTheDocument()
   const user = userEvent.setup()
   const report = screen.getByRole('region', { name: 'Report a fault' })
@@ -121,6 +121,38 @@ test('the assets list shows each place’s assets with an open job or a warranty
   await waitFor(() => expect(row('Voltas 2-ton split AC')).toHaveTextContent('Open job'))
   expect(row('Billing PC, till 3')).toHaveTextContent('Warranty ends soon')
   expect(within(table).getByRole('link', { name: 'Voltas 2-ton split AC' })).toHaveAttribute('href', `#asset=${voltas.row_id}`)
+})
+
+// ATK tagging plan item 1: the tag is the JRA- number stuck on the asset; the internal ID stays hidden.
+test('the assets list shows each asset by its JRA tag, says when one still needs a tag, and finds it by tag', async ({ createUser }) => {
+  await install()
+  const manager = assetsClient(await createUser({ roles: ['Assets Manager'] }))
+  const { voltas, till } = await register(manager)
+  await manager.post('/api/save_row', { table: 'equipment.asset', row: { row_id: voltas.row_id, updated_at: voltas.updated_at, tag_no: 'JRA-000501' } })
+  renderAssets(manager, ['Assets Manager'], '#assets')
+  const table = await screen.findByRole('table', { name: 'Assets' })
+  const row = (name: string) => within(table).getByRole('link', { name }).closest('tr')!
+  await waitFor(() => expect(within(row('Voltas 2-ton split AC')).getAllByRole('cell')[0]).toHaveTextContent(/^JRA-000501$/))
+  expect(within(row('Billing PC, till 3')).getAllByRole('cell')[0]).toHaveTextContent(/^Needs a tag$/)
+  expect(table).not.toHaveTextContent(voltas.row_id)
+  expect(table).not.toHaveTextContent(till.row_id)
+  await userEvent.setup().type(screen.getByRole('searchbox', { name: 'Search' }), 'jra-000501')
+  await waitFor(() => expect(within(table).queryByRole('link', { name: 'Billing PC, till 3' })).not.toBeInTheDocument())
+  expect(within(table).getByRole('link', { name: 'Voltas 2-ton split AC' })).toBeInTheDocument()
+})
+
+test('the asset page heads a tagged asset with its tag and an untagged one with its place only', async ({ createUser }) => {
+  await install()
+  const manager = assetsClient(await createUser({ roles: ['Assets Manager'] }))
+  const { voltas, till } = await register(manager)
+  await manager.post('/api/save_row', { table: 'equipment.asset', row: { row_id: voltas.row_id, updated_at: voltas.updated_at, tag_no: 'JRA-000501' } })
+  const tagged = renderAssets(manager, ['Assets Manager'], `#asset=${voltas.row_id}`)
+  expect(await screen.findByText('JRA-000501 · ATK 1501 › Billing area')).toBeInTheDocument()
+  tagged.unmount()
+  renderAssets(manager, ['Assets Manager'], `#asset=${till.row_id}`)
+  await screen.findByRole('heading', { name: 'Billing PC, till 3' })
+  expect(await screen.findByText('ATK 1501', { selector: '.asset-sub' })).toBeInTheDocument()
+  expect(document.body).not.toHaveTextContent(till.row_id)
 })
 
 test('the asset page shows its SAP numbers read-only, its four states and who owns and holds it', async ({ createUser }) => {
