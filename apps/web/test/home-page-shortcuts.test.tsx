@@ -1,7 +1,7 @@
 // A Home Page's legacy shortcuts of the report and address kinds, a Home Page
 // or Dashboard address that names nothing, and the Activity feed's way back
 // to "My activity" and to the page an item names. Gaps the merged web coverage report (ADR 0012) showed —
-// e2e/home-page.spec.ts drives the table and dashboard kinds only. A listing
+// home-page-journeys.test.tsx drives the table and dashboard kinds. A listing
 // the server fails to answer is a real failure: a table renamed away in the
 // test's transaction.
 import { screen, waitFor, within } from '@testing-library/react'
