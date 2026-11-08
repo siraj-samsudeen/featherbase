@@ -3,7 +3,7 @@
 // run that cannot be opened, a note saved by leaving the box rather than
 // pressing Enter, the camera button opening the picker, and a photo the
 // server refuses. Each refusal is a real server answer.
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { File as NodeFile } from 'node:buffer'
 import { afterEach, vi } from 'vitest'
@@ -182,7 +182,9 @@ test('multiple photos remain attached to their own checklist item', async ({ adm
 })
 
 // Moved from e2e/checklist.spec.ts (#1080): a camera upload of a real PNG
-// shows the thumbnail the server made, and tapping it opens the photo.
+// shows its thumbnail, and tapping it opens the photo. Making the thumbnail
+// needs the server's headless browser (apps/server/test/thumbnails.test.ts),
+// so the stored preview is written directly and the run opened again.
 test('a photo_proof item takes a camera upload and shows its thumbnail', async ({ admin }) => {
   const run = await seedRun(admin)
   await openRun(admin, run)
@@ -197,8 +199,13 @@ test('a photo_proof item takes a camera upload and shows its thumbnail', async (
   await waitFor(() => expect(screen.getAllByTestId('checklist-photo-thumb')).toHaveLength(1), { timeout: 20_000 })
   const [file] = await sql<{ file_url: string }[]>`select file_url from file where file_name = 'fast-mover.png'`
   try {
+    const preview = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ=='
+    await sql`update file set thumbnail_url = ${preview} where file_name = 'fast-mover.png'`
+    cleanup()
+    await openRun(admin, run)
+    await waitFor(() => expect(screen.getAllByTestId('checklist-photo-thumb')).toHaveLength(1), { timeout: 20_000 })
     const thumb = screen.getByTestId('checklist-photo-thumb')
-    expect(within(thumb).getByRole('img', { name: 'fast-mover.png' }).getAttribute('src')).toMatch(/^data:image\/jpeg;base64,/)
+    expect(within(thumb).getByRole('img', { name: 'fast-mover.png' }).getAttribute('src')).toBe(preview)
     await userEvent.click(thumb)
     const viewer = await screen.findByRole('dialog', { name: 'Photo viewer' })
     expect(await within(viewer).findByRole('img', { name: 'Checklist photo' })).toHaveAttribute(
