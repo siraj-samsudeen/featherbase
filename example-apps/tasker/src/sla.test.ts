@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_RULES, clockMinutes, deadlineAfter, issueClock, ruleFor } from './sla'
+import { DEFAULT_RULES, clockMinutes, deadlineAfter, duration, issueClock, ruleFor } from './sla'
 
 // Instants are written in IST (+05:30), the platform's display zone.
 const at = (ist: string) => Date.parse(`${ist}+05:30`)
@@ -13,6 +13,10 @@ describe('minutes on the clock', () => {
   it('counts only store hours, skipping the night', () => {
     expect(clockMinutes(at('2026-11-07T21:00'), at('2026-11-08T10:00'), 'Store hours', STORE)).toBe(120)
     expect(clockMinutes(at('2026-11-07T23:00'), at('2026-11-08T08:00'), 'Store hours', STORE)).toBe(0)
+  })
+
+  it('counts the default store hours, 09:00 to 22:00, when none are given', () => {
+    expect(clockMinutes(at('2026-11-07T08:00'), at('2026-11-07T23:00'), 'Store hours')).toBe(780)
   })
 
   it('handles a shift that crosses midnight', () => {
@@ -30,6 +34,15 @@ describe('deadlines', () => {
     expect(deadlineAfter(at('2026-11-07T21:00'), 120, 'Store hours', STORE)).toBe(at('2026-11-08T10:00'))
     expect(deadlineAfter(at('2026-11-07T23:30'), 60, 'Store hours', STORE)).toBe(at('2026-11-08T10:00'))
   })
+
+  it('carries store-hours time over the night with the default hours when none are given', () => {
+    expect(deadlineAfter(at('2026-11-07T21:00'), 120, 'Store hours')).toBe(at('2026-11-08T10:00'))
+  })
+
+  it('refuses a store-hours deadline when the store hours cannot be read', () => {
+    expect(() => deadlineAfter(at('2026-11-07T21:00'), 60, 'Store hours', { opens: 'morning', closes: 'night' }))
+      .toThrow('No store hours to count this clock')
+  })
 })
 
 describe('SLA rules', () => {
@@ -37,6 +50,10 @@ describe('SLA rules', () => {
     const rules = [{ severity: 'High', category: 'Cash shortage', respond_minutes: 15, fix_minutes: 120, clock: 'Round the clock' as const }]
     expect(ruleFor(rules, 'High', 'Cash shortage')).toMatchObject({ fix_minutes: 120, clock: 'Round the clock' })
     expect(ruleFor(rules, 'High', 'Equipment failure')).toMatchObject(DEFAULT_RULES.High)
+  })
+
+  it('falls back to the Medium default for a severity it does not know', () => {
+    expect(ruleFor([], 'Urgent', null)).toBe(DEFAULT_RULES.Medium)
   })
 
   it('has the proposed defaults', () => {
@@ -58,7 +75,22 @@ describe('an issue’s clock', () => {
     expect(issueClock({ ...issue, submitted_at: new Date(at('2026-11-07T11:00')).toISOString() }, at('2026-11-07T17:30'))).toMatchObject({ onClock: 60 })
   })
 
+  it('runs on the default store hours with nothing paused when the issue gives neither', () => {
+    const bare = { raised_at: issue.raised_at, fix_minutes: 600, clock: 'Store hours' as const }
+    expect(issueClock(bare, at('2026-11-07T23:00'))).toMatchObject({ elapsed: 780, onClock: 720, left: -120, breached: true })
+  })
+
   it('is breached past its fix time, counting overnight in store hours', () => {
     expect(issueClock(issue, at('2026-11-08T10:00'))).toMatchObject({ elapsed: 1440, onClock: 780, left: -180, breached: true })
+  })
+})
+
+describe('durations', () => {
+  it('shows hours and minutes under a day', () => {
+    expect(duration(90)).toBe('1h 30m')
+  })
+
+  it('shows whole hours without minutes', () => {
+    expect(duration(120)).toBe('2h')
   })
 })
