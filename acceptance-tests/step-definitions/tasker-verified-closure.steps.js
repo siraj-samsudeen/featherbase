@@ -139,8 +139,9 @@ Then('it is on {member}\'s "To verify" page', async function (who) {
   await page.expectToVerify(this.tasker.current.task_title);
 });
 
-When('{member} accepts it', async function (who) {
-  const page = await taskerAs(this, who);
+// Only Meena verifies in Tasker's scenarios; Assets has its own "Suresh accepts it".
+When('Meena accepts it', async function () {
+  const page = await taskerAs(this, 'Meena');
   await page.openToVerify();
   await page.openFromToVerify(this.tasker.current.task_title);
   await page.acceptVerification();
