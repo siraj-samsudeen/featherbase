@@ -597,7 +597,7 @@ describe('the rule is configuration', () => {
       environments: Record<string, { settings: { 'Sign In Method'?: { row_id: string }[] } }>
     }
     const stylehr = file.settings['Sign In Method'].find((m) => m.row_id === 'stylehr')
-    expect(stylehr).toMatchObject({ kind: 'delegated_password', enabled: true, new_person: 'create_if_on_roster' })
+    expect(stylehr).toMatchObject({ kind: 'delegated_password', enabled: true, new_person: 'create_if_on_roster', settings: { provider_record_key: 'employee_id' } })
     for (const section of Object.values(file.environments))
       expect((section.settings['Sign In Method'] ?? []).some((m) => m.row_id === 'stylehr')).toBe(false)
     await applyInstanceSettings({ settings: { 'Sign In Method': [stylehr!] } }, { by: 'Administrator' })

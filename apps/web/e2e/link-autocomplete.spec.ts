@@ -51,14 +51,21 @@ test('UI-006: link autocomplete filters, selects, persists, and offers create-ne
     await expect(page.locator('[data-field=customer]')).toHaveValue('Globex Ltd')
   })
 
-  // Create-new is offered from the dropdown and navigates to a blank form
-  await session.step('a no-match query offers create-new, landing on a blank form', async ({ page }) => {
+  // Create-new is offered from the dropdown and opens a blank form in a new
+  // tab, so what was typed on this form stays (#1033).
+  await session.step('a no-match query offers create-new in a new tab, keeping the form', async ({ page }) => {
+    await page.locator('[data-field=title]').fill('typed before create-new')
     await page.locator('[data-field=customer]').fill('zzz-no-match')
     await expect(page.getByTestId('link-options-customer')).toContainText('No matches')
-    await page.getByTestId('link-create-new').click()
-    await expect(page).toHaveURL(
+    const [tab] = await Promise.all([
+      page.context().waitForEvent('page'),
+      page.getByTestId('link-create-new').click(),
+    ])
+    await expect(tab).toHaveURL(
       new RegExp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(CUST))}/new`.replace(/[.*+?^${}()|[\]\\]/g, (m) => `\\${m}`)),
     )
-    await expect(page.getByTestId('form-status')).toContainText('New document')
+    await expect(tab.getByTestId('form-status')).toContainText('New document')
+    await tab.close()
+    await expect(page.locator('[data-field=title]')).toHaveValue('typed before create-new')
   })
 })

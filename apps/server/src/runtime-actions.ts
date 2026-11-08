@@ -1,19 +1,21 @@
-import { enabledPeople, ownDisplayName, principalNames, tableMembers } from './people-directory'
+import { randomUUID } from 'node:crypto'
+import { enabledPeople, namesForApp, ownDisplayName, tableMembers } from './people-directory'
 import { z } from 'zod'
 import type { ActionRow, AppAuthorizationContext, RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, RuntimeReadHandler } from 'shared'
 import { inAppTransaction, sql } from './db'
 import { appOperation, assertAppAvailable, assertStillServing, servingIdentity } from './app-lifecycle'
 import { canonicalJson, recordAppAccessRefusal, withAppAuthorization, type DeclaredAppOperation } from './app-access'
 import { AppError } from './errors'
-import { assertSystemManager, getRoles } from './permissions'
+import { PLATFORM_ROLES, assertSystemManager, getRoles } from './permissions'
 import { getMeta } from './meta'
 import { tableRelation } from './table-engine'
 import { assertUserPermissions, deleteDoc, getDoc, saveDoc } from './document'
 import { holdBeforeRowLock } from './row-lock-order'
 import { documentActivity, retainedDocumentCounts } from './document-activity'
 import { getList } from './query'
+import { logActivity } from './audit'
 import { assertNoSecret, readyAppSetup, withSecretsKept, type AppSetup, type ReadySetup } from './app-settings'
-import { callerMail } from './runtime-mail'
+import { callerMail, readsRow } from './runtime-mail'
 import { appDatasets, recordPlaceDrops, type DatasetDeclaration, type DropProvenance, type DropVersions, type PlaceDrop } from './app-datasets'
 import { baseTablesReader, proposalsReader, proposalsWriter, type BaseTablesDeclaration } from './change-proposals'
 
@@ -50,11 +52,32 @@ export function linkedTables(settings: Readonly<Record<string, string>>): string
   } catch { return [] }
 }
 
-/** #912: names of people, read as the caller (the Person permission applies). */
-function callerPeople(user: string): RuntimeActionContext['people'] {
+/** #912: names of people, read as the caller (the Person permission applies),
+ *  except people the app's own settings name (#1097). */
+function callerPeople(user: string, app: string, settings: Readonly<Record<string, string>>): RuntimeActionContext['people'] {
   return Object.freeze({
-    names: (ids: string[]) => principalNames(ids, user),
+    names: (ids: string[]) => namesForApp(ids, user, settings),
     enabled: (ids: string[]) => enabledPeople(ids, user),
+    // #1046: an app that gives things to roles says why someone has one.
+    rolesOf: async (person: string) => {
+      if (typeof person !== 'string' || !person) return Object.freeze([])
+      const [live] = await sql`select 1 from person where row_id = ${person} and enabled and replaced_by is null and not coalesce(built_in, false)`
+      return Object.freeze(live ? [...new Set(await getRoles(person))].filter((role) => role !== 'All').sort() : [])
+    },
+    roleNames: async () => Object.freeze((await sql`select row_id from role where row_id not in ${sql(PLATFORM_ROLES)} order by row_id`).map((r) => String(r.row_id))),
+    waitingForAccess: async () => {
+      const roles = await getRoles(user)
+      // Imported when called: runtime-packages imports this module, and a static
+      // import back would run it before apps.ts has defined what it needs.
+      const [{ accessApprovers }, { settleAccessRequests }] = await Promise.all([import('./runtime-packages'), import('./waiting-for-access')])
+      if (!roles.includes('System Manager') && !accessApprovers(app).roles.some((role) => roles.includes(role))) return Object.freeze([])
+      await settleAccessRequests()
+      // Their name, so an approver who can't read people still sees who is waiting; a name that is still an address isn't shown.
+      const rows = await sql`select r.person, r.created_at, p.full_name from access_request r left join person p on p.row_id = r.person
+        where r.app_name = ${app} order by r.created_at, r.person`
+      return Object.freeze(rows.map((r) => ({ person: String(r.person), name: r.full_name && !String(r.full_name).includes('@') ? String(r.full_name) : null,
+        asked_at: new Date(r.created_at as string).toISOString() })))
+    },
   })
 }
 
@@ -157,6 +180,36 @@ export function callerDocuments(app: string, allowed: string[], user: string, li
       await locked(table, id)
       await sql`update ${sql(await tableRelation(table))} set created_by = ${person}, updated_by = ${user}, updated_at = now() where ${sql(meta.row_key)} = ${id}`
     }),
+    // #925: whether setReaders names the caller as a reader of this row, and
+    // the row still reads for them. Never fails the handler.
+    isReader: (table, id) => operation(async () => {
+      await metaFor(table)
+      const [shared] = await sql`select 1 from share where share_table = ${table} and share_name = ${id} and person = ${user}
+        and read and not coalesce(write, false) and not coalesce(share, false) limit 1`
+      return !!shared && readsRow(user, table, id)
+    }),
+    // #925: the people who read one row of the app's own Table besides those
+    // its grants already let read it: read-only shares, replaced as a set.
+    // The caller must read the row; a person who is not enabled is left out.
+    setReaders: (table, id, people) => operation(async () => {
+      const meta = await metaFor(table, false, true)
+      if (meta.owner_app !== app) reject('Actions may set readers only on their owned rows')
+      if (!Array.isArray(people) || people.some(person => typeof person !== 'string' || !person)) reject('Readers are a list of Person IDs')
+      await locked(table, id)
+      const asked = [...new Set(people)]
+      const wanted = asked.length ? (await sql`select row_id from person where row_id in ${sql(asked)}
+        and enabled and replaced_by is null and not coalesce(built_in, false)`).map(row => String(row.row_id)) : []
+      const held = await sql`select row_id, person from share where share_table = ${table} and share_name = ${id}
+        and person is not null and read and not coalesce(write, false) and not coalesce(share, false)`
+      const gone = held.filter(row => !wanted.includes(String(row.person)))
+      const added = wanted.filter(person => !held.some(row => String(row.person) === person))
+      if (gone.length) await sql`delete from share where row_id in ${sql(gone.map(row => String(row.row_id)))}`
+      for (const person of added)
+        await sql`insert into share (row_id, share_table, share_name, person, read, write, share, created_by, updated_by)
+          values (${randomUUID()}, ${table}, ${id}, ${person}, true, false, false, ${user}, ${user})`
+      if (gone.length || added.length)
+        await logActivity(user, `row_readers_set ${table} ${id}: +${added.length} -${gone.length}`.slice(0, 140))
+    }),
     delete: (table, id, updatedAt) => operation(async () => {
       if ((await metaFor(table, false, true)).owner_app !== app) reject('Actions may delete only their owned rows')
       await locked(table, id)
@@ -209,7 +262,7 @@ export function executeRuntimeAction(app: string, name: string, input: unknown, 
       // Serialized inside the guard (Codex round 2 on #670): a getter on the
       // result is the app's code running, and may log or throw a secret.
       const json = await withSecretsKept(kept, async () => {
-        try { return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), roles: await callerRoles(user), people: callerPeople(user), payload: normalized, authorization, settings, secrets, mail: callerMail(app, contribution.tables), documents: context.documents, baseTables: base.helper, changeProposals: proposals.helper, reject }))) }
+        try { return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), roles: await callerRoles(user), people: callerPeople(user, app, settings), payload: normalized, authorization, settings, secrets, mail: callerMail(app, contribution.tables), documents: context.documents, baseTables: base.helper, changeProposals: proposals.helper, reject }))) }
         finally { await context.close(); await base.close(); await proposals.close() }
       })
       assertNoSecret(kept, JSON.parse(json))
@@ -244,13 +297,20 @@ export async function executeRuntimeRead(app: string, name: string, input: unkno
       // handler runs once this transaction AND the request's lifecycle lock
       // have been released, so it holds no row lock, no transaction and no
       // lifecycle connection while it calls out.
-      if (outbound) return { outbound: { handler, contribution, frozen: { authorization, payload, setup, provenance }, identity: await servingIdentity(app) } }
-      const context = callerDocuments(app, contribution.tables, user, linkedTables(setup.settings))
-      const { get, list, activity } = context.documents
-      const base = baseTablesReader(app, contribution.baseTables, linkedTables(setup.settings))
-      const proposals = proposalsReader(app, user, contribution.entryTable)
-      return await runRead(app, name, user, handler, contribution, { authorization, payload, setup, provenance },
-        Object.freeze({ get, list, activity }), async () => { await context.close(); await base.close(); await proposals.close() }, undefined, base.helper, proposals.helper)
+      const inTransaction = async (step: RuntimeReadHandler) => {
+        const context = callerDocuments(app, contribution.tables, user, linkedTables(setup.settings))
+        const { get, list, activity, isReader } = context.documents
+        const base = baseTablesReader(app, contribution.baseTables, linkedTables(setup.settings))
+        const proposals = proposalsReader(app, user, contribution.entryTable)
+        return runRead(app, name, user, step, contribution, { authorization, payload, setup, provenance },
+          Object.freeze({ get, list, activity, isReader }), async () => { await context.close(); await base.close(); await proposals.close() }, undefined, base.helper, proposals.helper)
+      }
+      if (outbound) {
+        // #967: the one chance to read documents before the transaction closes.
+        const prepared = handler.prepare ? (await inTransaction(handler.prepare)).answer.result : undefined
+        return { outbound: { handler, contribution, frozen: { authorization, payload, setup, provenance, prepared }, identity: await servingIdentity(app) } }
+      }
+      return await inTransaction(handler)
     })
   })
   // #667: drops are recorded once the read's transaction has committed, on
@@ -285,11 +345,11 @@ interface Outbound {
 function closedDocuments(): never {
   throw new AppError('ValidationError', 'This read is outbound and its transaction has closed: read documents in a read that is not outbound')
 }
-const CLOSED_DOCUMENTS: RuntimeReadContext['documents'] = Object.freeze({ get: closedDocuments, list: closedDocuments, activity: closedDocuments })
+const CLOSED_DOCUMENTS: RuntimeReadContext['documents'] = Object.freeze({ get: closedDocuments, list: closedDocuments, activity: closedDocuments, isReader: closedDocuments })
 const CLOSED_BASE_TABLES: RuntimeReadContext['baseTables'] = Object.freeze({ list: closedDocuments })
 const CLOSED_PROPOSALS: RuntimeReadContext['changeProposals'] = Object.freeze({ list: closedDocuments, mayDecide: closedDocuments, routeFor: closedDocuments })
 
-interface Frozen { authorization: AppAuthorizationContext; payload: unknown; setup: ReadySetup; provenance?: DropProvenance }
+interface Frozen { authorization: AppAuthorizationContext; payload: unknown; setup: ReadySetup; provenance?: DropProvenance; prepared?: unknown }
 
 // The app's installed version and the scope provider that answered, as they
 // are while the read is authorized. No provider means no drop to name.
@@ -301,7 +361,7 @@ async function dropVersions(app: string, scopeProvider: (() => Promise<{ app: st
 }
 
 async function runRead(app: string, name: string, user: string, handler: RuntimeReadHandler, contribution: DeclaredOperations<RuntimeReadHandler>,
-  { authorization, payload, setup, provenance }: Frozen,
+  { authorization, payload, setup, provenance, prepared }: Frozen,
   documents: RuntimeReadContext['documents'], close: () => Promise<void>, deferWrite?: (write: () => Promise<void>) => void,
   baseTables: RuntimeReadContext['baseTables'] = CLOSED_BASE_TABLES, changeProposals: RuntimeReadContext['changeProposals'] = CLOSED_PROPOSALS) {
   const { title, settings, secrets, kept } = setup
@@ -309,7 +369,7 @@ async function runRead(app: string, name: string, user: string, handler: Runtime
     places: authorization.places, outbound: !inAppTransaction(), deferWrite, provenance })
   const json = await withSecretsKept(kept, async () => {
     try {
-      return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), roles: await callerRoles(user), people: callerPeople(user), payload, authorization, settings, secrets, reject, documents, baseTables, changeProposals, datasets, recordView })))
+      return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), roles: await callerRoles(user), people: callerPeople(user, app, settings), payload, prepared, authorization, settings, secrets, reject, documents, baseTables, changeProposals, datasets, recordView })))
     } finally { await close() }
   })
   assertNoSecret(kept, JSON.parse(json))
