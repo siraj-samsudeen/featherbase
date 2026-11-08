@@ -11,6 +11,7 @@ import { test, expect } from './pg-test'
 import { taskerClient } from '../../server/test/tasker-client'
 import { afterEach, vi } from 'vitest'
 import { deleteStored } from 'server/src/storage'
+import { getDoc, saveDoc } from 'server/src/document'
 import { pickedFile, useNodeMultipart } from './node-multipart'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -168,6 +169,25 @@ test('the assignee attaches a photo when submitting, and the task shows it as ev
     // Database rows roll back; uploaded disk objects do not.
     if (photo.startsWith('/private/files/')) await deleteStored(photo)
   }
+})
+
+test('a photo that can’t be uploaded says why, and the task is not submitted', async ({ createUser }) => {
+  const { meena, ravi, task } = await team(createUser)
+  await acknowledge(ravi, task)
+  await useNodeMultipart()
+  renderTasker(ravi)
+  const user = userEvent.setup()
+  const detail = await openTask(user)
+  await startSubmitting(detail, user)
+  await user.type(within(detail).getByRole('textbox', { name: 'What was done' }), 'Replaced both tube lights')
+  fireEvent.change(within(detail).getByLabelText('Evidence photo'), { target: { files: [pickedFile('counter-lights.jpg', 'jpeg bytes', 'image/jpeg')] } })
+  // Ravi is taken out of Tasker while his page is open.
+  const person = await getDoc('Person', ravi.user!, 'Administrator')
+  await saveDoc('Person', { ...person, roles: (person.roles as { role: string }[]).filter(entry => entry.role !== 'Tasker Member') }, 'Administrator')
+  await user.click(within(detail).getByRole('button', { name: 'Submit' }))
+  expect(await within(detail).findByRole('alert')).toHaveTextContent('permission')
+  expect(within(detail).getByRole('textbox', { name: 'What was done' })).toHaveValue('Replaced both tube lights')
+  expect((await read(meena, task)).task_state).toBe('Not started')
 })
 
 test('Not yet closes the submit form and leaves the task unsubmitted', async ({ createUser }) => {
