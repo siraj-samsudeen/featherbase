@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { vi } from 'vitest'
+import { afterEach, vi } from 'vitest'
 import { installApp, isInstalled, uninstallApp } from 'server/src/apps'
 import { discoverPackages } from 'server/src/runtime-packages'
 import { getDoc, saveDoc } from 'server/src/document'
@@ -13,6 +13,10 @@ import { TaskManagementPage } from '../../../example-apps/tasker/src/TaskManagem
 import { setSession } from '../src/lib/api'
 import { test, expect } from './pg-test'
 import { taskerClient } from '../../server/test/tasker-client'
+import { deleteStored } from 'server/src/storage'
+import { pickedFile, useNodeMultipart } from './node-multipart'
+
+afterEach(() => vi.unstubAllGlobals())
 
 type Row = { row_id: string; updated_at: string; [field: string]: unknown }
 const ISSUE = 'tasker.issue'
@@ -464,6 +468,30 @@ test('pressing Enter on an empty corrective task adds nothing', async ({ createU
   expect(within(within(detail).getByRole('list', { name: 'Corrective tasks' })).queryAllByRole('listitem')).toEqual([])
   expect(within(detail).queryByRole('alert')).not.toBeInTheDocument()
   expect((await meena.get<{ data: Row[] }>('/api/table/tasker.task')).data).toEqual([])
+})
+
+test('a member raises an issue with a photo, and its details show the photo', async ({ createUser }) => {
+  const { suresh } = await team(createUser)
+  await useNodeMultipart()
+  const user = await openIssues(suresh)
+  await user.click(await screen.findByRole('button', { name: 'Raise an issue' }))
+  const form = await screen.findByRole('form', { name: 'Raise an issue' })
+  await user.type(within(form).getByRole('textbox', { name: 'What happened' }), 'Dairy chiller 2 at 9°C')
+  fireEvent.change(within(form).getByLabelText('Issue photo'), { target: { files: [pickedFile('chiller-display.jpg', 'jpeg bytes', 'image/jpeg')] } })
+  await user.click(within(form).getByRole('button', { name: 'Raise issue' }))
+  let photo = ''
+  try {
+    await waitFor(async () => {
+      const [saved] = (await suresh.get<{ data: Row[] }>(`/api/table/${ISSUE}?fields=["row_id","photo"]`)).data
+      photo = String(saved?.photo ?? '')
+      expect(saved).toMatchObject({ photo: expect.stringMatching(/^\/private\/files\//) })
+    })
+    await user.click(await within(await screen.findByRole('list', { name: 'Open issues' })).findByRole('link', { name: 'Dairy chiller 2 at 9°C' }))
+    expect(within(await screen.findByRole('region', { name: 'Issue detail' })).getByRole('img', { name: 'Issue photo' })).toHaveAttribute('src', photo)
+  } finally {
+    // Database rows roll back; uploaded disk objects do not.
+    if (photo.startsWith('/private/files/')) await deleteStored(photo)
+  }
 })
 
 test('Never mind closes the raise form without raising anything', async ({ createUser }) => {

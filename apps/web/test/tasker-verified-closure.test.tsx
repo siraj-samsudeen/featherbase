@@ -9,6 +9,11 @@ import { TaskManagementPage } from '../../../example-apps/tasker/src/TaskManagem
 import { setSession } from '../src/lib/api'
 import { test, expect } from './pg-test'
 import { taskerClient } from '../../server/test/tasker-client'
+import { afterEach, vi } from 'vitest'
+import { deleteStored } from 'server/src/storage'
+import { pickedFile, useNodeMultipart } from './node-multipart'
+
+afterEach(() => vi.unstubAllGlobals())
 
 type Row = { row_id: string; updated_at: string; [field: string]: unknown }
 const SUBMITTED = 'Submitted for verification'
@@ -139,6 +144,31 @@ async function startSubmitting(detail: HTMLElement, user: ReturnType<typeof user
   await waitFor(() => expect(submitForVerification).toBeEnabled())
   await user.click(submitForVerification)
 }
+
+test('the assignee attaches a photo when submitting, and the task shows it as evidence', async ({ createUser }) => {
+  const { ravi, task } = await team(createUser)
+  await acknowledge(ravi, task)
+  await useNodeMultipart()
+  renderTasker(ravi)
+  const user = userEvent.setup()
+  const detail = await openTask(user)
+  await startSubmitting(detail, user)
+  await user.type(within(detail).getByRole('textbox', { name: 'What was done' }), 'Replaced both tube lights')
+  fireEvent.change(within(detail).getByLabelText('Evidence photo'), { target: { files: [pickedFile('counter-lights.jpg', 'jpeg bytes', 'image/jpeg')] } })
+  await user.click(within(detail).getByRole('button', { name: 'Submit' }))
+  let photo = ''
+  try {
+    await waitFor(async () => {
+      const saved = await read(ravi, task)
+      photo = String(saved.evidence_photo ?? '')
+      expect(saved).toMatchObject({ task_state: SUBMITTED, evidence_photo: expect.stringMatching(/^\/private\/files\//) })
+    })
+    expect(await within(detail).findByRole('img', { name: 'Evidence photo' })).toHaveAttribute('src', photo)
+  } finally {
+    // Database rows roll back; uploaded disk objects do not.
+    if (photo.startsWith('/private/files/')) await deleteStored(photo)
+  }
+})
 
 test('Not yet closes the submit form and leaves the task unsubmitted', async ({ createUser }) => {
   const { ravi, task } = await team(createUser)
