@@ -1,6 +1,6 @@
 // #741 item 3: the Recent strip above a Table's list offers only rows that
 // still exist. A deleted row's chip led to an error page.
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { tableSlug } from 'shared'
 import { recordAction } from '../src/lib/recents'
 import { test, expect, renderApp } from './pg-test'
@@ -41,4 +41,24 @@ test('#741 with every remembered row deleted, no Recent strip shows', async ({ a
   // Give the existence check time to answer before asserting absence.
   await new Promise((r) => setTimeout(r, 1500))
   expect(screen.queryByTestId('recent-strip-row')).toBeNull()
+})
+
+test('#959 a retired row leaves the Recent strip until Show retired is on', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: TABLE, title_column: 'bin_name', columns: [
+    { column_name: 'bin_name', column_type: 'Data' },
+  ] })
+  const kept = await admin.post<{ row_id: string }>(`/api/table/${encodeURIComponent(TABLE)}`, { bin_name: 'Kept bin' })
+  const old = await admin.post<{ row_id: string }>(`/api/table/${encodeURIComponent(TABLE)}`, { bin_name: 'Retired bin' })
+  remember(kept.row_id, Date.now() - 2000)
+  remember(old.row_id, Date.now() - 1000)
+  await admin.post(`/api/table/${encodeURIComponent(TABLE)}/${old.row_id}:retire`, { reason: 'Not used' })
+
+  await renderApp(path, admin)
+  await waitFor(() => expect(screen.getByTestId('recent-strip-row')).toHaveTextContent('Kept bin'))
+  expect(screen.getAllByTestId('recent-strip-row')).toHaveLength(1)
+  expect(screen.getByTestId('recent-strip')).not.toHaveTextContent('Retired bin')
+
+  fireEvent.click(screen.getByTestId('list-show-retired-toggle'))
+  await waitFor(() => expect(screen.getAllByTestId('recent-strip-row')).toHaveLength(2))
+  expect(screen.getByTestId('recent-strip')).toHaveTextContent('Retired bin')
 })

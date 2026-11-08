@@ -3,6 +3,7 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { getMeta, type TableMeta } from './meta'
 import { getRoles } from './permissions'
+import { readOnce } from './permission-reads'
 import { tableRelation } from './table-engine'
 import { ROW_ATTACHED_TABLES } from './row-readers'
 import { linkBase } from './views'
@@ -22,7 +23,7 @@ export async function tableAccessPolicy(table: string): Promise<AccessPolicy | u
   // Permission probes also name unavailable or absent Tables. Read only the
   // persisted ceiling here; metadata loading applies app availability later.
   // to_jsonb also works while older bootstrap migrations precede this column.
-  const [row] = await sql`select to_jsonb(d)->'access_policy' as policy from table_def d where name = ${await policyHolder(table)}`
+  const [row] = await readOnce(JSON.stringify(['access policy', table]), async () => sql`select to_jsonb(d)->'access_policy' as policy from table_def d where name = ${await policyHolder(table)}`)
   return row?.policy == null ? undefined : accessPolicySchema.parse(row.policy)
 }
 

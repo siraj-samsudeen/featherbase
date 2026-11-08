@@ -18,6 +18,15 @@ export function assertNotSystemWritten(
     )
 }
 
+/** #1041: an archived Table's refusal says so wherever it surfaces. An app's
+ *  operation answers every other PermissionError with one generic sentence;
+ *  this is not about who is asking, so it passes through in plain words. */
+export class ArchivedTableError extends AppError {
+  constructor(table: string, action: string) {
+    super('PermissionError', `${table} is archived; its rows cannot be ${action}. A System Manager can un-archive it.`)
+  }
+}
+
 /** The gate on every row write: never a system-written Table's, and (#905)
  *  never an archived Table's, whoever asks, until a System Manager
  *  un-archives it. Its columns, name and deletion are not row writes: they
@@ -33,7 +42,7 @@ export function assertRowsWritable(
       `${meta.name} is a view of ${meta.view_of}; it holds no rows of its own, so nothing can be ${action} through it. ${action === 'created' || action === 'imported' ? `Add it to ${meta.view_of} instead.` : `Open the ${meta.view_of} row instead.`}`)
   assertNotSystemWritten(meta, action)
   if (meta.archived_at)
-    throw new AppError('PermissionError', `${meta.name} is archived; its rows cannot be ${action}. A System Manager can un-archive it.`)
+    throw new ArchivedTableError(meta.name, action)
 }
 
 // #432: configuration that acts on another Table (a Server Script, Metadata

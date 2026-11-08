@@ -1,4 +1,4 @@
-import { AppError } from '../errors'
+import { permissionRefusal } from '../refusals'
 import { ROW_KEY, getBacklinks, getMeta } from '../meta'
 import { getDoc } from '../document'
 import { countDocs, type Filter } from '../query'
@@ -45,7 +45,7 @@ registerCollectionAction('backlinks', {
     // #1021: a view's rows are its base's, and so are the links to them.
     const table = await storedTable(name)
     if ((await permissionScope(user.row_id, table, 'read')) === 'none')
-      throw new AppError('PermissionError', `No read permission on ${name} for ${user.row_id}`)
+      throw await permissionRefusal(user.row_id, name, 'read')
     const backlinks = []
     for (const bl of await getBacklinks(table))
       if ((await permissionScope(user.row_id, bl.table, 'read')) !== 'none') backlinks.push(bl)

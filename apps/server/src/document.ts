@@ -4,11 +4,13 @@ import { DEFAULT_ID_PATTERN, idFromColumn, namingColumn, tableSchemaToZod, zodFi
 import { assertMandatoryAccess, hasMandatoryRowAccess } from './mandatory-access'
 import { sql } from './db'
 import { AppError } from './errors'
+import { refusalSubject, tableWords } from './refusals'
 import { sessionMayAddWayIn } from './session-context'
 import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
 import { mayPurge } from './purge'
 import { RETIRE_INSTEAD, assertNothingRetained, repointRowActivity, retainedActivityCounts, retainedDocumentCounts } from './document-activity'
+import { rowLabel } from './row-titles'
 import { allowedTables, anyTableLinkHolder, linkableTable, repointAnyTableLinks } from './any-table-link'
 import { EVERYONE_ROLES_FIELD, checkEveryoneRoles, parseEveryoneRoles } from './everyone-roles'
 import { ROW_KEY, defaultValueFor, getMeta, physicalRowKey, type TableMeta } from './meta'
@@ -24,7 +26,7 @@ import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { FULL_READER, ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, childColumns, readerFor, restrictRow, seesEveryColumn } from './row-readers'
 import { assertRowsWritable } from './system-written'
-import { assertNotView, linkBase, linkTargetNames, rowsInView } from './views'
+import { assertNotView, linkTargetNames, rowsInView } from './views'
 import { scopedWhere } from './query'
 import { assertManagedUnchanged, assertNoManagedReference, assertRowNotManaged, holdManagedSet } from './managed-settings'
 import { assertSecurityWriter, isSecurityTable, securityRefusal } from './security-tables'
@@ -419,13 +421,7 @@ export async function assertUserPermissions(
 ) {
   await assertMandatoryAccess(user, meta, { created_by: user, ...row })
   if (await isPrivileged(user)) return
-  const map = await getScopeMap(user)
-  if (!map.size) return
-  const linkFields = meta.columns
-    .filter((f) => f.column_type === 'Reference')
-    // #1021: a link to a view holds its base's rows, scoped as such.
-    .map((f) => ({ column_name: f.column_name, reference_table: linkBase(f) }))
-  checkUserPermissions(user, meta.name, linkFields, row, map)
+  checkUserPermissions(user, meta, row, await getScopeMap(user))
 }
 
 // PERM-007: a child row is only as readable as the row it hangs on. A grant
@@ -460,24 +456,24 @@ async function assertAttachedRowReadable(table: string, row: RowValues, user: st
   const refTable = row.ref_table ? String(row.ref_table) : ''
   const refName = row.ref_name ? String(row.ref_name) : ''
   if (!refTable || !refName) return
-  const refused = () => new AppError('PermissionError', `No read permission on this ${table} row for ${user}`)
+  const refused = async () => new AppError('PermissionError', `${refusalSubject(user)} have read permission on the row this ${await tableWords(table)} is on.`)
   // A comment or file may sit on a comment, edit or file that is itself on a
   // plain row, one level deep (assertAttachedTarget); a deeper chain, which
   // only a direct write could leave, is refused rather than followed, so it
   // can never loop. The list leaves rows on such Tables out (the row's own
   // activity shows them).
-  if (ROW_ATTACHED_TABLES.has(refTable) && (await attachedToAttached(refTable, refName))) throw refused()
+  if (ROW_ATTACHED_TABLES.has(refTable) && (await attachedToAttached(refTable, refName))) throw await refused()
   const refMeta = await getMeta(refTable).catch(() => null)
-  if (!refMeta) throw refused()
+  if (!refMeta) throw await refused()
   let target: RowValues
   try {
     target = await getDoc(refTable, refName, user)
   } catch (err) {
-    if (err instanceof AppError) throw refused()
+    if (err instanceof AppError) throw await refused()
     throw err
   }
   if (SENSITIVE_HISTORY_TABLES.has(table) && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta, String(target.created_by))))
-    throw refused()
+    throw await refused()
 }
 
 // Whether a comment, edit or file is itself on another comment, edit or file.
@@ -1658,23 +1654,25 @@ async function deleteDocImpl(
     // open that row, as only they may read it (#342, #609).
     if (ROW_ATTACHED_TABLES.has(meta.name)) await assertAttachedRowReadable(meta.name, existing as RowValues, user)
     await assertRowNotManaged(stx, meta, name, user)
+    // #959: the refusals below name each row as this caller reads it.
+    const label = () => rowLabel(user, table, name)
     if (revoking) {
       // Nothing held back and nothing removed: see revokeGrant.
     } else if (meta.owner_app) {
       if (!opts.expectUpdatedAt || !Number.isFinite(Date.parse(opts.expectUpdatedAt))
         || new Date(existing.updated_at as string).getTime() !== Date.parse(opts.expectUpdatedAt))
         throw new AppError('ConflictError', `${table} ${name} has been modified after you loaded it; supply its current updated_at`)
-      assertNothingRetained(table, name, await retainedDocumentCounts(stx, table, name), true)
+      await assertNothingRetained(await retainedDocumentCounts(stx, table, name), true, label)
     } else {
       // #321: a plain row keeps its comments, history, attachments and shares
       // by refusing the delete while it has any (links are checked below).
-      assertNothingRetained(table, name, await retainedActivityCounts(stx, table, name), true)
+      await assertNothingRetained(await retainedActivityCounts(stx, table, name), true, label)
     }
     if (!revoking) await tx`delete from version where ref_table = ${table} and ref_name = ${name} and data->>'created' = 'true'`
     if ((existing.submission_status as string) === 'submitted')
       throw new AppError(
         'ValidationError',
-        `${table} ${name} is submitted and cannot be deleted (cancel it first)`,
+        `${await label()} is submitted and cannot be deleted (cancel it first)`,
       )
 
     // Any Reference column in any Table pointing at this table blocks deletion.
@@ -1696,11 +1694,11 @@ async function deleteDocImpl(
         where ${tx(lf.column_name as string)} = ${name} limit 1`
       if (ref) {
         const holder = parentMeta.kind === 'sub_table'
-          ? `${ref.parenttype as string} ${ref.parent as string}`
-          : `${parentTable} ${ref[parentKey] as string}`
+          ? await rowLabel(user, ref.parenttype as string, ref.parent as string)
+          : await rowLabel(user, parentTable, ref[parentKey] as string)
         throw new AppError(
           'ValidationError',
-          `Cannot delete ${table} ${name}: it is linked from ${holder}. ${RETIRE_INSTEAD}`,
+          `Cannot delete ${await label()}: it is linked from ${holder}. ${RETIRE_INSTEAD}`,
           { retire: 'available' },
         )
       }
@@ -1710,7 +1708,7 @@ async function deleteDocImpl(
     if (anyHolder)
       throw new AppError(
         'ValidationError',
-        `Cannot delete ${table} ${name}: it is linked from ${anyHolder}. ${RETIRE_INSTEAD}`,
+        `Cannot delete ${await label()}: it is linked from ${await rowLabel(user, anyHolder.table, anyHolder.row_id)}. ${RETIRE_INSTEAD}`,
         { retire: 'available' },
       )
 
@@ -1787,7 +1785,7 @@ async function deleteBoundDoc(
     if (ref)
       throw new AppError(
         'ValidationError',
-        `Cannot delete ${meta.name} ${name}: it is linked from ${parentTable} ${ref[parentKey] as string}`,
+        `Cannot delete ${await rowLabel(user, meta.name, name)}: it is linked from ${await rowLabel(user, parentTable, ref[parentKey] as string)}`,
       )
   }
   const hctx: HookContext = {
@@ -1799,7 +1797,7 @@ async function deleteBoundDoc(
   }
   // #321: a connected row's comments, history, attachments and shares live
   // here; the delete is refused while it has any, as for a stored row.
-  assertNothingRetained(meta.name, name, await retainedActivityCounts(sql, meta.name, name))
+  await assertNothingRetained(await retainedActivityCounts(sql, meta.name, name), false, () => rowLabel(user, meta.name, name))
   await runHooks('on_trash', hctx)
   const outcome = await ctx.driver
     .remove(ctx.bind, name, expectUpdatedAt)

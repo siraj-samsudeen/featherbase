@@ -17,7 +17,7 @@ Searching SHALL only match rows the user can open, including any limit to
 rows they created or to a chosen set of rows. It SHALL never match rows from
 a Table whose data lives in a connected outside database, nor from a Table
 of an app that is turned off, awaiting activation of an upgrade, or upgraded
-since the user's page loaded. Such an app SHALL NOT stop search from
+since the user's page loaded, nor from an archived Table. Such an app SHALL NOT stop search from
 answering with matches from every other Table.
 
 #### Scenario: Search stays within the user's own rows
@@ -52,6 +52,11 @@ answering with matches from every other Table.
   is open, and the user searches before reloading
 - **THEN** matches from every other Table appear, and the app's rows appear
   again once the page is reloaded
+
+#### Scenario: Search leaves out an archived table
+
+- **WHEN** a search matches a row of an archived table
+- **THEN** that row does not appear, nor does the table's own definition, and they appear again once the table is un-archived
 
 ### Requirement: Search shows a handful of best matches, not everything
 

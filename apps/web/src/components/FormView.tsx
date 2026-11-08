@@ -1,8 +1,9 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink, useBlocker, useNavigate } from '@tanstack/react-router'
 import { choiceLabel, idFromColumn, tableHref, namingColumn, INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, rowDisplayTitle, tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
+import { NOT_A_LOGIN } from '../lib/not-a-login'
 import { pickerFor } from '../lib/pickers'
 import { changeOverride, overrideControl } from '../lib/metadata-override-editor'
 import { principalLabel, usePrincipalName, isOpaqueId } from '../lib/people'
@@ -40,7 +41,7 @@ import { ChangeRecord } from './ChangeRecord'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
 import { INSTANCE_HEALTH_QUERY_KEY } from '../pages/InstanceHealth'
 import { ArchivedBanner } from './ArchiveTable'
-import { ContentTabs, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
+import { ChevronDown, ContentTabs, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
 
 type Row = Record<string, unknown>
 
@@ -823,7 +824,8 @@ export function FormView({
               id="delete-row-title"
               className="mb-2 text-base font-semibold text-ink"
             >
-              Delete {table} {name}?
+              {/* #959: the row as its heading names it. */}
+              Delete {table}: <RowTitle table={table} rowId={name} />?
             </h2>
             <p className="mb-3 text-sm text-ink-muted">
               This cannot be undone.
@@ -1594,7 +1596,20 @@ export function LinkControl({
   // left the view.
   const rowsTable = field.reference_base ?? target
   const box = useRef<HTMLInputElement>(null)
-  const list = useRef<HTMLDivElement>(null)
+  const searchBox = useRef<HTMLInputElement>(null)
+  // A click means "show me the list": the typing goes to its search box (#1019).
+  // Tabbing in stays on the box, so the keyboard walks a form as before.
+  const clicked = useRef(false)
+  const listBox = useRef<HTMLDivElement>(null)
+  // Focus handed back to the box from its list is not a new search (#1019).
+  const handingBack = useRef(false)
+  function backToBox() {
+    clearTimeout(timer.current)
+    searchVersion.current++
+    handingBack.current = true
+    box.current?.focus()
+    handingBack.current = false
+  }
   const [place, setPlace] = useState<{ top?: number; bottom?: number; left: number; width: number; maxHeight: number } | null>(null)
   // #793: a Table with no picker of its own is searched and shown by its
   // title column, never by its row id — only when the caller may read that
@@ -1633,8 +1648,10 @@ export function LinkControl({
   // resizing would leave it behind, so either closes it.
   useEffect(() => {
     if (!floating || !open) return
-    const close = (e: Event) => {
-      if (!(e.target instanceof Node && list.current?.contains(e.target))) setOpen(false)
+    // The list's own scrolling isn't the page moving away from it.
+    const close = (event: Event) => {
+      if (event.target instanceof Node && listBox.current?.contains(event.target)) return
+      setOpen(false)
     }
     window.addEventListener('scroll', close, true)
     window.addEventListener('resize', close)
@@ -1643,6 +1660,12 @@ export function LinkControl({
       window.removeEventListener('resize', close)
     }
   }, [floating, open])
+
+  useEffect(() => {
+    if (open && clicked.current && query === null) searchBox.current?.focus()
+    clicked.current = false
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   function openList() {
     const rect = floating ? box.current?.getBoundingClientRect() : undefined
@@ -1660,10 +1683,20 @@ export function LinkControl({
     setOpen(true)
   }
 
+  // A click can beat the target's details here: the search reads the picker as
+  // it is by then, and runs again if the name column arrives after it.
+  const latestPicker = useRef(picker)
+  latestPicker.current = picker
+  useEffect(() => {
+    if (open) search(query ?? '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picker.labelField])
+
   function search(q: string) {
     const version = ++searchVersion.current
     clearTimeout(timer.current)
     timer.current = setTimeout(async () => {
+      const picker = latestPicker.current
       try {
         if (picker.peopleSearch) {
           // Name, @username, address or employee code — never the id.
@@ -1677,6 +1710,8 @@ export function LinkControl({
         const res = await listResource<Record<string, unknown> & { row_id: string }>(target, {
           filters: [...picker.filters, ...extraFilters, ...(q ? [[picker.searchField, 'like', `%${q}%`]] : [])],
           fields: label ? ['row_id', label] : ['row_id'],
+          // #1019: by the name shown. Row ids alone keep the list's own fast order.
+          ...(label ? { order_by: `${label} asc` } : {}),
           limit_page_length: 10,
         })
         if (version !== searchVersion.current) return
@@ -1710,8 +1745,47 @@ export function LinkControl({
       </div>
     )
 
+  // #1019: the arrows walk the list and Escape closes it; Tab leaves the box for
+  // the next field, so the list's own controls are off the Tab order.
+  function moveThroughList(event: KeyboardEvent<HTMLDivElement>) {
+    if (!open) {
+      // A grid's arrows move between its cells.
+      if (event.key === 'ArrowDown' && !floating) search(query ?? '')
+      return
+    }
+    if (event.key === 'Escape') {
+      event.stopPropagation()
+      setOpen(false)
+      // Whatever was being searched for was never picked.
+      setQuery(null)
+      backToBox()
+    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      event.stopPropagation()
+      const items = [...event.currentTarget.querySelectorAll<HTMLElement>('[data-testid="link-option"],[data-testid="link-create-new"]')]
+      const at = items.indexOf(document.activeElement as HTMLElement)
+      const next = event.key === 'ArrowDown' ? at + 1 : at - 1
+      if (next >= items.length) return
+      if (next < 0) searchBox.current?.focus()
+      else items[next].focus()
+    }
+  }
+
+  function leave() {
+    // A search still waiting must not reopen the list on a cell left behind.
+    clearTimeout(timer.current)
+    searchVersion.current++
+    clearTimeout(blurTimer.current)
+    blurTimer.current = setTimeout(() => {
+      setOpen(false)
+      // A filter shows only what it filters by, and a grid cell what will
+      // be saved: text typed but never picked goes.
+      if (forFilter || floating) setQuery(null)
+    }, 150)
+  }
+
   return (
-    <div className="relative">
+    <div className="relative" onKeyDown={moveThroughList}>
       <input
         ref={box}
         type="text"
@@ -1719,19 +1793,14 @@ export function LinkControl({
         aria-expanded={open}
         placeholder={forFilter ? `Filter ${field.label ?? field.column_name}…` : `Reference: ${target}`}
         value={shown}
-        onFocus={() => search(query ?? (picker.labelField ? '' : shown))}
-        onBlur={() => {
-          // A search still waiting must not reopen the list on a cell left behind.
-          clearTimeout(timer.current)
-          searchVersion.current++
+        onMouseDown={() => { clicked.current = true }}
+        // Focus doesn't fire again on a box that kept it, as after Escape.
+        onClick={() => { if (!open) search(query ?? (picker.labelField ? '' : shown)) }}
+        onFocus={() => {
           clearTimeout(blurTimer.current)
-          blurTimer.current = setTimeout(() => {
-            setOpen(false)
-            // A filter shows only what it filters by, and a grid cell what will
-            // be saved: text typed but never picked goes.
-            if (forFilter || floating) setQuery(null)
-          }, 150)
+          if (!handingBack.current) search(query ?? (picker.labelField ? '' : shown))
         }}
+        onBlur={leave}
         onChange={(e) => {
           setQuery(e.target.value)
           // In a grid, emptying the cell removes the link (Codex on #874);
@@ -1739,9 +1808,16 @@ export function LinkControl({
           if (floating && e.target.value === '') onChange(null)
           search(e.target.value)
         }}
-        className={`${className} ${hasValue && !unseen ? 'pr-14' : ''}`}
+        className={`${className} ${hasValue && !unseen ? 'pr-14' : 'pr-8'}`}
+        {...NOT_A_LOGIN}
         {...common}
       />
+      {/* It reads as a picker, not a box to know the value for (#1019). */}
+      {!(hasValue && !unseen) && (
+        <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-ink-subtle" data-testid={`link-chevron-${field.column_name}`}>
+          <ChevronDown aria-hidden size={16} />
+        </span>
+      )}
       {hasValue && !unseen && (
         <span className="absolute inset-y-0 right-2 flex items-center gap-0.5">
           {nav && (
@@ -1780,21 +1856,52 @@ export function LinkControl({
       )}
       {open && (
         <div
-          ref={list}
-          className={place ? 'fixed z-30 overflow-y-auto rounded-md border border-border bg-surface shadow-lg' : 'absolute z-10 mt-1 w-full rounded-md border border-border bg-surface shadow-lg'}
+          ref={listBox}
+          // Off the Tab order, which a browser otherwise gives a list that scrolls.
+          tabIndex={-1}
+          className={place
+            ? 'fixed z-30 overflow-y-auto rounded-md border border-border bg-surface shadow-lg'
+            : 'absolute z-10 mt-1 max-h-80 w-full min-w-56 overflow-y-auto rounded-md border border-border bg-surface shadow-lg'}
           style={place ?? undefined}
+          onFocus={() => clearTimeout(blurTimer.current)}
+          onBlur={leave}
           data-testid={`link-options-${field.column_name}`}
         >
+          <input
+            ref={searchBox}
+            type="search"
+            aria-label={`Search ${field.label ?? field.column_name}`}
+            placeholder="Search…"
+            value={query ?? ''}
+            tabIndex={-1}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              search(e.target.value)
+            }}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault() }}
+            data-testid="link-search"
+            className="sticky top-0 block w-full border-b border-border bg-surface px-3 py-1.5 text-sm text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+            {...NOT_A_LOGIN}
+          />
           {options.map((o) => (
             <button
               key={o.value}
               type="button"
+              tabIndex={-1}
               onMouseDown={() => {
                 onChange(o.value)
                 setQuery(null)
                 setOpen(false)
               }}
-              className="block w-full px-3 py-1.5 text-left text-sm hover:bg-subtle"
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return
+                e.preventDefault()
+                onChange(o.value)
+                setQuery(null)
+                setOpen(false)
+                backToBox()
+              }}
+              className="block w-full px-3 py-1.5 text-left text-sm hover:bg-subtle focus-visible:bg-subtle focus-visible:outline-none"
               data-testid="link-option"
             >
               {o.label}
@@ -1810,6 +1917,7 @@ export function LinkControl({
               to="/featherbase/admin/table/$table/new"
               params={{ table: target }}
               search={{ prefill: undefined }}
+              tabIndex={-1}
               className="block border-t border-border px-3 py-1.5 text-sm text-ink-muted hover:bg-subtle"
               data-testid="link-create-new"
             >

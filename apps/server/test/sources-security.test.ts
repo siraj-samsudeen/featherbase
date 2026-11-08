@@ -768,6 +768,15 @@ describe('a bound Table keeps its binding', () => {
     expect(row.label).toBe('Alpha')
   })
 
+  test('#959 a bound row names itself by its title column, and by its id without one', async ({ admin }) => {
+    await bindAccount(admin)
+    const { rowLabel } = await import('../src/row-titles')
+    expect(await rowLabel('Administrator', BOUND, 'ACC-A')).toBe(`${BOUND} "Alpha"`)
+    await sql`update table_def set title_column = null where name = ${BOUND}`
+    invalidateMeta(BOUND)
+    expect(await rowLabel('Administrator', BOUND, 'ACC-A')).toBe(`${BOUND} ACC-A`)
+  })
+
   test('a bound row a local Table refers to cannot be deleted; a reference from a Settings Table does not hold it', async ({ admin }) => {
     await bindAccount(admin)
     await admin.post('/api/table_def', { name: 'Sec Holder', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
@@ -778,7 +787,7 @@ describe('a bound Table keeps its binding', () => {
     const stamp = async (id: string) => ((await admin.get(`/api/table/${encodeURIComponent(BOUND)}/${id}`)) as { updated_at: string }).updated_at
     const refused = await admin.fetch(`/api/table/${encodeURIComponent(BOUND)}/ACC-A?updated_at=${encodeURIComponent(await stamp('ACC-A'))}`, { method: 'DELETE' })
     expect(refused.status).toBe(417)
-    expect(await refused.json()).toMatchObject({ error: { message: `Cannot delete ${BOUND} ACC-A: it is linked from Sec Holder ${holder.row_id}` } })
+    expect(await refused.json()).toMatchObject({ error: { message: `Cannot delete ${BOUND} "Alpha": it is linked from Sec Holder ${holder.row_id}` } })
     const freed = await admin.fetch(`/api/table/${encodeURIComponent(BOUND)}/ACC-B?updated_at=${encodeURIComponent(await stamp('ACC-B'))}`, { method: 'DELETE' })
     expect(freed.status).toBe(200)
     expect(await cli`select id from sec_fixture.account order by id`).toEqual([{ id: 'ACC-A' }])
