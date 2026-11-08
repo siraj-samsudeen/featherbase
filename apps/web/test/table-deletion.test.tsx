@@ -66,7 +66,7 @@ describe('Only the builder authority can delete a table, and confirmation names 
     await confirm(await screen.findByTestId('delete-table-dialog'))
 
     expect(await screen.findByTestId('all-tables-page')).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe('/featherbase/admin/all-tables')
+    expect(pathOf(router)).toBe('/featherbase/admin/all-tables')
     const nav = await screen.findByTestId('table-nav')
     await waitFor(() => expect(nav).toHaveTextContent('Td Kept Zones'))
     expect(nav).not.toHaveTextContent(DT)
@@ -90,10 +90,12 @@ describe('Only the builder authority can delete a table, and confirmation names 
     await admin.delete(`/api/table_def/${encodeURIComponent(REF)}`)
     await confirm(dialog)
     expect(await screen.findByTestId('all-tables-page')).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe('/featherbase/admin/all-tables')
+    expect(pathOf(router)).toBe('/featherbase/admin/all-tables')
     await expectApiError(admin.get(`/api/table/${ENC}:meta`), { status: 404 })
   })
 })
+
+const pathOf = (router: unknown) => (router as { state: { location: { pathname: string } } }).state.location.pathname
 
 async function openAdministration(admin: Parameters<typeof renderApp>[1], table: string) {
   const rendered = await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(table))}`, admin)

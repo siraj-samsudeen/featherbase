@@ -9,6 +9,8 @@ import type { TestClient } from 'feather-testing-postgres'
 import { test, expect, renderApp } from './pg-test'
 
 const anonymous = { user: null, token: null } as never
+type Router = { state: { location: { pathname: string } }; navigate(o: { href: string }): Promise<void> }
+const routerOf = (router: unknown) => router as Router
 const USER = 'prj-reset@example.com'
 
 async function person(admin: TestClient, enabled: boolean): Promise<string> {
@@ -44,7 +46,7 @@ test('SET-002: a password reset from the emailed link lets the person sign in wi
   const key = /key=([0-9a-f]+)/.exec(mail.data[0]?.body ?? '')?.[1]
   expect(key).toMatch(/^[0-9a-f]{48}$/)
 
-  await router.navigate({ href: `/featherbase/reset-password?key=${key}` })
+  await routerOf(router).navigate({ href: `/featherbase/reset-password?key=${key}` })
   await user.type(await screen.findByTestId('reset-password'), 'brandnewpw456')
   await user.type(screen.getByTestId('reset-confirm'), 'brandnewpw456')
   await user.click(screen.getByTestId('reset-submit'))
@@ -52,7 +54,7 @@ test('SET-002: a password reset from the emailed link lets the person sign in wi
   await user.click(screen.getByTestId('reset-to-login'))
 
   await signIn('brandnewpw456')
-  await waitFor(() => expect(router.state.location.pathname).toMatch(/\/admin/))
+  await waitFor(() => expect(routerOf(router).state.location.pathname).toMatch(/\/admin/))
   expect(await screen.findByTestId('session-user')).toBeInTheDocument()
   expect(JSON.parse(localStorage.getItem('fc_user')!).row_id).toBe(id)
 })
@@ -62,6 +64,6 @@ test('SET-002: a disabled person is refused at the sign-in form', async ({ admin
   const { router } = await renderApp('/featherbase/login', anonymous)
   await signIn('initialpw123')
   expect(await screen.findByTestId('login-error')).toBeInTheDocument()
-  expect(router.state.location.pathname).toBe('/featherbase/login')
+  expect(routerOf(router).state.location.pathname).toBe('/featherbase/login')
   expect(localStorage.getItem('fc_token')).toBeNull()
 })

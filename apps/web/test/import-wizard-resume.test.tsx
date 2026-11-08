@@ -148,7 +148,7 @@ test('#204: when the rows do not fit, the decisions still do, and the same file 
     if (key === IMPORT_DATA_KEY) throw new DOMException('quota', 'QuotaExceededError')
     return real.call(this, key, value)
   })
-  onTestFinished(() => vi.restoreAllMocks())
+  onTestFinished(() => { vi.restoreAllMocks() })
   await drop()
   await allSheetsAsTables()
   await name(0, ONE)
