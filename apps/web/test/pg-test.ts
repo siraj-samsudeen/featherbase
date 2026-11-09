@@ -21,6 +21,7 @@ import { afterAll, beforeAll } from 'vitest'
 import { test as sandboxed, committedTest as independent, isTestDatabaseOpen, sandboxRequest } from 'server/test/pg-test-shared'
 import type { TestClient } from 'feather-testing-postgres'
 import {
+  createSession,
   renderApp as baseRenderApp,
   renderSession as baseRenderSession,
   type RenderAppOptions,
@@ -131,10 +132,19 @@ export const byTestId = (id: string) => `[data-testid="${id}"]`
 /** `session.within(...)` once the element with this data-testid is on screen:
  *  `within` alone looks for its element once, without waiting. */
 export function inside<S extends Session>(session: S, testId: string, fn: Parameters<S['within']>[1]): S {
-  return session
-    .until(`${testId} is on screen`, ({ container }) => container.queryByTestId(testId))
-    .within(byTestId(testId), fn)
+  return insideOf(session, byTestId(testId), fn)
 }
+
+/** `inside`, for an element named by a CSS selector (`[aria-label="Verification"]`). */
+export function insideOf<S extends Session>(session: S, selector: string, fn: Parameters<S['within']>[1]): S {
+  return session
+    .until(`${selector} is on screen`, () => document.querySelector(selector))
+    .within(selector, fn)
+}
+
+/** A Session over whatever is on screen: for pages a test mounts itself (an
+ *  app's own page) rather than through renderSession. */
+export const screenSession = (opts: SessionOptions = {}) => createSession({ timeout: SESSION_TIMEOUT, ...opts })
 
 /** renderApp + fluent Session. */
 export function renderSession(path: string, as: TestClient, opts: Opts & { session?: SessionOptions } = {}) {

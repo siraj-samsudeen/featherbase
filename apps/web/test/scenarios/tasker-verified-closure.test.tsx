@@ -9,7 +9,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe } from 'vitest'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect } from '../pg-test'
+import { test, expect, insideOf } from '../pg-test'
 import { TaskerWorld, type TaskerPage, realTime } from './tasker'
 
 const scenario = scenarioFor(test, 'tasker-verified-closure')
@@ -36,15 +36,18 @@ async function openedBy(tasker: TaskerWorld, who: string) {
   return { page, detail }
 }
 
+const VERIFICATION = '[aria-label="Verification"]'
 const verification = (detail: HTMLElement) => within(detail).getByRole('region', { name: 'Verification' })
 
 /** Submits the open task for verification with this note ('' for none). */
 async function submitForVerification(page: TaskerPage, detail: HTMLElement, note: string) {
   const submit = await within(verification(detail)).findByRole('button', { name: 'Submit for verification' })
+  // Enabled once the page has the task; clickButton then refuses a disabled one rather than wait.
   await waitFor(() => expect(submit).toBeEnabled())
-  await page.user.click(submit)
-  if (note) await page.user.type(within(verification(detail)).getByRole('textbox', { name: 'What was done' }), note)
-  await page.user.click(within(verification(detail)).getByRole('button', { name: 'Submit' }))
+  await page.session.within(VERIFICATION, (section) => {
+    const written = section.clickButton('Submit for verification')
+    return (note ? written.fillIn('What was done', note) : written).clickButton('Submit')
+  })
 }
 
 /** The reason form the details ask for before a change, and whether its action can be taken yet. */
@@ -76,7 +79,7 @@ describe('tasker-verified-closure', () => {
     await step('Ravi adds the task "Fix the billing counter lights" to it', async () => {
       const page = await tasker.as('Ravi')
       await page.openProject('Diwali readiness')
-      await page.user.type(screen.getByLabelText('Add task to project'), `${TITLE}{Enter}`)
+      await page.session.fillIn('Add task to project', TITLE).pressKey('Enter')
       await page.row(TITLE)
       await waitFor(() => tasker.findTask(TITLE))
     })
@@ -125,7 +128,7 @@ describe('tasker-verified-closure', () => {
     await step('the task shows "Not acknowledged by Ravi"', () => rowShows(tasker, 'Not acknowledged by Ravi'))
     await step('Ravi acknowledges it', async () => {
       const { page, detail } = await openedBy(tasker, 'Ravi')
-      await page.user.click(await within(verification(detail)).findByRole('button', { name: 'Acknowledge' }))
+      await insideOf(page.session, VERIFICATION, (section) => section.clickButton('Acknowledge'))
       await waitFor(() => expect(within(verification(detail)).queryByRole('button', { name: 'Acknowledge' })).not.toBeInTheDocument())
     })
     await step('the task no longer shows it is not acknowledged', async () => {
@@ -172,11 +175,11 @@ describe('tasker-verified-closure', () => {
     await step('Meena accepts it', async () => {
       const page = await tasker.as('Meena')
       await page.sidebarView(/^To verify/)
-      await page.user.click(await within(await screen.findByRole('region', { name: 'To verify' })).findByRole('link', { name: TITLE }))
+      await insideOf(page.session, '[aria-labelledby="verify-heading"]', (list) => list.clickLink(TITLE))
       const detail = await screen.findByRole('region', { name: 'Task detail content' })
       await within(detail).findByRole('heading', { name: TITLE })
       await within(detail).findByRole('region', { name: 'Verification' })
-      await page.user.click(await within(verification(detail)).findByRole('button', { name: 'Accept and close' }))
+      await page.session.within(VERIFICATION, (section) => section.clickButton('Accept and close'))
       await waitFor(() => expect(within(verification(detail)).queryByRole('button', { name: 'Accept and close' })).not.toBeInTheDocument())
     })
     await step('it is Done, verified by Meena', async () => {
@@ -211,13 +214,14 @@ describe('tasker-verified-closure', () => {
     await step('Meena returns it with the reason "Left counter still flickers"', async () => {
       const page = await tasker.as('Meena')
       await page.sidebarView(/^To verify/)
-      await page.user.click(await within(await screen.findByRole('region', { name: 'To verify' })).findByRole('link', { name: TITLE }))
+      await insideOf(page.session, '[aria-labelledby="verify-heading"]', (list) => list.clickLink(TITLE))
       const detail = await screen.findByRole('region', { name: 'Task detail content' })
       await within(detail).findByRole('heading', { name: TITLE })
       await within(detail).findByRole('region', { name: 'Verification' })
-      await page.user.click(await within(verification(detail)).findByRole('button', { name: 'Return' }))
-      await page.user.type(within(detail).getByRole('textbox', { name: 'Reason for returning' }), 'Left counter still flickers')
-      await page.user.click(within(detail).getByRole('button', { name: 'Return task' }))
+      await page.session.within(VERIFICATION, (section) => section
+        .clickButton('Return')
+        .fillIn('Reason for returning', 'Left counter still flickers')
+        .clickButton('Return task'))
       await waitFor(() => expect(within(detail).queryByRole('textbox', { name: 'Reason for returning' })).not.toBeInTheDocument())
     })
     await step('it is In progress and shows "Returned: Left counter still flickers"', async () => {
@@ -251,8 +255,7 @@ describe('tasker-verified-closure', () => {
     await step('Ravi moves it to 10 November 2026 because "Electrician on leave"', async () => {
       const { page, detail } = await openedBy(tasker, 'Ravi')
       await chooseDueDate(detail, '2026-11-10')
-      await page.user.type(await within(detail).findByRole('textbox', { name: DUE_REASON[0] }), 'Electrician on leave')
-      await page.user.click(within(detail).getByRole('button', { name: DUE_REASON[1] }))
+      await page.session.fillIn(DUE_REASON[0], 'Electrician on leave').clickButton(DUE_REASON[1])
       await waitFor(() => expect(within(detail).queryByRole('textbox', { name: DUE_REASON[0] })).not.toBeInTheDocument())
       await waitFor(async () => expect((await tasker.fresh()).extension_count).toBe(1))
     })

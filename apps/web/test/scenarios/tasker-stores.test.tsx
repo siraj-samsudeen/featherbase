@@ -42,9 +42,10 @@ describe('tasker-stores', () => {
     await step('a member adds "Keelkattalai Store" as a store', async () => {
       const page = await tasker.as('a member')
       await openStores(page)
-      await page.user.type(screen.getByLabelText('New store'), 'Keelkattalai Store')
-      await page.user.selectOptions(screen.getByRole('combobox', { name: 'Store type' }), 'Store')
-      await page.user.click(screen.getByRole('button', { name: 'Add store' }))
+      await page.session
+        .fillIn('New store', 'Keelkattalai Store')
+        .step('store type: Store', ({ user }) => user.selectOptions(screen.getByRole('combobox', { name: 'Store type' }), 'Store'))
+        .clickButton('Add store')
       await storeRow('Keelkattalai Store')
     })
     await step('every member can choose "Keelkattalai Store" for a task', async () => {
@@ -91,14 +92,15 @@ describe('tasker-stores', () => {
       const page = await tasker.as('the user')
       const detail = await page.openTask(parent.row_id, String(parent.task_title))
       const subtasks = within(detail).getByRole('region', { name: 'Subtasks' })
-      await page.user.type(within(subtasks).getByLabelText('New subtask'), 'Count the cold room')
-      await page.user.click(within(subtasks).getByRole('button', { name: 'Add subtask' }))
+      await page.session.within('[aria-label="Subtasks"]', (region) => region
+        .fillIn('New subtask', 'Count the cold room')
+        .clickButton('Add subtask'))
       await within(subtasks).findByRole('button', { name: 'Count the cold room' })
     })
     await step('the subtask shows "Keelkattalai Store"', async () => {
       const page = await tasker.viewerPage()
       const detail = await page.openTask(parent.row_id, String(parent.task_title))
-      await page.user.click(await within(within(detail).getByRole('region', { name: 'Subtasks' })).findByRole('button', { name: 'Count the cold room' }))
+      await page.session.within('[aria-label="Subtasks"]', (region) => region.clickButton('Count the cold room'))
       const sub = page.detail()
       await within(sub).findByRole('heading', { name: 'Count the cold room' })
       await waitFor(() => expect(storeChoice(page.detail()).selectedOptions[0]?.textContent).toBe('Keelkattalai Store'))
