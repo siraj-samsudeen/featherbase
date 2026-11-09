@@ -69,7 +69,7 @@ any agent's are.
 #### Scenario: A service account's agent sees only what the account may read
 
 ```gherkin
-Given a service account "Nightly Sync" that can read "Customer" but not "Payroll"
+Given a service account "nightly-sync" that can read "Customer" but not "Payroll"
 When an agent connected with the account's access token asks which Tables it can work with
 Then "Customer" is listed
 And "Payroll" is not
@@ -78,9 +78,9 @@ And "Payroll" is not
 #### Scenario: A service account's change is marked
 
 ```gherkin
-Given an agent connected with the access token "Sync agent" of the service account "Nightly Sync"
+Given an agent connected with the access token "Sync agent" of the service account "nightly-sync"
 When the agent adds a customer "Dhan Agencies"
-Then the customer's history shows "Nightly Sync" added it
+Then the customer's history shows "nightly-sync" added it
 And it is marked as made through an agent with the token "Sync agent"
 ```
 

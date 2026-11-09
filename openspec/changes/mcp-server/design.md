@@ -142,8 +142,9 @@ support is uneven and a stateless server cannot hold the call open for an answer
 Any `{ error: { type, message, fields } }` from the inner request becomes a tool result with
 `isError: true`, text `"<type>: <message>"` followed by one line per field (`column: message`),
 and the same object as `structuredContent`. Nothing is translated, so the agent reads what a
-person in the Admin would. JSON-RPC errors are kept for a malformed protocol message or an unknown
-tool; authentication fails as HTTP 401 before either.
+person in the Admin would. JSON-RPC errors are kept for a malformed protocol message; the SDK
+(1.32.2) answers an unknown tool or arguments that do not fit a tool's schema as a tool error too,
+which serves the agent the same way. Authentication fails as HTTP 401 before either.
 
 *Rejected: answer a refusal as a JSON-RPC error.* Clients often show protocol errors to the person
 and hide them from the model, so the agent could not correct its call.
@@ -162,8 +163,11 @@ nothing an agent cannot get by paging.
 
 The `/mcp` handler resolves the access token once, keeping its id and label, and runs each tool's
 inner request inside a request-scoped context (`AsyncLocalStorage`, like `runInSession`) that says
-"through an agent, with this token". Every history entry written inside it (`recordVersion`, and
-the retire/reactivate entry) adds `agent: { token_id, token_label }` to the Version row's `data`.
+"through an agent, with this token". Every history entry `recordVersion` writes inside it adds
+`agent: { token_id, token_label }` to the Version row's `data`. A row created by hand gets no
+history entry (its creator is read off the row, #829), so a row an agent creates gets its created
+entry (`created: true`, no changed columns) to carry the mark. The retire and reactivate entry is
+left alone: those are row actions, which the tools do not offer.
 The actor stays the token's owner in `created_by`, so who did it, permissions, "my rows" and every
 existing reader are unchanged. `documentActivity` passes `agent` through, so the row's history
 (`GET /api/activity/:table/:name`) shows it. The label is the one the token had at that moment; a
