@@ -14,6 +14,7 @@ import { config } from './config'
 import { AppError } from './errors'
 import { getMeta } from './meta'
 import { LIST_OPERATORS } from './query'
+import { registerTableTools } from './mcp-table-tools'
 import { ADDS, ALTERS, LAYOUT_TYPES, NESTED, READS, describeColumn, tablePath, type Api, type ColumnMeta, type Json, type RegisterTool } from './mcp-common'
 
 /** The app whose /api routes serve the tools (index.ts passes itself). */
@@ -69,7 +70,7 @@ const rowPath = (table: string, id: string) => `${tablePath(table)}/${encodeURIC
 const readableColumns = (meta: TableMetaReply) =>
   meta.columns.filter((column) => meta.readable_columns.includes(column.column_name) && !LAYOUT_TYPES.has(column.column_type))
 
-function buildServer(api: Api): McpServer {
+function buildServer(api: Api, tokenId: string): McpServer {
   const server = new McpServer({ name: 'featherbase', version: '1.0.0' })
   const tool: RegisterTool = (name, description, inputSchema, annotations, run) => {
     server.registerTool(name, { description, inputSchema, annotations }, (async (args: Parameters<typeof run>[0]) => {
@@ -163,6 +164,7 @@ function buildServer(api: Api): McpServer {
       return { deleted: id }
     })
 
+  registerTableTools(tool, api, tokenId)
   return server
 }
 
@@ -186,7 +188,7 @@ export function mcpHandler(app: ApiApp) {
       if (!res.ok) throw new Refusal(json.error as Envelope)
       return json
     }
-    const server = buildServer(api)
+    const server = buildServer(api, caller.token.id)
     const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true })
     await server.connect(transport)
     try {
