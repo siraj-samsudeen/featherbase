@@ -50,10 +50,3 @@ export function useBacklinks(table: string, enabled = true) {
       api.get<{ backlinks: Backlink[] }>(`/api/table/${encodeURIComponent(table)}:backlinks`),
   })
 }
-
-// Include the Reference column even on the first path so multiple direct or
-// via-sub-table relationships to the same Table remain distinguishable.
-export function connectionLabel(c: { table: string; column: string; via: string | null }): string {
-  if (c.via) return `${c.table} · via ${c.via} / ${c.column}`
-  return `${c.table} · ${c.column}`
-}
