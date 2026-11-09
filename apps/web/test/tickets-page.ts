@@ -4,12 +4,13 @@
 // module: what one page learned (ticket types, people's names) never leaks
 // into the next.
 import { resolve } from 'node:path'
-import { screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import { expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { createSession, type Session } from 'feather-testing-postgres/session'
 import { settleSandboxRequests } from 'server/test/pg-test-shared'
 import { SESSION_TIMEOUT } from './pg-test'
+import { unmountPages } from './page-roots'
 
 // The web suite runs from apps/web.
 const MAIN = resolve('../..', 'example-apps/tickets/src/main.tsx')
@@ -29,6 +30,7 @@ export async function openTickets(as: TestClient, query = ''): Promise<{ session
   localStorage.setItem('fc_token', as.token!)
   localStorage.setItem('fc_user', JSON.stringify({ row_id: as.user }))
   window.history.replaceState(null, '', `/tickets/${query}`)
+  act(() => unmountPages())
   document.body.innerHTML = '<div id="root"></div>'
   await import(/* @vite-ignore */ `${MAIN}?page=${++copy}`)
   // Enabled, not only present: the button stays disabled until the page has the person's session.
