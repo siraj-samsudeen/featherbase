@@ -61,8 +61,8 @@ async function rowInScope(principal: string, table: string, rowId: string): Prom
  *  column points at a scoped Table (where membership is now unknowable). */
 async function deletedVisible(scope: Map<string, Set<string>>, table: string, rowId: string): Promise<boolean> {
   const { getMeta } = await import('./meta')
-  const meta = await getMeta(table).catch(() => null)
-  if (!meta) return false
+  // Only reached once the principal may read the Table, so it exists.
+  const meta = await getMeta(table)
   const narrowed = tableScope(meta, scope)
   if (!narrowed) return true
   if (narrowed.none || (narrowed.own && !narrowed.own.has(rowId))) return false
