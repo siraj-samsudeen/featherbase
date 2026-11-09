@@ -2,7 +2,7 @@ import { describe, expect } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { test } from './pg-test'
 import { committedTest } from './pg-test-shared'
-import { makeTable } from './fixtures'
+import { expectRefused, expectStatus, makeTable } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
 import { readFileSync } from 'node:fs'
 import { sql } from '../src/db'
@@ -33,7 +33,7 @@ describe('META-006: naming rules', () => {
       ['field:title', { title: 'Field ID' }, /^Field ID$/],
     ] as const) {
       const response = await admin.fetch('/api/table_def/Pattern%20Endpoint/id_pattern', { method: 'PUT', body: JSON.stringify({ id_pattern: pattern }) })
-      expect(response.status).toBe(200)
+      await expectStatus(response, 200)
       expect(await response.json()).toMatchObject({ id_pattern: pattern })
       expect((await save(admin, table, input)).row_id).toMatch(expected)
       expect(await admin.get(`/api/table/Pattern%20Endpoint/${original.row_id}`)).toMatchObject(original)
@@ -48,13 +48,13 @@ describe('META-006: naming rules', () => {
     const before = await admin.get('/api/table/Pattern%20Refusal:meta')
     for (const pattern of [undefined, null, 42, '', 'PREFIX-', '.###', 'P-.##x', 'field:', 'field:missing']) {
       const res = await admin.fetch('/api/table_def/Pattern%20Refusal/id_pattern', { method: 'PUT', body: JSON.stringify({ id_pattern: pattern }) })
-      expect(res.status).toBe(417)
+      await expectStatus(res, 417)
       expect(await res.json()).toMatchObject({ error: { type: 'ValidationError' } })
       expect(await admin.get('/api/table/Pattern%20Refusal:meta')).toEqual(before)
     }
     const user = await createUser()
     const denied = await user.fetch('/api/table_def/Pattern%20Refusal/id_pattern', { method: 'PUT', body: JSON.stringify({ id_pattern: 'NO-.###' }) })
-    expect(denied.status).toBe(403)
+    await expectStatus(denied, 403)
     expect(await admin.get('/api/table/Pattern%20Refusal:meta')).toEqual(before)
   })
 
@@ -82,7 +82,7 @@ describe('META-006: naming rules', () => {
     await makeDT(admin, FIELD_DT, 'field:title')
     const doc = await save(admin, FIELD_DT, { title: 'India' })
     expect(doc.row_id).toBe('India')
-    await expect(save(admin, FIELD_DT, {})).rejects.toMatchObject({ status: 417 })
+    await expectRefused(save(admin, FIELD_DT, {}), 417)
   })
 
   test('prompt naming inserts with the client-provided name and requires it', async ({
@@ -91,7 +91,7 @@ describe('META-006: naming rules', () => {
     await makeDT(admin, PROMPT_DT, 'prompt')
     const doc = await save(admin, PROMPT_DT, { row_id: 'Hardware', title: 'x' })
     expect(doc.row_id).toBe('Hardware')
-    await expect(save(admin, PROMPT_DT, { title: 'y' })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(save(admin, PROMPT_DT, { title: 'y' }), 417)
   })
 
   test('prompt naming updates the existing doc when the name already exists', async ({
@@ -130,7 +130,7 @@ describe('A typed-in name must be unique', () => {
       admin.post(`/api/table/${encodeURIComponent(PROMPT_DT)}`, { row_id: 'Tools', title: 'imposter' }),
     ).rejects.toMatchObject({ status: 409 })
     // ...and the form's save path, which carries no loaded version for a new row, refuses too.
-    await expect(save(admin, PROMPT_DT, { row_id: 'Tools', title: 'imposter' })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(save(admin, PROMPT_DT, { row_id: 'Tools', title: 'imposter' }), 417)
     const row = await admin.get<{ title: string }>(`/api/table/${encodeURIComponent(PROMPT_DT)}/Tools`)
     expect(row.title).toBe('original')
   })
@@ -288,9 +288,9 @@ describe('#858: a fixed prefix plus a column', () => {
     await makeDT(admin, 'Nm Rule Check', 'hash')
     const put = (id_pattern: string) =>
       admin.fetch('/api/table_def/Nm%20Rule%20Check/id_pattern', { method: 'PUT', body: JSON.stringify({ id_pattern }) })
-    expect((await put('PLANT-{title}')).status).toBe(200)
+    await expectStatus(await put('PLANT-{title}'), 200)
     for (const bad of ['PLANT-{missing}', 'PLANT-{title', '{title}', 'A-{title}-B', 'A-{title}{title}', 'PLANT {title}', ' P-{title}'])
-      expect((await put(bad)).status).toBe(417)
+      await expectStatus(await put(bad), 417)
   })
 
   test('renaming the column carries the rule with it', async ({ admin }) => {

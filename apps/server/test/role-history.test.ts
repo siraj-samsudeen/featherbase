@@ -7,6 +7,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
+import { expectStatus } from './fixtures'
 
 type Changed = [string, unknown, unknown][]
 
@@ -94,7 +95,7 @@ test('#897: a Person changed after creation keeps their history and is not delet
   const p = await person(admin, { email: 'rh.staying@example.com', full_name: 'Rh Staying', roles: [{ role: 'Rh Clerk' }] })
   await admin.post('/api/save_row', { table: 'Person', row: { row_id: p.row_id, updated_at: p.updated_at, roles: [...p.roles, { role: 'Rh Auditor' }] } })
   const refused = await admin.fetch(`/api/table/Person/${encodeURIComponent(p.row_id)}`, { method: 'DELETE' })
-  expect(refused.status).toBe(417)
+  await expectStatus(refused, 417)
   expect(await refused.text()).toContain('cannot be deleted: it has 1 history entry')
   expect(await history(p.row_id)).toHaveLength(2)
 })

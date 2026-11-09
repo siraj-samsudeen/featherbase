@@ -4,6 +4,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { setUserPassword } from '../src/auth'
 import { logActivity, logAccess } from '../src/audit'
+import { expectStatus } from './fixtures'
 
 // PLAT-007: Activity Log records logins; Access Log records exports/prints.
 // Both carry the user and a timestamp, and are written even during login.
@@ -31,7 +32,7 @@ describe('PLAT-007: audit logs', () => {
       method: 'POST',
       body: JSON.stringify({ usr: USER, pwd: 'auditpw12345' }),
     })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
 
     const [row] = await sql`
       select "user", operation, created_at from activity_log
@@ -53,7 +54,7 @@ describe('PLAT-007: audit logs', () => {
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({ table: 'Person', method: 'csv' }),
     })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     // A System Manager sees afterwards who exported people, and in which format.
     const seen = await admin.get<{ data: { user: string; operation: string; ref_table: string; method: string }[] }>(
       `/api/table/${encodeURIComponent('Access Log')}?fields=${encodeURIComponent(JSON.stringify(['user', 'operation', 'ref_table', 'method']))}`,
@@ -86,7 +87,7 @@ describe('PLAT-007: audit logs', () => {
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({ table: 'Audit Sekret', method: 'csv' }),
     })
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
   })
 
   test('logAccess/logActivity write directly with the user as owner', async ({ admin }) => {

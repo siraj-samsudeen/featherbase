@@ -3,6 +3,7 @@ import { test } from './pg-test'
 import { invalidateMeta, resolveTableName } from '../src/meta'
 import { sql } from '../src/db'
 import type { TestClient } from 'feather-testing-postgres'
+import { expectStatus } from './fixtures'
 
 // #56: /api/resource accepts slug spellings of Table names with spaces —
 // report-feedback and report_feedback reach "Report Feedback" — so external
@@ -26,7 +27,7 @@ describe('#56: Table slugs in resource URLs', () => {
       const res = await admin.fetch(
         `/api/table/${spelling}?fields=${encodeURIComponent('["row_id","title"]')}`,
       )
-      expect(res.status).toBe(200)
+      await expectStatus(res, 200)
       const { data } = (await res.json()) as { data: { title: string }[] }
       expect(data[0].title).toBe('seeded')
     }
@@ -35,13 +36,13 @@ describe('#56: Table slugs in resource URLs', () => {
       method: 'POST',
       body: JSON.stringify({ title: 'via slug' }),
     })
-    expect(ins.status).toBe(201)
+    await expectStatus(ins, 201)
   })
 
   test('the exact name and its %20 encoding keep working unchanged', async ({ admin }) => {
     await setup(admin)
-    expect((await admin.fetch(`/api/table/${encodeURIComponent(DT)}`)).status).toBe(200)
-    expect((await admin.fetch('/api/table/Slug%20Test%20Note')).status).toBe(200)
+    await expectStatus(await admin.fetch(`/api/table/${encodeURIComponent(DT)}`), 200)
+    await expectStatus(await admin.fetch('/api/table/Slug%20Test%20Note'), 200)
   })
 
   // Slugs fold separators and trim; storage names do not trim or collapse
@@ -56,7 +57,7 @@ describe('#56: Table slugs in resource URLs', () => {
   test('a second Table with the same slug is refused at creation', async ({ admin }) => {
     await admin.post('/api/table_def', { name: 'Slug Twin', kind: 'settings', columns: [{ column_name: 'a', column_type: 'Data' }] })
     const res = await admin.fetch('/api/table_def', { method: 'POST', body: JSON.stringify({ name: 'SLUG Twin', kind: 'settings', columns: [{ column_name: 'b', column_type: 'Data' }] }) })
-    expect(res.status).toBe(409)
+    await expectStatus(res, 409)
   })
 
   test('#821: public create refuses a trailing-space slug twin without changing the original identity', async ({ admin }) => {
@@ -67,7 +68,7 @@ describe('#56: Table slugs in resource URLs', () => {
     const refused = await admin.fetch('/api/table_def', {
       method: 'POST', body: JSON.stringify({ ...definition, name: 'Probe Twin ' }),
     })
-    expect(refused.status).toBe(409)
+    await expectStatus(refused, 409)
     expect(await admin.get('/api/table/probe-twin:meta')).toEqual(before)
     expect(await admin.get('/api/table/probe-twin/kept')).toMatchObject({ title: 'Original content' })
     expect(await sql`select name from table_def where name like 'Probe Twin%'`).toEqual([{ name: 'Probe Twin' }])
@@ -89,7 +90,7 @@ describe('#56: Table slugs in resource URLs', () => {
   test('an ambiguous slug is an error, not a silent pick', async ({ admin }) => {
     await twins('Twin Case', 'TWIN CASE')
     const res = await admin.fetch('/api/table/twin-case')
-    expect(res.status).toBe(409)
+    await expectStatus(res, 409)
     const body = (await res.json()) as { error: { message: string } }
     expect(body.error.message).toContain('Twin Case')
     expect(body.error.message).toContain('TWIN CASE')
@@ -110,12 +111,12 @@ describe('#56: Table slugs in resource URLs', () => {
 
     // One live Table wins over the older Table's normalized deletion name.
     const live = await admin.fetch('/api/table/grave-probe:meta')
-    expect(live.status).toBe(200)
+    await expectStatus(live, 200)
     expect(await live.json()).toMatchObject({ name: 'grave probe' })
 
     await admin.delete('/api/table_def/grave%20probe')
     const ambiguous = await admin.fetch('/api/table/grave-probe:meta')
-    expect(ambiguous.status).toBe(409)
+    await expectStatus(ambiguous, 409)
     const body = (await ambiguous.json()) as { error: { type: string; message: string } }
     expect(body.error.type).toBe('ConflictError')
     expect(body.error.message).toContain('Ambiguous Table slug grave-probe')
@@ -129,7 +130,7 @@ describe('#56: Table slugs in resource URLs', () => {
       ['/api/table/grave%20probe:meta', 'grave probe'],
     ]) {
       const exact = await admin.fetch(path)
-      expect(exact.status).toBe(404)
+      await expectStatus(exact, 404)
       const tombstone = (await exact.json()) as { error: { message: string } }
       expect(tombstone.error.message).toMatch(
         new RegExp(`^Table ${name} was deleted by Administrator on \\d{2}-[A-Z][a-z]{2}-\\d{4}$`),
@@ -138,15 +139,15 @@ describe('#56: Table slugs in resource URLs', () => {
   })
 
   test('an unknown slug falls through to the usual NotFound', async ({ admin }) => {
-    expect((await admin.fetch('/api/table/no-such-table')).status).toBe(404)
+    await expectStatus(await admin.fetch('/api/table/no-such-table'), 404)
   })
 
   test('the slug map is invalidated with the meta cache', async ({ admin }) => {
     // Build the slug map before the Table exists…
-    expect((await admin.fetch('/api/table/inval-note')).status).toBe(404)
+    await expectStatus(await admin.fetch('/api/table/inval-note'), 404)
     // …then create it: creation invalidates the meta cache, which must drop
     // the slug map too, or the new name would stay unreachable by slug.
     await admin.post('/api/table_def', { name: 'Inval Note', columns: [{ column_name: 'a', column_type: 'Data' }] })
-    expect((await admin.fetch('/api/table/inval-note')).status).toBe(200)
+    await expectStatus(await admin.fetch('/api/table/inval-note'), 200)
   })
 })

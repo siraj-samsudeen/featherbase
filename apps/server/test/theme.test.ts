@@ -1,5 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
+import { expectStatus } from './fixtures'
 
 // UI-024 / #380: the theme is a per-person preference — light, dark, or follow
 // the device — exposed on whoami and set via /api/set_theme. There is one
@@ -19,7 +20,7 @@ describe('UI-024: per-person theme', () => {
       method: 'POST',
       body: JSON.stringify({ theme }),
     })
-    expect(set.status).toBe(200)
+    await expectStatus(set, 200)
 
     const who = await user.get<{ theme: string }>('/api/whoami')
     expect(who.theme).toBe(theme)
@@ -32,13 +33,13 @@ describe('UI-024: per-person theme', () => {
       method: 'POST',
       body: JSON.stringify({ theme: 'neon' }),
     })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
   })
 
   test('there is no palette: whoami does not carry one and the endpoint is gone', async ({ createUser }) => {
     const user = await createUser({ roles: ['System Manager'] })
     expect(await user.get<Record<string, unknown>>('/api/whoami')).not.toHaveProperty('palette')
     const res = await user.fetch('/api/set_palette', { method: 'POST', body: JSON.stringify({ palette: 'ivory' }) })
-    expect(res.status).toBe(404)
+    await expectStatus(res, 404)
   })
 })

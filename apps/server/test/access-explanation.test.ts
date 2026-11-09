@@ -3,7 +3,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { resolve } from 'node:path'
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { grantRole } from './fixtures'
+import { expectRefused, grantRole } from './fixtures'
 import { discoverPackages } from '../src/runtime-packages'
 
 // #628: "What can this person see, and why". One page per person lists their
@@ -113,9 +113,9 @@ test('only the person and System Managers may open the page', async ({ admin, cr
   const person = await createUser({ roles: [] })
   const colleague = await createUser({ roles: [] })
   expect((await person.get<Explanation>(pageOf(person.user!))).person).toBe(person.user)
-  await expect(colleague.get(pageOf(person.user!))).rejects.toMatchObject({ status: 403 })
+  await expectRefused(colleague.get(pageOf(person.user!)), 403)
   expect((await admin.get<Explanation>(pageOf(person.user!))).person).toBe(person.user)
-  await expect(admin.get(pageOf('psn_nobody_here'))).rejects.toMatchObject({ status: 404 })
+  await expectRefused(admin.get(pageOf('psn_nobody_here')), 404)
 })
 
 test('a history entry that records no changed fields is passed over', async ({ admin, createUser }) => {
@@ -156,9 +156,9 @@ test('a manager whose places cover every place of a person may open their page',
 
   expect((await manager.get<Explanation>(pageOf(kids.user!))).person).toBe(kids.user)
   // One of their places is outside the manager's: refused.
-  await expect(manager.get(pageOf(both.user!))).rejects.toMatchObject({ status: 403 })
+  await expectRefused(manager.get(pageOf(both.user!)), 403)
   // Covering is one way: the person does not cover their manager.
-  await expect(kids.get(pageOf(manager.user!))).rejects.toMatchObject({ status: 403 })
+  await expectRefused(kids.get(pageOf(manager.user!)), 403)
 })
 
 test('a person with no places is never covered, and a viewer with none covers no one', async ({ admin, createUser }) => {
@@ -167,8 +167,8 @@ test('a person with no places is never covered, and a viewer with none covers no
   const unplaced = await createUser({ roles: [] })
   const other = await createUser({ roles: [] })
   await position(manager.user!, 'North', 'N1', 'kids')
-  await expect(manager.get(pageOf(unplaced.user!))).rejects.toMatchObject({ status: 403 })
-  await expect(other.get(pageOf(unplaced.user!))).rejects.toMatchObject({ status: 403 })
+  await expectRefused(manager.get(pageOf(unplaced.user!)), 403)
+  await expectRefused(other.get(pageOf(unplaced.user!)), 403)
 })
 
 // Q1 C (owner, 4 Nov): the app's scope explains itself. Each place the scope

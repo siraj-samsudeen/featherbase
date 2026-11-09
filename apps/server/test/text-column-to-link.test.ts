@@ -3,6 +3,7 @@
 import { expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
+import { expectStatus } from './fixtures'
 
 const ORG = 'Tcl Sales Org'
 const PLANT = 'Tcl Plant'
@@ -38,7 +39,7 @@ test('a text column whose every value names a row becomes a link, keeping its va
   const [first] = await seed(admin, ['1160', '1160', ''])
   await admin.post('/api/save_row', { table: PLANT, row: { ...first, sales_org: '1150' } })
   const response = await turnInto(admin, 'Reference')
-  expect(response.status).toBe(200)
+  await expectStatus(response, 200)
   expect(await column(admin)).toMatchObject({ column_type: 'Reference', reference_table: ORG })
   expect(await values(admin)).toEqual(['1150', '1160', null])
   const activity = await admin.get<{ versions: { data: unknown }[] }>(`/api/activity/${encodeURIComponent(PLANT)}/${first.row_id}`)
@@ -47,7 +48,7 @@ test('a text column whose every value names a row becomes a link, keeping its va
 
 test('once it is a link, a value naming no row is refused like any link', async ({ admin }) => {
   await seed(admin, ['1150'])
-  expect((await turnInto(admin, 'Reference')).status).toBe(200)
+  await expectStatus(await turnInto(admin, 'Reference'), 200)
   await expect(admin.post('/api/save_row', { table: PLANT, row: { plant_name: 'Plant 9', sales_org: '9999' } }))
     .rejects.toMatchObject({ status: 417 })
 })
@@ -55,7 +56,7 @@ test('once it is a link, a value naming no row is refused like any link', async 
 test('a value with no row refuses the change, naming the value, and the column stays text', async ({ admin }) => {
   await seed(admin, ['1150', '9999', '8888', '9999'])
   const response = await turnInto(admin, 'Reference')
-  expect(response.status).toBe(417)
+  await expectStatus(response, 417)
   const { error } = await response.json() as { error: { message: string; fields: Record<string, string> } }
   expect(error.fields.sales_org).toMatch(/8888, 9999/)
   expect(error.fields.sales_org).not.toMatch(/1150/)
@@ -65,12 +66,12 @@ test('a value with no row refuses the change, naming the value, and the column s
 
 test('a link column turns back into text, keeping its values', async ({ admin }) => {
   await seed(admin, ['1150', '1160'])
-  expect((await turnInto(admin, 'Reference')).status).toBe(200)
+  await expectStatus(await turnInto(admin, 'Reference'), 200)
   const back = await admin.fetch(`/api/table_def/${encodeURIComponent(PLANT)}`, {
     method: 'PUT',
     body: JSON.stringify({ columns: [{ column_name: 'plant_name', label: 'Plant name', column_type: 'Data' }, { ...salesOrg('Data'), reference_table: ORG }] }),
   })
-  expect(back.status).toBe(200)
+  await expectStatus(back, 200)
   expect(await column(admin)).toMatchObject({ column_type: 'Data' })
   expect((await column(admin))?.reference_table ?? null).toBeNull()
   expect(await values(admin)).toEqual(['1150', '1160'])
@@ -82,7 +83,7 @@ test('a text column still cannot become a number', async ({ admin }) => {
     method: 'PUT',
     body: JSON.stringify({ columns: [{ column_name: 'plant_name', label: 'Plant name', column_type: 'Data' }, { ...salesOrg('Data'), column_type: 'Int' }] }),
   })
-  expect(response.status).toBe(417)
+  await expectStatus(response, 417)
   expect((await response.json()).error.fields.sales_org).toMatch(/column_type cannot change/)
 })
 
@@ -93,6 +94,6 @@ test('a link to a settings Table is refused: its rows are not stored as rows', a
     method: 'PUT',
     body: JSON.stringify({ columns: [{ column_name: 'plant_name', label: 'Plant name', column_type: 'Data' }, { ...salesOrg('Reference'), reference_table: 'Tcl Prefs' }] }),
   })
-  expect(response.status).toBe(417)
+  await expectStatus(response, 417)
   expect((await response.json()).error.fields.sales_org).toMatch(/Tcl Prefs rows are not stored here/)
 })

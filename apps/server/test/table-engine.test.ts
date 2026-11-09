@@ -3,7 +3,7 @@ import { test } from './pg-test'
 import { changeColumnType, createTable, deleteTable, pgType, renameTable, storedRelation } from '../src/table-engine'
 import { sql } from '../src/db'
 import { provisionApp } from '../src/app-lifecycle'
-import { makeTable } from './fixtures'
+import { expectStatus, makeTable } from './fixtures'
 
 const DT = 'Engine Test Item'
 
@@ -47,7 +47,7 @@ describe('META-002: Table save validates column_types', () => {
         columns: [{ column_name: 'x', column_type: 'Wibble' }],
       }),
     })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     const body = await res.json()
     expect(body.error.type).toBe('ValidationError')
     expect(JSON.stringify(body.error.fields)).toContain('column_type')
@@ -86,7 +86,7 @@ describe('META-002: Table save validates column_types', () => {
       method: 'POST',
       body: JSON.stringify(def),
     })
-    expect(res.status).toBe(201)
+    await expectStatus(res, 201)
     const meta = await res.json()
     expect(meta.columns).toHaveLength(2)
 
@@ -94,7 +94,7 @@ describe('META-002: Table save validates column_types', () => {
       method: 'POST',
       body: JSON.stringify(def),
     })
-    expect(dup.status).toBe(409)
+    await expectStatus(dup, 409)
   })
 })
 

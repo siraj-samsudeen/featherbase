@@ -6,7 +6,7 @@ import * as metadata from '../src/meta'
 import * as query from '../src/query'
 import * as reports from '../src/script-report'
 import { AppError } from '../src/errors'
-import { grantRole } from './fixtures'
+import { expectStatus, grantRole } from './fixtures'
 
 // Public inventory contract: Table names stay canonical; pages carry their
 // existing href. The browser never derives resource identities from slugs.
@@ -102,7 +102,7 @@ describe('#737 command destinations', () => {
   test('people without Admin access cannot obtain the Admin inventory', async ({ createUser }) => {
     const outsider = await createUser({ roles: [] })
     const res = await outsider.fetch(PATH)
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
   })
 
   test('a legacy override refusal preserves the permitted navigation inventory', async ({ admin, createUser }) => {
@@ -116,7 +116,7 @@ describe('#737 command destinations', () => {
     invalidateMeta('Dashboard')
 
     const res = await admin.fetch(PATH)
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const inventory = await res.json() as Inventory
     for (const name of ['Person', 'Dashboard'])
       expect(inventory.tables.find((t) => t.row_id === name)).toMatchObject({ label: name, kind: 'table', can_create: false })
@@ -126,7 +126,7 @@ describe('#737 command destinations', () => {
     expect(limited.tables.every((t) => !t.can_create)).toBe(true)
     expect(limited.pages.map((p) => p.href)).not.toContain('/featherbase/admin/instance-health')
     const meta = await admin.fetch('/api/table/Person:meta')
-    expect(meta.status).toBe(417)
+    await expectStatus(meta, 417)
     expect((await meta.json()).error.type).toBe('ValidationError')
   })
 
@@ -145,14 +145,14 @@ describe('#737 command destinations', () => {
     })
     try {
       const response = await admin.fetch(PATH)
-      expect(response.status).toBe(417)
+      await expectStatus(response, 417)
       expect((await response.json()).error).toMatchObject({ type: 'ValidationError', message: 'Unrelated inventory validation' })
     } finally { metaFailure.mockRestore() }
 
     const readFailure = vi.spyOn(query, 'getList').mockRejectedValue(new AppError('ValidationError', 'Unrelated named-read validation'))
     try {
       const response = await admin.fetch(PATH)
-      expect(response.status).toBe(417)
+      await expectStatus(response, 417)
       expect((await response.json()).error).toMatchObject({ type: 'ValidationError', message: 'Unrelated named-read validation' })
     } finally { readFailure.mockRestore() }
 
@@ -162,7 +162,7 @@ describe('#737 command destinations', () => {
     const reportFailure = vi.spyOn(reports, 'scriptReportMeta').mockRejectedValue(new AppError('InternalError', 'Report metadata failure'))
     try {
       const response = await admin.fetch(PATH)
-      expect(response.status).toBe(500)
+      await expectStatus(response, 500)
       expect((await response.json()).error.type).toBe('InternalError')
     } finally { reportFailure.mockRestore() }
   })

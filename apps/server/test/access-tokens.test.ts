@@ -3,6 +3,7 @@ import { test } from './pg-test'
 import { issueSession, setUserPassword } from '../src/auth'
 import { sql } from '../src/db'
 import type { TestClient } from 'feather-testing-postgres'
+import { expectRefused, expectStatus } from './fixtures'
 
 // #131: named access tokens (the API-005 replacement) + service accounts.
 // A token is a show-once fbt_ Bearer secret that authenticates as its owner;
@@ -29,7 +30,7 @@ async function userJwt(api: TestClient): Promise<string> {
     method: 'POST',
     body: JSON.stringify({ usr: EMAIL, pwd: 'tokenpw123' }),
   })
-  expect(login.status).toBe(200)
+  await expectStatus(login, 200)
   return ((await login.json()) as { token: string }).token
 }
 
@@ -45,7 +46,7 @@ describe('#131: access tokens', () => {
       headers: { authorization: `Bearer ${jwt}` },
       body: JSON.stringify({ label: 'my script' }),
     })
-    expect(issued.status).toBe(201)
+    await expectStatus(issued, 201)
     const tok = (await issued.json()) as { token: string; id: string; owner: string }
     expect(tok.token).toMatch(/^fbt_[A-Za-z0-9_-]{43}$/)
     expect(tok.owner).toBe(USER)
@@ -53,7 +54,7 @@ describe('#131: access tokens', () => {
     const who = await api.fetch('/api/whoami', {
       headers: { authorization: `Bearer ${tok.token}` },
     })
-    expect(who.status).toBe(200)
+    await expectStatus(who, 200)
     expect(((await who.json()) as { row_id: string }).row_id).toBe(USER)
 
     // Use stamps last_used_at.
@@ -64,18 +65,18 @@ describe('#131: access tokens', () => {
     const bad = await api.fetch('/api/whoami', {
       headers: { authorization: `Bearer fbt_${'0'.repeat(43)}` },
     })
-    expect(bad.status).toBe(401)
+    await expectStatus(bad, 401)
 
     // Revocation (owner revokes their own) kills it.
     const rev = await api.fetch(`/api/access_tokens/${tok.id}`, {
       method: 'DELETE',
       headers: { authorization: `Bearer ${jwt}` },
     })
-    expect(rev.status).toBe(200)
+    await expectStatus(rev, 200)
     const after = await api.fetch('/api/whoami', {
       headers: { authorization: `Bearer ${tok.token}` },
     })
-    expect(after.status).toBe(401)
+    await expectStatus(after, 401)
   })
 
   test('an expired token is refused; expiry must be in the future', async ({ admin, api }) => {
@@ -86,7 +87,7 @@ describe('#131: access tokens', () => {
       headers: { authorization: `Bearer ${jwt}` },
       body: JSON.stringify({ label: 'stale', expires_at: '2000-01-01T00:00:00Z' }),
     })
-    expect(past.status).toBe(417)
+    await expectStatus(past, 417)
 
     const issued = await api.fetch('/api/access_tokens', {
       method: 'POST',
@@ -99,7 +100,7 @@ describe('#131: access tokens', () => {
     const who = await api.fetch('/api/whoami', {
       headers: { authorization: `Bearer ${tok.token}` },
     })
-    expect(who.status).toBe(401)
+    await expectStatus(who, 401)
   })
 
   test("secrets are never retrievable after creation; listing shows metadata only", async ({
@@ -116,7 +117,7 @@ describe('#131: access tokens', () => {
     const list = await api.fetch('/api/access_tokens', {
       headers: { authorization: `Bearer ${jwt}` },
     })
-    expect(list.status).toBe(200)
+    await expectStatus(list, 200)
     const { tokens } = (await list.json()) as { tokens: Record<string, unknown>[] }
     expect(tokens).toHaveLength(1)
     expect(tokens[0].label).toBe('mine')
@@ -136,7 +137,7 @@ describe('#131: access tokens', () => {
       headers: { authorization: `Bearer ${jwt}` },
       body: JSON.stringify({ label: 'sneaky', owner: 'Administrator' }),
     })
-    expect(cross.status).toBe(403)
+    await expectStatus(cross, 403)
 
     // Admin issues one for the user, and one for themselves.
     const forUser = await admin.post<{ id: string }>('/api/access_tokens', {
@@ -164,7 +165,7 @@ describe('#131: access tokens', () => {
       method: 'DELETE',
       headers: { authorization: `Bearer ${jwt}` },
     })
-    expect(crossRevoke.status).toBe(403)
+    await expectStatus(crossRevoke, 403)
     await admin.delete(`/api/access_tokens/${forUser.id}`)
   })
 })
@@ -190,7 +191,7 @@ describe('#131: service accounts', () => {
         method: 'POST',
         body: JSON.stringify({ usr, pwd: 'anything' }),
       })
-      expect(login.status).toBe(401)
+      await expectStatus(login, 401)
     }
     await expect(
       admin.post('/api/set_password', { user: id, password: 'sneaky123' }),
@@ -205,7 +206,7 @@ describe('#131: service accounts', () => {
     const gated = await api.fetch('/api/service_accounts', {
       headers: { authorization: `Bearer ${issued.token}` },
     })
-    expect(gated.status).toBe(200)
+    await expectStatus(gated, 200)
     const who = (await (await api.fetch('/api/whoami', { headers: { authorization: `Bearer ${issued.token}` } })).json()) as {
       row_id: string
       kind: string
@@ -220,7 +221,7 @@ describe('#131: service accounts', () => {
     const dead = await api.fetch('/api/whoami', {
       headers: { authorization: `Bearer ${issued.token}` },
     })
-    expect(dead.status).toBe(401)
+    await expectStatus(dead, 401)
 
     // Re-enabling brings it back — the token was disabled, not destroyed.
     await admin.fetch(`/api/service_accounts/${id}`, {
@@ -230,7 +231,7 @@ describe('#131: service accounts', () => {
     const alive = await api.fetch('/api/whoami', {
       headers: { authorization: `Bearer ${issued.token}` },
     })
-    expect(alive.status).toBe(200)
+    await expectStatus(alive, 200)
   })
 
   test('service-account management is System Manager only; names are slugs', async ({
@@ -242,7 +243,7 @@ describe('#131: service accounts', () => {
     await expect(
       plain.post('/api/service_accounts', { label: 'svc-nope' }),
     ).rejects.toMatchObject({ status: 403 })
-    await expect(plain.get('/api/service_accounts')).rejects.toMatchObject({ status: 403 })
+    await expectRefused(plain.get('/api/service_accounts'), 403)
 
     await expect(
       admin.post('/api/service_accounts', { label: 'Not A Slug!' }),
@@ -269,12 +270,12 @@ describe('#131: service accounts', () => {
       label: 'doomed token',
       owner: account.row_id,
     })
-    await expect(admin.delete(`/api/table/Service%20Account/${account.row_id}`)).rejects.toMatchObject({ status: 417 })
+    await expectRefused(admin.delete(`/api/table/Service%20Account/${account.row_id}`), 417)
     await expect(sql.begin((tx) => tx`delete from service_account where row_id = ${account.row_id}`)).rejects.toThrow(/foreign key constraint/)
     const res = await api.fetch('/api/whoami', {
       headers: { authorization: `Bearer ${issued.token}` },
     })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
   })
 })
 
@@ -296,8 +297,8 @@ describe('A token acts as its owner', () => {
     const { token } = await admin.post<{ token: string }>('/api/access_tokens', { label: 'crate script', owner: owner.user })
     const bearer = { authorization: `Bearer ${token}` }
 
-    expect((await api.fetch(dt.rowUrl(first.row_id), { method: 'DELETE', headers: bearer })).status).toBe(200)
-    expect((await admin.fetch(dt.rowUrl(first.row_id))).status).toBe(404)
+    await expectStatus(await api.fetch(dt.rowUrl(first.row_id), { method: 'DELETE', headers: bearer }), 200)
+    await expectStatus(await admin.fetch(dt.rowUrl(first.row_id)), 404)
     // No wider than the owner: the role cannot create, so neither can the token.
     expect(
       (await api.fetch(dt.url, { method: 'POST', headers: bearer, body: JSON.stringify({ title: 'two' }) })).status,
@@ -313,7 +314,7 @@ describe('Revoke a token', () => {
     const issued = (await (
       await api.fetch('/api/access_tokens', { method: 'POST', headers: auth, body: JSON.stringify({ label: 'old script' }) })
     ).json()) as { id: string }
-    expect((await api.fetch(`/api/access_tokens/${issued.id}`, { method: 'DELETE', headers: auth })).status).toBe(200)
+    await expectStatus(await api.fetch(`/api/access_tokens/${issued.id}`, { method: 'DELETE', headers: auth }), 200)
     const { tokens } = (await (await api.fetch('/api/access_tokens', { headers: auth })).json()) as {
       tokens: { id: string; label: string; revoked_at: string | null }[]
     }
@@ -380,7 +381,7 @@ describe('#853: rename access tokens', () => {
       body: JSON.stringify({ label: 'new name', owner: 'Administrator', person: 'Administrator',
         service_account: 'svc_fake', token_hash: 'replacement', expires_at: null, revoked_at: new Date().toISOString() }),
     })
-    expect(response.status).toBe(200)
+    await expectStatus(response, 200)
     const result = await response.json()
     expect(result).not.toHaveProperty('token')
     expect(result).not.toHaveProperty('token_hash')
@@ -391,7 +392,7 @@ describe('#853: rename access tokens', () => {
     const { tokens } = await owner.get<{ tokens: { id: string; label: string }[] }>('/api/access_tokens')
     expect(tokens.find((t) => t.id === issued.id)).toMatchObject({ label: 'new name' })
     const who = await api.fetch('/api/whoami', { headers: { authorization: `Bearer ${issued.token}` } })
-    expect(who.status).toBe(200)
+    await expectStatus(who, 200)
     expect(await who.json()).toMatchObject({ row_id: owner.user })
     const audit = await sql`select "user", operation from activity_log where operation = ${`access_token_renamed ${issued.id}`}`
     expect(audit).toEqual([{ user: owner.user, operation: `access_token_renamed ${issued.id}` }])
@@ -406,15 +407,15 @@ describe('#853: rename access tokens', () => {
     const row = await admin.post<{ row_id: string }>(table.url, { title: 'still readable' })
     const issued = await admin.post<{ id: string; token: string }>('/api/access_tokens', { label: 'before', owner: owner.user })
     const bearer = { authorization: `Bearer ${issued.token}` }
-    expect((await api.fetch(table.rowUrl(row.row_id), { headers: bearer })).status).toBe(200)
-    expect((await api.fetch(table.rowUrl(row.row_id), { method: 'DELETE', headers: bearer })).status).toBe(403)
+    await expectStatus(await api.fetch(table.rowUrl(row.row_id), { headers: bearer }), 200)
+    await expectStatus(await api.fetch(table.rowUrl(row.row_id), { method: 'DELETE', headers: bearer }), 403)
     const [before] = await sql`select * from access_token where id = ${issued.id}`
     const response = await admin.fetch(`/api/access_tokens/${issued.id}`, { method: 'PATCH', body: JSON.stringify({ label: 'after' }) })
-    expect(response.status).toBe(200)
+    await expectStatus(response, 200)
     const [after] = await sql`select * from access_token where id = ${issued.id}`
     expect(after).toEqual({ ...before, label: 'after' })
-    expect((await api.fetch(table.rowUrl(row.row_id), { headers: bearer })).status).toBe(200)
-    expect((await api.fetch(table.rowUrl(row.row_id), { method: 'DELETE', headers: bearer })).status).toBe(403)
+    await expectStatus(await api.fetch(table.rowUrl(row.row_id), { headers: bearer }), 200)
+    await expectStatus(await api.fetch(table.rowUrl(row.row_id), { method: 'DELETE', headers: bearer }), 403)
     expect(await sql`select "user" from activity_log where operation = ${`access_token_renamed ${issued.id}`}`)
       .toEqual([{ user: admin.user }])
   })
@@ -426,7 +427,7 @@ describe('#853: rename access tokens', () => {
     const issued = await admin.post<{ id: string }>('/api/access_tokens', { label: 'keep me' })
     const before = await sql`select * from access_token where id = ${issued.id}`
     const response = await admin.fetch(`/api/access_tokens/${issued.id}`, { method: 'PATCH', body: JSON.stringify(body) })
-    expect(response.status).toBe(417)
+    await expectStatus(response, 417)
     expect(await sql`select * from access_token where id = ${issued.id}`).toEqual(before)
     expect(await sql`select 1 from activity_log where operation = ${`access_token_renamed ${issued.id}`}`).toHaveLength(0)
   })
@@ -435,7 +436,7 @@ describe('#853: rename access tokens', () => {
     const issued = await admin.post<{ id: string }>('/api/access_tokens', { label: 'keep malformed' })
     const before = await sql`select * from access_token where id = ${issued.id}`
     const response = await admin.fetch(`/api/access_tokens/${issued.id}`, { method: 'PATCH', body: '{' })
-    expect(response.status).toBe(417)
+    await expectStatus(response, 417)
     expect(await response.json()).toMatchObject({ error: { type: 'ValidationError' } })
     expect(await sql`select * from access_token where id = ${issued.id}`).toEqual(before)
     expect(await sql`select 1 from activity_log where operation = ${`access_token_renamed ${issued.id}`}`).toHaveLength(0)
@@ -453,7 +454,7 @@ describe('#853: rename access tokens', () => {
         method: 'PATCH', headers: { authorization: `Bearer ${(await issueSession(owner.user!, { preview: true })).token}` },
         body: JSON.stringify({ label: 'preview edit' }),
       })
-    expect(response.status).toBe(403)
+    await expectStatus(response, 403)
     expect(await sql`select * from access_token where id = ${issued.id}`).toEqual(before)
   })
 
@@ -467,21 +468,21 @@ describe('#853: rename access tokens', () => {
       if (state === 'expired') await sql`update access_token set expires_at = now() - interval '1 minute' where id = ${issued.id}`
       if (state === 'disabled person') await sql`update person set enabled = false where row_id = ${owner}`
       if (state === 'disabled service account') {
-        expect((await admin.fetch(`/api/service_accounts/${owner}`, { method: 'PATCH', body: JSON.stringify({ enabled: false }) })).status).toBe(200)
+        await expectStatus(await admin.fetch(`/api/service_accounts/${owner}`, { method: 'PATCH', body: JSON.stringify({ enabled: false }) }), 200)
       }
       const auth = { authorization: `Bearer ${issued.token}` }
-      expect((await api.fetch('/api/whoami', { headers: auth })).status).toBe(401)
+      await expectStatus(await api.fetch('/api/whoami', { headers: auth }), 401)
       const [before] = await sql`select * from access_token where id = ${issued.id}`
-      expect((await admin.fetch(`/api/access_tokens/${issued.id}`, { method: 'PATCH', body: JSON.stringify({ label: 'still inactive' }) })).status).toBe(200)
+      await expectStatus(await admin.fetch(`/api/access_tokens/${issued.id}`, { method: 'PATCH', body: JSON.stringify({ label: 'still inactive' }) }), 200)
       const [after] = await sql`select * from access_token where id = ${issued.id}`
       expect(after).toEqual({ ...before, label: 'still inactive' })
-      expect((await api.fetch('/api/whoami', { headers: auth })).status).toBe(401)
+      await expectStatus(await api.fetch('/api/whoami', { headers: auth }), 401)
     },
   )
 
   test('a nonexistent token cannot be renamed', async ({ admin }) => {
     const response = await admin.fetch('/api/access_tokens/tok_000000000000', { method: 'PATCH', body: JSON.stringify({ label: 'missing' }) })
-    expect(response.status).toBe(404)
+    await expectStatus(response, 404)
     expect(await sql`select 1 from access_token where id = 'tok_000000000000'`).toHaveLength(0)
   })
 })
@@ -491,12 +492,12 @@ describe('#853: rename service accounts', () => {
     const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-before', roles: ['System Manager'] })
     const issued = await admin.post<{ id: string; token: string }>('/api/access_tokens', { label: 'automation', owner: account.row_id })
     const auth = { authorization: `Bearer ${issued.token}` }
-    expect((await api.fetch('/api/service_accounts', { headers: auth })).status).toBe(200)
+    await expectStatus(await api.fetch('/api/service_accounts', { headers: auth }), 200)
     const [before] = await sql`select row_id, label, enabled, created_at, created_by from service_account where row_id = ${account.row_id}`
     const roles = await sql`select * from has_role where parent = ${account.row_id} order by row_id`
     const tokens = await sql`select * from access_token where service_account = ${account.row_id}`
     const response = await admin.fetch(`/api/service_accounts/${account.row_id}`, { method: 'PATCH', body: JSON.stringify({ label: 'svc-after' }) })
-    expect(response.status).toBe(200)
+    await expectStatus(response, 200)
     const result = await response.json()
     expect(result).not.toHaveProperty('token')
     expect(result).not.toHaveProperty('token_hash')
@@ -509,9 +510,9 @@ describe('#853: rename service accounts', () => {
     const list = await admin.get<{ service_accounts: { row_id: string; label: string }[] }>('/api/service_accounts')
     expect(list.service_accounts.find((a) => a.row_id === account.row_id)).toMatchObject({ label: 'svc-after' })
     const who = await api.fetch('/api/whoami', { headers: auth })
-    expect(who.status).toBe(200)
+    await expectStatus(who, 200)
     expect(await who.json()).toMatchObject({ row_id: account.row_id, kind: 'service_account' })
-    expect((await api.fetch('/api/service_accounts', { headers: auth })).status).toBe(200)
+    await expectStatus(await api.fetch('/api/service_accounts', { headers: auth }), 200)
     expect(await sql`select "user" from activity_log where operation = ${`service_account_renamed ${account.row_id}`}`)
       .toEqual([{ user: admin.user }])
   })
@@ -544,7 +545,7 @@ describe('#853: rename service accounts', () => {
     const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-protected' })
     const plain = await createUser({ email: 'service-renamer@x.com' })
     const before = await sql`select * from service_account where row_id = ${account.row_id}`
-    expect((await plain.fetch(`/api/service_accounts/${account.row_id}`, { method: 'PATCH', body: JSON.stringify({ label: 'svc-stolen' }) })).status).toBe(403)
+    await expectStatus(await plain.fetch(`/api/service_accounts/${account.row_id}`, { method: 'PATCH', body: JSON.stringify({ label: 'svc-stolen' }) }), 403)
     expect(await sql`select * from service_account where row_id = ${account.row_id}`).toEqual(before)
   })
 
@@ -552,19 +553,19 @@ describe('#853: rename service accounts', () => {
     const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-off', roles: ['System Manager'] })
     const issued = await admin.post<{ id: string; token: string }>('/api/access_tokens', { label: 'off token', owner: account.row_id })
     if (state === 'disabled') {
-      expect((await admin.fetch(`/api/service_accounts/${account.row_id}`, { method: 'PATCH', body: JSON.stringify({ enabled: false }) })).status).toBe(200)
+      await expectStatus(await admin.fetch(`/api/service_accounts/${account.row_id}`, { method: 'PATCH', body: JSON.stringify({ enabled: false }) }), 200)
     }
     if (state === 'revoked') await admin.delete(`/api/access_tokens/${issued.id}`)
     if (state === 'expired') await sql`update access_token set expires_at = now() - interval '1 minute' where id = ${issued.id}`
     const auth = { authorization: `Bearer ${issued.token}` }
-    expect((await api.fetch('/api/whoami', { headers: auth })).status).toBe(401)
+    await expectStatus(await api.fetch('/api/whoami', { headers: auth }), 401)
     const tokens = await sql`select * from access_token where service_account = ${account.row_id}`
     const roles = await sql`select * from has_role where parent = ${account.row_id} order by row_id`
-    expect((await admin.fetch(`/api/service_accounts/${account.row_id}`, { method: 'PATCH', body: JSON.stringify({ label: 'svc-still-off' }) })).status).toBe(200)
+    await expectStatus(await admin.fetch(`/api/service_accounts/${account.row_id}`, { method: 'PATCH', body: JSON.stringify({ label: 'svc-still-off' }) }), 200)
     expect(await sql`select label, enabled from service_account where row_id = ${account.row_id}`).toEqual([{ label: 'svc-still-off', enabled: state !== 'disabled' }])
     expect(await sql`select * from access_token where service_account = ${account.row_id}`).toEqual(tokens)
     expect(await sql`select * from has_role where parent = ${account.row_id} order by row_id`).toEqual(roles)
-    expect((await api.fetch('/api/whoami', { headers: auth })).status).toBe(401)
+    await expectStatus(await api.fetch('/api/whoami', { headers: auth }), 401)
   })
 
   test('token names accept 140 characters but refuse longer suggestions and edits without changing state', async ({ admin }) => {
@@ -575,20 +576,20 @@ describe('#853: rename service accounts', () => {
     for (const label of [`${'a'.repeat(139)}-1`, 'manual '.repeat(21), '😀'.repeat(141)]) {
       for (const [method, path] of [['POST', '/api/access_tokens'], ['PATCH', `/api/access_tokens/${issued.id}`]]) {
         const response = await admin.fetch(path, { method, body: JSON.stringify({ label }) })
-        expect(response.status).toBe(417)
+        await expectStatus(response, 417)
         expect(await response.json()).toMatchObject({ error: { type: 'ValidationError', message: 'A token label must be at most 140 characters' } })
       }
     }
     expect(await sql`select * from access_token where id = ${issued.id}`).toEqual(before)
     const unicode = '😀'.repeat(140)
     const renamed = await admin.fetch(`/api/access_tokens/${issued.id}`, { method: 'PATCH', body: JSON.stringify({ label: unicode }) })
-    expect(renamed.status).toBe(200)
+    await expectStatus(renamed, 200)
     expect(await renamed.json()).toMatchObject({ label: unicode })
   })
 
   test('a nonexistent service account cannot be renamed', async ({ admin }) => {
     const response = await admin.fetch('/api/service_accounts/svc_aaaaaaaaaaaaaaaaaaaa', { method: 'PATCH', body: JSON.stringify({ label: 'svc-missing' }) })
-    expect(response.status).toBe(404)
+    await expectStatus(response, 404)
     expect(await sql`select 1 from service_account where row_id = 'svc_aaaaaaaaaaaaaaaaaaaa'`).toHaveLength(0)
   })
 })

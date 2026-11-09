@@ -3,7 +3,7 @@ import { test } from './pg-test'
 import { expect } from 'vitest'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
-import { patchDoc } from './fixtures'
+import { expectRefused, patchDoc } from './fixtures'
 
 test('Email Sink reading metadata leaves authorization intact', async ({ admin, createUser }) => {
   await sql`insert into email_sink (row_id, mail_from, mail_to, subject, body)
@@ -13,8 +13,8 @@ test('Email Sink reading metadata leaves authorization intact', async ({ admin, 
   expect(meta.reading_presentation).toMatchObject({ title: 'subject', body: 'body', headers: ['mail_from', 'mail_to', 'created_at'] })
   expect(await admin.get('/api/table/Email%20Sink/reading-mail')).toMatchObject({ body: 'Private body' })
   const user = await createUser({ roles: [] })
-  await expect(user.get('/api/table/Email%20Sink/reading-mail')).rejects.toMatchObject({ status: 403 })
-  await expect(user.get('/api/table/Email%20Sink:meta')).rejects.toMatchObject({ status: 403 })
+  await expectRefused(user.get('/api/table/Email%20Sink/reading-mail'), 403)
+  await expectRefused(user.get('/api/table/Email%20Sink:meta'), 403)
   for (const write of [
     () => admin.post('/api/table/Email%20Sink', { subject: 'Forged' }),
     () => patchDoc(admin, '/api/table/Email%20Sink/reading-mail', { body: 'Forged' }),

@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import type { TestClient } from 'feather-testing-postgres'
+import { expectStatus } from './fixtures'
 
 // SET-003: the permission-manager endpoints edit the Permission matrix, gated to
 // System Managers, upserting one row per (table, role) at tier 'basic'.
@@ -22,7 +23,7 @@ describe('SET-003: permission manager endpoints', () => {
   test('GET returns roles and perms for a System Manager', async ({ admin }) => {
     await setup(admin)
     const res = await admin.fetch(`/api/permissions/${encodeURIComponent(DT)}`)
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const body = (await res.json()) as { roles: string[]; perms: unknown[] }
     expect(body.roles).toContain(ROLE)
     expect(Array.isArray(body.perms)).toBe(true)
@@ -36,8 +37,8 @@ describe('SET-003: permission manager endpoints', () => {
         body: JSON.stringify({ role: ROLE, ...flags }),
       })
 
-    expect((await post({ can_read: true, can_write: true })).status).toBe(200)
-    expect((await post({ can_read: true, can_write: false })).status).toBe(200)
+    await expectStatus(await post({ can_read: true, can_write: true }), 200)
+    await expectStatus(await post({ can_read: true, can_write: false }), 200)
 
     const rows = await sql`
       select operation from permission
@@ -69,7 +70,7 @@ describe('SET-003: permission manager endpoints', () => {
     const cleared = await admin.fetch(`/api/permissions/${encodeURIComponent(DT)}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role: ROLE }),
     })
-    expect(cleared.status).toBe(417)
+    await expectStatus(cleared, 417)
     expect(await sql`select operation, scope_mode from permission where ref_table = ${DT} and role = ${ROLE}`)
       .toEqual([{ operation: 'read', scope_mode: 'creator' }])
   })
@@ -111,7 +112,7 @@ describe('SET-003: permission manager endpoints', () => {
     const revoked = await admin.fetch(`/api/permissions/${encodeURIComponent(DT)}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role: ROLE, can_read: false }),
     })
-    expect(revoked.status).toBe(417)
+    await expectStatus(revoked, 417)
     expect(((await revoked.json()) as { error: { message: string } }).error.message).toMatch(/Deeper access of Matrix Detail/)
     expect((await sql`select role from permission where ref_table = ${DT} order by role`).map((row) => row.role)).toEqual(['Matrix Detail', ROLE].sort())
   })
@@ -123,12 +124,12 @@ describe('SET-003: permission manager endpoints', () => {
     await setup(admin)
     const nonSm = await createUser({ roles: [] }) // no System Manager
     const get = await nonSm.fetch(`/api/permissions/${encodeURIComponent(DT)}`)
-    expect(get.status).toBe(403)
+    await expectStatus(get, 403)
     const post = await nonSm.fetch(`/api/permissions/${encodeURIComponent(DT)}`, {
       method: 'POST',
       body: JSON.stringify({ role: ROLE, can_read: true }),
     })
-    expect(post.status).toBe(403)
+    await expectStatus(post, 403)
   })
 })
 
@@ -140,10 +141,10 @@ describe("Set a table's grants in one place", () => {
     await setup(admin)
     const holder = await createUser({ roles: [ROLE] })
     const list = `/api/table/${encodeURIComponent(DT)}`
-    expect((await holder.fetch(list)).status).toBe(403)
+    await expectStatus(await holder.fetch(list), 403)
     await admin.post(`/api/permissions/${encodeURIComponent(DT)}`, { role: ROLE, can_read: true })
-    expect((await holder.fetch(list)).status).toBe(200)
+    await expectStatus(await holder.fetch(list), 200)
     await admin.post(`/api/permissions/${encodeURIComponent(DT)}`, { role: ROLE, can_read: false })
-    expect((await holder.fetch(list)).status).toBe(403)
+    await expectStatus(await holder.fetch(list), 403)
   })
 })

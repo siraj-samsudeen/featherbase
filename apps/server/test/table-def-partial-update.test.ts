@@ -3,7 +3,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { makeTable } from './fixtures'
+import { expectRefused, makeTable } from './fixtures'
 
 const url = (table: string) => `/api/table_def/${encodeURIComponent(table)}`
 type Meta = { title_column: string | null; description: string | null; module: string; id_pattern: string; columns: { column_name: string; label: string }[] }
@@ -78,7 +78,7 @@ describe('PUT /api/table_def/:name', () => {
 
   test('a title column the Table does not have is refused', async ({ admin }) => {
     await plant(admin)
-    await expect(admin.put(url('Pu Plant'), { title_column: 'nope' })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(admin.put(url('Pu Plant'), { title_column: 'nope' }), 417)
     expect((await meta(admin, 'Pu Plant')).title_column).toBe('plant_name')
   })
 })

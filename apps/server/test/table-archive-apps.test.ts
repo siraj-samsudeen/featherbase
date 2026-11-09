@@ -11,7 +11,7 @@ import { discoverPackages, repinToFolder } from '../src/runtime-packages'
 import { loadInstalledApps } from '../src/apps'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
-import { expectApiError, makeTable } from './fixtures'
+import { expectApiError, expectRefused, makeTable } from './fixtures'
 
 // Every request names the app versions its client loaded, as the web client does.
 const atVersions = (client: TestClient, versions: string) => makeClient({ request: (path, init) => client.fetch(String(path), {
@@ -68,11 +68,11 @@ describe("#1041: archiving an app's table", () => {
   test("a System Manager archives and un-archives it, and nobody else can", async ({ admin, createUser }) => {
     await installActionProof(admin)
     const clerk = await createUser({ email: 'arc.app.clerk@example.com', roles: [] })
-    await expectApiError(archive(clerk, DESTINATION), { status: 403 })
+    await expectRefused(archive(clerk, DESTINATION), 403)
     const meta = await archive(admin, DESTINATION, 'Replaced by the master table')
     expect(meta).toMatchObject({ archived_note: 'Replaced by the master table' })
     expect(meta.archived_at).toBeTruthy()
-    await expectApiError(unarchive(clerk, DESTINATION), { status: 403 })
+    await expectRefused(unarchive(clerk, DESTINATION), 403)
     expect(await unarchive(admin, DESTINATION)).toMatchObject({ archived_at: null })
   })
 
@@ -210,7 +210,7 @@ describe("#1041: archiving an app's table", () => {
         })
         // A retired row is still a row: scope reads it.
         await admin.post(`${tableUrl(POSITION)}/p1:retire`, { reason: 'Moved' })
-        await expectApiError(archive(admin, POSITION), { status: 417 })
+        await expectRefused(archive(admin, POSITION), 417)
         await admin.post(`${tableUrl(POSITION)}:purge`, { ids: ['p1'], links: 'clear', reason: 'Made by mistake', confirm: true })
         expect(await archive(admin, POSITION)).toMatchObject({ archived_at: expect.anything() })
       })

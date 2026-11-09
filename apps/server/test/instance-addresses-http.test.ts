@@ -7,7 +7,7 @@ import { saveDoc } from '../src/document'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { alertAccessRequest } from '../src/waiting-for-access'
-import { makePerson } from './fixtures'
+import { expectStatus, makePerson } from './fixtures'
 import { setPasswordFromShell } from '../src/auth'
 import { preAuthPolicy } from '../src/pre-auth-rate-limit'
 import { preflightRelease } from '../src/release-preflight'
@@ -52,7 +52,7 @@ describe('Google sign-in per address', () => {
   test('a forged Host cannot create an origin: an unlisted host is sent to start Google sign-in on the admin address', async ({ api }) => {
     await configureGoogle({ client_id: 'test-client-id' })
     const res = await api.fetch('https://evil.example.net/api/oauth/google/login?email=a%40example.com', { headers: { 'x-forwarded-proto': 'http' } })
-    expect(res.status).toBe(302)
+    await expectStatus(res, 302)
     expect(res.headers.get('location')).toBe(`${ADMIN}/api/oauth/google/login?email=a%40example.com`)
   })
 
@@ -94,14 +94,14 @@ describe('the OAuth state is bound to its address', () => {
     await setGoogleOpen()
     const { callback, cookie } = await mockCallbackUrl(api, DASH, 'someone@gmail.com')
     const res = await api.fetch(`${ADMIN}${callback}`, { headers: { cookie } })
-    expect(res.status).toBe(401)
+    await expectStatus(res, 401)
   })
 
   test('a callback on the host that started the sign-in completes', async ({ api }) => {
     await setGoogleOpen()
     const { callback, cookie } = await mockCallbackUrl(api, DASH, 'someone@gmail.com')
     const res = await api.fetch(`${DASH}${callback}`, { headers: { cookie } })
-    expect(res.status).toBe(302)
+    await expectStatus(res, 302)
     expect(res.headers.get('location')).toContain('/featherbase/oauth-callback?code=')
   })
 })
@@ -111,7 +111,7 @@ describe('on an address that opens an app', () => {
 
   test('/ redirects to the app root', async ({ api }) => {
     const res = await get(api, `${DASH}/`)
-    expect(res.status).toBe(302)
+    await expectStatus(res, 302)
     expect(res.headers.get('location')).toBe(ROOT)
   })
 
@@ -133,7 +133,7 @@ describe('on an address that opens an app', () => {
 
   test("another app's root redirects to the app root", async ({ api }) => {
     const res = await get(api, `${DASH}/tasker/`)
-    expect(res.status).toBe(302)
+    await expectStatus(res, 302)
     expect(res.headers.get('location')).toBe(ROOT)
   })
 
@@ -164,7 +164,7 @@ describe('on an address that opens an app', () => {
   })
 
   test('the API and the privacy notice are served', async ({ api }) => {
-    expect((await api.fetch(`${DASH}/api/ping`)).status).toBe(200)
+    await expectStatus(await api.fetch(`${DASH}/api/ping`), 200)
     expect((await get(api, `${DASH}/privacy`)).status).not.toBe(302)
   })
 
@@ -180,7 +180,7 @@ describe('on an address that opens an app', () => {
     const home = await get(admin, `${DASH}/`)
     expect(home.headers.get('location')).toBe('/not_installed/')
     const root = await get(admin, `${DASH}/not_installed/`)
-    expect(root.status).toBe(404)
+    await expectStatus(root, 404)
     expect(await root.text()).toContain('Application unavailable')
   })
 })
@@ -279,7 +279,7 @@ describe('landing after sign-in', () => {
     const { handoff } = (await redeemed.json()) as SignedIn
     expect(handoff).toMatch(new RegExp(`^${DASH}/api/handoff/start\\?ticket=`))
     const followed = await followHandoff(api, handoff!, sid)
-    expect((await redeemOn(api, DASH, followed.code, followed.nonce)).status).toBe(200)
+    await expectStatus(await redeemOn(api, DASH, followed.code, followed.nonce), 200)
   })
 })
 
@@ -287,7 +287,7 @@ describe('the hand-off between addresses', () => {
   test('missing unknown wrong-address and spent tickets refuse without account changes while a genuine transfer succeeds', async ({ api, admin }) => {
     const viewer = await personWith(admin, 'viewer.ticket.refusals', ['Sales Target Viewer'])
     const source = await signIn(api, ADMIN, viewer.usr)
-    expect(source.res.status).toBe(200)
+    await expectStatus(source.res, 200)
     const handoff = new URL(source.body.handoff!)
     expect(handoff.origin).toBe(DASH)
     const accounts = async () => ({
@@ -297,7 +297,7 @@ describe('the hand-off between addresses', () => {
       activity: await sql`select * from activity_log order by row_id`,
     })
     const refused = async (response: Response) => {
-      expect(response.status).toBe(401)
+      await expectStatus(response, 401)
       expect(await response.json()).toEqual({ error: { type: 'AuthenticationError', message: 'Invalid or expired sign-in code' } })
       expect(response.headers.get('location')).toBeNull()
       expect(response.headers.getSetCookie()).toEqual([])
@@ -310,7 +310,7 @@ describe('the hand-off between addresses', () => {
     expect(await accounts()).toEqual(before)
 
     const start = await api.fetch(handoff.href)
-    expect(start.status).toBe(302)
+    await expectStatus(start, 302)
     const bind = new URL(start.headers.get('location')!)
     expect(bind.origin).toBe(ADMIN)
     expect(bind.searchParams.get('ticket')).toBe(handoff.searchParams.get('ticket'))
@@ -330,22 +330,22 @@ describe('the hand-off between addresses', () => {
     // A separate genuine login supplies an unspent control ticket; do not
     // invent or re-sign a ticket after the rejected bind.
     const control = await signIn(api, ADMIN, viewer.usr)
-    expect(control.res.status).toBe(200)
+    await expectStatus(control.res, 200)
     const started = await api.fetch(control.body.handoff!)
-    expect(started.status).toBe(302)
+    await expectStatus(started, 302)
     const bound = await api.fetch(started.headers.get('location')!, { headers: { cookie: control.sid } })
-    expect(bound.status).toBe(302)
+    await expectStatus(bound, 302)
     const callback = new URL(bound.headers.get('location')!)
     expect(callback.origin).toBe(DASH)
     const completed = await redeemOn(api, DASH, callback.searchParams.get('code'), cookieOf(started, 'handoff_nonce'))
-    expect(completed.status).toBe(200)
+    await expectStatus(completed, 200)
     const target = await completed.json() as SignedIn
     expect(target.user.row_id).toBe(viewer.id)
     expect(target.token).not.toBe(control.body.token)
     expect(target.landing).toBe(ROOT)
     expect(cookieOf(completed, 'sid')).toBe(`sid=${target.token}`)
     const who = await api.fetch(`${DASH}/api/whoami`, { headers: { cookie: cookieOf(completed, 'sid') } })
-    expect(who.status).toBe(200)
+    await expectStatus(who, 200)
     expect(await who.json()).toMatchObject({ row_id: viewer.id })
     const after = await accounts()
     expect(after.people).toEqual(before.people)
@@ -363,7 +363,7 @@ describe('the hand-off between addresses', () => {
     const viewer = await personWith(admin, 'viewer.round.trip', ['Sales Target Viewer'])
     const { body } = await signIn(api, ADMIN, viewer.usr)
     const start = await api.fetch(body.handoff!)
-    expect(start.status).toBe(302)
+    await expectStatus(start, 302)
     expect(start.headers.get('location')).toMatch(new RegExp(`^${ADMIN}/api/handoff/bind\\?`))
     const cookie = start.headers.getSetCookie().find((c) => c.startsWith('handoff_nonce='))!
     expect(cookie).toMatch(/HttpOnly/i)
@@ -376,7 +376,7 @@ describe('the hand-off between addresses', () => {
     const { body: source, sid } = await signIn(api, ADMIN, viewer.usr)
     const { code, nonce } = await followHandoff(api, source.handoff!, sid)
     const res = await redeemOn(api, DASH, code, nonce)
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const target = (await res.json()) as SignedIn
     expect(target.user.row_id).toBe(viewer.id)
     expect(target.token).not.toBe(source.token)
@@ -388,7 +388,7 @@ describe('the hand-off between addresses', () => {
     const attacker = await personWith(admin, 'attacker.no.nonce', ['Sales Target Viewer'])
     const { body, sid } = await signIn(api, ADMIN, attacker.usr)
     const { code } = await followHandoff(api, body.handoff!, sid)
-    expect((await redeemOn(api, DASH, code)).status).toBe(401)
+    await expectStatus(await redeemOn(api, DASH, code), 401)
   })
 
   test("a code redeemed by another browser, with that browser's own nonce cookie, is refused", async ({ api, admin }) => {
@@ -397,14 +397,14 @@ describe('the hand-off between addresses', () => {
     const { code } = await followHandoff(api, mine.body.handoff!, mine.sid)
     const theirs = await signIn(api, ADMIN, attacker.usr)
     const victimNonce = cookieOf(await api.fetch(theirs.body.handoff!), 'handoff_nonce')
-    expect((await redeemOn(api, DASH, code, victimNonce)).status).toBe(401)
+    await expectStatus(await redeemOn(api, DASH, code, victimNonce), 401)
   })
 
   test('a hand-off link opened in another browser is refused at the source, which has no session for it', async ({ api, admin }) => {
     const attacker = await personWith(admin, 'attacker.link', ['Sales Target Viewer'])
     const { body } = await signIn(api, ADMIN, attacker.usr)
     const { bind, code } = await followHandoff(api, body.handoff!, '')
-    expect(bind.status).toBe(401)
+    await expectStatus(bind, 401)
     expect(code).toBeNull()
   })
 
@@ -412,16 +412,16 @@ describe('the hand-off between addresses', () => {
     const viewer = await personWith(admin, 'viewer.replays', ['Sales Target Viewer'])
     const { body, sid } = await signIn(api, ADMIN, viewer.usr)
     const { code, nonce } = await followHandoff(api, body.handoff!, sid)
-    expect((await redeemOn(api, DASH, code, nonce)).status).toBe(200)
-    expect((await redeemOn(api, DASH, code, nonce)).status).toBe(401)
+    await expectStatus(await redeemOn(api, DASH, code, nonce), 200)
+    await expectStatus(await redeemOn(api, DASH, code, nonce), 401)
   })
 
   test('a code redeemed on another host is refused, and spent', async ({ api, admin }) => {
     const viewer = await personWith(admin, 'viewer.wrong.host', ['Sales Target Viewer'])
     const { body, sid } = await signIn(api, ADMIN, viewer.usr)
     const { code, nonce } = await followHandoff(api, body.handoff!, sid)
-    expect((await redeemOn(api, ADMIN, code, nonce)).status).toBe(401)
-    expect((await redeemOn(api, DASH, code, nonce)).status).toBe(401)
+    await expectStatus(await redeemOn(api, ADMIN, code, nonce), 401)
+    await expectStatus(await redeemOn(api, DASH, code, nonce), 401)
   })
 
   test('a code older than one minute is refused', async ({ api, admin }) => {
@@ -431,7 +431,7 @@ describe('the hand-off between addresses', () => {
     const now = Date.now()
     const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 61_000)
     try {
-      expect((await redeemOn(api, DASH, code, nonce)).status).toBe(401)
+      await expectStatus(await redeemOn(api, DASH, code, nonce), 401)
     } finally {
       clock.mockRestore()
     }
@@ -442,7 +442,7 @@ describe('the hand-off between addresses', () => {
     const { body, sid } = await signIn(api, ADMIN, viewer.usr)
     const { code, nonce } = await followHandoff(api, body.handoff!, sid)
     await api.fetch(`${ADMIN}/api/logout`, { method: 'POST', headers: { cookie: sid } })
-    expect((await redeemOn(api, DASH, code, nonce)).status).toBe(401)
+    await expectStatus(await redeemOn(api, DASH, code, nonce), 401)
   })
 
   test("a code is refused once an operator's password reset ends the person's sessions", async ({ api, admin }) => {
@@ -454,7 +454,7 @@ describe('the hand-off between addresses', () => {
     // the cut-off a second past the wall clock, as a reset just after would.
     await setPasswordFromShell(viewer.id, 'reset-by-operator-1')
     await sql`update person set sessions_ended_at = clock_timestamp() + interval '1 second' where row_id = ${viewer.id}`
-    expect((await redeemOn(api, DASH, code, nonce)).status).toBe(401)
+    await expectStatus(await redeemOn(api, DASH, code, nonce), 401)
   })
 })
 
@@ -494,10 +494,10 @@ describe('sessions stay per address', () => {
     const { code, nonce } = await followHandoff(api, source.handoff!, sid)
     const target = (await (await redeemOn(api, DASH, code, nonce)).json()) as SignedIn
     const out = await api.fetch(`${DASH}/api/logout`, { method: 'POST', headers: { authorization: `Bearer ${target.token}` } })
-    expect(out.status).toBe(200)
+    await expectStatus(out, 200)
     const whoami = (token: string, origin: string) => api.fetch(`${origin}/api/whoami`, { headers: { authorization: `Bearer ${token}` } })
-    expect((await whoami(target.token, DASH)).status).toBe(401)
-    expect((await whoami(source.token, ADMIN)).status).toBe(200)
+    await expectStatus(await whoami(target.token, DASH), 401)
+    await expectStatus(await whoami(source.token, ADMIN), 200)
   })
 })
 
@@ -558,7 +558,7 @@ describe('emailed links use the address marked for emails', () => {
     const person = await makePerson({ email: 'reset.488@example.com', full_name: 'Reset Person' })
     await admin.post('/api/set_password', { user: person, password: 'origpw123' })
     const res = await admin.fetch(`${ADMIN}/api/reset_password_request`, { method: 'POST', body: JSON.stringify({ usr: 'reset.488@example.com' }) })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const [mail] = await sql`select body from email_sink where mail_to = 'reset.488@example.com'`
     expect(String(mail.body)).toContain(`${DASH}/featherbase/reset-password?key=`)
   })
@@ -569,7 +569,7 @@ describe('emailed links use the address marked for emails', () => {
       method: 'POST',
       body: JSON.stringify({ method: 'google', email: 'invited.488@example.com' }),
     })
-    expect(res.status).toBe(201)
+    await expectStatus(res, 201)
     const [mail] = await sql`select body from email_sink where mail_to = 'invited.488@example.com'`
     expect(String(mail.body)).toContain(`${DASH}/featherbase/login`)
   })

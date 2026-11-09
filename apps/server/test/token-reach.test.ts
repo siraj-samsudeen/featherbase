@@ -2,7 +2,7 @@ import { expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
-import { grantRole } from './fixtures'
+import { expectRefused, expectStatus, grantRole } from './fixtures'
 
 // #852: before a token is issued, the Access tokens screen says what its owner
 // can reach, so a token that can do nothing useful is caught before it is used.
@@ -48,13 +48,13 @@ test('the reach matches what the token can really do', async ({ admin, api }) =>
   const asToken = { headers: { authorization: `Bearer ${token}` } }
 
   expect(names((await admin.get<Reach>(reachOf(account.row_id))).read)).not.toContain('Reach Bin')
-  expect((await api.fetch('/api/table/Reach%20Bin', asToken)).status).toBe(403)
+  await expectStatus(await api.fetch('/api/table/Reach%20Bin', asToken), 403)
 
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Bin Reader' } })
   await grantRole(admin, { table: 'Reach Bin', role: 'Bin Reader', can_read: true })
   await admin.post(`/api/service_accounts/${account.row_id}/roles`, { roles: ['Bin Reader'] })
   expect(names((await admin.get<Reach>(reachOf(account.row_id))).read)).toContain('Reach Bin')
-  expect((await api.fetch('/api/table/Reach%20Bin', asToken)).status).toBe(200)
+  await expectStatus(await api.fetch('/api/table/Reach%20Bin', asToken), 200)
 })
 
 test('a System Manager owner reaches every Table', async ({ admin }) => {
@@ -66,7 +66,7 @@ test('a System Manager owner reaches every Table', async ({ admin }) => {
 test('only a System Manager may ask about another owner; anyone may ask about themselves', async ({ admin, createUser }) => {
   const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'reach-private' })
   const person = await createUser({ roles: [] })
-  await expect(person.get(reachOf(account.row_id))).rejects.toMatchObject({ status: 403 })
+  await expectRefused(person.get(reachOf(account.row_id)), 403)
   expect((await person.get<Reach>(reachOf(person.user!))).every_table).toBe(false)
 })
 

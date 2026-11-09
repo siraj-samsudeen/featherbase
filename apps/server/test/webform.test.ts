@@ -3,6 +3,7 @@ import { sql } from '../src/db'
 import { getWebFormConfig, submitWebForm } from '../src/webform'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
+import { expectStatus } from './fixtures'
 
 // WEB-002: public web forms expose a whitelist of a Table's columns and
 // create a document on submit, with server validation and column
@@ -110,11 +111,11 @@ describe('WEB-002: web forms', () => {
   test('is reachable over HTTP with no session', async ({ admin, api }) => {
     await setup(admin)
     const cfg = await api.fetch('/api/web_form/wf-srv')
-    expect(cfg.status).toBe(200)
+    await expectStatus(cfg, 200)
     const malformed = await api.fetch('/api/web_form/wf-srv', {
       method: 'POST', body: '{"values":',
     })
-    expect(malformed.status).toBe(417)
+    await expectStatus(malformed, 417)
     expect(await malformed.json()).toMatchObject({
       error: { type: 'ValidationError', fields: { full_name: expect.any(String), message: expect.any(String) } },
     })
@@ -124,7 +125,7 @@ describe('WEB-002: web forms', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ values: { full_name: 'HttpAnon', message: 'via http' } }),
     })
-    expect(submit.status).toBe(201)
+    await expectStatus(submit, 201)
   })
 })
 

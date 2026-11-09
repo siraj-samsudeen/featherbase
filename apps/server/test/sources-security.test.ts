@@ -8,7 +8,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect } from 'vitest'
 import postgres from 'postgres'
 import type { TestClient } from 'feather-testing-postgres'
 import { test, patchDoc } from './pg-test'
-import { expectApiError, grantRole } from './fixtures'
+import { expectApiError, expectRefused, expectStatus, grantRole } from './fixtures'
 import { EXTERNAL_DATABASE_URL } from './external-database'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
@@ -101,8 +101,8 @@ describe('finding 1: bound tables honor own-rows and Data Scope rules', () => {
     const user = await userWith(admin, createUser, { can_read: true })
     await grantRole(admin, { table: BOUND, role: 'Sec Role', can_write: true, can_delete: true, own_rows_only: true })
     expect(await user.get(`${url}:capabilities`)).toMatchObject({ write: false, delete: false, rename: false })
-    await expectApiError(patchDoc(user, url, { label: 'Forbidden' }), { status: 403 })
-    await expectApiError(user.delete(url), { status: 403 })
+    await expectRefused(patchDoc(user, url, { label: 'Forbidden' }), 403)
+    await expectRefused(user.delete(url), 403)
     await grantRole(admin, { table: BOUND, role: 'Sec Role', can_write: true, can_delete: true })
     expect(await user.get(`${url}:capabilities`)).toMatchObject({ write: true, delete: true, rename: false })
     const loaded = await user.get<Record<string, unknown>>(url)
@@ -157,7 +157,7 @@ describe('finding 1: bound tables honor own-rows and Data Scope rules', () => {
     const del = await user.fetch(`/api/table/${encodeURIComponent(BOUND)}/ACC-A`, {
       method: 'DELETE',
     })
-    expect(del.status).toBe(403)
+    await expectStatus(del, 403)
     // Untouched on the source.
     const [row] = await cli`select label from sec_fixture.account where id = 'ACC-A'`
     expect(row.label).toBe('Alpha')
@@ -262,7 +262,7 @@ describe('finding 3: optimistic locking advances the revision', () => {
       `${path}?updated_at=${encodeURIComponent(String(loaded.updated_at))}`,
       { method: 'DELETE' },
     )
-    expect(res.status).toBe(409)
+    await expectStatus(res, 409)
     const rows = await cli`select 1 from sec_fixture.account where id = 'ACC-B'`
     expect(rows).toHaveLength(1)
   })
@@ -489,7 +489,7 @@ describe('re-review findings', () => {
     await sql`update table_def set external_modified = 'api_key' where name = ${BOUND}`
     invalidateMeta()
     const enc = encodeURIComponent(BOUND)
-    await expect(admin.get(`/api/table/${enc}/ACC-A`)).rejects.toMatchObject({ status: 417 })
+    await expectRefused(admin.get(`/api/table/${enc}/ACC-A`), 417)
     await expect(
       admin.get(`/api/table/${enc}?fields=${encodeURIComponent('["row_id","label"]')}`),
     ).rejects.toMatchObject({ status: 417 })
@@ -543,12 +543,12 @@ describe('re-review findings', () => {
       method: 'POST',
       body: JSON.stringify({ rows: [{ label: 'smuggled' }] }),
     })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     const dry = await admin.fetch(`/api/table/${encodeURIComponent(BOUND)}:import`, {
       method: 'POST',
       body: JSON.stringify({ dry_run: true, rows: [{ label: 'smuggled' }] }),
     })
-    expect(dry.status).toBe(417)
+    await expectStatus(dry, 417)
     // Check and import refuse with the same message, saying the table is connected to a data source.
     const message = ((await res.json()) as { error: { message: string } }).error.message
     expect(message).toBe(`${BOUND} is bound to data source sec-fixture; bulk import is not supported on bound Tables yet`)
@@ -561,7 +561,7 @@ describe('re-review findings', () => {
       method: 'POST',
       body: JSON.stringify({ run_id: 'any-run' }),
     })
-    expect(revert.status).toBe(417)
+    await expectStatus(revert, 417)
     expect(await revert.json()).toMatchObject({ error: { message: expect.stringContaining('imports there are not revertable') } })
   })
 
@@ -717,7 +717,7 @@ describe('a bound Table keeps its binding', () => {
       method: 'PUT',
       body: JSON.stringify({ columns: [...meta.columns, { column_name: 'details', column_type: 'Section Break' }] }),
     })
-    expect(definition.status).toBe(200)
+    await expectStatus(definition, 200)
     const before = await cli`select * from sec_fixture.account order by id`
     const loaded = await admin.get<{ updated_at: string }>(path)
     const controller: TableController = {
@@ -744,14 +744,14 @@ describe('a bound Table keeps its binding', () => {
       method: 'PUT',
       body: JSON.stringify({ columns: meta.columns, data_source: 'elsewhere', external_table: 'sec_archive.account' }),
     })
-    expect(put.status).toBe(200)
+    await expectStatus(put, 200)
     const [stored] = await sql`select data_source, external_table from table_def where name = ${BOUND}`
     expect(stored).toEqual({ data_source: 'sec-fixture', external_table: meta.external_table })
 
     const rename = await admin.fetch(`/api/table_def/${encodeURIComponent(BOUND)}/rename_column`, {
       method: 'POST', body: JSON.stringify({ from: 'label', to: 'title' }),
     })
-    expect(rename.status).toBe(417)
+    await expectStatus(rename, 417)
     expect(await rename.json()).toMatchObject({ error: { message: `${BOUND} is bound to a data source; rename the column at the source` } })
   })
 
@@ -786,10 +786,10 @@ describe('a bound Table keeps its binding', () => {
     const holder = { row_id: 'holder-1' }
     const stamp = async (id: string) => ((await admin.get(`/api/table/${encodeURIComponent(BOUND)}/${id}`)) as { updated_at: string }).updated_at
     const refused = await admin.fetch(`/api/table/${encodeURIComponent(BOUND)}/ACC-A?updated_at=${encodeURIComponent(await stamp('ACC-A'))}`, { method: 'DELETE' })
-    expect(refused.status).toBe(417)
+    await expectStatus(refused, 417)
     expect(await refused.json()).toMatchObject({ error: { message: `Cannot delete ${BOUND} "Alpha": it is linked from Sec Holder ${holder.row_id}` } })
     const freed = await admin.fetch(`/api/table/${encodeURIComponent(BOUND)}/ACC-B?updated_at=${encodeURIComponent(await stamp('ACC-B'))}`, { method: 'DELETE' })
-    expect(freed.status).toBe(200)
+    await expectStatus(freed, 200)
     expect(await cli`select id from sec_fixture.account order by id`).toEqual([{ id: 'ACC-A' }])
   })
 
@@ -845,7 +845,7 @@ describe('a bound Table keeps its binding', () => {
   test('a bound row shared with someone can be read by them without any grant on the Table', async ({ admin, createUser }) => {
     await bindAccount(admin)
     const guest = await createUser({ roles: [] })
-    await expectApiError(guest.get(`/api/table/${encodeURIComponent(BOUND)}/ACC-A`), { status: 403 })
+    await expectRefused(guest.get(`/api/table/${encodeURIComponent(BOUND)}/ACC-A`), 403)
     await admin.post('/api/save_row', { table: 'Share', row: { share_table: BOUND, share_name: 'ACC-A', person: guest.user, read: true } })
     expect(await guest.get(`/api/table/${encodeURIComponent(BOUND)}/ACC-A`)).toMatchObject({ row_id: 'ACC-A', label: 'Alpha' })
   })

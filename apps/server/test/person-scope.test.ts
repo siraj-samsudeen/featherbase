@@ -12,7 +12,7 @@ import { test as pgTest } from './pg-test'
 import { availableRuntimeVersions, discoverPackages, findScopeProvider, runPackageRead } from '../src/runtime-packages'
 import { sql } from '../src/db'
 import { resolvePersonScope } from '../src/person-scope'
-import { expectApiError, tableRef } from './fixtures'
+import { expectApiError, expectRefused, expectStatus, tableRef } from './fixtures'
 import { newIdentifierId } from '../src/person-identifiers'
 import { runHealthChecks } from '../src/instance-health'
 
@@ -75,7 +75,7 @@ describe('a person_scope operation', () => {
     await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
     const response = await user.fetch(read + 'places', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ payload: { scope: { filters: { store: ['N1', 'S1'] } } } }) })
-    expect(response.status).toBe(403)
+    await expectStatus(response, 403)
     expect(await response.json()).toEqual({ error: { type: 'PermissionError', message: 'Application access refused' } })
     expect(app.calls.handler).toBe(0)
     expect(await refusals(user)).toEqual(['scopeproof.places:scope'])
@@ -83,14 +83,14 @@ describe('a person_scope operation', () => {
 
   test('a person the provider gives no places is refused', async ({ admin, createUser }) => {
     const { user, app } = await setup(admin, createUser)
-    await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(read + 'places', { payload: {} }), 403)
     expect(app.calls.handler).toBe(0)
     expect(await refusals(user)).toEqual(['scopeproof.places:scope'])
   })
 
   test('an empty scope is not read as everything for a System Manager either', async ({ admin, createUser }) => {
     const { user, app } = await setup(admin, createUser, { roles: ['System Manager', 'Scope Reader'] })
-    await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(read + 'places', { payload: {} }), 403)
     expect(app.calls.handler).toBe(0)
     expect(await refusals(user)).toEqual(['scopeproof.places:scope'])
   })
@@ -98,13 +98,13 @@ describe('a person_scope operation', () => {
   test('a caller without one of the operation\'s roles is refused before the provider runs', async ({ admin, createUser }) => {
     const { user, roster } = await setup(admin, createUser, { roles: [] })
     await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
-    await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(read + 'places', { payload: {} }), 403)
     expect(roster.calls.provider).toBe(0)
   })
 
   test('with no app providing the scope, every request is refused', async ({ admin, createUser }) => {
     const { user, app } = await setup(admin, createUser, { withProvider: false })
-    await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(read + 'places', { payload: {} }), 403)
     expect(app.calls.handler).toBe(0)
     expect(await refusals(user)).toEqual(['scopeproof.places:configuration'])
   })
@@ -113,7 +113,7 @@ describe('a person_scope operation', () => {
     const { user, roster, app } = await setup(admin, createUser)
     await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
     roster.faults.provider = new Error('Roster for store N1 is private')
-    await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(read + 'places', { payload: {} }), 403)
     expect(app.calls.handler).toBe(0)
     expect(await refusals(user)).toEqual(['scopeproof.places:provider'])
   })
@@ -125,7 +125,7 @@ describe('a person_scope operation', () => {
   ] as const)('a provider answer that is %s refuses the request', async ([, result], { admin, createUser }) => {
     const { user, roster, app } = await setup(admin, createUser)
     roster.faults.result = result
-    await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(read + 'places', { payload: {} }), 403)
     expect(app.calls.handler).toBe(0)
     expect(await refusals(user)).toEqual(['scopeproof.places:provider'])
   })
@@ -136,7 +136,7 @@ describe("the scope provider's read context", () => {
     const { user, roster } = await setup(admin, createUser)
     await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
     roster.faults.readUndeclared = true
-    await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(read + 'places', { payload: {} }), 403)
     expect(await refusals(user)).toEqual(['scopeproof.places:provider'])
   })
 
@@ -172,7 +172,7 @@ describe("the scope provider's read context", () => {
     const { user, roster } = await setup(admin, createUser)
     await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
     roster.faults.parallel = true
-    await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(read + 'places', { payload: {} }), 403)
     expect(await refusals(user)).toEqual(['scopeproof.places:provider'])
   })
 
@@ -202,7 +202,7 @@ export const scopeProviders = {
       const response = await user.fetch(read + 'places', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: {} }),
       })
-      expect(response.status).toBe(403)
+      await expectStatus(response, 403)
       expect(await response.json()).toEqual({ error: { type: 'PermissionError', message: 'Application access refused' } })
       expect(app.calls.handler).toBe(handlerCalls)
       expect(await refusals(user)).toEqual(['scopeproof.places:provider'])
@@ -222,7 +222,7 @@ export const scopeProviders = {
     const parent = await admin.post<{ row_id: string }>(tableRef('Roster Extra').url, { note: 'x', lines: [{ code: 'hidden-child' }] })
     roster.faults.getInstance = parent.row_id
     const response = await user.fetch(read + 'places', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: {} }) })
-    expect(response.status).toBe(403)
+    await expectStatus(response, 403)
     expect(await refusals(user)).toEqual(['scopeproof.places:provider'])
   })
 
@@ -245,7 +245,7 @@ export const scopeProviders = {
       const seeded = await admin.fetch('/api/save_row', { method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': 'placeroster@1.1.0' },
         body: JSON.stringify({ table: 'placeroster.position', row: { row_id: 'up-1', person: user.user, place: 'North / Kids', store: 'N1', section: 'kids' } }) })
-      expect(seeded.status).toBe(201)
+      await expectStatus(seeded, 201)
       // The consumer's client names only its own app's version.
       const answer = await user.post<{ result: { places: { label: string }[] } }>(read + 'places', { payload: {} })
       expect(answer.result.places.map(place => place.label)).toEqual(['North / Kids'])
@@ -478,7 +478,7 @@ describe("the person's identifiers a provider receives", () => {
       await identifier(user.user!, 'roster-code', 'R-1')
       await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
       roster.faults.addIdentifier = 'roster-code'
-      await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 403 })
+      await expectRefused(user.post(read + 'places', { payload: {} }), 403)
       expect(await refusals(user)).toEqual(['scopeproof.places:provider'])
     })
   })
@@ -514,7 +514,7 @@ describe("the person's identifiers a provider receives", () => {
       await identifier(user.user!, 'roster-code', 'R-1')
       await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
       await sql`update identifier_system set enabled = false where row_id = 'roster-code'`
-      await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 409 })
+      await expectRefused(user.post(read + 'places', { payload: {} }), 409)
       await sql`update identifier_system set enabled = true where row_id = 'roster-code'`
       await user.post(read + 'places', { payload: {} })
       expect(roster.calls.person.identifiers).toEqual({ 'roster-code': unshared('R-1') })
@@ -653,7 +653,7 @@ describe('one scope provider per instance', () => {
     const { user, app } = await setup(admin, createUser)
     await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
     await sql`update installed_app set manifest = manifest || ${sql.json({ scopeProvider: { name: 'positions', tables: ['scopeproof.store'] } })} where name = 'scopeproof'`
-    await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(read + 'places', { payload: {} }), 403)
     expect(app.calls.handler).toBe(0)
     expect(await refusals(user)).toEqual(['scopeproof.places:configuration'])
   })
@@ -722,7 +722,7 @@ describe('a person_scope action', () => {
     expect((await sql`select value from scopeproof.effect where row_id = 'effect-1'`)[0].value).toBe('North / Kids')
     expect(await user.post(action, body)).toEqual({ result: { places: 'North / Kids' } })
     await sql`delete from placeroster.position where person = ${user.user}`
-    await expect(user.post(action, body)).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(action, body), 403)
   })
 
   // Codex round 1: a replay returns the original cached result, so it must be
@@ -735,7 +735,7 @@ describe('a person_scope action', () => {
     const body = { idempotencyKey: 'place-partial', payload: { effect: 'effect-partial' } }
     expect(await user.post(action, body)).toEqual({ result: { places: 'North / Kids,South / Mens' } })
     await sql`delete from placeroster.position where person = ${user.user} and place = 'South / Mens'`
-    await expect(user.post(action, body)).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(action, body), 403)
     expect(await refusals(user)).toEqual(['scopeproof.place:scope'])
   })
 
@@ -746,7 +746,7 @@ describe('a person_scope action', () => {
     const body = { idempotencyKey: 'place-shrunk', payload: { effect: 'effect-shrunk' } }
     expect(await user.post(action, body)).toEqual({ result: { places: 'North' } })
     await sql`delete from placeroster.position where row_id = 'north-baby'`
-    await expect(user.post(action, body)).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(action, body), 403)
     expect(await refusals(user)).toEqual(['scopeproof.place:scope'])
   })
 
@@ -783,14 +783,14 @@ describe('a person_scope action', () => {
     const body = { idempotencyKey: 'place-unrecorded', payload: { effect: 'effect-unrecorded' } }
     await user.post(action, body)
     await sql`update runtime_action_result set "authorization" = "authorization" - 'places' where idempotency_key = 'place-unrecorded'`
-    await expect(user.post(action, body)).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(action, body), 403)
     expect(await refusals(user)).toEqual(['scopeproof.place:replay'])
   })
 
   test('a reader without an action role is refused', async ({ admin, createUser }) => {
     const { user, app } = await setup(admin, createUser, { roles: ['Scope Reader'] })
     await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
-    await expect(user.post(action, { idempotencyKey: 'place-2', payload: { effect: 'effect-2' } })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(action, { idempotencyKey: 'place-2', payload: { effect: 'effect-2' } }), 403)
     expect(app.calls.handler).toBe(0)
     expect(await refusals(user)).toEqual(['scopeproof.place:role'])
   })

@@ -13,6 +13,7 @@ import { applyMigrationFile, pendingMigrations } from '../src/migrate'
 import { runMain } from './command-io'
 import { test } from './pg-test'
 import { dropScratchDatabases, scratchDatabase, scratchInstalled } from './scratch-database'
+import { expectStatus } from './fixtures'
 
 afterAll(dropScratchDatabases, 60_000)
 
@@ -120,18 +121,18 @@ describe('migrate: a new database', () => {
       const { token } = await issueSession('psn_legacy')
       const headers = { Authorization: `Bearer ${token}` }
       const list = await app.request('/api/table/Legacy%20Contact?fields=%5B%22name%22,%22phone%22%5D', { headers })
-      expect(list.status).toBe(200)
+      await expectStatus(list, 200)
       expect(await list.json()).toMatchObject({ total: 1, data: [{ name: 'Mine', phone: 'my-phone' }] })
-      expect((await app.request('/api/table/Legacy%20Contact/other', { headers })).status).toBe(403)
+      await expectStatus(await app.request('/api/table/Legacy%20Contact/other', { headers }), 403)
       const own = await (await app.request('/api/table/Legacy%20Contact/mine', { headers })).json() as { updated_at: string }
       expect(own).toMatchObject({ notes: [{ note: 'visible', private_note: 'inherited' }] })
       const update = await app.request('/api/save_row', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ table: 'Legacy Contact', row: { row_id: 'mine', updated_at: own.updated_at, phone: 'not-an-update-grant' } }) })
-      expect(update.status).toBe(403)
+      await expectStatus(update, 403)
       const create = await app.request('/api/save_row', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ table: 'Legacy Contact', row: { name: 'New', phone: 'legacy-create-reach',
           notes: [{ note: 'new', private_note: 'inherited-create' }] } }) })
-      expect(create.status).toBe(201)
+      await expectStatus(create, 201)
       expect(await create.json()).toMatchObject({ phone: 'legacy-create-reach', notes: [{ private_note: 'inherited-create' }] })
       const lines = { Authorization: `Bearer ${(await issueSession('psn_lines')).token}` }
       const linesRow = await (await app.request('/api/table/Legacy%20Contact/lines-own', { headers: lines })).json()
@@ -142,7 +143,7 @@ describe('migrate: a new database', () => {
       const creator = { Authorization: `Bearer ${(await issueSession('psn_note_creator')).token}`, 'Content-Type': 'application/json' }
       const refused = await app.request('/api/save_row', { method: 'POST', headers: creator,
         body: JSON.stringify({ table: 'Legacy Contact', row: { name: 'Mine too', notes: [{ private_note: 'never' }] } }) })
-      expect(refused.status).toBe(403)
+      await expectStatus(refused, 403)
     } finally {
       await scratch.close()
     }

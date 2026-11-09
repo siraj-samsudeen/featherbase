@@ -7,6 +7,7 @@ import { installApp, isInstalled, uninstallApp } from '../src/apps'
 import { discoverPackages } from '../src/runtime-packages'
 import { sql } from '../src/db'
 import { resolve } from 'node:path'
+import { expectRefused } from './fixtures'
 
 const test = base.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(taskerClient(admin)),
@@ -354,7 +355,7 @@ describe('shared team visibility', () => {
       expect(activity.versions.flatMap((version) => version.data.changed)).toContainEqual([
         'urgent', false, true,
       ])
-      await expect(member.get('/api/table/Version')).rejects.toMatchObject({ status: 403 })
+      await expectRefused(member.get('/api/table/Version'), 403)
     } finally {
       await uninstallApp(APP).catch(() => {})
     }

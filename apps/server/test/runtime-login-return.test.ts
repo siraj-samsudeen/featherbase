@@ -7,6 +7,7 @@ import { resolve } from 'node:path'
 import { test } from './pg-test'
 import { admitTasker } from './tasker-client'
 import { discoverPackages } from '../src/runtime-packages'
+import { expectStatus } from './fixtures'
 
 test('a signed-out deep link into Tasker keeps its repeated and escaped query through the sign-in redirect', async ({ admin, api }) => {
   expect(await discoverPackages([resolve('../..', 'example-apps/tasker')])).toEqual([])
@@ -16,7 +17,7 @@ test('a signed-out deep link into Tasker keeps its repeated and escaped query th
   const res = await api.fetch('/tasker/?review=deep-link&note=37%20cartons%2F83&review=again', {
     headers: { accept: 'text/html' },
   })
-  expect(res.status).toBe(302)
+  await expectStatus(res, 302)
   expect(res.headers.get('location')).toBe(
     '/featherbase/login?next=%2Ftasker%2F%3Freview%3Ddeep-link%26note%3D37%2520cartons%252F83%26review%3Dagain',
   )

@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from '../pg-test'
-import { createUserWithRole, expectApiError, makeTable, tableRef } from '../fixtures'
+import { createUserWithRole, expectApiError, expectRefused, makeTable, tableRef } from '../fixtures'
 import type { TestClient } from 'feather-testing-postgres'
 
 // #206/#207 (issue #197): a file-import, seen and undone as one thing.
@@ -309,8 +309,8 @@ describe('#206: the batch history obeys Import Log read permission', () => {
     const batch = newBatch()
     await seedBatch(admin, 'Batch Perm A', batch, 'private.xlsx')
     const user = await createUser({ roles: [] })
-    await expectApiError(user.get('/api/import/batches'), { status: 403 })
-    await expectApiError(user.get(`/api/import/batches/${batch}`), { status: 403 })
+    await expectRefused(user.get('/api/import/batches'), 403)
+    await expectRefused(user.get(`/api/import/batches/${batch}`), 403)
   })
 
   test('a reader with an unscoped grant sees the history', async ({
@@ -353,6 +353,6 @@ describe('#206: the batch history obeys Import Log read permission', () => {
     expect(ids).toContain(mine)
     expect(ids).not.toContain(theirs)
     // And addressing the other batch directly is a 404, not a peek at it.
-    await expectApiError(user.get(`/api/import/batches/${theirs}`), { status: 404 })
+    await expectRefused(user.get(`/api/import/batches/${theirs}`), 404)
   })
 })

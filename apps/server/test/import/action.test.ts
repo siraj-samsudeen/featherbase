@@ -1,6 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from '../pg-test'
 import type { TestClient } from 'feather-testing-postgres'
+import { expectStatus } from '../fixtures'
 
 // IMP-005: POST /api/table/:table:import — the bulk-import collection action.
 // Every row goes through the full saveDoc lifecycle in insert mode.
@@ -106,7 +107,7 @@ describe('IMP-005: bulk import', () => {
       method: 'POST',
       body: JSON.stringify({ rows: [{ title: 'nope' }] }),
     })
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
     const count = await admin.get<{ count: number }>(
       `/api/table/${encodeURIComponent(DT)}:count`,
     )
@@ -117,10 +118,10 @@ describe('IMP-005: bulk import', () => {
     await setup(admin)
     for (const body of [{}, { rows: [] }, { rows: 'nope' }]) {
       const res = await admin.fetch(PATH, { method: 'POST', body: JSON.stringify(body) })
-      expect(res.status).toBe(417)
+      await expectStatus(res, 417)
     }
     const malformed = await admin.fetch(PATH, { method: 'POST', body: '{"rows":' })
-    expect(malformed.status).toBe(417)
+    await expectStatus(malformed, 417)
     expect(await malformed.json()).toMatchObject({
       error: { type: 'ValidationError', message: 'Expected { rows: [...] } with at least one row' },
     })
@@ -129,7 +130,7 @@ describe('IMP-005: bulk import', () => {
       method: 'POST',
       body: JSON.stringify({ rows: Array.from({ length: 10_001 }, () => ({ title: 'x' })) }),
     })
-    expect(over.status).toBe(417)
+    await expectStatus(over, 417)
     expect(((await over.json()) as { error: { message: string } }).error.message).toContain(
       'capped',
     )
@@ -160,7 +161,7 @@ describe('IMP-005: bulk import', () => {
       method: 'POST',
       body: JSON.stringify({ rows: [{ title: 'x' }] }),
     })
-    expect(s.status).toBe(417)
+    await expectStatus(s, 417)
 
     await admin.post('/api/table_def', {
       name: 'Import Child',
@@ -171,7 +172,7 @@ describe('IMP-005: bulk import', () => {
       method: 'POST',
       body: JSON.stringify({ rows: [{ title: 'x' }] }),
     })
-    expect(c.status).toBe(417)
+    await expectStatus(c, 417)
   })
 
   test('dry_run validates every row and writes nothing', async ({ admin }) => {
@@ -227,7 +228,7 @@ describe('IMP-005: bulk import', () => {
       method: 'POST',
       body: JSON.stringify({ dry_run: true, rows: [{ title: 'x' }] }),
     })
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
   })
 
   test('every import writes an Import Log row; dry runs write none', async ({ admin }) => {
@@ -278,7 +279,7 @@ describe('IMP-005: bulk import', () => {
   test('is write-effect: GET :import is refused, and discovery lists it', async ({ admin }) => {
     await setup(admin)
     const get = await admin.fetch(PATH)
-    expect(get.status).toBe(404)
+    await expectStatus(get, 404)
 
     const actions = await admin.get<{
       collection: { action: string; effect: string }[]

@@ -3,6 +3,7 @@ import { test } from './pg-test'
 import { app } from '../src/index'
 import { sql } from '../src/db'
 import { setUserPassword } from '../src/auth'
+import { expectStatus } from './fixtures'
 
 afterEach(() => vi.unstubAllEnvs())
 
@@ -20,17 +21,17 @@ describe('#245 public route admission', () => {
     const send = (address: string, usr = 'Nobody', pwd = 'wrong') => request('/api/login', {
       method: 'POST', headers: { 'x-real-ip': address }, body: JSON.stringify({ usr, pwd }),
     })
-    expect((await send('2001:db8:1234:5678::1')).status).toBe(401)
-    expect((await send('2001:0db8:1234:5678:ffff:ffff:ffff:ffff')).status).toBe(429)
-    expect((await send('2001:db8:1234:5679::1')).status).toBe(401)
-    expect((await send('2001:db8:1234:5678::2', 'Other')).status).toBe(401)
-    expect((await send('2001:db8:1234:5678::3', 'Different')).status).toBe(429)
+    await expectStatus(await send('2001:db8:1234:5678::1'), 401)
+    await expectStatus(await send('2001:0db8:1234:5678:ffff:ffff:ffff:ffff'), 429)
+    await expectStatus(await send('2001:db8:1234:5679::1'), 401)
+    await expectStatus(await send('2001:db8:1234:5678::2', 'Other'), 401)
+    await expectStatus(await send('2001:db8:1234:5678::3', 'Different'), 429)
     const person = await admin.post<{ row_id: string }>('/api/save_row', {
       table: 'Person', row: { email: 'ipv6-budget-audit@example.test', enabled: true },
     })
     await setUserPassword(person.row_id, 'ipv6-budget-audit-pass')
     const full = '2001:db8:1234:5680:abcd:1234:5678:9abc'
-    expect((await send(full, 'ipv6-budget-audit@example.test', 'ipv6-budget-audit-pass')).status).toBe(200)
+    await expectStatus(await send(full, 'ipv6-budget-audit@example.test', 'ipv6-budget-audit-pass'), 200)
     expect(await sql`select ip_address from activity_log where "user" = ${person.row_id} and operation = 'login'`)
       .toEqual([{ ip_address: full }])
   })
@@ -42,11 +43,11 @@ describe('#245 public route admission', () => {
       vi.stubEnv('TRUSTED_PROXY_IPS', configured)
       await sql`delete from pre_auth_bucket`
       const send = (forwarded: string) => request('/api/login', { method: 'POST', headers: { 'x-forwarded-for': forwarded }, body: JSON.stringify({ usr: 'nobody', pwd: 'wrong' }) }, socket)
-      expect((await send('198.51.100.9')).status).toBe(401)
+      await expectStatus(await send('198.51.100.9'), 401)
       expect((await send('::ffff:c633:641b')).status).toBe(401) // distinct client .27
       for (const sameClient of ['::ffff:198.51.100.9', '0:0:0:0:0:ffff:198.51.100.9', '::ffff:c633:6409']) {
         const blocked = await send(sameClient)
-        expect(blocked.status).toBe(429)
+        await expectStatus(blocked, 429)
         expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(0)
         expect(await blocked.json()).toMatchObject({ error: { type: 'RateLimitError' } })
       }
@@ -57,19 +58,19 @@ describe('#245 public route admission', () => {
     vi.stubEnv('TRUSTED_PROXY_IPS', '192.0.2.10')
     vi.stubEnv('PREAUTH_LOGIN_MAX', '1')
     const send = () => request('/api/login', { method: 'POST', headers: { 'x-forwarded-for': 'fe80::1%eth0, 198.51.100.9' }, body: JSON.stringify({ usr: 'nobody', pwd: 'wrong' }) })
-    expect((await send()).status).toBe(401)
-    expect((await send()).status).toBe(429)
+    await expectStatus(await send(), 401)
+    await expectStatus(await send(), 429)
   })
 
   test('trusted proxies separate clients but untrusted sockets cannot spoof source budgets', async () => {
     vi.stubEnv('PREAUTH_LOGIN_MAX', '1')
     const send = (forwarded: string, socket: string) => request('/api/login', { method: 'POST', headers: { 'x-forwarded-for': forwarded }, body: JSON.stringify({ usr: 'nobody', pwd: 'wrong' }) }, socket)
-    expect((await send('198.51.100.1', '192.0.2.10')).status).toBe(401)
-    expect((await send('198.51.100.2', '192.0.2.10')).status).toBe(429)
+    await expectStatus(await send('198.51.100.1', '192.0.2.10'), 401)
+    await expectStatus(await send('198.51.100.2', '192.0.2.10'), 429)
     vi.stubEnv('TRUSTED_PROXY_IPS', '192.0.2.11')
-    expect((await send('198.51.100.1', '192.0.2.11')).status).toBe(401)
-    expect((await send('198.51.100.2', '192.0.2.11')).status).toBe(401)
-    expect((await send('203.0.113.99, 198.51.100.1', '192.0.2.11')).status).toBe(429)
+    await expectStatus(await send('198.51.100.1', '192.0.2.11'), 401)
+    await expectStatus(await send('198.51.100.2', '192.0.2.11'), 401)
+    await expectStatus(await send('203.0.113.99, 198.51.100.1', '192.0.2.11'), 429)
   })
 
   test('password credential budget normalizes username and cannot be bypassed with auth or forwarded headers', async ({ admin }) => {
@@ -83,28 +84,28 @@ describe('#245 public route admission', () => {
       }
     }
     const otherSource = await request('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'Nobody', pwd: 'wrong' }) }, '192.0.2.11')
-    expect(otherSource.status).toBe(401)
+    await expectStatus(otherSource, 401)
   })
 
   test('source budget spans usernames; successful auth forgives only credential attempts', async () => {
     vi.stubEnv('PREAUTH_PASSWORD_MAX', '2')
     vi.stubEnv('PREAUTH_LOGIN_MAX', '4')
     const attempt = (usr: string, pwd: string) => request('/api/login', { method: 'POST', body: JSON.stringify({ usr, pwd }) })
-    expect((await attempt('Administrator', 'wrong')).status).toBe(401)
-    expect((await attempt('Administrator', 'admin')).status).toBe(200)
-    expect((await attempt('Administrator', 'wrong')).status).toBe(401)
-    expect((await attempt('other', 'wrong')).status).toBe(401)
-    expect((await attempt('different', 'wrong')).status).toBe(429)
+    await expectStatus(await attempt('Administrator', 'wrong'), 401)
+    await expectStatus(await attempt('Administrator', 'admin'), 200)
+    await expectStatus(await attempt('Administrator', 'wrong'), 401)
+    await expectStatus(await attempt('other', 'wrong'), 401)
+    await expectStatus(await attempt('different', 'wrong'), 429)
   })
 
   test('OAuth initiation and callback have separate budgets; refusal preserves challenge cookies', async () => {
     vi.stubEnv('PREAUTH_OAUTH_LOGIN_MAX', '1')
     vi.stubEnv('PREAUTH_OAUTH_CALLBACK_MAX', '1')
-    expect((await request('/api/oauth/google/login')).status).toBe(302)
-    expect((await request('/api/oauth/google/login')).status).toBe(429)
+    await expectStatus(await request('/api/oauth/google/login'), 302)
+    await expectStatus(await request('/api/oauth/google/login'), 429)
     expect((await request('/api/oauth/google/callback?state=bad')).status).not.toBe(429)
     const blocked = await request('/api/oauth/google/callback?state=bad', { headers: { cookie: 'oauth_state=bad; oauth_verifier=keep' } })
-    expect(blocked.status).toBe(429)
+    await expectStatus(blocked, 429)
     expect(blocked.headers.get('set-cookie')).toBeNull()
   })
 
@@ -115,8 +116,8 @@ describe('#245 public route admission', () => {
     const login = await request('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'Administrator', pwd: 'admin' }) })
     const { token } = await login.json() as { token: string }
     const send = () => request('/api/web_form/limited-intake', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ values: { title: 'one' } }) })
-    expect((await send()).status).toBe(201)
-    expect((await send()).status).toBe(429)
+    await expectStatus(await send(), 201)
+    await expectStatus(await send(), 429)
     expect((await sql`select count(*)::int as n from featherbase.limited_intake`)[0].n).toBe(1)
   })
 })
@@ -127,10 +128,10 @@ describe('Repeated sign-in attempts are slowed', () => {
     const attempt = (pwd: string) => request('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'Administrator', pwd }) }, '192.0.2.77')
     for (let i = 0; i < 4; i++) expect((await attempt('wrong')).status).toBe(401)
     // A success before the limit forgives the failures so far.
-    expect((await attempt('admin')).status).toBe(200)
+    await expectStatus(await attempt('admin'), 200)
     for (let i = 0; i < 5; i++) expect((await attempt('wrong')).status).toBe(401)
     const refused = await attempt('admin')
-    expect(refused.status).toBe(429)
+    await expectStatus(refused, 429)
     expect(Number(refused.headers.get('retry-after'))).toBeGreaterThan(0)
     expect(await refused.json()).toMatchObject({ error: { type: 'RateLimitError', message: 'Too many attempts; retry later' } })
   })

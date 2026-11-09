@@ -15,7 +15,7 @@ import { sql } from '../src/db'
 import { getRoles, hasPermission } from '../src/permissions'
 import { suspendRuntimeApp, uninstallApp } from '../src/apps'
 import { seedRoleBindings } from '../src/app-role-bindings'
-import { expectApiError, grantRole } from './fixtures'
+import { expectApiError, expectRefused, grantRole } from './fixtures'
 
 const v1 = resolve('../..', 'test-apps/fixtures/setup-proof-v1')
 const v2 = resolve('../..', 'test-apps/fixtures/setup-proof-v2')
@@ -61,7 +61,7 @@ describe('the role check honours bindings', () => {
   test('a person holding only an unbound role does not', async ({ admin, createUser }) => {
     await install(admin, { roles: ['Setup Staff', 'Setup Visitor'] })
     const visitor = await createUser({ email: 'visitor@example.test', roles: ['Setup Visitor'] })
-    await expectApiError(config(visitor), { status: 403 })
+    await expectRefused(config(visitor), 403)
   })
 
   test('a person_scope operation\'s read roles are held through a binding', async ({ admin, createUser }) => {
@@ -79,7 +79,7 @@ describe('the role check honours bindings', () => {
     await config(staff)
     const [binding] = await sql`select row_id from app_role_binding`
     await admin.delete(`/api/table/${encodeURIComponent('App Role Binding')}/${binding.row_id}`)
-    await expectApiError(config(staff), { status: 403 })
+    await expectRefused(config(staff), 403)
   })
 
   test('a binding to a role the app does not declare grants nothing', async ({ admin, createUser }) => {
@@ -87,7 +87,7 @@ describe('the role check honours bindings', () => {
     await sql`insert into app_role_binding (row_id, app, app_role, bound_role) values ('raw-1', 'setupproof', 'System Manager', 'Setup Staff')`
     const staff = await createUser({ email: 'staff@example.test', roles: ['Setup Staff'] })
     expect(await staff.get<{ roles: string[] }>('/api/me').catch(() => null)).not.toMatchObject({ roles: expect.arrayContaining(['System Manager']) })
-    await expectApiError(staff.post('/api/save_row', { table: 'Role', row: { row_id: 'Escalated' } }), { status: 403 })
+    await expectRefused(staff.post('/api/save_row', { table: 'Role', row: { row_id: 'Escalated' } }), 403)
   })
 })
 

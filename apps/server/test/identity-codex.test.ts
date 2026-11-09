@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { makePerson } from './fixtures'
+import { expectStatus, makePerson } from './fixtures'
 import { hashPassword } from '../src/auth'
 import { SIGN_IN_METHOD_KINDS } from 'shared'
 import { KINDS } from '../src/identities'
@@ -57,7 +57,7 @@ describe('Codex P2: Google is never enabled while it cannot work', () => {
       method: 'PATCH',
       body: JSON.stringify({ enabled: true, updated_at: g.updated_at }),
     })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(((await res.json()) as { error: { message: string } }).error.message).toMatch(/client id/i)
   })
 
@@ -66,7 +66,7 @@ describe('Codex P2: Google is never enabled while it cannot work', () => {
       method: 'POST',
       body: JSON.stringify({ table: 'Sign In Method', row: { row_id: 'plain_http', kind: 'delegated_password', label: 'HR', enabled: true, service_url: 'http://hr.example.test/login' } }),
     })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
   })
 })
 
@@ -74,9 +74,9 @@ describe('Codex P2: sign-up takes a username and a password only', () => {
   test('a full name is refused like an email', async ({ api }) => {
     await setPasswordMethod({ new_person: 'create' })
     const res = await api.fetch('/api/signup', { method: 'POST', body: JSON.stringify({ username: 'only.two', password: 'only-two-1', full_name: 'Extra' }) })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     const ok = await api.fetch('/api/signup', { method: 'POST', body: JSON.stringify({ username: 'only.two', password: 'only-two-1' }) })
-    expect(ok.status).toBe(201)
+    await expectStatus(ok, 201)
     expect(((await ok.json()) as { user: { full_name: string } }).user.full_name).toBe('only.two')
   })
 })
@@ -93,14 +93,14 @@ describe('usernames on the generic save path', () => {
   test('a username must be a lowercase slug and must not equal anyone else\'s id, username or email', async ({ admin }) => {
     const asha = await makePerson({ email: 'person.a@jeyarama.com', username: 'asha' })
     const save = (row: Record<string, unknown>) => admin.fetch('/api/save_row', { method: 'POST', body: JSON.stringify({ table: 'Person', row }) })
-    expect((await save({ username: 'not a slug!', enabled: true })).status).toBe(417)
+    await expectStatus(await save({ username: 'not a slug!', enabled: true }), 417)
     expect((await save({ username: 'ASHA', enabled: true })).status).toBe(417) // folds to asha: taken
     expect((await save({ username: asha, enabled: true })).status).toBe(417) // someone's id
     expect((await save({ username: 'person.a@jeyarama.com', enabled: true })).status).toBe(417) // someone's email
     // person-rename: an id is never typed — any chosen id is refused, an address included.
     const typed = await admin.fetch('/api/table/Person', { method: 'POST', body: JSON.stringify({ row_id: 'person.a@jeyarama.com', enabled: true }) })
-    expect(typed.status).toBe(417)
-    expect((await save({ username: 'meera', enabled: true })).status).toBe(201)
+    await expectStatus(typed, 417)
+    await expectStatus(await save({ username: 'meera', enabled: true }), 201)
   })
 })
 
@@ -115,17 +115,17 @@ describe('password sign-in ranks', () => {
     await sql`insert into person (row_id, enabled, password_hash, created_by, updated_by) values (${ravi}, true, ${hashPassword('ravi-pw-1')}, 'Administrator', 'Administrator')`
     await sql`insert into person (row_id, username, enabled, password_hash, created_by, updated_by) values (${psn('ravi2')}, 'RAVI2', true, ${hashPassword('ravi-pw-2')}, 'Administrator', 'Administrator')`
     await sql`update person set username = ${ravi} where row_id = ${psn('ravi2')}`
-    expect((await login(api, ravi.toUpperCase(), 'ravi-pw-1')).status).toBe(401)
-    expect((await login(api, ravi.toUpperCase(), 'ravi-pw-2')).status).toBe(401)
+    await expectStatus(await login(api, ravi.toUpperCase(), 'ravi-pw-1'), 401)
+    await expectStatus(await login(api, ravi.toUpperCase(), 'ravi-pw-2'), 401)
     expect((await login(api, ravi, 'ravi-pw-1')).status).toBe(200) // the exact id still wins
   })
 
   test('a username beats another person\'s email', async ({ api }) => {
     await sql`insert into person (row_id, username, enabled, password_hash, created_by, updated_by) values (${psn('meena')}, 'meena', true, ${hashPassword('meena-pw-1')}, 'Administrator', 'Administrator')`
     await sql`insert into person (row_id, email, enabled, password_hash, created_by, updated_by) values (${psn('other')}, 'meena', true, ${hashPassword('other-pw-1')}, 'Administrator', 'Administrator')`
-    expect((await login(api, 'meena', 'other-pw-1')).status).toBe(401)
+    await expectStatus(await login(api, 'meena', 'other-pw-1'), 401)
     const ok = await login(api, 'MEENA', 'meena-pw-1')
-    expect(ok.status).toBe(200)
+    await expectStatus(ok, 200)
     expect(((await ok.json()) as { user: { row_id: string } }).user.row_id).toBe(psn('meena'))
   })
 
@@ -142,13 +142,13 @@ describe('placeholder addresses are refused everywhere', () => {
   test('inviting a .invalid Google address is a 417 on email', async ({ admin }) => {
     const inv = await makePerson({})
     const res = await admin.fetch(`/api/people/${inv}/identities`, { method: 'POST', body: JSON.stringify({ method: 'google', email: 'rr-inv@staff.jeyarama.invalid' }) })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(((await res.json()) as { error: { fields: Record<string, string> } }).error.fields.email).toMatch(/invalid/)
   })
 
   test('a Google account reporting a .invalid address is not admitted', async ({ api }) => {
     await configureGoogle({ allowed_email_domains: '*', new_person: 'create' })
-    expect((await googleSignIn(api, 'someone@staff.jeyarama.invalid', { subject: 'g-invalid' })).status).toBe(417)
+    await expectStatus(await googleSignIn(api, 'someone@staff.jeyarama.invalid', { subject: 'g-invalid' }), 417)
     expect(await sql`select 1 from sign_in_identity where subject = 'g-invalid'`).toHaveLength(0)
   })
 })

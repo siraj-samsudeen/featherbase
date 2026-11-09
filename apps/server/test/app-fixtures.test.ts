@@ -18,6 +18,7 @@ import {
 import { saveDoc, deleteDoc } from '../src/document'
 import { sql } from '../src/db'
 import type { AppManifest } from '../src/apps'
+import { expectStatus } from './fixtures'
 
 const APP = 'test-fixture-app'
 const DT = 'Fixture Test Item'
@@ -161,7 +162,7 @@ describe('PLAT-006: app fixtures install through the real lifecycle', () => {
           },
         }),
       })
-      expect(res.status).toBe(201)
+      await expectStatus(res, 201)
       const body = (await res.json()) as { fixtures: unknown }
       expect(body.fixtures).toEqual([{ table: 'Decl Fixture Item', row_id: 'decl-1' }])
       const [row] = await sql`select title from featherbase.decl_fixture_item where row_id = 'decl-1'`
@@ -171,7 +172,7 @@ describe('PLAT-006: app fixtures install through the real lifecycle', () => {
         method: 'POST',
         body: JSON.stringify({ name: DECL }),
       })
-      expect(un.status).toBe(200)
+      await expectStatus(un, 200)
       expect((await sql`select 1 from table_def where name = 'Decl Fixture Item'`).length).toBe(0)
     } finally {
       await uninstallApp(DECL).catch(() => {})

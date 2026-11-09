@@ -3,7 +3,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { makePerson } from './fixtures'
+import { expectStatus, makePerson } from './fixtures'
 import { configureGoogle } from './identity-fixtures'
 import { completeSignIn } from '../src/sign-in'
 import { methodOfKind } from '../src/identities'
@@ -42,7 +42,7 @@ describe('who created a person', () => {
     const byHand = await makePerson({ full_name: 'Typed In' }, 'Administrator')
     const created = async (id: string) => {
       const res = await admin.fetch(`/api/activity/Person/${id}`)
-      expect(res.status).toBe(200)
+      await expectStatus(res, 200)
       return ((await res.json()) as { created: { created_by: string; author_name: string; created_at: string } }).created
     }
     expect(await created(signedUp)).toMatchObject({ created_by: 'google-sign-in', author_name: 'Google sign-in' })

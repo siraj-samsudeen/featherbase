@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
+import { expectStatus } from './fixtures'
 
 // #1060: a Permission row is a grant, and retiring never changes who may see
 // what (row-retirement spec). So a grant is not retired: it ends by unticking
@@ -28,12 +29,12 @@ describe('#1060: a grant is ended in the matrix, not retired', () => {
     const refused = await admin.fetch(`/api/table/Permission/${id}:retire`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'No longer needed' }),
     })
-    expect(refused.status).toBe(417)
+    await expectStatus(refused, 417)
     expect(await refused.text()).toContain('untick it in the permission matrix')
     // A grant has nowhere to keep a retirement: the columns are gone (0156).
     expect(await sql`select column_name from information_schema.columns
       where table_schema = 'featherbase' and table_name = 'permission' and column_name like 'retired%'`).toEqual([])
-    expect((await holder.fetch(list)).status).toBe(200)
+    await expectStatus(await holder.fetch(list), 200)
   })
 
   test('a Permission row does not offer Retire', async ({ admin }) => {
@@ -44,7 +45,7 @@ describe('#1060: a grant is ended in the matrix, not retired', () => {
   test('a refused delete of a grant points at the matrix, not at retiring', async ({ admin }) => {
     const id = await grantWithHistory(admin)
     const refused = await admin.fetch(`/api/table/Permission/${id}`, { method: 'DELETE' })
-    expect(refused.status).toBe(417)
+    await expectStatus(refused, 417)
     const body = await refused.text()
     expect(body).toContain('history entries')
     expect(body).toContain('untick it in the permission matrix')

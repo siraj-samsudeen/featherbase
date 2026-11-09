@@ -3,7 +3,7 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { getMeta } from '../src/meta'
 import type { TestClient } from 'feather-testing-postgres'
-import { expectApiError, patchDoc, tableRef } from './fixtures'
+import { expectApiError, expectRefused, expectStatus, patchDoc, tableRef } from './fixtures'
 
 // CUST-002: Metadata Overrides override column/Table properties without
 // touching the base definition.
@@ -49,7 +49,7 @@ describe('CUST-002: metadata overrides', () => {
         table_name: DT, property: 'enable_tags', value: 'yes',
       } }),
     })
-    expect(response.status).toBe(417)
+    await expectStatus(response, 417)
     expect(await response.json()).toMatchObject({ error: { type: 'ValidationError' } })
     expect(await admin.get(tableRef(DT).metaUrl)).toMatchObject({ enable_tags: false })
   })
@@ -86,7 +86,7 @@ describe('CUST-002: metadata overrides', () => {
     await expectApiError(admin.post('/api/table/Metadata%20Override', {
       row_id: 'ps-invalid-column', table_name: DT, column_name: 'Title', property: 'label', value: 'Headline',
     }), { status: 417, type: 'ValidationError', message: expect.stringContaining(`Column Title not found on Table ${DT}`) })
-    await expectApiError(admin.get('/api/table/Metadata%20Override/ps-invalid-column'), { status: 404 })
+    await expectRefused(admin.get('/api/table/Metadata%20Override/ps-invalid-column'), 404)
   })
 
   test('overrides a column label in effective meta but leaves the base row unchanged', async ({
@@ -94,7 +94,7 @@ describe('CUST-002: metadata overrides', () => {
   }) => {
     await makeDT(admin)
     const res = await addLabelSetter(admin)
-    expect(res.status).toBe(201)
+    await expectStatus(res, 201)
 
     const meta = await getMeta(DT)
     expect(meta.columns.find((f) => f.column_name === 'title')?.label).toBe('Headline')
@@ -127,7 +127,7 @@ describe('CUST-002: metadata overrides', () => {
         row_id: 'ps-invalid-boolean', table_name: DT, column_name: 'title', property, value,
       }), { status: 417, type: 'ValidationError' })
       for (const allowed of ['true', 'false', '1', '0']) expect(error.message).toContain(allowed)
-      await expectApiError(admin.get('/api/table/Metadata%20Override/ps-invalid-boolean'), { status: 404 })
+      await expectRefused(admin.get('/api/table/Metadata%20Override/ps-invalid-boolean'), 404)
     })
   }
 

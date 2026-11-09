@@ -12,6 +12,7 @@ import { parseCsv, serializeCsv } from '../src/sources/csv'
 import { csvFolderDriver } from '../src/sources/csv-driver'
 import { invalidateSources } from '../src/sources/registry'
 import type { Binding, SourceFilter } from '../src/sources/types'
+import { expectRefused, expectStatus } from './fixtures'
 
 let dir: string
 
@@ -91,7 +92,7 @@ async function makeCsvSource(admin: {
     method: 'POST',
     body: JSON.stringify({ tables: ['store_master.csv', 'finance/notes.csv'] }),
   })
-  expect(res.status).toBe(200)
+  await expectStatus(res, 200)
   const body = (await res.json()) as { created: { name: string }[]; skipped: { reason: string }[] }
   expect(body.skipped).toEqual([])
   return body.created.map((c) => c.name)
@@ -222,7 +223,7 @@ describe('M1: csv-folder source', () => {
       `/api/table/${enc}/4?updated_at=${encodeURIComponent(String(loaded.updated_at))}`,
       { method: 'DELETE' },
     )
-    expect(del.status).toBe(200)
+    await expectStatus(del, 200)
     text = readFileSync(path.join(dir, 'store_master.csv'), 'utf8')
     expect(text).toBe(STORES)
   })
@@ -254,7 +255,7 @@ describe('M1: csv-folder source', () => {
     const [stores] = await makeCsvSource(admin)
     const enc = encodeURIComponent(stores)
     const res = await admin.fetch(`/api/table/${enc}/2`, { method: 'DELETE' })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(readFileSync(path.join(dir, 'store_master.csv'), 'utf8')).toBe(STORES)
   })
 
@@ -276,7 +277,7 @@ describe('M1: csv-folder source', () => {
       `/api/table/${enc}/2?updated_at=${encodeURIComponent(String(doc.updated_at))}`,
       { method: 'DELETE' },
     )
-    expect(res.status).toBe(409)
+    await expectStatus(res, 409)
     // Nothing removed — the inserted row is still there.
     expect(readFileSync(file, 'utf8')).toBe(shifted)
   })
@@ -315,7 +316,7 @@ describe('M1: csv-folder source', () => {
     expect(readFileSync(path.join(dir, 'store_master.csv'), 'utf8')).toBe(STORES)
     const after = (await admin.get(`/api/table/${enc}`)) as { total: number }
     expect(after.total).toBe(3)
-    await expect(admin.get(`/api/table/${enc}/4`)).rejects.toMatchObject({ status: 404 })
+    await expectRefused(admin.get(`/api/table/${enc}/4`), 404)
   })
 
   test('a write the filesystem refuses leaves the file and the served rows unchanged', async ({ admin }) => {

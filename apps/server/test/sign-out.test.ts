@@ -7,7 +7,7 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { issueAccessToken, issueSession } from '../src/auth'
 import { attachRealtime, closeSessionSockets, recheckSessionSockets } from '../src/realtime'
-import { makePerson } from './fixtures'
+import { expectStatus, makePerson } from './fixtures'
 
 // #411: signing out ends THAT session — the same token is refused afterwards
 // on every path — while the person's other sessions keep working.
@@ -54,7 +54,7 @@ describe('#411: sign-out ends that session only', () => {
     const other = (await issueSession(id)).token
     expect(await whoami(api, signedOut)).toBe(200)
 
-    expect((await logout(api, bearer(signedOut))).status).toBe(200)
+    await expectStatus(await logout(api, bearer(signedOut)), 200)
 
     expect(await whoami(api, signedOut)).toBe(401)
     expect(await whoami(api, other)).toBe(200)
@@ -65,7 +65,7 @@ describe('#411: sign-out ends that session only', () => {
   test('sign-out through the sid cookie alone revokes that session too', async ({ api }) => {
     const id = await makePerson({})
     const token = (await issueSession(id)).token
-    expect((await logout(api, { headers: { cookie: `sid=${token}` } })).status).toBe(200)
+    await expectStatus(await logout(api, { headers: { cookie: `sid=${token}` } }), 200)
     expect(await whoami(api, token)).toBe(401)
   })
 
@@ -91,7 +91,7 @@ describe('#411: sign-out ends that session only', () => {
     const id = await makePerson({})
     const [header, cookie, other] = await Promise.all([1, 2, 3].map(async () => (await issueSession(id)).token))
     const res = await logout(api, { headers: { authorization: `Bearer ${header}`, cookie: `sid=${cookie}` } })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     expect(await whoami(api, header)).toBe(401)
     expect(await whoami(api, cookie)).toBe(401)
     expect(await whoami(api, other)).toBe(200)
@@ -106,7 +106,7 @@ describe('#411: sign-out ends that session only', () => {
       // Nine hours on: the token is past its eight-hour expiry.
       vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 9 * 3600_000 })
       try {
-        expect((await logout(api, bearer(token))).status).toBe(200)
+        await expectStatus(await logout(api, bearer(token)), 200)
       } finally {
         vi.useRealTimers()
       }
@@ -122,7 +122,7 @@ describe('#411: sign-out ends that session only', () => {
     await withRealtime(async (open) => {
       const s = await open(token)
       const res = await logout(api, { headers: { cookie: `sid=${token}` } })
-      expect(res.status).toBe(503)
+      await expectStatus(res, 503)
       expect(((await res.json()) as { error: { type: string } }).error.type).toBe('ServiceUnavailableError')
       expect((res.headers.get('set-cookie') ?? '').toLowerCase()).toContain('max-age=0')
       expect(await s.closed).toBe(4001)
@@ -212,8 +212,8 @@ describe('#411: sign-out ends that session only', () => {
   test('sign-out with an access token or no credential revokes nothing; the access token keeps working', async ({ api }) => {
     const id = await makePerson({})
     const { token } = await issueAccessToken(id, 'integration')
-    expect((await logout(api, bearer(token))).status).toBe(200)
-    expect((await logout(api, {})).status).toBe(200)
+    await expectStatus(await logout(api, bearer(token)), 200)
+    await expectStatus(await logout(api, {}), 200)
     expect(await whoami(api, token)).toBe(200)
     expect(await sql`select 1 from revoked_session`).toHaveLength(0)
   })

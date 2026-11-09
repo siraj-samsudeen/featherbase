@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { issueSession } from '../src/auth'
+import { expectRefused, expectStatus } from './fixtures'
 
 // #101 Phase 3: batched capture of read-side intent into user_event —
 // append-only, caller-scoped, clamped timestamps, 90-day retention.
@@ -44,7 +45,7 @@ describe('#101: POST /api/events + GET /api/events/summary', () => {
     await expect(
       admin.post('/api/events', { events: [{ kind: 'hack', key: 'x' }] }),
     ).rejects.toMatchObject({ status: 417 })
-    await expect(admin.post('/api/events', { events: [] })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(admin.post('/api/events', { events: [] }), 417)
     await expect(
       admin.post('/api/events', { events: Array.from({ length: 51 }, (_, i) => ev(`k${i}`)) }),
     ).rejects.toMatchObject({ status: 417 })
@@ -60,7 +61,7 @@ describe('#101: POST /api/events + GET /api/events/summary', () => {
     const res = await api.fetch('/api/events/summary', {
       headers: { authorization: `Bearer ${token}` },
     })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const body = (await res.json()) as { entries: unknown[] }
     expect(body.entries).toHaveLength(0)
   })

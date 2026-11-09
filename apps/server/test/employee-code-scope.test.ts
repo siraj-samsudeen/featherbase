@@ -9,7 +9,7 @@ import { sql } from '../src/db'
 import { seedSalesTarget } from '../src/sales-target'
 import { applySeedPack } from '../src/seed-packs'
 import { configureDelegated } from './identity-fixtures'
-import { makePerson } from './fixtures'
+import { expectStatus, makePerson } from './fixtures'
 import { app } from '../src/index'
 import { issueSession } from '../src/auth'
 
@@ -74,7 +74,7 @@ describe('the manual procedures move Sections through identifier rows', () => {
     expect(await groupsOf(wrong)).toEqual(['010505001', '010505002'])
     // Recorded today and ended today: never in force, so it goes, and so do the Sections.
     const ended = await admin.fetch(`/api/identifiers/${identifier.id}`, { method: 'PATCH', body: JSON.stringify({ end: true, note: 'Wrong person; HR mail 23-Oct' }) })
-    expect(ended.status).toBe(200)
+    await expectStatus(ended, 200)
     expect(await groupsOf(wrong)).toEqual([])
     await admin.post(`/api/people/${right}/identifiers`, { system: CODE, value: 'RR-0103', note: 'Corrected; HR mail 23-Oct' })
     expect(await groupsOf(right)).toEqual(['010505001', '010505002'])
@@ -89,7 +89,7 @@ describe('a record number someone else holds (review on #385)', () => {
     await sql`insert into person_identifier (id, person_id, system, value, one_holder, source, recorded_by)
       values ('pid_heldrecord1aaaaaaaaa', ${holder}, 'stylehr-employee-id', '55555', true, 'test', 'test')`
     const res = await admin.fetch(`/api/people/${other}/identities`, { method: 'POST', body: JSON.stringify({ method: 'stylehr', subject: '55555', sign_in_name: 'taker' }) })
-    expect(res.status).toBe(409)
+    await expectStatus(res, 409)
     expect(await sql`select 1 from sign_in_identity where person_id = ${other}`).toHaveLength(0)
   })
 })

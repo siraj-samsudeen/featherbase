@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { loadInstalledApps, uninstallApp, isInstalled, registerApp, listInstalledApps } from '../src/apps'
 import { sql } from '../src/db'
+import { expectStatus } from './fixtures'
 
 // PLAT-005 (#55): an app can be installed from a JSON manifest over the API —
 // no code in this repo. The manifest persists in installed_app, uninstall
@@ -39,7 +40,7 @@ describe('PLAT-005: declarative app install over the API', () => {
         method: 'POST',
         body: JSON.stringify({ manifest: MANIFEST }),
       })
-      expect(res.status).toBe(201)
+      await expectStatus(res, 201)
       expect((await res.json()) as object).toMatchObject({ name: APP, tables: [DT], roles: [ROLE] })
 
       // The manifest is persisted — uninstall and boot work from stored data.
@@ -52,15 +53,15 @@ describe('PLAT-005: declarative app install over the API', () => {
         method: 'POST',
         body: JSON.stringify({ title: 'declared' }),
       })
-      expect(ins.status).toBe(201)
-      expect((await user.fetch('/api/table/Person')).status).toBe(403)
+      await expectStatus(ins, 201)
+      await expectStatus(await user.fetch('/api/table/Person'), 403)
 
       // Uninstall over the API tears down Tables, roles and grants.
       const un = await admin.fetch('/api/uninstall_app', {
         method: 'POST',
         body: JSON.stringify({ name: APP }),
       })
-      expect(un.status).toBe(200)
+      await expectStatus(un, 200)
       expect((await sql`select 1 from table_def where name = ${DT}`).length).toBe(0)
       expect((await sql`select 1 from permission where role = ${ROLE}`).length).toBe(0)
     } finally {
@@ -75,7 +76,7 @@ describe('PLAT-005: declarative app install over the API', () => {
         method: 'POST',
         body: JSON.stringify({ manifest: { ...MANIFEST, [key]: {} } }),
       })
-      expect(res.status).toBe(417)
+      await expectStatus(res, 417)
       const body = (await res.json()) as { error: { message: string } }
       expect(body.error.message).toContain(key)
       expect(body.error.message).toContain('registerApp')
@@ -94,7 +95,7 @@ describe('PLAT-005: declarative app install over the API', () => {
           { name: 'Decl Linked Customer', columns: [{ column_name: 'last_order', column_type: 'Reference', reference_table: 'Decl Linked Order' }] },
         ] } }),
       })
-      expect(res.status).toBe(201)
+      await expectStatus(res, 201)
     } finally {
       await uninstallApp(LINKED).catch(() => {})
     }
@@ -108,13 +109,13 @@ describe('PLAT-005: declarative app install over the API', () => {
       admin.fetch('/api/install_app', { method: 'POST', body: JSON.stringify({ manifest: { name: PARTIAL, tables } }) })
     try {
       const refused = await install([first, second('Decl No Such Table')])
-      expect(refused.status).toBe(417)
+      await expectStatus(refused, 417)
       expect((await refused.json()).error.fields.other).toContain('Decl No Such Table')
       expect(await sql`select name from table_def where name = ${first.name}`).toEqual([])
       expect(await sql`select column_name from column_def where parent = ${first.name}`).toEqual([])
       expect((await sql`select to_regclass('featherbase.decl_partial_first')::text as r`)[0].r).toBeNull()
       // No cached definition outlives the rollback.
-      expect((await admin.fetch(`/api/table/${encodeURIComponent(first.name)}:meta`)).status).toBe(404)
+      await expectStatus(await admin.fetch(`/api/table/${encodeURIComponent(first.name)}:meta`), 404)
     } finally {
       await uninstallApp(PARTIAL).catch(() => {})
     }
@@ -127,8 +128,8 @@ describe('PLAT-005: declarative app install over the API', () => {
     const install = (tables: object[]) =>
       admin.fetch('/api/install_app', { method: 'POST', body: JSON.stringify({ manifest: { name: PARTIAL, tables } }) })
     try {
-      expect((await install([first, second('Decl No Such Table')])).status).toBe(417)
-      expect((await install([first, second('Decl Retry First')])).status).toBe(201)
+      await expectStatus(await install([first, second('Decl No Such Table')]), 417)
+      await expectStatus(await install([first, second('Decl Retry First')]), 201)
     } finally {
       await uninstallApp(PARTIAL).catch(() => {})
     }
@@ -137,8 +138,8 @@ describe('PLAT-005: declarative app install over the API', () => {
   test('installing a manifest that is already installed is refused and leaves the app active', async ({ admin }) => {
     const install = () => admin.fetch('/api/install_app', { method: 'POST', body: JSON.stringify({ manifest: MANIFEST }) })
     try {
-      expect((await install()).status).toBe(201)
-      expect((await install()).status).toBe(409)
+      await expectStatus(await install(), 201)
+      await expectStatus(await install(), 409)
       expect((await listInstalledApps()).find((a) => a.name === APP)?.active).toBe(true)
     } finally {
       await unwire()
@@ -150,7 +151,7 @@ describe('PLAT-005: declarative app install over the API', () => {
       method: 'POST',
       body: JSON.stringify({ manifest: { tables: [] } }),
     })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
   })
 
   test('a manifest named like an app registered in code is refused, so it can never shadow that app', async ({ admin }) => {
@@ -159,7 +160,7 @@ describe('PLAT-005: declarative app install over the API', () => {
       method: 'POST',
       body: JSON.stringify({ manifest: { ...MANIFEST, name: 'decl-shadowed-code-app' } }),
     })
-    expect(res.status).toBe(409)
+    await expectStatus(res, 409)
     expect(await res.json()).toMatchObject({
       error: { type: 'ConflictError', message: 'App decl-shadowed-code-app is registered in code — install it with { name } instead' },
     })
@@ -175,7 +176,7 @@ describe('PLAT-005: declarative app install over the API', () => {
       method: 'POST',
       body: JSON.stringify({ manifest: MANIFEST }),
     })
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
     expect(await isInstalled(APP)).toBe(false)
   })
 
@@ -197,7 +198,7 @@ describe('PLAT-005: declarative app install over the API', () => {
 
       // And uninstall still works with no code present.
       const user = await createUser({ roles: [ROLE] })
-      expect((await user.fetch(`/api/table/${encodeURIComponent(DT)}`)).status).toBe(200)
+      await expectStatus(await user.fetch(`/api/table/${encodeURIComponent(DT)}`), 200)
       await uninstallApp(APP)
       expect(await isInstalled(APP)).toBe(false)
     } finally {

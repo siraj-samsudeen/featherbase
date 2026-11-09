@@ -17,6 +17,7 @@ import {
   seedSalesTarget,
   type AssignmentRecord,
 } from '../src/sales-target'
+import { expectStatus } from './fixtures'
 
 // The report is month to date in IST; these fixtures were cut on 17-Sep-2026,
 // so "today" is pinned there and every expected period below still means what it meant.
@@ -139,16 +140,16 @@ describe('#3755 sales-target host: accounts and login', () => {
   test('the embed-session and identity routes require a session (401, no upstream call)', async ({ admin, api }) => {
     await seed(admin)
     const calls = stubUpstream()
-    expect((await api.fetch('/api/sales_target/embed_session', { method: 'POST' })).status).toBe(401)
-    expect((await api.fetch('/api/sales_target/me')).status).toBe(401)
+    await expectStatus(await api.fetch('/api/sales_target/embed_session', { method: 'POST' }), 401)
+    await expectStatus(await api.fetch('/api/sales_target/me'), 401)
     expect(calls).toEqual([])
   })
 
   test('a viewer has no Table permissions: the assignment Table is 403 to them', async ({ admin, api }) => {
     await seed(admin)
     const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
-    expect((await api.fetch(TABLE_URL, { headers: r.headers })).status).toBe(403)
-    expect((await api.fetch('/api/table/Person', { headers: r.headers })).status).toBe(403)
+    await expectStatus(await api.fetch(TABLE_URL, { headers: r.headers }), 403)
+    await expectStatus(await api.fetch('/api/table/Person', { headers: r.headers }), 403)
   })
 
   // #279: a session token alone is not authorization — the role can be
@@ -157,9 +158,9 @@ describe('#3755 sales-target host: accounts and login', () => {
     await seed(admin)
     const calls = stubUpstream()
     const outsider = await createUser({ roles: [] })
-    expect((await outsider.fetch('/api/sales_target/me')).status).toBe(403)
-    expect((await outsider.fetch('/api/sales_target/embed_session', { method: 'POST' })).status).toBe(403)
-    expect((await outsider.fetch('/api/sales_target/report')).status).toBe(403)
+    await expectStatus(await outsider.fetch('/api/sales_target/me'), 403)
+    await expectStatus(await outsider.fetch('/api/sales_target/embed_session', { method: 'POST' }), 403)
+    await expectStatus(await outsider.fetch('/api/sales_target/report'), 403)
     expect(calls).toEqual([])
   })
 
@@ -168,11 +169,11 @@ describe('#3755 sales-target host: accounts and login', () => {
     const calls = stubUpstream()
     const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
     // Sanity: the token works before revocation.
-    expect((await api.fetch('/api/sales_target/me', { headers: r.headers })).status).toBe(200)
+    await expectStatus(await api.fetch('/api/sales_target/me', { headers: r.headers }), 200)
     await sql`delete from has_role where parent = ${await idOf('test_employee_1')} and role = ${VIEWER_ROLE}`
-    expect((await api.fetch('/api/sales_target/me', { headers: r.headers })).status).toBe(403)
-    expect((await api.fetch('/api/sales_target/embed_session', { method: 'POST', headers: r.headers })).status).toBe(403)
-    expect((await api.fetch('/api/sales_target/report', { headers: r.headers })).status).toBe(403)
+    await expectStatus(await api.fetch('/api/sales_target/me', { headers: r.headers }), 403)
+    await expectStatus(await api.fetch('/api/sales_target/embed_session', { method: 'POST', headers: r.headers }), 403)
+    await expectStatus(await api.fetch('/api/sales_target/report', { headers: r.headers }), 403)
     expect(calls).toEqual([])
   })
 })
@@ -188,7 +189,7 @@ describe('#3755 sales-target host: embed session from the current assignment', (
     for (const usr of ['test_employee_1', 'test_employee_3']) {
       const r = await loginAs(api, usr, PASSWORDS[usr])
       const res = await api.fetch('/api/sales_target/embed_session', { method: 'POST', headers: r.headers })
-      expect(res.status).toBe(200)
+      await expectStatus(res, 200)
       expect(await res.json()).toEqual({ session: 'stub-session-1' })
       const call = calls.at(-1)!
       expect(call.url).toBe('https://api.motherduck.com/v1/dives/dive-under-test/embed-session')
@@ -216,7 +217,7 @@ describe('#3755 sales-target host: embed session from the current assignment', (
     const calls = stubUpstream()
     const nobody = await createUser({ email: 'test_employee_none@example.com', roles: [VIEWER_ROLE] })
     const res = await nobody.fetch('/api/sales_target/embed_session', { method: 'POST' })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     expect(await res.json()).toEqual({ no_assignment: true })
     const me = await nobody.get<{ assignment: unknown; stores: unknown; default_store: unknown }>('/api/sales_target/me')
     expect(me.assignment).toBeNull()
@@ -232,7 +233,7 @@ describe('#3755 sales-target host: embed session from the current assignment', (
     const calls = stubUpstream()
     const reader = await createUser({ email: 'test_employee_fresh@example.com', roles: [VIEWER_ROLE] })
     const res = await reader.fetch('/api/sales_target/embed_session', { method: 'POST' })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     expect(await res.json()).toEqual({ no_assignment: true })
     const me = await reader.get<{ assignment: unknown; stores: unknown }>('/api/sales_target/me')
     expect(me.assignment).toBeNull()
@@ -276,7 +277,7 @@ describe('#3755 sales-target host: embed session from the current assignment', (
     try {
       const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
       const res = await api.fetch('/api/sales_target/embed_session', { method: 'POST', headers: r.headers })
-      expect(res.status).toBe(200)
+      await expectStatus(res, 200)
       const body = (await res.json()) as { not_configured?: boolean; session?: string; error?: unknown }
       expect(body.not_configured).toBe(true)
       expect(body.session).toBeUndefined()
@@ -298,7 +299,7 @@ describe('#3755 sales-target host: embed session from the current assignment', (
     })
     const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
     const res = await api.fetch('/api/sales_target/embed_session', { method: 'POST', headers: r.headers })
-    expect(res.status).toBe(502)
+    await expectStatus(res, 502)
     const body = (await res.json()) as { not_configured?: boolean; error?: { message?: string } }
     expect(body.not_configured).toBeUndefined()
     expect(body.error?.message).toContain('embed API unreachable')
@@ -312,7 +313,7 @@ describe('#3755 sales-target host: embed session from the current assignment', (
     })
     const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
     const res = await api.fetch('/api/sales_target/embed_session', { method: 'POST', headers: r.headers })
-    expect(res.status).toBe(502)
+    await expectStatus(res, 502)
     const text = await res.text()
     expect(JSON.parse(text)).toEqual({
       error: {
@@ -333,7 +334,7 @@ describe('#3755 sales-target host: embed session from the current assignment', (
     try {
       const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
       const res = await api.fetch('/api/sales_target/embed_session', { method: 'POST', headers: r.headers })
-      expect(res.status).toBe(502)
+      await expectStatus(res, 502)
       const lines = error.mock.calls.map((c) => c.map(String).join(' ')).filter((l) => l.includes('sales_target_embed_session_failed'))
       expect(lines).toHaveLength(1)
       expect(JSON.parse(lines[0])).toEqual({
@@ -392,7 +393,7 @@ describe('#3755 sales-target host: report opens are Access Log rows', () => {
     try {
       const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
       const res = await api.fetch('/api/sales_target/report', { headers: r.headers })
-      expect(res.status).toBe(200)
+      await expectStatus(res, 200)
       expect(((await res.json()) as { source: string }).source).toBe('live')
       const rows = await sql`
         select "user", operation, ref_table, reference_name, method, scope from access_log
@@ -400,9 +401,9 @@ describe('#3755 sales-target host: report opens are Access Log rows', () => {
       expect(rows).toHaveLength(1)
       expect(rows[0]).toMatchObject({ ref_table: 'sales_target_mtd', method: 'live', reference_name: null, scope: 'store=1501' })
       // The viewer cannot read the log of their own reads.
-      expect((await api.fetch('/api/table/Access%20Log', { headers: r.headers })).status).toBe(403)
+      await expectStatus(await api.fetch('/api/table/Access%20Log', { headers: r.headers }), 403)
       // Nor the snapshot registry — that is a System Manager's view.
-      expect((await api.fetch('/api/table/Dataset%20Snapshot', { headers: r.headers })).status).toBe(403)
+      await expectStatus(await api.fetch('/api/table/Dataset%20Snapshot', { headers: r.headers }), 403)
     } finally {
       _setSourceReader(null)
     }
@@ -419,7 +420,7 @@ describe('#3755 sales-target host: report opens are Access Log rows', () => {
     try {
       const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
       const res = await api.fetch('/api/sales_target/report', { headers: r.headers })
-      expect(res.status).toBe(500)
+      await expectStatus(res, 500)
       const lines = error.mock.calls.map((c) => c.map(String).join(' ')).filter((l) => l.includes('sales_target_report_failed'))
       expect(lines).toHaveLength(1)
       expect(JSON.parse(lines[0])).toEqual({
@@ -448,7 +449,7 @@ describe('#3755 sales-target host: report opens are Access Log rows', () => {
     try {
       const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
       const res = await api.fetch('/api/sales_target/report', { headers: r.headers })
-      expect(res.status).toBe(500)
+      await expectStatus(res, 500)
       expect(error).toHaveBeenCalledTimes(1)
     } finally {
       error.mockRestore()
@@ -522,7 +523,7 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     const res = await admin.fetch(`/api/people/${await idOf(username)}/identifiers`, {
       method: 'POST', body: JSON.stringify({ system: EMPLOYEE_CODE_SYSTEM, value: code, note: 'Joiner, HR mail' }),
     })
-    expect(res.status).toBe(201)
+    await expectStatus(res, 201)
   }
 
   test('an employee code on the user widens the assignment to the material groups their Sections hold', async ({ admin, api }) => {
@@ -567,7 +568,7 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     await setEmployeeCode(admin, 'test_employee_3', 'RR-0103')
     const r = await loginAs(api, 'test_employee_3', PASSWORDS.test_employee_3)
     const res = await api.fetch('/api/sales_target/me', { headers: r.headers })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const me = (await res.json()) as { stores: unknown; default_store: string; assignment: { plant_code: string; material_groups: string[] } }
     expect(me.stores).toEqual([
       { plant_code: '1501', store_name: null, sections: ['Kurti'], scope_basis: ['section_staff'] },
@@ -618,7 +619,7 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     await admin.post('/api/save_row', { table: ASSIGNMENT_TABLE, row: { employee: await idOf('test_employee_4'), plant_code: '1501', store_label: 'ATK', material_group: '010909001' } })
     r = await loginAs(api, 'test_employee_4', PASSWORDS.test_employee_4)
     const res = await api.fetch('/api/sales_target/me', { headers: r.headers })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     me = (await res.json()) as typeof me
     expect(me.stores.map((s) => s.plant_code)).toEqual(['1501', '1515'])
     expect(me.default_store).toBe('1501')
@@ -640,22 +641,22 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
       expect(me.default_store).toBe('1501')
       expect(me.stores).toHaveLength(2)
 
-      expect((await api.fetch('/api/sales_target/embed_session?store=1515', { method: 'POST', headers: r.headers })).status).toBe(200)
+      await expectStatus(await api.fetch('/api/sales_target/embed_session?store=1515', { method: 'POST', headers: r.headers }), 200)
       expect((calls[0].body.initial_state as { plant_code: string; material_groups: string[] })).toMatchObject({ plant_code: '1515', material_groups: ['010101001', '010101003'] })
       // Without the parameter, or with it empty, the default store.
       await api.fetch('/api/sales_target/embed_session', { method: 'POST', headers: r.headers })
       expect((calls[1].body.initial_state as { plant_code: string }).plant_code).toBe('1501')
-      expect((await api.fetch('/api/sales_target/embed_session?store=', { method: 'POST', headers: r.headers })).status).toBe(200)
+      await expectStatus(await api.fetch('/api/sales_target/embed_session?store=', { method: 'POST', headers: r.headers }), 200)
       expect((calls[2].body.initial_state as { plant_code: string }).plant_code).toBe('1501')
 
-      expect((await api.fetch('/api/sales_target/report?store=1515', { headers: r.headers })).status).toBe(200)
+      await expectStatus(await api.fetch('/api/sales_target/report?store=1515', { headers: r.headers }), 200)
       const scoped = reads.find((t) => t.includes('hierarchy_code in'))!
       expect(scoped).toContain("b.plant_code = '1515'")
       expect(scoped).not.toContain("'1501'")
       // The Access Log says which store was opened, so "who viewed which store" stays answerable.
       const logged = await sql`select scope from access_log where "user" = ${await idOf('test_employee_3')} and operation = 'view_report'`
       expect(logged.map((l) => l.scope)).toEqual(['store=1515'])
-      expect((await api.fetch('/api/sales_target/report?store=', { headers: r.headers })).status).toBe(200)
+      await expectStatus(await api.fetch('/api/sales_target/report?store=', { headers: r.headers }), 200)
       const both = await sql`select scope from access_log where "user" = ${await idOf('test_employee_3')} and operation = 'view_report' order by created_at`
       expect(both.map((l) => l.scope).sort()).toEqual(['store=1501', 'store=1515'])
     } finally {
@@ -675,13 +676,13 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
       const r = await loginAs(api, 'test_employee_3', PASSWORDS.test_employee_3)
       // 1999 is nobody's; 'abc' is not a store code; a repeated parameter names no one store.
       for (const query of ['store=1999', 'store=abc', 'store=1501&store=1515', 'store=1501&store=1501']) {
-        expect((await api.fetch(`/api/sales_target/report?${query}`, { headers: r.headers })).status).toBe(403)
-        expect((await api.fetch(`/api/sales_target/embed_session?${query}`, { method: 'POST', headers: r.headers })).status).toBe(403)
+        await expectStatus(await api.fetch(`/api/sales_target/report?${query}`, { headers: r.headers }), 403)
+        await expectStatus(await api.fetch(`/api/sales_target/embed_session?${query}`, { method: 'POST', headers: r.headers }), 403)
       }
       // A single-store person cannot reach the other store either.
       const one = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
-      expect((await api.fetch('/api/sales_target/embed_session?store=1515', { method: 'POST', headers: one.headers })).status).toBe(403)
-      expect((await api.fetch('/api/sales_target/report?store=1515', { headers: one.headers })).status).toBe(403)
+      await expectStatus(await api.fetch('/api/sales_target/embed_session?store=1515', { method: 'POST', headers: one.headers }), 403)
+      await expectStatus(await api.fetch('/api/sales_target/report?store=1515', { headers: one.headers }), 403)
       expect(calls).toHaveLength(0)
       expect(reads).toHaveLength(0)
       expect(await sql`select 1 from access_log where operation = 'view_report'`).toHaveLength(0)
@@ -699,7 +700,7 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     expect((me.assignment as { plant_code: string }).plant_code).toBe('1501')
     // Naming their own store is the same as naming none.
     stubUpstream()
-    expect((await api.fetch('/api/sales_target/embed_session?store=1501', { method: 'POST', headers: r.headers })).status).toBe(200)
+    await expectStatus(await api.fetch('/api/sales_target/embed_session?store=1501', { method: 'POST', headers: r.headers }), 200)
   })
 
   test('a store code that is not four digits is refused in plain words, with no id', async ({ admin, api }) => {
@@ -712,7 +713,7 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     await admin.post('/api/set_password', { user: await idOf('bad_store_person'), password: 'pw-bad_store_person' })
     const b = await loginAs(api, 'bad_store_person', 'pw-bad_store_person')
     const res = await api.fetch('/api/sales_target/me', { headers: b.headers })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     const body = (await res.json()) as { error: { message: string; fields?: unknown } }
     expect(body.error.message).toContain('not four digits')
     expect(body.error.message).not.toMatch(/psn_/)
@@ -792,7 +793,7 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
   async function assignmentOf(api: TestClient, user: string) {
     const r = await loginAs(api, user, `pw-${user}`)
     const res = await api.fetch('/api/sales_target/me', { headers: r.headers })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     return ((await res.json()) as { assignment: Record<string, unknown> | null }).assignment
   }
 
@@ -910,7 +911,7 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     await viewer(admin, 'dm_dee', 'RR-80001')
     const calls = stubUpstream()
     const r = await loginAs(api, 'dm_dee', 'pw-dm_dee')
-    expect((await api.fetch('/api/sales_target/embed_session', { method: 'POST', headers: r.headers })).status).toBe(200)
+    await expectStatus(await api.fetch('/api/sales_target/embed_session', { method: 'POST', headers: r.headers }), 200)
     expect(calls[0].body.initial_state).toEqual({
       plant_code: '1501',
       material_groups: ['010101001', '010101002', '010102003', '010505001', '010505002'],
@@ -994,7 +995,7 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     const a = await assignmentOf(api, 'tl_spaced')
     expect(a?.material_groups).toEqual(['010505001', '010505002'])
     const r = await loginAs(api, 'tl_spaced', 'pw-tl_spaced')
-    expect((await api.fetch('/api/sales_target/embed_session', { method: 'POST', headers: r.headers })).status).toBe(200)
+    await expectStatus(await api.fetch('/api/sales_target/embed_session', { method: 'POST', headers: r.headers }), 200)
     expect(JSON.stringify(calls[0].body.initial_state)).not.toContain('drop')
   })
 
@@ -1052,7 +1053,7 @@ describe('#408 the scope follows the person\'s current employee-code identifier 
   async function scopeOf(api: TestClient, username: string) {
     const r = await loginAs(api, username, `pw-${username}`)
     const res = await api.fetch('/api/sales_target/me', { headers: r.headers })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     return ((await res.json()) as { assignment: { material_groups: string[]; scope_basis: string[] } | null }).assignment
   }
 
@@ -1094,7 +1095,7 @@ describe('#408 the scope follows the person\'s current employee-code identifier 
       expect(await embed(api, 'firm_b')).toEqual({ no_assignment: true })
       // #409: blocked means no store at all — naming one is refused, not a way back in.
       const fa = await loginAs(api, 'firm_a', 'pw-firm_a')
-      expect((await api.fetch('/api/sales_target/embed_session?store=1501', { method: 'POST', headers: fa.headers })).status).toBe(403)
+      await expectStatus(await api.fetch('/api/sales_target/embed_session?store=1501', { method: 'POST', headers: fa.headers }), 403)
       const alerts = warn.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('sales_target_ambiguous_employee_code'))
       expect(alerts.length).toBeGreaterThan(0)
       const alert = JSON.parse(alerts[0]) as Record<string, unknown>
@@ -1169,7 +1170,7 @@ describe('#3755 sales-target host: assignment integrity and transfer', () => {
     const open = async (n: number) => {
       const r = await loginAs(api, `test_employee_${n}`, PASSWORDS[`test_employee_${n}`])
       const res = await api.fetch('/api/sales_target/embed_session', { method: 'POST', headers: r.headers })
-      expect(res.status).toBe(200)
+      await expectStatus(res, 200)
       return (calls.at(-1)!.body.initial_state as { plant_code: string; material_groups: string[] })
     }
     const filters = encodeURIComponent(JSON.stringify([['store_subcategory', '=', '1501/010101003']]))

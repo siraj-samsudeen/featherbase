@@ -1,6 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
+import { expectStatus } from './fixtures'
 
 const DT = 'Ddl Test Task'
 const CHILD = 'Ddl Test Row'
@@ -20,7 +21,7 @@ test('#251 refuses a mismatched body name before replacing either definition', a
   const response = await admin.fetch('/api/table_def/Rename%20Source', {
     method: 'PUT', body: JSON.stringify({ name: names[1], columns: [{ column_name: 'title', column_type: 'Data' }] }),
   })
-  expect(response.status).toBe(417)
+  await expectStatus(response, 417)
   expect(await response.json()).toMatchObject({ error: { type: 'ValidationError' } })
   for (const [i, name] of names.entries())
     expect(await admin.get(`/api/table/${encodeURIComponent(name)}:meta`)).toEqual(definitions[i])
@@ -31,7 +32,7 @@ test('#251 refuses a mismatched body name before replacing either definition', a
         { column_name: 'title', column_type: 'Data' }, { column_name: 'amount', column_type: 'Int' },
       ] }),
     })
-    expect(response.status).toBe(200)
+    await expectStatus(response, 200)
   }
 })
 
@@ -60,7 +61,7 @@ describe('META-003: Table save generates its physical table', () => {
         ],
       }),
     })
-    expect(res.status).toBe(201)
+    await expectStatus(res, 201)
 
     const cols = await columns('ddl_test_task')
     expect(cols).toMatchObject({
@@ -100,7 +101,7 @@ describe('META-003: Table save generates its physical table', () => {
         columns: [{ column_name: 'item', column_type: 'Data' }],
       }),
     })
-    expect(res.status).toBe(201)
+    await expectStatus(res, 201)
     const cols = await columns('ddl_test_row')
     expect(cols).toMatchObject({
       parent: 'character varying',
@@ -126,7 +127,7 @@ describe('META-003: Table save generates its physical table', () => {
         columns: [{ column_name: 'x', column_type: 'Data' }],
       }),
     })
-    expect(res.status).toBe(409)
+    await expectStatus(res, 409)
     const [row] = await sql`select 1 from table_def where name = 'Ddl Ghost'`
     expect(row).toBeUndefined()
   })
@@ -141,7 +142,7 @@ describe('META-003: Table save generates its physical table', () => {
       method: 'POST',
       body: JSON.stringify({ name: 'Site', columns: [{ column_name: 'site_name', column_type: 'Data' }] }),
     })
-    expect(res.status).toBe(201)
+    await expectStatus(res, 201)
     await admin.post('/api/save_row', { table: 'Site', row: { site_name: 'Riverside' } })
     expect(await sql`select site_name from featherbase.site`).toEqual([{ site_name: 'Riverside' }])
     expect(await registry()).toEqual(before)
@@ -161,7 +162,7 @@ describe('META-003: Table save generates its physical table', () => {
         columns: [{ column_name: 'x', column_type: 'Data' }],
       }),
     })
-    expect(res.status).toBe(500)
+    await expectStatus(res, 500)
     const [row] = await sql`select 1 from table_def where name = 'Ddl Ghost2'`
     expect(row).toBeUndefined()
   })

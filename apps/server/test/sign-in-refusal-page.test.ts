@@ -6,7 +6,7 @@ import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { makePerson } from './fixtures'
+import { expectStatus, makePerson } from './fixtures'
 import { configureGoogle } from './identity-fixtures'
 
 const PAGE = { accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' }
@@ -41,7 +41,7 @@ describe('a refused Google sign-in lands on the sign-in page', () => {
   test('an account nobody set up is sent back with not_provisioned, and nothing else about why', async ({ api }) => {
     await configureGoogle({ allowed_email_domains: '' })
     const res = await googleSignIn(api, 'stranger@gmail.com', PAGE)
-    expect(res.status).toBe(302)
+    await expectStatus(res, 302)
     expect(refusalCode(res)).toBe('not_provisioned')
     // Only the code travels: no address, no domain, no reason text.
     const location = res.headers.get('location') as string
@@ -54,7 +54,7 @@ describe('a refused Google sign-in lands on the sign-in page', () => {
   test('an API caller still gets the JSON error', async ({ api }) => {
     await configureGoogle({ allowed_email_domains: '' })
     const res = await googleSignIn(api, 'stranger.api@gmail.com', { accept: 'application/json' })
-    expect(res.status).toBe(401)
+    await expectStatus(res, 401)
     expect(await res.json()).toEqual({
       error: { type: 'AuthenticationError', message: 'Access not provisioned for this account. Contact IT.' },
     })
@@ -62,7 +62,7 @@ describe('a refused Google sign-in lands on the sign-in page', () => {
 
   test('a disabled person is sent back with not_allowed', async ({ api }) => {
     await configureGoogle({ allowed_email_domains: '*' })
-    expect((await googleSignIn(api, 'leaver@outside.io', PAGE)).status).toBe(302)
+    await expectStatus(await googleSignIn(api, 'leaver@outside.io', PAGE), 302)
     await sql`update person set enabled = false where email = 'leaver@outside.io'`
     const res = await googleSignIn(api, 'leaver@outside.io', PAGE)
     expect(refusalCode(res)).toBe('not_allowed')
@@ -80,10 +80,10 @@ describe('a refused Google sign-in lands on the sign-in page', () => {
     const res = await googleSignIn(api, 'midway@outside.io', PAGE, { before: () => configureGoogle({ enabled: false }) })
     expect(refusalCode(res)).toBe('google_off')
     const start = await api.fetch('/api/oauth/google/login', { headers: PAGE })
-    expect(start.status).toBe(302)
+    await expectStatus(start, 302)
     expect(refusalCode(start)).toBe('google_off')
     // An API caller of the start route keeps the JSON answer.
-    expect((await api.fetch('/api/oauth/google/login')).status).toBe(401)
+    await expectStatus(await api.fetch('/api/oauth/google/login'), 401)
   })
 
   test('a forged or expired state is sent back with expired', async ({ api }) => {
@@ -98,7 +98,7 @@ describe('a refused Google sign-in lands on the sign-in page', () => {
 test('a retry start sends Google the account picker', async ({ api }) => {
   await configureGoogle({ client_id: 'test-client-id' })
   const res = await api.fetch('/api/oauth/google/login?prompt=select_account', { headers: PAGE })
-  expect(res.status).toBe(302)
+  await expectStatus(res, 302)
   const loc = res.headers.get('location') as string
   expect(loc.startsWith('https://accounts.google.com/o/oauth2/v2/auth?')).toBe(true)
   expect(new URLSearchParams(loc.split('?')[1]).get('prompt')).toBe('select_account')

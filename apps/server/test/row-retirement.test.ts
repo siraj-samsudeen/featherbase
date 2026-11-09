@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
-import { createUserWithRole, expectApiError, makeTable, patchDoc, type TableRef } from './fixtures'
+import { createUserWithRole, expectApiError, expectRefused, expectStatus, makeTable, patchDoc, type TableRef } from './fixtures'
 import { sql } from '../src/db'
 import { getList } from '../src/query'
 import { invalidateMeta } from '../src/meta'
@@ -78,7 +78,7 @@ describe('#859 retire and reactivate a row', () => {
   test('sub-tables, Settings tables and engine Tables cannot retire rows', async ({ admin }) => {
     await expectApiError(admin.post('/api/table/Table/Role:retire', { reason: 'x' }), { status: 417, message: expect.stringContaining('cannot be retired') })
     const [settings] = await sql`select name from table_def where kind = 'settings' limit 1`
-    await expectApiError(admin.post(`/api/table/${encodeURIComponent(String(settings.name))}/${encodeURIComponent(String(settings.name))}:retire`, { reason: 'x' }), { status: 417 })
+    await expectRefused(admin.post(`/api/table/${encodeURIComponent(String(settings.name))}/${encodeURIComponent(String(settings.name))}:retire`, { reason: 'x' }), 417)
   })
 })
 
@@ -129,14 +129,14 @@ describe('#859 who may retire and reactivate', () => {
   test('retire needs the delete right; reactivate the write right', async ({ admin, createUser }) => {
     const { plant } = await plants(admin)
     const editor = await createUserWithRole(admin, createUser, { role: 'Rt Plant Editor', table: PLANT, can_read: true, can_write: true, can_delete: false })
-    await expectApiError(retire(editor, plant, 'Sample plant', 'Not a real location'), { status: 403 })
+    await expectRefused(retire(editor, plant, 'Sample plant', 'Not a real location'), 403)
     const caps = await editor.get<{ retire: boolean; reactivate: boolean }>(`${plant.rowUrl('Sample plant')}:capabilities`)
     expect(caps).toMatchObject({ retire: false, reactivate: false })
     await retire(admin, plant, 'Sample plant', 'Not a real location')
     expect((await editor.get<{ reactivate: boolean }>(`${plant.rowUrl('Sample plant')}:capabilities`)).reactivate).toBe(true)
 
     const reader = await createUserWithRole(admin, createUser, { role: 'Rt Plant Reader', table: PLANT, can_read: true, can_write: false }, { email: 'rt-reader@example.com' })
-    await expectApiError(reactivate(reader, plant, 'Sample plant'), { status: 403 })
+    await expectRefused(reactivate(reader, plant, 'Sample plant'), 403)
     await reactivate(editor, plant, 'Sample plant')
 
     const deleter = await createUserWithRole(admin, createUser, { role: 'Rt Plant Deleter', table: PLANT, can_read: true, can_delete: true }, { email: 'rt-deleter@example.com' })
@@ -263,7 +263,7 @@ describe('#859 retirement respects the row a comment hangs on (Codex review)', (
     await grantRoleOnComment(admin)
     const theirs = await admin.post<{ row_id: string }>('/api/table/Rt%20Note', { subject: 'Not yours' })
     const comment = await admin.post<{ row_id: string }>('/api/table/Comment', { ref_table: 'Rt Note', ref_name: theirs.row_id, content: 'private' })
-    await expectApiError(agent.post(`/api/table/Comment/${comment.row_id}:retire`, { reason: 'hide it' }), { status: 403 })
+    await expectRefused(agent.post(`/api/table/Comment/${comment.row_id}:retire`, { reason: 'hide it' }), 403)
     const [row] = await sql`select retired_at from comment where row_id = ${comment.row_id}`
     expect(row.retired_at).toBeNull()
   })
@@ -309,7 +309,7 @@ describe('#859 reactivating is editing (Codex review round 2)', () => {
     const user = (guest as unknown as { user: string }).user
     await admin.post('/api/save_row', { table: 'Share', row: { share_table: PLANT, share_name: 'Sample plant', person: user, read: true, write: true } })
     expect(await guest.get(`${plant.rowUrl('Sample plant')}:capabilities`)).toMatchObject({ retire: false })
-    await expectApiError(retire(guest, plant, 'Sample plant', 'mine now'), { status: 403 })
+    await expectRefused(retire(guest, plant, 'Sample plant', 'mine now'), 403)
     await retire(admin, plant, 'Sample plant', 'Not a real location')
     expect(await guest.get(`${plant.rowUrl('Sample plant')}:capabilities`)).toMatchObject({ reactivate: true })
     expect(await reactivate(guest, plant, 'Sample plant')).toMatchObject({ retired_at: null })
@@ -342,7 +342,7 @@ describe('#859 the rest of retirement', () => {
   test('the reason has a limit, and the names are reserved', async ({ admin }) => {
     const { plant } = await plants(admin)
     await expectApiError(retire(admin, plant, 'Sample plant', 'x'.repeat(1001)), { status: 417, fields: { retired_reason: 'Too long' } })
-    await expectApiError(admin.post('/api/table_def', { name: 'Rt Reserved', columns: [{ column_name: 'retired_at', column_type: 'Data' }] }), { status: 417 })
+    await expectRefused(admin.post('/api/table_def', { name: 'Rt Reserved', columns: [{ column_name: 'retired_at', column_type: 'Data' }] }), 417)
     const { renameColumn } = await import('../src/table-engine')
     await expect(renameColumn(PLANT, 'city', 'retired_by')).rejects.toMatchObject({ type: 'ValidationError' })
   })
@@ -360,7 +360,7 @@ describe('#859 the rest of retirement', () => {
     const vanish = { table: PLANT, hooks: { before_lock: async ({ tx }: { tx: { unsafe: (q: string) => Promise<unknown> } }) => { await tx.unsafe("delete from featherbase.rt_plant where row_id = 'Sample plant'") } } }
     registerController(vanish as never)
     try {
-      await expectApiError(retire(admin, plant, 'Sample plant', 'Too late'), { status: 404 })
+      await expectRefused(retire(admin, plant, 'Sample plant', 'Too late'), 404)
     } finally { unregisterController(vanish as never) }
   })
 
@@ -377,6 +377,6 @@ describe('key analysis', () => {
     await admin.post(doc.url, { row_id: 'K-1', code: 'K1' })
     await sql.unsafe('drop table featherbase.rt_ka_line')
     const res = await admin.fetch(`${doc.url}:import`, { method: 'POST', body: JSON.stringify({ analyze_keys: true, columns: ['code'], rows: [{ code: 'K1' }] }) })
-    expect(res.status).toBe(500)
+    await expectStatus(res, 500)
   })
 })

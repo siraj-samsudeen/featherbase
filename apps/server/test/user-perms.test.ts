@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { createUserWithRole, expectApiError, makeTable, type TableRef } from './fixtures'
+import { createUserWithRole, expectApiError, expectRefused, expectStatus, makeTable, type TableRef } from './fixtures'
 import { sql } from '../src/db'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 
@@ -68,9 +68,9 @@ describe('PERM-005: Data Scopes', () => {
   }) => {
     const { user, company, project } = await setup(admin, createUser)
     const pb = await sql.unsafe(`select row_id from featherbase.up_project where title='pb'`)
-    await expectApiError(user.get(project.rowUrl(String(pb[0].row_id))), { status: 403 })
-    await expectApiError(user.get(company.rowUrl('Company B')), { status: 403 })
-    expect((await user.fetch(company.rowUrl('Company A'))).status).toBe(200)
+    await expectRefused(user.get(project.rowUrl(String(pb[0].row_id))), 403)
+    await expectRefused(user.get(company.rowUrl('Company B')), 403)
+    await expectStatus(await user.fetch(company.rowUrl('Company A')), 200)
   })
 
   test('creating/updating docs pointing at non-permitted values is rejected', async ({
@@ -85,7 +85,7 @@ describe('PERM-005: Data Scopes', () => {
       method: 'POST',
       body: JSON.stringify({ title: 'fine', company: 'Company A' }),
     })
-    expect(ok.status).toBe(201)
+    await expectStatus(ok, 201)
   })
 
   test('admins are unaffected', async ({ admin, createUser }) => {

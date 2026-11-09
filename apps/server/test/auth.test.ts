@@ -4,6 +4,7 @@ import { sql } from '../src/db'
 import { config } from '../src/config'
 import { parseInstanceAddresses } from '../src/instance-addresses'
 import { expectSessionCookie, setSessionHours } from './session-cookie-test-utils'
+import { expectStatus } from './fixtures'
 
 const json = (body: unknown) => ({
   method: 'POST',
@@ -14,7 +15,7 @@ describe('API-004: authentication', () => {
   test('login requires nonempty string credentials and never issues a cookie for a malformed credential shape', async ({ api }) => {
     for (const body of [{}, { usr: 'Administrator' }, { usr: '', pwd: 'admin' }, { usr: 'Administrator', pwd: '' }, { usr: 17, pwd: 'admin' }, { usr: 'Administrator', pwd: 41 }]) {
       const response = await api.fetch('/api/login', json(body))
-      expect(response.status).toBe(417)
+      await expectStatus(response, 417)
       expect(await response.json()).toMatchObject({ error: { type: 'ValidationError', message: 'Expected { usr, pwd }' } })
       expect(response.headers.get('set-cookie')).toBeNull()
     }
@@ -28,7 +29,7 @@ describe('API-004: authentication', () => {
       ['/api/reset_password', 'Expected { key, new_password }'],
     ]) {
       const response = await api.fetch(path, { method: 'POST', body: '{"unfinished":' })
-      expect(response.status).toBe(417)
+      await expectStatus(response, 417)
       expect(await response.json()).toMatchObject({ error: { type: 'ValidationError', message } })
       expect(response.headers.get('set-cookie')).toBeNull()
     }
@@ -42,11 +43,11 @@ describe('API-004: authentication', () => {
       new_person: 'refuse', self_link: false, service_url: 'https://provider.example.test/login',
     } })
     const malformed = await api.fetch('/api/login/delegated', { method: 'POST', body: '{"unfinished":' })
-    expect(malformed.status).toBe(417)
+    await expectStatus(malformed, 417)
     expect(await malformed.json()).toMatchObject({ error: { type: 'ValidationError', message: 'Expected { usr, pwd, method }' } })
     expect(malformed.headers.get('set-cookie')).toBeNull()
     const unknown = await api.fetch('/api/login/delegated', json({ method: 'not-configured', usr: 'someone', pwd: 'never-forwarded' }))
-    expect(unknown.status).toBe(404)
+    await expectStatus(unknown, 404)
     expect(unknown.headers.get('set-cookie')).toBeNull()
   })
 
@@ -59,7 +60,7 @@ describe('API-004: authentication', () => {
         json({ usr: 'Administrator', pwd: process.env.ADMIN_PASSWORD ?? 'admin' }),
       )
       const after = Math.floor(Date.now() / 1000)
-      expect(res.status).toBe(200)
+      await expectStatus(res, 200)
       expectSessionCookie(res, hours, { before, after })
       const body = (await res.json()) as Record<string, unknown>
       expect(Object.keys(body).filter((key) => !['token', 'user', 'landing'].includes(key))).toEqual([])
@@ -88,7 +89,7 @@ describe('API-004: authentication', () => {
       '/api/login',
       json({ usr: 'Administrator', pwd: process.env.ADMIN_PASSWORD ?? 'admin' }),
     )
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const body = (await res.json()) as { token: string; user: { row_id: string } }
     expect(body.token.split('.')).toHaveLength(3)
     expect(body.user.row_id).toBe('Administrator')
@@ -102,14 +103,14 @@ describe('API-004: authentication', () => {
       '/api/login',
       json({ usr: 'admin@example.com', pwd: process.env.ADMIN_PASSWORD ?? 'admin' }),
     )
-    expect(byEmail.status).toBe(200)
+    await expectStatus(byEmail, 200)
     const bad = await api.fetch('/api/login', json({ usr: 'Administrator', pwd: 'nope' }))
-    expect(bad.status).toBe(401)
+    await expectStatus(bad, 401)
   })
 
   test('requests without a token are rejected; garbage tokens too', async ({ api }) => {
-    expect((await api.fetch('/api/table/Table')).status).toBe(401)
-    expect((await api.fetch('/api/whoami')).status).toBe(401)
+    await expectStatus(await api.fetch('/api/table/Table'), 401)
+    await expectStatus(await api.fetch('/api/whoami'), 401)
     expect(
       (
         await api.fetch('/api/whoami', {
@@ -125,7 +126,7 @@ describe('API-004: authentication', () => {
   })
 
   test('ping stays public', async ({ api }) => {
-    expect((await api.fetch('/api/ping')).status).toBe(200)
+    await expectStatus(await api.fetch('/api/ping'), 200)
   })
 
   // #101: the sid cookie is a live credential; sign-out must expire it even
@@ -139,7 +140,7 @@ describe('API-004: authentication', () => {
     expect(login.headers.get('set-cookie')).toContain('sid=')
 
     const res = await api.fetch('/api/logout', { method: 'POST' })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const cleared = res.headers.get('set-cookie') ?? ''
     expect(cleared).toContain('sid=')
     expect(cleared.toLowerCase()).toContain('max-age=0')
@@ -159,7 +160,7 @@ describe('the sid cookie is sent only over a secure connection on a secure addre
     config.instanceAddresses = parseInstanceAddresses('[{"address":"https://app.example.com","opens":"admin","emails":true}]', 'test')
     try {
       const login = await signIn(api, 'http://app.example.com/api/login', { 'x-forwarded-proto': 'http' })
-      expect(login.status).toBe(200)
+      await expectStatus(login, 200)
       expect(sidOf(login)).toMatch(/;\s*Secure(?:;|$)/i)
       const logout = await api.fetch('http://app.example.com/api/logout', { method: 'POST' })
       expect(sidOf(logout)).toMatch(/;\s*Secure(?:;|$)/i)
@@ -171,14 +172,14 @@ describe('the sid cookie is sent only over a secure connection on a secure addre
   test('a request forwarded over https gets a Secure cookie, even through a proxy that appends its hop', async ({ api }) => {
     for (const proto of ['https', 'https,http']) {
       const login = await signIn(api, '/api/login', { 'x-forwarded-proto': proto })
-      expect(login.status).toBe(200)
+      await expectStatus(login, 200)
       expect(sidOf(login), proto).toMatch(/;\s*Secure(?:;|$)/i)
     }
   })
 
   test('a plain-http local origin keeps a cookie without Secure, so signing in still works there', async ({ api }) => {
     const login = await signIn(api, '/api/login')
-    expect(login.status).toBe(200)
+    await expectStatus(login, 200)
     expect(sidOf(login)).toMatch(/^sid=/)
     expect(sidOf(login)).not.toMatch(/;\s*Secure/i)
     const logout = await api.fetch('/api/logout', { method: 'POST' })

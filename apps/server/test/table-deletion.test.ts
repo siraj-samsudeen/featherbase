@@ -12,7 +12,7 @@ import { invalidateSources } from '../src/sources/registry'
 import { saveUpload, deleteStored } from '../src/storage'
 import { saveSystemRow } from '../src/document'
 import { fileURLToPath } from 'node:url'
-import { grantRole } from './fixtures'
+import { expectRefused, expectStatus, grantRole } from './fixtures'
 
 const storageRoot = process.env.FILE_STORAGE_DIR ?? fileURLToPath(new URL('../storage', import.meta.url))
 const bytesPath = (url: string) => path.join(storageRoot, url.startsWith('/private/') ? 'private' : 'public', path.basename(url))
@@ -68,7 +68,7 @@ describe('DEL-R2: deletion removes what creation wrote', () => {
 
     await admin.delete(`/api/table_def/${ENC}`)
 
-    await expect(admin.get(`/api/table/${ENC}:meta`)).rejects.toMatchObject({ status: 404 })
+    await expectRefused(admin.get(`/api/table/${ENC}:meta`), 404)
     const [defs] = await sql`select count(*)::int as n from column_def where parent = ${DT}`
     expect(defs.n).toBe(0)
     expect(await physicalExists(DT)).toBe(false)
@@ -116,7 +116,7 @@ describe('DEL-R3: schema references block, and say who', () => {
     // Unblock by deleting the referrer, then the delete goes through (DEL-J2).
     await admin.delete('/api/table_def/Deletion%20Referrer')
     await admin.delete(`/api/table_def/${ENC}`)
-    await expect(admin.get(`/api/table/${ENC}:meta`)).rejects.toMatchObject({ status: 404 })
+    await expectRefused(admin.get(`/api/table/${ENC}:meta`), 404)
   })
 
   test('DEL-R3: a Sub-table column blocks its row-storage Table; self-references never block', async ({
@@ -306,7 +306,7 @@ describe('DEL-I2: a refusal changes nothing', () => {
       return { rows: a.n, perms: b.n, cols: c.n }
     }
     const before = await counts()
-    await expect(admin.delete(`/api/table_def/${ENC}`)).rejects.toMatchObject({ status: 417 })
+    await expectRefused(admin.delete(`/api/table_def/${ENC}`), 417)
     expect(await counts()).toEqual(before)
     expect(await physicalExists(DT)).toBe(true)
   })
@@ -379,13 +379,13 @@ describe('DEL-R7: attachments', () => {
       // A real database dependency causes DROP TABLE to fail after registry
       // deletion. The transaction must restore the registry and its bytes.
       await sql.unsafe('create view deletion_guard as select title from featherbase.deletion_target')
-      expect((await admin.fetch(`/api/table_def/${ENC}`, { method: 'DELETE' })).status).toBe(500)
+      await expectStatus(await admin.fetch(`/api/table_def/${ENC}`, { method: 'DELETE' }), 500)
       expect(readFileSync(bytesPath(file_url)).toString()).toBe('rollback bytes')
       expect(await sql`select row_id from file where row_id = 'rollback-file'`).toHaveLength(1)
       await sql.unsafe('drop view deletion_guard')
       await sql.unsafe("create function pg_temp.refuse_delete_audit() returns trigger language plpgsql as $$ begin raise exception 'test audit failure'; end $$")
       await sql.unsafe('create trigger refuse_delete_audit before insert on featherbase.access_log for each row execute function pg_temp.refuse_delete_audit()')
-      expect((await admin.fetch(`/api/table_def/${ENC}`, { method: 'DELETE' })).status).toBe(200)
+      await expectStatus(await admin.fetch(`/api/table_def/${ENC}`, { method: 'DELETE' }), 200)
       expect(() => readFileSync(bytesPath(file_url))).toThrow(/ENOENT/)
       expect(await physicalExists(DT)).toBe(false)
     } finally {
@@ -402,7 +402,7 @@ describe('DEL-R7: attachments', () => {
         begin alter table featherbase.file rename to unavailable_file_registry; return old; end $$`)
       await sql.unsafe(`create trigger hide_file_registry after delete on featherbase.table_def
         for each row when (old.name = 'Deletion Target') execute function pg_temp.hide_file_registry()`)
-      expect((await admin.fetch(`/api/table_def/${ENC}`, { method: 'DELETE' })).status).toBe(200)
+      await expectStatus(await admin.fetch(`/api/table_def/${ENC}`, { method: 'DELETE' }), 200)
       expect(await physicalExists(DT)).toBe(false)
       expect(readFileSync(bytesPath(file_url)).toString()).toBe('retain on uncertainty')
       expect(await sql`select row_id from featherbase.unavailable_file_registry where row_id = 'outage-file'`).toEqual([])
@@ -419,7 +419,7 @@ describe('DEL-R7: attachments', () => {
     form.append('file', new File(['attached bytes'], 'note.txt', { type: 'text/plain' }))
     form.append('ref_table', DT)
     const res = await admin.fetch('/api/upload_file', { method: 'POST', body: form })
-    expect(res.status).toBe(201)
+    await expectStatus(res, 201)
     const doc = (await res.json()) as { file_url: string }
 
     await admin.delete(`/api/table_def/${ENC}`)
@@ -427,7 +427,7 @@ describe('DEL-R7: attachments', () => {
     const [reg] = await sql`select count(*)::int as n from file where ref_table = ${DT}`
     expect(reg.n).toBe(0)
     const served = await admin.fetch(doc.file_url)
-    expect(served.status).toBe(404)
+    await expectStatus(served, 404)
   })
 })
 
@@ -455,7 +455,7 @@ describe('DEL-R6: a bound Table sheds its binding, never its source', () => {
       method: 'POST',
       body: JSON.stringify({ tables: ['zones.csv'] }),
     })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const { created } = (await res.json()) as { created: { name: string }[] }
     const bound = created[0].name
 

@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from '../pg-test'
-import { expectApiError, makeTable, patchDoc } from '../fixtures'
+import { expectApiError, expectRefused, makeTable, patchDoc } from '../fixtures'
 
 const table = 'Import Corrections'
 const path = `/api/table/${encodeURIComponent(table)}`
@@ -225,14 +225,14 @@ test('9: conflicts hide unreadable rows and restricted fields and refuse read-on
   const [conflict] = (await conflicts(admin)).conflicts
   const reader = await createUserWithRole(admin, createUser, { role: 'Correction Reader', table, can_read: true })
   expect((await conflicts(reader)).conflicts).toMatchObject([{ id: conflict.id, can_resolve: false }])
-  await expect(reader.post(`${path}:resolve-import-conflict`, { conflict_id: conflict.id, decision: 'keep' })).rejects.toMatchObject({ status: 403 })
+  await expectRefused(reader.post(`${path}:resolve-import-conflict`, { conflict_id: conflict.id, decision: 'keep' }), 403)
   const own = await createUserWithRole(admin, createUser, { role: 'Correction Own', table, can_read: true, can_write: true, own_rows_only: true })
   expect((await conflicts(own)).conflicts).toEqual([])
   await sql`update column_def set tier = 'restricted' where parent = ${table} and column_name = 'city'`
   invalidateMeta(table)
   const editor = await createUserWithRole(admin, createUser, { role: 'Correction Basic', table, can_read: true, can_write: true })
   expect((await conflicts(editor)).conflicts).toEqual([])
-  await expect(editor.post(`${path}:resolve-import-conflict`, { conflict_id: conflict.id, decision: 'source' })).rejects.toMatchObject({ status: 403 })
+  await expectRefused(editor.post(`${path}:resolve-import-conflict`, { conflict_id: conflict.id, decision: 'source' }), 403)
   // Even a grant on the generic storage cannot expose the parent's secret.
   await grantRole(admin, { role: 'Correction Basic', table: ['Import Conflict', 'Import Source'], can_read: true })
   expect(await editor.get('/api/table/Import%20Conflict?fields=["row_id","kept","incoming"]')).toMatchObject({ data: [] })
@@ -247,7 +247,7 @@ test('a later manual edit after adoption owns the field again; stale conflict re
   const [conflict] = (await conflicts(admin)).conflicts
   let row = await admin.get<Record<string, unknown>>(`${path}/A`)
   await patchDoc(admin, `${path}/A`, { city: 'New correction', updated_at: row.updated_at })
-  await expect(admin.post(`${path}:resolve-import-conflict`, { conflict_id: conflict.id, decision: 'source' })).rejects.toMatchObject({ status: 409 })
+  await expectRefused(admin.post(`${path}:resolve-import-conflict`, { conflict_id: conflict.id, decision: 'source' }), 409)
   await load(admin, 'West', 'third')
   const [replacement] = (await conflicts(admin)).conflicts
   await admin.post(`${path}:resolve-import-conflict`, { conflict_id: replacement.id, decision: 'source' })
@@ -268,7 +268,7 @@ test('an unchanged-only import cannot close conflicts through undo without row e
   await correction(admin)
   await load(admin, 'East', 'second')
   const reader = await createUserWithRole(admin, createUser, { role: 'Undo Correction Reader', table, can_read: true })
-  await expect(reader.post(`${path}:import-revert`, { run_id: 'second' })).rejects.toMatchObject({ status: 403 })
+  await expectRefused(reader.post(`${path}:import-revert`, { run_id: 'second' }), 403)
   expect((await conflicts(admin)).conflicts).toHaveLength(1)
 })
 test('a source that comes into agreement closes an old conflict', async ({ admin }) => {
@@ -338,7 +338,7 @@ test('an old conflict ID cannot change a new Table with the same name and row ID
   await sql`update table_def set created_at = clock_timestamp() where name = ${table}`
   await admin.post(`${path}`, { row_id: 'A', code: 'A', city: 'South' })
   expect((await conflicts(admin)).conflicts).toEqual([])
-  await expect(admin.post(`${path}:resolve-import-conflict`, { conflict_id: old.id, decision: 'source' })).rejects.toMatchObject({ status: 404 })
+  await expectRefused(admin.post(`${path}:resolve-import-conflict`, { conflict_id: old.id, decision: 'source' }), 404)
   expect(await admin.get(`${path}/A`)).toMatchObject({ city: 'South' })
 })
 test('the remembered source is the supplied value even when an insert automation transforms it', async ({ admin }) => {

@@ -5,6 +5,7 @@ import { invalidateMeta } from '../src/meta'
 import { createServiceAccount } from '../src/service-accounts'
 import { issueAccessToken } from '../src/auth'
 import { permissionRefusal, tableWords } from '../src/refusals'
+import { expectStatus } from './fixtures'
 
 // #1010: a refusal speaks to whoever was refused and names the Table by its
 // label; it never shows a person or service-account id.
@@ -23,13 +24,13 @@ describe('permission refusals use words people use', () => {
     await labelledTable(admin)
     const reader = await createUser({ roles: [] })
     const listed = await reader.fetch(`/api/table/${encodeURIComponent(TABLE)}`)
-    expect(listed.status).toBe(403)
+    await expectStatus(listed, 403)
     const message = await messageOf(listed)
     expect(message).toBe("You don't have read permission on Gadget.")
     expect(message).not.toMatch(/psn_|svc_/)
 
     const created = await reader.fetch('/api/save_row', { method: 'POST', body: JSON.stringify({ table: TABLE, row: { title: 'x' } }) })
-    expect(created.status).toBe(403)
+    await expectStatus(created, 403)
     expect(await messageOf(created)).toBe("You don't have create permission on Gadget.")
   })
 
@@ -38,7 +39,7 @@ describe('permission refusals use words people use', () => {
     const bot = await createServiceAccount('refusal-bot', [], 'Administrator')
     const { token } = await issueAccessToken(bot.row_id, 'refusal check', null)
     const response = await api.fetch(`/api/table/${encodeURIComponent(TABLE)}`, { headers: { authorization: `Bearer ${token}` } })
-    expect(response.status).toBe(403)
+    await expectStatus(response, 403)
     expect(await messageOf(response)).toBe("This service account doesn't have read permission on Gadget.")
   })
 

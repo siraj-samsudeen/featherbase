@@ -3,6 +3,7 @@ import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { PLATFORM_SCHEMA } from '../src/platform-schema'
+import { expectRefused, expectStatus } from './fixtures'
 
 // DOC-012: rename a Customer; documents that linked to the old name now
 // point at the new name — parent Link fields and child-table Link fields.
@@ -58,7 +59,7 @@ describe('DOC-012: rename document + cascade Link references', () => {
       const response = await admin.fetch(`${base}/Acme:rename`, {
         method: 'POST', body: JSON.stringify({ new_name }),
       })
-      expect(response.status).toBe(417)
+      await expectStatus(response, 417)
       expect(await response.json()).toEqual({ error: {
         type: 'ValidationError', message: 'Expected { new_name }',
       } })
@@ -153,7 +154,7 @@ describe('Rename a row and every link follows', () => {
     )
     expect(order.customer).toBe('Acme')
     expect(order.lines).toHaveLength(2)
-    await expect(admin.get(`/api/table/${encodeURIComponent(ORDER)}/ORD-9`)).rejects.toMatchObject({ status: 404 })
+    await expectRefused(admin.get(`/api/table/${encodeURIComponent(ORDER)}/ORD-9`), 404)
   })
 
   // SPEC: A renamed row keeps its activity (tables-and-fields), #509.

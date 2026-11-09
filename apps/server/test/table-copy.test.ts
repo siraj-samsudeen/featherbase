@@ -14,7 +14,7 @@ import { invalidateSources } from '../src/sources/registry'
 import { invalidateMeta } from '../src/meta'
 import { registerController, unregisterController } from '../src/controllers'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
-import { grantRole } from './fixtures'
+import { expectRefused, grantRole } from './fixtures'
 
 let dir: string
 beforeAll(async () => { dir = await buildStandin(); overrideVariable('MOTHERDUCK_STANDIN', dir); overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.reader) })
@@ -50,18 +50,18 @@ describe('Copy a warehouse table into Featherbase', () => {
     const code = await admin.get<{ usable: boolean; rows: number }>(`${SOURCES}/tc-key:copy_check_key?database=sales&schema=main&table=stores&column=code`)
     expect(city.usable).toBe(false)
     expect(code).toMatchObject({ usable: true, rows: 3 })
-    await expect(admin.post(`${SOURCES}/tc-key:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Invalid Key Copy', key: 'city', columns: [{ source: 'city', column_name: 'city' }] })).rejects.toMatchObject({ status: 417 })
-    await expect(admin.post(`${SOURCES}/tc-key:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Missing Key Copy', key: 'code', columns: STORES.slice(0, 1) })).rejects.toMatchObject({ status: 417 })
-    await expect(admin.get('/api/table/Data%20Source:copy_info')).rejects.toMatchObject({ status: 404 })
+    await expectRefused(admin.post(`${SOURCES}/tc-key:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Invalid Key Copy', key: 'city', columns: [{ source: 'city', column_name: 'city' }] }), 417)
+    await expectRefused(admin.post(`${SOURCES}/tc-key:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Missing Key Copy', key: 'code', columns: STORES.slice(0, 1) }), 417)
+    await expectRefused(admin.get('/api/table/Data%20Source:copy_info'), 404)
   })
 
   test('incomplete copy choices refuse before creating a native Table', async ({ admin }) => {
     await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-incomplete', databases: ['sales'] })
-    await expect(admin.post(`${SOURCES}/tc-incomplete:copy_create`, { database: 'sales' })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(admin.post(`${SOURCES}/tc-incomplete:copy_create`, { database: 'sales' }), 417)
     // A missing warehouse relation uses the driver's DataSourceError, like
     // any other refused warehouse query; copy creation validates its choices.
-    await expect(admin.get(`${SOURCES}/tc-incomplete:copy_check_key?database=sales`)).rejects.toMatchObject({ status: 502 })
-    await expect(admin.get('/api/table/Incomplete%20Copy:meta')).rejects.toMatchObject({ status: 404 })
+    await expectRefused(admin.get(`${SOURCES}/tc-incomplete:copy_check_key?database=sales`), 502)
+    await expectRefused(admin.get('/api/table/Incomplete%20Copy:meta'), 404)
   })
 
   test('warehouse scalar types retain their values in native rows', async ({ admin }) => {
@@ -117,7 +117,7 @@ describe('Copy a warehouse table into Featherbase', () => {
       await admin.post('/api/save_row', { table: 'Server Script', row: { row_id: 'refuse-quiet-row', script_type: 'Document Event', ref_table: 'Quiet Stores', event: 'before_save', script: 'throw new Error("A save ran")', enabled: true } })
       expect(await admin.post(`${PATH}:copy_again`, {})).toMatchObject({ unchanged: 3 })
       await source("update quiet_stores set name = 'Harbour Road North' where code = 'S001'")
-      await expect(admin.post(`${PATH}:copy_again`, {})).rejects.toMatchObject({ status: 417, message: expect.stringContaining('A save ran') })
+      await expectRefused(admin.post(`${PATH}:copy_again`, {}), 417, 'A save ran')
     })
 
     test('a row the person may not reach still refuses the run, though it did not change', async ({ admin }) => {
@@ -128,7 +128,7 @@ describe('Copy a warehouse table into Featherbase', () => {
       await sql`update ${sql(await tableRelation('Quiet Stores'))} set created_by = 'someone-else' where row_id = 'S002'`
       invalidateMeta('Quiet Stores')
       const counted = await counts()
-      await expect(admin.post(`${PATH}:copy_again`, {})).rejects.toMatchObject({ status: 403 })
+      await expectRefused(admin.post(`${PATH}:copy_again`, {}), 403)
       expect(await counts()).toEqual(counted)
     })
 
@@ -141,7 +141,7 @@ describe('Copy a warehouse table into Featherbase', () => {
       registerController(controller as never)
       try {
         await source("update quiet_stores set name = 'Harbour Road North' where code = 'S001'")
-        await expect(admin.post(`${PATH}:copy_again`, {})).rejects.toMatchObject({ status: 417, message: expect.stringContaining('The row changed while this import ran') })
+        await expectRefused(admin.post(`${PATH}:copy_again`, {}), 417, 'The row changed while this import ran')
       } finally { unregisterController(controller as never) }
       expect(await admin.get(`${PATH}/S001`)).toMatchObject({ display_name: 'Harbour Road' })
       expect(await admin.get(`${PATH}/S002`)).toMatchObject({ display_name: 'Hill Street' })
@@ -304,7 +304,7 @@ describe('Copy a warehouse table into Featherbase', () => {
     await admin.put('/api/table_def/Removed%20Key%20Copy', { columns: meta.columns.filter(c => c.column_name !== 'store_code'), remove_columns: ['store_code'] })
     const before = await admin.get('/api/table/Removed%20Key%20Copy/S001')
     const history = await admin.get('/api/import/batches')
-    await expect(admin.post('/api/table/Removed%20Key%20Copy:copy_again', {})).rejects.toMatchObject({ status: 417, message: expect.stringContaining('key column store_code') })
+    await expectRefused(admin.post('/api/table/Removed%20Key%20Copy:copy_again', {}), 417, 'key column store_code')
     expect(await admin.get('/api/table/Removed%20Key%20Copy/S001')).toEqual(before)
     expect(await admin.get('/api/import/batches')).toEqual(history)
   })
@@ -315,7 +315,7 @@ describe('Copy a warehouse table into Featherbase', () => {
     const history = await admin.get<{ batches: { batch_id: string; targets: { table: string; run_id: string }[] }[] }>('/api/import/batches')
     expect(history.batches.find((b) => b.batch_id === made.result.run_id)?.targets).toEqual(expect.arrayContaining([expect.objectContaining({ table: 'History Copy', run_id: made.result.run_id })]))
     expect(await admin.post('/api/table/History%20Copy:import-revert', { run_id: made.result.run_id })).toMatchObject({ deleted: 3, failed: [], skipped: [] })
-    await expect(admin.get('/api/table/History%20Copy/S001')).rejects.toMatchObject({ status: 404 })
+    await expectRefused(admin.get('/api/table/History%20Copy/S001'), 404)
     expect(await admin.get('/api/table/History%20Copy:meta')).toMatchObject({ name: 'History Copy' })
   })
 
@@ -358,7 +358,7 @@ describe('Copy a warehouse table into Featherbase', () => {
     const provenance = await admin.get('/api/table/Atomic%20Copy:copy_info')
     await changeStandin(dir, 'sales', ["update atomic_stores set name = 'Changed before refusal' where code in ('S001', 'S003')"])
     await admin.post(`${SOURCES}/tc-atomic:refresh_tables`, { database: 'sales' })
-    await expect(admin.post('/api/table/Atomic%20Copy:copy_again', {})).rejects.toMatchObject({ status: 417, message: expect.stringContaining('Third store refused') })
+    await expectRefused(admin.post('/api/table/Atomic%20Copy:copy_again', {}), 417, 'Third store refused')
     expect(await snapshot()).toEqual(before)
     expect(await admin.get('/api/import/batches')).toEqual(history)
     expect(await admin.get('/api/table/Atomic%20Copy:copy_info')).toEqual(provenance)
@@ -372,7 +372,7 @@ describe('Copy a warehouse table into Featherbase', () => {
     const choices = { database: 'sales', schema: 'main', table: 'stores', name: 'Recreated Copy', key: 'code', columns: STORES }
     const first = await admin.post<{ result: { run_id: string } }>(`${SOURCES}/tc-recreate:copy_create`, choices)
     await admin.delete('/api/table_def/Recreated%20Copy')
-    await expect(admin.get('/api/table/Recreated%20Copy:copy_info')).rejects.toMatchObject({ status: 404 })
+    await expectRefused(admin.get('/api/table/Recreated%20Copy:copy_info'), 404)
     const second = await admin.post<{ result: { run_id: string; inserted: number } }>(`${SOURCES}/tc-recreate:copy_create`, choices)
     expect(second.result.inserted).toBe(3)
     expect(second.result.run_id).not.toBe(first.result.run_id)
@@ -389,8 +389,8 @@ describe('Copy a warehouse table into Featherbase', () => {
     const row = await admin.get<{ updated_at: string }>('/api/table/Source%20Removed%20Copy/S001')
     await admin.post('/api/save_row', { table: 'Source Removed Copy', row: { row_id: 'S001', display_name: 'Still editable', updated_at: row.updated_at } })
     expect(await admin.get('/api/table/Source%20Removed%20Copy/S001')).toMatchObject({ display_name: 'Still editable' })
-    await expect(admin.get('/api/table/Source%20Removed%20Copy:copy_info')).rejects.toMatchObject({ status: 404 })
-    await expect(admin.post('/api/table/Source%20Removed%20Copy:copy_again', {})).rejects.toMatchObject({ status: 404 })
+    await expectRefused(admin.get('/api/table/Source%20Removed%20Copy:copy_info'), 404)
+    await expectRefused(admin.post('/api/table/Source%20Removed%20Copy:copy_again', {}), 404)
     const history = await admin.get<{ batches: { batch_id: string }[] }>('/api/import/batches')
     expect(history.batches.map(b => b.batch_id)).toContain(copied.result.run_id)
   })
@@ -406,7 +406,7 @@ describe('Copy a warehouse table into Featherbase', () => {
     await changeStandin(dir, 'sales', ["update history_failure_stores set name = 'Never committed' where code = 'S001'"])
     await admin.post(`${SOURCES}/tc-history-failure:refresh_tables`, { database: 'sales' })
     // The injected database refusal is an internal error, not bad row input.
-    await expect(admin.post('/api/table/History%20Failure%20Copy:copy_again', {})).rejects.toMatchObject({ status: 500 })
+    await expectRefused(admin.post('/api/table/History%20Failure%20Copy:copy_again', {}), 500)
     expect(await admin.get('/api/table/History%20Failure%20Copy/S001')).toEqual(before)
     expect(await admin.get('/api/table/History%20Failure%20Copy:copy_info')).toEqual(provenance)
   })
@@ -415,8 +415,8 @@ describe('Copy a warehouse table into Featherbase', () => {
     await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-create-failure', databases: ['sales'] })
     await sql.unsafe(`create function refuse_copy_provenance() returns trigger language plpgsql as $$ begin raise exception 'Copy provenance refused'; end $$;
       create trigger refuse_copy_provenance before insert on featherbase.table_copy for each row execute function refuse_copy_provenance()`)
-    await expect(admin.post(`${SOURCES}/tc-create-failure:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Atomic Creation Copy', key: 'code', columns: STORES })).rejects.toMatchObject({ status: 500 })
-    await expect(admin.get('/api/table/Atomic%20Creation%20Copy:meta')).rejects.toMatchObject({ status: 404 })
+    await expectRefused(admin.post(`${SOURCES}/tc-create-failure:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Atomic Creation Copy', key: 'code', columns: STORES }), 500)
+    await expectRefused(admin.get('/api/table/Atomic%20Creation%20Copy:meta'), 404)
   })
 
   test('a failed source observation leaves the target untouched', async ({ admin }) => {
@@ -429,7 +429,7 @@ describe('Copy a warehouse table into Featherbase', () => {
     const provenance = await admin.get('/api/table/Source%20Failure%20Copy:copy_info')
     await changeStandin(dir, 'sales', ['drop table failing_stores'])
     await admin.post(`${SOURCES}/tc-source-failure:refresh_tables`, { database: 'sales' })
-    await expect(admin.post('/api/table/Source%20Failure%20Copy:copy_again', {})).rejects.toMatchObject({ status: 502 })
+    await expectRefused(admin.post('/api/table/Source%20Failure%20Copy:copy_again', {}), 502)
     expect(await snapshot()).toEqual(before)
     expect(await admin.get('/api/import/batches')).toEqual(history)
     expect(await admin.get('/api/table/Source%20Failure%20Copy:copy_info')).toEqual(provenance)
@@ -443,7 +443,7 @@ describe('Copy a warehouse table into Featherbase', () => {
     const history = await admin.get('/api/import/batches')
     await changeStandin(dir, 'sales', ["insert into duplicate_stores values ('S001', 'Duplicate', 'City', '99')"])
     await admin.post(`${SOURCES}/tc-duplicate:refresh_tables`, { database: 'sales' })
-    await expect(admin.post('/api/table/Duplicate%20Copy:copy_again', {})).rejects.toMatchObject({ status: 417, message: expect.stringContaining('Copy key values must be unique') })
+    await expectRefused(admin.post('/api/table/Duplicate%20Copy:copy_again', {}), 417, 'Copy key values must be unique')
     expect(await admin.get('/api/table/Duplicate%20Copy/S001')).toEqual(before)
     expect(await admin.get('/api/import/batches')).toEqual(history)
   })
@@ -457,7 +457,7 @@ describe('Copy a warehouse table into Featherbase', () => {
     for (const invalid of ["'   '", 'NULL']) {
       await changeStandin(dir, 'sales', [`update empty_key_stores set code = ${invalid} where name = 'Market Lane'`])
       await admin.post(`${SOURCES}/tc-empty-key:refresh_tables`, { database: 'sales' })
-      await expect(admin.post('/api/table/Empty%20Key%20Copy:copy_again', {})).rejects.toMatchObject({ status: 417, message: expect.stringContaining('Copy key values must not be empty') })
+      await expectRefused(admin.post('/api/table/Empty%20Key%20Copy:copy_again', {}), 417, 'Copy key values must not be empty')
       expect(await admin.get('/api/table/Empty%20Key%20Copy/S001')).toEqual(before)
       expect(await admin.get('/api/import/batches')).toEqual(history)
     }
@@ -555,11 +555,11 @@ describe('Copy a warehouse table into Featherbase', () => {
     const row = await user.get<{ updated_at: string }>('/api/table/Guarded%20Copy/S001')
     await user.post('/api/save_row', { table: 'Guarded Copy', row: { row_id: 'S001', display_name: 'Native correction', updated_at: row.updated_at } })
     expect(await user.get('/api/table/Guarded%20Copy/S001')).toMatchObject({ display_name: 'Native correction' })
-    await expect(user.get(`${SOURCES}/tc-guard:copy_check_key?database=sales&schema=main&table=stores&column=code`)).rejects.toMatchObject({ status: 403 })
-    await expect(user.post(`${SOURCES}/tc-guard:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Unauthorized Copy', key: 'code', columns: STORES })).rejects.toMatchObject({ status: 403 })
-    await expect(user.get('/api/table/Guarded%20Copy:copy_info')).rejects.toMatchObject({ status: 403 })
-    await expect(user.post('/api/table/Guarded%20Copy:copy_again', {})).rejects.toMatchObject({ status: 403 })
-    await expect(admin.get('/api/table/Unauthorized%20Copy:meta')).rejects.toMatchObject({ status: 404 })
+    await expectRefused(user.get(`${SOURCES}/tc-guard:copy_check_key?database=sales&schema=main&table=stores&column=code`), 403)
+    await expectRefused(user.post(`${SOURCES}/tc-guard:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Unauthorized Copy', key: 'code', columns: STORES }), 403)
+    await expectRefused(user.get('/api/table/Guarded%20Copy:copy_info'), 403)
+    await expectRefused(user.post('/api/table/Guarded%20Copy:copy_again', {}), 403)
+    await expectRefused(admin.get('/api/table/Unauthorized%20Copy:meta'), 404)
   })
 
   test('key checking and creation refuse an unchosen database with a valid copyable table', async ({ admin }) => {
@@ -577,9 +577,9 @@ describe('Copy a warehouse table into Featherbase', () => {
     await admin.post(`${SOURCES}/tc-stock-control:copy_create`, { ...payload, name: 'Stock Control Copy' })
     expect(await admin.get('/api/table/Stock%20Control%20Copy/ITEM-21')).toMatchObject({ item_code: 'ITEM-21', item_title: 'Red bowl' })
     await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-fence', databases: ['sales'] })
-    await expect(admin.get(`${SOURCES}/tc-fence:copy_check_key?${query}`)).rejects.toMatchObject({ status: 403 })
-    await expect(admin.post(`${SOURCES}/tc-fence:copy_create`, payload)).rejects.toMatchObject({ status: 403 })
-    await expect(admin.get('/api/table/Unchosen%20Copy:meta')).rejects.toMatchObject({ status: 404 })
+    await expectRefused(admin.get(`${SOURCES}/tc-fence:copy_check_key?${query}`), 403)
+    await expectRefused(admin.post(`${SOURCES}/tc-fence:copy_create`, payload), 403)
+    await expectRefused(admin.get('/api/table/Unchosen%20Copy:meta'), 404)
   })
 
   test('wide decimals and integers keep every digit; narrow ones stay numbers', async ({ admin }) => {
@@ -651,11 +651,11 @@ describe('Copy a warehouse table into Featherbase', () => {
     await sql`update featherbase.data_source set table_allowlist = 'stock.main.open_items' where row_id = 'tc-allowlist'`
     invalidateSources('tc-allowlist')
     const fenced = 'database=stock&schema=main&table=fenced_items'
-    await expect(admin.get(`${SOURCES}/tc-allowlist:preview?${fenced}`)).rejects.toMatchObject({ status: 403 })
-    await expect(admin.get(`${SOURCES}/tc-allowlist:copy_check_key?${fenced}&column=sku`)).rejects.toMatchObject({ status: 403 })
-    await expect(admin.post(`${SOURCES}/tc-allowlist:copy_create`, { database: 'stock', schema: 'main', table: 'fenced_items', name: 'Fenced Copy', key: 'sku', columns })).rejects.toMatchObject({ status: 403 })
-    await expect(admin.get('/api/table/Fenced%20Copy:meta')).rejects.toMatchObject({ status: 404 })
-    await expect(admin.post('/api/table/Fenced%20Before%20Restriction:copy_again', {})).rejects.toMatchObject({ status: 403 })
+    await expectRefused(admin.get(`${SOURCES}/tc-allowlist:preview?${fenced}`), 403)
+    await expectRefused(admin.get(`${SOURCES}/tc-allowlist:copy_check_key?${fenced}&column=sku`), 403)
+    await expectRefused(admin.post(`${SOURCES}/tc-allowlist:copy_create`, { database: 'stock', schema: 'main', table: 'fenced_items', name: 'Fenced Copy', key: 'sku', columns }), 403)
+    await expectRefused(admin.get('/api/table/Fenced%20Copy:meta'), 404)
+    await expectRefused(admin.post('/api/table/Fenced%20Before%20Restriction:copy_again', {}), 403)
     // Positive control: the allowed table still previews and copies.
     expect(await admin.get(`${SOURCES}/tc-allowlist:preview?database=stock&schema=main&table=open_items`)).toMatchObject({ rows: 1 })
     await admin.post(`${SOURCES}/tc-allowlist:copy_create`, { database: 'stock', schema: 'main', table: 'open_items', name: 'Open Copy', key: 'sku', columns })

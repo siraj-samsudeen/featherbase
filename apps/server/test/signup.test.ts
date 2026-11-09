@@ -5,6 +5,7 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { setPasswordMethod } from './identity-fixtures'
 import { CLIENT, FROM_CLIENT, signInAddresses } from './sign-in-address-utils'
+import { expectStatus } from './fixtures'
 
 const signUp = (api: { fetch: (p: string, i?: RequestInit) => Promise<Response> }, body: unknown) =>
   api.fetch('/api/signup', { method: 'POST', body: JSON.stringify(body) })
@@ -15,14 +16,14 @@ describe('sign up with a username and password', () => {
   test('closed by default: not offered and refused like an unknown route', async ({ api }) => {
     const brand = (await (await api.fetch('/api/brand')).json()) as { sign_up_open: boolean }
     expect(brand.sign_up_open).toBe(false)
-    expect((await signUp(api, { username: 'meena', password: 'meena-pw-1' })).status).toBe(404)
+    await expectStatus(await signUp(api, { username: 'meena', password: 'meena-pw-1' }), 404)
   })
 
   test('open: the account is created with no email and no roles, and signed in', async ({ api }) => {
     await setPasswordMethod({ new_person: 'create' })
     expect(((await (await api.fetch('/api/brand')).json()) as { sign_up_open: boolean }).sign_up_open).toBe(true)
     const res = await signUp(api, { username: 'meena', password: 'meena-pw-1' })
-    expect(res.status).toBe(201)
+    await expectStatus(res, 201)
     const body = (await res.json()) as { token: string; user: { row_id: string; email: string | null } }
     // The id is opaque and permanent; the username is how the person signs in.
     expect(body.user.row_id).toMatch(/^psn_[a-z2-7]{20}$/)
@@ -32,25 +33,25 @@ describe('sign up with a username and password', () => {
     expect(res.headers.getSetCookie().some((c) => c.startsWith('sid='))).toBe(true)
     const roles = await sql`select role from has_role where parent = ${body.user.row_id}`
     expect(roles).toHaveLength(0)
-    expect((await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'meena', pwd: 'meena-pw-1' }) })).status).toBe(200)
+    await expectStatus(await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'meena', pwd: 'meena-pw-1' }) }), 200)
   })
 
   test('no email, a taken or reserved username, and a short password are refused', async ({ api }) => {
     await setPasswordMethod({ new_person: 'create' })
-    expect((await signUp(api, { username: 'asha', password: 'asha-pw-1', email: 'asha@example.com' })).status).toBe(417)
-    expect((await signUp(api, { username: 'asha', password: 'asha-pw-1' })).status).toBe(201)
+    await expectStatus(await signUp(api, { username: 'asha', password: 'asha-pw-1', email: 'asha@example.com' }), 417)
+    await expectStatus(await signUp(api, { username: 'asha', password: 'asha-pw-1' }), 201)
     expect((await signUp(api, { username: 'ASHA', password: 'asha-pw-2' })).status).toBe(409) // folded to 'asha', which is taken
-    expect((await signUp(api, { username: 'asha', password: 'asha-pw-2' })).status).toBe(409)
-    expect((await signUp(api, { username: 'administrator', password: 'x-pw-123' })).status).toBe(417)
-    expect((await signUp(api, { username: 'guest', password: 'x-pw-123' })).status).toBe(417)
-    expect((await signUp(api, { username: 'short', password: '123' })).status).toBe(417)
+    await expectStatus(await signUp(api, { username: 'asha', password: 'asha-pw-2' }), 409)
+    await expectStatus(await signUp(api, { username: 'administrator', password: 'x-pw-123' }), 417)
+    await expectStatus(await signUp(api, { username: 'guest', password: 'x-pw-123' }), 417)
+    await expectStatus(await signUp(api, { username: 'short', password: '123' }), 417)
   })
 
   test('sign-up has its own pre-auth budget', async ({ api }) => {
     vi.stubEnv('PREAUTH_SIGNUP_MAX', '1')
     await setPasswordMethod({ new_person: 'create' })
     await signUp(api, { username: 'first', password: 'first-pw-1' })
-    expect((await signUp(api, { username: 'second', password: 'second-pw-1' })).status).toBe(429)
+    await expectStatus(await signUp(api, { username: 'second', password: 'second-pw-1' }), 429)
   })
 })
 
@@ -59,7 +60,7 @@ describe('#396: the sign-in records the client address', () => {
     vi.stubEnv('CLIENT_ADDRESS_HEADER', 'x-real-ip')
     await setPasswordMethod({ new_person: 'create' })
     const res = await api.fetch('/api/signup', { method: 'POST', headers: FROM_CLIENT, body: JSON.stringify({ username: 'kavya', password: 'kavya-pw-1' }) })
-    expect(res.status).toBe(201)
+    await expectStatus(res, 201)
     const { user } = (await res.json()) as { user: { row_id: string } }
     expect(await signInAddresses(user.row_id)).toEqual([CLIENT])
   })

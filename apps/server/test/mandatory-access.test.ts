@@ -1,6 +1,6 @@
 import { expect } from 'vitest'
 import { test } from './pg-test'
-import { makeTable, grantRole } from './fixtures'
+import { expectRefused, expectStatus, grantRole, makeTable } from './fixtures'
 import { eventVisibleTo } from '../src/realtime'
 import { deleteStored } from '../src/storage'
 
@@ -19,13 +19,13 @@ test('creator privacy hides a row from administrators, other members and their l
   const capabilities = `${table.rowUrl(String(row.row_id))}:capabilities`
   expect(await owner.get(capabilities)).toMatchObject({ write: true })
   for (const other of [admin, peer, manager]) {
-    await expect(other.get(table.rowUrl(String(row.row_id)))).rejects.toMatchObject({ status: 403 })
-    await expect(other.get(capabilities)).rejects.toMatchObject({ status: 403 })
-    await expect(other.post('/api/save_row', { table: table.name, row: { row_id: row.row_id, updated_at: row.updated_at, title: 'Changed' } })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(other.get(table.rowUrl(String(row.row_id))), 403)
+    await expectRefused(other.get(capabilities), 403)
+    await expectRefused(other.post('/api/save_row', { table: table.name, row: { row_id: row.row_id, updated_at: row.updated_at, title: 'Changed' } }), 403)
   }
   expect(await peer.get(table.listUrl({ fields: ['row_id', 'title'] }))).toMatchObject({ total: 0, data: [] })
   expect(await manager.get(table.listUrl({ fields: ['row_id', 'title'] }))).toMatchObject({ total: 0, data: [] })
-  await expect(admin.delete(table.defUrl)).rejects.toMatchObject({ status: 403 })
+  await expectRefused(admin.delete(table.defUrl), 403)
   expect(await eventVisibleTo(manager.user!, { channel: `list:${table.name}`, event: 'updated', payload: { table: table.name, row_id: row.row_id } })).toBe(false)
 })
 
@@ -39,10 +39,10 @@ test('private attachments and activity stay private even through administrator l
   const owner = await createUser({ roles: ['Journal Member'] })
   const row = await owner.post<Record<string, unknown>>('/api/save_row', { table: table.name, row: { title: 'Draft instructions' } })
   const comment = await owner.post<Record<string, unknown>>('/api/save_row', { table: 'Comment', row: { ref_table: table.name, ref_name: row.row_id, content: 'Private answer' } })
-  await expect(admin.get(`/api/table/Comment/${comment.row_id}`)).rejects.toMatchObject({ status: 403 })
+  await expectRefused(admin.get(`/api/table/Comment/${comment.row_id}`), 403)
   const query = new URLSearchParams({ filters: JSON.stringify([['ref_table', '=', table.name]]), fields: JSON.stringify(['row_id', 'content']) })
   expect(await admin.get(`/api/table/Comment?${query}`)).toMatchObject({ total: 0, data: [] })
-  await expect(admin.get(`/api/activity/${encodeURIComponent(table.name)}/${row.row_id}`)).rejects.toMatchObject({ status: 403 })
+  await expectRefused(admin.get(`/api/activity/${encodeURIComponent(table.name)}/${row.row_id}`), 403)
   await owner.post('/api/save_row', { table: table.name, row: { row_id: row.row_id, updated_at: row.updated_at, title: 'Updated private instructions' } })
   const feed = await admin.get<{ items: { sub?: string }[] }>('/api/activity_feed?scope=team')
   expect(feed.items.filter(item => item.sub === table.name)).toEqual([])
@@ -56,15 +56,15 @@ test('dependent rows inherit privacy and become visible when their parent is sha
   const peer = await createUser({ roles: ['Dossier Member'] })
   const row = await owner.post<Record<string, unknown>>(parent.url, { title: 'Private notes' })
   const note = await owner.post<Record<string, unknown>>(child.url, { body: 'First note', dossier: row.row_id })
-  await expect(peer.get(child.rowUrl(String(note.row_id)))).rejects.toMatchObject({ status: 403 })
+  await expectRefused(peer.get(child.rowUrl(String(note.row_id))), 403)
   expect(await peer.get(child.listUrl({ fields: ['row_id'] }))).toMatchObject({ total: 0, data: [] })
   await owner.post('/api/save_row', { table: parent.name, row: { row_id: row.row_id, updated_at: row.updated_at, shared: true } })
   expect(await peer.get(child.rowUrl(String(note.row_id)))).toMatchObject({ body: 'First note' })
   expect(await peer.get(child.listUrl({ fields: ['row_id'] }))).toMatchObject({ total: 1, data: [{ row_id: note.row_id }] })
   const peerDraft = await peer.post<Record<string, unknown>>(parent.url, { title: 'Peer private draft' })
-  await expect(owner.post('/api/save_row', { table: child.name, row: { row_id: note.row_id, updated_at: note.updated_at, dossier: peerDraft.row_id } })).rejects.toMatchObject({ status: 403 })
+  await expectRefused(owner.post('/api/save_row', { table: child.name, row: { row_id: note.row_id, updated_at: note.updated_at, dossier: peerDraft.row_id } }), 403)
   const publicParent = await makeTable(admin, { name: 'Public Dossier', columns: ['title'] })
-  await expect(admin.put(child.defUrl, { columns: [{ column_name: 'body', column_type: 'Data' }, { column_name: 'dossier', column_type: 'Reference', reference_table: publicParent.name, reqd: true }] })).rejects.toMatchObject({ status: 403 })
+  await expectRefused(admin.put(child.defUrl, { columns: [{ column_name: 'body', column_type: 'Data' }, { column_name: 'dossier', column_type: 'Reference', reference_table: publicParent.name, reqd: true }] }), 403)
 })
 
 test('an individual share neither overrides privacy nor exposes its private target to administrators', async ({ admin, createUser }) => {
@@ -74,9 +74,9 @@ test('an individual share neither overrides privacy nor exposes its private targ
   const peer = await createUser({ roles: ['Brief Member'] })
   const row = await owner.post<Record<string, unknown>>(table.url, { title: 'Private brief' })
   const share = await owner.post<Record<string, unknown>>('/api/save_row', { table: 'Share', row: { share_table: table.name, share_name: row.row_id, person: peer.user, read: true, write: true } })
-  await expect(peer.get(table.rowUrl(String(row.row_id)))).rejects.toMatchObject({ status: 403 })
-  await expect(peer.post('/api/save_row', { table: table.name, row: { row_id: row.row_id, updated_at: row.updated_at, title: 'Attempt' } })).rejects.toMatchObject({ status: 403 })
-  await expect(admin.get(`/api/table/Share/${share.row_id}`)).rejects.toMatchObject({ status: 403 })
+  await expectRefused(peer.get(table.rowUrl(String(row.row_id))), 403)
+  await expectRefused(peer.post('/api/save_row', { table: table.name, row: { row_id: row.row_id, updated_at: row.updated_at, title: 'Attempt' } }), 403)
+  await expectRefused(admin.get(`/api/table/Share/${share.row_id}`), 403)
   expect(await admin.get(`/api/table/Share?filters=${encodeURIComponent(JSON.stringify([['share_table', '=', table.name]]))}`)).toMatchObject({ total: 0, data: [] })
 })
 
@@ -87,14 +87,14 @@ test('removing membership refuses the next request in the same session', async (
   const row = await member.post<Record<string, unknown>>(table.url, { title: 'Shared agenda' })
   const person = await admin.get<Record<string, unknown>>(`/api/table/Person/${member.user}`)
   await admin.post('/api/save_row', { table: 'Person', row: { row_id: member.user, updated_at: person.updated_at, roles: [] } })
-  await expect(member.get(table.rowUrl(String(row.row_id)))).rejects.toMatchObject({ status: 403 })
-  await expect(member.post('/api/save_row', { table: table.name, row: { row_id: row.row_id, updated_at: row.updated_at, title: 'Changed' } })).rejects.toMatchObject({ status: 403 })
+  await expectRefused(member.get(table.rowUrl(String(row.row_id))), 403)
+  await expectRefused(member.post('/api/save_row', { table: table.name, row: { row_id: row.row_id, updated_at: row.updated_at, title: 'Changed' } }), 403)
   expect(await eventVisibleTo(member.user!, { channel: `list:${table.name}`, event: 'updated', payload: { table: table.name, row_id: row.row_id } })).toBe(false)
 })
 
 test('administrators cannot weaken an existing privacy policy through the schema editor', async ({ admin }) => {
   const table = await makeTable(admin, { name: 'Protected Schema', access_policy: { version: 1, roles: ['Schema Member'], shared_column: 'shared' }, columns: ['title', 'shared:Check'] })
-  await expect(admin.put(table.defUrl, { name: table.name, access_policy: { version: 1, roles: ['System Manager'] }, columns: [{ column_name: 'title', column_type: 'Data' }, { column_name: 'shared', column_type: 'Check' }] })).rejects.toMatchObject({ status: 403 })
+  await expectRefused(admin.put(table.defUrl, { name: table.name, access_policy: { version: 1, roles: ['System Manager'] }, columns: [{ column_name: 'title', column_type: 'Data' }, { column_name: 'shared', column_type: 'Check' }] }), 403)
 })
 
 test('a public-bucket attachment on private work still requires its creator session', async ({ admin, createUser, api }) => {
@@ -107,13 +107,13 @@ test('a public-bucket attachment on private work still requires its creator sess
   form.append('ref_table', table.name)
   form.append('ref_name', String(row.row_id))
   const upload = await owner.fetch('/api/upload_file', { method: 'POST', body: form })
-  expect(upload.status).toBe(201)
+  await expectStatus(upload, 201)
   const file = await upload.json() as { file_url: string }
   try {
-    expect((await owner.fetch(file.file_url)).status).toBe(200)
-    expect((await admin.fetch(file.file_url)).status).toBe(403)
-    expect((await api.fetch(file.file_url)).status).toBe(401)
-    await expect(admin.get(`/api/signed_url?file_url=${encodeURIComponent(file.file_url)}`)).rejects.toMatchObject({ status: 403 })
+    await expectStatus(await owner.fetch(file.file_url), 200)
+    await expectStatus(await admin.fetch(file.file_url), 403)
+    await expectStatus(await api.fetch(file.file_url), 401)
+    await expectRefused(admin.get(`/api/signed_url?file_url=${encodeURIComponent(file.file_url)}`), 403)
   } finally {
     // The SQL sandbox rolls back rows; uploaded bytes live outside Postgres.
     await deleteStored(file.file_url)
@@ -139,7 +139,7 @@ test('a reference write cannot probe or link another creator’s private row', a
   const peer = await createUser({ roles: ['Reference Member'] })
   const row = await owner.post<Record<string, unknown>>(target.url, { title: 'Private target' })
   for (const id of [row.row_id, 'missing-private-row'])
-    await expect(peer.post(link.url, { target: id })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(peer.post(link.url, { target: id }), 403)
 })
 
 test('members can choose teammates by name without broad Person access', async ({ admin, createUser }) => {
@@ -153,6 +153,6 @@ test('members can choose teammates by name without broad Person access', async (
     { row_id: member.user, full_name: 'Asha Patel' },
     { row_id: teammate.user, full_name: 'Ravi Shah' },
   ] })
-  await expect(outsider.get(url)).rejects.toMatchObject({ status: 403 })
-  await expect(admin.get(url)).rejects.toMatchObject({ status: 403 })
+  await expectRefused(outsider.get(url), 403)
+  await expectRefused(admin.get(url), 403)
 })

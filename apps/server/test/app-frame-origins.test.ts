@@ -6,6 +6,7 @@ import { resolve } from 'node:path'
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { test } from './pg-test'
 import { discoverPackages } from '../src/runtime-packages'
+import { expectStatus } from './fixtures'
 
 const directories: string[] = []
 afterEach(async () => {
@@ -51,7 +52,7 @@ describe('declared frame origins: the frame policy', () => {
     await discoverPackages([await otherApp((manifest) => ({ ...manifest, frameOrigins: [FRAMED] }))])
     await admin.post('/api/install_app', { name: 'other' })
     const page = await admin.fetch('/other/', { headers: { accept: 'text/html' } })
-    expect(page.status).toBe(200)
+    await expectStatus(page, 200)
     expect(page.headers.get('content-security-policy')).toBe(`frame-src 'self' ${FRAMED}`)
   })
 
@@ -64,7 +65,7 @@ describe('declared frame origins: the frame policy', () => {
     await admin.post('/api/install_app', { name: 'tasker' })
     await admitTasker(admin)
     const page = await admin.fetch('/tasker/', { headers: { accept: 'text/html' } })
-    expect(page.status).toBe(200)
+    await expectStatus(page, 200)
     expect(page.headers.get('content-security-policy')).toBe("frame-src 'self'")
   })
 

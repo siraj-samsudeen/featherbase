@@ -14,6 +14,7 @@ import { tableName } from '../src/table-engine'
 import { platformRelation } from '../src/platform-schema'
 import { deleteStored } from '../src/storage'
 import type { TestClient } from 'feather-testing-postgres'
+import { expectStatus } from './fixtures'
 
 const TEMPLATE_DT = 'Checklist Template'
 const RUN_DT = 'Checklist Run'
@@ -229,7 +230,7 @@ describe('checklists app: template → run lifecycle', () => {
         method: 'POST',
         body: JSON.stringify({ template: templateName, section: 'Kurti', team_leader: 'TL' }),
       })
-      expect(ins.status).toBe(201)
+      await expectStatus(ins, 201)
       const tlRun = (await ins.json()) as Row
 
       const adminRun = await admin.post<Row>('/api/save_row', {
@@ -238,8 +239,8 @@ describe('checklists app: template → run lifecycle', () => {
       })
 
       // TL: own run readable, the admin's run invisible, template read-only.
-      expect((await tl.fetch(`/api/table/${encodeURIComponent(RUN_DT)}/${tlRun.row_id}`)).status).toBe(200)
-      expect((await tl.fetch(`/api/table/${encodeURIComponent(RUN_DT)}/${adminRun.row_id}`)).status).toBe(403)
+      await expectStatus(await tl.fetch(`/api/table/${encodeURIComponent(RUN_DT)}/${tlRun.row_id}`), 200)
+      await expectStatus(await tl.fetch(`/api/table/${encodeURIComponent(RUN_DT)}/${adminRun.row_id}`), 403)
       const tlList = (await (await tl.fetch(`/api/table/${encodeURIComponent(RUN_DT)}`)).json()) as {
         data: Row[]
       }
@@ -411,7 +412,7 @@ describe('checklists app: template → run lifecycle', () => {
           method: 'POST',
           body: JSON.stringify({ template: templateName, section }),
         })
-        expect(res.status).toBe(201)
+        await expectStatus(res, 201)
         return (await res.json()) as Row
       }
       const run1 = await startRun(tl1, 'Kurti')
@@ -421,7 +422,7 @@ describe('checklists app: template → run lifecycle', () => {
 
       // 1. A child row is only as readable as the run it hangs on — one by
       // name, and the whole list.
-      expect((await tl2.fetch(`/api/table/${encodeURIComponent(ITEM_DT)}/${item1}`)).status).toBe(403)
+      await expectStatus(await tl2.fetch(`/api/table/${encodeURIComponent(ITEM_DT)}/${item1}`), 403)
       const childList = (await (
         await tl2.fetch(`/api/table/${encodeURIComponent(ITEM_DT)}?limit_page_length=200`)
       ).json()) as { data: Row[] }
@@ -429,7 +430,7 @@ describe('checklists app: template → run lifecycle', () => {
 
       // 2. The owning leader attaches a photo to their own item.
       const up = await attach(tl1, item1)
-      expect(up.status).toBe(201)
+      await expectStatus(up, 201)
       const photo = (await up.json()) as Row
       uploaded.push(String(photo.file_url))
       expect(String(photo.file_url)).toMatch(/^\/private\/files\//)
@@ -440,14 +441,14 @@ describe('checklists app: template → run lifecycle', () => {
       }
       expect(files.data.map((r) => r.row_id)).not.toContain(photo.row_id)
       const url = `/api/signed_url?file_url=${encodeURIComponent(String(photo.file_url))}`
-      expect((await tl2.fetch(url)).status).toBe(403)
-      expect((await tl1.fetch(url)).status).toBe(200)
+      await expectStatus(await tl2.fetch(url), 403)
+      await expectStatus(await tl1.fetch(url), 200)
 
       // 4. Nor attach anything to it — refused BEFORE a storage object or a
       // File row exists.
       const [{ n: before }] = await sql`select count(*)::int as n from file`
       const bad = await attach(tl2, item1)
-      expect(bad.status).toBe(403)
+      await expectStatus(bad, 403)
       const [{ n: after }] = await sql`select count(*)::int as n from file`
       expect(after).toBe(before)
     } finally {

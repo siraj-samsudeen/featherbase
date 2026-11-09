@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { getDoc, saveDoc } from '../src/document'
+import { expectStatus } from './fixtures'
 
 // #401: the privacy notice is instance configuration (System Settings
 // `privacy_notice`, markdown), not code. Google's consent screen fetches
@@ -24,7 +25,7 @@ describe('#401 privacy notice from System Settings', () => {
   test('GET /privacy is a plain HTML 404 page when no notice is configured', async ({ api }) => {
     await setNotice(null)
     const res = await api.fetch('/privacy', { redirect: 'manual' })
-    expect(res.status).toBe(404)
+    await expectStatus(res, 404)
     expect(res.headers.get('content-type')).toMatch(/^text\/html/)
     const body = await res.text()
     expect(body).toContain('<title>Privacy notice</title>')
@@ -35,7 +36,7 @@ describe('#401 privacy notice from System Settings', () => {
 
   test('GET /privacy/ redirects permanently to /privacy', async ({ api }) => {
     const res = await api.fetch('/privacy/', { redirect: 'manual' })
-    expect(res.status).toBe(301)
+    await expectStatus(res, 301)
     expect(new URL(res.headers.get('location')!, 'http://x').pathname).toBe('/privacy')
   })
 
@@ -50,14 +51,14 @@ describe('#401 privacy notice from System Settings', () => {
   test('GET /privacy is 404 when the notice is only whitespace', async ({ api }) => {
     await setNotice('  \n ')
     const res = await api.fetch('/privacy', { redirect: 'manual' })
-    expect(res.status).toBe(404)
+    await expectStatus(res, 404)
     expect(await res.text()).toContain('No privacy notice is published here.')
   })
 
   test('GET /privacy renders the configured markdown as a public HTML page', async ({ api }) => {
     await setNotice('# Example Org privacy notice\n\nWe hold your **name**.\n\n[Write to us](mailto:privacy@example.org)')
     const res = await api.fetch('/privacy', { redirect: 'manual' })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     expect(res.headers.get('content-type')).toMatch(/^text\/html/)
     expect(res.headers.get('cache-control')).toBe('public, max-age=300')
     const body = await res.text()
@@ -73,7 +74,7 @@ describe('#401 privacy notice from System Settings', () => {
   test('raw HTML and script links in the notice are never rendered live', async ({ api }) => {
     await setNotice('Example Org privacy notice\n\n<script>alert(1)</script>\n\n<img src=x onerror=alert(1)>\n\n[bad](javascript:alert(1))')
     const res = await api.fetch('/privacy', { redirect: 'manual' })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const body = await res.text()
     expect(body.toLowerCase()).not.toContain('<script')
     expect(body.toLowerCase()).not.toContain('<img')

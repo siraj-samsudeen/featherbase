@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test, patchDoc } from './pg-test'
-import { createUserWithRole, expectApiError, grantRole, makeTable, type TableRef } from './fixtures'
+import { createUserWithRole, expectApiError, expectRefused, expectStatus, grantRole, makeTable, type TableRef } from './fixtures'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 
 const DT = 'Own Note'
@@ -46,19 +46,19 @@ describe('PERM-007: own_rows_only permissions', () => {
     expect(list.data[0].created_by).toBe(alice.user)
 
     // Detail: own doc 200, other's 403
-    expect((await alice.fetch(dt.rowUrl(String(mine.row_id)))).status).toBe(200)
+    await expectStatus(await alice.fetch(dt.rowUrl(String(mine.row_id))), 200)
     const bobList = await bob.get<{ data: { row_id: string }[] }>(
       dt.listUrl({ fields: ['row_id'] }),
     )
     const bobDoc = bobList.data[0].row_id
-    await expectApiError(alice.get(dt.rowUrl(bobDoc)), { status: 403 })
+    await expectRefused(alice.get(dt.rowUrl(bobDoc)), 403)
 
     // Write/delete on other's doc 403; on own doc allowed
     await expectApiError(
       patchDoc(alice, dt.rowUrl(bobDoc), { updated_at: new Date().toISOString(), t: 'hax' }),
       { status: 403 },
     )
-    await expectApiError(alice.delete(dt.rowUrl(bobDoc)), { status: 403 })
+    await expectRefused(alice.delete(dt.rowUrl(bobDoc)), 403)
     const own = await alice.get<Record<string, unknown>>(dt.rowUrl(String(mine.row_id)))
     expect(
       (

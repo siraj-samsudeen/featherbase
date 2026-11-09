@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { createUserWithRole, expectApiError, makeTable, tableRef } from './fixtures'
+import { createUserWithRole, expectApiError, expectRefused, makeTable, tableRef } from './fixtures'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
 import { duplicateValueFields, saveSingle, saveSystemRow } from '../src/document'
@@ -58,7 +58,7 @@ describe('DOC-001: save_row inserts through the Document engine', () => {
     await expect(
       admin.post('/api/save_row', { table: 'Missing DT', row: {} }),
     ).rejects.toMatchObject({ status: 404 })
-    await expectApiError(admin.get(dt.rowUrl('zzz')), { status: 404 })
+    await expectRefused(admin.get(dt.rowUrl('zzz')), 404)
   })
 
   test('rejects malformed envelope', async ({ admin }) => {
@@ -169,12 +169,12 @@ describe('DOC: child reads defer to their parents', () => {
     })
     const first = await admin.post<{ row_id: string; lines: { row_id: string }[] }>(parent.url, { lines: [{ item: 'shared bolt' }] })
     const other = await admin.post<{ row_id: string; lines: { row_id: string }[] }>(parent.url, { lines: [{ item: 'private bolt' }] })
-    await expectApiError(reader.get(child.rowUrl(first.lines[0].row_id)), { status: 403 })
+    await expectRefused(reader.get(child.rowUrl(first.lines[0].row_id)), 403)
     await admin.post('/api/save_row', {
       table: 'Share', row: { share_table: parent.name, share_name: first.row_id, person: reader.user, read: true },
     })
     expect(await reader.get(child.rowUrl(first.lines[0].row_id))).toMatchObject({ item: 'shared bolt', parent: first.row_id })
-    await expectApiError(reader.get(child.rowUrl(other.lines[0].row_id)), { status: 403 })
+    await expectRefused(reader.get(child.rowUrl(other.lines[0].row_id)), 403)
   })
 })
 

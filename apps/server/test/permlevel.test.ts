@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { createUserWithRole, makeTable, patchDoc, type TableRef } from './fixtures'
+import { createUserWithRole, expectStatus, makeTable, patchDoc, type TableRef } from './fixtures'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 
 const DT = 'Pl Salary'
@@ -61,7 +61,7 @@ describe('PERM-006: field-level (tier) permissions', () => {
       method: 'PATCH',
       body: JSON.stringify({ updated_at: cur.updated_at, employee: 'Alice B', salary: 99999 }),
     })
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
     // No partial save: both values and the revision stay unchanged.
     const after = await admin.get<Record<string, unknown>>(dt.rowUrl(name))
     expect(Number(after.salary)).toBe(5000)

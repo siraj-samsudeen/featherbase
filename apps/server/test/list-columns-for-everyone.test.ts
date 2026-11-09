@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { expectApiError, makeTable, tableRef } from './fixtures'
+import { expectRefused, makeTable, tableRef } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
 
 // #738 (list-columns-from-the-table, Decision 3): which columns a Table's list
@@ -112,7 +112,7 @@ describe('#738: only a System Manager changes the list for everyone', () => {
   test("a non-System-Manager's save of a list flag is refused", async ({ admin, createUser }) => {
     await setup(admin)
     const user = await createUser({ roles: [] })
-    await expectApiError(saveColumn(user, admin, 'remarks', { in_list_view: true }), { status: 403 })
+    await expectRefused(saveColumn(user, admin, 'remarks', { in_list_view: true }), 403)
     expect(inList(await admin.get<Meta>(T.metaUrl), 'remarks')).toBe(false)
   })
 })

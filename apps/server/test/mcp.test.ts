@@ -5,7 +5,7 @@
 import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
-import { grantRole, makeTable, tableRef } from './fixtures'
+import { expectStatus, grantRole, makeTable, tableRef } from './fixtures'
 import { connectAgent, issueToken, MCP_URL, postMcp, type Agent } from './agent-driver'
 import { sandboxRequest } from './pg-test-shared'
 import { sql } from '../src/db'
@@ -43,7 +43,7 @@ const text = (result: { content: { text: string }[] }) => result.content.map((c)
 describe('#1083 /mcp: the mount (D1)', () => {
   test('initialize answers with the server and its tools capability, as plain JSON', async ({ admin }) => {
     const res = await postMcp(initialize, { authorization: `Bearer ${await issueToken(admin)}` })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     expect(res.headers.get('content-type')).toMatch(/application\/json/)
     expect(res.headers.get('mcp-session-id')).toBeNull()
     const body = await res.json() as { result: { serverInfo: { name: string }; capabilities: Record<string, unknown> } }
@@ -60,7 +60,7 @@ describe('#1083 /mcp: the mount (D1)', () => {
   for (const method of ['GET', 'DELETE'])
     test(`${method} /mcp is 405: no stream and no session to end`, async ({ admin }) => {
       const res = await sandboxRequest(MCP_URL, { method, headers: { authorization: `Bearer ${await issueToken(admin)}`, accept: 'text/event-stream' } })
-      expect(res.status).toBe(405)
+      await expectStatus(res, 405)
       expect(res.headers.get('allow')).toBe('POST')
     })
 })
@@ -68,13 +68,13 @@ describe('#1083 /mcp: the mount (D1)', () => {
 describe('#1083 /mcp: who may connect (D2)', () => {
   test('a signed-in session token is refused: only an access token opens /mcp', async ({ admin }) => {
     const res = await postMcp(initialize, { authorization: `Bearer ${admin.token}` })
-    expect(res.status).toBe(401)
+    await expectStatus(res, 401)
     expect((await res.json() as { error: { message: string } }).error.message).toMatch(/access token/)
   })
 
   test('an unknown access token is refused', async () => {
     const res = await postMcp(initialize, { authorization: `Bearer fbt_${'0'.repeat(43)}` })
-    expect(res.status).toBe(401)
+    await expectStatus(res, 401)
   })
 
   test('a revoked token stops the very next call', async ({ admin, createUser }) => {
@@ -88,12 +88,12 @@ describe('#1083 /mcp: who may connect (D2)', () => {
 
   test('a page on another origin is refused (DNS rebinding)', async ({ admin }) => {
     const res = await postMcp(initialize, { authorization: `Bearer ${await issueToken(admin)}`, origin: 'https://evil.example' })
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
   })
 
   test('the instance\'s own origin is let through', async ({ admin }) => {
     const res = await postMcp(initialize, { authorization: `Bearer ${await issueToken(admin)}`, origin: config.allowedOrigins[0]! })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
   })
 })
 
@@ -172,7 +172,7 @@ describe('#1083 /mcp: tools served by the HTTP API (D3, D4, D7)', () => {
     const { agent } = await keeper(createUser)
     const { updated_at } = await agent.ok<Row>('get_row', { table: 'Mcp Note', id })
     expect(await agent.ok('delete_row', { table: 'Mcp Note', id, updated_at })).toEqual({ deleted: id })
-    expect((await admin.fetch(NOTE.rowUrl(id!))).status).toBe(404)
+    await expectStatus(await admin.fetch(NOTE.rowUrl(id!)), 404)
   })
 
   test('delete_row without updated_at is refused and deletes nothing', async ({ admin, createUser }) => {
@@ -181,7 +181,7 @@ describe('#1083 /mcp: tools served by the HTTP API (D3, D4, D7)', () => {
     const result = await agent.call('delete_row', { table: 'Mcp Note', id })
     expect(result.isError).toBe(true)
     expect(text(result)).toMatch(/Read the row first \(get_row or query_rows\)/)
-    expect((await admin.fetch(NOTE.rowUrl(id!))).status).toBe(200)
+    await expectStatus(await admin.fetch(NOTE.rowUrl(id!)), 200)
   })
 
   test('each call spends the owner\'s request budget, and running out is a refusal', async ({ admin, createUser }) => {

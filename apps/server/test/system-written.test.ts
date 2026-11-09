@@ -14,7 +14,7 @@ import { logActivity } from '../src/audit'
 import { setUserPassword } from '../src/auth'
 import { drainJobs, enqueue, loadJobs } from '../src/jobs'
 import { queueEmail } from '../src/email'
-import { expectApiError, grantRole, makeTable, patchDoc } from './fixtures'
+import { expectApiError, expectRefused, expectStatus, grantRole, makeTable, patchDoc } from './fixtures'
 import postgres from 'postgres'
 import { config } from '../src/config'
 import { getMeta } from '../src/meta'
@@ -207,7 +207,7 @@ describe('#432: the server still writes, and everyone still reads', () => {
     const person = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Person', row: { email: 'audit-signin@x.com' } })
     await setUserPassword(person.row_id, 'auditpw123')
     const res = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'audit-signin@x.com', pwd: 'auditpw123' }) })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const rows = await sql`select operation from activity_log where "user" = ${person.row_id}`
     expect(rows.map((r) => r.operation)).toContain('login')
   })
@@ -479,7 +479,7 @@ describe('#432: configurable automation never reaches a system-written table', (
     expect(await admin.post('/api/import/batches/namesake-batch/delete_tables', {})).toEqual({ deleted: [], refused: [] })
     expect(await admin.get('/api/table/Audit%20Namesake:meta')).toMatchObject({ name: 'Audit Namesake' })
     // The old run does not revert into the new Table.
-    await expectApiError(admin.post('/api/table/Audit%20Namesake:import-revert', { run_id: 'namesake-run' }), { status: 404 })
+    await expectRefused(admin.post('/api/table/Audit%20Namesake:import-revert', { run_id: 'namesake-run' }), 404)
     expect(await admin.get(`/api/table/Audit%20Namesake/${fresh.row_id}`)).toMatchObject({ title: 'new' })
   })
 

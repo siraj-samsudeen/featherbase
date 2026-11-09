@@ -1,6 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
+import { expectRefused, expectStatus } from './fixtures'
 
 const DT = 'Flag Test Asset'
 
@@ -53,16 +54,16 @@ describe('META-010: field flags', () => {
 
   test('maps unique violations to field-wise 417s, not 500s', async ({ admin }) => {
     await makeDT(admin)
-    expect((await save(admin, { title: 'c1', code: 'DUP' })).status).toBe(201)
+    await expectStatus(await save(admin, { title: 'c1', code: 'DUP' }), 201)
     const res = await save(admin, { title: 'c2', code: 'DUP' })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     const body = await res.json()
     expect(body.error.fields.code).toMatch(/unique/)
   })
 
   test('missing reqd still fails; explicit default override works', async ({ admin }) => {
     await makeDT(admin)
-    expect((await save(admin, { code: 'x' })).status).toBe(417)
+    await expectStatus(await save(admin, { code: 'x' }), 417)
     const doc = (await (
       await save(admin, { title: 'd', stage: 'Closed' })
     ).json()) as Record<string, unknown>
@@ -72,7 +73,7 @@ describe('META-010: field flags', () => {
   test('evaluator regression: out-of-range Int returns 417, not 500', async ({ admin }) => {
     await makeDT(admin)
     const res = await save(admin, { title: 'e', count_val: 99999999999999999999 })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     const body = await res.json()
     expect(body.error.fields.count_val).toMatch(/out of range/)
   })
@@ -90,7 +91,7 @@ describe('A column can be marked unique', () => {
       method: 'PUT',
       body: JSON.stringify({ columns: [{ column_name: 'code', column_type: 'Data', unique: true }] }),
     })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect((await res.json()).error.fields.code).toMatch(/"A" is held by 2 rows/)
     const meta = await admin.get<{ columns: { column_name: string; unique: boolean }[] }>(
       `/api/table/${encodeURIComponent('Flag Late Unique')}:meta`,
@@ -105,7 +106,7 @@ describe('A column can be marked unique', () => {
     await admin.post('/api/table_def', { name: T, columns: [{ column_name: 'code', column_type: 'Data' }] })
     for (const code of ['A', 'B', null, null]) await admin.post('/api/save_row', { table: T, row: { code } })
     await admin.put(`/api/table_def/${encodeURIComponent(T)}`, { columns: [{ column_name: 'code', column_type: 'Data', unique: true }] })
-    await expect(admin.post('/api/save_row', { table: T, row: { code: 'A' } })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(admin.post('/api/save_row', { table: T, row: { code: 'A' } }), 417)
   })
 
   test('putting a removed column back as unique over its kept repeats is refused the same way', async ({ admin }) => {
@@ -117,7 +118,7 @@ describe('A column can be marked unique', () => {
       method: 'PUT',
       body: JSON.stringify({ columns: [{ column_name: 'title', column_type: 'Data' }, { column_name: 'code', column_type: 'Data', unique: true }] }),
     })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect((await res.json()).error.fields.code).toMatch(/"B" is held by 2 rows/)
     const meta = await admin.get<{ columns: { column_name: string }[] }>(`/api/table/${encodeURIComponent(T)}:meta`)
     expect(meta.columns.map((c) => c.column_name)).toEqual(['title'])
@@ -129,14 +130,14 @@ describe('A column can be marked unique', () => {
     const put = (body: object) => admin.fetch(`/api/table_def/${encodeURIComponent(T)}`, { method: 'PUT', body: JSON.stringify(body) })
     await admin.post('/api/table_def', { name: T, columns: [title, { column_name: 'code', column_type: 'Data', unique: true }] })
     await admin.post('/api/save_row', { table: T, row: { title: 't0', code: 'C' } })
-    expect((await put({ columns: [title], remove_columns: ['code'] })).status).toBe(200)
+    await expectStatus(await put({ columns: [title], remove_columns: ['code'] }), 200)
     // Put back without unique: the old rule must not linger out of sight.
-    expect((await put({ columns: [title, { column_name: 'code', column_type: 'Data' }] })).status).toBe(200)
-    expect((await admin.fetch('/api/save_row', { method: 'POST', body: JSON.stringify({ table: T, row: { title: 't1', code: 'C' } }) })).status).toBe(201)
+    await expectStatus(await put({ columns: [title, { column_name: 'code', column_type: 'Data' }] }), 200)
+    await expectStatus(await admin.fetch('/api/save_row', { method: 'POST', body: JSON.stringify({ table: T, row: { title: 't1', code: 'C' } }) }), 201)
     // Removed again and put back unique: the repeat is named, not a bare 500.
-    expect((await put({ columns: [title], remove_columns: ['code'] })).status).toBe(200)
+    await expectStatus(await put({ columns: [title], remove_columns: ['code'] }), 200)
     const res = await put({ columns: [title, { column_name: 'code', column_type: 'Data', unique: true }] })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect((await res.json()).error.fields.code).toMatch(/"C" is held by 2 rows/)
   })
 

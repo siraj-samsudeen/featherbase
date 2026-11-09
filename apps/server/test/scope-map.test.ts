@@ -16,7 +16,7 @@ import { canSubscribe, eventVisibleTo } from '../src/realtime'
 import { getScopeMap } from '../src/permissions'
 import { invalidateSources } from '../src/sources/registry'
 import { sql } from '../src/db'
-import { grantRole } from './fixtures'
+import { expectRefused, grantRole } from './fixtures'
 
 const STORE = 'Scope Store'
 const ROLE = 'Scope Reader'
@@ -69,7 +69,7 @@ describe('getScopeMap: a scoped service account is narrowed everywhere', () => {
     expect(list.data.map((r) => r.row_id)).toEqual(['ATK'])
     expect(list.total).toBe(1)
     expect((await svc.get<{ count: number }>(`/api/table/${encodeURIComponent(STORE)}:count`)).count).toBe(1)
-    await expect(svc.get(`/api/table/${encodeURIComponent(STORE)}/KNP`)).rejects.toMatchObject({ status: 403 })
+    await expectRefused(svc.get(`/api/table/${encodeURIComponent(STORE)}/KNP`), 403)
     expect((await svc.get<{ row_id: string }>(`/api/table/${encodeURIComponent(STORE)}/ATK`)).row_id).toBe('ATK')
   })
 
@@ -180,6 +180,6 @@ describe('getScopeMap: a scoped service account is narrowed everywhere', () => {
     await admin.post('/api/save_row', { table: 'Data Scope', row: { service_account: id, allow_table: bound, for_value: 'T-ATK' } })
     const list = await svc.get<{ data: { row_id: string }[] }>(`/api/table/${encodeURIComponent(bound)}`)
     expect(list.data.map((r) => r.row_id)).toEqual(['T-ATK'])
-    await expect(svc.get(`/api/table/${encodeURIComponent(bound)}/T-KNP`)).rejects.toMatchObject({ status: 403 })
+    await expectRefused(svc.get(`/api/table/${encodeURIComponent(bound)}/T-KNP`), 403)
   })
 })

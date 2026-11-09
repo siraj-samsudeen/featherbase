@@ -23,6 +23,7 @@ import {
   runHealthChecks,
   type HealthCheck,
 } from '../src/instance-health'
+import { expectRefused } from './fixtures'
 
 const byKey = (checks: HealthCheck[], key: string) => {
   const found = checks.find((c) => c.key === key)
@@ -424,6 +425,6 @@ describe('the health API (5.3, 5.4)', () => {
 
   test('anyone else is refused', async ({ createUser }) => {
     const person = await createUser({ roles: ['All'] })
-    await expect(person.get('/api/instance-health')).rejects.toMatchObject({ status: 403 })
+    await expectRefused(person.get('/api/instance-health'), 403)
   })
 })

@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { createUserWithRole, expectApiError, makeTable, type TableRef } from './fixtures'
+import { createUserWithRole, expectApiError, expectRefused, expectStatus, makeTable, type TableRef } from './fixtures'
 import { sql } from '../src/db'
 import { eventVisibleTo } from '../src/realtime'
 import { invalidateMeta } from '../src/meta'
@@ -65,13 +65,13 @@ describe('#246 scope_on: only the declared Reference columns narrow rows', () =>
       [{ allow_table: STORE, for_value: 'North' }])
     // 'n' is North's (supplier South), 's' is South's (supplier North).
     expect(await titles(user, section)).toEqual(['n', 'none'])
-    expect((await user.fetch(section.rowUrl(await rowOf('n')))).status).toBe(200)
-    await expectApiError(user.get(section.rowUrl(await rowOf('s'))), { status: 403 })
+    await expectStatus(await user.fetch(section.rowUrl(await rowOf('n'))), 200)
+    await expectRefused(user.get(section.rowUrl(await rowOf('s'))), 403)
     // Saving a North row that names South as its supplier is allowed.
     const ok = await user.fetch(section.url, {
       method: 'POST', body: JSON.stringify({ title: 'ok', store: 'North', supplier_store: 'South' }),
     })
-    expect(ok.status).toBe(201)
+    await expectStatus(ok, 201)
   })
 
   test('without scope_on every Reference narrows, as before', async ({ admin, createUser }) => {
@@ -118,7 +118,7 @@ describe('#246 the scope declaration lives with the Table definition', () => {
 
   test('a scope column cannot be removed while the Table is scoped on it', async ({ admin, createUser }) => {
     await setup(admin, createUser, { scope_on: ['store'] })
-    await expectApiError(admin.put(defUrl, { name: SECTION, columns: columns.filter((c) => c.column_name !== 'store'), remove_columns: ['store'] }), { status: 417 })
+    await expectRefused(admin.put(defUrl, { name: SECTION, columns: columns.filter((c) => c.column_name !== 'store'), remove_columns: ['store'] }), 417)
     expect((await stored()).scope_on).toEqual(['store'])
   })
 })
@@ -142,13 +142,13 @@ describe('#246 scope_required: no Data Scope means no rows', () => {
   test('with no Data Scope, reads and every write are refused', async ({ admin, createUser }) => {
     const { user, section, rowOf } = await setup(admin, createUser, required)
     const n = await rowOf('n')
-    await expectApiError(user.get(section.rowUrl(n)), { status: 403 })
-    await expectApiError(user.get(section.rowUrl(await rowOf('none'))), { status: 403 })
-    await expectApiError(user.post(section.url, { title: 'x', store: 'North' }), { status: 403 })
-    await expectApiError(user.post(section.url, { title: 'x' }), { status: 403 })
+    await expectRefused(user.get(section.rowUrl(n)), 403)
+    await expectRefused(user.get(section.rowUrl(await rowOf('none'))), 403)
+    await expectRefused(user.post(section.url, { title: 'x', store: 'North' }), 403)
+    await expectRefused(user.post(section.url, { title: 'x' }), 403)
     const [current] = await sql.unsafe(`select updated_at from featherbase.sr_section where row_id = $1`, [n])
-    await expectApiError(user.fetch(section.rowUrl(n), { method: 'PATCH', body: JSON.stringify({ title: 'changed', updated_at: current.updated_at }) }), { status: 403 })
-    await expectApiError(user.delete(section.rowUrl(n)), { status: 403 })
+    await expectRefused(user.fetch(section.rowUrl(n), { method: 'PATCH', body: JSON.stringify({ title: 'changed', updated_at: current.updated_at }) }), 403)
+    await expectRefused(user.delete(section.rowUrl(n)), 403)
     const [still] = await sql.unsafe(`select title from featherbase.sr_section where row_id = $1`, [n])
     expect(still.title).toBe('n')
   })
@@ -156,10 +156,10 @@ describe('#246 scope_required: no Data Scope means no rows', () => {
   test('a scoped person sees their store only; a row naming no store is hidden', async ({ admin, createUser }) => {
     const { user, section, rowOf } = await setup(admin, createUser, required, [{ allow_table: STORE, for_value: 'North' }])
     expect(await titles(user, section)).toEqual(['n'])
-    await expectApiError(user.get(section.rowUrl(await rowOf('none'))), { status: 403 })
-    await expectApiError(user.post(section.url, { title: 'x' }), { status: 403 })
+    await expectRefused(user.get(section.rowUrl(await rowOf('none'))), 403)
+    await expectRefused(user.post(section.url, { title: 'x' }), 403)
     const ok = await user.fetch(section.url, { method: 'POST', body: JSON.stringify({ title: 'ok', store: 'North' }) })
-    expect(ok.status).toBe(201)
+    await expectStatus(ok, 201)
   })
 
   test('a scope column whose type changed still fails closed', async ({ admin, createUser }) => {

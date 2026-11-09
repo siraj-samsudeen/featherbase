@@ -20,7 +20,7 @@ import { BREAK_GLASS_ACTOR } from '../src/managed-settings'
 import { runAsSystemActor } from '../src/system-actor'
 import { createServiceAccount } from '../src/service-accounts'
 import { issueAccessToken } from '../src/auth'
-import { makePerson } from './fixtures'
+import { expectStatus, makePerson } from './fixtures'
 
 afterEach(() => vi.unstubAllEnvs())
 
@@ -399,7 +399,7 @@ describe('over HTTP (D3)', () => {
         file: file('Source label baseline'), source: { revision: 'initial-1', run: 'seed_0' },
       }),
     })
-    expect(baseline.status).toBe(200)
+    await expectStatus(baseline, 200)
     const state = async () => ({
       settings: await sql`select * from single_value order by table_name, field`,
       methods: await sql`select * from sign_in_method order by row_id`,
@@ -419,7 +419,7 @@ describe('over HTTP (D3)', () => {
       const response = await admin.fetch(path, {
         method: 'POST', body: JSON.stringify({ file: desired, source: { revision, run: 'run_2.0-9' } }),
       })
-      expect(response.status).toBe(417)
+      await expectStatus(response, 417)
       expect(await response.json()).toEqual({ error: {
         type: 'ValidationError',
         message: 'source.revision must be up to 40 letters, digits, dots, dashes or underscores',
@@ -432,7 +432,7 @@ describe('over HTTP (D3)', () => {
     const response = await admin.fetch(path, {
       method: 'POST', body: JSON.stringify({ file: desired, source: { revision, run } }),
     })
-    expect(response.status).toBe(200)
+    await expectStatus(response, 200)
     expect(await response.json()).toMatchObject({
       dry_run: false, environment: null, summary: '1 setting changed',
       changes: [{ table: 'System Settings', row_id: 'System Settings', field: 'app_name', old: 'Source label baseline', new: 'Source label accepted' }],
@@ -471,13 +471,13 @@ describe('over HTTP (D3)', () => {
     }
 
     const preview = await api.fetch('/api/instance-settings/apply', { method: 'POST', headers: auth, body: JSON.stringify({ ...body, dry_run: true }) })
-    expect(preview.status).toBe(200)
+    await expectStatus(preview, 200)
     expect(await preview.json()).toMatchObject({ dry_run: true, summary: '1 setting would change' })
     const [still] = await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`
     expect(still.allowed_email_domains).toBeNull()
 
     const applied = await api.fetch('/api/instance-settings/apply', { method: 'POST', headers: auth, body: JSON.stringify(body) })
-    expect(applied.status).toBe(200)
+    await expectStatus(applied, 200)
     expect(await applied.json()).toMatchObject({
       dry_run: false,
       changes: [{ table: 'Sign In Method', row_id: 'google', field: 'allowed_email_domains', old: null, new: DOMAINS }],
@@ -486,7 +486,7 @@ describe('over HTTP (D3)', () => {
     expect(log.full_name).toBe(`instance settings file, applied by ${bot.row_id}`)
 
     const exported = await api.fetch('/api/instance-settings/export', { headers: auth })
-    expect(exported.status).toBe(200)
+    await expectStatus(exported, 200)
     expect(((await exported.json()) as { file: InstanceSettingsFile }).file.settings['Sign In Method']).toContainEqual(expect.objectContaining({ row_id: 'google', allowed_email_domains: DOMAINS }))
 
     const clerk = await makePerson({ full_name: 'Clerk', email: 'clerk.settings@example.com' })
@@ -496,7 +496,7 @@ describe('over HTTP (D3)', () => {
       ['/api/instance-settings/export', {}],
     ] as const) {
       const refused = await api.fetch(path, { ...init, headers: { authorization: `Bearer ${clerkToken}` } })
-      expect(refused.status).toBe(403)
+      await expectStatus(refused, 403)
     }
     const [unchanged] = await sql`select count(*)::int as n from activity_log where full_name = ${`instance settings file, applied by ${clerk}`}`
     expect(unchanged.n).toBe(0)
@@ -504,7 +504,7 @@ describe('over HTTP (D3)', () => {
 
   test('a malformed request is refused with the reason', async ({ admin }) => {
     const res = await admin.fetch('/api/instance-settings/apply', { method: 'POST', body: JSON.stringify({ file: { settings: {} , extra: 1 } }) })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(await res.text()).toContain('extra')
   })
 })
