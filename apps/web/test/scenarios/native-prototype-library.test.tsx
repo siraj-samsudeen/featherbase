@@ -24,7 +24,7 @@ import { scenarioFor } from 'server/test/scenario'
 import { setSession } from '../../src/lib/api'
 import { createPrototypeRouter } from '../../src/gallery/PrototypeApp'
 import { PrototypeLibrary } from '../../src/gallery/PrototypeLibrary'
-import { test, expect, renderApp } from '../pg-test'
+import { test, expect, renderApp, onScreen } from '../pg-test'
 
 const scenario = scenarioFor(test, 'native-prototype-library')
 const WAIT = { timeout: 15_000 }
@@ -153,7 +153,7 @@ async function rowForm() {
   await screen.findByRole('textbox', { name: 'Region' }, WAIT)
 }
 async function save() {
-  await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+  await onScreen().clickButton('Save')
   await waitFor(() => expect(screen.getByTestId('form-save')).toBeDisabled(), WAIT)
 }
 
@@ -161,7 +161,7 @@ describe('native-prototype-library', () => {
   scenario('Find a list example', async ({}, step) => {
     await step('the user is exploring the native prototype library', open)
     await step('the user searches the examples for "list"', async () => {
-      await userEvent.click(screen.getByRole('tab', { name: 'Component gallery' }))
+      await onScreen().clickButton('Component gallery')
       await fill(searchbox('Search components'), 'list')
     })
     await step('the user sees matching working examples and their reuse locations', async () => {
@@ -203,7 +203,7 @@ describe('native-prototype-library', () => {
       expect(searchbox('Search Lab Project names').value).toBe('North')
       expect(within(listRows()).queryByText('South studio', { exact: true })).toBeNull()
       await open()
-      await userEvent.click(screen.getByRole('tab', { name: 'Native Table list' }))
+      await onScreen().clickButton('Native Table list')
       await fill(searchbox('Search Lab Project names'), 'South')
       await click(await waitFor(() => rowLink('South studio'), WAIT))
       await screen.findByRole('textbox', { name: 'Region' }, WAIT)
@@ -223,12 +223,12 @@ describe('native-prototype-library', () => {
       await save()
       await reload()
       await waitFor(() => expect(textbox('Region').value).toBe('Edited synthetic region'), WAIT)
-      await userEvent.click(screen.getByRole('button', { name: 'Reset data' }))
+      await onScreen().clickButton('Reset data')
     })
     await step('the original synthetic example is restored', async () => {
       await waitFor(() => expect(document.querySelector<HTMLInputElement>('input[data-field="region"]')?.value).toBe('North'), WAIT)
       await open()
-      await userEvent.click(screen.getByRole('tab', { name: 'Native Table list' }))
+      await onScreen().clickButton('Native Table list')
       const choose = (value: string) => userEvent.selectOptions(screen.getByRole('combobox', { name: 'Synthetic scenario' }), value)
       await choose('empty')
       await waitFor(() => expect(listRows()).toHaveTextContent('No rows'), WAIT)
@@ -240,7 +240,7 @@ describe('native-prototype-library', () => {
       await waitFor(() => expect(screen.getByTestId('list-rows-error').textContent).toMatch(/Simulated permission restriction/), WAIT)
       await choose('populated')
       await waitFor(() => expect(within(listRows()).getByText('South studio', { exact: true })).toBeInTheDocument(), WAIT)
-      await userEvent.click(screen.getByRole('button', { name: 'Reset data' }))
+      await onScreen().clickButton('Reset data')
       await waitFor(() => expect(within(listRows()).getByText('North workshop', { exact: true })).toBeInTheDocument(), WAIT)
       expect(screen.getByRole('tab', { name: 'Native Table list' })).toHaveAttribute('aria-selected', 'true')
     })
