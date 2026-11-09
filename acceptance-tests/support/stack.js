@@ -25,9 +25,6 @@ const BASE_URL = `http://localhost:${WEB_PORT}`;
 const API_URL = `http://localhost:${API_PORT}`;
 const PROTOTYPE_URL = `http://localhost:${PROTOTYPE_PORT}`;
 const BOOT_TIMEOUT_MS = 240_000;
-// The API's clock: while this file holds an instant, that is the time on the
-// server (server-clock.cjs, preloaded into the API process); app-clock.js sets it.
-const CLOCK_FILE = path.join(require('node:os').tmpdir(), `featherbase-acceptance-clock-${API_PORT}`);
 
 // Same host and credentials as the developer's database, under its own name.
 function acceptanceDatabaseUrl() {
@@ -93,14 +90,6 @@ function isolatedEnvironment(overrides = {}) {
   };
 }
 
-/** The API's own environment: its clock can be set (server-clock.cjs). Only the API gets it. */
-function apiEnvironment(env) {
-  return {
-    ...env, ACCEPTANCE_CLOCK_FILE: CLOCK_FILE,
-    NODE_OPTIONS: [env.NODE_OPTIONS, `--require ${path.join(__dirname, 'server-clock.cjs')}`].filter(Boolean).join(' '),
-  };
-}
-
 /** Runs the server's MotherDuck stand-in script; `build` returns the new folder. */
 function motherDuckStandin(...args) {
   const out = execFileSync('pnpm', ['--filter', 'server', 'exec', 'tsx', 'scripts/motherduck-standin.ts', ...args],
@@ -151,7 +140,7 @@ async function stopApi() {
 async function restartAcceptance(overrides = {}, root = REPO_ROOT) {
   await stopApi();
   scenarioEnvironment = { ...(scenarioEnvironment ?? isolatedEnvironment()), ...overrides };
-  apiChild = start('api', ['--filter', 'server', 'start'], apiEnvironment(scenarioEnvironment), root);
+  apiChild = start('api', ['--filter', 'server', 'start'], scenarioEnvironment, root);
   await waitFor(`${API_URL}/api/ping`, apiChild, 'The scenario API');
 }
 
@@ -242,7 +231,6 @@ BeforeAll({ timeout: BOOT_TIMEOUT_MS + 30_000 }, async function () {
       );
   }
   // #772 design D4: a local stand-in for MotherDuck, made fresh for each run.
-  require('node:fs').rmSync(CLOCK_FILE, { force: true });
   process.env.MOTHERDUCK_STANDIN = motherDuckStandin('build');
   const env = isolatedEnvironment();
   for (const command of ['e2e:reset', 'migrate'])
@@ -250,7 +238,7 @@ BeforeAll({ timeout: BOOT_TIMEOUT_MS + 30_000 }, async function () {
   await ensureExternalDatabase();
   // No watcher: tsx watch starts its own process group and can survive the
   // scenario API's shutdown, retaining stale schema and environment state.
-  const api = apiChild = start('api', ['--filter', 'server', 'start'], apiEnvironment(env));
+  const api = apiChild = start('api', ['--filter', 'server', 'start'], env);
   const web = start('web', ['--filter', 'web', 'dev'], {
     WEB_PORT: String(WEB_PORT),
     API_PORT: String(API_PORT),
@@ -265,13 +253,12 @@ BeforeAll({ timeout: BOOT_TIMEOUT_MS + 30_000 }, async function () {
 
 AfterAll(async function () {
   stopAll();
-  require('node:fs').rmSync(CLOCK_FILE, { force: true });
   if (scenarioEnvironment) await acceptanceSql("update featherbase.internal_metadata set value = 'test' where key = 'environment'");
 });
 
 process.on('exit', stopAll);
 
 module.exports = {
-  BASE_URL, API_URL, PROTOTYPE_URL, CLOCK_FILE, resetAcceptance, restartAcceptance, useInstanceToken, acceptanceSql, acceptanceDatabaseUrl, isolatedEnvironment, REPO_ROOT,
+  BASE_URL, API_URL, PROTOTYPE_URL, resetAcceptance, restartAcceptance, useInstanceToken, acceptanceSql, acceptanceDatabaseUrl, isolatedEnvironment, REPO_ROOT,
   externalSql, EXTERNAL_URL_ENV, EXTERNAL_READER, EXTERNAL_READER_PASSWORD, addStandinTable, changeStandin,
 };
