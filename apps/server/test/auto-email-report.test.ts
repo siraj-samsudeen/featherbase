@@ -2,7 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
-import { deliverAutoEmailReport, runDueAutoEmailReports, toCsv } from '../src/auto-email-report'
+import { deliverAutoEmailReport, runDueAutoEmailReports, runReportRows, toCsv } from '../src/auto-email-report'
 import { drainJobs, enqueue } from '../src/jobs'
 import { expectApiError, expectRefused, expectStatus } from './fixtures'
 
@@ -209,5 +209,12 @@ describe('EML-007: Auto Email Report', () => {
     const html = Buffer.from(files[0].content_b64, 'base64').toString('utf8')
     expect(html).toContain('<td>Washer &lt;tag&gt;&amp;"quoted"</td><td></td>')
     expect(html).not.toContain('<tag>')
+  })
+})
+
+describe('a Report with no Table', () => {
+  test('cannot be run', async () => {
+    await sql`insert into report (row_id, created_by, updated_by) values ('No Table Report', 'Administrator', 'Administrator')`
+    await expect(runReportRows('No Table Report', 'Administrator')).rejects.toMatchObject({ type: 'ValidationError', message: 'No Table Report has no ref_table' })
   })
 })
