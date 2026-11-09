@@ -12,7 +12,7 @@ import { postgresDriver } from '../src/sources/postgres-driver'
 import { fkKey, singleColumnFks } from '../src/sources/fk'
 import { sql } from '../src/db'
 import type { Binding, SourceConfig } from '../src/sources/types'
-import { expectStatus } from './fixtures'
+import { expectRefused, expectStatus } from './fixtures'
 
 const URL_ENV = 'EXT_EXTRA_URL'
 process.env[URL_ENV] = EXTERNAL_DATABASE_URL
@@ -523,6 +523,28 @@ describe('Saving a Data Source', () => {
     expect(await cli`select note, qty from ext_extra.plain order by qty`).toEqual([
       { note: 'alpha', qty: 1 }, { note: 'beta', qty: 2 }, { note: 'gamma', qty: 3 },
     ])
+  })
+
+  test('a binding that names no schema and a relation the source lacks names the relation alone', async ({ admin }) => {
+    await makeSource(admin)
+    await expectRefused(admin.post('/api/table_def', {
+      name: 'No Such Relation', data_source: 'ext-extra', external_table: 'nowhere', external_pk: 'id',
+      columns: [{ column_name: 'note', column_type: 'Data' }],
+    }), 417, 'Unknown source relation')
+    expect(await sql`select name from table_def where name = 'No Such Relation'`).toEqual([])
+  })
+
+  // Defect found in coverage stage 3 (no issue yet): the binding is checked
+  // against the source's default schema and saved with no schema, but a read
+  // then quotes an empty schema name and every list fails with a 502.
+  test.fails('a binding that names no schema reads the source default schema', async ({ admin }) => {
+    await makeSource(admin)
+    await admin.post('/api/table_def', {
+      name: 'Plain No Schema', data_source: 'ext-extra', external_table: 'plain', external_pk: 'id',
+      columns: [{ column_name: 'note', column_type: 'Data' }],
+    })
+    const { data } = (await admin.get(`/api/table/Plain%20No%20Schema?fields=${encodeURIComponent('["note"]')}&order_by=note asc`)) as { data: { note: string }[] }
+    expect(data.map((r) => r.note)).toEqual(['alpha', 'beta', 'gamma'])
   })
 
   test('reflection without requested tables is rejected without creating bindings', async ({ admin }) => {
