@@ -13,7 +13,7 @@ import { describe, onTestFinished, vi } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { installApp, isInstalled, uninstallApp } from 'server/src/apps'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp } from '../pg-test'
+import { test, expect, renderApp, onScreen } from '../pg-test'
 
 const scenario = scenarioFor(test, 'usable-on-any-device')
 const PAGE_SIZE = 20
@@ -194,7 +194,7 @@ describe('usable-on-any-device', () => {
       const shelf = [...field.options].find((o) => o.textContent!.trim() === 'Shelf')!
       await user.selectOptions(field, shelf)
       await user.type(screen.getByTestId('bulk-edit-value'), 'Moved')
-      await user.click(screen.getByTestId('bulk-edit-apply'))
+      await onScreen().clickButton('Apply')
       await waitFor(async () => {
         const stored = await Promise.all(onPage.map((id) => admin.get<{ shelf: string }>(`/api/table/${encodeURIComponent(STOCK_COUNT)}/${id}`)))
         expect(stored.map((r) => r.shelf)).toEqual(onPage.map(() => 'Moved'))
@@ -217,7 +217,7 @@ describe('usable-on-any-device', () => {
       await waitFor(() => expect(nested.textContent, 'the nested rows').toContain(`Count bin ${ROW_COUNT}`), { timeout: 8000 })
 
       expect(screen.getByTestId('page-info').textContent!.trim()).toBe(`1–${PAGE_SIZE} of ${ROW_COUNT}`)
-      await user.click(screen.getByTestId('next-page'))
+      await onScreen().clickButton('Next')
       await waitFor(() => expect(screen.getByTestId('page-info').textContent!.trim()).toBe(`${PAGE_SIZE + 1}–${ROW_COUNT} of ${ROW_COUNT}`))
       await waitFor(() => expect(cardEls()).toHaveLength(ROW_COUNT - PAGE_SIZE))
     })
