@@ -37,6 +37,18 @@ test('an adjustment saved before a column is chosen asks for a column or Whole T
   expect(saved.data).toEqual([])
 })
 
+test("a column's choices are edited one per line", async ({ admin }) => {
+  await admin.post('/api/table_def', { name: table, columns: [{ column_name: 'floor', column_type: 'Choice', choices: 'G\n1' }] })
+  await admin.post('/api/table/Metadata%20Override', {
+    row_id: 'editor-choices', table_name: table, column_name: 'floor', property: 'choices', value: 'G\n1\n2',
+  })
+  await renderApp(rowHref('Metadata Override', 'editor-choices'), admin)
+  const control = await screen.findByLabelText('Value')
+  expect(control.tagName).toBe('TEXTAREA')
+  expect(control).toHaveValue('G\n1\n2')
+  expect(screen.getByText('One choice per line.')).toBeInTheDocument()
+})
+
 for (const value of ['false', '0', 'true', '1']) {
   test(`editing stored boolean text ${value} uses a checkbox`, async ({ admin }) => {
     await admin.post('/api/table_def', { name: table, columns: [{ column_name: 'floor', column_type: 'Data' }] })
