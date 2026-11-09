@@ -9,6 +9,7 @@ import { describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { serveWebDist, startServer } from '../src/index'
 import { sql } from '../src/db'
+import { expectStatus } from './fixtures'
 
 describe('booting the server', () => {
   test('it listens on the port it is given, answers the API, and syncs the recurring jobs into the queue', async () => {
@@ -23,7 +24,7 @@ describe('booting the server', () => {
         expect(port).toBeGreaterThan(0)
         expect(log.mock.calls.flat()).toContain(`server listening on :${port}`)
         const res = await fetch(`http://127.0.0.1:${port}/api/ping`)
-        expect(res.status).toBe(200)
+        await expectStatus(res, 200)
         expect(await res.json()).toMatchObject({ message: 'pong' })
         // The Scheduled Job rows were synced into the queue on boot.
         const queued = await sql`select 1 from background_job where method = 'auto_email_reports' and job_status = 'queued'`
@@ -110,16 +111,16 @@ describe('serving the built web app', () => {
     try {
       expect(serveWebDist(target as never, dir)).toBe(true)
       const asset = await target.request('/assets/app.js')
-      expect(asset.status).toBe(200)
+      await expectStatus(asset, 200)
       expect(await asset.text()).toBe('console.log("app")')
       for (const route of ['/', '/table/Person', '/featherbase/login']) {
         const page = await target.request(route)
-        expect(page.status).toBe(200)
+        await expectStatus(page, 200)
         expect(await page.text()).toContain('<title>SPA</title>')
       }
       expect(await (await target.request('/api/ping')).json()).toEqual({ message: 'pong' })
       for (const owned of ['/api/nothing', '/files/x.txt', '/mcp', '/ws'])
-        expect((await target.request(owned)).status).toBe(404)
+        await expectStatus(await target.request(owned), 404)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -129,6 +130,6 @@ describe('serving the built web app', () => {
     const target = new Hono()
     expect(serveWebDist(target as never, join(tmpdir(), 'fb-web-dist-absent'))).toBe(false)
     expect(serveWebDist(target as never, '')).toBe(false)
-    expect((await target.request('/')).status).toBe(404)
+    await expectStatus(await target.request('/'), 404)
   })
 })

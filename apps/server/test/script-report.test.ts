@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { expectApiError } from './fixtures'
+import { expectApiError, expectStatus } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { loadScriptReports, runScriptReport, scriptReportMeta, registerScriptReport } from '../src/script-report'
@@ -62,7 +62,7 @@ describe('RPT-005: script reports', () => {
         row: { row_id: 'SR Srv Bad', ref_table: 'Person', report_type: 'Script Report', report_script: 'Person Report' },
       }),
     })
-    expect(built.status).toBe(201)
+    await expectStatus(built, 201)
     const res = await runScriptReport('SR Srv Bad', {}, 'Administrator')
     expect(res.columns).toContain('row_id')
     expect(res.rows.some((r) => r.row_id === 'Administrator')).toBe(true)
@@ -77,7 +77,7 @@ describe('RPT-005: script reports', () => {
         row: { row_id: 'SR Srv Missing', ref_table: 'Person', report_type: 'Script Report', report_script: 'No Such Report' },
       }),
     })
-    expect(res.status).toBe(201)
+    await expectStatus(res, 201)
     await expect(runScriptReport('SR Srv Missing', {}, 'Administrator')).rejects.toMatchObject({
       type: 'ValidationError',
     })

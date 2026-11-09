@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
-import { createUserWithRole, expectApiError, makeTable, type TableRef } from './fixtures'
+import { createUserWithRole, expectApiError, expectRefused, expectStatus, makeTable, type TableRef } from './fixtures'
 import { sql } from '../src/db'
 import { registerController, unregisterController, type TableController } from '../src/controllers'
 import { AppError } from '../src/errors'
@@ -71,8 +71,8 @@ describe('#859 delete permanently', () => {
   test('only a System Manager may, whatever their delete rights; the refusal changes nothing', async ({ admin, createUser }) => {
     const { bu } = await setup(admin)
     const deleter = await createUserWithRole(admin, createUser, { role: 'Pg Deleter', table: BU, can_read: true, can_write: true, can_delete: true })
-    await expectApiError(preview(deleter, bu, ['BU-T']), { status: 403 })
-    await expectApiError(purge(deleter, bu, { ids: ['BU-T'] }), { status: 403 })
+    await expectRefused(preview(deleter, bu, ['BU-T']), 403)
+    await expectRefused(purge(deleter, bu, { ids: ['BU-T'] }), 403)
     expect(await exists('pg_business_unit', 'BU-T')).toBe(true)
     expect((await deleter.get<{ purge: boolean }>(`${bu.rowUrl('BU-T')}:capabilities`)).purge).toBe(false)
     expect((await admin.get<{ purge: boolean }>(`${bu.rowUrl('BU-T')}:capabilities`)).purge).toBe(true)
@@ -130,7 +130,7 @@ describe('#859 delete permanently', () => {
     const person = await makePerson({ full_name: 'Pg Person', email: 'pg-person@example.com' })
     await expectApiError(admin.post(`/api/table/Person:purge`, { ids: [person], reason: 'x', confirm: true }), { status: 417, message: expect.stringContaining('cannot be deleted permanently') })
     await expectApiError(admin.post(`/api/table/Role:purge`, { ids: ['Guest'], reason: 'x', confirm: true }), { status: 417, message: expect.stringContaining('cannot be deleted permanently') })
-    await expectApiError(admin.post(`/api/table/Table:purge`, { ids: ['Role'], reason: 'x', confirm: true }), { status: 417 })
+    await expectRefused(admin.post(`/api/table/Table:purge`, { ids: ['Role'], reason: 'x', confirm: true }), 417)
   })
 })
 
@@ -148,7 +148,7 @@ describe('#859 delete permanently, Codex review round 4', () => {
     // Private work keeps its own lifecycle: its deletion record could not
     // stay readable once the row is gone (Codex round 6).
     await expectApiError(preview(admin, notebook, [row.row_id]), { status: 417, message: expect.stringContaining('cannot be deleted permanently') })
-    await expectApiError(purge(admin, notebook, { ids: [row.row_id] }), { status: 417 })
+    await expectRefused(purge(admin, notebook, { ids: [row.row_id] }), 417)
     expect(await sql.unsafe('select 1 from featherbase.pg_private_notebook where row_id = $1', [row.row_id])).toHaveLength(1)
   })
 
@@ -311,7 +311,7 @@ describe('#859 Codex review round 8', () => {
     const plan = await preview(owner, bu, ['BU-T'])
     const lineGroups = plan.groups.filter((g) => g.table === 'Pg Shared Line')
     expect(lineGroups.map((g) => [(g as unknown as { parent_table: string }).parent_table, g.action]).sort()).toEqual([['Pg Priv Doc', 'blocked'], ['Pg Pub Doc', 'delete']])
-    await expectApiError(purge(owner, bu, { ids: ['BU-T'] }), { status: 417 })
+    await expectRefused(purge(owner, bu, { ids: ['BU-T'] }), 417)
     expect(await sql.unsafe('select 1 from featherbase.pg_shared_line where parent = $1', [mine.row_id])).toHaveLength(1)
   })
 })
@@ -335,7 +335,7 @@ describe('#859 links to a row of any Table (#881)', () => {
     expect(await admin.get<Record<string, unknown>>(decision.rowUrl(onBu.row_id))).toMatchObject({ about_table: BU, about_row: null })
     expect(await admin.get<Record<string, unknown>>(decision.rowUrl(onStore.row_id))).toMatchObject({ about_table: STORE, about_row: 'S-K' })
     await purge(admin, store, { ids: ['S-K'] })
-    expect((await admin.fetch(decision.rowUrl(onStore.row_id))).status).toBe(404)
+    await expectStatus(await admin.fetch(decision.rowUrl(onStore.row_id)), 404)
   })
 })
 
@@ -445,7 +445,7 @@ describe('#859 Codex review round 13', () => {
     const url = `${bu.url}:purge_run_remaining?run_id=${run.run_id}`
     expect(await admin.get(url)).toEqual({ remaining: 1 })
     const plain = await createUser({ roles: [] })
-    await expectApiError(plain.get(url), { status: 403 })
+    await expectRefused(plain.get(url), 403)
     await purge(admin, bu, { run_id: run.run_id })
     expect(await admin.get(url)).toEqual({ remaining: 0 })
   })
@@ -454,12 +454,12 @@ describe('#859 Codex review round 13', () => {
 describe('#859 delete permanently: the rest of the paths', () => {
   test('bad requests are refused, and nothing changes', async ({ admin, createUser }) => {
     const { bu } = await setup(admin)
-    await expectApiError(admin.get(`${bu.url}:purge_preview?ids=not-json`), { status: 400 })
+    await expectRefused(admin.get(`${bu.url}:purge_preview?ids=not-json`), 400)
     await expectApiError(admin.get(`${bu.url}:purge_preview`), { status: 417, message: expect.stringContaining('Expected') })
     await expectApiError(admin.get(`${bu.url}:purge_preview?ids=${encodeURIComponent('["BU-T"]')}&links=sideways`), { status: 417, message: expect.stringContaining("links must be") })
-    await expectApiError(preview(admin, bu, ['BU-NOPE']), { status: 404 })
-    await expectApiError(admin.get(`${bu.url}:purge_preview?run_id=no-such-run`), { status: 404 })
-    await expectApiError(admin.get(`${bu.url}:purge_run_remaining`), { status: 417 })
+    await expectRefused(preview(admin, bu, ['BU-NOPE']), 404)
+    await expectRefused(admin.get(`${bu.url}:purge_preview?run_id=no-such-run`), 404)
+    await expectRefused(admin.get(`${bu.url}:purge_run_remaining`), 417)
     await expectApiError(purge(admin, bu, { ids: ['BU-T'], reason: 5 }), { status: 417, fields: { reason: 'Required' } })
     await expectApiError(purge(admin, bu, { ids: ['BU-T'], reason: 'x'.repeat(1001) }), { status: 417, fields: { reason: 'Too long' } })
     void createUser

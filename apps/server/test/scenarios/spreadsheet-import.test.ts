@@ -8,6 +8,7 @@ import { describe, expect } from 'vitest'
 import type { CreateUserFn, SeedFn, TestClient } from 'feather-testing-postgres'
 import { test } from '../pg-test'
 import { scenarioFor } from '../scenario'
+import { expectStatus } from '../fixtures'
 import { importedZones, populations, populationsOf, zoneCount, type ImportedZones } from '../reimport-zones'
 
 const scenario = scenarioFor(test, 'spreadsheet-import')
@@ -29,7 +30,7 @@ async function analyzeKeys(person: TestClient, zones: ImportedZones) {
     method: 'POST',
     body: JSON.stringify({ analyze_keys: true, columns: ['zone_code'], rows: zones.rows.map(({ zone_code }) => ({ zone_code })) }),
   })
-  expect(res.status).toBe(201)
+  await expectStatus(res, 201)
   return res.json()
 }
 

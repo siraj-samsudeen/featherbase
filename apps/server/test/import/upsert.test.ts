@@ -3,7 +3,7 @@ import fc from 'fast-check'
 import { test } from '../pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../../src/db'
-import { grantRole } from '../fixtures'
+import { expectStatus, grantRole } from '../fixtures'
 
 // Spec 0004 (import upsert) — the contract, rule, and invariant layers.
 // UPS-R1: the import boundary learns update (key_column, permissions,
@@ -163,7 +163,7 @@ describe('UPS-R1: the import boundary learns update', () => {
         ],
       }),
     })
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
     const after = await rowsByZone(admin)
     expect(after).toEqual(before) // the permitted insert did NOT land
     const logs = await admin.get<{ data: unknown[] }>(
@@ -193,7 +193,7 @@ describe('UPS-R1: the import boundary learns update', () => {
         ],
       }),
     })
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
     const byZone = await rowsByZone(admin)
     expect(Number(byZone.Alpha.pop)).toBe(12000)
     expect(byZone.Newton).toBeUndefined()
@@ -219,7 +219,7 @@ describe('UPS-R1: the import boundary learns update', () => {
       method: 'POST',
       body: JSON.stringify({ key_column: 'zone', rows: [{ zone: 'Mine', pop: 11 }] }),
     })
-    expect(ok.status).toBe(201)
+    await expectStatus(ok, 201)
     expect(((await ok.json()) as { updated: number }).updated).toBe(1)
 
     // …but a run touching the other user's row is refused whole.
@@ -233,7 +233,7 @@ describe('UPS-R1: the import boundary learns update', () => {
         ],
       }),
     })
-    expect(refused.status).toBe(403)
+    await expectStatus(refused, 403)
     const byZone = await rowsByZone(admin)
     expect(Number(byZone.Mine.pop)).toBe(11) // the permitted half did not land either
     expect(Number(byZone.Theirs.pop)).toBe(2)
@@ -289,7 +289,7 @@ describe('UPS-R1: the import boundary learns update', () => {
       const response = await admin.fetch(PATH, {
         method: 'POST', body: JSON.stringify({ ...options, rows }),
       })
-      expect(response.status).toBe(417)
+      await expectStatus(response, 417)
       expect(await response.json()).toEqual({ error: { type: 'ValidationError', message } })
       expect(await importState()).toEqual(before)
     }
@@ -834,7 +834,7 @@ describe('#851 permission-safe matching suggestions', () => {
         method: 'POST',
         body: JSON.stringify({ analyze_keys: true, ...options, rows: [{ zone: 'Alpha', pop: 13 }] }),
       })
-      expect(response.status).toBe(417)
+      await expectStatus(response, 417)
       expect(await response.json()).toEqual({ error: { type: 'ValidationError', message } })
       expect(await importState()).toEqual(before)
     })
@@ -890,7 +890,7 @@ describe('#851 permission-safe matching suggestions', () => {
       const response = await admin.fetch(PATH, { method: 'POST', body: JSON.stringify({
         analyze_keys: true, columns: ['zone'], rows: [{ zone: 'Alpha' }],
       }) })
-      expect(response.status).toBe(500)
+      await expectStatus(response, 500)
       expect(await response.json()).toEqual({ error: { type: 'InternalError', message: 'Internal server error' } })
     } finally {
       await sql`rollback to savepoint analysis_read_fault`
@@ -915,14 +915,14 @@ describe('#851 permission-safe matching suggestions', () => {
     const response = await user.fetch(PATH, { method: 'POST', body: JSON.stringify({
       analyze_keys: true, columns: ['zone'], rows: [{ zone: 'Alpha' }, { zone: 'Bravo' }],
     }) })
-    expect(response.status).toBe(201)
+    await expectStatus(response, 201)
     expect(await response.json()).toEqual({ key_candidates: [
       { column: 'zone', matched: 2, complete: true, can_match: false },
     ] })
     const keyed = await user.fetch(PATH, { method: 'POST', body: JSON.stringify({
       key_column: 'zone', rows: [{ zone: 'Alpha', pop: 1 }],
     }) })
-    expect(keyed.status).toBe(403)
+    await expectStatus(keyed, 403)
     expect(await importState()).toEqual(before)
   })
 
@@ -938,7 +938,7 @@ describe('#851 permission-safe matching suggestions', () => {
     const response = await user.fetch(PATH, { method: 'POST', body: JSON.stringify({
       analyze_keys: true, columns: ['zone'], rows: [{ zone: 'Alpha' }, { zone: 'Bravo' }],
     }) })
-    expect(response.status).toBe(201)
+    await expectStatus(response, 201)
     expect(await response.json()).toEqual({ key_candidates: [
       { column: 'zone', matched: 2, complete: true, can_match: false },
     ] })
@@ -965,7 +965,7 @@ describe('#851 permission-safe matching suggestions', () => {
     const response = await user.fetch(PATH, { method: 'POST', body: JSON.stringify({
       analyze_keys: true, columns: ['zone'], rows: [{ zone: 'Alpha' }],
     }) })
-    expect(response.status).toBe(201)
+    await expectStatus(response, 201)
     expect(await response.json()).toEqual({ key_candidates: [] })
   })
 
@@ -1021,7 +1021,7 @@ describe('#851 permission-safe matching suggestions', () => {
     const response = await user.fetch(PATH, { method: 'POST', body: JSON.stringify({
       analyze_keys: true, columns: ['zone'], rows: [{ zone: 'Alpha' }],
     }) })
-    expect(response.status).toBe(201)
+    await expectStatus(response, 201)
     expect(await response.json()).toEqual({ key_candidates: [] })
   })
 })

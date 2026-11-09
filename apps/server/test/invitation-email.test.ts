@@ -8,7 +8,7 @@ import { parseInstanceAddresses } from '../src/instance-addresses'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { makePerson } from './fixtures'
+import { expectStatus, makePerson } from './fixtures'
 import { configureGoogle } from './identity-fixtures'
 import { googleSignIn, redeemSession } from './google-mock'
 import { _setInvitationDeliveryForTests, _setInvitationHooksForTests, composeInvitation } from '../src/invitation-email'
@@ -229,7 +229,7 @@ describe('hardening', () => {
         headers: { host: 'attacker.example.net' },
         body: JSON.stringify({ method: 'google', email: 'prod.person@example.com' }),
       })
-      expect(res.status).toBe(201)
+      await expectStatus(res, 201)
       const body = (await res.json()) as Record<string, any>
       expect(body.invitation_email).toEqual({ status: 'failed', error: expect.stringMatching(/INSTANCE_ADDRESSES/) })
       expect(body.invitation_sent_at).toBeNull()

@@ -4,6 +4,7 @@ import { registerApp, installApp, uninstallApp } from '../src/apps'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import type { AppManifest } from '../src/apps'
+import { expectStatus } from './fixtures'
 
 // PLAT-004 (#54): an app manifest declares its own roles and DocPerm grants.
 // Install materializes them (roles before perms), adoption never redefines a
@@ -89,17 +90,17 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
         method: 'POST',
         body: JSON.stringify({ title: 'from scoped user' }),
       })
-      expect(ins.status).toBe(201)
+      await expectStatus(ins, 201)
       const created = (await ins.json()) as { row_id: string; title: string }
       expect(created.title).toBe('from scoped user')
-      expect((await user.fetch(`/api/table/${encodeURIComponent(DT)}`)).status).toBe(200)
+      await expectStatus(await user.fetch(`/api/table/${encodeURIComponent(DT)}`), 200)
 
       // …but is refused elsewhere: no delete grant, no User read.
       expect(
         (await user.fetch(`/api/table/${encodeURIComponent(DT)}/${created.row_id}`, { method: 'DELETE' }))
           .status,
       ).toBe(403)
-      expect((await user.fetch('/api/table/Person')).status).toBe(403)
+      await expectStatus(await user.fetch('/api/table/Person'), 403)
     } finally {
       await unwire()
     }
@@ -117,7 +118,7 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
     try {
       await installApp(APP)
       const user = await createUser({ roles: [ROLE] })
-      expect((await user.fetch('/api/table/ToDo')).status).toBe(200)
+      await expectStatus(await user.fetch('/api/table/ToDo'), 200)
     } finally {
       await unwire()
     }
@@ -279,7 +280,7 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
         method: 'POST',
         body: JSON.stringify({ title: 'kept' }),
       })
-      expect(ins.status).toBe(201)
+      await expectStatus(ins, 201)
       const created = (await ins.json()) as { title: string | null }
       expect(created.title).toBe('kept')
     } finally {

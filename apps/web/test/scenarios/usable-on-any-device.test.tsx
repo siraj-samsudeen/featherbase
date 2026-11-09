@@ -13,7 +13,10 @@ import { describe, onTestFinished, vi } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { installApp, isInstalled, uninstallApp } from 'server/src/apps'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp, onScreen } from '../pg-test'
+import { test, expect, renderApp, onScreen, inside } from '../pg-test'
+
+/** The element with this data-testid reads exactly this. */
+const reads = (testId: string, text: string) => inside(onScreen(), testId, (el) => el.assertExactText(text))
 
 const scenario = scenarioFor(test, 'usable-on-any-device')
 const PAGE_SIZE = 20
@@ -186,29 +189,27 @@ describe('usable-on-any-device', () => {
     })
     await step('the user can still select rows one at a time or all on the page, and act on them in bulk', async () => {
       await user.click(within(cardEls()[0]!).getByTestId('row-check'))
-      expect(screen.getByTestId('bulk-count').textContent!.trim()).toBe('1 selected')
+      await reads('bulk-count', '1 selected')
       await user.click(screen.getByTestId('select-all'))
-      expect(screen.getByTestId('bulk-count').textContent!.trim()).toBe(`${PAGE_SIZE} selected`)
+      await reads('bulk-count', `${PAGE_SIZE} selected`)
       const onPage = cardEls().map((_, n) => readCard(n).rowId!)
-      const field = (await screen.findByTestId('bulk-edit-field', {}, { timeout: 8000 })) as HTMLSelectElement
-      const shelf = [...field.options].find((o) => o.textContent!.trim() === 'Shelf')!
-      await user.selectOptions(field, shelf)
-      await user.type(screen.getByTestId('bulk-edit-value'), 'Moved')
-      await onScreen().clickButton('Apply')
+      await onScreen().selectOption('Field to edit', 'Shelf').fillIn('New value', 'Moved').clickButton('Apply')
       await waitFor(async () => {
         const stored = await Promise.all(onPage.map((id) => admin.get<{ shelf: string }>(`/api/table/${encodeURIComponent(STOCK_COUNT)}/${id}`)))
         expect(stored.map((r) => r.shelf)).toEqual(onPage.map(() => 'Moved'))
       }, { timeout: 8000 })
     })
     await step("the user can sort by any listed column, show a row's nested rows in place, and page through the rows", async () => {
+      // Every column offered, read whole: assertOptions checks the list in order.
       const sortBy = screen.getByTestId('list-sort-by') as HTMLSelectElement
       const offered = [...sortBy.options].map((o) => o.textContent!.trim()).filter((o) => o !== 'Default order')
       for (const label of ['Item', 'Status', ...OTHER_LISTED]) expect(offered, `"Sort by" does not offer ${label}`).toContain(label)
       const last = `Item ${ROW_COUNT}`
-      await user.selectOptions(sortBy, [...sortBy.options].find((o) => o.textContent!.trim() === 'Item')!)
+      await onScreen().selectOption('Sort by', 'Item')
+      // Only when ascending: the DSL has no verb that branches on what the page shows.
       const toggle = await screen.findByTestId('list-sort-dir')
       if (!(toggle.getAttribute('aria-label') ?? '').includes('descending')) await user.click(toggle)
-      await waitFor(() => expect(screen.getByTestId('list-sort-dir').getAttribute('aria-label')).toContain('descending'))
+      await inside(onScreen(), 'list-sort-dir', (order) => order.assertAttribute('aria-label', 'Sort order: descending'))
       await waitFor(() => expect(readCard(0).title).toBe(last), { timeout: 8000 })
 
       await user.click(within(cardEls()[0]!).getByTestId('row-expand'))
@@ -216,9 +217,9 @@ describe('usable-on-any-device', () => {
       await within(nested).findAllByRole('table', {}, { timeout: 8000 })
       await waitFor(() => expect(nested.textContent, 'the nested rows').toContain(`Count bin ${ROW_COUNT}`), { timeout: 8000 })
 
-      expect(screen.getByTestId('page-info').textContent!.trim()).toBe(`1–${PAGE_SIZE} of ${ROW_COUNT}`)
+      await reads('page-info', `1–${PAGE_SIZE} of ${ROW_COUNT}`)
       await onScreen().clickButton('Next')
-      await waitFor(() => expect(screen.getByTestId('page-info').textContent!.trim()).toBe(`${PAGE_SIZE + 1}–${ROW_COUNT} of ${ROW_COUNT}`))
+      await reads('page-info', `${PAGE_SIZE + 1}–${ROW_COUNT} of ${ROW_COUNT}`)
       await waitFor(() => expect(cardEls()).toHaveLength(ROW_COUNT - PAGE_SIZE))
     })
   })

@@ -13,7 +13,7 @@ import { invalidateSources } from '../src/sources/registry'
 import { discoverPackages } from '../src/runtime-packages'
 import { decideColumn, isNotFitting, normalize, toMaster } from '../src/master-sync'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
-import { grantRole, makeTable } from './fixtures'
+import { expectRefused, grantRole, makeTable } from './fixtures'
 import { readFileSync } from 'node:fs'
 import { makeClient } from 'feather-testing-postgres'
 import { runOneJob } from '../src/jobs'
@@ -260,7 +260,7 @@ describe('Master sync (#927)', { timeout: 60_000 }, () => {
     await makeTable(admin, { name: 'Sync Untracked', id_pattern: 'prompt', columns: ['full_name', 'phone', 'floor_role', 'employment_status'] })
     await sql`update table_def set track_changes = false where name = 'Sync Untracked'`
     invalidateMeta('Sync Untracked')
-    await expect(admin.post(`${COPY}:set_master_sync`, { rule: { ...rule, master_table: 'Sync Untracked' } })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(admin.post(`${COPY}:set_master_sync`, { rule: { ...rule, master_table: 'Sync Untracked' } }), 417)
   })
 
   test('a value the master refuses is raised, and every other row still syncs', async ({ admin }) => {
@@ -392,13 +392,13 @@ describe('Master sync (#927)', { timeout: 60_000 }, () => {
       [{ columns: {} }, /at least one column/],
     ] as [Row, RegExp][])
       await expect(set(changes)).rejects.toThrow(message)
-    await expect(admin.post(`${COPY}:set_master_sync`, {})).rejects.toMatchObject({ status: 417 })
-    await expect(admin.post(`${COPY}:set_master_sync`, { rule: 'not a rule' })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(admin.post(`${COPY}:set_master_sync`, {}), 417)
+    await expectRefused(admin.post(`${COPY}:set_master_sync`, { rule: 'not a rule' }), 417)
     // A column may come from the copied row's own key; a link may name no key kind.
     await set({ columns: { phone: { source: 'row_id', owner: 'featherbase' } } })
     await admin.post(`${COPY}:set_master_sync`, { rule: null })
     expect((await admin.get<Row>(`${COPY}:master_sync`)).rule).toBeNull()
-    await expect(run(admin)).rejects.toMatchObject({ status: 404 })
+    await expectRefused(run(admin), 404)
     expect((await admin.post<Row>(`${COPY}:copy_again`, {})).master_sync).toBeUndefined()
   })
 
@@ -428,13 +428,13 @@ describe('Master sync (#927)', { timeout: 60_000 }, () => {
     await run(admin)
     await sql`update table_def set track_changes = false where name = 'Sync Person'`
     invalidateMeta('Sync Person')
-    await expect(run(admin)).rejects.toMatchObject({ status: 417 })
+    await expectRefused(run(admin), 417)
     await sql`update table_def set track_changes = true where name = 'Sync Person'`
     invalidateMeta('Sync Person')
     // A column that became read-only is refused too: a save would silently drop it and the baseline would move on.
     await sql`update column_def set read_only = true where parent = 'Sync Person' and column_name = 'phone'`
     invalidateMeta('Sync Person')
-    await expect(run(admin)).rejects.toMatchObject({ status: 417 })
+    await expectRefused(run(admin), 417)
     await sql`update column_def set read_only = false where parent = 'Sync Person' and column_name = 'phone'`
     invalidateMeta('Sync Person')
     await changeStandin(dir, 'sales', [`update ${source} set phone = '114' where emp_id = 'E1'`])
@@ -457,10 +457,10 @@ describe('Master sync (#927)', { timeout: 60_000 }, () => {
     expect(retried.tickets).toHaveLength(1)
     expect(await sunk()).toHaveLength(1)
     const clerk = await createUser({ roles: ['All'] })
-    await expect(clerk.post(`${COPY}:master_sync_run`, {})).rejects.toMatchObject({ status: 403 })
-    await expect(clerk.post(`${COPY}:set_master_sync`, { rule })).rejects.toMatchObject({ status: 403 })
-    await expect(admin.post(`${COPY}:set_master_sync`, { rule: { ...rule, columns: { nope: { source: 'name', owner: 'source' } } } })).rejects.toMatchObject({ status: 417 })
-    await expect(admin.post(`${COPY}:set_master_sync`, { rule: { ...rule, columns: { full_name: { source: 'name', owner: 'everyone' } } } })).rejects.toMatchObject({ status: 417 })
-    await expect(admin.post('/api/table/Sync%20Person:set_master_sync', { rule })).rejects.toMatchObject({ status: 404 })
+    await expectRefused(clerk.post(`${COPY}:master_sync_run`, {}), 403)
+    await expectRefused(clerk.post(`${COPY}:set_master_sync`, { rule }), 403)
+    await expectRefused(admin.post(`${COPY}:set_master_sync`, { rule: { ...rule, columns: { nope: { source: 'name', owner: 'source' } } } }), 417)
+    await expectRefused(admin.post(`${COPY}:set_master_sync`, { rule: { ...rule, columns: { full_name: { source: 'name', owner: 'everyone' } } } }), 417)
+    await expectRefused(admin.post('/api/table/Sync%20Person:set_master_sync', { rule }), 404)
   })
 })

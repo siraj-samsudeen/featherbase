@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { makePerson } from './fixtures'
+import { expectStatus, makePerson } from './fixtures'
 import { applySeedPack } from '../src/seed-packs'
 import { issueSession } from '../src/auth'
 import { newIdentifierId } from '../src/person-identifiers'
@@ -166,7 +166,7 @@ describe('the check on a live instance', () => {
     _setLeaverSummarySender(async (m) => sent.push(m))
     const { token } = await issueSession(leaver)
     const whoami = () => api.fetch('/api/whoami', { headers: { authorization: `Bearer ${token}` } })
-    expect((await whoami()).status).toBe(200)
+    await expectStatus(await whoami(), 200)
 
     const run = await runLeaverCheck({ today: TODAY })
 
@@ -174,7 +174,7 @@ describe('the check on a live instance', () => {
     expect(await enabled(leaver)).toBe(false)
     expect(await enabled(stayer)).toBe(true)
     expect(await enabled(bossLeaver)).toBe(true)
-    expect((await whoami()).status).toBe(401)
+    await expectStatus(await whoami(), 401)
     const [logged] = await sql`select "user", operation from activity_log where operation like ${`disabled_as_leaver for ${leaver}%`}`
     expect(logged).toEqual({ user: 'system', operation: `disabled_as_leaver for ${leaver}: exit date 20-Oct-2026 has passed` })
     const mine = sent.filter((m) => m.to === 'manager@example.com')

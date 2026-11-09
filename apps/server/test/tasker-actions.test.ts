@@ -7,7 +7,7 @@ import { discoverPackages } from '../src/runtime-packages'
 import { installApp, isInstalled, uninstallApp } from '../src/apps'
 import { sql } from '../src/db'
 import type { TestClient, CreateUserFn } from 'feather-testing-postgres'
-import { expectApiError } from './fixtures'
+import { expectApiError, expectRefused } from './fixtures'
 
 const test = base.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(taskerClient(admin)),
@@ -55,7 +55,7 @@ test('simple promotion copies optional Markdown, removes original and replays on
     expect(result.result.retainedTask).toBe(false)
     expect(await member.post(promote, request)).toEqual(result)
     expect(await member.get(`/api/table/tasker.project/${result.result.projectId}`)).toMatchObject({ project_name: task.task_title, description })
-    await expect(admin.get(`/api/table/tasker.task/${task.row_id}`)).rejects.toMatchObject({ status: 404 })
+    await expectRefused(admin.get(`/api/table/tasker.task/${task.row_id}`), 404)
   }
   expect(await sql`select row_id from tasker.project`).toHaveLength(2)
 })
@@ -102,7 +102,7 @@ test('concurrent comment becomes rich and stale task edits reject before creatin
   await admin.post('/api/save_row', { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: task.row_id, content: 'Arrived after preview' } })
   expect(await admin.post(promote, envelope(task))).toEqual({ result: { confirmationRequired: true } })
   await admin.post('/api/save_row', { table: 'tasker.task', row: { row_id: task.row_id, updated_at: task.updated_at, task_title: 'Changed title' } })
-  await expect(admin.post(promote, envelope(task, true))).rejects.toMatchObject({ status: 417 })
+  await expectRefused(admin.post(promote, envelope(task, true)), 417)
   expect(await sql`select row_id from tasker.project`).toHaveLength(0)
 })
 
@@ -123,12 +123,12 @@ test('failure after project creation rolls back project task and idempotency rec
 test('accidental deletion requires confirmation and refuses retained work, history and stale revision', async ({ admin }) => {
   await install()
   const task = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Accidental capture' } })
-  await expect(admin.post(discard, envelope(task))).rejects.toMatchObject({ status: 417 })
-  await expect(admin.post(discard, envelope({ ...task, updated_at: '2000-01-01' }, true))).rejects.toMatchObject({ status: 417 })
+  await expectRefused(admin.post(discard, envelope(task)), 417)
+  await expectRefused(admin.post(discard, envelope({ ...task, updated_at: '2000-01-01' }, true)), 417)
   const request = envelope(task, true)
   expect(await admin.post(discard, request)).toEqual({ result: { deleted: true } })
   expect(await admin.post(discard, request)).toEqual({ result: { deleted: true } })
-  await expect(admin.get(`/api/table/tasker.task/${task.row_id}`)).rejects.toMatchObject({ status: 404 })
+  await expectRefused(admin.get(`/api/table/tasker.task/${task.row_id}`), 404)
   const kept = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Keep discussion' } })
   await admin.post('/api/save_row', { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: kept.row_id, content: 'Meaningful discussion' } })
   expect(await admin.post(discard, envelope(kept, true))).toMatchObject({ result: { deleted: false, counts: { comments: 1 } } })
@@ -139,7 +139,7 @@ test('Tasker raw DELETE cannot bypass missing revision or retained discussion', 
   await install()
   const task = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Keep evidence through both delete paths' } })
   await admin.post('/api/save_row', { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: task.row_id, content: 'Retain 37, not 83' } })
-  await expect(admin.delete(`/api/table/tasker.task/${task.row_id}`)).rejects.toMatchObject({ status: 409 })
+  await expectRefused(admin.delete(`/api/table/tasker.task/${task.row_id}`), 409)
   await expect(admin.delete(`/api/table/tasker.task/${task.row_id}?updated_at=${encodeURIComponent(String(task.updated_at))}`)).rejects.toMatchObject({
     status: 417, fields: { comments: '1', versions: '0', references: '0' },
   })

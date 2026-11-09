@@ -8,7 +8,7 @@ import { sql } from '../src/db'
 import { normaliseValue, verhoeffValid } from '../src/identifiers'
 import { addIdentifier, deleteIdentifier, listIdentifiers, updateIdentifier } from '../src/person-identifiers'
 import { applySeedPack } from '../src/seed-packs'
-import { expectApiError, makePerson, grantRole } from './fixtures'
+import { expectApiError, expectRefused, expectStatus, grantRole, makePerson } from './fixtures'
 import { configureDelegated, inviteGoogleRaw } from './identity-fixtures'
 import { saveIdentifierSystem } from '../src/seed-packs'
 
@@ -36,11 +36,11 @@ describe('normalising', () => {
     const add = await admin.fetch(`/api/people/${alpha}/identifiers`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ system, value: '12A' }),
     })
-    expect(add.status).toBe(417)
+    await expectStatus(add, 417)
     expect(await add.json()).toEqual({ error: { type: 'ValidationError', message: 'Digits only', fields: { value: 'invalid_format' } } })
     expect(await snapshot()).toEqual(before)
     const search = await admin.fetch(`/api/identifiers?${new URLSearchParams({ system, value: '12A' })}`)
-    expect(search.status).toBe(417)
+    await expectStatus(search, 417)
     expect(await search.json()).toEqual({ error: { type: 'ValidationError', message: 'Digits only', fields: { value: 'invalid_format' } } })
     expect(await snapshot()).toEqual(before)
     for (const [person, value] of [[alpha, '12 03'], [bravo, '98-76']]) {
@@ -162,9 +162,9 @@ describe('identifiers with history', () => {
     const p = await makePerson({ full_name: 'Fed' })
     const { identifier } = await addIdentifier(p, { system: 'stylehr-employee-code', value: 'RR-9' }, 'sync', ROSTER)
     const res = await admin.fetch(`/api/identifiers/${identifier.id}`, { method: 'PATCH', body: JSON.stringify({ valid_to: '2030-01-01' }) })
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
     expect(((await res.json()) as { error: { message: string } }).error.message).toMatch(/comes from stylehr-roster-sync; correct it there/)
-    await expect(admin.post(`/api/people/${p}/identifiers`, { system: 'stylehr-employee-code', value: 'RR-10' })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(admin.post(`/api/people/${p}/identifiers`, { system: 'stylehr-employee-code', value: 'RR-10' }), 403)
   })
 
   test('a code row points at the HR record it belongs to; a record of someone else is refused', async () => {
@@ -249,7 +249,7 @@ describe('dates and audit (Codex review on #385)', () => {
     const patch = (body: unknown) => admin.fetch(`/api/identifiers/${identifier.id}`, { method: 'PATCH', body: JSON.stringify(body) })
     const correction = { valid_from: '', valid_to: null, assigner: null, worker_type: null, note: 'Dates unknown; firm corrected' }
     const response = await patch(correction)
-    expect(response.status).toBe(200)
+    await expectStatus(response, 200)
     expect(await response.json()).toMatchObject({ result: 'updated', identifier: {
       id: identifier.id, valid_from: null, valid_to: null, assigner: '', worker_type: null, note: correction.note,
     } })
@@ -259,7 +259,7 @@ describe('dates and audit (Codex review on #385)', () => {
     const before = await sql`select * from person_identifier where person_id = ${p} order by id`
     const auditBefore = await sql`select * from activity_log where operation like ${'identifier_%' + p + '%'} order by row_id`
     const unchanged = await patch(correction)
-    expect(unchanged.status).toBe(200)
+    await expectStatus(unchanged, 200)
     expect(await unchanged.json()).toMatchObject({ result: 'unchanged', identifier: { id: identifier.id } })
     expect(await sql`select * from person_identifier where person_id = ${p} order by id`).toEqual(before)
     expect(await sql`select * from activity_log where operation like ${'identifier_%' + p + '%'} order by row_id`).toEqual(auditBefore)
@@ -327,7 +327,7 @@ describe('who sees what', () => {
     expect((await dqm.get<{ identifiers: { system: string }[] }>(`/api/people/${p}/identifiers`)).identifiers.map((i) => i.system).sort()).toEqual(['email', 'phone'])
     // Hidden values: searchable by exact value, by restricted readers only.
     expect((await admin.get<{ people: { person_id: string }[] }>('/api/identifiers?system=stylehr-employee-id&value=900001')).people.map((x) => x.person_id)).toEqual([p])
-    await expect(reader.get('/api/identifiers?system=stylehr-employee-id&value=900001')).rejects.toMatchObject({ status: 403 })
+    await expectRefused(reader.get('/api/identifiers?system=stylehr-employee-id&value=900001'), 403)
     expect((await reader.get<{ people: { person_id: string }[] }>('/api/identifiers?system=email&value=SHOWN@x.test')).people.map((x) => x.person_id)).toEqual([p])
   })
 })
@@ -367,7 +367,7 @@ describe('search respects who may read people (Codex review on #385)', () => {
     const secretPath = `/api/identifiers?${new URLSearchParams({ system: secret, value: '234123412346' })}`
     const normalPath = `/api/identifiers?${new URLSearchParams({ system: normal, value: 'alpha-42' })}`
     const refused = await admin.fetch(secretPath)
-    expect(refused.status).toBe(417)
+    await expectStatus(refused, 417)
     expect(await refused.json()).toEqual({ error: {
       type: 'ValidationError',
       message: 'Searching this identifier needs fingerprinting, which is not switched on',
@@ -379,7 +379,7 @@ describe('search respects who may read people (Codex review on #385)', () => {
     }] })
     for (const path of [normalPath, secretPath]) {
       const response = await denied.fetch(path)
-      expect(response.status).toBe(403)
+      await expectStatus(response, 403)
       expect(await response.json()).toEqual({ error: {
         type: 'PermissionError', message: 'You may not search people',
       } })
@@ -391,7 +391,7 @@ describe('search respects who may read people (Codex review on #385)', () => {
     const p = await makePerson({ full_name: 'In scope', email: 'scoped.search@x.test' })
     const q = await makePerson({ full_name: 'Out of scope', email: 'other.search@x.test' })
     const none = await createUser({ email: 'no.person.read@x.test' })
-    await expect(none.get('/api/identifiers?system=email&value=scoped.search@x.test')).rejects.toMatchObject({ status: 403 })
+    await expectRefused(none.get('/api/identifiers?system=email&value=scoped.search@x.test'), 403)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Person Searcher' } })
     await grantRole(admin, { table: 'Person', role: 'Person Searcher', can_read: true })
     const scoped = await createUser({ email: 'scoped.searcher@x.test', roles: ['Person Searcher'] })
@@ -433,7 +433,7 @@ describe('built-in and replaced records', () => {
     })
     const before = await sql`select id, system, value, source from person_identifier where person_id = ${person} order by id`
     const response = await admin.fetch(`/api/table/Person/${person}`, { method: 'DELETE' })
-    expect(response.status).toBe(409)
+    await expectStatus(response, 409)
     expect(await response.json()).toMatchObject({ error: { type: 'ConflictError', fields: { code: 'has_identifiers' } } })
     expect(await admin.get(`/api/table/Person/${person}`)).toMatchObject({ full_name: 'Keep this history', email: 'keep-history@x.test' })
     // on_trash deletes mirrors before checking independent history; its refusal
@@ -468,12 +468,12 @@ describe('the freeze: employee codes by hand until the roster sync runs (review 
     const p = await makePerson({ full_name: 'New Joiner' })
     const addable = (await admin.get<{ addable: { row_id: string; note_required: boolean }[] }>(`/api/people/${p}/identifiers`)).addable
     expect(addable.find((s) => s.row_id === STYLEHR_CODE)).toEqual({ row_id: STYLEHR_CODE, label: 'StyleHR employee code', note_required: true })
-    await expect(admin.post(`/api/people/${p}/identifiers`, { system: STYLEHR_CODE, value: 'rr-20001' })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(admin.post(`/api/people/${p}/identifiers`, { system: STYLEHR_CODE, value: 'rr-20001' }), 417)
     const { identifier } = await admin.post<{ identifier: { verified: boolean; source: string; note: string; value: string } }>(
       `/api/people/${p}/identifiers`, { system: STYLEHR_CODE, value: 'rr-20001', note: 'Joiner 23-Oct, mailed by HR' })
     expect(identifier).toMatchObject({ value: 'RR-20001', verified: false, source: 'manual', note: 'Joiner 23-Oct, mailed by HR' })
     // The record number is not hand-editable, even now.
-    await expect(admin.post(`/api/people/${p}/identifiers`, { system: 'stylehr-employee-id', value: '90001', note: 'x' })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(admin.post(`/api/people/${p}/identifiers`, { system: 'stylehr-employee-id', value: '90001', note: 'x' }), 403)
 
     const { configureDelegated } = await import('./identity-fixtures')
     await configureDelegated()
@@ -483,7 +483,7 @@ describe('the freeze: employee codes by hand until the roster sync runs (review 
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
     try {
       const res = await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: 'RR-20001', pwd: '', method: 'stylehr' }) })
-      expect(res.status).toBe(200)
+      await expectStatus(res, 200)
       expect(((await res.json()) as { user: { row_id: string } }).user.row_id).toBe(p)
     } finally {
       vi.unstubAllEnvs()
@@ -496,11 +496,11 @@ describe('the freeze: employee codes by hand until the roster sync runs (review 
     const p = await makePerson({ full_name: 'Wrong Code' })
     const { identifier: carried } = await addIdentifier(p, { system: STYLEHR_CODE, value: 'RR-1' }, 'migration', { internal: { source: 'migration', verified: true } })
     const patch = (id: string, body: unknown) => admin.fetch(`/api/identifiers/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
-    expect((await patch(carried.id, { end: true })).status).toBe(417)
-    expect((await patch(carried.id, { end: true, note: 'Wrong code; HR mail 23-Oct' })).status).toBe(200)
-    expect((await admin.fetch(`/api/identifiers/${carried.id}`, { method: 'DELETE' })).status).toBe(403)
+    await expectStatus(await patch(carried.id, { end: true }), 417)
+    await expectStatus(await patch(carried.id, { end: true, note: 'Wrong code; HR mail 23-Oct' }), 200)
+    await expectStatus(await admin.fetch(`/api/identifiers/${carried.id}`, { method: 'DELETE' }), 403)
     const { identifier: typed } = await admin.post<{ identifier: { id: string } }>(`/api/people/${p}/identifiers`, { system: STYLEHR_CODE, value: 'RR-2', note: 'Right code' })
-    expect((await admin.fetch(`/api/identifiers/${typed.id}`, { method: 'DELETE' })).status).toBe(200)
+    await expectStatus(await admin.fetch(`/api/identifiers/${typed.id}`, { method: 'DELETE' }), 200)
   })
 
   test('once the roster sync has written a code, the hand path closes; a non-manager never had it', async ({ admin, createUser }) => {
@@ -508,9 +508,9 @@ describe('the freeze: employee codes by hand until the roster sync runs (review 
     const p = await makePerson({ full_name: 'After Sync' })
     const someoneElse = await makePerson({ full_name: 'Synced' })
     const clerk = await createUser({ email: 'clerk.codes@x.test' })
-    await expect(clerk.post(`/api/people/${clerk.user}/identifiers`, { system: STYLEHR_CODE, value: 'RR-3', note: 'mine' })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(clerk.post(`/api/people/${clerk.user}/identifiers`, { system: STYLEHR_CODE, value: 'RR-3', note: 'mine' }), 403)
     await addIdentifier(someoneElse, { system: STYLEHR_CODE, value: 'RR-4' }, 'sync', ROSTER)
-    await expect(admin.post(`/api/people/${p}/identifiers`, { system: STYLEHR_CODE, value: 'RR-5', note: 'too late' })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(admin.post(`/api/people/${p}/identifiers`, { system: STYLEHR_CODE, value: 'RR-5', note: 'too late' }), 403)
   })
 })
 
@@ -526,7 +526,7 @@ describe('changing a value needs a read of its person (review on #385)', () => {
     const reviewer = await createUser({ email: 'scoped.reviewer@x.test', roles: ['Data Quality Manager'] })
     await admin.post('/api/save_row', { table: 'Data Scope', row: { person: reviewer.user, allow_table: 'Person', for_value: inScope } })
     const patch = (id: string) => reviewer.fetch(`/api/identifiers/${id}`, { method: 'PATCH', body: JSON.stringify({ note: 'checked' }) })
-    expect((await patch(a.identifier.id)).status).toBe(200)
+    await expectStatus(await patch(a.identifier.id), 200)
     expect([403, 404]).toContain((await patch(b.identifier.id)).status)
     expect([403, 404]).toContain((await reviewer.fetch(`/api/identifiers/${b.identifier.id}`, { method: 'DELETE' })).status)
     expect(await sql`select note from person_identifier where id = ${b.identifier.id}`).toEqual([{ note: null }])
@@ -626,7 +626,7 @@ describe('missing records and single current values', () => {
     })
     expect(await sql`select * from person_identifier where person_id = ${p} order by id`).toEqual(before)
     const ended = await admin.fetch(`/api/identifiers/${identifier.id}`, { method: 'PATCH', body: JSON.stringify({ valid_to: '2025-01-01' }) })
-    expect(ended.status).toBe(200)
+    await expectStatus(ended, 200)
     await admin.post(`/api/people/${p}/identifiers`, { system: 'single-badge', value: 'second', valid_from: '2025-01-01' })
     expect(await sql`select value, lower(valid)::text as valid_from, upper(valid)::text as valid_to
       from person_identifier where person_id = ${p} and system = 'single-badge' order by value`)
@@ -642,7 +642,7 @@ describe('write-through skips a provider value that does not fit its system', ()
     const p = await makePerson({ full_name: 'Misfit Link' })
     const { id } = await admin.post<{ id: string }>(`/api/people/${p}/identities`, { method: 'stylehr', subject: '900001', sign_in_name: 'misfit' })
     expect(await sql`select 1 from person_identifier where person_id = ${p} and system = 'phone'`).toEqual([])
-    expect((await admin.fetch(`/api/identities/${id}`, { method: 'DELETE' })).status).toBe(200)
+    await expectStatus(await admin.fetch(`/api/identities/${id}`, { method: 'DELETE' }), 200)
     expect(await sql`select ended_reason from sign_in_identity where id = ${id}`).toEqual([{ ended_reason: 'unlinked' }])
   })
 })

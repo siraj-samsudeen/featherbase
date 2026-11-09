@@ -9,7 +9,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { createTable } from '../src/table-engine'
 import { invalidateMeta } from '../src/meta'
-import { grantRole } from './fixtures'
+import { expectStatus, grantRole } from './fixtures'
 
 interface Card {
   label: string | null
@@ -333,7 +333,7 @@ describe('System membership comes from the current catalogue', () => {
     expect(links).toContainEqual({ label: 'Person', link_to: 'Person' })
     expect(links).toContainEqual({ label: 'Sign In Method', link_to: 'Sign In Method' })
     // Navigation resilience does not relax the metadata validation policy.
-    expect((await admin.fetch('/api/table/Person:meta')).status).toBe(417)
+    await expectStatus(await admin.fetch('/api/table/Person:meta'), 417)
   })
 
   test('System label resolution preserves unrelated metadata refusals', async ({ admin }) => {
@@ -343,7 +343,7 @@ describe('System membership comes from the current catalogue', () => {
       name: 'hp_unavailable.Settings', kind: 'settings', system: true, label: 'Unavailable settings',
     })}`
     const response = await admin.fetch('/api/home_pages')
-    expect(response.status).toBe(403)
+    await expectStatus(response, 403)
     expect(await response.json()).toEqual({ error: {
       type: 'PermissionError', message: 'App hp_unavailable is disabled or unavailable',
     } })

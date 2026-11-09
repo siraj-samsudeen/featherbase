@@ -9,7 +9,7 @@ import { sql } from '../src/db'
 import { deleteStored } from '../src/storage'
 import { requestPasswordReset } from '../src/password-reset'
 import { _setInvitationHooksForTests } from '../src/invitation-email'
-import { expectApiError, makePerson } from './fixtures'
+import { expectApiError, expectRefused, expectStatus, makePerson } from './fixtures'
 import { configureDelegated, configureGoogle, linkDelegated, setPasswordMethod } from './identity-fixtures'
 
 afterEach(() => _setInvitationHooksForTests(null))
@@ -44,10 +44,10 @@ describe('invalid route arguments leave stored state alone', () => {
     const before = await sql`select * from person_identifier where id = ${identifier.id}`
     const audit = await sql`select operation from activity_log where operation like ${`%${identifier.id}%`} order by row_id`
     const edit = await admin.fetch(`/api/identifiers/${identifier.id}`, { method: 'PATCH', body: '{"valid_to":' })
-    expect(edit.status).toBe(200)
+    await expectStatus(edit, 200)
     expect(await edit.json()).toMatchObject({ result: 'unchanged', identifier: { id: identifier.id } })
     const add = await admin.fetch(`/api/people/${person}/identifiers`, { method: 'POST', body: '{"system":' })
-    expect(add.status).toBe(404)
+    await expectStatus(add, 404)
     expect(await add.json()).toMatchObject({ error: { type: 'NotFoundError', message: 'Identifier system  not found' } })
     expect(await sql`select * from person_identifier where person_id = ${person}`).toEqual(before)
     expect(await sql`select operation from activity_log where operation like ${`%${identifier.id}%`} order by row_id`).toEqual(audit)
@@ -59,14 +59,14 @@ describe('invalid route arguments leave stored state alone', () => {
     const identity = await linkDelegated(person, 'shape-link')
     const before = await sql`select * from sign_in_identity where id = ${identity}`
     const response = await admin.fetch(`/api/identities/${identity}`, { method: 'PATCH', body: '{"person_id":' })
-    expect(response.status).toBe(200)
+    await expectStatus(response, 200)
     expect(await response.json()).toMatchObject({ id: identity, person_id: person, sign_in_name: 'shape-link' })
     expect(await sql`select * from sign_in_identity where id = ${identity}`).toEqual(before)
   })
 
   test('a variable report refuses an unreadable key without returning fingerprints', async ({ admin }) => {
     const response = await admin.fetch('/api/instance-settings/variables', { method: 'POST', body: '{"key":' })
-    expect(response.status).toBe(417)
+    await expectStatus(response, 417)
     const result = await response.json()
     expect(result).toMatchObject({ error: { type: 'ValidationError', fields: { key: 'at least 32 characters' } } })
     expect(result).not.toHaveProperty('variables')
@@ -75,7 +75,7 @@ describe('invalid route arguments leave stored state alone', () => {
 
   test('a report chart refuses truncated JSON before running any report', async ({ admin }) => {
     const response = await admin.fetch('/api/report_chart', { method: 'POST', body: '{"report":' })
-    expect(response.status).toBe(417)
+    await expectStatus(response, 417)
     expect(await response.json()).toMatchObject({ error: { type: 'ValidationError', message: 'Expected { report }' } })
   })
 
@@ -100,7 +100,7 @@ describe('invalid route arguments leave stored state alone', () => {
     for (const enabled of [true, false]) {
       await configureGoogle({ enabled, self_link: false })
       const response = await person.fetch('/api/oauth/google/link')
-      expect(response.status).toBe(403)
+      await expectStatus(response, 403)
       expect(await response.json()).toMatchObject({ error: { type: 'PermissionError', message: 'Linking Google is not available' } })
       expect(response.headers.getSetCookie()).toEqual([])
       expect(await sql`select id from sign_in_identity where person_id = ${person.user}`).toEqual(before)
@@ -116,7 +116,7 @@ describe('invalid route arguments leave stored state alone', () => {
     await setPasswordMethod({ new_person: 'create' })
     const [before] = await sql`select (select count(*)::int from person) as people, (select count(*)::int from activity_log where operation = 'login') as logins`
     const response = await api.fetch('/api/signup', { method: 'POST', body: '{"username":' })
-    expect(response.status).toBe(417)
+    await expectStatus(response, 417)
     expect(await response.json()).toMatchObject({ error: { type: 'ValidationError', fields: { username: 'invalid' } } })
     expect(response.headers.getSetCookie()).toEqual([])
     expect(await sql`select (select count(*)::int from person) as people, (select count(*)::int from activity_log where operation = 'login') as logins`).toEqual([before])
@@ -125,7 +125,7 @@ describe('invalid route arguments leave stored state alone', () => {
   test('truncated handoff JSON cannot issue a session or cookie', async ({ api }) => {
     const [before] = await sql`select count(*)::int as n from activity_log where operation = 'login'`
     const response = await api.fetch('/api/oauth/session', { method: 'POST', body: '{"code":' })
-    expect(response.status).toBe(401)
+    await expectStatus(response, 401)
     expect(await response.json()).toMatchObject({ error: { type: 'AuthenticationError', message: 'Invalid or expired sign-in code' } })
     expect(response.headers.getSetCookie()).toEqual([])
     expect(await sql`select count(*)::int as n from activity_log where operation = 'login'`).toEqual([before])
@@ -142,7 +142,7 @@ describe('invalid route arguments leave stored state alone', () => {
       ['POST', '/api/access_tokens', { label: 'not issued', expires_at: 'not a date' }, 'expires_at must be an ISO date-time'],
     ] as const) {
       const response = await admin.fetch(path, { method, body: JSON.stringify(body) })
-      expect(response.status).toBe(417)
+      await expectStatus(response, 417)
       expect(await response.json()).toMatchObject({ error: { type: 'ValidationError', message } })
     }
     expect(await admin.get(`/api/table/Route%20Shape/${row.row_id}`)).toMatchObject({ title: 'kept' })
@@ -164,7 +164,7 @@ describe('password reset through HTTP', () => {
     })
     expect(await api.post('/api/reset_password', { key: token, new_password: 'new-route-pw1' })).toEqual({ ok: true })
     const login = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'routes.reset@x.com', pwd: 'new-route-pw1' }) })
-    expect(login.status).toBe(200)
+    await expectStatus(login, 200)
   })
 })
 
@@ -176,7 +176,7 @@ describe('instance settings apply', () => {
       fields: { dry_run: expect.any(String), body: expect.stringContaining('surprise') },
     })
     const notJson = await admin.fetch('/api/instance-settings/apply', { method: 'POST', body: 'not json' })
-    expect(notJson.status).toBe(417)
+    await expectStatus(notJson, 417)
     expect(await notJson.json()).toMatchObject({ error: { fields: { body: expect.any(String) } } })
   })
 })
@@ -191,7 +191,7 @@ describe('inviting a Google address', () => {
       const res = await admin.fetch(`/api/people/${encodeURIComponent(person)}/identities`, {
         method: 'POST', body: JSON.stringify({ method: 'google', email: 'invite.route@example.com' }),
       })
-      expect(res.status).toBe(201)
+      await expectStatus(res, 201)
       expect(await res.json()).toMatchObject({
         invitation_email: { status: 'failed', error: 'The invitation email was not sent' },
         invitation_sent_at: null,
@@ -215,7 +215,7 @@ describe('removing one of my own sign-in methods', () => {
     const { token } = (await login.json()) as { token: string }
 
     const res = await api.fetch(`/api/me/identities/${linked}`, { method: 'DELETE', headers: bearer(token) })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     expect(await res.json()).toEqual({ ok: true })
     const [row] = await sql`select ended_reason from sign_in_identity where id = ${linked}`
     expect(row.ended_reason).toBe('unlinked')
@@ -238,10 +238,10 @@ describe('signed URLs for files', () => {
       expect(signed_url.startsWith(`${url}?`)).toBe(true)
       // The signed URL serves without a session.
       const served = await api.fetch(signed_url)
-      expect(served.status).toBe(200)
+      await expectStatus(served, 200)
       expect(await served.text()).toBe('route bytes')
       const outsider = await createUser({ roles: [] })
-      await expectApiError(outsider.get(`/api/signed_url?file_url=${encodeURIComponent(url)}`), { status: 403 })
+      await expectRefused(outsider.get(`/api/signed_url?file_url=${encodeURIComponent(url)}`), 403)
     } finally {
       await deleteStored(url).catch(() => {})
     }
@@ -272,15 +272,15 @@ describe('customizations export and import', () => {
     expect(await sql`select column_name from custom_field where dt = 'Routes Cust'`).toEqual([{ column_name: 'tag' }])
 
     const clerk = await createUser({ roles: [] })
-    await expectApiError(clerk.get('/api/export_customizations/Routes%20Cust'), { status: 403 })
-    await expectApiError(clerk.post('/api/import_customizations', bundle), { status: 403 })
+    await expectRefused(clerk.get('/api/export_customizations/Routes%20Cust'), 403)
+    await expectRefused(clerk.post('/api/import_customizations', bundle), 403)
   })
 
   test('re-applying custom fields answers how many records it applied', async ({ admin, createUser }) => {
     const [{ n }] = await sql`select count(*)::int as n from custom_field`
     expect(await admin.post('/api/reapply_custom_fields', {})).toEqual({ ok: true, count: n })
     const clerk = await createUser({ roles: [] })
-    await expectApiError(clerk.post('/api/reapply_custom_fields', {}), { status: 403 })
+    await expectRefused(clerk.post('/api/reapply_custom_fields', {}), 403)
   })
 })
 
@@ -302,7 +302,7 @@ describe('email routes', () => {
     expect(row).toEqual({ recipient: 'routes.queue@x.com', subject: 'Queued by route', body: 'Hello', send_status: 'queued' })
     await expectApiError(admin.post('/api/queue_email', { subject: 'nobody' }), { status: 417, type: 'ValidationError' })
     const clerk = await createUser({ roles: [] })
-    await expectApiError(clerk.post('/api/queue_email', { to: 'x@x.com' }), { status: 403 })
+    await expectRefused(clerk.post('/api/queue_email', { to: 'x@x.com' }), 403)
   })
 })
 

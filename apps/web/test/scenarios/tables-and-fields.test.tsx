@@ -16,7 +16,7 @@ import { invalidateSources } from 'server/src/sources/registry'
 import { discoverPackages } from 'server/src/runtime-packages'
 import { scenarioFor } from 'server/test/scenario'
 import { clearSession } from '../../src/lib/import-session'
-import { test, expect, renderApp, onScreen } from '../pg-test'
+import { test, expect, renderApp, onScreen, inside, insideOf, byTestId } from '../pg-test'
 
 const scenario = scenarioFor(test, 'tables-and-fields')
 const WAIT = { timeout: 15_000 }
@@ -96,8 +96,8 @@ async function openColumnsMenu() {
 async function switchColumn(as: TestClient, table: string, label: string, on: boolean) {
   // The person's saved arrangement has loaded once the rows show.
   await waitFor(() => expect(screen.getByTestId('list-rows').querySelectorAll('tr').length).toBeGreaterThan(0), WAIT)
-  const choice = within(await openColumnsMenu()).getByRole('checkbox', { name: label })
-  if ((choice as HTMLInputElement).checked !== on) fireEvent.click(choice)
+  await openColumnsMenu()
+  await onScreen().within(byTestId('list-columns-popup'), (menu) => on ? menu.check(label) : menu.uncheck(label))
   await waitFor(async () => {
     const { settings } = await as.get<{ settings: { shownCols?: string[]; hiddenCols?: string[] } | null }>(`/api/user_settings/${enc(table)}`)
     const shown = settings?.shownCols ?? []
@@ -127,8 +127,7 @@ async function importAsNewTable(user: User, admin: TestClient, columns: string[]
     if (!row) throw new Error(`The Import Wizard has no column "${label}"`)
     await user.click(field(row, 'include'))
   }
-  // Named by aria-label only: clickButton matches a button's visible text.
-  if (opts.tickAll) await user.click(screen.getByRole('button', { name: 'Tick all in the list' }))
+  if (opts.tickAll) await onScreen().clickButton('Tick all in the list')
   await user.click(screen.getByTestId('iw-import'))
   await waitFor(() => expect(screen.queryByTestId('iw-done') ?? screen.queryByTestId('list-view')).not.toBeNull(), { timeout: 30_000 })
   const done = screen.queryByTestId('iw-done')
@@ -152,6 +151,7 @@ const definePolicy = (admin: TestClient) =>
     }],
   })
 
+// The control by its column, to read an option by its value: the DSL reads options by their text.
 const policyControl = () => screen.getByTestId('form-view').querySelector<HTMLSelectElement>('select[data-field="policy"]')!
 const optionText = (value: string) => policyControl().querySelector(`option[value="${value}"]`)?.textContent
 
@@ -188,10 +188,10 @@ async function expectCopyable(user: User, expected: string[]) {
   const button = within(storage).getByRole('button', { name: 'Copy storage' })
   button.focus()
   await onScreen().pressKey('Enter')
-  await waitFor(() => expect(within(storage).getByRole('status')).toHaveTextContent('Copied'), WAIT)
+  await insideOf(onScreen(), `${byTestId('table-storage')} [role="status"]`, (status) => status.assertText('Copied'))
   const copied = await navigator.clipboard.readText()
   for (const value of expected) expect(copied, `clipboard missing ${value}`).toContain(value)
-  expect(screen.getByTestId('form-status').textContent).toBe('Saved')
+  await inside(onScreen(), 'form-status', (status) => status.assertExactText('Saved'))
 }
 
 // ---- Renaming a Table (#871) ----
@@ -404,7 +404,6 @@ describe('tables-and-fields', () => {
   }, 40_000)
 
   scenario('Readable policy choice keeps its original value', async ({ admin }, step) => {
-    const user = userEvent.setup()
     let rowId = ''
     await step('the user has a contact list with authored wording for a technical policy choice', () => definePolicy(admin))
     await step('the user chooses that policy and saves a contact', async () => {
@@ -413,8 +412,7 @@ describe('tables-and-fields', () => {
       await waitFor(() => expect(policyControl()).not.toBeNull(), WAIT)
       const sent = vi.spyOn(globalThis, 'fetch')
       try {
-        await user.selectOptions(policyControl(), RAW)
-        await onScreen().clickButton('Save')
+        await onScreen().within(byTestId('form-view'), (form) => form.selectOption('Policy', DISPLAY)).clickButton('Save')
         const save = await waitFor(() => {
           const at = sent.mock.calls.findIndex(([url, init]) => String(url).includes('/api/save_row') && init?.method === 'POST')
           expect(at).toBeGreaterThanOrEqual(0)
@@ -441,7 +439,7 @@ describe('tables-and-fields', () => {
     await step('filtering by that policy finds the contact using its original value', async () => {
       const sent = vi.spyOn(globalThis, 'fetch')
       try {
-        await user.selectOptions(screen.getByTestId('std-filter-policy'), RAW)
+        await onScreen().selectOption('Policy', DISPLAY)
         const filters = await waitFor(() => {
           const call = sent.mock.calls.find(([url]) => String(url).includes('/api/table/') && new URL(String(url), 'http://x').searchParams.has('filters'))
           expect(call).toBeDefined()
@@ -628,8 +626,9 @@ describe('tables-and-fields', () => {
     await step('the user opens the old address of "SAP Plant"', () => renderApp(`/featherbase/admin/table/${tableSlug(SAP_PLANT)}`, admin))
     await step('the page says "SAP Plant is now called Plant" and links to "Plant"', async () => {
       const notice = await screen.findByTestId('table-renamed', {}, WAIT)
+      // Whitespace folded first: the DSL's assertText reads the text as rendered.
       expect((notice.textContent ?? '').replace(/\s+/g, ' ')).toContain('SAP Plant is now called Plant')
-      expect(within(notice).getByRole('link').textContent?.trim()).toBe('Open Plant')
+      await onScreen().within(`${byTestId('table-renamed')} a`, (link) => link.assertExactText('Open Plant'))
     })
   }, 40_000)
 })

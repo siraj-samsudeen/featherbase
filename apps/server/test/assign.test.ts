@@ -5,7 +5,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { saveDoc } from '../src/document'
 import { createAssignment } from '../src/assign'
 import { onEvent } from '../src/realtime'
-import { grantRole } from './fixtures'
+import { expectStatus, grantRole } from './fixtures'
 
 // EML-006: assigning a document creates a ToDo for the assignee and a
 // notification.
@@ -42,7 +42,7 @@ describe('EML-006: assignment', () => {
         description: 'please handle',
       }),
     })
-    expect(res.status).toBe(201)
+    await expectStatus(res, 201)
 
     const todos = await sql`
       select allocated_to, reference_name, todo_status, description from todo
@@ -64,7 +64,7 @@ describe('EML-006: assignment', () => {
       method: 'POST',
       body: JSON.stringify({ table: DT, row_id: 'asg-1', assign_to: 'ghost@x.com' }),
     })
-    expect(res.status).toBe(404)
+    await expectStatus(res, 404)
   })
 
   test('requires table, name, and assign_to', async ({ admin }) => {
@@ -73,7 +73,7 @@ describe('EML-006: assignment', () => {
       method: 'POST',
       body: JSON.stringify({ table: DT }),
     })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
   })
 
   test('an unauthenticated request is rejected', async ({ admin, api }) => {
@@ -83,7 +83,7 @@ describe('EML-006: assignment', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ table: DT, row_id: 'asg-1', assign_to: ASSIGNEE }),
     })
-    expect(res.status).toBe(401)
+    await expectStatus(res, 401)
   })
 })
 
@@ -132,7 +132,7 @@ describe('Assign a row to someone', () => {
       method: 'POST',
       body: JSON.stringify({ table: 'Asg Req Doc', row_id: doc.row_id, assign_to: priya.user }),
     })
-    expect(res.status).toBe(201)
+    await expectStatus(res, 201)
 
     const mine = await priya.get<{ data: { reference_name: string }[] }>(
       `/api/table/ToDo?fields=%5B%22reference_name%22%5D&filters=${encodeURIComponent(JSON.stringify([['allocated_to', '=', priya.user]]))}`,
@@ -158,7 +158,7 @@ describe('Assign a row to someone', () => {
       method: 'POST',
       body: JSON.stringify({ table: 'Asg Req Doc', row_id: doc.row_id, assign_to: priya.user }),
     })
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
     expect((await sql`select 1 from todo where reference_name = ${doc.row_id}`).length).toBe(0)
   })
 
@@ -191,7 +191,7 @@ describe('Assign a row to someone', () => {
       method: 'POST',
       body: JSON.stringify({ table: 'Asg Req Doc', row_id: doc.row_id, assign_to: ' Priya-ASG@x.com ' }),
     })
-    expect(res.status).toBe(201)
+    await expectStatus(res, 201)
     const [todo] = await sql`select allocated_to from todo where reference_name = ${doc.row_id}`
     expect(todo.allocated_to).toBe('psn_asgreqpriya')
   })
@@ -206,7 +206,7 @@ describe('Assign a row to someone', () => {
       method: 'POST',
       body: JSON.stringify({ table: 'Asg Req Doc', row_id: doc.row_id, assign_to: 'hidden-asg@x.com' }),
     })
-    expect(res.status).toBe(404)
+    await expectStatus(res, 404)
     expect((await sql`select 1 from todo where reference_name = ${doc.row_id}`).length).toBe(0)
   })
 
@@ -219,7 +219,7 @@ describe('Assign a row to someone', () => {
       method: 'POST',
       body: JSON.stringify({ table: 'Asg Req Doc', row_id: doc.row_id, assign_to: 'old-asg@x.com' }),
     })
-    expect(res.status).toBe(404)
+    await expectStatus(res, 404)
   })
 
   test('an assignee that is not text is refused as invalid, not a server error', async ({ admin }) => {
@@ -228,7 +228,7 @@ describe('Assign a row to someone', () => {
       method: 'POST',
       body: JSON.stringify({ table: 'Asg Req Doc', row_id: doc.row_id, assign_to: 42 }),
     })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(((await res.json()) as { error: { type: string } }).error.type).toBe('ValidationError')
   })
 
@@ -238,7 +238,7 @@ describe('Assign a row to someone', () => {
       method: 'POST',
       body: JSON.stringify({ table: 'Asg Req Doc', row_id: doc.row_id, assign_to: 'nobody-asg@x.com' }),
     })
-    expect(res.status).toBe(404)
+    await expectStatus(res, 404)
     expect((await sql`select 1 from todo where reference_name = ${doc.row_id}`).length).toBe(0)
   })
 })

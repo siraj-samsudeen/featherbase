@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
-import { grantRole } from './fixtures'
+import { expectRefused, grantRole } from './fixtures'
 
 // The table-level :backlinks collection action (row-connections.ts): which
 // Tables point at this one, before any row is chosen — the Explore picker and
@@ -33,6 +33,6 @@ describe('Tables that point at a table', () => {
     const reader = await createUser({ roles: [ROLE] })
     expect(await backlinkTables(reader)).toEqual([])
     const outsider = await createUser({ roles: [] })
-    await expect(outsider.get(`/api/table/${encodeURIComponent(EMP)}:backlinks`)).rejects.toMatchObject({ status: 403 })
+    await expectRefused(outsider.get(`/api/table/${encodeURIComponent(EMP)}:backlinks`), 403)
   })
 })

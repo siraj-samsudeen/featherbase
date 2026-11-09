@@ -12,6 +12,7 @@ import { committedTest } from './pg-test-shared'
 import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packages'
 import { pathToFileURL } from 'node:url'
 import { sql } from '../src/db'
+import { expectRefused } from './fixtures'
 
 const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
 const ROSTER = resolve('../..', 'test-apps/fixtures/place-roster')
@@ -149,13 +150,13 @@ describe("declared bar controls: the picker's options", () => {
     const directory = await barProof((manifest) => ({ ...manifest, bar: [{ picker: 'Store', options: 'broken', sets: 'store' }] }))
     expect(await discoverPackages([directory, ROSTER])).toEqual([])
     await admin.post('/api/install_app', { name: 'barproof' })
-    await expect(admin.get('/api/app_bar/barproof')).rejects.toMatchObject({ status: 500 })
+    await expectRefused(admin.get('/api/app_bar/barproof'), 500)
   })
 
   test.for(['a disabled app', 'an app that is not installed'])('%s is unavailable', async (which, { admin, createUser }) => {
     const manager = await installed(admin, createUser)
     if (which === 'a disabled app') await admin.post('/api/set_app_enabled', { name: 'barproof', enabled: false })
     const name = which === 'a disabled app' ? 'barproof' : 'nosuchapp'
-    await expect(manager.get(`/api/app_bar/${name}`)).rejects.toMatchObject({ status: 404, message: expect.stringContaining('App is unavailable') })
+    await expectRefused(manager.get(`/api/app_bar/${name}`), 404, 'App is unavailable')
   })
 })

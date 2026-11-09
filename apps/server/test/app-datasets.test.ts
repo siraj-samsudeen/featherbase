@@ -21,7 +21,7 @@ import { EXTERNAL_DATABASE_URL } from './external-database'
 import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packages'
 import { invalidateSources } from '../src/sources/registry'
 import { activeSnapshot, buildSnapshot, pendingMisses, recordMiss } from '../src/dataset-snapshot'
-import { expectApiError } from './fixtures'
+import { expectApiError, expectRefused, expectStatus } from './fixtures'
 import type { RuntimeReadContext } from 'shared'
 import { withNamedVariable } from '../src/env'
 import { appSetupState } from '../src/app-settings'
@@ -151,9 +151,9 @@ describe('the snapshot of an app dataset', () => {
     await setup(admin, createUser)
     await buildSnapshot('datasetproof.sales')
     for (const name of ['app_dataset_row', 'App Dataset Row', 'datasetproof.sales'])
-      expect((await admin.fetch(`/api/table/${encodeURIComponent(name)}`)).status).toBe(404)
+      await expectStatus(await admin.fetch(`/api/table/${encodeURIComponent(name)}`), 404)
     const exported = await admin.fetch('/api/instance-settings/export')
-    expect(exported.status).toBe(200)
+    await expectStatus(exported, 200)
     expect(await exported.text()).not.toContain('north kids')
   })
 })
@@ -476,7 +476,7 @@ describe('a cached dataset read', () => {
         ['/api/app_actions/scopeproof/place', { idempotencyKey: 'refused', payload }],
       ] as const) {
         const response = await user.fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-        expect(response.status).toBe(403)
+        await expectStatus(response, 403)
         expect(await response.json()).toEqual({ error: { type: 'PermissionError', message: 'Application access refused' } })
       }
     }
@@ -779,7 +779,7 @@ describe('an outbound read', () => {
       await call.inside
       await within(admin.post('/api/set_app_enabled', { name: 'datasetproof', enabled: false }))
     } finally { call.release(); await settle(pending) }
-    await expect(pending).rejects.toMatchObject({ status: 403 })
+    await expectRefused(pending, 403)
     expect(await sql`select 1 from access_log where "user" = ${reader.user} and operation = 'view_report'`).toHaveLength(0)
   })
 

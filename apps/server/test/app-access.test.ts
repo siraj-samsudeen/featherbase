@@ -11,6 +11,7 @@ import { sql, withTransaction } from '../src/db'
 import { actionDeclaration, readDeclaration, validateOperationFacts, withAppAuthorization, type DeclaredAppOperation } from '../src/app-access'
 import { AppError } from '../src/errors'
 import { version as currentTaskerVersion } from '../../../example-apps/tasker/package.json'
+import { expectRefused, expectStatus } from './fixtures'
 
 const directory = resolve('../..', 'test-apps/scope-proof')
 const read = '/api/app_reads/scopeproof/'
@@ -116,7 +117,7 @@ export const authorizers = {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ ...(path.startsWith(action) ? { idempotencyKey: 'must-not-exist' } : {}), payload: { ...payload, phase, mode, rowId } }),
             })
-            expect(response.status).toBe(403)
+            await expectStatus(response, 403)
             expect(await response.json()).toEqual({ error: { type: 'PermissionError', message: 'Application access refused' } })
             expect(module.calls.handler).toBe(beforeCalls.handler)
             expect(await sql`select * from scopeproof.object order by row_id`).toEqual(rows)
@@ -166,7 +167,7 @@ export const authorizers = {
         await writeFile(server, original.replace(`export const ${name} =`, `export const unused =`))
         expect(await discoverPackages([copy])).toMatchObject([{ error: 'Package handlers and authorization callbacks must match declared names' }])
         await loadInstalledApps()
-        await expect(user.get(read + 'product/access')).rejects.toMatchObject({ status: 403 })
+        await expectRefused(user.get(read + 'product/access'), 403)
       }
       await writeFile(server, original)
       expect(await discoverPackages([copy])).toEqual([])
@@ -182,32 +183,32 @@ export const authorizers = {
     await admin.post('/api/install_app', { name: 'tasker' })
     const invoke = (version: string) => admin.fetch('/api/app_actions/tasker/promote', { method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': `tasker@${version}` }, body: JSON.stringify({ idempotencyKey: 'old', payload: { row_id: 'deleted' } }) })
-    expect((await invoke('2.0.0')).status).toBe(403)
+    await expectStatus(await invoke('2.0.0'), 403)
     await sql`insert into runtime_action_result (caller, app, action, idempotency_key, payload, result)
       values ('Administrator', 'tasker', 'promote', 'old', '{"row_id":"deleted"}', '{"project":"original-37"}')`
     expect(await discoverPackages([historical, current])).toEqual([])
     await loadInstalledApps()
     const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'tasker', version: currentTaskerVersion })
     await admin.post('/api/upgrade_app', { name: 'tasker', version: currentTaskerVersion, planId: plan.planId })
-    expect((await invoke(currentTaskerVersion)).status).toBe(403)
+    await expectStatus(await invoke(currentTaskerVersion), 403)
     await admin.post('/api/activate_app_upgrade', { name: 'tasker', version: currentTaskerVersion })
     await admitTasker(admin)
-    expect((await invoke('2.0.0')).status).toBe(403)
+    await expectStatus(await invoke('2.0.0'), 403)
     const replay = await invoke(currentTaskerVersion)
-    expect(replay.status).toBe(200)
+    await expectStatus(replay, 200)
     expect(await replay.json()).toEqual({ result: { project: 'original-37' } })
     expect(await discoverPackages([current, historical])).toEqual([])
     await loadInstalledApps()
-    expect((await invoke(currentTaskerVersion)).status).toBe(200)
+    await expectStatus(await invoke(currentTaskerVersion), 200)
   })
 
   test('refusals survive rollback with fixed redacted audit reasons', async ({ admin, createUser }) => {
     const { user } = await setup(admin, createUser, ['Scope Reader'], ['A'])
-    await expect(user.post(read + 'stores', { payload: { storeCodes: ['private-store'], sql: 'secret-query', token: 'secret-token' } })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(read + 'stores', { payload: { storeCodes: ['private-store'], sql: 'secret-query', token: 'secret-token' } }), 403)
     const logs = await sql`select operation, method, ref_table, reference_name from access_log where "user" = ${user.user} and operation = 'app_access_denied'`
     expect(logs).toEqual([{ operation: 'app_access_denied', method: 'scopeproof.stores:scope', ref_table: null, reference_name: null }])
-    await expect(user.get(read + 'stores/access?user=secret-user')).rejects.toMatchObject({ status: 403 })
-    await expect(user.get(read + 'missing/access')).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.get(read + 'stores/access?user=secret-user'), 403)
+    await expectRefused(user.get(read + 'missing/access'), 403)
     expect(await sql`select method from access_log where "user" = ${user.user} and operation = 'app_access_denied' order by method`).toEqual([
       { method: 'scopeproof.missing:configuration' }, { method: 'scopeproof.stores:override' }, { method: 'scopeproof.stores:scope' },
     ])
@@ -227,7 +228,7 @@ export const authorizers = {
     let refusals = 0
     const refused = async (path: string, body: unknown) => {
       const response = await user.fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      expect(response.status).toBe(403)
+      await expectStatus(response, 403)
       expect(await response.json()).toEqual({ error: { type: 'PermissionError', message: 'Application access refused' } })
       refusals++
       const logs = await sql`select method from access_log where "user" = ${user.user} and operation = 'app_access_denied'`
@@ -249,7 +250,7 @@ export const authorizers = {
     await refused(read + 'object', { payload: { id: 'private-37', storeCodes: ['A'] } })
     delete module.faults.scopeResult
     module.faults.handler = new AppError('NotFoundError', 'Admitted business error')
-    await expect(user.post(read + 'stores', { payload: { storeCodes: ['A'] } })).rejects.toMatchObject({ status: 404 })
+    await expectRefused(user.post(read + 'stores', { payload: { storeCodes: ['A'] } }), 404)
     expect(await sql`select row_id from access_log where "user" = ${user.user} and operation = 'app_access_denied'`).toHaveLength(refusals)
     delete module.faults.handler
   })
@@ -266,23 +267,23 @@ export const authorizers = {
       for (const [path, body] of [[read + 'stores/access', undefined], [read + 'object', { payload: { id: 'missing', storeCodes: ['A'] } }],
         [action + 'product', { idempotencyKey: 'private', payload: { storeCodes: ['A'], pairs: [['A', 'X']] } }]] as const) {
         const response = await send(identity, path, body)
-        expect(response.status).toBe(403)
+        await expectStatus(response, 403)
         expect(await response.json()).toEqual({ error: { type: 'PermissionError', message: 'Application access refused' } })
         refusals++
       }
     }
     expect(module.calls).toEqual({ handler: 0, resolver: 0, authorizer: 0, upstream: 0 })
     expect(await sql`select row_id from access_log where "user" = ${user.user} and operation = 'app_access_denied'`).toHaveLength(refusals)
-    expect((await send('scopeproof@1.0.0', read + 'stores/access')).status).toBe(200)
-    expect((await send('scopeproof@1.0.0', read + 'stores', { payload: { storeCodes: ['A'] } })).status).toBe(200)
-    expect((await send('scopeproof@1.0.0', action + 'write', { idempotencyKey: 'exact', payload: { storeCodes: ['A'], effect: 'exact' } })).status).toBe(200)
+    await expectStatus(await send('scopeproof@1.0.0', read + 'stores/access'), 200)
+    await expectStatus(await send('scopeproof@1.0.0', read + 'stores', { payload: { storeCodes: ['A'] } }), 200)
+    await expectStatus(await send('scopeproof@1.0.0', action + 'write', { idempotencyKey: 'exact', payload: { storeCodes: ['A'], effect: 'exact' } }), 200)
   })
 
   test('unavailable required audit fails closed as a visible server failure', async ({ admin, createUser }) => {
     const { user, module } = await setup(admin, createUser, ['Scope Reader'], ['A'])
     await sql`alter table featherbase.access_log rename to unavailable_audit`
     const response = await user.fetch(read + 'stores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: { storeCodes: ['B'] } }) })
-    expect(response.status).toBe(500)
+    await expectStatus(response, 500)
     expect(await response.json()).toEqual({ error: { type: 'InternalError', message: 'Internal server error' } })
     expect(module.calls).toEqual({ handler: 0, resolver: 0, authorizer: 0, upstream: 0 })
   })
@@ -322,7 +323,7 @@ export const authorizers = {
         for (const identity of ['', 'private malformed', 'other@1.1.0', 'scopeproof@1.0.0', 'scopeproof@9.9.9', ...(phase === 'pending' ? ['scopeproof@1.1.0'] : [])]) {
           for (const [path, body] of paths) {
             const response = await send(identity, path, body)
-            expect(response.status).toBe(403)
+            await expectStatus(response, 403)
             expect(await response.json()).toEqual({ error: { type: 'PermissionError', message: 'Application access refused' } })
             refusals++
           }
@@ -343,8 +344,8 @@ export const authorizers = {
     const { user, module } = await setup(admin, createUser, ['Scope Reader'], ['A'])
     expect(await user.post(read + 'stores', { payload: { storeCodes: ['A'] } })).toEqual({ result: { stores: ['A'], marker: 37 } })
     const before = { ...module.calls }
-    await expect(user.post(action + 'write', { idempotencyKey: 'fake', payload: { storeCodes: ['A'], role: 'Scope Planner', effect: 'no' } })).rejects.toMatchObject({ status: 403 })
-    await expect(user.post(read + 'stores', { payload: { storeCodes: ['B'], roles: ['Administrator'], sql: 'all', filters: [] } })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(action + 'write', { idempotencyKey: 'fake', payload: { storeCodes: ['A'], role: 'Scope Planner', effect: 'no' } }), 403)
+    await expectRefused(user.post(read + 'stores', { payload: { storeCodes: ['B'], roles: ['Administrator'], sql: 'all', filters: [] } }), 403)
     expect(module.calls).toEqual(before)
     expect(await sql`select * from scopeproof.effect`).toEqual([])
   })
@@ -365,7 +366,7 @@ export const authorizers = {
         [action + 'write', { idempotencyKey: 'refused', payload }],
       ] as const) {
         const response = await user.fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-        expect(response.status).toBe(403)
+        await expectStatus(response, 403)
         expect(await response.json()).toEqual({ error: { type: 'PermissionError', message: 'Application access refused' } })
       }
     }
@@ -396,8 +397,8 @@ export const authorizers = {
       expect(await user.post(action + 'write', { idempotencyKey: effect, payload: { effect, storeCodes: stores } })).toEqual({ result: { stores: [...stores].sort(), marker: 37 } })
     const before = { ...module.calls }
     for (const storeCodes of [['A', 'B'], [], undefined, [''], [37], 'A'])
-      await expect(user.post(action + 'write', { idempotencyKey: 'no', payload: { effect: 'no', storeCodes } })).rejects.toMatchObject({ status: 403 })
-    await expect(admin.post(read + 'stores', { payload: { storeCodes: ['A'] } })).rejects.toMatchObject({ status: 403 })
+      await expectRefused(user.post(action + 'write', { idempotencyKey: 'no', payload: { effect: 'no', storeCodes } }), 403)
+    await expectRefused(admin.post(read + 'stores', { payload: { storeCodes: ['A'] } }), 403)
     expect(module.calls).toEqual(before)
     expect(await sql`select value from scopeproof.effect order by row_id`).toEqual([{ value: 'A' }, { value: 'A,C' }])
   })
@@ -406,13 +407,13 @@ export const authorizers = {
     const { user, module } = await setup(admin, createUser, ['Scope Reader'], ['A'])
     expect(await user.get(read + 'product/access')).toEqual({ storeCodes: ['A'] })
     expect(module.calls).toEqual({ handler: 0, resolver: 0, authorizer: 0, upstream: 0 })
-    await expect(user.get(read + 'object/access')).rejects.toMatchObject({ status: 403 })
-    await expect(user.get(read + 'stores/access?user=Administrator')).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.get(read + 'object/access'), 403)
+    await expectRefused(user.get(read + 'stores/access?user=Administrator'), 403)
     await sql`delete from data_scope where person = ${user.user}`
     expect(await user.get(read + 'stores/access')).toEqual({ storeCodes: [] })
-    await expect(user.post(read + 'stores', { payload: { storeCodes: ['A'] } })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(read + 'stores', { payload: { storeCodes: ['A'] } }), 403)
     await sql`delete from has_role where parent = ${user.user}`
-    await expect(user.get(read + 'stores/access')).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.get(read + 'stores/access'), 403)
     expect(module.calls).toEqual({ handler: 0, resolver: 0, authorizer: 0, upstream: 0 })
   })
 
@@ -421,10 +422,10 @@ export const authorizers = {
     await discoverPackages([directory]); await loadInstalledApps()
     expect(await user.get(read + 'stores/access')).toEqual({ storeCodes: ['A', 'C'] })
     await admin.post('/api/set_app_enabled', { name: 'scopeproof', enabled: false })
-    await expect(user.get(read + 'stores/access')).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.get(read + 'stores/access'), 403)
     await admin.post('/api/set_app_enabled', { name: 'scopeproof', enabled: true })
     await sql`update person set enabled = false where row_id = ${user.user}`
-    await expect(user.get(read + 'stores/access')).rejects.toMatchObject({ status: 401 })
+    await expectRefused(user.get(read + 'stores/access'), 401)
     expect(module.calls.handler).toBe(0)
   })
 
@@ -441,9 +442,9 @@ export const authorizers = {
     expect(module.calls).toMatchObject({ handler: 2, upstream: 2 })
     // Current assignments, not install-time ones: removing A refuses the next read without work.
     await sql`delete from data_scope where person = ${user.user} and for_value = 'A'`
-    await expect(readA()).rejects.toMatchObject({ status: 403 })
+    await expectRefused(readA(), 403)
     await admin.post('/api/set_app_enabled', { name: 'scopeproof', enabled: false })
-    await expect(user.post(read + 'stores', { payload: { storeCodes: ['C'] } })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(read + 'stores', { payload: { storeCodes: ['C'] } }), 403)
     expect(module.calls).toMatchObject({ handler: 2, upstream: 2 })
   })
 
@@ -452,11 +453,11 @@ export const authorizers = {
     await admin.post('/api/save_row', { table: 'scopeproof.object', row: { row_id: 'draft', stores: ['B', 'A'], secret: 'private' } })
     await admin.post('/api/save_row', { table: 'scopeproof.line', row: { row_id: 'line', parent_id: 'other' } })
     for (const payload of [{ id: 'draft', storeCodes: ['A'] }, { id: 'draft' }, { id: 'absent', storeCodes: ['A'] }])
-      await expect(user.post(read + 'object', { payload })).rejects.toMatchObject({ status: 403 })
+      await expectRefused(user.post(read + 'object', { payload }), 403)
     expect(module.calls.handler).toBe(0)
     await admin.post('/api/save_row', { table: 'Data Scope', row: { person: user.user, allow_table: 'scopeproof.store', for_value: 'B' } })
-    await expect(user.post(read + 'object', { payload: { id: 'draft', storeCodes: ['A'], mutateClaim: true } })).rejects.toMatchObject({ status: 403 })
-    await expect(user.post(read + 'object', { payload: { id: 'draft', line: 'line', storeCodes: ['A', 'B'] } })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(read + 'object', { payload: { id: 'draft', storeCodes: ['A'], mutateClaim: true } }), 403)
+    await expectRefused(user.post(read + 'object', { payload: { id: 'draft', line: 'line', storeCodes: ['A', 'B'] } }), 403)
     expect(module.calls.handler).toBe(0)
     expect(await user.post(read + 'object', { payload: { id: 'draft', storeCodes: ['B', 'A', 'A'], mutateClaim: true } })).toEqual({ result: { stores: ['A', 'B'], marker: 37 } })
     expect(await user.post(read + 'object', { payload: { id: 'draft' } })).toEqual({ result: { stores: ['A', 'B'], marker: 37 } })
@@ -473,20 +474,20 @@ export const authorizers = {
     const before = { ...module.calls }
     expect(await user.post(action + 'discard', { idempotencyKey: 'receipt', payload: { ...payload, storeCodes: ['A', 'B'] } })).toEqual(result)
     await sql`delete from data_scope where person = ${user.user} and for_value = 'B'`
-    await expect(user.post(action + 'discard', { idempotencyKey: 'receipt', payload })).rejects.toMatchObject({ status: 403 })
-    await expect(user.post(action + 'discard', { idempotencyKey: 'receipt', payload: { ...payload, storeCodes: ['A'] } })).rejects.toMatchObject({ status: 409 })
+    await expectRefused(user.post(action + 'discard', { idempotencyKey: 'receipt', payload }), 403)
+    await expectRefused(user.post(action + 'discard', { idempotencyKey: 'receipt', payload: { ...payload, storeCodes: ['A'] } }), 409)
     expect(module.calls).toEqual(before)
   })
 
   test('exact pairs do not form a cross product and fresh product scope blocks replay', async ({ admin, createUser }) => {
     const { user, module } = await setup(admin, createUser, ['Scope Planner'], ['A', 'B'])
     await admin.post('/api/save_row', { table: 'scopeproof.access', row: { row_id: user.user, pairs: [['A', 'X'], ['B', 'Y']] } })
-    await expect(user.post(read + 'product', { payload: { storeCodes: ['A'], pairs: [['A', 'Y']] } })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(read + 'product', { payload: { storeCodes: ['A'], pairs: [['A', 'Y']] } }), 403)
     expect(module.calls.handler).toBe(0)
     const request = { idempotencyKey: 'pair', payload: { storeCodes: ['A'], pairs: [['A', 'X']] } }
     expect(await user.post(action + 'product', request)).toEqual({ result: { stores: ['A'], marker: 37 } })
     await sql`update scopeproof.access set pairs = ${sql.json([['B', 'Y']])} where row_id = ${user.user}`
-    await expect(user.post(action + 'product', request)).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(action + 'product', request), 403)
     expect(module.calls.handler).toBe(1)
     expect(module.calls.upstream).toBe(1)
     expect(module.calls.resolver).toBe(2)
@@ -500,8 +501,8 @@ export const authorizers = {
     const permitted = async () => {
       expect(await ask('A', ['A', 'X'])).toEqual({ result: { stores: ['A'], marker: 37 } })
       expect(await ask('B', ['B', 'Y'])).toEqual({ result: { stores: ['B'], marker: 37 } })
-      await expect(ask('A', ['A', 'Y'])).rejects.toMatchObject({ status: 403 })
-      await expect(ask('B', ['B', 'X'])).rejects.toMatchObject({ status: 403 })
+      await expectRefused(ask('A', ['A', 'Y']), 403)
+      await expectRefused(ask('B', ['B', 'X']), 403)
     }
     await permitted()
     expect(module.calls.handler).toBe(2)
@@ -525,9 +526,9 @@ export const authorizers = {
         "authorization", pg_temp.forbidden_result(result) as result from featherbase.protected_receipts`)
     await expect(withTransaction(async () => { await sql`select result from runtime_action_result` })).rejects.toThrow('Protected result was read')
     await sql`delete from data_scope where person = ${user.user} and for_value = 'B'`
-    await expect(user.post(action + 'discard', request)).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(action + 'discard', request), 403)
     await sql`update featherbase.protected_receipts set "authorization" = '{"version":99}'`
-    await expect(user.post(action + 'discard', request)).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post(action + 'discard', request), 403)
     expect(module.calls.handler).toBe(1)
     expect(module.calls.resolver).toBe(1)
   })

@@ -5,7 +5,7 @@
 import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
-import { expectApiError, grantRole, makeTable, patchDoc, tableRef } from './fixtures'
+import { expectApiError, expectRefused, expectStatus, grantRole, makeTable, patchDoc, tableRef } from './fixtures'
 import { createTable, storedRelation } from '../src/table-engine'
 import { sql } from '../src/db'
 import { getBacklinks, invalidateMeta } from '../src/meta'
@@ -65,9 +65,9 @@ describe('#1021: a view is metadata only', () => {
     await expectApiError(def([['region', 'related', {}]]), { status: 417, message: expect.stringContaining('cannot use related') })
     await expectApiError(def([]), { status: 417, message: expect.stringContaining('at least one filter') })
     await expectApiError(def([['region', '=', 'North']], STORE), { status: 417, message: expect.stringContaining('cannot have a view') })
-    await expectApiError(def([['row_id', '=', 'x']], 'Table'), { status: 417 })
+    await expectRefused(def([['row_id', '=', 'x']], 'Table'), 417)
     await expectApiError(admin.post('/api/table_def', { kind: 'view', view_of: SITE, view_filters: [['region', '=', 'North']] }), { status: 417, message: expect.stringContaining('Invalid view definition') })
-    await expectApiError(admin.post('/api/table_def', { name: SITE, kind: 'view', view_of: STORE, view_filters: [['region', '=', 'North']] }), { status: 417 })
+    await expectRefused(admin.post('/api/table_def', { name: SITE, kind: 'view', view_of: STORE, view_filters: [['region', '=', 'North']] }), 417)
     await expectApiError(admin.post('/api/table_def', { name: STORE, kind: 'view', view_of: SITE, view_filters: [['region', '=', 'North']] }), { status: 409, message: expect.stringContaining('already exists') })
   })
 
@@ -123,7 +123,7 @@ describe('#1021: a view reads as its base, never wider', () => {
     expect(ids(await admin.get(store.listUrl({ filters: [['region', '=', 'North']] })))).toEqual(['S-1'])
     // A row opens through the view as its base row, while the view matches it.
     expect(await admin.get(store.rowUrl('S-1'))).toMatchObject({ table: SITE, row_id: 'S-1', site_name: 'Anna Nagar' })
-    await expectApiError(admin.get(store.rowUrl('W-1')), { status: 404 })
+    await expectRefused(admin.get(store.rowUrl('W-1')), 404)
     expect(await admin.get(`${store.rowUrl('S-1')}:capabilities`)).toMatchObject({ write: true })
   })
 
@@ -153,7 +153,7 @@ describe('#1021: a view reads as its base, never wider', () => {
     expect(ids(await reader.get(store.url))).toEqual(['S-1', 'S-2'])
     expect(await reader.get(store.rowUrl('S-1'))).not.toHaveProperty('is_store')
     // The column itself stays out of their reach.
-    await expectApiError(reader.get(store.listUrl({ filters: [['is_store', '=', false]] })), { status: 417 })
+    await expectRefused(reader.get(store.listUrl({ filters: [['is_store', '=', false]] })), 417)
     expect((await reader.get<{ readable_columns: string[] }>(store.metaUrl)).readable_columns).not.toContain('is_store')
     const destinations = await reader.get<{ tables: { row_id: string; can_create: boolean }[] }>('/api/command_destinations')
     expect(destinations.tables.find((t) => t.row_id === STORE)).toMatchObject({ can_create: false })
@@ -176,7 +176,7 @@ describe('#1021: a view reads as its base, never wider', () => {
       const base = await outcome(viewer.get(site.url))
       expect(base === 403 || (base as { total: number }).total === 0).toBe(true)
       expect(await outcome(viewer.get(store.url))).toEqual(base)
-      await expectApiError(viewer.get(store.rowUrl('S-1')), { status: 403 })
+      await expectRefused(viewer.get(store.rowUrl('S-1')), 403)
     }
     expect(ids(await member.get(store.url))).toEqual(['S-1'])
   })
@@ -191,7 +191,7 @@ describe('#1021: a view reads as its base, never wider', () => {
     await admin.post('/api/save_row', { table: 'Data Scope', row: { person: scoped.user, allow_table: SITE, for_value: 'S-1' } })
     expect(ids(await scoped.get(store.url))).toEqual(['S-1'])
     expect((await scoped.get<{ data: { store: string }[] }>(sale.listUrl({ fields: ['store'] }))).data.map((r) => r.store)).toEqual(['S-1'])
-    await expectApiError(scoped.post(sale.url, { amount: 30, store: 'S-2' }), { status: 403 })
+    await expectRefused(scoped.post(sale.url, { amount: 30, store: 'S-2' }), 403)
     await expectApiError(admin.post('/api/save_row', { table: 'Data Scope', row: { person: scoped.user, allow_table: STORE, for_value: 'S-1' } }),
       { status: 417, message: expect.stringContaining('scope Vw Site instead') })
   })
@@ -202,8 +202,8 @@ describe('#1021: a view reads as its base, never wider', () => {
     const reader = await createUser({ roles: ['Vw Site Reader'] })
     const list = await reader.get<{ data: Record<string, unknown>[] }>(store.listUrl({ fields: ['row_id', 'site_name'] }))
     expect(list.data.map((r) => r.site_name).sort()).toEqual(['Anna Nagar', 'T Nagar'])
-    await expectApiError(reader.get(store.listUrl({ fields: ['row_id', 'is_store'] })), { status: 417 })
-    await expectApiError(reader.get(`${store.url}:summary?group_by=is_store`), { status: 417 })
+    await expectRefused(reader.get(store.listUrl({ fields: ['row_id', 'is_store'] })), 417)
+    await expectRefused(reader.get(`${store.url}:summary?group_by=is_store`), 417)
   })
 
   test('files on a connected row stay hidden from someone a Data Scope narrows through a link to a view', async ({ admin, createUser }) => {
@@ -259,7 +259,7 @@ describe('#1021: a link can name a view', () => {
     const [stored] = await sql`select store from ${sql(await storedRelation(SALE))} where row_id = ${saved.row_id}`
     expect(stored.store).toBe('S-1')
     await expectApiError(admin.post(sale.url, { amount: 5, store: 'W-1' }), { status: 417, message: expect.stringContaining('Invalid links') })
-    await expectApiError(admin.post(sale.url, { amount: 5, store: 'NOPE' }), { status: 417 })
+    await expectRefused(admin.post(sale.url, { amount: 5, store: 'NOPE' }), 417)
     // The picker reads the view.
     expect(ids(await admin.get(store.listUrl({ fields: ['row_id', 'site_name'], filters: [['site_name', 'like', '%Nagar%']] })))).toEqual(['S-1', 'S-2'])
     expect(await admin.post('/api/row_titles', { rows: [{ table: STORE, row_id: 'S-1' }] })).toEqual({ titles: [{ table: STORE, row_id: 'S-1', title: 'Anna Nagar' }] })
@@ -289,9 +289,9 @@ describe('#1021: a link can name a view', () => {
     const purge = (id: string, links: string) => admin.post(`${site.url}:purge`, { ids: [id], links, reason: 'Closed down', confirm: true })
     expect(await purge('S-1', 'clear')).toEqual({ deleted: 1, cleared: 1 })
     expect((await admin.get<Row>(sale.rowUrl(unlinked.row_id))).store).toBeNull()
-    await expectApiError(admin.get(site.rowUrl('S-1')), { status: 404 })
+    await expectRefused(admin.get(site.rowUrl('S-1')), 404)
     expect(await purge('S-2', 'cascade')).toEqual({ deleted: 2, cleared: 0 })
-    await expectApiError(admin.get(sale.rowUrl(removed.row_id)), { status: 404 })
+    await expectRefused(admin.get(sale.rowUrl(removed.row_id)), 404)
   })
 
   test('a row that leaves the view keeps its links: they save unchanged and are flagged', async ({ admin }) => {
@@ -305,7 +305,7 @@ describe('#1021: a link can name a view', () => {
     const edited = await patchDoc<Row>(admin, sale.rowUrl(saved.row_id), { updated_at: held.updated_at, amount: 11 })
     expect(edited).toMatchObject({ amount: 11, store: 'S-1' })
     // A new or changed value must still be a row of the view.
-    await expectApiError(patchDoc(admin, sale.rowUrl(saved.row_id), { updated_at: edited.updated_at, store: 'W-1' }), { status: 417 })
+    await expectRefused(patchDoc(admin, sale.rowUrl(saved.row_id), { updated_at: edited.updated_at, store: 'W-1' }), 417)
     const read = await admin.get<Row>(sale.rowUrl(saved.row_id))
     expect(read).toMatchObject({ amount: 11 })
     // The form sends back the row it read, flag included, and it saves.
@@ -392,7 +392,7 @@ describe('#1021: a base keeps what its views stand on', () => {
       const installed = await admin.fetch('/api/install_app', { method: 'POST', body: JSON.stringify({ manifest: {
         name: APP, tables: [{ name: OWNED, columns: [{ column_name: 'region', column_type: 'Data' }] }],
       } }) })
-      expect(installed.status).toBe(201)
+      await expectStatus(installed, 201)
       await admin.post('/api/table_def', { name: STORE, kind: 'view', view_of: OWNED, view_filters: [['region', '=', 'North']] })
       await expect(uninstallApp(APP)).rejects.toThrow(`the view ${STORE} is based on ${OWNED}`)
       // Refused before anything went: the app and its Table are whole.

@@ -7,6 +7,7 @@ import { test } from './pg-test'
 import { committedTest } from './pg-test-shared'
 import { withCommittedDatabase } from './committed-database'
 import { _getRootSql, sql, withTransaction, usingTransaction, type Sql } from '../src/db'
+import { expectRefused } from './fixtures'
 
 // Both tests create the SAME Table and the SAME document names. Without
 // sandbox isolation the second test would collide with the first's leftovers.
@@ -158,7 +159,7 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
     await createProbeTable(admin)
     // Missing required title → the app's save transaction (a savepoint under
     // the sandbox) rolls back cleanly...
-    await expect(seed(DT, { qty: 1 })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(seed(DT, { qty: 1 }), 417)
     // ...and the sandbox connection is still usable afterwards.
     const doc = await seed(DT, { title: 'after failure', qty: 2 })
     expect(doc.row_id).toMatch(/^[1-9][0-9]*$/) // #855: new Tables number rows 1, 2, 3

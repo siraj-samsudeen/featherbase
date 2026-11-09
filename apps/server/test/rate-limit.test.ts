@@ -3,6 +3,7 @@ import { setUserPassword } from '../src/auth'
 import { rateLimit, resetRateLimit } from '../src/rate-limit'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
+import { expectStatus } from './fixtures'
 
 // API-007: a user with a configured budget is throttled once the window count
 // is exceeded — 429 with a Retry-After header — while other users are not.
@@ -46,11 +47,11 @@ describe('API-007: rate limiting', () => {
 
     for (let i = 0; i < BUDGET; i++) {
       const res = await api.fetch('/api/whoami', { headers: auth })
-      expect(res.status).toBe(200)
+      await expectStatus(res, 200)
     }
 
     const limited = await api.fetch('/api/whoami', { headers: auth })
-    expect(limited.status).toBe(429)
+    await expectStatus(limited, 429)
     const retry = limited.headers.get('retry-after')
     expect(retry).toMatch(/^\d+$/)
     expect(Number(retry)).toBeGreaterThan(0)
@@ -65,7 +66,7 @@ describe('API-007: rate limiting', () => {
     // Administrator has no configured budget, so it stays under the global cap.
     for (let i = 0; i < BUDGET + 2; i++) {
       const res = await admin.fetch('/api/whoami')
-      expect(res.status).toBe(200)
+      await expectStatus(res, 200)
     }
   })
 })

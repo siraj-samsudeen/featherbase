@@ -13,6 +13,7 @@ minimumReleaseAgeExclude:
   - '@tanstack/query-core@5.105.1'
   - '@tanstack/react-query@5.105.1'
   - hono@4.13.16
+  - feather-testing-postgres@0.3.0
 
 # Audit findings in the coverage tooling that no release of its parents fixes
 # yet (#747): glob 13 (GHSA-3g3m-2fjr-6pw4) and minimatch 10

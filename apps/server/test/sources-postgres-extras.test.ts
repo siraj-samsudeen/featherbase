@@ -12,6 +12,7 @@ import { postgresDriver } from '../src/sources/postgres-driver'
 import { fkKey, singleColumnFks } from '../src/sources/fk'
 import { sql } from '../src/db'
 import type { Binding, SourceConfig } from '../src/sources/types'
+import { expectStatus } from './fixtures'
 
 const URL_ENV = 'EXT_EXTRA_URL'
 process.env[URL_ENV] = EXTERNAL_DATABASE_URL
@@ -200,14 +201,14 @@ describe('Filtering rows read from Postgres', () => {
       [[['qty', 'between', [1, 3]]], 'Unknown filter operator between'],
     ] as const) {
       const res = await admin.fetch(`${path}?filters=${encodeURIComponent(JSON.stringify(filters))}`)
-      expect(res.status).toBe(417)
+      await expectStatus(res, 417)
       expect(await res.json()).toEqual({ error: { type: 'ValidationError', message } })
     }
     const invalid = await admin.fetch(`${path}?order_by=${encodeURIComponent('qty desc, id')}`)
-    expect(invalid.status).toBe(417)
+    await expectStatus(invalid, 417)
     expect(await invalid.json()).toEqual({ error: { type: 'ValidationError', message: 'Invalid order_by qty desc, id' } })
     const unknown = await admin.fetch(`${path}?order_by=missing`)
-    expect(unknown.status).toBe(417)
+    await expectStatus(unknown, 417)
     expect(await unknown.json()).toEqual({ error: {
       type: 'ValidationError', message: 'Unknown order_by field', fields: { missing: 'Unknown field missing' },
     } })
@@ -283,10 +284,10 @@ describe('Writing to a Postgres table that has only defaults', () => {
     const enc = encodeURIComponent(name)
     const [first] = await cli`select id from ext_extra.plain where note = 'alpha'`
     const saved = await admin.fetch(`/api/table/${enc}/${first.id}`, { method: 'PATCH', body: JSON.stringify({}) })
-    expect(saved.status).toBe(200)
+    await expectStatus(saved, 200)
     expect(await saved.json()).toMatchObject({ row_id: String(first.id), note: 'alpha' })
     const missing = await admin.fetch(`/api/table/${enc}/999999`, { method: 'PATCH', body: JSON.stringify({}) })
-    expect(missing.status).toBe(404)
+    await expectStatus(missing, 404)
   })
 
   test('group counts retain the rows whose grouping value is NULL', async () => {
@@ -482,7 +483,7 @@ describe('Saving a Data Source', () => {
         row: { ...saved, table_allowlist: 'ext_extra.gadget,plain', access: 'read_write' },
       }),
     })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(await res.json()).toMatchObject({ error: {
       type: 'ValidationError',
       fields: { table_allowlist: expect.stringContaining('schema.table') },
@@ -510,7 +511,7 @@ describe('Saving a Data Source', () => {
         columns: [{ column_name: 'note', column_type: 'Data', source_column: 'missing_note' }],
       }),
     })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(await res.json()).toEqual({ error: {
       type: 'ValidationError', message: 'Invalid binding for Missing Source Columns', fields: {
         external_pk: 'Column missing_id does not exist on the source relation',
@@ -530,7 +531,7 @@ describe('Saving a Data Source', () => {
       const res = await admin.fetch('/api/table/Data%20Source/ext-extra:reflect', {
         method: 'POST', body: JSON.stringify({ schema: 'ext_extra', tables }),
       })
-      expect(res.status).toBe(417)
+      await expectStatus(res, 417)
       expect(await res.json()).toEqual({ error: {
         type: 'ValidationError', message: 'Pass tables: the source table names to reflect',
       } })

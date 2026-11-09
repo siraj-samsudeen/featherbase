@@ -203,7 +203,6 @@ describe('app-navigation', () => {
 
   scenario('Tasker keeps its project work', async ({ admin, createUser, seed }, step) => {
     let reader: TestClient
-    const project = () => within(sidebar()).getByRole('button', { name: 'September stock review' })
     await step('the user can open Tasker and Dash but cannot open Featherbase', async () => { reader = await tlWithoutFeatherbase(admin, seed, createUser) })
     await step('Tasker has a project named September stock review with two tasks', async () => {
       const tasker = taskerClient(admin)
@@ -220,9 +219,8 @@ describe('app-navigation', () => {
       for (const name of ['Count the blue shirts', 'Review the missing sizes'])
         expect(await screen.findByRole('link', { name }, WAIT)).toBeInTheDocument()
     })
-    await step('the shared navigation identifies September stock review as current', () => {
-      expect(project()).toHaveAttribute('aria-current', 'page')
-    })
+    await step('the shared navigation identifies September stock review as current', () =>
+      page().within('featherbase-sidebar button[aria-label="September stock review"]', (project) => project.assertAttribute('aria-current', 'page')))
   })
 
   scenario('Dash keeps the selected store', async ({ admin, createUser, seed }, step) => {
@@ -248,6 +246,7 @@ describe('app-navigation', () => {
       expect(new URLSearchParams(window.location.search).get('store')).toBe('9902')
     })
     await step('Dash shows the report state for Lakeside', async () => {
+      // Any view but these: assertAttribute checks one value, refuteAttribute only absence.
       await waitFor(() => expect(screen.getByTestId('dash').getAttribute('data-view')).not.toBe('opening'), WAIT)
       expect(screen.getByTestId('dash').getAttribute('data-view')).not.toBe('no_access')
       await waitFor(async () => expect(await storePicker()).toHaveTextContent('Lakeside'), WAIT)

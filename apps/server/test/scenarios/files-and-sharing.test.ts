@@ -7,7 +7,7 @@ import { describe, expect, onTestFinished } from 'vitest'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { deleteStored } from '../../src/storage'
 import { test } from '../pg-test'
-import { grantRole } from '../fixtures'
+import { expectRefused, expectStatus, grantRole } from '../fixtures'
 import { scenarioFor } from '../scenario'
 
 const scenario = scenarioFor(test, 'files-and-sharing')
@@ -26,7 +26,7 @@ async function orderFor(admin: TestClient, createUser: CreateUserFn, orderId: st
   const role = `${TABLE} ${access.can_write ? 'read update' : 'read'}`
   await grantRole(admin, { role, table: TABLE, ...access })
   const user = await createUser({ roles: [role] })
-  expect((await user.fetch('/api/table/File')).status, 'the user has no access to files in general').toBe(403)
+  await expectRefused(user.fetch('/api/table/File'), 403)
   return user
 }
 
@@ -61,11 +61,11 @@ describe('files-and-sharing', () => {
       response = await attachPhoto(user, 'SO-0001')
     })
     await step('the photo is attached to the order and the user can open it', async () => {
-      expect(response.status, await response.clone().text()).toBe(201)
+      await expectStatus(response, 201)
       const files = await filesOn(admin, 'SO-0001')
       expect(files, 'one file on the order').toHaveLength(1)
       const opened = await user.fetch(files[0]!.file_url)
-      expect(opened.status, `opening ${files[0]!.file_url}`).toBe(200)
+      await expectStatus(opened, 200)
       expect(Buffer.from(await opened.arrayBuffer())).toEqual(PHOTO)
     })
   })
@@ -76,14 +76,13 @@ describe('files-and-sharing', () => {
     await step('the user may read the order "SO-0001" but not change it, and has no access to files in general', async () => {
       user = await orderFor(admin, createUser, 'SO-0001', { can_read: true })
       const row = (await (await user.fetch(orderUrl('SO-0001'))).json()) as { updated_at: string }
-      const change = await user.fetch(orderUrl('SO-0001'), { method: 'PATCH', body: JSON.stringify({ customer: 'Changed', updated_at: row.updated_at }) })
-      expect(change.status, 'the user cannot change the order').toBe(403)
+      await expectRefused(user.fetch(orderUrl('SO-0001'), { method: 'PATCH', body: JSON.stringify({ customer: 'Changed', updated_at: row.updated_at }) }), 403)
     })
     await step('the user tries to attach a photo to the order', async () => {
       response = await attachPhoto(user, 'SO-0001')
     })
     await step('the upload is refused and nothing is stored', async () => {
-      expect(response.status, await response.clone().text()).toBe(403)
+      await expectRefused(response, 403)
       expect(await filesOn(admin, 'SO-0001'), 'no file on the order').toEqual([])
     })
   })

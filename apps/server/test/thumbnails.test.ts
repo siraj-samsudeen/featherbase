@@ -3,6 +3,7 @@ import { test } from './pg-test'
 import { getBrowser } from '../src/print'
 import { isThumbnable, makeThumbnailDataUrl } from '../src/thumbnails'
 import { deleteStored } from '../src/storage'
+import { expectStatus } from './fixtures'
 
 // FILE-004: image uploads get a downscaled thumbnail; non-images get none.
 
@@ -133,7 +134,7 @@ describe('Pictures get a small preview when uploaded', () => {
     const form = new FormData()
     form.append('file', new File([body], name, { type }))
     const res = await admin.fetch('/api/upload_file', { method: 'POST', body: form })
-    expect(res.status).toBe(201)
+    await expectStatus(res, 201)
     return (await res.json()) as { file_url: string; thumbnail_url?: string | null }
   }
 

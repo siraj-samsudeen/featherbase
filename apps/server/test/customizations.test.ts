@@ -4,7 +4,7 @@ import { sql } from '../src/db'
 import { getMeta } from '../src/meta'
 import { exportCustomizations, importCustomizations } from '../src/customizations'
 import type { TestClient } from 'feather-testing-postgres'
-import { expectApiError, grantRole, tableRef } from './fixtures'
+import { expectApiError, expectStatus, grantRole, tableRef } from './fixtures'
 import { deleteStored } from '../src/storage'
 
 // CUST-005: customizations (Custom Fields + Metadata Overrides) round-trip
@@ -52,7 +52,7 @@ describe('CUST-005: export/import customizations', () => {
     form.append('ref_name', target.row_id)
     form.append('is_private', '1')
     const file = await admin.fetch('/api/upload_file', { method: 'POST', body: form })
-    expect(file.status).toBe(201)
+    await expectStatus(file, 201)
     const uploaded = await file.json() as { row_id: string; file_url: string }
     try {
       const paths = [
@@ -136,7 +136,7 @@ describe('CUST-005: export/import customizations', () => {
           form.append('ref_name', target.row_id)
           const response = await actor.fetch('/api/upload_file', { method: 'POST', body: form })
           if (allowed) {
-            expect(response.status).toBe(201)
+            await expectStatus(response, 201)
             const file = await response.json() as { file_url: string }
             uploaded.push(file.file_url)
           } else {

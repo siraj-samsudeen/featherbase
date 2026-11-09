@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { getRoles } from '../src/permissions'
 import type { TestClient } from 'feather-testing-postgres'
+import { expectStatus } from './fixtures'
 
 // The person's minted id (`psn_…`), set by makeUser().
 let USER = ''
@@ -37,7 +38,7 @@ describe('PERM-001: role model', () => {
         },
       }),
     })
-    expect(assign.status).toBe(201)
+    await expectStatus(assign, 201)
     expect(await getRoles(USER)).toEqual(['All', 'Guest', 'System Manager'])
 
     const doc2 = await admin.get<Record<string, unknown>>(
@@ -50,7 +51,7 @@ describe('PERM-001: role model', () => {
         row: { row_id: USER, updated_at: doc2.updated_at, roles: [{ role: 'Guest' }] },
       }),
     })
-    expect(remove.status).toBe(201)
+    await expectStatus(remove, 201)
     expect(await getRoles(USER)).toEqual(['All', 'Guest'])
   })
 

@@ -8,7 +8,7 @@ import { test } from './pg-test'
 import { issueSession } from '../src/auth'
 import { setSessionHours } from './session-cookie-test-utils'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
-import { grantRole } from './fixtures'
+import { expectStatus, grantRole } from './fixtures'
 
 // #173 (follow-up to #150): a session JWT must never travel in a URL. Private
 // file links and the realtime WebSocket both used to carry
@@ -60,7 +60,7 @@ describe('#173: private files authenticate from the sid cookie', () => {
     try {
       // What a browser actually sends for an <img src> or a download link.
       const res = await api.fetch(fileUrl, { headers: { cookie: `sid=${reader.token}` } })
-      expect(res.status).toBe(200)
+      await expectStatus(res, 200)
       expect(await res.text()).toBe('classified')
     } finally {
       await deleteStored(fileUrl).catch(() => {})
@@ -78,7 +78,7 @@ describe('#173: private files authenticate from the sid cookie', () => {
       // access token here; a session JWT leaks through the same channels and is
       // refused for the same reason.
       const res = await api.fetch(`${fileUrl}?token=${encodeURIComponent(reader.token!)}`)
-      expect(res.status).toBe(401)
+      await expectStatus(res, 401)
     } finally {
       await deleteStored(fileUrl).catch(() => {})
     }

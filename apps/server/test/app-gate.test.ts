@@ -10,6 +10,7 @@ import { test } from './pg-test'
 import { appCatalog, discoverPackages } from '../src/runtime-packages'
 import { _setAlertSender } from '../src/waiting-for-access'
 import { sql } from '../src/db'
+import { expectStatus } from './fixtures'
 
 const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
 
@@ -52,7 +53,7 @@ async function appRead(client: TestClient, read: string, payload: Record<string,
   const response = await client.fetch(`/api/app_reads/barproof/${read}`, {
     method: 'POST', headers: { 'content-type': 'application/json', 'X-Featherbase-App-Version': 'barproof@1.0.0' }, body: JSON.stringify({ payload }),
   })
-  expect(response.status).toBe(200)
+  await expectStatus(response, 200)
   return response.json() as Promise<{ result: unknown }>
 }
 const waitingList = (client: TestClient) => appRead(client, 'waiting_list') as Promise<{ result: unknown[] }>
@@ -115,7 +116,7 @@ describe('an app gate: who opens the app', () => {
     await sql`update person set email = 'gate-approver@example.test' where row_id = ${approver.user!}`
     const mailed: { to: string; body: string }[] = []
     _setAlertSender(async (message) => { mailed.push({ to: message.to, body: message.body }) })
-    expect((await reader.fetch('/barproof/', { headers: { accept: 'text/html' } })).status).toBe(403)
+    await expectStatus(await reader.fetch('/barproof/', { headers: { accept: 'text/html' } }), 403)
     expect(mailed.find((m) => m.to === 'gate-approver@example.test')?.body).toContain('/barproof/?view=access')
 
     const list = (client: TestClient) => waitingList(client) as Promise<{ result: { person: string }[] }>

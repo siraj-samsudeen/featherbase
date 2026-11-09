@@ -11,7 +11,7 @@ import type { MailMessage } from '../src/email'
 import { runHealthChecks } from '../src/instance-health'
 import { config } from '../src/config'
 import { parseInstanceAddresses } from '../src/instance-addresses'
-import { expectApiError } from './fixtures'
+import { expectApiError, expectRefused } from './fixtures'
 
 const SETUP = '/api/setup/system-managers'
 
@@ -197,6 +197,6 @@ describe('first-run setup (6.1)', () => {
 
   test('only the built-in Administrator may use it', async ({ createUser }) => {
     const manager = await createUser({ email: 'sm.setup@example.com', roles: ['System Manager'] })
-    await expectApiError(manager.post(SETUP, { people: [{ full_name: 'X', email: 'x@example.com' }] }), { status: 403 })
+    await expectRefused(manager.post(SETUP, { people: [{ full_name: 'X', email: 'x@example.com' }] }), 403)
   })
 })

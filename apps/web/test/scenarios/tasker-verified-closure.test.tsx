@@ -6,7 +6,7 @@
 // verifier choices), the step tries it on the page and also sends the same
 // change to the server as that member, so the refusal is the app's, not only
 // the screen's.
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe } from 'vitest'
 import { scenarioFor } from 'server/test/scenario'
 import { test, expect, insideOf } from '../pg-test'
@@ -37,6 +37,7 @@ async function openedBy(tasker: TaskerWorld, who: string) {
 }
 
 const VERIFICATION = '[aria-label="Verification"]'
+const DETAIL = '[aria-label="Task detail content"]'
 const verification = (detail: HTMLElement) => within(detail).getByRole('region', { name: 'Verification' })
 
 /** Submits the open task for verification with this note ('' for none). */
@@ -50,7 +51,8 @@ async function submitForVerification(page: TaskerPage, detail: HTMLElement, note
   })
 }
 
-/** The reason form the details ask for before a change, and whether its action can be taken yet. */
+/** The reason form the details ask for before a change, and whether its action can be taken yet:
+ *  the DSL has no verb for a disabled button, so the form is read here and judged in the next step. */
 async function reasonAsked(detail: HTMLElement, label: string, action: string) {
   const field = await within(detail).findByRole('textbox', { name: label }) as HTMLInputElement
   return { asked: label, value: field.value, canConfirm: !(within(detail).getByRole('button', { name: action }) as HTMLButtonElement).disabled }
@@ -64,10 +66,10 @@ async function rowShows(tasker: TaskerWorld, text: string) {
   return page
 }
 
-async function chooseDueDate(detail: HTMLElement, value: string) {
-  const field = within(detail).getByLabelText('Due date')
-  await waitFor(() => expect(field).toBeEnabled())
-  fireEvent.change(field, { target: { value } })
+async function chooseDueDate(page: TaskerPage, detail: HTMLElement, value: string) {
+  // Enabled once the page has the task: the DSL has no verb for a field being enabled.
+  await waitFor(() => expect(within(detail).getByLabelText('Due date')).toBeEnabled())
+  await page.session.within(DETAIL, (details) => details.fillIn('Due date', value))
 }
 
 describe('tasker-verified-closure', () => {
@@ -84,9 +86,8 @@ describe('tasker-verified-closure', () => {
       await waitFor(() => tasker.findTask(TITLE))
     })
     await step("the task's verifier is Meena", async () => {
-      const { detail } = await openedBy(tasker, tasker.viewer)
-      const choice = within(detail).getByRole('combobox', { name: 'Task verifier' }) as HTMLSelectElement
-      await waitFor(() => expect(choice.selectedOptions[0]?.textContent).toBe('Meena'))
+      const { page } = await openedBy(tasker, tasker.viewer)
+      await page.session.within(DETAIL, (details) => details.assertSelected('Task verifier', 'Meena'))
       expect((await tasker.fresh()).verifier).toBe(await tasker.id('Meena'))
     })
   })
@@ -99,6 +100,7 @@ describe('tasker-verified-closure', () => {
     await step('someone makes Ravi its verifier', async () => {
       const ravi = await tasker.id('Ravi')
       const { detail } = await openedBy(tasker, 'a member')
+      // The people offered, by id, the option's value: the DSL reads an option by its text.
       const choice = within(detail).getByRole('combobox', { name: 'Task verifier' }) as HTMLSelectElement
       // The members' names have arrived once someone other than the assignee is offered.
       await waitFor(() => expect([...choice.options].some(o => o.textContent === 'Bala')).toBe(true))
@@ -120,9 +122,9 @@ describe('tasker-verified-closure', () => {
       await sharedTask(tasker, TITLE)
       const ravi = await tasker.id('Ravi')
       const { page, detail } = await openedBy(tasker, 'Meena')
-      const responsibility = within(detail).getByRole('combobox', { name: 'Task responsibility' })
-      await within(responsibility).findByRole('option', { name: 'Ravi' })
-      await page.user.selectOptions(responsibility, ravi)
+      // Waits for Ravi to be offered: selectOption looks for its option once.
+      await within(within(detail).getByRole('combobox', { name: 'Task responsibility' })).findByRole('option', { name: 'Ravi' })
+      await page.session.within(DETAIL, (details) => details.selectOption('Task responsibility', 'Ravi'))
       await waitFor(async () => expect((await tasker.fresh()).assigned_to).toBe(ravi))
     })
     await step('the task shows "Not acknowledged by Ravi"', () => rowShows(tasker, 'Not acknowledged by Ravi'))
@@ -140,22 +142,23 @@ describe('tasker-verified-closure', () => {
 
   scenario('Submit and accept', async ({ createUser, admin }, step) => {
     const tasker = await TaskerWorld.start({ createUser, admin })
-    let doneBox: { enabled: boolean; says: string }
+    let page: TaskerPage
     let answer: Answer
     await step('"Fix the billing counter lights" is assigned to Ravi and Meena verifies it', () =>
       sharedTask(tasker, TITLE, { assignee: 'Ravi', verifier: 'Meena' }))
     await step('Ravi marks it Done', async () => {
-      const page = await tasker.as('Ravi')
+      page = await tasker.as('Ravi')
       await page.openProject(tasker.projectOf())
       await page.row(TITLE)
-      const box = page.doneBox(TITLE)
-      doneBox = { enabled: !box.disabled, says: box.title }
-      if (doneBox.enabled) await page.user.click(box)
+      await page.session.check(page.doneBox(TITLE))
       answer = await tasker.attempt('tasker.task', { row_id: tasker.current!.row_id, is_done: true }, 'Ravi')
     })
     await step('it is refused, saying to submit it for verification', async () => {
-      expect(doneBox.enabled, 'the Done box could be ticked').toBe(false)
-      expect(doneBox.says).toMatch(/Submit it from the task details/)
+      await page.session
+        .refuteChecked(page.doneBox(TITLE))
+        .within(`input[aria-label=${JSON.stringify(page.doneBox(TITLE))}]`, (box) => box
+          .assertAttribute('disabled')
+          .assertAttribute('title', 'Its verifier closes this task. Submit it from the task details.'))
       expect(answer.ok, 'the server marked it Done').toBe(false)
       expect(answer.message).toMatch(/Submit this task for verification/)
       expect((await tasker.fresh()).task_state).not.toBe('Done')
@@ -184,7 +187,7 @@ describe('tasker-verified-closure', () => {
     })
     await step('it is Done, verified by Meena', async () => {
       const page = await rowShows(tasker, 'Verified by Meena')
-      expect(page.rowState(TITLE)).toBe('Done')
+      await page.expectRowState(TITLE, 'Done')
       expect(await tasker.fresh()).toMatchObject({ task_state: 'Done', verified_by: await tasker.id('Meena') })
     })
   })
@@ -226,7 +229,7 @@ describe('tasker-verified-closure', () => {
     })
     await step('it is In progress and shows "Returned: Left counter still flickers"', async () => {
       const page = await rowShows(tasker, 'Returned: Left counter still flickers')
-      expect(page.rowState(TITLE)).toBe('In progress')
+      await page.expectRowState(TITLE, 'In progress')
     })
     await step('it has been returned once', async () => expect((await tasker.fresh()).return_count).toBe(1))
   })
@@ -240,8 +243,8 @@ describe('tasker-verified-closure', () => {
     await step('"Fix the billing counter lights" is due on 7 November 2026', () =>
       sharedTask(tasker, TITLE, { assignee: 'Ravi', due_date: '2026-11-07' }))
     await step('Ravi moves it to 10 November 2026 without a reason', async () => {
-      const { detail } = await openedBy(tasker, 'Ravi')
-      await chooseDueDate(detail, '2026-11-10')
+      const { page, detail } = await openedBy(tasker, 'Ravi')
+      await chooseDueDate(page, detail, '2026-11-10')
       reasonForm = await reasonAsked(detail, ...DUE_REASON)
       answer = await tasker.attempt('tasker.task', { row_id: tasker.current!.row_id, due_date: '2026-11-10' }, 'Ravi')
       dueBefore = tasker.current!.due_date
@@ -254,7 +257,7 @@ describe('tasker-verified-closure', () => {
     })
     await step('Ravi moves it to 10 November 2026 because "Electrician on leave"', async () => {
       const { page, detail } = await openedBy(tasker, 'Ravi')
-      await chooseDueDate(detail, '2026-11-10')
+      await chooseDueDate(page, detail, '2026-11-10')
       await page.session.fillIn(DUE_REASON[0], 'Electrician on leave').clickButton(DUE_REASON[1])
       await waitFor(() => expect(within(detail).queryByRole('textbox', { name: DUE_REASON[0] })).not.toBeInTheDocument())
       await waitFor(async () => expect((await tasker.fresh()).extension_count).toBe(1))
@@ -270,7 +273,7 @@ describe('tasker-verified-closure', () => {
     await step('the task "Dropped supplier visit"', () => sharedTask(tasker, 'Dropped supplier visit'))
     await step('someone cancels it without a reason', async () => {
       const { page, detail } = await openedBy(tasker, 'a member')
-      await page.user.selectOptions(within(detail).getByRole('combobox', { name: 'Task state' }), 'Cancelled')
+      await page.session.within(DETAIL, (details) => details.selectOption('Task state', 'Cancelled'))
       reasonForm = await reasonAsked(detail, ...CANCEL_REASON)
       answer = await tasker.attempt('tasker.task', { row_id: tasker.current!.row_id, task_state: 'Cancelled' }, 'a member')
     })

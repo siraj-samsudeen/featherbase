@@ -5,6 +5,7 @@ import { physicalRowKey } from '../src/meta'
 import { tableName } from '../src/platform-schema'
 import { classifyColumns } from '../src/person-registry'
 import { renderTemplate } from '../src/email'
+import { expectStatus } from './fixtures'
 
 // #436: a Table or Column named after an Object.prototype key must not pick up
 // the built-in JavaScript member in a name lookup and break the generated SQL.
@@ -78,7 +79,7 @@ describe('Tables and Columns named after JavaScript built-ins (#436)', () => {
       { column_name: 'title', column_type: 'Data' },
     ] })
     const res = await admin.fetch('/api/save_row', { method: 'POST', body: JSON.stringify({ table: 'Proto Named', row: { title: 'no name' } }) })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(await res.json()).toMatchObject({ error: { message: 'Naming field constructor is required' } })
     expect(await admin.post('/api/save_row', { table: 'Proto Named', row: { constructor: 'named', title: 'x' } })).toMatchObject({ row_id: 'named' })
   })

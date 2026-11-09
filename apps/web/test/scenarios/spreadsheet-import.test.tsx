@@ -93,6 +93,7 @@ class Wizard {
     await settle()
   }
 
+  // By the column's name, the option's value: the option shows the column's label.
   async matchOn(column: string) {
     await this.user.selectOptions(screen.getByTestId('iw-key-0'), column)
     await screen.findByTestId('iw-preview-0', {}, WAIT)
@@ -144,7 +145,7 @@ class Wizard {
   async acknowledgeAppend() {
     if (!screen.queryByTestId('iw-append-warning'))
       throw new Error('Missing full-overlap append warning: import already proceeded without acknowledgement')
-    await this.user.click(screen.getByTestId('iw-append-ack'))
+    await onScreen().check('Add another set of rows')
     await this.user.click(screen.getByTestId('iw-append-go'))
     await waitFor(() => expect(this.completed()).toBe(true), { timeout: 30_000 })
   }
@@ -180,9 +181,8 @@ class Wizard {
       await this.user.click(target)
       await this.user.click(await screen.findByTestId('iw-target-new-0'))
     }
-    const input = await screen.findByTestId('iw-new-name-0', {}, WAIT)
-    await this.user.clear(input)
-    await this.user.type(input, name)
+    await screen.findByTestId('iw-new-name-0', {}, WAIT)
+    await onScreen().fillIn('New Table name', name)
   }
 
   columnRow(label: string) {

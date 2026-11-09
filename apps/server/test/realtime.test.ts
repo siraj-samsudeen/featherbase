@@ -15,7 +15,7 @@ import {
 } from '../src/realtime'
 import type { SessionUser } from '../src/auth'
 import { realtimeFrames } from 'shared'
-import { grantRole, makeTable } from './fixtures'
+import { expectRefused, grantRole, makeTable } from './fixtures'
 
 // RT-001/002/003 (server side): the lifecycle publishes the right channel
 // events. The browser wiring is covered by e2e/realtime.spec.ts.
@@ -366,7 +366,7 @@ describe('Open pages hear about changes as they happen', () => {
     await admin.post('/api/save_row', { table: 'Data Scope', row: { person: scoped.user, allow_table: table.name, for_value: 'North' } })
     expect((await reader.get(table.rowUrl('South'))).row_id).toBe('South')
     expect((await scoped.get(table.rowUrl('North'))).row_id).toBe('North')
-    await expect(scoped.get(table.rowUrl('South'))).rejects.toMatchObject({ status: 403 })
+    await expectRefused(scoped.get(table.rowUrl('South')), 403)
 
     const north = `row:${table.name}:North`
     const south = `row:${table.name}:South`

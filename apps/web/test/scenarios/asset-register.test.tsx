@@ -3,10 +3,9 @@
 // (client-apps/jeyarama/equipment) rendered in jsdom against the real
 // in-process server.
 import { screen, waitFor, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { afterEach, describe } from 'vitest'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect } from '../pg-test'
+import { test, expect, insideOf, onScreen } from '../pg-test'
 import { Assets, istLabel, realTime } from './assets'
 
 const scenario = scenarioFor(test, 'asset-register')
@@ -20,10 +19,11 @@ async function registerRow(assets: Assets, name: string, assetId: string, site?:
   await assets.open(name, 'assets')
   const table = await screen.findByRole('table', { name: 'Assets' })
   if (site) {
-    const place = screen.getByRole('combobox', { name: 'Place' })
-    await within(place).findByRole('option', { name: site })
-    await userEvent.setup().selectOptions(place, assets.places[site]!)
+    // Waits for the site to be offered: selectOption looks for its option once.
+    await within(screen.getByRole('combobox', { name: 'Place' })).findByRole('option', { name: site })
+    await onScreen().selectOption('Place', site)
   }
+  // The asset's row and its Tag cell, by column: the DSL reads text, not tables.
   const row = await waitFor(() => {
     const link = table.querySelector(`tbody a[href="#asset=${encodeURIComponent(assetId)}"]`)
     expect(link, 'the asset is in the register').not.toBeNull()
@@ -85,7 +85,6 @@ describe('asset-register', () => {
 
   scenario('A cold room deep inside a warehouse', async ({ createUser, admin }, step) => {
     const assets = await Assets.start({ createUser, admin })
-    let main: HTMLElement
     await step('the Cold chain area is on the Ground floor of the Main building at Enchakkal WH 9151', async () => {
       await assets.place('Enchakkal WH 9151', 'Site')
       await assets.place('Main building', 'Building', 'Enchakkal WH 9151')
@@ -93,17 +92,17 @@ describe('asset-register', () => {
       await assets.place('Cold chain', 'Area', 'Ground floor')
     })
     await step('a member opens the walk-in cold room in Cold chain', async () => {
-      main = await openAsset(assets, 'a member', await assets.asset(COLD_ROOM, 'Cold chain'))
+      await openAsset(assets, 'a member', await assets.asset(COLD_ROOM, 'Cold chain'))
     })
     await step('its place reads "Enchakkal WH 9151 › Main building › Ground floor › Cold chain"', () =>
-      waitFor(() => expect(main.textContent).toContain('Enchakkal WH 9151 › Main building › Ground floor › Cold chain')))
+      onScreen().within('main', (main) => main.assertText('Enchakkal WH 9151 › Main building › Ground floor › Cold chain')))
   })
 
   scenario('SAP numbers on the asset page', async ({ createUser, admin }, step) => {
     const assets = await Assets.start({ createUser, admin })
     const sap = { assetNo: '210004512', sub: '0', equipment: '10007731' }
     let assetId = ''
-    const section = () => screen.getByRole('region', { name: 'From SAP' })
+    const SAP = '[aria-labelledby="from-sap"]'
     await step('the walk-in cold room is SAP asset 210004512, sub-number 0, equipment 10007731', async () => {
       assetId = await assets.asset(COLD_ROOM, 'Enchakkal WH 9151', {
         sap_asset_no: sap.assetNo, sap_asset_sub: sap.sub, sap_equipment_no: sap.equipment, sap_refreshed_at: SAP_REFRESHED,
@@ -111,12 +110,14 @@ describe('asset-register', () => {
     })
     await step('a member opens it in Assets', () => openAsset(assets, 'a member', assetId))
     await step('the page shows those numbers as coming from SAP, with when they were refreshed', async () => {
-      await waitFor(() => expect(section().textContent).toContain(`${sap.assetNo} / ${sap.sub}`))
-      expect(section().textContent).toContain(sap.equipment)
-      expect(section().textContent).toContain(`Refreshed ${istLabel(SAP_REFRESHED)}`)
+      await insideOf(onScreen(), SAP, (section) => section
+        .assertText(`${sap.assetNo} / ${sap.sub}`)
+        .assertText(sap.equipment)
+        .assertText(`Refreshed ${istLabel(SAP_REFRESHED)}`))
     })
+    // A count of controls: the DSL reads text, not elements.
     await step('offers no way to change them', () =>
-      expect(section().querySelectorAll('input, select, textarea, button, a, [contenteditable="true"]')).toHaveLength(0))
+      expect(document.querySelector(SAP)!.querySelectorAll('input, select, textarea, button, a, [contenteditable="true"]')).toHaveLength(0))
   })
 
   scenario('Owned by one company, run by another', async ({ createUser, admin }, step) => {
@@ -131,10 +132,14 @@ describe('asset-register', () => {
     })
     await step('its page shows both, with KAIPL marked Verified', async () => {
       await openAsset(assets, 'a member', assetId)
-      const section = screen.getByRole('region', { name: 'Ownership' })
-      const value = (label: string) => [...section.querySelectorAll('div')].find(div => div.querySelector('dt')?.textContent?.includes(label))?.querySelector('dd')?.textContent?.trim()
-      await waitFor(() => expect(value('Legal owner')).toBe('KAIPL · Verified'))
-      expect(value('Operator')).toMatch(/^Kannammal Agro · /)
+      // The ownership facts in the order the page lists them: Legal owner, then Operator.
+      const fact = (n: number) => `[aria-labelledby="ownership"] dl > div:nth-child(${n})`
+      await onScreen()
+        .within(`${fact(1)} > dt`, (term) => term.assertExactText('Legal owner'))
+        .within(`${fact(1)} > dd`, (value) => value.assertExactText('KAIPL · Verified'))
+        .within(`${fact(2)} > dt`, (term) => term.assertExactText('Operator'))
+      // A pattern: whether the operator is marked is not this scenario's.
+      expect(document.querySelector(`${fact(2)} > dd`)!.textContent!.trim()).toMatch(/^Kannammal Agro · /)
     })
   })
 
@@ -147,6 +152,7 @@ describe('asset-register', () => {
     await step('it has an open repair job', () => assets.save('store staff', 'equipment.job', { asset: assetId, problem: 'Door seal torn' }))
     await step('its page shows Books Capitalized, Condition Under repair, Custody With vendor and Workflow Repair job open', async () => {
       await openAsset(assets, 'a member', assetId)
+      // Every state, in order: the DSL reads text, not lists.
       const states = screen.getByRole('list', { name: 'States' })
       await waitFor(() => expect(within(states).getAllByRole('listitem').map(item => item.textContent!.trim()))
         .toEqual(['Books: Capitalized', 'Condition: Under repair', 'Custody: With vendor', 'Workflow: Repair job open']))

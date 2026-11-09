@@ -9,7 +9,7 @@ import { kindPreset, assuranceOf } from '../src/identifiers'
 import { applySeedPack } from '../src/seed-packs'
 import { addIdentifier } from '../src/person-identifiers'
 import { CORE_PEOPLE_REVIEW } from '../src/person-identifiers'
-import { makePerson } from './fixtures'
+import { expectRefused, expectStatus, makePerson } from './fixtures'
 
 const system = async (key: string) => (await sql`select * from identifier_system where row_id = ${key}`)[0]
 
@@ -31,7 +31,7 @@ describe('identifier systems: presets and Sensitivity', () => {
     const response = await admin.fetch('/api/save_row', {
       method: 'POST', body: JSON.stringify({ table: 'Identifier System', row: { ...row, row_id: 'Bad_Code' } }),
     })
-    expect(response.status).toBe(417)
+    await expectStatus(response, 417)
     expect(await response.json()).toEqual({ error: {
       type: 'ValidationError',
       message: 'An identifier system key is a lowercase slug like "stylehr-employee-code"',
@@ -57,7 +57,7 @@ describe('identifier systems: presets and Sensitivity', () => {
       const response = await admin.fetch(path, {
         method: 'PATCH', body: JSON.stringify({ match, updated_at: loaded.updated_at }),
       })
-      expect(response.status).toBe(417)
+      await expectStatus(response, 417)
       expect(await response.json()).toEqual({ error: {
         type: 'ValidationError', message: 'match must be one of: Off, Suggest', fields: { match: 'Off, Suggest' },
       } })
@@ -67,7 +67,7 @@ describe('identifier systems: presets and Sensitivity', () => {
     const response = await admin.fetch(path, {
       method: 'PATCH', body: JSON.stringify({ match: 'Suggest', updated_at: loaded.updated_at }),
     })
-    expect(response.status).toBe(200)
+    await expectStatus(response, 200)
     expect(await response.json()).toMatchObject({ row_id: key, match: 'Suggest' })
     const after = await identifierState()
     expect(after.systems).toEqual(before.systems.map((row) => row.row_id === key
@@ -154,18 +154,18 @@ describe('identifier systems: presets and Sensitivity', () => {
     const b = await makePerson({ email: 'badge.b@x.test' })
     await addIdentifier(a, { system: 'probe-badge', value: 'B-1' }, 'Administrator')
     await addIdentifier(b, { system: 'probe-badge', value: 'b-1' }, 'Administrator')
-    await expect(admin.delete('/api/table/Identifier%20System/probe-badge')).rejects.toMatchObject({ status: 409 })
+    await expectRefused(admin.delete('/api/table/Identifier%20System/probe-badge'), 409)
     const row = await admin.get<{ updated_at: string }>('/api/table/Identifier%20System/probe-badge')
     const turnOn = await admin.fetch('/api/table/Identifier%20System/probe-badge', {
       method: 'PATCH', body: JSON.stringify({ one_holder_at_a_time: true, updated_at: row.updated_at }),
     })
-    expect(turnOn.status).toBe(409)
+    await expectStatus(turnOn, 409)
     // One per person, with no duplicates: allowed, and every row is re-stamped.
     const again = await admin.get<{ updated_at: string }>('/api/table/Identifier%20System/probe-badge')
     const perPerson = await admin.fetch('/api/table/Identifier%20System/probe-badge', {
       method: 'PATCH', body: JSON.stringify({ one_per_person: true, updated_at: again.updated_at }),
     })
-    expect(perPerson.status).toBe(200)
+    await expectStatus(perPerson, 200)
     expect(await sql`select distinct one_per_person from person_identifier where system = 'probe-badge'`).toEqual([{ one_per_person: true }])
   })
 })
@@ -182,10 +182,10 @@ describe('identifier system guards', () => {
     const holder = await makePerson({ email: 'kind.a@x.test' })
     await addIdentifier(holder, { system: 'probe-kind', value: 'K-1' }, 'Administrator')
     const refused = await change()
-    expect(refused.status).toBe(417)
+    await expectStatus(refused, 417)
     expect(await refused.json()).toMatchObject({ error: { fields: { kind: 'fixed while values exist' } } })
     await sql`delete from person_identifier where system = 'probe-kind'`
-    expect((await change()).status).toBe(200)
+    await expectStatus(await change(), 200)
     expect(await system('probe-kind')).toMatchObject({ kind: 'employee-record' })
   })
 
@@ -193,7 +193,7 @@ describe('identifier system guards', () => {
     await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'probe-linked', label: 'Linked probe', kind: 'external-record' } })
     await sql`insert into sign_in_method (row_id, kind, label, enabled, new_person, identifier_system) values ('probe-method', 'delegated_password', 'Probe', false, 'refuse', 'probe-linked')`
     const res = await admin.fetch('/api/table/Identifier%20System/probe-linked', { method: 'DELETE' })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(await res.json()).toMatchObject({ error: { message: 'Cannot delete Identifier System "Linked probe": it is linked from Sign In Method "Probe". Retire it instead to take it out of use and keep its history.' } })
     expect(await system('probe-linked')).toBeDefined()
   })
@@ -224,7 +224,7 @@ describe('identifier systems: Advanced settings and their presets', () => {
     await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'probe-aadhaar', label: 'Aadhaar', kind: 'national-id', match: 'Off' } })
     expect(await admin.get('/api/identifier_systems/probe-aadhaar/defaults')).toMatchObject({ forbidden: [], assurance: 'strong' })
     const clerk = await createUser({ email: 'clerk.defaults@x.test' })
-    expect((await clerk.fetch('/api/identifier_systems/probe-locker/defaults')).status).toBe(403)
+    await expectStatus(await clerk.fetch('/api/identifier_systems/probe-locker/defaults'), 403)
   })
 
   // person-resolution design D2, "kind drives every other default": a contact

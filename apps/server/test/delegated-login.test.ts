@@ -8,7 +8,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { _setDelegatedFetch } from '../src/delegated-login'
-import { grantRole } from './fixtures'
+import { expectStatus, grantRole } from './fixtures'
 import { VIEWER_ROLE } from '../src/sales-target'
 import { DELEGATED_URL, configureDelegated, linkDelegated, removeDelegated } from './identity-fixtures'
 import { CLIENT, FROM_CLIENT, signInAddresses } from './sign-in-address-utils'
@@ -52,7 +52,7 @@ describe('delegated password sign-in', () => {
 
     // Case and surrounding spaces are not part of the ID.
     const res = await signIn(api, '  TL_9876543210 ')
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const body = (await res.json()) as { token: string; user: { row_id: string } }
     expect(body.user.row_id).toBe(tl.user)
     expect(body.token.split('.')).toHaveLength(3)
@@ -80,7 +80,7 @@ describe('delegated password sign-in', () => {
     await link(tl.user!, 'viewer_1')
     provider(() => Response.json({ token: 'opaque' }))
     const res = await signIn(api, 'viewer_1')
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     expect(((await res.json()) as { landing?: string }).landing).toBe('/featherbase/sales-target')
   })
 
@@ -94,7 +94,7 @@ describe('delegated password sign-in', () => {
     for (const status of [400, 401, 403]) {
       provider(() => Response.json({ detail: 'nope' }, { status }))
       const res = await signIn(api, 'tl_2')
-      expect(res.status).toBe(401)
+      await expectStatus(res, 401)
       expect(await res.json()).toEqual({ error: { type: 'AuthenticationError', message: expected } })
       expect(sidCookie(res)).toBeUndefined()
     }
@@ -107,7 +107,7 @@ describe('delegated password sign-in', () => {
     for (const body of [{ error: 'Invalid credentials' }, { errors: ['bad'] }, { status: 'error' }]) {
       provider(() => Response.json(body))
       const res = await signIn(api, 'tl_3')
-      expect(res.status).toBe(401)
+      await expectStatus(res, 401)
       expect(sidCookie(res)).toBeUndefined()
     }
   })
@@ -126,7 +126,7 @@ describe('delegated password sign-in', () => {
     for (const outage of outages) {
       provider(outage)
       const res = await signIn(api, 'tl_4')
-      expect(res.status).toBe(503)
+      await expectStatus(res, 503)
       const body = (await res.json()) as { error: { type: string; message: string } }
       expect(body.error.type).toBe('ServiceUnavailableError')
       expect(body.error.message).toContain('StyleHR')
@@ -143,7 +143,7 @@ describe('delegated password sign-in', () => {
     await configure()
     const calls = provider(() => Response.json({ ok: true }))
     const res = await signIn(api, 'nobody_linked')
-    expect(res.status).toBe(401)
+    await expectStatus(res, 401)
     expect(await res.json()).toEqual({ error: { type: 'AuthenticationError', message: 'Invalid login credentials' } })
     expect(sidCookie(res)).toBeUndefined()
     expect(calls).toHaveLength(0)
@@ -236,7 +236,7 @@ describe('delegated password sign-in', () => {
     const calls = provider(() => Response.json({ ok: true }))
     const res = await signIn(api, 'tl_5')
     expect(calls).toHaveLength(0)
-    expect(res.status).toBe(401)
+    await expectStatus(res, 401)
     expect(await res.json()).toEqual({ error: { type: 'AuthenticationError', message: 'Invalid login credentials' } })
     expect(sidCookie(res)).toBeUndefined()
   })
@@ -250,11 +250,11 @@ describe('delegated password sign-in', () => {
       method: 'POST',
       body: JSON.stringify({ method: 'stylehr', subject: 'BOT-1', sign_in_name: 'bot_1' }),
     })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     await expect(sql.begin((tx) => tx`insert into sign_in_identity (id, person_id, method, subject, sign_in_name, linked_by)
       values ('uid_bot', ${bot.row_id}, 'stylehr', 'BOT-1', 'bot_1', 'test')`)).rejects.toThrow(/foreign key/)
     const calls = provider(() => Response.json({ ok: true }))
-    expect((await signIn(api, 'bot_1')).status).toBe(401)
+    await expectStatus(await signIn(api, 'bot_1'), 401)
     expect(calls).toHaveLength(0)
   })
 
@@ -267,7 +267,7 @@ describe('delegated password sign-in', () => {
       method: 'POST',
       body: JSON.stringify({ method: 'stylehr', subject: 'B-1', sign_in_name: 'DUP_1 ' }),
     })
-    expect(res.status).toBe(409)
+    await expectStatus(res, 409)
     const rows = await sql`select person_id from sign_in_identity where method = 'stylehr' and lower(sign_in_name) = 'dup_1'`
     expect(rows.map((r) => r.person_id)).toEqual([a.user])
   })
@@ -286,7 +286,7 @@ describe('delegated password sign-in', () => {
       await removeDelegated()
       if (Object.keys(settings).length) await configure(settings)
       const res = await signIn(api, 'anyone')
-      expect(res.status).toBe(404)
+      await expectStatus(res, 404)
       expect(((await res.json()) as { error: { type: string } }).error.type).toBe('NotFoundError')
     }
     expect(calls).toHaveLength(0)
@@ -297,7 +297,7 @@ describe('delegated password sign-in', () => {
     const tl = await createUser({ email: 'tl.local@example.com' })
     await link(tl.user!, 'local_1')
     const calls = provider(() => Response.json({ ok: true }))
-    expect((await signIn(api, 'local_1')).status).toBe(200)
+    await expectStatus(await signIn(api, 'local_1'), 200)
     expect(calls[0].url).toBe('http://127.0.0.1:9/api/login/')
   })
 
@@ -308,13 +308,13 @@ describe('delegated password sign-in', () => {
     await linkDelegated(tl.user!, 'tn_1', { key: 'stylehr_tn' })
     const calls = provider(() => Response.json({ token: 'x' }))
     const unnamed = await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: 'tn_1', pwd: PASSWORD }) })
-    expect(unnamed.status).toBe(417)
+    await expectStatus(unnamed, 417)
     expect(calls).toHaveLength(0)
     const res = await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: 'tn_1', pwd: PASSWORD, method: 'stylehr_tn' }) })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     expect(calls[0].url).toBe('https://tn.example.test/api/login/')
     // A login ID is looked up only at the service it belongs to.
-    expect((await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: 'tn_1', pwd: PASSWORD, method: 'stylehr' }) })).status).toBe(401)
+    await expectStatus(await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: 'tn_1', pwd: PASSWORD, method: 'stylehr' }) }), 401)
   })
 
   test('the password appears in no log line and no response', async ({ api, admin, createUser }) => {
@@ -350,10 +350,10 @@ describe('delegated password sign-in', () => {
     const tl = await createUser({ email: 'tl.seven@example.com' })
     await link(tl.user!, 'tl_7')
     const calls = provider(() => Response.json({}, { status: 401 }))
-    expect((await signIn(api, 'tl_7')).status).toBe(401)
-    expect((await signIn(api, ' TL_7')).status).toBe(401)
+    await expectStatus(await signIn(api, 'tl_7'), 401)
+    await expectStatus(await signIn(api, ' TL_7'), 401)
     const blocked = await signIn(api, 'tl_7')
-    expect(blocked.status).toBe(429)
+    await expectStatus(blocked, 429)
     expect(((await blocked.json()) as { error: { type: string } }).error.type).toBe('RateLimitError')
     expect(calls).toHaveLength(2)
   })
@@ -363,7 +363,7 @@ describe('delegated password sign-in', () => {
     await configure()
     provider(() => Response.json({}, { status: 401 }))
     await signIn(api, 'a')
-    expect((await signIn(api, 'b')).status).toBe(429)
+    await expectStatus(await signIn(api, 'b'), 429)
   })
 
   test('the body must carry usr and pwd', async ({ api }) => {
@@ -371,7 +371,7 @@ describe('delegated password sign-in', () => {
     const calls = provider(() => Response.json({ ok: true }))
     for (const body of [{}, { usr: 'x', method: 'stylehr' }, { pwd: 'y', method: 'stylehr' }, { usr: '', pwd: 'y', method: 'stylehr' }, { usr: 1, pwd: 'y', method: 'stylehr' }, { usr: 'x', pwd: 'y' }]) {
       const res = await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify(body) })
-      expect(res.status).toBe(417)
+      await expectStatus(res, 417)
     }
     expect(calls).toHaveLength(0)
   })
@@ -395,7 +395,7 @@ describe('delegated sign-in test mode', () => {
 
     for (const [usr, pwd] of [[tl.user!, ''], [` ${tl.user!.toUpperCase()} `, 'anything at all']]) {
       const res = await signIn(api, usr, pwd)
-      expect(res.status).toBe(200)
+      await expectStatus(res, 200)
       expect(((await res.json()) as { user: { row_id: string } }).user.row_id).toBe(tl.user)
     }
     expect(calls).toHaveLength(0)
@@ -406,22 +406,22 @@ describe('delegated sign-in test mode', () => {
     await configure()
     const tl = await createUser({ email: 'tl.login@example.com' })
     await link(tl.user!, 'DEVI_1000000001')
-    expect((await signIn(api, 'DEVI_1000000001', '')).status).toBe(401)
+    await expectStatus(await signIn(api, 'DEVI_1000000001', ''), 401)
   })
 
   test('on: an account with no link, a disabled one and a System Manager are still refused', async ({ api, admin, createUser }) => {
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
     await configure()
-    expect((await signIn(api, 'nobody', '')).status).toBe(401)
+    await expectStatus(await signIn(api, 'nobody', ''), 401)
     const office = await createUser({ email: 'office@example.com' })
-    expect((await signIn(api, office.user!, '')).status).toBe(401)
+    await expectStatus(await signIn(api, office.user!, ''), 401)
     const off = await createUser({ email: 'tl.disabled@example.com' })
     await link(off.user!, 'tl_disabled')
     await sql`update person set enabled = false where row_id = ${off.user!}`
-    expect((await signIn(api, off.user!, '')).status).toBe(401)
+    await expectStatus(await signIn(api, off.user!, ''), 401)
     const sm = await createUser({ email: 'sm@example.com', roles: ['System Manager'] })
     await link(sm.user!, 'sm_1')
-    expect((await signIn(api, sm.user!, '')).status).toBe(401)
+    await expectStatus(await signIn(api, sm.user!, ''), 401)
   })
 
   test('only the exact phrase turns it on; "1" or "true" leave the provider in charge', async ({ api, admin, createUser }) => {
@@ -431,9 +431,9 @@ describe('delegated sign-in test mode', () => {
     for (const value of ['1', 'true', 'yes', '']) {
       vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', value)
       const calls = provider(() => Response.json({ error: 'bad password' }))
-      expect((await signIn(api, 'tl_strict', 'wrong')).status).toBe(401)
+      await expectStatus(await signIn(api, 'tl_strict', 'wrong'), 401)
       expect(calls).toHaveLength(1)
-      expect((await signIn(api, 'tl_strict', '')).status).toBe(417)
+      await expectStatus(await signIn(api, 'tl_strict', ''), 417)
     }
   })
 
@@ -451,7 +451,7 @@ describe('delegated sign-in test mode', () => {
     await sql`insert into person_identifier (id, person_id, system, assigner, value, verified, one_holder, source, recorded_by)
       values ('pid_twin_b_code', ${b.user!}, 'stylehr-employee-code', 'firm-12', ${a.user!.toUpperCase()}, true, true, 'test', 'test')`
     const res = await signIn(api, a.user!, '')
-    expect(res.status).toBe(409)
+    await expectStatus(res, 409)
     expect(sidCookie(res)).toBeUndefined()
   })
 
@@ -460,16 +460,16 @@ describe('delegated sign-in test mode', () => {
     await configure()
     const tl = await createUser({ email: 'tl.ended@example.com' })
     const identity = await link(tl.user!, 'tl_ended')
-    expect((await signIn(api, tl.user!, '')).status).toBe(200)
+    await expectStatus(await signIn(api, tl.user!, ''), 200)
     // The link ends (unlinked): the code alone no longer opens the account.
     await admin.delete(`/api/identities/${identity}`).catch(() => undefined)
     await sql`update sign_in_identity set ended_at = coalesce(ended_at, now()), ended_reason = coalesce(ended_reason, 'unlinked') where id = ${identity}`
-    expect((await signIn(api, tl.user!, '')).status).toBe(401)
+    await expectStatus(await signIn(api, tl.user!, ''), 401)
     // A link that is live but whose code has ended does not either.
     const other = await createUser({ email: 'tl.oldcode@example.com' })
     await link(other.user!, 'tl_oldcode')
     await sql`update person_identifier set valid = daterange('2024-01-01', '2025-01-01', '[)') where person_id = ${other.user!} and system = 'stylehr-employee-code'`
-    expect((await signIn(api, other.user!, '')).status).toBe(401)
+    await expectStatus(await signIn(api, other.user!, ''), 401)
   })
 
   test('only the method’s own employee-code system is a test-mode credential (Codex review on #385)', async ({ api, admin, createUser }) => {
@@ -481,8 +481,8 @@ describe('delegated sign-in test mode', () => {
     await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'other-payroll-code', label: 'Other payroll', kind: 'employee-record', source: 'other-payroll' } })
     await sql`insert into person_identifier (id, person_id, system, assigner, value, verified, one_holder, source, recorded_by)
       values ('pid_other_payroll', ${tl.user!}, 'other-payroll-code', '', 'OP-1', true, true, 'test', 'test')`
-    expect((await signIn(api, 'OP-1', '')).status).toBe(401)
-    expect((await signIn(api, tl.user!, '')).status).toBe(200)
+    await expectStatus(await signIn(api, 'OP-1', ''), 401)
+    await expectStatus(await signIn(api, tl.user!, ''), 200)
   })
 
   // The test-mode form now has a password box like the ordinary one, so
@@ -497,8 +497,8 @@ describe('delegated sign-in test mode', () => {
     const lines: string[] = []
     for (const level of ['log', 'info', 'warn', 'error', 'debug'] as const)
       vi.spyOn(console, level).mockImplementation((...args: unknown[]) => void lines.push(args.map(String).join(' ')))
-    expect((await signIn(api, tl.user!, typed)).status).toBe(200)
-    expect((await signIn(api, 'nobody-here', typed)).status).toBe(401)
+    await expectStatus(await signIn(api, tl.user!, typed), 200)
+    await expectStatus(await signIn(api, 'nobody-here', typed), 401)
     expect(lines.join('\n')).not.toContain(typed)
     const logged = await sql`select to_jsonb(a)::text as row from activity_log a where "user" in (${tl.user!}, 'nobody-here')`
     expect(logged.map((r) => r.row).join('\n')).not.toContain(typed)
@@ -584,15 +584,15 @@ describe('delegated sign-in through linked identities', () => {
     const local = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: tl.user, pwd: 'local-pw-123' }) })
     const { token } = (await local.json()) as { token: string }
     const whoami = () => api.fetch('/api/whoami', { headers: { authorization: `Bearer ${token}` } })
-    expect((await whoami()).status).toBe(200)
+    await expectStatus(await whoami(), 200)
 
     provider(() => Response.json({ token: 'x', employment_status: 'Resigned' }))
-    expect((await signIn(api, 'tl_leaver')).status).toBe(403)
+    await expectStatus(await signIn(api, 'tl_leaver'), 403)
     const [row] = await sql`select enabled from person where row_id = ${tl.user!}`
     expect(row.enabled).toBe(false)
-    expect((await whoami()).status).toBe(401)
+    await expectStatus(await whoami(), 401)
     const again = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: tl.user, pwd: 'local-pw-123' }) })
-    expect(again.status).toBe(401)
+    await expectStatus(again, 401)
     // History is kept: the disable is a recorded change, and the link stays.
     const [link_] = await sql`select 1 from sign_in_identity where person_id = ${tl.user!}`
     expect(link_).toBeTruthy()
@@ -605,7 +605,7 @@ describe('delegated sign-in through linked identities', () => {
     await admin.post('/api/set_password', { user: tl.user, password: PASSWORD })
     provider(() => new Response('down', { status: 503 }))
     const res = await signIn(api, 'tl_fallback')
-    expect(res.status).toBe(503)
+    await expectStatus(res, 503)
     expect(sidCookie(res)).toBeUndefined()
   })
 
@@ -614,7 +614,7 @@ describe('delegated sign-in through linked identities', () => {
     await configure()
     const tl = await createUser({ email: 'tl.dup.migrated@example.com' })
     await linkDelegated(tl.user!, null)
-    expect((await signIn(api, ` ${tl.user!.toUpperCase()} `, '')).status).toBe(200)
+    await expectStatus(await signIn(api, ` ${tl.user!.toUpperCase()} `, ''), 200)
   })
 
   test('a test-mode session cannot set a password, mint a token or change sign-in methods', async ({ api, createUser }) => {
@@ -623,15 +623,15 @@ describe('delegated sign-in through linked identities', () => {
     const tl = await createUser({ email: 'tl.tm.session@example.com' })
     const identity = await link(tl.user!, 'tl_tm')
     const res = await signIn(api, tl.user!, '')
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const { token, user } = (await res.json()) as { token: string; user: { sign_in: { test_mode: boolean } } }
     expect(user.sign_in.test_mode).toBe(true)
     const as = (path: string, init: RequestInit = {}) =>
       api.fetch(path, { ...init, headers: { authorization: `Bearer ${token}` } })
-    expect((await as('/api/set_password', { method: 'POST', body: JSON.stringify({ password: 'kept-forever' }) })).status).toBe(403)
-    expect((await as('/api/access_tokens', { method: 'POST', body: JSON.stringify({ label: 'keep' }) })).status).toBe(403)
-    expect((await as(`/api/me/identities/${identity}`, { method: 'DELETE' })).status).toBe(403)
-    expect((await as('/api/oauth/google/link', { redirect: 'manual' })).status).toBe(403)
+    await expectStatus(await as('/api/set_password', { method: 'POST', body: JSON.stringify({ password: 'kept-forever' }) }), 403)
+    await expectStatus(await as('/api/access_tokens', { method: 'POST', body: JSON.stringify({ label: 'keep' }) }), 403)
+    await expectStatus(await as(`/api/me/identities/${identity}`, { method: 'DELETE' }), 403)
+    await expectStatus(await as('/api/oauth/google/link', { redirect: 'manual' }), 403)
     const [row] = await sql`select password_hash from person where row_id = ${tl.user!}`
     expect(row.password_hash).toBeNull()
   })
@@ -688,7 +688,7 @@ describe('the boot announcement and the real provider connection', () => {
       const tl = await createUser({ email: 'tl.real@example.com' })
       await link(tl.user!, 'tl_real')
       const res = await signIn(api, 'tl_real')
-      expect(res.status).toBe(200)
+      await expectStatus(res, 200)
       expect(received).toHaveLength(1)
       expect(received[0].method).toBe('POST')
       expect(JSON.parse(received[0].body)).toEqual({ email: 'tl_real', password: PASSWORD })
@@ -706,7 +706,7 @@ describe('#396: the sign-in records the client address', () => {
     await link(tl.user!, 'tl_address')
     provider(() => Response.json({ token: 'opaque' }))
     const res = await api.fetch('/api/login/delegated', { method: 'POST', headers: FROM_CLIENT, body: JSON.stringify({ usr: 'tl_address', pwd: PASSWORD, method: 'stylehr' }) })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     // The fixture signed in once already, with no address.
     expect((await signInAddresses(tl.user!)).sort()).toEqual([CLIENT, null])
   })
@@ -725,7 +725,7 @@ describe('#376: the answer must name the linked record', () => {
     await linkDelegated(tl.user!, 'tl_keyed', { subject: '7001' })
     for (const body of [{ token: 'opaque', employee_id: 7001 }, { data: { employee_id: ' 7001 ' } }]) {
       provider(() => Response.json(body))
-      expect((await signIn(api, 'tl_keyed')).status).toBe(200)
+      await expectStatus(await signIn(api, 'tl_keyed'), 200)
     }
   })
 
@@ -737,7 +737,7 @@ describe('#376: the answer must name the linked record', () => {
     for (const body of [{ token: 'opaque', employee_id: 7002 }, { token: 'opaque' }, { employee_id: 7002, exit_date: '2026-01-01' }]) {
       provider(() => Response.json(body))
       const res = await signIn(api, 'tl_other')
-      expect(res.status).toBe(401)
+      await expectStatus(res, 401)
       expect(sidCookie(res)).toBeUndefined()
     }
     // An answer about somebody else who has left disables nobody here.
@@ -751,7 +751,7 @@ describe('#376: the answer must name the linked record', () => {
     const tl = await createUser({ email: 'tl.unkeyed@example.com' })
     await linkDelegated(tl.user!, 'tl_unkeyed', { subject: '7001' })
     provider(() => Response.json({ token: 'opaque', employee_id: 7002 }))
-    expect((await signIn(api, 'tl_unkeyed')).status).toBe(200)
+    await expectStatus(await signIn(api, 'tl_unkeyed'), 200)
   })
 
   test('a malformed key refuses the sign-in without asking the service', async ({ api, admin, createUser }) => {
@@ -760,7 +760,7 @@ describe('#376: the answer must name the linked record', () => {
     const tl = await createUser({ email: 'tl.badkey@example.com' })
     await linkDelegated(tl.user!, 'tl_badkey', { subject: '7001' })
     const calls = provider(() => Response.json({ token: 'opaque', employee_id: 7001 }))
-    expect((await signIn(api, 'tl_badkey')).status).toBe(401)
+    await expectStatus(await signIn(api, 'tl_badkey'), 401)
     expect(calls).toHaveLength(0)
   })
 
@@ -769,7 +769,7 @@ describe('#376: the answer must name the linked record', () => {
       method: 'POST',
       body: JSON.stringify({ row_id: 'hr_keyed', kind: 'delegated_password', label: 'HR', enabled: false, settings: JSON.stringify({ provider_record_key: '' }) }),
     })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(JSON.stringify(await res.json())).toContain('provider_record_key')
   })
 })

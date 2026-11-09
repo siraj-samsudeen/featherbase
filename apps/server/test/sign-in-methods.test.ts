@@ -5,7 +5,7 @@ import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { makePerson } from './fixtures'
+import { expectStatus, makePerson } from './fixtures'
 import { configureDelegated, linkDelegated } from './identity-fixtures'
 
 const save = (admin: TestClient, row: Record<string, unknown>) =>
@@ -35,9 +35,9 @@ describe('Sign In Method rows', () => {
       { row_id: 'hr_domain', kind: 'delegated_password', label: 'HR', new_person: 'create_if_email_domain_allowed' },
     ]
     for (const row of cases) expect((await save(admin, row)).status, String(row.row_id)).toBe(417)
-    expect((await patchMethod(admin, 'password', { new_person: 'create_if_email_domain_allowed' })).status).toBe(417)
-    expect((await patchMethod(admin, 'password', { kind: 'google' })).status).toBe(417)
-    expect((await save(admin, { row_id: 'password2', kind: 'password', label: 'Again' })).status).toBe(409)
+    await expectStatus(await patchMethod(admin, 'password', { new_person: 'create_if_email_domain_allowed' }), 417)
+    await expectStatus(await patchMethod(admin, 'password', { kind: 'google' }), 417)
+    await expectStatus(await save(admin, { row_id: 'password2', kind: 'password', label: 'Again' }), 409)
   })
 
   test('the password method cannot be deleted, and a method in use cannot be deleted', async ({ admin }) => {
@@ -45,7 +45,7 @@ describe('Sign In Method rows', () => {
     await configureDelegated()
     const rrDel = await makePerson({})
     await linkDelegated(rrDel, 'rr_del')
-    expect((await admin.fetch(`/api/table/${encodeURIComponent('Sign In Method')}/stylehr`, { method: 'DELETE' })).status).toBe(409)
+    await expectStatus(await admin.fetch(`/api/table/${encodeURIComponent('Sign In Method')}/stylehr`, { method: 'DELETE' }), 409)
     expect(await sql`select 1 from sign_in_method where row_id = 'stylehr'`).toHaveLength(1)
   })
 
@@ -53,18 +53,18 @@ describe('Sign In Method rows', () => {
     const smg = await makePerson({ username: 'sm.google', roles: [{ role: 'System Manager' }] })
     await sql`insert into sign_in_identity (id, person_id, method, subject, linked_by) values ('uid_smg', ${smg}, 'google', 'g-sm', 'test')`
     const refused = await patchMethod(admin, 'google', { enabled: false })
-    expect(refused.status).toBe(417)
+    await expectStatus(refused, 417)
     expect(((await refused.json()) as { error: { message: string } }).error.message).toContain(smg)
     // Give them a password and the same change is allowed.
     await admin.post('/api/set_password', { user: smg, password: 'sm-google-pw' })
-    expect((await patchMethod(admin, 'google', { enabled: false })).status).toBe(200)
+    await expectStatus(await patchMethod(admin, 'google', { enabled: false }), 200)
   })
 
   test('passwords cannot be turned off while the Administrator signs in only with one', async ({ admin }) => {
     await sql`update person set password_hash = coalesce(password_hash, 'x:y') where row_id = 'Administrator'`
     await sql`delete from sign_in_identity where person_id = 'Administrator'`
     const res = await patchMethod(admin, 'password', { enabled: false })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(((await res.json()) as { error: { message: string } }).error.message).toContain('Administrator')
   })
 })

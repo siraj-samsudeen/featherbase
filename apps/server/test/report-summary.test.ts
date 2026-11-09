@@ -2,7 +2,7 @@
 // matching row, not from the rows the browser happened to fetch.
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { createUserWithRole, expectApiError } from './fixtures'
+import { createUserWithRole, expectRefused, expectStatus } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 
@@ -44,7 +44,7 @@ describe('summary totals over every matching row', () => {
     const meta = await admin.get(metaPath)
     for (const sums of [42, ['qty', 7]]) {
       const response = await admin.fetch(summaryPath({ sums: JSON.stringify(sums) }))
-      expect(response.status).toBe(400)
+      await expectStatus(response, 400)
       expect(await response.json()).toEqual({ error: {
         type: 'BadRequestError', message: 'sums must be a JSON list of column names',
       } })
@@ -116,10 +116,10 @@ describe('summary totals over every matching row', () => {
 
   test('only a number column can be summed, and only a real column grouped', async ({ admin }) => {
     await setup(admin)
-    await expectApiError(admin.get(summaryPath({ sums: JSON.stringify(['note']) })), { status: 417 })
-    await expectApiError(admin.get(summaryPath({ group_by: 'nope' })), { status: 417 })
-    await expectApiError(admin.get(summaryPath({ sums: 'qty' })), { status: 400 })
-    await expectApiError(admin.get(summaryPath({ filters: 'not-json' })), { status: 400 })
+    await expectRefused(admin.get(summaryPath({ sums: JSON.stringify(['note']) })), 417)
+    await expectRefused(admin.get(summaryPath({ group_by: 'nope' })), 417)
+    await expectRefused(admin.get(summaryPath({ sums: 'qty' })), 400)
+    await expectRefused(admin.get(summaryPath({ filters: 'not-json' })), 400)
   })
 
   test('a person who can read only their own rows gets totals over only those rows', async ({ admin, createUser }) => {
@@ -137,6 +137,6 @@ describe('summary totals over every matching row', () => {
   test('someone who cannot read the Table is refused', async ({ admin, createUser }) => {
     await setup(admin)
     const outsider = await createUser()
-    await expectApiError(outsider.get(summaryPath({})), { status: 403 })
+    await expectRefused(outsider.get(summaryPath({})), 403)
   })
 })

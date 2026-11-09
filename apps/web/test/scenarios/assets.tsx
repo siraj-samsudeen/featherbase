@@ -4,7 +4,6 @@
 // pages rendered in jsdom for whoever is looking. Steps never see a route or
 // a selector they don't name.
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
@@ -19,7 +18,7 @@ import { sql } from 'server/src/db'
 import { AssetsApp } from '../../../../client-apps/jeyarama/equipment/src/AssetsApp'
 import { version } from '../../../../client-apps/jeyarama/equipment/package.json'
 import { setSession } from '../../src/lib/api'
-import { expect } from '../pg-test'
+import { expect, insideOf, screenSession } from '../pg-test'
 
 export type Row = { row_id: string; updated_at: string; [field: string]: unknown }
 type CreateUser = (options: { roles: string[]; fullName: string }) => Promise<TestClient>
@@ -349,6 +348,7 @@ export class AssetCounts {
   async countsRow(name: string) {
     await this.assets.open(name, 'counts')
     const table = await screen.findByRole('table', { name: 'Counts' })
+    // The count's row, found by its name, and whether it offers a button: the DSL reads neither.
     const row = await waitFor(() => {
       const found = within(table).getAllByRole('row').find(r => r.textContent!.includes(String(this.count.count_name)))
       expect(found, 'the count is listed').toBeTruthy()
@@ -359,14 +359,14 @@ export class AssetCounts {
 
   /** Picks an area on the open count page; the areas offered, once the page has them. */
   private async chooseArea(areaName: string) {
+    // The areas offered, read whole: an area is named by its path, which ends in the area's own name.
     const select = await screen.findByRole('combobox', { name: 'Area' }) as HTMLSelectElement
     const areas = await waitFor(() => {
       const labels = [...select.options].map(o => o.textContent!).filter(label => label !== 'Choose where you are')
       expect(labels.find(label => label.endsWith(areaName)), `${areaName} is not offered: ${labels.join(', ')}`).toBeTruthy()
       return labels
     })
-    const option = [...select.options].find(o => o.textContent!.endsWith(areaName))!
-    await userEvent.setup().selectOptions(select, option.value)
+    await screenSession().selectOption('Area', areas.find(label => label.endsWith(areaName))!.trim())
     return areas
   }
 
@@ -374,7 +374,7 @@ export class AssetCounts {
   async counterPage(name: string, areaName: string) {
     const main = await this.assets.open(name, `count=${encodeURIComponent(this.count.row_id)}`)
     const areas = await this.chooseArea(areaName)
-    await waitFor(() => expect(screen.getAllByRole('status').some(s => s.textContent!.includes('You have recorded'))).toBe(true))
+    await insideOf(screenSession(), 'p.count-progress', (progress) => progress.assertText('You have recorded'))
     return { areas, text: main.textContent! }
   }
 
@@ -385,7 +385,7 @@ export class AssetCounts {
     return this.reviewShown()
   }
 
-  /** The open review page's text under each heading, as it reads now. */
+  /** The open review page's text under each heading, as it reads now, for patterns: the DSL's text verbs match literal text only. */
   reviewShown() {
     const section = (heading: string) => screen.getByRole('heading', { name: heading }).closest('section')!.textContent!
     return { missing: section('Missing'), moved: section('Moved since the start'), found: section('Found') }
@@ -424,6 +424,7 @@ export class AssetCounts {
     await this.assets.open(name, `count=${encodeURIComponent(this.count.row_id)}`)
     await this.chooseArea(areaName)
     const table = await screen.findByRole('table', { name: 'Count lines' })
+    // The table's rows, for its callers to read: the DSL reads text, not rows.
     await waitFor(() => expect(within(table).getAllByRole('row').length).toBeGreaterThan(1))
     return table
   }

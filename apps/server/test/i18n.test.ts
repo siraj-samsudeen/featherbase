@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { getCatalog, t } from '../src/i18n'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
+import { expectStatus } from './fixtures'
 
 // I18N-001: the translation catalog + t() lookup, and per-user language.
 
@@ -54,7 +55,7 @@ describe('I18N-001: translations', () => {
   test('exposes the catalog over HTTP', async ({ admin }) => {
     await seedFrench(admin)
     const res = await admin.fetch('/api/translations/fr')
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     expect((await res.json()) as Record<string, string>).toMatchObject({ Save: 'Enregistrer' })
   })
 
@@ -66,7 +67,7 @@ describe('I18N-001: translations', () => {
       method: 'POST',
       body: JSON.stringify({ language: 'fr' }),
     })
-    expect(ok.status).toBe(200)
+    await expectStatus(ok, 200)
     const who = await user.get<{ language: string }>('/api/whoami')
     expect(who.language).toBe('fr')
 
@@ -74,6 +75,6 @@ describe('I18N-001: translations', () => {
       method: 'POST',
       body: JSON.stringify({ language: '!!!' }),
     })
-    expect(bad.status).toBe(417)
+    await expectStatus(bad, 417)
   })
 })

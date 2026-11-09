@@ -11,6 +11,7 @@ import { test } from './pg-test'
 import { getSource, invalidateSources } from '../src/sources/registry'
 import { duckdbDriver, run } from '../src/sources/duckdb-driver'
 import type { Binding, SourceFilter } from '../src/sources/types'
+import { expectStatus } from './fixtures'
 
 const DUCK_URL_ENV = 'DUCK_FIXTURE_URL'
 let dir: string
@@ -61,7 +62,7 @@ async function makeDuckSource(admin: {
     method: 'POST',
     body: JSON.stringify({ schema: 'warehouse.main', tables: ['daily_sales'] }),
   })
-  expect(res.status).toBe(200)
+  await expectStatus(res, 200)
   const body = (await res.json()) as { created: { name: string }[]; skipped: { reason: string }[] }
   expect(body.created).toHaveLength(1)
   return body.created[0].name
@@ -151,7 +152,7 @@ describe('M3: duckdb read-only source', () => {
       status: 403,
     })
     const del = await admin.fetch(`/api/table/${enc}/KKL`, { method: 'DELETE' })
-    expect(del.status).toBe(403)
+    await expectStatus(del, 403)
   })
 })
 

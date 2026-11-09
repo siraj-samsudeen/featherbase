@@ -7,6 +7,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { deleteStored } from '../src/storage'
 import { test } from './pg-test'
+import { expectStatus } from './fixtures'
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
 
@@ -16,7 +17,7 @@ async function uploadLogo(as: TestClient, extra: Record<string, string> = {}): P
   form.append('ref_table', 'System Settings')
   for (const [k, v] of Object.entries(extra)) form.append(k, v)
   const res = await as.fetch('/api/upload_file', { method: 'POST', body: form })
-  expect(res.status).toBe(201)
+  await expectStatus(res, 201)
   return ((await res.json()) as { file_url: string }).file_url
 }
 
@@ -38,7 +39,7 @@ describe('the instance logo on the sign-in page', () => {
       await admin.post('/api/save_row', { table: 'System Settings', row: { logo: url } })
       expect((await brand(api)).logo).toBe(url)
       const res = await api.fetch(url)
-      expect(res.status).toBe(200)
+      await expectStatus(res, 200)
       expect(res.headers.get('content-type')).toBe('image/png')
     } finally {
       await deleteStored(url).catch(() => {})

@@ -3,7 +3,7 @@ import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
 import { onEvent } from '../src/realtime'
 import { test } from './pg-test'
-import { makePerson, grantRole } from './fixtures'
+import { expectStatus, grantRole, makePerson } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
 
 // UI-018: an @mention in a comment creates a Notification Log for each
@@ -28,7 +28,7 @@ describe('UI-018: comment @mention notifications', () => {
         },
       }),
     })
-    expect(res.status).toBe(201)
+    await expectStatus(res, 201)
 
     const notifs = await sql`
       select for_user, subject from notification_log
@@ -62,7 +62,7 @@ describe('UI-018: comment @mention notifications', () => {
         row: { ref_table: 'Person', ref_name: 'Administrator', content: 'no mentions here' },
       }),
     })
-    expect(res.status).toBe(201)
+    await expectStatus(res, 201)
     const after = (await sql`select count(*)::int as c from notification_log`)[0].c as number
     expect(after).toBe(before)
   })
@@ -104,7 +104,7 @@ describe('Comment on a row', () => {
     const doc = await commentWorld(admin)
     const author = await createUser({ roles: ['Cmt Req Reader'] })
     const reader = await createUser({ roles: ['Cmt Req Reader'] })
-    expect((await postComment(author, doc.row_id, 'Following up with the supplier')).status).toBe(201)
+    await expectStatus(await postComment(author, doc.row_id, 'Following up with the supplier'), 201)
 
     const activity = await reader.get<{ comments: { content: string }[] }>(
       `/api/activity/${encodeURIComponent(CMT_DT)}/${doc.row_id}`,
@@ -115,7 +115,7 @@ describe('Comment on a row', () => {
   test('someone who is not allowed to comment is refused', async ({ admin, createUser }) => {
     const doc = await commentWorld(admin)
     const outsider = await createUser({ roles: [] })
-    expect((await postComment(outsider, doc.row_id, 'let me in')).status).toBe(403)
+    await expectStatus(await postComment(outsider, doc.row_id, 'let me in'), 403)
     expect((await sql`select 1 from comment where ref_name = ${doc.row_id}`).length).toBe(0)
   })
 
@@ -125,7 +125,7 @@ describe('Comment on a row', () => {
     const doc = await commentWorld(admin)
     const commenter = await createUser({ roles: ['Cmt Req Commenter'] })
     const watcher = await makePerson({ username: 'cmt-unread-watcher' })
-    expect((await postComment(commenter, doc.row_id, 'I should not be here, @cmt-unread-watcher')).status).toBe(403)
+    await expectStatus(await postComment(commenter, doc.row_id, 'I should not be here, @cmt-unread-watcher'), 403)
     expect(await sql`select 1 from comment where ref_name = ${doc.row_id}`).toHaveLength(0)
     expect(await sql`select 1 from notification_log where for_user = ${watcher}`).toHaveLength(0)
   })
@@ -232,7 +232,7 @@ describe('See a row\'s whole history in order', () => {
       method: 'POST',
       body: JSON.stringify({ table: 'Comment', row: { ref_table: 'Cmt Req NoHist', ref_name: doc.row_id, content: 'renamed to b' } }),
     })
-    expect(posted.status).toBe(201)
+    await expectStatus(posted, 201)
     const activity = await admin.get<{ versions: unknown[]; comments: { content: string }[] }>(
       `/api/activity/Cmt%20Req%20NoHist/${doc.row_id}`,
     )

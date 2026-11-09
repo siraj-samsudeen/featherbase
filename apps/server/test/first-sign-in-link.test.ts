@@ -13,7 +13,7 @@ import { _setDelegatedFetch, delegatedLoginConfig } from '../src/delegated-login
 import { rosterFirstSignIn } from '../src/roster-first-sign-in'
 import { applyInstanceSettings } from '../src/instance-settings'
 import { getSignInMethod } from '../src/identities'
-import { makeTable } from './fixtures'
+import { expectStatus, makeTable } from './fixtures'
 import { configureDelegated, giveEmployeeCode, linkDelegated } from './identity-fixtures'
 
 const TABLE = 'Crew List'
@@ -73,7 +73,7 @@ const heldNotes = async () => (await sql`select operation from activity_log wher
 async function expectRefusedWithoutAsking(api: TestClient, calls: Call[], usr = CODE) {
   const before = await peopleCount()
   const res = await signIn(api, usr)
-  expect(res.status).toBe(401)
+  await expectStatus(res, 401)
   expect(((await res.json()) as { error: { message: string } }).error.message).toBe(REFUSED)
   expect(calls).toHaveLength(0)
   expect(await peopleCount()).toBe(before)
@@ -93,7 +93,7 @@ describe('a first sign-in links the roster row', () => {
 
     const res = await signIn(api)
 
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const { user } = (await res.json()) as { user: { row_id: string } }
     expect(calls).toEqual([{ body: { email: CODE, password: PASSWORD } }])
     expect(await peopleCount()).toBe(before + 1)
@@ -121,7 +121,7 @@ describe('a first sign-in links the roster row', () => {
 
       const res = await signIn(api, CODE)
 
-      expect(res.status).toBe(200)
+      await expectStatus(res, 200)
       expect(calls).toEqual([{ body: { email: CODE, password: PASSWORD } }])
       const [row] = await crew(PREFIXED)
       expect(row.login).toBeTruthy()
@@ -153,7 +153,7 @@ describe('a first sign-in links the roster row', () => {
   test('the ID may differ in case and surrounding spaces', async ({ api, admin }) => {
     await setUp(admin)
     const calls = provider()
-    expect((await signIn(api, `  ${CODE.toLowerCase()} `)).status).toBe(200)
+    await expectStatus(await signIn(api, `  ${CODE.toLowerCase()} `), 200)
     expect(calls).toHaveLength(1)
     expect((await crew())[0].login).toBeTruthy()
   })
@@ -164,7 +164,7 @@ describe('a first sign-in links the roster row', () => {
     const first = (await (await signIn(api)).json()) as { user: { row_id: string } }
     const people = await peopleCount()
     const again = await signIn(api)
-    expect(again.status).toBe(200)
+    await expectStatus(again, 200)
     expect(((await again.json()) as { user: { row_id: string } }).user.row_id).toBe(first.user.row_id)
     expect(calls).toHaveLength(2)
     expect(await peopleCount()).toBe(people)
@@ -175,7 +175,7 @@ describe('a first sign-in links the roster row', () => {
     provider()
     const first = (await (await signIn(api)).json()) as { user: { row_id: string } }
     provider(() => Response.json({ access: 'opaque', employee_id: Number(RECORD), is_active: false }))
-    expect((await signIn(api)).status).toBe(403)
+    await expectStatus(await signIn(api), 403)
     expect((await sql`select enabled from person where row_id = ${first.user.row_id}`)[0].enabled).toBe(false)
   })
 })
@@ -224,7 +224,7 @@ describe('every later sign-in must name the same record too', () => {
 
   test('a yes naming another record signs nobody in', async ({ api, admin }) => {
     const { res, person } = await firstThen(api, admin, () => Response.json({ access: 'opaque', employee_id: 7002 }))
-    expect(res.status).toBe(401)
+    await expectStatus(res, 401)
     expect(((await res.json()) as { error: { message: string } }).error.message).toBe(REFUSED)
     expect(res.headers.getSetCookie().find((c) => c.startsWith('sid='))).toBeUndefined()
     expect(person.enabled).toBe(true)
@@ -232,27 +232,27 @@ describe('every later sign-in must name the same record too', () => {
 
   test('a yes naming no record signs nobody in', async ({ api, admin }) => {
     const { res } = await firstThen(api, admin, () => Response.json({ access: 'opaque', id: 99 }))
-    expect(res.status).toBe(401)
+    await expectStatus(res, 401)
   })
 
   test('another record having left does not disable this person', async ({ api, admin }) => {
     const { res, person } = await firstThen(api, admin, () => Response.json({ access: 'opaque', employee_id: 7002, is_active: false }))
-    expect(res.status).toBe(401)
+    await expectStatus(res, 401)
     expect(person.enabled).toBe(true)
   })
 
   test('a leaver answer naming no record does not disable this person', async ({ api, admin }) => {
     const { res, person } = await firstThen(api, admin, () => Response.json({ is_active: false }))
-    expect(res.status).toBe(401)
+    await expectStatus(res, 401)
     expect(person.enabled).toBe(true)
   })
 
   test('an answer naming two records is not believed, for a yes or for a leaver', async ({ api, admin }) => {
     const { res, person } = await firstThen(api, admin, () => Response.json({ employee_id: Number(RECORD), employee: { employee_id: 7002, is_active: false } }))
-    expect(res.status).toBe(401)
+    await expectStatus(res, 401)
     expect(person.enabled).toBe(true)
     provider(() => Response.json({ employee_id: Number(RECORD), user: { employee_id: 7002, access: 'opaque' } }))
-    expect((await signIn(api)).status).toBe(401)
+    await expectStatus(await signIn(api), 401)
   })
 
   test('a later answer naming another record is noted for an administrator', async ({ api, admin }) => {
@@ -275,7 +275,7 @@ describe('every later sign-in must name the same record too', () => {
     await setUp(admin)
     await linkDelegated(other.user!, 'TT-5555', { subject: '7555' })
     provider(() => Response.json({ access: 'opaque', id: 99 }))
-    expect((await signIn(api, 'TT-5555')).status).toBe(200)
+    await expectStatus(await signIn(api, 'TT-5555'), 200)
   })
 })
 
@@ -425,7 +425,7 @@ describe('two first sign-ins at once', () => {
       return Response.json({ access: 'opaque', employee_id: Number(RECORD) })
     })
     const outer = await signIn(api)
-    expect(outer.status).toBe(200)
+    await expectStatus(outer, 200)
     expect(((await outer.json()) as { user: { row_id: string } }).user.row_id).toBe(typeof inner!.user === 'string' ? inner!.user : inner!.user.row_id)
     expect(await peopleCount()).toBe(before + 1)
   })
@@ -452,7 +452,7 @@ describe('two first sign-ins at once', () => {
       return Response.json({ access: 'opaque', employee_id: Number(RECORD) })
     })
     const res = await signIn(api)
-    expect(res.status).toBe(401)
+    await expectStatus(res, 401)
     expect(((await res.json()) as { error: { message: string } }).error.message).toBe(REFUSED)
     expect(await peopleCount()).toBe(before)
     expect((await heldNotes())[0]).toMatch(/ row_has_person$/)
@@ -480,7 +480,7 @@ describe('two first sign-ins at once', () => {
       return Response.json({ access: 'opaque', employee_id: Number(RECORD) })
     })
     const res = await signIn(api)
-    expect(res.status).toBe(401)
+    await expectStatus(res, 401)
     expect(await peopleCount()).toBe(before)
     expect((await crew())[0].login).toBeNull()
     expect(await sql`select 1 from sign_in_identity where subject = ${RECORD}`).toEqual([])
@@ -497,7 +497,7 @@ describe('what cannot be read is refused', () => {
       return Response.json({ access: 'opaque', employee_id: Number(RECORD) })
     })
     const res = await signIn(api)
-    expect(res.status).toBe(401)
+    await expectStatus(res, 401)
     expect(await peopleCount()).toBe(before)
     expect(await sql`select 1 from sign_in_identity where subject = ${RECORD}`).toEqual([])
     expect(await sql`select 1 from person_identifier where value in (${RECORD}, ${CODE})`).toEqual([])
@@ -517,7 +517,7 @@ describe('what cannot be read is refused', () => {
       await change()
       return Response.json({ access: 'opaque', employee_id: Number(RECORD) })
     })
-    expect((await signIn(api)).status).toBe(401)
+    await expectStatus(await signIn(api), 401)
     expect(await peopleCount()).toBe(before)
     expect((await heldNotes())[0]).toMatch(new RegExp(` ${reason}$`))
   })
@@ -525,7 +525,7 @@ describe('what cannot be read is refused', () => {
   test('a roster may also list the record number system, recorded once', async ({ api, admin }) => {
     await setUp(admin, { roster: { ...ROSTER, identifiers: { 'stylehr-employee-id': 'hr_record', 'stylehr-employee-code': 'crew_no' } } })
     provider()
-    expect((await signIn(api)).status).toBe(200)
+    await expectStatus(await signIn(api), 200)
     expect(await sql`select 1 from person_identifier where value = ${RECORD}`).toHaveLength(1)
   })
 
@@ -533,7 +533,7 @@ describe('what cannot be read is refused', () => {
     const { identifiers: _none, ...roster } = ROSTER
     await setUp(admin, { roster })
     provider()
-    expect((await signIn(api)).status).toBe(200)
+    await expectStatus(await signIn(api), 200)
     expect(await sql`select system from person_identifier where value in (${RECORD}, ${CODE})`).toEqual([{ system: 'stylehr-employee-id' }])
   })
 
@@ -553,7 +553,7 @@ describe('what cannot be read is refused', () => {
       return Response.json({ access: 'opaque', employee_id: Number(RECORD) })
     })
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    expect((await signIn(api)).status).toBe(500)
+    await expectStatus(await signIn(api), 500)
     expect(await peopleCount()).toBe(before)
   })
 
@@ -571,7 +571,7 @@ describe('what cannot be read is refused', () => {
       return Response.json({ access: 'opaque', employee_id: Number(RECORD) })
     })
     const res = await signIn(api)
-    expect(res.status).toBe(401)
+    await expectStatus(res, 401)
     expect(((await res.json()) as { error: { message: string } }).error.message).toBe(REFUSED)
     expect(await peopleCount()).toBe(before)
     expect((await heldNotes())[0]).toMatch(/ link_failed$/)
@@ -610,17 +610,17 @@ describe('the rule is configuration', () => {
 
   test('only a delegated method may take it, and only with a whole roster', async ({ admin }) => {
     const post = (body: Record<string, unknown>) => admin.fetch(METHODS, { method: 'POST', body: JSON.stringify(body) })
-    expect((await post({ ...method, new_person: 'create_if_on_roster' })).status).toBe(417)
-    expect((await post({ ...method, new_person: 'create_if_on_roster', settings: JSON.stringify({ roster: { table: TABLE } }) })).status).toBe(417)
-    expect((await post({ ...method, new_person: 'create_if_on_roster', settings: JSON.stringify({ roster: ROSTER }) })).status).toBe(201)
+    await expectStatus(await post({ ...method, new_person: 'create_if_on_roster' }), 417)
+    await expectStatus(await post({ ...method, new_person: 'create_if_on_roster', settings: JSON.stringify({ roster: { table: TABLE } }) }), 417)
+    await expectStatus(await post({ ...method, new_person: 'create_if_on_roster', settings: JSON.stringify({ roster: ROSTER }) }), 201)
     expect((await getSignInMethod('hr_two'))?.settings).toMatchObject({ roster: { table: TABLE } })
-    expect((await patchMethod(admin, 'password', { new_person: 'create_if_on_roster' })).status).toBe(417)
-    expect((await patchMethod(admin, 'google', { new_person: 'create_if_on_roster' })).status).toBe(417)
+    await expectStatus(await patchMethod(admin, 'password', { new_person: 'create_if_on_roster' }), 417)
+    await expectStatus(await patchMethod(admin, 'google', { new_person: 'create_if_on_roster' }), 417)
   })
 
   test('an administrator cannot leave a roster method without its roster', async ({ admin }) => {
     await setUp(admin)
-    expect((await patchMethod(admin, 'stylehr', { settings: JSON.stringify({}) })).status).toBe(417)
+    await expectStatus(await patchMethod(admin, 'stylehr', { settings: JSON.stringify({}) }), 417)
   })
 
   // #1061: the owner turned StyleHR sign-in on in the instance file.

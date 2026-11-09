@@ -11,7 +11,7 @@ import { test } from './pg-test'
 import { discoverPackages, packageFailures } from '../src/runtime-packages'
 import { uninstallApp } from '../src/apps'
 import { glossaryDeclaration } from '../src/glossary'
-import { expectApiError, grantRole } from './fixtures'
+import { expectApiError, expectRefused, expectStatus, grantRole } from './fixtures'
 import { sql } from '../src/db'
 import { deleteStored } from '../src/storage'
 
@@ -97,8 +97,8 @@ describe('reading the glossary', () => {
     const staff = await createUser({ email: 'staff@example.test' })
     const id = (await named(staff, 'Coverage'))!.id
     const { updated_at } = await loaded(staff, id)
-    await expectApiError(staff.post('/api/save_row', { table: 'Glossary Term', row: { row_id: id, updated_at, definition: 'Mine now' } }), { status: 403 })
-    await expectApiError(staff.post('/api/glossary/take_app_wording', { id }), { status: 403 })
+    await expectRefused(staff.post('/api/save_row', { table: 'Glossary Term', row: { row_id: id, updated_at, definition: 'Mine now' } }), 403)
+    await expectRefused(staff.post('/api/glossary/take_app_wording', { id }), 403)
   })
 
   test('a role granted write on Glossary Term may edit it', async ({ admin, createUser }) => {
@@ -224,7 +224,7 @@ async function uploadPicture(as: TestClient, id: string, isPrivate = false): Pro
   form.append('ref_name', id)
   if (isPrivate) form.append('is_private', '1')
   const res = await as.fetch('/api/upload_file', { method: 'POST', body: form })
-  expect(res.status).toBe(201)
+  await expectStatus(res, 201)
   return ((await res.json()) as { file_url: string }).file_url
 }
 
@@ -251,7 +251,7 @@ describe('a term carries a picture', () => {
         // A picture is not wording: setting one leaves an app's term unedited.
         expect(await named(staff, 'Coverage')).toMatchObject({ picture: url, editedHere: false })
         const res = await staff.fetch(url)
-        expect(res.status).toBe(200)
+        await expectStatus(res, 200)
         expect(res.headers.get('content-type')).toBe('image/png')
       } finally {
         await deleteStored(url)

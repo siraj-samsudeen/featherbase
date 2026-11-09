@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect } from 'vitest'
 import postgres from 'postgres'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
-import { createUserWithRole, expectApiError } from './fixtures'
+import { createUserWithRole, expectApiError, expectRefused } from './fixtures'
 import { EXTERNAL_DATABASE_URL } from './external-database'
 import { invalidateSources } from '../src/sources/registry'
 import { registerController, unregisterController, type TableController } from '../src/controllers'
@@ -65,16 +65,16 @@ describe('bulk edit', () => {
   test('a person who may not change the rows changes none of them', async ({ admin, createUser }) => {
     await seed(admin)
     const reader = await createUserWithRole(admin, createUser, { role: 'Bulk Reader', table: T, can_read: true })
-    await expectApiError(edit(reader, ['r1', 'r2'], { stage: 'Closed' }), { status: 403 })
+    await expectRefused(edit(reader, ['r1', 'r2'], { stage: 'Closed' }), 403)
     for (const id of ['r1', 'r2']) expect(await stageOf(admin, id)).toBe('Open')
   })
 
   test('asks for the rows and the values', async ({ admin }) => {
     await seed(admin)
-    await expectApiError(edit(admin, [], { stage: 'Closed' }), { status: 417 })
-    await expectApiError(edit(admin, ['r1'], {}), { status: 417 })
+    await expectRefused(edit(admin, [], { stage: 'Closed' }), 417)
+    await expectRefused(edit(admin, ['r1'], {}), 417)
     for (const key of ['row_id', 'updated_at'])
-      await expectApiError(edit(admin, ['r1'], { stage: 'Closed', [key]: 'x' }), { status: 417 })
+      await expectRefused(edit(admin, ['r1'], { stage: 'Closed', [key]: 'x' }), 417)
   })
 
   test('a row named twice is changed once', async ({ admin }) => {
@@ -106,7 +106,7 @@ describe('bulk delete', () => {
 
   test('caps one request at 500 rows', async ({ admin }) => {
     await seed(admin)
-    await expectApiError(remove(admin, Array.from({ length: 501 }, (_, i) => `r${i}`)), { status: 417 })
+    await expectRefused(remove(admin, Array.from({ length: 501 }, (_, i) => `r${i}`)), 417)
   })
 })
 

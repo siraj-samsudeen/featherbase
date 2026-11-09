@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from './pg-test'
-import { expectApiError, grantRole, makeTable, patchDoc, tableRef } from './fixtures'
+import { expectRefused, expectStatus, grantRole, makeTable, patchDoc, tableRef } from './fixtures'
 
 const DT = 'Cap800 Document'
 const rows = tableRef(DT)
@@ -26,7 +26,7 @@ describe('#800 row action capabilities', () => {
     expect(await admin.get(url)).toMatchObject({ title: 'Saved settings' })
     await admin.delete(tableRef('Permission').rowUrl(write))
     expect(await user.get(`${url}:capabilities`)).toEqual(readerCapabilities)
-    await expectApiError(user.post('/api/save_row', { table: settings.name, row: { title: 'Forbidden' } }), { status: 403 })
+    await expectRefused(user.post('/api/save_row', { table: settings.name, row: { title: 'Forbidden' } }), 403)
   })
 
   test('attached comment deletion advice requires its grant and retains parent access checks', async ({ admin, createUser }) => {
@@ -43,11 +43,11 @@ describe('#800 row action capabilities', () => {
     await grantRole(admin, { role: 'Cap800 Attached Reader', table: 'Comment', tier: 'basic', can_delete: true })
     expect(await user.get(`${url}:capabilities`)).toMatchObject({ delete: true })
     await admin.delete(tableRef('Permission').rowUrl(parentRead))
-    await expectApiError(user.get(`${url}:capabilities`), { status: 403 })
-    await expectApiError(user.delete(url), { status: 403 })
+    await expectRefused(user.get(`${url}:capabilities`), 403)
+    await expectRefused(user.delete(url), 403)
     await grantRole(admin, { role: 'Cap800 Attached Reader', table: DT, tier: 'basic', can_read: true })
     await user.delete(url)
-    await expectApiError(admin.get(url), { status: 404 })
+    await expectRefused(admin.get(url), 404)
   })
 
   test('a reader receives only actions their explicit grants allow', async ({ admin, createUser }) => {
@@ -72,21 +72,21 @@ describe('#800 row action capabilities', () => {
       ...readerCapabilities, write: true, rename: true, delete: true, submit: true, retire: true,
     })
     expect(await user.get(capabilities(other.row_id))).toEqual(readerCapabilities)
-    await expectApiError(user.post(`${rows.rowUrl(other.row_id)}:rename`, { new_name: 'cap800-stolen' }), { status: 403 })
-    await expectApiError(user.delete(rows.rowUrl(other.row_id)), { status: 403 })
-    await expectApiError(user.post(`${rows.rowUrl(other.row_id)}:submit`), { status: 403 })
+    await expectRefused(user.post(`${rows.rowUrl(other.row_id)}:rename`, { new_name: 'cap800-stolen' }), 403)
+    await expectRefused(user.delete(rows.rowUrl(other.row_id)), 403)
+    await expectRefused(user.post(`${rows.rowUrl(other.row_id)}:submit`), 403)
     expect(await user.post<{ row_id: string }>(`${rows.rowUrl(own.row_id)}:rename`, { new_name: 'cap800-owned' }))
       .toMatchObject({ row_id: 'cap800-owned' })
     await user.post(`${rows.rowUrl('cap800-owned')}:submit`)
     await admin.post(`${rows.rowUrl(other.row_id)}:submit`)
     expect(await user.get(capabilities('cap800-owned'))).toMatchObject({ write: false, delete: false, submit: false, cancel: true, amend: false })
     expect(await user.get(capabilities(other.row_id))).toMatchObject({ write: false, delete: false, submit: false, cancel: false, amend: false })
-    await expectApiError(user.post(`${rows.rowUrl(other.row_id)}:cancel`), { status: 403 })
+    await expectRefused(user.post(`${rows.rowUrl(other.row_id)}:cancel`), 403)
     await user.post(`${rows.rowUrl('cap800-owned')}:cancel`)
     await admin.post(`${rows.rowUrl(other.row_id)}:cancel`)
     expect(await user.get(capabilities('cap800-owned'))).toMatchObject({ write: false, submit: false, cancel: false, amend: true })
     expect(await user.get(capabilities(other.row_id))).toMatchObject({ write: false, submit: false, cancel: false, amend: false })
-    await expectApiError(user.post(`${rows.rowUrl(other.row_id)}:amend`), { status: 403 })
+    await expectRefused(user.post(`${rows.rowUrl(other.row_id)}:amend`), 403)
     expect(await user.post(`${rows.rowUrl('cap800-owned')}:amend`)).toMatchObject({ submission_status: 'draft', amended_from: 'cap800-owned' })
   })
 
@@ -99,20 +99,20 @@ describe('#800 row action capabilities', () => {
     })
     const shareUrl = tableRef('Share').rowUrl(share.row_id)
     expect(await user.get(capabilities(row.row_id))).toEqual(readerCapabilities)
-    await expectApiError(patchDoc(user, rows.rowUrl(row.row_id), { ...await user.get(rows.rowUrl(row.row_id)), title: 'Forbidden' }), { status: 403 })
+    await expectRefused(patchDoc(user, rows.rowUrl(row.row_id), { ...await user.get(rows.rowUrl(row.row_id)), title: 'Forbidden' }), 403)
     await patchDoc(admin, shareUrl, { ...await admin.get(shareUrl), write: true })
     expect(await user.get(capabilities(row.row_id))).toEqual({ ...readerCapabilities, write: true })
     await patchDoc(user, rows.rowUrl(row.row_id), { ...await user.get(rows.rowUrl(row.row_id)), title: 'Edited by share' })
     expect(await admin.get(rows.rowUrl(row.row_id))).toMatchObject({ title: 'Edited by share' })
-    await expectApiError(user.post(`${rows.rowUrl(row.row_id)}:rename`, { new_name: 'cap800-share-rename' }), { status: 403 })
-    await expectApiError(user.delete(rows.rowUrl(row.row_id)), { status: 403 })
-    await expectApiError(user.post(`${rows.rowUrl(row.row_id)}:submit`), { status: 403 })
+    await expectRefused(user.post(`${rows.rowUrl(row.row_id)}:rename`, { new_name: 'cap800-share-rename' }), 403)
+    await expectRefused(user.delete(rows.rowUrl(row.row_id)), 403)
+    await expectRefused(user.post(`${rows.rowUrl(row.row_id)}:submit`), 403)
     await patchDoc(admin, shareUrl, { ...await admin.get(shareUrl), write: false })
     expect(await user.get(capabilities(row.row_id))).toEqual(readerCapabilities)
     await patchDoc(admin, shareUrl, { ...await admin.get(shareUrl), read: false })
     const normal = await user.fetch(rows.rowUrl(row.row_id))
     const descriptor = await user.fetch(capabilities(row.row_id))
-    expect(descriptor.status).toBe(403)
+    await expectStatus(descriptor, 403)
     expect(descriptor.status).toBe(normal.status)
     expect(await descriptor.json()).toEqual(await normal.json())
   })
@@ -143,7 +143,7 @@ describe('#800 row action capabilities', () => {
       table: 'Share', row: { share_table: DT, share_name: row.row_id, person: user.user, read: true },
     })
     expect(await user.get(capabilities(row.row_id))).toEqual(readerCapabilities)
-    await expectApiError(patchDoc(user, rows.rowUrl(row.row_id), { ...await user.get(rows.rowUrl(row.row_id)), title: 'Forbidden' }), { status: 403 })
+    await expectRefused(patchDoc(user, rows.rowUrl(row.row_id), { ...await user.get(rows.rowUrl(row.row_id)), title: 'Forbidden' }), 403)
     const shareUrl = tableRef('Share').rowUrl(share.row_id)
     await patchDoc(admin, shareUrl, { ...await admin.get(shareUrl), write: true })
     expect(await user.get(capabilities(row.row_id))).toEqual({ ...readerCapabilities, write: true })
@@ -196,7 +196,7 @@ describe('#800 row action capabilities', () => {
       expect(listed.data).toHaveLength(1)
       const url = source.rowUrl(listed.data[0].row_id)
       expect(await admin.get(`${url}:capabilities`)).toMatchObject({ write: false, rename: false, delete: false, submit: false, cancel: false, amend: false })
-      await expectApiError(patchDoc(admin, url, { ...await admin.get(url), title: 'Not writable' }), { status: 403 })
+      await expectRefused(patchDoc(admin, url, { ...await admin.get(url), title: 'Not writable' }), 403)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -211,6 +211,6 @@ describe('#800 row action capabilities', () => {
     expect(history.data).toHaveLength(1)
     const url = versions.rowUrl(history.data[0].row_id)
     expect(await admin.get(`${url}:capabilities`)).toMatchObject({ write: false, rename: false, delete: false, submit: false, cancel: false, amend: false })
-    await expectApiError(patchDoc(admin, url, { ...await admin.get(url), data: '{}' }), { status: 403 })
+    await expectRefused(patchDoc(admin, url, { ...await admin.get(url), data: '{}' }), 403)
   })
 })

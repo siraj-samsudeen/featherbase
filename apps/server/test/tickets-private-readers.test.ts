@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 import { describe, expect } from 'vitest'
 import { makeClient, type TestClient, type CreateUserFn } from 'feather-testing-postgres'
 import { test as pgTest } from './pg-test'
-import { grantRole, makeTable } from './fixtures'
+import { expectRefused, grantRole, makeTable } from './fixtures'
 import { discoverPackages } from '../src/runtime-packages'
 import { callerDocuments } from '../src/runtime-actions'
 import { sql } from '../src/db'
@@ -72,7 +72,7 @@ describe('Tickets: the assignee and raised-for person of a private ticket read i
     expect(outside.details).toBeUndefined()
     expect(JSON.stringify(outside)).not.toContain('78/499/1')
     // Nothing else of the ticket opens to them: only the Tickets screen reads it.
-    await expect(w.colleague.get(`/api/table/tickets.request/${ticket.row_id}`)).rejects.toMatchObject({ status: 403 })
+    await expectRefused(w.colleague.get(`/api/table/tickets.request/${ticket.row_id}`), 403)
   })
 
   test('a reassigned assignee and a person no longer raised for lose it; the new ones read it', async ({ admin, createUser }) => {

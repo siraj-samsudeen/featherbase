@@ -9,6 +9,7 @@ import { enabledPeople } from '../src/people-directory'
 import { getMeta, invalidateMeta } from '../src/meta'
 import { checkRowForInsert } from '../src/document'
 import { readLegacyPermission } from '../src/app-permission-format'
+import { expectStatus } from './fixtures'
 
 // #917: a Permission row names one operation and the Columns it reaches; the
 // rows that would mean something else are refused when saved.
@@ -110,7 +111,7 @@ describe('a prerequisite that is not available', () => {
     await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: DT, role: 'Pr Detail', operation: 'read', column_rule: 'every', requires_permission: base.row_id } })
     await sql`update permission set owner_app = 'pr_missing_app' where row_id = ${base.row_id}`
     const user = await createUser({ roles: ['Pr Detail'] })
-    expect((await user.fetch(`/api/table/${encodeURIComponent(DT)}`)).status).toBe(403)
+    await expectStatus(await user.fetch(`/api/table/${encodeURIComponent(DT)}`), 403)
   })
 })
 
@@ -225,7 +226,7 @@ describe('a grant reaches only what its rows allow', () => {
     const reader = await createUser({ roles: ['Pr Lister'] })
     const filters = JSON.stringify([['row_id', 'related', { via: 'Pr Ref Line', column: 'who', table: 'Pr Ref', filters: [['row_id', '=', 'x']] }]])
     const response = await reader.fetch(`/api/table/${encodeURIComponent('Pr Holder')}?filters=${encodeURIComponent(filters)}`)
-    expect(response.status).toBe(403)
+    await expectStatus(response, 403)
     expect(((await response.json()) as { error: { message: string } }).error.message).toMatch(/No read permission on Pr Ref Line.who/)
   })
 
@@ -256,7 +257,7 @@ describe('a grant reaches only what its rows allow', () => {
     const reader = await createUser({ roles: [ROLE] })
     const path = `/api/table/${encodeURIComponent('Pr Sorted')}?fields=${encodeURIComponent('["title"]')}`
     expect(await reader.get<{ data: unknown[] }>(path)).toMatchObject({ data: [{ title: 'One' }] })
-    expect((await reader.fetch(`${path}&order_by=unit_cost`)).status).toBe(417)
+    await expectStatus(await reader.fetch(`${path}&order_by=unit_cost`), 417)
     // A reader who can read the sort Column gets the Table's own order.
     await admin.post('/api/save_row', { table: 'Pr Sorted', row: { title: 'Two', unit_cost: '3' } })
     expect(await admin.get<{ data: unknown[] }>(path)).toMatchObject({ data: [{ title: 'Two' }, { title: 'One' }] })

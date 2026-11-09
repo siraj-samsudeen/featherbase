@@ -11,7 +11,7 @@ import { loadInstalledApps } from '../src/apps'
 import { sql } from '../src/db'
 import { app } from '../src/index'
 import { registerController, unregisterController, type TableController } from '../src/controllers'
-import { makeTable } from './fixtures'
+import { expectRefused, expectStatus, makeTable } from './fixtures'
 
 const directory = resolve('../..', 'test-apps/action-proof')
 const action = '/api/app_actions/actionproof/'
@@ -62,9 +62,9 @@ describe('declared transactional runtime actions', () => {
     expect(await sql`select destination from actionproof.work`).toEqual([{ destination: first.result.destination }])
     expect(await sql`select content from comment where ref_table = 'actionproof.work'`).toEqual([{ content: 'Moved with 37 units, not 17' }])
     expect(await sql`select row_id from version where ref_table = 'actionproof.work'`).toHaveLength(1)
-    await expect(admin.post(action + 'transform', { ...request, payload: { ...request.payload, fail: true } })).rejects.toMatchObject({ status: 409 })
+    await expectRefused(admin.post(action + 'transform', { ...request, payload: { ...request.payload, fail: true } }), 409)
     await admin.post('/api/set_app_enabled', { name: 'actionproof', enabled: false })
-    await expect(admin.post(action + 'transform', request)).rejects.toMatchObject({ status: 403 })
+    await expectRefused(admin.post(action + 'transform', request), 403)
   })
 
   test('handler failure and stale revisions leave no destination, discussion, version or result', async ({ admin, createUser }) => {
@@ -73,10 +73,10 @@ describe('declared transactional runtime actions', () => {
     const outsider = await createUser({ email: 'action-outsider@example.com', roles: [] })
     const source = await member.post<any>('/api/save_row', { table: 'actionproof.work', row: { row_id: 'owned', title: '17 different units' } })
     const request = { idempotencyKey: 'retryable', payload: { source: 'owned', updatedAt: source.updated_at, fail: true } }
-    await expect(outsider.post(action + 'transform', request)).rejects.toMatchObject({ status: 403 })
-    await expect(member.post(action + 'transform', request)).rejects.toMatchObject({ status: 500 })
-    await expect(member.post(action + 'transform', { ...request, payload: {} })).rejects.toMatchObject({ status: 417 })
-    await expect(member.post(action + 'transform', { ...request, payload: { ...request.payload, updatedAt: '2001-01-01T00:00:00Z' } })).rejects.toMatchObject({ status: 409 })
+    await expectRefused(outsider.post(action + 'transform', request), 403)
+    await expectRefused(member.post(action + 'transform', request), 500)
+    await expectRefused(member.post(action + 'transform', { ...request, payload: {} }), 417)
+    await expectRefused(member.post(action + 'transform', { ...request, payload: { ...request.payload, updatedAt: '2001-01-01T00:00:00Z' } }), 409)
     expect(await sql`select row_id from actionproof.destination`).toHaveLength(0)
     expect(await sql`select destination from actionproof.work`).toEqual([{ destination: null }])
     expect(await sql`select row_id from version where ref_table = 'actionproof.work'`).toHaveLength(0)
@@ -89,15 +89,15 @@ describe('declared transactional runtime actions', () => {
     await discoverPackages([directory]); await admin.post('/api/install_app', { name: 'actionproof' })
     const source = await admin.post<any>('/api/save_row', { table: 'actionproof.work', row: { row_id: 'accident', title: 'Discard me' } })
     const request = { idempotencyKey: 'delete', payload: { source: 'accident', updatedAt: source.updated_at } }
-    await expect(admin.post(action + 'discard', { ...request, payload: { ...request.payload, updatedAt: '2000-01-01' } })).rejects.toMatchObject({ status: 409 })
+    await expectRefused(admin.post(action + 'discard', { ...request, payload: { ...request.payload, updatedAt: '2000-01-01' } }), 409)
     const deleted = await admin.post(action + 'discard', request)
     expect(deleted).toEqual({ result: { deleted: true, source: 'accident' } })
     expect(await admin.post(action + 'discard', request)).toEqual(deleted)
-    await expect(admin.post('/api/save_row', { table: 'Comment', row: { ref_table: 'actionproof.work', ref_name: 'accident', content: 'Too late' } })).rejects.toMatchObject({ status: 404 })
+    await expectRefused(admin.post('/api/save_row', { table: 'Comment', row: { ref_table: 'actionproof.work', ref_name: 'accident', content: 'Too late' } }), 404)
     const retained = await admin.post<any>('/api/save_row', { table: 'actionproof.work', row: { row_id: 'retained', title: 'Keep me' } })
     await admin.post('/api/save_row', { table: 'Comment', row: { ref_table: 'actionproof.work', ref_name: 'retained', content: 'Keep this discussion' } })
     const guard = { idempotencyKey: 'guard', payload: { source: 'retained', updatedAt: retained.updated_at } }
-    await expect(admin.post(action + 'discard', guard)).rejects.toMatchObject({ status: 417 })
+    await expectRefused(admin.post(action + 'discard', guard), 417)
     expect(await admin.post(action + 'discard', { ...guard, payload: { ...guard.payload, explain: true } })).toEqual({ result: { deleted: false, counts: { comments: 1, versions: 0, references: 0, files: 0, shares: 0 } } })
   })
 
@@ -121,7 +121,7 @@ describe('declared transactional runtime actions', () => {
     let write: Promise<unknown> | undefined
     let disable: Promise<unknown> | undefined
     try {
-      await expect(admin.post(action + 'transform', { ...request, payload: { ...request.payload, fail: true } })).rejects.toMatchObject({ status: 500 })
+      await expectRefused(admin.post(action + 'transform', { ...request, payload: { ...request.payload, fail: true } }), 500)
       expect(effects).toBe(0)
       write = admin.post(action + 'transform', request)
       await started
@@ -130,7 +130,7 @@ describe('declared transactional runtime actions', () => {
       release()
       const result = await write
       await disable
-      await expect(admin.post(action + 'transform', request)).rejects.toMatchObject({ status: 403 })
+      await expectRefused(admin.post(action + 'transform', request), 403)
       await admin.post('/api/set_app_enabled', { name: 'actionproof', enabled: true })
       expect(await admin.post(action + 'transform', request)).toEqual(result)
       expect(effects).toBe(1)
@@ -142,19 +142,19 @@ describe('declared transactional runtime actions', () => {
   test('authentication, closed declarations, private APIs and missing-code restarts reject', async ({ admin }) => {
     await discoverPackages([directory]); await admin.post('/api/install_app', { name: 'actionproof' })
     const request = { idempotencyKey: 'probe', payload: { operation: 'shape' } }
-    expect((await app.request(action + 'probe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) })).status).toBe(401)
-    await expect(admin.post(action + 'constructor', request)).rejects.toMatchObject({ status: 404 })
+    await expectStatus(await app.request(action + 'probe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) }), 401)
+    await expectRefused(admin.post(action + 'constructor', request), 404)
     expect(await admin.post(action + 'probe', request)).toEqual({ result: ['authorization', 'baseTables', 'changeProposals', 'documents', 'mail', 'payload', 'people', 'reject', 'roles', 'secrets', 'settings', 'user', 'userName'] })
     expect(await admin.post(action + 'probe', { idempotencyKey: 'roles', payload: { operation: 'roles' } })).toEqual({ result: expect.arrayContaining(['System Manager']) })
     for (const table of ['Permission', 'runtime_action_result', 'other.task']) {
-      await expect(admin.post(action + 'probe', { idempotencyKey: table, payload: { operation: 'create', table, values: { row_id: 'forbidden' } } })).rejects.toMatchObject({ status: 417 })
+      await expectRefused(admin.post(action + 'probe', { idempotencyKey: table, payload: { operation: 'create', table, values: { row_id: 'forbidden' } } }), 417)
     }
-    await expect(admin.post(action + 'probe', { ...request, user: 'Administrator' })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(admin.post(action + 'probe', { ...request, user: 'Administrator' }), 417)
     const manager = await admin.get<any>('/api/apps')
     expect(manager.actions).toContainEqual({ app: 'actionproof', actions: ['transform', 'discard', 'probe'] })
     expect(await sql`select count(*)::int as grants from pg_class c, aclexplode(c.relacl) a where c.oid = 'featherbase.runtime_action_result'::regclass and a.grantee <> c.relowner`).toEqual([{ grants: 0 }])
     await discoverPackages([]); await loadInstalledApps()
-    await expect(admin.post(action + 'probe', request)).rejects.toMatchObject({ status: 403 })
+    await expectRefused(admin.post(action + 'probe', request), 403)
   })
 
   // #912: an administrator lets an app read named instance Tables, as the caller, never write them.
@@ -163,20 +163,20 @@ describe('declared transactional runtime actions', () => {
     await admin.post('/api/table_def', { name: 'Linked Probe', columns: [{ column_name: 'label', column_type: 'Data' }] })
     const row = await admin.post<any>('/api/save_row', { table: 'Linked Probe', row: { label: 'visible' } })
     const probe = (client: TestClient, operation: string, extra: object) => client.post<any>(action + 'probe', { idempotencyKey: randomUUID(), payload: { operation, table: 'Linked Probe', ...extra } })
-    await expect(probe(admin, 'list', { values: { fields: ['label'] } })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(admin, 'list', { values: { fields: ['label'] } }), 417)
     let setting = await admin.post<any>('/api/save_row', { table: 'App Setting', row: { row_id: 'actionproof.linked_tables', value: 'not json' } })
-    await expect(probe(admin, 'list', { values: { fields: ['label'] } })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(admin, 'list', { values: { fields: ['label'] } }), 417)
     setting = await admin.post<any>('/api/save_row', { table: 'App Setting', row: { row_id: 'actionproof.linked_tables', updated_at: setting.updated_at, value: JSON.stringify({ table: 'Linked Probe' }) } })
-    await expect(probe(admin, 'list', { values: { fields: ['label'] } })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(admin, 'list', { values: { fields: ['label'] } }), 417)
     await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'actionproof.linked_tables', updated_at: setting.updated_at, value: JSON.stringify(['Linked Probe']) } })
     expect((await probe(admin, 'list', { values: { fields: ['label'] } })).result).toEqual([{ label: 'visible' }])
     expect((await probe(admin, 'get', { source: row.row_id })).result).toMatchObject({ label: 'visible' })
     expect((await probe(admin, 'activity', { source: row.row_id })).result).toMatchObject({ comments: [] })
     // A read error other than permission still surfaces.
     await expect(probe(admin, 'list', { values: { fields: ['no_such_column'] } })).rejects.toMatchObject({ status: expect.any(Number) })
-    await expect(probe(admin, 'create', { values: { label: 'written' } })).rejects.toMatchObject({ status: 417 })
-    await expect(probe(admin, 'deletionState', { source: row.row_id })).rejects.toMatchObject({ status: 417 })
-    await expect(probe(admin, 'update', { values: { row_id: row.row_id, updated_at: row.updated_at, label: 'changed' } })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(admin, 'create', { values: { label: 'written' } }), 417)
+    await expectRefused(probe(admin, 'deletionState', { source: row.row_id }), 417)
+    await expectRefused(probe(admin, 'update', { values: { row_id: row.row_id, updated_at: row.updated_at, label: 'changed' } }), 417)
     // A caller without read permission on the linked Table reads nothing.
     const plain = await createUser({ email: 'linked-reader@example.com' })
     expect((await probe(plain, 'list', { values: { fields: ['label'] } })).result).toEqual([])
@@ -214,25 +214,25 @@ describe('declared transactional runtime actions', () => {
     const controller: TableController = { table: 'actionproof.work', hooks: { before_validate: ctx => { ctx.row.destination = hidden.row_id } } }
     registerController(controller)
     try {
-      await expect(owner.post(action + 'probe', { idempotencyKey: 'scoped', payload: { operation: 'update', table: 'actionproof.work', values: { row_id: source.row_id, updated_at: source.updated_at, title: 'Forbidden after hook' } } })).rejects.toMatchObject({ status: 403 })
+      await expectRefused(owner.post(action + 'probe', { idempotencyKey: 'scoped', payload: { operation: 'update', table: 'actionproof.work', values: { row_id: source.row_id, updated_at: source.updated_at, title: 'Forbidden after hook' } } }), 403)
       expect(await sql`select title, destination from actionproof.work where row_id = 'scope'`).toEqual([{ title: 'Public input', destination: null }])
       expect(await sql`select row_id from version where ref_table = 'actionproof.work'`).toHaveLength(0)
     } finally { unregisterController(controller) }
-    await expect(owner.post(action + 'probe', { idempotencyKey: 'parallel', payload: { operation: 'parallel', source: source.row_id } })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(owner.post(action + 'probe', { idempotencyKey: 'parallel', payload: { operation: 'parallel', source: source.row_id } }), 417)
     const changed = await owner.post<any>('/api/save_row', { table: 'actionproof.work', row: { ...source, title: 'Retain the edit' } })
     const activity = await owner.post<any>(action + 'probe', { idempotencyKey: 'activity', payload: { operation: 'activity', table: 'actionproof.work', source: source.row_id } })
     expect(activity.result.versions[0].data.changed).toEqual([['title', 'Public input', 'Retain the edit']])
     expect(await owner.post(action + 'discard', { idempotencyKey: 'has-history', payload: { source: source.row_id, updatedAt: changed.updated_at, explain: true } })).toEqual({ result: { deleted: false, counts: { comments: 0, versions: 1, references: 0, files: 0, shares: 0 } } })
     // Neither a system Table declaration nor its ordinary read grant makes
     // global Comment queries a document-authorized activity API.
-    await expect(owner.post(action + 'probe', { idempotencyKey: 'global-comments', payload: { operation: 'list', table: 'Comment' } })).rejects.toMatchObject({ status: 417 })
-    await expect(owner.post(action + 'probe', { idempotencyKey: 'related', payload: { operation: 'list', table: 'actionproof.work', values: { filters: [['destination', 'related', { table: 'actionproof.destination' }]] } } })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(owner.post(action + 'probe', { idempotencyKey: 'global-comments', payload: { operation: 'list', table: 'Comment' } }), 417)
+    await expectRefused(owner.post(action + 'probe', { idempotencyKey: 'related', payload: { operation: 'list', table: 'actionproof.work', values: { filters: [['destination', 'related', { table: 'actionproof.destination' }]] } } }), 417)
   })
 
   test('escaped helpers, unawaited writes, swallowed failures and non-JSON results fail without partial commits', async ({ admin }) => {
     await discoverPackages([directory]); await admin.post('/api/install_app', { name: 'actionproof' })
     for (const operation of ['unawaited', 'swallow', 'nonjson']) {
-      await expect(admin.post(action + 'probe', { idempotencyKey: operation, payload: { operation } })).rejects.toMatchObject({ status: 417 })
+      await expectRefused(admin.post(action + 'probe', { idempotencyKey: operation, payload: { operation } }), 417)
       expect(await sql`select row_id from actionproof.destination`).toHaveLength(0)
       expect(await sql`select * from runtime_action_result`).toHaveLength(0)
     }

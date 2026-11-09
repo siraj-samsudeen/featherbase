@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { app } from '../src/index'
 import { sql } from '../src/db'
+import { expectStatus } from './fixtures'
 
 // NOT sandbox-migrated (see below), so this file authenticates directly
 // against the real app instead of using the pg-test fixtures. All API routes
@@ -63,7 +64,7 @@ describe('META-004: schema sync does not leave stale prepared statements', () =>
       method: 'POST',
       body: JSON.stringify({ name: DT, columns: [{ column_name: 'a', column_type: 'Data' }] }),
     })
-    expect(created.status).toBe(201)
+    await expectStatus(created, 201)
     const doc = (await (
       await areq('/api/save_row', {
         method: 'POST',
@@ -82,7 +83,7 @@ describe('META-004: schema sync does not leave stale prepared statements', () =>
           method: 'PATCH',
           body: JSON.stringify({ a: `warm-${round}-${i}`, updated_at }),
         })
-        expect(upd.status).toBe(200)
+        await expectStatus(upd, 200)
         updated_at = ((await upd.json()) as { updated_at: string }).updated_at
       }
 
@@ -92,17 +93,17 @@ describe('META-004: schema sync does not leave stale prepared statements', () =>
         method: 'PUT',
         body: JSON.stringify({ columns }),
       })
-      expect(sync.status).toBe(200)
+      await expectStatus(sync, 200)
 
       // …then EVERY subsequent request must succeed (no per-connection 500).
       for (let i = 0; i < 10; i++) {
         const read = await areq(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}`)
-        expect(read.status).toBe(200)
+        await expectStatus(read, 200)
         const upd = await areq(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}`, {
           method: 'PATCH',
           body: JSON.stringify({ a: `post-${round}-${i}`, updated_at }),
         })
-        expect(upd.status).toBe(200)
+        await expectStatus(upd, 200)
         updated_at = ((await upd.json()) as { updated_at: string }).updated_at
       }
     }

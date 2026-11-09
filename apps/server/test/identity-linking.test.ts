@@ -5,7 +5,7 @@ import { describe, expect, vi, afterEach } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { makePerson } from './fixtures'
+import { expectStatus, makePerson } from './fixtures'
 import { sign } from 'hono/jwt'
 import { configureDelegated, giveEmployeeCode, configureGoogle, inviteGoogleRaw, linkDelegated } from './identity-fixtures'
 import { googleLink, googleSignIn, linkOutcome, redeemSession } from './google-mock'
@@ -39,23 +39,23 @@ describe('an administrator links sign-in methods', () => {
     await giveEmployeeCode(rr10, 'RR-10')
     // A non-admin cannot.
     const { token: tl } = await passwordSession(api, admin, 'plain.person')
-    expect((await as(api, tl)(`/api/people/${rr10}/identities`)).status).toBe(403)
+    await expectStatus(await as(api, tl)(`/api/people/${rr10}/identities`), 403)
 
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
     const { token } = (await (await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: 'RR-10', pwd: '', method: 'stylehr' }) })).json()) as { token: string }
     vi.unstubAllEnvs()
     const who = () => as(api, token)('/api/whoami')
-    expect((await who()).status).toBe(200)
+    await expectStatus(await who(), 200)
 
-    expect((await admin.fetch(`/api/identities/${linked.id}`, { method: 'PATCH', body: JSON.stringify({ sign_in_name: 'tl_10_new' }) })).status).toBe(200)
-    expect((await who()).status).toBe(200)
+    await expectStatus(await admin.fetch(`/api/identities/${linked.id}`, { method: 'PATCH', body: JSON.stringify({ sign_in_name: 'tl_10_new' }) }), 200)
+    await expectStatus(await who(), 200)
     const [renamed] = await sql`select sign_in_name from sign_in_identity where id = ${linked.id}`
     expect(renamed.sign_in_name).toBe('tl_10_new')
 
     const moveRes = await admin.fetch(`/api/identities/${linked.id}`, { method: 'PATCH', body: JSON.stringify({ person_id: rr11 }) })
-    expect(moveRes.status).toBe(200)
+    await expectStatus(moveRes, 200)
     const moved = (await moveRes.json()) as { id: string }
-    expect((await who()).status).toBe(401)
+    await expectStatus(await who(), 401)
     // person-resolution D4/D5: the move keeps who held it until when.
     const listed = (await admin.get(`/api/people/${rr11}/identities`)) as { identities: { id: string; subject: string; ended_at: string | null }[] }
     expect(listed.identities.map((i) => [i.id, i.subject, i.ended_at])).toEqual([[moved.id, 'RR-10', null]])
@@ -63,9 +63,9 @@ describe('an administrator links sign-in methods', () => {
     expect(history.identities.map((i) => [i.id, i.ended_reason])).toEqual([[linked.id, 'moved']])
 
     // Unlinking ends the link and keeps it as history; the id can be linked afresh.
-    expect((await admin.fetch(`/api/identities/${moved.id}`, { method: 'DELETE' })).status).toBe(200)
+    await expectStatus(await admin.fetch(`/api/identities/${moved.id}`, { method: 'DELETE' }), 200)
     expect(await sql`select ended_reason from sign_in_identity where id = ${moved.id}`).toEqual([{ ended_reason: 'unlinked' }])
-    expect((await admin.fetch(`/api/people/${rr11}/identities`, { method: 'POST', body: JSON.stringify({ method: 'stylehr', subject: 'RR-10' }) })).status).toBe(201)
+    await expectStatus(await admin.fetch(`/api/people/${rr11}/identities`, { method: 'POST', body: JSON.stringify({ method: 'stylehr', subject: 'RR-10' }) }), 201)
   })
 
   test('a collision is refused atomically and names that it is already linked', async ({ admin }) => {
@@ -74,7 +74,7 @@ describe('an administrator links sign-in methods', () => {
     const rr21 = await makePerson({})
     await admin.post(`/api/people/${rr20}/identities`, { method: 'stylehr', subject: 'RR-20' })
     const res = await admin.fetch(`/api/people/${rr21}/identities`, { method: 'POST', body: JSON.stringify({ method: 'stylehr', subject: 'RR-20' }) })
-    expect(res.status).toBe(409)
+    await expectStatus(res, 409)
     expect(((await res.json()) as { error: { message: string } }).error.message).toContain('already linked')
   })
 
@@ -83,7 +83,7 @@ describe('an administrator links sign-in methods', () => {
     const svc = (await admin.post('/api/service_accounts', { label: 'svc-link-test' })) as { row_id: string }
     // A service account is not a person: it has no person row (and so no email).
     expect(await sql`select 1 from person where row_id = ${svc.row_id}`).toHaveLength(0)
-    expect((await admin.fetch(`/api/people/${svc.row_id}/identities`, { method: 'POST', body: JSON.stringify({ method: 'stylehr', subject: 'S-1' }) })).status).toBe(417)
+    await expectStatus(await admin.fetch(`/api/people/${svc.row_id}/identities`, { method: 'POST', body: JSON.stringify({ method: 'stylehr', subject: 'S-1' }) }), 417)
   })
 })
 
@@ -115,10 +115,10 @@ describe('a person links Google themselves', () => {
     const old = await sign({ sub: stale, iat: now - 3600, exp: now + 3600, jti: 'stale-session', m: 'password' }, secret)
     await admin.post('/api/set_password', { user: stale, password: 'stale-pw-1' })
     // Minted before the upgrade: ended at deploy, it opens nothing.
-    expect((await as(api, noIat)('/api/oauth/google/link', { redirect: 'manual' })).status).toBe(401)
-    expect((await as(api, noIat)('/api/whoami')).status).toBe(401)
+    await expectStatus(await as(api, noIat)('/api/oauth/google/link', { redirect: 'manual' }), 401)
+    await expectStatus(await as(api, noIat)('/api/whoami'), 401)
     // Signed in an hour ago: must sign in again first.
-    expect((await as(api, old)('/api/oauth/google/link', { redirect: 'manual' })).status).toBe(401)
+    await expectStatus(await as(api, old)('/api/oauth/google/link', { redirect: 'manual' }), 401)
   })
 
   test('removing a method: never the last one; a pending invite does not count', async ({ api, admin }) => {
@@ -132,7 +132,7 @@ describe('a person links Google themselves', () => {
     try {
       const res = await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: 'tl_30', pwd: 'right', method: 'stylehr' }) })
       const { token } = (await res.json()) as { token: string }
-      expect((await as(api, token)(`/api/me/identities/${hr}`, { method: 'DELETE' })).status).toBe(409)
+      await expectStatus(await as(api, token)(`/api/me/identities/${hr}`, { method: 'DELETE' }), 409)
       const mine = (await (await as(api, token)('/api/me/sign_in_methods')).json()) as { identities: { linked: boolean }[] }
       expect(mine.identities.map((i) => i.linked).sort()).toEqual([false, true])
     } finally {
@@ -242,10 +242,10 @@ describe('write-through to identifiers', () => {
     const id = await linkDelegated(p, 'ends_login', { subject: 'RR-77' })
     const login = () => api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: 'RR-77', pwd: '', method: 'stylehr' }) })
     const { token } = (await (await login()).json()) as { token: string }
-    expect((await as(api, token)('/api/whoami')).status).toBe(200)
+    await expectStatus(await as(api, token)('/api/whoami'), 200)
     await admin.delete(`/api/identities/${id}`)
-    expect((await as(api, token)('/api/whoami')).status).toBe(401)
-    expect((await login()).status).toBe(401)
+    await expectStatus(await as(api, token)('/api/whoami'), 401)
+    await expectStatus(await login(), 401)
   })
 })
 

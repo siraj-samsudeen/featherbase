@@ -4,7 +4,7 @@
 import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
-import { expectApiError, makeTable, patchDoc, grantRole } from './fixtures'
+import { expectApiError, expectRefused, grantRole, makeTable, patchDoc } from './fixtures'
 import { sql } from '../src/db'
 
 const OLD = 'Trn SAP Plant'
@@ -101,16 +101,16 @@ describe('#871: renaming a custom Table', () => {
     await plants(admin)
     await makeTable(admin, { name: 'Trn Taken', columns: ['code'] })
     const user = await createUser()
-    await expectApiError(rename(user, OLD, NEW), { status: 403 })
-    await expectApiError(rename(admin, OLD, 'Trn Taken'), { status: 409 })
-    await expectApiError(rename(admin, OLD, 'trn taken'), { status: 409 })
+    await expectRefused(rename(user, OLD, NEW), 403)
+    await expectRefused(rename(admin, OLD, 'Trn Taken'), 409)
+    await expectRefused(rename(admin, OLD, 'trn taken'), 409)
     for (const bad of ['', '   ', 'Trn/Plant', 'x'.repeat(200)])
-      await expectApiError(rename(admin, OLD, bad), { status: 417 })
+      await expectRefused(rename(admin, OLD, bad), 417)
     expect(await admin.get(`${url(OLD)}/PLANT-8151`)).toMatchObject({ city: 'Chennai' })
   })
 
   test('platform Tables are not renamed here', async ({ admin }) => {
-    await expectApiError(rename(admin, 'Comment', 'Remark'), { status: 417 })
+    await expectRefused(rename(admin, 'Comment', 'Remark'), 417)
     expect(await admin.get(`${url('Comment')}:meta`)).toMatchObject({ name: 'Comment' })
   })
 
@@ -118,7 +118,7 @@ describe('#871: renaming a custom Table', () => {
     await makeTable(admin, { name: OLD, columns: [{ column_name: 'plant_code', column_type: 'Data', unique: true }] })
     await admin.post('/api/save_row', { table: OLD, row: { plant_code: '8151' } })
     await rename(admin, OLD, NEW)
-    await expectApiError(admin.post('/api/save_row', { table: NEW, row: { plant_code: '8151' } }), { status: 417 })
+    await expectRefused(admin.post('/api/save_row', { table: NEW, row: { plant_code: '8151' } }), 417)
     // The next change to the column finds its constraint under the new name.
     await admin.post(`/api/table_def/${encodeURIComponent(NEW)}/rename_column`, { from: 'plant_code', to: 'sap_code' })
     expect((await admin.post<{ row_id: string }>('/api/save_row', { table: NEW, row: { sap_code: '8152' } })).row_id).toBeTruthy()

@@ -6,6 +6,7 @@ import { loadInstalledApps } from '../src/apps'
 import { getDoc, saveDoc } from '../src/document'
 import { taskerClient } from './tasker-client'
 import { version } from '../../../example-apps/tasker/package.json'
+import { expectStatus } from './fixtures'
 
 test('the revival upgrade keeps former personal work editable as shared tasks', async ({ admin, createUser }) => {
   const old = resolve('../..', 'test-apps/fixtures/tasker-v2.3')
@@ -14,7 +15,7 @@ test('the revival upgrade keeps former personal work editable as shared tasks', 
   await admin.post('/api/install_app', { name: 'tasker' })
   const formerOwner = await createUser({ roles: [] })
   const response = await admin.fetch('/api/save_row', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': 'tasker@2.3.0' }, body: JSON.stringify({ table: 'tasker.task', row: { task_title: 'Existing personal work', personal_tasks_owner: formerOwner.user } }) })
-  expect(response.status).toBe(201)
+  await expectStatus(response, 201)
   const legacy = await response.json() as { row_id: string }
   expect(await discoverPackages([old, current])).toEqual([])
   await loadInstalledApps()

@@ -6,6 +6,7 @@ import { discoverPackages } from '../src/runtime-packages'
 import { loadInstalledApps } from '../src/apps'
 import { deleteDoc } from '../src/document'
 import { sql } from '../src/db'
+import { expectRefused, expectStatus } from './fixtures'
 
 const test = base.extend<{ admin: TestClient }>({
   admin: async ({ admin }, use) => use(makeClient({ request: (path, init) => admin.fetch(String(path), {
@@ -45,11 +46,11 @@ test('Admin attachments and shares retain exact targets through raw/action delet
   const result = await admin.post(path, request)
   expect(result).toEqual({ result: { deleted: false, counts: { comments: 0, versions: 0, references: 0, files: 2, shares: 1 } } })
   const raw = await admin.fetch(`/api/table/actionproof.work/linked?updated_at=${encodeURIComponent(source.updated_at)}`, { method: 'DELETE' })
-  expect(raw.status).toBe(417)
+  await expectStatus(raw, 417)
   expect(await raw.json()).toMatchObject({ error: { fields: { files: '2', shares: '1' } } })
   const refusedRequest = JSON.stringify({ idempotencyKey: 'delete-links', payload: { ...request.payload, explain: false } })
   const refused = await admin.fetch(path, { method: 'POST', body: refusedRequest })
-  expect(refused.status).toBe(417)
+  await expectStatus(refused, 417)
   const refusal = await refused.json()
   expect(refusal).toMatchObject({ error: { fields: { files: '2', shares: '1' } } })
   expect(await sql`select * from runtime_action_result where idempotency_key = 'delete-links'`).toHaveLength(0)
@@ -58,7 +59,7 @@ test('Admin attachments and shares retain exact targets through raw/action delet
   expect(await admin.post(path, request)).toEqual(result)
   // The refused delete itself, submitted again after the restart, gives the same reason and deletes nothing.
   const replayed = await admin.fetch(path, { method: 'POST', body: refusedRequest })
-  expect(replayed.status).toBe(417)
+  await expectStatus(replayed, 417)
   expect(await replayed.json()).toEqual(refusal)
   expect(await sql`select row_id from actionproof.work where row_id = 'linked'`).toHaveLength(1)
   expect(await sql`select row_id from file where ref_table = 'actionproof.work' and ref_name = 'linked'`).toHaveLength(2)
@@ -66,13 +67,13 @@ test('Admin attachments and shares retain exact targets through raw/action delet
   // Exact (table,row) matching, not just ref_name, and no table-wide retention.
   await admin.delete(`/api/table/actionproof.work/bare?updated_at=${encodeURIComponent(bare.updated_at)}`)
   for (const [table, row, field] of [['File', files[0], 'ref_name'], ['Share', share, 'share_name']] as const) {
-    await expect(save(table, { ...row, [field]: 'bare' })).rejects.toMatchObject({ status: 404 })
+    await expectRefused(save(table, { ...row, [field]: 'bare' }), 404)
   }
   expect(await sql`select ref_name from file where row_id = ${files[0].row_id}`).toEqual([{ ref_name: 'linked' }])
   expect(await sql`select share_name from share where row_id = ${share.row_id}`).toEqual([{ share_name: 'linked' }])
   await admin.post('/api/set_app_enabled', { name: 'actionproof', enabled: false })
-  await expect(save('File', { file_name: 'disabled', ref_table: 'actionproof.work', ref_name: 'linked' })).rejects.toMatchObject({ status: 403 })
-  await expect(save('Share', { share_table: 'actionproof.work', share_name: 'linked', person: 'Administrator' })).rejects.toMatchObject({ status: 403 })
+  await expectRefused(save('File', { file_name: 'disabled', ref_table: 'actionproof.work', ref_name: 'linked' }), 403)
+  await expectRefused(save('Share', { share_table: 'actionproof.work', share_name: 'linked', person: 'Administrator' }), 403)
 })
 
 test('a row another Table refers to is retained, and a reference from a Settings Table refuses the delete it cannot prove', async ({ admin }) => {

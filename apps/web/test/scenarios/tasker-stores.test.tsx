@@ -15,6 +15,7 @@ async function openStores(page: TaskerPage) {
   return screen.findByRole('table', { name: 'Work by store' })
 }
 
+// A store's row is found by its name, which no selector names.
 async function storeRow(name: string) {
   const table = await screen.findByRole('table', { name: 'Work by store' })
   const header = await within(table).findByRole('rowheader', { name })
@@ -30,6 +31,8 @@ async function storeCounts(name: string) {
   return counts
 }
 
+const DETAIL = '[aria-label="Task detail content"]'
+// One option among the others: assertOptions checks the whole list.
 const storeChoice = (detail: HTMLElement) => within(detail).getByRole('combobox', { name: 'Task store' }) as HTMLSelectElement
 const optionTexts = (select: HTMLSelectElement) => [...select.options].map(o => o.textContent)
 
@@ -44,7 +47,7 @@ describe('tasker-stores', () => {
       await openStores(page)
       await page.session
         .fillIn('New store', 'Keelkattalai Store')
-        .step('store type: Store', ({ user }) => user.selectOptions(screen.getByRole('combobox', { name: 'Store type' }), 'Store'))
+        .selectOption('Store type', 'Store')
         .clickButton('Add store')
       await storeRow('Keelkattalai Store')
     })
@@ -69,8 +72,9 @@ describe('tasker-stores', () => {
       const task = tasker.current!
       const page = await tasker.as('the user')
       const detail = await page.openTask(task.row_id, String(task.task_title))
+      // Waits for the store to be offered: selectOption looks for its option once.
       await within(storeChoice(detail)).findByRole('option', { name: 'Keelkattalai Store' })
-      await page.user.selectOptions(storeChoice(detail), 'Keelkattalai Store')
+      await page.session.within(DETAIL, (details) => details.selectOption('Task store', 'Keelkattalai Store'))
       await waitFor(async () => expect((await tasker.fresh()).store).toBe(store.row_id))
     })
     await step('the task shows "Keelkattalai Store"', async () => {
@@ -101,9 +105,8 @@ describe('tasker-stores', () => {
       const page = await tasker.viewerPage()
       await page.openTask(parent.row_id, String(parent.task_title))
       await page.session.within('[aria-label="Subtasks"]', (region) => region.clickButton('Count the cold room'))
-      const sub = page.detail()
-      await within(sub).findByRole('heading', { name: 'Count the cold room' })
-      await waitFor(() => expect(storeChoice(page.detail()).selectedOptions[0]?.textContent).toBe('Keelkattalai Store'))
+      await within(page.detail()).findByRole('heading', { name: 'Count the cold room' })
+      await page.session.within(DETAIL, (details) => details.assertSelected('Task store', 'Keelkattalai Store'))
     })
   })
 
@@ -173,6 +176,7 @@ describe('tasker-stores', () => {
       const page = await tasker.as('the user')
       await openStores(page)
       const row = await storeRow('Keelkattalai Store')
+      // By pattern: the count is in the button's name.
       await page.user.click(await within(row).findByRole('button', { name: /^Keelkattalai Store: \d+ overdue tasks?$/ }))
       drill = await screen.findByRole('region', { name: 'Keelkattalai Store · Overdue' })
     })

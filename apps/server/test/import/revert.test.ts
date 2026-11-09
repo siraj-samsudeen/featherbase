@@ -5,7 +5,7 @@ import { planRevert } from '../../src/actions/collection-import-revert'
 import { sql } from '../../src/db'
 import { invalidateMeta } from '../../src/meta'
 import { tableRelation } from '../../src/table-engine'
-import { expectApiError, grantRole } from '../fixtures'
+import { expectApiError, expectRefused, expectStatus, grantRole } from '../fixtures'
 
 // Spec 0005 (import revert) — the contract, rule, and invariant layers.
 // RVT-R1: a run becomes addressable (run_id + touched rows in the log).
@@ -168,7 +168,7 @@ describe('RVT-R2/R3: the revert boundary restores and deletes', () => {
       method: 'POST',
       body: JSON.stringify({ run_id: 'no-such-run' }),
     })
-    expect(res.status).toBe(404)
+    await expectStatus(res, 404)
   })
 
   test('RVT-R2: an invalid run ID cannot start a revert', async ({ admin }) => {
@@ -346,7 +346,7 @@ describe('RVT-R6: whole-request permission refusal', () => {
       method: 'POST',
       body: JSON.stringify({ run_id: runId }),
     })
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
     expect(await rowsByZone(admin)).toEqual(before) // Alpha not restored either — refusal is whole
   })
 })
@@ -405,7 +405,7 @@ describe('RVT: rows a revert cannot act on are named, and the rest still revert'
     await grantRole(admin, { table: DT, role: 'Revert Own Rows', can_read: true, can_write: true, can_delete: true, own_rows_only: true })
     const user = await createUser({ roles: ['Revert Own Rows'] })
     const before = await rowsByZone(admin)
-    await expectApiError(user.post(REVERT, { run_id: runId }), { status: 403 })
+    await expectRefused(user.post(REVERT, { run_id: runId }), 403)
     expect(await rowsByZone(admin)).toEqual(before)
   })
 })

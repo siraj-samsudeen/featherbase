@@ -8,6 +8,7 @@ import { afterEach, expect } from 'vitest'
 import { test } from './pg-test'
 import { overrideVariable } from '../src/env'
 import { buildInfo } from '../src/build-info'
+import { expectRefused } from './fixtures'
 
 const RAILWAY = ['RAILWAY_GIT_COMMIT_SHA', 'RAILWAY_GIT_COMMIT_MESSAGE', 'RAILWAY_GIT_REPO_OWNER', 'RAILWAY_GIT_REPO_NAME'] as const
 
@@ -83,5 +84,5 @@ test('each app shows what changed in its current version, newest first', async (
 
 test('only a System Manager sees what the instance is running', async ({ createUser }) => {
   const member = await createUser({ email: 'build-info.member@example.com' })
-  await expect(member.get('/api/apps')).rejects.toMatchObject({ status: 403 })
+  await expectRefused(member.get('/api/apps'), 403)
 })

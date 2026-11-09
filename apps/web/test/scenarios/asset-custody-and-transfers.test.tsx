@@ -6,7 +6,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe } from 'vitest'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, screenSession } from '../pg-test'
+import { test, expect, insideOf, screenSession } from '../pg-test'
 import { Assets, type Row, realTime } from './assets'
 
 const scenario = scenarioFor(test, 'asset-custody-and-transfers')
@@ -48,9 +48,9 @@ class Custody {
   /** The custodian presses a button on their own asset under "Your assets". */
   async pressOnMine(person: string, assetName: string, button: string, expectedState: string) {
     await this.assets.open(person, 'custody')
-    const item = await within(await screen.findByRole('region', { name: 'Your assets' })).findByRole('listitem', { name: assetName })
-    await userEvent.setup().click(within(item).getByRole('button', { name: button }))
-    await within(item).findByText(expectedState, { exact: true })
+    const item = `[aria-labelledby="your-assets"] li[aria-label=${JSON.stringify(assetName)}]`
+    await insideOf(screenSession(), item, (mine) => mine.clickButton(button))
+      .within(`${item} > b`, (state) => state.assertExactText(expectedState))
   }
 
   /** A manager presses the take-back button on the asset's row in "Who holds what". */
@@ -58,6 +58,7 @@ class Custody {
     await this.assets.open(manager, 'custody')
     const table = await screen.findByRole('table', { name: 'Custody' })
     const id = this.assets.assets[assetName]!
+    // The asset's row, found by its link, until it is gone: the DSL scopes by selector and has no verb for disappearance yet.
     const row = await waitFor(() => {
       const link = table.querySelector(`a[href="#asset=${encodeURIComponent(id)}"]`)
       expect(link, `${assetName} is not in Who holds what`).not.toBeNull()
@@ -84,6 +85,7 @@ class Custody {
     this.assets.setClock(`${day}T12:00:00+05:30`)
     await this.assets.open(viewer, 'custody')
     const table = await screen.findByRole('table', { name: 'Clearances' })
+    // Rows by their cells: the DSL reads text, not tables.
     const rows = () => within(table).getAllByRole('row').map(row => within(row).queryAllByRole('cell').map(cell => cell.textContent!.trim()))
       .filter(cells => cells[0] === personName && cells[2] === leavingDay)
     await waitFor(() => expect(rows().length, 'his clearance is not listed').toBeGreaterThan(0))
@@ -121,7 +123,6 @@ class Custody {
 
   async openTransfer(person: string) {
     await this.assets.open(person, `transfer=${encodeURIComponent(this.transfer)}`)
-    return userEvent.setup()
   }
 
   /** On the transfer's page: name the transporter, scan each item's tag, dispatch. */
@@ -142,14 +143,14 @@ class Custody {
 
   /** On the transfer's page: choose how each item arrived and receive it. */
   async receiveOnPage(person: string, outcomes: Record<string, string>) {
-    const user = await this.openTransfer(person)
+    await this.openTransfer(person)
     for (const [name, outcome] of Object.entries(outcomes)) {
-      const list = await waitFor(() => { const ul = document.querySelector('ul.transfer-receive'); expect(ul).not.toBeNull(); return ul as HTMLElement })
-      const item = await within(list).findByRole('listitem', { name })
-      await user.selectOptions(within(item).getByRole('combobox', { name: `Outcome for ${name}` }), outcome)
-      const receive = within(item).getByRole('button', { name: 'Receive' })
-      await waitFor(() => expect(receive).toBeEnabled())
-      await user.click(receive)
+      const item = `ul.transfer-receive li[aria-label=${JSON.stringify(name)}]`
+      await insideOf(screenSession(), item, (line) => line.selectOption(`Outcome for ${name}`, outcome))
+      // Enabled once the outcome is chosen: the DSL has no verb for a button being enabled.
+      await waitFor(() => expect(within(document.querySelector(item) as HTMLElement).getByRole('button', { name: 'Receive' })).toBeEnabled())
+      await screenSession().within(item, (line) => line.clickButton('Receive'))
+      // Every item, read whole: the DSL reads text, not lists.
       await waitFor(() => {
         const items = within(screen.getByRole('region', { name: 'Items' })).getAllByRole('listitem').map(li => li.textContent!)
         expect(items.some(text => text.includes(name) && text.includes(outcome)), `Items: ${items.join(' | ')}`).toBe(true)
@@ -161,6 +162,7 @@ class Custody {
   async confirmFinanceOnPage(person: string, reference: string) {
     await this.openTransfer(person)
     await screenSession().fillIn('SAP transaction reference', reference).clickButton('Confirm Finance')
+    // In any of the page's statuses: within scopes to the first match only.
     await waitFor(() => expect(screen.getAllByRole('status').some(s => s.textContent!.includes(`Finance confirmed ${reference}`))).toBe(true))
   }
 
@@ -169,6 +171,7 @@ class Custody {
     this.assets.setClock(at)
     await this.assets.open(person, 'transfers')
     const table = await screen.findByRole('table', { name: 'Transfers' })
+    // Returned for its callers to compare: the transfer's row is found by its link.
     const clock = await waitFor(() => {
       const row = table.querySelector(`a[href="#transfer=${encodeURIComponent(this.transfer)}"]`)?.closest('tr')
       expect(row, 'the transfer is not listed').toBeTruthy()

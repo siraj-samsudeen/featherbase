@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
+import { expectStatus } from './fixtures'
 
 // #1034: unticking a grant in the permission matrix ends the access even when
 // the grant has history, and the history outlives it. Before this, an edited
@@ -57,17 +58,17 @@ describe('#1034: unticking an edited grant', () => {
         body: JSON.stringify({ table: DT, row: { ...current, title } }),
       })
     }
-    expect((await holder.fetch(list)).status).toBe(200)
-    expect((await write('holder wrote this')).status).toBe(201)
+    await expectStatus(await holder.fetch(list), 200)
+    await expectStatus(await write('holder wrote this'), 201)
 
-    expect((await untick(admin, DT, { can_read: true, can_write: false })).status).toBe(200)
-    expect((await write('holder wrote this too')).status).toBe(403)
+    await expectStatus(await untick(admin, DT, { can_read: true, can_write: false }), 200)
+    await expectStatus(await write('holder wrote this too'), 403)
     expect((await admin.get<{ title: string }>(`${list}/${row.row_id}`)).title).toBe('holder wrote this')
-    expect((await holder.fetch(list)).status).toBe(200)
+    await expectStatus(await holder.fetch(list), 200)
 
-    expect((await untick(admin, DT, { can_read: false })).status).toBe(200)
-    expect((await holder.fetch(list)).status).toBe(403)
-    expect((await holder.fetch(`${list}/${row.row_id}`)).status).toBe(403)
+    await expectStatus(await untick(admin, DT, { can_read: false }), 200)
+    await expectStatus(await holder.fetch(list), 403)
+    await expectStatus(await holder.fetch(`${list}/${row.row_id}`), 403)
 
     const { perms } = await admin.get<{ perms: { role: string; can_read: boolean; can_write: boolean }[] }>(matrix)
     expect(perms.find((p) => p.role === ROLE)).toMatchObject({ can_read: false, can_write: false })
@@ -81,7 +82,7 @@ describe('#1034: unticking an edited grant', () => {
     const before = await historyOf(admin, read.row_id)
     expect(before.length).toBeGreaterThanOrEqual(2)
 
-    expect((await untick(admin, DT, { can_read: false })).status).toBe(200)
+    await expectStatus(await untick(admin, DT, { can_read: false }), 200)
 
     const after = await historyOf(admin, read.row_id)
     expect(after).toHaveLength(before.length + 1)
@@ -99,7 +100,7 @@ describe('#1034: unticking an edited grant', () => {
   test('a grant never edited leaves who revoked it too', async ({ admin }) => {
     await setup(admin)
     const read = await grant(admin, 'read')
-    expect((await untick(admin, DT, { can_read: false })).status).toBe(200)
+    await expectStatus(await untick(admin, DT, { can_read: false }), 200)
     expect((await historyOf(admin, read.row_id)).at(-1)?.data.changed).toEqual(expect.arrayContaining([['operation', 'read', null]]))
   })
 
@@ -108,8 +109,8 @@ describe('#1034: unticking an edited grant', () => {
     const read = await grant(admin, 'read')
     await admin.post('/api/save_row', { table: 'Comment', row: { ref_table: 'Permission', ref_name: read.row_id, content: 'Given for the audit' } })
     const holder = await createUser({ roles: [ROLE] })
-    expect((await untick(admin, DT, { can_read: false })).status).toBe(200)
-    expect((await holder.fetch(list)).status).toBe(403)
+    await expectStatus(await untick(admin, DT, { can_read: false }), 200)
+    await expectStatus(await holder.fetch(list), 403)
     expect(await sql`select content from comment where ref_table = 'Permission' and ref_name = ${read.row_id}`)
       .toEqual([{ content: 'Given for the audit' }])
   })
@@ -120,8 +121,8 @@ describe('#1034: unticking an edited grant', () => {
     await editTwice(admin, read.row_id, 'creator', 'all')
     const holder = await createUser({ roles: [ROLE] })
     await untick(admin, DT, { can_read: false })
-    expect((await untick(admin, DT, { can_read: true })).status).toBe(200)
-    expect((await holder.fetch(list)).status).toBe(200)
+    await expectStatus(await untick(admin, DT, { can_read: true }), 200)
+    await expectStatus(await holder.fetch(list), 200)
     const [again] = await sql`select row_id from permission where ref_table = ${DT} and role = ${ROLE}`
     expect(again.row_id).not.toBe(read.row_id)
     expect((await historyOf(admin, read.row_id)).length).toBeGreaterThanOrEqual(3)
@@ -135,7 +136,7 @@ describe('#1034: what the matrix still refuses, with history on the grant', () =
     await editTwice(admin, read.row_id, 'all', 'creator')
     const before = (await historyOf(admin, read.row_id)).length
     const refused = await untick(admin, DT, {})
-    expect(refused.status).toBe(417)
+    await expectStatus(refused, 417)
     expect(await refused.text()).toContain('preserve their scopes and app ownership')
     expect(await sql`select row_id from permission where ref_table = ${DT} and role = ${ROLE}`).toEqual([{ row_id: read.row_id }])
     expect(await historyOf(admin, read.row_id)).toHaveLength(before)
@@ -147,7 +148,7 @@ describe('#1034: what the matrix still refuses, with history on the grant', () =
     await editTwice(admin, read.row_id, 'creator', 'all')
     await sql`update permission set owner_app = 'untick_app' where row_id = ${read.row_id}`
     const refused = await untick(admin, DT, {})
-    expect(refused.status).toBe(417)
+    await expectStatus(refused, 417)
     expect(await refused.text()).toContain('preserve their scopes and app ownership')
     expect(await sql`select row_id from permission where ref_table = ${DT} and role = ${ROLE}`).toEqual([{ row_id: read.row_id }])
   })
@@ -164,7 +165,7 @@ describe('#1034: what the matrix still refuses, with history on the grant', () =
     // Both unticked: read goes first in the matrix's order, so a refusal on
     // update must roll that back as well.
     const refused = await untick(admin, DT, { can_read: false, can_write: false })
-    expect(refused.status).toBe(417)
+    await expectStatus(refused, 417)
     expect(await refused.text()).toContain('Deeper access of Untick Detail')
     expect((await sql`select row_id from permission where ref_table = ${DT} and role = ${ROLE} order by row_id`).map((r) => r.row_id).sort())
       .toEqual([read.row_id, update.row_id].sort())
@@ -178,17 +179,17 @@ describe('#1034: the exemption is the matrix alone', () => {
     const read = await grant(admin, 'read')
     await editTwice(admin, read.row_id, 'creator', 'all')
     const single = await admin.fetch(`/api/table/Permission/${read.row_id}`, { method: 'DELETE' })
-    expect(single.status).toBe(417)
+    await expectStatus(single, 417)
     expect(await single.text()).toContain('history entries')
     const bulk = await admin.fetch('/api/table/Permission:bulk-delete', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows: [read.row_id] }),
     })
-    expect(bulk.status).toBe(417)
+    await expectStatus(bulk, 417)
     expect(await bulk.text()).toContain('history entries')
     const purge = await admin.fetch('/api/table/Permission:purge', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [read.row_id], reason: 'x', confirm: true }),
     })
-    expect(purge.status).toBe(417)
+    await expectStatus(purge, 417)
     expect(await purge.text()).toContain('cannot be deleted permanently')
     expect(await sql`select 1 from permission where row_id = ${read.row_id}`).toHaveLength(1)
   })
@@ -203,13 +204,13 @@ describe('#1034: the exemption is the matrix alone', () => {
 
     for (const client of [admin, editor]) {
       const refused = await client.fetch(`${list}/${row.row_id}`, { method: 'DELETE' })
-      expect(refused.status).toBe(417)
+      await expectStatus(refused, 417)
       expect(await refused.text()).toContain('it has 1 history entry')
     }
     const notAllowed = await editor.fetch(`${list}:purge`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [row.row_id], reason: 'x', confirm: true }),
     })
-    expect(notAllowed.status).toBe(403)
+    await expectStatus(notAllowed, 403)
     expect((await admin.get<{ title: string }>(`${list}/${row.row_id}`)).title).toBe('Edited')
   })
 })

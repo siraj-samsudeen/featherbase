@@ -5,6 +5,7 @@ import { renderPdf, renderPrintHtml } from '../src/print'
 import { createTable } from '../src/table-engine'
 import { saveDoc } from '../src/document'
 import { test } from './pg-test'
+import { expectStatus } from './fixtures'
 
 const require = createRequire(import.meta.url)
 const { PDFParse } = require('pdf-parse') as {
@@ -88,7 +89,7 @@ describe('Print a row', () => {
   }) => {
     await setup()
     const res = await admin.fetch(`/api/print/${encodeURIComponent(DT)}/srv-1`)
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     expect(res.headers.get('content-type')).toBe('application/pdf')
     const pdf = Buffer.from(await res.arrayBuffer())
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-')
@@ -105,10 +106,10 @@ describe('Print a row', () => {
     await setup()
     const stranger = await createUser({ roles: [] })
     const res = await stranger.fetch(`/api/print/${encodeURIComponent(DT)}/srv-1`)
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
     expect(await sql`select 1 from access_log where ref_table = ${DT} and operation = 'print'`).toHaveLength(0)
     // Admin is unaffected.
-    expect((await admin.fetch(`/api/print/${encodeURIComponent(DT)}/srv-1`)).status).toBe(200)
+    await expectStatus(await admin.fetch(`/api/print/${encodeURIComponent(DT)}/srv-1`), 200)
   }, 30_000)
 })
 

@@ -5,6 +5,7 @@ import { test } from './pg-test'
 import { installApp } from '../src/apps'
 import { discoverPackages } from '../src/runtime-packages'
 import { version } from '../../../client-apps/jeyarama/equipment/package.json'
+import { expectRefused } from './fixtures'
 
 type Row = { row_id: string; updated_at: string; [field: string]: unknown }
 
@@ -196,7 +197,7 @@ test('custody keeps its times; only the custodian or a manager writes its note; 
   expect(await patch(p, 'equipment.custody', custody, { issued_at: '2026-01-01T00:00:00.000Z', responded_at: null, returned_at: '2026-01-01T00:00:00.000Z' }))
     .toMatchObject({ issued_at: custody.issued_at, responded_at: answered.responded_at, returned_at: null })
   // Validators can't see roles: someone else's save is refused by the manager check itself.
-  await expect(patch(p, 'equipment.custody', custody, { note: 'Mine now' }, p.other)).rejects.toMatchObject({ status: 403 })
+  await expectRefused(patch(p, 'equipment.custody', custody, { note: 'Mine now' }, p.other), 403)
   expect((await p.get('equipment.custody', custody.row_id)).note).toBeNull()
   expect(await patch(p, 'equipment.custody', custody, { note: 'Kept at till 2' }, p.suresh)).toMatchObject({ note: 'Kept at till 2' })
 

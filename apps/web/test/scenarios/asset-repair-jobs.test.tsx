@@ -8,7 +8,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe } from 'vitest'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, screenSession } from '../pg-test'
+import { test, expect, insideOf, screenSession } from '../pg-test'
 import { Assets, type Row, istLabel, realTime } from './assets'
 
 const scenario = scenarioFor(test, 'asset-repair-jobs')
@@ -230,9 +230,9 @@ describe('asset-repair-jobs', () => {
     await step('Ravi fixed "Not cooling"', async () => { state = await fixedByRavi(assets, 'Not cooling') })
     await step('store staff confirm it works', async () => {
       await openAsset(assets, 'store staff', state.assetId)
-      const item = within(await screen.findByRole('region', { name: 'Waiting for you to confirm' })).getByRole('article', { name: state.problem })
-      await userEvent.setup().click(within(item).getByRole('button', { name: 'Confirm it works' }))
-      await within(await screen.findByRole('region', { name: 'Past jobs' })).findByText(/Closed · confirmed/)
+      await insideOf(screenSession(), `[aria-labelledby="confirm-jobs"] article[aria-label=${JSON.stringify(state.problem)}]`,
+        (job) => job.clickButton('Confirm it works'))
+        .within('[aria-labelledby="past-jobs"]', (past) => past.assertText('Closed · confirmed'))
     })
     await step('the job is closed, with who confirmed it and when', async () => {
       const confirmations = await assets.list('equipment.restoration', [['job', '=', state.job.row_id]], ['row_id', 'job', 'created_by', 'created_at'])

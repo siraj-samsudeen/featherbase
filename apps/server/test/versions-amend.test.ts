@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
+import { expectStatus } from './fixtures'
 
 const DT = 'Va Invoice'
 const ROW = 'Va Line'
@@ -116,12 +117,12 @@ describe('DOC-008: amend cancelled documents', () => {
         row: { row_id: amended.row_id, updated_at: amended.updated_at, amount: 120 },
       }),
     })
-    expect(edit.status).toBe(201)
+    await expectStatus(edit, 201)
     const resubmit = await admin.fetch(
       `/api/table/${encodeURIComponent(DT)}/${amended.row_id}:submit`,
       { method: 'POST' },
     )
-    expect(resubmit.status).toBe(200)
+    await expectStatus(resubmit, 200)
 
     // amending the same cancelled doc again derives NAME-2
     const second = await admin.post<Record<string, unknown>>(

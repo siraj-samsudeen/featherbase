@@ -5,6 +5,7 @@ import { passwordSignIn as login } from '../src/sign-in'
 import { requestPasswordReset, resetPassword } from '../src/password-reset'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
+import { expectStatus } from './fixtures'
 
 // SET-002: password reset issues a single-use, time-limited token, mails a
 // link to the sink, and only ever targets a real, enabled account.
@@ -33,12 +34,12 @@ describe('SET-002: password reset', () => {
       method: 'POST', body: JSON.stringify({ usr: email, pwd }),
     })
     const original = await signIn('before123')
-    expect(original.status).toBe(200)
+    await expectStatus(original, 200)
     expect(await original.json()).toMatchObject({ user: { row_id: person }, token: expect.any(String) })
     const request = await api.fetch('/api/reset_password_request', {
       method: 'POST', body: JSON.stringify({ usr: email }),
     })
-    expect(request.status).toBe(200)
+    await expectStatus(request, 200)
     expect(await request.json()).toEqual({ ok: true })
     const mail = await sql`select * from email_sink where mail_to = ${email} order by row_id`
     expect(mail).toHaveLength(1)
@@ -55,7 +56,7 @@ describe('SET-002: password reset', () => {
     const response = await api.fetch('/api/reset_password', {
       method: 'POST', body: JSON.stringify({ key, new_password: 'abcde' }),
     })
-    expect(response.status).toBe(417)
+    await expectStatus(response, 417)
     expect(await response.json()).toEqual({ error: {
       type: 'ValidationError', message: 'Password must be at least 6 characters',
     } })
@@ -63,25 +64,25 @@ describe('SET-002: password reset', () => {
     expect(await sql`select * from person where row_id = ${person}`).toEqual(account)
     expect(await sql`select * from email_sink where mail_to = ${email} order by row_id`).toEqual(mail)
     const stillOriginal = await signIn('before123')
-    expect(stillOriginal.status).toBe(200)
+    await expectStatus(stillOriginal, 200)
     expect(await stillOriginal.json()).toMatchObject({ user: { row_id: person }, token: expect.any(String) })
     expect(await sql`select * from password_reset where "user" = ${person} order by token`).toEqual(tokens)
     const accepted = await api.fetch('/api/reset_password', {
       method: 'POST', body: JSON.stringify({ key, new_password: 'abcdef' }),
     })
-    expect(accepted.status).toBe(200)
+    await expectStatus(accepted, 200)
     expect(await accepted.json()).toEqual({ ok: true })
     expect(await sql`select * from password_reset where "user" = ${person}`).toEqual([])
     const [changed] = await sql`select * from person where row_id = ${person}`
     expect(changed.password_hash).not.toBe(account[0].password_hash)
     expect(changed).toEqual({ ...account[0], password_hash: expect.any(String) })
     const oldLogin = await signIn('before123')
-    expect(oldLogin.status).toBe(401)
+    await expectStatus(oldLogin, 401)
     expect(await oldLogin.json()).toEqual({ error: {
       type: 'AuthenticationError', message: 'Invalid login credentials',
     } })
     const newLogin = await signIn('abcdef')
-    expect(newLogin.status).toBe(200)
+    await expectStatus(newLogin, 200)
     expect(await newLogin.json()).toMatchObject({ user: { row_id: person }, token: expect.any(String) })
   })
 

@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { getCollectionAction, getRowAction, listActions, registerCollectionAction, registerRowAction } from '../src/actions'
+import { expectStatus } from './fixtures'
 
 const DT = 'Rest Project'
 
@@ -41,7 +42,7 @@ describe('API-001/API-002: generic REST resource', () => {
 
     // READ one
     const one = await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${created.row_id}`)
-    expect(one.status).toBe(200)
+    await expectStatus(one, 200)
     expect(((await one.json()) as Record<string, unknown>).title).toBe('proj-a')
 
     // UPDATE (PUT)
@@ -50,7 +51,7 @@ describe('API-001/API-002: generic REST resource', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ updated_at: created.updated_at, title: 'proj-b' }),
     })
-    expect(put.status).toBe(200)
+    await expectStatus(put, 200)
     expect(((await put.json()) as Record<string, unknown>).title).toBe('proj-b')
 
     // LIST with filters + pagination params
@@ -72,11 +73,11 @@ describe('API-001/API-002: generic REST resource', () => {
     // 27-Oct-2026), so the edited row stays and an unedited one goes.
     const doomed = await admin.post<{ row_id: string }>(`/api/table/${encodeURIComponent(DT)}`, { title: 'proj-c' })
     const refused = await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${created.row_id}`, { method: 'DELETE' })
-    expect(refused.status).toBe(417)
+    await expectStatus(refused, 417)
     const del = await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${doomed.row_id}`, {
       method: 'DELETE',
     })
-    expect(del.status).toBe(200)
+    await expectStatus(del, 200)
     expect(
       (await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${doomed.row_id}`)).status,
     ).toBe(404)
@@ -84,8 +85,8 @@ describe('API-001/API-002: generic REST resource', () => {
 
   test('404s on unknown table for every verb', async ({ admin }) => {
     await setup(admin)
-    expect((await admin.fetch('/api/table/Nope')).status).toBe(404)
-    expect((await admin.fetch('/api/table/Nope/x')).status).toBe(404)
+    await expectStatus(await admin.fetch('/api/table/Nope'), 404)
+    await expectStatus(await admin.fetch('/api/table/Nope/x'), 404)
     expect(
       (
         await admin.fetch('/api/table/Nope', {
@@ -95,7 +96,7 @@ describe('API-001/API-002: generic REST resource', () => {
         })
       ).status,
     ).toBe(404)
-    expect((await admin.fetch('/api/table/Nope/x', { method: 'DELETE' })).status).toBe(404)
+    await expectStatus(await admin.fetch('/api/table/Nope/x', { method: 'DELETE' }), 404)
   })
 
   test('validation errors surface through the resource layer field-wise', async ({ admin }) => {
@@ -120,7 +121,7 @@ describe('API-001/API-002: generic REST resource', () => {
       [`/api/table/${encodeURIComponent(DT)}:count`, 'No writable collection action ":count"'],
     ]) {
       const response = await admin.fetch(path, { method: 'POST', body: JSON.stringify({ title: 'must not write' }) })
-      expect(response.status).toBe(404)
+      await expectStatus(response, 404)
       expect(await response.json()).toMatchObject({ error: { type: 'NotFoundError', message } })
     }
     expect(await admin.get(`/api/table/${encodeURIComponent(DT)}/${row.row_id}`)).toMatchObject({ title: 'unchanged' })
@@ -163,7 +164,7 @@ describe('JSON command validation at the HTTP boundary', () => {
     test(`${method} ${path} refuses malformed and missing arguments`, async ({ admin }) => {
       for (const body of ['{"unfinished":', '{}']) {
         const response = await admin.fetch(path, { method, body, headers: { 'content-type': 'application/json' } })
-        expect(response.status).toBe(417)
+        await expectStatus(response, 417)
         expect(await response.json()).toMatchObject({ error: { type: 'ValidationError', message } })
       }
     })

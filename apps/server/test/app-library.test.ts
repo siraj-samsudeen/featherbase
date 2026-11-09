@@ -11,6 +11,7 @@ import { withNamedVariable } from '../src/env'
 import { makeClient } from 'feather-testing-postgres'
 import { main } from '../src/cli'
 import { runMain } from './command-io'
+import { expectRefused, expectStatus } from './fixtures'
 
 async function sourceRepository(build = `node -e "require('fs').copyFileSync('server.mjs', 'built.mjs')"`) {
   const root = await mkdtemp(resolve('test/.app-library-'))
@@ -85,7 +86,7 @@ test('an invalid source declaration is not offered for installation', async ({ a
     await writeFile(resolve(root, 'example-apps/other/featherbase.json'), '{invalid')
     await discoverAppLibrary([], root)
     expect((await admin.get<{ catalog: unknown[] }>('/api/apps')).catalog).toEqual([])
-    await expect(admin.post('/api/apps/prepare-install', { name: 'other' })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(admin.post('/api/apps/prepare-install', { name: 'other' }), 417)
   } finally {
     await discoverAppLibrary([], null)
     await rm(root, { recursive: true, force: true })
@@ -141,7 +142,7 @@ test('failed preparation reports an actionable state without installing', async 
   const root = await sourceRepository('node -e "process.exit(1)"')
   try {
     await discoverAppLibrary([], root)
-    await expect(admin.post('/api/apps/prepare-install', { name: 'other' })).rejects.toMatchObject({ status: 417, message: expect.stringContaining('build dependencies') })
+    await expectRefused(admin.post('/api/apps/prepare-install', { name: 'other' }), 417, 'build dependencies')
     expect(await admin.get('/api/apps')).toMatchObject({ catalog: [expect.objectContaining({ name: 'other', installed: false, preparation: { state: 'failed', error: expect.stringContaining('retry') } })] })
     expect(await sql`select name from installed_app where name = 'other'`).toHaveLength(0)
   } finally {
@@ -204,8 +205,8 @@ test('a colleague cannot prepare a trusted app', async ({ createUser }) => {
   try {
     await discoverAppLibrary([], root)
     const member = await createUser({ email: 'catalog-member@example.com', roles: [] })
-    await expect(member.get('/api/apps')).rejects.toMatchObject({ status: 403 })
-    await expect(member.post('/api/apps/prepare-install', { name: 'other' })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(member.get('/api/apps'), 403)
+    await expectRefused(member.post('/api/apps/prepare-install', { name: 'other' }), 403)
     await expect(readFile(resolve(root, 'example-apps/other/built.mjs'))).rejects.toMatchObject({ code: 'ENOENT' })
   } finally {
     await discoverAppLibrary([], null)
@@ -215,11 +216,11 @@ test('a colleague cannot prepare a trusted app', async ({ createUser }) => {
 
 test('preparation accepts catalog names rather than paths or build commands', async ({ admin }) => {
   for (const body of [{ name: '../other' }, { name: 'unknown' }, { name: 'other', path: '/tmp' }, { name: 'other', command: 'echo unsafe' }, {}, null])
-    await expect(admin.post('/api/apps/prepare-install', body)).rejects.toMatchObject({ status: 417 })
+    await expectRefused(admin.post('/api/apps/prepare-install', body), 417)
   const malformed = await admin.fetch('/api/apps/prepare-install', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{',
   })
-  expect(malformed.status).toBe(417)
+  await expectStatus(malformed, 417)
   expect(await malformed.json()).toMatchObject({ error: { type: 'ValidationError', message: 'Expected { name } naming an app in the catalog; paths and commands are not accepted' } })
   expect(await sql`select name from installed_app`).toEqual([])
 })
@@ -236,7 +237,7 @@ test('restart reactivates an installed repository app without explicit paths', a
       await loadInstalledApps()
       expect(await client.get('/api/table/other.task/survivor')).toMatchObject({ quantity: 21, validation_runs: 1 })
       await expect(installedAppsAtStart('production')).resolves.toEqual([])
-      await expect(admin.post('/api/apps/prepare-install', { name: 'other' })).rejects.toMatchObject({ status: 409 })
+      await expectRefused(admin.post('/api/apps/prepare-install', { name: 'other' }), 409)
     })
   } finally {
     await discoverAppLibrary([], null)
@@ -276,7 +277,7 @@ test('a retry uses the repaired source after installation validation failed', as
     manifest.permissions[0].role = 'Unknown catalog role'
     await writeFile(file, JSON.stringify(manifest))
     await discoverAppLibrary([], root)
-    await expect(admin.post('/api/apps/prepare-install', { name: 'other' })).rejects.toMatchObject({ status: 417, message: expect.stringContaining('unknown role Unknown catalog role') })
+    await expectRefused(admin.post('/api/apps/prepare-install', { name: 'other' }), 417, 'unknown role Unknown catalog role')
     await writeFile(file, original)
     await discoverAppLibrary([], root)
     expect(await admin.post('/api/apps/prepare-install', { name: 'other' })).toEqual({ name: 'other', installed: true })
@@ -375,7 +376,7 @@ for (const edit of ['permissions', 'package version']) test(`a changed ${edit} a
     if (edit === 'permissions') declaration.permissions[0].can_write = true
     else declaration.version = '0.0.2'
     await writeFile(file, JSON.stringify(declaration))
-    await expect(admin.post('/api/apps/prepare-install', { name: 'other' })).rejects.toMatchObject({ status: 409, message: expect.stringContaining('changed since discovery') })
+    await expectRefused(admin.post('/api/apps/prepare-install', { name: 'other' }), 409, 'changed since discovery')
     await expect(readFile(resolve(source, 'built.mjs'))).rejects.toMatchObject({ code: 'ENOENT' })
     expect(await sql`select name from installed_app where name = 'other'`).toHaveLength(0)
   } finally {
@@ -396,7 +397,7 @@ copyFileSync('server.mjs', 'built.mjs')
 `)
   try {
     await discoverAppLibrary([], root)
-    await expect(admin.post('/api/apps/prepare-install', { name: 'other' })).rejects.toMatchObject({ status: 409, message: expect.stringContaining('changed since discovery') })
+    await expectRefused(admin.post('/api/apps/prepare-install', { name: 'other' }), 409, 'changed since discovery')
     expect(await readFile(resolve(source, 'built.mjs'), 'utf8')).toContain('other.task')
     expect(await sql`select name from installed_app where name = 'other'`).toHaveLength(0)
   } finally {
@@ -415,12 +416,12 @@ committedTest('a concurrent successful installation is not reported as failed pr
   let retry: Promise<Response> | undefined
   try {
     await discoverAppLibrary([], root)
-    await expect(admin.post('/api/apps/prepare-install', { name: 'other' })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(admin.post('/api/apps/prepare-install', { name: 'other' }), 417)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Catalog reviewer' } })
     retry = admin.fetch('/api/apps/prepare-install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'other' }) })
     await expect.poll(async () => (await admin.get<{ catalog: { preparation: { state: string } }[] }>('/api/apps')).catalog[0].preparation.state).toBe('preparing')
     await admin.post('/api/install_app', { name: 'other' })
-    expect((await retry).status).toBe(409)
+    await expectStatus(await retry, 409)
     expect(await admin.get('/api/apps')).toMatchObject({ catalog: [expect.objectContaining({ name: 'other', installed: true, active: true, preparation: { state: 'ready' } })] })
   } finally {
     await retry

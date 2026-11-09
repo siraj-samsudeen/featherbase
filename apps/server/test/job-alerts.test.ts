@@ -4,6 +4,7 @@ import { sql } from '../src/db'
 import { drainJobs, enqueue, loadJobs, registerJob, retryJob, syncScheduledJobs } from '../src/jobs'
 import { _setJobAlertSender, JOB_ALERT_SUBJECT } from '../src/job-alerts'
 import { queueEmail, type MailMessage } from '../src/email'
+import { expectRefused } from './fixtures'
 
 // #464: the Jobs page and its alerts. A scheduled job's run ends ok, failed
 // or refused; a run that fails for good or refuses emails every System
@@ -245,7 +246,7 @@ describe('only a System Manager can switch or run a job', () => {
         row: { row_id: METHOD, method: METHOD, cadence: 'hourly', enabled: false, updated_at: (row.updated_at as Date).toISOString() },
       }),
     ).rejects.toMatchObject({ status: 403 })
-    await expect(clerk.post('/api/enqueue_job', { method: METHOD })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(clerk.post('/api/enqueue_job', { method: METHOD }), 403)
     const [after] = await sql`select enabled from scheduled_job where method = ${METHOD}`
     expect(after.enabled).toBe(true)
     expect(await sql`select 1 from background_job where method = ${METHOD}`).toHaveLength(0)

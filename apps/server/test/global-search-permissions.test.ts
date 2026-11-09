@@ -5,7 +5,7 @@ import { registryLabel, type SearchHit } from '../src/search'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { discoverPackages } from '../src/runtime-packages'
-import { createUserWithRole, grantRole, makePerson, makeTable, type TableRef } from './fixtures'
+import { createUserWithRole, expectStatus, grantRole, makePerson, makeTable, type TableRef } from './fixtures'
 
 const search = (client: TestClient, query: string) =>
   client.get<{ results: SearchHit[] }>(`/api/search?q=${encodeURIComponent(query)}`)
@@ -71,7 +71,7 @@ describe('global search permissions', () => {
     const reader = await createUserWithRole(admin, createUser, { role: 'Gs Broken Scope Reader', table: table.name, can_read: true })
     await sql`drop table data_scope`
     const response = await reader.fetch('/api/search?q=anything')
-    expect(response.status).toBe(500)
+    await expectStatus(response, 500)
     expect(await response.json()).toMatchObject({ error: { type: 'InternalError' } })
   })
 
@@ -232,7 +232,7 @@ describe('global search permissions', () => {
       },
     })
 
-    expect((await alice.fetch(table.rowUrl('gs-direct-share-hidden'))).status).toBe(200)
+    await expectStatus(await alice.fetch(table.rowUrl('gs-direct-share-hidden')), 200)
     const { results } = await search(alice, 'gs-direct-share-hidden')
     expect(results.filter((hit) => hit.table === table.name)).toEqual([])
   })

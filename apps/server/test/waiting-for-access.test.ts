@@ -6,7 +6,7 @@ import { resolve } from 'node:path'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { makePerson } from './fixtures'
+import { expectStatus, makePerson } from './fixtures'
 import { configureGoogle } from './identity-fixtures'
 import { completeSignIn } from '../src/sign-in'
 import { methodOfKind } from '../src/identities'
@@ -45,7 +45,7 @@ async function list(client: TestClient, filters: unknown[] = []) {
 
 async function count(client: TestClient): Promise<number> {
   const res = await client.fetch('/api/people/waiting_for_access/count')
-  expect(res.status).toBe(200)
+  await expectStatus(res, 200)
   return ((await res.json()) as { count: number }).count
 }
 
@@ -101,7 +101,7 @@ describe('opening something without access is the request', () => {
     const priya = await createUser({ email: 'priya@example.com', roles: [] })
     for (let i = 0; i < 2; i++) {
       const res = await ask(priya, 'featherbase')
-      expect(res.status).toBe(200)
+      await expectStatus(res, 200)
       expect(await res.json()).toEqual({ state: 'waiting', title: 'Featherbase' })
     }
     const { status, rows, total } = await list(admin)
@@ -132,7 +132,7 @@ describe('opening something without access is the request', () => {
   test('nothing else can be asked for', async ({ admin, createUser }) => {
     const priya = await createUser({ email: 'priya.odd@example.com', roles: [] })
     for (const app of ['no_such_app', 'toString', 42, undefined]) expect((await ask(priya, app)).status).toBe(417)
-    expect((await priya.fetch('/api/access_request', { method: 'POST', body: 'not json' })).status).toBe(417)
+    await expectStatus(await priya.fetch('/api/access_request', { method: 'POST', body: 'not json' }), 417)
     expect((await list(admin)).total).toBe(0)
   })
 
@@ -154,22 +154,22 @@ describe('opening something without access is the request', () => {
     await installOther(admin)
     const priya = await createUser({ email: 'priya.other@example.com', roles: [] })
     const page = await priya.fetch('/other/', { headers: { accept: 'text/html' } })
-    expect(page.status).toBe(403)
+    await expectStatus(page, 403)
     const html = await page.text()
     expect(html).toContain("You don't have access to Other tasks yet")
     expect(html).toContain('An admin has been told')
     expect((await list(admin)).rows).toMatchObject([{ person: priya.user, app: 'Other tasks', app_name: 'other' }])
     // A script it asks for is refused as before.
-    expect((await priya.fetch('/other/app.js')).status).toBe(404)
+    await expectStatus(await priya.fetch('/other/app.js'), 404)
     // Someone who can open it gets the app, and asks nothing.
-    expect((await admin.fetch('/other/', { headers: { accept: 'text/html' } })).status).toBe(200)
+    await expectStatus(await admin.fetch('/other/', { headers: { accept: 'text/html' } }), 200)
     expect((await list(admin)).total).toBe(1)
   })
 
   test('an app that is not installed is still unavailable, and asks nothing', async ({ admin, createUser }) => {
     const priya = await createUser({ email: 'priya.none@example.com', roles: [] })
     const page = await priya.fetch('/not_installed/', { headers: { accept: 'text/html' } })
-    expect(page.status).toBe(404)
+    await expectStatus(page, 404)
     expect(await page.text()).toContain('Application unavailable')
     expect((await list(admin)).total).toBe(0)
   })
@@ -218,14 +218,14 @@ describe('the waiting list', () => {
   test('the list and the count are System Manager only', async ({ admin, createUser }) => {
     const clerk = await createUser({ email: 'clerk@example.com', roles: [] })
     await ask(clerk, 'featherbase')
-    expect((await clerk.fetch('/api/people/waiting_for_access/count')).status).toBe(403)
+    await expectStatus(await clerk.fetch('/api/people/waiting_for_access/count'), 403)
     expect((await list(clerk)).status).toBe(403)
     expect((await list(admin)).total).toBe(1)
   })
 
   test('only the platform writes requests', async ({ admin }) => {
     const res = await admin.fetch('/api/save_row', { method: 'POST', body: JSON.stringify({ table: 'Access Request', row: { person: 'Administrator', app: 'X', app_name: 'x' } }) })
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
     expect((await list(admin)).total).toBe(0)
   })
 })

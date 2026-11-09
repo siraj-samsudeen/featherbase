@@ -5,7 +5,7 @@
 // The Google sign-in runs through the dev mock provider on the server
 // (server/test/google-mock): the browser's hops between hosts and the consent
 // page's form are what a real browser alone proves.
-import { screen, waitFor, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { describe, vi } from 'vitest'
 import { rowHref } from 'shared'
 import { scenarioFor } from 'server/test/scenario'
@@ -38,8 +38,7 @@ describe('sign-in-and-accounts', () => {
       await inside(session, row, (google) => google.assertText('Google'))
     })
     await step("the Google sign-in leads with the person's address", () =>
-      // The whole head, exactly: the DSL's text verbs check containment.
-      waitFor(() => expect(within(screen.getByTestId(row)).getByTestId('identity-head').textContent?.trim()).toBe(`Google · ${address}`)))
+      session.within(`${byTestId(row)} ${byTestId('identity-head')}`, (head) => head.assertExactText(`Google · ${address}`)))
     await step('it says it was linked at first sign-in, and when it was last used', () => {
       // A pattern over the dates: the DSL's text verbs match literal text only.
       expect(within(screen.getByTestId(row)).getByTestId('identity-linked').textContent).toMatch(

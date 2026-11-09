@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { clearControllers, registerController } from '../src/controllers'
+import { expectStatus } from './fixtures'
 
 const DT = 'Sbm Expense'
 const PLAIN = 'Sbm Plain'
@@ -118,7 +119,7 @@ describe('DOC-007: submittable documents', () => {
       row: { amount: 5 },
     })
     const res = await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}:submit`)
-    expect(res.status).toBe(404)
+    await expectStatus(res, 404)
     expect(((await res.json()) as { error: { type: string } }).error.type).toBe('NotFoundError')
 
     const after = await admin.get<Record<string, unknown>>(

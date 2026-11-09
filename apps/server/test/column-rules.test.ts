@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
-import { grantRole } from './fixtures'
+import { expectStatus, grantRole } from './fixtures'
 import { sameStoredValue } from '../src/permissions'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
@@ -73,12 +73,12 @@ describe('creator-scoped Columns', () => {
     const current = await editor.get<{ updated_at: string; lines: Record<string, unknown>[] }>(`/api/table/Cr%20Order/${order.row_id}`)
     const response = await editor.fetch('/api/save_row', { method: 'POST', body: JSON.stringify({ table: 'Cr Order', row: {
       row_id: order.row_id, updated_at: current.updated_at, lines: [{ ...current.lines[0], qty: 2, unit_price: 1 }] } }) })
-    expect(response.status).toBe(403)
+    await expectStatus(response, 403)
     expect((await admin.get<{ lines: { qty: number; unit_price: number }[] }>(`/api/table/Cr%20Order/${order.row_id}`)).lines)
       .toMatchObject([{ qty: 1, unit_price: 5 }])
     const allowed = await editor.fetch('/api/save_row', { method: 'POST', body: JSON.stringify({ table: 'Cr Order', row: {
       row_id: order.row_id, updated_at: current.updated_at, lines: [{ ...current.lines[0], qty: 2 }] } }) })
-    expect(allowed.status).toBe(201)
+    await expectStatus(allowed, 201)
   })
 })
 
@@ -116,7 +116,7 @@ describe('line items outside a grant', () => {
     const reader = await createUser({ roles: ['Cg Reader'] })
     const filters = JSON.stringify([['row_id', 'related', { via: 'Cg Line', column: 'who', table: 'Cg Person Ref', filters: [['row_id', '=', who]] }]])
     const response = await reader.fetch(`/api/table/Cg%20Order?filters=${encodeURIComponent(filters)}`)
-    expect(response.status).toBe(403)
+    await expectStatus(response, 403)
   })
 
   test('a reader of only their own rows filters through their own line items', async ({ admin, createUser }) => {
@@ -138,7 +138,7 @@ describe('line items outside a grant', () => {
     const current = await reader.get<{ updated_at: string; lines: Record<string, unknown>[] }>(`/api/table/Cg%20Order/${row}`)
     const changed = await reader.fetch('/api/save_row', { method: 'POST', body: JSON.stringify({ table: 'Cg Order', row: {
       row_id: row, updated_at: current.updated_at, label: 'O-1b', lines: [{ ...current.lines[0], qty: 9 }] } }) })
-    expect(changed.status).toBe(403)
+    await expectStatus(changed, 403)
     const saved = await reader.post<{ label: string }>('/api/save_row', { table: 'Cg Order', row: {
       row_id: row, updated_at: current.updated_at, label: 'O-1b', lines: current.lines } })
     expect(saved).toMatchObject({ label: 'O-1b' })
@@ -187,10 +187,10 @@ describe('history of a row with line items', () => {
     await grantRole(admin, { table: ['Hv Order', 'Version'], role: 'Hv Reader', can_read: true })
     const reader = await createUser({ roles: ['Hv Reader'] })
     await sql`insert into version (row_id, ref_table, ref_name, data) values ('hv-1', 'Hv Order', ${order.row_id}, ${sql.json({ changed: [['label', 'H-0', 'H-1']] })})`
-    expect((await reader.fetch('/api/table/Version/hv-1')).status).toBe(200)
+    await expectStatus(await reader.fetch('/api/table/Version/hv-1'), 200)
     await sql`update column_def set tier = 'restricted' where parent = 'Hv Line' and column_name = 'qty'`
     await invalidateMeta()
-    expect((await reader.fetch('/api/table/Version/hv-1')).status).toBe(403)
+    await expectStatus(await reader.fetch('/api/table/Version/hv-1'), 403)
   })
 })
 
