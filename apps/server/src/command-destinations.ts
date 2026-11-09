@@ -39,11 +39,11 @@ export async function commandDestinations(user: string): Promise<CommandDestinat
       if (owner_app) await assertAppAvailable(`${owner_app}.__inventory`)
       // getMeta checks app availability even for privileged callers and only
       // reads local metadata/source configuration, never foreign row data.
+      // The query above already leaves line-item Tables out.
       const meta = await getMeta(name)
-      if (meta.kind === 'sub_table') continue
       tables.push({
         row_id: name, label: meta.label || name, module: meta.module,
-        system: Boolean(meta.system), system_written: Boolean(meta.system_written), kind: meta.kind,
+        system: Boolean(meta.system), system_written: Boolean(meta.system_written), kind: definition.kind,
         can_create: meta.kind === 'table' && !meta.system_written && meta.source_writable !== false &&
           (await permissionScope(user, name, 'create')) !== 'none',
       })
