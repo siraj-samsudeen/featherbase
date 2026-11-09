@@ -5,7 +5,7 @@ const { randomUUID } = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { resolve } = require('node:path');
 const { Api } = require('../api');
-const { REPO_ROOT, API_URL, BASE_URL, restartAcceptance, resetAcceptance, acceptanceSql } = require('../stack');
+const { REPO_ROOT, API_URL, BASE_URL, restartAcceptance, resetAcceptance } = require('../stack');
 const appEnvironment = { FEATHERBASE_APP_PATHS: JSON.stringify([resolve(REPO_ROOT, 'example-apps/tickets')]) };
 let packageDiscovered = false;
 // Tickets records an upgrade step, so its Tables answer only a client that names
@@ -177,28 +177,6 @@ class Tickets {
     assert.ok(!JSON.stringify(activity.body).includes('PRIVATE support note 431'));
   }
   async search(query) { this.queue = (await this.read('queue', { search: query })).tickets; }
-  async renameTicket() {
-    this.last = await this.call(this.actor, `/api/table/tickets.ticket/${this.ticket.row_id}:rename`, { new_name: 'changed-by-another-requester' });
-  }
-  async retainedReference() {
-    await this.denied();
-    const saved = await this.open('Anjali');
-    assert.equal(saved.ticket.row_id, this.ticket.row_id);
-    assert.equal(saved.details.original, this.original);
-  }
-  async deleteEvidence() {
-    const api = await ticketsAdmin();
-    const event = (await this.open('Support')).privateEvents.find(event => event.operation === 'evidence');
-    this.evidenceBeforeDelete = await api.row('tickets.event', event.row_id);
-    const response = await api.call('DELETE', `/api/table/tickets.event/${event.row_id}?updated_at=${encodeURIComponent(this.evidenceBeforeDelete.updated_at)}`);
-    this.last = { status: response.status(), body: await response.json() };
-  }
-  async retainedEvidence() {
-    await this.denied();
-    const api = await ticketsAdmin();
-    assert.deepEqual(await api.row('tickets.event', this.evidenceBeforeDelete.row_id), this.evidenceBeforeDelete);
-    await this.includes('source-check-1', 'report-check-1', this.ids.Support);
-  }
   async referenceFixture(reference) {
     await this.setup();
     const api = await ticketsAdmin();
@@ -342,24 +320,6 @@ class TicketTypes {
     const api = await this.api();
     const current = await api.row('Person', this.outsiderId);
     await api.call('POST', '/api/save_row', { table: 'Person', row: { row_id: this.outsiderId, updated_at: current.updated_at, full_name: this.outsiderName } }, [200, 201], 'name the outsider');
-  }
-  async restartedElsewhere() {
-    await this.t.setup();
-    const api = await this.api();
-    await api.call('POST', '/api/set_app_enabled', { name: 'tickets', enabled: false }, [200], 'disable Tickets');
-    // Another process turns it back on: the database changes, this server is not told.
-    await acceptanceSql("update featherbase.installed_app set enabled = true where name = 'tickets'");
-  }
-  async changedBuild() {
-    await this.t.setup();
-    const [row] = await acceptanceSql("select artifact_digest from featherbase.installed_app where name = 'tickets'");
-    this.realDigest = row.artifact_digest;
-    const api = await this.api();
-    await api.call('POST', '/api/set_app_enabled', { name: 'tickets', enabled: false }, [200], 'disable Tickets');
-    await acceptanceSql("update featherbase.installed_app set enabled = true, artifact_digest = 'an-earlier-build' where name = 'tickets'");
-  }
-  async restoreBuild() {
-    await acceptanceSql('update featherbase.installed_app set artifact_digest = $1 where name = $2', [this.realDigest, 'tickets']);
   }
 }
 

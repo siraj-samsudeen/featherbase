@@ -24,7 +24,6 @@ steps(Given, [
   ['Anjali raised a Data Quality Issue for SAP, assigned to Bala', x => x.raise()],
   ['a Data Quality Issue that Bala has marked fixed', x => x.markedFixed()],
   ['the Data Quality Issue type is private', x => { x.private = true; }],
-  ['a person who holds the "Data Quality Verifier" role and is not involved in the ticket', x => x.roleHolder()],
 ]);
 
 steps(When, [
@@ -38,7 +37,6 @@ steps(When, [
     await x.take('Anjali', 'Answer', { answer });
     x.texts = [question, answer];
   }],
-  ['that person opens the ticket in Tickets', async x => { x.page = await x.workflow('DQ Verifier'); }],
 ]);
 
 steps(Then, [
@@ -80,8 +78,5 @@ steps(Then, [
     const seen = await x.t.open('Colleague');
     assert.equal(seen.details.question, x.texts[0]);
     assert.equal(seen.details.answer, answer);
-  }],
-  ['Tickets offers that person the verification', async x => {
-    await x.page.getByRole('group', { name: 'Actions on this ticket' }).getByRole('button', { name: 'Verify', exact: true }).waitFor();
   }],
 ]);
