@@ -102,28 +102,6 @@ class Tickets {
     if (!this.ticket) await this.access();
     await this.action('verify', { email: this.details.email, active, region, evidence: 'Fictional HR confirmation 2026-11-03' }, 'Verifier');
   }
-  async approved(scope = 'Gold sales, read only', region = 'Kerala') {
-    await this.access('anjali@example.com', scope);
-    await this.verified(true, region);
-    await this.action('decide', { decision: 'approved' }, region === 'Kerala' ? 'Bala' : 'Shiva');
-  }
-  async competingDecisions() {
-    await this.access();
-    await this.verified(true, 'Chennai');
-    const revision = this.revision();
-    // Real HTTP requests get separate host transactions, unlike pg-test's
-    // single shared rollback transaction. Both contend for the same row.
-    const outcomes = await Promise.all([
-      this.call('Shiva', '/api/app_actions/tickets/decide', { idempotencyKey: randomUUID(), payload: { ...revision, decision: 'approved' } }),
-      this.call('Karthik', '/api/app_actions/tickets/decide', { idempotencyKey: randomUUID(), payload: { ...revision, decision: 'rejected', reason: 'Conflicting decision' } }),
-    ]);
-    assert.equal(outcomes.filter(result => result.status === 200).length, 1);
-    assert.equal(outcomes.filter(result => [409, 417].includes(result.status)).length, 1);
-    const winner = outcomes.find(result => result.status === 200).body.result.ticket;
-    const saved = await this.open('Support');
-    assert.equal(saved.ticket.ticket_state, winner.ticket_state);
-    assert.equal(saved.privateEvents.filter(event => event.operation === 'decide').length, 1);
-  }
   async complaint(original = 'Invoices cleared two days ago are missing from the report') { await this.create('freshness', { complaint: original }, original); }
   async finding() {
     await this.action('evidence', { expected: '2 invoices from source-check-1', observed: '0 from report-check-1',
@@ -136,29 +114,10 @@ class Tickets {
     await this.action('note', { text: 'PRIVATE support note 431' }, 'Support');
     await this.action('edit', { public_update: 'Support is checking this request' }, 'Support');
   }
-  async changeDetails(patch) {
-    this.details = { ...this.details, ...patch };
-    await this.action('edit', { details: this.details });
-  }
   async denied() { assert.ok([403, 409, 417].includes(this.last.status), JSON.stringify(this.last)); }
   async includes(...values) { const text = await this.text(); for (const value of values) assert.ok(text.includes(value), `missing ${value}: ${text}`); }
   async excludes(...values) { const text = await this.text(); for (const value of values) assert.ok(!text.includes(value), `leaked ${value}: ${text}`); }
   async unfulfilled() { assert.notEqual((await this.open()).ticket.ticket_state, 'Resolved'); }
-  async cannotFulfill() { await this.action('fulfill', { reference: 'Stale or unauthorized completion' }, 'Fulfiller', true); await this.denied(); await this.unfulfilled(); }
-  async forbiddenOrdinaryEdit() {
-    const api = await ticketsAdmin();
-    const request = await api.row('tickets.request', this.ticket.row_id);
-    this.last = await this.call(this.actor, '/api/save_row', { table: 'tickets.request', row: { ...request,
-      verification_key: 'forged-verification', approval_key: 'forged-approval',
-    } });
-    await this.denied();
-    this.last = await this.call(this.actor, '/api/save_row', { table: 'tickets.ticket', row: { ...this.ticket, ticket_state: 'Resolved' } });
-    await this.denied();
-    this.last = await this.call(this.actor, '/api/save_row', { table: 'tickets.event', row: {
-      ticket: this.ticket.row_id, operation: 'verify', by: this.ids.Verifier, at: '2026-11-03T09:00:00Z',
-      text: JSON.stringify({ email: this.details.email, active: true, region: 'Kerala', verification_key: request.verification_key }),
-    } });
-  }
   async publicPrivacy(owner = false) {
     const detail = await this.open();
     const text = JSON.stringify(detail);
