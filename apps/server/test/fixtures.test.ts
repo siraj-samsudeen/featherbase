@@ -21,6 +21,11 @@ describe('expectRefused', () => {
     await expect(expectRefused(Promise.resolve({ ok: true }), 403)).rejects.toThrow(/succeeded/)
   })
 
+  it('passes on a refused Response already in hand', async () => {
+    const res = new Response('{"error":{"type":"PermissionError","message":"no"}}', { status: 403 })
+    await expect(expectRefused(res, 403)).resolves.toMatchObject({ type: 'PermissionError' })
+  })
+
   it('passes when the message contains the given text', async () => {
     await expect(expectRefused(refusal(417, 'qty is required'), 417, 'required')).resolves.toBeInstanceOf(TestApiError)
   })

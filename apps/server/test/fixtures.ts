@@ -62,12 +62,13 @@ export async function patchDoc<T = Record<string, unknown>>(
 // a custom method, FormData, extra headers — so those collapsed into
 // `expect((await user.fetch(...)).status).toBe(403)` pyramids. This accepts
 // either: a promise that rejects with TestApiError, or one that resolves to
-// a non-ok Response, and matches the same envelope against `expected`.
+// a non-ok Response (or that Response itself, already awaited), and matches
+// the same envelope against `expected`.
 //
 // `expected` is passed straight to toMatchObject, so asymmetric matchers
 // work: `{ status: 417, fields: { qty: expect.stringMatching(/required/) } }`.
 export async function expectApiError(
-  call: Promise<unknown>,
+  call: Promise<unknown> | Response,
   expected: Record<string, unknown> & { status: number },
 ): Promise<TestApiError> {
   let resolved: unknown
@@ -93,7 +94,7 @@ export async function expectApiError(
 //   await expectRefused(user.post(url, body), 403)
 //   await expectRefused(admin.post(url, body), 417, 'is required')
 export async function expectRefused(
-  call: Promise<unknown>,
+  call: Promise<unknown> | Response,
   status: number,
   message?: string,
 ): Promise<TestApiError> {
