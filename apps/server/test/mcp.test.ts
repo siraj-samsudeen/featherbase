@@ -150,11 +150,38 @@ describe('#1083 /mcp: tools served by the HTTP API (D3, D4, D7)', () => {
     expect(text(result)).toMatch(/^ConflictError: /)
   })
 
-  test('delete_row deletes the row and says which', async ({ admin, createUser }) => {
+  test('update_row without updated_at is refused before anything is sent', async ({ admin, createUser }) => {
     const [id] = await notes(admin)
     const { agent } = await keeper(createUser)
-    expect(await agent.ok('delete_row', { table: 'Mcp Note', id })).toEqual({ deleted: id })
+    const before = await admin.get<Row>(NOTE.rowUrl(id!))
+    const result = await agent.call('update_row', { table: 'Mcp Note', id, values: { body: 'new' } })
+    expect(result.isError).toBe(true)
+    expect(text(result)).toMatch(/^MCP error -32602: .*Read the row first \(get_row or query_rows\) and pass the updated_at it gave/)
+    expect(await admin.get<Row>(NOTE.rowUrl(id!))).toEqual(before)
+  })
+
+  test('query_rows gives each row\'s updated_at, the version update_row takes', async ({ admin, createUser }) => {
+    const [id] = await notes(admin, 1)
+    const { agent } = await keeper(createUser)
+    const [row] = (await agent.ok<Page>('query_rows', { table: 'Mcp Note' })).rows
+    expect(row!.updated_at).toBe((await admin.get<Row>(NOTE.rowUrl(id!))).updated_at)
+  })
+
+  test('delete_row deletes the row read at its updated_at and says which', async ({ admin, createUser }) => {
+    const [id] = await notes(admin)
+    const { agent } = await keeper(createUser)
+    const { updated_at } = await agent.ok<Row>('get_row', { table: 'Mcp Note', id })
+    expect(await agent.ok('delete_row', { table: 'Mcp Note', id, updated_at })).toEqual({ deleted: id })
     expect((await admin.fetch(NOTE.rowUrl(id!))).status).toBe(404)
+  })
+
+  test('delete_row without updated_at is refused and deletes nothing', async ({ admin, createUser }) => {
+    const [id] = await notes(admin)
+    const { agent } = await keeper(createUser)
+    const result = await agent.call('delete_row', { table: 'Mcp Note', id })
+    expect(result.isError).toBe(true)
+    expect(text(result)).toMatch(/Read the row first \(get_row or query_rows\)/)
+    expect((await admin.fetch(NOTE.rowUrl(id!))).status).toBe(200)
   })
 
   test('each call spends the owner\'s request budget, and running out is a refusal', async ({ admin, createUser }) => {

@@ -62,6 +62,11 @@ const ALTERS = { readOnlyHint: false, destructiveHint: true, idempotentHint: tru
 
 const tableArg = z.string().min(1).describe('The Table\'s name, as list_tables gives it')
 const idArg = z.string().min(1).describe('The row\'s id (row_id)')
+// #1101: the version the agent read; a change is checked against it, never
+// against a version the tool read for it (mcp-update-needs-version D1).
+const READ_FIRST = 'Read the row first (get_row or query_rows) and pass the updated_at it gave'
+const versionArg = z.string({ error: READ_FIRST }).min(1, READ_FIRST).describe(
+  'The row\'s updated_at as get_row or query_rows gave it; refused if someone changed the row since')
 const valuesArg = z.record(z.string(), z.unknown()).describe(
   'Column name to value, as describe_table names them. A nested-row column takes a list of objects.')
 
@@ -144,7 +149,8 @@ function buildServer(api: (method: string, path: string, body?: Json) => Promise
     `Find rows of a Table. filters: a list of [column, operator, value], all of which must hold; operators: ${LIST_OPERATORS.join(', ')}. `
     + `"like" takes % wildcards; "in" and "not in" take a list. order_by: "column asc" or "column desc". `
     + `At most ${MCP_PAGE_CAP} rows a page (default ${MCP_PAGE_DEFAULT}); "total" says how many match, so page on with offset. `
-    + 'Without columns, every column you can read except nested rows. Retired rows are left out unless include_retired.',
+    + 'Without columns, every column you can read except nested rows, and updated_at, the version update_row and delete_row take. '
+    + 'Retired rows are left out unless include_retired.',
     {
       table: tableArg,
       filters: z.array(z.tuple([z.string(), z.enum(LIST_OPERATORS as [string, ...string[]]), z.unknown()])).optional(),
@@ -156,7 +162,7 @@ function buildServer(api: (method: string, path: string, body?: Json) => Promise
     },
     READS,
     async ({ table, filters, columns, order_by, limit, offset, include_retired }) => {
-      const fields = columns ?? ['row_id', ...readableColumns(await meta(table)).filter((c) => c.column_type !== NESTED).map((c) => c.column_name)]
+      const fields = columns ?? ['row_id', ...readableColumns(await meta(table)).filter((c) => c.column_type !== NESTED).map((c) => c.column_name), 'updated_at']
       const query = new URLSearchParams({
         fields: JSON.stringify(fields),
         filters: JSON.stringify(filters ?? []),
@@ -169,7 +175,8 @@ function buildServer(api: (method: string, path: string, body?: Json) => Promise
       return { rows: page.data, total: page.total, offset: page.limit_start, limit: page.limit_page_length }
     })
 
-  tool('get_row', 'One row by its id, with every value you can read, nested rows included.', { table: tableArg, id: idArg }, READS,
+  tool('get_row', 'One row by its id, with every value you can read, nested rows included, and its updated_at, '
+    + 'the version update_row and delete_row take.', { table: tableArg, id: idArg }, READS,
     ({ table, id }) => api('GET', rowPath(table, id)))
 
   tool('create_row',
@@ -179,16 +186,17 @@ function buildServer(api: (method: string, path: string, body?: Json) => Promise
 
   tool('update_row',
     'Change a row: only the columns named in values change. A nested-row list sent replaces the whole list. '
-    + 'Pass the row\'s updated_at as you read it to be refused if someone changed it since. Returns the saved row.',
-    { table: tableArg, id: idArg, values: valuesArg, updated_at: z.string().optional() }, ALTERS,
-    async ({ table, id, values, updated_at }) => {
-      const loaded = updated_at ?? (await api('GET', rowPath(table, id))).updated_at
-      return api('PATCH', rowPath(table, id), { ...values, updated_at: loaded })
-    })
+    + 'Pass the row\'s updated_at as you last read it: the change is refused if someone changed the row since, '
+    + 'so read it again and decide. Returns the saved row, with its new updated_at.',
+    { table: tableArg, id: idArg, values: valuesArg, updated_at: versionArg }, ALTERS,
+    ({ table, id, values, updated_at }) => api('PATCH', rowPath(table, id), { ...values, updated_at }))
 
-  tool('delete_row', 'Delete a row, under the same rules as deleting it in Featherbase.', { table: tableArg, id: idArg }, ALTERS,
-    async ({ table, id }) => {
-      await api('DELETE', rowPath(table, id))
+  tool('delete_row',
+    'Delete a row, under the same rules as deleting it in Featherbase. Pass the row\'s updated_at as you last read it; '
+    + 'where Featherbase keeps a version check for the row, the delete is refused if someone changed it since.',
+    { table: tableArg, id: idArg, updated_at: versionArg }, ALTERS,
+    async ({ table, id, updated_at }) => {
+      await api('DELETE', `${rowPath(table, id)}?${new URLSearchParams({ updated_at })}`)
       return { deleted: id }
     })
 

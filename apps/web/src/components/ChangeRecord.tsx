@@ -2,6 +2,7 @@ import { Link as RouterLink } from '@tanstack/react-router'
 import { PrincipalName } from '../lib/people'
 import { cardClasses, fmtInstant } from '@featherbase/shop-floor'
 import { useChangeFormat, type ChangeData } from '../lib/change-format'
+import { AgentMark } from './AgentMark'
 
 // #825: a Version row is one change to one row of another Table. It reads as
 // that change: who changed which row and when, then one line per field with
@@ -31,6 +32,7 @@ export function ChangeRecord({ values }: { values: Record<string, unknown> }) {
         </div>
         <div className="mt-1">
           Changed by <span className="font-medium text-ink"><PrincipalName id={String(values.created_by ?? '')} /></span>
+          <AgentMark label={data.agent?.token_label} />
           {' · '}
           <span className="whitespace-nowrap">{fmtInstant(values.created_at as string | undefined)}</span>
           {source && <>{' · '}<span className="break-all">{source}</span></>}
