@@ -4,6 +4,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { sql } from 'server/src/db'
+import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 
 const anonymous = { user: null, token: null } as never
@@ -122,4 +123,33 @@ test('WEB-002: anonymous web form submit creates a document', async ({ admin }) 
   )
   expect(rows.total).toBe(1)
   expect(rows.data).toEqual([{ delivery_speed: 'Expedited', contact_method: null, quantity_code: '1' }])
+})
+
+/** Requests to the form's address are lost, as offline. */
+function dropForm(method: string) {
+  const bridge = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+    String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).startsWith('/api/web_form/') &&
+    (init?.method ?? 'GET') === method
+      ? Promise.reject(new TypeError('Failed to fetch'))
+      : bridge(input, init))
+}
+
+test('a form the network drops says the form was not found', async ({ admin }) => {
+  await publish(admin)
+  dropForm('GET')
+  await renderApp('/featherbase/form/wf-comp-order', anonymous)
+  expect(await screen.findByTestId('web-form-error', {}, { timeout: 8000 })).toHaveTextContent('Form not found')
+})
+
+test('a submission the network drops says it failed and keeps what was typed', async ({ admin }) => {
+  await publish(admin)
+  await renderApp('/featherbase/form/wf-comp-order', anonymous)
+  await screen.findByTestId('web-form', {}, { timeout: 8000 })
+  await userEvent.type(screen.getByLabelText(/Full name/), 'Ada Lovelace')
+  await userEvent.selectOptions(screen.getByLabelText(/Delivery speed/), 'Expedited')
+  dropForm('POST')
+  await userEvent.click(screen.getByTestId('web-form-submit'))
+  expect(await screen.findByTestId('web-form-submit-error')).toHaveTextContent('Submission failed')
+  expect(screen.getByLabelText(/Full name/)).toHaveValue('Ada Lovelace')
 })
