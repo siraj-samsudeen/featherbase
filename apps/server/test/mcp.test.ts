@@ -277,6 +277,22 @@ describe('#1105 /mcp: shaping a Table (D1, D2)', () => {
     expect(text(result)).toMatch(/columns\.0\.column_name: column_name must be snake_case/)
   })
 
+  test('add_column adds a nested-rows column of the Table links_to names', async ({ admin }) => {
+    await shops(admin)
+    await makeTable(admin, { name: 'Mcp Shop Line', module: 'Custom', kind: 'sub_table', columns: ['item'] })
+    const agent = await connectAgent(await issueToken(admin))
+    await agent.ok('add_column', { table: 'Mcp Shop', column: { name: 'lines', type: 'Sub-table', links_to: 'Mcp Shop Line' } })
+    const meta = await admin.get<{ columns: { column_name: string; row_table: string | null }[] }>(SHOP.metaUrl)
+    expect(meta.columns.find((c) => c.column_name === 'lines')?.row_table).toBe('Mcp Shop Line')
+  })
+
+  test('suggest_table offers a Choice for a heading whose few values repeat', async ({ admin }) => {
+    const agent = await connectAgent(await issueToken(admin))
+    const kinds = ['Retail', 'Wholesale', 'Retail', 'Wholesale', 'Retail', 'Wholesale']
+    const offered = await agent.ok<Described>('suggest_table', { table: 'Mcp Outlet', csv: `Outlet,Kind\n${kinds.map((k, i) => `Outlet ${i},${k}`).join('\n')}\n` })
+    expect(offered.columns.find((c) => c.name === 'kind')).toMatchObject({ type: 'Choice', choices: ['Retail', 'Wholesale'] })
+  })
+
   test('change_column sets a Choice column\'s choices', async ({ admin }) => {
     await shops(admin)
     const agent = await connectAgent(await issueToken(admin))
@@ -373,6 +389,38 @@ describe('#1105 /mcp: reading the file (D3)', () => {
     expect((await shopRows(admin))[0]).toMatchObject({ shop_name: 'Cauvery Mart', city: null })
   })
 
+  test('a file with no header row is refused', async ({ admin }) => {
+    await shops(admin)
+    const agent = await connectAgent(await issueToken(admin))
+    const result = await agent.call('check_import', { table: 'Mcp Shop', csv: '' })
+    expect(result.isError).toBe(true)
+    expect(text(result)).toMatch(/The file has no header row/)
+  })
+
+  test('a file with no value under any heading it fills is refused', async ({ admin }) => {
+    await shops(admin)
+    const agent = await connectAgent(await issueToken(admin))
+    const result = await agent.call('check_import', { table: 'Mcp Shop', csv: 'Shop Name,Colour\n,Red\n' })
+    expect(result.isError).toBe(true)
+    expect(text(result)).toMatch(/no row with a value under a heading that fills a column/)
+  })
+
+  test('the agent\'s mapping takes a column from the heading matched to it by name', async ({ admin }) => {
+    await shops(admin, [])
+    const agent = await connectAgent(await issueToken(admin))
+    const mapped = await agent.ok<Check>('check_import', {
+      table: 'Mcp Shop', csv: 'Shop Name,City,Town\nCauvery Mart,Chennai,Salem\n', columns: { Town: 'city', City: null },
+    })
+    expect(mapped.mapping).toEqual({ 'Shop Name': 'shop_name', City: null, Town: 'city' })
+  })
+
+  test(`a heading mapped to ${'row_id'} gives the rows their ids`, async ({ admin }) => {
+    await shops(admin, [])
+    const agent = await connectAgent(await issueToken(admin))
+    await imported(agent, { table: 'Mcp Shop', csv: 'Code,Shop Name\nSHOP-9,Cauvery Mart\n', columns: { Code: 'row_id' } })
+    expect((await shopRows(admin)).map((r) => r.row_id)).toEqual(['SHOP-9'])
+  })
+
   test('a file whose headings match no column is refused', async ({ admin }) => {
     await shops(admin)
     const agent = await connectAgent(await issueToken(admin))
@@ -437,7 +485,15 @@ describe('#1105 /mcp: an import runs as it was checked (D4)', () => {
   test('check_import says by which column every row is already there', async ({ admin }) => {
     await shops(admin)
     const agent = await connectAgent(await issueToken(admin))
-    const report = await agent.ok<Check>('check_import', { table: 'Mcp Shop', csv: 'Shop Name\nAnna Stores\nBharat Mart\n' })
+    const report = await agent.ok<Check>('check_import', { table: 'Mcp Shop', csv: 'Shop Name,City\nAnna Stores,\nBharat Mart,Salem\n' })
+    expect(report.already_there).toEqual([{ column: 'shop_name', rows: 2 }])
+  })
+
+  test('a column whose values repeat in the file, or each match several rows, does not say the rows are there', async ({ admin }) => {
+    await shops(admin)
+    const agent = await connectAgent(await issueToken(admin))
+    // kind repeats "Retail" in the file; "Chennai" names both shops.
+    const report = await agent.ok<Check>('check_import', { table: 'Mcp Shop', csv: 'Shop Name,City,Kind\nAnna Stores,Chennai,Retail\nBharat Mart,Erode,Retail\n' })
     expect(report.already_there).toEqual([{ column: 'shop_name', rows: 2 }])
   })
 
