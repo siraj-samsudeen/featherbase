@@ -619,6 +619,24 @@ describe('Running an Instance: rehearse an environment\'s start-up checks', () =
     expect(`${f?.stdout}`).not.toMatch(/the server will start/)
   })
 
+  test('a Data Source whose variable is unset is warned of, and the server will still start', async () => {
+    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    await sql`insert into data_source (row_id, engine, url_env) values ('boot-check-src', 'postgres', 'BOOT_CHECK_UNSET_URL')`
+    const out = await cli(['boot-check'])
+    expect(out).toMatch(/boot-check: WARNING: BOOT_CHECK_UNSET_URL is not set on a "test" server/)
+    expect(out).toMatch(/the server will start/)
+  })
+
+  test('on a developer machine, an installed app this server lacks is named, and the server will still start', async () => {
+    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    vi.stubEnv('FEATHERBASE_ENV', 'development')
+    vi.stubEnv('FEATHERBASE_APP_PATHS', '[]')
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package, package_version, artifact_digest)
+      values ('acme_board', ${sql.json({ name: 'acme_board' })}, true, true, '1.2.0', 'fingerprint-of-1.2.0')`
+    const r = await runMain(main, ['boot-check'], '')
+    expect(r.stdout).toMatch(/boot-check: WARNING: App acme_board version 1\.2\.0 is installed and enabled, but this server does not have it/)
+  })
+
   test('a production configuration with a forbidden switch on fails and names the switch', async () => {
     vi.stubEnv('FEATHERBASE_ENV', 'production')
     vi.stubEnv('ALLOW_MOCK_OAUTH', '1')
