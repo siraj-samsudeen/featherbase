@@ -96,6 +96,33 @@ about the code that no check can verify drifts; don't write it down as fact.
    [ADR 0014](adr/0014-one-repo-for-platform-and-apps.md). Checks enforce
    the boundaries.
 
+### Trial: push to main without a PR (2026-11-09 to 2026-11-23)
+
+For two weeks the owner is trying direct pushes to `main` instead of a PR per
+change. The "main requires CI" ruleset is paused for the trial. Until the trial
+ends, this section overrides the PR steps elsewhere (the `change-modes` and
+`issue-workflow` skills, step 5 below):
+
+1. **Still a branch and a worktree per issue.** Build and commit there as before.
+2. **Before every push**, run the fast checks for what you changed: both
+   typechecks, the test files you touched, `pnpm check:scenarios`, and
+   `pnpm check:specs` / `pnpm check:unarchived-changes` when specs changed.
+   Archive a finished OpenSpec change before pushing it.
+3. **Bring `main` in, then push to `main`**: `git fetch origin main && git merge
+   origin/main`, rerun the fast checks if the merge brought changes, then
+   `git push origin HEAD:main`. A rejected push means someone pushed first:
+   merge again and retry. Never force-push `main`.
+4. **CI runs on `main` after each push.** Watch the run for your commit. When it
+   goes red, the pusher fixes it at once or reverts their commit with
+   `git revert` and pushes the revert. Others do not build on a red `main`.
+5. **Hand off in the issue** instead of a PR body: what was done, the commands
+   that verify it, how to try it, and the commit.
+6. **Still the owner's call**: merging client work to a release branch,
+   deployments, and anything destructive.
+
+When the trial ends the owner decides whether to keep it, and the ruleset is
+turned back on if not.
+
 ### How a piece of work goes
 
 1. **Orient.** Read the issue and its OpenSpec change, `git log --oneline -20`
