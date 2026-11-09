@@ -87,6 +87,30 @@ describe('Long work runs in the background', () => {
   })
 })
 
+describe('the worker with no interval given', () => {
+  test('polls on its default interval', async () => {
+    await setup()
+    const id = await enqueue('ping_job', {})
+    await nudgeDueJobs()
+    startWorker()
+    try {
+      const deadline = Date.now() + 5000
+      let status = 'queued'
+      while (status !== 'done' && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 50))
+        status = String((await sql`select job_status from background_job where row_id = ${id}`)[0].job_status)
+      }
+      expect(status).toBe('done')
+    } finally {
+      stopWorker()
+    }
+  })
+
+  test('stopping a worker that is not running does nothing', () => {
+    expect(() => stopWorker()).not.toThrow()
+  })
+})
+
 describe('JOB-002: retries and failure state', () => {
   test('a job that throws twice then succeeds records 3 attempts', async () => {
     await setup()
