@@ -17,8 +17,8 @@ const FRAMEWORK_CHILD_COLS = new Set([
 
 type Row = Record<string, unknown>
 
+// Every caller passes a value: fmt and interpolate answer null themselves.
 function esc(v: unknown): string {
-  if (v == null) return ''
   return String(v).replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string,
   )

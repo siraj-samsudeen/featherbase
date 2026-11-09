@@ -30,7 +30,6 @@ export interface MotherDuckSession {
 }
 
 const sqlText = (value: string) => `'${value.replace(/'/g, "''")}'`
-export const quoteAlias = (value: string) => `"${value.replace(/"/g, '""')}"`
 
 async function openStandin(dir: string, token: string): Promise<MotherDuckSession> {
   const { DuckDBInstance } = await import('@duckdb/node-api')
