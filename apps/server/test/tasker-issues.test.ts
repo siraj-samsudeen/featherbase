@@ -14,10 +14,18 @@ const ISSUE = 'tasker.issue'
 // Monday 09-Nov-2026, written in IST.
 const at = (ist: string) => new Date(`${ist}+05:30`)
 
+/** One run of the escalation job, on the faked clock, waited for. */
 async function escalate() {
-  await enqueue('tasker.escalate_issues', {})
-  await sql`update background_job set run_at = now() - interval '1 second' where job_status = 'queued'`
+  // Installing Tasker queues its every-minute jobs. Each scheduled run re-queues itself one
+  // minute after the faked clock, which is already due by the database's own clock whenever
+  // the faked time is behind real time: draining would then run those for ever and never
+  // reach this run. Only this run is wanted, so the scheduled ones are taken off the queue.
+  await sql`delete from background_job where job_status = 'queued' and trigger = 'schedule'`
+  const job = await enqueue('tasker.escalate_issues', {})
+  await sql`update background_job set run_at = now() - interval '1 second' where row_id = ${job}`
   await drainJobs()
+  const [run] = await sql`select job_status, error from background_job where row_id = ${job}`
+  expect(run).toMatchObject({ job_status: 'done', error: null })
 }
 
 async function withTime<T>(when: Date, fn: () => Promise<T>): Promise<T> {
