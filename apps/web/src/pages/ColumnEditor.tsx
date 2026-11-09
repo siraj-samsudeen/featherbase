@@ -333,8 +333,9 @@ export function ColumnEditor({ table }: { table: string }) {
     )
   }
 
+  // Called only by a column's Save, which shows only once its label is edited.
   function saveLabel(columnName: string) {
-    const label = (labels[columnName] ?? '').trim()
+    const label = labels[columnName].trim()
     if (!label) return
     put.mutate(
       def.columns.map((c) => (c.column_name === columnName ? { ...c, label } : c)),
