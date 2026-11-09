@@ -43,11 +43,4 @@ async function freshListOf(world, who, table = world.table) {
   return list;
 }
 
-/** The System Manager's list of the scenario's table, opened afresh. */
-async function systemManagersList(world, table = world.table) {
-  const list = new ListPage(await world.asSystemManager());
-  await list.open(table);
-  return list;
-}
-
-module.exports = { DEFAULT_LIST, givenTable, listOf, freshListOf, systemManagersList };
+module.exports = { DEFAULT_LIST, givenTable, listOf, freshListOf };

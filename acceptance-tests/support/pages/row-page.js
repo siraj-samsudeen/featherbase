@@ -2,8 +2,7 @@
 
 // A row's page (#910): its name, the rows it points at and its counted
 // groups under the name, then three ways to see it, tabs named "Form", "Map"
-// and "Tree". The map is the relationship map (relation-map-page.js); the
-// tree is a tree outline (tree-outline.js).
+// and "Tree". The map is the relationship map (relation-map-page.js).
 
 const { expect } = require('playwright/test');
 const { rowHref } = require('../addresses');

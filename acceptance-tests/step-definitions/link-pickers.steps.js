@@ -1,38 +1,21 @@
 'use strict';
 
-// Steps for picking a linked row by its name: a list's quick filter on a link
-// column (list-view) and a form's link field (core-forms). Orders each link to
+// Steps for picking a linked row by its name in a form's link field
+// (core-forms). The list's quick filter (list-view) runs as Vitest tests
+// (#1070). Orders each link to
 // a customer; customers are titled by their name and their ids are not their
 // names, so a search by id would find nothing. Made-up rows only.
 
 const assert = require('node:assert/strict');
 const { Given, When, Then } = require('@cucumber/cucumber');
-const { ListPage } = require('../support/pages/list-page');
 const { LinkPicker } = require('../support/pages/link-picker');
 const { tableHref } = require('../support/addresses');
 
 const CUSTOMERS = 'Pick Customer';
 const ORDERS = 'Pick Order';
 
-function quickCustomerFilter(page) {
-  return new LinkPicker(page, page.getByTestId('std-filter-customer'), 'customer');
-}
-
 function formCustomerField(page) {
   return new LinkPicker(page, page.getByTestId('form-view').getByLabel('Customer', { exact: true }), 'customer');
-}
-
-async function waitForOrders(page, items) {
-  const list = new ListPage(page);
-  const want = [...items].sort().join(', ');
-  const deadline = Date.now() + 10_000;
-  let shown = [];
-  for (;;) {
-    shown = (await list.columnValues('Item')).map((t) => t.trim()).sort();
-    if (shown.join(', ') === want || Date.now() > deadline) break;
-    await page.waitForTimeout(150);
-  }
-  assert.equal(shown.join(', '), want, 'the orders shown');
 }
 
 // ---- Given ----
@@ -66,45 +49,7 @@ Given('orders from the customers {string} and {string}', async function (first, 
   });
 });
 
-async function openFilteredOrders(world, customer) {
-  const page = await world.actor();
-  const filters = JSON.stringify([['customer', '=', world.customers[customer]]]);
-  await page.goto(`${tableHref(ORDERS)}?filters=${encodeURIComponent(filters)}`);
-  await new ListPage(page).headers().first().waitFor();
-  return page;
-}
-
-Given('the orders list filtered to the customer {string}', async function (customer) {
-  const page = await openFilteredOrders(this, customer);
-  await waitForOrders(page, this.ordersOf[customer]);
-});
-
 // ---- When ----
-
-async function typeIntoQuickFilter(world, text) {
-  const page = await world.actor();
-  await new ListPage(page).open(ORDERS);
-  const filter = quickCustomerFilter(page);
-  await filter.type(text);
-  return filter;
-}
-
-When("the user types {string} into the orders list's quick customer filter and picks {string}", async function (text, name) {
-  await (await typeIntoQuickFilter(this, text)).pick(name);
-});
-
-When("the user types {string} into the orders list's quick customer filter", async function (text) {
-  this.picker = await typeIntoQuickFilter(this, text);
-});
-
-When('the user opens a link to the orders list filtered to the customer {string}', async function (customer) {
-  await openFilteredOrders(this, customer);
-});
-
-When('the user clears the quick customer filter', async function () {
-  const page = await this.actor();
-  await page.getByRole('button', { name: /clear the customer filter/i }).click();
-});
 
 When("the user types {string} into a new order's customer and picks {string}", async function (text, name) {
   const page = await this.actor();
@@ -122,27 +67,6 @@ When("the user types {string} into a new order's customer and picks {string}", a
 });
 
 // ---- Then ----
-
-Then('the user sees only the orders from {string}', async function (customer) {
-  await waitForOrders(await this.actor(), this.ordersOf[customer]);
-});
-
-Then('the user is offered {string} and no way to create a customer', async function (name) {
-  assert.deepEqual(await this.picker.offered(), [name]);
-  assert.equal(await this.picker.offersToCreate(), false, 'the filter offers to create a customer');
-});
-
-Then('the user sees the quick customer filter reading {string}', async function (name) {
-  const filter = quickCustomerFilter(await this.actor());
-  const deadline = Date.now() + 10_000;
-  let reads = '';
-  while (Date.now() < deadline && (reads = await filter.reads().catch(() => '')) !== name) await filter.page.waitForTimeout(150);
-  assert.equal(reads, name);
-});
-
-Then('the user sees the orders from both {string} and {string}', async function (first, second) {
-  await waitForOrders(await this.actor(), [...this.ordersOf[first], ...this.ordersOf[second]]);
-});
 
 Then('the user was offered only {string}', function (name) {
   assert.deepEqual(this.offered, [name]);
