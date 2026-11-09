@@ -89,9 +89,15 @@ function isolatedEnvironment(overrides = {}) {
     GOOGLE_CLIENT_SECRET: 'acceptance-private-secret',
     ALLOW_MOCK_OAUTH: '1', PREAUTH_LOGIN_MAX: '10000', WEB_ORIGINS: BASE_URL,
     [EXTERNAL_URL_ENV]: externalDatabaseUrl({ asReader: true }),
-    ACCEPTANCE_CLOCK_FILE: CLOCK_FILE,
-    NODE_OPTIONS: [process.env.NODE_OPTIONS, `--require ${path.join(__dirname, 'server-clock.cjs')}`].filter(Boolean).join(' '),
     ...overrides,
+  };
+}
+
+/** The API's own environment: its clock can be set (server-clock.cjs). Only the API gets it. */
+function apiEnvironment(env) {
+  return {
+    ...env, ACCEPTANCE_CLOCK_FILE: CLOCK_FILE,
+    NODE_OPTIONS: [env.NODE_OPTIONS, `--require ${path.join(__dirname, 'server-clock.cjs')}`].filter(Boolean).join(' '),
   };
 }
 
@@ -120,18 +126,32 @@ async function acceptanceSql(statement, parameters = []) {
 }
 
 async function stopApi() {
+  const group = apiChild?.pid;
   if (apiChild?.exitCode === null && apiChild.signalCode === null) {
-    process.kill(-apiChild.pid, 'SIGTERM');
+    process.kill(-group, 'SIGTERM');
     await new Promise(resolve => apiChild.once('exit', resolve));
   }
   apiChild = undefined;
+  // pnpm can exit while the server under it (tsx and node, in pnpm's process
+  // group) still holds the port. A new API started then cannot listen, and the
+  // old one, with the old environment and apps, goes on answering every
+  // request. So the API is stopped only once its port is free.
+  const started = Date.now();
+  while (await portTaken(API_PORT)) {
+    const waited = Date.now() - started;
+    if (waited > 30_000) throw new Error(`The API on port ${API_PORT} did not stop within 30 seconds.`);
+    if (group) {
+      try { process.kill(-group, waited > 5_000 ? 'SIGKILL' : 'SIGTERM'); } catch { /* the group is gone */ }
+    }
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
 }
 
 // Change host configuration without replacing the scenario's saved data/sessions.
 async function restartAcceptance(overrides = {}, root = REPO_ROOT) {
   await stopApi();
   scenarioEnvironment = { ...(scenarioEnvironment ?? isolatedEnvironment()), ...overrides };
-  apiChild = start('api', ['--filter', 'server', 'start'], scenarioEnvironment, root);
+  apiChild = start('api', ['--filter', 'server', 'start'], apiEnvironment(scenarioEnvironment), root);
   await waitFor(`${API_URL}/api/ping`, apiChild, 'The scenario API');
 }
 
@@ -230,7 +250,7 @@ BeforeAll({ timeout: BOOT_TIMEOUT_MS + 30_000 }, async function () {
   await ensureExternalDatabase();
   // No watcher: tsx watch starts its own process group and can survive the
   // scenario API's shutdown, retaining stale schema and environment state.
-  const api = apiChild = start('api', ['--filter', 'server', 'start'], env);
+  const api = apiChild = start('api', ['--filter', 'server', 'start'], apiEnvironment(env));
   const web = start('web', ['--filter', 'web', 'dev'], {
     WEB_PORT: String(WEB_PORT),
     API_PORT: String(API_PORT),

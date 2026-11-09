@@ -9,8 +9,18 @@
 
 const fs = require('node:fs');
 
+// NODE_OPTIONS reaches every Node process on the way to the API (pnpm, tsx), so
+// act only in the API itself, and keep the preload from anything it starts.
 const file = process.env.ACCEPTANCE_CLOCK_FILE;
-if (file) {
+const isApi = /[\\/]apps[\\/]server[\\/]src[\\/]index\.ts$/.test(process.argv[1] ?? '');
+if (file && isApi) {
+  delete process.env.ACCEPTANCE_CLOCK_FILE;
+  const preload = `--require ${__filename}`;
+  const rest = (process.env.NODE_OPTIONS ?? '').replace(preload, '').trim();
+  if (rest) process.env.NODE_OPTIONS = rest;
+  else delete process.env.NODE_OPTIONS;
+}
+if (file && isApi) {
   const RealDate = Date;
   let seen = null; // mtime and size of the file last read
   let fixed = null; // the instant it holds, in ms, or null for real time
