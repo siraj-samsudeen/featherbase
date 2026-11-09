@@ -14,6 +14,7 @@ import { config } from './config'
 import { AppError } from './errors'
 import { getMeta } from './meta'
 import { LIST_OPERATORS } from './query'
+import { ADDS, ALTERS, LAYOUT_TYPES, NESTED, READS, describeColumn, tablePath, type Api, type ColumnMeta, type Json, type RegisterTool } from './mcp-common'
 
 /** The app whose /api routes serve the tools (index.ts passes itself). */
 export interface ApiApp {
@@ -25,7 +26,6 @@ export const MCP_PAGE_DEFAULT = 20
 export const MCP_PAGE_CAP = 100
 
 type Envelope = { type: string; message: string; fields?: Record<string, string> }
-type Json = Record<string, unknown>
 
 /** The inner request was refused: the API's own error, passed on as it is (D6).
  *  It has the envelope's shape, as an AppError (getMeta's) has. */
@@ -39,26 +39,7 @@ class Refusal extends Error implements Envelope {
   }
 }
 
-// Columns that only lay out a form; they hold no value.
-const LAYOUT_TYPES = new Set(['Section Break', 'Column Break'])
-const NESTED = 'Sub-table'
-
-interface ColumnMeta {
-  column_name: string
-  label: string | null
-  column_type: string
-  reqd: boolean
-  read_only: boolean
-  choices: string | null
-  reference_table: string | null
-  row_table: string | null
-  description?: string | null
-}
 type TableMetaReply = { name: string; label: string | null; description: string | null; columns: ColumnMeta[]; readable_columns: string[] }
-
-const READS = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
-const ADDS = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
-const ALTERS = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }
 
 const tableArg = z.string().min(1).describe('The Table\'s name, as list_tables gives it')
 const idArg = z.string().min(1).describe('The row\'s id (row_id)')
@@ -82,43 +63,25 @@ function refused({ type, message, fields }: Envelope) {
   return { content: [{ type: 'text' as const, text: lines.join('\n') }], structuredContent: { error }, isError: true }
 }
 
-const tablePath = (table: string) => `/api/table/${encodeURIComponent(table)}`
 const rowPath = (table: string, id: string) => `${tablePath(table)}/${encodeURIComponent(id)}`
-
-function describeColumn(column: ColumnMeta) {
-  return {
-    name: column.column_name,
-    label: column.label,
-    type: column.column_type,
-    required: column.reqd,
-    read_only: column.read_only,
-    ...(column.description ? { description: column.description } : {}),
-    ...(column.choices ? { choices: column.choices.split('\n').filter(Boolean) } : {}),
-    ...(column.reference_table ? { links_to: column.reference_table } : {}),
-  }
-}
 
 /** The columns of a Table's `:meta` reply that the caller may read and that hold a value. */
 const readableColumns = (meta: TableMetaReply) =>
   meta.columns.filter((column) => meta.readable_columns.includes(column.column_name) && !LAYOUT_TYPES.has(column.column_type))
 
-function buildServer(api: (method: string, path: string, body?: Json) => Promise<Json>): McpServer {
+function buildServer(api: Api): McpServer {
   const server = new McpServer({ name: 'featherbase', version: '1.0.0' })
-  const tool = <A extends z.ZodRawShape>(
-    name: string,
-    description: string,
-    inputSchema: A,
-    annotations: typeof READS,
-    run: (args: z.infer<z.ZodObject<A>>) => Promise<Json>,
-  ) =>
-    server.registerTool(name, { description, inputSchema, annotations }, (async (args: z.infer<z.ZodObject<A>>) => {
+  const tool: RegisterTool = (name, description, inputSchema, annotations, run) => {
+    server.registerTool(name, { description, inputSchema, annotations }, (async (args: Parameters<typeof run>[0]) => {
       try {
         return reply(await run(args))
       } catch (error) {
-        // A Refusal from the inner request, or getMeta's AppError: both are envelopes.
+        // A Refusal from the inner request, or an AppError (getMeta's, the
+        // tool layer's own): both are envelopes.
         return refused(error as Envelope)
       }
     }) as never)
+  }
 
   const meta = (table: string) => api('GET', `${tablePath(table)}:meta`) as Promise<TableMetaReply>
 
