@@ -61,12 +61,14 @@ export function SaveAsView({ table, filters }: { table: string; filters: readonl
   }
 
   async function save() {
-    if (!('filters' in kept)) return
+    // Only a list with filters to keep shows the name field and Create view,
+    // so the form is never submitted without them.
+    const { filters } = kept as { filters: Filter[] }
     setBusy(true)
     setError(null)
     try {
       const meta = await api.post<{ name: string }>('/api/table_def', {
-        name: name.trim(), kind: 'view', view_of: table, view_filters: kept.filters,
+        name: name.trim(), kind: 'view', view_of: table, view_filters: filters,
       })
       void queryClient.invalidateQueries({ queryKey: ['home-pages'] })
       void queryClient.invalidateQueries({ queryKey: ['command-destinations'] })
