@@ -65,6 +65,24 @@ async function agentMoves(agent: Agent, id: string, city: string) {
 
 const refusalText = (result: { content: { text: string }[] }) => result.content.map((c) => c.text).join('\n')
 
+/** #1105: an agent whose user may also build Tables (System Manager). */
+async function builderAgent(createUser: (opts?: { roles?: string[] }) => Promise<TestClient>) {
+  const user = await createUser({ roles: [CLERK, 'System Manager'] })
+  return { user, agent: await connectAgent(await issueToken(user)) }
+}
+
+type Check = { valid: number; inserted: number; updated: number; changed: number; failed: { row: number; message: string; fields?: Record<string, string> }[]; check: string }
+type ImportArgs = Record<string, unknown> & { table: string; csv: string }
+
+/** check_import, then run_import with the check it gave. */
+async function importFile(agent: Agent, args: ImportArgs, extra: Record<string, unknown> = {}) {
+  const { check } = await agent.ok<Check>('check_import', args)
+  return agent.ok<{ run_id: string; inserted: number; updated: number; failed: unknown[] }>('run_import', { ...args, check, ...extra })
+}
+
+const customers = async (admin: TestClient, filters: unknown[] = []) =>
+  (await admin.get<{ data: Row[] }>(CUSTOMER.listUrl({ fields: ['row_id', 'customer_name', 'city', 'customer_type'], filters, limit_page_length: 500 }))).data
+
 describe('agent-access', () => {
   scenario('The agent works as the user', async ({ admin, createUser }, step) => {
     let user!: TestClient
@@ -367,6 +385,227 @@ describe('agent-access', () => {
     await step('the agent is told "Customer" has no column "region"', () => {
       expect(result.isError).toBe(true)
       expect(refusalText(result)).toMatch(/region: Unknown field region on Customer/)
+    })
+  })
+
+  scenario('A region for every customer', async ({ admin, createUser }, step) => {
+    await step('the user may build Tables', () => setUp(admin))
+    const { agent } = await builderAgent(createUser)
+    await step('the agent adds a "region" column to "Customer"', () =>
+      agent.ok('add_column', { table: 'Customer', column: { name: 'region', type: 'Data' } }))
+    await step('every customer has a region, empty for now', async () => {
+      const rows = (await admin.get<{ data: Row[] }>(CUSTOMER.listUrl({ fields: ['customer_name', 'region'] }))).data
+      expect(rows).toHaveLength(3)
+      for (const row of rows) expect(row).toHaveProperty('region', null)
+    })
+  })
+
+  scenario('A city cannot become a number', async ({ admin, createUser }, step) => {
+    await step('the user may build Tables', () => setUp(admin))
+    const { agent } = await builderAgent(createUser)
+    let result!: Awaited<ReturnType<Agent['call']>>
+    await step('the agent changes the city column of "Customer" to hold numbers', async () => {
+      result = await agent.call('change_column', { table: 'Customer', column: 'city', type: 'Int' })
+    })
+    await step('the city column still holds text, with every customer\'s city', async () => {
+      const meta = await admin.get<{ columns: { column_name: string; column_type: string }[] }>(CUSTOMER.metaUrl)
+      expect(meta.columns.find((c) => c.column_name === 'city')?.column_type).toBe('Data')
+      expect((await customers(admin)).map((c) => c.city).sort()).toEqual(['Chennai', 'Chennai', 'Madurai'])
+    })
+    await step('the agent is told the city\'s type cannot change', () => {
+      expect(result.isError).toBe(true)
+      expect(refusalText(result)).toMatch(/city: column_type cannot change \(Data -> Int\)/)
+    })
+  })
+
+  scenario('Shaping a Table needs the right to build Tables', async ({ admin, createUser }, step) => {
+    let agent!: Agent
+    await step('the user may change customers but may not build Tables', async () => {
+      await setUp(admin)
+      ;({ agent } = await clerkAgent(admin, createUser))
+    })
+    let result!: Awaited<ReturnType<Agent['call']>>
+    await step('the agent adds a "region" column to "Customer"', async () => {
+      result = await agent.call('add_column', { table: 'Customer', column: { name: 'region', type: 'Data' } })
+    })
+    await step('"Customer" has no region column', async () => {
+      const meta = await admin.get<{ columns: { column_name: string }[] }>(CUSTOMER.metaUrl)
+      expect(meta.columns.map((c) => c.column_name)).not.toContain('region')
+    })
+    await step('the agent is told building Tables needs the System Manager role', () => {
+      expect(result.isError).toBe(true)
+      expect(refusalText(result)).toMatch(/^PermissionError: Requires the System Manager role/)
+    })
+  })
+
+  scenario('Suppliers get a Table of their own', async ({ admin, createUser }, step) => {
+    await step('the user may build Tables', () => setUp(admin, false))
+    const { agent } = await builderAgent(createUser)
+    let csv = ''
+    await step('a file of suppliers headed "Supplier", "Phone" and "Since", with dates under "Since"', () => {
+      csv = 'Supplier,Phone,Since\nKaveri Mills,044 2000 1111,2024-01-15\nVaigai Dyes,0452 300 400,2025-06-30\n'
+    })
+    await step('the agent asks which Table would hold the file and creates the "Supplier" Table it is offered', async () => {
+      const offered = await agent.ok<Record<string, unknown>>('suggest_table', { table: 'Supplier', csv })
+      await agent.ok('create_table', offered)
+    })
+    let columns: { column_name: string; column_type: string }[] = []
+    await step('"Supplier" has a supplier, a phone and a since column', async () => {
+      columns = (await admin.get<{ columns: { column_name: string; column_type: string }[] }>(tableRef('Supplier').metaUrl)).columns
+      expect(columns.map((c) => c.column_name)).toEqual(expect.arrayContaining(['supplier', 'phone', 'since']))
+    })
+    await step('the since column holds dates', () => expect(columns.find((c) => c.column_name === 'since')?.column_type).toBe('Date'))
+  })
+
+  scenario('A bad row is named', async ({ admin, createUser }, step) => {
+    await setUp(admin)
+    const { agent } = await clerkAgent(admin, createUser)
+    let csv = ''
+    await step('a file of three customers whose second has the type "Online"', () => {
+      csv = 'Customer Name,Customer Type,City\nDhan Agencies,Retail,Salem\nElan Exports,Online,Erode\nFab Foods,Wholesale,Trichy\n'
+    })
+    let report!: Check
+    await step('the agent checks the file against "Customer"', async () => {
+      report = await agent.ok<Check>('check_import', { table: 'Customer', csv })
+    })
+    await step('it is told two rows are ready and row 3 of the file is refused for its type', () => {
+      expect(report.valid).toBe(2)
+      expect(report.failed).toEqual([expect.objectContaining({ row: 3, fields: { customer_type: expect.stringMatching(/Online/) } })])
+    })
+    await step('no customer has been added', async () => expect(await customers(admin)).toHaveLength(3))
+  })
+
+  scenario('The checked file is imported', async ({ admin, createUser }, step) => {
+    await setUp(admin)
+    const { agent } = await clerkAgent(admin, createUser, 'Claude on my laptop')
+    const args = { table: 'Customer', csv: 'Customer Name,City\nDhan Agencies,Salem\nElan Exports,Erode\nFab Foods,Trichy\n' }
+    let check!: Check
+    await step('the agent has checked a file of three customers and all three are ready', async () => {
+      check = await agent.ok<Check>('check_import', args)
+      expect(check).toMatchObject({ valid: 3, failed: [] })
+    })
+    await step('the agent imports the file', () => agent.ok('run_import', { ...args, check: check.check }))
+    let added: Row[] = []
+    await step('the three customers are added', async () => {
+      added = await customers(admin, [['customer_name', 'in', ['Dhan Agencies', 'Elan Exports', 'Fab Foods']]])
+      expect(added).toHaveLength(3)
+    })
+    await step('each is marked as added through an agent', async () => {
+      for (const row of added) {
+        const [created] = await history(admin, row.row_id)
+        expect(created!.data).toMatchObject({ created: true, agent: { token_label: 'Claude on my laptop' } })
+      }
+    })
+  })
+
+  scenario('A heading named differently goes where the agent says', async ({ admin, createUser }, step) => {
+    await setUp(admin)
+    const { agent } = await clerkAgent(admin, createUser)
+    let csv = ''
+    await step('a file of customers whose cities are headed "Town"', () => {
+      csv = 'Customer Name,Town\nDhan Agencies,Salem\nElan Exports,Erode\n'
+    })
+    await step('the agent checks and imports the file, saying "Town" is the city', () =>
+      importFile(agent, { table: 'Customer', csv, columns: { Town: 'city' } }))
+    await step('each new customer is in the town the file gives', async () => {
+      const rows = await customers(admin, [['customer_name', 'in', ['Dhan Agencies', 'Elan Exports']]])
+      expect(Object.fromEntries(rows.map((r) => [r.customer_name, r.city]))).toEqual({ 'Dhan Agencies': 'Salem', 'Elan Exports': 'Erode' })
+    })
+  })
+
+  scenario('A file changed after its check is refused', async ({ admin, createUser }, step) => {
+    await setUp(admin)
+    const { agent } = await clerkAgent(admin, createUser)
+    const csv = 'Customer Name,City\nDhan Agencies,Salem\nElan Exports,Erode\nFab Foods,Trichy\n'
+    let check = ''
+    await step('the agent has checked a file of three customers', async () => {
+      check = (await agent.ok<Check>('check_import', { table: 'Customer', csv })).check
+    })
+    let result!: Awaited<ReturnType<Agent['call']>>
+    await step('the agent imports the file with a fourth customer added to it', async () => {
+      result = await agent.call('run_import', { table: 'Customer', csv: `${csv}Guna Traders,Karur\n`, check })
+    })
+    await step('no customer is added', async () => expect(await customers(admin)).toHaveLength(3))
+    await step('the agent is told to check the file first', () => {
+      expect(result.isError).toBe(true)
+      expect(refusalText(result)).toMatch(/check_import/)
+    })
+  })
+
+  scenario('Acme Traders moves to Salem', async ({ admin, createUser }, step) => {
+    const ids = await setUp(admin)
+    const { agent } = await clerkAgent(admin, createUser)
+    await step('the agent imports a file with "Acme Traders" in Salem, matched on the customer\'s name', () =>
+      importFile(agent, { table: 'Customer', csv: 'Customer Name,City\nAcme Traders,Salem\n', key_column: 'customer_name' }))
+    await step('"Acme Traders" is in Salem', async () => expect((await admin.get<Row>(CUSTOMER.rowUrl(ids['Acme Traders']!))).city).toBe('Salem'))
+    await step('there is still only one "Acme Traders"', async () =>
+      expect(await customers(admin, [['customer_name', '=', 'Acme Traders']])).toHaveLength(1))
+  })
+
+  scenario('The same customers imported twice', async ({ admin, createUser }, step) => {
+    await setUp(admin)
+    const { agent } = await clerkAgent(admin, createUser)
+    const args = { table: 'Customer', csv: 'Customer Name,City\nDhan Agencies,Salem\nElan Exports,Erode\n' }
+    await step('the agent has imported "Dhan Agencies" and "Elan Exports"', () => importFile(agent, args))
+    let result!: Awaited<ReturnType<Agent['call']>>
+    await step('the agent imports the same file again without matching on a column', async () => {
+      const { check } = await agent.ok<Check>('check_import', args)
+      result = await agent.call('run_import', { ...args, check })
+    })
+    await step('no customer is added', async () => expect(await customers(admin)).toHaveLength(5))
+    await step('the agent is told every row is already there by the customer\'s name', () => {
+      expect(result.isError).toBe(true)
+      expect(refusalText(result)).toMatch(/every row .*already .*customer_name/i)
+    })
+  })
+
+  scenario('Twenty-one changed cities wait for the count', async ({ admin, createUser }, step) => {
+    const names = Array.from({ length: 21 }, (_, i) => `Customer ${String(i + 1).padStart(2, '0')}`)
+    await step('"Customer" holds 21 customers in Chennai', async () => {
+      await setUp(admin, false)
+      for (const name of names) await admin.post(CUSTOMER.url, { customer_name: name, city: 'Chennai' })
+    })
+    const { agent } = await clerkAgent(admin, createUser)
+    let result!: Awaited<ReturnType<Agent['call']>>
+    await step('the agent imports a file moving all 21 to Salem, matched on the customer\'s name, without confirming the count', async () => {
+      const args = { table: 'Customer', csv: `Customer Name,City\n${names.map((n) => `${n},Salem`).join('\n')}\n`, key_column: 'customer_name' }
+      const { check } = await agent.ok<Check>('check_import', args)
+      result = await agent.call('run_import', { ...args, check })
+    })
+    await step('every customer is still in Chennai', async () =>
+      expect(new Set((await customers(admin)).map((c) => c.city))).toEqual(new Set(['Chennai'])))
+    await step('the agent is told to confirm 21 changed rows', () => {
+      expect(result.isError).toBe(true)
+      expect(refusalText(result)).toMatch(/confirm_changes: 21/)
+    })
+  })
+
+  scenario('Undoing the agent\'s import', async ({ admin, createUser }, step) => {
+    const ids = await setUp(admin)
+    const { agent } = await clerkAgent(admin, createUser)
+    await step('the agent has imported a file that added "Dhan Agencies" and moved "Acme Traders" to Salem', () =>
+      importFile(agent, { table: 'Customer', csv: 'Customer Name,City\nDhan Agencies,Salem\nAcme Traders,Salem\n', key_column: 'customer_name', file_name: 'customers.csv' }))
+    await step('the agent undoes that import, found in the list of imports into "Customer"', async () => {
+      const { imports } = await agent.ok<{ imports: { run_id: string; file_name: string }[] }>('list_imports', { table: 'Customer' })
+      expect(imports[0]).toMatchObject({ file_name: 'customers.csv' })
+      await agent.ok('undo_import', { table: 'Customer', run_id: imports[0]!.run_id })
+    })
+    await step('there is no "Dhan Agencies"', async () =>
+      expect(await customers(admin, [['customer_name', '=', 'Dhan Agencies']])).toEqual([]))
+    await step('"Acme Traders" is in Chennai again', async () =>
+      expect((await admin.get<Row>(CUSTOMER.rowUrl(ids['Acme Traders']!))).city).toBe('Chennai'))
+  })
+
+  scenario('Removing a column and importing are flagged for approval', async ({ admin, createUser }, step) => {
+    await setUp(admin)
+    const { agent } = await clerkAgent(admin, createUser)
+    let tools: Record<string, { readOnlyHint?: boolean; destructiveHint?: boolean } | undefined> = {}
+    await step('the agent\'s app lists what the agent can do', async () => {
+      tools = Object.fromEntries((await agent.client.listTools()).tools.map((t) => [t.name, t.annotations]))
+    })
+    await step('checking a file is marked as reading only', () => expect(tools.check_import).toMatchObject({ readOnlyHint: true }))
+    await step('removing a column, importing a file and undoing an import are marked as altering existing data', () => {
+      for (const name of ['remove_column', 'run_import', 'undo_import']) expect(tools[name]).toMatchObject({ readOnlyHint: false, destructiveHint: true })
     })
   })
 })
