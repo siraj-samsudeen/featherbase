@@ -315,8 +315,9 @@ async function validateLinks(
       if (problem) errors[prefix + f.column_name] = problem
       continue
     }
-    const linked = f.reference_table
-    if (!linked) continue
+    // The engine refuses a Reference column with neither a target Table nor
+    // a column naming one (table-engine validateDef), handled just above.
+    const linked = f.reference_table!
     // select *: early migrations save rows before table_def has data_source.
     const [linkedDef] = await readOnce(JSON.stringify(['table definition', linked]), () => tx`select * from table_def where name = ${linked}`)
     if (!linkedDef) {
