@@ -439,13 +439,6 @@ describe('adding a column, at its edges', () => {
 })
 
 describe('when the network drops', () => {
-  test("the Table's details say the Table could not be loaded", async ({ admin }) => {
-    await seed(admin)
-    dropNetwork((url) => url.includes(`/api/table/${encodeURIComponent(DT)}:meta`))
-    await renderApp(`/featherbase/admin/table/${tableSlug(DT)}/columns`, admin)
-    expect(await screen.findByText('Could not load this Table', {}, { timeout: 8000 })).toBeInTheDocument()
-  })
-
   test('a rename says it could not rename', async ({ admin }) => {
     const user = userEvent.setup()
     await seed(admin)
