@@ -31,7 +31,7 @@ function seedPackFile(name: string): string {
 interface SeedPack {
   pack: string
   identifier_systems?: Record<string, unknown>[]
-  sign_in_methods?: Record<string, { identifier_system?: string }>
+  sign_in_methods?: Record<string, { identifier_system: string }>
   people_review?: unknown
 }
 
@@ -63,7 +63,6 @@ export async function applySeedPack(name: string): Promise<SeedPackResult> {
   // so an apply cannot lock the field between them (Codex bot on #494).
   for (const [method, link] of Object.entries(pack.sign_in_methods ?? {})) {
     const system = link.identifier_system
-    if (!system) continue
     const linked = await sql.begin(async (tx) => {
       const stx = tx as unknown as typeof sql
       await holdManagedSet(stx, 'Sign In Method')
