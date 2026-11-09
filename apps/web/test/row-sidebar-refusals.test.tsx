@@ -167,3 +167,33 @@ test('a tag the network drops says adding the tag failed', async ({ admin }) => 
   await user.type(within(panel).getByTestId('tag-input'), 'urgent{Enter}')
   expect(await within(panel).findByTestId('tag-error')).toHaveTextContent('Add tag failed')
 })
+
+test('a workflow action the network drops says the transition failed', async ({ admin }) => {
+  const user = userEvent.setup()
+  await admin.post('/api/table_def', {
+    name: DT,
+    id_pattern: 'prompt',
+    columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }],
+  })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Rsr Approver' } })
+  await admin.post('/api/save_row', {
+    table: 'Workflow',
+    row: {
+      row_id: 'Rsr Flow',
+      ref_table: DT,
+      is_active: true,
+      states: [
+        { state: 'Draft', target_status: 'draft' },
+        { state: 'Approved', target_status: 'submitted' },
+      ],
+      transitions: [{ state: 'Draft', action: 'Approve', next_state: 'Approved', allowed: 'Rsr Approver' }],
+    },
+  })
+  await admin.post(`/api/table/${ENC}`, { row_id: 'rsr-1', title: 'approve me' })
+  await openRow(admin, 'rsr-1', 'Form')
+  const actions = await screen.findByTestId('workflow-actions')
+  await within(actions).findByRole('button', { name: 'Approve' })
+  dropNetwork(`/api/table/${ENC}/rsr-1:apply_workflow_action`)
+  await user.click(within(actions).getByRole('button', { name: 'Approve' }))
+  expect(await screen.findByTestId('workflow-error')).toHaveTextContent('Transition failed')
+})
