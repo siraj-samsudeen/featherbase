@@ -4,12 +4,11 @@
 // and a retirement a scenario starts from are made through the API; retiring,
 // reactivating and what the list shows go through the screen.
 import { cleanup, screen, waitFor, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { tableSlug } from 'shared'
 import { describe } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp } from '../pg-test'
+import { test, expect, renderSession, byTestId, inside, type Session } from '../pg-test'
 
 const scenario = scenarioFor(test, 'row-retirement')
 const PLANTS = 'Retirement Plant'
@@ -31,18 +30,21 @@ async function plants(admin: TestClient, first: string, second: string) {
 const retire = (admin: TestClient, plant: string, reason: string) =>
   admin.post(`${api}/${encodeURIComponent(plant)}:retire`, { reason })
 
-async function openForm(admin: TestClient, plant: string) {
+async function openForm(admin: TestClient, plant: string): Promise<{ session: Session }> {
   cleanup()
-  await renderApp(`${listPath}/row/${encodeURIComponent(plant)}`, admin)
-  await screen.findByTestId('form-view', {}, WAIT)
+  const { session } = await renderSession(`${listPath}/row/${encodeURIComponent(plant)}`, admin, { session: WAIT })
+  await session.assertText('Record actions')
+  return { session }
 }
 
-async function openList(admin: TestClient) {
+async function openList(admin: TestClient): Promise<{ session: Session }> {
   cleanup()
-  await renderApp(listPath, admin)
-  await screen.findByTestId('list-rows', {}, WAIT)
+  const { session } = await renderSession(listPath, admin, { session: WAIT })
+  await session.until('the list has rows', () => screen.queryByTestId('list-rows'))
+  return { session }
 }
 
+// Which rows, in which order, and which carry the badge: lists and counts the DSL doesn't read.
 /** Each listed row's title: the link that opens it. */
 const rowTitles = () =>
   [...screen.getByTestId('list-rows').querySelectorAll('tr td a')].map((a) => a.textContent!.trim())
@@ -59,19 +61,19 @@ const retiredRowTitles = () =>
 
 describe('row-retirement', () => {
   scenario('A sample plant is retired', async ({ admin }, step) => {
-    const user = userEvent.setup()
     await step('a table of plants holds "Riverside" and "Sample plant"', () => plants(admin, 'Riverside', 'Sample plant'))
     await step('the user retires "Sample plant" because "Not a real location"', async () => {
-      await openForm(admin, 'Sample plant')
-      await user.click(screen.getByRole('button', { name: 'Record actions' }))
-      await user.click(await screen.findByTestId('form-retire', {}, WAIT))
-      await user.type(screen.getByTestId('retire-reason'), 'Not a real location')
-      await user.click(screen.getByTestId('retire-row-confirm'))
-      await screen.findByTestId('retired-notice', {}, WAIT)
+      const { session } = await openForm(admin, 'Sample plant')
+      await session
+        .clickButton('Record actions')
+        .clickButton('Retire')
+        .within(byTestId('retire-row-dialog'), (dialog) => dialog.fillIn('Reason', 'Not a real location').clickButton('Retire'))
+        .until('the form shows the row as retired', () => screen.queryByTestId('retired-notice'))
     })
     await step('"Sample plant" shows it is retired because "Not a real location"', async () => {
-      await openForm(admin, 'Sample plant')
-      await screen.findByTestId('retired-badge', {}, WAIT)
+      const { session } = await openForm(admin, 'Sample plant')
+      await inside(session, 'retired-badge', (badge) => badge.assertText('Retired'))
+      // The reason whole, exactly: the DSL's text verbs check containment.
       expect(screen.getByTestId('retired-reason').textContent!.trim()).toBe('Not a real location')
     })
   }, 40_000)
@@ -88,12 +90,11 @@ describe('row-retirement', () => {
   }, 40_000)
 
   scenario('Retired plants shown again', async ({ admin }, step) => {
-    const user = userEvent.setup()
     await step('a table of plants holds "Riverside" and "Sample plant"', () => plants(admin, 'Riverside', 'Sample plant'))
     await step('"Sample plant" is retired because "Not a real location"', () => retire(admin, 'Sample plant', 'Not a real location'))
     await step('the user opens the list of plants and asks to see retired rows', async () => {
-      await openList(admin)
-      await user.click(screen.getByTestId('list-show-retired-toggle'))
+      const { session } = await openList(admin)
+      await session.check('Show retired')
     })
     await step('the list shows "Riverside" and "Sample plant"', async () =>
       expect((await shownPlants(2)).sort()).toEqual(['Riverside', 'Sample plant']))
@@ -101,15 +102,14 @@ describe('row-retirement', () => {
   }, 40_000)
 
   scenario('The plant is back in use', async ({ admin }, step) => {
-    const user = userEvent.setup()
     await step('a table of plants holds "Riverside" and "Sample plant"', () => plants(admin, 'Riverside', 'Sample plant'))
     await step('"Sample plant" is retired because "Not a real location"', () => retire(admin, 'Sample plant', 'Not a real location'))
     await step('the user reactivates "Sample plant"', async () => {
-      await openForm(admin, 'Sample plant')
-      await screen.findByTestId('retired-notice', {}, WAIT)
-      await user.click(screen.getByRole('button', { name: 'Record actions' }))
-      await user.click(await screen.findByTestId('form-reactivate', {}, WAIT))
-      await waitFor(() => expect(screen.queryByTestId('retired-notice')).toBeNull(), WAIT)
+      const { session } = await openForm(admin, 'Sample plant')
+      await inside(session, 'retired-notice', (notice) => notice.assertText('Not a real location'))
+        .clickButton('Record actions')
+        .clickButton('Reactivate')
+        .until('the retired notice is gone', () => !screen.queryByTestId('retired-notice'))
     })
     await step('the list of plants shows "Riverside" and "Sample plant"', async () => {
       await openList(admin)
