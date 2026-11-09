@@ -54,6 +54,12 @@ describe('bulk edit', () => {
     for (const id of ['r1', 'r2', 'r3']) expect(await stageOf(admin, id)).toBe('Open')
   })
 
+  test('a row name the database cannot read fails the whole edit, changing nothing', async ({ admin }) => {
+    await seed(admin)
+    await expectRefused(edit(admin, ['r1', 'bad\u0000name'], { stage: 'Closed' }), 500)
+    expect(await stageOf(admin, 'r1')).toBe('Open')
+  })
+
   test('a refused value keeps the field and the reason (#540)', async ({ admin }) => {
     await seed(admin)
     await expectApiError(edit(admin, ['r1', 'r2'], { qty: 'many' }), {
