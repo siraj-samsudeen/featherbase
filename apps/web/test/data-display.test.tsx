@@ -8,7 +8,8 @@ import { achievementTone, DataList, Headline, type DataColumn } from '@featherba
 import { fmtCount, fmtDay, fmtINR, fmtNumber, fmtShowing } from '@featherbase/shop-floor'
 import { fmtInstant } from '@featherbase/shop-floor/format'
 import { formatNumber } from '../src/lib/settings'
-import { indicatorColor, pageRange } from '../src/components/ListView'
+import { pageRange } from '../src/components/ListView'
+import { indicatorColor } from '../src/components/Indicator'
 import { previewValue } from '../src/pages/TableBuilder'
 
 describe('fmtINR — the readable lakh/crore ladder (ADR 750)', () => {

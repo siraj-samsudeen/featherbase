@@ -11,36 +11,28 @@ import { assertNotView, storedTable } from './views'
 import { AppError, errorResponse } from './errors'
 import { runInSession } from './session-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
-import { createTable, deleteTable, renameColumn, renameCustomTable, setIdPattern, tableStorageIdentity, updateTable } from './table-engine'
+import { tableStorageIdentity } from './table-engine'
 import { deleteDoc, getDoc, revokeGrant, rowCapabilities, saveDoc } from './document'
 import { rowForCaller } from './row-readers'
 import { countDocs, getList, groupCount } from './query'
 import { hasMandatoryRowAccess, mandatoryReferencesWhere } from './mandatory-access'
 import { loadControllers } from './controllers'
-import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, renameAccessToken, resolveToken, revokeAccessToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionOptions, type SessionUser } from './auth'
+import { assertCanChangeAccess, assertFreshForLinking, resolveToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionOptions, type SessionUser } from './auth'
 import { GOOGLE_OFF, LINK_DOMAIN_NOT_ALLOWED, completeSignIn, linkVerifiedToSelf, passwordSignIn, signInRefusal } from './sign-in'
-import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, identifierPerson, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
-import { createServiceAccount, listServiceAccounts, renameServiceAccount, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
-import { principalReach } from './token-reach'
-import { explainAccess } from './access-explanation'
-import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
-import { personByEmail, pickPeople, principalNames, tableMembers } from './people-directory'
+import { personByEmail } from './people-directory'
 import { countWaitingForAccess, noAccessYetPage, requestAccess } from './waiting-for-access'
-import { archiveTable, unarchiveTable } from './table-archive'
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser, noLinkCarries, recordToName } from './delegated-login'
 import { hold, rosterFirstSignIn } from './roster-first-sign-in'
-import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
-import { sendInvitation } from './invitation-email'
+import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
 import { ADMIN, addressRedirect, interimApp, linkAddress, matchAddress, requestHost } from './instance-addresses'
-import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
-import { buildInfo } from './build-info'
+import { USERNAME_RE, methodOfKind } from './identities'
 import { assertPermission, assertSystemManager, getRoles, includesColumn, permissionScope, permittedColumns, tableAccessFor } from './permissions'
-import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
+import { getVisibleHomePages } from './home-pages'
 import { EMBED_ORIGIN, VIEWER_ROLE, salesTargetRoutes } from './sales-target'
 import { landingAfterSignIn, openAdminFor } from './landing'
-import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
+import { saveUpload, signFileUrl } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
 import { globalSearch } from './search'
 import { commandDestinations } from './command-destinations'
@@ -70,7 +62,7 @@ import { reapplyCustomFields } from './custom-fields'
 import { enqueue, loadJobs, retryJob, startWorker, stopWorker, syncScheduledJobs } from './jobs'
 import { attachRealtime, closeSessionSockets, publishDocEvent, publishUserEvent } from './realtime'
 import { createAssignment } from './assign'
-import { mailTransport, queueEmail, sendTestEmail } from './email'
+import { queueEmail, sendTestEmail } from './email'
 import { getSystemSettings } from './settings'
 import { MIN_PASSWORD_LENGTH, requestPasswordReset, resetPassword } from './password-reset'
 import { renderWebPage } from './website'
@@ -88,12 +80,12 @@ import { mcpHandler, mcpMethodNotAllowed } from './mcp'
 import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
-import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled, isInstalled, installedAppNames } from './apps'
-import { packageTitle, appCatalog, closedApps, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
-import { discoverAppLibrary, appLibraryCatalog, prepareAndInstallApp } from './app-library'
+import { registerApp, loadInstalledApps, isInstalled, installedAppNames } from './apps'
+import { packageTitle, appCatalog, appAsset } from './runtime-packages'
+import { discoverAppLibrary } from './app-library'
 import { documentActivity } from './document-activity'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage, rowHref } from 'shared'
-import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
+import { appOperation, withAppClientVersion } from './app-lifecycle'
 import { composeRuntimeShell } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
 import { assertServerStart, readVariable } from './env'
@@ -101,6 +93,12 @@ import helpdesk from './sample-apps/helpdesk'
 import checklists from './sample-apps/checklists'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
 import { readGlossary, takeAppWording } from './glossary'
+import { who, type Env } from './route-context'
+import { OAUTH_STATE_COOKIE, OAUTH_VERIFIER_COOKIE, authCredential, clearLoginChallengeCookies, externalOrigin, oauthRedirectUri, setLoginChallengeCookies, setSidCookie } from './session-cookies'
+import { mimeEssence, serveFile } from './file-serving'
+import { peopleRoutes } from './people-routes'
+import { tableDefRoutes } from './table-def-routes'
+import { appRoutes } from './app-routes'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -120,10 +118,6 @@ await discoverAppLibrary(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]
 await loadInstalledApps()
 // Custom fields may target app-owned Tables, so activation precedes replay.
 await reapplyCustomFields()
-
-// frameOrigins (#642, E4): the outside sites this response's page may frame,
-// set by the handler that serves an app's own page.
-type Env = { Variables: { user: SessionUser; frameOrigins?: readonly string[] } }
 
 export const app = new Hono<Env>()
 
@@ -214,35 +208,10 @@ app.get('/api/brand', async (c) => {
   })
 })
 
-// Sessions ride an HttpOnly `sid` cookie in addition to the Bearer token the
-// SPA stores. Either credential authenticates a request; the cookie keeps the
-// token out of reach of page scripts and lets plain browser requests (file
-// links, the print page) carry the session.
-// #353: `secure` by the sign-in challenge cookies' rule (externalOrigin): on
-// whenever the instance is reached over https, off on a plain-http local
-// origin, where a browser would silently drop a Secure cookie.
-function setSidCookie(c: Context, token: string, maxAgeSeconds: number) {
-  setCookie(c, 'sid', token, {
-    httpOnly: true,
-    sameSite: 'Lax',
-    path: '/',
-    maxAge: maxAgeSeconds,
-    secure: externalOrigin(c).protocol === 'https:',
-  })
-}
-
 // #488: every sign-in answers with the session plus where to go next — a path
 // on this address, or a hand-off URL to another (landing.ts).
 async function withLanding(c: Context, session: { token: string; user: SessionUser }, opts?: { handOff?: boolean }) {
   return { ...session, ...(await landingAfterSignIn(session, requestHost(c.req.url), opts)) }
-}
-
-// The Authorization header wins; an sid cookie is the fallback credential.
-function authCredential(c: Context): string | undefined {
-  const header = c.req.header('authorization')
-  if (header) return header
-  const sid = getCookie(c, 'sid')
-  return sid ? `Bearer ${sid}` : undefined
 }
 
 app.post('/api/login', publicLimit('LOGIN'), async (c) => {
@@ -378,73 +347,6 @@ app.post('/api/reset_password', async (c) => {
   return c.json({ ok: true })
 })
 
-// FILE-001: serve stored files. Only files registered as a File doc are
-// readable. Public bucket needs no session; the private bucket accepts a
-// bearer header, the `sid` cookie a browser sends on its own (so <img src>
-// and download links work — #173), or a signed URL.
-async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
-  const [row] = await sql`
-    select row_id, file_name, mime_type, ref_table, ref_name
-    from file where file_url = ${fileUrl}`
-  if (!row) throw new AppError('NotFoundError', `File not found: ${fileUrl}`)
-
-  // FILE-003: private files require either a valid signed URL (minted after a
-  // permission check) or a session that can read the linked row. A user
-  // without read on that row gets a 403.
-  const protectedRow = row.ref_table && row.ref_name && await hasMandatoryRowAccess(String(row.ref_table), String(row.ref_name))
-  if (isPrivate || protectedRow) {
-    const signed = !protectedRow && verifyFileSignature(fileUrl, c.req.query('expires'), c.req.query('signature'))
-    if (!signed) {
-      // #137/#173: the credential is the Authorization header, or the HttpOnly
-      // `sid` cookie the browser already sends on a same-origin <img>/<a>
-      // request. `?token=` is deliberately not read — a URL lands in history,
-      // in `Referer` and in proxy logs, and that is true of a session JWT just
-      // as it is of an access token. A caller that can set no header at all
-      // mints a short-lived signed URL from /api/signed_url instead.
-      const user = await resolveToken(authCredential(c))
-      if (row.ref_table && row.ref_name)
-        await getDoc(row.ref_table as string, row.ref_name as string, user.row_id)
-      else await getDoc('File', row.row_id as string, user.row_id)
-    }
-  }
-
-  const content = await readStored(fileUrl)
-  // #506: the type is whatever the uploader declared, and the file is served
-  // from this app's own address. Only types a browser shows without running
-  // script open in place; anything else (HTML, SVG, scripts) downloads, so an
-  // uploaded page can never run as the app. An <img> ignores the download
-  // header, so an SVG still shows where a form embeds it.
-  // The stored type is an editable field, so it is reduced again here and the
-  // header is built from that, never sent as stored: a browser reads
-  // `text/plain,text/html` as its LAST type and would run it as a page.
-  // #561: an SVG keeps its own type, which an <img> needs to draw it; it is
-  // still an attachment, so opened directly it downloads and its script never runs.
-  const type = mimeEssence(row.mime_type as string)
-  const inPlace = SHOWN_IN_PLACE.has(type)
-  const disposition = inPlace ? 'inline' : 'attachment'
-  return c.body(new Uint8Array(content), 200, {
-    'content-type': inPlace || type === 'image/svg+xml' ? type : 'application/octet-stream',
-    'content-disposition': `${disposition}; filename="${(row.file_name as string).replace(/"/g, '')}"`,
-  })
-}
-
-// #562: sound and video are a fixed list too, never a wildcard: an uploader
-// could otherwise pick a type such as `video/xhtml+xml` that a browser may
-// render as a document.
-const SHOWN_IN_PLACE = new Set([
-  'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'image/bmp', 'application/pdf', 'text/plain',
-  'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/webm', 'audio/mp4',
-  'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime',
-])
-
-// A declared type reduced to its bare `type/subtype`, lowercased, with nothing
-// after the first `;` or `,`. Anything that isn't a well-formed type becomes
-// application/octet-stream.
-function mimeEssence(declared: string | null | undefined): string {
-  const essence = (declared ?? '').split(/[;,]/)[0].trim().toLowerCase()
-  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(essence) ? essence : 'application/octet-stream'
-}
-
 app.get('/files/:stored', (c) => serveFile(c, `/files/${c.req.param('stored')}`, false))
 app.get('/private/files/:stored', (c) =>
   serveFile(c, `/private/files/${c.req.param('stored')}`, true),
@@ -474,68 +376,6 @@ app.get('/web/:route{.+}', async (c) => {
   const page = await renderWebPage(c.req.param('route'))
   return c.html(page.html, page.found ? 200 : 404)
 })
-
-// The origin a browser reaches this instance on. INSTANCE_ADDRESSES is
-// configuration and therefore authoritative (#488): the request's Host only
-// SELECTS one of its entries, and an unlisted host gets the Admin entry, so a
-// header can never create an origin. Only a checkout with no list at all
-// (development and test) falls back to the request, and then
-// `x-forwarded-proto` is read as what it is — a LIST. A proxy chain APPENDS
-// its hop rather than overwriting, so a request that reached the edge over TLS
-// arrives as `https,http`; comparing that whole string to 'https' read false
-// and set the login cookies without `Secure`, and interpolated
-// `https,http://host` into the redirect_uri. Only the first hop is the
-// client's, and anything that is not http/https is not a protocol we will
-// paste into an origin.
-function externalOrigin(c: Context): URL {
-  if (config.instanceAddresses) return new URL(linkAddress(config.instanceAddresses, requestHost(c.req.url)).address)
-  const url = new URL(c.req.url)
-  const forwarded = c.req.header('x-forwarded-proto')?.split(',')[0].trim().toLowerCase()
-  const proto = forwarded === 'http' || forwarded === 'https' ? forwarded : url.protocol.slice(0, -1)
-  return new URL(`${proto}://${url.host}`)
-}
-
-// PLAT-006: Google OAuth (public — the caller is logging in). In dev a mock
-// provider stands in for Google. Flow: login → provider consent → callback →
-// find/create User → issue session → bounce back into the SPA with the token.
-// Mock flow stays same-origin (relative) so the dev proxy keeps the browser
-// on the SPA origin end to end; real Google needs an absolute redirect_uri
-// that byte-matches the registered one.
-function oauthRedirectUri(c: Context, clientId: string): string {
-  if (!clientId) return OAUTH_CALLBACK_PATH
-  return `${externalOrigin(c).origin}${OAUTH_CALLBACK_PATH}`
-}
-
-// The login challenge (OAuth `state` + PKCE verifier) rides HttpOnly cookies
-// so it is bound to the browser that started the sign-in. Same attributes as
-// the sid cookie, plus `secure` whenever the browser reached us over TLS and a
-// ten-minute life — they exist only for the length of one consent round trip.
-const OAUTH_STATE_COOKIE = 'oauth_state'
-const OAUTH_VERIFIER_COOKIE = 'oauth_verifier'
-
-// Derived from the external origin, not NODE_ENV: behind Railway's TLS-
-// terminating edge the container sees http, and a `secure` cookie on a
-// plain-http dev origin is silently dropped by the browser. Same origin the
-// redirect_uri comes from, so the two can never disagree.
-function oauthCookieOptions(c: Context) {
-  return {
-    httpOnly: true,
-    sameSite: 'Lax' as const,
-    path: '/',
-    maxAge: 600,
-    secure: externalOrigin(c).protocol === 'https:',
-  }
-}
-
-function setLoginChallengeCookies(c: Context, state: string, verifier: string) {
-  setCookie(c, OAUTH_STATE_COOKIE, state, oauthCookieOptions(c))
-  setCookie(c, OAUTH_VERIFIER_COOKIE, verifier, oauthCookieOptions(c))
-}
-
-function clearLoginChallengeCookies(c: Context) {
-  deleteCookie(c, OAUTH_STATE_COOKIE, { path: '/' })
-  deleteCookie(c, OAUTH_VERIFIER_COOKIE, { path: '/' })
-}
 
 // A browser navigation (the address bar, a redirect) asks for a page;
 // fetch/XHR does not. A refused navigation sign-in goes back to the sign-in
@@ -908,8 +748,6 @@ app.get('*', async (c, next) => {
   })
 })
 
-const who = (c: { get: (k: 'user') => SessionUser }) => c.get('user').row_id
-
 // #3755: personalised sales-target report (identity + embed-session minting).
 app.route('/api/sales_target', salesTargetRoutes)
 
@@ -1221,37 +1059,6 @@ app.post('/api/set_password', async (c) => {
   return c.json({ ok: true })
 })
 
-// person-identities D6: linked sign-ins. System Managers manage anyone's;
-// a person sees and removes their own and links Google by proving it.
-app.get('/api/people/:id/identities', async (c) => {
-  await assertSystemManager(who(c))
-  const user = c.req.param('id')
-  const [row] = await sql`select (password_hash is not null) as has_password, email, expects_google_sign_in from person where row_id = ${user}`
-  if (!row) throw new AppError('NotFoundError', `Person ${user} not found`)
-  // Every method row, turned off or not, so an identity on a disabled method
-  // still shows its name on the Person form.
-  const methods = (await listSignInMethods()).map((m) => ({ key: m.key, kind: m.kind, label: m.label || m.key, enabled: m.enabled }))
-  return c.json({
-    identities: await listIdentities(user, { includeEnded: true }),
-    has_password: row.has_password === true,
-    methods,
-    // #833: the Person's own address starts a Google invite, the panel explains
-    // an expected Google sign-in, and says where an invitation went.
-    email: row.email ?? null,
-    expects_google_sign_in: row.expects_google_sign_in === true,
-    mail_transport: mailTransport(),
-  })
-})
-
-// #667: why a person sees nothing from an app's datasets: the provider's
-// places for them, and which each dataset applies or drops. System Manager
-// only, the person themself included.
-app.get('/api/people/:id/scope', async (c) => {
-  await assertSystemManager(who(c))
-  const { explainPersonScope } = await import('./scope-explain')
-  return c.json(await explainPersonScope(who(c), c.req.param('id'), c.req.query('app') ?? ''))
-})
-
 // Instance settings as code (#465, D3): the instance repository's workflow
 // sends its settings file here with a System Manager token, on merge and on
 // demand. `dry_run` previews; `files` carries what the file names with
@@ -1335,358 +1142,9 @@ app.post('/api/access_request', async (c) => {
   return c.json(answer)
 })
 
-// person-rename: ids are opaque, so screens ask for names (batch), and the
-// Person picker searches what people know someone by.
-app.post('/api/people/names', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { ids?: unknown }
-  return c.json({ names: await principalNames(body.ids, who(c)) })
-})
+app.route('/', peopleRoutes)
 
-app.get('/api/table_members/:table', async (c) => c.json({ data: await tableMembers(c.req.param('table'), who(c)) }))
-
-app.get('/api/people/pick', async (c) => {
-  return c.json({ people: await pickPeople(c.req.query('q') ?? '', who(c), Number(c.req.query('limit') ?? 10)) })
-})
-
-app.post('/api/people/:id/identities', async (c) => {
-  await assertSystemManager(who(c))
-  assertCanChangeAccess(c.get('user'))
-  const body = (await c.req.json().catch(() => ({}))) as {
-    method?: string; subject?: string; sign_in_name?: string; email?: string; send_invitation_email?: boolean
-  }
-  if (!body.method) throw new AppError('ValidationError', 'Expected { method }', { method: 'required' })
-  const google = await methodOfKind('google')
-  if (google && body.method === google.key && !body.subject && body.email) {
-    const { created, ...identity } = await inviteGoogle(c.req.param('id'), body.email, who(c))
-    // #430: a new invite emails the address unless the inviter said not to; a
-    // re-invite sends nothing (Resend does). A failed send keeps the invite.
-    if (!created) return c.json({ ...identity, invitation_email: { status: 'not_sent', reason: 'already_invited' } }, 200)
-    if (body.send_invitation_email === false)
-      return c.json({ ...identity, invitation_email: { status: 'not_sent', reason: 'not_requested' } }, 201)
-    // The invite is already committed: whatever happens to the email, answer 201.
-    const sent = await sendInvitation(identity.id, who(c), externalOrigin(c).origin).catch((err) => {
-      console.error(JSON.stringify({ level: 'error', event: 'invitation_email_error', type: err instanceof AppError ? err.type : 'InternalError' }))
-      return { invitation_email: { status: 'failed', error: 'The invitation email was not sent' }, invitation_sent_at: null }
-    })
-    return c.json({ ...identity, ...sent }, 201)
-  }
-  const { created, ...identity } = await linkIdentity(
-    c.req.param('id'), { method: body.method, subject: body.subject ?? '', sign_in_name: body.sign_in_name }, who(c))
-  // Re-posting the same link is a no-op the roster sync can rely on: 200, not 409.
-  return c.json(identity, created ? 201 : 200)
-})
-
-// #430: send a pending invite's email again, at most once in ten minutes. A
-// failed send is the answer here (503), since the email is all this does.
-app.post('/api/identities/:id/resend_invitation', async (c) => {
-  await assertSystemManager(who(c))
-  assertCanChangeAccess(c.get('user'))
-  const sent = await sendInvitation(c.req.param('id'), who(c), externalOrigin(c).origin)
-  if (sent.invitation_email.status === 'failed') throw new AppError('ServiceUnavailableError', sent.invitation_email.error)
-  return c.json(sent)
-})
-
-// person-resolution D3/D9: a person's identifiers. Reads follow the display
-// rule (restricted values only to restricted readers, hidden ones never in a
-// panel); writes follow each system's `edited_by`. Errors never echo a value.
-app.get('/api/people/:id/identifiers', async (c) => {
-  const person = c.req.param('id')
-  if (person !== who(c)) await getDoc('Person', person, who(c))
-  return c.json({ identifiers: await listIdentifiers(person, who(c)), addable: await addableSystems(person, who(c)) })
-})
-
-app.post('/api/people/:id/identifiers', async (c) => {
-  assertCanChangeAccess(c.get('user'))
-  const person = c.req.param('id')
-  if (person !== who(c)) await getDoc('Person', person, who(c))
-  const body = (await c.req.json().catch(() => ({}))) as AddInput
-  const { result, identifier } = await addIdentifier(person, body, who(c))
-  return c.json({ result, identifier }, result === 'created' ? 201 : 200)
-})
-
-// Changing or removing a value needs the same read of its person as adding one:
-// the Person permission and Data Scope (review on #385).
-async function assertReadsIdentifierPerson(id: string, viewer: string) {
-  const person = await identifierPerson(id)
-  if (person !== viewer) await getDoc('Person', person, viewer)
-}
-
-app.patch('/api/identifiers/:id', async (c) => {
-  assertCanChangeAccess(c.get('user'))
-  await assertReadsIdentifierPerson(c.req.param('id'), who(c))
-  const body = (await c.req.json().catch(() => ({}))) as Parameters<typeof updateIdentifier>[1]
-  return c.json(await updateIdentifier(c.req.param('id'), body, who(c)))
-})
-
-app.delete('/api/identifiers/:id', async (c) => {
-  assertCanChangeAccess(c.get('user'))
-  await assertReadsIdentifierPerson(c.req.param('id'), who(c))
-  await deleteIdentifier(c.req.param('id'), who(c))
-  return c.json({ ok: true })
-})
-
-// person-resolution D2: the Identifier System form's Advanced settings, each
-// with its preset, which differ, and which options are refused and why.
-app.get('/api/identifier_systems/:key/defaults', async (c) => {
-  await assertSystemManager(who(c))
-  return c.json(await systemDefaults(c.req.param('key')))
-})
-
-// Find people by an exact value (D3): `?system=<key>&value=<typed>`.
-app.get('/api/identifiers', async (c) => {
-  const system = c.req.query('system')
-  const value = c.req.query('value')
-  if (!system || !value) throw new AppError('ValidationError', 'Expected ?system=&value=', { system: 'required', value: 'required' })
-  return c.json({ people: await findByIdentifier(system, value, who(c)) })
-})
-
-app.patch('/api/identities/:identityId', async (c) => {
-  await assertSystemManager(who(c))
-  assertCanChangeAccess(c.get('user'))
-  const body = (await c.req.json().catch(() => ({}))) as { sign_in_name?: string | null; person_id?: string }
-  return c.json(await updateIdentity(c.req.param('identityId'), { sign_in_name: body.sign_in_name, person_id: body.person_id }, who(c)))
-})
-
-app.delete('/api/identities/:identityId', async (c) => {
-  await assertSystemManager(who(c))
-  assertCanChangeAccess(c.get('user'))
-  await getIdentity(c.req.param('identityId'))
-  await unlinkIdentity(c.req.param('identityId'), who(c))
-  return c.json({ ok: true })
-})
-
-app.get('/api/me/sign_in_methods', async (c) => {
-  const me = c.get('user')
-  const [row] = await sql`select (password_hash is not null) as has_password from person where row_id = ${me.row_id}`
-  const methods = (await listSignInMethods()).filter((m) => m.enabled)
-  return c.json({
-    identities: (await listIdentities(me.row_id)).map(({ id, method, subject, sign_in_name, email, display_name, pending_email, linked_at, last_used_at }) => ({
-      id, method, linked: subject != null, sign_in_name, email: email ?? pending_email, display_name, linked_at, last_used_at,
-    })),
-    has_password: row?.has_password === true,
-    methods: methods.map((m) => ({ key: m.key, kind: m.kind, label: m.label, self_link: m.self_link })),
-    test_mode: me.sign_in?.test_mode === true,
-  })
-})
-
-app.delete('/api/me/identities/:identityId', async (c) => {
-  assertCanChangeAccess(c.get('user'))
-  await unlinkIdentity(c.req.param('identityId'), who(c), { self: who(c) })
-  return c.json({ ok: true })
-})
-
-app.delete('/api/me/password', async (c) => {
-  assertCanChangeAccess(c.get('user'))
-  await removeOwnPassword(who(c))
-  return c.json({ ok: true })
-})
-
-// Start linking Google to the signed-in person: the same state + PKCE flow as
-// sign-in, with the purpose and the person signed into the state.
-app.get('/api/oauth/google/link', async (c) => {
-  const me = c.get('user')
-  assertFreshForLinking(me)
-  const google = await googleAvailable()
-  if (!google || !google.self_link) throw new AppError('PermissionError', 'Linking Google is not available')
-  const clientId = google.client_id
-  const { state, verifier } = newLoginChallenge(requestHost(c.req.url), { purpose: 'link', uid: me.row_id })
-  setLoginChallengeCookies(c, state, verifier)
-  const hint = { email: c.req.query('email'), name: c.req.query('name'), subject: c.req.query('subject') }
-  return c.redirect(googleAuthorizeUrl(clientId, state, oauthRedirectUri(c, clientId), codeChallengeFor(verifier), hint))
-})
-
-// #131: access tokens (replaces the API-005 key pair). Users manage their
-// own; System Managers can target any principal — and only they see or act
-// on tokens beyond their own.
-app.post('/api/access_tokens', async (c) => {
-  assertCanChangeAccess(c.get('user'))
-  const body = (await c.req.json().catch(() => ({}))) as {
-    label?: string
-    owner?: string
-    expires_at?: string
-  }
-  const owner = body.owner ?? who(c)
-  if (owner !== who(c)) await assertSystemManager(who(c))
-  if (typeof body.label !== 'string') throw new AppError('ValidationError', 'Expected { label }')
-  let expiresAt: Date | null = null
-  if (body.expires_at != null) {
-    expiresAt = new Date(body.expires_at)
-    if (Number.isNaN(expiresAt.getTime()))
-      throw new AppError('ValidationError', 'expires_at must be an ISO date-time')
-  }
-  return c.json(await issueAccessToken(owner, body.label, expiresAt), 201)
-})
-
-// #628: what a person can see, and why. Their own, or anyone's for a System
-// Manager; never the data itself.
-app.get('/api/access_explanation/:person', async (c) =>
-  c.json(await explainAccess(c.req.param('person'), who(c))))
-
-// #852: what a token for this owner could reach, shown before it is issued.
-// The same rule as issuing: your own reach, or anyone's for a System Manager.
-app.get('/api/access_tokens/reach', async (c) => {
-  const owner = c.req.query('owner') || who(c)
-  if (owner !== who(c)) await assertSystemManager(who(c))
-  return c.json(await principalReach(owner))
-})
-
-app.get('/api/access_tokens', async (c) => {
-  // System Managers see every token (the admin screen); everyone else their own.
-  const all = (await getRoles(who(c))).includes('System Manager')
-  return c.json({ tokens: await listAccessTokens(all ? undefined : who(c)) })
-})
-
-app.patch('/api/access_tokens/:id', async (c) => {
-  assertCanChangeAccess(c.get('user'))
-  const token = await getAccessToken(c.req.param('id'))
-  if (token.owner !== who(c)) await assertSystemManager(who(c))
-  const body = await c.req.json().catch(() => ({})) as { label?: unknown }
-  if (typeof body?.label !== 'string') throw new AppError('ValidationError', 'Expected { label }')
-  return c.json(await renameAccessToken(token.id, body.label, who(c)))
-})
-
-app.delete('/api/access_tokens/:id', async (c) => {
-  const token = await getAccessToken(c.req.param('id'))
-  if (token.owner !== who(c)) await assertSystemManager(who(c))
-  await revokeAccessToken(token.id)
-  return c.json({ ok: true })
-})
-
-// #131: service accounts — System Manager territory end to end.
-app.post('/api/service_accounts', async (c) => {
-  await assertSystemManager(who(c))
-  // person-rename: the id is minted (`svc_…`); the caller names the account.
-  const body = (await c.req.json().catch(() => ({}))) as { label?: string; roles?: string[] }
-  if (typeof body.label !== 'string') throw new AppError('ValidationError', 'Expected { label }', { label: 'required' })
-  const roles = Array.isArray(body.roles) ? body.roles.filter((r) => typeof r === 'string') : []
-  return c.json(await createServiceAccount(body.label, roles, who(c)), 201)
-})
-
-app.get('/api/service_accounts', async (c) => {
-  await assertSystemManager(who(c))
-  return c.json({ service_accounts: await listServiceAccounts() })
-})
-
-app.patch('/api/service_accounts/:id', async (c) => {
-  await assertSystemManager(who(c))
-  const body = (await c.req.json().catch(() => ({}))) as { enabled?: unknown; label?: unknown }
-  if (typeof body?.label === 'string' && body.enabled === undefined)
-    return c.json(await renameServiceAccount(c.req.param('id'), body.label, who(c)))
-  if (typeof body?.enabled === 'boolean' && body.label === undefined)
-    return c.json(await setServiceAccountEnabled(c.req.param('id'), body.enabled, who(c)))
-  throw new AppError('ValidationError', 'Expected either { label } or { enabled }')
-})
-
-// person-rename R2: a service account's roles change only here, never
-// through the generic row path. The list replaces the current one.
-app.post('/api/service_accounts/:id/roles', async (c) => {
-  await assertSystemManager(who(c))
-  const body = (await c.req.json().catch(() => ({}))) as { roles?: unknown }
-  if (!Array.isArray(body.roles) || body.roles.some((r) => typeof r !== 'string'))
-    throw new AppError('ValidationError', 'Expected { roles: [...] }', { roles: 'a list of role names' })
-  return c.json(await setServiceAccountRoles(c.req.param('id'), body.roles as string[], who(c)))
-})
-
-// #74: `system` marks tables created by the migration chain. It is set only
-// by migrations/seeds (through createTable directly) — a table created or
-// updated over the API can never claim it.
-function rejectSystemClaim(body: Record<string, unknown>) {
-  if (body.system)
-    throw new AppError('ValidationError', 'Invalid Table definition', {
-      system: 'system is reserved for platform tables and cannot be set over the API',
-    })
-}
-
-app.post('/api/table_def', async (c) => {
-  await assertSystemManager(who(c))
-  const body = (await c.req.json()) as Record<string, unknown>
-  rejectSystemClaim(body)
-  const meta = await createTable(body)
-  // #80: a table you build never vanishes from navigation — its module's
-  // home page is created on demand and the table's link appended.
-  if (meta.kind !== 'sub_table') await ensureHomePageForTable(meta.name, meta.module)
-  return c.json(meta, 201)
-})
-
-// NAM-001: change how a Table names new rows, without resending its schema.
-app.put('/api/table_def/:name/id_pattern', async (c) => {
-  await assertSystemManager(who(c))
-  const body = (await c.req.json()) as { id_pattern?: unknown }
-  if (typeof body.id_pattern !== 'string')
-    throw new AppError('ValidationError', 'Expected { id_pattern }')
-  return c.json(await setIdPattern(c.req.param('name'), body.id_pattern))
-})
-
-// #206 (issue #197): the file-imports that have run, each rolled up from its
-// Import Log parts — which Tables it created, which it added to, and what
-// landed. This is a reading of the Import Log, so it answers to the Import
-// Log's own read permission (own_rows_only included) rather than to merely
-// holding a session; listBatches enforces that from the user it is given.
-app.get('/api/import/batches', async (c) => {
-  const limit = Number(c.req.query('limit') ?? '')
-  return c.json({
-    batches: await listBatches(who(c), Number.isFinite(limit) ? limit : undefined),
-  })
-})
-
-app.get('/api/import/batches/:id', async (c) => {
-  return c.json(await getBatch(who(c), c.req.param('id')))
-})
-
-// #207: delete every Table one import CREATED. Only the created ones — a
-// Table that merely received rows is undone by the per-run revert, which is
-// offered separately and does not destroy data the import never made.
-app.post('/api/import/batches/:id/delete_tables', async (c) => {
-  return c.json(await deleteBatchTables(c.req.param('id'), who(c)))
-})
-
-// DEL-R1/R2 (docs/specs/0003-table-deletion.md): delete a Table outright.
-app.delete('/api/table_def/:name', async (c) => {
-  await assertSystemManager(who(c))
-  await deleteTable(c.req.param('name'), who(c))
-  return c.json({ ok: true })
-})
-
-// #209 (issue #197): rename a column in place, keeping its data. PUT
-// /api/table_def/:name matches columns BY NAME, so a changed name there reads
-// as delete-plus-add, which it refuses (#250) — hence this route.
-app.post('/api/table_def/:name/rename_column', async (c) => {
-  await assertSystemManager(who(c))
-  const body = (await c.req.json()) as { from?: unknown; to?: unknown }
-  if (typeof body.from !== 'string' || typeof body.to !== 'string')
-    throw new AppError('ValidationError', 'Expected { from, to }')
-  return c.json(await renameColumn(c.req.param('name'), body.from, body.to, who(c)))
-})
-
-// #905: archive a custom Table, or bring it back. Its rows stay readable.
-app.post('/api/table_def/:name/archive', async (c) => {
-  await assertSystemManager(who(c))
-  const body = (await c.req.json().catch(() => ({}))) as { note?: unknown }
-  return c.json(await archiveTable(await resolveTableName(c.req.param('name')), who(c), body.note))
-})
-
-app.post('/api/table_def/:name/unarchive', async (c) => {
-  await assertSystemManager(who(c))
-  return c.json(await unarchiveTable(await resolveTableName(c.req.param('name')), who(c)))
-})
-
-// #871: rename a custom Table, carrying everything that names it.
-app.post('/api/table_def/:name/rename', async (c) => {
-  await assertSystemManager(who(c))
-  const body = (await c.req.json()) as { to?: unknown }
-  if (typeof body.to !== 'string') throw new AppError('ValidationError', 'Expected { to }')
-  return c.json(await renameCustomTable(await resolveTableName(c.req.param('name')), body.to, who(c)))
-})
-
-app.put('/api/table_def/:name', async (c) => {
-  await assertSystemManager(who(c))
-  const body = (await c.req.json()) as Record<string, unknown> & { drop_columns?: boolean; remove_columns?: unknown }
-  rejectSystemClaim(body)
-  const { drop_columns, remove_columns, ...def } = body
-  if (remove_columns !== undefined && !(Array.isArray(remove_columns) && remove_columns.every((c) => typeof c === 'string')))
-    throw new AppError('ValidationError', 'remove_columns must be a list of column names')
-  return c.json(await updateTable(c.req.param('name'), def, { drop_columns, remove_columns }))
-})
+app.route('/', tableDefRoutes)
 
 app.post('/api/save_row', async (c) => {
   const body = (await c.req.json()) as { table?: string; row?: Record<string, unknown> }
@@ -1927,26 +1385,7 @@ app.post('/api/permissions/:table', async (c) => {
   return c.json({ ok: true })
 })
 
-// PLAT-001: app management (System Manager only). Apps are code-defined; these
-// install/uninstall their Tables + doc_events and report installed state.
-app.get('/api/apps', async (c) => {
-  await assertSystemManager(who(c))
-  c.header('Cache-Control', 'no-store')
-  return c.json({ build: buildInfo(), available: getAvailableApps(), installed: await listInstalledApps(), versions: availableRuntimeVersions(), actions: declaredPackageActions(), catalog: await appLibraryCatalog(),
-    failures: packageFailures.map(() => ({ error: 'A configured artifact failed validation. Restore a compatible immutable package and inspect the server discovery log' })) })
-})
-app.post('/api/apps/prepare-install', async c => {
-  await assertSystemManager(who(c))
-  const body = await c.req.json().catch(() => null)
-  if (!body || typeof body.name !== 'string' || !/^[a-z][a-z0-9_]{0,30}$/.test(body.name) || Object.keys(body).some(key => key !== 'name'))
-    throw new AppError('ValidationError', 'Expected { name } naming an app in the catalog; paths and commands are not accepted')
-  return c.json(await prepareAndInstallApp(body.name), 201)
-})
-app.get('/api/app_catalog', async (c) => c.json(await appCatalog(who(c))))
-app.get('/api/app_catalog/closed', async (c) => {
-  await assertSystemManager(who(c))
-  return c.json(await closedApps(who(c)))
-})
+app.route('/', appRoutes)
 // #629: the glossary everyone signed in reads, and an editor's way back to an
 // app's own wording of a term the instance reworded.
 app.get('/api/glossary', async (c) => c.json(await readGlossary(who(c))))
@@ -1955,70 +1394,6 @@ app.post('/api/glossary/take_app_wording', async (c) => {
   if (typeof id !== 'string') throw new AppError('ValidationError', 'Expected { id }')
   await takeAppWording(id, who(c))
   return c.json({ ok: true })
-})
-// #642 (E8): the controls an app declared for the shared top bar, filled for
-// this person.
-app.get('/api/app_bar/:app', async (c) => {
-  c.header('Cache-Control', 'no-store')
-  return c.json(await appBar(c.req.param('app'), who(c), c.req.query()))
-})
-// Authenticated bootstrap contains identities only, never manager metadata.
-app.get('/api/runtime_app_versions', async (c) => {
-  c.header('Cache-Control', 'no-store')
-  return c.json(await activeRuntimeVersions())
-})
-app.post('/api/app_actions/:app/:action', async (c) =>
-  c.json(await runPackageAction(c.req.param('app'), c.req.param('action'), await c.req.json(), who(c))))
-app.post('/api/app_reads/:app/:read', async (c) => {
-  c.header('Cache-Control', 'no-store')
-  return c.json(await runPackageRead(c.req.param('app'), c.req.param('read'), await c.req.json(), who(c)))
-})
-app.get('/api/app_reads/:app/:read/access', async (c) => {
-  c.header('Cache-Control', 'no-store')
-  if (new URL(c.req.url).search || (await c.req.text()).length)
-    return recordAppAccessRefusal(who(c), c.req.param('app'), c.req.param('read'), 'override')
-  return c.json(await runPackageRead(c.req.param('app'), c.req.param('read'), undefined, who(c), true))
-})
-for (const operation of ['preview_app_upgrade', 'upgrade_app', 'activate_app_upgrade'] as const) {
-  app.post(`/api/${operation}`, async c => {
-    await assertSystemManager(who(c))
-    const body = await c.req.json().catch(() => ({}))
-    if (typeof body.name !== 'string' || typeof body.version !== 'string' ||
-        (operation === 'upgrade_app' && typeof body.planId !== 'string'))
-      throw new AppError('ValidationError', 'Expected application name, target version and reviewed planId for upgrade')
-    if (operation === 'preview_app_upgrade') return c.json(await previewAppUpgrade(body.name, body.version))
-    if (operation === 'upgrade_app') return c.json(await upgradeApp(body.name, body.version, body.planId, who(c)))
-    return c.json(await activateAppUpgrade(body.name, body.version))
-  })
-}
-app.post('/api/set_app_enabled', async (c) => {
-  await assertSystemManager(who(c))
-  const body = await c.req.json()
-  if (typeof body.name !== 'string' || typeof body.enabled !== 'boolean')
-    throw new AppError('ValidationError', 'Expected { name, enabled: boolean }')
-  return c.json(await setAppEnabled(body.name, body.enabled))
-})
-// Accepts { name } for a code-registered app, or { manifest } — a declarative
-// manifest of Tables, roles and permissions installed as pure data (#55).
-// System Manager only, and deliberately so: { manifest } lets the caller
-// define schema, so this endpoint is a create-arbitrary-tables surface.
-app.post('/api/install_app', async (c) => {
-  await assertSystemManager(who(c))
-  const body = (await c.req.json().catch(() => ({}))) as { name?: string; manifest?: unknown }
-  if (body.manifest !== undefined) return c.json(await installAppFromManifest(body.manifest), 201)
-  if (!body.name) throw new AppError('ValidationError', 'Expected { name } or { manifest }')
-  return c.json(await installApp(body.name), 201)
-})
-app.post('/api/uninstall_app', async (c) => {
-  await assertSystemManager(who(c))
-  const { name } = (await c.req.json().catch(() => ({}))) as { name?: string }
-  if (!name) throw new AppError('ValidationError', 'Expected { name }')
-  return appOperation(async () => {
-    const [installed] = await sql`select runtime_package from installed_app where name = ${name}`
-    if (installed?.runtime_package)
-      throw new AppError('ValidationError', 'Use disable. Removing applications and deleting their data are separate, unsupported operations')
-    return c.json(await uninstallApp(name))
-  }, true)
 })
 
 // EML-007: trigger an Auto Email Report immediately (the "run now" a scheduler

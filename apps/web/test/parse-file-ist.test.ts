@@ -7,7 +7,7 @@ import * as XLSX from 'xlsx'
 import { describe, expect, test } from 'vitest'
 import { coerceRows, inferColumnType } from 'shared'
 import { parseWorkbook } from '../src/lib/parse-file'
-import { previewCell } from '../src/pages/ImportWizard'
+import { previewCell } from '../src/components/ImportSheetPreview'
 
 /** A workbook whose cells are real Excel dates: serial numbers with a date number format. */
 function workbookFile(cells: [number, string][], date1904 = false): File {
