@@ -140,12 +140,15 @@ async function waitingOnNow(ctx: ReadContext, job: Row | undefined, maker: strin
   return (route?.people.length ? manager : null) ?? MASTER_DATA_TEAM
 }
 
+/** The day in India of a timestamp, or '' for none. */
+const istDay = (at: string | null) => (at ? istToday(Date.parse(at)) : '')
+
 /** A proposal as a person reads it: names only. */
 function view(proposal: ChangeProposal) {
   const a = about(proposal)
   return { id: proposal.row_id, kind: a.kind, what: a.what, from: a.from, to: a.to, store: a.store, state: proposal.state,
     waiting_for: (proposal.route.people.length ? a.manager_name : null) ?? MASTER_DATA_TEAM,
-    reason: proposal.decision_reason, asked_on: day(proposal.created_at), decided_on: day(proposal.decided_at) }
+    reason: proposal.decision_reason, asked_on: istDay(proposal.created_at), decided_on: istDay(proposal.decided_at) }
 }
 
 /** The pending proposals this caller may decide now. */
