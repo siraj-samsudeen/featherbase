@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { PathBar, RecentPaths } from '@featherbase/shop-floor'
 import { encodePath, type NavPath } from '../lib/nav-path'
-import { useNavigation } from '../lib/navigation'
+import { usePageNavigation } from '../lib/navigation'
 import { useNavigationSettings } from '../lib/nav-settings'
 import { useStepLabels } from '../lib/step-labels'
 
@@ -11,7 +11,7 @@ import { useStepLabels } from '../lib/step-labels'
 // offers the person's last ten walks, remembered in their settings.
 
 export function NavPathBar() {
-  const nav = useNavigation()
+  const nav = usePageNavigation()
   const settings = useNavigationSettings()
   const path = nav?.path
   const key = path ? encodePath(path) : ''

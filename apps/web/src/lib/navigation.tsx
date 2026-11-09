@@ -9,7 +9,7 @@ import { EMPTY_PATH, decodePath, encodePath, go as goTo, push as pushStep, repla
 // (Explore) keep one in memory. Screens read and move it through this
 // context; a screen outside any provider simply has no path.
 
-export interface Navigation {
+interface Walk {
   path: NavPath
   /** The step on screen. */
   step: NavStep
@@ -17,29 +17,42 @@ export interface Navigation {
   push: (step: NavStep) => void
   /** Changes the step on screen without adding one: the open group, the tab, the tree's expansion. */
   replace: (step: NavStep) => void
-  /** Moves to step `index` of the path. */
-  go: (index: number) => void
   /** Puts a whole path on screen (a recent path). */
   open: (path: NavPath) => void
-  /** Puts a whole path on screen in place of the current one, adding no history entry. */
-  reshape: (path: NavPath) => void
   /** Rewrites the path and moves one step on along it: the step before the
    *  new current one takes this history entry and the new one adds an entry,
    *  so the browser's back button lands on the step before it on the path. */
   advanceTo: (path: NavPath) => void
+}
+
+/** The walk of a list or row page, kept in its address (and so shareable).
+ *  Only these pages draw the path bar and the row page's tree. */
+export interface AddressNavigation extends Walk {
+  addressed: true
+  /** Moves to step `index` of the path. */
+  go: (index: number) => void
   /** The address of a path on the page that shows its current step, for links. */
   href: (path: NavPath) => string
-  /** Whether this navigation lives in the address (and so can be shared). */
-  addressed: boolean
   /** Unfolds or folds the tree on screen. The step keeps what was unfolded
    *  when it was taken; later changes stay on the page and go into the next
    *  step taken from it, so an earlier step brings back its own tree. */
   setExpanded: (expanded: string[]) => void
 }
 
+/** The walk of a screen with no address of its own (Explore's drill pane). */
+export interface LocalNavigation extends Walk {
+  addressed: false
+}
+
+export type Navigation = AddressNavigation | LocalNavigation
+
 const NavigationContext = createContext<Navigation | null>(null)
 
 export const useNavigation = () => useContext(NavigationContext)
+
+/** The walk, for what only a list or row page draws (the path bar, the row
+ *  page's tree): there it is always the address's walk, or none. */
+export const usePageNavigation = () => useContext(NavigationContext) as AddressNavigation | null
 
 export function NavigationProvider({ value, children }: { value: Navigation; children: ReactNode }) {
   return <NavigationContext.Provider value={value}>{children}</NavigationContext.Provider>
@@ -97,7 +110,7 @@ export function useAddressNavigation(here: NavStep, raw: unknown): Navigation {
   // that step on screen only, until the user moves to another step.
   const [unfolded, setUnfolded] = useState<{ path: NavPath; expanded: string[] } | null>(null)
   const live = unfolded && unfolded.path === path ? unfolded.expanded : null
-  return useMemo<Navigation>(() => {
+  return useMemo<AddressNavigation>(() => {
     const stored = path.steps[path.at]
     const step = live ? { ...stored, expanded: live } : stored
     // A step on the same screen carries the tree as it is now.
@@ -119,7 +132,6 @@ export function useAddressNavigation(here: NavStep, raw: unknown): Navigation {
         } else show(goTo(path, index))
       },
       open: (next) => show(next, false, -1),
-      reshape: (next) => show(next, true),
       advanceTo: (next) => {
         void (async () => {
           if (next.at > 0) await navigate({ href: pathHref({ steps: next.steps, at: next.at - 1 }), replace: true, state: ((was: object) => ({ ...was, navDepth: depth })) as never })
@@ -134,19 +146,15 @@ export function useAddressNavigation(here: NavStep, raw: unknown): Navigation {
 }
 
 /** A navigation held in memory, for a screen with no address of its own. */
-export function useLocalNavigation(here: NavStep): Navigation {
+export function useLocalNavigation(here: NavStep): LocalNavigation {
   const [path, setPath] = useState<NavPath>(() => pushStep(EMPTY_PATH, here))
-  return useMemo<Navigation>(() => ({
+  return useMemo<LocalNavigation>(() => ({
     path,
     step: path.steps[path.at],
     push: (step) => setPath((p) => pushStep(p, step)),
     replace: (step) => setPath((p) => replaceAt(p, step)),
-    go: (index) => setPath((p) => goTo(p, index)),
     open: setPath,
-    reshape: setPath,
     advanceTo: setPath,
-    href: () => '',
     addressed: false,
-    setExpanded: (expanded) => setPath((p) => replaceAt(p, { ...p.steps[p.at], expanded })),
   }), [path])
 }
