@@ -847,10 +847,10 @@ function baseOnlyChange(view: TableMeta): AppError {
   return new AppError('ValidationError', `${view.name} is a view of ${view.view_of}: its columns and settings are ${view.view_of}'s, so change it on ${view.view_of}`)
 }
 
-/** A view's label, description and filters change; its base never does. */
+/** A view's label, description and filters change; its base never does.
+ *  Its one caller (updateTable) has already found `name` to be a view. */
 export async function updateView(name: string, input: unknown, user = 'Administrator'): Promise<TableMeta> {
   const meta = await getMeta(name)
-  if (meta.kind !== 'view') throw new AppError('ValidationError', `${name} is not a view`)
   const body = (input ?? {}) as Record<string, unknown>
   if (body.view_of !== undefined && body.view_of !== meta.view_of)
     throw new AppError('ValidationError', `A view keeps its base; make a new view of ${String(body.view_of)} instead`, { view_of: 'cannot change' })
