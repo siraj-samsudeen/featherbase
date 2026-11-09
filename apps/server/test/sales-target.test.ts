@@ -227,6 +227,12 @@ describe('#3755 sales-target host: embed session from the current assignment', (
     expect(calls).toEqual([])
   })
 
+  test('the report for an account with no assignment rows is the no-assignment marker', async ({ admin, createUser }) => {
+    await seed(admin)
+    const nobody = await createUser({ email: 'test_employee_report_none@example.com', roles: [VIEWER_ROLE] })
+    expect(await nobody.get('/api/sales_target/report')).toEqual({ no_assignment: true })
+  })
+
   test('on an install that never created the assignment Table, a reader gets the no-assignment marker, not an error (#448)', async ({ admin, createUser }) => {
     expect((await sql`select to_regclass('featherbase.sales_target_assignment') as relation`)[0].relation).toBeNull()
     // Only the role: no seed, so no assignment Table.
