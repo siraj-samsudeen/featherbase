@@ -243,6 +243,11 @@ describe('a settings file that cannot be applied as written', () => {
 })
 
 describe('values that differ by environment', () => {
+  test('an environment asked of a file with no sections is refused, saying it lists none', async () => {
+    const err = await problemsOf(applyInstanceSettings({ settings: { 'System Settings': { app_name: 'Acme' } } }, { by: 'Administrator', environment: 'production' }))
+    expect(err.message).toBe('The settings file has no environment "production" (it lists: none)')
+  })
+
   const file: InstanceSettingsFile = {
     settings: { 'Scheduled Job': [{ row_id: 'disable_leavers', enabled: true }] },
     environments: {
@@ -324,6 +329,11 @@ describe('file references', () => {
       by: 'Administrator', files: { 'privacy-notice.md': notice },
     })
     expect(result.changes).toEqual([expect.objectContaining({ table: 'System Settings', row_id: 'System Settings', field: 'privacy_notice', new: notice })])
+  })
+
+  test('a file reference that is not a file name is a problem naming what it gave', async () => {
+    const err = await problemsOf(applyInstanceSettings({ settings: { 'System Settings': { privacy_notice: { file: 5 } } } } as unknown as InstanceSettingsFile, { by: 'Administrator' }))
+    expect(err.fields).toEqual({ 'System Settings.privacy_notice': 'System Settings.privacy_notice names the file 5, which was not provided' })
   })
 
   test('a reference to a file that was not sent is a problem, not an empty notice', async () => {
