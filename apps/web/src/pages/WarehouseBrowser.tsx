@@ -52,12 +52,12 @@ export function WarehouseBrowser({ name, ...context }: { name: string } & Browse
     { key: 'columns', header: 'Columns', align: 'end', cell: (row) => fmtCount(row.columns) },
   ]
 
+  // Refresh is drawn only over a database's listing.
   async function refresh() {
-    if (!database) return
     setRefreshing(true)
     setRefreshError(null)
     try {
-      queryClient.setQueryData(['warehouse-tables', name, database], await refreshTables(name, database))
+      queryClient.setQueryData(['warehouse-tables', name, database], await refreshTables(name, database!))
     } catch (err) {
       setRefreshError(err instanceof ApiError ? err.message : 'The table list could not be refreshed')
     } finally {
@@ -65,7 +65,6 @@ export function WarehouseBrowser({ name, ...context }: { name: string } & Browse
     }
   }
 
-  if (source.isPending) return <Skeleton label="Loading the data source" />
   if ((!database || listing.isPending) && !listing.error) return (
     <div data-testid="browser-loading"><Skeleton label={`Opening ${database ?? name}. The first listing can take up to a minute; it is kept until you refresh.`} /></div>
   )
