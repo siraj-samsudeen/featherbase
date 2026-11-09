@@ -18,6 +18,7 @@ import {
   type AssignmentRecord,
 } from '../src/sales-target'
 import { expectStatus } from './fixtures'
+import { withNamedVariable } from '../src/env'
 
 // The report is month to date in IST; these fixtures were cut on 17-Sep-2026,
 // so "today" is pinned there and every expected period below still means what it meant.
@@ -1318,5 +1319,24 @@ describe('assignments for people the seed did not create', () => {
     expect(result.assignments).toEqual(['1501/010101009'])
     const listed = await admin.get<{ data: { employee: string }[] }>(`${TABLE_URL}?filters=${encodeURIComponent(JSON.stringify([['store_subcategory', '=', '1501/010101009']]))}&fields=${encodeURIComponent('["employee"]')}`)
     expect(listed.data.map((r) => r.employee)).toEqual([outsider])
+  })
+})
+
+describe('what the seed and the embed refuse', () => {
+  test('a seed whose server answers an error stops, naming the step', async () => {
+    const failing = async () => new Response('down for maintenance', { status: 503 })
+    await expect(seedSalesTarget(failing, PASSWORDS, ASSIGNMENTS)).rejects.toThrow('read table meta: HTTP 503 down for maintenance')
+  })
+
+  test('a seed missing a test account\'s password stops, naming the account', async ({ admin }) => {
+    await expect(seedSalesTarget((path, init) => admin.fetch(path, init), {}, ASSIGNMENTS)).rejects.toThrow(/^no password configured for /)
+  })
+
+  test('an embed session without the MotherDuck token is not configured', async () => {
+    const { createEmbedSession } = await import('../src/sales-target')
+    await withNamedVariable('MOTHERDUCK_TOKEN', undefined, async () => {
+      expect(await createEmbedSession({} as never, { apiBase: 'http://127.0.0.1:9', diveId: 'd', serviceAccount: 's' }))
+        .toEqual({ ok: false, status: 0, error: 'MOTHERDUCK_TOKEN is not set on the server', kind: 'not_configured' })
+    })
   })
 })
