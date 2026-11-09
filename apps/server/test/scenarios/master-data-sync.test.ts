@@ -6,7 +6,7 @@
 import { afterAll, beforeAll, describe, expect } from 'vitest'
 import { rmSync } from 'node:fs'
 import { resolve } from 'node:path'
-import type { TestClient } from 'feather-testing-postgres'
+import type { SeedFn, TestClient } from 'feather-testing-postgres'
 import { sql } from '../../src/db'
 import { overrideVariable } from '../../src/env'
 import { invalidateSources } from '../../src/sources/registry'
@@ -37,7 +37,7 @@ const path = (name: string) => `/api/table/${encodeURIComponent(name)}`
 const GIVEN = "StyleHR's staff are copied in and kept in step with People, Asha linked to her StyleHR row"
 
 /** A copy of StyleHR's staff kept in step with a People Table; Asha (P1) is linked to StyleHR's E1. */
-async function staffKeptInStep(admin: TestClient, tag: string) {
+async function staffKeptInStep(admin: TestClient, seed: SeedFn, tag: string) {
   const s = { source: `staff_${tag}`, copy: `Staff Copy ${tag}`, person: `Sync Person ${tag}`, link: `Sync Link ${tag}`, dataSource: `acc-sync-${tag}` }
   await changeStandin(dir, 'sales', [
     `create or replace table ${s.source} (emp_id varchar, name varchar, phone varchar)`,
@@ -51,8 +51,8 @@ async function staffKeptInStep(admin: TestClient, tag: string) {
   })
   await makeTable(admin, { name: s.person, id_pattern: 'prompt', columns: ['full_name', 'phone', 'employment_status'] })
   await makeTable(admin, { name: s.link, columns: ['source_system', 'source_key', 'person'] })
-  await admin.post('/api/save_row', { table: s.person, row: { row_id: 'P1', full_name: 'Asha', phone: '111', employment_status: 'Active' } })
-  await admin.post('/api/save_row', { table: s.link, row: { source_system: 'StyleHR', source_key: 'E1', person: 'P1' } })
+  await seed(s.person, { row_id: 'P1', full_name: 'Asha', phone: '111', employment_status: 'Active' })
+  await seed(s.link, { source_system: 'StyleHR', source_key: 'E1', person: 'P1' })
   await discoverPackages([resolve('../..', 'test-apps/ticket-sink')])
   await admin.post('/api/install_app', { name: 'ticketsink' })
   await admin.post(`${path(s.copy)}:set_master_sync`, {
@@ -80,9 +80,9 @@ const tickets = async (s: Sync) =>
   (await sql`select payload from ticketsink.ticket`).map((r) => JSON.parse(String(r.payload))).filter((p) => p.title.includes(s.person))
 
 describe('master-data-sync', { timeout: 60_000 }, () => {
-  scenario('A name changed in StyleHR reaches the Person row', async ({ admin }, step) => {
+  scenario('A name changed in StyleHR reaches the Person row', async ({ admin, seed }, step) => {
     let s: Sync
-    await step(GIVEN, async () => { s = await staffKeptInStep(admin, 'name') })
+    await step(GIVEN, async () => { s = await staffKeptInStep(admin, seed, 'name') })
     await step('StyleHR changes Asha\'s name to "Asha R" and the copy is refreshed', () =>
       refresh(admin, s, [`update ${s.source} set name = 'Asha R' where emp_id = 'E1'`]))
     await step('Asha\'s Person row reads "Asha R", and its history says the change came from StyleHR', async () => {
@@ -92,9 +92,9 @@ describe('master-data-sync', { timeout: 60_000 }, () => {
     })
   })
 
-  scenario('A phone edited in Featherbase asks whether StyleHR should be fixed', async ({ admin }, step) => {
+  scenario('A phone edited in Featherbase asks whether StyleHR should be fixed', async ({ admin, seed }, step) => {
     let s: Sync
-    await step(GIVEN, async () => { s = await staffKeptInStep(admin, 'phone') })
+    await step(GIVEN, async () => { s = await staffKeptInStep(admin, seed, 'phone') })
     await step('a person changes Asha\'s phone in Featherbase and the copy is refreshed twice', async () => {
       const row = await asha(admin, s)
       await admin.post('/api/save_row', { table: s.person, row: { row_id: 'P1', updated_at: row.updated_at, phone: '999' } })
@@ -108,10 +108,10 @@ describe('master-data-sync', { timeout: 60_000 }, () => {
     })
   })
 
-  scenario('A new StyleHR row is raised, not linked', async ({ admin }, step) => {
+  scenario('A new StyleHR row is raised, not linked', async ({ admin, seed }, step) => {
     let s: Sync
     let before = 0
-    await step(GIVEN, async () => { s = await staffKeptInStep(admin, 'new') })
+    await step(GIVEN, async () => { s = await staffKeptInStep(admin, seed, 'new') })
     await step('StyleHR adds Devan and the copy is refreshed', async () => {
       before = Number((await sql`select count(*)::int as n from ticketsink.ticket`)[0]!.n)
       await refresh(admin, s, [`insert into ${s.source} values ('E2', 'Devan', '222')`])
@@ -128,9 +128,9 @@ describe('master-data-sync', { timeout: 60_000 }, () => {
     })
   })
 
-  scenario('A row gone from StyleHR marks the person inactive', async ({ admin }, step) => {
+  scenario('A row gone from StyleHR marks the person inactive', async ({ admin, seed }, step) => {
     let s: Sync
-    await step(GIVEN, async () => { s = await staffKeptInStep(admin, 'gone') })
+    await step(GIVEN, async () => { s = await staffKeptInStep(admin, seed, 'gone') })
     await step('StyleHR removes Asha and the copy is refreshed', () =>
       refresh(admin, s, [`delete from ${s.source} where emp_id = 'E1'`]))
     await step("Asha's Person row is marked inactive and is still there", async () => {
