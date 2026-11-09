@@ -411,3 +411,18 @@ test('an upgrade adding a document job exposes its private document access in th
     } }])
   } finally { await rm(prior, { recursive: true, force: true }); await rm(next, { recursive: true, force: true }) }
 })
+
+test('a document job refused after its handler returned, before its work commits, still fails for good', async ({ admin }) => {
+  // The undeclared read starts once the handler has returned and the job's
+  // own checks have passed, while its transaction is still committing.
+  const dir = await fixture('void (async () => { for (let i = 0; i < 40; i++) await null; ctx.people.list().catch(() => {}) })()')
+  try {
+    expect(await discoverPackages([dir])).toEqual([])
+    await admin.post('/api/install_app', { name: 'ownerjobs' })
+    const [queued] = await sql`select row_id from background_job where method='ownerjobs.advance' and job_status='queued' order by created_at limit 1`
+    await run()
+    expect(await sql`select outcome, error from job_execution where job=${queued.row_id} and attempt=1`)
+      .toEqual([{ outcome: 'error', error: 'The job ownerjobs.advance has not declared the grant read_people' }])
+    expect(await sql`select job_status from background_job where row_id=${queued.row_id}`).toEqual([{ job_status: 'failed' }])
+  } finally { await rm(dir, { recursive: true, force: true }) }
+})

@@ -1046,6 +1046,12 @@ describe('a dataset guard', () => {
     expect(check(sumWithin, inPeriod(10, '100', month), null)).toBe(refusal)
   })
 
+  test('a total that is not plain decimal text is refused rather than compared', () => {
+    const sums = (amount: string) => ({ rows: 1, nonZero: {}, sums: { amount }, periods: {} })
+    expect(() => guardRefusal('sales', [{ kind: 'max_sum_drop_pct', column: 'amount', value: 10 }], sums('1e3'), sums('100')))
+      .toThrow('not a decimal total: 1e3')
+  })
+
   test('the first guard that fails is the one named', () => {
     expect(guardRefusal('sales', [{ kind: 'min_rows', value: 1 }, { kind: 'not_all_zero', column: 'target' }], counts(2, 0), null))
       .toBe('sales: every target value is empty or zero (2 rows)')

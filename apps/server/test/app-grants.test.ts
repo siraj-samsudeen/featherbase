@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { registerApp, installApp, uninstallApp } from '../src/apps'
 import { sql } from '../src/db'
+import { saveDoc } from '../src/document'
 import type { AppManifest } from '../src/apps'
 
 // PLAT-004 (#54): an app manifest declares its own roles and DocPerm grants.
@@ -230,6 +231,19 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
       // The app's own grant is gone, but the role is still held via
       // has_role — dropping it would strand the user.
       expect((await sql`select 1 from permission where role = ${ROLE}`).length).toBe(0)
+      expect((await sql`select 1 from role where row_id = ${ROLE}`).length).toBe(1)
+    } finally {
+      await unwire()
+    }
+  })
+
+  test('a shared role survives uninstall while a grant the app did not make still names it', async () => {
+    registerApp(manifest())
+    try {
+      await installApp(APP)
+      await saveDoc('Permission', { ref_table: 'ToDo', role: ROLE, operation: 'read', scope_mode: 'all', column_rule: 'every' })
+      await uninstallApp(APP)
+      expect((await sql`select ref_table from permission where role = ${ROLE}`)).toEqual([{ ref_table: 'ToDo' }])
       expect((await sql`select 1 from role where row_id = ${ROLE}`).length).toBe(1)
     } finally {
       await unwire()
