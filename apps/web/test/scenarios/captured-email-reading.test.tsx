@@ -8,13 +8,12 @@
 // line breaks and is styled to wrap them (white-space: pre-wrap), and no
 // element that could load anything is rendered at all.
 import { screen, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { describe } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { rowHref } from 'shared'
 import { sql } from 'server/src/db'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp } from '../pg-test'
+import { test, expect, renderSession, byTestId, type Session } from '../pg-test'
 
 const scenario = scenarioFor(test, 'captured-email-reading')
 
@@ -34,31 +33,33 @@ async function seed(variant: 'normal' | 'empty' | 'unsafe') {
   return { id, body, names }
 }
 
-async function open(admin: TestClient, id: string) {
-  await renderApp(rowHref('Email Sink', id), admin)
-  return screen.findByTestId('reading-presentation', {}, { timeout: 8000 })
+async function open(admin: TestClient, id: string): Promise<{ session: Session; reading: HTMLElement }> {
+  const { session } = await renderSession(rowHref('Email Sink', id), admin)
+  return { session, reading: await screen.findByTestId('reading-presentation', {}, { timeout: 8000 }) }
 }
+const READING = byTestId('reading-presentation')
 
 describe('captured-email-reading', () => {
   scenario('Read a captured invoice notice', async ({ admin }, step) => {
     let notice: Awaited<ReturnType<typeof seed>>
+    let session!: Session
     let reading: HTMLElement
     await step('the user can read the locally captured invoice notice', async () => { notice = await seed('normal') })
-    await step('the user opens the captured invoice notice', async () => { reading = await open(admin, notice.id) })
+    await step('the user opens the captured invoice notice', async () => { ({ session, reading } = await open(admin, notice.id)) })
     await step('the user reads the invoice notice as an email with its attachment names', () => {
+      // Visible, exact and absent: the DSL's text verbs check containment in the text, shown or hidden.
       expect(within(reading).getByRole('heading', { name: 'Your November invoice' })).toBeVisible()
       for (const text of ['accounts@example.test', 'priya@example.test', NAMES]) expect(within(reading).getByText(text, { exact: true })).toBeVisible()
       expect(within(reading).getByTestId('reading-body').textContent).toBe(notice.body)
       expect(within(reading).getByTestId('reading-header-created_at').textContent).not.toBe('')
       expect(within(reading).queryAllByRole('link')).toHaveLength(0)
     })
-    await step('the user is told that local capture does not confirm external delivery', () => {
-      expect(reading).toHaveTextContent('Captured locally in Email Sink. This does not confirm external delivery.')
-    })
+    await step('the user is told that local capture does not confirm external delivery', () =>
+      session.within(READING, (email) => email.assertText('Captured locally in Email Sink. This does not confirm external delivery.')))
     await step('raw values are initially collapsed and cannot be edited', async () => {
       const details = screen.getByTestId('raw-details') as HTMLDetailsElement
       expect(details.open).toBe(false)
-      await userEvent.click(within(details).getByText('Raw details', { exact: true }))
+      await session.within(byTestId('raw-details'), (raw) => raw.click('Raw details'))
       // A value the user can't edit: shown as a value (#795) or as a disabled
       // control; either way nothing in it accepts input.
       for (const column of ['body', 'attachment_b64']) {
@@ -74,20 +75,19 @@ describe('captured-email-reading', () => {
 
   scenario('Read an empty captured invoice notice', async ({ admin }, step) => {
     let notice: Awaited<ReturnType<typeof seed>>
-    let reading: HTMLElement
+    let session!: Session
     await step('the user can read the locally captured invoice notice without a message or attachments', async () => { notice = await seed('empty') })
-    await step('the user opens the captured invoice notice', async () => { reading = await open(admin, notice.id) })
-    await step('the user sees that there is no message body and no attachments', () => {
-      expect(reading).toHaveTextContent('No message body')
-      expect(reading).toHaveTextContent('No attachments')
-    })
+    await step('the user opens the captured invoice notice', async () => { ({ session } = await open(admin, notice.id)) })
+    await step('the user sees that there is no message body and no attachments', () =>
+      session.within(READING, (email) => email.assertText('No message body').assertText('No attachments')))
   })
 
   scenario('Read an invoice notice containing markup', async ({ admin }, step) => {
     let notice: Awaited<ReturnType<typeof seed>>
     let reading: HTMLElement
     await step('the user can read the locally captured invoice notice containing unsafe markup and a long line', async () => { notice = await seed('unsafe') })
-    await step('the user opens the captured invoice notice', async () => { reading = await open(admin, notice.id) })
+    await step('the user opens the captured invoice notice', async () => { ({ reading } = await open(admin, notice.id)) })
+    // What is rendered, not what it reads: element counts, text whole and its classes are beyond the DSL.
     await step('the markup remains visible text without executable content or remote requests', () => {
       expect(within(reading).getByTestId('reading-body').textContent).toBe(notice.body)
       expect(reading.querySelectorAll('img,script,iframe,object,embed,link,style')).toHaveLength(0)
