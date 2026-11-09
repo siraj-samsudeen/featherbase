@@ -57,7 +57,6 @@ export function RetireDialog({ table, name, onClose, onSubmit }: { table: string
   const ready = reason.trim().length > 0 && !busy
 
   async function retire() {
-    if (!ready) return
     setBusy(true)
     setError(null)
     onSubmit?.()
