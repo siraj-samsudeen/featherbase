@@ -125,3 +125,23 @@ test('a source of another kind opens on the native Data Source form', async ({ a
   expect(await screen.findByTestId('form-view', {}, WAIT)).toBeInTheDocument()
   expect(screen.queryByTestId('warehouse-databases')).not.toBeInTheDocument()
 })
+
+test("a copied table's refresh schedule the network drops says it could not be saved", async ({ admin }) => {
+  await connect(admin, 'web-wh-schedule-drop')
+  await admin.post('/api/table/Data%20Source/web-wh-schedule-drop:copy_create', {
+    database: 'sales', schema: 'main', table: 'stores', name: 'Drop Store', key: 'code',
+    columns: ['name', 'code'].map((source) => ({ source, column_name: source })),
+  })
+  await renderApp('/featherbase/admin/table/drop-store', admin)
+  const schedule = await screen.findByTestId('copy-schedule', {}, WAIT)
+  const cadence = within(schedule).getByRole('combobox', { name: 'Refresh automatically' })
+  await waitFor(() => expect(cadence).toBeEnabled(), WAIT)
+  const real = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const path = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (path.includes(':set_copy_schedule')) throw new TypeError('Failed to fetch')
+    return real(input, init)
+  })
+  await userEvent.selectOptions(cadence, 'hourly')
+  expect(await within(schedule).findByText('The refresh schedule could not be saved', {}, WAIT)).toBeInTheDocument()
+})
