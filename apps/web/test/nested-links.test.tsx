@@ -114,6 +114,16 @@ test('a floating link list that scrolls itself stays open', async ({ admin }) =>
   expect(screen.getByTestId('link-options-role')).toBeInTheDocument()
 })
 
+test('a floating link list closes when the page scrolls away from it', async ({ admin }) => {
+  const person = await admin.post<Saved>('/api/save_row', { table: 'Person', row: { email: 'nested-role-page-scroll@example.test', enabled: true } })
+  await renderApp(rowHref('Person', person.row_id), admin)
+  fireEvent.click(await screen.findByTestId('add-row-roles', {}, { timeout: 8000 }))
+  fireEvent.change(await screen.findByRole('combobox', { name: /Role, row 1$/ }), { target: { value: 'Sys' } })
+  await within(await screen.findByTestId('link-options-role')).findAllByTestId('link-option')
+  fireEvent.scroll(document)
+  await waitFor(() => expect(screen.queryByTestId('link-options-role')).not.toBeInTheDocument())
+})
+
 test("a cell's error goes once the grid changes, and unpicked text leaves the cell when it is left", async ({ admin }) => {
   const order = await seedOrders(admin)
   await renderApp(rowHref('Nest Order', order.row_id), admin)

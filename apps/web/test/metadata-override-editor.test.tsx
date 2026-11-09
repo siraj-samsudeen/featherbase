@@ -26,6 +26,17 @@ test('a column adjustment receives its ID from the generic form', async ({ admin
   })
 })
 
+test('an adjustment saved before a column is chosen asks for a column or Whole Table', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: table, columns: [{ column_name: 'floor', column_type: 'Data', label: 'Floor' }] })
+  await renderApp(`${path}/new?prefill=${encodeURIComponent(JSON.stringify({ table_name: table }))}`, admin)
+  const column = await screen.findByLabelText('Column')
+  await waitFor(() => expect(column).toHaveTextContent('floor'))
+  fireEvent.click(screen.getByTestId('form-save'))
+  expect(await screen.findByText('Choose a column or Whole Table')).toBeInTheDocument()
+  const saved = await admin.get<{ data: unknown[] }>(`/api/table/Metadata%20Override?filters=${encodeURIComponent(JSON.stringify([['table_name', '=', table]]))}`)
+  expect(saved.data).toEqual([])
+})
+
 for (const value of ['false', '0', 'true', '1']) {
   test(`editing stored boolean text ${value} uses a checkbox`, async ({ admin }) => {
     await admin.post('/api/table_def', { name: table, columns: [{ column_name: 'floor', column_type: 'Data' }] })

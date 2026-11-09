@@ -2,7 +2,8 @@
 // with the box its column calls for"): a link box reads as a picker, password
 // managers leave it alone, its values sort by name, and the Add filter row
 // offers the same box as the quick filters. Made-up rows only.
-import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { tableHref } from 'shared'
 import { test, expect, renderApp } from './pg-test'
@@ -227,4 +228,88 @@ test('a value does not survive a change to a different kind of box', async ({ ad
   fireEvent.change(value(), { target: { value: 'x' } })
   chooseColumn('shop_name')
   expect(value()).toHaveValue('')
+})
+
+test('Down on the last option of a link list stays on it', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(tableHref(SHOP), admin)
+  const box = await screen.findByTestId('std-filter-region')
+  fireEvent.focus(box)
+  const list = await screen.findByTestId('link-options-region')
+  const all = await within(list).findAllByTestId('link-option')
+  await waitFor(() => expect(options(list)).toEqual(['Andhra', 'Kerala', 'Tamil Nadu']))
+  all.at(-1)!.focus()
+  fireEvent.keyDown(all.at(-1)!, { key: 'ArrowDown' })
+  expect(within(list).getAllByTestId('link-option').at(-1)).toHaveFocus()
+})
+
+test("Up on the first option of a link list goes back to the list's search box", async ({ admin }) => {
+  await seed(admin)
+  await renderApp(tableHref(SHOP), admin)
+  const box = await screen.findByTestId('std-filter-region')
+  fireEvent.focus(box)
+  const list = await screen.findByTestId('link-options-region')
+  const [first] = await within(list).findAllByTestId('link-option')
+  first.focus()
+  fireEvent.keyDown(first, { key: 'ArrowUp' })
+  expect(within(list).getByRole('searchbox')).toHaveFocus()
+})
+
+test("Enter in a form link's search box does not submit the form", async ({ admin }) => {
+  await seed(admin)
+  await renderApp(`${tableHref(SHOP)}/row/s-1`, admin)
+  await screen.findByTestId('link-open-region')
+  fireEvent.focus(document.querySelector<HTMLInputElement>('[data-field=region]')!)
+  const search = within(await screen.findByTestId('link-options-region')).getByRole('searchbox')
+  // fireEvent answers false when a handler kept the key from the page.
+  expect(fireEvent.keyDown(search, { key: 'Enter' })).toBe(false)
+})
+
+/** Holds every response whose address contains `part` until released. */
+function holdResponses(part: string) {
+  let release!: () => void
+  const held = new Promise<void>((resolve) => { release = resolve })
+  let reached!: () => void
+  const asked = new Promise<void>((resolve) => { reached = resolve })
+  const real = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const path = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (!path.includes(part)) return real(input, init)
+    reached()
+    await held
+    return real(input, init)
+  })
+  return { asked, release }
+}
+
+test("a form link's list opened before its Table's details arrive lists names once they do", async ({ admin }) => {
+  await seed(admin)
+  const details = holdResponses(`/api/table/${encodeURIComponent(REGION)}:meta`)
+  await renderApp(`${tableHref(SHOP)}/new`, admin)
+  await screen.findByTestId('form-view', {}, { timeout: 10_000 })
+  await details.asked
+  fireEvent.focus(document.querySelector<HTMLInputElement>('[data-field=region]')!)
+  const list = await screen.findByTestId('link-options-region')
+  // Until then the rows can only be listed by their ids.
+  await waitFor(() => expect(options(list)).toEqual(expect.arrayContaining(['r-k'])))
+  await act(async () => { details.release() })
+  await waitFor(() => expect(options(screen.getByTestId('link-options-region'))).toEqual(['Andhra', 'Kerala', 'Tamil Nadu']))
+})
+
+test('a person search that answers after the box was left does not open its list', async ({ admin }) => {
+  await admin.post('/api/table_def', {
+    name: 'Lb Visit', columns: [{ column_name: 'host', column_type: 'Reference', reference_table: 'Person', label: 'Host' }],
+  })
+  await renderApp(`${tableHref('Lb Visit')}/new`, admin)
+  await screen.findByTestId('form-view', {}, { timeout: 10_000 })
+  const search = holdResponses('/api/people/pick')
+  const box = document.querySelector<HTMLInputElement>('[data-field=host]')!
+  fireEvent.focus(box)
+  await search.asked
+  fireEvent.blur(box)
+  await act(async () => {
+    search.release()
+    await new Promise((resolve) => setTimeout(resolve, 300))
+  })
+  expect(screen.queryByTestId('link-options-host')).not.toBeInTheDocument()
 })
