@@ -126,7 +126,8 @@ async function resolveRows(
         action: 'fail',
         message: `row has no value in the match key column ${keyColumn}`,
       } satisfies Resolution
-    if ((counts.get(k) ?? 0) > 1)
+    // Every non-blank key was counted above, by the same keyOf.
+    if (counts.get(k)! > 1)
       return {
         action: 'fail',
         message: `key ${k} appears more than once in the import`,
