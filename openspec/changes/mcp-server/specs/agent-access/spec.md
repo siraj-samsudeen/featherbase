@@ -5,7 +5,9 @@
 An agent is an AI assistant the user runs in an app of their own, such as Claude Code or Codex.
 The user connects it to Featherbase with one of their access tokens, and from then on the agent
 works with Tables the way the user could: it finds and reads the rows the user can see, and adds,
-changes and deletes rows the user may change, under the same rules and in the user's name.
+changes and deletes rows the user may change, under the same rules and in the user's name. Every
+change it makes is marked in history as made through an agent, so a reader can tell it from the
+user's own work.
 
 The examples follow one user, who can read and change the "Customer" Table, which holds "Acme
 Traders" and "Bala Stores" in Chennai and "Coral Mart" in Madurai.
@@ -32,6 +34,54 @@ Then the customer's history shows the user added it
 Given the user is signed in to Featherbase in their browser
 When an agent connects without an access token
 Then the connection is refused and no Table is reachable
+```
+
+### Requirement: History marks a change made through an agent
+
+A change an agent makes SHALL appear in the row's history under the token's owner, as any of the
+owner's changes does, and SHALL also be marked as made through an agent, with the label the
+access token had at that moment. A change the owner makes in Featherbase themselves SHALL carry no
+such mark.
+
+#### Scenario: A change through an agent is marked
+
+```gherkin
+Given the user has connected an agent with their access token labelled "Claude on my laptop"
+When the agent changes the city of "Acme Traders" to "Madurai"
+Then the change in its history is by the user
+And it is marked as made through an agent with the token "Claude on my laptop"
+```
+
+#### Scenario: A change by hand is not marked
+
+```gherkin
+When the user changes the city of "Acme Traders" to "Madurai" themselves
+Then the change in its history is by the user
+And it is not marked as made through an agent
+```
+
+### Requirement: A service account's agent acts as that account
+
+An access token of a service account SHALL connect an agent too. The agent SHALL then act as the
+service account, with only the account's own roles, and its changes SHALL be marked in history as
+any agent's are.
+
+#### Scenario: A service account's agent sees only what the account may read
+
+```gherkin
+Given a service account "Nightly Sync" that can read "Customer" but not "Payroll"
+When an agent connected with the account's access token asks which Tables it can work with
+Then "Customer" is listed
+And "Payroll" is not
+```
+
+#### Scenario: A service account's change is marked
+
+```gherkin
+Given an agent connected with the access token "Sync agent" of the service account "Nightly Sync"
+When the agent adds a customer "Dhan Agencies"
+Then the customer's history shows "Nightly Sync" added it
+And it is marked as made through an agent with the token "Sync agent"
 ```
 
 ### Requirement: See the Tables the user can read

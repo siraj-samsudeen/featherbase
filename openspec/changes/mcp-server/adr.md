@@ -7,7 +7,7 @@
 
 ADR review completed for this change. One durable decision is recorded: agents reach Featherbase
 through the existing HTTP API, over MCP, authenticated only by an access token (design D2, D3, D4).
-It is Proposed until the owner approves the design, then Accepted before the PR merges.
+The owner approved the design on 09-Nov-2026, so it is Accepted.
 
 ## In-Force ADRs Reviewed
 

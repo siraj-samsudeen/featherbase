@@ -1,7 +1,10 @@
 ## Context
 
 Issue #1083. The owner decided: reads and writes from day one, and the endpoint is `/mcp` inside
-the existing Hono API server (`apps/server`), not a separate process.
+the existing Hono API server (`apps/server`), not a separate process. On 09-Nov-2026 the owner
+approved D1 to D7 and answered the open questions: import stays out of this change; a change made
+through an agent is marked as such in history (D8); and a Service Account's token opens `/mcp`,
+acting with only that account's roles (D2).
 
 What exists today:
 
@@ -17,6 +20,11 @@ What exists today:
 - Errors leave the server as one envelope, `{ error: { type, message, fields? } }` (`errors.ts`).
 - `/api/navigable_tables` lists the Tables the caller can read; `:meta` returns a Table's
   metadata with `readable_columns` for the caller.
+- History is the `version` Table: one row per tracked save (`recordVersion` in `document.ts`, and
+  the retire/reactivate entry beside it), `created_by` the actor's id, `data` a JSON object
+  (`changed`, `created`, `import_run`, `retirement`, ...). `GET /api/activity/:table/:name`
+  (`documentActivity`) returns it with the actor's name. An access token's request runs as the
+  token's owner, so today nothing in history tells an agent's change from the owner's own.
 - `@modelcontextprotocol/sdk` 1.32.2 is the latest stable (`npm view`, 2026-10-23). It ships
   `WebStandardStreamableHTTPServerTransport`, which takes a web `Request` and returns a `Response`,
   so it fits a Hono handler without Node `req`/`res` adapters. It accepts zod 4, which the server
@@ -72,7 +80,8 @@ requires replicas to agree). Stateless also means a revoked token stops the very
 
 The handler reads `Authorization: Bearer …` and accepts only an access token (`fbt_` prefix),
 resolved by the same `resolveToken`, so revocation, expiry and a disabled owner apply. Any access
-token works, a Service Account's included, since a token acts as its owner. A session token and
+token works, a Service Account's included (owner's decision, 09-Nov-2026): the agent acts as that
+account, with only the account's own roles, and its changes carry the D8 mark the same way. A session token and
 the `sid` cookie are ignored; no token answers HTTP 401 before the protocol starts. A request with
 an `Origin` header not in `config.allowedOrigins` is refused with 403 (the protocol's DNS-rebinding
 rule). No `/mcp` CORS is offered.
@@ -149,6 +158,28 @@ owner's existing request budget, and a 429 comes back as a D6 refusal. A POST bo
 *Rejected: the API's 500-row cap.* A page of 500 wide rows overruns an agent's context and buys
 nothing an agent cannot get by paging.
 
+### D8. History marks a change made through an agent, with the token's label
+
+The `/mcp` handler resolves the access token once, keeping its id and label, and runs each tool's
+inner request inside a request-scoped context (`AsyncLocalStorage`, like `runInSession`) that says
+"through an agent, with this token". Every history entry written inside it (`recordVersion`, and
+the retire/reactivate entry) adds `agent: { token_id, token_label }` to the Version row's `data`.
+The actor stays the token's owner in `created_by`, so who did it, permissions, "my rows" and every
+existing reader are unchanged. `documentActivity` passes `agent` through, so the row's history
+(`GET /api/activity/:table/:name`) shows it. The label is the one the token had at that moment; a
+later rename does not rewrite history, and the id finds the token in the token list.
+
+The context is set only in-process by the `/mcp` handler, never from a header, so no outside
+caller can claim or hide the mark. A Table that keeps no change history records no mark, as it
+records no change.
+
+*Rejected: a new column on `version`.* It needs a migration for a fact only some entries carry, and
+`data` already holds the other per-entry facts (`import_run`, `retirement`). *Rejected: an agent
+as the actor (`created_by` = the token).* Permissions, row ownership and every "who" reader key on
+the principal; the owner decided the actor stays the token's owner. *Rejected for this change:
+showing the mark in the Admin's timeline.* That is a UI change and takes the UI route; this change
+records it and returns it with the history.
+
 ## Risks / Trade-offs
 
 - [An agent can make many writes quickly, all under the person's name] → the person's own rate
@@ -172,9 +203,8 @@ mount. `docs/DEPLOY.md` notes that a reverse proxy must pass `/mcp` to the API p
 
 ## Open Questions
 
-- Owner's call: is import (with undo) part of the first cut, as the issue's text lists it, or a
-  follow-up? This design leaves it out.
-- Owner's call: should history mark a change as made through an agent (for example, with the
-  token's label), or is "made by the token's owner" enough, as today for scripts?
-- Owner's call: may a Service Account's token open `/mcp` (D2 says yes, since a token acts as its
-  owner), or only a person's own token?
+None. The owner answered all three on 09-Nov-2026:
+
+- Import (with undo) is not part of this change; it stays out of scope, for a later change.
+- History marks a change made through an agent with the token's label (D8).
+- A Service Account's token may open `/mcp`, acting as that account (D2).
