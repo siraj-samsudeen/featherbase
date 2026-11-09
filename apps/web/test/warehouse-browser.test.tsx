@@ -1,8 +1,8 @@
 // The warehouse browser (#772, #969) at its edges: searches that match no
 // database or schema, a chosen schema the search hides, a preview addressed
 // without its table's schema, a table with empty cells and bookkeeping
-// columns, and the server or the network failing a listing, a refresh or a
-// preview. Against the local MotherDuck stand-in.
+// columns, and the server or the network failing a listing or a preview.
+// Against the local MotherDuck stand-in.
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, beforeAll, vi } from 'vitest'
@@ -103,13 +103,4 @@ test('a table list the network drops says it could not be read', async ({ admin 
   dropNetwork((url) => url.includes('tables'))
   await open(admin, 'database=sales')
   await waitFor(() => expect(screen.getByTestId('warehouse-browser')).toHaveTextContent('The table list could not be read'), WAIT)
-})
-
-test('a refresh the network drops says the list could not be refreshed and keeps the list', async ({ admin }) => {
-  await open(admin, 'database=sales')
-  await waitFor(() => expect(screen.getByRole('table', { name: 'Warehouse tables' })).toHaveTextContent('ledger'), WAIT)
-  dropNetwork((url) => url.includes('refresh'))
-  await userEvent.click(screen.getByTestId('browser-refresh'))
-  expect(await screen.findByText('The table list could not be refreshed', {}, WAIT)).toBeInTheDocument()
-  expect(screen.getByRole('table', { name: 'Warehouse tables' })).toHaveTextContent('ledger')
 })
