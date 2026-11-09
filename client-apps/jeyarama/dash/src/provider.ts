@@ -172,3 +172,4 @@ export function orgChartProvider({ today = istToday }: ProviderOptions = {}) {
     return (await reachOf(documents, person.id, today())).places
   }
 }
+// Probe for #995: CI timing only, never merged.
