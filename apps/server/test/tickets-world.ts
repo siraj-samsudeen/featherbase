@@ -1,11 +1,9 @@
 // The Tickets app as its spec scenarios meet it (#1070): one installed
 // Tickets, the people the scenarios name (Anjali, Colleague, Support,
 // Verifier, Bala, Karthik, Shiva, Fulfiller) and the configuration they
-// assume, driven through Tickets' own actions and reads over HTTP. It is the
-// Vitest form of the cucumber flow objects acceptance-tests/support/pages/
-// tickets.js and ticket-transitions.js, so the scenario tests in
-// apps/server/test/scenarios/ and apps/web/test/scenarios/ arrange the same
-// world and assert the same things.
+// assume, driven through Tickets' own actions and reads over HTTP, so the
+// scenario tests in apps/server/test/scenarios/ and apps/web/test/scenarios/
+// arrange the same world and assert the same things.
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
