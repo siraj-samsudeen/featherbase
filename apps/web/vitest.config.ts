@@ -39,8 +39,8 @@ export default defineConfig({
     // if both speak the same format. The `json` reporter drops this run's map
     // into `.nyc_output/jsdom.json`, beside the e2e fixtures' output, where
     // `pnpm coverage:merged` picks both up. The thresholds below gate THIS run
-    // alone — the jsdom floor CI enforces; the merged report is the number
-    // component tests are targeted from.
+    // alone — the jsdom floor CI enforces, and since the browser suite is down
+    // to the smoke test (#1080) the number that counts.
     coverage: {
       provider: 'istanbul',
       // Moving the shared UI out of this app must not remove it from the
@@ -53,33 +53,24 @@ export default defineConfig({
       // (v8's default), which hides the numbers exactly when they are most
       // useful for diagnosing what a broken run stopped exercising.
       reportOnFailure: true,
-      // Ratchet toward 100% (#226 ruling): only raise, never lower.
-      // Re-measured 2026-08-28 after #223 batch 1 moved seven e2e specs down
-      // to this layer: lines/statements 33.33% then 33.35% across two runs,
-      // functions 45.92% then 46.32%, rounded DOWN to the whole percent.
-      // (The pre-batch floor was lines 29, functions 39.) Lines are stable to
-      // a hundredth of a point; the function count is not (component tests
-      // take different render branches run to run), so its threshold sits a
-      // further point below the floor rather than a hundredth above it,
-      // where it would flake.
-      //
-      // Re-measured 2026-08-28 after #197 added the column editor and the
-      // post-hoc Table merge with component tests rather than e2e alone:
-      // lines/statements 34.25%, functions 50.61%. The same asymmetry
-      // applies — lines to the whole percent below, functions a further
-      // point below that.
-      //
-      // Re-measured 2026-10-26 on the switch to Istanbul (ADR 0012), whose
-      // counting differs from v8's: lines 73.62%, statements 72.08%,
-      // functions 66.48% — the suite had long outgrown the old 34/34/49 floor.
-      // Then again after the component tests the merged report called for:
-      // lines 81.97%, statements 80.1%, functions 78.15%. Same rounding as above.
-      // Re-measured 2026-10-26 once the merged report reached 100% of lines
-      // and functions: lines 94.24%, statements 92.48%, functions 92.79%.
+      // ADR 0017's caps, as the server's: negative thresholds cap uncovered
+      // counts, not percentages; 100 means none uncovered (a cap of -0 would
+      // read as a 0% floor). Tighten as coverage improves; never exclude code
+      // to meet them. An additional uncovered item fails even if % rounds up.
+      // CI's unit-web job merges the four component shards' blobs and applies
+      // these to the merge (tools/ci-shards.mjs runs each shard at 0).
+      // Stage 2 (lines, statements, functions): measured on a fresh database,
+      // the whole jsdom suite. One statement is left: the Admin index's
+      // early return when another effect has already moved the address
+      // (router.tsx AdminIndexPage). It guards a race no test can hold open:
+      // the Home Pages answer arriving while the index is still mounted
+      // after the first-run setup offer navigated away; React runs the
+      // index's effect before its parent's offer in one commit, and the next
+      // commit unmounts the index. Branches are a later stage.
       thresholds: {
-        lines: 94,
-        statements: 92,
-        functions: 91,
+        lines: 100,
+        statements: -1,
+        functions: 100,
       },
     },
   },
