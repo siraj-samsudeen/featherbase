@@ -177,3 +177,19 @@ test('JSON holding plain words reads as those words in the pane', async ({ admin
   await within(bin).findByRole('heading', { name: 'Stock' }, T)
   expect(field(bin, 'Spec')!.querySelector('code')).toHaveTextContent(/^loose shelving$/)
 })
+
+test('on a wide screen the pane sits on the right by default', async ({ admin }) => {
+  const real = window.matchMedia
+  window.matchMedia = vi.fn((query: string) => ({
+    matches: query.startsWith('(min-width:'),
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  })) as unknown as typeof window.matchMedia
+  try {
+    const bin = await openNorthBay(admin)
+    expect(await within(bin).findByRole('button', { name: 'Auto (right)' }, T)).toHaveAttribute('aria-pressed', 'true')
+  } finally {
+    window.matchMedia = real
+  }
+})
