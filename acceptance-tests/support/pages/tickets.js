@@ -2,10 +2,9 @@
 
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
-const { pathToFileURL } = require('node:url');
 const { resolve } = require('node:path');
 const { Api } = require('../api');
-const { REPO_ROOT, API_URL, BASE_URL, restartAcceptance, resetAcceptance } = require('../stack');
+const { REPO_ROOT, BASE_URL, restartAcceptance, acceptanceSql } = require('../stack');
 const appEnvironment = { FEATHERBASE_APP_PATHS: JSON.stringify([resolve(REPO_ROOT, 'example-apps/tickets')]) };
 let packageDiscovered = false;
 // Tickets records an upgrade step, so its Tables answer only a client that names
@@ -98,136 +97,35 @@ class Tickets {
     this.initial = { ...this.ticket };
   }
   async access(email = 'anjali@example.com', scope = 'Gold sales, read only') { await this.create('access', { email, scope }); }
-  async verified(active = true, region = 'Kerala') {
-    if (!this.ticket) await this.access();
-    await this.action('verify', { email: this.details.email, active, region, evidence: 'Fictional HR confirmation 2026-11-03' }, 'Verifier');
-  }
-  async approved(scope = 'Gold sales, read only', region = 'Kerala') {
-    await this.access('anjali@example.com', scope);
-    await this.verified(true, region);
-    await this.action('decide', { decision: 'approved' }, region === 'Kerala' ? 'Bala' : 'Shiva');
-  }
-  async competingDecisions() {
-    await this.access();
-    await this.verified(true, 'Chennai');
-    const revision = this.revision();
-    // Real HTTP requests get separate host transactions, unlike pg-test's
-    // single shared rollback transaction. Both contend for the same row.
-    const outcomes = await Promise.all([
-      this.call('Shiva', '/api/app_actions/tickets/decide', { idempotencyKey: randomUUID(), payload: { ...revision, decision: 'approved' } }),
-      this.call('Karthik', '/api/app_actions/tickets/decide', { idempotencyKey: randomUUID(), payload: { ...revision, decision: 'rejected', reason: 'Conflicting decision' } }),
-    ]);
-    assert.equal(outcomes.filter(result => result.status === 200).length, 1);
-    assert.equal(outcomes.filter(result => [409, 417].includes(result.status)).length, 1);
-    const winner = outcomes.find(result => result.status === 200).body.result.ticket;
-    const saved = await this.open('Support');
-    assert.equal(saved.ticket.ticket_state, winner.ticket_state);
-    assert.equal(saved.privateEvents.filter(event => event.operation === 'decide').length, 1);
-  }
   async complaint(original = 'Invoices cleared two days ago are missing from the report') { await this.create('freshness', { complaint: original }, original); }
   async finding() {
     await this.action('evidence', { expected: '2 invoices from source-check-1', observed: '0 from report-check-1',
       reference: 'source-check-1; report-check-1', observed_at: '2026-11-03T09:00:00Z', finding: 'confirmed_mismatch' }, 'Support');
   }
-  async resolved() { await this.complaint(); await this.finding(); await this.action('resolve', { reason: 'Report refreshed and both invoices present', reference: 'report-check-2' }, 'Support'); }
-  async progress(employee = false) {
-    await this.access();
-    if (employee) await this.verified();
-    await this.action('note', { text: 'PRIVATE support note 431' }, 'Support');
-    await this.action('edit', { public_update: 'Support is checking this request' }, 'Support');
-  }
-  async changeDetails(patch) {
-    this.details = { ...this.details, ...patch };
-    await this.action('edit', { details: this.details });
-  }
   async denied() { assert.ok([403, 409, 417].includes(this.last.status), JSON.stringify(this.last)); }
   async includes(...values) { const text = await this.text(); for (const value of values) assert.ok(text.includes(value), `missing ${value}: ${text}`); }
-  async excludes(...values) { const text = await this.text(); for (const value of values) assert.ok(!text.includes(value), `leaked ${value}: ${text}`); }
-  async unfulfilled() { assert.notEqual((await this.open()).ticket.ticket_state, 'Resolved'); }
-  async cannotFulfill() { await this.action('fulfill', { reference: 'Stale or unauthorized completion' }, 'Fulfiller', true); await this.denied(); await this.unfulfilled(); }
-  async forbiddenOrdinaryEdit() {
-    const api = await ticketsAdmin();
-    const request = await api.row('tickets.request', this.ticket.row_id);
-    this.last = await this.call(this.actor, '/api/save_row', { table: 'tickets.request', row: { ...request,
-      verification_key: 'forged-verification', approval_key: 'forged-approval',
-    } });
-    await this.denied();
-    this.last = await this.call(this.actor, '/api/save_row', { table: 'tickets.ticket', row: { ...this.ticket, ticket_state: 'Resolved' } });
-    await this.denied();
-    this.last = await this.call(this.actor, '/api/save_row', { table: 'tickets.event', row: {
-      ticket: this.ticket.row_id, operation: 'verify', by: this.ids.Verifier, at: '2026-11-03T09:00:00Z',
-      text: JSON.stringify({ email: this.details.email, active: true, region: 'Kerala', verification_key: request.verification_key }),
-    } });
-  }
-  async publicPrivacy(owner = false) {
-    const detail = await this.open();
-    const text = JSON.stringify(detail);
-    assert.ok(text.includes('Support is checking this request'));
-    for (const secret of ['PRIVATE support note 431', 'Fictional HR confirmation']) assert.ok(!text.includes(secret));
-    if (!owner) { assert.equal(detail.details, undefined); assert.ok(!text.includes('anjali@example.com')); }
-    for (const table of ['tickets.ticket', 'tickets.event', ...(owner ? [] : ['tickets.request'])]) {
-      const list = await this.call(this.actor, `/api/table/${table}?limit_page_length=500`, undefined, 'GET');
-      assert.ok([200, 403].includes(list.status));
-      const body = JSON.stringify(list.body);
-      for (const secret of ['PRIVATE support note 431', 'Fictional HR confirmation']) assert.ok(!body.includes(secret));
-      if (!owner) assert.ok(!body.includes('anjali@example.com'));
-    }
-    const activity = await this.call(this.actor, `/api/activity/tickets.ticket/${this.ticket.row_id}`, undefined, 'GET');
-    assert.equal(activity.status, 200);
-    assert.ok(!JSON.stringify(activity.body).includes('PRIVATE support note 431'));
-  }
   async search(query) { this.queue = (await this.read('queue', { search: query })).tickets; }
-  async referenceFixture(reference) {
-    await this.setup();
+  async renameTicket() {
+    this.last = await this.call(this.actor, `/api/table/tickets.ticket/${this.ticket.row_id}:rename`, { new_name: 'changed-by-another-requester' });
+  }
+  async retainedReference() {
+    await this.denied();
+    const saved = await this.open('Anjali');
+    assert.equal(saved.ticket.row_id, this.ticket.row_id);
+    assert.equal(saved.details.original, this.original);
+  }
+  async deleteEvidence() {
     const api = await ticketsAdmin();
-    // Allocate the exact example reference through normal naming and creation,
-    // rather than bypassing Tickets' generic-write protection for a fixture.
-    const metadata = await api.call('GET', '/api/table/tickets.ticket:meta', undefined, [200], 'read naming');
-    const { id_pattern } = await metadata.json();
-    await api.call('PUT', '/api/table_def/tickets.ticket/id_pattern', { id_pattern: 'field:title' }, [200], 'configure fixture naming');
-    try {
-      await this.action('create', { title: reference, original: 'Copied reference fixture', kind: 'generic', details: {} }, 'Anjali');
-      assert.equal(this.ticket.row_id, reference);
-    } finally {
-      await api.call('PUT', '/api/table_def/tickets.ticket/id_pattern', { id_pattern }, [200], 'restore naming');
-    }
+    const event = (await this.open('Support')).privateEvents.find(event => event.operation === 'evidence');
+    this.evidenceBeforeDelete = await api.row('tickets.event', event.row_id);
+    const response = await api.call('DELETE', `/api/table/tickets.event/${event.row_id}?updated_at=${encodeURIComponent(this.evidenceBeforeDelete.updated_at)}`);
+    this.last = { status: response.status(), body: await response.json() };
   }
-  async assignedTicket() {
-    await this.setup();
-    await this.access(); await this.action('edit', { assigned_to: this.ids.Support }, 'Support');
-    this.assigned = this.ticket;
-  }
-  async assignedWork() {
-    await this.create('report', { format: 'Excel' }, 'A colleague report');
-    await this.action('edit', { assigned_to: this.ids.Bala }, 'Support'); this.unrelated = this.ticket;
-    this.ticket = this.assigned;
-  }
-  async connections() { this.connectionStatus = (await this.read('session')).connections; }
-  async ordinaryInstall() {
-    await Api.disposeAll();
-    await resetAcceptance(appEnvironment);
-    packageDiscovered = true;
-    await this.setup();
-    this.beforeQueue = (await this.read('queue')).tickets;
-    assert.deepEqual(this.beforeQueue, [], 'a fresh install must have no business samples');
-  }
-  async loadSamples() {
-    // Explicit development-only package script, never a product action or normal install hook.
-    const { seedTickets } = await import(pathToFileURL(resolve(REPO_ROOT, 'tools/seed-tickets-development.mjs')).href);
-    await seedTickets({ baseUrl: API_URL, password: process.env.ADMIN_PASSWORD ?? 'admin', expectedEnvironment: 'test' });
-    this.queue = (await this.read('queue')).tickets;
-  }
-  async fictionalEvidence() {
+  async retainedEvidence() {
+    await this.denied();
     const api = await ticketsAdmin();
-    for (const table of ['tickets.request', 'tickets.event']) {
-      const fields = table === 'tickets.request' ? ['row_id', 'original'] : ['row_id', 'operation', 'text'];
-      const params = new URLSearchParams({ limit_page_length: '500', fields: JSON.stringify(fields) });
-      const response = await api.call('GET', `/api/table/${table}?${params}`, undefined, [200], 'inspect explicit fictional samples');
-      const { data } = await response.json();
-      const evidence = table === 'tickets.event' ? data.filter(row => ['verify', 'evidence'].includes(row.operation)) : data;
-      assert.ok(evidence.length > 0);
-      for (const row of evidence) assert.match(JSON.stringify(row), /fictional/i);
-    }
+    assert.deepEqual(await api.row('tickets.event', this.evidenceBeforeDelete.row_id), this.evidenceBeforeDelete);
+    await this.includes('source-check-1', 'report-check-1', this.ids.Support);
   }
 }
 
@@ -279,11 +177,6 @@ class TicketTypes {
     let order = 0;
     for (const field of fields) this.fields[field.field_name] = await api.saveRow('tickets.type_field', { ticket_type: this.type.row_id, field_order: ++order, ...field });
   }
-  async removeField(name) {
-    const api = await this.api();
-    const field = this.fields[name];
-    await api.call('DELETE', `/api/table/tickets.type_field/${field.row_id}?updated_at=${encodeURIComponent(field.updated_at)}`, undefined, [200, 202, 204], 'remove a field');
-  }
   async submit(details = {}, actor = 'Anjali', attempt = false) {
     await this.configure();
     return this.t.action('create', { title: 'Plant address is wrong', original: 'Two plants carry both door numbers', kind: this.key, details }, actor, attempt);
@@ -292,13 +185,6 @@ class TicketTypes {
     const page = await this.t.world.signedIn(actor);
     await page.goto(`${BASE_URL}${path}`);
     await page.getByRole('button', { name: /New ticket/ }).first().waitFor();
-    return page;
-  }
-  async openTicket(actor) {
-    const page = await this.page(actor);
-    await page.getByLabel('Search tickets').fill(this.t.ticket.row_id);
-    await page.locator('.ticket-id', { hasText: this.t.ticket.row_id }).first().click();
-    await page.getByRole('heading', { name: 'Original message' }).waitFor();
     return page;
   }
   async reader(name) {
@@ -311,15 +197,23 @@ class TicketTypes {
     await page.goto(`${BASE_URL}/tickets/`);
     this.t.ids[name] = await page.evaluate(() => JSON.parse(localStorage.getItem('fc_user')).row_id);
   }
-  async outsider() {
-    await this.t.world.person('Outsider', ['All']);
-    const page = await this.t.world.signedIn('Outsider');
-    await page.goto(`${BASE_URL}/featherbase/`);
-    this.outsiderId = await page.evaluate(() => JSON.parse(localStorage.getItem('fc_user')).row_id);
-    this.outsiderName = `Outside Owner ${randomUUID().slice(0, 4)}`;
+  async restartedElsewhere() {
+    await this.t.setup();
     const api = await this.api();
-    const current = await api.row('Person', this.outsiderId);
-    await api.call('POST', '/api/save_row', { table: 'Person', row: { row_id: this.outsiderId, updated_at: current.updated_at, full_name: this.outsiderName } }, [200, 201], 'name the outsider');
+    await api.call('POST', '/api/set_app_enabled', { name: 'tickets', enabled: false }, [200], 'disable Tickets');
+    // Another process turns it back on: the database changes, this server is not told.
+    await acceptanceSql("update featherbase.installed_app set enabled = true where name = 'tickets'");
+  }
+  async changedBuild() {
+    await this.t.setup();
+    const [row] = await acceptanceSql("select artifact_digest from featherbase.installed_app where name = 'tickets'");
+    this.realDigest = row.artifact_digest;
+    const api = await this.api();
+    await api.call('POST', '/api/set_app_enabled', { name: 'tickets', enabled: false }, [200], 'disable Tickets');
+    await acceptanceSql("update featherbase.installed_app set enabled = true, artifact_digest = 'an-earlier-build' where name = 'tickets'");
+  }
+  async restoreBuild() {
+    await acceptanceSql('update featherbase.installed_app set artifact_digest = $1 where name = $2', [this.realDigest, 'tickets']);
   }
 }
 

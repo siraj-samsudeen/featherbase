@@ -69,16 +69,6 @@ class TicketTransitions {
     await page.getByRole('heading', { name: 'Next step' }).waitFor();
     return page;
   }
-  async confirmInPage() {
-    const page = this.page ?? await this.workflow('Bala');
-    await page.locator('section.ticket-actions').getByRole('button', { name: 'Confirm', exact: true }).click();
-    await page.getByLabel('What will be fixed *').fill(plan.fix_what);
-    await page.getByLabel('Where it will be fixed *').fill(plan.fix_where);
-    await page.getByLabel('Target date *').fill(plan.target_date);
-    await page.locator('.ticket-actions form').getByRole('button', { name: 'Confirm' }).click();
-    await page.locator('.ticket-kicker').getByText('Fix Planned', { exact: false }).waitFor();
-    this.t.ticket = (await this.t.open('Bala')).ticket;
-  }
 }
 
-module.exports = { TicketTransitions, plan };
+module.exports = { TicketTransitions };
