@@ -118,7 +118,7 @@ describe('serving the built web app', () => {
         expect(await page.text()).toContain('<title>SPA</title>')
       }
       expect(await (await target.request('/api/ping')).json()).toEqual({ message: 'pong' })
-      for (const owned of ['/api/nothing', '/files/x.txt', '/ws'])
+      for (const owned of ['/api/nothing', '/files/x.txt', '/mcp', '/ws'])
         expect((await target.request(owned)).status).toBe(404)
     } finally {
       rmSync(dir, { recursive: true, force: true })
