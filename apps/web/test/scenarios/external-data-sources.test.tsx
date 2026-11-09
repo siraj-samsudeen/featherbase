@@ -21,7 +21,7 @@ import { EXTERNAL_DATABASE_URL } from 'server/test/external-database'
 import { addStandinTable, buildStandin, changeStandin, STANDIN_TOKENS } from 'server/test/motherduck-standin'
 import { EXPLORE_FLOOR, EXPLORE_STORE, dropExploreSource, exploreSource } from 'server/test/explore-source'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp } from '../pg-test'
+import { test, expect, renderApp, onScreen, inside } from '../pg-test'
 
 const scenario = scenarioFor(test, 'external-data-sources')
 const WAIT = { timeout: 15_000 }
@@ -157,7 +157,7 @@ function noteBeside(label: string) {
 }
 async function openMap(table: string, id: string, as: TestClient) {
   await visit(rowHref(table, id), as)
-  await userEvent.click(await screen.findByRole('tab', { name: 'Map' }, WAIT))
+  await onScreen().clickButton('Map')
   await waitFor(() => expect(screen.getByRole('tab', { name: 'Map' })).toHaveAttribute('aria-selected', 'true'), WAIT)
   await screen.findByTestId('map-center', {}, WAIT)
   return screen.findByTestId('map-forward-Shelf', {}, WAIT)
@@ -242,7 +242,7 @@ async function pickTable(table: string) {
   await showCatalog()
   const catalog = await screen.findByRole('table', { name: 'Warehouse tables' }, WAIT)
   await userEvent.click(await within(catalog).findByRole('button', { name: table }, WAIT))
-  await waitFor(() => expect(screen.getByTestId('preview-size')).toHaveTextContent('rows'), WAIT)
+  await inside(onScreen(), 'preview-size', (el) => el.assertText('rows'))
 }
 async function place() {
   await showCatalog()
@@ -345,7 +345,7 @@ async function copyAgain(admin: TestClient, native: string) {
   await openList(native, admin)
   const record = recordCopyAgain()
   try {
-    await userEvent.click(await screen.findByTestId('copy-again', {}, WAIT))
+    await onScreen().clickButton('Copy again')
     await waitFor(() => expect(record.answers).toHaveLength(1), WAIT)
   } finally { record.restore() }
   return record.answers[0]!
@@ -610,7 +610,7 @@ describe('external-data-sources', () => {
       await userEvent.clear(name)
       await userEvent.type(name, source)
       for (const database of ['sales', 'stock']) await userEvent.click(screen.getByTestId(`db-${database}`))
-      await userEvent.click(screen.getByTestId('connect-save'))
+      await onScreen().clickButton('Save and browse tables')
       await screen.findByTestId('warehouse-browser', {}, WAIT)
     })
     await step('browsing the source offers "sales" and "stock" and no other database', () => {
@@ -648,7 +648,7 @@ describe('external-data-sources', () => {
     })
     await step('the user can reopen the preview of "stores" without choosing it again', async () => {
       await userEvent.click(previewTab('stores'))
-      await waitFor(() => expect(screen.getByTestId('preview-size')).toHaveTextContent('rows'), WAIT)
+      await inside(onScreen(), 'preview-size', (el) => el.assertText('rows'))
       expect(previewTab('stores')).toHaveAttribute('aria-selected', 'true')
       expect(previewTitle()).toBe('stores')
     })
@@ -843,7 +843,7 @@ describe('external-data-sources', () => {
     await step('the user refreshes the table list of "sales"', async () => {
       expect((await place()).database).toBe('sales')
       expect(await catalogTables()).not.toContain('regions')
-      await userEvent.click(screen.getByTestId('browser-refresh'))
+      await onScreen().clickButton('Refresh')
     })
     await step('"regions" is listed', () => waitFor(async () => expect(await catalogTables(), 'regions is not listed').toContain('regions'), WAIT))
   })
