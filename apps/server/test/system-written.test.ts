@@ -393,6 +393,8 @@ describe('#432: every write entry point is covered', () => {
     'POST /api/queue_email': 'internal writer: dedicated email action',
     'POST /api/enqueue_job': 'internal writer: dedicated job action',
     'POST /api/retry_job': 'internal writer: dedicated job action',
+    'POST /mcp': 'agent tools: each write is an inner request to the row routes above (#1083)',
+    'DELETE /mcp': '405: no session to end (#1083)',
   }
 
   test('every state-changing HTTP route is classified', () => {
