@@ -8,7 +8,7 @@ import { test as pgTest } from './pg-test'
 import { discoverPackages, availableRuntimeVersions } from '../src/runtime-packages'
 import { loadInstalledApps } from '../src/apps'
 import { sql, withTransaction } from '../src/db'
-import { actionDeclaration, readDeclaration, validateOperationFacts } from '../src/app-access'
+import { actionDeclaration, readDeclaration, validateOperationFacts, withAppAuthorization, type DeclaredAppOperation } from '../src/app-access'
 import { AppError } from '../src/errors'
 import { version as currentTaskerVersion } from '../../../example-apps/tasker/package.json'
 
@@ -530,5 +530,93 @@ export const authorizers = {
     await expect(user.post(action + 'discard', request)).rejects.toMatchObject({ status: 403 })
     expect(module.calls.handler).toBe(1)
     expect(module.calls.resolver).toBe(1)
+  })
+})
+
+describe('an operation contribution the platform cannot honour is refused and audited', () => {
+  const roles = ['Administrator', 'System Manager']
+  const tablePolicy = { kind: 'table' } as const
+  const storesOn = (storeTable: string) => ({ kind: 'stores', storeTable, readRoles: roles, actionRoles: roles }) as const
+  const request = (contribution: DeclaredAppOperation, over: Partial<Parameters<typeof withAppAuthorization>[0]> = {}) =>
+    ({ app: 'scopeproof', operation: 'probe', kind: 'read' as const, user: 'Administrator', entryTable: 'scopeproof.object', payload: {}, contribution, ...over })
+  async function refusedAs(req: Parameters<typeof withAppAuthorization>[0]) {
+    let ran = false
+    await expect(withAppAuthorization(req, async () => { ran = true })).rejects.toMatchObject({ type: 'PermissionError', message: 'Application access refused' })
+    expect(ran).toBe(false)
+    const [last] = await sql`select method from access_log where operation = 'app_access_denied' order by created_at desc, row_id desc limit 1`
+    return String(last.method).split(':')[1]
+  }
+
+  test('a guest caller is refused as the user', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    const contribution = { declaration: { policy: tablePolicy, authorization: { kind: 'generic' } } } as DeclaredAppOperation
+    expect(await refusedAs(request(contribution, { user: 'Guest' }))).toBe('user')
+  })
+
+  test('a resolver scope without its resolver is a configuration refusal', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    const contribution = { declaration: { policy: storesOn('scopeproof.store'), scope: { kind: 'resolver', name: 'gone', facts: [] }, authorization: { kind: 'generic' } } } as DeclaredAppOperation
+    expect(await refusedAs(request(contribution))).toBe('configuration')
+  })
+
+  test('a product authorization without its authorizer is a configuration refusal', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    const contribution = { declaration: { policy: tablePolicy, authorization: { kind: 'product', name: 'gone', facts: [] } } } as DeclaredAppOperation
+    expect(await refusedAs(request(contribution))).toBe('configuration')
+  })
+
+  test('a store dimension that is not a Table is a configuration refusal', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    const contribution = { declaration: { policy: storesOn('scopeproof.nowhere'), scope: { kind: 'request' }, authorization: { kind: 'generic' } } } as DeclaredAppOperation
+    expect(await refusedAs(request(contribution, { payload: { storeCodes: ['A'] } }))).toBe('configuration')
+  })
+
+  test('a store dimension the app does not own is a configuration refusal', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    const contribution = { declaration: { policy: storesOn('Person'), scope: { kind: 'request' }, authorization: { kind: 'generic' } } } as DeclaredAppOperation
+    expect(await refusedAs(request(contribution, { payload: { storeCodes: ['A'] } }))).toBe('configuration')
+  })
+
+  test('an authorizer reading a fact from a Table the app does not own is refused', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    let factRefused = false
+    const contribution = {
+      declaration: { policy: tablePolicy, authorization: { kind: 'product', name: 'peek', facts: [{ table: 'Person', columns: ['email'] }] } },
+      authorizer: async ({ facts }) => {
+        try { await facts.get('Person', 'Administrator') } catch { factRefused = true; throw new Error('refused') }
+        return true
+      },
+    } as DeclaredAppOperation
+    expect(await refusedAs(request(contribution))).toBe('product')
+    expect(factRefused).toBe(true)
+  })
+
+  test('an authorizer that does not answer true refuses the product', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    const contribution = { declaration: { policy: tablePolicy, authorization: { kind: 'product', name: 'maybe', facts: [] } }, authorizer: async () => 'yes' } as unknown as DeclaredAppOperation
+    expect(await refusedAs(request(contribution))).toBe('product')
+  })
+
+  test('an action under product authorization with no product scope is refused', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    const contribution = { declaration: { policy: tablePolicy, authorization: { kind: 'product', name: 'act', facts: [] } }, authorizer: async () => true } as DeclaredAppOperation
+    expect(await refusedAs(request(contribution, { kind: 'action' }))).toBe('product')
+  })
+
+  test('a replay recorded against another store dimension is refused', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    const contribution = {
+      declaration: { policy: storesOn('scopeproof.store'), scope: { kind: 'resolver', name: 'mine', facts: [] }, authorization: { kind: 'generic' } },
+      resolver: async () => ({ storeCodes: ['A'] }),
+    } as DeclaredAppOperation
+    const loadReplay = async () => ({ authorization: { version: 1, policy: 'stores', storeTable: 'scopeproof.access', storeCodes: ['A'] } })
+    expect(await refusedAs(request(contribution, { loadReplay }))).toBe('replay')
+  })
+
+  test('a replay of a Table-wide operation that recorded store codes is refused', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    const contribution = { declaration: { policy: tablePolicy, authorization: { kind: 'generic' } } } as DeclaredAppOperation
+    const loadReplay = async () => ({ authorization: { version: 1, policy: 'table', storeCodes: ['A'] } })
+    expect(await refusedAs(request(contribution, { loadReplay }))).toBe('replay')
   })
 })
