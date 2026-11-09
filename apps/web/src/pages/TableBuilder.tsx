@@ -226,13 +226,13 @@ export function TableBuilder() {
       setColumns(
         def.columns.map((c, i) => ({
           column_name: c.column_name,
-          label: c.label ?? '',
+          label: c.label,
           column_type: c.column_type,
           // Detected Choice options surface in the grid's target field,
           // editable like hand-entered ones.
           target: c.choices ? c.choices.split('\n').join(', ') : '',
           reqd: false,
-          in_list_view: c.in_list_view ?? false,
+          in_list_view: c.in_list_view,
           source_index: i,
           // An inferred identifier is already claimed — editing the label
           // must not silently rename an imported column.
@@ -251,7 +251,8 @@ export function TableBuilder() {
     setColumnErrors({})
     setTouchedRows(new Set())
     setProgress(null)
-    if (fileInput.current) fileInput.current.value = ''
+    // The file input is always drawn, inside the drop zone.
+    fileInput.current!.value = ''
   }
 
   async function create() {
