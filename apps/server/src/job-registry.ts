@@ -10,3 +10,4 @@ export const owners = new Map<string, string>()
 // #971: jobs that take the app lifecycle lock themselves, only for the part
 // that needs it, because they spend long on an outside read.
 export const ownLifecycleLock = new Set<string>()
+// Probe for #995: CI timing only, never merged.
