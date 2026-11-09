@@ -21,7 +21,7 @@ import { EXTERNAL_DATABASE_URL } from 'server/test/external-database'
 import { addStandinTable, buildStandin, changeStandin, STANDIN_TOKENS } from 'server/test/motherduck-standin'
 import { EXPLORE_FLOOR, EXPLORE_STORE, dropExploreSource, exploreSource } from 'server/test/explore-source'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp, onScreen, inside } from '../pg-test'
+import { test, expect, renderApp, onScreen, inside, byTestId } from '../pg-test'
 
 const scenario = scenarioFor(test, 'external-data-sources')
 const WAIT = { timeout: 15_000 }
@@ -158,6 +158,7 @@ function noteBeside(label: string) {
 async function openMap(table: string, id: string, as: TestClient) {
   await visit(rowHref(table, id), as)
   await onScreen().clickButton('Map')
+  // A tab by its name: the DSL's attribute verbs read an element found by selector.
   await waitFor(() => expect(screen.getByRole('tab', { name: 'Map' })).toHaveAttribute('aria-selected', 'true'), WAIT)
   await screen.findByTestId('map-center', {}, WAIT)
   return screen.findByTestId('map-forward-Shelf', {}, WAIT)
@@ -235,8 +236,9 @@ async function pickDatabase(database: string) {
 }
 async function pickSchema(schema: string) {
   await showCatalog()
+  // Waits for the schema to be offered: selectOption looks for its option once.
   await waitFor(() => expect([...schemaBox().options].map((o) => o.value)).toContain(schema), WAIT)
-  await userEvent.selectOptions(schemaBox(), schema)
+  await onScreen().selectOption('Schema', schema)
 }
 async function pickTable(table: string) {
   await showCatalog()
@@ -420,7 +422,7 @@ describe('external-data-sources', () => {
     })
     await step("the user sees the database's shops listed in Featherbase", async () => {
       await openList(table, admin)
-      for (const shop of SHOPS) await waitFor(() => expect(screen.getByTestId('list-rows'), `${shop} is not listed in ${table}`).toHaveTextContent(shop), WAIT)
+      for (const shop of SHOPS) await inside(onScreen(), 'list-rows', (rows) => rows.assertText(shop))
     })
   })
 
@@ -721,14 +723,14 @@ describe('external-data-sources', () => {
       await openRow(w.native, 'S001', admin)
       await waitFor(() => { for (const label of ['Store code', 'Trading name', 'State code']) expect(byLabel(label)).toBeInTheDocument() }, WAIT)
       expect(within(screen.getByTestId('form-view')).queryByLabelText('city', { exact: true })).toBeNull()
-      expect(byLabel('Store code').value).toBe('S001')
-      expect(byLabel('Trading name').value).toBe('Harbour Road')
+      await onScreen().within(byTestId('form-view'), (form) => form
+        .assertValue('Store code', 'S001')
+        .assertValue('Trading name', 'Harbour Road'))
     })
     await step('a correction made in that form is saved', async () => {
-      await userEvent.clear(byLabel('Trading name'))
-      await userEvent.type(byLabel('Trading name'), 'Native trading correction')
+      await onScreen().within(byTestId('form-view'), (form) => form.fillIn('Trading name', 'Native trading correction'))
       await userEvent.click(screen.getByTestId('form-save'))
-      await waitFor(() => expect(screen.getByTestId('form-status')).toHaveTextContent(/^Saved$/), WAIT)
+      await inside(onScreen(), 'form-status', (status) => status.assertExactText('Saved'))
       expect(await formValue(w.native, 'S001', 'Trading name', admin)).toBe('Native trading correction')
     })
   }, 60_000)
