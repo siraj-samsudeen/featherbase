@@ -6,7 +6,8 @@
 // drifted; this module is the one place they live now.
 //
 // These are *plumbing* helpers only. They never assert (except
-// `expectApiError`, whose whole job is the assertion) and they take every
+// `expectApiError`, `expectRefused` and `expectStatus`, whose whole job is
+// the assertion) and they take every
 // name as an argument, so a file keeps owning its own Table and role
 // constants — the sandbox still rolls all of it back per test.
 //
@@ -84,6 +85,35 @@ export async function expectApiError(
   }
   const got = resolved instanceof Response ? String(resolved.status) : JSON.stringify(resolved)
   throw new Error(`expected the request to fail with ${expected.status}, but it succeeded: ${got}`)
+}
+
+// The common case of expectApiError: the call must be refused with this
+// status and, when `message` is given, an error message containing it.
+//
+//   await expectRefused(user.post(url, body), 403)
+//   await expectRefused(admin.post(url, body), 417, 'is required')
+export async function expectRefused(
+  call: Promise<unknown>,
+  status: number,
+  message?: string,
+): Promise<TestApiError> {
+  const err = await expectApiError(call, { status })
+  if (message !== undefined) expect(err.message, `the ${status} refusal's message`).toContain(message)
+  return err
+}
+
+// Check a raw Response's status (a `client.fetch`, `sandboxRequest`, ...).
+// On a mismatch the failure shows the body, which is almost always the
+// server's error envelope saying why; on a match the body is left unread, so
+// the caller can still `await res.json()`. Returns the Response.
+//
+//   const res = await expectStatus(await user.fetch(url), 200)
+export async function expectStatus(res: Response, status: number): Promise<Response> {
+  if (res.status !== status) {
+    const body = await res.clone().text().catch(() => '<unreadable body>')
+    expect(res.status, `${res.status} response body: ${body}`).toBe(status)
+  }
+  return res
 }
 
 // ------------------------------------------------------------------ tables
