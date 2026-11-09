@@ -26,6 +26,14 @@ test('a filter value with a space keeps the space in the address, never a plus',
   expect(JSON.parse(JSON.parse(new URLSearchParams(window.location.search).get('filters')!))).toEqual(JSON.parse(filters))
 })
 
+// The entry renders in StrictMode, which runs a page's effects twice in
+// development: the import wizard takes up saved work once only.
+test('the import page opens from the Admin entry, which runs its effects twice', async ({ admin }) => {
+  sessionStorage.clear()
+  await openAdmin(admin, '/featherbase/admin/import')
+  expect(await screen.findByTestId('iw-file-input', {}, T)).toBeInTheDocument()
+})
+
 test('a row that does not exist says so at once, without asking the server again', async ({ admin }) => {
   await admin.post('/api/table_def', { name: 'Ae Note', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await openAdmin(admin, '/featherbase/admin/table/ae-note/row/no-such-note')
