@@ -2,6 +2,8 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
+import { saveDoc } from '../src/document'
+import { registerController, unregisterController, type TableController } from '../src/controllers'
 import { expectRefused } from './fixtures'
 
 const CUSTOMER = 'Del Customer'
@@ -191,5 +193,20 @@ describe('reading a line item on its own', () => {
     const line = inv.lines[0].row_id
     await sql`update featherbase.del_line_row set parent = null, parenttype = null where row_id = ${line}`
     expect(await admin.get(docPath(ROW, line))).toMatchObject({ row_id: line, supplier: 'Globex' })
+  })
+})
+
+describe('an update of a row deleted just before it is locked', () => {
+  test('is not found', async ({ admin }) => {
+    await setup(admin)
+    const controller: TableController = { table: CUSTOMER, hooks: { async before_lock({ tx }) { await tx`delete from featherbase.del_customer where row_id = 'Umbrella'` } } }
+    registerController(controller)
+    try {
+      const [row] = await sql`select updated_at from featherbase.del_customer where row_id = 'Umbrella'`
+      await expect(saveDoc(CUSTOMER, { row_id: 'Umbrella', updated_at: row.updated_at, city: 'x' }, 'Administrator'))
+        .rejects.toMatchObject({ type: 'NotFoundError', message: `${CUSTOMER} Umbrella not found` })
+    } finally {
+      unregisterController(controller)
+    }
   })
 })
