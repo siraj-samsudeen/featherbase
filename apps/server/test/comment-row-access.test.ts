@@ -150,3 +150,14 @@ describe('#342: history follows the row and its columns', () => {
     expect(JSON.stringify(activity)).not.toContain('9876')
   })
 })
+
+// A database failure partway through a request is the server's fault, never
+// a refusal: each case below takes away a Table the request reads mid-way.
+describe('a database failure while deciding access', () => {
+  test('opening a comment whose row cannot be read is a server error', async ({ admin, createUser }) => {
+    const { agent, mine } = await setup(admin, createUser)
+    const [comment] = await sql`select row_id from comment where ref_table = ${PLAIN} and ref_name = ${mine}`
+    await sql.unsafe('alter table featherbase.cra_note rename to cra_note_gone')
+    await expectRefused(agent.get(COMMENT.rowUrl(String(comment.row_id))), 500)
+  })
+})
