@@ -385,10 +385,9 @@ async function parentScopeCond(
   const branches: ReturnType<typeof sql>[] = []
   for (const h of holders) {
     const holder = h.holder as string
-    const holderMeta = await getMeta(holder).catch(() => null)
-    // A source-bound Table has no local rows to scope against; the engine
-    // refuses sub-tables on one, so this only guards against stale metadata.
-    if (!holderMeta || isBound(holderMeta)) continue
+    // The holder is the Table whose column names this child, so it exists,
+    // and the engine refuses sub-tables on a source-bound Table.
+    const holderMeta = await getMeta(holder)
     const scope = await permissionScope(user, holder, 'read')
     if (scope === 'none') continue
     branches.push(
