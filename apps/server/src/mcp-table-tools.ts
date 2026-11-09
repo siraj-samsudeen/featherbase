@@ -47,19 +47,22 @@ const columnArg = z.object({
 })
 type ColumnArg = z.infer<typeof columnArg>
 
-function columnDef(column: ColumnArg): Json {
-  return {
-    column_name: column.name,
-    column_type: column.type,
-    ...(column.label !== undefined ? { label: column.label } : {}),
-    ...(column.required !== undefined ? { reqd: column.required } : {}),
-    ...(column.choices ? { choices: column.choices.join('\n') } : {}),
-    ...(column.links_to ? { [column.type === NESTED ? 'row_table' : 'reference_table']: column.links_to } : {}),
-    ...(column.unique !== undefined ? { unique: column.unique } : {}),
-    ...(column.description !== undefined ? { description: column.description } : {}),
-    ...(column.default !== undefined ? { default_value: column.default } : {}),
-  }
-}
+/** Only the fields given: a field left out keeps what the route would keep. */
+const given = (fields: Json): Json => Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined))
+
+/** The column editor's words for what describe_table reads as name, type, required, choices, links_to, default. */
+const columnFields = (column: Partial<Omit<ColumnArg, 'default'>> & { default?: string | null }, type?: string) => given({
+  column_type: column.type,
+  label: column.label,
+  reqd: column.required,
+  choices: column.choices?.join('\n'),
+  [type === NESTED ? 'row_table' : 'reference_table']: column.links_to,
+  unique: column.unique,
+  description: column.description,
+  default_value: column.default,
+})
+
+const columnDef = (column: ColumnArg): Json => ({ column_name: column.name, ...columnFields(column, column.type) })
 
 /** A Table as the structure tools answer it: its value columns, as describe_table reads them. */
 const described = (def: TableDef) => ({
@@ -132,7 +135,7 @@ function prepare(def: TableDef, args: ImportArgs): Prepared {
       errors[heading] = `${def.name} has no column ${column} a file can fill`
     else {
       // The agent's word wins over a heading matched by name.
-      for (const [i, m] of mapped.entries()) if (m === column && column !== null) mapped[i] = null
+      if (column !== null) for (const [i, m] of mapped.entries()) if (m === column) mapped[i] = null
       mapped[at] = column
     }
   }
@@ -145,6 +148,9 @@ function prepare(def: TableDef, args: ImportArgs): Prepared {
     column_type: column === ROW_KEY ? 'Data' : def.columns.find((c) => c.column_name === column)!.column_type,
   }))
   const coerced: CoercedRow[] = coerceRows(typed, rows.map((row) => picked.map(({ index }) => row[index])))
+  // As the import route does for an empty request: nothing to import is not an import.
+  if (!coerced.length)
+    throw new AppError('ValidationError', `The file has no row with a value under a heading that fills a column of ${def.name}`)
   const key = args.key_column ?? null
   const { send, sendIdx, dupFailed } = splitForSend(coerced, key)
   return {
@@ -155,9 +161,8 @@ function prepare(def: TableDef, args: ImportArgs): Prepared {
     sendRow: sendIdx.map(fileRow),
     failed: dupFailed.map((f) => ({ row: fileRow(f.sourceIndex), message: f.message })),
     skipped: rows.filter((row) => !blank(row)).length - coerced.length,
-    upsert: key
-      ? { key_column: key, ...(args.empty_cells ? { empty_cells: args.empty_cells } : {}), columns: picked.map((p) => p.column) }
-      : args.empty_cells ? { empty_cells: args.empty_cells } : {},
+    // Without a key, empty_cells goes on for the route to refuse in its words.
+    upsert: given({ key_column: args.key_column, empty_cells: args.empty_cells, columns: key ? picked.map((p) => p.column) : undefined }),
   }
 }
 
@@ -174,8 +179,8 @@ async function sendParts(api: Api, p: Prepared, body: (part: number, parts: numb
     })) as PartReply
     for (const key of Object.keys(totals) as (keyof typeof totals)[]) totals[key] += Number(reply[key] ?? 0)
     // A keyless rehearsal reports no per-action counts: every valid row is an insert.
-    if (reply.inserted === undefined) totals.inserted += Number(reply.valid ?? 0)
-    failed.push(...reply.failed.map((f) => ({ row: p.sendRow[at + f.index]!, message: f.message, ...(f.fields ? { fields: f.fields } : {}) })))
+    if (reply.inserted === undefined) totals.inserted += Number(reply.valid)
+    failed.push(...reply.failed.map((f) => ({ row: p.sendRow[at + f.index]!, message: f.message, fields: f.fields })))
   }
   failed.sort((a, b) => a.row - b.row)
   return { ...totals, failed }
@@ -183,7 +188,6 @@ async function sendParts(api: Api, p: Prepared, body: (part: number, parts: numb
 
 /** spreadsheet-import "A fully overlapping append is deliberate": the columns by which every row is already there. */
 async function alreadyThere(api: Api, p: Prepared): Promise<{ column: string; rows: number }[]> {
-  if (!p.send.length) return []
   const distinct = (column: string) => {
     const seen = new Set<string>()
     for (const row of p.send) {
@@ -195,7 +199,7 @@ async function alreadyThere(api: Api, p: Prepared): Promise<{ column: string; ro
   }
   const eligible = p.columns.filter(distinct)
   let found = eligible.map((column) => ({ column, matched: 0, complete: true }))
-  for (let at = 0; at < p.send.length && found.length; at += IMPORT_PART) {
+  for (let at = 0; at < p.send.length; at += IMPORT_PART) {
     const { key_candidates } = (await api('POST', `${tablePath(p.table)}:import`, {
       analyze_keys: true, columns: eligible, rows: p.send.slice(at, at + IMPORT_PART),
     })) as { key_candidates: { column: string; matched: number; complete: boolean }[] }
@@ -242,10 +246,7 @@ export function registerTableTools(tool: RegisterTool, api: Api, tokenId: string
     },
     ADDS,
     async ({ table, label, description, id_pattern, columns }) => described((await api('POST', '/api/table_def', {
-      name: table,
-      ...(label ? { label } : {}),
-      ...(description ? { description } : {}),
-      ...(id_pattern ? { id_pattern } : {}),
+      ...given({ name: table, label, description, id_pattern }),
       // As the wizard does: the first columns show in the Table's list.
       columns: columns.map((c, i) => ({ ...columnDef(c), in_list_view: i < LIST_COLUMNS_ON_CREATE })),
     })) as TableDef))
@@ -275,22 +276,13 @@ export function registerTableTools(tool: RegisterTool, api: Api, tokenId: string
       default: z.string().nullable().optional(),
     },
     ALTERS,
-    async ({ table, column: name, links_to, type, ...changes }) => {
+    async ({ table, column: name, links_to, ...changes }) => {
       const def = await definition(table)
-      const old = column(def, name)
-      const linking = links_to === undefined ? {}
-        : links_to === null ? { reference_table: null, column_type: type ?? (old.column_type === 'Reference' ? 'Data' : old.column_type) }
-          : { reference_table: links_to, column_type: type ?? 'Reference' }
       const changed: Json = {
-        ...old,
-        ...(type ? { column_type: type } : {}),
-        ...linking,
-        ...(changes.label !== undefined ? { label: changes.label } : {}),
-        ...(changes.required !== undefined ? { reqd: changes.required } : {}),
-        ...(changes.choices ? { choices: changes.choices.join('\n') } : {}),
-        ...(changes.unique !== undefined ? { unique: changes.unique } : {}),
-        ...(changes.description !== undefined ? { description: changes.description } : {}),
-        ...(changes.default !== undefined ? { default_value: changes.default } : {}),
+        ...column(def, name),
+        ...columnFields(changes),
+        // links_to decides the type: a link to a Table, or text again.
+        ...(links_to === undefined ? {} : { reference_table: links_to, column_type: links_to === null ? 'Data' : 'Reference' }),
       }
       return putDefinition(def, def.columns.map((c) => (c.column_name === name ? changed : c)))
     })
@@ -387,7 +379,7 @@ export function registerTableTools(tool: RegisterTool, api: Api, tokenId: string
       }
       const runId = randomUUID()
       const { inserted, updated, failed } = await sendParts(api, prepared, (part, parts) => ({
-        context: { run_id: runId, batch_id: runId, part, parts, ...(file_name ? { file_name } : {}) },
+        context: { run_id: runId, batch_id: runId, part, parts, file_name },
       }))
       return { table: def.name, run_id: runId, inserted, updated, failed, skipped: prepared.skipped }
     })
@@ -399,20 +391,21 @@ export function registerTableTools(tool: RegisterTool, api: Api, tokenId: string
       const def = await definition(table)
       const query = new URLSearchParams({
         fields: JSON.stringify(['run_id', 'file_name', 'inserted', 'updated', 'failed', 'reverted_at', 'created_at']),
-        filters: JSON.stringify([['ref_table', '=', def.name]]),
+        // An import from before runs had ids cannot be undone, so it is not listed.
+        filters: JSON.stringify([['ref_table', '=', def.name], ['run_id', '!=', null]]),
         order_by: 'created_at desc',
         limit_page_length: '500',
       })
       const { data } = (await api('GET', `${tablePath('Import Log')}?${query}`)) as { data: Json[] }
       const runs = new Map<string, Json & { inserted: number; updated: number; failed: number }>()
       for (const part of data) {
-        if (!part.run_id) continue // an import from before runs had ids cannot be undone
         const id = String(part.run_id)
-        const run = runs.get(id) ?? { run_id: id, file_name: part.file_name ?? null, at: part.created_at, inserted: 0, updated: 0, failed: 0, undone_at: null }
-        run.inserted += Number(part.inserted ?? 0)
-        run.updated += Number(part.updated ?? 0)
-        run.failed += Number(part.failed ?? 0)
-        run.undone_at ??= part.reverted_at ?? null
+        const run = runs.get(id) ?? { run_id: id, file_name: part.file_name, at: part.created_at, inserted: 0, updated: 0, failed: 0, undone_at: null }
+        // Number(null) is 0: a part that wrote nothing of a kind.
+        run.inserted += Number(part.inserted)
+        run.updated += Number(part.updated)
+        run.failed += Number(part.failed)
+        run.undone_at ??= part.reverted_at
         runs.set(id, run)
       }
       return { table: def.name, imports: [...runs.values()] }
@@ -428,7 +421,5 @@ export function registerTableTools(tool: RegisterTool, api: Api, tokenId: string
       override: z.array(z.string()).optional().describe('Ids of rows changed since the import, to undo all the same'),
     },
     ALTERS,
-    ({ table, run_id, dry_run, override }) => api('POST', `${tablePath(table)}:import-revert`, {
-      run_id, ...(dry_run ? { dry_run } : {}), ...(override ? { override } : {}),
-    }))
+    ({ table, ...args }) => api('POST', `${tablePath(table)}:import-revert`, args))
 }
