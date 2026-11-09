@@ -393,7 +393,7 @@ describe('#432: every write entry point is covered', () => {
     'POST /api/queue_email': 'internal writer: dedicated email action',
     'POST /api/enqueue_job': 'internal writer: dedicated job action',
     'POST /api/retry_job': 'internal writer: dedicated job action',
-    'POST /mcp': 'agent tools: each write is an inner request to the row routes above (#1083)',
+    'POST /mcp': 'agent tools: each write is an inner request to the row, table_def and import routes above (#1083, #1105)',
     'DELETE /mcp': '405: no session to end (#1083)',
   }
 
