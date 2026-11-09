@@ -7,10 +7,10 @@ import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from '../pg-test'
 import { scenarioFor } from '../scenario'
+import { expectRefused, expectStatus } from '../fixtures'
 
 const scenario = scenarioFor(test, 'metadata-override-validation')
 
-type Result = { status: number; body: { error?: { type: string; message: string } } & Record<string, unknown> }
 type Column = Record<string, unknown> & { column_name: string; label?: string }
 type Meta = { label: string; columns: Column[] }
 
@@ -20,7 +20,8 @@ const SETTINGS: Record<string, string> = { hidden: 'hidden', required: 'reqd', '
 class Catalogue {
   table = 'Override Catalogue'
   id = `${this.table}-adjustment`
-  result!: Result
+  response!: Response
+  refusal = ''
   missing = ''
   beforeRow: Record<string, unknown> | null = null
   beforeMeta: Meta | null = null
@@ -35,9 +36,9 @@ class Catalogue {
     return this
   }
 
-  private async answer(res: Response) {
-    this.result = { status: res.status, body: (await res.json()) as Result['body'] }
-    return this.result
+  private answer(res: Response) {
+    this.response = res
+    return res
   }
 
   save(values: Record<string, unknown>) {
@@ -63,26 +64,31 @@ class Catalogue {
     this.beforeMeta = await this.meta()
   }
 
+  /** The save was refused as a validation error; its message is kept for permittedNames(). */
+  private async refused() {
+    const err = await expectRefused(this.response, 417)
+    expect(err.type).toBe('ValidationError')
+    this.refusal = err.message
+    return err.message
+  }
+
   permittedNames() {
-    return this.result.body.error?.message.split('Permitted properties: ')[1]?.split(', ')
+    return this.refusal.split('Permitted properties: ')[1]?.split(', ')
   }
 
-  expectMissingColumn() {
-    expect(this.result.status).toBe(417)
-    expect(this.result.body.error?.type).toBe('ValidationError')
-    expect(this.result.body.error?.message).toContain(this.missing)
-    expect(this.result.body.error?.message).toContain(this.table)
+  async expectMissingColumn() {
+    const message = await this.refused()
+    expect(message).toContain(this.missing)
+    expect(message).toContain(this.table)
   }
 
-  expectBooleanRefusal() {
-    expect(this.result.status).toBe(417)
-    expect(this.result.body.error?.type).toBe('ValidationError')
-    for (const value of ['true', 'false', '1', '0']) expect(this.result.body.error?.message).toContain(value)
+  async expectBooleanRefusal() {
+    const message = await this.refused()
+    for (const value of ['true', 'false', '1', '0']) expect(message).toContain(value)
   }
 
-  expectPermitted(target: string) {
-    expect(this.result.status).toBe(417)
-    expect(this.result.body.error?.type).toBe('ValidationError')
+  async expectPermitted(target: string) {
+    await this.refused()
     // An independent baseline pins the existing allowlists; not expectations derived from production.
     const expected = target === 'column'
       ? ['label', 'hidden', 'reqd', 'read_only', 'in_list_view', 'default_value', 'choices']
@@ -115,7 +121,7 @@ describe('metadata-override-validation', () => {
     await step('the user customizes the whole catalogue label without choosing a column', () =>
       c.save({ column_name: '', property: 'label', value: 'Customer catalogue' }))
     await step('the catalogue has the customized label', async () => {
-      expect(c.result.status).toBe(201)
+      await expectStatus(c.response, 201)
       expect((await c.meta()).label).toBe('Customer catalogue')
     })
   })
@@ -139,7 +145,7 @@ describe('metadata-override-validation', () => {
       seed('Custom Field', { row_id: `${c.table}-priority`, dt: c.table, column_name: 'priority', column_type: 'Data', label: 'Priority' }))
     await step('the user customizes the priority label', () => c.save({ column_name: 'priority', property: 'label', value: 'Urgency' }))
     await step('the user-added column has the customized label', async () => {
-      expect(c.result.status).toBe(201)
+      await expectStatus(c.response, 201)
       expect((await c.meta()).columns.find((col) => col.column_name === 'priority')?.label).toBe('Urgency')
     })
   })
@@ -188,7 +194,7 @@ describe('metadata-override-validation', () => {
       await c.edit({ value })
     })
     await step(`the "${setting}" customization takes effect as "${effect}"`, async () => {
-      expect(c.result.status).toBe(200)
+      await expectStatus(c.response, 200)
       const category = (await c.meta()).columns.find((col) => col.column_name === 'category')!
       expect(category[property]).toBe(effect === 'yes')
     })
