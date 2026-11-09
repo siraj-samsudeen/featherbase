@@ -369,3 +369,24 @@ describe('Finalise a row instead of leaving it open to change', () => {
     expect(row.title).toBe('v1')
   })
 })
+
+describe('a workflow action that has nothing to act on', () => {
+  test('on a Table with no active workflow is refused', async ({ admin }) => {
+    await setup(admin)
+    await makeDoc(admin)
+    await expectRefused(admin.post(`/api/table/${encodeURIComponent(DT)}/wf-srv-1:apply_workflow_action`, { action: 'Submit' }), 417, `No active workflow for ${DT}`)
+  })
+
+  test('on a row that does not exist is not found', async ({ admin }) => {
+    await setup(admin)
+    await makeFlow(admin)
+    await expectRefused(admin.post(`/api/table/${encodeURIComponent(DT)}/no-such-row:apply_workflow_action`, { action: 'Submit' }), 404)
+  })
+
+  test('backfilling states on a Table with no workflow changes nothing', async ({ admin }) => {
+    await setup(admin)
+    await makeDoc(admin)
+    await initDocState(DT)
+    expect(await sql`select column_name from featherbase.column_def where parent = ${DT} order by column_name`).toEqual([{ column_name: 'title' }])
+  })
+})

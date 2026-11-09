@@ -2,7 +2,7 @@ import { createRequire } from 'node:module'
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { drainJobs, loadJobs } from '../src/jobs'
+import { drainJobs, enqueue, loadJobs } from '../src/jobs'
 import { queueEmail, renderTemplate, sendTestEmail } from '../src/email'
 
 const require = createRequire(import.meta.url)
@@ -171,4 +171,15 @@ describe('EML-003: PDF attachment', () => {
     },
     30_000,
   )
+})
+
+describe('a queued email already sent', () => {
+  test('is not sent again when its delivery job runs again', async () => {
+    await setup()
+    const name = await queueEmail({ to: 'q@x.com', subject: 'Once Only', body: 'hi' })
+    await drainDueJobs()
+    await enqueue('send_email', { queue: name })
+    await drainDueJobs()
+    expect(await sql`select 1 from email_sink where subject = 'Once Only'`).toHaveLength(1)
+  })
 })
