@@ -436,7 +436,7 @@ and nothing inside Featherbase can report a release it never ran.
 
 `apps/web` can be served by any static host (`pnpm --filter web build` →
 `dist/`). It reads no build-time variables and talks to the API on its own
-origin, so that host must reverse-proxy `/api`, `/ws` and `/files` to the
+origin, so that host must reverse-proxy `/api`, `/mcp`, `/ws` and `/files` to the
 server, and the server needs `WEB_ORIGINS` set to that origin. Prefer the
 single-origin image.
 

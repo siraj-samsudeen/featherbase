@@ -347,6 +347,31 @@ pnpm test
 Tests normally use their own `featherbase_test` database, not development data.
 See [docs/TESTING.md](docs/TESTING.md) for the individual suites and acceptance runner.
 
+### Connect an agent
+
+An agent (Claude Code, Codex, any MCP client) reaches Featherbase at `/mcp` on the
+API's address, with one of your access tokens. It acts as you: it reads and changes
+only what you may, and history marks each change it makes with the token's label.
+Issue a token under your account's access tokens (or `POST /api/access_tokens` with
+`{ "label": "Claude on my laptop" }`), then:
+
+```bash
+# Claude Code
+claude mcp add --transport http featherbase http://localhost:8000/mcp \
+  --header "Authorization: Bearer fbt_…"
+```
+
+```toml
+# Codex: ~/.codex/config.toml
+[mcp_servers.featherbase]
+url = "http://localhost:8000/mcp"
+bearer_token_env_var = "FEATHERBASE_TOKEN"   # export FEATHERBASE_TOKEN=fbt_…
+```
+
+Use your instance's `API_PORT` (or its public address) in place of `8000`. The
+tools: `list_tables`, `describe_table`, `query_rows`, `get_row`, `create_row`,
+`update_row`, `delete_row`.
+
 ## Commands
 
 ```bash
@@ -362,7 +387,7 @@ pnpm check:audit                 # no high or critical advisory in production de
 
 | Path | What lives there |
 |---|---|
-| `apps/server` | Hono API, Table engine, auth, jobs, printing |
+| `apps/server` | Hono API, Table engine, auth, jobs, printing; `/mcp` for agents (`src/mcp.ts`) |
 | `apps/web` | Generic metadata-driven UI |
 | `packages/shared` | Shared contracts and types |
 | `example-apps` | Shipped optional apps, including Tasker |

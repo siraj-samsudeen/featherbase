@@ -84,6 +84,7 @@ import { runApiScript } from './server-scripts'
 import { exportCustomizations, importCustomizations } from './customizations'
 import { getCatalog } from './i18n'
 import { rateLimit } from './rate-limit'
+import { mcpHandler, mcpMethodNotAllowed } from './mcp'
 import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
@@ -804,6 +805,13 @@ app.use('/api/*', async (c, next) => {
     throw error
   }
 })
+
+// #1083: the Model Context Protocol for agents (mcp.ts). Outside /api/*, so
+// it takes no lock and no rate budget of its own: each tool call is an inner
+// /api request that does. Ahead of the GET catch-alls below, so no redirect
+// or app address ever answers for it.
+app.post('/mcp', mcpHandler(app))
+app.on(['GET', 'DELETE'], '/mcp', mcpMethodNotAllowed)
 
 // #401: public (Google's consent screen fetches it anonymously), ahead of the
 // legacy redirect below, which would otherwise answer /privacy with a 308.
@@ -2469,7 +2477,7 @@ export function serveWebDist(target: Hono<Env>, dir: string): boolean {
   // SPA fallback: any GET the API and asset handlers didn't claim gets
   // index.html so client-side routes deep-link. Server-owned prefixes pass
   // through and keep their JSON 404 envelope (API-006).
-  const serverOwned = /^\/(api|apps|files|private\/files|web|ws)(\/|$)/
+  const serverOwned = /^\/(api|apps|files|mcp|private\/files|web|ws)(\/|$)/
   target.get('*', (c, next) => {
     if (serverOwned.test(c.req.path)) return next()
     return serveStatic({ root: webRoot, path: 'index.html' })(c, next)

@@ -97,6 +97,13 @@ password, no sign-in method and no email; it authenticates only by access
 token, and holds roles, Data Scope and Shares exactly as a person does.
 _Avoid_: bot user, service user
 
+**Agent**:
+An AI assistant (Claude Code, Codex, any MCP client) a principal connects to
+Featherbase at `/mcp` with one of their access tokens. It acts as that
+principal, with exactly their access, and history marks each change it makes
+with the token's label.
+_Avoid_: bot, AI user
+
 **Principal**:
 Whoever a request acts as: a Person or a Service Account. Tokens, Data Scope,
 Shares and roles name a principal through a `person` / `service_account` pair,

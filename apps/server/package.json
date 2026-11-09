@@ -29,6 +29,7 @@
   "dependencies": {
     "@duckdb/node-api": "1.5.6-r.2",
     "@hono/node-server": "^2.1.5",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "hono": "^4.13.16",
     "markdown-it": "15.0.3",
     "mysql2": "^3.24.6",
