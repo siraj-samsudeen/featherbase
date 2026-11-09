@@ -176,6 +176,23 @@ describe('on a connected Table', () => {
     ])
   })
 
+  test('a row removed from its source while it is being saved or deleted is not found', async ({ admin }) => {
+    await bind(admin)
+    const controller: TableController = { table: BOUND, hooks: {
+      async validate() { await cli`delete from bulk_fixture.shelf where id = 1` },
+      async on_trash() { await cli`delete from bulk_fixture.shelf where id = 2` },
+    } }
+    registerController(controller)
+    try {
+      const one = await admin.get<{ updated_at: string }>(`/api/table/${enc(BOUND)}/1`)
+      await expectRefused(admin.post('/api/save_row', { table: BOUND, row: { row_id: '1', updated_at: one.updated_at, label: 'gone' } }), 404)
+      const two = await admin.get<{ updated_at: string }>(`/api/table/${enc(BOUND)}/2`)
+      await expectRefused(admin.delete(`/api/table/${enc(BOUND)}/2?updated_at=${enc(two.updated_at)}`), 404)
+    } finally {
+      unregisterController(controller)
+    }
+  })
+
   test('an unexpected controller failure is reported per row while later rows still change', async ({ admin }) => {
     await bind(admin)
     const controller: TableController = { table: BOUND, hooks: { validate(ctx) { if (ctx.row.row_id === '2') throw new Error('private upstream diagnostic') } } }
