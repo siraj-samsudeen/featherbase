@@ -61,3 +61,32 @@ test('UI-006: a no-match query offers create-new in a new tab, keeping the form'
   expect((router.state as { location: { pathname: string } }).location.pathname).toBe(here)
   expect(field('label')).toHaveValue('typed before create-new')
 })
+
+async function depots(admin: Admin) {
+  await admin.post('/api/table_def', { name: 'Lac Depot', id_pattern: 'prompt', title_column: 'depot_name', columns: [{ column_name: 'depot_name', column_type: 'Data' }] })
+  await admin.post('/api/save_row', { table: 'Lac Depot', row: { row_id: 'D1', depot_name: 'North' } })
+  await admin.post('/api/save_row', { table: 'Lac Depot', row: { row_id: 'D2' } })
+  await admin.post('/api/table_def', { name: 'Lac Load', id_pattern: 'prompt', columns: [
+    { column_name: 'label', column_type: 'Data' },
+    { column_name: 'depot', column_type: 'Reference', reference_table: 'Lac Depot' },
+  ] })
+}
+
+test('UI-006: a row with no title is offered by its id', async ({ admin }) => {
+  await depots(admin)
+  await admin.post('/api/save_row', { table: 'Lac Load', row: { row_id: 'l1', label: 'l1' } })
+  await renderApp(`/featherbase/admin/table/${tableSlug('Lac Load')}/row/l1`, admin)
+  await screen.findByTestId('form-view', {}, WAIT)
+  fireEvent.change(field('depot'), { target: { value: 'D' } })
+  fireEvent.change(field('depot'), { target: { value: '' } })
+  const options = await screen.findByTestId('link-options-depot', {}, WAIT)
+  await waitFor(() => expect(within(options).getAllByTestId('link-option').map((o) => o.textContent)).toEqual(['North', 'D2']))
+})
+
+test('UI-006: a link to a row with no title shows its id', async ({ admin }) => {
+  await depots(admin)
+  await admin.post('/api/save_row', { table: 'Lac Load', row: { row_id: 'l1', label: 'l1', depot: 'D2' } })
+  await renderApp(`/featherbase/admin/table/${tableSlug('Lac Load')}/row/l1`, admin)
+  await screen.findByTestId('form-view', {}, WAIT)
+  await waitFor(() => expect(field('depot')).toHaveValue('D2'))
+})
