@@ -119,3 +119,22 @@ test('#628 the places an app gives a person show with their reasons and days', a
   ])
   expect(screen.getByTestId('access-places')).toHaveTextContent('Places from Place roster proof')
 })
+
+test("#628 a System Manager's own page says they reach every Table", async ({ admin }) => {
+  await renderApp(pageOf('Administrator'), admin)
+  await screen.findByTestId('access-explanation', {}, WAIT)
+  await waitFor(() => expect(screen.getByTestId('access-tables')).toHaveTextContent(/every Table/i), WAIT)
+})
+
+test('#628 a share that is read only, and may be shared on, says so', async ({ admin, createUser }) => {
+  const { north } = await seed(admin)
+  const person = await createUser({ roles: [], fullName: 'Ax Sharer' })
+  await admin.post('/api/save_row', { table: 'Share', row: { share_table: 'Ax Site', share_name: north.row_id, person: person.user, read: true, share: true } })
+  await renderApp(pageOf(person.user!), admin)
+  expect(await screen.findByTestId('access-share', {}, WAIT)).toHaveTextContent(/Ax Site: North \(read only, can share on\)/)
+})
+
+test('#628 the page for someone who is not a person says there is no such person', async ({ admin }) => {
+  await renderApp(pageOf('psn_nobodyhereatallnobodyx'), admin)
+  expect(await screen.findByText('There is no such person.', {}, WAIT)).toBeInTheDocument()
+})
