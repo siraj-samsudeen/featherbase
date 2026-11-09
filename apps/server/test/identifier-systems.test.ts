@@ -7,6 +7,7 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { kindPreset, assuranceOf, completeSystemRow, displayValue, verhoeffValid } from '../src/identifiers'
 import { applySeedPack } from '../src/seed-packs'
+import { applyInstanceSettings } from '../src/instance-settings'
 import { addIdentifier } from '../src/person-identifiers'
 import { CORE_PEOPLE_REVIEW } from '../src/person-identifiers'
 import { expectRefused, expectStatus, makePerson } from './fixtures'
@@ -259,6 +260,19 @@ describe('the Jeyarama seed pack', () => {
     const again = await applySeedPack('jeyarama')
     expect(again).toMatchObject({ added: [], methodsLinked: [], peopleReview: 'kept' })
     expect(again.kept.sort()).toEqual(['stylehr-employee-code', 'stylehr-employee-id'])
+  })
+})
+
+describe('the seed pack and the settings file', () => {
+  test('a sign-in method link the settings file manages is left to the file', async () => {
+    await sql`insert into sign_in_method (row_id, kind, label, enabled, new_person) values ('stylehr', 'delegated_password', 'StyleHR', false, 'refuse')
+      on conflict (row_id) do nothing`
+    await sql`delete from identifier_system where row_id like 'stylehr-%'`
+    await sql`update sign_in_method set identifier_system = null where row_id = 'stylehr'`
+    await applyInstanceSettings({ settings: { 'Sign In Method': [{ row_id: 'stylehr', identifier_system: null }] } }, { by: 'Administrator' })
+    const applied = await applySeedPack('jeyarama')
+    expect(applied.methodsLinked).toEqual([])
+    expect(await sql`select identifier_system from sign_in_method where row_id = 'stylehr'`).toEqual([{ identifier_system: null }])
   })
 })
 
