@@ -10,7 +10,7 @@ import { rowHref, tableHref } from 'shared'
 import { sql } from 'server/src/db'
 import { patchDoc } from 'server/test/fixtures'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp } from '../pg-test'
+import { test, expect, renderApp, onScreen } from '../pg-test'
 
 configure({ asyncUtilTimeout: 10_000 })
 type Client = Parameters<typeof renderApp>[1]
@@ -195,7 +195,7 @@ class Explore {
       expect(options[0]!.textContent).toMatch(/^\d+ matching tables?/)
       expect(options.length).toBeGreaterThan(1)
     })
-    await user.keyboard('{Enter}')
+    await onScreen().pressKey('Enter')
   }
 
   async startingTable() {

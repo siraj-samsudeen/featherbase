@@ -215,6 +215,20 @@ describe('naming-and-numbering', () => {
 })
 ```
 
+A new scenario test drives the screen with the Session DSL (feather-testing-core,
+through feather-testing-postgres's adapter): `renderSession(path, client)` from
+`apps/web/test/pg-test.ts`, or `onScreen()` for a page the test mounts itself,
+then one chain of verbs inside each step. It sets up data with the `seed(table,
+values)` and `createUser({ roles })` fixtures, and keeps the When as an explicit
+request. Raw Testing Library is for what no verb covers, with a comment saying why.
+
+```ts
+await step('the user corrects the plant code', async () => {
+  const { session } = await renderSession(rowHref('Plant', plant.row_id), admin)
+  await session.fillIn('Plant Code', '8159').clickButton('Save').assertText('Saved')
+})
+```
+
 `pnpm check:scenarios` (CI's `checks` job) fails unless every fenced scenario
 of the effective spec has exactly one bound test, and every binding names a
 scenario the spec has. A scenario still in prose needs none.

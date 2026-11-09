@@ -132,14 +132,11 @@ describe('metadata-override-validation', () => {
     await step('the customization is refused with the missing column identified', () => c.expectMissingColumn())
   })
 
-  scenario('A user-added category can be customized', async ({ admin }, step) => {
+  scenario('A user-added category can be customized', async ({ admin, seed }, step) => {
     let c!: Catalogue
     await step(GIVEN, async () => { c = await new Catalogue(admin).prepare() })
     await step('the user has added a priority column to that catalogue', () =>
-      admin.post('/api/save_row', {
-        table: 'Custom Field',
-        row: { row_id: `${c.table}-priority`, dt: c.table, column_name: 'priority', column_type: 'Data', label: 'Priority' },
-      }))
+      seed('Custom Field', { row_id: `${c.table}-priority`, dt: c.table, column_name: 'priority', column_type: 'Data', label: 'Priority' }))
     await step('the user customizes the priority label', () => c.save({ column_name: 'priority', property: 'label', value: 'Urgency' }))
     await step('the user-added column has the customized label', async () => {
       expect(c.result.status).toBe(201)

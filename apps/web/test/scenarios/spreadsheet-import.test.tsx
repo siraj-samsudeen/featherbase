@@ -12,7 +12,7 @@ import { tableHref } from 'shared'
 import { scenarioFor } from 'server/test/scenario'
 import { importedEarlier, importedZones, populations, populationsOf, zoneCount, zonesCsv, type ImportedZones, type Zone, type ZoneOptions } from 'server/test/reimport-zones'
 import { clearSession } from '../../src/lib/import-session'
-import { test, expect, renderApp } from '../pg-test'
+import { test, expect, renderApp, onScreen } from '../pg-test'
 
 const scenario = scenarioFor(test, 'spreadsheet-import')
 const WAIT = { timeout: 20_000 }
@@ -72,7 +72,7 @@ class Wizard {
   async openForTable(as: TestClient, table: string) {
     cleanup()
     await renderApp(tableHref(table), as)
-    await this.user.click(await screen.findByRole('button', { name: 'List actions' }, WAIT))
+    await onScreen().clickButton('List actions')
     await this.user.click(await screen.findByTestId('open-import'))
     await screen.findByTestId('import-wizard', {}, WAIT)
   }

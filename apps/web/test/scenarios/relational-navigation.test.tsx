@@ -14,7 +14,7 @@ import { cleanup, configure, fireEvent, screen, waitFor, within } from '@testing
 import { describe, vi } from 'vitest'
 import { rowHref, tableHref } from 'shared'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp } from '../pg-test'
+import { test, expect, renderApp, onScreen, inside } from '../pg-test'
 import {
   add, ENCHAKKAL_PLANTS, PLANTS, SITE, limitRows, listColumns, readerRoles, seedOrganisation, type OrgIds,
 } from '../organisation-fixture'
@@ -546,7 +546,7 @@ describe('relational-navigation', () => {
       const org = await seedOrganisation(admin)
       await openRowPage(admin, SITE, org[SITE]!.Enchakkal!)
       await showTab('Map')
-      await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('Enchakkal'))
+      await inside(onScreen(), 'map-center', (el) => el.assertText('Enchakkal'))
     })
     await step('the user clicks the region Kerala on the map', async () => {
       fireEvent.click(await screen.findByTestId('map-forward-Region'))
@@ -556,6 +556,7 @@ describe('relational-navigation', () => {
     await step('choosing to centre on Kerala redraws the map around Kerala', async () => {
       // #910 checklist 17: the drill pane's "Focus here" re-centres the map.
       fireEvent.click(await within(await pane('Kerala')).findByRole('button', { name: 'Focus here' }))
+      // Raw: the redraw replaces the centre, so its text is read afresh on each try.
       await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('Kerala'))
       expect(await screen.findByTestId(`map-group-${SITE}`)).toBeVisible()
     })

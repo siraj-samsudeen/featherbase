@@ -128,14 +128,14 @@ const conflictCount = async () => (await sql`select count(*)::int as n from feat
 const RESPONSIBLE = 'responsible.administrator@example.test'
 
 describe('background-and-scheduled-jobs', () => {
-  scenario('A reader cannot schedule Plants', async ({ admin, createUser }, step) => {
+  scenario('A reader cannot schedule Plants', async ({ admin, createUser, seed }, step) => {
     let plants!: Plants
     let reader!: TestClient
     let refusal = 0
     await step('the user can read the copied Plants table but is not a System Manager', async () => {
       plants = await new Plants(admin).create()
-      await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Plants Reader' } })
-      await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Plants', role: 'Plants Reader', operation: 'read' } })
+      await seed('Role', { row_id: 'Plants Reader' })
+      await seed('Permission', { ref_table: 'Plants', role: 'Plants Reader', operation: 'read' })
       reader = await createUser({ roles: ['Plants Reader'] })
       expect((await reader.get<{ data: unknown[] }>('/api/table/Plants')).data).toHaveLength(2)
     })

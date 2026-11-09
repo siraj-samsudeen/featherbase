@@ -5,12 +5,11 @@
 // the shared top bar is the platform's, drawn around the page when it is
 // served, so it is not part of this page.
 import { screen, waitFor, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { describe } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { scenarioFor } from 'server/test/scenario'
 import { pinning, Tickets, TicketTypes, type Ticket } from 'server/test/tickets-world'
-import { test as base, expect } from '../pg-test'
+import { test as base, expect, type Session } from '../pg-test'
 import { openTickets, sidebar } from '../tickets-page'
 
 const test = base.extend(pinning)
@@ -68,14 +67,16 @@ async function statusLinks() {
 describe('tickets-workspace', () => {
   scenario('Moving between views in the shared navigation', async ({ admin, createUser }, step) => {
     const t = new Tickets(admin, createUser)
-    const user = userEvent.setup()
+    let session!: Session
     let mine: Titled, theirs: Titled
     await step('the user is support staff with tickets assigned to them', async () => {
       await t.choose('Support')
       mine = await ticket(t, 'access', 'Assigned access', ACCESS, 'Support')
       theirs = await ticket(t, 'report', 'Colleague report', { format: 'Excel' }, 'Bala')
     })
-    await step('the user opens Tickets', () => openTickets(t.people.Support!))
+    await step('the user opens Tickets', async () => {
+      ;({ session } = await openTickets(t.people.Support!))
+    })
     await step("Tickets' views are listed in the shared app navigation", async () => {
       expect(sidebar(), 'the page draws the shared app navigation').toBeTruthy()
       for (const view of [/^\s*All tickets/, /^\s*My requests/, /^\s*Assigned to me/])
@@ -86,13 +87,13 @@ describe('tickets-workspace', () => {
       expect(own.map(el => el.outerHTML.slice(0, 80)), 'Tickets draws navigation of its own').toEqual([])
       expect(ownText(), 'Tickets draws account controls of its own').not.toMatch(/Signed in|Sign out|Support workspace|Requester workspace/)
     })
-    await step('the user chooses the view of tickets assigned to them', () => user.click(navRow(/^\s*Assigned to me/)!))
+    await step('the user chooses the view of tickets assigned to them', () =>
+      session.within(SIDEBAR, (nav) => nav.clickButton('Assigned to me')))
     await step('the queue shows only the tickets assigned to the user', () => expectQueue(mine, theirs))
   })
 
   scenario('Narrowing the queue to one ticket type', async ({ admin, createUser }, step) => {
     const t = new Tickets(admin, createUser)
-    const user = userEvent.setup()
     let access: Titled, dataQuality: Titled
     await step('the queue holds an access request and a data quality issue', async () => {
       await t.choose('Support')
@@ -104,26 +105,24 @@ describe('tickets-workspace', () => {
       dataQuality = { ...t.ticket, title }
     })
     await step('the user chooses the access request type in the shared app navigation', async () => {
-      await openTickets(t.people.Support!)
-      await waitFor(() => expect(navRow(/^\s*Access/)).toBeTruthy())
-      await user.click(navRow(/^\s*Access/)!)
+      const { session } = await openTickets(t.people.Support!)
+      await session.within(SIDEBAR, (nav) => nav.clickButton('Access'))
     })
     await step('the queue shows the access request and not the data quality issue', () => expectQueue(access, dataQuality))
   })
 
   scenario('The ticket and its actions are at the top', async ({ admin, createUser }, step) => {
     const t = new Tickets(admin, createUser)
-    const user = userEvent.setup()
     let selected: Titled
     await step('the user is support staff and a new access ticket waits in the queue', async () => {
       await t.choose('Support')
       selected = await ticket(t, 'access', 'New access', ACCESS)
     })
     await step('the user opens Tickets and selects that ticket', async () => {
-      await openTickets(t.people.Support!)
-      await waitFor(() => expect(queueRows(selected.title).length).toBeGreaterThan(0), { timeout: 8000 })
-      await user.click(queueRows(selected.title)[0]!)
-      await waitFor(() => expect(header(selected.title).box).toBeTruthy(), { timeout: 8000 })
+      const { session } = await openTickets(t.people.Support!)
+      await session
+        .within('main', (page) => page.clickButton(selected.title))
+        .until('the ticket header names its assignee', () => header(selected.title).box)
     })
     await step("the ticket's title, state and assignee are shown at the top of the page", () => {
       const { box } = header(selected.title)

@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, vi } from 'vitest'
 import { grantRole } from 'server/test/fixtures'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp } from '../pg-test'
+import { test, expect, renderApp, onScreen } from '../pg-test'
 
 type Admin = Parameters<typeof renderApp>[1]
 type User = ReturnType<typeof userEvent.setup>
@@ -30,14 +30,13 @@ const personDefinition = () => {
 
 /** ⌘K, as the person presses it: the bar takes the focus. */
 async function open(user: User) {
-  await user.keyboard('{Meta>}k{/Meta}')
+  await onScreen().pressKey('Meta+k')
   expect(document.activeElement).toBe(input())
 }
 
 /** Replace what the bar holds, as a person retyping it. */
-async function fill(user: User, text: string) {
-  await user.clear(input())
-  if (text) await user.type(input(), text)
+async function fill(_user: User, text: string) {
+  await onScreen().fillIn('Search or type a command…', text)
 }
 
 /** The Sign In Method list, with the total the server reported. */
@@ -62,7 +61,7 @@ async function searchSignInMethods(user: User) {
   await open(user)
   await fill(user, TABLE)
   await waitFor(() => expect(screen.getAllByTestId('awesomebar-table').some((e) => e.textContent?.includes(TABLE))).toBe(true), T)
-  await user.keyboard('{Enter}')
+  await onScreen().pressKey('Enter')
 }
 
 async function searchPerson(admin: Admin, user: User) {
@@ -82,11 +81,11 @@ async function choosePersonResult(user: User, kind: 'new' | 'record') {
       : personDefinition()
   const count = options().length
   for (let i = 0; i < count; i++) {
-    await user.keyboard('{ArrowDown}')
+    await onScreen().pressKey('ArrowDown')
     if (target().getAttribute('aria-selected') === 'true') break
   }
   expect(target()).toHaveAttribute('aria-selected', 'true')
-  await user.keyboard('{Enter}')
+  await onScreen().pressKey('Enter')
 }
 
 async function expectPersonForm(app: { router: unknown }, kind: 'new' | 'record') {
@@ -254,7 +253,7 @@ describe('admin-ui-feedback', () => {
       await user.tab()
       // DOM focus is on an offered result, not just an arrow-key selection.
       expect(document.activeElement).toBe(options()[0])
-      await user.keyboard('{Escape}')
+      await onScreen().pressKey('Escape')
     })
     await step('its results are hidden with the search preserved', () => expectPreservedDismissal(late))
     await step('the command shortcut shows its results again', () => reopenPreservedSearch(user, true))
@@ -268,7 +267,7 @@ describe('admin-ui-feedback', () => {
     })
     await step('the user presses Escape in the search', async () => {
       expect(document.activeElement).toBe(input())
-      await user.keyboard('{Escape}')
+      await onScreen().pressKey('Escape')
     })
     await step('its results are hidden with the search preserved', () => expectPreservedDismissal(late))
     await step('the command shortcut shows its results again', () => reopenPreservedSearch(user, true))
@@ -302,7 +301,7 @@ describe('admin-ui-feedback', () => {
     })
     await step('the user replaces the search with Sign In Meth and immediately activates the search', async () => {
       await fill(user, 'Sign In Meth')
-      await user.keyboard('{Enter}')
+      await onScreen().pressKey('Enter')
     })
     await step('the previous Person record is not opened', async () => {
       await waitFor(() => expect(here(app)).not.toMatch(/\/all-tables$/), T)
@@ -352,11 +351,11 @@ describe('admin-ui-feedback', () => {
       expect(document.activeElement).toBe(input())
       await waitFor(() => expect(dropdown()).toBeInTheDocument(), T)
       // Edit with the keyboard without refocusing: the whole query is in the focused input.
-      await user.keyboard('{End} ')
+      await onScreen().pressKey('End').pressKey(' ')
       expect(input()).toHaveValue(`${TABLE} `)
-      await user.keyboard('{Backspace}')
+      await onScreen().pressKey('Backspace')
       expect(input()).toHaveValue(TABLE)
-      await user.keyboard('{Enter}')
+      await onScreen().pressKey('Enter')
       await waitFor(() => expect(input()).toHaveValue(''), T)
       await expectSignInMethods(seen.app, seen.total)
       await waitFor(() => expect(dropdown()).toBeNull())

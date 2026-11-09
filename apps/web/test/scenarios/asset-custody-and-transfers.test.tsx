@@ -6,7 +6,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe } from 'vitest'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect } from '../pg-test'
+import { test, expect, screenSession } from '../pg-test'
 import { Assets, type Row, realTime } from './assets'
 
 const scenario = scenarioFor(test, 'asset-custody-and-transfers')
@@ -126,15 +126,18 @@ class Custody {
 
   /** On the transfer's page: name the transporter, scan each item's tag, dispatch. */
   async scanOut(person: string, transporter: string) {
-    const user = await this.openTransfer(person)
-    await user.type(await screen.findByLabelText('Transporter or vendor'), transporter)
+    await this.openTransfer(person)
+    const page = screenSession().fillIn('Transporter or vendor', transporter)
     for (const name of Object.keys(this.lines)) {
-      await user.type(screen.getByLabelText('Scan tag'), this.assets.assets[name]!)
-      await user.click(screen.getByRole('button', { name: 'Add' }))
-      await within(screen.getByRole('list', { name: 'Scanned' })).findByText(name, { exact: true })
+      page
+        .fillIn('Scan tag', this.assets.assets[name]!)
+        .clickButton('Add')
+        // Exactly the name: an item not on this transfer reads "<name> · not on this transfer".
+        .until(`${name} is scanned`, () => [...document.querySelectorAll('[aria-label="Scanned"] li')].some(li => li.textContent === name))
     }
-    await user.click(screen.getByRole('button', { name: 'Dispatch' }))
-    await waitFor(() => expect(within(document.querySelector('.transfer-route') as HTMLElement).getByText('Dispatched', { exact: true })).toBeInTheDocument())
+    await page
+      .clickButton('Dispatch')
+      .until('the route reads Dispatched', () => document.querySelector('.transfer-route .transfer-stage')?.textContent === 'Dispatched')
   }
 
   /** On the transfer's page: choose how each item arrived and receive it. */
@@ -156,9 +159,8 @@ class Custody {
 
   /** On the transfer's page: record Finance's SAP reference. */
   async confirmFinanceOnPage(person: string, reference: string) {
-    const user = await this.openTransfer(person)
-    await user.type(await screen.findByLabelText('SAP transaction reference'), reference)
-    await user.click(screen.getByRole('button', { name: 'Confirm Finance' }))
+    await this.openTransfer(person)
+    await screenSession().fillIn('SAP transaction reference', reference).clickButton('Confirm Finance')
     await waitFor(() => expect(screen.getAllByRole('status').some(s => s.textContent!.includes(`Finance confirmed ${reference}`))).toBe(true))
   }
 

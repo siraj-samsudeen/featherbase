@@ -21,7 +21,7 @@ import { TaskManagementPage } from '../../../../example-apps/tasker/src/TaskMana
 import { localDay } from '../../../../example-apps/tasker/src/storeWork'
 import { setSession } from '../../src/lib/api'
 import { taskerClient } from '../../../server/test/tasker-client'
-import { expect } from '../pg-test'
+import { expect, screenSession } from '../pg-test'
 
 export type Row = { row_id: string; updated_at: string; [field: string]: unknown }
 type CreateUser = (options: { roles: string[]; fullName: string }) => Promise<TestClient>
@@ -263,6 +263,10 @@ async function relationOf(table: string) {
 
 /** Tasker's page for one member, rendered: its sidebar views, a project's tasks, task details, Stores, To verify and Issues. */
 export class TaskerPage {
+  /** Drives the page with the Session DSL. Most of Tasker's selects carry their name in
+   *  aria-label, or in a <label> that also holds the options' text: the DSL's label lookup
+   *  can't name those, so they are chosen through `user`. */
+  readonly session = screenSession()
   constructor(readonly user: User) {}
 
   // --- getting around ---------------------------------------------------------
@@ -272,7 +276,7 @@ export class TaskerPage {
   }
 
   async openProject(name: string) {
-    await this.user.click(await screen.findByRole('button', { name }))
+    await this.session.clickButton(name)
     await screen.findByRole('heading', { name })
   }
 
@@ -334,7 +338,7 @@ export class TaskerPage {
     await this.user.click(within(main).getByRole('button', { name: /^Filter/ }))
     const filters = await screen.findByRole('dialog', { name: 'Filter tasks' })
     await this.user.click(await within(within(filters).getByRole('group', { name: group })).findByRole('checkbox', { name: choice }))
-    await this.user.click(within(filters).getByRole('button', { name: 'Close' }))
+    await this.session.within('[aria-label="Filter tasks"]', (dialog) => dialog.clickButton('Close'))
     await within(main).findByRole('button', { name: `Remove ${choice} filter` })
   }
 

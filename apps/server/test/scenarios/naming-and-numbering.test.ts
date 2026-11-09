@@ -40,12 +40,12 @@ describe('naming-and-numbering', () => {
     await step('each store is numbered STORE-001', () => expect(added).toEqual(['STORE-001', 'STORE-001']))
   })
 
-  scenario('An imported row already holds the next number', async ({ admin }, step) => {
+  scenario('An imported row already holds the next number', async ({ admin, seed }, step) => {
     let next = ''
     await step('a table "Bin" whose rows are numbered 1, 2, 3', () =>
       makeTable(admin, { name: 'Bin', module: 'Custom', id_pattern: 'integer', columns: ['title'] }))
     await step('the user has added bin 1 and imported a bin with the id 2', async () => {
-      expect(await addRow(admin, 'Bin')).toBe('1')
+      expect((await seed('Bin', { title: 'a row' })).row_id).toBe('1')
       // An import supplies its own ids through the same create the API offers.
       await admin.post('/api/table/Bin', { row_id: '2', title: 'imported' })
     })
@@ -64,11 +64,11 @@ describe('naming-and-numbering', () => {
     await step('the plant is named PLANT-8151', () => expect(id).toBe('PLANT-8151'))
   })
 
-  scenario('Two plants with the same code', async ({ admin }, step) => {
+  scenario('Two plants with the same code', async ({ admin, seed }, step) => {
     let refusal: Promise<unknown> = Promise.resolve()
     await step('plant PLANT-8151 exists', async () => {
       await plantTable(admin, 'PLANT-')
-      expect(await addRow(admin, 'Plant', { plant_code: '8151', city: 'Chennai' })).toBe('PLANT-8151')
+      expect((await seed('Plant', { plant_code: '8151', city: 'Chennai' })).row_id).toBe('PLANT-8151')
     })
     await step('the user adds another plant with the plant code 8151', () => {
       refusal = admin.post('/api/save_row', { table: 'Plant', row: { plant_code: '8151', city: 'Madurai' } })

@@ -14,17 +14,14 @@ const scenario = scenarioFor(test, 'tables-and-fields')
 const migration = readFileSync(new URL('../../migrations/0006_readable_labels.sql', import.meta.url), 'utf8')
 
 describe('tables-and-fields', () => {
-  scenario('Upgrade preserves customized wording', async ({ admin }, step) => {
+  scenario('Upgrade preserves customized wording', async ({ admin, seed }, step) => {
     let overridesBefore: unknown[] = []
     await step('the user has customized and translated labels beside unchanged platform defaults', async () => {
       await sql`update column_def set label = case column_name
         when 'client_id' then 'client_id' when 'service_url' then 'My endpoint wording'
         when 'new_person' then 'new_person' end
         where parent = 'Sign In Method' and column_name in ('client_id', 'service_url', 'new_person')`
-      await admin.post('/api/save_row', {
-        table: 'Translation',
-        row: { row_id: 'labels-826-new-person', language: 'fr', source_text: 'new_person', translated_text: 'Politique conservée' },
-      })
+      await seed('Translation', { row_id: 'labels-826-new-person', language: 'fr', source_text: 'new_person', translated_text: 'Politique conservée' })
       await admin.post('/api/table/Metadata%20Override', {
         row_id: 'labels-826-override', table_name: 'Sign In Method', column_name: 'client_id', property: 'label', value: 'Customer key override',
       })

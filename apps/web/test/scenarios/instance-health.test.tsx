@@ -8,7 +8,6 @@
 // managed setting is the server's own settings:set command, run in process.
 import { resolve } from 'node:path'
 import { cleanup, screen, waitFor, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { afterEach, describe, vi } from 'vitest'
 import { discoverAppLibrary } from 'server/src/app-library'
 import { loadInstalledApps } from 'server/src/apps'
@@ -22,7 +21,7 @@ import { runMain } from 'server/test/command-io'
 import { scenarioFor } from 'server/test/scenario'
 import { admitTasker } from 'server/test/tasker-client'
 import { OFFER_SETUP_KEY } from '../../src/pages/FirstRunSetup'
-import { test, expect, renderApp } from '../pg-test'
+import { test, expect, renderApp, onScreen, screenSession, inside } from '../pg-test'
 
 type Client = Parameters<typeof renderApp>[1]
 type Rendered = Awaited<ReturnType<typeof renderApp>>
@@ -118,16 +117,14 @@ async function welcome(admin: Client) {
 /** Welcome, then "Explore Featherbase". */
 async function skip(admin: Client) {
   const view = await welcome(admin)
-  await userEvent.click(screen.getByRole('link', { name: 'Explore Featherbase' }))
+  await onScreen().clickLink('Explore Featherbase')
   return view
 }
 
 async function signIn(next?: string) {
   cleanup()
   const view = await renderApp(next ? `/featherbase/login?next=${encodeURIComponent(next)}` : '/featherbase/login', anonymous)
-  await userEvent.type(await screen.findByLabelText('Email or username', {}, LONG), 'Administrator')
-  await userEvent.type(screen.getByLabelText('Password'), PASSWORD)
-  await userEvent.click(screen.getByTestId('login-submit'))
+  await screenSession(LONG).fillIn('Email or username', 'Administrator').fillIn('Password', PASSWORD).clickButton('Sign in')
   return view
 }
 
@@ -271,7 +268,7 @@ describe('instance-health', () => {
         expect(screen.getByRole('heading', { name })).toBeInTheDocument()
     })
     await step('the user can explore Featherbase without installing an app', async () => {
-      await userEvent.click(screen.getByRole('link', { name: 'Explore Featherbase' }))
+      await onScreen().clickLink('Explore Featherbase')
       await waitFor(() => expect(pathOf(view)).toBe(`${ADMIN}/all-tables`), LONG)
       await noInstalledApps(admin)
     })
@@ -315,10 +312,10 @@ describe('instance-health', () => {
     })
     await step('the user invites another System Manager during setup', async () => {
       await open(admin, `${SETUP}/people`)
-      const setup = await screen.findByTestId('first-run-setup', {}, LONG)
-      await userEvent.type(within(setup).getByLabelText('Full name'), 'Acceptance administrator')
-      await userEvent.type(within(setup).getByLabelText('Email'), 'base-install-admin@example.com')
-      await userEvent.click(within(setup).getByRole('button', { name: 'Invite' }))
+      await inside(screenSession(LONG), 'first-run-setup', (setup) => setup
+        .fillIn('Full name', 'Acceptance administrator')
+        .fillIn('Email', 'base-install-admin@example.com')
+        .clickButton('Invite'))
     })
     await step('the invitation link is shown to copy and deliver separately', async () => {
       const invitation = await screen.findByTestId('setup-invitation', {}, LONG)

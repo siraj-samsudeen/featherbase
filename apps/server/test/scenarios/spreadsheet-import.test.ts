@@ -5,7 +5,7 @@
 // give that person System Manager to make the wizard open. The scenarios a
 // person works through in the wizard are in apps/web/test/scenarios/.
 import { describe, expect } from 'vitest'
-import type { TestClient } from 'feather-testing-postgres'
+import type { CreateUserFn, SeedFn, TestClient } from 'feather-testing-postgres'
 import { test } from '../pg-test'
 import { scenarioFor } from '../scenario'
 import { importedZones, populations, populationsOf, zoneCount, type ImportedZones } from '../reimport-zones'
@@ -13,11 +13,11 @@ import { importedZones, populations, populationsOf, zoneCount, type ImportedZone
 const scenario = scenarioFor(test, 'spreadsheet-import')
 
 /** A person whose role may read and append the zones, and change them only when `update`. */
-async function importer(admin: TestClient, createUser: (o: { roles: string[] }) => Promise<TestClient>, table: string, update: boolean) {
+async function importer({ seed, createUser }: { seed: SeedFn; createUser: CreateUserFn }, table: string, update: boolean) {
   const role = `${table} Importer`
-  await admin.post('/api/save_row', { table: 'Role', row: { row_id: role } })
+  await seed('Role', { row_id: role })
   for (const operation of ['read', 'create', ...(update ? ['update'] : [])])
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: table, role, operation } })
+    await seed('Permission', { ref_table: table, role, operation })
   return createUser({ roles: [role] })
 }
 
@@ -34,13 +34,13 @@ async function analyzeKeys(person: TestClient, zones: ImportedZones) {
 }
 
 describe('spreadsheet-import', () => {
-  scenario('An unreadable matching column is not offered', async ({ admin, createUser }, step) => {
+  scenario('An unreadable matching column is not offered', async ({ admin, createUser, seed }, step) => {
     let zones!: ImportedZones
     let person!: TestClient
     let analysis: unknown
     await step('the user can read the zones but cannot read their zone codes', async () => {
       zones = await importedZones(admin, { restricted: true })
-      person = await importer(admin, createUser, zones.table, true)
+      person = await importer({ seed, createUser }, zones.table, true)
     })
     await step('the user prepares the identical zones file for another import', async () => {
       analysis = await analyzeKeys(person, zones)
@@ -49,13 +49,13 @@ describe('spreadsheet-import', () => {
       expect(analysis).toEqual({ key_candidates: [] }))
   })
 
-  scenario('Readable overlap does not require permission to change rows', async ({ admin, createUser }, step) => {
+  scenario('Readable overlap does not require permission to change rows', async ({ admin, createUser, seed }, step) => {
     let zones!: ImportedZones
     let person!: TestClient
     let analysis: unknown
     await step('the user can read and append the zones but cannot change existing zones', async () => {
       zones = await importedZones(admin)
-      person = await importer(admin, createUser, zones.table, false)
+      person = await importer({ seed, createUser }, zones.table, false)
     })
     await step('the user checks overlap before appending the identical zones file', async () => {
       analysis = await analyzeKeys(person, zones)
