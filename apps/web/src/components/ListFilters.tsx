@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { choiceLabel } from 'shared'
 import { LinkedTitle } from '../lib/row-name'
-import { LinkControl } from './FormView'
+import { LinkControl } from './LinkControl'
 import { NO_COLUMN_TYPES } from '../lib/meta'
 import { NOT_A_LOGIN } from '../lib/not-a-login'
 import { useI18n } from '../lib/i18n'
