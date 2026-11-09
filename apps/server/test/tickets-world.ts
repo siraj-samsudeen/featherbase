@@ -58,7 +58,7 @@ export class Tickets {
   /** A person of the scenario, created once, named by their part. */
   async person(name: string, roles: string[]) {
     if (this.people[name]) return this.people[name]
-    const client = await this.createUser({ email: `${name.toLowerCase().replace(/\W+/g, '-')}@tickets.example.test`, fullName: name, roles })
+    const client = await this.createUser({ email: `${name.toLowerCase().replace(/\W+/g, '-')}@people.example.test`, fullName: name, roles })
     this.people[name] = client
     this.ids[name] = client.user!
     this.roles[name] = roles

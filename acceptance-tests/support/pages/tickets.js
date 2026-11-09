@@ -2,10 +2,9 @@
 
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
-const { pathToFileURL } = require('node:url');
 const { resolve } = require('node:path');
 const { Api } = require('../api');
-const { REPO_ROOT, API_URL, BASE_URL, restartAcceptance, resetAcceptance, acceptanceSql } = require('../stack');
+const { REPO_ROOT, BASE_URL, restartAcceptance, acceptanceSql } = require('../stack');
 const appEnvironment = { FEATHERBASE_APP_PATHS: JSON.stringify([resolve(REPO_ROOT, 'example-apps/tickets')]) };
 let packageDiscovered = false;
 // Tickets records an upgrade step, so its Tables answer only a client that names
@@ -103,11 +102,8 @@ class Tickets {
     await this.action('evidence', { expected: '2 invoices from source-check-1', observed: '0 from report-check-1',
       reference: 'source-check-1; report-check-1', observed_at: '2026-11-03T09:00:00Z', finding: 'confirmed_mismatch' }, 'Support');
   }
-  async resolved() { await this.complaint(); await this.finding(); await this.action('resolve', { reason: 'Report refreshed and both invoices present', reference: 'report-check-2' }, 'Support'); }
   async denied() { assert.ok([403, 409, 417].includes(this.last.status), JSON.stringify(this.last)); }
   async includes(...values) { const text = await this.text(); for (const value of values) assert.ok(text.includes(value), `missing ${value}: ${text}`); }
-  async excludes(...values) { const text = await this.text(); for (const value of values) assert.ok(!text.includes(value), `leaked ${value}: ${text}`); }
-  async unfulfilled() { assert.notEqual((await this.open()).ticket.ticket_state, 'Resolved'); }
   async search(query) { this.queue = (await this.read('queue', { search: query })).tickets; }
   async renameTicket() {
     this.last = await this.call(this.actor, `/api/table/tickets.ticket/${this.ticket.row_id}:rename`, { new_name: 'changed-by-another-requester' });
@@ -132,32 +128,6 @@ class Tickets {
     await this.includes('source-check-1', 'report-check-1', this.ids.Support);
   }
   async connections() { this.connectionStatus = (await this.read('session')).connections; }
-  async ordinaryInstall() {
-    await Api.disposeAll();
-    await resetAcceptance(appEnvironment);
-    packageDiscovered = true;
-    await this.setup();
-    this.beforeQueue = (await this.read('queue')).tickets;
-    assert.deepEqual(this.beforeQueue, [], 'a fresh install must have no business samples');
-  }
-  async loadSamples() {
-    // Explicit development-only package script, never a product action or normal install hook.
-    const { seedTickets } = await import(pathToFileURL(resolve(REPO_ROOT, 'tools/seed-tickets-development.mjs')).href);
-    await seedTickets({ baseUrl: API_URL, password: process.env.ADMIN_PASSWORD ?? 'admin', expectedEnvironment: 'test' });
-    this.queue = (await this.read('queue')).tickets;
-  }
-  async fictionalEvidence() {
-    const api = await ticketsAdmin();
-    for (const table of ['tickets.request', 'tickets.event']) {
-      const fields = table === 'tickets.request' ? ['row_id', 'original'] : ['row_id', 'operation', 'text'];
-      const params = new URLSearchParams({ limit_page_length: '500', fields: JSON.stringify(fields) });
-      const response = await api.call('GET', `/api/table/${table}?${params}`, undefined, [200], 'inspect explicit fictional samples');
-      const { data } = await response.json();
-      const evidence = table === 'tickets.event' ? data.filter(row => ['verify', 'evidence'].includes(row.operation)) : data;
-      assert.ok(evidence.length > 0);
-      for (const row of evidence) assert.match(JSON.stringify(row), /fictional/i);
-    }
-  }
 }
 
 // #912: a ticket type configured by a System Manager, as rows, never code.
