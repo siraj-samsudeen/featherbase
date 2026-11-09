@@ -206,3 +206,31 @@ test('on a phone a job card carries one switch, and it changes the stored schedu
   const [row] = await sql`select enabled from scheduled_job where method = 'jp_refused'`
   expect(row.enabled).toBe(true)
 })
+
+/** Requests to `path` are lost, as offline. */
+function dropNetwork(path: string) {
+  const bridge = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+    String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url) === path
+      ? Promise.reject(new TypeError('Failed to fetch'))
+      : bridge(input, init))
+}
+
+test('switching a schedule on when the network drops says the save failed and leaves it off (item 6)', async ({ admin }) => {
+  await seed()
+  await renderApp('/featherbase/admin/jobs', admin)
+  const refused = await entry('jp_refused')
+  dropNetwork('/api/save_row')
+  await userEvent.click(within(refused).getByRole('switch'))
+  expect(await screen.findByRole('alert')).toHaveTextContent('Could not switch Jp refused on: the save failed')
+  await waitFor(() => expect(within(refused).getByRole('switch')).toHaveAttribute('aria-checked', 'false'))
+})
+
+test('Run now when the network drops says the request failed (item 9)', async ({ admin }) => {
+  await seed()
+  await renderApp('/featherbase/admin/jobs', admin)
+  const ok = await entry('jp_ok')
+  dropNetwork('/api/enqueue_job')
+  await userEvent.click(within(ok).getByRole('button', { name: 'Run Jp ok now' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('Could not run Jp ok: the request failed')
+})
