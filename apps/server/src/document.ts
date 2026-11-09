@@ -1968,7 +1968,7 @@ async function renameDocImpl(
   // person_id); change the name or username instead. A trigger backs this up.
   // person-rename R1: an opaque id (a person's, a service account's) is
   // permanent — never renamed.
-  if ((meta.id_pattern ?? '').startsWith('opaque:'))
+  if (meta.id_pattern.startsWith('opaque:'))
     throw new AppError('ValidationError', `A ${meta.name}'s id is permanent and cannot be renamed; change its name instead`)
   if (isBound(meta))
     throw new AppError(
