@@ -199,10 +199,9 @@ Every spec imports `test` or `anonymousTest` from `./fixtures`, and which one
 *is* its auth story: `test` is already signed in as Administrator (a
 `storageState` captured once per worker through the real login form);
 `anonymousTest` starts signed out, for the login surface itself, another
-identity, or a page reached with no session. Shared Table builders
-(`ensureTable`, `ensureFormFixtures`, `fillRows`) live in `e2e/fixtures-ui.ts`;
-each spec still creates its fixtures idempotently in its own `beforeAll`, using
-`request` for API setup.
+identity, or a page reached with no session. Only `smoke.spec.ts` remains
+(#1080): behaviour is tested in the server and component suites, layout in
+Storybook, and demos in the tours.
 
 Both fixtures are backed by the
 [feather-testing-core](https://github.com/siraj-samsudeen/feather-testing-core)

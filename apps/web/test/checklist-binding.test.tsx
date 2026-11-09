@@ -10,9 +10,9 @@
 // The run lifecycle below came down from e2e/checklist.spec.ts (#223 batch 1),
 // which had to seed two runs and delete them in an afterAll because a
 // submitted run is final and its commits outlived the browser. Rollback makes
-// each test's run its own. What stayed in e2e is the half jsdom genuinely
-// cannot judge: a camera upload's rendered thumbnail and the phone-width
-// layout, which need real image decoding and a real box model.
+// each test's run its own. The camera upload and its thumbnail moved to
+// checklist-refusals.test.tsx when the e2e spec went (#1080); the phone-width
+// layout needs a real box model and waits for a layout test.
 
 import { screen, waitFor, within } from '@testing-library/react'
 import { installApp } from 'server/src/apps'

@@ -1,7 +1,7 @@
 // Collapsing the Admin sidebar (#1018, openspec/specs/admin-ui-feedback, "The
 // Admin sidebar can be collapsed"). Real Admin in jsdom against the in-process
-// server; what the browser alone can witness (the width a table gets, the
-// hidden sidebar) is in e2e/keyboard-shortcuts.spec.ts.
+// server. What only a real layout can witness (the width a table gets, the
+// sidebar actually hidden) is left for the layout tests (#1080).
 
 import { cleanup, screen } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'

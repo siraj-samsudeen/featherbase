@@ -279,6 +279,41 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     expect(res.headers.get('location')).toContain('/oauth-callback?code=')
   })
 
+  // Moved from the deleted e2e/oauth.spec.ts: the invite links the person who
+  // already exists; the sign-in neither makes a second one nor lands elsewhere.
+  test('an invited existing user signs in as that person, and no second person is made', async ({ api, admin }) => {
+    const existing = await makePerson({ email: 'invited.existing@outside.io', roles: [] })
+    await setAllowedDomains('*')
+    await admin.post(`/api/people/${existing}/identities`, { method: 'google', email: 'invited.existing@outside.io' })
+    const res = await mockSignIn(api, 'invited.existing@outside.io')
+    const redeemed = await redeem(api, handoffCode(res), sidCookie(res))
+    expect(redeemed.status).toBe(200)
+    expect(((await redeemed.json()) as { user: { row_id: string } }).user.row_id).toBe(existing)
+    expect(await sql`select row_id from person where email = 'invited.existing@outside.io'`).toEqual([{ row_id: existing }])
+  })
+
+  // #474: "Try another Google account" must not carry the refused address into
+  // the new attempt. With the dev provider, the attempt is its consent page.
+  test('a retry start after a refusal opens a consent page that does not hold the refused address', async ({ api }) => {
+    await setClientId('')
+    await setAllowedDomains('')
+    expect((await mockSignIn(api, 'refused.retry@gmail.com')).status).toBe(401)
+    const start = await api.fetch('/api/oauth/google/login?prompt=select_account')
+    expect(start.status).toBe(302)
+    const consent = await api.fetch(start.headers.get('location') as string, {
+      headers: { cookie: start.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ') },
+    })
+    expect(consent.status).toBe(200)
+    const html = await consent.text()
+    expect(html).toContain('data-testid="mock-email"')
+    expect(html).not.toContain('refused.retry@gmail.com')
+  })
+
+  test('PLAT-006: a callback with a forged state is refused to an API caller', async ({ api }) => {
+    const res = await api.fetch('/api/oauth/google/callback?code=abc&state=forged.signature')
+    expect(res.status).toBe(401)
+  })
+
   test('a google_client_id in System Settings switches to the real provider', async ({ api }) => {
     await setClientId('test-client-id')
     const res = await api.fetch('/api/oauth/google/login')

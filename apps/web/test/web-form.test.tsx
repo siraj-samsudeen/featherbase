@@ -74,3 +74,52 @@ test('a form that is still a draft is not shown', async ({ admin }) => {
   expect(await screen.findByTestId('web-form-error')).toHaveTextContent(/No published web form/)
   expect(screen.queryByTestId('web-form-form')).not.toBeInTheDocument()
 })
+
+// WEB-002, moved down from e2e/web-form.spec.ts (#1080): choices whose answers
+// look like numbers, and an optional choice left on its placeholder.
+test('WEB-002: anonymous web form submit creates a document', async ({ admin }) => {
+  await admin.post('/api/table_def', {
+    name: 'Wf Msg',
+    columns: [
+      { column_name: 'full_name', label: 'Full name', column_type: 'Data', reqd: true },
+      { column_name: 'message', label: 'Message', column_type: 'Long Text', reqd: true },
+      { column_name: 'delivery_speed', label: 'Delivery speed', column_type: 'Choice', choices: 'Standard\nExpedited\nSame day', reqd: true },
+      { column_name: 'contact_method', label: 'Contact method', column_type: 'Choice', choices: 'Email\nPhone' },
+      { column_name: 'quantity_code', label: 'Quantity code', column_type: 'Choice', choices: '0\n1\n2', reqd: true },
+    ],
+  })
+  await admin.post('/api/save_row', {
+    table: 'Web Form',
+    row: {
+      row_id: 'wf-msg', title: 'Contact E2E', route: 'wf-msg', ref_table: 'Wf Msg', published: true,
+      web_fields: ['full_name', 'message', 'delivery_speed', 'contact_method', 'quantity_code'],
+    },
+  })
+  const user = userEvent.setup()
+  await renderApp('/featherbase/form/wf-msg', anonymous)
+  const title = await screen.findByTestId('web-form-title', {}, { timeout: 8000 })
+  expect(title.textContent).toBe('Contact E2E')
+  const options = (label: RegExp) => within(screen.getByLabelText(label)).getAllByRole('option').map((o) => o.textContent)
+  expect(options(/Delivery speed/)).toEqual(['—', 'Standard', 'Expedited', 'Same day'])
+  expect(options(/Contact method/)).toEqual(['—', 'Email', 'Phone'])
+  expect(options(/Quantity code/)).toEqual(['—', '0', '1', '2'])
+
+  await user.type(screen.getByLabelText(/Full name/), 'Wf Visitor')
+  await user.click(screen.getByTestId('web-form-submit'))
+  expect(await screen.findByTestId('web-form-submit-error')).toBeInTheDocument()
+
+  await user.type(screen.getByLabelText(/Message/), 'Hello from the public web form')
+  await user.selectOptions(screen.getByLabelText(/Delivery speed/), 'Expedited')
+  expect(screen.getByLabelText(/Delivery speed/)).toHaveValue('Expedited')
+  await user.selectOptions(screen.getByLabelText(/Quantity code/), '1')
+  expect(screen.getByLabelText(/Quantity code/)).toHaveValue('1')
+  await user.click(screen.getByTestId('web-form-submit'))
+  expect(await screen.findByTestId('web-form-success', {}, { timeout: 8000 })).toBeInTheDocument()
+
+  // The selected answers are stored as their exact strings; the optional one stays empty.
+  const rows = await admin.get<{ total: number; data: Record<string, unknown>[] }>(
+    `/api/table/${encodeURIComponent('Wf Msg')}?fields=${encodeURIComponent('["delivery_speed","contact_method","quantity_code"]')}`,
+  )
+  expect(rows.total).toBe(1)
+  expect(rows.data).toEqual([{ delivery_speed: 'Expedited', contact_method: null, quantity_code: '1' }])
+})
