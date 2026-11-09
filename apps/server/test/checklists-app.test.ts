@@ -182,6 +182,22 @@ describe('checklists app: template → run lifecycle', () => {
     }
   })
 
+  test('a tick time survives later saves of the run', async ({ admin }) => {
+    const { templateName } = await install()
+    try {
+      const run = await admin.post<Row>('/api/save_row', { table: RUN_DT, row: { template: templateName, section: 'Kurti' } })
+      const tick = (items: Row[], idx: number) => items.map((i, n) => (n === idx ? { ...i, done: true } : i))
+      const first = await admin.post<Row>('/api/save_row', {
+        table: RUN_DT, row: { row_id: run.row_id, updated_at: run.updated_at, items: tick(run.items as Row[], 0) } })
+      const stamped = (first.items as Row[])[0].done_at
+      const second = await admin.post<Row>('/api/save_row', {
+        table: RUN_DT, row: { row_id: run.row_id, updated_at: first.updated_at, items: tick(first.items as Row[], 1) } })
+      expect((second.items as Row[])[0].done_at).toBe(stamped)
+    } finally {
+      await unwire()
+    }
+  })
+
   test('submit is gated on must-do items — a note is an accepted excuse', async ({ admin }) => {
     const { templateName } = await install()
     try {
