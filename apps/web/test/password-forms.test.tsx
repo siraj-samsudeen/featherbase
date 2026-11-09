@@ -1,12 +1,14 @@
 // The two password forms' refusals: Change password (Sign-in methods page)
 // and Reset password (the emailed link). Gaps the merged web coverage report
 // (ADR 0012) showed: an empty new password, a mismatched confirmation on the
-// reset page, and the server refusing either form. The refusals are the real
+// reset page, and the server refusing either form or the network dropping it.
+// The refusals are the real
 // server's answers.
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ACCOUNT_SIGN_IN_METHODS_PATH } from 'shared'
 import { issueSession } from 'server/src/auth'
+import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 
 async function openChangePassword(as: Parameters<typeof renderApp>[1]) {
@@ -55,4 +57,31 @@ test('Reset password with a key the server does not know shows its reason', asyn
   await userEvent.click(screen.getByTestId('reset-submit'))
   expect(await screen.findByTestId('reset-error')).toHaveTextContent('This reset link is invalid or has expired')
   expect(screen.queryByTestId('reset-done')).not.toBeInTheDocument()
+})
+
+/** Requests to `path` are lost, as offline. */
+function dropNetwork(path: string) {
+  const bridge = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+    String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url) === path
+      ? Promise.reject(new TypeError('Failed to fetch'))
+      : bridge(input, init))
+}
+
+test('Change password the network drops says the password could not be changed', async ({ admin }) => {
+  await openChangePassword(admin)
+  await userEvent.type(screen.getByTestId('change-password-new'), 'fresh-password-1!')
+  await userEvent.type(screen.getByTestId('change-password-confirm'), 'fresh-password-1!')
+  dropNetwork('/api/set_password')
+  await userEvent.click(screen.getByTestId('change-password-submit'))
+  expect(await screen.findByTestId('change-password-error')).toHaveTextContent('Could not change password')
+})
+
+test('Reset password the network drops says the password could not be reset', async ({ admin }) => {
+  await renderApp('/featherbase/reset-password?key=rp-key', admin)
+  await userEvent.type(await screen.findByTestId('reset-password'), 'fresh-password-1!')
+  await userEvent.type(screen.getByTestId('reset-confirm'), 'fresh-password-1!')
+  dropNetwork('/api/reset_password')
+  await userEvent.click(screen.getByTestId('reset-submit'))
+  expect(await screen.findByTestId('reset-error')).toHaveTextContent('Could not reset password')
 })
