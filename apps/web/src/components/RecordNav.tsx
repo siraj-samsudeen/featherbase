@@ -79,8 +79,7 @@ export function RecordNav({ table, name }: { table: string; name: string }) {
   const prev = near.data.ids[index - 1]
   const next = near.data.ids[index + 1]
 
-  const go = (id: string | undefined) => {
-    if (!id) return
+  const go = (id: string) => {
     if (nav?.addressed) nav.replace({ screen: 'row', table, row: id })
     else void navigate({ to: '/featherbase/admin/table/$table/row/$name', params: { table, name: id }, search: { prefill: undefined } })
   }
@@ -88,14 +87,14 @@ export function RecordNav({ table, name }: { table: string; name: string }) {
   return (
     <span className="flex items-center gap-1" data-testid="record-nav">
       <button type="button" aria-label="Previous record" title="Previous record" disabled={!prev}
-        onClick={() => go(prev)} className={buttonClasses({ className: 'disabled:opacity-40' })}>
+        onClick={() => go(prev!)} className={buttonClasses({ className: 'disabled:opacity-40' })}>
         ‹
       </button>
       <span className="whitespace-nowrap px-1 text-xs text-ink-muted tabular-nums" data-testid="record-position">
         {fmtCount(position + 1)} of {fmtCount(near.data.total)}
       </span>
       <button type="button" aria-label="Next record" title="Next record" disabled={!next}
-        onClick={() => go(next)} className={buttonClasses({ className: 'disabled:opacity-40' })}>
+        onClick={() => go(next!)} className={buttonClasses({ className: 'disabled:opacity-40' })}>
         ›
       </button>
     </span>
