@@ -1,7 +1,6 @@
 'use strict';
 
-// Steps for arranging a row's fields (core-forms, #795) and one-line text on a
-// connected table (external-data-sources). The example is one parcel on a rack
+// Steps for arranging a row's fields (core-forms, #795). The example is one parcel on a rack
 // in the run's outside database; every value is made up.
 
 const assert = require('node:assert/strict');
@@ -154,17 +153,6 @@ Then("the user sees the parcel's fields in the order {columns}", async function 
 
 Then("the colleague sees the parcel's fields in the order {columns}", async function (columns) {
   await seesOrder(this.form, columns);
-});
-
-Then('the user sees its sender on one line', async function () {
-  const sender = await this.form.valueOf('Sender');
-  assert.equal(sender.text, 'Front desk');
-  assert.ok(sender.oneLine, 'the sender wraps like long text');
-});
-
-Then('the user sees its instructions as long text', async function () {
-  const instructions = await this.form.valueOf('Instructions');
-  assert.ok(!instructions.oneLine, 'the instructions are cut to one line');
 });
 
 Then('the user sees one empty field folded away', async function () {
