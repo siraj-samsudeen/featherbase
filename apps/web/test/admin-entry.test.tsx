@@ -1,0 +1,34 @@
+// The Admin's page entry (src/main.tsx), as the served index.html loads it:
+// the module mounts the whole Admin on #root with its own router and query
+// client, against the in-process server.
+import { act, screen } from '@testing-library/react'
+import { settleSandboxRequests } from 'server/test/pg-test-shared'
+import type { TestClient } from 'feather-testing-postgres'
+import { test, expect } from './pg-test'
+
+const T = { timeout: 8000 }
+let copy = 0
+async function openAdmin(as: TestClient, path: string) {
+  await settleSandboxRequests()
+  localStorage.setItem('fc_token', as.token!)
+  localStorage.setItem('fc_user', JSON.stringify({ row_id: as.user }))
+  window.history.replaceState(null, '', path)
+  document.body.innerHTML = '<div id="root"></div>'
+  await act(() => import(/* @vite-ignore */ `../src/main?page=${++copy}`))
+}
+
+test('a filter value with a space keeps the space in the address, never a plus', async ({ admin }) => {
+  const filters = JSON.stringify([['full_name', 'like', '%Asha Rao%']])
+  await openAdmin(admin, `/featherbase/admin/table/person?filters=${encodeURIComponent(filters)}`)
+  await screen.findByTestId('list-view', {}, T)
+  expect(window.location.search).toContain('Asha%20Rao')
+  expect(window.location.search).not.toContain('+')
+  expect(JSON.parse(JSON.parse(new URLSearchParams(window.location.search).get('filters')!))).toEqual(JSON.parse(filters))
+})
+
+test('a row that does not exist says so at once, without asking the server again', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Ae Note', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await openAdmin(admin, '/featherbase/admin/table/ae-note/row/no-such-note')
+  // A refusal (4xx) is final: retried, it would only hold the page on Loading.
+  expect(await screen.findByText('Cannot load Ae Note no-such-note', {}, { timeout: 2000 })).toBeInTheDocument()
+})

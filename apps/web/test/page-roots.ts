@@ -9,7 +9,8 @@ import type { createRoot, Root } from 'react-dom/client'
 const pages: Root[] = []
 
 export function trackRoot(root: Root, container: Parameters<typeof createRoot>[0]): Root {
-  if (container instanceof Element && container.id === 'root') pages.push(root)
+  // The shared bar (src/bar) mounts itself the same way, inside its host's shadow root.
+  if (container instanceof Element && (container.id === 'root' || container.getAttribute('data-testid') === 'bar-theme-root')) pages.push(root)
   return root
 }
 
