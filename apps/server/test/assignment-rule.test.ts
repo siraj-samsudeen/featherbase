@@ -3,6 +3,7 @@ import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
+import { applyInstanceSettings } from '../src/instance-settings'
 
 // Assignment Rules: creations of the target Table are auto-assigned
 // round-robin across the rule's user pool (ToDo + notification), the picked
@@ -85,5 +86,29 @@ describe('Assignment Rules: round-robin auto-assignment', () => {
       'Administrator',
     )
     expect(await assignee(String(row.row_id))).toBeUndefined()
+  })
+})
+
+describe('Assignment Rules that cannot assign', () => {
+  test('a rule with nobody in its pool assigns nothing', async ({ admin }) => {
+    await setup(admin)
+    await sql`delete from assignment_rule_user where parent = ${RULE}`
+    const d = await saveDoc(DT, { title: 'unassigned' }, 'Administrator')
+    expect(await assignee(String(d.row_id))).toBeUndefined()
+  })
+
+  test('a rule whose field the Table no longer has assigns without stamping', async ({ admin }) => {
+    await setup(admin)
+    await sql`update assignment_rule set assign_to_field = 'removed_field' where row_id = ${RULE}`
+    const d = await saveDoc(DT, { title: 'no field' }, 'Administrator')
+    expect(await assignee(String(d.row_id))).toBe(A1)
+  })
+
+  test('a field the settings file sets is not stamped', async () => {
+    for (const u of [A1, A2])
+      await sql`insert into person ${sql({ row_id: u, created_by: 'Administrator', updated_by: 'Administrator', email: `${u.slice(4)}@x.com`, enabled: true })}`
+    await saveDoc('Assignment Rule', { row_id: 'Asg Sources', ref_table: 'Data Source', assign_to_field: 'default_schema', users: [{ user: A1 }] })
+    await applyInstanceSettings({ settings: { 'Data Source': [{ row_id: 'asg-src', engine: 'postgres', url_env: 'ASG_SRC_URL', default_schema: 'reports' }] } }, { by: 'Administrator' })
+    expect(await sql`select default_schema from data_source where row_id = 'asg-src'`).toEqual([{ default_schema: 'reports' }])
   })
 })
