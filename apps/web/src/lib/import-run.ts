@@ -6,7 +6,7 @@
 // already-projected CoercedRows and get back a report whose failures name
 // source rows; parse-file's excelRow turns those into Excel numbers at
 // display time.
-import type { CoercedRow } from 'shared'
+import { splitForSend, type CoercedRow } from 'shared'
 import { api } from './api'
 
 // Named import threshold (packages/shared/src/import.ts): rows per :import call; log rows are per part. Previously
@@ -89,44 +89,6 @@ interface ImportRunReport {
   tracks_changes: boolean | null
   /** #859: matched rows that are retired; they are updated and stay retired. */
   retired: number
-}
-
-// UPS-R2 × IMPORT_CHUNK: the server resolves keys against the database and
-// catches duplicates within one REQUEST, but a duplicate split across two
-// chunks would reach it as two clean requests — and the second would
-// quietly turn into an update of the first's row. The caller holds the
-// whole file, so duplicate-key rows fail here, BEFORE chunking, and only
-// the clean remainder is sent. sendIdx maps a sent position back to the
-// row's SOURCE index in the sheet (#115: blanks included), so every
-// server-reported failure names the true spreadsheet row.
-export function splitForSend(rows: CoercedRow[], key: string | null) {
-  if (!key)
-    return {
-      send: rows.map((r) => r.values),
-      sendIdx: rows.map((r) => r.sourceIndex),
-      dupFailed: [] as ImportFailure[],
-    }
-  const counts = new Map<string, number>()
-  for (const r of rows) {
-    const k = r.values[key] == null ? '' : String(r.values[key]).trim()
-    if (k) counts.set(k, (counts.get(k) ?? 0) + 1)
-  }
-  const send: Record<string, unknown>[] = []
-  const sendIdx: number[] = []
-  const dupFailed: ImportFailure[] = []
-  for (const r of rows) {
-    const k = r.values[key] == null ? '' : String(r.values[key]).trim()
-    if (k && (counts.get(k) ?? 0) > 1)
-      dupFailed.push({
-        sourceIndex: r.sourceIndex,
-        message: `key ${k} appears more than once in the file`,
-      })
-    else {
-      send.push(r.values)
-      sendIdx.push(r.sourceIndex)
-    }
-  }
-  return { send, sendIdx, dupFailed }
 }
 
 export async function sendImportRun(opts: {
