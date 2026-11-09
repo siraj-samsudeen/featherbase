@@ -187,6 +187,8 @@ describe('the worker', () => {
       await expect.poll(async () => (await sql`select job_status from background_job where row_id = ${id}`)[0].job_status, { timeout: 5000 }).toBe('done')
     } finally {
       stopWorker()
+      // A tick already under way finishes inside this test, never after it.
+      await new Promise((resolve) => setTimeout(resolve, 100))
     }
     expect(most).toBe(1)
     expect(await sql`select attempt from job_execution where job = ${id}`).toEqual([{ attempt: 1 }])
