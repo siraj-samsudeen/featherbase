@@ -74,3 +74,20 @@ test('after a Google refusal, a password sign-in still lands on the saved deep l
   expect(takeLoginNext()).toBeUndefined()
   window.history.replaceState(null, '', '/')
 })
+
+// #1080, from e2e/runtime-login-return.spec.ts: a return path into a runtime
+// app leaves the SPA by a full page load (jsdom reports it rather than
+// performing it). Which address it loads is login-return.test.ts.
+test('signing in with a password from a runtime app deep link leaves the SPA by a full page load', async ({ admin, createUser }) => {
+  const person = await createUser({ email: 'runtime.return@example.com', roles: ['System Manager'] })
+  await admin.post('/api/set_password', { user: person.user, password: 'runtime-return-pw-1' })
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const loads = () => errors.mock.calls.filter((c) => /Not implemented: navigation/.test(String((c[0] as Error)?.message ?? c[0])))
+  const next = '/tasker/?review=deep-link&note=37%20cartons%2F83&review=again'
+  const { router } = await renderApp(`/featherbase/login?next=${encodeURIComponent(next)}`, anonymous)
+  await userEvent.type(await screen.findByLabelText('Email or username'), 'runtime.return@example.com')
+  await userEvent.type(screen.getByLabelText('Password'), 'runtime-return-pw-1')
+  await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+  await waitFor(() => expect(loads()).toHaveLength(1))
+  expect(where(router).pathname).toBe('/featherbase/login')
+})

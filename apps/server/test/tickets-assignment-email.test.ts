@@ -191,35 +191,19 @@ describe('Tickets: assigning a ticket emails the person assigned (#1001)', () =>
     expect(ticket.assigned_to ?? null).toBeNull()
   })
 
-  test('someone who may not read a private ticket\'s description gets the email without it', async ({ admin, createUser }) => {
-    const { worker, support, privateTicket } = await world(admin, createUser)
-    const ticket = await privateTicket()
-    await assign(support, ticket, worker.user)
-    const [mail] = await mailFor(ticket)
-    expect(mail.body).toContain('The report is late')
-    expect(mail.body).toContain('triager assigned this ticket to you.')
-    expect(mail.body).toContain(ticket.row_id)
-    expect(mail.body).not.toContain(DESCRIPTION)
-    // What the email promises: the same person really cannot read it on the ticket.
-    const answer = (await worker.post<any>('/api/app_reads/tickets/detail', { payload: { row_id: ticket.row_id } })).result.answer
-    expect(answer.details).toBeUndefined()
-  })
-
-  test('support and the raiser, who may read a private description, get it', async ({ admin, createUser }) => {
-    const { raiser, other, support, privateTicket } = await world(admin, createUser)
-    for (const person of [other, raiser]) {
+  // #925: whoever a private ticket is assigned to reads its description, so it is sent.
+  test('a private ticket\'s assignee, who now reads its description, gets it; support and the raiser do too', async ({ admin, createUser }) => {
+    const { raiser, worker, other, support, privateTicket } = await world(admin, createUser)
+    for (const person of [worker, other, raiser]) {
       const ticket = await privateTicket()
       await assign(support, ticket, person.user)
-      expect((await mailFor(ticket))[0].body).toContain(DESCRIPTION)
+      const [mail] = await mailFor(ticket)
+      expect(mail.body).toContain('The report is late')
+      expect(mail.body).toContain(DESCRIPTION)
+      // What the email promises: the same person really reads it on the ticket.
+      const answer = (await person.post<any>('/api/app_reads/tickets/detail', { payload: { row_id: ticket.row_id } })).result.answer
+      expect(answer.details.original).toBe(DESCRIPTION)
     }
-  })
-
-  test('holding support settings without the read permission is not enough for the description', async ({ admin, createUser }) => {
-    const { worker, support, privateTicket } = await world(admin, createUser)
-    await setting(admin, 'support_users', [support.user, worker.user])
-    const ticket = await privateTicket()
-    await assign(support, ticket, worker.user)
-    expect((await mailFor(ticket))[0].body).not.toContain(DESCRIPTION)
   })
 
   test('a description reworded in the same save is the one sent', async ({ admin, createUser }) => {

@@ -36,17 +36,22 @@ async function send(app: string, person: string, message: Message): Promise<void
   })
 }
 
+/** Whether a person may open one row: a refusal answers false, never failing the caller. */
+export async function readsRow(person: string, table: string, rowId: string): Promise<boolean> {
+  try {
+    await getDoc(table, rowId, person)
+    return true
+  } catch (error) {
+    if (error instanceof AppError && (error.type === 'PermissionError' || error.type === 'NotFoundError')) return false
+    throw error
+  }
+}
+
 export function callerMail(app: string, allowed: string[]): RuntimeActionContext['mail'] {
   return Object.freeze({
     async mayRead(person: string, table: string, rowId: string) {
       if (!allowed.includes(table)) throw new AppError('ValidationError', `Action has not declared Table ${table}`)
-      try {
-        await getDoc(table, rowId, person)
-        return true
-      } catch (error) {
-        if (error instanceof AppError && (error.type === 'PermissionError' || error.type === 'NotFoundError')) return false
-        throw error
-      }
+      return readsRow(person, table, rowId)
     },
     async toPerson(person: string, message: Message) {
       await afterDocumentCommit(() => send(app, person, message))

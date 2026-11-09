@@ -7,6 +7,8 @@ dist/
 !.env.example
 test-results/
 playwright-report/
+# pnpm --filter web build-storybook
+storybook-static/
 # Snapshots written by the Playwright MCP browser during agent sessions.
 .playwright-mcp/
 coverage/
@@ -34,3 +36,7 @@ apps/server/test/.migration-0125-*/
 # .relabel-*, .tasker-upgrade-*, .app-jobs-*, ...): each is removed when its
 # test finishes, but a run killed partway through leaves it behind (#700).
 apps/server/test/.*/
+# Tours (apps/web/tours): the HTML report
+apps/web/tours-report/
+# pnpm check:scenarios: which runner proves each spec scenario
+scenarios-report/

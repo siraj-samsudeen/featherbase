@@ -3,8 +3,9 @@
 // run that cannot be opened, a note saved by leaving the box rather than
 // pressing Enter, the camera button opening the picker, and a photo the
 // server refuses. Each refusal is a real server answer.
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { File as NodeFile } from 'node:buffer'
 import { afterEach, vi } from 'vitest'
 import { installApp } from 'server/src/apps'
 import { sql } from 'server/src/db'
@@ -179,3 +180,40 @@ test('multiple photos remain attached to their own checklist item', async ({ adm
     for (const url of uploaded) await deleteStored(url)
   }
 })
+
+// Moved from e2e/checklist.spec.ts (#1080): a camera upload of a real PNG
+// shows its thumbnail, and tapping it opens the photo. Making the thumbnail
+// needs the server's headless browser (apps/server/test/thumbnails.test.ts),
+// so the stored preview is written directly and the run opened again.
+test('a photo_proof item takes a camera upload and shows its thumbnail', async ({ admin }) => {
+  const run = await seedRun(admin)
+  await openRun(admin, run)
+  await useNodeMultipart()
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+    'base64',
+  )
+  fireEvent.change(screen.getAllByTestId('checklist-photo-input')[0], {
+    target: { files: [new NodeFile([png], 'fast-mover.png', { type: 'image/png' })] },
+  })
+  await waitFor(() => expect(screen.getAllByTestId('checklist-photo-thumb')).toHaveLength(1), { timeout: 20_000 })
+  const [file] = await sql<{ file_url: string }[]>`select file_url from file where file_name = 'fast-mover.png'`
+  try {
+    const preview = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ=='
+    await sql`update file set thumbnail_url = ${preview} where file_name = 'fast-mover.png'`
+    cleanup()
+    await openRun(admin, run)
+    await waitFor(() => expect(screen.getAllByTestId('checklist-photo-thumb')).toHaveLength(1), { timeout: 20_000 })
+    const thumb = screen.getByTestId('checklist-photo-thumb')
+    expect(within(thumb).getByRole('img', { name: 'fast-mover.png' }).getAttribute('src')).toBe(preview)
+    await userEvent.click(thumb)
+    const viewer = await screen.findByRole('dialog', { name: 'Photo viewer' })
+    expect(await within(viewer).findByRole('img', { name: 'Checklist photo' })).toHaveAttribute(
+      'src', expect.stringContaining(`${file.file_url}?expires=`),
+    )
+    await userEvent.click(within(viewer).getByRole('button', { name: 'Close photo' }))
+    expect(screen.queryByRole('dialog', { name: 'Photo viewer' })).not.toBeInTheDocument()
+  } finally {
+    await deleteStored(file.file_url)
+  }
+}, 30_000)

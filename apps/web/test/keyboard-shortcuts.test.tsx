@@ -64,7 +64,8 @@ test('Keyboard shortcuts: g then d goes to the Admin home, but not while typing 
 
   press({ key: 'g' }, document.body)
   press({ key: 'd' }, document.body)
-  await waitFor(() => expect(here(app)).not.toContain('/featherbase/admin/table/kb-home'))
+  // #80: the Admin home lands on the first visible Home Page, or stays at /admin.
+  await waitFor(() => expect(here(app)).toMatch(/^\/featherbase\/admin(\/home\/[^/]+)?\/?$/))
 })
 
 test('Keyboard shortcuts: g then n starts a new row of the Table being looked at', async ({ admin }) => {

@@ -1,6 +1,7 @@
 @import '@featherbase/shop-floor/styles.css';
 @source './';
 @source '../../../packages/shop-floor/src';
+@source not '../../../packages/shop-floor/src/**/*.stories.tsx';
 
 * { box-sizing: border-box; }
 html, body { max-width: 100%; overflow-x: hidden; }

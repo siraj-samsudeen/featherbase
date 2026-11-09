@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { classify, countTasks, isFinished } from './check-unarchived-changes.mjs'
+import { blocking, classify, countTasks, isFinished } from './check-unarchived-changes.mjs'
 
 test('ticked and unticked tasks are counted, in any indentation and either x case', () => {
   const text = '# Tasks\n\n- [x] 1.1 one\n  - [X] 1.2 two\n- [ ] 1.3 three\nnot a task\n- [y] nor this'
@@ -36,4 +36,20 @@ test('with no base to compare (on main) nothing fails', () => {
   const { stale, fresh } = classify([{ name: 'a' }], null)
   assert.deepEqual(stale, [])
   assert.deepEqual(fresh.map((c) => c.name), ['a'])
+})
+
+test('a pull request that finishes a change must archive it before it can merge', () => {
+  const sorted = classify([{ name: 'a' }], new Set())
+  assert.deepEqual(blocking(sorted, { pullRequest: true }).map((c) => c.name), ['a'])
+})
+
+test('outside a pull request a change finished here is only a reminder', () => {
+  const sorted = classify([{ name: 'a' }], new Set())
+  assert.deepEqual(blocking(sorted, { pullRequest: false }), [])
+})
+
+test('a change the base already had finished blocks every pull request', () => {
+  const sorted = classify([{ name: 'a' }, { name: 'b' }], new Set(['b']))
+  assert.deepEqual(blocking(sorted, { pullRequest: false }).map((c) => c.name), ['b'])
+  assert.deepEqual(blocking(sorted, { pullRequest: true }).map((c) => c.name).sort(), ['a', 'b'])
 })

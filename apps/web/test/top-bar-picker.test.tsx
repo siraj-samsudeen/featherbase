@@ -4,7 +4,8 @@
 // The fixture `test-apps/fixtures/bar-proof` declares
 // `{ picker: 'Store', options: 'stores', sets: 'store' }`; its `stores` read
 // answers the reader's places from `test-apps/fixtures/place-roster`.
-// Widths, pixels and real focus rings are in e2e/top-bar-picker.spec.ts.
+// Widths, pixels and the focus ring's look are layout checks, not tested
+// here (#1080).
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { screen, waitFor, within } from '@testing-library/react'
@@ -197,6 +198,58 @@ test('Escape closes the list and leaves focus on the picker', async ({ admin, cr
   await userEvent.keyboard('{Escape}')
   expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   expect(store).toHaveFocus()
+})
+
+// The next three moved from e2e/top-bar-picker.spec.ts (#1080).
+test("Tab from the app's name reaches the picker", async ({ admin, createUser }) => {
+  const reader = await readerOf(admin, createUser, STORES)
+  onAddressThatOpens('barproof')
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
+  const store = await picker()
+  screen.getByTestId('top-bar-name').focus()
+  await userEvent.tab()
+  expect(store).toHaveFocus()
+})
+
+test('Home, End, PageUp, PageDown and the arrows move within the list, stopping at each end, and change no choice', async ({ admin, createUser }) => {
+  const reader = await readerOf(admin, createUser, STORES)
+  onAddressThatOpens('barproof')
+  const { router } = await renderApp(`${ACCOUNT_SIGN_IN_METHODS_PATH}?store=S103`, reader)
+  const store = await picker()
+  store.focus()
+  await userEvent.keyboard('{ArrowDown}')
+  await screen.findByRole('listbox', { name: 'Store' })
+  const active = () => document.getElementById(store.getAttribute('aria-activedescendant') ?? '')?.textContent
+  const moves: [string, string][] = [
+    ['{End}', 'Riverside'],
+    ['{ArrowDown}', 'Riverside'],
+    ['{ArrowUp}', 'Lake View'],
+    ['{Home}', 'Hill Road'],
+    ['{ArrowUp}', 'Hill Road'],
+    ['{PageDown}', 'Riverside'],
+    ['{PageUp}', 'Hill Road'],
+  ]
+  for (const [key, name] of moves) {
+    await userEvent.keyboard(key)
+    expect([key, active()]).toEqual([key, name])
+    expect(locationOf(router)).toBe(`${ACCOUNT_SIGN_IN_METHODS_PATH}?store=S103`)
+  }
+})
+
+test('Tab out of the open list closes it, moves focus on and keeps the choice', async ({ admin, createUser }) => {
+  const reader = await readerOf(admin, createUser, STORES)
+  onAddressThatOpens('barproof')
+  const { router } = await renderApp(`${ACCOUNT_SIGN_IN_METHODS_PATH}?store=S103`, reader)
+  const store = await picker()
+  store.focus()
+  await userEvent.keyboard('{ArrowDown}')
+  await screen.findByRole('listbox', { name: 'Store' })
+  await userEvent.keyboard('{Home}')
+  await userEvent.tab()
+  expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  expect(store).not.toHaveFocus()
+  expect(store).toHaveTextContent('Lake View')
+  expect(locationOf(router)).toBe(`${ACCOUNT_SIGN_IN_METHODS_PATH}?store=S103`)
 })
 
 // Codex round 1 on #658: two declared controls, both missing from the address,
