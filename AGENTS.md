@@ -198,6 +198,9 @@ backlog is excluded unless the owner opts it in.
   only when the owner asks for it in that piece of work.
 - **Merge PRs with a merge commit** (`gh pr merge --merge`). Squash and rebase are
   off, so keep each commit meaningful: a test, then its fix.
+- **Tidy in separate commits.** Structure-only moves go in their own commits,
+  before or after a behaviour change, never mixed into it. Split a file at its
+  natural seams, not to reach a size.
 
 ### Code review here
 
