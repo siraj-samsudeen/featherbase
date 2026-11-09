@@ -430,3 +430,20 @@ committedTest('a concurrent successful installation is not reported as failed pr
     await rm(root, { recursive: true, force: true })
   }
 })
+
+committedTest('a second preparation of an app still being prepared is refused', async ({ admin }) => {
+  const root = await sourceRepository(`node -e "setTimeout(() => require('fs').copyFileSync('server.mjs','built.mjs'), 350)"`)
+  let request: Promise<unknown> | undefined
+  try {
+    await discoverAppLibrary([], root)
+    request = admin.post('/api/apps/prepare-install', { name: 'other' })
+    await expect.poll(async () => (await admin.get<{ catalog: { preparation: { state: string } }[] }>('/api/apps')).catalog[0].preparation.state).toBe('preparing')
+    await expectRefused(admin.post('/api/apps/prepare-install', { name: 'other' }), 409, 'App other is already being prepared')
+    await request
+  } finally {
+    await request
+    await discoverAppLibrary([], null)
+    await loadInstalledApps()
+    await rm(root, { recursive: true, force: true })
+  }
+})
