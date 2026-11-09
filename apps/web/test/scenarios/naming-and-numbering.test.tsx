@@ -1,5 +1,5 @@
-// naming-and-numbering's scenarios a person reads on screen (#1070, step 2:
-// the cucumber pilot). Each test is one fenced scenario of
+// naming-and-numbering's scenarios a person reads on screen (#1070). Each
+// test is one fenced scenario of
 // openspec/specs/naming-and-numbering/spec.md, step by step, rendered in
 // jsdom against the real in-process server; the rest are in
 // apps/server/test/scenarios/.

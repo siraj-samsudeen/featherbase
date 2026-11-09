@@ -66,6 +66,7 @@ On a pull request `tools/ci-scope.mjs` picks the suites from the changed paths:
 | A PR changes | What runs |
 |---|---|
 | `*.md`, `docs/**`, `openspec/**`, agent files | the fast checks: specs, sensitive data, vocabulary, the other guards |
+| `openspec/**/spec.md` | fast checks, typechecks, server and web suites (where its scenarios run), merged coverage |
 | `client-apps/**` | fast checks, the app's `npm test` and platform tests |
 | `example-apps/**` | fast checks, Tasker's unit tests, the server and web tests that name an example app, its runtime components and packaged journeys |
 | `apps/server/**`, `docs/DEPLOY.md` | fast checks, typechecks, server suite, release preflight, client platform tests |
@@ -83,9 +84,9 @@ runner and PostgreSQL service per shard. Files still run sequentially within
 each shard: their server and instance-wide state is shared. `unit-web` merges
 all four Vitest blobs and enforces the component suite's unchanged coverage
 floor; `coverage-merged` combines that report with every browser shard.
-Acceptance and served-page tests run in separate jobs. Acceptance executes the
-packaged delivery proof with coverage, so CI does not invoke it again.
-The required `e2e` check aggregates browser, acceptance and served-page results;
+The `runtime-coverage` job collects Tasker's HTTP coverage and runs the
+packaged delivery proof with coverage, for `coverage-merged`.
+The required `e2e` check aggregates the smoke, served-page and tour results;
 only an explicit scope decision permits skipped suites. Server coverage merges
 as soon as its three shards and PostgreSQL 18 preflight finish, leaving `unit`
 as a lightweight final verdict rather than another serial setup/merge step.
@@ -214,13 +215,13 @@ describe('naming-and-numbering', () => {
 })
 ```
 
-`pnpm check:scenarios` (CI's `checks` job) runs every fenced scenario of the
-effective spec on exactly one runner. A capability with any bound test is
-Vitest's: each of its fenced scenarios needs a test, and the cucumber suite
-(`acceptance-tests/`) leaves it out. `pnpm scenarios:report` runs the bound
-tests and writes `scenarios-report/index.html`. It lists every capability,
-requirement and scenario with its Gherkin, where it runs and whether it
-passed, prose scenarios included.
+`pnpm check:scenarios` (CI's `checks` job) fails unless every fenced scenario
+of the effective spec has exactly one bound test, and every binding names a
+scenario the spec has. A scenario still in prose needs none.
+`pnpm scenarios:report` runs the bound tests and writes
+`scenarios-report/index.html`. It lists every capability, requirement and
+scenario with its Gherkin, the test that runs it and whether it passed, prose
+scenarios included.
 
 ## Tours
 
@@ -414,9 +415,9 @@ pnpm --filter web coverage:merged  # → apps/web/coverage-merged/index.html
   missing, duplicate, stale or altered producers and require the configured
   file inventory exactly once. `unit-web` replays all component blobs under
   the unchanged jsdom thresholds; `coverage-merged` combines that report with
-  every browser map under the existing source-level gates. Acceptance and
-  served journeys run independently; the required `e2e` check requires them
-  and all browser producers. To run E2E beside `./init.sh`, move the ports and
+  every browser map under the existing source-level gates. Served journeys
+  and tours run independently; the required `e2e` check requires them and
+  the smoke test. To run E2E beside `./init.sh`, move the ports and
   give it a private `DATABASE_URL`.
 - Both web suites strip comments before instrumenting, so a coverage hint
   before a statement must be a legal comment —
@@ -428,7 +429,7 @@ pnpm --filter web coverage:merged  # → apps/web/coverage-merged/index.html
 Tasker is an independent npm package. Its unit report supplies zero counters
 for every executable source file, including the server and nested help page.
 Merge it with the existing real-server component tests, owning server HTTP
-tests, browser tests above, and packaged acceptance journeys. All layers use
+tests, browser tests above, and packaged journeys (`pnpm apps:prove`). All layers use
 the same Istanbul instrumentation; mixing V8 counters with these maps is
 rejected rather than reporting a false percentage.
 
@@ -447,14 +448,13 @@ npm run coverage:merged --prefix example-apps/tasker -- \
   "$PWD"/coverage/tasker/packaged/*.json
 ```
 
-Use a disposable `DATABASE_URL` for HTTP tests. Packaged acceptance uses its
+Use a disposable `DATABASE_URL` for HTTP tests. The packaged proof uses its
 own guarded `*_e2e` database as described above. Reports live at the repository
 root under `coverage/tasker/`, never inside the fingerprinted runtime app.
 Do not rebuild or edit an app while a server using its artifact is running:
-installed versions require their exact fingerprint. CI collects the HTTP layer
-on the acceptance runner before rebuilding packages. Packaged coverage comes
-from the proof that the effective-spec acceptance suite already executes,
-without a second proof run.
+installed versions require their exact fingerprint. CI's `runtime-coverage`
+job collects the HTTP layer before `apps:prove` rebuilds the packages, then
+runs the proof with `VITE_COVERAGE=true` for the packaged layer.
 It publishes the merged runtime report alongside the web report. The runtime
 merger requires every line, statement and function
 to be covered, comparing exact counts rather than rounded percentages. It also

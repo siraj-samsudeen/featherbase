@@ -1,5 +1,5 @@
-// core-forms' scenarios, as a person reads them on screen (#1070: off the
-// cucumber suite). Each test is one fenced scenario of
+// core-forms' scenarios, as a person reads them on screen (#1070). Each test
+// is one fenced scenario of
 // openspec/specs/core-forms/spec.md, step by step, rendered in jsdom against
 // the real in-process server.
 //

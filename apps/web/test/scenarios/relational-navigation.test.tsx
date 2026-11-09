@@ -1,5 +1,5 @@
-// relational-navigation's scenarios, as a person reads them on screen (#1070:
-// off the cucumber suite). Each test is one fenced scenario of the effective
+// relational-navigation's scenarios, as a person reads them on screen
+// (#1070). Each test is one fenced scenario of the effective
 // spec (openspec/changes/issue-910-relational-navigation/specs/
 // relational-navigation/spec.md), step by step, rendered in jsdom against the
 // real in-process server, over the organisation masters of

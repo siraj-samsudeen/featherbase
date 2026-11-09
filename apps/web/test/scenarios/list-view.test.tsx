@@ -1,5 +1,5 @@
-// list-view's scenarios, as a person reads them on screen (#1070: off the
-// cucumber suite). Each test is one fenced scenario of the effective spec
+// list-view's scenarios, as a person reads them on screen (#1070). Each test
+// is one fenced scenario of the effective spec
 // (openspec/specs/list-view/spec.md and the issue-910-relational-navigation
 // change's delta), step by step, rendered in jsdom against the real
 // in-process server.

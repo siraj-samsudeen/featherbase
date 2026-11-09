@@ -4,8 +4,8 @@
 // openspec/specs/background-and-scheduled-jobs/spec.md, step by step; the
 // schedule a System Manager sets on screen is in apps/web/test/scenarios/.
 //
-// The cucumber suite restarted the API before each run, so a new process had
-// to recover the refresh's handler from the database. Here the run re-registers
+// A restarted server has to recover the refresh's handler from the database.
+// Here the run re-registers
 // the saved schedules the way the server does when it starts
 // (registerCopyRefreshJobs) and the worker runs the due job in-process.
 import { afterAll, beforeAll, describe, expect } from 'vitest'

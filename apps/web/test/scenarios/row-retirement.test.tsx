@@ -1,7 +1,7 @@
 // row-retirement's fenced scenarios (#1070), each walked step by step in jsdom
 // against the real in-process server: the reason a person reads on the form,
-// and which plants the list shows. Ported from the cucumber steps: the plants
-// and a retirement a scenario starts from are made through the API; retiring,
+// and which plants the list shows. The plants and a retirement a scenario
+// starts from are made through the API; retiring,
 // reactivating and what the list shows go through the screen.
 import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'

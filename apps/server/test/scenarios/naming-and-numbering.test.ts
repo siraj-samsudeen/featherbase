@@ -1,5 +1,5 @@
-// naming-and-numbering's scenarios that the server alone proves (#1070,
-// step 2: the cucumber pilot). Each test is one fenced scenario of
+// naming-and-numbering's scenarios that the server alone proves (#1070).
+// Each test is one fenced scenario of
 // openspec/specs/naming-and-numbering/spec.md, step by step; the scenarios a
 // person reads on screen are in apps/web/test/scenarios/.
 import { describe, expect } from 'vitest'
