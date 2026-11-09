@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { achievementTone, DataList, Headline, type DataColumn } from '@featherbase/shop-floor'
 import { fmtCount, fmtDay, fmtINR, fmtNumber, fmtShowing } from '@featherbase/shop-floor'
+import { fmtInstant } from '@featherbase/shop-floor/format'
 import { formatNumber } from '../src/lib/settings'
 import { indicatorColor, pageRange } from '../src/components/ListView'
 import { previewValue } from '../src/pages/TableBuilder'
@@ -121,6 +122,16 @@ describe('status dots: meaning colours for verdicts only', () => {
       expect(indicatorColor(word)).toBe(indicatorColor(word))
     },
   )
+})
+
+describe('fmtInstant', () => {
+  test('a missing time reads as a dash', () => {
+    expect(fmtInstant(null)).toBe('—')
+  })
+
+  test('a time that is not a time reads as a dash', () => {
+    expect(fmtInstant('not a time')).toBe('—')
+  })
 })
 
 describe('fmtCount', () => {
