@@ -9,6 +9,7 @@ const { Given, When, Then } = require('@cucumber/cucumber');
 const { sectionMappingTable } = require('../support/fixtures/section-mapping');
 const { shelfCheckTable } = require('../support/fixtures/shelf-check');
 const { ListPage } = require('../support/pages/list-page');
+const { FormPage } = require('../support/pages/form-page');
 const { DEFAULT_LIST, givenTable, listOf, freshListOf, systemManagersList } = require('../support/lists');
 
 // ---- Given ----
@@ -168,4 +169,15 @@ Then("the colleague's list (still )shows {columns}", async function (columns) {
 Then("the colleague's list still does not show {columns}", async function (columns) {
   const shown = await (await freshListOf(this, 'a colleague')).columnLabels();
   for (const column of columns) assert.ok(!shown.includes(column), `${column} is in the list: ${shown.join(', ')}`);
+});
+
+Then("{columns} show(s) only on each/a row's form", async function (columns) {
+  const page = await this.actor();
+  const list = new ListPage(page);
+  await list.open(this.table);
+  const shown = await list.columnLabels();
+  for (const column of columns) assert.ok(!shown.includes(column), `${column} is in the list: ${shown.join(', ')}`);
+  await list.openFirstRow();
+  const form = new FormPage(page);
+  for (const column of columns) assert.ok(await form.showsField(column), `the row's form has no ${column}`);
 });
