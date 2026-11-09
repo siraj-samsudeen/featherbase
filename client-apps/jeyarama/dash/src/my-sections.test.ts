@@ -105,6 +105,18 @@ describe('Your sections', () => {
     const answer = await reads.my_sections(context(world(), { proposals: [proposal(null as unknown as Row, { state: 'Rejected', route: { people: ['mani'], roles: [] } })] }).ctx) as { proposals: { state: string; waiting_for: string }[] }
     expect(answer.proposals[0]).toMatchObject({ state: 'Rejected', waiting_for: 'the master data team' })
   })
+
+  it('dates a proposal by the day in India', async () => {
+    const justAfterMidnightInIndia = '2026-11-08T19:00:00Z'
+    const decided = proposal(move, { state: 'Applied', created_at: justAfterMidnightInIndia, decided_at: justAfterMidnightInIndia })
+    const answer = await reads.my_sections(context(world(), { proposals: [decided] }).ctx) as { proposals: { asked_on: string; decided_on: string }[] }
+    expect(answer.proposals[0]).toMatchObject({ asked_on: '2026-11-09', decided_on: '2026-11-09' })
+  })
+
+  it('a pending proposal has no decision day', async () => {
+    const answer = await reads.my_sections(context(world(), { proposals: [proposal(move)] }).ctx) as { proposals: { decided_on: string }[] }
+    expect(answer.proposals[0].decided_on).toBe('')
+  })
 })
 
 describe('the search', () => {
