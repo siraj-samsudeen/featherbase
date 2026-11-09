@@ -31,7 +31,7 @@ describe('listing held values when the rows cannot be read', () => {
   test('is a server error, not an empty list', async ({ admin }) => {
     const row = await plants(admin)
     await sql`insert into featherbase.import_conflict (row_id, ref_table, ref_name, field, kept, incoming, created_by, updated_by)
-      values ('ic-held', ${T}, ${row.row_id}, 'city', ${sql.json('a')}, ${sql.json('b')}, 'Administrator', 'Administrator')`
+      values ('ic-held', ${T}, ${String(row.row_id)}, 'city', ${sql.json('a')}, ${sql.json('b')}, 'Administrator', 'Administrator')`
     await sql.unsafe('alter table featherbase.ic_plant rename to ic_plant_gone')
     await expectRefused(admin.get(`${url}:import-conflicts`), 500)
   })
