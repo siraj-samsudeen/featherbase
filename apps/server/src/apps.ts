@@ -12,7 +12,7 @@ import { reflectTables } from './sources/reflect'
 import { invalidateSources } from './sources/registry'
 import { activeApps, appOperation, provisionApp } from './app-lifecycle'
 import { cadenceSeconds, jobRegistrant, registerJob, syncScheduledJobs, unregisterAppJobs, type Cadence, type JobHandler } from './jobs'
-import { assertJobClaimable } from './app-jobs'
+import { assertJobClaimable, jobClaimRefusal } from './app-jobs'
 import {
   registerController,
   unregisterController,
@@ -161,13 +161,9 @@ function asFixtureRefs(v: unknown): FixtureRef[] {
 async function claimedJobs(manifest: AppManifest): Promise<Set<string>> {
   const claimed = new Set<string>()
   for (const ev of manifest.scheduler_events ?? []) {
-    try {
-      if (manifest.runtime_package) await assertJobClaimable(manifest.name, ev.method)
-      claimed.add(ev.method)
-    } catch (error) {
-      if (!(error instanceof AppError)) throw error
-      console.warn(`[apps] ${manifest.name}: its job ${ev.method} was not loaded: ${error.message}`)
-    }
+    const refusal = manifest.runtime_package ? await jobClaimRefusal(manifest.name, ev.method) : null
+    if (refusal) console.warn(`[apps] ${manifest.name}: its job ${ev.method} was not loaded: ${refusal}`)
+    else claimed.add(ev.method)
   }
   return claimed
 }
@@ -520,8 +516,8 @@ async function provisionSources(
 }
 
 async function materialize(manifest: AppManifest, stored: unknown): Promise<InstallResult> {
-  if (await isInstalled(manifest.name))
-    throw new AppError('ConflictError', `App ${manifest.name} is already installed`)
+  // Every caller answers a duplicate first, under the exclusive provisioning
+  // operation, and installed_app's primary key refuses a second row anyway.
   await assertNoSettingsFixtures(manifest)
   const provisioned = await provisionSources(manifest)
   const runtimeManifest = manifest.runtime_manifest as { client?: unknown } | undefined

@@ -424,12 +424,19 @@ export function planJobChanges(app: string, prior: JobDeclaration[], target: Job
  *  registered. Checked before the app's handler is registered or its row
  *  written. */
 export async function assertJobClaimable(app: string, method: string): Promise<void> {
+  const refusal = await jobClaimRefusal(app, method)
+  if (refusal) throw new AppError('ConflictError', refusal)
+}
+
+/** Why `app` may not claim the job name `method`, or null when it may. */
+export async function jobClaimRefusal(app: string, method: string): Promise<string | null> {
   const [row] = await sql`select owner_app from scheduled_job where method = ${method}`
   if (row && row.owner_app !== app)
-    throw new AppError('ConflictError', `The job ${method} is already a scheduled job of ${row.owner_app ? `the app ${String(row.owner_app)}` : 'Featherbase'}`)
+    return `The job ${method} is already a scheduled job of ${row.owner_app ? `the app ${String(row.owner_app)}` : 'Featherbase'}`
   const registrant = jobRegistrant(method)
   if (registrant && registrant !== app)
-    throw new AppError('ConflictError', `The job ${method} is already registered by ${registrant === 'platform' ? 'Featherbase' : `the app ${registrant}`}`)
+    return `The job ${method} is already registered by ${registrant === 'platform' ? 'Featherbase' : `the app ${registrant}`}`
+  return null
 }
 
 /** Write an upgrade's job steps, in its transaction. A changed default reaches
