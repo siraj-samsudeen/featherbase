@@ -10,7 +10,7 @@ import { rowHref, tableHref } from 'shared'
 import { sql } from 'server/src/db'
 import { patchDoc } from 'server/test/fixtures'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp, onScreen } from '../pg-test'
+import { test, expect, renderApp, onScreen, inside } from '../pg-test'
 
 configure({ asyncUtilTimeout: 10_000 })
 type Client = Parameters<typeof renderApp>[1]
@@ -188,8 +188,8 @@ class Explore {
 
   /** Types into the table search and presses Enter, once the search has narrowed to a match. */
   async searchAndStart(user: ReturnType<typeof userEvent.setup>, text: string) {
-    const search = screen.getByTestId('explore-root-search')
-    await user.type(search, text)
+    await onScreen().fillIn('Find a table', text)
+    // The options read whole, the first by pattern: the DSL reads text, not option lists.
     await waitFor(() => {
       const options = within(screen.getByTestId('explore-root')).getAllByRole('option')
       expect(options[0]!.textContent).toMatch(/^\d+ matching tables?/)
@@ -204,12 +204,14 @@ class Explore {
   }
 
   async startFrom(name: string) {
+    // Waits for the table to be offered: selectOption looks for its option once.
     const root = screen.getByTestId('explore-root') as HTMLSelectElement
     await waitFor(() => expect(within(root).getAllByRole('option').some((o) => o.textContent === name)).toBe(true))
-    fireEvent.change(root, { target: { value: name } })
+    await onScreen().selectOption('Start from', name)
     await screen.findByTestId('explore-pane1')
   }
 
+  // Every step picker is labelled "Then", and its option is matched by pattern: both raw.
   async addStep(n: number, name: string) {
     const picker = await screen.findByTestId(`explore-step${n}`)
     const option = await waitFor(() => {
@@ -234,8 +236,10 @@ class Explore {
     await user.click(row)
   }
 
-  count = (n: number) => screen.getByTestId(`explore-pane${n}-count`)
-  sum = (n: number) => screen.getByTestId(`explore-pane${n}-sum`)
+  /** A pane's count reads exactly this. */
+  counts = (n: number, count: number) => inside(onScreen(), `explore-pane${n}-count`, (c) => c.assertExactText(String(count)))
+  /** A pane's sum shows this. */
+  sums = (n: number, sum: string) => inside(onScreen(), `explore-pane${n}-sum`, (s) => s.assertText(sum))
 }
 
 async function exploreSuppliersAndOrders(admin: Client) {
@@ -281,6 +285,7 @@ class RelationMap {
   async open(admin: Client, name: string, rowId: string) {
     await renderApp(rowHref(name, rowId), admin)
     await waitFor(() => expect(within(screen.getByRole('main')).getAllByRole('heading', { level: 1 })[0]).toBeInTheDocument())
+    // A tab by its name: the DSL's attribute verbs read an element found by selector.
     const tab = await screen.findByRole('tab', { name: 'Map' })
     fireEvent.click(tab)
     await waitFor(() => expect(tab).toHaveAttribute('aria-selected', 'true'))
@@ -294,7 +299,7 @@ class RelationMap {
     await waitFor(() => expect(el).toHaveTextContent(text))
     return (el.textContent ?? '').trim()
   }
-  centredOn = (title: string) => waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent(title))
+  centredOn = (title: string) => inside(onScreen(), 'map-center', (center) => center.assertText(title))
 }
 
 describe('search-and-explore', () => {
@@ -372,15 +377,15 @@ describe('search-and-explore', () => {
       await explore.addStep(3, 'PO Line')
     })
     await step("Purchase Order narrows to that supplier's orders", async () => {
-      await waitFor(() => expect(explore.count(2)).toHaveTextContent(/^2$/))
+      await explore.counts(2, 2)
       const rows = explore.rows(2).map((r) => r.textContent ?? '')
       expect(rows.every((r) => r.includes('Acme')), JSON.stringify(rows)).toBe(true)
     })
     await step("PO Line narrows to those orders' lines, with an accurate count and sum at every stage", async () => {
-      await waitFor(() => expect(explore.count(1)).toHaveTextContent(/^2$/))
-      await waitFor(() => expect(explore.count(2)).toHaveTextContent(/^2$/))
-      await waitFor(() => expect(explore.count(3)).toHaveTextContent(/^3$/))
-      await waitFor(() => expect(explore.sum(3)).toHaveTextContent('350'))
+      await explore.counts(1, 2)
+      await explore.counts(2, 2)
+      await explore.counts(3, 3)
+      await explore.sums(3, '350')
     })
   })
 
@@ -390,7 +395,7 @@ describe('search-and-explore', () => {
     await step("the user has Explore narrowed to one supplier's orders", async () => {
       explore = await exploreSuppliersAndOrders(admin)
       await explore.clickRow(user, 1, 'Acme')
-      await waitFor(() => expect(explore.count(2)).toHaveTextContent(/^2$/))
+      await explore.counts(2, 2)
     })
     await step('the user opens one of those orders', () => explore.clickRow(user, 2, 'Acme order 1'))
     await step('it shows in the drill pane', async () => {

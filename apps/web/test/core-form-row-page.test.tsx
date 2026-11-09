@@ -145,7 +145,8 @@ test('an attachment uploads, its link serves the file, and removing it takes the
   const href = row.querySelector('a')!.getAttribute('href')!
   expect(await (await admin.fetch(href)).text()).toBe('37 cartons, not 83')
 
-  within(row).getByTestId('attachment-delete').focus()
+  // Remove shows once the file's own delete grant has loaded (RemoveAttachment).
+  ;(await within(row).findByTestId('attachment-delete')).focus()
   await userEvent.keyboard('{Enter}')
   await waitFor(() => expect(within(panel).queryAllByTestId('attachment-row')).toHaveLength(0))
   expect((await admin.fetch(href)).status).toBe(404)

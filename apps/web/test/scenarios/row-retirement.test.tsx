@@ -73,8 +73,7 @@ describe('row-retirement', () => {
     await step('"Sample plant" shows it is retired because "Not a real location"', async () => {
       const { session } = await openForm(admin, 'Sample plant')
       await inside(session, 'retired-badge', (badge) => badge.assertText('Retired'))
-      // The reason whole, exactly: the DSL's text verbs check containment.
-      expect(screen.getByTestId('retired-reason').textContent!.trim()).toBe('Not a real location')
+        .within(byTestId('retired-reason'), (reason) => reason.assertExactText('Not a real location'))
     })
   }, 40_000)
 

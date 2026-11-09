@@ -263,14 +263,13 @@ async function relationOf(table: string) {
 
 /** Tasker's page for one member, rendered: its sidebar views, a project's tasks, task details, Stores, To verify and Issues. */
 export class TaskerPage {
-  /** Drives the page with the Session DSL. Most of Tasker's selects carry their name in
-   *  aria-label, or in a <label> that also holds the options' text: the DSL's label lookup
-   *  can't name those, so they are chosen through `user`. */
+  /** Drives the page with the Session DSL, which names Tasker's selects by their aria-label. */
   readonly session = screenSession()
   constructor(readonly user: User) {}
 
   // --- getting around ---------------------------------------------------------
 
+  // By pattern: a view's button also shows its count.
   async sidebarView(name: RegExp) {
     await this.user.click(await screen.findByRole('button', { name }))
   }
@@ -294,7 +293,7 @@ export class TaskerPage {
 
   // --- task lists -------------------------------------------------------------
 
-  /** A task's row in the list on screen. */
+  /** A task's row in the list on screen: found by its title, which no selector names. */
   async row(title: string) {
     const main = document.querySelector('main.tasker-main') as HTMLElement
     const link = await within(main).findByRole('link', { name: title })
@@ -322,7 +321,8 @@ export class TaskerPage {
     await waitFor(async () => expect((await this.dueMark(title))?.mark).toBe(mark), { timeout: 8000 })
   }
 
-  doneBox(title: string) { return screen.getByRole('checkbox', { name: `Mark ${title} done` }) as HTMLInputElement }
+  /** The task's Done box, as its row in the list names it. */
+  doneBox(title: string) { return `Mark ${title} done` }
 
   /** The titles of the tasks in the list on screen. */
   listedTitles() {
@@ -335,14 +335,18 @@ export class TaskerPage {
   /** Narrows the list on screen with the Filter menu: a group ('Due', 'Store') and a choice in it. */
   async narrow(group: string, choice: string) {
     const main = document.querySelector('main.tasker-main') as HTMLElement
+    // By pattern: the Filter button also shows how many filters are on.
     await this.user.click(within(main).getByRole('button', { name: /^Filter/ }))
+    // The choice inside its group: a legend names a fieldset, and the DSL scopes by selector only.
     const filters = await screen.findByRole('dialog', { name: 'Filter tasks' })
     await this.user.click(await within(within(filters).getByRole('group', { name: group })).findByRole('checkbox', { name: choice }))
     await this.session.within('[aria-label="Filter tasks"]', (dialog) => dialog.clickButton('Close'))
+    // Waits for the filter chip to appear: the DSL's lookups wait only inside a verb.
     await within(main).findByRole('button', { name: `Remove ${choice} filter` })
   }
 
-  rowState(title: string) { return (screen.getByRole('combobox', { name: `State for ${title}` }) as HTMLSelectElement).value }
+  /** The state a task's row shows in its State choice. */
+  expectRowState(title: string, state: string) { return this.session.assertSelected(`State for ${title}`, state) }
 }
 
 /** Waits until `read` returns a value that passes `check`. */

@@ -15,10 +15,9 @@ const RAISED = 'Anjali has raised a ticket that support can assign'
 const LISTED = 'Colleague is listed as someone tickets can be assigned to'
 const CONFIRM = '[aria-label="Confirm the assignee"]'
 
-// The picker is labelled by aria-labelledby, which the DSL's label lookup doesn't follow.
+// The picker's options by their value, a person's id: the DSL reads options by their text.
 const picker = () => screen.getByRole('combobox', { name: 'Assigned to' }) as HTMLSelectElement
 const confirmRow = () => screen.queryByRole('group', { name: 'Confirm the assignee' })
-const chosen = () => picker().selectedOptions[0]?.textContent
 
 /** That person's ticket screen, open on this ticket. */
 async function openOnScreen(x: TicketsAssignmentEmail, actor: string): Promise<{ session: Session }> {
@@ -99,9 +98,9 @@ describe('tickets-assignment-email', () => {
         .within(CONFIRM, (confirm) => confirm.clickButton('Cancel'))
         .until('the confirmation has closed', () => !confirmRow()))
     await step('the ticket screen shows the ticket as Unassigned', async () => {
-      expect(chosen()).toBe('Unassigned')
-      await openOnScreen(x, 'Support')
-      expect(chosen()).toBe('Unassigned')
+      await session.assertSelected('Assigned to', 'Unassigned')
+      const { session: reopened } = await openOnScreen(x, 'Support')
+      await reopened.assertSelected('Assigned to', 'Unassigned')
     })
     await step('nobody is emailed about the ticket', async () => expect(await mail(x)).toEqual([]))
   })

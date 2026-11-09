@@ -24,6 +24,7 @@ export {
   autoMapImportColumns,
   retiredColumnNotice,
   coerceRows,
+  splitForSend,
   choiceOptions,
   inferChoices,
   inferColumnType,

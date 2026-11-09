@@ -14,7 +14,7 @@ import { cleanup, configure, fireEvent, screen, waitFor, within } from '@testing
 import { describe, vi } from 'vitest'
 import { rowHref, tableHref } from 'shared'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp, onScreen, inside } from '../pg-test'
+import { test, expect, renderApp, onScreen, inside, byTestId } from '../pg-test'
 import {
   add, ENCHAKKAL_PLANTS, PLANTS, SITE, limitRows, listColumns, readerRoles, seedOrganisation, type OrgIds,
 } from '../organisation-fixture'
@@ -27,6 +27,8 @@ type CreateUser = (o: { email?: string; roles?: string[] }) => Promise<Client>
 const scenario = scenarioFor(test, 'relational-navigation')
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+// Panes, groups, tree lines and tabs are named by pattern (a row's code, a group's count): the DSL
+// finds by literal text or selector, so they stay with Testing Library.
 /** A row's name, which its code may follow ("Enchakkal Supermarket · 1503"), and not a longer name. */
 const named = (name: string) => new RegExp(`^\\W*${escape(name)}( · .+)?$`)
 /** A group: "Plant 3", "Profit Centre 40". */
@@ -333,8 +335,8 @@ describe('relational-navigation', () => {
       await waitFor(() => expect(location(view).pathname).toBe(`${tableHref('Plant')}/new`))
     })
     await step("the new plant's site is already Enchakkal", async () => {
-      const form = await screen.findByTestId('form-view')
-      await waitFor(() => expect(within(form).getByLabelText('Site', { exact: true })).toHaveValue('Enchakkal'))
+      await screen.findByTestId('form-view')
+      await onScreen().within(byTestId('form-view'), (form) => form.assertValue('Site', 'Enchakkal'))
     })
   })
 
@@ -373,8 +375,10 @@ describe('relational-navigation', () => {
     await step("the user can open Enchakkal's form to edit it", async () => {
       fireEvent.click(await within(await pane('Enchakkal')).findByRole('link', { name: 'Open row page' }))
       await waitFor(() => expect(location(view).pathname.startsWith(`${tableHref(SITE)}/row/`)).toBe(true))
-      const name = await waitFor(() => within(screen.getByTestId('form-view')).getByLabelText('Name', { exact: true }))
-      await waitFor(() => expect(name).toHaveValue('Enchakkal'))
+      await screen.findByTestId('form-view')
+      await onScreen().within(byTestId('form-view'), (form) => form.assertValue('Name', 'Enchakkal'))
+      // Editable: the field is found by its label, and the DSL's attribute verbs read the scope itself.
+      const name = within(screen.getByTestId('form-view')).getByLabelText('Name', { exact: true })
       expect(name).not.toHaveAttribute('readonly')
       expect(name).toBeEnabled()
     })
@@ -552,7 +556,7 @@ describe('relational-navigation', () => {
       fireEvent.click(await screen.findByTestId('map-forward-Region'))
     })
     await step('Kerala shows in the drill pane', () => pane('Kerala'))
-    await step('the map is still centred on Enchakkal', () => expect(screen.getByTestId('map-center')).toHaveTextContent('Enchakkal'))
+    await step('the map is still centred on Enchakkal', () => inside(onScreen(), 'map-center', (el) => el.assertText('Enchakkal')))
     await step('choosing to centre on Kerala redraws the map around Kerala', async () => {
       // #910 checklist 17: the drill pane's "Focus here" re-centres the map.
       fireEvent.click(await within(await pane('Kerala')).findByRole('button', { name: 'Focus here' }))
