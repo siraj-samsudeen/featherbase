@@ -11,6 +11,8 @@ import { createUserWithRole, expectApiError, expectRefused } from './fixtures'
 import { EXTERNAL_DATABASE_URL } from './external-database'
 import { invalidateSources } from '../src/sources/registry'
 import { registerController, unregisterController, type TableController } from '../src/controllers'
+import { sql } from '../src/db'
+import { invalidateMeta } from '../src/meta'
 
 const T = 'Bulk Order'
 const enc = encodeURIComponent
@@ -191,6 +193,21 @@ describe('on a connected Table', () => {
     } finally {
       unregisterController(controller)
     }
+  })
+
+  test('a binding written by hand without its external table has no storage and refuses its rows', async ({ admin }) => {
+    await bind(admin)
+    await sql`update table_def set external_table = null where name = ${BOUND}`
+    invalidateMeta()
+    expect(await admin.get<{ storage_identity: unknown }>(`/api/table/${enc(BOUND)}:meta`)).toMatchObject({ storage_identity: null })
+    await expectRefused(admin.get(`/api/table/${enc(BOUND)}`), 417, `${BOUND} is bound to bulk-src but has no external_table`)
+  })
+
+  test('a write to a Data Source deleted since it was read is not found', async ({ admin }) => {
+    await bind(admin)
+    const one = await admin.get<{ updated_at: string }>(`/api/table/${enc(BOUND)}/1`)
+    await sql`delete from data_source where row_id = 'bulk-src'`
+    await expectRefused(admin.post('/api/save_row', { table: BOUND, row: { row_id: '1', updated_at: one.updated_at, label: 'x' } }), 404, 'Data Source bulk-src no longer exists')
   })
 
   test('an unexpected controller failure is reported per row while later rows still change', async ({ admin }) => {
