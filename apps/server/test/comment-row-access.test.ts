@@ -1,7 +1,8 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
-import { createUserWithRole, expectStatus, grantRole, patchDoc, tableRef } from './fixtures'
+import { createUserWithRole, expectRefused, expectStatus, grantRole, patchDoc, tableRef } from './fixtures'
+import { sql } from '../src/db'
 import { countDocs } from '../src/query'
 
 // #342: a comment or an edit is about one row, so it is readable only where
@@ -69,6 +70,13 @@ describe('#342: comments follow the row they are on', () => {
     expect(missing.total).toBe(0)
     expect(await listOf(agent, COMMENT, PLAIN, ['content'])).toEqual(visible)
     expect(await listOf(admin, COMMENT, PLAIN, ['content'])).toEqual(all)
+  })
+
+  test('a comment on a Table that no longer exists is refused when opened', async ({ admin, createUser }) => {
+    const { agent, mine } = await setup(admin, createUser)
+    const comment = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Comment', row: { ref_table: PLAIN, ref_name: mine, content: 'orphaned' } })
+    await sql`update comment set ref_table = 'Cra Dropped Table' where row_id = ${comment.row_id}`
+    await expectRefused(agent.get(COMMENT.rowUrl(comment.row_id)), 403)
   })
 
   test('a broad Comment grant lists only the comments on rows the reader may open', async ({ admin, createUser }) => {
