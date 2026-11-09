@@ -12,6 +12,7 @@ import { resolve } from 'node:path'
 import { expect } from 'vitest'
 import { makeClient, type TestClient, type CreateUserFn } from 'feather-testing-postgres'
 import { discoverPackages } from '../src/runtime-packages'
+import { sql } from '../src/db'
 import { grantRole, makeTable } from './fixtures'
 
 export const TICKETS_DIRECTORY = resolve('../..', 'example-apps/tickets')
@@ -159,6 +160,16 @@ export class Tickets {
     return this.action('change_raiser', { new_raiser: this.ids[person], reason }, actor, true)
   }
 
+  /** What Tickets queued about the current ticket (#1001): nothing here sends. */
+  async mail(): Promise<{ recipient: string; body: string }[]> {
+    return [...await sql<{ recipient: string; body: string }[]>`select recipient, body from email_queue
+      where ref_table = 'tickets.ticket' and reference_name = ${this.ticket.row_id} order by created_at`]
+  }
+  async mailTo(name: string) {
+    const [person] = await sql<{ email: string }[]>`select email from person where row_id = ${this.ids[name]}`
+    return (await this.mail()).filter(row => row.recipient === person!.email)
+  }
+
   // ---- what the scenarios check ----
 
   denied() { expect([403, 409, 417], JSON.stringify(this.last)).toContain(this.last.status) }
@@ -298,5 +309,25 @@ export class TicketTransitions {
     // The role alone: holding it grants nothing but the transition that names it.
     await grantRole(this.t.admin, { role: 'Data Quality Verifier', table: [] })
     await this.t.person('DQ Verifier', ['All', 'Data Quality Verifier'])
+  }
+}
+
+/** Anjali's ticket that support assigns, and who is told by email (#1001, #1069). */
+export class TicketsAssignmentEmail {
+  readonly title = `The dashboard is late ${randomUUID().slice(0, 8)}`
+  readonly description = 'Invoices cleared two days ago are missing'
+  constructor(readonly t: Tickets) {}
+  async raise() {
+    await this.t.setup()
+    this.t.actor = 'Anjali'
+    await this.t.action('create', { title: this.title, original: this.description, kind: 'generic', details: {} }, 'Anjali')
+  }
+  assign(name: string) { return this.t.action('edit', { assigned_to: this.t.ids[name] }, 'Support') }
+  /** Listed for assignment, and known to Tickets by name: they have acted in it. */
+  async assignable(name: string) {
+    await this.t.configure({ assignees: [this.t.ids[name]] })
+    const raised = this.t.ticket
+    await this.t.action('create', { title: `${name} files one`, original: `${name} files one`, kind: 'generic', details: {} }, name)
+    this.t.ticket = raised
   }
 }
