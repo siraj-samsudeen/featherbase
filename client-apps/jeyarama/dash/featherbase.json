@@ -1802,6 +1802,12 @@
           "destructive": true
         }
       ]
+    },
+    {
+      "id": "proposals_dated_in_india",
+      "fromVersion": "0.12.0",
+      "toVersion": "0.12.1",
+      "operations": []
     }
   ],
   "baseTables": {
