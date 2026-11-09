@@ -4,10 +4,11 @@ import { PrincipalName } from '../lib/people'
 import { cardClasses, fmtInstant } from '@featherbase/shop-floor'
 import { activityQuery, AuthorInitials, type VersionRow } from './Comments'
 import { useChangeFormat } from '../lib/change-format'
+import { AgentMark } from './AgentMark'
 
 type Entry =
   | { kind: 'comment'; at: string; who: string; content: string }
-  | { kind: 'version'; at: string; who: string; changes: [string, unknown, unknown][]; created?: boolean; importRun?: string; resolution?: NonNullable<VersionRow['data']>['resolution']; retirement?: NonNullable<VersionRow['data']>['retirement'] }
+  | { kind: 'version'; at: string; who: string; changes: [string, unknown, unknown][]; created?: boolean; importRun?: string; resolution?: NonNullable<VersionRow['data']>['resolution']; retirement?: NonNullable<VersionRow['data']>['retirement']; agent?: string }
 
 // UI-019: activity timeline interleaving comments and versions (edits with
 // their column diff) chronologically. Workflow actions join here once WF
@@ -19,7 +20,10 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
     const out: Entry[] = []
     for (const c of activity.data?.comments ?? [])
       out.push({ kind: 'comment', at: c.created_at, who: c.created_by, content: c.content })
-    for (const v of activity.data?.versions ?? [])
+    for (const v of activity.data?.versions ?? []) {
+      // #1101: a row an agent created gets a created entry with no changes,
+      // only to carry the mark; it reads in the "created this" line instead.
+      if (isBareCreation(v)) continue
       out.push({
         kind: 'version',
         at: v.created_at,
@@ -29,7 +33,9 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
         importRun: v.data?.import_run,
         resolution: v.data?.resolution,
         retirement: v.data?.retirement,
+        agent: v.data?.agent?.token_label,
       })
+    }
     return out.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
   }, [activity.data])
 
@@ -38,6 +44,7 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
   const columnLabel = format.label
   const columnType = format.type
   const fmt = format.value
+  const createdVia = activity.data?.versions.find(isBareCreation)?.data?.agent?.token_label
 
   return (
     <div className={cardClasses('p-4')} data-testid="activity-timeline">
@@ -55,7 +62,7 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
             <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-ink-subtle" />
             <div className="min-w-0 flex-1 text-xs text-ink-muted">
               <span className="font-medium text-ink"><PrincipalName id={String(activity.data.created.created_by)} /></span>{' '}
-              created this ·{' '}
+              created this<AgentMark label={createdVia} /> ·{' '}
               <span className="whitespace-nowrap" data-testid="activity-created-time">{fmtInstant(activity.data.created.created_at)}</span>
             </div>
           </li>
@@ -68,7 +75,8 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
             <div className="min-w-0 flex-1">
               <div className="text-xs text-ink-muted">
                 <span className="font-medium text-ink" data-testid={e.kind === 'comment' ? 'comment-author' : undefined}><PrincipalName id={e.who} /></span>{' '}
-                {e.kind === 'comment' ? 'commented' : e.retirement ? (e.retirement.action === 'retired' ? 'retired this' : 'reactivated this') : e.resolution ? (e.resolution.decision === 'keep' ? 'kept their correction' : 'adopted the import value') : e.importRun ? 'imported' : e.created ? 'created' : 'edited'} ·{' '}
+                {e.kind === 'comment' ? 'commented' : e.retirement ? (e.retirement.action === 'retired' ? 'retired this' : 'reactivated this') : e.resolution ? (e.resolution.decision === 'keep' ? 'kept their correction' : 'adopted the import value') : e.importRun ? 'imported' : e.created ? 'created' : 'edited'}
+                {e.kind === 'version' && <AgentMark label={e.agent} />} ·{' '}
                 <span className="whitespace-nowrap" data-testid="activity-time">{fmtInstant(e.at)}</span>
               </div>
               {e.kind === 'comment' ? (
@@ -99,3 +107,5 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
     </div>
   )
 }
+
+const isBareCreation = (v: VersionRow) => Boolean(v.data?.created && !v.data.changed?.length)
