@@ -4,6 +4,7 @@ import { sql } from '../src/db'
 import { renderPdf, renderPrintHtml } from '../src/print'
 import { createTable } from '../src/table-engine'
 import { saveDoc } from '../src/document'
+import { invalidateMeta } from '../src/meta'
 import { test } from './pg-test'
 import { expectStatus } from './fixtures'
 
@@ -144,6 +145,49 @@ describe('A print format fixes the layout and wording', () => {
     const html = await renderPrintHtml(DT, 'srv-2', 'Administrator', 'Pf Receipt')
     expect(html).not.toContain('<script>alert(1)</script>')
     expect(html).toContain('&lt;script&gt;')
+  })
+})
+
+describe('what a print has to go on', () => {
+  test('a picked format that does not exist prints an empty body', async () => {
+    await setup()
+    const html = await renderPrintHtml(DT, 'srv-1', 'Administrator', 'No Such Format', 'none')
+    expect(html).toContain('<body></body>')
+  })
+
+  test('a format with no template prints an empty body, picked or by default', async () => {
+    await setup()
+    await sql`
+      insert into print_format (row_id, created_by, updated_by, ref_table, is_default, template)
+      values ('Pf Blank', 'Administrator', 'Administrator', ${DT}, true, null)`
+    expect(await renderPrintHtml(DT, 'srv-1', 'Administrator', 'Pf Blank', 'none')).toContain('<body></body>')
+    expect(await renderPrintHtml(DT, 'srv-1', 'Administrator', undefined, 'none')).toContain('<body></body>')
+  })
+
+  test('a letter head with no header or footer adds neither', async () => {
+    await setup()
+    await sql`insert into letter_head (row_id, created_by, updated_by, header_html, footer_html) values ('Lh Blank', 'Administrator', 'Administrator', null, null)`
+    const html = await renderPrintHtml(DT, 'srv-1', 'Administrator', 'standard', 'Lh Blank')
+    expect(html).not.toContain('letter-head">')
+    expect(html).not.toContain('letter-foot">')
+  })
+
+  test('the standard layout names a column or Sub-table with no label by its column', async () => {
+    await createTable({ name: 'Pdf Bare Line', kind: 'sub_table', columns: [{ column_name: 'item', column_type: 'Data' }] })
+    await createTable({
+      name: 'Pdf Bare',
+      id_pattern: 'prompt',
+      columns: [
+        { column_name: 'title', column_type: 'Data' },
+        { column_name: 'lines', column_type: 'Sub-table', row_table: 'Pdf Bare Line' },
+      ],
+    })
+    await sql`update column_def set label = null where parent = 'Pdf Bare'`
+    invalidateMeta()
+    await saveDoc('Pdf Bare', { row_id: 'bare-1', title: 'First', lines: [{ item: 'Bolt' }] }, 'Administrator')
+    const html = await renderPrintHtml('Pdf Bare', 'bare-1', 'Administrator', 'standard', 'none')
+    expect(html).toContain('<dt>title</dt>')
+    expect(html).toContain('<h2>lines</h2>')
   })
 })
 
