@@ -33,9 +33,15 @@ steps(When, [
 
 steps(When, [
   ['support assigns the ticket to Colleague on the ticket screen', x => x.assignOnScreen('Colleague')],
+  ['support picks Colleague as the assignee on the ticket screen', x => x.pickOnScreen('Colleague')],
+  ['support cancels the assignment', x => x.cancel()],
+  ['Anjali opens her ticket on the ticket screen', async x => { x.page = await x.openOnScreen('Anjali'); }],
 ]);
 
 steps(Then, [
+  ['the ticket screen asks {string}', (x, question) => x.asks(question)],
+  ['the ticket screen shows the ticket as Unassigned', x => x.showsUnassigned()],
+  ['Anjali sees the ticket as Unassigned, with no way to assign it', x => x.requesterSees()],
   ['the link in the email opens that ticket for Colleague', x => x.followLink('Colleague')],
   ['{word} is emailed once about the ticket', async (x, name) => assert.equal((await x.mailTo(name)).length, 1)],
   ['nobody is emailed about the ticket', async x => assert.deepEqual(await x.mail(), [])],
@@ -45,10 +51,7 @@ steps(Then, [
     assert.ok(body.includes('assigned this ticket to you.'), body);
     assert.ok(body.includes(`/tickets/?ticket=${x.t.ticket.row_id}`), body);
   }],
-  ['the email to Colleague leaves out the private description', async x => {
-    assert.ok(!(await x.mailTo('Colleague'))[0].body.includes(x.description));
-  }],
-  ['the email to Verifier includes the description', async x => {
-    assert.ok((await x.mailTo('Verifier'))[0].body.includes(x.description));
+  ['the email to {word} includes the description', async (x, name) => {
+    assert.ok((await x.mailTo(name))[0].body.includes(x.description));
   }],
 ]);

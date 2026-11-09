@@ -17,6 +17,7 @@ export async function prepareSubtaskIdentity(ctx: Context): Promise<void> {
   if (ctx.row.personal_tasks_owner && ctx.row.personal_tasks_owner !== parent.created_by)
     ctx.reject('A subtask inherits its parent’s privacy')
   ctx.row.project = parent.project || null
+  ctx.row.store = parent.store || null
   ctx.row.personal_tasks_owner = null
   ctx.row.shared = Boolean(parent.shared)
   if (!parent.shared && ctx.row.assigned_to && ctx.row.assigned_to !== parent.created_by)

@@ -3,8 +3,10 @@
 // first in the app's body and loads the bar bundle (src/bar), which draws the
 // real TopBar into the host's shadow root. The app owns its document; the bar
 // never runs app code, and its styles and theme never reach the app's page.
-// Widths, real styles and the fixture app's own page are in
-// e2e/app-page-bar.spec.ts.
+// Widths, real styles and the fixture app's own page are layout and
+// browser-only checks, not tested here (#1080); the served document and the
+// signed-out redirect are apps/server/test/runtime-shell.test.ts and
+// runtime-packages.test.ts.
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { act, waitFor, within } from '@testing-library/react'
@@ -121,6 +123,18 @@ test("the app-name dropdown offers Featherbase to a person who can open it", asy
   expect(await within(choices).findByRole('option', { name: FEATHERBASE_ADMIN_DESTINATION.label })).toHaveValue(FEATHERBASE_ADMIN_DESTINATION.href)
   expect(choices).toHaveValue('/barproof/')
   expect(bar.queryByTestId('open-admin')).toBeNull()
+})
+
+// Moved from the deleted e2e/runtime-host-shell.spec.ts.
+test("choosing Featherbase in the app-name dropdown leaves the app for the Admin", async ({ admin }) => {
+  expect(await discoverPackages([BAR_PROOF, ROSTER])).toEqual([])
+  await admin.post('/api/install_app', { name: 'barproof' })
+  const left: string[] = []
+  const bar = openAppPage(admin, '/barproof/', (href) => left.push(href))
+  const choices = await bar.findByRole('combobox', { name: 'Switch application' })
+  await within(choices).findByRole('option', { name: FEATHERBASE_ADMIN_DESTINATION.label })
+  await userEvent.selectOptions(choices, FEATHERBASE_ADMIN_DESTINATION.href)
+  await waitFor(() => expect(left).toEqual([FEATHERBASE_ADMIN_DESTINATION.href]))
 })
 
 // #659 (owner decision, 28-Oct-2026): an app's own Tables do not open the

@@ -1,0 +1,26 @@
+// One command to a working Featherbase: open this folder in a dev container
+// (VS Code "Reopen in Container", GitHub Codespaces, or `devcontainer up`).
+// Node, pnpm, PostgreSQL and the browser the tours use are the versions CI
+// uses (.github/workflows/test.yml). Then run ./init.sh, as everyone does.
+{
+  "name": "Featherbase",
+  "dockerComposeFile": "compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/featherbase",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "26.13.0" },
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "forwardPorts": [5173, 8000],
+  "portsAttributes": {
+    "5173": { "label": "Featherbase (web)", "onAutoForward": "openBrowser" },
+    "8000": { "label": "Featherbase (API)" }
+  },
+  "containerEnv": {
+    "DATABASE_URL": "postgres://postgres:postgres@db:5432/featherbase"
+  },
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "customizations": {
+    "vscode": { "extensions": ["vitest.explorer", "ms-playwright.playwright", "bradlc.vscode-tailwindcss"] }
+  }
+}

@@ -25,6 +25,9 @@ const BASE_URL = `http://localhost:${WEB_PORT}`;
 const API_URL = `http://localhost:${API_PORT}`;
 const PROTOTYPE_URL = `http://localhost:${PROTOTYPE_PORT}`;
 const BOOT_TIMEOUT_MS = 240_000;
+// The API's clock: while this file holds an instant, that is the time on the
+// server (server-clock.cjs, preloaded into the API process); app-clock.js sets it.
+const CLOCK_FILE = path.join(require('node:os').tmpdir(), `featherbase-acceptance-clock-${API_PORT}`);
 
 // Same host and credentials as the developer's database, under its own name.
 function acceptanceDatabaseUrl() {
@@ -90,6 +93,14 @@ function isolatedEnvironment(overrides = {}) {
   };
 }
 
+/** The API's own environment: its clock can be set (server-clock.cjs). Only the API gets it. */
+function apiEnvironment(env) {
+  return {
+    ...env, ACCEPTANCE_CLOCK_FILE: CLOCK_FILE,
+    NODE_OPTIONS: [env.NODE_OPTIONS, `--require ${path.join(__dirname, 'server-clock.cjs')}`].filter(Boolean).join(' '),
+  };
+}
+
 /** Runs the server's MotherDuck stand-in script; `build` returns the new folder. */
 function motherDuckStandin(...args) {
   const out = execFileSync('pnpm', ['--filter', 'server', 'exec', 'tsx', 'scripts/motherduck-standin.ts', ...args],
@@ -115,18 +126,32 @@ async function acceptanceSql(statement, parameters = []) {
 }
 
 async function stopApi() {
+  const group = apiChild?.pid;
   if (apiChild?.exitCode === null && apiChild.signalCode === null) {
-    process.kill(-apiChild.pid, 'SIGTERM');
+    process.kill(-group, 'SIGTERM');
     await new Promise(resolve => apiChild.once('exit', resolve));
   }
   apiChild = undefined;
+  // pnpm can exit while the server under it (tsx and node, in pnpm's process
+  // group) still holds the port. A new API started then cannot listen, and the
+  // old one, with the old environment and apps, goes on answering every
+  // request. So the API is stopped only once its port is free.
+  const started = Date.now();
+  while (await portTaken(API_PORT)) {
+    const waited = Date.now() - started;
+    if (waited > 30_000) throw new Error(`The API on port ${API_PORT} did not stop within 30 seconds.`);
+    if (group) {
+      try { process.kill(-group, waited > 5_000 ? 'SIGKILL' : 'SIGTERM'); } catch { /* the group is gone */ }
+    }
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
 }
 
 // Change host configuration without replacing the scenario's saved data/sessions.
 async function restartAcceptance(overrides = {}, root = REPO_ROOT) {
   await stopApi();
   scenarioEnvironment = { ...(scenarioEnvironment ?? isolatedEnvironment()), ...overrides };
-  apiChild = start('api', ['--filter', 'server', 'start'], scenarioEnvironment, root);
+  apiChild = start('api', ['--filter', 'server', 'start'], apiEnvironment(scenarioEnvironment), root);
   await waitFor(`${API_URL}/api/ping`, apiChild, 'The scenario API');
 }
 
@@ -217,6 +242,7 @@ BeforeAll({ timeout: BOOT_TIMEOUT_MS + 30_000 }, async function () {
       );
   }
   // #772 design D4: a local stand-in for MotherDuck, made fresh for each run.
+  require('node:fs').rmSync(CLOCK_FILE, { force: true });
   process.env.MOTHERDUCK_STANDIN = motherDuckStandin('build');
   const env = isolatedEnvironment();
   for (const command of ['e2e:reset', 'migrate'])
@@ -224,7 +250,7 @@ BeforeAll({ timeout: BOOT_TIMEOUT_MS + 30_000 }, async function () {
   await ensureExternalDatabase();
   // No watcher: tsx watch starts its own process group and can survive the
   // scenario API's shutdown, retaining stale schema and environment state.
-  const api = apiChild = start('api', ['--filter', 'server', 'start'], env);
+  const api = apiChild = start('api', ['--filter', 'server', 'start'], apiEnvironment(env));
   const web = start('web', ['--filter', 'web', 'dev'], {
     WEB_PORT: String(WEB_PORT),
     API_PORT: String(API_PORT),
@@ -239,12 +265,13 @@ BeforeAll({ timeout: BOOT_TIMEOUT_MS + 30_000 }, async function () {
 
 AfterAll(async function () {
   stopAll();
+  require('node:fs').rmSync(CLOCK_FILE, { force: true });
   if (scenarioEnvironment) await acceptanceSql("update featherbase.internal_metadata set value = 'test' where key = 'environment'");
 });
 
 process.on('exit', stopAll);
 
 module.exports = {
-  BASE_URL, API_URL, PROTOTYPE_URL, resetAcceptance, restartAcceptance, useInstanceToken, acceptanceSql, acceptanceDatabaseUrl, isolatedEnvironment, REPO_ROOT,
+  BASE_URL, API_URL, PROTOTYPE_URL, CLOCK_FILE, resetAcceptance, restartAcceptance, useInstanceToken, acceptanceSql, acceptanceDatabaseUrl, isolatedEnvironment, REPO_ROOT,
   externalSql, EXTERNAL_URL_ENV, EXTERNAL_READER, EXTERNAL_READER_PASSWORD, addStandinTable, changeStandin,
 };

@@ -7,8 +7,7 @@
 // i18n.test.ts. Seeded inside the sandbox transaction they simply roll back,
 // and the clean-up code goes away with them.
 //
-// e2e/i18n-login.spec.ts stays: the signed-out login page picks its language
-// from the browser, which is not a thing jsdom can be asked.
+// The stored language applied on a fresh sign-in is i18n-login.test.tsx.
 //
 // One test per surface the rule reaches — chrome, metadata labels, the
 // fallback, and the switch back — because a catalog that reaches one and not

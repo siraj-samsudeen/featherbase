@@ -80,6 +80,7 @@ class FeatherbaseWorld {
     this.scenario = null; // { order, slug, name }, set before each scenario
     this.contexts = []; // { who, label, context, page } for every browser context opened, in order
     this.caption = null; // VIDEO=1: the step being run, as written
+    this.appClock = null; // the instant the scenario has set the app's clock to (app-clock.js), or null
   }
 
   /** A traced browser context for one of the scenario's people (and its video, with VIDEO=1). */
@@ -91,6 +92,7 @@ class FeatherbaseWorld {
       ...(VIDEO ? { recordVideo: { dir: VIDEO_SCRATCH, size: this.viewport } } : {}),
     });
     if (TRACE) await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
+    if (this.appClock) await context.clock.setFixedTime(this.appClock);
     const page = await context.newPage();
     if (showCaption) {
       // A page opened mid-scenario, or one that navigates, shows the current step too.
@@ -183,6 +185,8 @@ class FeatherbaseWorld {
 }
 
 setWorldConstructor(FeatherbaseWorld);
+
+module.exports = { PERSON_PASSWORD };
 
 BeforeAll(function () {
   // Only this run's traces are in reports/. Videos are replaced only by a run

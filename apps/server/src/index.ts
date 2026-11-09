@@ -12,7 +12,7 @@ import { AppError, errorResponse } from './errors'
 import { runInSession } from './session-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { createTable, deleteTable, renameColumn, renameCustomTable, setIdPattern, tableStorageIdentity, updateTable } from './table-engine'
-import { deleteDoc, getDoc, revokeGrant, saveDoc } from './document'
+import { deleteDoc, getDoc, revokeGrant, rowCapabilities, saveDoc } from './document'
 import { rowForCaller } from './row-readers'
 import { countDocs, getList, groupCount } from './query'
 import { hasMandatoryRowAccess, mandatoryReferencesWhere } from './mandatory-access'
@@ -1739,8 +1739,15 @@ app.post('/api/upload_file', async (c) => {
   // A ref_table with no ref_name attaches to the TABLE rather than to any
   // one row (DEL-R7 registers such files so deleting the Table sweeps them),
   // so the Table's own read grant is what there is to check.
-  if (refTable && refName) await getDoc(refTable, refName, who(c))
+  // Changing a row includes attaching a file to it: someone who may write
+  // the row (its grants, Data Scopes, shares and the app's own row rules,
+  // exactly as an edit would be judged) needs no grant on File. Anyone else
+  // needs create on File, as for a file on a whole table or on nothing.
+  // rowCapabilities reads the row first, so an unreadable row is refused.
+  let attachedRowWritable = false
+  if (refTable && refName) attachedRowWritable = (await rowCapabilities(refTable, refName, who(c))).write
   else if (refTable) await assertPermission(who(c), refTable, 'read')
+  if (!attachedRowWritable) await assertPermission(who(c), 'File', 'create')
   const content = Buffer.from(await file.arrayBuffer())
   const stored = await saveUpload(content, file.name, isPrivate)
   const mimeType = mimeEssence(file.type)
@@ -1763,7 +1770,7 @@ app.post('/api/upload_file', async (c) => {
     },
     who(c),
     'insert',
-    { uploadedFileUrl: stored.file_url },
+    { uploadedFileUrl: stored.file_url, attachedRowWritable },
   )
   // thumbnail_url is a read_only, system-managed field, so it's set with a
   // direct write (the save lifecycle ignores client values for read_only
@@ -1945,7 +1952,7 @@ app.post('/api/glossary/take_app_wording', async (c) => {
 // this person.
 app.get('/api/app_bar/:app', async (c) => {
   c.header('Cache-Control', 'no-store')
-  return c.json(await appBar(c.req.param('app'), who(c)))
+  return c.json(await appBar(c.req.param('app'), who(c), c.req.query()))
 })
 // Authenticated bootstrap contains identities only, never manager metadata.
 app.get('/api/runtime_app_versions', async (c) => {

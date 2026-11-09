@@ -143,10 +143,7 @@ export default defineConfig({
             DATABASE_URL: e2eDatabaseUrl(),
             FEATHERBASE_APP_PATHS: JSON.stringify([
               resolve('../../example-apps/tasker'), resolve('../../test-apps/other'),
-              // #642: an app that declares a top-bar picker, and the app that
-              // gives its readers their places (top-bar-picker.spec.ts).
-              resolve('../../test-apps/fixtures/bar-proof'), resolve('../../test-apps/fixtures/place-roster'),
-              // Jeyarama's Assets app (jeyarama-equipment.spec.ts).
+              // Jeyarama's Assets app.
               resolve('../../client-apps/jeyarama/equipment'),
             ]),
             // FEATHERBASE_ENV rather than NODE_ENV: the migrator must stamp this
@@ -165,16 +162,6 @@ export default defineConfig({
             // fails closed. Matches what init.sh does for a dev machine.
             ALLOW_MOCK_OAUTH: '1',
             WEB_ORIGINS: `http://localhost:${webPort}`,
-            // #488: two addresses of one instance, on `*.localhost` names that
-            // resolve to this machine (instance-addresses.spec.ts). Every other
-            // spec drives plain `localhost`, which is not listed and so is
-            // served as a single address, exactly as before.
-            INSTANCE_ADDRESSES: JSON.stringify([
-              { address: `http://admin.localhost:${webPort}`, opens: 'admin', emails: true },
-              { address: `http://dash.localhost:${webPort}`, opens: 'dash' },
-              // #642: an installed app's own address, for its top-bar picker.
-              { address: `http://barproof.localhost:${webPort}`, opens: 'barproof' },
-            ]),
           },
         },
         {

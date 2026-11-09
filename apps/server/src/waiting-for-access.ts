@@ -13,7 +13,7 @@ import { config } from './config'
 import { adminLinkOrigin } from './instance-addresses'
 import { canOpenApp, canUseAdmin } from './landing'
 import { getRoles } from './permissions'
-import { servedApp } from './runtime-packages'
+import { accessApprovers, servedApp } from './runtime-packages'
 import { isInstalled } from './apps'
 import { VIEWER_ROLE } from './sales-target'
 
@@ -111,7 +111,24 @@ export function _setAlertSender(fn: Sender | null): void {
   sender = fn ?? queueEmail
 }
 
-const pageLink = () => `${adminLinkOrigin(config.instanceAddresses, config.environment) ?? ''}${WAITING_PATH}`
+const linkOrigin = () => adminLinkOrigin(config.instanceAddresses, config.environment) ?? ''
+const pageLink = () => `${linkOrigin()}${WAITING_PATH}`
+
+/** #1046: the enabled people with an address who hold one of `roles`
+ *  directly or through an App Role Binding of `app`, System Managers left
+ *  out (they get the System Managers' mail). */
+async function approverEmails(app: string, roles: readonly string[]): Promise<string[]> {
+  if (!roles.length) return []
+  const rows = await sql`
+    select distinct lower(trim(p.email)) as email from person p
+    join has_role r on r.parent = p.row_id and r.parenttype = 'Person'
+    where p.enabled and p.replaced_by is null and coalesce(trim(p.email), '') <> ''
+      and (r.role in ${sql([...roles])} or r.role in (
+        select b.bound_role from app_role_binding b where b.app = ${app} and b.app_role in ${sql([...roles])}))
+      and not exists (select 1 from has_role s where s.parent = p.row_id and s.parenttype = 'Person' and s.role = 'System Manager')
+    order by 1`
+  return rows.map((r) => String(r.email))
+}
 
 /** A name that is still an address shows as its domain only (#429). */
 function shownName(name: string | null | undefined): string | null {
@@ -141,7 +158,9 @@ export async function alertAccessRequest(person: string, target: AccessTarget): 
         return
       }
       const managers = await systemManagerEmails()
-      if (!managers.length) {
+      const approvers = accessApprovers(target.name)
+      const others = (await approverEmails(target.name, approvers.roles)).filter((to) => !managers.includes(to))
+      if (!managers.length && !others.length) {
         await recordUndeliveredNotice('waiting-for-access alert')
         delivered = 'no recipients'
         return
@@ -158,7 +177,12 @@ export async function alertAccessRequest(person: string, target: AccessTarget): 
       ].join('\n')
       for (const to of managers)
         await sender({ to, subject: ALERT_SUBJECT, body, ref_table: 'Person', reference_name: person })
-      delivered = managers.length
+      // #1046: an app's approvers give access on the app's own page.
+      const theirs = body.replace(`Give them a role from the Waiting for access page: ${pageLink()}`,
+        approvers.page ? `See who is waiting, and give them access: ${linkOrigin()}${approvers.page}` : `Give them access in ${target.title}.`)
+      for (const to of others)
+        await sender({ to, subject: ALERT_SUBJECT, body: theirs, ref_table: 'Person', reference_name: person })
+      delivered = managers.length + others.length
     })
   } catch (err) {
     console.warn(JSON.stringify({ event: 'waiting_for_access_alert_failed', person, app: target.name, error: err instanceof Error ? err.message : String(err) }))

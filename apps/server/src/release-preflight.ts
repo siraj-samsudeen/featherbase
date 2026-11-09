@@ -137,9 +137,11 @@ export async function settingsRequirements(): Promise<Pick<CheckVariablesOptions
  *  the publication publishes them: through its column list when it has one
  *  (the list wins), else through publish_generated_columns = stored.
  *  has_role has two such columns, and the warehouse CDC publishes has_role
- *  (#399), so refuse before migrating. Insert-only publications are harmless. */
-async function assertPublicationsPublishGeneratedColumns(): Promise<string> {
-  const [{ version }] = await sql`select current_setting('server_version_num')::int as version`
+ *  (#399), so refuse before migrating. Insert-only publications are harmless.
+ *  An older server can't have the problem: the check is skipped and says so.
+ *  The version is the server's own unless a test names one (CI runs 18 only). */
+export async function assertPublicationsPublishGeneratedColumns(serverVersionNum?: number): Promise<string> {
+  const version = serverVersionNum ?? (await sql`select current_setting('server_version_num')::int as version`)[0]!.version
   if (version < 180000) return 'publication generated-column check skipped (PostgreSQL before 18)'
   const blocking = await sql`
     with published as (

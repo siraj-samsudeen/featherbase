@@ -44,7 +44,7 @@ function result(context) {
 }
 export const reads = {
   stores(context) {
-    if (Object.keys(context.documents).sort().join(',') !== 'activity,get,list') throw new Error('Mutable read context')
+    if (Object.keys(context.documents).sort().join(',') !== 'activity,get,isReader,list') throw new Error('Mutable read context')
     return result(context)
   },
   object: result,

@@ -4,6 +4,7 @@
 
 import { screen, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
+import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 
 // A cold first render on a busy machine can take longer than the 1s default.
@@ -378,4 +379,144 @@ test('An existing row of a Table whose rows are named by their creator opens wit
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   await waitFor(() => expect(field('aisle')).toHaveValue('C'))
   expect(screen.queryByRole('textbox', { name: /Row ID/ })).toBeNull()
+})
+
+// Moved from the deleted e2e/formview.spec.ts (UI-004, UI-005).
+test('Each field gets a control that fits its type: a link is a picker holding the linked row, a sub-table lists its rows', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Core Cust', id_pattern: 'prompt', columns: [{ column_name: 'city', column_type: 'Data' }] })
+  await admin.post('/api/save_row', { table: 'Core Cust', row: { row_id: 'Formco', city: 'Chennai' } })
+  await admin.post('/api/table_def', {
+    name: 'Core Line', kind: 'sub_table',
+    columns: [{ column_name: 'item', column_type: 'Data', label: 'Item' }, { column_name: 'qty', column_type: 'Int', label: 'Qty' }],
+  })
+  await admin.post('/api/table_def', {
+    name: 'Core Order',
+    columns: [
+      { column_name: 'title', column_type: 'Data', label: 'Title' },
+      { column_name: 'customer', column_type: 'Reference', label: 'Customer', reference_table: 'Core Cust' },
+      { column_name: 'items', column_type: 'Sub-table', label: 'Items', row_table: 'Core Line' },
+    ],
+  })
+  const row = await admin.post<Saved>('/api/save_row', {
+    table: 'Core Order',
+    row: { title: 'with links', customer: 'Formco', items: [{ item: 'bolt', qty: 2 }, { item: 'nut', qty: 6 }] },
+  })
+  await renderApp(`/featherbase/admin/table/core-order/row/${row.row_id}`, admin)
+  await screen.findByTestId('form-view', {}, { timeout: 8000 })
+  await waitFor(() => expect(field('customer')).toHaveValue('Formco'))
+  expect(field('customer')).toHaveAttribute('role', 'combobox')
+  const grid = await screen.findByTestId('table-items')
+  await waitFor(() => expect(grid.querySelectorAll('tbody tr')).toHaveLength(2))
+  expect(grid.querySelector('tbody tr [data-childfield=item]')).toHaveValue('bolt')
+})
+
+test('Edit and save: a row just opened has nothing to save', async ({ admin }) => {
+  const row = await seedNote(admin)
+  await openNote(admin, row.row_id)
+  expect(screen.getByTestId('form-save')).toBeDisabled()
+})
+
+test('An invalid value blocks the save, in place: correcting it and saving again saves the correction', async ({ admin }) => {
+  const row = await seedNote(admin)
+  await openNote(admin, row.row_id)
+  fireEvent.change(field('title'), { target: { value: 'x'.repeat(150) } })
+  screen.getByTestId('form-save').click()
+  expect(await screen.findByTestId('error-title')).toBeVisible()
+  expect(screen.getByTestId('form-status')).toHaveTextContent('Not saved')
+
+  fireEvent.change(field('title'), { target: { value: 'recovered' } })
+  screen.getByTestId('form-save').click()
+  await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Saved'))
+  expect(await titleOf(admin, row.row_id)).toBe('recovered')
+})
+
+// offline_save_recovery / offline_row_recovery: a browser with no network
+// rejects fetch itself (TypeError), never answering with an error envelope.
+// That boundary is stood in for here: the matching requests are refused before
+// they leave, everything else reaches the real server.
+const pathOf = (router: unknown) => (router as { state: { location: { pathname: string } } }).state.location.pathname
+
+function goOffline(refuse: (path: string, method: string) => boolean) {
+  const connected = globalThis.fetch
+  let online = false
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    const path = /^https?:\/\//.test(url) ? new URL(url).pathname : url.split('?')[0]
+    const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()
+    if (!online && refuse(path, method)) return Promise.reject(new TypeError('Failed to fetch'))
+    return connected(input, init)
+  })
+  return { reconnect: () => { online = true } }
+}
+
+test('A save that cannot reach the server keeps the typed values, and saving again once connected saves them', async ({ admin }) => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  const row = await seedNote(admin)
+  await openNote(admin, row.row_id)
+  const before = await admin.get(`/api/table/${enc('Core Note')}/${row.row_id}`)
+  fireEvent.change(field('title'), { target: { value: 'offline draft retained' } })
+  fireEvent.change(field('qty'), { target: { value: '19' } })
+
+  const network = goOffline((path, method) => path === '/api/save_row' && method === 'POST')
+  screen.getByTestId('form-save').click()
+  await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Save failed'))
+  expect(screen.getByTestId('form-status')).toHaveTextContent('Not saved')
+  expect(field('title')).toHaveValue('offline draft retained')
+  expect(field('qty')).toHaveValue(19)
+  expect(screen.getByTestId('form-save')).toBeEnabled()
+  expect(await admin.get(`/api/table/${enc('Core Note')}/${row.row_id}`)).toEqual(before)
+
+  network.reconnect()
+  screen.getByTestId('form-save').click()
+  await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Saved'))
+  expect(await admin.get(`/api/table/${enc('Core Note')}/${row.row_id}`)).toMatchObject({ title: 'offline draft retained', qty: 19 })
+})
+
+test('A rename that cannot reach the server keeps the new name to retry, and renames once connected', async ({ admin }) => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await admin.post('/api/table_def', { name: 'Core Bin', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+  await admin.post('/api/save_row', { table: 'Core Bin', row: { row_id: 'bin-old', title: 'rename target' } })
+  const { router } = await renderApp('/featherbase/admin/table/core-bin/row/bin-old', admin)
+  await waitFor(() => expect(field('title')).toHaveValue('rename target'))
+  fireEvent.click(await screen.findByRole('button', { name: 'Record actions' }))
+  fireEvent.click(await screen.findByTestId('form-rename', {}, { timeout: 8000 }))
+  fireEvent.change(screen.getByTestId('rename-input'), { target: { value: 'bin-new' } })
+
+  const network = goOffline((path, method) => path === `/api/table/${enc('Core Bin')}/bin-old:rename` && method === 'POST')
+  fireEvent.click(screen.getByTestId('rename-confirm'))
+  await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Rename failed'))
+  expect(pathOf(router)).toBe('/featherbase/admin/table/core-bin/row/bin-old')
+  expect(screen.getByTestId('rename-input')).toHaveValue('bin-new')
+  expect(screen.getByTestId('rename-confirm')).toBeEnabled()
+  expect(await admin.get(`/api/table/${enc('Core Bin')}/bin-old`)).toMatchObject({ title: 'rename target' })
+
+  network.reconnect()
+  fireEvent.click(screen.getByTestId('rename-confirm'))
+  await waitFor(() => expect(pathOf(router)).toBe('/featherbase/admin/table/core-bin/row/bin-new'))
+  expect(await admin.get(`/api/table/${enc('Core Bin')}/bin-new`)).toMatchObject({ title: 'rename target' })
+  await expect(admin.get(`/api/table/${enc('Core Bin')}/bin-old`)).rejects.toMatchObject({ status: 404 })
+})
+
+test('A delete that cannot reach the server keeps its confirmation to retry, and deletes once connected', async ({ admin }) => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  const row = await seedNote(admin)
+  const { router } = await renderApp(`/featherbase/admin/table/core-note/row/${row.row_id}`, admin)
+  await waitFor(() => expect(field('title')).toHaveValue('first'))
+  fireEvent.click(await screen.findByRole('button', { name: 'Record actions' }))
+  fireEvent.click(await screen.findByTestId('form-delete', {}, { timeout: 8000 }))
+  const dialog = screen.getByTestId('delete-row-dialog')
+  expect(dialog).toHaveTextContent('Delete Core Note: first?')
+
+  const network = goOffline((path, method) => path === `/api/table/${enc('Core Note')}/${row.row_id}` && method === 'DELETE')
+  fireEvent.click(within(dialog).getByTestId('delete-row-confirm'))
+  await waitFor(() => expect(screen.getByTestId('delete-row-error')).toHaveTextContent('Delete failed'))
+  expect(screen.getByTestId('delete-row-dialog')).toHaveTextContent('Delete Core Note: first?')
+  expect(screen.getByTestId('delete-row-confirm')).toBeEnabled()
+  expect(pathOf(router)).toBe(`/featherbase/admin/table/core-note/row/${row.row_id}`)
+  expect(await titleOf(admin, row.row_id)).toBe('first')
+
+  network.reconnect()
+  fireEvent.click(screen.getByTestId('delete-row-confirm'))
+  await waitFor(() => expect(pathOf(router)).toBe('/featherbase/admin/table/core-note'))
+  await expect(admin.get(`/api/table/${enc('Core Note')}/${row.row_id}`)).rejects.toMatchObject({ status: 404 })
 })

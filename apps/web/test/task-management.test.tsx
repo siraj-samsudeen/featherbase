@@ -161,7 +161,7 @@ test('detail destinations can return a personal task to the Inbox', async ({ adm
 test('updating one saved view preserves its differently scoped neighbour', async ({ admin }) => {
   await install()
   try {
-    const setup = { search: '', filters: { states: [], responsiblePeople: [], urgencies: [], projects: [] } }
+    const setup = { search: '', filters: { states: [], responsiblePeople: [], urgencies: [], projects: [], stores: [], dueMarks: [] } }
     const neighbour = { id: 'personal', name: 'Private errands', scope: { kind: 'personal', owner: 'Administrator' }, setup }
     await admin.put('/api/user_settings/tasker.saved-views', { views: [
       { id: 'inbox', name: 'Receiving checks', scope: { kind: 'inbox' }, setup }, neighbour,
@@ -656,6 +656,8 @@ committedTest('lightweight_project_entry: a project accepts rapid unassigned tas
     await user.click(await screen.findByRole('button', { name: 'Projects' }))
     await user.type(screen.getByRole('textbox', { name: 'New project' }), 'Warehouse review{Enter}')
     const projectTask = await screen.findByRole('textbox', { name: 'Add task to project' })
+    // Creating a project hands focus to its task input.
+    await waitFor(() => expect(projectTask).toHaveFocus())
     const titles = [
       'Compare September closing stock',
       'Confirm warehouse count date',
@@ -698,7 +700,7 @@ test('projects_landing_flow: the directory opens a project and keeps its context
     // custom element owns the navigation landmark in the running app.
     const navigation = await screen.findByLabelText('Task views')
     expect(Array.from(navigation.querySelectorAll(':scope > button')).map((button) => button.textContent?.replace(/\d+$/, ''))).toEqual([
-      'Inbox', 'My Work', 'Together', 'Personal tasks', 'Views', 'Projects',
+      'Inbox', 'My Work', 'To verify', 'Issues', 'Together', 'Stores', 'Personal tasks', 'Views', 'Projects',
     ])
     await user.click(await screen.findByRole('button', { name: 'Projects' }))
     await user.type(screen.getByRole('textbox', { name: 'New project' }), 'Warehouse review{Enter}')
@@ -1115,7 +1117,7 @@ test('project_rename_conflict: a refreshed project cannot rebase an unsaved rena
     await user.type(screen.getByRole('textbox', { name: 'Rename project' }), ' revised')
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/modified|changed|conflict/i)
+    expect(await screen.findByRole('alert')).toHaveTextContent('has been modified after you loaded it')
     expect(screen.getByRole('textbox', { name: 'Rename project' })).toHaveValue('My unsaved name revised')
     expect(await admin.get(`/api/table/tasker.project/${project.row_id}`)).toMatchObject({
       project_name: 'Teammate saved name',
@@ -1655,6 +1657,35 @@ describe('Saved views stay within their list', () => {
 })
 
 describe('Task details keep your place', () => {
+  // Moved from the deleted e2e/runtime-host-shell.spec.ts: under the shared
+  // bar Tasker owns its deep address; opening and closing a task changes only
+  // its #task= hash, never the path or query before it.
+  test('at a deep app address, opening and closing a task changes only the hash', async ({ admin }) => {
+    await install()
+    const deep = '/tasker/review/37?filter=a%26b&owner=me'
+    try {
+      const task = await admin.post<{ row_id: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Host shell deep-link proof' } })
+      window.history.replaceState(null, '', deep)
+      renderTasker(admin)
+      const user = userEvent.setup()
+      await user.click(await screen.findByRole('button', { name: /^Inbox/ }))
+      const link = await screen.findByRole('link', { name: 'Host shell deep-link proof' })
+      expect(link).toHaveAttribute('href', `${deep}#task=${task.row_id}`)
+      await user.click(link)
+      await waitFor(() => expect(`${location.pathname}${location.search}${location.hash}`).toBe(`${deep}#task=${task.row_id}`))
+      const details = await screen.findByRole('complementary', { name: 'Task details' })
+      const close = within(details).getByRole('link', { name: 'Close' })
+      expect(close).toHaveAttribute('href', `${deep}#`)
+      await user.click(close)
+      await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Task details' })).not.toBeInTheDocument())
+      expect(`${location.pathname}${location.search}`).toBe(deep)
+      expect(location.hash).toBe('')
+    } finally {
+      window.history.replaceState(null, '', '/')
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+
   test('closing a project task’s details returns to the same project', async ({ admin }) => {
     await install()
     try {
@@ -1822,4 +1853,337 @@ test('parent completion is unavailable while a subtask remains open', async ({ a
   const detail = within(await screen.findByRole('region', { name: 'Task detail content' }))
   await detail.findByRole('button', { name: 'Collect figures first' })
   expect(detail.getByRole('button', { name: 'Mark Done' })).toBeDisabled()
+})
+
+// #1080, from e2e/runtime-login-return.spec.ts: the address a sign-in returns
+// to opens Tasker with its selected task in the details.
+test('a #task= address opens Tasker with that task in its details', async ({ admin }) => {
+  await install()
+  const task = await admin.post<{ row_id: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Selected through sign-in' } })
+  location.hash = `#task=${task.row_id}`
+  try {
+    renderTasker(admin)
+    expect(await screen.findByRole('heading', { name: 'Selected through sign-in' }, { timeout: 8000 })).toBeInTheDocument()
+    expect(screen.getByRole('complementary', { name: 'Task details' })).toBeInTheDocument()
+  } finally {
+    location.hash = ''
+  }
+})
+
+// #1080: moved down from e2e/task-management.spec.ts. "Offline" is the
+// network edge failing: every request the page makes rejects, as a browser's
+// fetch does with no connection, until the connection comes back.
+describe('Tasker journeys moved down from the browser suite', () => {
+  function goOffline() {
+    const bridged = globalThis.fetch
+    globalThis.fetch = async () => { throw new TypeError('Failed to fetch') }
+    return () => { globalThis.fetch = bridged }
+  }
+  const articles = () => [...document.querySelectorAll('article')]
+  const put = (as: TestClient, name: string, settings: unknown) =>
+    as.fetch(`/api/user_settings/${name}`, { method: 'PUT', body: JSON.stringify(settings) })
+
+  test('tasker_browser_flow: capture keeps focus and order; urgency, focus and a blocked note; a new project takes tasks; details link to the canonical row', async ({ admin }) => {
+    await install()
+    try {
+      renderTasker(admin)
+      const user = userEvent.setup()
+      await user.click(await screen.findByRole('button', { name: /^Inbox/ }))
+      const capture = await screen.findByRole('textbox', { name: 'Quick capture' })
+      await user.type(capture, 'Review September stock variance{Enter}')
+      expect(await screen.findByText('Review September stock variance')).toBeInTheDocument()
+      expect(capture).toHaveFocus()
+      await waitFor(() => expect(capture).toHaveValue(''))
+      await user.type(capture, 'Confirm warehouse count date{Enter}')
+      expect(await screen.findByText('Confirm warehouse count date')).toBeInTheDocument()
+      // New tasks keep their capture order.
+      await waitFor(() => expect(articles()[0]).toHaveTextContent('Review September stock variance'))
+
+      const markUrgent = screen.getByRole('button', { name: 'Mark urgent Confirm warehouse count date' })
+      expect(markUrgent.textContent).toBe('Not urgent')
+      await user.click(markUrgent)
+      const urgent = await screen.findByRole('button', { name: 'Remove urgent flag from Confirm warehouse count date' })
+      expect(urgent.textContent).toBe('Urgent')
+      // Marking a later task urgent leaves the capture order as it was.
+      expect(articles()[0]).toHaveTextContent('Review September stock variance')
+
+      await user.click(screen.getByRole('button', { name: 'Add to My Focus: Review September stock variance' }))
+      expect(await screen.findByRole('button', { name: 'Remove from My Focus: Review September stock variance' })).toBeInTheDocument()
+      await user.selectOptions(screen.getByRole('combobox', { name: 'State for Review September stock variance' }), 'Blocked')
+      await user.type(await screen.findByRole('textbox', { name: 'Optional explanation' }), 'Waiting for the warehouse team to confirm the closing count')
+      await user.click(screen.getByRole('button', { name: 'Save note' }))
+      expect(await screen.findByText(/Waiting for the warehouse team/)).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: 'Projects' }))
+      await user.type(screen.getByRole('textbox', { name: 'New project' }), 'Warehouse review{Enter}')
+      const projectTask = await screen.findByRole('textbox', { name: 'Add task to project' })
+      await waitFor(() => expect(projectTask).toHaveFocus())
+      await user.type(projectTask, 'Compare September closing stock{Enter}')
+      const card = (await screen.findByRole('button', { name: 'Mark urgent Compare September closing stock' })).closest('article') as HTMLElement
+      expect(within(card).getByRole('button', { name: 'Mark urgent Compare September closing stock' }).textContent).toBe('Not urgent')
+      expect(within(card).getByRole('button', { name: 'Add to My Focus: Compare September closing stock' })).toBeInTheDocument()
+      expect(within(card).getByRole('button', { name: 'Take it' }).textContent).toBe('Take it')
+      expect(screen.getByRole('combobox', { name: 'Assign Compare September closing stock' })).toHaveValue('')
+
+      await user.click(screen.getByRole('button', { name: /^My Work/ }))
+      await user.click(await screen.findByRole('link', { name: 'Review September stock variance' }))
+      const advanced = await screen.findByRole('link', { name: 'Attachments and advanced fields in Featherbase ↗' })
+      expect(advanced.getAttribute('href')).toMatch(/^\/featherbase\/admin\/table\/tasker\.task\/row\/[^/]+$/)
+      const [captured] = (await admin.get<{ data: { row_id: string }[] }>(
+        `/api/table/tasker.task?filters=${encodeURIComponent(JSON.stringify([['task_title', '=', 'Review September stock variance']]))}`,
+      )).data
+      expect(advanced.getAttribute('href')).toBe(`/featherbase/admin/table/tasker.task/row/${encodeURIComponent(captured.row_id)}`)
+    } finally {
+      location.hash = ''
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+
+  test('tasker_browser_flow: the filter sheet works from the keyboard, and a saved view survives a reload', async ({ admin }) => {
+    await install()
+    try {
+      const project = await sharedProject(admin, 'Warehouse review')
+      await admin.post('/api/save_row', { table: 'tasker.task', row: { task_title: 'Compare September closing stock', project: project.row_id } })
+      const first = renderTasker(admin)
+      const user = userEvent.setup()
+      await user.click(await screen.findByRole('button', { name: 'Warehouse review' }))
+      await screen.findByRole('link', { name: 'Compare September closing stock' })
+
+      const trigger = document.querySelector<HTMLButtonElement>('.tasker-filter-button')!
+      trigger.focus()
+      await user.keyboard('{Enter}')
+      const sheet = await screen.findByRole('dialog', { name: 'Filter tasks' })
+      await waitFor(() => expect(within(sheet).getByRole('checkbox', { name: 'Not started' })).toHaveFocus())
+      await user.keyboard(' ')
+      await user.tab()
+      await user.keyboard(' ')
+      expect(within(sheet).getByRole('checkbox', { name: 'Not started' })).toBeChecked()
+      expect(within(sheet).getByRole('checkbox', { name: 'In progress' })).toBeChecked()
+      await user.keyboard('{Escape}')
+      expect(screen.queryByRole('dialog', { name: 'Filter tasks' })).not.toBeInTheDocument()
+      await waitFor(() => expect(document.querySelector('.tasker-filter-button')).toHaveFocus())
+
+      expect(screen.getByRole('button', { name: 'Remove Not started filter' })).toBeInTheDocument()
+      screen.getByRole('button', { name: 'Remove In progress filter' }).focus()
+      await user.keyboard('{Enter}')
+      expect(screen.queryByRole('button', { name: 'Remove In progress filter' })).not.toBeInTheDocument()
+      expect(document.querySelector('.tasker-match-count')).toHaveAttribute('aria-live', 'polite')
+
+      await user.click(screen.getByRole('button', { name: 'Save view' }))
+      await user.type(screen.getByRole('textbox', { name: 'View name' }), 'Open warehouse work')
+      await user.click(screen.getByRole('button', { name: 'Save private view' }))
+      await waitFor(() => expect(document.getElementById('views-heading')?.textContent).toBe('Open warehouse work'))
+      expect(location.hash).toMatch(/#view=/)
+
+      // A reload: the page starts again from the address and the stored views.
+      first.unmount()
+      renderTasker(admin)
+      await waitFor(() => expect(document.getElementById('views-heading')?.textContent).toBe('Open warehouse work'), { timeout: 8000 })
+      expect(await screen.findByText('Compare September closing stock')).toBeInTheDocument()
+    } finally {
+      location.hash = ''
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+
+  test('tasker_focus_label: Focus identifies the star in both states without changing its accessible name', async ({ admin }) => {
+    await install()
+    try {
+      renderTasker(admin)
+      const user = userEvent.setup()
+      await user.click(await screen.findByRole('button', { name: /^Inbox/ }))
+      await user.type(await screen.findByRole('textbox', { name: 'Quick capture' }), 'Plan the weekly review{Enter}')
+      const off = await screen.findByRole('button', { name: 'Add to My Focus: Plan the weekly review' })
+      expect(off.textContent).toBe('☆ Focus')
+      expect(off).toHaveClass('tasker-focus-star')
+      expect(off).not.toHaveClass('is-focused')
+      await user.click(off)
+      const on = await screen.findByRole('button', { name: 'Remove from My Focus: Plan the weekly review' })
+      expect(on.textContent).toBe('★ Focus')
+      expect(on).toHaveClass('tasker-focus-star', 'is-focused')
+      await user.click(on)
+      const again = await screen.findByRole('button', { name: 'Add to My Focus: Plan the weekly review' })
+      expect(again.textContent).toBe('☆ Focus')
+      expect(again).not.toHaveClass('is-focused')
+    } finally {
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+
+  test('offline_task_recovery: failed capture retains the draft and failed state changes do not persist', async ({ admin }) => {
+    await install()
+    let online = () => {}
+    try {
+      const task = await admin.post<{ row_id: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Offline recovery existing count' } })
+      renderTasker(admin)
+      const user = userEvent.setup()
+      await user.click(await screen.findByRole('button', { name: /^Inbox/ }))
+      await screen.findByText('Offline recovery existing count')
+
+      online = goOffline()
+      const capture = screen.getByRole('textbox', { name: 'Quick capture' })
+      await user.type(capture, 'Offline recovery captured 37 cartons{Enter}')
+      expect(await screen.findByRole('alert')).toHaveTextContent('Could not create task')
+      expect(capture).toHaveValue('Offline recovery captured 37 cartons')
+      await user.selectOptions(screen.getByRole('combobox', { name: 'State for Offline recovery existing count' }), 'In progress')
+      await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Could not update task'))
+      await waitFor(() => expect(screen.getByRole('combobox', { name: 'State for Offline recovery existing count' })).toHaveValue('Not started'))
+      online()
+
+      expect(await admin.get(`/api/table/tasker.task/${task.row_id}`)).toMatchObject({ task_state: 'Not started' })
+      const filters = encodeURIComponent(JSON.stringify([['task_title', '=', 'Offline recovery captured 37 cartons']]))
+      expect(await admin.get(`/api/table/tasker.task?filters=${filters}`)).toMatchObject({ data: [] })
+
+      await user.click(screen.getByRole('button', { name: 'Add' }))
+      expect(await screen.findByText('Offline recovery captured 37 cartons')).toBeInTheDocument()
+      await waitFor(() => expect(capture).toHaveValue(''))
+      await user.selectOptions(screen.getByRole('combobox', { name: 'State for Offline recovery existing count' }), 'In progress')
+      await waitFor(async () => expect(await admin.get(`/api/table/tasker.task/${task.row_id}`)).toMatchObject({ task_state: 'In progress' }))
+      const captured = await admin.get<{ data: { task_title: string }[] }>(`/api/table/tasker.task?filters=${filters}&fields=%5B%22task_title%22%5D`)
+      expect(captured.data).toEqual([{ task_title: 'Offline recovery captured 37 cartons' }])
+    } finally {
+      online()
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+
+  test('offline_preference_recovery: private choices roll back until the server can save them', async ({ admin }) => {
+    await install()
+    let online = () => {}
+    try {
+      await put(admin, 'tasker.projects', { project_ids: [] })
+      await put(admin, 'tasker.preferences', { mode: 'inspector' })
+      await put(admin, 'tasker.saved-views', { views: [] })
+      const project = await sharedProject(admin, 'Offline private project')
+      await admin.post('/api/save_row', { table: 'tasker.task', row: { task_title: 'Offline private detail task' } })
+      renderTasker(admin)
+      const user = userEvent.setup()
+      await user.click(await screen.findByRole('button', { name: /^Inbox/ }))
+      await user.click(await screen.findByRole('button', { name: 'Offline private project' }))
+
+      online = goOffline()
+      await user.click(await screen.findByRole('button', { name: '☆ Add to tabs' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('Could not update project tabs')
+      expect(await screen.findByRole('button', { name: '☆ Add to tabs' })).toBeInTheDocument()
+      online()
+      expect(await admin.get('/api/user_settings/tasker.projects')).toEqual({ settings: { project_ids: [] } })
+      await user.click(screen.getByRole('button', { name: '☆ Add to tabs' }))
+      expect(await screen.findByRole('button', { name: '★ Starred tab' })).toBeInTheDocument()
+      await waitFor(async () => expect((await admin.get<{ settings: unknown }>('/api/user_settings/tasker.projects')).settings).toEqual({ project_ids: [project.row_id] }))
+
+      await user.click(screen.getByRole('button', { name: /^Inbox/ }))
+      await user.click(await screen.findByRole('link', { name: 'Offline private detail task' }))
+      expect(await screen.findByRole('button', { name: 'Edit task' })).toBeInTheDocument()
+      online = goOffline()
+      await user.click(screen.getByRole('button', { name: 'Focus' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('Could not save detail view')
+      await waitFor(() => expect(screen.getByRole('complementary', { name: 'Task details' })).toBeInTheDocument())
+      expect(screen.queryByRole('dialog', { name: 'Focused task details' })).not.toBeInTheDocument()
+      online()
+      expect(await admin.get('/api/user_settings/tasker.preferences')).toEqual({ settings: { mode: 'inspector' } })
+      await user.click(screen.getByRole('button', { name: 'Focus' }))
+      expect(await screen.findByRole('dialog', { name: 'Focused task details' })).toBeInTheDocument()
+      await waitFor(async () => expect((await admin.get<{ settings: unknown }>('/api/user_settings/tasker.preferences')).settings).toEqual({ mode: 'focus' }))
+
+      await user.click(within(screen.getByRole('dialog', { name: 'Focused task details' })).getByRole('link', { name: 'Close' }))
+      await user.click(await screen.findByRole('button', { name: 'Save view' }))
+      await user.type(screen.getByRole('textbox', { name: 'View name' }), 'Offline retained private view')
+      online = goOffline()
+      await user.click(screen.getByRole('button', { name: 'Save private view' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('Could not save task views')
+      expect(screen.getByRole('textbox', { name: 'View name' })).toHaveValue('Offline retained private view')
+      online()
+      expect(await admin.get('/api/user_settings/tasker.saved-views')).toEqual({ settings: { views: [] } })
+      await user.click(screen.getByRole('button', { name: 'Save private view' }))
+      await waitFor(() => expect(document.getElementById('views-heading')?.textContent).toBe('Offline retained private view'))
+      const saved = await admin.get<{ settings: { views: { name: string; scope: { kind: string } }[] } }>('/api/user_settings/tasker.saved-views')
+      expect(saved.settings.views).toHaveLength(1)
+      expect(saved.settings.views[0]).toMatchObject({ name: 'Offline retained private view', scope: { kind: 'inbox' } })
+    } finally {
+      online()
+      location.hash = ''
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+
+  test('offline_project_recovery: shared project drafts survive failed writes', async ({ admin }) => {
+    await install()
+    let online = () => {}
+    try {
+      const project = await sharedProject(admin, 'Offline rename original')
+      renderTasker(admin)
+      const user = userEvent.setup()
+      await user.click(await screen.findByRole('button', { name: /^Inbox/ }))
+      await user.click(await screen.findByRole('button', { name: 'Offline rename original' }))
+      await user.click(screen.getByRole('button', { name: 'Rename' }))
+      const rename = screen.getByRole('textbox', { name: 'Rename project' })
+      await user.clear(rename)
+      await user.type(rename, 'Offline rename retained')
+
+      online = goOffline()
+      await user.click(screen.getByRole('button', { name: 'Save' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('Could not rename project')
+      expect(screen.getByRole('textbox', { name: 'Rename project' })).toHaveValue('Offline rename retained')
+      online()
+      expect(await admin.get(`/api/table/tasker.project/${project.row_id}`)).toMatchObject({ project_name: 'Offline rename original' })
+      await user.click(screen.getByRole('button', { name: 'Save' }))
+      expect(await screen.findByRole('heading', { level: 2, name: 'Offline rename retained' })).toBeInTheDocument()
+      expect(await admin.get(`/api/table/tasker.project/${project.row_id}`)).toMatchObject({ project_name: 'Offline rename retained' })
+
+      await user.click(screen.getByRole('button', { name: 'Projects' }))
+      await user.type(screen.getByRole('textbox', { name: 'New project' }), 'Offline creation retained')
+      online = goOffline()
+      await user.click(screen.getByRole('button', { name: 'Create project' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('Could not create project')
+      expect(screen.getByRole('textbox', { name: 'New project' })).toHaveValue('Offline creation retained')
+      online()
+      const filters = encodeURIComponent(JSON.stringify([['project_name', '=', 'Offline creation retained']]))
+      expect(await admin.get(`/api/table/tasker.project?filters=${filters}`)).toMatchObject({ data: [] })
+      await user.click(screen.getByRole('button', { name: 'Create project' }))
+      expect(await screen.findByRole('heading', { level: 2, name: 'Offline creation retained' })).toBeInTheDocument()
+      const projects = await admin.get<{ data: { project_name: string }[] }>(`/api/table/tasker.project?filters=${filters}&fields=%5B%22project_name%22%5D`)
+      expect(projects.data).toEqual([{ project_name: 'Offline creation retained' }])
+    } finally {
+      online()
+      location.hash = ''
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+
+  test('tasker_keyboard_progression: ordinary Tab advances within task details and destructive confirmation', async ({ admin }) => {
+    await install()
+    try {
+      await put(admin, 'tasker.preferences', { mode: 'focus' })
+      const task = await admin.post<{ row_id: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Keyboard cancellation count' } })
+      renderTasker(admin)
+      const user = userEvent.setup()
+      await user.click(await screen.findByRole('button', { name: /^Inbox/ }))
+      await user.click(await screen.findByRole('link', { name: 'Keyboard cancellation count' }))
+      const detail = within(await screen.findByRole('dialog', { name: 'Focused task details' }))
+      // Tab advances from Close rather than wrapping to the last detail control.
+      detail.getByRole('link', { name: 'Close' }).focus()
+      await user.tab()
+      expect(detail.getByRole('button', { name: 'Compact' })).toHaveFocus()
+      await user.click(detail.getByLabelText('More task actions'))
+      // The actions wait for the task's own read.
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Delete accidental task' })).toBeEnabled())
+      await user.click(screen.getByRole('button', { name: 'Delete accidental task' }))
+      const confirmation = within(await screen.findByRole('alertdialog', { name: 'Delete accidental task' }))
+      await waitFor(() => expect(confirmation.getByRole('button', { name: 'Cancel' })).toHaveFocus())
+      await user.tab()
+      expect(confirmation.getByRole('button', { name: 'Delete permanently' })).toHaveFocus()
+      await user.tab({ shift: true })
+      expect(confirmation.getByRole('button', { name: 'Cancel' })).toHaveFocus()
+      await user.keyboard('{Escape}')
+      await waitFor(() => expect(screen.getByLabelText('More task actions')).toHaveFocus())
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+      expect(screen.getByRole('dialog', { name: 'Focused task details' })).toBeInTheDocument()
+      expect(await admin.get(`/api/table/tasker.task/${task.row_id}`)).toMatchObject({
+        task_title: 'Keyboard cancellation count', task_state: 'Not started', project: null,
+      })
+    } finally {
+      location.hash = ''
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
 })

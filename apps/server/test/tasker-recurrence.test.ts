@@ -24,7 +24,7 @@ databaseTest('cancelling the active occurrence pauses its recurring series', asy
     idempotencyKey: crypto.randomUUID(), payload: { row_id: task.row_id, updated_at: task.updated_at, schedule_mode: 'weekly', interval: 1, anchor_date: '2026-11-02' },
   })
   const active = await member.get<{ updated_at: string }>(`/api/table/tasker.task/${task.row_id}`)
-  await member.post('/api/save_row', { table: 'tasker.task', row: { row_id: task.row_id, updated_at: active.updated_at, task_state: 'Cancelled' } })
+  await member.post('/api/save_row', { table: 'tasker.task', row: { row_id: task.row_id, updated_at: active.updated_at, task_state: 'Cancelled', change_reason: 'No longer needed' } })
   await tick()
   expect(await member.get(`/api/table/tasker.recurrence/${result.seriesId}`)).toMatchObject({ paused: true, active_task: null, next_at: null })
 })
@@ -163,4 +163,22 @@ databaseTest('sharing an occurrence carries into future copies', async ({ create
   const next = await teammate.get<{ active_task: string }>(`/api/table/tasker.recurrence/${result.seriesId}`)
   expect(next.active_task).not.toBe(task.row_id)
   expect(await teammate.get(`/api/table/tasker.task/${next.active_task}`)).toMatchObject({ shared: true, project: project.row_id })
+})
+
+databaseTest('a recurring task keeps its store in every new occurrence', async ({ createUser }) => {
+  expect(await discoverPackages([resolve('../..', 'example-apps/tasker')])).toEqual([])
+  await installApp('tasker')
+  const creator = taskerClient(await createUser({ roles: ['Tasker Member'] }))
+  const store = await creator.post<{ row_id: string }>('/api/save_row', { table: 'tasker.store', row: { store_name: 'Keelkattalai Store' } })
+  const task = await creator.post<{ row_id: string; updated_at: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Check the cold-room temperature log', store: store.row_id } })
+  const { result } = await creator.post<{ result: { seriesId: string } }>('/api/app_actions/tasker/start_recurrence', { idempotencyKey: crypto.randomUUID(), payload: { row_id: task.row_id, updated_at: task.updated_at, schedule_mode: 'weekly', interval: 1, anchor_date: '2026-11-09' } })
+  const current = await creator.get<{ updated_at: string }>(`/api/table/tasker.task/${task.row_id}`)
+  await creator.post('/api/save_row', { table: 'tasker.task', row: { row_id: task.row_id, updated_at: current.updated_at, is_done: true } })
+  await tick()
+  const future = Date.now() + 8 * 86_400_000
+  vi.useFakeTimers({ toFake: ['Date'] })
+  try { vi.setSystemTime(future); await tick() } finally { vi.useRealTimers() }
+  const next = await creator.get<{ active_task: string }>(`/api/table/tasker.recurrence/${result.seriesId}`)
+  expect(next.active_task).not.toBe(task.row_id)
+  expect(await creator.get(`/api/table/tasker.task/${next.active_task}`)).toMatchObject({ store: store.row_id })
 })

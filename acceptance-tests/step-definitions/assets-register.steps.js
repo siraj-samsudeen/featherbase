@@ -172,18 +172,14 @@ When('store staff try to change its place', async function () {
 
 // ---- See what needs attention on an asset ----
 
-Given('today is 7 November 2026', function () {
-  register(this).today = Date.parse('2026-11-07T10:00:00+05:30');
-});
-
 Given('the {string} warranty ends on 30 November 2026', async function (name) {
   const state = register(this);
   state.assetId = await state.flow.asset(name, 'ATK 1501', { type: 'DG', warranty_until: '2026-11-30' });
 });
 
 Then('the register shows its warranty ends soon', async function () {
-  const { app, assetId, today } = register(this);
-  const row = await app.registerRow('a manager', assetId, null, today);
+  const { app, assetId } = register(this);
+  const row = await app.registerRow('a manager', assetId, null, this.today);
   assert.ok(row, 'the asset is in the register');
   assert.match(row.text, /Warranty ends soon/);
 });

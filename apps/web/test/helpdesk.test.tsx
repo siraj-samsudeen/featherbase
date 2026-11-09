@@ -10,6 +10,7 @@
 // form-validation-error, workflow-transition — one test per state.
 
 import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { installApp } from 'server/src/apps'
 import { sql } from 'server/src/db'
 import { test, expect, renderApp, renderSession } from './pg-test'
@@ -31,6 +32,16 @@ test('list: an admin sees a freshly created ticket', async ({ admin }) => {
   // #792: the list leads with the ticket's subject, its title, as the link to it.
   const link = await screen.findByRole('link', { name: 'Rendered by the generic ListView' })
   expect(link.getAttribute('href')).toContain(doc.row_id)
+})
+
+test('list: opening a ticket from the list shows its form with the workflow actions of its state', async ({ admin }) => {
+  await installHelpdesk()
+  await admin.post('/api/save_row', { table: 'HD Ticket', row: { subject: 'Opens with workflow actions' } })
+  await renderApp('/featherbase/admin/table/hd-ticket', admin)
+  await userEvent.click(await screen.findByRole('link', { name: 'Opens with workflow actions' }, { timeout: 8000 }))
+  expect(await screen.findByTestId('form-view')).toBeInTheDocument()
+  expect(await screen.findByTestId('workflow-actions')).toHaveTextContent('Open')
+  expect(await screen.findByTestId('workflow-action-Start')).toBeInTheDocument()
 })
 
 test('list: a customer with no tickets sees an empty, permission-scoped list', async ({
