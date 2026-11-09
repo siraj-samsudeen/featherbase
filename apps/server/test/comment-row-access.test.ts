@@ -84,7 +84,7 @@ describe('#342: comments follow the row they are on', () => {
     const { agent, theirs } = await setup(admin, createUser)
     const [file] = await sql`insert into file (row_id, file_name, file_url, ref_table, ref_name, created_by, updated_by)
       values ('trusted-file', 'plan.txt', '/files/0123456789abcdef_plan.txt', ${PLAIN}, ${theirs}, 'Administrator', 'Administrator') returning row_id, updated_at`
-    await saveDoc('File', { row_id: file.row_id, updated_at: file.updated_at, file_name: 'renamed.txt' }, agent.user!, 'update', { skipPermissions: true })
+    await saveDoc('File', { row_id: file.row_id, updated_at: file.updated_at, file_name: 'renamed.txt' }, agent.user!, 'upsert', { skipPermissions: true })
     expect(await sql`select file_name from file where row_id = ${String(file.row_id)}`).toEqual([{ file_name: 'renamed.txt' }])
   })
 
