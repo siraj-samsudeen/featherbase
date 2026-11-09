@@ -1,6 +1,14 @@
 import '@testing-library/jest-dom/vitest'
 import { afterEach, vi } from 'vitest'
-import { cleanup, configure } from '@testing-library/react'
+import { act, cleanup, configure } from '@testing-library/react'
+import { unmountPages } from './page-roots'
+
+// Records every root a page makes for itself (test/page-roots.ts).
+vi.mock('react-dom/client', async (importOriginal) => {
+  const real = await importOriginal<typeof import('react-dom/client')>()
+  const { trackRoot } = await import('./page-roots')
+  return { ...real, createRoot: ((container, options) => trackRoot(real.createRoot(container, options), container)) as typeof real.createRoot }
+})
 
 // #527: a first render warms the in-process server and Vite's transform cache,
 // which on a busy machine (CI shards, parallel agents) takes longer than
@@ -53,6 +61,7 @@ window.matchMedia = (query: string) =>
 
 afterEach(() => {
   cleanup()
+  act(() => unmountPages())
   localStorage.clear()
   // A spy one test leaves on would be the next test's "real" function, and
   // Vitest 4+ re-spies a spy in place instead of wrapping it, so a pass-through
