@@ -43,8 +43,7 @@ import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
 import { INSTANCE_HEALTH_QUERY_KEY } from '../pages/InstanceHealth'
 import { ArchivedBanner } from './ArchiveTable'
 import { ChevronDown, ContentTabs, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
-
-type Row = Record<string, unknown>
+import type { Row } from './form-row'
 
 // #545: a JSON column's box holds text while the person types. On save, text
 // typed into it becomes the value it describes; text that isn't JSON is
@@ -1543,7 +1542,6 @@ function ChildGrid({
     </div>
   )
 }
-
 
 /** The target Table's title column, when it is one of its columns the
  *  caller may read: a column the caller was not granted can be
