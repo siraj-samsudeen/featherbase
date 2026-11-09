@@ -56,6 +56,12 @@ async function clerkAgent(admin: TestClient, createUser: (opts?: { roles?: strin
 const activity = (admin: TestClient, id: string) => admin.get<Activity>(`/api/activity/Customer/${encodeURIComponent(id)}`)
 const history = async (admin: TestClient, id: string) => (await activity(admin, id)).versions
 
+/** The agent reads the row, then changes its city with the version it read. */
+async function agentMoves(agent: Agent, id: string, city: string) {
+  const { updated_at } = await agent.ok<Row>('get_row', { table: 'Customer', id })
+  return agent.ok('update_row', { table: 'Customer', id, values: { city }, updated_at })
+}
+
 const refusalText = (result: { content: { text: string }[] }) => result.content.map((c) => c.text).join('\n')
 
 describe('agent-access', () => {
@@ -99,8 +105,7 @@ describe('agent-access', () => {
       ids = await setUp(admin)
       ;({ user, agent } = await clerkAgent(admin, createUser, 'Claude on my laptop'))
     })
-    await step('the agent changes the city of "Acme Traders" to "Madurai"', () =>
-      agent.ok('update_row', { table: 'Customer', id: ids['Acme Traders'], values: { city: 'Madurai' } }))
+    await step('the agent changes the city of "Acme Traders" to "Madurai"', () => agentMoves(agent, ids['Acme Traders']!, 'Madurai'))
     let change!: Version
     await step('the change in its history is by the user', async () => {
       change = (await history(admin, ids['Acme Traders']!)).at(-1)!
@@ -278,8 +283,7 @@ describe('agent-access', () => {
     const { user, agent } = await clerkAgent(admin, createUser)
     const acme = ids['Acme Traders']!
     const before = await admin.get<Row>(CUSTOMER.rowUrl(acme))
-    await step('the agent changes the city of "Acme Traders" to "Madurai"', () =>
-      agent.ok('update_row', { table: 'Customer', id: acme, values: { city: 'Madurai' } }))
+    await step('the agent changes the city of "Acme Traders" to "Madurai"', () => agentMoves(agent, acme, 'Madurai'))
     const after = await admin.get<Row>(CUSTOMER.rowUrl(acme))
     await step('"Acme Traders" is in Madurai', () => expect(after.city).toBe('Madurai'))
     await step('its other values are unchanged', () => {
@@ -293,6 +297,44 @@ describe('agent-access', () => {
     })
   })
 
+  scenario('An agent\'s update of a row changed since it read it is refused', async ({ admin, createUser }, step) => {
+    const ids = await setUp(admin)
+    const { user, agent } = await clerkAgent(admin, createUser)
+    const acme = ids['Acme Traders']!
+    let read!: Row
+    await step('the agent has read "Acme Traders"', async () => {
+      read = await agent.ok<Row>('get_row', { table: 'Customer', id: acme })
+    })
+    await step('the user has since changed its city to "Salem" themselves', async () => {
+      const { updated_at } = await user.get<Row>(CUSTOMER.rowUrl(acme))
+      await patchDoc(user, CUSTOMER.rowUrl(acme), { city: 'Salem', updated_at })
+    })
+    let result!: Awaited<ReturnType<Agent['call']>>
+    await step('the agent changes the city of "Acme Traders" to "Madurai"', async () => {
+      result = await agent.call('update_row', { table: 'Customer', id: acme, values: { city: 'Madurai' }, updated_at: read.updated_at })
+    })
+    await step('"Acme Traders" is still in Salem', async () => expect((await admin.get<Row>(CUSTOMER.rowUrl(acme))).city).toBe('Salem'))
+    await step('the agent is told it was changed after it read it', () => {
+      expect(result.isError).toBe(true)
+      expect(refusalText(result)).toMatch(/^ConflictError: .*has been modified after you loaded it/)
+    })
+  })
+
+  scenario('An agent\'s update without the version it read is refused', async ({ admin, createUser }, step) => {
+    const ids = await setUp(admin)
+    const { agent } = await clerkAgent(admin, createUser)
+    const acme = ids['Acme Traders']!
+    let result!: Awaited<ReturnType<Agent['call']>>
+    await step('the agent changes the city of "Acme Traders" to "Madurai" without saying which version it read', async () => {
+      result = await agent.call('update_row', { table: 'Customer', id: acme, values: { city: 'Madurai' } })
+    })
+    await step('"Acme Traders" is still in Chennai', async () => expect((await admin.get<Row>(CUSTOMER.rowUrl(acme))).city).toBe('Chennai'))
+    await step('the agent is told to read the row first', () => {
+      expect(result.isError).toBe(true)
+      expect(refusalText(result)).toMatch(/read the row first.*updated_at/i)
+    })
+  })
+
   scenario('Deleting without the right is refused', async ({ admin, createUser }, step) => {
     let agent!: Agent
     let ids: Record<string, string> = {}
@@ -302,7 +344,8 @@ describe('agent-access', () => {
     })
     let result!: Awaited<ReturnType<Agent['call']>>
     await step('the agent deletes "Coral Mart"', async () => {
-      result = await agent.call('delete_row', { table: 'Customer', id: ids['Coral Mart'] })
+      const { updated_at } = await agent.ok<Row>('get_row', { table: 'Customer', id: ids['Coral Mart'] })
+      result = await agent.call('delete_row', { table: 'Customer', id: ids['Coral Mart'], updated_at })
     })
     await step('"Coral Mart" is still there', async () =>
       expect((await admin.get<Row>(CUSTOMER.rowUrl(ids['Coral Mart']!))).customer_name).toBe('Coral Mart'))
@@ -335,7 +378,8 @@ describe('agent-access', () => {
     const before = await admin.get<Row>(CUSTOMER.rowUrl(acme))
     let result!: Awaited<ReturnType<Agent['call']>>
     await step('the agent changes the "region" of "Acme Traders" and "Customer" has no such column', async () => {
-      result = await agent.call('update_row', { table: 'Customer', id: acme, values: { region: 'South' } })
+      const { updated_at } = await agent.ok<Row>('get_row', { table: 'Customer', id: acme })
+      result = await agent.call('update_row', { table: 'Customer', id: acme, values: { region: 'South' }, updated_at })
     })
     await step('"Acme Traders" is unchanged', async () => expect(await admin.get<Row>(CUSTOMER.rowUrl(acme))).toEqual(before))
     await step('the agent is told "Customer" has no column "region"', () => {
