@@ -163,3 +163,33 @@ describe('A row with comments, history, attachments or shares can\'t be deleted'
     await expectRefused(admin.get(docPath(CUSTOMER, 'Acme')), 404)
   })
 })
+
+describe('a settings Table that links to a row', () => {
+  test('does not hold the row back from deletion', async ({ admin }) => {
+    await setup(admin)
+    await admin.post('/api/table_def', { name: 'Del Preferences', kind: 'settings', columns: [
+      { column_name: 'favourite', column_type: 'Reference', reference_table: CUSTOMER },
+    ] })
+    await admin.post('/api/save_row', { table: 'Del Preferences', row: { favourite: 'Initech' } })
+    await admin.delete(docPath(CUSTOMER, 'Initech'))
+    expect(await sql`select 1 from featherbase.del_customer where row_id = 'Initech'`).toHaveLength(0)
+  })
+})
+
+describe('reading a line item on its own', () => {
+  test('a line whose parent row is gone answers to its own grant', async ({ admin }) => {
+    await setup(admin)
+    const inv = await admin.post<{ row_id: string; lines: { row_id: string }[] }>('/api/save_row', { table: INVOICE, row: { lines: [{ supplier: 'Acme' }] } })
+    const line = inv.lines[0].row_id
+    await sql`update featherbase.del_line_row set parent = 'no-such-invoice' where row_id = ${line}`
+    expect(await admin.get(docPath(ROW, line))).toMatchObject({ row_id: line, supplier: 'Acme' })
+  })
+
+  test('a line with no parent at all answers to its own grant', async ({ admin }) => {
+    await setup(admin)
+    const inv = await admin.post<{ row_id: string; lines: { row_id: string }[] }>('/api/save_row', { table: INVOICE, row: { lines: [{ supplier: 'Globex' }] } })
+    const line = inv.lines[0].row_id
+    await sql`update featherbase.del_line_row set parent = null, parenttype = null where row_id = ${line}`
+    expect(await admin.get(docPath(ROW, line))).toMatchObject({ row_id: line, supplier: 'Globex' })
+  })
+})
