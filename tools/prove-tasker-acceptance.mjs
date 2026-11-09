@@ -91,11 +91,18 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
   await expect(detail.getByRole('heading', { name: 'Corrected Take observation' })).toBeVisible()
   for (const state of ['In progress', 'Blocked', 'On hold', 'Done', 'Cancelled', 'Not started']) {
     await detail.getByRole('combobox', { name: 'Task state', exact: true }).selectOption(state)
+    // Since 3.2.0 cancelling asks for a reason; nothing is saved until one is given.
+    const cancelReason = 'Proof: no longer needed'
+    if (state === 'Cancelled') {
+      await detail.getByRole('textbox', { name: 'Reason for cancelling' }).fill(cancelReason)
+      await detail.getByRole('button', { name: 'Cancel task' }).click()
+    }
     await expect(detail.getByRole('combobox', { name: 'Task state', exact: true })).toHaveValue(state)
     const row = await api(`/api/table/tasker.task/${task.row_id}`)
     assert.equal(row.task_state, state)
     assert.equal(row.is_done, state === 'Done')
     assert.equal(row.assigned_to, 'Administrator')
+    if (state === 'Cancelled') assert.equal(row.cancel_reason, cancelReason)
     if (['Blocked', 'Done'].includes(state)) await capture(`mobile-state-${state.toLowerCase()}`, `${state} is persisted and completion agrees, responsibility retained`)
   }
   await detail.getByRole('link', { name: 'Close' }).click()

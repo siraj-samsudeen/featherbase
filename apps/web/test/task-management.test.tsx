@@ -161,7 +161,7 @@ test('detail destinations can return a personal task to the Inbox', async ({ adm
 test('updating one saved view preserves its differently scoped neighbour', async ({ admin }) => {
   await install()
   try {
-    const setup = { search: '', filters: { states: [], responsiblePeople: [], urgencies: [], projects: [] } }
+    const setup = { search: '', filters: { states: [], responsiblePeople: [], urgencies: [], projects: [], stores: [], dueMarks: [] } }
     const neighbour = { id: 'personal', name: 'Private errands', scope: { kind: 'personal', owner: 'Administrator' }, setup }
     await admin.put('/api/user_settings/tasker.saved-views', { views: [
       { id: 'inbox', name: 'Receiving checks', scope: { kind: 'inbox' }, setup }, neighbour,
@@ -700,7 +700,7 @@ test('projects_landing_flow: the directory opens a project and keeps its context
     // custom element owns the navigation landmark in the running app.
     const navigation = await screen.findByLabelText('Task views')
     expect(Array.from(navigation.querySelectorAll(':scope > button')).map((button) => button.textContent?.replace(/\d+$/, ''))).toEqual([
-      'Inbox', 'My Work', 'Together', 'Personal tasks', 'Views', 'Projects',
+      'Inbox', 'My Work', 'To verify', 'Issues', 'Together', 'Stores', 'Personal tasks', 'Views', 'Projects',
     ])
     await user.click(await screen.findByRole('button', { name: 'Projects' }))
     await user.type(screen.getByRole('textbox', { name: 'New project' }), 'Warehouse review{Enter}')

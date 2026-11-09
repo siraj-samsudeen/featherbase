@@ -36,6 +36,24 @@ export function listResource<T>(table: string, params: {
   return api.get<{ data: T[]; total: number }>(`/api/table/${encodeURIComponent(table)}?${query}`)
 }
 
+/** Uploads a private file onto the task or issue it belongs to and returns its address.
+ * Whoever may change that row may attach it; whoever can open the row can open it. */
+export async function uploadRowFile(file: File, table: 'tasker.task' | 'tasker.issue', row: string): Promise<string> {
+  const form = new FormData()
+  form.set('file', file)
+  form.set('is_private', '1')
+  form.set('ref_table', table)
+  form.set('ref_name', row)
+  const token = localStorage.getItem('fc_token')
+  const response = await fetch('/api/upload_file', {
+    method: 'POST', credentials: 'same-origin', body: form,
+    headers: { 'X-Featherbase-App-Version': `tasker@${version}`, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  })
+  const result = await response.json()
+  if (!response.ok) throw new ApiError(result.error?.message ?? 'Could not upload the photo', response.status)
+  return String(result.file_url)
+}
+
 /** Load each page through the same permission-filtered list interface. */
 export async function listAllResources<T>(table: string, params: Parameters<typeof listResource>[1] = {}) {
   const rows: T[] = []
