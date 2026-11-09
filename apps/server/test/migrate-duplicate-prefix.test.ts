@@ -51,3 +51,9 @@ describe('findDuplicateMigrationPrefixes', () => {
     expect(() => assertUniqueMigrationNumbers(['0001_init.sql', '0002_a.sql'])).not.toThrow()
   })
 })
+
+describe('a migration file name', () => {
+  it('without a numeric prefix is refused, naming the file', () => {
+    expect(() => findDuplicateMigrationPrefixes(['notes_on_migrations.sql'])).toThrow('migration file "notes_on_migrations.sql" has no numeric prefix')
+  })
+})

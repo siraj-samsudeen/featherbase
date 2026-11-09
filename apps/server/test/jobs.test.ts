@@ -169,3 +169,26 @@ describe('See every job\'s status in one place', () => {
     await expectStatus(await outsider.fetch('/api/table/Background%20Job'), 403)
   })
 })
+
+describe('the worker', () => {
+  test('does not start another tick while a job is still running', async () => {
+    await setup()
+    let running = 0
+    let most = 0
+    registerJob('slow_job', async () => {
+      most = Math.max(most, ++running)
+      await new Promise((r) => setTimeout(r, 120))
+      running--
+    })
+    const id = await enqueue('slow_job', {})
+    await sql`update background_job set run_at = now() - interval '1 second' where row_id = ${id}`
+    startWorker(10)
+    try {
+      await expect.poll(async () => (await sql`select job_status from background_job where row_id = ${id}`)[0].job_status, { timeout: 5000 }).toBe('done')
+    } finally {
+      stopWorker()
+    }
+    expect(most).toBe(1)
+    expect(await sql`select attempt from job_execution where job = ${id}`).toEqual([{ attempt: 1 }])
+  })
+})
