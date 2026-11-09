@@ -30,9 +30,10 @@ function TermHelp({ term }: { term: GlossaryTerm }) {
   const panel = useRef<HTMLDivElement>(null)
   const panelId = useId()
 
+  // Called only while mounted (on opening, and by listeners removed on
+  // closing), when the button is always drawn.
   const position = useCallback(() => {
-    const rect = button.current?.getBoundingClientRect()
-    if (!rect) return
+    const rect = button.current!.getBoundingClientRect()
     const width = Math.min(WIDTH, window.innerWidth - 2 * GUTTER)
     const left = Math.min(Math.max(rect.left, GUTTER), window.innerWidth - GUTTER - width)
     setPlace({ top: rect.bottom + 4, left, width })
