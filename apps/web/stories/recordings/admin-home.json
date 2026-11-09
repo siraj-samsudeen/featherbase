@@ -1,0 +1,1243 @@
+{
+ "url": "/featherbase/admin",
+ "answers": [
+  {
+   "method": "GET",
+   "path": "/api/brand",
+   "status": 200,
+   "body": {
+    "app_name": "Featherbase",
+    "logo": null,
+    "opens": null,
+    "sign_in_methods": [
+     {
+      "key": "password",
+      "kind": "password",
+      "label": "Password",
+      "test_mode": false
+     }
+    ],
+    "sign_up_open": false,
+    "identity_links": true
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/api/runtime_app_versions",
+   "status": 200,
+   "body": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/whoami",
+   "status": 200,
+   "body": {
+    "row_id": "Administrator",
+    "kind": "person",
+    "email": null,
+    "full_name": "Administrator",
+    "sign_in": {
+     "method": "password",
+     "identity": null,
+     "test_mode": false,
+     "preview": false,
+     "issued_at": 1794144324,
+     "authenticated_at": 1794144324,
+     "session_id": "UUCqrtDnrPh3zzOAEjKZpA",
+     "expires_at": 1794173124
+    },
+    "roles": [
+     "All",
+     "System Manager"
+    ],
+    "capabilities": {
+     "manage": true,
+     "report": false,
+     "admin": true,
+     "own_grant": true,
+     "tables": [],
+     "creatable": [],
+     "archived": []
+    },
+    "apps": [],
+    "installed_apps": [],
+    "theme": "device",
+    "language": "en",
+    "preview": false
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/api/app_catalog",
+   "status": 200,
+   "body": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/app_catalog/closed",
+   "status": 200,
+   "body": []
+  },
+  {
+   "method": "GET",
+   "path": "/api/events/summary",
+   "status": 200,
+   "body": {
+    "entries": []
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/api/unread_count",
+   "status": 200,
+   "body": {
+    "count": 0
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/api/people/waiting_for_access/count",
+   "status": 200,
+   "body": {
+    "count": 0
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/api/table/Data%20Source?fields=%5B%22row_id%22%2C%22engine%22%2C%22databases%22%5D&order_by=row_id%20asc&limit=50",
+   "status": 200,
+   "body": {
+    "data": [],
+    "total": 0,
+    "limit_start": 0,
+    "limit_page_length": 20
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/api/events/summary",
+   "status": 200,
+   "body": {
+    "entries": []
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/api/instance-health",
+   "status": 200,
+   "body": {
+    "checks": [
+     {
+      "key": "system-manager-email",
+      "title": "A System Manager with an email address",
+      "severity": "error",
+      "why": "System notices (the leaver-check summary, waiting-for-access alerts) go to System Managers by email. With no address they reach nobody.",
+      "ok": true,
+      "message": "No System Manager has an email address. That is expected on a development server, which nobody relies on for notices.",
+      "fix": null,
+      "state": "ready",
+      "since": "2026-11-08T10:29:22.121Z",
+      "history": [
+       {
+        "ok": true,
+        "severity": "error",
+        "message": "No System Manager has an email address. That is expected on a development server, which nobody relies on for notices.",
+        "from": "2026-11-08T10:29:22.121Z",
+        "until": null
+       }
+      ]
+     },
+     {
+      "key": "recommended-variables",
+      "title": "Recommended deployment variables",
+      "severity": "warning",
+      "why": "A missing recommended variable does not stop the server, but the part that needs it falls back to a default that may not suit a hosted instance.",
+      "ok": true,
+      "message": "Every recommended variable is set.",
+      "fix": null,
+      "state": "ready",
+      "since": "2026-11-08T10:29:22.121Z",
+      "history": [
+       {
+        "ok": true,
+        "severity": "warning",
+        "message": "Every recommended variable is set.",
+        "from": "2026-11-08T10:29:22.121Z",
+        "until": null
+       }
+      ]
+     },
+     {
+      "key": "settings-applied",
+      "title": "Settings file applied",
+      "severity": "error",
+      "why": "The settings file in the instance repository decides this instance's settings. Until it is applied, they are whatever was set by hand, and none of them is locked.",
+      "ok": true,
+      "state": "optional",
+      "message": "Settings are managed in Featherbase. A managed settings file is optional.",
+      "fix": null,
+      "since": "2026-11-08T10:29:22.121Z",
+      "history": [
+       {
+        "ok": true,
+        "severity": "error",
+        "message": "Settings are managed in Featherbase. A managed settings file is optional.",
+        "from": "2026-11-08T10:29:22.121Z",
+        "until": null
+       }
+      ]
+     },
+     {
+      "key": "settings-match-file",
+      "title": "Settings match the file",
+      "severity": "warning",
+      "why": "The file is the record of this instance's settings. A value changed outside it is lost at the next apply, and missing from the file's history.",
+      "ok": true,
+      "message": "Nothing to compare until the settings file is applied.",
+      "fix": null,
+      "state": "ready",
+      "since": "2026-11-08T10:29:22.121Z",
+      "history": [
+       {
+        "ok": true,
+        "severity": "warning",
+        "message": "Nothing to compare until the settings file is applied.",
+        "from": "2026-11-08T10:29:22.121Z",
+        "until": null
+       }
+      ]
+     },
+     {
+      "key": "scheduled-job:auto_email_reports",
+      "title": "Scheduled job: auto_email_reports",
+      "severity": "error",
+      "why": "A scheduled job does its work only when it runs. A failed or stopped run means that work is not being done.",
+      "ok": true,
+      "message": "The last run succeeded (08-Nov-2026 15:59 IST).",
+      "fix": null,
+      "state": "ready",
+      "since": "2026-11-08T10:29:22.121Z",
+      "history": [
+       {
+        "ok": true,
+        "severity": "error",
+        "message": "The last run succeeded (08-Nov-2026 15:59 IST).",
+        "from": "2026-11-08T10:29:22.121Z",
+        "until": null
+       }
+      ]
+     },
+     {
+      "key": "scheduled-job:check_instance_health",
+      "title": "Scheduled job: check_instance_health",
+      "severity": "error",
+      "why": "A scheduled job does its work only when it runs. A failed or stopped run means that work is not being done.",
+      "ok": true,
+      "message": "The last run succeeded (08-Nov-2026 18:42 IST).",
+      "fix": null,
+      "state": "ready",
+      "since": "2026-11-08T13:13:26.768Z",
+      "history": [
+       {
+        "ok": true,
+        "severity": "error",
+        "message": "The last run succeeded (08-Nov-2026 18:42 IST).",
+        "from": "2026-11-08T13:13:26.768Z",
+        "until": null
+       },
+       {
+        "ok": false,
+        "severity": "error",
+        "message": "It runs every 15 minutes but has not run since 08-Nov-2026 17:59 IST.",
+        "from": "2026-11-08T13:12:49.320Z",
+        "until": "2026-11-08T13:13:26.768Z"
+       },
+       {
+        "ok": true,
+        "severity": "error",
+        "message": "Has not run yet.",
+        "from": "2026-11-08T10:29:22.121Z",
+        "until": "2026-11-08T13:12:49.320Z"
+       }
+      ]
+     },
+     {
+      "key": "scheduled-job:check_sla",
+      "title": "Scheduled job: check_sla",
+      "severity": "error",
+      "why": "A scheduled job does its work only when it runs. A failed or stopped run means that work is not being done.",
+      "ok": true,
+      "message": "The last run succeeded (08-Nov-2026 18:54 IST).",
+      "fix": null,
+      "state": "ready",
+      "since": "2026-11-08T10:29:22.121Z",
+      "history": [
+       {
+        "ok": true,
+        "severity": "error",
+        "message": "Has not run yet.",
+        "from": "2026-11-08T10:29:22.121Z",
+        "until": null
+       }
+      ]
+     },
+     {
+      "key": "scheduled-job:disable_leavers",
+      "title": "Scheduled job: disable_leavers",
+      "severity": "error",
+      "why": "A scheduled job does its work only when it runs. A failed or stopped run means that work is not being done.",
+      "ok": true,
+      "message": "Switched off.",
+      "fix": null,
+      "state": "ready",
+      "since": "2026-11-08T10:29:22.121Z",
+      "history": [
+       {
+        "ok": true,
+        "severity": "error",
+        "message": "Switched off.",
+        "from": "2026-11-08T10:29:22.121Z",
+        "until": null
+       }
+      ]
+     },
+     {
+      "key": "scheduled-job:refresh_datasets",
+      "title": "Scheduled job: refresh_datasets",
+      "severity": "error",
+      "why": "A scheduled job does its work only when it runs. A failed or stopped run means that work is not being done.",
+      "ok": true,
+      "message": "The last run succeeded (08-Nov-2026 15:59 IST).",
+      "fix": null,
+      "state": "ready",
+      "since": "2026-11-08T10:29:22.121Z",
+      "history": [
+       {
+        "ok": true,
+        "severity": "error",
+        "message": "Has not run yet.",
+        "from": "2026-11-08T10:29:22.121Z",
+        "until": null
+       }
+      ]
+     },
+     {
+      "key": "scheduled-job:remind_access_requests",
+      "title": "Scheduled job: remind_access_requests",
+      "severity": "error",
+      "why": "A scheduled job does its work only when it runs. A failed or stopped run means that work is not being done.",
+      "ok": true,
+      "message": "The last run succeeded (08-Nov-2026 17:59 IST).",
+      "fix": null,
+      "state": "ready",
+      "since": "2026-11-08T10:29:22.121Z",
+      "history": [
+       {
+        "ok": true,
+        "severity": "error",
+        "message": "Has not run yet.",
+        "from": "2026-11-08T10:29:22.121Z",
+        "until": null
+       }
+      ]
+     },
+     {
+      "key": "administrator-password",
+      "title": "Administrator default password",
+      "severity": "error",
+      "why": "The built-in Administrator is the break-glass login with every right. With the default password, anyone who knows it can sign in as it.",
+      "ok": true,
+      "message": "Not checked on a development server, where the default password is expected.",
+      "fix": null,
+      "state": "ready",
+      "since": "2026-11-08T10:29:22.121Z",
+      "history": [
+       {
+        "ok": true,
+        "severity": "error",
+        "message": "Not checked on a development server, where the default password is expected.",
+        "from": "2026-11-08T10:29:22.121Z",
+        "until": null
+       }
+      ]
+     }
+    ],
+    "failing": 0,
+    "setup_needed": 0,
+    "setup": {
+     "administrator_ready": false,
+     "installed_apps": 0,
+     "environment": "development",
+     "configuration": "ui"
+    },
+    "worst": null,
+    "checked_at": "2026-11-08T13:25:24.985Z"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/api/home_pages",
+   "status": 200,
+   "body": {
+    "pages": [
+     {
+      "row_id": "home",
+      "label": "Home",
+      "icon": null,
+      "module": "Core",
+      "cards": [
+       {
+        "label": null,
+        "links": [
+         {
+          "label": "Sb Cluster",
+          "link_to": "Sb Cluster"
+         },
+         {
+          "label": "Sb Wide Site",
+          "link_to": "Sb Wide Site"
+         },
+         {
+          "label": "Story One Line Cluster",
+          "link_to": "Story One Line Cluster"
+         },
+         {
+          "label": "Story One Line Wide",
+          "link_to": "Story One Line Wide"
+         }
+        ]
+       }
+      ],
+      "shortcuts": []
+     },
+     {
+      "row_id": "system",
+      "label": "System",
+      "icon": null,
+      "module": null,
+      "cards": [
+       {
+        "label": "Users & Access",
+        "links": [
+         {
+          "label": "Person",
+          "link_to": "Person"
+         },
+         {
+          "label": "Role",
+          "link_to": "Role"
+         },
+         {
+          "label": "Permission",
+          "link_to": "Permission"
+         },
+         {
+          "label": "Share",
+          "link_to": "Share"
+         },
+         {
+          "label": "Data Scope",
+          "link_to": "Data Scope"
+         }
+        ]
+       },
+       {
+        "label": "Automation",
+        "links": [
+         {
+          "label": "Workflow",
+          "link_to": "Workflow"
+         },
+         {
+          "label": "Workflow Action",
+          "link_to": "Workflow Action"
+         },
+         {
+          "label": "Server Script",
+          "link_to": "Server Script"
+         },
+         {
+          "label": "Client Script",
+          "link_to": "Client Script"
+         },
+         {
+          "label": "Assignment Rule",
+          "link_to": "Assignment Rule"
+         },
+         {
+          "label": "Webhook",
+          "link_to": "Webhook"
+         },
+         {
+          "label": "Service Level Agreement",
+          "link_to": "Service Level Agreement"
+         },
+         {
+          "label": "ToDo",
+          "link_to": "ToDo"
+         }
+        ]
+       },
+       {
+        "label": "Email",
+        "links": [
+         {
+          "label": "Email Account",
+          "link_to": "Email Account"
+         },
+         {
+          "label": "Email Queue",
+          "link_to": "Email Queue"
+         },
+         {
+          "label": "Email Rule",
+          "link_to": "Email Rule"
+         },
+         {
+          "label": "Email Sink",
+          "link_to": "Email Sink"
+         },
+         {
+          "label": "Auto Email Report",
+          "link_to": "Auto Email Report"
+         },
+         {
+          "label": "Notification Log",
+          "link_to": "Notification Log"
+         }
+        ]
+       },
+       {
+        "label": "Reports & Dashboards",
+        "links": [
+         {
+          "label": "Report",
+          "link_to": "Report"
+         },
+         {
+          "label": "Dashboard",
+          "link_to": "Dashboard"
+         },
+         {
+          "label": "Print Format",
+          "link_to": "Print Format"
+         },
+         {
+          "label": "Letter Head",
+          "link_to": "Letter Head"
+         }
+        ]
+       },
+       {
+        "label": "Website",
+        "links": [
+         {
+          "label": "Web Page",
+          "link_to": "Web Page"
+         },
+         {
+          "label": "Web Form",
+          "link_to": "Web Form"
+         }
+        ]
+       },
+       {
+        "label": "Platform",
+        "links": [
+         {
+          "label": "Access Log",
+          "link_to": "Access Log"
+         },
+         {
+          "label": "Activity Log",
+          "link_to": "Activity Log"
+         },
+         {
+          "label": "Background Job",
+          "link_to": "Background Job"
+         },
+         {
+          "label": "Comment",
+          "link_to": "Comment"
+         },
+         {
+          "label": "Custom Field",
+          "link_to": "Custom Field"
+         },
+         {
+          "label": "File",
+          "link_to": "File"
+         },
+         {
+          "label": "Home Page",
+          "link_to": "Home Page"
+         },
+         {
+          "label": "Import Log",
+          "link_to": "Import Log"
+         },
+         {
+          "label": "Job Execution",
+          "link_to": "Job Execution"
+         },
+         {
+          "label": "Metadata Override",
+          "link_to": "Metadata Override"
+         },
+         {
+          "label": "System Settings",
+          "link_to": "System Settings"
+         },
+         {
+          "label": "Table",
+          "link_to": "Table"
+         },
+         {
+          "label": "Translation",
+          "link_to": "Translation"
+         },
+         {
+          "label": "Version",
+          "link_to": "Version"
+         },
+         {
+          "label": "Access Request",
+          "link_to": "Access Request"
+         },
+         {
+          "label": "App Role Binding",
+          "link_to": "App Role Binding"
+         },
+         {
+          "label": "App Setting",
+          "link_to": "App Setting"
+         },
+         {
+          "label": "Change Proposal",
+          "link_to": "Change Proposal"
+         },
+         {
+          "label": "Data Source",
+          "link_to": "Data Source"
+         },
+         {
+          "label": "Dataset Miss",
+          "link_to": "Dataset Miss"
+         },
+         {
+          "label": "Dataset Snapshot",
+          "link_to": "Dataset Snapshot"
+         },
+         {
+          "label": "Glossary Term",
+          "link_to": "Glossary Term"
+         },
+         {
+          "label": "Identifier System",
+          "link_to": "Identifier System"
+         },
+         {
+          "label": "Import Conflict",
+          "link_to": "Import Conflict"
+         },
+         {
+          "label": "Import Source",
+          "link_to": "Import Source"
+         },
+         {
+          "label": "Saved View",
+          "link_to": "Saved View"
+         },
+         {
+          "label": "Scheduled Job",
+          "link_to": "Scheduled Job"
+         },
+         {
+          "label": "Service Account",
+          "link_to": "Service Account"
+         },
+         {
+          "label": "Sign In Method",
+          "link_to": "Sign In Method"
+         },
+         {
+          "label": "User Event",
+          "link_to": "User Event"
+         }
+        ]
+       }
+      ],
+      "shortcuts": []
+     }
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/api/routine_suggestion",
+   "status": 200,
+   "body": {
+    "targets": []
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/api/activity_feed?scope=mine&limit=20",
+   "status": 200,
+   "body": {
+    "items": []
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/api/home_pages",
+   "status": 200,
+   "body": {
+    "pages": [
+     {
+      "row_id": "home",
+      "label": "Home",
+      "icon": null,
+      "module": "Core",
+      "cards": [
+       {
+        "label": null,
+        "links": [
+         {
+          "label": "Sb Cluster",
+          "link_to": "Sb Cluster"
+         },
+         {
+          "label": "Sb Wide Site",
+          "link_to": "Sb Wide Site"
+         },
+         {
+          "label": "Story One Line Cluster",
+          "link_to": "Story One Line Cluster"
+         },
+         {
+          "label": "Story One Line Wide",
+          "link_to": "Story One Line Wide"
+         }
+        ]
+       }
+      ],
+      "shortcuts": []
+     },
+     {
+      "row_id": "system",
+      "label": "System",
+      "icon": null,
+      "module": null,
+      "cards": [
+       {
+        "label": "Users & Access",
+        "links": [
+         {
+          "label": "Person",
+          "link_to": "Person"
+         },
+         {
+          "label": "Role",
+          "link_to": "Role"
+         },
+         {
+          "label": "Permission",
+          "link_to": "Permission"
+         },
+         {
+          "label": "Share",
+          "link_to": "Share"
+         },
+         {
+          "label": "Data Scope",
+          "link_to": "Data Scope"
+         }
+        ]
+       },
+       {
+        "label": "Automation",
+        "links": [
+         {
+          "label": "Workflow",
+          "link_to": "Workflow"
+         },
+         {
+          "label": "Workflow Action",
+          "link_to": "Workflow Action"
+         },
+         {
+          "label": "Server Script",
+          "link_to": "Server Script"
+         },
+         {
+          "label": "Client Script",
+          "link_to": "Client Script"
+         },
+         {
+          "label": "Assignment Rule",
+          "link_to": "Assignment Rule"
+         },
+         {
+          "label": "Webhook",
+          "link_to": "Webhook"
+         },
+         {
+          "label": "Service Level Agreement",
+          "link_to": "Service Level Agreement"
+         },
+         {
+          "label": "ToDo",
+          "link_to": "ToDo"
+         }
+        ]
+       },
+       {
+        "label": "Email",
+        "links": [
+         {
+          "label": "Email Account",
+          "link_to": "Email Account"
+         },
+         {
+          "label": "Email Queue",
+          "link_to": "Email Queue"
+         },
+         {
+          "label": "Email Rule",
+          "link_to": "Email Rule"
+         },
+         {
+          "label": "Email Sink",
+          "link_to": "Email Sink"
+         },
+         {
+          "label": "Auto Email Report",
+          "link_to": "Auto Email Report"
+         },
+         {
+          "label": "Notification Log",
+          "link_to": "Notification Log"
+         }
+        ]
+       },
+       {
+        "label": "Reports & Dashboards",
+        "links": [
+         {
+          "label": "Report",
+          "link_to": "Report"
+         },
+         {
+          "label": "Dashboard",
+          "link_to": "Dashboard"
+         },
+         {
+          "label": "Print Format",
+          "link_to": "Print Format"
+         },
+         {
+          "label": "Letter Head",
+          "link_to": "Letter Head"
+         }
+        ]
+       },
+       {
+        "label": "Website",
+        "links": [
+         {
+          "label": "Web Page",
+          "link_to": "Web Page"
+         },
+         {
+          "label": "Web Form",
+          "link_to": "Web Form"
+         }
+        ]
+       },
+       {
+        "label": "Platform",
+        "links": [
+         {
+          "label": "Access Log",
+          "link_to": "Access Log"
+         },
+         {
+          "label": "Activity Log",
+          "link_to": "Activity Log"
+         },
+         {
+          "label": "Background Job",
+          "link_to": "Background Job"
+         },
+         {
+          "label": "Comment",
+          "link_to": "Comment"
+         },
+         {
+          "label": "Custom Field",
+          "link_to": "Custom Field"
+         },
+         {
+          "label": "File",
+          "link_to": "File"
+         },
+         {
+          "label": "Home Page",
+          "link_to": "Home Page"
+         },
+         {
+          "label": "Import Log",
+          "link_to": "Import Log"
+         },
+         {
+          "label": "Job Execution",
+          "link_to": "Job Execution"
+         },
+         {
+          "label": "Metadata Override",
+          "link_to": "Metadata Override"
+         },
+         {
+          "label": "System Settings",
+          "link_to": "System Settings"
+         },
+         {
+          "label": "Table",
+          "link_to": "Table"
+         },
+         {
+          "label": "Translation",
+          "link_to": "Translation"
+         },
+         {
+          "label": "Version",
+          "link_to": "Version"
+         },
+         {
+          "label": "Access Request",
+          "link_to": "Access Request"
+         },
+         {
+          "label": "App Role Binding",
+          "link_to": "App Role Binding"
+         },
+         {
+          "label": "App Setting",
+          "link_to": "App Setting"
+         },
+         {
+          "label": "Change Proposal",
+          "link_to": "Change Proposal"
+         },
+         {
+          "label": "Data Source",
+          "link_to": "Data Source"
+         },
+         {
+          "label": "Dataset Miss",
+          "link_to": "Dataset Miss"
+         },
+         {
+          "label": "Dataset Snapshot",
+          "link_to": "Dataset Snapshot"
+         },
+         {
+          "label": "Glossary Term",
+          "link_to": "Glossary Term"
+         },
+         {
+          "label": "Identifier System",
+          "link_to": "Identifier System"
+         },
+         {
+          "label": "Import Conflict",
+          "link_to": "Import Conflict"
+         },
+         {
+          "label": "Import Source",
+          "link_to": "Import Source"
+         },
+         {
+          "label": "Saved View",
+          "link_to": "Saved View"
+         },
+         {
+          "label": "Scheduled Job",
+          "link_to": "Scheduled Job"
+         },
+         {
+          "label": "Service Account",
+          "link_to": "Service Account"
+         },
+         {
+          "label": "Sign In Method",
+          "link_to": "Sign In Method"
+         },
+         {
+          "label": "User Event",
+          "link_to": "User Event"
+         }
+        ]
+       }
+      ],
+      "shortcuts": []
+     }
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/api/instance-health",
+   "status": 200,
+   "body": {
+    "checks": [
+     {
+      "key": "system-manager-email",
+      "title": "A System Manager with an email address",
+      "severity": "error",
+      "why": "System notices (the leaver-check summary, waiting-for-access alerts) go to System Managers by email. With no address they reach nobody.",
+      "ok": true,
+      "message": "No System Manager has an email address. That is expected on a development server, which nobody relies on for notices.",
+      "fix": null,
+      "state": "ready",
+      "since": "2026-11-08T10:29:22.121Z",
+      "history": [
+       {
+        "ok": true,
+        "severity": "error",
+        "message": "No System Manager has an email address. That is expected on a development server, which nobody relies on for notices.",
+        "from": "2026-11-08T10:29:22.121Z",
+        "until": null
+       }
+      ]
+     },
+     {
+      "key": "recommended-variables",
+      "title": "Recommended deployment variables",
+      "severity": "warning",
+      "why": "A missing recommended variable does not stop the server, but the part that needs it falls back to a default that may not suit a hosted instance.",
+      "ok": true,
+      "message": "Every recommended variable is set.",
+      "fix": null,
+      "state": "ready",
+      "since": "2026-11-08T10:29:22.121Z",
+      "history": [
+       {
+        "ok": true,
+        "severity": "warning",
+        "message": "Every recommended variable is set.",
+        "from": "2026-11-08T10:29:22.121Z",
+        "until": null
+       }
+      ]
+     },
+     {
+      "key": "settings-applied",
+      "title": "Settings file applied",
+      "severity": "error",
+      "why": "The settings file in the instance repository decides this instance's settings. Until it is applied, they are whatever was set by hand, and none of them is locked.",
+      "ok": true,
+      "state": "optional",
+      "message": "Settings are managed in Featherbase. A managed settings file is optional.",
+      "fix": null,
+      "since": "2026-11-08T10:29:22.121Z",
+      "history": [
+       {
+        "ok": true,
+        "severity": "error",
+        "message": "Settings are managed in Featherbase. A managed settings file is optional.",
+        "from": "2026-11-08T10:29:22.121Z",
+        "until": null
+       }
+      ]
+     },
+     {
+      "key": "settings-match-file",
+      "title": "Settings match the file",
+      "severity": "warning",
+      "why": "The file is the record of this instance's settings. A value changed outside it is lost at the next apply, and missing from the file's history.",
+      "ok": true,
+      "message": "Nothing to compare until the settings file is applied.",
+      "fix": null,
+      "state": "ready",
+      "since": "2026-11-08T10:29:22.121Z",
+      "history": [
+       {
+        "ok": true,
+        "severity": "warning",
+        "message": "Nothing to compare until the settings file is applied.",
+        "from": "2026-11-08T10:29:22.121Z",
+        "until": null
+       }
+      ]
+     },
+     {
+      "key": "scheduled-job:auto_email_reports",
+      "title": "Scheduled job: auto_email_reports",
+      "severity": "error",
+      "why": "A scheduled job does its work only when it runs. A failed or stopped run means that work is not being done.",
+      "ok": true,
+      "message": "The last run succeeded (08-Nov-2026 15:59 IST).",
+      "fix": null,
+      "state": "ready",
+      "since": "2026-11-08T10:29:22.121Z",
+      "history": [
+       {
+        "ok": true,
+        "severity": "error",
+        "message": "The last run succeeded (08-Nov-2026 15:59 IST).",
+        "from": "2026-11-08T10:29:22.121Z",
+        "until": null
+       }
+      ]
+     },
+     {
+      "key": "scheduled-job:check_instance_health",
+      "title": "Scheduled job: check_instance_health",
+      "severity": "error",
+      "why": "A scheduled job does its work only when it runs. A failed or stopped run means that work is not being done.",
+      "ok": true,
+      "message": "The last run succeeded (08-Nov-2026 18:42 IST).",
+      "fix": null,
+      "state": "ready",
+      "since": "2026-11-08T13:13:26.768Z",
+      "history": [
+       {
+        "ok": true,
+        "severity": "error",
+        "message": "The last run succeeded (08-Nov-2026 18:42 IST).",
+        "from": "2026-11-08T13:13:26.768Z",
+        "until": null
+       },
+       {
+        "ok": false,
+        "severity": "error",
+        "message": "It runs every 15 minutes but has not run since 08-Nov-2026 17:59 IST.",
+        "from": "2026-11-08T13:12:49.320Z",
+        "until": "2026-11-08T13:13:26.768Z"
+       },
+       {
+        "ok": true,
+        "severity": "error",
+        "message": "Has not run yet.",
+        "from": "2026-11-08T10:29:22.121Z",
+        "until": "2026-11-08T13:12:49.320Z"
+       }
+      ]
+     },
+     {
+      "key": "scheduled-job:check_sla",
+      "title": "Scheduled job: check_sla",
+      "severity": "error",
+      "why": "A scheduled job does its work only when it runs. A failed or stopped run means that work is not being done.",
+      "ok": true,
+      "message": "The last run succeeded (08-Nov-2026 18:54 IST).",
+      "fix": null,
+      "state": "ready",
+      "since": "2026-11-08T10:29:22.121Z",
+      "history": [
+       {
+        "ok": true,
+        "severity": "error",
+        "message": "Has not run yet.",
+        "from": "2026-11-08T10:29:22.121Z",
+        "until": null
+       }
+      ]
+     },
+     {
+      "key": "scheduled-job:disable_leavers",
+      "title": "Scheduled job: disable_leavers",
+      "severity": "error",
+      "why": "A scheduled job does its work only when it runs. A failed or stopped run means that work is not being done.",
+      "ok": true,
+      "message": "Switched off.",
+      "fix": null,
+      "state": "ready",
+      "since": "2026-11-08T10:29:22.121Z",
+      "history": [
+       {
+        "ok": true,
+        "severity": "error",
+        "message": "Switched off.",
+        "from": "2026-11-08T10:29:22.121Z",
+        "until": null
+       }
+      ]
+     },
+     {
+      "key": "scheduled-job:refresh_datasets",
+      "title": "Scheduled job: refresh_datasets",
+      "severity": "error",
+      "why": "A scheduled job does its work only when it runs. A failed or stopped run means that work is not being done.",
+      "ok": true,
+      "message": "The last run succeeded (08-Nov-2026 15:59 IST).",
+      "fix": null,
+      "state": "ready",
+      "since": "2026-11-08T10:29:22.121Z",
+      "history": [
+       {
+        "ok": true,
+        "severity": "error",
+        "message": "Has not run yet.",
+        "from": "2026-11-08T10:29:22.121Z",
+        "until": null
+       }
+      ]
+     },
+     {
+      "key": "scheduled-job:remind_access_requests",
+      "title": "Scheduled job: remind_access_requests",
+      "severity": "error",
+      "why": "A scheduled job does its work only when it runs. A failed or stopped run means that work is not being done.",
+      "ok": true,
+      "message": "The last run succeeded (08-Nov-2026 17:59 IST).",
+      "fix": null,
+      "state": "ready",
+      "since": "2026-11-08T10:29:22.121Z",
+      "history": [
+       {
+        "ok": true,
+        "severity": "error",
+        "message": "Has not run yet.",
+        "from": "2026-11-08T10:29:22.121Z",
+        "until": null
+       }
+      ]
+     },
+     {
+      "key": "administrator-password",
+      "title": "Administrator default password",
+      "severity": "error",
+      "why": "The built-in Administrator is the break-glass login with every right. With the default password, anyone who knows it can sign in as it.",
+      "ok": true,
+      "message": "Not checked on a development server, where the default password is expected.",
+      "fix": null,
+      "state": "ready",
+      "since": "2026-11-08T10:29:22.121Z",
+      "history": [
+       {
+        "ok": true,
+        "severity": "error",
+        "message": "Not checked on a development server, where the default password is expected.",
+        "from": "2026-11-08T10:29:22.121Z",
+        "until": null
+       }
+      ]
+     }
+    ],
+    "failing": 0,
+    "setup_needed": 0,
+    "setup": {
+     "administrator_ready": false,
+     "installed_apps": 0,
+     "environment": "development",
+     "configuration": "ui"
+    },
+    "worst": null,
+    "checked_at": "2026-11-08T13:25:25.339Z"
+   }
+  }
+ ]
+}

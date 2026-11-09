@@ -14,7 +14,7 @@
 #
 #   changes -> unit-server (3), PG18 preflight -> coverage-server
 #           -> component-shards (4), web-support -> unit-web
-#           -> smoke, acceptance, served -> e2e
+#           -> smoke, acceptance, served, tours -> e2e
 #   unit-web + e2e -> coverage-merged
 #   checks + unit suites + app-tests + coverage gates -> unit
 #
@@ -174,6 +174,9 @@ jobs:
 
       - name: Validate E2E suite uses DSL fixtures
         run: pnpm check:e2e-dsl
+      # #1070: each fenced spec scenario runs on exactly one runner.
+      - name: Every spec scenario has one runner
+        run: pnpm check:scenarios
 
       # This repository is public. Covers tracked text files only: Aadhaar-like
       # numbers (Verhoeff-valid), Indian mobile numbers and client-domain
@@ -937,10 +940,54 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # #1070: tours, the demo-length stories (docs/TESTING.md, "Tours"). They run
+  # on every push and PR, whatever it changes: a server-only change can break
+  # a screen, and a tour is the check that says the product still works.
+  tours:
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: featherbase
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.13.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The apps a tour installs (Tasker) are offered from their built packages.
+      - run: pnpm apps:prepare
+      - run: pnpm --filter web exec playwright install --with-deps chromium
+      # Builds the web app, resets its own database and serves both from the
+      # API server, as an instance does (playwright.tours.config.ts).
+      - name: Run tours
+        run: pnpm tour
+      - name: Upload tour report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: tours-report
+          path: |
+            apps/web/tours-report/
+            apps/web/test-results/tours/
+          if-no-files-found: ignore
+          retention-days: 7
+
   # Keep the required check name, and reject failed or unexpectedly skipped
   # producers even when one of its dependencies fails before uploading.
   e2e:
-    needs: [changes, smoke, acceptance, served]
+    needs: [changes, smoke, acceptance, served, tours]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
@@ -951,8 +998,11 @@ jobs:
           SMOKE: ${{ needs.smoke.result }}
           ACCEPTANCE: ${{ needs.acceptance.result }}
           SERVED: ${{ needs.served.result }}
+          TOURS: ${{ needs.tours.result }}
         run: |
           [ "$CHANGES" = success ] || exit 1
+          # Tours are never scoped out.
+          [ "$TOURS" = success ] || exit 1
           for result in "$SMOKE" "$ACCEPTANCE" "$SERVED"; do
             [ "$result" = success ] || { [ "$result" = skipped ] && [ "$WANTED" = false ]; } || exit 1
           done

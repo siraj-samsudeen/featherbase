@@ -47,7 +47,7 @@ export default defineConfig({
       // coverage denominator; these same component tests still exercise it.
       allowExternal: true,
       include: ['src/**/*.{ts,tsx}', '../../packages/shop-floor/src/**/*.{ts,tsx}'],
-      exclude: ['src/**/*.test.{ts,tsx}', 'src/**/*.d.ts'],
+      exclude: ['src/**/*.test.{ts,tsx}', 'src/**/*.d.ts', '**/*.stories.{ts,tsx}'],
       reporter: ['text', 'json-summary', ['json', { file: '../.nyc_output/jsdom.json' }]],
       // Without this a single failing test suppresses the report entirely
       // (v8's default), which hides the numbers exactly when they are most
