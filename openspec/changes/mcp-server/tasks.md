@@ -75,7 +75,7 @@ to D8 in `design.md`; the owner approved them on 09-Nov-2026.
 - [ ] 4.2 `docs/DEPLOY.md`: a reverse proxy must pass `/mcp` to the API process.
 - [ ] 4.3 `CONTEXT.md`: add **Agent** (an AI assistant acting for a principal through an access
   token).
-- [ ] 4.4 ADR 0021 status set to Accepted with the approval date.
+- [x] 4.4 ADR 0021 status set to Accepted with the approval date.
 
 ## 5. Completion
 
