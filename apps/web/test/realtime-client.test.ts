@@ -88,6 +88,13 @@ test('a channel leaves with its last subscriber, and is not re-sent on reconnect
   expect(subscribed(next.sent).sort()).toEqual(['row:Item:IT-2', 'row:Item:IT-3'])
 })
 
+test('nobody signed in opens no socket', () => {
+  localStorage.removeItem('fc_token')
+  const client = new RealtimeClient()
+  client.subscribe(['list:Item'], () => {})
+  expect(RecordingSocket.all).toEqual([])
+})
+
 // A socket that errors is closed rather than left half-open, so the close
 // handler's reconnect takes over (merged web coverage, ADR 0012).
 test('a socket that errors is closed', () => {
