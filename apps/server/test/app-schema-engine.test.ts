@@ -6,7 +6,8 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { provisionApp } from '../src/app-lifecycle'
 import { discoverPackages } from '../src/runtime-packages'
-import { changeColumnType, createTable, deleteTable, renameColumn, renameTable } from '../src/table-engine'
+import { changeColumnType, createTable, deleteTable } from '../src/table-engine'
+import { renameColumn, renameTable } from '../src/table-rename'
 import { applyMigrations, describeLoss, countLosses, migrationSchema } from '../src/runtime-migrations'
 
 // App Tables answer only while their app is provisioning or active.

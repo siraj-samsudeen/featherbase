@@ -1,6 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { changeColumnType, createTable, deleteTable, pgType, renameTable, storedRelation } from '../src/table-engine'
+import { changeColumnType, createTable, deleteTable, pgType, storedRelation } from '../src/table-engine'
+import { renameTable } from '../src/table-rename'
 import { sql } from '../src/db'
 import { provisionApp } from '../src/app-lifecycle'
 import { expectStatus, makeTable } from './fixtures'
