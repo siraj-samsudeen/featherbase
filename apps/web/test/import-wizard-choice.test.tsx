@@ -241,6 +241,19 @@ describe('trying again after the connection dropped once the Table was made', ()
     clearSession()
   }, 30000)
 
+  test('with the Table it made deleted since, it makes the Table again and imports', async ({ admin }) => {
+    const user = await singleSheet('Iwc Remade', [['Zone', 'Code'], ['a', 1], ['b', 2]], admin)
+    const restore = dropImportCalls(admin)
+    await user.click(screen.getByTestId('iw-import'))
+    await screen.findByTestId('iw-failure-0', {}, { timeout: 10000 })
+    await waitFor(() => expect(screen.getByTestId('iw-import')).toBeEnabled(), { timeout: 8000 })
+    restore()
+    await admin.delete('/api/table_def/Iwc%20Remade')
+    await user.click(screen.getByTestId('iw-import'))
+    await waitFor(async () => expect(await admin.get('/api/table/Iwc%20Remade:count')).toMatchObject({ count: 2 }), { timeout: 10000 })
+    clearSession()
+  }, 30000)
+
   test('with rows landed it refuses to double them, and says where to undo them', async ({ admin }) => {
     const user = await singleSheet('Iwc Landed', [['Zone', 'Code'], ['a', 1], ['b', 2]], admin)
     const restore = dropImportCalls(admin, { table: 'Iwc Landed', row: { zone: 'a', code: 1 } })
