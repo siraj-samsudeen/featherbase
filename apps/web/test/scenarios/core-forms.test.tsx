@@ -17,7 +17,7 @@ import { invalidateSources } from 'server/src/sources/registry'
 import { EXTERNAL_DATABASE_URL } from 'server/test/external-database'
 import { grantRole } from 'server/test/fixtures'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp } from '../pg-test'
+import { test, expect, renderApp, onScreen, inside, type Session } from '../pg-test'
 
 configure({ asyncUtilTimeout: 10_000 })
 
@@ -131,6 +131,8 @@ async function blueBoxReader(admin: Client, createUser: CreateUser, step: (text:
 
 // The form of the page now: saving a new row moves to its own page, a new form.
 const form = () => screen.getByTestId('form-view')
+/** The Session DSL inside the open form. */
+const onForm = (fn: Parameters<Session['within']>[1]) => inside(onScreen(), 'form-view', fn)
 /** The labels of the fields shown, in order; folded fields and the foot line are not fields. */
 const fieldLabels = () => [...form().querySelectorAll<HTMLElement>('[data-form-field]')].map((e) => e.dataset.label)
 const field = (label: string) => form().querySelector<HTMLElement>(`[data-form-field][data-label="${label}"]`)
@@ -190,15 +192,13 @@ async function chooseHidden(user: ReturnType<typeof userEvent.setup>, column: st
   const columnSelect = within(form()).getByLabelText('Column', { exact: true })
   await waitFor(() => expect([...columnSelect.querySelectorAll('option')].map((o) => o.textContent)).toEqual(
     expect.arrayContaining(['', 'Whole Table', 'floor', 'note'])))
-  await user.selectOptions(columnSelect, column)
-  await user.selectOptions(within(form()).getByLabelText('Setting', { exact: true }), 'Hidden (hidden)')
-  await user.click(within(form()).getByLabelText('Value', { exact: true }))
+  await onForm((f) => f.selectOption('Column', column).selectOption('Setting', 'Hidden (hidden)').check('Value'))
 }
 
 async function saveHidden(user: ReturnType<typeof userEvent.setup>, view: View, column: string) {
   await chooseHidden(user, column)
   expect(form().querySelector('[data-field="row_id"]')).toBeNull()
-  await user.click(within(form()).getByTestId('form-save'))
+  await onForm((f) => f.clickButton('Save'))
   await screen.findByRole('link', { name: `Open Table: ${SHELF}` })
   return decodeURIComponent(location(view).pathname.split('/').pop()!)
 }
@@ -214,10 +214,7 @@ async function changeTarget(admin: Client, user: ReturnType<typeof userEvent.set
 
 async function hideAisle(user: ReturnType<typeof userEvent.setup>) {
   await waitFor(() => expect(within(form()).getByLabelText('Column', { exact: true })).toHaveTextContent('aisle'))
-  await user.selectOptions(within(form()).getByLabelText('Column', { exact: true }), 'aisle')
-  await user.selectOptions(within(form()).getByLabelText('Setting', { exact: true }), 'Hidden (hidden)')
-  await user.click(within(form()).getByLabelText('Value', { exact: true }))
-  await user.click(within(form()).getByTestId('form-save'))
+  await onForm((f) => f.selectOption('Column', 'aisle').selectOption('Setting', 'Hidden (hidden)').check('Value').clickButton('Save'))
 }
 
 // ---- A person's roles (#832) ----
@@ -256,8 +253,7 @@ describe('core-forms', () => {
       await waitFor(() => expect(within(options).queryAllByTestId('link-option').length).toBeGreaterThan(0))
       offered = within(options).getAllByTestId('link-option').map((o) => (o.textContent ?? '').trim())
       fireEvent.mouseDown(within(options).getAllByTestId('link-option').find((o) => o.textContent?.includes('Globex Ltd'))!)
-      await user.type(within(form()).getByLabelText('Item', { exact: true }), 'Bolts')
-      await user.click(screen.getByTestId('form-save'))
+      await onForm((f) => f.fillIn('Item', 'Bolts').clickButton('Save'))
       await waitFor(() => expect(location(view).pathname.endsWith('/new')).toBe(false))
     })
     await step('the user was offered only "Globex Ltd"', () => expect(offered).toEqual(['Globex Ltd']))
@@ -507,13 +503,11 @@ describe('core-forms', () => {
     })
     await step('the user saves a label adjustment for the whole Table', async () => {
       await waitFor(() => expect(within(form()).getByLabelText('Column', { exact: true })).toHaveTextContent('Whole Table'))
-      await user.selectOptions(within(form()).getByLabelText('Column', { exact: true }), 'Whole Table')
+      await onForm((f) => f.selectOption('Column', 'Whole Table'))
       const setting = within(form()).getByLabelText('Setting', { exact: true })
       await waitFor(() => expect([...setting.querySelectorAll('option')].map((o) => o.textContent)).toContain('Label (label)'))
       expect([...setting.querySelectorAll('option')].map((o) => o.textContent)).not.toContain('Hidden (hidden)')
-      await user.selectOptions(setting, 'Label (label)')
-      await user.type(within(form()).getByLabelText('Value', { exact: true }), 'Storage shelf')
-      await user.click(within(form()).getByTestId('form-save'))
+      await onForm((f) => f.selectOption('Setting', 'Label (label)').fillIn('Value', 'Storage shelf').clickButton('Save'))
       await screen.findByRole('link', { name: `Open Table: ${SHELF}` })
       id = decodeURIComponent(location(view).pathname.split('/').pop()!)
     })
@@ -534,10 +528,10 @@ describe('core-forms', () => {
     await step('the user tries to add the same adjustment again', async () => {
       await newAdjustment(admin)
       await chooseHidden(user, 'floor')
-      await user.click(within(form()).getByTestId('form-save'))
+      await onForm((f) => f.clickButton('Save'))
     })
     await step('the user is told to edit the existing adjustment', () =>
-      waitFor(() => expect(within(form()).getByTestId('form-banner')).toHaveTextContent('Edit the existing adjustment')))
+      onForm((f) => f.assertText('Edit the existing adjustment')))
     await step('only the original adjustment is saved', async () =>
       expect((await overrideRows(admin, [['table_name', '=', SHELF]])).data).toHaveLength(1))
   })
@@ -555,7 +549,7 @@ describe('core-forms', () => {
       await hideAisle(user)
     })
     await step('the user is told to edit the existing adjustment', () =>
-      waitFor(() => expect(within(form()).getByTestId('form-banner')).toHaveTextContent('Edit the existing adjustment')))
+      onForm((f) => f.assertText('Edit the existing adjustment')))
     await step('the original adjustment stays on its previous Table', async () => {
       const row = await admin.get<{ table_name: string; column_name: string; value: string }>(`/api/table/Metadata%20Override/${enc(id)}`)
       expect(row).toMatchObject({ table_name: SHELF, column_name: 'floor', value: 'true' })
