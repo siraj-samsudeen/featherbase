@@ -26,6 +26,7 @@ steps(Given, [
 ]);
 
 steps(When, [
+  ["support assigns Anjali's ticket to Colleague", x => x.assign('Colleague')],
   ["support reassigns Anjali's ticket to Verifier", x => x.assign('Verifier')],
   ["support assigns Anjali's ticket to Verifier", x => x.assign('Verifier')],
   ["support assigns Anjali's ticket to themselves", x => x.assign('Support')],
