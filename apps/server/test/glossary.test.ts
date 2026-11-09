@@ -288,3 +288,11 @@ describe('taking an app\'s wording', () => {
     await expect(readGlossary('Guest')).rejects.toMatchObject({ type: 'PermissionError', message: 'Not permitted to read the glossary' })
   })
 })
+
+describe('what a term describes', () => {
+  test('a blank Table is skipped, and a Table that does not exist is refused', async ({ admin }) => {
+    await expectRefused(admin.post('/api/save_row', { table: 'Glossary Term', row: {
+      term: 'Ghost', definition: 'Nothing.', describes: [{ link_table: '  ' }, { link_table: 'No Such Table' }],
+    } }), 417, 'There is no Table No Such Table')
+  })
+})

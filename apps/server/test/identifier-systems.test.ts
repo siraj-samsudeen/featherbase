@@ -277,3 +277,16 @@ describe('identifier helpers', () => {
     expect(displayValue({ value: null, value_hint: null }, 'Secret', true)).toEqual({ shown: true, value: null })
   })
 })
+
+describe('one current value per person', () => {
+  test('cannot be turned on while someone holds two', async ({ admin }) => {
+    await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'probe-pass', label: 'Pass', kind: 'contact', match: 'Off', edited_by: 'system-manager' } })
+    const a = await makePerson({ email: 'pass.a@x.test' })
+    await addIdentifier(a, { system: 'probe-pass', value: 'P-1' }, 'Administrator')
+    await addIdentifier(a, { system: 'probe-pass', value: 'P-2' }, 'Administrator')
+    const row = await admin.get<{ updated_at: string }>('/api/table/Identifier%20System/probe-pass')
+    await expectRefused(admin.fetch('/api/table/Identifier%20System/probe-pass', {
+      method: 'PATCH', body: JSON.stringify({ one_per_person: true, updated_at: row.updated_at }),
+    }), 409, 'Some people hold two current values')
+  })
+})
