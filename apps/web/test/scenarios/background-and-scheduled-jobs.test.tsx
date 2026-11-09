@@ -4,7 +4,6 @@
 // server and the local MotherDuck stand-in. The refresh runs themselves are
 // in apps/server/test/scenarios/.
 import { cleanup, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { afterAll, beforeAll, describe } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { rmSync } from 'node:fs'
@@ -13,7 +12,7 @@ import { overrideVariable } from 'server/src/env'
 import { invalidateSources } from 'server/src/sources/registry'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from 'server/test/motherduck-standin'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp } from '../pg-test'
+import { test, expect, renderSession, type Session } from '../pg-test'
 
 const scenario = scenarioFor(test, 'background-and-scheduled-jobs')
 const WAIT = { timeout: 15_000 }
@@ -47,41 +46,43 @@ async function copiedPlants(admin: TestClient) {
   })
 }
 
+// The control's <label> also holds its options' text, so the DSL's label lookup can't
+// name it; and the DSL has no verb for a control being enabled.
 const refreshControl = () => screen.getByRole('combobox', { name: 'Refresh automatically' }) as HTMLSelectElement
 
-async function openPlants(admin: TestClient) {
+async function openPlants(admin: TestClient): Promise<{ session: Session }> {
   cleanup()
-  await renderApp('/featherbase/admin/table/plants', admin)
-  await screen.findByTestId('list-view', {}, WAIT)
+  const { session } = await renderSession('/featherbase/admin/table/plants', admin, { session: WAIT })
   await waitFor(() => expect(refreshControl()).toBeEnabled(), WAIT)
+  return { session }
 }
 
-async function schedule(user: ReturnType<typeof userEvent.setup>, cadence: string) {
-  await user.selectOptions(refreshControl(), cadence)
-  await waitFor(() => expect(refreshControl()).toBeEnabled(), WAIT)
-  await screen.findByRole('button', { name: 'Pause' }, WAIT)
+function schedule(session: Session, cadence: string): Session {
+  return session
+    .step(`refresh automatically: ${cadence}`, ({ user }) => user.selectOptions(refreshControl(), cadence))
+    .until('the refresh control is enabled again', () => !refreshControl().disabled)
+    .assertText('Pause')
 }
 
 describe('background-and-scheduled-jobs', () => {
   scenario('Plants refresh hourly', async ({ admin }, step) => {
-    const user = userEvent.setup()
+    let session!: Session
     const scheduleInfo = () => admin.get<Schedule | null>('/api/table/Plants:copy_schedule')
     await step('the user is a System Manager with a copied Plants table', async () => {
       await copiedPlants(admin)
-      await openPlants(admin)
+      ;({ session } = await openPlants(admin))
     })
-    await step('the user schedules Plants to refresh hourly', () => schedule(user, 'hourly'))
+    await step('the user schedules Plants to refresh hourly', () => schedule(session, 'hourly'))
     await step('Plants has one hourly schedule that the user can pause and change', async () => {
       const original = (await scheduleInfo())!
       expect(original.cadence).toBe('hourly')
       expect(original.enabled).toBe(true)
-      await openPlants(admin)
+      ;({ session } = await openPlants(admin))
       expect(refreshControl().value).toBe('hourly')
-      await user.click(screen.getByRole('button', { name: 'Pause' }))
-      await screen.findByRole('button', { name: 'Resume' }, WAIT)
-      await openPlants(admin)
+      await session.clickButton('Pause').assertText('Resume')
+      ;({ session } = await openPlants(admin))
       expect(refreshControl().value).toBe('off')
-      await schedule(user, 'daily')
+      await schedule(session, 'daily')
       const changed = (await scheduleInfo())!
       expect(changed.row_id).toBe(original.row_id)
       expect(changed.cadence).toBe('daily')
