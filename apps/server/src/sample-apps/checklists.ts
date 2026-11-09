@@ -21,8 +21,9 @@ type ItemRow = Record<string, unknown>
 // server owns — a payload only ever proposes execution state on top of them —
 // so every decision (progress, the submit gate) is taken against this, never
 // against what a caller sent.
+// Only ever asked for a saved run (a new run's items come from its
+// template), so the row's id is always there.
 async function persistedItems(ctx: HookContext): Promise<ItemRow[]> {
-  if (!ctx.row.row_id) return []
   return await ctx.tx`
     select * from ${ctx.tx(platformRelation(tableName('Checklist Run Item')))}
     where parent = ${String(ctx.row.row_id)}
@@ -46,10 +47,10 @@ const hasNote = (it: ItemRow) => typeof it.note === 'string' && it.note.trim().l
 // done_at is a server stamp, never a client value: it survives across saves
 // once set, appears the moment an item is ticked, and clears on untick.
 // ISO string, not a Date — the child-row zod schema types Datetime as text.
+// `stored` is read back from the database, so a kept stamp is a Date.
 function stampDoneAt(done: boolean, stored: unknown): string | null {
   if (!done) return null
   if (stored instanceof Date) return stored.toISOString()
-  if (typeof stored === 'string' && stored) return new Date(stored).toISOString()
   return new Date().toISOString()
 }
 
