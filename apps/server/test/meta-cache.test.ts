@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql, whenTransactionEnds, withTransaction } from '../src/db'
-import { getMeta, invalidateMeta, metaCacheStats } from '../src/meta'
+import { getBacklinks, getMeta, invalidateMeta, metaCacheStats } from '../src/meta'
 import type { TestClient } from 'feather-testing-postgres'
 
 // NOTE on the sandbox: the harness calls invalidateMeta() after every test,
@@ -100,5 +100,14 @@ describe('a definition change clears the cache again once its transaction ends (
       expect(ran).toEqual([])
     })
     expect(ran).toEqual(['ended', 'inner'])
+  })
+})
+
+describe('backlinks read while the metadata changes', () => {
+  test('answer for that read without keeping a map the change made stale', async () => {
+    const reading = getBacklinks('ToDo')
+    invalidateMeta()
+    expect(Array.isArray(await reading)).toBe(true)
+    expect(await getBacklinks('ToDo')).toEqual(await reading)
   })
 })

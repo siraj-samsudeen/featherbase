@@ -9,12 +9,13 @@ import { getActiveWorkflow } from '../src/workflow'
 import { drainJobs, enqueue, loadJobs } from '../src/jobs'
 import { getCatalog } from '../src/i18n'
 import { lastApply } from '../src/managed-settings'
+import { getMeta } from '../src/meta'
 
 // Early bootstrap migrations save rows before every platform Table exists
 // (platform-tables.ts). This file asks first, before anything in this process
 // has seen those Tables, so their absence is what the save meets. The renames
 // roll back with the test's transaction.
-const LATER_TABLES = ['email_rule', 'assignment_rule', 'webhook', 'server_script', 'activity_log', 'service_level_agreement', 'workflow_document_state', 'translation', 'instance_settings_apply']
+const LATER_TABLES = ['email_rule', 'assignment_rule', 'webhook', 'server_script', 'activity_log', 'service_level_agreement', 'workflow_document_state', 'translation', 'instance_settings_apply', 'metadata_override']
 
 test('a row saved before the platform rule Tables exist is saved without them', async () => {
   for (const table of LATER_TABLES) await sql.unsafe(`alter table featherbase.${table} rename to ${table}_not_yet`)
@@ -42,4 +43,9 @@ test('a person is saved, renamed and removed before identifiers are recorded', a
   const removed = String((await saveDoc('Person', { email: 'early.removed@example.com' }, 'Administrator', 'insert')).row_id)
   await deleteDoc('Person', removed)
   expect(await sql`select 1 from person where row_id = ${removed}`).toHaveLength(0)
+})
+
+test('asking for a Table that was never made, before the Access Log exists, is a plain not-found', async () => {
+  await sql.unsafe('alter table featherbase.access_log rename to access_log_not_yet')
+  await expect(getMeta('Never Made Table')).rejects.toMatchObject({ type: 'NotFoundError' })
 })

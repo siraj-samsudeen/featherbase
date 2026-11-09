@@ -99,3 +99,11 @@ describe('what a Person save refuses', () => {
     await expectRefused(admin.post('/api/save_row', { table: 'Person', row: { row_id: merged, updated_at: row.updated_at, full_name: 'Renamed' } }), 409, 'This record was merged into survivor.p@example.com')
   })
 })
+
+describe('person registry: an app Table\'s JSON column', () => {
+  test('is free text, classified by its type', async ({ admin }) => {
+    await admin.post('/api/table_def', { name: 'Registry Json Probe', columns: [{ column_name: 'payload', column_type: 'JSON' }] })
+    const { byKey } = await cls()
+    expect(byKey.get('registry_json_probe.payload')).toMatchObject({ class: 'free-text', rule: 'JSON on an app Table' })
+  })
+})
