@@ -509,10 +509,9 @@ export function ListView({
   }
 
   // UI-013 / #738: switch a column on or off in this person's view (saved
-  // per user).
+  // per user). Its checkboxes are the columns of meta.data, so it is there.
   function toggleColumn(columnName: string, on: boolean) {
-    if (!meta.data) return
-    const next = switchColumn(meta.data, arrangement, columnName, on)
+    const next = switchColumn(meta.data!, arrangement, columnName, on)
     setArrangement(next)
     persist({ arrangement: next })
   }
