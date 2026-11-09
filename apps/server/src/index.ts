@@ -101,6 +101,7 @@ import helpdesk from './sample-apps/helpdesk'
 import checklists from './sample-apps/checklists'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
 import { readGlossary, takeAppWording } from './glossary'
+import { who, type Env } from './route-context'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -120,10 +121,6 @@ await discoverAppLibrary(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]
 await loadInstalledApps()
 // Custom fields may target app-owned Tables, so activation precedes replay.
 await reapplyCustomFields()
-
-// frameOrigins (#642, E4): the outside sites this response's page may frame,
-// set by the handler that serves an app's own page.
-type Env = { Variables: { user: SessionUser; frameOrigins?: readonly string[] } }
 
 export const app = new Hono<Env>()
 
@@ -907,8 +904,6 @@ app.get('*', async (c, next) => {
     })
   })
 })
-
-const who = (c: { get: (k: 'user') => SessionUser }) => c.get('user').row_id
 
 // #3755: personalised sales-target report (identity + embed-session minting).
 app.route('/api/sales_target', salesTargetRoutes)
