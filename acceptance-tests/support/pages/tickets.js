@@ -127,7 +127,6 @@ class Tickets {
     assert.deepEqual(await api.row('tickets.event', this.evidenceBeforeDelete.row_id), this.evidenceBeforeDelete);
     await this.includes('source-check-1', 'report-check-1', this.ids.Support);
   }
-  async connections() { this.connectionStatus = (await this.read('session')).connections; }
 }
 
 // #912: a ticket type configured by a System Manager, as rows, never code.
@@ -178,11 +177,6 @@ class TicketTypes {
     let order = 0;
     for (const field of fields) this.fields[field.field_name] = await api.saveRow('tickets.type_field', { ticket_type: this.type.row_id, field_order: ++order, ...field });
   }
-  async removeField(name) {
-    const api = await this.api();
-    const field = this.fields[name];
-    await api.call('DELETE', `/api/table/tickets.type_field/${field.row_id}?updated_at=${encodeURIComponent(field.updated_at)}`, undefined, [200, 202, 204], 'remove a field');
-  }
   async submit(details = {}, actor = 'Anjali', attempt = false) {
     await this.configure();
     return this.t.action('create', { title: 'Plant address is wrong', original: 'Two plants carry both door numbers', kind: this.key, details }, actor, attempt);
@@ -191,13 +185,6 @@ class TicketTypes {
     const page = await this.t.world.signedIn(actor);
     await page.goto(`${BASE_URL}${path}`);
     await page.getByRole('button', { name: /New ticket/ }).first().waitFor();
-    return page;
-  }
-  async openTicket(actor) {
-    const page = await this.page(actor);
-    await page.getByLabel('Search tickets').fill(this.t.ticket.row_id);
-    await page.locator('.ticket-id', { hasText: this.t.ticket.row_id }).first().click();
-    await page.getByRole('heading', { name: 'Original message' }).waitFor();
     return page;
   }
   async reader(name) {
@@ -209,16 +196,6 @@ class TicketTypes {
     const page = await this.t.world.signedIn(name);
     await page.goto(`${BASE_URL}/tickets/`);
     this.t.ids[name] = await page.evaluate(() => JSON.parse(localStorage.getItem('fc_user')).row_id);
-  }
-  async outsider() {
-    await this.t.world.person('Outsider', ['All']);
-    const page = await this.t.world.signedIn('Outsider');
-    await page.goto(`${BASE_URL}/featherbase/`);
-    this.outsiderId = await page.evaluate(() => JSON.parse(localStorage.getItem('fc_user')).row_id);
-    this.outsiderName = `Outside Owner ${randomUUID().slice(0, 4)}`;
-    const api = await this.api();
-    const current = await api.row('Person', this.outsiderId);
-    await api.call('POST', '/api/save_row', { table: 'Person', row: { row_id: this.outsiderId, updated_at: current.updated_at, full_name: this.outsiderName } }, [200, 201], 'name the outsider');
   }
   async restartedElsewhere() {
     await this.t.setup();
