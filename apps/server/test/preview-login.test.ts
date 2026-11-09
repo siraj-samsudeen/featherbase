@@ -10,6 +10,7 @@ import {
 import { test as sandboxTest } from './pg-test'
 import { expectSessionCookie, setSessionHours } from './session-cookie-test-utils'
 import { CLIENT, FROM_CLIENT, signInAddresses } from './sign-in-address-utils'
+import { expectStatus } from './fixtures'
 
 // The preview sign-in link is an authentication bypass, so what is pinned
 // here is mostly what it REFUSES. A regression that makes it work more
@@ -93,7 +94,7 @@ describe('the /preview route', () => {
       const before = Math.floor(Date.now() / 1000)
       const res = await api.fetch(`/preview?key=${GOOD_KEY}`)
       const after = Math.floor(Date.now() / 1000)
-      expect(res.status).toBe(302)
+      await expectStatus(res, 302)
       const cookie = expectSessionCookie(res, hours, { before, after })
       const location = res.headers.get('location') as string
       const code = new URLSearchParams(location.split('?')[1] ?? '').get('code')
@@ -102,7 +103,7 @@ describe('the /preview route', () => {
         headers: { 'content-type': 'application/json', cookie },
         body: JSON.stringify({ code }),
       })
-      expect(redeemed.status).toBe(200)
+      await expectStatus(redeemed, 200)
       expect(Object.keys((await redeemed.json()) as object).sort()).toEqual(['token', 'user'])
     }
   })
@@ -117,7 +118,7 @@ describe('the /preview route', () => {
       values (${id}, ${email}, 'Preview Whoami', true)`
     configure(GOOD_KEY, email)
     const res = await api.fetch(`/preview?key=${GOOD_KEY}`)
-    expect(res.status).toBe(302)
+    await expectStatus(res, 302)
     const code = new URLSearchParams((res.headers.get('location') ?? '').split('?')[1] ?? '').get('code')
     const sid = res.headers.getSetCookie().find((c) => c.startsWith('sid='))!.split(';')[0]
     const redeemed = await api.fetch('/api/oauth/session', {
@@ -125,7 +126,7 @@ describe('the /preview route', () => {
       headers: { 'content-type': 'application/json', cookie: sid },
       body: JSON.stringify({ code }),
     })
-    expect(redeemed.status).toBe(200)
+    await expectStatus(redeemed, 200)
     const session = (await redeemed.json()) as { token: string; user: { row_id: string } }
     expect(session.user.row_id).toBe(id)
     const whoami = await api.fetch('/api/whoami', { headers: { authorization: `Bearer ${session.token}` } })
@@ -135,7 +136,7 @@ describe('the /preview route', () => {
   test('404s when previews are off — it does not advertise itself', async () => {
     configure(undefined, undefined)
     const res = await app.request(`/preview?key=${GOOD_KEY}`)
-    expect(res.status).toBe(404)
+    await expectStatus(res, 404)
   })
 
   test('404s on a wrong key, telling a guesser nothing', async () => {
@@ -143,7 +144,7 @@ describe('the /preview route', () => {
     const res = await app.request('/preview?key=nearly-right')
     // Same answer as "previews are off": no oracle for whether the key
     // was close, or even whether previews exist here.
-    expect(res.status).toBe(404)
+    await expectStatus(res, 404)
   })
 
   test('the right key signs in the named user without the token in the URL', async () => {
@@ -158,7 +159,7 @@ describe('the /preview route', () => {
     configure(GOOD_KEY, email)
 
     const res = await app.request(`/preview?key=${GOOD_KEY}`)
-    expect(res.status).toBe(302)
+    await expectStatus(res, 302)
     const location = res.headers.get('location') ?? ''
     // #150/#173: a session JWT must never ride a URL. What travels is the
     // one-time handoff code, redeemed over POST by the SPA.
@@ -201,16 +202,16 @@ describe('the preview seed (person-rename)', () => {
     expect(await sql`select count(*)::int as n from person where lower(email) = ${email}`).toEqual([{ n: 1 }])
     configure(GOOD_KEY, email)
     const res = await api.fetch(`/preview?key=${GOOD_KEY}`)
-    expect(res.status).toBe(302)
+    await expectStatus(res, 302)
   })
 
   sandboxTest('a username works too; a name that matches nobody is a 404', async ({ api }) => {
     const { ensurePreviewPerson } = await import('../src/preview-person')
     await ensurePreviewPerson('preview.visitor', 'Preview Visitor', () => {})
     configure(GOOD_KEY, 'Preview.Visitor')
-    expect((await api.fetch(`/preview?key=${GOOD_KEY}`)).status).toBe(302)
+    await expectStatus(await api.fetch(`/preview?key=${GOOD_KEY}`), 302)
     configure(GOOD_KEY, 'nobody@example.com')
-    expect((await api.fetch(`/preview?key=${GOOD_KEY}`)).status).toBe(404)
+    await expectStatus(await api.fetch(`/preview?key=${GOOD_KEY}`), 404)
   })
 })
 
@@ -260,7 +261,7 @@ describe('#396: the sign-in records the client address', () => {
     const id = 'psn_previewaddressaaaaaa'
     await sql`insert into person (row_id, email, full_name, enabled) values (${id}, 'preview-address@example.com', 'Preview Address', true)`
     configure(GOOD_KEY, 'preview-address@example.com')
-    expect((await api.fetch(`/preview?key=${GOOD_KEY}`, { headers: FROM_CLIENT })).status).toBe(302)
+    await expectStatus(await api.fetch(`/preview?key=${GOOD_KEY}`, { headers: FROM_CLIENT }), 302)
     expect(await signInAddresses(id)).toEqual([CLIENT])
   })
 })

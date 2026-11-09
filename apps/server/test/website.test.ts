@@ -3,6 +3,7 @@ import { sql } from '../src/db'
 import { renderWebPage } from '../src/website'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
+import { expectStatus } from './fixtures'
 
 // WEB-001: published Web Pages render publicly at /web/<route>; unpublished or
 // missing routes 404, and no session is required.
@@ -53,12 +54,12 @@ describe('WEB-001: web pages', () => {
   }) => {
     await setup(admin)
     const pub = await api.fetch('/web/srv-pub')
-    expect(pub.status).toBe(200)
+    await expectStatus(pub, 200)
     expect(pub.headers.get('content-type')).toContain('text/html')
     expect(await pub.text()).toContain('Hello Public')
 
-    expect((await api.fetch('/web/srv-draft')).status).toBe(404)
-    expect((await api.fetch('/web/does-not-exist')).status).toBe(404)
+    await expectStatus(await api.fetch('/web/srv-draft'), 404)
+    await expectStatus(await api.fetch('/web/does-not-exist'), 404)
   })
 
   test('escapes the title but renders authored HTML content', async ({ admin }) => {

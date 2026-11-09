@@ -3,7 +3,7 @@
 // a Person's roles and enabled flag change only for a System Manager.
 import { describe, expect } from 'vitest'
 import { test, patchDoc } from './pg-test'
-import { createUserWithRole, expectApiError, grantRole, makePerson, makeTable, tableRef } from './fixtures'
+import { createUserWithRole, expectApiError, expectRefused, expectStatus, grantRole, makePerson, makeTable, tableRef } from './fixtures'
 import { SECURITY_TABLES } from '../src/security-tables'
 import { saveDoc, deleteDoc } from '../src/document'
 import { evaluateAssignmentRules } from '../src/assignment-rules'
@@ -52,22 +52,22 @@ describe("#437: a Person's roles and enabled flag", () => {
     const editor = await personEditor(admin, createUser)
     const target = await makePerson({ full_name: 'Holder', roles: [{ role: EDITOR }] })
     const doc = await loaded(admin, target)
-    await expectApiError(patchDoc(editor, PERSON.rowUrl(target), { updated_at: doc.updated_at, roles: [] }), { status: 403 })
+    await expectRefused(patchDoc(editor, PERSON.rowUrl(target), { updated_at: doc.updated_at, roles: [] }), 403)
   })
 
   test('ordinary write on Person cannot create a person holding roles (POST)', async ({ admin, createUser }) => {
     const editor = await personEditor(admin, createUser)
-    await expectApiError(editor.post(PERSON.url, { full_name: 'New', roles: [{ role: 'System Manager' }] }), { status: 403 })
+    await expectRefused(editor.post(PERSON.url, { full_name: 'New', roles: [{ role: 'System Manager' }] }), 403)
   })
 
   test('ordinary write on Person cannot change enabled, either way', async ({ admin, createUser }) => {
     const editor = await personEditor(admin, createUser)
     const target = await makePerson({ full_name: 'Switch' })
     let doc = await loaded(admin, target)
-    await expectApiError(patchDoc(editor, PERSON.rowUrl(target), { updated_at: doc.updated_at, enabled: false }), { status: 403 })
+    await expectRefused(patchDoc(editor, PERSON.rowUrl(target), { updated_at: doc.updated_at, enabled: false }), 403)
     await patchDoc(admin, PERSON.rowUrl(target), { updated_at: doc.updated_at, enabled: false })
     doc = await loaded(admin, target)
-    await expectApiError(patchDoc(editor, PERSON.rowUrl(target), { updated_at: doc.updated_at, enabled: true }), { status: 403 })
+    await expectRefused(patchDoc(editor, PERSON.rowUrl(target), { updated_at: doc.updated_at, enabled: true }), 403)
     expect((await loaded(admin, target)).enabled).toBe(false)
   })
 
@@ -87,7 +87,7 @@ describe("#437: a Person's roles and enabled flag", () => {
     const target = await makePerson({ full_name: 'Shared' })
     await admin.post('/api/save_row', { table: 'Share', row: { share_table: 'Person', share_name: target, person: sharee.user, read: true, write: true } })
     const doc = await loaded(admin, target)
-    await expectApiError(patchDoc(sharee, PERSON.rowUrl(target), { updated_at: doc.updated_at, enabled: false }), { status: 403 })
+    await expectRefused(patchDoc(sharee, PERSON.rowUrl(target), { updated_at: doc.updated_at, enabled: false }), 403)
   })
 
   test('unchanged roles and enabled ride along on an ordinary edit', async ({ admin, createUser }) => {
@@ -192,7 +192,7 @@ describe('#437: the security tables refuse non-privileged writes, whatever Permi
   test('a Permission row granting full access to a security table does not let a non-manager write it', async ({ admin, createUser }) => {
     const role = 'Security Writer 437'
     const user = await createUserWithRole(admin, createUser, { role, table: ['Role', 'Permission', 'Data Scope', 'Share', 'Identifier System'], ...ALL_ACTIONS })
-    await expectApiError(user.post('/api/save_row', { table: 'Role', row: { row_id: 'Escalated 437' } }), { status: 403 })
+    await expectRefused(user.post('/api/save_row', { table: 'Role', row: { row_id: 'Escalated 437' } }), 403)
     await expectApiError(
       user.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role, ...ALL_ACTIONS } }),
       { status: 403 },
@@ -215,8 +215,8 @@ describe('#437: the security tables refuse non-privileged writes, whatever Permi
     const user = await createUserWithRole(admin, createUser, { role, table: ['Permission', 'Role'], ...ALL_ACTIONS })
     const [permId] = await grantRole(admin, { role, table: 'Person', can_read: true })
     const perm = await admin.get<{ updated_at: string }>(tableRef('Permission').rowUrl(permId))
-    await expectApiError(patchDoc(user, tableRef('Permission').rowUrl(permId), { updated_at: perm.updated_at, can_write: true }), { status: 403 })
-    await expectApiError(user.delete(tableRef('Permission').rowUrl(permId)), { status: 403 })
+    await expectRefused(patchDoc(user, tableRef('Permission').rowUrl(permId), { updated_at: perm.updated_at, can_write: true }), 403)
+    await expectRefused(user.delete(tableRef('Permission').rowUrl(permId)), 403)
     await expectApiError(
       user.post(`${tableRef('Role').rowUrl(role)}:rename`, { new_name: 'Renamed 437' }),
       { status: 403 },
@@ -227,14 +227,14 @@ describe('#437: the security tables refuse non-privileged writes, whatever Permi
     const role = 'Sign In Writer 437'
     const user = await createUserWithRole(admin, createUser, { role, table: ['Sign In Method'], ...ALL_ACTIONS })
     const pw = await admin.get<{ updated_at: string }>(tableRef('Sign In Method').rowUrl('password'))
-    await expectApiError(patchDoc(user, tableRef('Sign In Method').rowUrl('password'), { updated_at: pw.updated_at, new_person: 'create' }), { status: 403 })
+    await expectRefused(patchDoc(user, tableRef('Sign In Method').rowUrl('password'), { updated_at: pw.updated_at, new_person: 'create' }), 403)
   })
 
   test('the Sales Target scope tables refuse a non-manager writer, but reads follow the grant', async ({ admin, createUser }) => {
     await makeTable(admin, { name: 'Store Manager', columns: ['store_code', 'employee_code'] })
     const role = 'Scope Writer 437'
     const user = await createUserWithRole(admin, createUser, { role, table: ['Store Manager'], ...ALL_ACTIONS })
-    await expectApiError(user.post(tableRef('Store Manager').url, { store_code: '1501', employee_code: 'E-1' }), { status: 403 })
+    await expectRefused(user.post(tableRef('Store Manager').url, { store_code: '1501', employee_code: 'E-1' }), 403)
     await admin.post(tableRef('Store Manager').url, { store_code: '1501', employee_code: 'E-2' })
     const rows = await user.get<{ data: unknown[] }>(tableRef('Store Manager').listUrl({ fields: ['row_id'] }))
     expect(rows.data).toHaveLength(1)
@@ -278,13 +278,13 @@ describe('#437: nothing that runs during a save, or on its own, opens access', (
     const target = await makePerson({ full_name: 'Scripted' })
     await admin.post('/api/save_row', { table: 'Server Script', row: { row_id: 'ss-437-enabled', script_type: 'Document Event', ref_table: 'Person', event: 'before_save', script: 'doc.enabled = false', enabled: true } })
     let doc = await loaded(admin, target)
-    await expectApiError(patchDoc(editor, PERSON.rowUrl(target), { updated_at: doc.updated_at, full_name: 'Renamed' }), { status: 403 })
+    await expectRefused(patchDoc(editor, PERSON.rowUrl(target), { updated_at: doc.updated_at, full_name: 'Renamed' }), 403)
     expect((await loaded(admin, target)).enabled).toBe(true)
     await admin.post('/api/save_row', { table: 'Server Script', row: { row_id: 'ss-437-enabled', updated_at: (await admin.get<{ updated_at: string }>(tableRef('Server Script').rowUrl('ss-437-enabled'))).updated_at, enabled: false } })
     await admin.post('/api/save_row', { table: 'Server Script', row: { row_id: 'ss-437-roles', script_type: 'Document Event', ref_table: 'Person', event: 'before_save', script: 'doc.roles = [{ role: "System Manager" }]', enabled: true } })
     doc = await loaded(admin, target)
-    await expectApiError(patchDoc(editor, PERSON.rowUrl(target), { updated_at: doc.updated_at, full_name: 'Renamed' }), { status: 403 })
-    await expectApiError(editor.post(PERSON.url, { full_name: 'Created' }), { status: 403 })
+    await expectRefused(patchDoc(editor, PERSON.rowUrl(target), { updated_at: doc.updated_at, full_name: 'Renamed' }), 403)
+    await expectRefused(editor.post(PERSON.url, { full_name: 'Created' }), 403)
     expect((await loaded(admin, target)).roles).toEqual([])
     // The same script under a System Manager is their decision to make.
     const manager = await createUser({ roles: ['System Manager'] })
@@ -303,10 +303,10 @@ describe('#437: nothing that runs during a save, or on its own, opens access', (
       await admin.post('/api/save_row', { table: 'Server Script', row: { row_id: id, script_type: 'Document Event', ref_table: 'Person', event: 'before_save', script: `doc.enabled = ${value}`, enabled: true } })
       for (const writer of [editor, manager]) {
         const doc = await loaded(admin, target)
-        await expectApiError(patchDoc(writer, PERSON.rowUrl(target), { updated_at: doc.updated_at, full_name: 'Renamed' }), { status: 417 })
+        await expectRefused(patchDoc(writer, PERSON.rowUrl(target), { updated_at: doc.updated_at, full_name: 'Renamed' }), 417)
         expect((await loaded(admin, target)).enabled).toBe(true)
       }
-      await expectApiError(editor.post(PERSON.url, { full_name: 'Created' }), { status: 417 })
+      await expectRefused(editor.post(PERSON.url, { full_name: 'Created' }), 417)
       await admin.post('/api/save_row', { table: 'Server Script', row: { row_id: id, updated_at: (await admin.get<{ updated_at: string }>(tableRef('Server Script').rowUrl(id))).updated_at, enabled: false } })
     }
     // A real boolean left unchanged still saves.
@@ -319,15 +319,15 @@ describe('#437: nothing that runs during a save, or on its own, opens access', (
     const target = await makePerson({ full_name: 'Role typed', roles: [{ role: EDITOR }] })
     await admin.post('/api/save_row', { table: 'Server Script', row: { row_id: 'ss-437-role-type', script_type: 'Document Event', ref_table: 'Person', event: 'before_save', script: 'doc.roles = (doc.roles || []).map((r) => ({ row_id: r.row_id, role: [r.role] }))', enabled: true } })
     const doc = await loaded(admin, target)
-    await expectApiError(patchDoc(editor, PERSON.rowUrl(target), { updated_at: doc.updated_at, full_name: 'Renamed', roles: doc.roles }), { status: 403 })
+    await expectRefused(patchDoc(editor, PERSON.rowUrl(target), { updated_at: doc.updated_at, full_name: 'Renamed', roles: doc.roles }), 403)
     expect((await loaded(admin, target)).roles.map((r) => r.role)).toEqual([EDITOR])
   })
 
   test('a grant on Server Script, Workflow or Assignment Rule does not let a non-manager write them', async ({ admin, createUser }) => {
     const user = await createUserWithRole(admin, createUser, { role: 'Automation Writer 437', table: ['Server Script', 'Workflow', 'Assignment Rule'], ...ALL_ACTIONS })
-    await expectApiError(user.post('/api/save_row', { table: 'Server Script', row: { row_id: 'ss-437-x', script_type: 'Document Event', ref_table: 'Person', event: 'before_save', script: 'doc.enabled = true', enabled: true } }), { status: 403 })
-    await expectApiError(user.post('/api/save_row', { table: 'Workflow', row: { row_id: 'Wf 437 x', ref_table: 'Person', is_active: false } }), { status: 403 })
-    await expectApiError(user.post('/api/save_row', { table: 'Assignment Rule', row: { row_id: 'Ar 437 x', ref_table: 'Person' } }), { status: 403 })
+    await expectRefused(user.post('/api/save_row', { table: 'Server Script', row: { row_id: 'ss-437-x', script_type: 'Document Event', ref_table: 'Person', event: 'before_save', script: 'doc.enabled = true', enabled: true } }), 403)
+    await expectRefused(user.post('/api/save_row', { table: 'Workflow', row: { row_id: 'Wf 437 x', ref_table: 'Person', is_active: false } }), 403)
+    await expectRefused(user.post('/api/save_row', { table: 'Assignment Rule', row: { row_id: 'Ar 437 x', ref_table: 'Person' } }), 403)
   })
 
   test('a Workflow may not drive an access column or a security Table', async ({ admin }) => {
@@ -376,7 +376,7 @@ describe('Only a System Manager changes who can do what', () => {
   test('a delete grant on people removes a person together with their roles', async ({ admin, createUser }) => {
     const editor = await personEditor(admin, createUser)
     const target = await makePerson({ full_name: 'Leaving', roles: [{ role: EDITOR }] })
-    expect((await editor.fetch(PERSON.rowUrl(target), { method: 'DELETE' })).status).toBe(200)
+    await expectStatus(await editor.fetch(PERSON.rowUrl(target), { method: 'DELETE' }), 200)
     expect(await sql`select 1 from person where row_id = ${target}`).toHaveLength(0)
     expect(await sql`select role from has_role where parent = ${target}`).toEqual([])
   })
@@ -396,7 +396,7 @@ describe('#559: a Table marked as deciding scope', () => {
   test('refuses a non-manager writer, but reads follow the grant', async ({ admin, createUser }) => {
     await makeTable(admin, { name: 'Shift Roster 559', decides_scope: true, columns: ['place', 'person'] })
     const user = await createUserWithRole(admin, createUser, { role: 'Roster Writer 559', table: ['Shift Roster 559'], ...ALL_ACTIONS })
-    await expectApiError(user.post(tableRef('Shift Roster 559').url, { place: 'North', person: 'P-1' }), { status: 403 })
+    await expectRefused(user.post(tableRef('Shift Roster 559').url, { place: 'North', person: 'P-1' }), 403)
     await admin.post(tableRef('Shift Roster 559').url, { place: 'North', person: 'P-2' })
     const rows = await user.get<{ data: unknown[] }>(tableRef('Shift Roster 559').listUrl({ fields: ['row_id'] }))
     expect(rows.data).toHaveLength(1)
@@ -407,9 +407,9 @@ describe('#559: a Table marked as deciding scope', () => {
     await makeTable(admin, { name: 'Roster Line 559', kind: 'sub_table', decides_scope: true, columns: ['place'] })
     await makeTable(admin, { name: 'Roster Sheet 559', columns: ['title', { column_name: 'lines', column_type: 'Sub-table', row_table: 'Roster Line 559' }] })
     const user = await createUserWithRole(admin, createUser, { role: 'Sheet Writer 559', table: ['Roster Sheet 559'], ...ALL_ACTIONS })
-    await expectApiError(user.post(tableRef('Roster Sheet 559').url, { title: 'mine', lines: [{ place: 'North' }] }), { status: 403 })
+    await expectRefused(user.post(tableRef('Roster Sheet 559').url, { title: 'mine', lines: [{ place: 'North' }] }), 403)
     const sheet = await admin.post<{ row_id: string; updated_at: string }>(tableRef('Roster Sheet 559').url, { title: 'shared', lines: [{ place: 'South' }] })
-    await expectApiError(patchDoc(user, tableRef('Roster Sheet 559').rowUrl(sheet.row_id), { updated_at: sheet.updated_at, lines: [{ place: 'North' }] }), { status: 403 })
+    await expectRefused(patchDoc(user, tableRef('Roster Sheet 559').rowUrl(sheet.row_id), { updated_at: sheet.updated_at, lines: [{ place: 'North' }] }), 403)
     const after = await admin.get<{ lines: { place: string }[] }>(tableRef('Roster Sheet 559').rowUrl(sheet.row_id))
     expect(after.lines.map((line) => line.place)).toEqual(['South'])
   })
@@ -427,7 +427,7 @@ describe('#559: a Table marked as deciding scope', () => {
 
   test('a non-manager cannot delete a parent that holds marked child rows; a System Manager can', async ({ admin, createUser }) => {
     const { user, sheet, lines } = await sheetWithMarkedLines(admin, createUser)
-    await expectApiError(user.delete(tableRef('Roster Sheet 559').rowUrl(sheet.row_id)), { status: 403 })
+    await expectRefused(user.delete(tableRef('Roster Sheet 559').rowUrl(sheet.row_id)), 403)
     expect(await admin.get(tableRef('Roster Sheet 559').rowUrl(sheet.row_id))).toMatchObject({ title: 'shared' })
     expect(await lines(sheet.row_id)).toEqual(['South'])
     await admin.delete(tableRef('Roster Sheet 559').rowUrl(sheet.row_id))
@@ -436,7 +436,7 @@ describe('#559: a Table marked as deciding scope', () => {
 
   test('a non-manager cannot rename a parent that holds marked child rows', async ({ admin, createUser }) => {
     const { user, sheet, lines } = await sheetWithMarkedLines(admin, createUser)
-    await expectApiError(user.post(`${tableRef('Roster Sheet 559').rowUrl(sheet.row_id)}:rename`, { new_name: 'renamed-559' }), { status: 403 })
+    await expectRefused(user.post(`${tableRef('Roster Sheet 559').rowUrl(sheet.row_id)}:rename`, { new_name: 'renamed-559' }), 403)
     expect(await lines(sheet.row_id)).toEqual(['South'])
   })
 
@@ -444,7 +444,7 @@ describe('#559: a Table marked as deciding scope', () => {
     const { user } = await sheetWithMarkedLines(admin, createUser)
     const empty = await admin.post<{ row_id: string }>(tableRef('Roster Sheet 559').url, { title: 'empty' })
     await user.delete(tableRef('Roster Sheet 559').rowUrl(empty.row_id))
-    await expectApiError(admin.get(tableRef('Roster Sheet 559').rowUrl(empty.row_id)), { status: 404 })
+    await expectRefused(admin.get(tableRef('Roster Sheet 559').rowUrl(empty.row_id)), 404)
   })
 
   test('an Assignment Rule or a Workflow may not target it', async ({ admin }) => {

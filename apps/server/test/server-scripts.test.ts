@@ -3,6 +3,7 @@ import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { runApiScript } from '../src/server-scripts'
+import { expectRefused, expectStatus } from './fixtures'
 
 // CUST-004: sandboxed Server Scripts reject saves conditionally, can set
 // fields, run as API methods, and cannot reach fs/network/process.
@@ -36,10 +37,10 @@ describe('CUST-004: server scripts', () => {
     await setup(admin)
     await makeScript(admin, { row_id: 'ss-srv-reject', script_type: 'Document Event', ref_table: DT, event: 'validate', script: 'if (doc.amount < 0) featherbase.throw("no negatives")', enabled: true })
     const bad = await saveTarget(admin, { amount: -1 })
-    expect(bad.status).toBe(417)
+    await expectStatus(bad, 417)
     expect(((await bad.json()) as { error: { message: string } }).error.message).toContain('no negatives')
     const ok = await saveTarget(admin, { amount: 5 })
-    expect(ok.status).toBe(201)
+    await expectStatus(ok, 201)
   })
 
   test('can set a field (before_save event)', async ({ admin }) => {
@@ -59,7 +60,7 @@ describe('CUST-004: server scripts', () => {
       await sql`delete from server_script where row_id = 'ss-srv-evil'`
       await makeScript(admin, { row_id: 'ss-srv-evil', script_type: 'Document Event', ref_table: DT, event: 'validate', script: bad, enabled: true })
       const res = await saveTarget(admin, { amount: 1 })
-      expect(res.status).toBe(417)
+      await expectStatus(res, 417)
       expect(((await res.json()) as { error: { message: string } }).error.message).toMatch(/is not defined|is not a function/)
     }
   })
@@ -68,7 +69,7 @@ describe('CUST-004: server scripts', () => {
     await setup(admin)
     await makeScript(admin, { row_id: 'ss-srv-off', script_type: 'Document Event', ref_table: DT, event: 'validate', script: 'featherbase.throw("should not fire")', enabled: false })
     const res = await saveTarget(admin, { amount: 1 })
-    expect(res.status).toBe(201)
+    await expectStatus(res, 201)
   })
 
   test('runs an API script and returns its result', async ({ admin }) => {
@@ -83,16 +84,16 @@ describe('CUST-004: server scripts', () => {
     const res = await admin.post<{ result: { doubled: number } }>('/api/server_script/srv_http', { n: 4 })
     expect(res.result).toEqual({ doubled: 8 })
     const missing = await admin.fetch('/api/server_script/srv_http', { method: 'POST', body: '{"n":' })
-    expect(missing.status).toBe(200)
+    await expectStatus(missing, 200)
     expect(await missing.json()).toEqual({ result: { doubled: 0 } })
-    await expect(admin.post('/api/server_script/no_such_method', {})).rejects.toMatchObject({ status: 404 })
+    await expectRefused(admin.post('/api/server_script/no_such_method', {}), 404)
   })
 
   test('a row script that runs too long is stopped and the save is refused', async ({ admin }) => {
     await setup(admin)
     await makeScript(admin, { row_id: 'ss-srv-rowloop', script_type: 'Document Event', ref_table: DT, event: 'validate', script: 'while(true){}', enabled: true })
     const res = await saveTarget(admin, { amount: 1 })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect((await sql`select 1 from featherbase.ss_srv_doc`).length).toBe(0)
   })
 

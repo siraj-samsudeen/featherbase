@@ -4,6 +4,7 @@ import { sql } from '../src/db'
 import { reapplyCustomFields } from '../src/custom-fields'
 import { getMeta, invalidateMeta } from '../src/meta'
 import type { TestClient } from 'feather-testing-postgres'
+import { expectStatus } from './fixtures'
 
 // CUST-001: a custom field on an existing Table appears in meta/API,
 // stored separately, and survives a re-seed of core fixtures.
@@ -52,7 +53,7 @@ describe('CUST-001: custom fields', () => {
         },
       }),
     })
-    expect(res.status).toBe(201)
+    await expectStatus(res, 201)
 
     const meta = await getMeta('Person')
     const f = meta.columns.find((x) => x.column_name === FIELD)
@@ -65,7 +66,7 @@ describe('CUST-001: custom fields', () => {
       method: 'PATCH',
       body: JSON.stringify({ [FIELD]: 'vip', updated_at: adminDoc.updated_at }),
     })
-    expect(upd.status).toBe(200)
+    await expectStatus(upd, 200)
     const read = await admin.get<Record<string, unknown>>(
       `/api/table/Person/Administrator?fields=${encodeURIComponent(JSON.stringify(['row_id', FIELD]))}`,
     )

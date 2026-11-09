@@ -9,6 +9,7 @@ import {
   registerJob,
   syncScheduledJobs,
 } from '../src/jobs'
+import { expectStatus } from './fixtures'
 
 // Recurring jobs are Scheduled Job rows (migration 0086). The queue is derived
 // from the rows — at boot and after every save — and the re-enqueue after a
@@ -262,7 +263,7 @@ describe('Scheduled Job: the queue is derived from the rows', () => {
     })
     expect(await liveEntries(METHOD)).toHaveLength(1)
     const res = await admin.fetch(`/api/table/${encodeURIComponent('Scheduled Job')}/${METHOD}`, { method: 'DELETE' })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     expect(await liveEntries(METHOD)).toHaveLength(0)
   })
 })

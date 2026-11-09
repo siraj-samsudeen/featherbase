@@ -6,7 +6,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { sign } from 'hono/jwt'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { makePerson } from './fixtures'
+import { expectStatus, makePerson } from './fixtures'
 import { hashPassword, issueSession } from '../src/auth'
 import { _setDelegatedFetch } from '../src/delegated-login'
 import { configureDelegated, configureGoogle, linkDelegated } from './identity-fixtures'
@@ -45,7 +45,7 @@ describe('sessions that cannot vouch for the person (A-M1, B-M2)', () => {
     const lp = await person('legacy.person')
     const identity = await linkDelegated(lp, 'legacy_hr')
     const legacy = await sign({ sub: lp, exp: now() + 3600 }, SECRET) // no iat, no method
-    expect((await as(api, legacy)('/api/whoami')).status).toBe(401)
+    await expectStatus(await as(api, legacy)('/api/whoami'), 401)
     expect(await changesRefused(api, legacy, identity)).toEqual([401, 401, 401, 401, 401])
     expect(await sql`select 1 from sign_in_identity where id = ${identity}`).toHaveLength(1)
   })
@@ -57,7 +57,7 @@ describe('sessions that cannot vouch for the person (A-M1, B-M2)', () => {
     vi.stubEnv('PREVIEW_LOGIN_KEY', 'k'.repeat(40))
     vi.stubEnv('PREVIEW_LOGIN_USER', pp)
     const res = await api.fetch(`/preview?key=${'k'.repeat(40)}`, { redirect: 'manual' })
-    expect(res.status).toBe(302)
+    await expectStatus(res, 302)
     const session = await redeemSession(api, res)
     expect((session.user as unknown as { sign_in: { preview: boolean } }).sign_in.preview).toBe(true)
     expect(await changesRefused(api, session.token, identity)).toEqual([403, 403, 403, 403, 403])
@@ -67,10 +67,10 @@ describe('sessions that cannot vouch for the person (A-M1, B-M2)', () => {
     const fp = await person('fresh.person')
     const old = await sign({ sub: fp, iat: now() - 3600, exp: now() + 3600, jti: 'old-session' }, SECRET)
     const body = JSON.stringify({ password: 'first-pw-123' })
-    expect((await as(api, old)('/api/set_password', { method: 'POST', body })).status).toBe(401)
+    await expectStatus(await as(api, old)('/api/set_password', { method: 'POST', body }), 401)
     const fresh = (await issueSession(fp)).token
-    expect((await as(api, fresh)('/api/set_password', { method: 'POST', body })).status).toBe(200)
-    expect((await as(api, old)('/api/set_password', { method: 'POST', body: JSON.stringify({ password: 'second-pw-1' }) })).status).toBe(200)
+    await expectStatus(await as(api, fresh)('/api/set_password', { method: 'POST', body }), 200)
+    await expectStatus(await as(api, old)('/api/set_password', { method: 'POST', body: JSON.stringify({ password: 'second-pw-1' }) }), 200)
     void admin
   })
 })
@@ -82,7 +82,7 @@ describe('administrators are never locked out (A-M2, minor 1)', () => {
     await admin.post('/api/set_password', { user: smd, password: 'sm-delegated-1' })
     await linkDelegated(smd, 'sm_hr')
     const { token } = (await (await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'sm.delegated', pwd: 'sm-delegated-1' }) })).json()) as { token: string }
-    expect((await as(api, token)('/api/me/password', { method: 'DELETE' })).status).toBe(409)
+    await expectStatus(await as(api, token)('/api/me/password', { method: 'DELETE' }), 409)
     const [row] = await sql`select password_hash is not null as has from person where row_id = ${smd}`
     expect(row.has).toBe(true)
   })
@@ -97,10 +97,10 @@ describe('administrators are never locked out (A-M2, minor 1)', () => {
       method: 'PATCH',
       body: JSON.stringify({ client_id: '', updated_at: g.updated_at }),
     })
-    expect(blank.status).toBe(417)
+    await expectStatus(blank, 417)
     expect(((await blank.json()) as { error: { message: string } }).error.message).toContain(smog)
     // An administrator unlinking that only way in is refused too.
-    expect((await admin.fetch('/api/identities/uid_smog', { method: 'DELETE' })).status).toBe(417)
+    await expectStatus(await admin.fetch('/api/identities/uid_smog', { method: 'DELETE' }), 417)
   })
 
   test('moving a System Manager\'s only way in to someone else is refused and names them; the link stays', async ({ admin }) => {
@@ -110,13 +110,13 @@ describe('administrators are never locked out (A-M2, minor 1)', () => {
     const other = await person('someone.else')
     await sql`insert into sign_in_identity (id, person_id, method, subject, linked_by) values ('uid_smove', ${smove}, 'google', 'g-smove', 'test')`
     const res = await admin.fetch('/api/identities/uid_smove', { method: 'PATCH', body: JSON.stringify({ person_id: other }) })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(((await res.json()) as { error: { message: string } }).error.message).toContain(`would lock out ${smove}`)
     expect(await sql`select person_id, ended_at from sign_in_identity where id = 'uid_smove'`).toEqual([{ person_id: smove, ended_at: null }])
     // Someone who is not an administrator can have theirs moved.
     await sql`insert into sign_in_identity (id, person_id, method, subject, linked_by) values ('uid_plain', ${other}, 'google', 'g-plain', 'test')`
     const third = await person('third.person')
-    expect((await admin.fetch('/api/identities/uid_plain', { method: 'PATCH', body: JSON.stringify({ person_id: third }) })).status).toBe(200)
+    await expectStatus(await admin.fetch('/api/identities/uid_plain', { method: 'PATCH', body: JSON.stringify({ person_id: third }) }), 200)
   })
 })
 
@@ -126,17 +126,17 @@ describe('linking for the roster sync (minor 3) and the audit actor (B-M1)', () 
     const rr50 = await person('RR-50')
     const rr51 = await person('RR-51')
     const first = await admin.fetch(`/api/people/${rr50}/identities`, { method: 'POST', body: JSON.stringify({ method: 'stylehr', subject: 'RR-50', sign_in_name: 'tl_50' }) })
-    expect(first.status).toBe(201)
+    await expectStatus(first, 201)
     const { id } = (await first.json()) as { id: string }
     const again = await admin.fetch(`/api/people/${rr50}/identities`, { method: 'POST', body: JSON.stringify({ method: 'stylehr', subject: 'RR-50', sign_in_name: 'tl_50' }) })
-    expect(again.status).toBe(200)
+    await expectStatus(again, 200)
     expect(((await again.json()) as { id: string }).id).toBe(id)
 
     const bySubject = await admin.fetch(`/api/people/${rr51}/identities`, { method: 'POST', body: JSON.stringify({ method: 'stylehr', subject: 'RR-50' }) })
-    expect(bySubject.status).toBe(409)
+    await expectStatus(bySubject, 409)
     expect(((await bySubject.json()) as { error: { fields: Record<string, string> } }).error.fields).toEqual({ clash: 'subject', identity: id, person: rr50 })
     const byName = await admin.fetch(`/api/people/${rr51}/identities`, { method: 'POST', body: JSON.stringify({ method: 'stylehr', subject: 'RR-51', sign_in_name: 'TL_50' }) })
-    expect(byName.status).toBe(409)
+    await expectStatus(byName, 409)
     expect(((await byName.json()) as { error: { fields: Record<string, string> } }).error.fields).toEqual({ clash: 'sign_in_name', identity: id, person: rr50 })
   })
 
@@ -175,7 +175,7 @@ describe('linking for the roster sync (minor 3) and the audit actor (B-M1)', () 
     await configureDelegated()
     const rr70 = await person('RR-70')
     await linkDelegated(rr70, 'tl_70', { subject: 'RR-70' })
-    expect((await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: 'RR-70', pwd: '', method: 'stylehr' }) })).status).toBe(200)
+    await expectStatus(await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: 'RR-70', pwd: '', method: 'stylehr' }) }), 200)
     const [row] = await sql`select sign_in_method, test_mode from activity_log where "user" = ${rr70} and operation = 'login'`
     expect(row).toEqual({ sign_in_method: 'stylehr', test_mode: true })
   })
@@ -186,7 +186,7 @@ describe('sign-in details', () => {
     await sql`delete from sign_in_identity where person_id = 'Administrator'`
     await sql`update person set password_hash = ${hashPassword('fresh-admin-pw')} where row_id = 'Administrator'`
     const res = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'Administrator', pwd: 'fresh-admin-pw' }) })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     expect(((await res.json()) as { user: { sign_in: { method: string } } }).user.sign_in.method).toBe('password')
   })
 
@@ -195,9 +195,9 @@ describe('sign-in details', () => {
     // person-rename: an id is never an address, so "taken" means another
     // person's email, whatever its case.
     await person('taken', { email: 'taken@gmail.com' })
-    expect((await googleSignIn(api, 'taken@gmail.com', { subject: 'g-taken-1' })).status).toBe(401)
+    await expectStatus(await googleSignIn(api, 'taken@gmail.com', { subject: 'g-taken-1' }), 401)
     await person('someone', { email: 'used@gmail.com' })
-    expect((await googleSignIn(api, 'USED@gmail.com', { subject: 'g-taken-2' })).status).toBe(401)
+    await expectStatus(await googleSignIn(api, 'USED@gmail.com', { subject: 'g-taken-2' }), 401)
     expect(await sql`select 1 from sign_in_identity where subject in ('g-taken-1', 'g-taken-2')`).toHaveLength(0)
   })
 
@@ -216,7 +216,7 @@ describe('sign-in details', () => {
       method: 'POST',
       body: JSON.stringify({ table: 'Sign In Method', row: { row_id: 'google2', kind: 'google', label: 'Google 2' } }),
     })
-    expect(res.status).toBe(409)
+    await expectStatus(res, 409)
   })
 })
 
@@ -239,12 +239,12 @@ describe('a delegated provider is configuration only (genericity)', () => {
       return Response.json(answer)
     }) as unknown as typeof fetch)
     const signIn = () => api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: 'pay_one', pwd: 'pw-1', method: 'payroll' }) })
-    expect((await signIn()).status).toBe(200)
+    await expectStatus(await signIn(), 200)
     expect(bodies[0]).toEqual({ username: 'pay_one', secret: 'pw-1' })
     answer = { token: 'stylehr-shaped answer means nothing here' }
-    expect((await signIn()).status).toBe(503)
+    await expectStatus(await signIn(), 503)
     answer = { payload: { session_id: 'abc', state: 'Gone' } }
-    expect((await signIn()).status).toBe(403)
+    await expectStatus(await signIn(), 403)
   })
 
   test('a malformed wire format is refused when saved', async ({ admin }) => {
@@ -252,7 +252,7 @@ describe('a delegated provider is configuration only (genericity)', () => {
       method: 'POST',
       body: JSON.stringify({ table: 'Sign In Method', row: { row_id: 'bad', kind: 'delegated_password', label: 'Bad', settings: { success_keys: 'token' } } }),
     })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
   })
 })
 
@@ -264,13 +264,13 @@ describe('a delegated method\'s settings may arrive as JSON text', () => {
     })
 
   test('JSON text is parsed and checked like an object, and text that is not JSON is refused naming the field', async ({ admin }) => {
-    expect((await save(admin, 'text_ok', '{"success_keys":["ok"]}')).status).toBe(201)
+    await expectStatus(await save(admin, 'text_ok', '{"success_keys":["ok"]}'), 201)
     const bad = await save(admin, 'text_bad', '{"success_keys": ')
-    expect(bad.status).toBe(417)
+    await expectStatus(bad, 417)
     expect(await bad.json()).toMatchObject({ error: { message: 'settings must be JSON', fields: { settings: 'settings must be JSON' } } })
     const wrong = await save(admin, 'text_wrong', '{"success_keys":"ok"}')
-    expect(wrong.status).toBe(417)
-    expect((await save(admin, 'text_blank', '')).status).toBe(201)
+    await expectStatus(wrong, 417)
+    await expectStatus(await save(admin, 'text_blank', ''), 201)
   })
 })
 
@@ -298,16 +298,16 @@ describe('third review round', () => {
     const token = (await issueSession(lf, { method: 'password' })).token
     await sql`update person set password_hash = ${hashPassword('x')} where row_id = ${lf}`
     const start = await api.fetch('/api/oauth/google/link', { headers: { cookie: `sid=${token}` }, redirect: 'manual' })
-    expect(start.status).toBe(302)
+    await expectStatus(start, 302)
     const state = new URLSearchParams((start.headers.get('location') ?? '').split('?')[1]).get('state') as string
     const cookies = [`sid=${token}`, ...start.headers.getSetCookie().map((c) => c.split(';')[0])].join('; ')
     // A code the provider will not exchange.
     const bad = await api.fetch(`/api/oauth/google/callback?state=${encodeURIComponent(state)}&code=garbage`, { headers: { cookie: cookies }, redirect: 'manual' })
-    expect(bad.status).toBe(302)
+    await expectStatus(bad, 302)
     expect(bad.headers.get('location')).toBe('/featherbase/account/sign-in-methods?link=google_failed')
     // A link callback that lost its state cookie (another browser, expired).
     const lost = await api.fetch(`/api/oauth/google/callback?state=${encodeURIComponent(state)}&code=garbage`, { headers: { cookie: `sid=${token}` }, redirect: 'manual' })
-    expect(lost.status).toBe(302)
+    await expectStatus(lost, 302)
     expect(lost.headers.get('location')).toBe('/featherbase/account/sign-in-methods?link=expired')
   })
 })

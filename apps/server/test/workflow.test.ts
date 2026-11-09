@@ -4,7 +4,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { initDocState } from '../src/workflow'
-import { expectApiError, grantRole } from './fixtures'
+import { expectApiError, expectRefused, expectStatus, grantRole } from './fixtures'
 
 // WF-001/002/003: workflow definition, execution, and server-side role
 // enforcement.
@@ -91,7 +91,7 @@ describe('WF-001: workflow definition', () => {
       method: 'POST',
       body: JSON.stringify({ table: 'Workflow', row: FLOW_DOC }),
     })
-    expect(res.status).toBe(201)
+    await expectStatus(res, 201)
     const meta = await admin.get<{ columns: { column_name: string }[] }>(
       `/api/table/${encodeURIComponent(DT)}:meta`,
     )
@@ -134,7 +134,7 @@ describe('WF-002/003: execution + server-side enforcement', () => {
       const response = await admin.fetch(`${base}/wf-srv-1:apply_workflow_action`, {
         method: 'POST', body: JSON.stringify({ action }),
       })
-      expect(response.status).toBe(417)
+      await expectStatus(response, 417)
       expect(await response.json()).toEqual({ error: {
         type: 'ValidationError', message: 'Expected { action }',
       } })
@@ -340,9 +340,9 @@ describe('Move a row forward with an allowed action', () => {
       method: 'POST',
       body: JSON.stringify({ table: DT, row: { row_id: 'wf-srv-1', updated_at: doc.updated_at, title: 'edited' } }),
     })
-    expect(edit.status).toBe(201)
+    await expectStatus(edit, 201)
     // …but Approve is refused, and the row stays Pending.
-    await expect(viewer.post(url(':apply_workflow_action'), { action: 'Approve' })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(viewer.post(url(':apply_workflow_action'), { action: 'Approve' }), 403)
     const after = await admin.get<{ workflow_state: string }>(url())
     expect(after.workflow_state).toBe('Pending')
   })

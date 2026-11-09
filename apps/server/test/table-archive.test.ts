@@ -5,7 +5,7 @@
 import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
-import { expectApiError, grantRole, makeTable } from './fixtures'
+import { expectApiError, expectRefused, grantRole, makeTable } from './fixtures'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
 
@@ -81,7 +81,7 @@ describe('#905: archiving a Table', () => {
     for (const links of ['clear', 'cascade']) {
       const plan = await admin.get<{ blocked: boolean }>(`${unit.url}:purge_preview?ids=${encodeURIComponent(JSON.stringify(['U-1']))}&links=${links}`)
       expect(plan.blocked).toBe(true)
-      await expectApiError(admin.post(`${unit.url}:purge`, { ids: ['U-1'], links, reason: 'Made by mistake', confirm: true }), { status: 417 })
+      await expectRefused(admin.post(`${unit.url}:purge`, { ids: ['U-1'], links, reason: 'Made by mistake', confirm: true }), 417)
     }
     expect(await admin.get(`${holder.url}/H-1`)).toMatchObject({ unit: 'U-1' })
     expect(await admin.get(`${unit.url}/U-1`)).toMatchObject({ unit_name: 'One' })
@@ -112,14 +112,14 @@ describe('#905: archiving a Table', () => {
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Arc Clerk' } })
     await grantRole(admin, { table: T, role: 'Arc Clerk', can_read: true, can_write: true, can_create: true })
     const clerk = await createUser({ email: 'arc.clerk@example.com', roles: ['Arc Clerk'] })
-    await expectApiError(archive(clerk), { status: 403 })
+    await expectRefused(archive(clerk), 403)
     await archive(admin)
     const who = await clerk.get<{ capabilities: { archived: string[]; creatable: string[]; tables: string[] } }>('/api/whoami')
     expect(who.capabilities).toMatchObject({ archived: [T], creatable: [] })
     expect(who.capabilities.tables).toContain(T)
     expect(await clerk.get(`${url}/PLANT-8151`)).toMatchObject({ city: 'Chennai' })
-    await expectApiError(clerk.post('/api/save_row', { table: T, row: { plant_code: '9100', city: 'Trichy' } }), { status: 403 })
-    await expectApiError(unarchive(clerk), { status: 403 })
+    await expectRefused(clerk.post('/api/save_row', { table: T, row: { plant_code: '9100', city: 'Trichy' } }), 403)
+    await expectRefused(unarchive(clerk), 403)
   })
 
   test('an archived Table can still be deleted, as a separate step', async ({ admin }) => {
@@ -131,10 +131,10 @@ describe('#905: archiving a Table', () => {
 
   test('only a custom Table, once, with a short note', async ({ admin }) => {
     await plants(admin)
-    await expectApiError(archive(admin, 'x'.repeat(501)), { status: 417 })
-    await expectApiError(archive(admin, 42), { status: 417 })
+    await expectRefused(archive(admin, 'x'.repeat(501)), 417)
+    await expectRefused(archive(admin, 42), 417)
     await expectApiError(archive(admin, undefined, 'Person'), { status: 417, message: expect.stringContaining('platform table') })
-    await expectApiError(archive(admin, undefined, 'System Settings'), { status: 417 })
+    await expectRefused(archive(admin, undefined, 'System Settings'), 417)
     await makeTable(admin, { name: 'Arc Roster', columns: ['person'] })
     await sql`update table_def set decides_scope = true where name = 'Arc Roster'`
     invalidateMeta('Arc Roster')

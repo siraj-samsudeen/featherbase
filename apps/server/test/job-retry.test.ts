@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { drainJobs, loadJobs, retryJob } from '../src/jobs'
+import { expectStatus } from './fixtures'
 
 // JOB-004: a failed job can be re-queued and re-run.
 //
@@ -69,7 +70,7 @@ describe('JOB-004: retry failed jobs', () => {
       body: JSON.stringify({ row_id: name }),
       headers: { 'content-type': 'application/json' },
     })
-    expect(ok.status).toBe(200)
+    await expectStatus(ok, 200)
     await drainJobs()
     // Re-retrying the now-done job is rejected.
     const again = await admin.fetch('/api/retry_job', {
@@ -77,16 +78,16 @@ describe('JOB-004: retry failed jobs', () => {
       body: JSON.stringify({ row_id: name }),
       headers: { 'content-type': 'application/json' },
     })
-    expect(again.status).toBe(417)
+    await expectStatus(again, 417)
   })
 
   test('only a System Manager can retry a failed job or start one by hand', async ({ createUser }) => {
     const name = await failedJob()
     const outsider = await createUser({ roles: [] })
     const retry = await outsider.fetch('/api/retry_job', { method: 'POST', body: JSON.stringify({ row_id: name }) })
-    expect(retry.status).toBe(403)
+    await expectStatus(retry, 403)
     const start = await outsider.fetch('/api/enqueue_job', { method: 'POST', body: JSON.stringify({ method: 'ping_job' }) })
-    expect(start.status).toBe(403)
+    await expectStatus(start, 403)
     const [job] = await sql`select job_status from background_job where row_id = ${name}`
     expect(job.job_status).toBe('failed')
   })

@@ -5,7 +5,7 @@ import { overrideVariable } from '../src/env'
 import { invalidateSources } from '../src/sources/registry'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
 import { sql } from '../src/db'
-import { grantRole } from './fixtures'
+import { expectRefused, grantRole } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
 import { enqueue, jobRegistrant, registerJob, runOneJob } from '../src/jobs'
 import { registerCopyRefreshJobs } from '../src/copy-refresh'
@@ -30,8 +30,8 @@ describe('Scheduled copied-table refresh', () => {
     const path = '/api/table/Scheduled%20Stores:copy_schedule'
     expect(await admin.get(path)).toBeNull()
     const write = '/api/table/Scheduled%20Stores:set_copy_schedule'
-    await expect(admin.post(write, { cadence: 'every minute', enabled: true })).rejects.toMatchObject({ status: 417 })
-    await expect(admin.post('/api/table/Person:set_copy_schedule', { cadence: 'hourly', enabled: true })).rejects.toMatchObject({ status: 404 })
+    await expectRefused(admin.post(write, { cadence: 'every minute', enabled: true }), 417)
+    await expectRefused(admin.post('/api/table/Person:set_copy_schedule', { cadence: 'hourly', enabled: true }), 404)
     expect(await admin.get(path)).toBeNull()
     const schedule = await admin.post<{ row_id: string; method: string; cadence: string }>(write, { cadence: 'hourly', enabled: true })
     expect(schedule).toMatchObject({ cadence: 'hourly', enabled: true })
@@ -62,9 +62,9 @@ describe('Scheduled copied-table refresh', () => {
     const schedule = await admin.post<{ method: string }>('/api/table/Scheduled%20Stores:set_copy_schedule', { enabled: true, cadence: 'hourly' })
     await grantRole(admin, { role: 'Refresh Editor', table: ['Scheduled Job', 'Person'], can_read: true, can_write: true, can_create: true, can_delete: true })
     const user = await createUser({ roles: ['Refresh Editor'] })
-    await expect(user.post('/api/table/Person:set_copy_schedule', { enabled: true, cadence: 'hourly' })).rejects.toMatchObject({ status: 403 })
-    await expect(user.post('/api/save_row', { table: 'Scheduled Job', row: { method: 'copy_refresh_fake', cadence: 'hourly', enabled: true } })).rejects.toMatchObject({ status: 403 })
-    await expect(user.delete(`/api/table/Scheduled%20Job/${schedule.method}`)).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.post('/api/table/Person:set_copy_schedule', { enabled: true, cadence: 'hourly' }), 403)
+    await expectRefused(user.post('/api/save_row', { table: 'Scheduled Job', row: { method: 'copy_refresh_fake', cadence: 'hourly', enabled: true } }), 403)
+    await expectRefused(user.delete(`/api/table/Scheduled%20Job/${schedule.method}`), 403)
     expect(await admin.get('/api/table/Scheduled%20Stores:copy_schedule')).toMatchObject({ enabled: true })
   })
 
@@ -74,8 +74,8 @@ describe('Scheduled copied-table refresh', () => {
     await grantRole(admin, { role: 'Rename Editor', table: ['Scheduled Job'], can_read: true, can_write: true, can_create: true, can_delete: true })
     const user = await createUser({ roles: ['Rename Editor'] })
     const url = `/api/table/Scheduled%20Job/${schedule.row_id}:rename`
-    await expect(user.post(url, { new_name: 'renamed_refresh' })).rejects.toMatchObject({ status: 417 })
-    await expect(admin.post(url, { new_name: 'renamed_refresh' })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(user.post(url, { new_name: 'renamed_refresh' }), 417)
+    await expectRefused(admin.post(url, { new_name: 'renamed_refresh' }), 417)
     expect(await admin.get('/api/table/Scheduled%20Stores:copy_schedule')).toMatchObject({ row_id: schedule.row_id, method: schedule.method })
   })
 
@@ -166,8 +166,8 @@ describe('Scheduled copied-table refresh', () => {
 
   test('schedule requests name a copied table and say whether it is enabled', async ({ admin }) => {
     await makeCopy(admin)
-    await expect(admin.get('/api/table/Person:copy_schedule')).rejects.toMatchObject({ status: 404 })
-    await expect(admin.post('/api/table/Scheduled%20Stores:set_copy_schedule', { cadence: 'hourly', enabled: 'yes' })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(admin.get('/api/table/Person:copy_schedule'), 404)
+    await expectRefused(admin.post('/api/table/Scheduled%20Stores:set_copy_schedule', { cadence: 'hourly', enabled: 'yes' }), 417)
   })
 
   test('a conflict notice job names a copied table, and gives up after a day of refusals (#934)', async ({ admin, createUser }) => {

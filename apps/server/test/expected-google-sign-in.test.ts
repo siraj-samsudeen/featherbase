@@ -5,7 +5,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { createUserWithRole, makePerson } from './fixtures'
+import { createUserWithRole, expectStatus, makePerson } from './fixtures'
 import { configureGoogle, inviteGoogleRaw } from './identity-fixtures'
 import { googleSignIn, redeemSession } from './google-mock'
 import { resolveVerified } from '../src/sign-in'
@@ -33,7 +33,7 @@ describe('the first Google sign-in links to a person who expects it', () => {
     await configureGoogle({ allowed_email_domains: DOMAIN })
     const asha = await expectedPerson()
     const res = await googleSignIn(api, `Asha@${DOMAIN}`, { subject: 'g-asha' })
-    expect(res.status).toBe(302)
+    await expectStatus(res, 302)
     const session = await redeemSession(api, res)
     expect(session.user.row_id).toBe(asha)
     expect(session.user.sign_in?.method).toBe('google')
@@ -49,8 +49,8 @@ describe('the first Google sign-in links to a person who expects it', () => {
   test('the flag is consumed: a different Google account with the same address later is refused', async ({ api }) => {
     await configureGoogle({ allowed_email_domains: DOMAIN })
     const asha = await expectedPerson()
-    expect((await googleSignIn(api, `asha@${DOMAIN}`, { subject: 'g-asha' })).status).toBe(302)
-    expect((await googleSignIn(api, `asha@${DOMAIN}`, { subject: 'g-reused-mailbox' })).status).toBe(401)
+    await expectStatus(await googleSignIn(api, `asha@${DOMAIN}`, { subject: 'g-asha' }), 302)
+    await expectStatus(await googleSignIn(api, `asha@${DOMAIN}`, { subject: 'g-reused-mailbox' }), 401)
     expect(await googleLinks(asha)).toEqual([{ subject: 'g-asha', linked_by: 'expected-sign-in' }])
   })
 })
@@ -60,7 +60,7 @@ describe('any condition missing keeps today\'s answer', () => {
     await configureGoogle({ allowed_email_domains: DOMAIN, new_person: 'create_if_email_domain_allowed' })
     const asha = await expectedPerson({ expects_google_sign_in: false })
     const res = await googleSignIn(api, `asha@${DOMAIN}`, { subject: 'g-asha' })
-    expect(res.status).toBe(401)
+    await expectStatus(res, 401)
     expect(await res.text()).toContain('An account already uses this address')
     expect(await googleLinks(asha)).toHaveLength(0)
   })
@@ -79,10 +79,10 @@ describe('any condition missing keeps today\'s answer', () => {
   test('3. an address outside the allowed domains does not link', async ({ api }) => {
     await configureGoogle({ allowed_email_domains: 'other.example' })
     const asha = await expectedPerson()
-    expect((await googleSignIn(api, `asha@${DOMAIN}`, { subject: 'g-asha' })).status).toBe(401)
+    await expectStatus(await googleSignIn(api, `asha@${DOMAIN}`, { subject: 'g-asha' }), 401)
     // No domains at all admits nobody either.
     await configureGoogle({ allowed_email_domains: '' })
-    expect((await googleSignIn(api, `asha@${DOMAIN}`, { subject: 'g-asha' })).status).toBe(401)
+    await expectStatus(await googleSignIn(api, `asha@${DOMAIN}`, { subject: 'g-asha' }), 401)
     expect(await googleLinks(asha)).toHaveLength(0)
     expect(await flagOf(asha)).toBe(true)
   })
@@ -90,14 +90,14 @@ describe('any condition missing keeps today\'s answer', () => {
   test('3. a company domain whose Google account carries no matching hosted domain does not link', async ({ api }) => {
     await configureGoogle({ allowed_email_domains: DOMAIN })
     const asha = await expectedPerson()
-    expect((await googleSignIn(api, `asha@${DOMAIN}`, { subject: 'g-asha', hd: '' })).status).toBe(401)
+    await expectStatus(await googleSignIn(api, `asha@${DOMAIN}`, { subject: 'g-asha', hd: '' }), 401)
     expect(await googleLinks(asha)).toHaveLength(0)
   })
 
   test('4. a different address does not link, even on the same domain', async ({ api }) => {
     await configureGoogle({ allowed_email_domains: DOMAIN, new_person: 'refuse' })
     const asha = await expectedPerson()
-    expect((await googleSignIn(api, `asha.k@${DOMAIN}`, { subject: 'g-other' })).status).toBe(401)
+    await expectStatus(await googleSignIn(api, `asha.k@${DOMAIN}`, { subject: 'g-other' }), 401)
     // Where the method creates new people, it is someone new — never Asha.
     await configureGoogle({ new_person: 'create_if_email_domain_allowed' })
     const other = await redeemSession(api, await googleSignIn(api, `asha.k@${DOMAIN}`, { subject: 'g-other' }))
@@ -109,7 +109,7 @@ describe('any condition missing keeps today\'s answer', () => {
   test('5. a disabled person is not linked', async ({ api }) => {
     await configureGoogle({ allowed_email_domains: DOMAIN })
     const asha = await expectedPerson({ enabled: false })
-    expect((await googleSignIn(api, `asha@${DOMAIN}`, { subject: 'g-asha' })).status).toBe(401)
+    await expectStatus(await googleSignIn(api, `asha@${DOMAIN}`, { subject: 'g-asha' }), 401)
     expect(await googleLinks(asha)).toHaveLength(0)
     expect(await flagOf(asha)).toBe(true)
   })
@@ -118,7 +118,7 @@ describe('any condition missing keeps today\'s answer', () => {
     await configureGoogle({ allowed_email_domains: DOMAIN })
     const asha = await expectedPerson()
     await sql`insert into sign_in_identity (id, person_id, method, subject, linked_by) values ('uid_asha_g', ${asha}, 'google', 'g-first', 'test')`
-    expect((await googleSignIn(api, `asha@${DOMAIN}`, { subject: 'g-second' })).status).toBe(401)
+    await expectStatus(await googleSignIn(api, `asha@${DOMAIN}`, { subject: 'g-second' }), 401)
     expect((await googleLinks(asha)).map((r) => r.subject)).toEqual(['g-first'])
   })
 
@@ -128,8 +128,8 @@ describe('any condition missing keeps today\'s answer', () => {
     const linked = (await admin.post(`/api/people/${asha}/identities`, { method: 'google', subject: 'g-admin-linked' })) as { id: string }
     expect(await flagOf(asha)).toBe(false)
     await admin.post('/api/set_password', { user: asha, password: 'asha-pw-123' })
-    expect((await admin.fetch(`/api/identities/${linked.id}`, { method: 'DELETE' })).status).toBe(200)
-    expect((await googleSignIn(api, `asha@${DOMAIN}`, { subject: 'g-later' })).status).toBe(401)
+    await expectStatus(await admin.fetch(`/api/identities/${linked.id}`, { method: 'DELETE' }), 200)
+    await expectStatus(await googleSignIn(api, `asha@${DOMAIN}`, { subject: 'g-later' }), 401)
   })
 
   test('a pending invite is still claimed the way it always was', async ({ api }) => {
@@ -157,21 +157,21 @@ describe('who may set the flag', () => {
 
     // Creating a person who expects Google sign-in is refused…
     const create = await clerk.fetch('/api/table/Person', { method: 'POST', body: JSON.stringify({ email: `new@${DOMAIN}`, expects_google_sign_in: true, enabled: true }) })
-    expect(create.status).toBe(403)
+    await expectStatus(create, 403)
     expect(await sql`select 1 from person where email = ${`new@${DOMAIN}`}`).toHaveLength(0)
     // …but an ordinary person is still theirs to create.
-    expect((await clerk.fetch('/api/table/Person', { method: 'POST', body: JSON.stringify({ email: `plain@${DOMAIN}`, enabled: true }) })).status).toBe(201)
+    await expectStatus(await clerk.fetch('/api/table/Person', { method: 'POST', body: JSON.stringify({ email: `plain@${DOMAIN}`, enabled: true }) }), 201)
 
     // Turning it on, or off, on an existing person is refused.
     for (const [start, to] of [[false, true], [true, false]]) {
       const asha = await expectedPerson({ email: `asha.${String(to)}@${DOMAIN}`, expects_google_sign_in: start })
       const [a] = await sql`select updated_at from person where row_id = ${asha}`
       const res = await clerk.fetch(`/api/table/Person/${enc(asha)}`, { method: 'PATCH', body: JSON.stringify({ expects_google_sign_in: to, updated_at: a.updated_at }) })
-      expect(res.status).toBe(403)
+      await expectStatus(res, 403)
       expect(await flagOf(asha)).toBe(start)
       // An unchanged value rides along, so the form still saves other edits.
       const edit = await clerk.fetch(`/api/table/Person/${enc(asha)}`, { method: 'PATCH', body: JSON.stringify({ full_name: 'Asha K', expects_google_sign_in: start, updated_at: a.updated_at }) })
-      expect(edit.status).toBe(200)
+      await expectStatus(edit, 200)
     }
   })
 
@@ -179,7 +179,7 @@ describe('who may set the flag', () => {
     const asha = await expectedPerson({ expects_google_sign_in: false })
     const [a] = await sql`select updated_at from person where row_id = ${asha}`
     const res = await admin.fetch(`/api/table/Person/${enc(asha)}`, { method: 'PATCH', body: JSON.stringify({ expects_google_sign_in: true, updated_at: a.updated_at }) })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     expect(await flagOf(asha)).toBe(true)
   })
 
@@ -187,7 +187,7 @@ describe('who may set the flag', () => {
     const asha = await expectedPerson({ expects_google_sign_in: false })
     const [a] = await sql`select updated_at from person where row_id = ${asha}`
     const res = await admin.fetch(`/api/table/Person/${enc(asha)}`, { method: 'PATCH', body: JSON.stringify({ expects_google_sign_in: 'yes', updated_at: a.updated_at }) })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(await flagOf(asha)).toBe(false)
   })
 
@@ -199,9 +199,9 @@ describe('who may set the flag', () => {
     const asha = await expectedPerson()
     const [a] = await sql`select updated_at from person where row_id = ${asha}`
     const res = await clerk.fetch(`/api/table/Person/${enc(asha)}`, { method: 'PATCH', body: JSON.stringify({ email: `intruder@${DOMAIN}`, expects_google_sign_in: true, updated_at: a.updated_at }) })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     expect(await flagOf(asha)).toBe(false)
-    expect((await googleSignIn(api, `intruder@${DOMAIN}`, { subject: 'g-intruder' })).status).toBe(401)
+    await expectStatus(await googleSignIn(api, `intruder@${DOMAIN}`, { subject: 'g-intruder' }), 401)
     expect(await googleLinks(asha)).toHaveLength(0)
   })
 
@@ -209,7 +209,7 @@ describe('who may set the flag', () => {
     const asha = await expectedPerson({ expects_google_sign_in: false })
     const [a] = await sql`select updated_at from person where row_id = ${asha}`
     const res = await admin.fetch(`/api/table/Person/${enc(asha)}`, { method: 'PATCH', body: JSON.stringify({ email: `asha.new@${DOMAIN}`, expects_google_sign_in: true, updated_at: a.updated_at }) })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     expect(await flagOf(asha)).toBe(true)
   })
 
@@ -221,12 +221,12 @@ describe('who may set the flag', () => {
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({ email: `planted@${DOMAIN}`, expects_google_sign_in: true, enabled: true }),
     })
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
     expect(await sql`select 1 from person where email = ${`planted@${DOMAIN}`}`).toHaveLength(0)
     // An ordinary save from the same session still works.
     const plain = await api.fetch('/api/table/Person', {
       method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ email: `plain.preview@${DOMAIN}`, enabled: true }),
     })
-    expect(plain.status).toBe(201)
+    await expectStatus(plain, 201)
   })
 })

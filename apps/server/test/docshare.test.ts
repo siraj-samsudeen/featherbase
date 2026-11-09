@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test, patchDoc } from './pg-test'
-import { expectApiError, makeTable, tableRef, type TableRef } from './fixtures'
+import { expectApiError, expectRefused, expectStatus, makeTable, tableRef, type TableRef } from './fixtures'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 
 const DT = 'Sh Memo'
@@ -37,7 +37,7 @@ describe('PERM-008: Share', () => {
     createUser,
   }) => {
     const { user, dt, docName } = await setup(admin, createUser)
-    await expectApiError(user.get(dt.rowUrl(docName)), { status: 403 })
+    await expectRefused(user.get(dt.rowUrl(docName)), 403)
   })
 
   test('a read-share grants access to that one doc without role changes', async ({
@@ -48,7 +48,7 @@ describe('PERM-008: Share', () => {
     await share(admin, user, docName, { read: true })
 
     const res = await user.fetch(dt.rowUrl(docName))
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     expect(((await res.json()) as Record<string, unknown>).body).toBe('secret memo')
 
     // read-only share: cannot write
@@ -71,7 +71,7 @@ describe('PERM-008: Share', () => {
       method: 'PATCH',
       body: JSON.stringify({ updated_at: doc.updated_at, body: 'edited by sharee' }),
     })
-    expect(write.status).toBe(200)
+    await expectStatus(write, 200)
     const after = await admin.get<Record<string, unknown>>(dt.rowUrl(docName))
     expect(after.body).toBe('edited by sharee')
   })
@@ -80,7 +80,7 @@ describe('PERM-008: Share', () => {
     const { user, dt, docName } = await setup(admin, createUser)
     const shareName = await share(admin, user, docName, { read: true, write: true })
     await admin.delete(SHARE.rowUrl(shareName))
-    await expectApiError(user.get(dt.rowUrl(docName)), { status: 403 })
+    await expectRefused(user.get(dt.rowUrl(docName)), 403)
   })
 })
 
@@ -97,7 +97,7 @@ describe('A single row can be shared beyond its role grants', () => {
     await patchDoc(user, dt.rowUrl(docName), { updated_at: shared.updated_at, body: 'edited by sharee' })
     expect((await admin.get<Record<string, unknown>>(dt.rowUrl(docName))).body).toBe('edited by sharee')
 
-    await expectApiError(user.get(dt.rowUrl(String(other.row_id))), { status: 403 })
+    await expectRefused(user.get(dt.rowUrl(String(other.row_id))), 403)
     await expectApiError(
       patchDoc(user, dt.rowUrl(String(other.row_id)), { updated_at: other.updated_at, body: 'not mine' }),
       { status: 403 },

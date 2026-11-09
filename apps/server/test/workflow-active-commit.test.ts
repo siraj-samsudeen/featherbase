@@ -6,6 +6,7 @@ import { app } from '../src/index'
 import { issueSession } from '../src/auth'
 import { createTable } from '../src/table-engine'
 import { registerController, unregisterController, type TableController } from '../src/controllers'
+import { expectStatus } from './fixtures'
 
 // Independent commits, not sandbox savepoints. Use only a worker-owned local
 // disposable DB; vitest.config.ts rejects unsafe destinations before setup.
@@ -57,8 +58,8 @@ prove.each(['insert', 'activate'] as const)('concurrent %s commits only one acti
     if (mode === 'activate') {
       const firstSaved = await save({ ...first, is_active: false })
       const secondSaved = await save({ ...second, is_active: false })
-      expect(firstSaved.status).toBe(201)
-      expect(secondSaved.status).toBe(201)
+      await expectStatus(firstSaved, 201)
+      await expectStatus(secondSaved, 201)
       first = { ...await firstSaved.json() as Record<string, unknown>, is_active: true }
       second = { ...await secondSaved.json() as Record<string, unknown>, is_active: true }
     }
@@ -74,9 +75,9 @@ prove.each(['insert', 'activate'] as const)('concurrent %s commits only one acti
     }).toBe(true)
     expect(winnerPid).not.toBe(loserPid)
     release()
-    expect((await winner).status).toBe(201)
+    await expectStatus(await winner, 201)
     const refused = await loser
-    expect(refused.status).toBe(409)
+    await expectStatus(refused, 409)
     expect(await refused.json()).toMatchObject({ error: {
       type: 'ConflictError', message: expect.stringContaining(winnerName),
     } })

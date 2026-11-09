@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
-import { createUserWithRole, grantRole, patchDoc, tableRef } from './fixtures'
+import { createUserWithRole, expectStatus, grantRole, patchDoc, tableRef } from './fixtures'
 import { countDocs } from '../src/query'
 
 // #342: a comment or an edit is about one row, so it is readable only where
@@ -86,7 +86,7 @@ describe('#342: comments follow the row they are on', () => {
     const { agent, theirs } = await setup(admin, createUser)
     const [comment] = (await listOf(admin, COMMENT, PLAIN, ['row_id', 'ref_name'])).data.filter((c) => c.ref_name === theirs)
     const res = await agent.fetch(COMMENT.rowUrl(comment.row_id))
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
   })
 
   test('a row shared with the reader shows its comments', async ({ admin, createUser }) => {
@@ -103,7 +103,7 @@ describe('#342: comments follow the row they are on', () => {
     )
     expect(activity.comments).toEqual([expect.objectContaining({ content: 'my note', row_id: expect.any(String) })])
     const res = await agent.fetch(`/api/activity/${encodeURIComponent(PLAIN)}/${encodeURIComponent('nope')}`)
-    expect(res.status).toBe(404)
+    await expectStatus(res, 404)
   })
 })
 

@@ -5,7 +5,7 @@ import { config } from '../src/config'
 import { parseInstanceAddresses } from '../src/instance-addresses'
 import { saveDoc } from '../src/document'
 import { sql } from '../src/db'
-import { makePerson } from './fixtures'
+import { expectStatus, makePerson } from './fixtures'
 import { configureGoogle } from './identity-fixtures'
 import { signInAddresses } from './sign-in-address-utils'
 
@@ -100,7 +100,7 @@ describe('POST /api/open_admin', () => {
   test("on an app's address, a person who can use Admin is handed to the admin address", async ({ api, admin }) => {
     const both = await signedIn(api, admin, 'both.opens', ['System Manager', 'Sales Target Viewer'], DASH)
     const res = await both.openAdmin(DASH)
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     expect(((await res.json()) as Opened).handoff).toMatch(new RegExp(`^${ADMIN}/api/handoff/start\\?ticket=`))
   })
 
@@ -120,7 +120,7 @@ describe('POST /api/open_admin', () => {
 
   test('a person who cannot use Admin is refused', async ({ api, admin }) => {
     const viewer = await signedIn(api, admin, 'viewer.refused', ['Sales Target Viewer'], DASH)
-    expect((await viewer.openAdmin(DASH)).status).toBe(403)
+    await expectStatus(await viewer.openAdmin(DASH), 403)
   })
 
   test('on the admin address, Admin is this address', async ({ api, admin }) => {
@@ -135,7 +135,7 @@ describe('POST /api/open_admin', () => {
   })
 
   test('signed out, it is refused', async ({ api }) => {
-    expect((await api.fetch(`${DASH}/api/open_admin`, { method: 'POST' })).status).toBe(401)
+    await expectStatus(await api.fetch(`${DASH}/api/open_admin`, { method: 'POST' }), 401)
   })
 })
 
@@ -174,12 +174,12 @@ describe('a handed-over session keeps the time its person signed in', () => {
 
   test('Google linking on the admin address is refused when the sign-in on the app address is older than 15 minutes', async ({ api, admin }) => {
     const { target } = await handedOverAfter(api, admin, 'stale.linker', 20)
-    expect((await startLinkingGoogle(api, target.token)).status).toBe(401)
+    await expectStatus(await startLinkingGoogle(api, target.token), 401)
   })
 
   test('Google linking on the admin address starts when the sign-in on the app address is fresh', async ({ api, admin }) => {
     const { target } = await handedOverAfter(api, admin, 'fresh.linker', 1)
-    expect((await startLinkingGoogle(api, target.token)).status).toBe(302)
+    await expectStatus(await startLinkingGoogle(api, target.token), 302)
   })
 
   test('the handed-over session expires when the original sign-in would', async ({ api, admin }) => {
@@ -227,7 +227,7 @@ describe('#396: the sign-in records the client address', () => {
       headers: { cookie: nonce, 'x-real-ip': '198.51.100.8' },
       body: JSON.stringify({ code: callback.searchParams.get('code') }),
     })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     // The first sign-in (no header, no socket in the test client) has none.
     expect((await signInAddresses(both.id)).sort()).toEqual(['198.51.100.8', null])
   })

@@ -16,6 +16,7 @@ import { sql } from '../../src/db'
 import { overrideVariable } from '../../src/env'
 import { invalidateSources } from '../../src/sources/registry'
 import { test } from '../pg-test'
+import { expectRefused, expectStatus } from '../fixtures'
 import { buildStandin, STANDIN_TOKENS } from '../motherduck-standin'
 import { EXPLORE_FLOOR, EXPLORE_STORE, dropExploreSource, exploreSource, manyStores } from '../explore-source'
 import { scenarioFor, type Example } from '../scenario'
@@ -57,7 +58,7 @@ class Restrictions {
   async save(entry: string) {
     this.requested = entry
     this.response = await this.admin.fetch('/api/save_row', { method: 'POST', body: JSON.stringify({ table: 'Data Source', row: { ...this.source, table_allowlist: entry } }) })
-    this.body = (await this.response.json()) as Body
+    this.body = (await this.response.clone().json()) as Body
   }
 
   async register(entry: string) {
@@ -66,8 +67,8 @@ class Restrictions {
     this.source = await this.admin.get(`/api/table/Data%20Source/${encodeURIComponent(String(this.source.row_id))}`)
   }
 
-  expectRefused(format: string) {
-    expect(this.response.status, `restriction validation refusal: ${JSON.stringify(this.body)}`).toBe(417)
+  async expectRefused(format: string) {
+    await expectStatus(this.response, 417)
     expect(this.body.error?.type).toBe('ValidationError')
     const guidance = this.body.error?.fields?.table_allowlist
     expect(typeof guidance, 'the correction belongs to the table restriction field').toBe('string')
@@ -76,11 +77,11 @@ class Restrictions {
 
   async expectNotRegistered() {
     const res = await this.admin.fetch(`/api/table/Data%20Source/${encodeURIComponent(String(this.source.row_id))}`)
-    expect(res.status, 'a refused create must not register the source').toBe(404)
+    await expectStatus(res, 404)
   }
 
   async expectRegistered(entry = this.requested) {
-    expect(this.response.status, JSON.stringify(this.body)).toBe(201)
+    await expectStatus(this.response, 201)
     await this.expectStored(entry)
   }
 
@@ -107,7 +108,7 @@ class Restrictions {
       await outside`insert into public.stores (id, note) values (1, 'legacy allowlist fixture')`
     } finally { await outside.end({ timeout: 5 }) }
     await this.save('')
-    expect(this.response.status, JSON.stringify(this.body)).toBe(201)
+    await expectStatus(this.response, 201)
     const updated = await sql`update data_source set table_allowlist = ${entry} where row_id = ${String(this.source.row_id)} returning row_id`
     expect(updated, 'exactly this source gets legacy text').toHaveLength(1)
     process.env[String(this.source.url_env)] = url.toString()
@@ -120,7 +121,7 @@ class Restrictions {
     this.response = await this.admin.fetch(`/api/table/Data%20Source/${encodeURIComponent(String(this.source.row_id))}:reflect`, {
       method: 'POST', body: JSON.stringify({ schema: 'public', tables: ['stores'], prefix: `Allowlist ${randomUUID().replaceAll('-', '')}` }),
     })
-    this.body = (await this.response.json()) as Body
+    this.body = (await this.response.clone().json()) as Body
   }
 }
 
@@ -175,10 +176,9 @@ describe('external-data-sources', () => {
     const source = new Restrictions(admin, 'postgres', 'public')
     await step('a Postgres source already stores the restriction "stores" for its public stores table', () => source.legacy('stores'))
     await step('the user tries to connect the public stores table', () => source.connectStores())
-    await step('connection is refused with guidance to use "schema.table"', () => {
-      expect(source.response.status, JSON.stringify(source.body)).toBe(403)
-      expect(source.body.error?.type).toBe('PermissionError')
-      expect(source.body.error?.message).toContain('schema.table')
+    await step('connection is refused with guidance to use "schema.table"', async () => {
+      const err = await expectRefused(source.response, 403, 'schema.table')
+      expect(err.type).toBe('PermissionError')
     })
     await step('its stored restriction is still "stores"', () => source.expectStored('stores'))
   })
@@ -188,7 +188,7 @@ describe('external-data-sources', () => {
     await step('a Postgres source already stores the restriction "stores,public.stores" for its public stores table', () => source.legacy('stores,public.stores'))
     await step('the user tries to connect the public stores table', () => source.connectStores())
     await step('the public stores table connects', async () => {
-      expect(source.response.status, JSON.stringify(source.body)).toBe(200)
+      await expectStatus(source.response, 200)
       expect(source.body.created, 'exactly one source table connects').toHaveLength(1)
       expect(source.body.created![0]!.table).toBe('stores')
       expect(source.body.skipped).toEqual([])
@@ -239,7 +239,7 @@ describe('external-data-sources', () => {
     await step('the user tries to change a row of that table', async () => {
       const res = await admin.fetch(`/api/table/${encodeURIComponent(connected)}/S001`, { method: 'PATCH', body: JSON.stringify({ name: 'Changed' }) })
       // The call itself says the change is refused: anything but a refusal fails it.
-      expect(res.status, await res.text()).toBe(403)
+      await expectRefused(res, 403)
     })
     await step('the change is refused')
     await step('the row in the warehouse is unchanged', async () => {

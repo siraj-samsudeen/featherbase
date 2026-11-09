@@ -6,6 +6,7 @@ import { makeClient } from 'feather-testing-postgres'
 import { test as pgTest } from '../pg-test'
 import { sandboxRequest } from '../pg-test-shared'
 import { scenarioFor } from '../scenario'
+import { expectStatus } from '../fixtures'
 import { issueSession } from '../../src/auth'
 import { pinned, pinning, Tickets, type Ticket } from '../tickets-world'
 
@@ -44,8 +45,8 @@ describe('tickets-intake-and-triage', () => {
     })
     await step('the request remains available after signing out and back in', async () => {
       const signedOut = t.people.Anjali
-      expect((await signedOut.fetch('/api/logout', { method: 'POST' })).status).toBe(200)
-      expect((await signedOut.fetch('/api/whoami')).status).toBe(401)
+      await expectStatus(await signedOut.fetch('/api/logout', { method: 'POST' }), 200)
+      await expectStatus(await signedOut.fetch('/api/whoami'), 401)
       const again = pinned(makeClient({ request: sandboxRequest }, (await issueSession(t.ids.Anjali)).token, t.ids.Anjali))
       t.people.Anjali = again
       expect((await t.open('Anjali')).ticket.row_id).toBe(t.ticket.row_id)

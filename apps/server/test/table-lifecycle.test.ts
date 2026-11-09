@@ -8,6 +8,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
+import { expectRefused, expectStatus } from './fixtures'
 
 const NOTE = 'TLC Note'
 const REF = 'TLC Ref'
@@ -80,7 +81,7 @@ describe('TLC-R3: deleting a row', () => {
     const res = await admin.delete<{ ok: boolean }>(rowPath(NOTE, 'note-1'))
     expect(res).toEqual({ ok: true })
 
-    await expect(admin.get(rowPath(NOTE, 'note-1'))).rejects.toMatchObject({ status: 404 })
+    await expectRefused(admin.get(rowPath(NOTE, 'note-1')), 404)
   })
 
   test('TLC-R3: deleting a row that does not exist is a 404, never a silent success', async ({
@@ -143,7 +144,7 @@ describe('TLC-I2 / TLC-I3: the definition API never loses data silently', () => 
         method: 'PUT',
         body: JSON.stringify({ columns: [{ column_name: 'headline', column_type: 'Data' }] }),
       })
-      expect(res.status).toBe(417)
+      await expectStatus(res, 417)
       const body = await res.json()
       expect(body.error.fields.title).toMatch(/1 row holds a value/)
       expect(body.error.fields.title).toMatch(/rename_column/)

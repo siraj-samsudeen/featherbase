@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
-import { grantRole } from './fixtures'
+import { expectStatus, grantRole } from './fixtures'
 
 // UI-017: document tags add/list/remove, gated by document read permission.
 //
@@ -25,7 +25,7 @@ describe('UI-017: tags', () => {
         method: 'POST',
         body: JSON.stringify({ table: DT, row_id: 't1', tag }),
       })
-      expect(res.status).toBe(201)
+      await expectStatus(res, 201)
     }
     const listed = await admin.get<{ tags: string[] }>(`/api/tags/${encodeURIComponent(DT)}/t1`)
     expect(listed.tags).toEqual(['finance', 'urgent']) // sorted
@@ -35,14 +35,14 @@ describe('UI-017: tags', () => {
       method: 'POST',
       body: JSON.stringify({ table: DT, row_id: 't1', tag: 'urgent' }),
     })
-    expect(dup.status).toBe(201)
+    await expectStatus(dup, 201)
     const after = await admin.get<{ tags: string[] }>(`/api/tags/${encodeURIComponent(DT)}/t1`)
     expect(after.tags).toHaveLength(2)
 
     const del = await admin.fetch(`/api/tags/${encodeURIComponent(DT)}/t1/urgent`, {
       method: 'DELETE',
     })
-    expect(del.status).toBe(200)
+    await expectStatus(del, 200)
     const final = await admin.get<{ tags: string[] }>(`/api/tags/${encodeURIComponent(DT)}/t1`)
     expect(final.tags).toEqual(['finance'])
   })
@@ -53,7 +53,7 @@ describe('UI-017: tags', () => {
       method: 'POST',
       body: JSON.stringify({ table: DT, row_id: 'ghost', tag: 'x' }),
     })
-    expect(res.status).toBe(404)
+    await expectStatus(res, 404)
   })
 
   test('requires a non-empty tag', async ({ admin }) => {
@@ -62,7 +62,7 @@ describe('UI-017: tags', () => {
       method: 'POST',
       body: JSON.stringify({ table: DT, row_id: 't1', tag: '  ' }),
     })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
   })
 })
 
@@ -78,16 +78,16 @@ describe('Tag a row freely', () => {
     await world(admin)
     const first = await createUser({ roles: ['Tag Srv Reader'] })
     const second = await createUser({ roles: ['Tag Srv Reader'] })
-    expect((await first.fetch('/api/tags', { method: 'POST', body: JSON.stringify({ table: DT, row_id: 't1', tag: 'urgent' }) })).status).toBe(201)
+    await expectStatus(await first.fetch('/api/tags', { method: 'POST', body: JSON.stringify({ table: DT, row_id: 't1', tag: 'urgent' }) }), 201)
     expect((await second.get<{ tags: string[] }>(tagPath)).tags).toEqual(['urgent'])
-    expect((await second.fetch(`${tagPath}/urgent`, { method: 'DELETE' })).status).toBe(200)
+    await expectStatus(await second.fetch(`${tagPath}/urgent`, { method: 'DELETE' }), 200)
     expect((await first.get<{ tags: string[] }>(tagPath)).tags).toEqual([])
   })
 
   test('someone who cannot read the row can neither see nor change its tags', async ({ admin, createUser }) => {
     await world(admin)
     const outsider = await createUser({ roles: [] })
-    expect((await outsider.fetch(tagPath)).status).toBe(403)
-    expect((await outsider.fetch('/api/tags', { method: 'POST', body: JSON.stringify({ table: DT, row_id: 't1', tag: 'x' }) })).status).toBe(403)
+    await expectStatus(await outsider.fetch(tagPath), 403)
+    await expectStatus(await outsider.fetch('/api/tags', { method: 'POST', body: JSON.stringify({ table: DT, row_id: 't1', tag: 'x' }) }), 403)
   })
 })

@@ -7,6 +7,7 @@ import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from '../pg-test'
 import { scenarioFor } from '../scenario'
+import { expectRefused, expectStatus } from '../fixtures'
 
 const scenario = scenarioFor(test, 'access-tokens')
 
@@ -27,7 +28,7 @@ async function accountWithToken(admin: TestClient, api: TestClient, name: string
 
 async function whoami(api: TestClient, secret: string): Promise<Identity> {
   const res = await api.fetch('/api/whoami', { headers: { authorization: `Bearer ${secret}` } })
-  expect(res.status, 'the original credential still authenticates').toBe(200)
+  await expectStatus(res, 200)
   return (await res.json()) as Identity
 }
 
@@ -58,7 +59,7 @@ describe('access-tokens', () => {
     })
     await step('a System Manager tries to rename the token to a blank name', async () => {
       refused = await patch(admin, `/api/access_tokens/${given.token.id}`, { label: '   ' })
-      expect(refused.status).toBe(417)
+      await expectRefused(refused, 417)
     })
     await step('the rename is refused and the token is still named "nightly export"', async () => {
       expect(refused.ok).toBe(false)
@@ -72,9 +73,9 @@ describe('access-tokens', () => {
       given = await accountWithToken(admin, api, 'warehouse-import-agent', 'nightly export')
     })
     await step('a System Manager renames it to "warehouse-reader" and the token to "morning export"', async () => {
-      expect((await patch(admin, `/api/service_accounts/${given.account.row_id}`, { label: 'warehouse-reader' })).status).toBe(200)
+      await expectStatus(await patch(admin, `/api/service_accounts/${given.account.row_id}`, { label: 'warehouse-reader' }), 200)
       const renamed = await patch(admin, `/api/access_tokens/${given.token.id}`, { label: 'morning export' })
-      expect(renamed.status).toBe(200)
+      await expectStatus(renamed, 200)
       expectNoSecret(await renamed.json(), given.secret)
     })
     await step('the same credential authenticates as the same account named "warehouse-reader"', async () => {
@@ -103,7 +104,7 @@ describe('access-tokens', () => {
     await step('an ordinary user tries to rename that token to "morning export"', async () => {
       const ordinary = await createUser({ roles: [] })
       refused = await patch(ordinary, `/api/access_tokens/${given.token.id}`, { label: 'morning export' })
-      expect(refused.status).toBe(403)
+      await expectRefused(refused, 403)
     })
     await step('the rename is refused and the token is still named "nightly export"', async () => {
       expect(refused.ok).toBe(false)
@@ -120,7 +121,7 @@ describe('access-tokens', () => {
     })
     await step('a System Manager renames "warehouse-import-agent" to "warehouse-reader"', async () => {
       refused = await patch(admin, `/api/service_accounts/${made.get('warehouse-import-agent')!.row_id}`, { label: 'warehouse-reader' })
-      expect(refused.status).toBe(409)
+      await expectRefused(refused, 409)
     })
     await step('the rename is refused and both accounts keep their names', async () => {
       expect(refused.ok).toBe(false)

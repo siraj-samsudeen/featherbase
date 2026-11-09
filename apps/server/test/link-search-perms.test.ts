@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { expectApiError, grantRole, makeTable, type TableRef } from './fixtures'
+import { expectRefused, grantRole, makeTable, type TableRef } from './fixtures'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 
 const TARGET = 'Ls Target'
@@ -54,7 +54,7 @@ describe('PERM-010: link-field search is permission-filtered', () => {
     createUser,
   }) => {
     const { target, alice } = await setup(admin, createUser)
-    await expectApiError(alice.get(searchQs(target, 'doc')), { status: 403 })
+    await expectRefused(alice.get(searchQs(target, 'doc')), 403)
   })
 
   test('own_rows_only read -> search returns only own docs', async ({ admin, createUser }) => {

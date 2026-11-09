@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
-import { grantRole } from './fixtures'
+import { expectStatus, grantRole } from './fixtures'
 
 // NAV-002: the 'related' filter operator — relationship-shaped list filters
 // compiled to permission-scoped subqueries server-side. World: Supplier ←
@@ -103,7 +103,7 @@ describe('NAV-002: related filters', () => {
     const res = await admin.fetch(`/api/table/${encodeURIComponent(ORDER)}?filters=${encodeURIComponent(JSON.stringify([
       ['supplier', 'not related', { table: SUP, filters: [['city', '=', 'Chennai']] }],
     ]))}`)
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
   })
 
   test('parent: child rows whose owning row matches', async ({ admin }) => {
@@ -266,7 +266,7 @@ describe('NAV-002: related filters', () => {
     const res = await admin.fetch(
       `/api/table/${encodeURIComponent(ORDER)}:aggregate?sum=supplier`,
     )
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
   })
 
   test('non-array filters JSON is a 417, not a 500', async ({ admin }) => {
@@ -276,7 +276,7 @@ describe('NAV-002: related filters', () => {
       `/api/table/${encodeURIComponent(ORDER)}:aggregate?filters=${encodeURIComponent('{}')}`,
     ]) {
       const res = await admin.fetch(path)
-      expect(res.status).toBe(417)
+      await expectStatus(res, 417)
     }
   })
 
@@ -375,12 +375,12 @@ describe('NAV-002: related filters', () => {
       `filters=${encodeURIComponent('null')}&sum=total`, // null filters
     ]) {
       const res = await admin.fetch(`/api/table/${encodeURIComponent(ORDER)}:aggregate?${qs}`)
-      expect(res.status).toBe(417)
+      await expectStatus(res, 417)
     }
     // a Data column on the sub-table for completeness
     const res = await admin.fetch(
       `/api/table/${encodeURIComponent(PART)}:aggregate?sum=${encodeURIComponent('part_name')}`,
     )
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
   })
 })

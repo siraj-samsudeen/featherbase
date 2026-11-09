@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
-import { createUserWithRole, grantRole, tableRef } from './fixtures'
+import { createUserWithRole, expectStatus, grantRole, tableRef } from './fixtures'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
 import { tableRelation } from '../src/table-engine'
@@ -74,7 +74,7 @@ describe('#609: files follow the row they are attached to', () => {
     const { agent, files } = await setup(admin, createUser)
     await sql`drop table ${sql(await tableRelation(PLAIN))}`
     const response = await agent.fetch(FILE.rowUrl(files.mine))
-    expect(response.status).toBe(500)
+    await expectStatus(response, 500)
     expect(await response.json()).toMatchObject({ error: { type: 'InternalError' } })
   })
 
@@ -85,7 +85,7 @@ describe('#609: files follow the row they are attached to', () => {
     await admin.post('/api/save_row', { table: 'Permission', row: { ...current, column_rule: 'listed', columns: [] } })
     await grantRole(admin, { role: ROLE, table: 'Version', can_read: true })
     await sql`insert into version (row_id, ref_table, ref_name, data) values ('rafd-sensitive', ${PLAIN}, ${mine}, ${sql.json({ changed: [['subject', 'old', 'secret']] })})`
-    expect((await agent.fetch('/api/table/Version/rafd-sensitive')).status).toBe(403)
+    await expectStatus(await agent.fetch('/api/table/Version/rafd-sensitive'), 403)
     expect(await agent.get(`/api/table/${encodeURIComponent(PLAIN)}/${mine}`)).not.toHaveProperty('subject')
   })
 
@@ -101,9 +101,9 @@ describe('#609: files follow the row they are attached to', () => {
 
   test('a file on a row the reader cannot open cannot be opened by its id', async ({ admin, createUser }) => {
     const { agent, files } = await setup(admin, createUser)
-    expect((await agent.fetch(FILE.rowUrl(files.theirs))).status).toBe(403)
-    expect((await agent.fetch(FILE.rowUrl(files.mine))).status).toBe(200)
-    expect((await agent.fetch(FILE.rowUrl(files.onTable))).status).toBe(200)
+    await expectStatus(await agent.fetch(FILE.rowUrl(files.theirs)), 403)
+    await expectStatus(await agent.fetch(FILE.rowUrl(files.mine)), 200)
+    await expectStatus(await agent.fetch(FILE.rowUrl(files.onTable)), 200)
   })
 
   test('a row shared with the reader shows its files', async ({ admin, createUser }) => {
@@ -135,7 +135,7 @@ describe('#609: attaching follows the row too', () => {
       method: 'POST',
       body: JSON.stringify({ table: 'File', row: { file_name: 'x.pdf', file_url: '/files/rafd-x.pdf', ref_table: PLAIN, ref_name: theirs } }),
     })
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
   })
 
   test('a comment or file may sit on a file one level deep; a deeper chain is refused, and one stored that way is not followed', async ({ admin, createUser }) => {
@@ -145,21 +145,21 @@ describe('#609: attaching follows the row too', () => {
       table: 'Comment',
       row: { ref_table: 'File', ref_name: files.mine, content: 'see page 2' },
     })
-    expect((await agent.fetch(COMMENT.rowUrl(note.row_id))).status).toBe(200)
+    await expectStatus(await agent.fetch(COMMENT.rowUrl(note.row_id)), 200)
     // Nothing goes on that comment in turn.
     const deeper = await admin.fetch('/api/save_row', {
       method: 'POST',
       body: JSON.stringify({ table: 'File', row: { file_name: 'y.pdf', ref_table: 'Comment', ref_name: note.row_id } }),
     })
-    expect(deeper.status).toBe(417)
+    await expectStatus(deeper, 417)
     expect(await deeper.json()).toMatchObject({ error: {
       type: 'ValidationError', message: 'A File cannot be attached to a Comment that is itself attached to one',
     } })
     // Two files pointing at each other, as only a direct write could leave them.
     await sql`update file set ref_table = 'File', ref_name = ${files.loose} where row_id = ${files.mine}`
     await sql`update file set ref_table = 'File', ref_name = ${files.mine} where row_id = ${files.loose}`
-    expect((await agent.fetch(FILE.rowUrl(files.mine))).status).toBe(403)
-    expect((await agent.fetch(FILE.rowUrl(files.mine), { method: 'DELETE' })).status).toBe(403)
+    await expectStatus(await agent.fetch(FILE.rowUrl(files.mine)), 403)
+    await expectStatus(await agent.fetch(FILE.rowUrl(files.mine), { method: 'DELETE' }), 403)
   })
 
   test('a file with a comment of its own is not moved onto another file', async ({ admin, createUser }) => {
@@ -170,7 +170,7 @@ describe('#609: attaching follows the row too', () => {
       method: 'PATCH',
       body: JSON.stringify({ updated_at: cur.updated_at, ref_table: 'File', ref_name: files.mine }),
     })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
   })
 
   test('a file is not moved onto a row the caller cannot open, nor taken off its row', async ({ admin, createUser }) => {
@@ -179,8 +179,8 @@ describe('#609: attaching follows the row too', () => {
       const [cur] = await sql`select updated_at from file where row_id = ${files.mine}`
       return agent.fetch(FILE.rowUrl(files.mine), { method: 'PATCH', body: JSON.stringify({ updated_at: cur.updated_at, ...ref }) })
     }
-    expect((await move({ ref_name: theirs })).status).toBe(403)
-    expect((await move({ ref_name: null })).status).toBe(403)
+    await expectStatus(await move({ ref_name: theirs }), 403)
+    await expectStatus(await move({ ref_name: null }), 403)
     const [after] = await sql`select ref_name from file where row_id = ${files.mine}`
     expect(after.ref_name).not.toBe(theirs)
     expect(after.ref_name).not.toBeNull()
@@ -218,10 +218,10 @@ describe('#610: removing a comment or a file needs access to its row', () => {
   test('a comment on a row the caller cannot open is not deleted by its id', async ({ admin, createUser }) => {
     const { agent, comments } = await setup(admin, createUser)
     const res = await agent.fetch(COMMENT.rowUrl(comments.theirs), { method: 'DELETE' })
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
     expect(await sql`select 1 from comment where row_id = ${comments.theirs}`).toHaveLength(1)
     // A comment on their own row is theirs to remove.
-    expect((await agent.fetch(COMMENT.rowUrl(comments.mine), { method: 'DELETE' })).status).toBe(200)
+    await expectStatus(await agent.fetch(COMMENT.rowUrl(comments.mine), { method: 'DELETE' }), 200)
   })
 
   test('a comment on a row the caller cannot open is not edited by its id', async ({ admin, createUser }) => {
@@ -231,7 +231,7 @@ describe('#610: removing a comment or a file needs access to its row', () => {
       method: 'PATCH',
       body: JSON.stringify({ updated_at: cur.updated_at, content: 'rewritten' }),
     })
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
     const [after] = await sql`select content from comment where row_id = ${comments.theirs}`
     expect(after.content).toBe('secret plan')
   })
@@ -243,7 +243,7 @@ describe('#610: removing a comment or a file needs access to its row', () => {
       method: 'PATCH',
       body: JSON.stringify({ updated_at: cur.updated_at, ref_name: mine }),
     })
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
     const [after] = await sql`select ref_name from comment where row_id = ${comments.theirs}`
     expect(after.ref_name).not.toBe(mine)
   })
@@ -251,7 +251,7 @@ describe('#610: removing a comment or a file needs access to its row', () => {
   test('a file on a row the caller cannot open is not deleted by its id', async ({ admin, createUser }) => {
     const { agent, files } = await setup(admin, createUser)
     const res = await agent.fetch(FILE.rowUrl(files.theirs), { method: 'DELETE' })
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
     expect(await sql`select 1 from file where row_id = ${files.theirs}`).toHaveLength(1)
   })
 })

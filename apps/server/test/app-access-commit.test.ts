@@ -9,6 +9,7 @@ import { saveDoc, deleteDoc } from '../src/document'
 import { app } from '../src/index'
 import { issueSession } from '../src/auth'
 import { AppError } from '../src/errors'
+import { expectStatus } from './fixtures'
 
 void app
 // Independent commits are essential: sandbox savepoints cannot prove a grant
@@ -103,7 +104,7 @@ prove('actual HTTP callback failures are redacted and audited after committed ro
       body: JSON.stringify(body),
     })
     const receipt = { idempotencyKey: 'http-original', payload: { storeCodes: ['A'], pairs: [['A', 'X']] } }
-    expect((await send('app_actions/scopeproof/product', receipt)).status).toBe(200)
+    await expectStatus(await send('app_actions/scopeproof/product', receipt), 200)
     const before = { ...module.calls }
     let auditCount = Number((await sql`select count(*) as n from access_log where "user" = ${user} and operation = 'app_access_denied'`)[0].n)
     for (const error of [new Error('Private object 37 missing'), new AppError('NotFoundError', 'Private object 37 missing', { private: '37' })]) {
@@ -114,7 +115,7 @@ prove('actual HTTP callback failures are redacted and audited after committed ro
           : [['app_reads/scopeproof/product', { payload: receipt.payload }], ['app_actions/scopeproof/product', receipt]] as const
         for (const [path, body] of paths) {
           const response = await send(path, body)
-          expect(response.status).toBe(403)
+          await expectStatus(response, 403)
           expect(await response.json()).toEqual({ error: { type: 'PermissionError', message: 'Application access refused' } })
           expect(Number((await sql`select count(*) as n from access_log where "user" = ${user} and operation = 'app_access_denied'`)[0].n)).toBe(++auditCount)
           expect(module.calls.handler).toBe(before.handler)

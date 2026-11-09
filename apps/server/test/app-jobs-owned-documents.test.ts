@@ -4,6 +4,7 @@ import { test, expect } from './pg-test'
 import { discoverPackages } from '../src/runtime-packages'
 import { drainJobs } from '../src/jobs'
 import { sql } from '../src/db'
+import { expectStatus } from './fixtures'
 
 async function fixture(handler: string, declaration: unknown = { owner_table: 'ownerjobs.note', tables: ['ownerjobs.note'] }) {
   const dir = await mkdtemp(resolve('test/.owner-jobs-'))
@@ -37,7 +38,7 @@ test('a declared document job preserves private row creators', async ({ admin, c
     const headers = { 'X-Featherbase-App-Version': 'ownerjobs@1.0.0' }
     const created = await owner.fetch('/api/save_row', { method: 'POST', headers, body: JSON.stringify({ table: 'ownerjobs.note', row: { body: 'Private work' } }) })
     const note = await created.json() as { row_id: string }
-    expect(created.status).toBe(201)
+    await expectStatus(created, 201)
     await run()
     const res = await owner.fetch(`/api/table/ownerjobs.note/${note.row_id}`, { headers })
     expect(await res.json()).toMatchObject({ body: 'Private work advanced', created_by: owner.user })
@@ -358,14 +359,14 @@ test('a document job skips a disabled creator who retains app membership', async
     const headers = { 'X-Featherbase-App-Version': 'ownerjobs@1.0.0' }
     const created = await owner.fetch('/api/save_row', { method: 'POST', headers, body: JSON.stringify({ table: 'ownerjobs.note', row: { body: 'Retain disabled work' } }) })
     const note = await created.json() as { row_id: string }
-    expect(created.status).toBe(201)
+    await expectStatus(created, 201)
     const before = await admin.get<Record<string, unknown>>(`/api/table/Person/${owner.user}`)
     const disabled = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'Person', row: { row_id: owner.user, updated_at: before.updated_at, enabled: false } })
     expect(disabled).toMatchObject({ enabled: false, roles: expect.arrayContaining([expect.objectContaining({ role: 'Owner jobs member' })]) })
     await run()
     await admin.post('/api/save_row', { table: 'Person', row: { row_id: owner.user, updated_at: disabled.updated_at, enabled: true } })
     const res = await owner.fetch('/api/table/ownerjobs.note?fields=%5B%22row_id%22%2C%22body%22%2C%22created_by%22%5D', { headers })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     expect(await res.json()).toMatchObject({ total: 1, data: [{ row_id: note.row_id, body: 'Retain disabled work', created_by: owner.user }] })
   } finally { await rm(dir, { recursive: true, force: true }) }
 })

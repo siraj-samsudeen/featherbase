@@ -12,7 +12,7 @@ import { applyInstanceSettings, managedScope } from '../src/instance-settings'
 import { BREAK_GLASS_ACTOR, lastApply, managedFieldsOf } from '../src/managed-settings'
 import { runAsSystemActor } from '../src/system-actor'
 import { deleteDoc, getDoc, renameDoc, saveDoc } from '../src/document'
-import { expectApiError, patchDoc } from './fixtures'
+import { expectApiError, expectRefused, patchDoc } from './fixtures'
 import { applySeedPack } from '../src/seed-packs'
 import { CORE_PEOPLE_REVIEW_JSON } from '../src/person-identifiers'
 
@@ -87,7 +87,7 @@ describe('what is locked (D5)', () => {
   test('only a reader of the row learns which of its fields are locked', async ({ createUser }) => {
     await apply()
     const clerk = await createUser({ roles: [] })
-    await expectApiError(clerk.get('/api/instance-settings/managed/Sign%20In%20Method/google'), { status: 403 })
+    await expectRefused(clerk.get('/api/instance-settings/managed/Sign%20In%20Method/google'), 403)
   })
 })
 
@@ -166,7 +166,7 @@ describe('Admin saves of a locked field are refused (D5)', () => {
     await apply()
     await expect(deleteDoc('Scheduled Job', 'disable_leavers', 'Administrator')).rejects.toMatchObject(LOCKED_ROW)
     await expect(renameDoc('Scheduled Job', 'disable_leavers', 'renamed_job', 'Administrator')).rejects.toMatchObject(LOCKED_ROW)
-    await expectApiError(admin.post('/api/table/Scheduled%20Job/disable_leavers:rename', { new_name: 'renamed_job' }), { status: 403 })
+    await expectRefused(admin.post('/api/table/Scheduled%20Job/disable_leavers:rename', { new_name: 'renamed_job' }), 403)
     await sql`delete from scheduled_job where row_id = 'disable_leavers'`
     await expect(saveDoc('Scheduled Job', { row_id: 'disable_leavers', method: 'disable_leavers', cadence: 'daily', enabled: true }, 'Administrator', 'insert'))
       .rejects.toMatchObject(LOCKED_ROW)

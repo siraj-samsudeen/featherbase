@@ -1,10 +1,11 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
+import { expectStatus } from './fixtures'
 
 describe('GET /api/ping', () => {
   test('responds with pong and a live db check', async ({ admin }) => {
     const res = await admin.fetch('/api/ping')
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const body = await res.json()
     expect(body).toEqual({
       message: 'pong',
@@ -20,7 +21,7 @@ describe('GET /api/ping', () => {
   // the test pins that a yes-or-no answer is given, not which.
   test('answers without signing in, and says whether its database is on this machine', async ({ api }) => {
     const res = await api.fetch('/api/ping')
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     expect(await res.json()).toMatchObject({ message: 'pong', db: true, database_server_local: expect.any(Boolean) })
   })
 })

@@ -3,6 +3,7 @@ import { test } from './pg-test'
 import { issueSession } from '../src/auth'
 import { logActivity } from '../src/audit'
 import { sql } from '../src/db'
+import { expectStatus } from './fixtures'
 
 // #101 Phase 4: /api/activity_feed — 'mine' is the caller's raw trail;
 // 'team' shows changes + logins only and requires System Manager.
@@ -84,12 +85,12 @@ describe('#101: GET /api/activity_feed', () => {
     const res = await api.fetch('/api/activity_feed?scope=team', {
       headers: { authorization: `Bearer ${token}` },
     })
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
     // Their own 'mine' scope still works.
     const mine = await api.fetch('/api/activity_feed?scope=mine', {
       headers: { authorization: `Bearer ${token}` },
     })
-    expect(mine.status).toBe(200)
+    await expectStatus(mine, 200)
   })
 
   // #440: the feed names people, not ids.

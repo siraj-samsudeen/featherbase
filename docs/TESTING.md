@@ -221,6 +221,8 @@ through feather-testing-postgres's adapter): `renderSession(path, client)` from
 then one chain of verbs inside each step. It sets up data with the `seed(table,
 values)` and `createUser({ roles })` fixtures, and keeps the When as an explicit
 request. Raw Testing Library is for what no verb covers, with a comment saying why.
+On the server, check a refusal with `expectRefused(call, status, message?)` and a raw
+Response's status with `expectStatus(res, status)` (`apps/server/test/fixtures.ts`).
 
 ```ts
 await step('the user corrects the plant code', async () => {

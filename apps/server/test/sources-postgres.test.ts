@@ -14,7 +14,7 @@ import { sql } from '../src/db'
 import { invalidateSources } from '../src/sources/registry'
 import { invalidateMeta } from '../src/meta'
 import type { ReflectionCandidate } from '../src/sources/reflect'
-import { grantRole, makeTable } from './fixtures'
+import { expectStatus, grantRole, makeTable } from './fixtures'
 
 const EXT_URL_ENV = 'EXT_FIXTURE_URL'
 process.env[EXT_URL_ENV] = EXTERNAL_DATABASE_URL
@@ -130,7 +130,7 @@ async function makeSource(
       ...overrides,
     }),
   })
-  expect(res.status).toBe(201)
+  await expectStatus(res, 201)
 }
 
 async function reflectTenant(admin: {
@@ -140,7 +140,7 @@ async function reflectTenant(admin: {
     method: 'POST',
     body: JSON.stringify({ schema: 'ext_fixture', tables: ['tenant'] }),
   })
-  expect(res.status).toBe(200)
+  await expectStatus(res, 200)
   const body = (await res.json()) as { created: { name: string }[]; skipped: unknown[] }
   expect(body.created).toHaveLength(1)
   return body.created[0].name
@@ -168,7 +168,7 @@ describe('EDS-1: Data Source registry', () => {
         action === 'introspect' ? undefined : {
           method: 'POST', body: JSON.stringify({ schema: 'ext_fixture', tables: ['business'] }),
         })
-      expect(response.status).toBe(404)
+      await expectStatus(response, 404)
       expect(await response.json()).toEqual({ error: {
         type: 'NotFoundError', message: 'No such action for Source Action Note',
       } })
@@ -363,7 +363,7 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
         method: 'POST',
         body: JSON.stringify({ row_id: '747', name: 'Must not overwrite' }),
       })
-      expect(duplicate.status).toBe(409)
+      await expectStatus(duplicate, 409)
       expect(await duplicate.json()).toMatchObject({ error: { type: 'ConflictError' } })
       expect(await admin.get(`${path}/747`)).toMatchObject({ row_id: '747', name: 'Explicit source key' })
       expect(await cli`select code, name from ext_fixture.business where code = 747`).toEqual([
@@ -387,7 +387,7 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
       expect(await admin.get(`${path}/748`)).toMatchObject({ row_id: '748', name: 'Removed externally' })
       await cli`delete from ext_fixture.business where code = 748`
       const missing = await admin.fetch(`${path}/748`, { method: 'DELETE' })
-      expect(missing.status).toBe(404)
+      await expectStatus(missing, 404)
       expect(await missing.json()).toMatchObject({ error: { type: 'NotFoundError' } })
       expect(await cli`select code, name from ext_fixture.business order by code`).toEqual(original)
     } finally {
@@ -473,13 +473,13 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
       }],
     ] as const) {
       const res = await admin.fetch(path, { method: 'PATCH', body: JSON.stringify(payload) })
-      expect(res.status).toBe(417)
+      await expectStatus(res, 417)
       expect(await res.json()).toEqual({ error })
       expect(await cli`select * from ext_fixture.refusal_parent order by id`).toEqual(before)
       expect(await cli`select * from ext_fixture.refusal_child order by id`).toEqual(children)
     }
     const deletion = await admin.fetch(path, { method: 'DELETE' })
-    expect(deletion.status).toBe(417)
+    await expectStatus(deletion, 417)
     expect(await deletion.json()).toEqual({ error: {
       type: 'ValidationError',
       message: `Cannot delete ${name} ${before[0].id}: other rows at the data source still point at it`,
@@ -500,7 +500,7 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
     const res = await admin.fetch('/api/table/Partial%20Refusal%20Parent', {
       method: 'POST', body: JSON.stringify({ label: 'cannot-insert' }),
     })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(await res.json()).toEqual({ error: {
       type: 'ValidationError',
       message: 'The data source needs a value for hidden_required, which this table does not show',
@@ -520,12 +520,12 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
       const required = await admin.fetch(path, { method: 'POST', body: JSON.stringify({ business_code: 1 }) })
-      expect(required.status).toBe(417)
+      await expectStatus(required, 417)
       const r = (await required.json()) as { error: { message: string; fields?: Record<string, string> } }
       expect(r.error.fields).toEqual({ status: 'Required' })
       expect(r.error.message).not.toMatch(/violates|null value/)
       const broken = await admin.fetch(path, { method: 'POST', body: JSON.stringify({ status: 'ok', business_code: 999 }) })
-      expect(broken.status).toBe(417)
+      await expectStatus(broken, 417)
       const b = (await broken.json()) as { error: { message: string; fields?: Record<string, string> } }
       expect(b.error.fields).toEqual({ business_code: expect.any(String) })
       expect(b.error.message).not.toMatch(/violates|foreign key/)
@@ -549,7 +549,7 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
       `/api/table/Ext%20Tenant/${list.data[0].row_id}?updated_at=${encodeURIComponent(String(loaded.updated_at))}`,
       { method: 'DELETE' },
     )
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const rows = await cli`select 1 from ext_fixture.tenant where slug = 'doomed'`
     expect(rows).toHaveLength(0)
   })
@@ -570,7 +570,7 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
     await cli.unsafe('create trigger refuse_gauge before insert on ext_fixture.gauge for each row execute function ext_fixture.refuse_gauge()')
     try {
       const response = await admin.fetch('/api/table/Ext%20Gauge', { method: 'POST', body: JSON.stringify({ status: 'new' }) })
-      expect(response.status).toBe(417)
+      await expectStatus(response, 417)
       expect(await response.json()).toMatchObject({ error: { type: 'ValidationError', message } })
     } finally {
       await cli.unsafe('drop trigger refuse_gauge on ext_fixture.gauge')
@@ -587,7 +587,7 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
     await sql`insert into featherbase.comment (row_id, ref_table, ref_name, content) values ('ext-c', 'Ext Tenant', ${id}, 'note')`
     const loaded = (await admin.get(`/api/table/Ext%20Tenant/${id}`)) as Record<string, unknown>
     const res = await admin.fetch(`/api/table/Ext%20Tenant/${id}?updated_at=${encodeURIComponent(String(loaded.updated_at))}`, { method: 'DELETE' })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(await cli`select 1 from ext_fixture.tenant where slug = 'kept-commented'`).toHaveLength(1)
   })
 
@@ -638,7 +638,7 @@ describe('EDS-11: source failure', () => {
       method: 'POST',
       body: JSON.stringify({ schema: 'whatever', tables: ['x'] }),
     })
-    expect(res.status).toBe(502)
+    await expectStatus(res, 502)
     const body = (await res.json()) as { error: { type: string; message: string } }
     expect(body.error.type).toBe('DataSourceError')
     expect(body.error.message).toContain('ext-dead')
@@ -763,7 +763,7 @@ describe('EDS-2: foreign keys reflect as References', () => {
       method: 'POST',
       body: JSON.stringify({ schema: 'ext_fixture', tables: ['accident'] }),
     })
-    expect(reflectRes.status).toBe(200)
+    await expectStatus(reflectRes, 200)
     const created = ((await reflectRes.json()) as { created: { name: string }[] }).created[0].name
     const colsOf = async () => {
       const meta = (await admin.get(`/api/table/${encodeURIComponent(created)}:meta`)) as {
@@ -779,7 +779,7 @@ describe('EDS-2: foreign keys reflect as References', () => {
       method: 'POST',
       body: JSON.stringify({ schema: 'ext_fixture', tables: ['vehicle'] }),
     })
-    expect(parentRes.status).toBe(200)
+    await expectStatus(parentRes, 200)
     const vehicleName = ((await parentRes.json()) as { created: { name: string }[] }).created[0]
       .name
     const cols = await colsOf()
@@ -841,7 +841,7 @@ describe('EDS-2: foreign keys reflect as References', () => {
       method: 'POST',
       body: JSON.stringify({ schema: 'ext_fixture', tables: ['accident'] }),
     })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const created = ((await res.json()) as { created: { name: string }[] }).created[0].name
     const meta = (await admin.get(`/api/table/${encodeURIComponent(created)}:meta`)) as {
       columns: { column_name: string; column_type: string; reference_table: string | null }[]
@@ -894,7 +894,7 @@ describe('EDS-2: foreign keys reflect as References', () => {
       method: 'POST',
       body: JSON.stringify({ schema: 'ext_fixture', tables: ['vehicle', 'claim', 'inspection'] }),
     })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const created = ((await res.json()) as { created: { table: string; name: string }[] }).created
     const vehicleName = created.find((c) => c.table === 'vehicle')!.name
     for (const t of ['claim', 'inspection']) {
@@ -966,7 +966,7 @@ describe('Turn a data source table into a Featherbase table', () => {
     })
     const [still] = await cli`select internal_notes from ext_fixture.tenant where id = ${String(acme.row_id)}`
     expect(still.internal_notes).toBe(notesBefore)
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     // The fixture lives outside the sandbox: put the plan back for other tests.
     await cli`update ext_fixture.tenant set plan = 'pro' where id = ${String(acme.row_id)} and plan = 'platinum'`
   })
@@ -994,7 +994,7 @@ describe('Connect a data source', () => {
     })
     await admin.delete('/api/table_def/Ext%20Tenant')
     await admin.delete('/api/table/Data%20Source/ext-fixture')
-    expect((await admin.fetch('/api/table/Data%20Source/ext-fixture')).status).toBe(404)
+    await expectStatus(await admin.fetch('/api/table/Data%20Source/ext-fixture'), 404)
   })
 
   test('a warehouse data source cannot be set up as writable', async ({ admin }) => {
@@ -1024,14 +1024,14 @@ describe('A data source outage doesn\'t take down anything else', () => {
     })
 
     const down = await admin.fetch('/api/table/Ext%20Tenant')
-    expect(down.status).toBe(502)
+    await expectStatus(down, 502)
     const body = (await down.json()) as { error: { type: string; message: string } }
     expect(body.error.type).toBe('DataSourceError')
     expect(body.error.message).toContain('ext-fixture')
 
     // Everything else is untouched.
-    expect((await admin.fetch('/api/table/Role')).status).toBe(200)
-    expect((await admin.fetch('/api/table/Person')).status).toBe(200)
+    await expectStatus(await admin.fetch('/api/table/Role'), 200)
+    await expectStatus(await admin.fetch('/api/table/Person'), 200)
   })
 })
 
@@ -1053,7 +1053,7 @@ describe('Concurrent edits are caught when the source can tell', () => {
       method: 'PATCH',
       body: JSON.stringify({ name: 'Mine', ...(loaded.updated_at ? { updated_at: loaded.updated_at } : {}) }),
     })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const [row] = await cli`select name from ext_fixture.business where code = 1`
     expect(row.name).toBe('Mine')
     await cli`update ext_fixture.business set name = 'Zulu' where code = 1`
@@ -1088,12 +1088,12 @@ describe('Connect a data source: limiting which tables can be connected', () => 
       })
     // A table outside the list is refused, and nothing is connected.
     const refused = await reflect(['business'])
-    expect(refused.status).toBe(403)
+    await expectStatus(refused, 403)
     expect(((await refused.json()) as { error: { message: string } }).error.message).toContain('not in the allowlist')
     expect(await sql`select 1 from table_def where data_source = 'ext-fixture'`).toHaveLength(0)
     // One on the list connects.
     const allowed = await reflect(['tenant'])
-    expect(allowed.status).toBe(200)
+    await expectStatus(allowed, 200)
     expect(((await allowed.json()) as { created: { name: string }[] }).created.map((c) => c.name)).toEqual(['Ext Tenant'])
     // A hand-written binding to a table outside the list is refused too.
     await expect(
@@ -1114,7 +1114,7 @@ describe('Connect a data source: limiting which tables can be connected', () => 
       method: 'POST',
       body: JSON.stringify({ schema: 'ext_fixture', tables: ['tenant', 'vehicle', 'business'] }),
     })
-    expect(refused.status).toBe(403)
+    await expectStatus(refused, 403)
     expect(((await refused.json()) as { error: { message: string } }).error.message).toContain('ext_fixture.business')
     expect(await sql`select name from table_def where data_source = 'ext-fixture'`).toHaveLength(0)
   })

@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
+import { expectRefused } from './fixtures'
 
 const CUSTOMER = 'Del Customer'
 const INVOICE = 'Del Invoice'
@@ -96,7 +97,7 @@ describe('A refusal changes nothing', () => {
     })
     const before = await admin.get(docPath(INVOICE, String(inv.row_id)))
     // Linked from the invoice: refused.
-    await expect(admin.delete(docPath(CUSTOMER, 'Acme'))).rejects.toMatchObject({ status: 417 })
+    await expectRefused(admin.delete(docPath(CUSTOMER, 'Acme')), 417)
     expect(await admin.get(docPath(CUSTOMER, 'Acme'))).toMatchObject({ row_id: 'Acme' })
     expect(await admin.get(docPath(INVOICE, String(inv.row_id)))).toEqual(before)
   })
@@ -109,7 +110,7 @@ describe('Nested rows and settings are deleted only through what holds them', ()
       table: INVOICE,
       row: { lines: [{ supplier: 'Globex' }] },
     })
-    await expect(admin.delete(docPath(ROW, inv.lines[0].row_id))).rejects.toMatchObject({ status: 417 })
+    await expectRefused(admin.delete(docPath(ROW, inv.lines[0].row_id)), 417)
     const after = await admin.get<{ lines: unknown[] }>(docPath(INVOICE, inv.row_id))
     expect(after.lines).toHaveLength(1)
   })
@@ -159,6 +160,6 @@ describe('A row with comments, history, attachments or shares can\'t be deleted'
     await setup(admin)
     await sql`insert into comment (row_id, ref_table, ref_name, content) values ('del-other', ${INVOICE}, 'Acme', 'someone else')`
     await admin.delete(docPath(CUSTOMER, 'Acme'))
-    await expect(admin.get(docPath(CUSTOMER, 'Acme'))).rejects.toMatchObject({ status: 404 })
+    await expectRefused(admin.get(docPath(CUSTOMER, 'Acme')), 404)
   })
 })

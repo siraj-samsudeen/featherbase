@@ -10,6 +10,7 @@ import { app } from '../src/index'
 import { issueSession } from '../src/auth'
 import { sql, withTransaction } from '../src/db'
 import { tableRelation } from '../src/table-engine'
+import { expectStatus } from './fixtures'
 
 const prove = process.env.SECURITY_COMMIT_PROOF === '1' ? test : test.skip
 
@@ -24,7 +25,7 @@ async function fixture() {
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
   const table = `Security race ${randomBytes(6).toString('hex')}`
-  expect((await send('/api/table_def', { name: table, id_pattern: 'prompt', columns: [{ column_name: 'amount', column_type: 'Int' }] })).status).toBe(201)
+  await expectStatus(await send('/api/table_def', { name: table, id_pattern: 'prompt', columns: [{ column_name: 'amount', column_type: 'Int' }] }), 201)
   const relation = await tableRelation(table)
   const url = `/api/table/${encodeURIComponent(table)}/original`
   const save = (table: string, row: Record<string, unknown>) => send('/api/save_row', { table, row })
@@ -37,8 +38,8 @@ prove.each(['Approve', 'Reject'])('#572 concurrent Approve and %s have one winne
   try {
     const nextRole = `Next ${table}`
     const recipient = `next-${randomBytes(6).toString('hex')}@example.test`
-    expect((await save('Role', { row_id: nextRole })).status).toBe(201)
-    expect((await save('Person', { full_name: nextRole, email: recipient, enabled: true, roles: [{ role: nextRole }] })).status).toBe(201)
+    await expectStatus(await save('Role', { row_id: nextRole }), 201)
+    await expectStatus(await save('Person', { full_name: nextRole, email: recipient, enabled: true, roles: [{ role: nextRole }] }), 201)
     expect((await save('Workflow', {
       row_id: `Flow ${table}`, ref_table: table, is_active: true,
       states: [
@@ -54,7 +55,7 @@ prove.each(['Approve', 'Reject'])('#572 concurrent Approve and %s have one winne
         { state: 'Rejected', action: 'Finish', next_state: 'Done', allowed: nextRole },
       ],
     })).status).toBe(201)
-    expect((await save(table, { row_id: 'original', amount: 1 })).status).toBe(201)
+    await expectStatus(await save(table, { row_id: 'original', amount: 1 }), 201)
     await db.begin(async tx => {
       const [{ pid }] = await tx`select pg_backend_pid() as pid`
       await tx`select 1 from ${tx(relation)} where row_id = 'original' for update`
@@ -88,7 +89,7 @@ prove('#572 a condition is rechecked after a concurrent row edit commits', async
       states: [{ state: 'Review', target_status: 'draft' }, { state: 'Approved', target_status: 'draft' }],
       transitions: [{ state: 'Review', action: 'Approve', next_state: 'Approved', allowed: 'System Manager', condition: 'doc.amount < 10' }],
     })).status).toBe(201)
-    expect((await save(table, { row_id: 'original', amount: 1 })).status).toBe(201)
+    await expectStatus(await save(table, { row_id: 'original', amount: 1 }), 201)
     await db.begin(async tx => {
       await tx`update ${tx(relation)} set amount = 100 where row_id = 'original'`
       pending = send(`${url}:apply_workflow_action`, { action: 'Approve' })
@@ -96,7 +97,7 @@ prove('#572 a condition is rechecked after a concurrent row edit commits', async
         where datname = current_database() and wait_event_type = 'Lock'`)[0].n)).toBe(1)
     })
     const refused = await pending!
-    expect(refused.status).toBe(417)
+    await expectStatus(refused, 417)
     expect(await refused.json()).toMatchObject({ error: { type: 'ValidationError', message: expect.stringContaining('condition is not met') } })
     expect(await db`select action from featherbase.workflow_action where ref_table = ${table}`).toEqual([])
     expect(await (await send(url, undefined, 'GET')).json()).toMatchObject({ amount: 100, workflow_state: 'Review' })
@@ -116,7 +117,7 @@ for (const kind of ['Comment', 'File', 'Share']) for (const operation of ['renam
     let holder: Promise<void> | undefined
     let waiter: Promise<Response> | undefined
     try {
-      expect((await save(table, { row_id: 'original', amount: 1 })).status).toBe(201)
+      await expectStatus(await save(table, { row_id: 'original', amount: 1 }), 201)
       const activity = () => save(kind, kind === 'Share'
         ? { share_table: table, share_name: 'original', person: 'Administrator', read: true }
         : { ref_table: table, ref_name: 'original', ...(kind === 'Comment' ? { content: 'concurrent note' } : { file_name: 'metadata-only.txt' }) })

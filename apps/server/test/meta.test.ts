@@ -2,7 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { getMeta, invalidateMeta, resolveTableName } from '../src/meta'
-import { grantRole, makeTable } from './fixtures'
+import { expectRefused, grantRole, makeTable } from './fixtures'
 
 const DT = 'Meta Test Note'
 
@@ -67,7 +67,7 @@ describe('META-001: table/column storage and Meta loader', () => {
     await grantRole(admin, { role: 'Storage Definition Reader', table: 'Table', can_read: true })
     const reader = await createUser({ roles: ['Storage Definition Reader'] })
     expect(await reader.get('/api/table/Table/Storage%20Private%20Plant')).toMatchObject({ row_id: 'Storage Private Plant' })
-    await expect(reader.get('/api/table/Storage%20Private%20Plant:meta')).rejects.toMatchObject({ status: 403 })
+    await expectRefused(reader.get('/api/table/Storage%20Private%20Plant:meta'), 403)
   })
 
   test('404s for an unknown Table with the error envelope', async ({ admin }) => {

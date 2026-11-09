@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
-import { expectApiError, makeTable, patchDoc } from './fixtures'
+import { expectRefused, makeTable, patchDoc } from './fixtures'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { quoteRelation, tableRelation } from '../src/table-engine'
@@ -34,7 +34,7 @@ describe('#1022 a business column called status', () => {
     expect(await admin.get(`${t.rowUrl('b')}:capabilities`)).toMatchObject({ submit: true, write: true })
     const submitted = await admin.post<Record<string, unknown>>(`${t.rowUrl('b')}:submit`)
     expect(submitted).toMatchObject({ status: 'submitted', submission_status: 'submitted' })
-    await expectApiError(patchDoc(admin, t.rowUrl('b'), { updated_at: submitted.updated_at, title: 'late' }), { status: 417 })
+    await expectRefused(patchDoc(admin, t.rowUrl('b'), { updated_at: submitted.updated_at, title: 'late' }), 417)
   })
 
   test('a save cannot set the lifecycle', async ({ admin }) => {
@@ -56,7 +56,7 @@ describe('#1022 a business column called status', () => {
   })
 
   test('the name submission_status is refused', async ({ admin }) => {
-    await expectApiError(makeTable(admin, { name: 'Sst Reserved', columns: ['submission_status'] }), { status: 417 })
+    await expectRefused(makeTable(admin, { name: 'Sst Reserved', columns: ['submission_status'] }), 417)
   })
 })
 

@@ -12,6 +12,7 @@ import { test } from './pg-test'
 import { EXTERNAL_DATABASE_URL } from './external-database'
 import { sql } from '../src/db'
 import { invalidateSources } from '../src/sources/registry'
+import { expectStatus } from './fixtures'
 
 const ENV_VAR = 'APPSRC_FIXTURE_URL'
 process.env[ENV_VAR] = EXTERNAL_DATABASE_URL
@@ -149,7 +150,7 @@ describe('app manifests can declare Data Sources and reflections', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ manifest }),
     })
-    expect(installed.status).toBe(201)
+    await expectStatus(installed, 201)
     expect(await installed.json()).toEqual({
       name, tables: [], roles: [], perms: [], fixtures: [], sources: [owned],
     })
@@ -161,7 +162,7 @@ describe('app manifests can declare Data Sources and reflections', () => {
     expect(await sql`select name from table_def where data_source in (${owned}, ${adopted})`).toEqual([])
 
     const deleted = await admin.fetch(`/api/table/Data%20Source/${owned}`, { method: 'DELETE' })
-    expect(deleted.status).toBe(200)
+    await expectStatus(deleted, 200)
     expect(await deleted.json()).toEqual({ ok: true })
     expect(await sql`select row_id from data_source where row_id = ${owned}`).toEqual([])
     // Ordinary source deletion leaves the app's genuine ownership record intact.
@@ -173,7 +174,7 @@ describe('app manifests can declare Data Sources and reflections', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name }),
     })
-    expect(uninstalled.status).toBe(200)
+    await expectStatus(uninstalled, 200)
     expect(await uninstalled.json()).toEqual({ name, removed: [] })
     expect(await sql`select name from installed_app where name = ${name}`).toEqual([])
     expect(await sql`select row_id from data_source where row_id = ${owned}`).toEqual([])

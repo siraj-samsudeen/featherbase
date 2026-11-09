@@ -3,7 +3,7 @@ import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { deleteStored } from '../src/storage'
-import { grantRole } from './fixtures'
+import { expectRefused, expectStatus, grantRole } from './fixtures'
 
 // WEB-002/003: a logged-in web-form submitter becomes the document's
 // created_by — closing the portal loop (their own_rows_only portal now shows
@@ -81,7 +81,7 @@ describe('The portal shows only what belongs to the user', () => {
     expect(carolList.data.map((r) => r.row_id)).toEqual([carols.row_id])
 
     // Opening the other customer's request directly is refused.
-    await expect(carol.get(`/api/table/${encodeURIComponent(DT)}/${daves.row_id}`)).rejects.toMatchObject({ status: 403 })
+    await expectRefused(carol.get(`/api/table/${encodeURIComponent(DT)}/${daves.row_id}`), 403)
 
     // An attachment on Carol's request opens for Carol and not for Dave.
     const form = new FormData()
@@ -90,11 +90,11 @@ describe('The portal shows only what belongs to the user', () => {
     form.append('ref_name', carols.row_id)
     form.append('is_private', '1')
     const up = await admin.fetch('/api/upload_file', { method: 'POST', body: form })
-    expect(up.status).toBe(201)
+    await expectStatus(up, 201)
     const file = (await up.json()) as { file_url: string }
     try {
-      expect((await carol.fetch(file.file_url)).status).toBe(200)
-      expect((await dave.fetch(file.file_url)).status).toBe(403)
+      await expectStatus(await carol.fetch(file.file_url), 200)
+      await expectStatus(await dave.fetch(file.file_url), 403)
     } finally {
       await deleteStored(file.file_url).catch(() => {})
     }

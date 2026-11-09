@@ -13,7 +13,7 @@ import { APP_ACCENTS } from 'shared'
 import { loadInstalledApps, setAppEnabled } from '../../src/apps'
 import { sql } from '../../src/db'
 import { discoverPackages } from '../../src/runtime-packages'
-import { grantRole, makeTable } from '../fixtures'
+import { expectRefused, expectStatus, grantRole, makeTable } from '../fixtures'
 import { test as pgTest } from '../pg-test'
 import { scenarioFor } from '../scenario'
 import { admitTasker } from '../tasker-client'
@@ -129,11 +129,11 @@ describe('trusted-runtime-packages', () => {
     await step('the user is using Tasker', async () => {
       await installTasker(admin)
       const home = await page(admin, '/tasker/')
-      expect(home.status).toBe(200)
+      await expectStatus(home, 200)
       expect(await home.text()).toContain('<featherbase-bar data-app="tasker"')
     })
     await step("a piece of Tasker's content cannot load", async () => { missing = await admin.fetch('/tasker/missing-navigation-proof.js') })
-    await step('that piece is shown as missing', () => expect(missing.status).toBe(404))
+    await step('that piece is shown as missing', () => expectStatus(missing, 404))
     await step("neither Tasker's home nor Featherbase replaces it", async () => {
       expect(missing.headers.get('content-type') ?? '').not.toContain('text/html')
       const body = await missing.text()
@@ -158,14 +158,14 @@ describe('trusted-runtime-packages', () => {
       })
       await step('Tasker opens with the shared navigation without rebuilding Featherbase or adding an app-specific platform route', async () => {
         const home = await page(admin, '/tasker/')
-        expect(home.status).toBe(200)
+        await expectStatus(home, 200)
         const html = await home.text()
         expect(html).toContain('<featherbase-bar data-app="tasker" data-title="Tasker"')
         expect(html).toContain('<script type="module" src="/featherbase/bar.js"></script>')
         const script = /src="(\/tasker\/[^"]+\.js)"/.exec(html)?.[1]
         expect(script, "the page loads Tasker's own built script").toBeDefined()
         const served = await admin.fetch(script!)
-        expect(served.status).toBe(200)
+        await expectStatus(served, 200)
         expect(served.headers.get('content-type')).toContain('javascript')
       })
     } finally {
@@ -302,7 +302,7 @@ describe('trusted-runtime-packages', () => {
 
   scenario('Tickets turned on by another process works at once', async ({ tickets, people }, step) => {
     let w!: World
-    let answer!: { status: number; body: unknown }
+    let answer!: Response
     await step('Tickets was turned off and then turned on again by another process while the server ran', async () => {
       w = await ticketsWorld(tickets, people)
       await setAppEnabled('tickets', false)
@@ -310,25 +310,25 @@ describe('trusted-runtime-packages', () => {
       await sql`update installed_app set enabled = true where name = 'tickets'`
     })
     await step('Anjali opens Tickets', async () => {
-      answer = await attempt(w.anjali.fetch('/api/app_reads/tickets/session', { method: 'POST', body: JSON.stringify({ payload: {} }) }))
+      answer = await w.anjali.fetch('/api/app_reads/tickets/session', { method: 'POST', body: JSON.stringify({ payload: {} }) })
     })
-    await step('Tickets answers without a restart', () => expect(answer.status, JSON.stringify(answer.body)).toBe(200))
+    await step('Tickets answers without a restart', () => expectStatus(answer, 200))
   })
 
   scenario('A changed app under the same version says why', async ({ tickets, people }, step) => {
     let w!: World
-    let answer!: { status: number; body: any }
+    let answer!: Response
     await step('the installed Tickets 0.1.0 records a different build than the one this server holds', async () => {
       w = await ticketsWorld(tickets, people)
       await setAppEnabled('tickets', false)
       await sql`update installed_app set enabled = true, artifact_digest = 'an-earlier-build' where name = 'tickets'`
     })
     await step('Anjali opens Tickets', async () => {
-      answer = await attempt(w.anjali.fetch('/api/app_reads/tickets/session', { method: 'POST', body: JSON.stringify({ payload: {} }) }))
+      answer = await w.anjali.fetch('/api/app_reads/tickets/session', { method: 'POST', body: JSON.stringify({ payload: {} }) })
     })
-    await step('the refusal says its files changed under the same version and how to fix it', () => {
-      expect(answer.status).toBe(403)
-      expect(answer.body.error.message).toMatch(/files changed on this server under the same version.*install-app tickets/)
+    await step('the refusal says its files changed under the same version and how to fix it', async () => {
+      const refusal = await expectRefused(answer, 403)
+      expect(refusal.message).toMatch(/files changed on this server under the same version.*install-app tickets/)
     })
   })
 

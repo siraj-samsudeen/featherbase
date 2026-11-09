@@ -7,6 +7,7 @@ import { discoverPackages } from '../src/runtime-packages'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
 import { tableRelation } from '../src/table-engine'
+import { expectRefused } from './fixtures'
 
 // #975: the first slice of #627's Change Proposal, through a proof app that hands each helper
 // call straight through. Every person, place and row here is made up.
@@ -57,20 +58,20 @@ const giveRole = (admin: TestClient, user: string | null, role: string) => sql`
 describe('an app reads only what it declares and an administrator lists', () => {
   test('a person with no grant reads declared columns; anything else is refused', async ({ admin, createUser }) => {
     const { maker } = await setUp(admin, createUser)
-    await expect(maker.get('/api/table/Placement')).rejects.toMatchObject({ status: 403 })
+    await expectRefused(maker.get('/api/table/Placement'), 403)
     expect(await probe(maker, { op: 'list', table: 'Placement', args: { fields: ['label'] } })).toEqual([{ label: 'Sarees' }])
     // Declared, not listed by the administrator.
-    await expect(probe(maker, { op: 'list', table: 'Hidden Base', args: { fields: ['label'] } })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(maker, { op: 'list', table: 'Hidden Base', args: { fields: ['label'] } }), 417)
     // A column it did not declare.
-    await expect(probe(maker, { op: 'list', table: 'Placement', args: { fields: ['secret'] } })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(maker, { op: 'list', table: 'Placement', args: { fields: ['secret'] } }), 417)
     // A filter or a sort on it reveals it just the same.
-    await expect(probe(maker, { op: 'list', table: 'Placement', args: { fields: ['label'], filters: [['secret', 'like', 'k%']] } })).rejects.toMatchObject({ status: 417 })
-    await expect(probe(maker, { op: 'list', table: 'Placement', args: { fields: ['label'], order_by: 'secret asc' } })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(maker, { op: 'list', table: 'Placement', args: { fields: ['label'], filters: [['secret', 'like', 'k%']] } }), 417)
+    await expectRefused(probe(maker, { op: 'list', table: 'Placement', args: { fields: ['label'], order_by: 'secret asc' } }), 417)
     expect(await probe(maker, { op: 'list', table: 'Placement', args: { fields: ['label'], filters: [['site', '=', 'North']], order_by: 'row_id asc' } })).toEqual([{ label: 'Sarees' }])
     // No field list means no read.
-    await expect(probe(maker, { op: 'list', table: 'Placement', args: {} })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(maker, { op: 'list', table: 'Placement', args: {} }), 417)
     // A Table it never declared, even a listed one.
-    await expect(probe(maker, { op: 'list', table: 'Person', args: { fields: ['email'] } })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(maker, { op: 'list', table: 'Person', args: { fields: ['email'] } }), 417)
   })
 
   test('a read handler can read but has nothing to propose or decide with', async ({ admin, createUser }) => {
@@ -131,11 +132,11 @@ describe('a proposal changes nothing until it is approved', () => {
   test('reject needs a reason, records who and why, and changes nothing', async ({ admin, createUser }) => {
     const { maker, manager } = await setUp(admin, createUser)
     const proposal = await probe(maker, ask(manager.user))
-    await expect(probe(manager, { op: 'reject', id: proposal.row_id, decision: decision(manager.user, { reason: '   ' }) })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(manager, { op: 'reject', id: proposal.row_id, decision: decision(manager.user, { reason: '   ' }) }), 417)
     const rejected = await probe(manager, { op: 'reject', id: proposal.row_id, decision: decision(manager.user, { reason: 'It belongs where it is' }) })
     expect(rejected).toMatchObject({ state: 'Rejected', decided_by: manager.user, decision_reason: 'It belongs where it is' })
     expect(await placement('P-1')).toMatchObject({ label: 'Sarees', ends_on: null })
-    await expect(probe(manager, { op: 'approve', id: proposal.row_id, decision: approval(manager.user) })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(manager, { op: 'approve', id: proposal.row_id, decision: approval(manager.user) }), 417)
     expect(await placement('P-2')).toBeUndefined()
   })
 })
@@ -147,12 +148,12 @@ describe('who may decide', () => {
     await giveRole(admin, maker.user, 'Proof Editor')
     await giveRole(admin, other.user, 'Proof Editor')
     const proposal = await probe(maker, ask(manager.user))
-    await expect(probe(maker, { op: 'approve', id: proposal.row_id, decision: approval(maker.user) })).rejects.toMatchObject({ status: 417 })
-    await expect(probe(maker, { op: 'approve', id: proposal.row_id, decision: approval(manager.user) })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(maker, { op: 'approve', id: proposal.row_id, decision: approval(maker.user) }), 417)
+    await expectRefused(probe(maker, { op: 'approve', id: proposal.row_id, decision: approval(manager.user) }), 417)
     // A role holder is not the approver while the manager can sign in.
-    await expect(probe(other, { op: 'approve', id: proposal.row_id, decision: approval(manager.user) })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(other, { op: 'approve', id: proposal.row_id, decision: approval(manager.user) }), 417)
     // Administrator is no exception.
-    await expect(probe(admin, { op: 'reject', id: proposal.row_id, decision: decision(manager.user, { reason: 'No' }) })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(admin, { op: 'reject', id: proposal.row_id, decision: decision(manager.user, { reason: 'No' }) }), 417)
     expect(await placement('P-1')).toMatchObject({ label: 'Sarees', ends_on: null })
   })
 
@@ -177,7 +178,7 @@ describe('who may decide', () => {
     const { maker, other } = await setUp(admin, createUser)
     await giveRole(admin, other.user, 'Proof Editor')
     await sql`update person set password_hash = null where row_id = ${other.user!}`
-    await expect(probe(maker, ask(null))).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(maker, ask(null)), 417)
   })
 
   test('a role holder with no way in left cannot decide, though another holder keeps the route open', async ({ admin, createUser }) => {
@@ -186,22 +187,22 @@ describe('who may decide', () => {
     await giveRole(admin, manager.user, 'Proof Editor')
     const proposal = await probe(maker, ask(null))
     await sql`update person set password_hash = null where row_id = ${other.user!}`
-    await expect(probe(other, { op: 'approve', id: proposal.row_id, decision: approval(null) })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(other, { op: 'approve', id: proposal.row_id, decision: approval(null) }), 417)
     expect((await probe(manager, { op: 'approve', id: proposal.row_id, decision: approval(null) })).state).toBe('Applied')
   })
 
   test('with nobody else to approve, the proposal is refused saying why', async ({ admin, createUser }) => {
     const { maker } = await setUp(admin, createUser)
     await giveRole(admin, maker.user, 'Proof Editor')
-    await expect(probe(maker, ask(null))).rejects.toMatchObject({ status: 417, message: expect.stringContaining('Nobody else can approve') })
-    await expect(probe(maker, ask(maker.user))).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(maker, ask(null)), 417, 'Nobody else can approve')
+    await expectRefused(probe(maker, ask(maker.user)), 417)
     expect((await sql`select count(*)::int as n from change_proposal`)[0].n).toBe(0)
   })
 
   test('a change of manager moves the proposal with it, and the old one loses it', async ({ admin, createUser }) => {
     const { maker, manager, other } = await setUp(admin, createUser)
     const proposal = await probe(maker, ask(manager.user))
-    await expect(probe(manager, { op: 'approve', id: proposal.row_id, decision: approval(other.user) })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(manager, { op: 'approve', id: proposal.row_id, decision: approval(other.user) }), 417)
     const applied = await probe(other, { op: 'approve', id: proposal.row_id, decision: approval(other.user) })
     expect(applied).toMatchObject({ state: 'Applied', route: { people: [other.user], roles: [] } })
   })
@@ -211,28 +212,28 @@ describe('what an app may propose', () => {
   test('only declared Tables and columns, on a row that exists, and a real change', async ({ admin, createUser }) => {
     const { maker, manager } = await setUp(admin, createUser)
     const approvers = { people: [manager.user], fallbackRoles: [] }
-    await expect(probe(maker, { op: 'propose', request: { table: 'Hidden Base', row: null, changes: { label: 'x' }, approvers } })).rejects.toMatchObject({ status: 417 })
-    await expect(probe(maker, ask(manager.user, { secret: 'changed' }))).rejects.toMatchObject({ status: 417 })
-    await expect(probe(maker, ask(manager.user, { ends_on: '2020-01-01' }))).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(maker, { op: 'propose', request: { table: 'Hidden Base', row: null, changes: { label: 'x' }, approvers } }), 417)
+    await expectRefused(probe(maker, ask(manager.user, { secret: 'changed' })), 417)
+    await expectRefused(probe(maker, ask(manager.user, { ends_on: '2020-01-01' })), 417)
     await expect(probe(maker, ask(manager.user, { label: 'Silk' }, 'NOT-A-ROW'))).rejects.toMatchObject({ status: expect.any(Number) })
-    await expect(probe(maker, ask(manager.user, { label: 'Sarees' }))).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(maker, ask(manager.user, { label: 'Sarees' })), 417)
     const first = await probe(maker, ask(manager.user))
     // Asking for the same again is refused, whatever unchanged column it also names; a different ask on the same row is allowed.
-    await expect(probe(maker, ask(manager.user))).rejects.toMatchObject({ status: 417 })
-    await expect(probe(maker, ask(manager.user, { label: 'Silk', site: 'North' }))).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(maker, ask(manager.user)), 417)
+    await expectRefused(probe(maker, ask(manager.user, { label: 'Silk', site: 'North' })), 417)
     // A new row asked for twice is the same ask; so is it, and only it.
     await probe(maker, ask(manager.user, { label: 'Hemp' }, null))
-    await expect(probe(maker, ask(manager.user, { label: 'Hemp' }, null))).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(maker, ask(manager.user, { label: 'Hemp' }, null)), 417)
     await probe(maker, ask(manager.user, { label: 'Linen' }))
     const stampless = decision(manager.user, { effectiveOn: '2026-11-05', newRow: { placement_id: 'P-9', secret: 'smuggled' } })
-    await expect(probe(manager, { op: 'approve', id: first.row_id, decision: stampless })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(manager, { op: 'approve', id: first.row_id, decision: stampless }), 417)
   })
 
   test('nobody reaches a proposal or its Table except through the platform', async ({ admin, createUser }) => {
     const { maker, manager } = await setUp(admin, createUser)
     const proposal = await probe(maker, ask(manager.user))
-    await expect(admin.post('/api/save_row', { table: 'Change Proposal', row: { row_id: proposal.row_id, updated_at: 'x', proposal_state: 'Applied' } })).rejects.toMatchObject({ status: 403 })
-    await expect(maker.get('/api/table/Change%20Proposal')).rejects.toMatchObject({ status: 403 })
+    await expectRefused(admin.post('/api/save_row', { table: 'Change Proposal', row: { row_id: proposal.row_id, updated_at: 'x', proposal_state: 'Applied' } }), 403)
+    await expectRefused(maker.get('/api/table/Change%20Proposal'), 403)
   })
 })
 
@@ -253,7 +254,7 @@ describe('stale proposals', () => {
     const proposal = await probe(maker, { ...request, request: { ...request.request, reviewed: ['site'] } })
     await admin.post('/api/save_row', { table: 'Placement', row: { row_id: 'P-1', updated_at: row.updated_at, site: 'South' } })
     expect((await probe(manager, { op: 'approve', id: proposal.row_id, decision: approval(manager.user) })).state).toBe('Needs fresh review')
-    await expect(probe(maker, { ...request, request: { ...request.request, reviewed: ['secret'] } })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(maker, { ...request, request: { ...request.request, reviewed: ['secret'] } }), 417)
   })
 
   test('a row with a planned end can be corrected; the new row keeps the plan, and a plan that has passed is stale', async ({ admin, createUser }) => {
@@ -292,13 +293,13 @@ describe('stale proposals', () => {
     await probe(manager, { op: 'approve', id: first.row_id, decision: approval(manager.user) })
     const [listed] = await probe(maker, { op: 'proposals', filter: { ids: [second.row_id] } })
     expect(listed.state).toBe('Needs fresh review')
-    await expect(probe(manager, { op: 'approve', id: second.row_id, decision: approval(manager.user, 'P-5') })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(manager, { op: 'approve', id: second.row_id, decision: approval(manager.user, 'P-5') }), 417)
   })
 
   test('the app can say a proposal has gone stale, and only the approver can', async ({ admin, createUser }) => {
     const { maker, manager, other } = await setUp(admin, createUser)
     const proposal = await probe(maker, ask(manager.user))
-    await expect(probe(other, { op: 'needs_fresh_review', id: proposal.row_id, decision: decision(manager.user, { reason: 'x' }) })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(other, { op: 'needs_fresh_review', id: proposal.row_id, decision: decision(manager.user, { reason: 'x' }) }), 417)
     const outcome = await probe(manager, { op: 'needs_fresh_review', id: proposal.row_id, decision: decision(manager.user, { reason: 'The section closed' }) })
     expect(outcome).toMatchObject({ state: 'Needs fresh review', decision_reason: 'The section closed' })
   })
@@ -308,8 +309,8 @@ describe('holding authority still', () => {
   test('only a declared and listed row can be locked', async ({ admin, createUser }) => {
     const { maker } = await setUp(admin, createUser)
     expect(await probe(maker, { op: 'lock', table: 'Placement', row: 'P-1', key: 'a' })).toBe(true)
-    await expect(probe(maker, { op: 'lock', table: 'Hidden Base', row: 'x', key: 'a' })).rejects.toMatchObject({ status: 417 })
-    await expect(probe(maker, { op: 'lock', table: 'Person', row: 'x', key: 'a' })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(maker, { op: 'lock', table: 'Hidden Base', row: 'x', key: 'a' }), 417)
+    await expectRefused(probe(maker, { op: 'lock', table: 'Person', row: 'x', key: 'a' }), 417)
   })
 
   test('a read-only column keeps its value on the new row', async ({ admin, createUser }) => {
@@ -325,7 +326,7 @@ describe('holding authority still', () => {
 describe('what the helpers refuse', () => {
   test('reads: a related filter, and a Table with Sub-tables or one that is the platform\'s', async ({ admin, createUser }) => {
     const { maker } = await setUp(admin, createUser)
-    await expect(probe(maker, { op: 'list', table: 'Placement', args: { fields: ['label'], filters: [['site', 'related', 'x']] } })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(maker, { op: 'list', table: 'Placement', args: { fields: ['label'], filters: [['site', 'related', 'x']] } }), 417)
     await admin.post('/api/table_def', { name: 'Holder Child', kind: 'sub_table', columns: [{ column_name: 'label', column_type: 'Data' }] })
     await admin.post('/api/table_def', { name: 'Holder Base', columns: [{ column_name: 'label', column_type: 'Data' }, { column_name: 'kids', column_type: 'Sub-table', row_table: 'Holder Child' }] })
     const [setting] = await sql`select updated_at from app_setting where row_id = 'proposalproof.linked_tables'`
@@ -336,36 +337,36 @@ describe('what the helpers refuse', () => {
 
   test('helpers run one at a time, and none outlives its handler', async ({ admin, createUser }) => {
     const { maker } = await setUp(admin, createUser)
-    await expect(probe(maker, { op: 'parallel' })).rejects.toMatchObject({ status: 417 })
-    await expect(probe(maker, { op: 'unawaited' })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(maker, { op: 'parallel' }), 417)
+    await expectRefused(probe(maker, { op: 'unawaited' }), 417)
     // A helper left running that then fails still fails the handler, with its own reason.
-    await expect(probe(maker, { op: 'unawaited_failing' })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(maker, { op: 'unawaited_failing' }), 417)
   })
 
   test('proposing: nothing to change, a value that is not text, a column both changed and reviewed, bad approvers', async ({ admin, createUser }) => {
     const { maker, manager } = await setUp(admin, createUser)
     const base = ask(manager.user).request
-    await expect(probe(maker, { op: 'propose' })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(maker, { op: 'propose' }), 417)
     for (const request of [{ table: 'Placement', row: 'P-1', approvers: base.approvers }, { ...base, changes: {} }, { ...base, changes: { label: 7 } }, { ...base, reviewed: ['label'] }, { ...base, approvers: { people: 'x' } }, { ...base, approvers: undefined }])
-      await expect(probe(maker, { op: 'propose', request })).rejects.toMatchObject({ status: 417 })
+      await expectRefused(probe(maker, { op: 'propose', request }), 417)
     expect((await sql`select count(*)::int as n from change_proposal`)[0].n).toBe(0)
   })
 
   test('deciding: a bad day, no reason, no proposal; a row that starts after the day is stale', async ({ admin, createUser }) => {
     const { maker, manager } = await setUp(admin, createUser)
     const proposal = await probe(maker, ask(manager.user))
-    await expect(probe(manager, { op: 'approve', id: proposal.row_id, decision: decision(manager.user, { effectiveOn: 'soon' }) })).rejects.toMatchObject({ status: 417 })
-    await expect(probe(manager, { op: 'needs_fresh_review', id: proposal.row_id, decision: decision(manager.user, {}) })).rejects.toMatchObject({ status: 417 })
-    await expect(probe(manager, { op: 'reject', id: '', decision: decision(manager.user, { reason: 'x' }) })).rejects.toMatchObject({ status: 417 })
-    await expect(probe(manager, { op: 'reject', id: proposal.row_id, decision: decision(manager.user) })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(manager, { op: 'approve', id: proposal.row_id, decision: decision(manager.user, { effectiveOn: 'soon' }) }), 417)
+    await expectRefused(probe(manager, { op: 'needs_fresh_review', id: proposal.row_id, decision: decision(manager.user, {}) }), 417)
+    await expectRefused(probe(manager, { op: 'reject', id: '', decision: decision(manager.user, { reason: 'x' }) }), 417)
+    await expectRefused(probe(manager, { op: 'reject', id: proposal.row_id, decision: decision(manager.user) }), 417)
     await expect(probe(manager, { op: 'approve', id: proposal.row_id, decision: decision(manager.user, { effectiveOn: '2026-11-05' }) })).rejects.toMatchObject({ status: expect.any(Number) })
     expect((await probe(manager, { op: 'approve', id: proposal.row_id, decision: decision(manager.user, { effectiveOn: '2026-09-01', newRow: { placement_id: 'P-EARLY' } }) })).state).toBe('Needs fresh review')
   })
 
   test('locks and keys need something to name', async ({ admin, createUser }) => {
     const { maker } = await setUp(admin, createUser)
-    await expect(probe(maker, { op: 'lock', table: 'Placement', row: '', key: 'a' })).rejects.toMatchObject({ status: 417 })
-    await expect(probe(maker, { op: 'lock', table: 'Placement', row: 'P-1', key: '' })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(probe(maker, { op: 'lock', table: 'Placement', row: '', key: 'a' }), 417)
+    await expectRefused(probe(maker, { op: 'lock', table: 'Placement', row: 'P-1', key: '' }), 417)
   })
 
   test('authority can be asked before deciding, by an action and by a read', async ({ admin, createUser }) => {
@@ -389,6 +390,6 @@ describe('listing', () => {
     expect((await probe(manager, { op: 'proposals', filter: { makers: [other.user] } }))).toEqual([])
     expect((await probe(manager, { op: 'proposals', filter: { states: ['Rejected'] } }))).toEqual([])
     for (const filter of [{ ids: [] }, { states: [] }, { makers: [] }]) expect(await probe(manager, { op: 'proposals', filter })).toEqual([])
-    await expect(probe(manager, { op: 'approve', id: 'no-such', decision: approval(manager.user) })).rejects.toMatchObject({ status: 404 })
+    await expectRefused(probe(manager, { op: 'approve', id: 'no-such', decision: approval(manager.user) }), 404)
   })
 })

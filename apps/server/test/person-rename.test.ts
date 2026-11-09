@@ -9,7 +9,7 @@ import { sql } from '../src/db'
 import { getMeta } from '../src/meta'
 import { issueAccessToken } from '../src/auth'
 import { getRoles, isPrivileged } from '../src/permissions'
-import { createUserWithRole, makePerson, grantRole } from './fixtures'
+import { createUserWithRole, expectRefused, expectStatus, grantRole, makePerson } from './fixtures'
 import { personByEmail } from '../src/people-directory'
 
 const rel = async (name: string) => (await sql`select to_regclass(${'featherbase.' + name}) as r`)[0].r
@@ -27,8 +27,8 @@ describe('person-rename: the human record is a Person', () => {
     expect(await rel('sign_in_identity')).toBeTruthy()
     expect(await rel('user_identity')).toBeNull()
     expect(await sql`select name from table_def where name in ('User', 'Person')`).toEqual([{ name: 'Person' }])
-    expect((await admin.fetch('/api/users/Administrator/identities')).status).toBe(404)
-    expect((await admin.fetch('/api/people/Administrator/identities')).status).toBe(200)
+    await expectStatus(await admin.fetch('/api/users/Administrator/identities'), 404)
+    await expectStatus(await admin.fetch('/api/people/Administrator/identities'), 200)
     // username carries over with its index.
     expect(await sql`select 1 from pg_indexes where schemaname = 'featherbase' and indexname = 'person_username_lower_uq'`).toHaveLength(1)
   })
@@ -45,7 +45,7 @@ describe('person-rename: the human record is a Person', () => {
   })
 
   test('a person id is assigned, never typed', async ({ admin }) => {
-    await expect(admin.post('/api/save_row', { table: 'Person', row: { row_id: 'chosen@x.test', email: 'chosen@x.test' } })).rejects.toMatchObject({ status: 404 })
+    await expectRefused(admin.post('/api/save_row', { table: 'Person', row: { row_id: 'chosen@x.test', email: 'chosen@x.test' } }), 404)
     await expect(
       sql.begin(async () => {
         const { saveDoc } = await import('../src/document')
@@ -59,7 +59,7 @@ describe('person-rename: the human record is a Person', () => {
         await saveDoc('Person', { row_id: 'psn_chosen', email: 'chosen@x.test' }, 'Administrator', 'insert')
       }),
     ).rejects.toMatchObject({ type: 'ValidationError', fields: { row_id: 'assigned automatically' } })
-    await expect(admin.post('/api/table/Person', { row_id: 'psn_chosen', email: 'chosen@x.test' })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(admin.post('/api/table/Person', { row_id: 'psn_chosen', email: 'chosen@x.test' }), 417)
     // Nor through the amendment path: `amended_from` does not let a chosen id
     // in on an opaque-id Table (Codex review on #384).
     await admin.post('/api/table_def', {
@@ -126,9 +126,9 @@ describe('person-rename: one principal model', () => {
     const url = `/api/table/Service%20Account/${account.row_id}`
     const row = await admin.get<{ updated_at: string }>(url)
     const patched = await admin.fetch(url, { method: 'PATCH', body: JSON.stringify({ label: 'renamed', updated_at: row.updated_at }) })
-    expect(patched.status).toBe(417)
-    await expect(admin.post('/api/save_row', { table: 'Service Account', row: { label: 'svc-generic' } })).rejects.toMatchObject({ status: 417 })
-    await expect(admin.delete(url)).rejects.toMatchObject({ status: 417 })
+    await expectStatus(patched, 417)
+    await expectRefused(admin.post('/api/save_row', { table: 'Service Account', row: { label: 'svc-generic' } }), 417)
+    await expectRefused(admin.delete(url), 417)
 
     const updated = await admin.post<{ roles: string[] }>(`/api/service_accounts/${account.row_id}/roles`, { roles: ['System Manager'] })
     expect(updated.roles).toEqual(['System Manager'])
@@ -138,7 +138,7 @@ describe('person-rename: one principal model', () => {
     ])
     await admin.post(`/api/service_accounts/${account.row_id}/roles`, { roles: [] })
     expect(await isPrivileged(account.row_id)).toBe(false)
-    await expect(admin.post(`/api/service_accounts/${account.row_id}/roles`, { roles: ['No Such Role'] })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(admin.post(`/api/service_accounts/${account.row_id}/roles`, { roles: ['No Such Role'] }), 417)
   })
 
   test('a service-account name names one account, held by the database (Codex P2 on #384)', async () => {
@@ -157,14 +157,14 @@ describe('person-rename: one principal model', () => {
     await sql`update service_account set api_rate_limit = 1 where row_id = ${account.row_id}`
     const { resetRateLimit } = await import('../src/rate-limit')
     resetRateLimit(account.row_id)
-    expect((await svc.fetch('/api/whoami')).status).toBe(200)
-    expect((await svc.fetch('/api/whoami')).status).toBe(429)
+    await expectStatus(await svc.fetch('/api/whoami'), 200)
+    await expectStatus(await svc.fetch('/api/whoami'), 429)
   })
 
   test('assignment goes to people; a service account is not offered', async ({ admin }) => {
     const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-assign' })
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Assign Probe' } })
-    await expect(admin.post('/api/assign', { table: 'Role', row_id: 'Assign Probe', assign_to: account.row_id })).rejects.toMatchObject({ status: 404 })
+    await expectRefused(admin.post('/api/assign', { table: 'Role', row_id: 'Assign Probe', assign_to: account.row_id }), 404)
   })
 })
 
@@ -222,7 +222,7 @@ describe('person-rename: names, not ids (review B-M2, B-M3)', () => {
     const a = await makePerson({ full_name: 'Scope Pick A' })
     await makePerson({ full_name: 'Scope Pick B' })
     const none = await createUser({ email: 'no.read@x.test' })
-    await expect(none.get('/api/people/pick?q=scope')).rejects.toMatchObject({ status: 403 })
+    await expectRefused(none.get('/api/people/pick?q=scope'), 403)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Pick Reader' } })
     await grantRole(admin, { table: 'Person', role: 'Pick Reader', can_read: true })
     const reader = await createUser({ email: 'pick.reader@x.test', roles: ['Pick Reader'] })

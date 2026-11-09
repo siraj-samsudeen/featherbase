@@ -3,6 +3,7 @@ import { DISPLAY_DEFAULTS } from 'shared'
 import { sql } from '../src/db'
 import { getSystemSettings } from '../src/settings'
 import { test } from './pg-test'
+import { expectStatus } from './fixtures'
 
 // SET-004: global System Settings drive rendering and session lifetime.
 // getSystemSettings falls back to defaults and reflects stored overrides;
@@ -58,7 +59,7 @@ describe('SET-004: system settings', () => {
   test('/api/settings exposes only the display subset', async ({ admin }) => {
     await reset()
     const res = await admin.fetch('/api/settings')
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const body = (await res.json()) as Record<string, unknown>
     expect(Object.keys(body).sort()).toEqual(
       ['app_name', 'currency', 'currency_precision', 'date_format', 'float_precision'].sort(),

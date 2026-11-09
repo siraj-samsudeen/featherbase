@@ -10,6 +10,7 @@ import { registerController, unregisterController, type TableController } from '
 import { saveDoc } from '../src/document'
 import { invalidateMeta } from '../src/meta'
 import { makeTaskerV2 } from '../../../tools/tasker-upgrade-fixture.mjs'
+import { expectRefused, expectStatus } from './fixtures'
 
 async function targetPackage() {
   const directory = await mkdtemp(resolve('test/.upgrade-'))
@@ -71,9 +72,9 @@ describe('runtime upgrades', () => {
       expect((await sql`select access_policy from table_def where name = 'other.task'`)[0].access_policy).toEqual(policy)
       const headers = { 'X-Featherbase-App-Version': 'other@2.0.0' }
       const visible = await owner.fetch('/api/table/other.task/private-after-upgrade', { headers })
-      expect(visible.status).toBe(200)
+      await expectStatus(visible, 200)
       expect(await visible.json()).toMatchObject({ quantity: 37 })
-      expect((await admin.fetch('/api/table/other.task/private-after-upgrade', { headers })).status).toBe(403)
+      await expectStatus(await admin.fetch('/api/table/other.task/private-after-upgrade', { headers }), 403)
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
@@ -87,25 +88,25 @@ describe('runtime upgrades', () => {
       expect(await member.get('/api/runtime_app_versions')).toEqual(['other@2.0.0', 'tasker@2.0.0'])
       const read = (table: string, header: string) => admin.fetch(`/api/table/${table}`, { headers: { 'X-Featherbase-App-Version': header } })
       for (const table of ['tasker.task', 'other.task']) {
-        expect((await read(table, 'other@2.0.0, tasker@2.0.0')).status).toBe(200)
+        await expectStatus(await read(table, 'other@2.0.0, tasker@2.0.0'), 200)
       }
-      expect((await read('other.task', 'other@0.0.1, tasker@2.0.0')).status).toBe(409)
-      expect((await read('tasker.task', 'other@2.0.0')).status).toBe(409)
+      await expectStatus(await read('other.task', 'other@0.0.1, tasker@2.0.0'), 409)
+      await expectStatus(await read('tasker.task', 'other@2.0.0'), 409)
       for (const invalid of ['tasker@2.0.0,tasker@0.0.1', 'tasker@2.0.0,tasker@2.0.0', 'other@wat,tasker@2.0.0']) {
-        expect((await read('tasker.task', invalid)).status).toBe(417)
+        await expectStatus(await read('tasker.task', invalid), 417)
       }
       await admin.post('/api/set_app_enabled', { name: 'tasker', enabled: false })
       expect(await member.get('/api/runtime_app_versions')).toEqual(['other@2.0.0'])
-      expect((await read('tasker.task', 'tasker@2.0.0')).status).toBe(403)
+      await expectStatus(await read('tasker.task', 'tasker@2.0.0'), 403)
       await sql`update installed_app set activation_pending = true where name = 'other'`
       expect(await member.get('/api/runtime_app_versions')).toEqual([])
-      expect((await read('other.task', 'other@2.0.0')).status).toBe(403)
+      await expectStatus(await read('other.task', 'other@2.0.0'), 403)
       await sql`update installed_app set activation_pending = false, package_version = null where name = 'other'`
       expect(await member.get('/api/runtime_app_versions')).toEqual([])
       await discoverPackages([])
       await loadInstalledApps()
       expect(await member.get('/api/runtime_app_versions')).toEqual([])
-      expect((await read('other.task', 'other@2.0.0')).status).toBe(403)
+      await expectStatus(await read('other.task', 'other@2.0.0'), 403)
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
@@ -170,7 +171,7 @@ describe('runtime upgrades', () => {
         const response = await admin.fetch('/api/save_row', { method: 'POST', headers: {
           'Content-Type': 'application/json', 'X-Featherbase-App-Version': 'tasker@2.0.0',
         }, body: JSON.stringify({ table: 'tasker.project', row: { ...before.projects[0], description } }) })
-        expect(response.status).toBe(201)
+        await expectStatus(response, 201)
         // Existing optional Text API normalizes empty input to NULL.
         expect(await response.json()).toMatchObject({ description: description || null })
         const read = await admin.fetch(`/api/table/tasker.project/${project.row_id}`, { headers: { 'X-Featherbase-App-Version': 'tasker@2.0.0' } })
@@ -191,46 +192,46 @@ describe('runtime upgrades', () => {
       expect(await discoverPackages([source, directory])).toEqual([])
       await loadInstalledApps()
       const member = await createUser({ email: 'upgrade-reader@example.com', roles: [] })
-      await expect(member.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 403 })
+      await expectRefused(member.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' }), 403)
       const plan = await admin.post<{ planId: string; currentVersion: string }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
       expect(plan).toMatchObject({ currentVersion: '0.0.1', targetVersion: '2.0.0', destructive: false, codeOnly: false,
         migrations: [{ id: 'add_notes' }], permissions: [], jobs: [], indexes: [] })
       expect(await admin.get('/api/table/other.task/kept')).toMatchObject({ quantity: 37, validation_runs: 1 })
-      await expect(admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: 'stale' })).rejects.toMatchObject({ status: 409 })
+      await expectRefused(admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: 'stale' }), 409)
       const body = { name: 'other', version: '2.0.0', planId: plan.planId }
       expect(await admin.post('/api/upgrade_app', body)).toMatchObject({ activationPending: true })
       expect(await admin.post('/api/upgrade_app', body)).toMatchObject({ activationPending: true })
       await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' }))
         .rejects.toMatchObject({ status: 409, message: expect.stringContaining('Activate the committed upgrade') })
-      await expect(admin.get('/api/table/other.task/kept')).rejects.toMatchObject({ status: 403 })
+      await expectRefused(admin.get('/api/table/other.task/kept'), 403)
       await discoverPackages([source, directory])
       await loadInstalledApps()
-      await expect(admin.post('/api/set_app_enabled', { name: 'other', enabled: true })).rejects.toMatchObject({ status: 409 })
+      await expectRefused(admin.post('/api/set_app_enabled', { name: 'other', enabled: true }), 409)
       await admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })
       await admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })
-      await expect(admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'late', quantity: 9 } })).rejects.toMatchObject({ status: 409 })
+      await expectRefused(admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'late', quantity: 9 } }), 409)
       // A colleague's tab still running the previous version: refused on save and on read, told to reload.
       const stale = (path: string, init: RequestInit = {}) => member.fetch(path, { ...init, headers: {
         'Content-Type': 'application/json', 'X-Featherbase-App-Version': 'other@0.0.1', ...init.headers,
       } })
       const reloadAsked = { error: { type: 'ConflictError', message: 'App other was upgraded. Reload its current client and retry with the installed application version' } }
       const staleSave = await stale('/api/save_row', { method: 'POST', body: JSON.stringify({ table: 'other.task', row: { row_id: 'stale', quantity: 5 } }) })
-      expect(staleSave.status).toBe(409)
+      await expectStatus(staleSave, 409)
       expect(await staleSave.json()).toMatchObject(reloadAsked)
       const staleRead = await stale('/api/table/other.task/kept')
-      expect(staleRead.status).toBe(409)
+      await expectStatus(staleRead, 409)
       expect(await staleRead.json()).toMatchObject(reloadAsked)
       expect(await sql`select 1 from other.task where row_id = 'stale'`).toEqual([])
       const response = await admin.fetch('/api/save_row', { method: 'POST', headers: {
         'Content-Type': 'application/json', 'X-Featherbase-App-Version': 'other@2.0.0',
       }, body: JSON.stringify({ table: 'other.task', row: { row_id: 'new', quantity: 19, notes: '**markdown**' } }) })
-      expect(response.status).toBe(201)
+      await expectStatus(response, 201)
       expect(await response.json()).toMatchObject({ quantity: 19, notes: '**markdown**', validation_runs: 1 })
       expect(await sql`select to_jsonb(p) - 'updated_at' as grant from permission p where owner_app = 'other' order by row_id`).toEqual(grants)
       expect(await sql`select quantity, validation_runs, notes from other.task where row_id = 'kept'`).toEqual([{ quantity: 37, validation_runs: 1, notes: null }])
       await discoverPackages([source])
       await loadInstalledApps()
-      await expect(admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417 })
+      await expectRefused(admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' }), 417)
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
@@ -250,7 +251,7 @@ describe('runtime upgrades', () => {
       // #651: the preview runs the steps, so the collision arrives after it.
       await sql`alter table other.task add column second text`
       const body = { name: 'other', version: '2.0.0', planId: plan.planId }
-      await expect(admin.post('/api/upgrade_app', body)).rejects.toMatchObject({ status: 417, message: expect.stringContaining('unchanged') })
+      await expectRefused(admin.post('/api/upgrade_app', body), 417, 'unchanged')
       expect(await sql`select column_name from information_schema.columns where table_schema = 'other' and table_name = 'task' and column_name = 'notes'`).toEqual([])
       expect(await sql`select column_name from column_def where parent = 'other.task' and column_name in ('notes', 'second')`).toEqual([])
       expect(await sql`select package_version, migration_ledger, activation_pending from installed_app where name = 'other'`).toEqual([
@@ -280,7 +281,7 @@ describe('runtime upgrades', () => {
         await writeFile(resolve(directory, 'featherbase.json'), JSON.stringify(changed))
         expect(await discoverPackages([source, directory])).toHaveLength(1)
         await loadInstalledApps()
-        await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417 })
+        await expectRefused(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' }), 417)
       }
       for (const changed of [
         { ...manifest, migrations: [{ ...manifest.migrations[0], fromVersion: '1.5.0' }] },
@@ -291,7 +292,7 @@ describe('runtime upgrades', () => {
         await writeFile(resolve(directory, 'featherbase.json'), JSON.stringify(changed))
         expect(await discoverPackages([source, directory])).toEqual([])
         await loadInstalledApps()
-        await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417 })
+        await expectRefused(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' }), 417)
       }
       expect(await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'still-old', quantity: 31 } })).toMatchObject({ validation_runs: 1 })
     } finally { await rm(directory, { recursive: true, force: true }) }
@@ -308,11 +309,11 @@ describe('runtime upgrades', () => {
       const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
       expect(await admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).toEqual(plan)
       await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
-      await expect(admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: plan.planId })).rejects.toMatchObject({ status: 409 })
+      await expectRefused(admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: plan.planId }), 409)
       await writeFile(resolve(directory, 'server.mjs'), "export const platformVersion = '2099-01'")
-      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417, message: expect.stringContaining('changed') })
+      await expectRefused(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' }), 417, 'changed')
       await rm(directory, { recursive: true })
-      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417, message: expect.stringContaining('missing') })
+      await expectRefused(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' }), 417, 'missing')
       expect(await sql`select package_version from installed_app where name = 'other'`).toEqual([{ package_version: '0.0.1' }])
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
@@ -347,7 +348,7 @@ describe('runtime upgrades', () => {
       await Promise.all(work)
       expect(await sql`select quantity, validation_runs from other.task where row_id = 'tail'`).toEqual([{ quantity: 83, validation_runs: 1 }])
       expect(await admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })).toMatchObject({ enabled: false })
-      await expect(admin.get('/api/table/other.task/tail')).rejects.toMatchObject({ status: 403 })
+      await expectRefused(admin.get('/api/table/other.task/tail'), 403)
     } finally {
       release()
       await Promise.allSettled(work)
@@ -366,7 +367,7 @@ describe('runtime upgrades', () => {
       await cp(directory, duplicate, { recursive: true })
       await writeFile(resolve(duplicate, 'featherbase.json'), JSON.stringify({ ...manifest, title: 'Different artifact, same version' }))
       expect(await discoverPackages([source, directory, duplicate])).toHaveLength(1)
-      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417 })
+      await expectRefused(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' }), 417)
       await discoverPackages([source, directory])
       await loadInstalledApps()
       const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
@@ -375,8 +376,8 @@ describe('runtime upgrades', () => {
       const committed = await sql`select * from installed_app where name = 'other'`
       await discoverPackages([source, duplicate])
       await loadInstalledApps()
-      await expect(admin.post('/api/upgrade_app', body)).rejects.toMatchObject({ status: 417, message: expect.stringContaining('committed') })
-      await expect(admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417 })
+      await expectRefused(admin.post('/api/upgrade_app', body), 417, 'committed')
+      await expectRefused(admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' }), 417)
       expect(await sql`select * from installed_app where name = 'other'`).toEqual(committed)
     } finally { await rm(directory, { recursive: true, force: true }); await rm(duplicate, { recursive: true, force: true }) }
   })
@@ -390,19 +391,19 @@ describe('runtime upgrades', () => {
       await admin.post('/api/install_app', { name: 'other' })
       await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
       await discoverPackages([directory])
-      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417, message: expect.stringContaining('unavailable') })
+      await expectRefused(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' }), 417, 'unavailable')
       await discoverPackages([source, directory])
       const first = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
       await admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: first.planId })
       expect(await admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })).toMatchObject({ enabled: false })
-      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '0.0.1' })).rejects.toMatchObject({ status: 417, message: expect.stringContaining('downgrades') })
+      await expectRefused(admin.post('/api/preview_app_upgrade', { name: 'other', version: '0.0.1' }), 417, 'downgrades')
       await cp(directory, next, { recursive: true })
       const pkg = JSON.parse(await readFile(resolve(next, 'package.json'), 'utf8'))
       await writeFile(resolve(next, 'package.json'), JSON.stringify({ ...pkg, version: '3.0.0' }))
       const migrations = [...manifest.migrations, { id: 'client_refresh', fromVersion: '2.0.0', toVersion: '3.0.0', operations: [] }]
       await writeFile(resolve(next, 'featherbase.json'), JSON.stringify({ ...manifest, migrations: [{ ...migrations[0], id: 'rewritten_history' }, migrations[1]] }))
       expect(await discoverPackages([source, directory, next])).toEqual([])
-      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '3.0.0' })).rejects.toMatchObject({ status: 417, message: expect.stringContaining('checksum') })
+      await expectRefused(admin.post('/api/preview_app_upgrade', { name: 'other', version: '3.0.0' }), 417, 'checksum')
       await writeFile(resolve(next, 'featherbase.json'), JSON.stringify({ ...manifest, migrations }))
       await discoverPackages([source, directory, next])
       const second = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'other', version: '3.0.0' })
@@ -457,7 +458,7 @@ describe('explicit_runtime_policy_upgrade', () => {
       await cp(resolve('../..', 'test-apps/fixtures/tasker-v2'), copy, { recursive: true })
       expect(await discoverPackages([copy])).toEqual([])
       await admin.post('/api/install_app', { name: 'tasker' })
-      expect((await admin.fetch('/api/table/tasker.task', { headers: header })).status).toBe(200)
+      await expectStatus(await admin.fetch('/api/table/tasker.task', { headers: header }), 200)
       const file = resolve(copy, 'featherbase.json')
       const original = await readFile(file, 'utf8')
       const manifest = JSON.parse(original)
@@ -466,16 +467,16 @@ describe('explicit_runtime_policy_upgrade', () => {
       await writeFile(file, JSON.stringify(manifest))
       await discoverPackages([copy])
       await loadInstalledApps()
-      expect((await admin.fetch('/api/table/tasker.task', { headers: header })).status).toBe(403)
+      await expectStatus(await admin.fetch('/api/table/tasker.task', { headers: header }), 403)
       const promote = await admin.fetch('/api/app_actions/tasker/promote', { method: 'POST',
         headers: { ...header, 'Content-Type': 'application/json' }, body: JSON.stringify({ idempotencyKey: 'relabelled', payload: { row_id: 'x', updated_at: 'y' } }) })
-      expect(promote.status).toBe(403)
+      await expectStatus(promote, 403)
       expect((await admin.get<{ installed: unknown[] }>('/api/apps')).installed)
         .toContainEqual(expect.objectContaining({ name: 'tasker', available: false, active: false }))
       await writeFile(file, original)
       await discoverPackages([copy])
       await loadInstalledApps()
-      expect((await admin.fetch('/api/table/tasker.task', { headers: header })).status).toBe(200)
+      await expectStatus(await admin.fetch('/api/table/tasker.task', { headers: header }), 200)
     } finally { await rm(copy, { recursive: true, force: true }) }
   })
 })

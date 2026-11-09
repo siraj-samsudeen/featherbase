@@ -13,7 +13,7 @@ import { discoverPackages } from '../src/runtime-packages'
 import { landingAfterSignIn } from '../src/landing'
 import { sql } from '../src/db'
 import { registerApp, installApp, uninstallApp } from '../src/apps'
-import { grantRole } from './fixtures'
+import { expectRefused, grantRole } from './fixtures'
 
 type Caps = { manage: boolean; admin: boolean; own_grant: boolean; tables: string[] }
 
@@ -61,7 +61,7 @@ describe("a person whose only grant is on an installed app's Table", () => {
 
   test('opening the Admin is refused', async ({ admin, createUser }) => {
     const reader = await appReader(admin, createUser, 'app.only.open@example.com')
-    await expect(reader.post('/api/open_admin', {})).rejects.toMatchObject({ status: 403 })
+    await expectRefused(reader.post('/api/open_admin', {}), 403)
   })
 
   test('signing in lands them in the app, not the Admin', async ({ admin, createUser }) => {
@@ -292,7 +292,7 @@ describe("a client app whose artifact is not loaded after a restart", () => {
         await installAppWithReaderRole(admin)
         const person = await holder(admin, createUser, email)
         await restart()
-        await expect(person.post('/api/open_admin', {})).rejects.toMatchObject({ status: 403 })
+        await expectRefused(person.post('/api/open_admin', {}), 403)
       })
     }
 
@@ -332,7 +332,7 @@ describe('core grants contributed by an app with its own pages', () => {
   test('app membership does not grant the Admin shell through core collaboration tables', async ({ admin, createUser }) => {
     const reader = await member(admin, createUser)
     expect(await capsOf(reader)).toMatchObject({ admin: false, own_grant: false })
-    await expect(reader.post('/api/open_admin', {})).rejects.toMatchObject({ status: 403 })
+    await expectRefused(reader.post('/api/open_admin', {}), 403)
   })
 })
 

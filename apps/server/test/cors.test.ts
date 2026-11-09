@@ -1,5 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
+import { expectStatus } from './fixtures'
 
 // API-008: the Admin origin can call the API cross-origin; other origins
 // get no CORS grant. Security headers are set on every response.
@@ -17,7 +18,7 @@ describe('API-008: CORS + security headers', () => {
         'access-control-request-headers': 'content-type,authorization',
       },
     })
-    expect(pre.status).toBe(204)
+    await expectStatus(pre, 204)
     expect(pre.headers.get('access-control-allow-origin')).toBe(ADMIN_ORIGIN)
     expect(pre.headers.get('access-control-allow-methods')).toContain('POST')
     expect(pre.headers.get('access-control-allow-headers')?.toLowerCase()).toContain(
@@ -25,7 +26,7 @@ describe('API-008: CORS + security headers', () => {
     )
 
     const res = await api.fetch('/api/ping', { headers: { origin: ADMIN_ORIGIN } })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     expect(res.headers.get('access-control-allow-origin')).toBe(ADMIN_ORIGIN)
   })
 

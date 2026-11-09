@@ -14,6 +14,7 @@ import { invalidateSources } from '../src/sources/registry'
 import { runOneJob } from '../src/jobs'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
 import type { TestClient } from 'feather-testing-postgres'
+import { expectRefused } from './fixtures'
 
 const gates = vi.hoisted(() => ({
   read: undefined as (() => Promise<void>) | undefined,
@@ -281,7 +282,7 @@ describe('the data source changes during the read', () => {
       await read.reached
       await change()
       read.release()
-      await expect(copy).rejects.toMatchObject({ status: 409, message: expect.stringContaining('changed while the source was read') })
+      await expectRefused(copy, 409, 'changed while the source was read')
     } finally { gates.read = undefined; read.release() }
     expect(await sql`select 1 from import_log where ref_table = 'Overlap Stores'`).toHaveLength(runs.length)
   })
@@ -295,7 +296,7 @@ describe('the data source changes during the read', () => {
       await read.reached
       await change()
       read.release()
-      await expect(made).rejects.toMatchObject({ status: 409 })
+      await expectRefused(made, 409)
     } finally { gates.read = undefined; read.release() }
     expect(await sql`select 1 from table_def where name = 'Overlap Stores'`).toHaveLength(0)
   })
@@ -345,7 +346,7 @@ describe('the owning app changes during the read', () => {
       await read.reached
       await sql`update installed_app set package_version = '9.9.9' where name = 'copyowner'`
       read.release()
-      await expect(copy).rejects.toMatchObject({ status: 409, message: expect.stringContaining('was upgraded while this read ran') })
+      await expectRefused(copy, 409, 'was upgraded while this read ran')
     } finally { gates.read = undefined; read.release() }
     expect(await sql`select 1 from copyowner.store`).toHaveLength(0)
     expect(await sql`select 1 from import_log where ref_table = ${NAME}`).toHaveLength(0)
@@ -360,7 +361,7 @@ describe('the owning app changes during the read', () => {
       await read.reached
       await sql`update installed_app set enabled = false where name = 'copyowner'`
       read.release()
-      await expect(copy).rejects.toMatchObject({ status: 403 })
+      await expectRefused(copy, 403)
     } finally { gates.read = undefined; read.release() }
     expect(await sql`select 1 from copyowner.store`).toHaveLength(0)
   })

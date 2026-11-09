@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { FinalJobFailure, drainJobs, enqueue, loadJobs, registerJob, runOneJob, startWorker, stopWorker } from '../src/jobs'
+import { expectStatus } from './fixtures'
 
 // JOB-001: enqueue → worker processes → queue drains.
 // JOB-002: retries until success; permanent failure lands in `failed`.
@@ -165,6 +166,6 @@ describe('See every job\'s status in one place', () => {
 
     // Someone with no role cannot open the list.
     const outsider = await createUser({ roles: [] })
-    expect((await outsider.fetch('/api/table/Background%20Job')).status).toBe(403)
+    await expectStatus(await outsider.fetch('/api/table/Background%20Job'), 403)
   })
 })

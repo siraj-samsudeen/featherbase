@@ -3,7 +3,7 @@
 // Table, and a row column bound to it says which row of it.
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { grantRole, makeTable } from './fixtures'
+import { expectRefused, expectStatus, grantRole, makeTable } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
 
 const PLANT = 'Atl Plant'
@@ -122,7 +122,7 @@ describe('a column that links to a row of any Table', () => {
 
   test('a Table that a link allows, or that a link points into, cannot be deleted', async ({ admin }) => {
     await setup(admin)
-    expect((await admin.fetch(`/api/table_def/${encodeURIComponent(PLANT)}`, { method: 'DELETE' })).status).toBe(417)
+    await expectStatus(await admin.fetch(`/api/table_def/${encodeURIComponent(PLANT)}`, { method: 'DELETE' }), 417)
     await makeTable(admin, { name: `${DECISION} Any`, columns: shapes('') })
     const linked = await admin.post<{ row_id: string }>('/api/save_row', { table: `${DECISION} Any`, row: { shapes_table: OTHER, shapes: 'x1' } })
     const refused = await admin.fetch(`/api/table_def/${encodeURIComponent(OTHER)}`, { method: 'DELETE' })
@@ -131,7 +131,7 @@ describe('a column that links to a row of any Table', () => {
     // With the link removed, the Table goes; the row that named it stays.
     const loaded = await admin.get<{ updated_at: string }>(row(`${DECISION} Any`, linked.row_id))
     await admin.fetch(row(`${DECISION} Any`, linked.row_id), { method: 'PATCH', body: JSON.stringify({ shapes: null, updated_at: loaded.updated_at }) })
-    expect((await admin.fetch(`/api/table_def/${encodeURIComponent(OTHER)}`, { method: 'DELETE' })).status).toBe(200)
+    await expectStatus(await admin.fetch(`/api/table_def/${encodeURIComponent(OTHER)}`, { method: 'DELETE' }), 200)
     expect(await admin.get(row(`${DECISION} Any`, linked.row_id))).toMatchObject({ shapes_table: null, shapes: null })
   })
 
@@ -148,7 +148,7 @@ describe('a column that links to a row of any Table', () => {
     await expect(save({ shapes_table: 'Atl Line', shapes: '8151' }))
       .rejects.toMatchObject({ status: 417, fields: { shapes: 'Atl Line cannot be linked to' } })
     // The Table column here is a link to Table, so it can't name a missing one.
-    await expect(save({ shapes_table: 'Atl Nowhere', shapes: '8151' })).rejects.toMatchObject({ status: 417 })
+    await expectRefused(save({ shapes_table: 'Atl Nowhere', shapes: '8151' }), 417)
   })
 
   test('a link column takes its Table only from a plain link to Table', async ({ admin }) => {
@@ -173,7 +173,7 @@ describe('a column that links to a row of any Table', () => {
   test('a Table holding links can itself be deleted', async ({ admin }) => {
     await setup(admin)
     await decide(admin, { shapes_table: PLANT, shapes: '8151' })
-    expect((await admin.fetch(`/api/table_def/${encodeURIComponent(DECISION)}`, { method: 'DELETE' })).status).toBe(200)
+    await expectStatus(await admin.fetch(`/api/table_def/${encodeURIComponent(DECISION)}`, { method: 'DELETE' }), 200)
     await admin.delete(row(PLANT, '8151'))
   })
 
@@ -184,13 +184,13 @@ describe('a column that links to a row of any Table', () => {
       const loaded = await admin.get<{ updated_at: string }>(row(DECISION, empty.row_id))
       return admin.fetch(row(DECISION, empty.row_id), { method: 'PATCH', body: JSON.stringify({ ...values, updated_at: loaded.updated_at }) })
     }
-    expect((await patch({ shapes_table: PLANT, shapes: 'PKN-GOLD' })).status).toBe(417)
-    expect((await patch({ shapes_table: PLANT, shapes: '8151' })).status).toBe(200)
+    await expectStatus(await patch({ shapes_table: PLANT, shapes: 'PKN-GOLD' }), 417)
+    await expectStatus(await patch({ shapes_table: PLANT, shapes: '8151' }), 200)
     expect(await admin.get(row(DECISION, empty.row_id))).toMatchObject({ shapes_table: PLANT, shapes: '8151' })
     // The same row id in another Table is another row, checked afresh.
-    expect((await patch({ shapes_table: UNIT })).status).toBe(417)
+    await expectStatus(await patch({ shapes_table: UNIT }), 417)
     await admin.post('/api/save_row', { table: UNIT, row: { row_id: '8151', label: 'Palakkad unit' } })
-    expect((await patch({ shapes_table: UNIT })).status).toBe(200)
+    await expectStatus(await patch({ shapes_table: UNIT }), 200)
   })
 
   test("the linked row's Connections count the rows linking to it, in a Table or in a Sub-table", async ({ admin, createUser }) => {

@@ -16,7 +16,7 @@ import { sql, withTransaction } from '../src/db'
 import { invalidateMeta } from '../src/meta'
 import { preflightRelease } from '../src/release-preflight'
 import { rehearse } from '../src/migrate-rehearse'
-import { grantRole } from './fixtures'
+import { expectRefused, expectStatus, grantRole } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
 
 type Client = { post: <T = unknown>(path: string, body: unknown) => Promise<T> }
@@ -132,7 +132,7 @@ describe('app schema evolution', () => {
     await sql`insert into evolve.supplier (row_id, supplier_name) values ('s1', 'Acme Pallets')`
     const clerk = await createUser({ email: 'evolve-reader@example.com', roles: ['Evolve Clerk'] })
     const response = await clerk.fetch('/api/table/evolve.supplier/s1', { headers: { 'X-Featherbase-App-Version': 'evolve@0.2.0' } })
-    expect(response.status).toBe(200)
+    await expectStatus(response, 200)
     expect(await response.json()).toMatchObject({ supplier_name: 'Acme Pallets' })
   })
 
@@ -151,9 +151,9 @@ describe('app schema evolution', () => {
     const clerk = await createUser({ roles: ['Evolve Clerk'] })
     const response = await clerk.fetch('/api/table/evolve.item/i1', { headers: { 'X-Featherbase-App-Version': 'evolve@0.2.0' } })
     if (mode === 'removed') {
-      expect(response.status).toBe(403)
+      await expectStatus(response, 403)
     } else {
-      expect(response.status).toBe(200)
+      await expectStatus(response, 200)
       const row = await response.json()
       expect(row).toMatchObject({ title: 'Pallet jack' })
       if (mode === 'unchanged') expect(row).toMatchObject({ quantity: 3, priority: 'Low', lines: [] })
@@ -173,7 +173,7 @@ describe('app schema evolution', () => {
     const response = await clerk.fetch('/api/save_row', { method: 'POST', headers: {
       'Content-Type': 'application/json', 'X-Featherbase-App-Version': 'evolve@0.2.0',
     }, body: JSON.stringify({ table: 'evolve.region', row: { row_id: 'z2', zone_name: 'South' } }) })
-    expect(response.status).toBe(403)
+    await expectStatus(response, 403)
     expect(await sql`select decides_scope from table_def where name = 'evolve.region'`).toEqual([{ decides_scope: true }])
   })
 
@@ -294,7 +294,7 @@ describe('refusals', () => {
     try {
       await install(admin)
       await discoverPackages([fixture(1), wider])
-      await expect(admin.post('/api/preview_app_upgrade', { name: 'evolve', version: '0.2.0' })).rejects.toMatchObject({ status: 417 })
+      await expectRefused(admin.post('/api/preview_app_upgrade', { name: 'evolve', version: '0.2.0' }), 417)
     } finally { await rm(wider, { recursive: true, force: true }) }
   })
 
@@ -462,7 +462,7 @@ describe('#821: qualified app Table slug ownership', () => {
     try {
       expect(await discoverPackages([directory])).toEqual([])
       const before = await snapshot()
-      await expect(admin.post('/api/install_app', { name: 'slugpolicy' })).rejects.toMatchObject({ status: 409 })
+      await expectRefused(admin.post('/api/install_app', { name: 'slugpolicy' }), 409)
       expect(await snapshot()).toEqual(before)
       expect(await sql`select to_regnamespace('slugpolicy') as stranded`).toEqual([{ stranded: null }])
     } finally { await rm(directory, { recursive: true, force: true }) }
@@ -505,7 +505,7 @@ describe('#821: qualified app Table slug ownership', () => {
         const before = await snapshot()
         await discoverPackages([first, next])
         await loadInstalledApps()
-        await expect(admin.post('/api/preview_app_upgrade', { name: 'slugpolicy', version: '0.2.0' })).rejects.toMatchObject({ status: 409 })
+        await expectRefused(admin.post('/api/preview_app_upgrade', { name: 'slugpolicy', version: '0.2.0' }), 409)
         expect(await snapshot()).toEqual(before)
         expect(await sql`select row_id, title from slugpolicy.task_item`).toEqual([{ row_id: 'kept', title: 'Original row' }])
         expect(await sql`select row_id, title from slugpolicy.other`).toEqual([{ row_id: 'other', title: 'Other row' }])

@@ -5,6 +5,7 @@ import { test } from './pg-test'
 import { installApp } from '../src/apps'
 import { discoverPackages } from '../src/runtime-packages'
 import { version } from '../../../client-apps/jeyarama/equipment/package.json'
+import { expectRefused } from './fixtures'
 
 type Row = { row_id: string; updated_at: string; [field: string]: unknown }
 
@@ -70,7 +71,7 @@ test('starting a count fixes its expected list, which counters cannot read', asy
   await save('equipment.asset', { asset_name: 'Bought after the start', asset_type: type.row_id, place: atk.row_id })
   const expected = await manager.get<{ data: Row[] }>(`/api/table/equipment.count_expected?fields=["asset"]&filters=${encodeURIComponent(JSON.stringify([['count', '=', count.row_id]]))}`)
   expect(expected.data).toHaveLength(3)
-  await expect(suresh.get('/api/table/equipment.count_expected')).rejects.toMatchObject({ status: 403 })
+  await expectRefused(suresh.get('/api/table/equipment.count_expected'), 403)
   await expect(start(manager, count)).rejects.toThrow('This count has already started')
   const chiller = (await manager.get<{ data: Row[] }>(`/api/table/equipment.asset?fields=["row_id"]&filters=${encodeURIComponent(JSON.stringify([['asset_name', '=', 'Display chiller 1']]))}`)).data[0]
   await expect(save('equipment.count_expected', { count: count.row_id, asset: chiller.row_id, expected_place: atk.row_id }))

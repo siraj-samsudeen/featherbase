@@ -5,7 +5,7 @@ import postgres from 'postgres'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { EXTERNAL_DATABASE_URL } from './external-database'
-import { grantRole } from './fixtures'
+import { expectRefused, expectStatus, grantRole } from './fixtures'
 import { config } from '../src/config'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
@@ -76,7 +76,7 @@ describe('same-source PostgreSQL relationship membership', () => {
     const malformed = new URLSearchParams({ filters: JSON.stringify({ store: '11' }) })
     for (const endpoint of [path, `${path}:count`]) {
       const response = await admin.fetch(`${endpoint}?${malformed}`)
-      expect(response.status).toBe(417)
+      await expectStatus(response, 417)
       expect(await response.json()).toEqual({
         error: { type: 'ValidationError', message: 'filters must be an array of [field, operator, value]' },
       })
@@ -139,7 +139,7 @@ describe('same-source PostgreSQL relationship membership', () => {
     await grantRole(admin, { role: 'Related Reader', table: [FLOOR, REGION], can_read: true })
     await grantRole(admin, { role: 'Related Reader', table: STORE, can_read: true, own_rows_only: true })
     const user = await createUser({ email: 'related-owned@example.com', roles: ['Related Reader'] })
-    await expect(user.get(`${path}?${query(nested())}`)).rejects.toMatchObject({ status: 403, message: expect.stringContaining('own-rows') })
+    await expectRefused(user.get(`${path}?${query(nested())}`), 403, 'own-rows')
   })
 
   test.for([
@@ -162,7 +162,7 @@ describe('same-source PostgreSQL relationship membership', () => {
       invalidateMeta()
       await grantRole(admin, { role: 'Related Reader', table: [FLOOR, STORE, REGION], can_read: true })
       const user = await createUser({ email: 'related-tier@example.com', roles: ['Related Reader'] })
-      await expect(user.get(`${path}?${query(filters as Filters)}`)).rejects.toMatchObject({ status: 417, message: expect.stringContaining('Unknown filter field') })
+      await expectRefused(user.get(`${path}?${query(filters as Filters)}`), 417, 'Unknown filter field')
     },
   )
 
@@ -190,7 +190,7 @@ describe('same-source PostgreSQL relationship membership', () => {
     await admin.post('/api/table/Data%20Source', { row_id: 'related-other', engine: 'postgres', url_env: 'RELATED_786_URL' })
     await sql`update table_def set data_source = 'related-other' where name = ${table}`
     invalidateMeta()
-    await expect(admin.get(`${path}?${query(nested())}`)).rejects.toMatchObject({ status: 417, message: expect.stringContaining('same Data Source record') })
+    await expectRefused(admin.get(`${path}?${query(nested())}`), 417, 'same Data Source record')
   })
 
   test('retains the platform-database identity refusal for relationship reads', async ({ admin }) => {
@@ -243,13 +243,13 @@ describe('same-source PostgreSQL relationship membership', () => {
   test('retains request-wide hop budgets at both sides of the boundary', async ({ admin }) => {
     await connect(admin)
     expect(await admin.get(`${path}:count?${query(Array.from({ length: 16 }, () => related()[0]))}`)).toEqual({ count: 4 })
-    await expect(admin.get(`${path}:count?${query(Array.from({ length: 17 }, () => related()[0]))}`)).rejects.toMatchObject({ status: 417, message: expect.stringContaining('16') })
+    await expectRefused(admin.get(`${path}:count?${query(Array.from({ length: 17 }, () => related()[0]))}`), 417, '16')
     // Model a legal self-Reference using the same physical store key. Each
     // hop is valid, so only the recursion limit may refuse this request.
     await sql`update column_def set reference_table = ${STORE}, source_column = 'code' where parent = ${STORE} and column_name = 'region'`
     invalidateMeta()
     const self = (depth: number): Filters => depth ? [['region', 'related', { table: STORE, filters: self(depth - 1) }]] : [['label', '=', 'North']]
     expect(await admin.get(`${path}:count?${query(related(self(2)))}`)).toEqual({ count: 2 })
-    await expect(admin.get(`${path}:count?${query(related(self(3)))}`)).rejects.toMatchObject({ status: 417, message: expect.stringContaining('3 levels') })
+    await expectRefused(admin.get(`${path}:count?${query(related(self(3)))}`), 417, '3 levels')
   })
 })

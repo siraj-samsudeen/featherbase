@@ -22,6 +22,7 @@ import {
 import { SALES_TARGET_DATASET, _setSourceReader, definitionSql } from '../src/datasets/sales-target-mtd'
 import { reportFor, snapshotStoreNames } from '../src/sales-target-report'
 import type { Assignment } from '../src/sales-target'
+import { expectStatus } from './fixtures'
 
 // The report is month to date in IST; these fixtures were cut on 17-Sep-2026,
 // so "today" is pinned there and every expected period below still means what it meant.
@@ -493,7 +494,7 @@ describe('registry as Tables (migration 0087)', () => {
     expect(Number(mine?.row_count)).toBe(8)
     // The rows table holds every store's figures and has no Table: unreachable generically.
     const rows = await admin.fetch(`/api/table/${encodeURIComponent('Sales Target Snapshot Row')}`)
-    expect(rows.status).toBe(404)
+    await expectStatus(rows, 404)
   })
 
   test('a miss is a Dataset Miss row the Admin can see', async ({ admin }) => {

@@ -5,6 +5,7 @@ import { installApp } from '../src/apps'
 import { discoverPackages } from '../src/runtime-packages'
 import { deleteStored } from '../src/storage'
 import { taskerClient } from './tasker-client'
+import { expectRefused } from './fixtures'
 
 // Tasker members hold no grant on File. A photo is attached to the task or
 // issue it belongs to, so whoever may change that row may upload it, and
@@ -73,7 +74,7 @@ test('a photo on private work stays closed to other members and to people outsid
   expect(status).toBe(201)
   expect(await opens(ravi, body)).toBe(200)
   expect(await opens(meena, body)).toBe(403)
-  await expect(signedUrl(meena, body)).rejects.toMatchObject({ status: 403 })
+  await expectRefused(signedUrl(meena, body), 403)
   const outsider = taskerClient(await createUser({ roles: [] }))
   expect(await opens(outsider, body)).toBe(403)
 }))

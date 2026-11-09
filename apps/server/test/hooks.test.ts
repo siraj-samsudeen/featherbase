@@ -5,6 +5,7 @@ import { sql } from '../src/db'
 import { clearControllers, registerController, runHooks, unregisterController, type TableController } from '../src/controllers'
 import { AppError } from '../src/errors'
 import { getMeta } from '../src/meta'
+import { expectStatus } from './fixtures'
 
 const DT = 'Hook Chain Probe'
 const FILE_DT = 'Hook File Demo'
@@ -117,7 +118,7 @@ describe('DOC-003: lifecycle hook chain', () => {
       method: 'POST',
       body: JSON.stringify({ table: FILE_DT, row: { title: 'No Hooks Needed' } }),
     })
-    expect(res.status).toBe(201)
+    await expectStatus(res, 201)
   })
 })
 

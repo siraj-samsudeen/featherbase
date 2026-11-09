@@ -5,7 +5,7 @@ import { sql } from '../src/db'
 import { deleteStored } from '../src/storage'
 import { test } from './pg-test'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
-import { createUserWithRole, makeTable } from './fixtures'
+import { createUserWithRole, expectStatus, makeTable } from './fixtures'
 
 // FILE-001: multipart upload writes a storage object and a File doc with
 // size, type, and URL; public files serve without auth, private files
@@ -48,7 +48,7 @@ describe('FILE-001: file upload + storage', () => {
         } : { assign_to_field: 'file_url', users: [{ user: 'Administrator' }] }),
       } }),
     })
-    expect(response.status).toBe(417)
+    await expectStatus(response, 417)
     expect(await response.json()).toMatchObject({ error: {
       type: 'ValidationError',
       message: `${workflow ? 'A workflow' : 'An assignment rule'} cannot write File.file_url: it is managed by uploads`,
@@ -67,7 +67,7 @@ describe('FILE-001: file upload + storage', () => {
       const response = await admin.fetch(`/api/table/File/${original.row_id}:apply_workflow_action`, {
         method: 'POST', body: JSON.stringify({ action: 'Replace path' }),
       })
-      expect(response.status).toBe(417)
+      await expectStatus(response, 417)
       expect(await response.json()).toMatchObject({ error: {
         type: 'ValidationError', message: 'A workflow cannot write File.file_url: it is managed by uploads',
       } })
@@ -101,16 +101,16 @@ describe('FILE-001: file upload + storage', () => {
     })
     try {
       const forged = await save({ file_name: 'forged.txt', file_url: original.file_url })
-      expect(forged.status).toBe(417)
+      await expectStatus(forged, 417)
       expect(await forged.json()).toMatchObject({ error: { type: 'ValidationError', message: expect.stringContaining('file_url') } })
       for (const file_url of [original.file_url, '/files/arbitrary.txt', '', null]) {
         const replaced = await save({ ...other, file_url })
-        expect(replaced.status).toBe(417)
+        await expectStatus(replaced, 417)
       }
       const edited = await save({ ...other, file_name: 'renamed.txt' })
-      expect(edited.status).toBe(201)
+      await expectStatus(edited, 201)
       expect(await edited.json()).toMatchObject({ file_name: 'renamed.txt', file_url: other.file_url })
-      expect((await api.fetch(String(original.file_url))).status).toBe(401)
+      await expectStatus(await api.fetch(String(original.file_url)), 401)
       expect(await (await admin.fetch(String(original.file_url))).text()).toBe('private original')
       expect(await (await api.fetch(String(other.file_url))).text()).toBe('other content')
       expect(await sql`select count(*)::int as n from file where file_url = ${String(original.file_url)}`).toEqual([{ n: 1 }])
@@ -126,7 +126,7 @@ describe('FILE-001: file upload + storage', () => {
     const uploaded: string[] = []
     try {
       const res = await upload(admin, 'hello.txt', 'hello world', 'text/plain')
-      expect(res.status).toBe(201)
+      await expectStatus(res, 201)
       const doc = (await res.json()) as Record<string, unknown>
       uploaded.push(doc.file_url as string)
       expect(doc.file_name).toBe('hello.txt')
@@ -139,7 +139,7 @@ describe('FILE-001: file upload + storage', () => {
       expect(row).toEqual({ row_id: expect.stringMatching(/^[0-9a-f]{10}$/) })
 
       const served = await api.fetch(doc.file_url as string)
-      expect(served.status).toBe(200)
+      await expectStatus(served, 200)
       expect(served.headers.get('content-type')).toContain('text/plain')
       expect(await served.text()).toBe('hello world')
     } finally {
@@ -153,19 +153,19 @@ describe('FILE-001: file upload + storage', () => {
       const res = await upload(admin, 'secret.txt', 'classified', 'text/plain', {
         is_private: '1',
       })
-      expect(res.status).toBe(201)
+      await expectStatus(res, 201)
       const doc = (await res.json()) as Record<string, unknown>
       uploaded.push(doc.file_url as string)
       expect(doc.file_url).toMatch(/^\/private\/files\//)
 
       const anon = await api.fetch(doc.file_url as string)
-      expect(anon.status).toBe(401)
+      await expectStatus(anon, 401)
 
       // #173: the browser presents the HttpOnly `sid` cookie, not a URL token.
       const authed = await api.fetch(doc.file_url as string, {
         headers: { cookie: `sid=${admin.token}` },
       })
-      expect(authed.status).toBe(200)
+      await expectStatus(authed, 200)
       expect(await authed.text()).toBe('classified')
     } finally {
       await cleanupDisk(uploaded)
@@ -182,7 +182,7 @@ describe('FILE-001: file upload + storage', () => {
         const doc = (await (await upload(admin, name, body, type)).json()) as Record<string, unknown>
         uploaded.push(doc.file_url as string)
         const res = await api.fetch(doc.file_url as string)
-        expect(res.status).toBe(200)
+        await expectStatus(res, 200)
         expect(res.headers.get('content-disposition')).toMatch(/^attachment;/)
       }
     } finally {
@@ -201,7 +201,7 @@ describe('FILE-001: file upload + storage', () => {
         ).json()) as Record<string, unknown>
         uploaded.push(doc.file_url as string)
         const res = await api.fetch(doc.file_url as string)
-        expect(res.status).toBe(200)
+        await expectStatus(res, 200)
         expect(res.headers.get('content-type')).toBe('image/svg+xml')
         expect(res.headers.get('content-disposition')).toMatch(/^attachment;/)
         expect(res.headers.get('x-content-type-options')).toBe('nosniff')
@@ -288,7 +288,7 @@ describe('FILE-001: file upload + storage', () => {
     const form = new FormData()
     form.append('file', new File(['x'], 'x.txt', { type: 'text/plain' }))
     const res = await api.fetch('/api/upload_file', { method: 'POST', body: form })
-    expect(res.status).toBe(401)
+    await expectStatus(res, 401)
   })
 
   // Attaching binds the file to something and hands out a signed-URL key to
@@ -304,9 +304,9 @@ describe('FILE-001: file upload + storage', () => {
       ref_table: 'Person',
       ref_name: 'Administrator',
     })
-    expect(row.status).toBe(403)
+    await expectStatus(row, 403)
     const table = await upload(stranger, 'x.txt', 'x', 'text/plain', { ref_table: 'Person' })
-    expect(table.status).toBe(403)
+    await expectStatus(table, 403)
 
     // Refused before storage: nothing was registered on the way out.
     const [{ n: after }] = await sql`select count(*)::int as n from file`
@@ -317,19 +317,19 @@ describe('FILE-001: file upload + storage', () => {
     const form = new FormData()
     form.append('nope', 'not a file')
     const res = await admin.fetch('/api/upload_file', { method: 'POST', body: form })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
   })
 
   test('unregistered storage paths 404 even if a file existed on disk', async ({ api }) => {
     const res = await api.fetch('/files/0000000000000000_ghost.txt')
-    expect(res.status).toBe(404)
+    await expectStatus(res, 404)
   })
 
   test('a registered file whose stored object has gone missing is simply not found', async ({ admin, api }) => {
     const res = await upload(admin, 'vanish.txt', 'soon gone', 'text/plain')
     const doc = (await res.json()) as Record<string, unknown>
     await deleteStored(doc.file_url as string)
-    expect((await api.fetch(doc.file_url as string)).status).toBe(404)
+    await expectStatus(await api.fetch(doc.file_url as string), 404)
   })
 
   test('records ref_table/ref_name when attaching to a document', async ({ admin }) => {
@@ -339,7 +339,7 @@ describe('FILE-001: file upload + storage', () => {
         ref_table: 'Person',
         ref_name: 'Administrator',
       })
-      expect(res.status).toBe(201)
+      await expectStatus(res, 201)
       const doc = (await res.json()) as Record<string, unknown>
       uploaded.push(doc.file_url as string)
       expect(doc.ref_table).toBe('Person')
@@ -376,11 +376,11 @@ describe('FILE-002: attachments listing + delete cleanup', () => {
 
       // Delete one File doc: the storage object must go with it…
       await admin.delete(`/api/table/File/${a.row_id}`)
-      expect((await api.fetch(a.file_url as string)).status).toBe(404)
+      await expectStatus(await api.fetch(a.file_url as string), 404)
 
       // …while the other file is untouched.
       const bServed = await api.fetch(b.file_url as string)
-      expect(bServed.status).toBe(200)
+      await expectStatus(bServed, 200)
       expect(await bServed.text()).toBe('BBB')
 
       const after = await admin.get<{ data: { file_name: string }[] }>(
@@ -413,7 +413,7 @@ describe('Find and manage a file on its own', () => {
       const opened = await admin.get<Record<string, unknown>>(`/api/table/File/${doc.row_id}`)
       expect(opened.file_name).toBe('photo.txt')
       await admin.delete(`/api/table/File/${doc.row_id}`)
-      expect((await admin.fetch(`/api/table/File/${doc.row_id}`)).status).toBe(404)
+      await expectStatus(await admin.fetch(`/api/table/File/${doc.row_id}`), 404)
     } finally {
       await cleanupDisk(uploaded)
     }
@@ -442,13 +442,13 @@ describe('Attach a file to a row you may change', () => {
     const res = await photo(writer, { ref_table: 'Att Wr Doc', ref_name: doc.row_id })
     const file = (await res.json()) as Record<string, unknown>
     try {
-      expect(res.status).toBe(201)
+      await expectStatus(res, 201)
       expect(file).toMatchObject({ file_name: 'lights.jpg', is_private: true, ref_table: 'Att Wr Doc', ref_name: doc.row_id, created_by: writer.user })
       expect(await (await writer.fetch(String(file.file_url))).text()).toBe('jpeg bytes')
       const { signed_url } = await writer.get<{ signed_url: string }>(`/api/signed_url?file_url=${encodeURIComponent(String(file.file_url))}`)
       expect(signed_url).toContain(`${String(file.file_url)}?expires=`)
       // Opening follows the row: someone who may only read it opens the photo too.
-      expect((await reader.fetch(String(file.file_url))).status).toBe(200)
+      await expectStatus(await reader.fetch(String(file.file_url)), 200)
     } finally {
       if (file.file_url) await cleanupDisk([String(file.file_url)])
     }
@@ -459,9 +459,9 @@ describe('Attach a file to a row you may change', () => {
     const res = await photo(writer, { ref_table: 'Att Wr Doc', ref_name: doc.row_id })
     const file = (await res.json()) as Record<string, unknown>
     try {
-      expect(res.status).toBe(201)
-      expect((await stranger.fetch(String(file.file_url))).status).toBe(403)
-      expect((await stranger.fetch(`/api/signed_url?file_url=${encodeURIComponent(String(file.file_url))}`)).status).toBe(403)
+      await expectStatus(res, 201)
+      await expectStatus(await stranger.fetch(String(file.file_url)), 403)
+      await expectStatus(await stranger.fetch(`/api/signed_url?file_url=${encodeURIComponent(String(file.file_url))}`), 403)
     } finally {
       if (file.file_url) await cleanupDisk([String(file.file_url)])
     }
@@ -471,7 +471,7 @@ describe('Attach a file to a row you may change', () => {
     const { doc, reader } = await world(admin, createUser)
     const [{ n: before }] = await sql`select count(*)::int as n from file`
     const objects = privateObjects()
-    expect((await photo(reader, { ref_table: 'Att Wr Doc', ref_name: doc.row_id })).status).toBe(403)
+    await expectStatus(await photo(reader, { ref_table: 'Att Wr Doc', ref_name: doc.row_id }), 403)
     const [{ n: after }] = await sql`select count(*)::int as n from file`
     expect(after).toBe(before)
     expect(privateObjects()).toBe(objects)
@@ -481,8 +481,8 @@ describe('Attach a file to a row you may change', () => {
     const { writer } = await world(admin, createUser)
     const [{ n: before }] = await sql`select count(*)::int as n from file`
     const objects = privateObjects()
-    expect((await photo(writer, { ref_table: 'Att Wr Doc' })).status).toBe(403)
-    expect((await photo(writer, {})).status).toBe(403)
+    await expectStatus(await photo(writer, { ref_table: 'Att Wr Doc' }), 403)
+    await expectStatus(await photo(writer, {}), 403)
     const [{ n: after }] = await sql`select count(*)::int as n from file`
     expect(after).toBe(before)
     expect(privateObjects()).toBe(objects)

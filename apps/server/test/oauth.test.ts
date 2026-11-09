@@ -5,7 +5,7 @@ import { parseInstanceAddresses } from '../src/instance-addresses'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { getBrowser } from '../src/print'
-import { makePerson } from './fixtures'
+import { expectStatus, makePerson } from './fixtures'
 import { mockConsentHtml } from '../src/oauth'
 import type { TestClient } from 'feather-testing-postgres'
 import { expectSessionCookie, setSessionHours } from './session-cookie-test-utils'
@@ -83,16 +83,16 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
         const email = `elapsed-${seconds}@example.test`
         const { state, cookie } = await beginLogin(api)
         const approved = await api.fetch(approveUrl(state, email, 'Elapsed Login'), { headers: { cookie } })
-        expect(approved.status).toBe(302)
+        await expectStatus(approved, 302)
         vi.setSystemTime(started + seconds * 1000)
         const callback = await api.fetch(approved.headers.get('location')!, { headers: { cookie } })
         if (seconds === 599) {
-          expect(callback.status).toBe(302)
+          await expectStatus(callback, 302)
           const session = await redeem(api, handoffCode(callback), sidCookie(callback))
-          expect(session.status).toBe(200)
+          await expectStatus(session, 200)
           expect(await session.json()).toMatchObject({ user: { email } })
         } else {
-          expect(callback.status).toBe(401)
+          await expectStatus(callback, 401)
           expect(await callback.json()).toEqual({ error: { type: 'AuthenticationError', message: 'Token expired' } })
           expect(callback.headers.get('location')).toBeNull()
           expect(sidCookie(callback)).toBe('')
@@ -111,10 +111,10 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
       const before = Math.floor(Date.now() / 1000)
       const res = await mockSignIn(api, `session-${hours}@example.com`)
       const after = Math.floor(Date.now() / 1000)
-      expect(res.status).toBe(302)
+      await expectStatus(res, 302)
       const cookie = expectSessionCookie(res, hours, { before, after })
       const redeemed = await redeem(api, handoffCode(res), cookie)
-      expect(redeemed.status).toBe(200)
+      await expectStatus(redeemed, 200)
       expect(Object.keys((await redeemed.json()) as object).sort()).toEqual(['token', 'user'])
     }
   })
@@ -136,7 +136,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
       hd: 'workspace.example.test',
     }
     const response = await api.fetch(`/api/oauth/mock/consent?${new URLSearchParams(values)}`)
-    expect(response.status).toBe(200)
+    await expectStatus(response, 200)
     expect(response.headers.get('content-type')).toContain('text/html')
     const html = await response.text()
     expect(html).toContain('value="a&amp;b@example.test"')
@@ -161,7 +161,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
   test('full mock flow provisions a user and hands the SPA a session', async ({ api }) => {
     await setAllowedDomains('*')
     const res = await mockSignIn(api, 'new.person@gmail.com')
-    expect(res.status).toBe(302)
+    await expectStatus(res, 302)
     const landing = res.headers.get('location') as string
     // #150: the landing URL carries a handoff code and no session token. The
     // assertion used to be `/oauth-callback?token=` — the change of expectation
@@ -173,7 +173,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     // response set, and gets the session it needs (its WebSocket and private
     // file URLs carry the literal token).
     const redeemed = await redeem(api, handoffCode(res), sidCookie(res))
-    expect(redeemed.status).toBe(200)
+    await expectStatus(redeemed, 200)
     const session = (await redeemed.json()) as { token: string; user: { row_id: string } }
     // person-identities: a person Google creates gets an opaque, permanent id
     // (the warehouse person_id), never the address.
@@ -183,7 +183,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     const whoami = await api.fetch('/api/whoami', {
       headers: { authorization: `Bearer ${session.token}` },
     })
-    expect(whoami.status).toBe(200)
+    await expectStatus(whoami, 200)
     expect(((await whoami.json()) as { row_id: string }).row_id).toBe(session.user.row_id)
 
     // person-identities: the new person is linked by Google's account ID.
@@ -201,8 +201,8 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     const res = await mockSignIn(api, 'replay@gmail.com')
     const code = handoffCode(res)
     const cookie = sidCookie(res)
-    expect((await redeem(api, code, cookie)).status).toBe(200)
-    expect((await redeem(api, code, cookie)).status).toBe(401)
+    await expectStatus(await redeem(api, code, cookie), 200)
+    await expectStatus(await redeem(api, code, cookie), 401)
   })
 
   // And it is bound to the browser it was minted for: redemption requires the
@@ -212,22 +212,22 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     await setAllowedDomains('*')
     const res = await mockSignIn(api, 'bound@gmail.com')
     const code = handoffCode(res)
-    expect((await redeem(api, code, '')).status).toBe(401)
+    await expectStatus(await redeem(api, code, ''), 401)
     const other = await mockSignIn(api, 'someone.else@gmail.com')
-    expect((await redeem(api, code, sidCookie(other))).status).toBe(401)
+    await expectStatus(await redeem(api, code, sidCookie(other)), 401)
     // Burned by the failed attempts — the right browser cannot use it either.
-    expect((await redeem(api, code, sidCookie(res))).status).toBe(401)
+    await expectStatus(await redeem(api, code, sidCookie(res)), 401)
   })
 
   test('an unknown or missing handoff code is refused', async ({ api }) => {
-    expect((await redeem(api, 'not-a-real-code', '')).status).toBe(401)
-    expect((await redeem(api, null, '')).status).toBe(401)
+    await expectStatus(await redeem(api, 'not-a-real-code', ''), 401)
+    await expectStatus(await redeem(api, null, ''), 401)
   })
 
   test('blank allowed_login_domains blocks auto-provisioning by default', async ({ api }) => {
     await setAllowedDomains('')
     const denied = await mockSignIn(api, 'unconfigured@gmail.com')
-    expect(denied.status).toBe(401)
+    await expectStatus(denied, 401)
     const [row] = await sql`select 1 from person where email = 'unconfigured@gmail.com'`
     expect(row).toBeUndefined()
   })
@@ -235,7 +235,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
   test('* explicitly allows auto-provisioning from any domain', async ({ api }) => {
     await setAllowedDomains('*')
     const admitted = await mockSignIn(api, 'explicit-anywhere@outside.io')
-    expect(admitted.status).toBe(302)
+    await expectStatus(admitted, 302)
     const [user] = await sql`
       select u.enabled, i.method from person u join sign_in_identity i on i.person_id = u.row_id
       where u.email = 'explicit-anywhere@outside.io'`
@@ -248,7 +248,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     // one non-empty, non-whitespace local part and domain.
     for (const email of ['not-an-email', 'user@@example.com']) {
       const denied = await mockSignIn(api, email)
-      expect(denied.status).toBe(401)
+      await expectStatus(denied, 401)
       const [row] = await sql`
         select 1 from person where email = ${email} or row_id = ${email}`
       expect(row).toBeUndefined()
@@ -258,12 +258,12 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
   test('allowed_login_domains blocks auto-provisioning foreign domains', async ({ api }) => {
     await setAllowedDomains('jeyarama.com')
     const denied = await mockSignIn(api, 'stranger@gmail.com')
-    expect(denied.status).toBe(401)
+    await expectStatus(denied, 401)
     const [row] = await sql`select 1 from person where email = 'stranger@gmail.com'`
     expect(row).toBeUndefined()
 
     const admitted = await mockSignIn(api, 'admitted@jeyarama.com')
-    expect(admitted.status).toBe(302)
+    await expectStatus(admitted, 302)
     expect(admitted.headers.get('location')).toContain('/oauth-callback?code=')
   })
 
@@ -272,10 +272,10 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
   test('an invited existing user signs in when auto-provisioning is disabled', async ({ api, admin }) => {
     const contractor = await makePerson({ email: 'contractor@outside.io', roles: [] })
     await setAllowedDomains('')
-    expect((await mockSignIn(api, 'contractor@outside.io')).status).toBe(401)
+    await expectStatus(await mockSignIn(api, 'contractor@outside.io'), 401)
     await admin.post(`/api/people/${contractor}/identities`, { method: 'google', email: 'contractor@outside.io' })
     const res = await mockSignIn(api, 'contractor@outside.io')
-    expect(res.status).toBe(302)
+    await expectStatus(res, 302)
     expect(res.headers.get('location')).toContain('/oauth-callback?code=')
   })
 
@@ -287,7 +287,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     await admin.post(`/api/people/${existing}/identities`, { method: 'google', email: 'invited.existing@outside.io' })
     const res = await mockSignIn(api, 'invited.existing@outside.io')
     const redeemed = await redeem(api, handoffCode(res), sidCookie(res))
-    expect(redeemed.status).toBe(200)
+    await expectStatus(redeemed, 200)
     expect(((await redeemed.json()) as { user: { row_id: string } }).user.row_id).toBe(existing)
     expect(await sql`select row_id from person where email = 'invited.existing@outside.io'`).toEqual([{ row_id: existing }])
   })
@@ -297,13 +297,13 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
   test('a retry start after a refusal opens a consent page that does not hold the refused address', async ({ api }) => {
     await setClientId('')
     await setAllowedDomains('')
-    expect((await mockSignIn(api, 'refused.retry@gmail.com')).status).toBe(401)
+    await expectStatus(await mockSignIn(api, 'refused.retry@gmail.com'), 401)
     const start = await api.fetch('/api/oauth/google/login?prompt=select_account')
-    expect(start.status).toBe(302)
+    await expectStatus(start, 302)
     const consent = await api.fetch(start.headers.get('location') as string, {
       headers: { cookie: start.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ') },
     })
-    expect(consent.status).toBe(200)
+    await expectStatus(consent, 200)
     const html = await consent.text()
     expect(html).toContain('data-testid="mock-email"')
     expect(html).not.toContain('refused.retry@gmail.com')
@@ -311,13 +311,13 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
 
   test('PLAT-006: a callback with a forged state is refused to an API caller', async ({ api }) => {
     const res = await api.fetch('/api/oauth/google/callback?code=abc&state=forged.signature')
-    expect(res.status).toBe(401)
+    await expectStatus(res, 401)
   })
 
   test('a google_client_id in System Settings switches to the real provider', async ({ api }) => {
     await setClientId('test-client-id')
     const res = await api.fetch('/api/oauth/google/login')
-    expect(res.status).toBe(302)
+    await expectStatus(res, 302)
     const loc = res.headers.get('location') as string
     expect(loc).toContain('https://accounts.google.com/o/oauth2/v2/auth')
     expect(loc).toContain('client_id=test-client-id')
@@ -327,7 +327,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     expect(loc).toContain('code_challenge_method=S256')
     expect(new URLSearchParams(loc.split('?')[1]).get('code_challenge')).toMatch(/^[\w-]{43}$/)
     // With a real provider active, the mock endpoints refuse.
-    expect((await api.fetch('/api/oauth/mock/consent')).status).toBe(417)
+    await expectStatus(await api.fetch('/api/oauth/mock/consent'), 417)
   })
 
   // --- Defect A: the mock must fail CLOSED ----------------------------------
@@ -346,12 +346,12 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     const prev = process.env.ALLOW_MOCK_OAUTH
     delete process.env.ALLOW_MOCK_OAUTH
     try {
-      expect((await api.fetch('/api/oauth/mock/consent')).status).toBe(401)
-      expect((await api.fetch(approveUrl(state, 'Administrator', 'x'), { headers: { cookie } })).status).toBe(401)
+      await expectStatus(await api.fetch('/api/oauth/mock/consent'), 401)
+      await expectStatus(await api.fetch(approveUrl(state, 'Administrator', 'x'), { headers: { cookie } }), 401)
       // Sign-in itself refuses rather than falling back to the mock, and the
       // callback will not decode a mock code either.
-      expect((await api.fetch('/api/oauth/google/login')).status).toBe(401)
-      expect((await api.fetch('/api/oauth/google/callback?code=x&state=y')).status).toBe(401)
+      await expectStatus(await api.fetch('/api/oauth/google/login'), 401)
+      await expectStatus(await api.fetch('/api/oauth/google/callback?code=x&state=y'), 401)
     } finally {
       if (prev === undefined) delete process.env.ALLOW_MOCK_OAUTH
       else process.env.ALLOW_MOCK_OAUTH = prev
@@ -377,15 +377,15 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     const approve = await api.fetch(approveUrl(state, 'attacker@gmail.com', 'Attacker'), {
       headers: { cookie },
     })
-    expect(approve.status).toBe(302)
+    await expectStatus(approve, 302)
     const callbackUrl = approve.headers.get('location') as string
 
     // The victim's browser: it never started this login, so it has no cookie.
-    expect((await api.fetch(callbackUrl)).status).toBe(401)
+    await expectStatus(await api.fetch(callbackUrl), 401)
 
     // A browser mid-flight on its OWN login: cookie present, but not this one.
     const other = await beginLogin(api)
-    expect((await api.fetch(callbackUrl, { headers: { cookie: other.cookie } })).status).toBe(401)
+    await expectStatus(await api.fetch(callbackUrl, { headers: { cookie: other.cookie } }), 401)
 
     // Neither attempt minted a session or a user.
     const [row] = await sql`select 1 from person where email = 'attacker@gmail.com'`
@@ -393,7 +393,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
 
     // The browser that actually started the sign-in still completes normally.
     const genuine = await api.fetch(callbackUrl, { headers: { cookie } })
-    expect(genuine.status).toBe(302)
+    await expectStatus(genuine, 302)
     expect(genuine.headers.get('location')).toContain('/oauth-callback?code=')
   })
 
@@ -405,7 +405,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     expect(cookie).toContain('oauth_state=')
     expect(cookie).toContain('oauth_verifier=')
     const approved = await api.fetch(approveUrl(state, email, 'Signed Code Control'), { headers: { cookie } })
-    expect(approved.status).toBe(302)
+    await expectStatus(approved, 302)
     const callback = new URL(approved.headers.get('location')!, 'http://localhost')
     expect(callback.pathname).toBe('/api/oauth/google/callback')
     expect(callback.searchParams.get('state')).toBe(state)
@@ -424,25 +424,25 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     expect(before.people.some((person) => person.email === email)).toBe(false)
     callback.searchParams.set('code', tampered)
     const refused = await api.fetch(callback.pathname + callback.search, { headers: { cookie } })
-    expect(refused.status).toBe(401)
+    await expectStatus(refused, 401)
     expect(await refused.json()).toEqual({ error: { type: 'AuthenticationError', message: 'Bad signature' } })
     expect(refused.headers.get('location')).toBeNull()
     expect(sidCookie(refused)).toBe('')
     expect(await stateOfAccounts()).toEqual(before)
-    expect((await api.fetch('/api/whoami', { headers: { cookie } })).status).toBe(401)
+    await expectStatus(await api.fetch('/api/whoami', { headers: { cookie } }), 401)
 
     // Retain the original producer-issued challenge and code, as in the state-cookie control above.
     callback.searchParams.set('code', code)
     const genuine = await api.fetch(callback.pathname + callback.search, { headers: { cookie } })
-    expect(genuine.status).toBe(302)
+    await expectStatus(genuine, 302)
     expect(genuine.headers.get('location')).toContain('/oauth-callback?code=')
     expect(sidCookie(genuine)).not.toBe('')
     const redeemed = await redeem(api, handoffCode(genuine), sidCookie(genuine))
-    expect(redeemed.status).toBe(200)
+    await expectStatus(redeemed, 200)
     const session = await redeemed.json() as { token: string; user: { row_id: string; email: string } }
     expect(session.user.email).toBe(email)
     const whoami = await api.fetch('/api/whoami', { headers: { authorization: `Bearer ${session.token}` } })
-    expect(whoami.status).toBe(200)
+    await expectStatus(whoami, 200)
     expect(await whoami.json()).toMatchObject({ row_id: session.user.row_id, email })
     expect(await sql`select person_id, method, subject from sign_in_identity where person_id = ${session.user.row_id}`)
       .toEqual([{ person_id: session.user.row_id, method: 'google', subject: email }])
@@ -453,7 +453,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
   test('the approve step also requires the state cookie', async ({ api }) => {
     const { state } = await beginLogin(api)
     // Same signed state, no cookie — the mock consent bounce refuses too.
-    expect((await api.fetch(approveUrl(state, 'someone@gmail.com', 'Someone'))).status).toBe(401)
+    await expectStatus(await api.fetch(approveUrl(state, 'someone@gmail.com', 'Someone')), 401)
   })
 
   // --- Defect C: x-forwarded-proto is a LIST, not a scalar -------------------
@@ -469,7 +469,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     const res = await api.fetch('/api/oauth/google/login', {
       headers: { 'x-forwarded-proto': 'https,http' },
     })
-    expect(res.status).toBe(302)
+    await expectStatus(res, 302)
     const cookies = res.headers.getSetCookie()
     expect(cookies).toHaveLength(2)
     for (const cookie of cookies) expect(cookie).toMatch(/;\s*Secure/i)
@@ -538,13 +538,13 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
       '/api/oauth/google/callback/../../evil',
     ]) {
       const res = await approveTo(evil)
-      expect(res.status).toBe(400)
+      await expectStatus(res, 400)
       expect(res.headers.get('location')).toBeNull()
     }
 
     // The application's own callback still works.
     const ok = await api.fetch(approveUrl(state, 'demo.user@gmail.com', 'Demo'), { headers: { cookie } })
-    expect(ok.status).toBe(302)
+    await expectStatus(ok, 302)
     expect(ok.headers.get('location')).toMatch(/^\/api\/oauth\/google\/callback\?/)
   })
 })
@@ -565,7 +565,7 @@ describe('#3783: Google sign-in lands a report viewer on their report', () => {
     await inviteGoogleRaw(plainUser, 'plain.user@jeyarama.com')
 
     const viewer = await mockSignIn(api, 'dm.test@jeyarama.com', 'DM Test')
-    expect(viewer.status).toBe(302)
+    await expectStatus(viewer, 302)
     const v = await (await redeem(api, handoffCode(viewer), sidCookie(viewer))).json() as { user: { row_id: string }; landing?: string }
     expect(v.user.row_id).toBe(dm)
     expect(v.landing).toBe('/featherbase/sales-target')
@@ -627,7 +627,7 @@ describe('#396: the sign-in records the client address', () => {
     const { state, cookie } = await beginLogin(api)
     const approve = await api.fetch(approveUrl(state, 'google.address@gmail.com', 'Google Address'), { headers: { cookie } })
     const res = await api.fetch(approve.headers.get('location') as string, { headers: { cookie, ...FROM_CLIENT } })
-    expect(res.status).toBe(302)
+    await expectStatus(res, 302)
     const [person] = await sql`select row_id from person where email = 'google.address@gmail.com'`
     expect(await signInAddresses(person.row_id as string)).toEqual([CLIENT])
   })

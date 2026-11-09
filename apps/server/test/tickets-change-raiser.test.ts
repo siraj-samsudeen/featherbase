@@ -5,7 +5,7 @@ import { resolve } from 'node:path'
 import { describe, expect } from 'vitest'
 import { makeClient, type TestClient, type CreateUserFn } from 'feather-testing-postgres'
 import { test as pgTest } from './pg-test'
-import { makeTable } from './fixtures'
+import { expectStatus, makeTable } from './fixtures'
 import { discoverPackages } from '../src/runtime-packages'
 import { loadInstalledApps } from '../src/apps'
 import { callerDocuments } from '../src/runtime-actions'
@@ -93,7 +93,7 @@ describe('Tickets: changing who raised a ticket (#963)', () => {
     const response = await api.fetch('/api/app_actions/tickets/change_raiser', { method: 'POST', headers: { authorization: `Bearer ${token}`,
       'content-type': 'application/json', 'X-Featherbase-App-Version': `tickets@${version}` },
     body: JSON.stringify({ idempotencyKey: randomUUID(), payload: { ...revision(ticket), new_raiser: w.next.user, reason: 'Bulk correction' } }) })
-    expect(response.status, await response.clone().text()).toBe(200)
+    await expectStatus(response, 200)
     expect((await stored(ticket.row_id)).owner).toBe(w.next.user)
     const [event] = await eventsOf(ticket.row_id)
     expect(event.by).toBe(account.row_id)

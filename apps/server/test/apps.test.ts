@@ -16,6 +16,7 @@ import { sql } from '../src/db'
 import type { TestClient } from 'feather-testing-postgres'
 import type { AppManifest } from '../src/apps'
 import { discoverPackages } from '../src/runtime-packages'
+import { expectRefused, expectStatus } from './fixtures'
 
 // PLAT-001: an app installs its Tables + doc_events and uninstall tears the
 // Tables down. PLAT-002: an app's hook on a Table it does NOT own fires
@@ -137,7 +138,7 @@ describe('PLAT-001: app install/uninstall', () => {
 
       // A ledger row stored as a JSON string is read the same way.
       await sql`update installed_app set tables = to_jsonb(tables::text) where name = ${APP1}`
-      await expect(admin.delete(`/api/table_def/${encodeURIComponent(APP1_DT)}`)).rejects.toMatchObject({ status: 417 })
+      await expectRefused(admin.delete(`/api/table_def/${encodeURIComponent(APP1_DT)}`), 417)
 
       await uninstallApp(APP1)
       expect((await installApp(APP1)).tables).toEqual([APP1_DT])
@@ -223,7 +224,7 @@ describe('app registry: install lifecycle', () => {
         const response = await admin.fetch('/api/set_app_enabled', {
           method: 'POST', body: JSON.stringify({ name, enabled }),
         })
-        expect(response.status).toBe(417)
+        await expectStatus(response, 417)
         expect(await response.json()).toEqual({ error: {
           type: 'ValidationError', message: 'Enable/disable requires an installed runtime package',
         } })
@@ -237,7 +238,7 @@ describe('app registry: install lifecycle', () => {
     const blocked = await admin.fetch('/api/save_row', {
       method: 'POST', body: JSON.stringify({ table: 'other.task', row: { ...row, quantity: 11 } }),
     })
-    expect(blocked.status).toBe(403)
+    await expectStatus(blocked, 403)
     expect(await blocked.json()).toEqual({ error: { type: 'PermissionError', message: 'App other is disabled or unavailable' } })
     expect(await state()).toEqual(disabled)
     expect(await admin.post('/api/set_app_enabled', { name: 'other', enabled: true }))

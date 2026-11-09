@@ -31,6 +31,7 @@ async function findOrCreateGoogleUser(user: string, name: string) {
 import { requestPasswordReset, resetPassword } from '../src/password-reset'
 import { createTable } from '../src/table-engine'
 import { getServiceAccount } from '../src/service-accounts'
+import { expectStatus } from './fixtures'
 
 // #137: review findings on the #131 access-token feature. Each case fails
 // against the code as merged in #134.
@@ -62,13 +63,13 @@ describe('#137 P1: an access token is header-only, never URL-borne', () => {
     const viaHeader = await api.fetch(uploaded.file_url, {
       headers: { authorization: `Bearer ${token}` },
     })
-    expect(viaHeader.status).toBe(200)
+    await expectStatus(viaHeader, 200)
 
     // The query parameter does not: a URL lands in logs and history.
     const viaQuery = await api.fetch(
       `${uploaded.file_url}?token=${encodeURIComponent(token)}`,
     )
-    expect(viaQuery.status).toBe(401)
+    await expectStatus(viaQuery, 401)
   })
 })
 
@@ -106,7 +107,7 @@ describe('#137 P1: OAuth cannot revive a disabled principal', () => {
     const who = await admin.fetch('/api/whoami', {
       headers: { authorization: `Bearer ${token}` },
     })
-    expect(who.status).toBe(401)
+    await expectStatus(who, 401)
   })
 })
 
@@ -219,7 +220,7 @@ describe('#137 R2: token_count agrees with what actually authenticates', () => {
     const who = await admin.fetch('/api/whoami', {
       headers: { authorization: `Bearer ${token}` },
     })
-    expect(who.status).toBe(401)
+    await expectStatus(who, 401)
     expect((await getServiceAccount(svc)).token_count).toBe(0)
   })
 })

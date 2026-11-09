@@ -26,7 +26,7 @@ import {
 } from '../src/environment-comparison'
 import { main } from '../src/cli'
 import { runMain } from './command-io'
-import { makePerson } from './fixtures'
+import { expectStatus, makePerson } from './fixtures'
 
 afterEach(() => vi.unstubAllEnvs())
 
@@ -179,7 +179,7 @@ describe('over HTTP', () => {
     const ask = (key: unknown) => api.fetch('/api/instance-settings/variables', { method: 'POST', headers, body: JSON.stringify({ key }) })
 
     const first = await ask(KEY)
-    expect(first.status).toBe(200)
+    await expectStatus(first, 200)
     expect(first.headers.get('cache-control')).toBe('no-store')
     const text = await first.text()
     expect(text).not.toContain(JWT)
@@ -190,9 +190,9 @@ describe('over HTTP', () => {
     expect(one).not.toBe(entry(second, 'JWT_SECRET').fingerprint)
 
     const short = await ask('short')
-    expect(short.status).toBe(417)
+    await expectStatus(short, 417)
     expect(await short.text()).toContain('at least 32 characters')
-    expect((await ask(undefined)).status).toBe(417)
+    await expectStatus(await ask(undefined), 417)
   })
 
   test('anyone who is not a System Manager is refused', async ({ api }) => {
@@ -201,8 +201,8 @@ describe('over HTTP', () => {
     const res = await api.fetch('/api/instance-settings/variables', {
       method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ key: KEY }),
     })
-    expect(res.status).toBe(403)
-    expect((await api.fetch('/api/instance-settings/variables', { method: 'POST', body: JSON.stringify({ key: KEY }) })).status).toBe(401)
+    await expectStatus(res, 403)
+    await expectStatus(await api.fetch('/api/instance-settings/variables', { method: 'POST', body: JSON.stringify({ key: KEY }) }), 401)
   })
 })
 

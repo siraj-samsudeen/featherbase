@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { issueSession } from '../src/auth'
-import { grantRole } from './fixtures'
+import { expectRefused, expectStatus, grantRole } from './fixtures'
 
 // #101 Phase 6: saved views — owner-scoped CRUD, sharing, isolation.
 
@@ -33,7 +33,7 @@ describe('#101: /api/saved_views', () => {
     await expect(
       admin.post('/api/saved_views', { table: 'Customer', filters: FILTERS }),
     ).rejects.toMatchObject({ status: 417 })
-    await expect(admin.get('/api/saved_views')).rejects.toMatchObject({ status: 417 })
+    await expectRefused(admin.get('/api/saved_views'), 417)
   })
 
   test('private views stay private; sharing opens them read-only', async ({ admin, api }) => {
@@ -76,12 +76,12 @@ describe('#101: /api/saved_views', () => {
       headers: auth,
       body: JSON.stringify({ shared: false }),
     })
-    expect(share.status).toBe(403)
+    await expectStatus(share, 403)
     const del = await api.fetch(`/api/saved_views/${created.row_id}`, {
       method: 'DELETE',
       headers: auth,
     })
-    expect(del.status).toBe(403)
+    await expectStatus(del, 403)
   })
 
   // PR #104 review: without read permission on the referenced Table, a user
@@ -103,26 +103,26 @@ describe('#101: /api/saved_views', () => {
     const list = await api.fetch(`/api/saved_views?table=${encodeURIComponent(DT)}`, {
       headers: auth,
     })
-    expect(list.status).toBe(403)
+    await expectStatus(list, 403)
     const create = await api.fetch('/api/saved_views', {
       method: 'POST',
       headers: auth,
       body: JSON.stringify({ table: DT, label: 'sneaky', filters: FILTERS, shared: true }),
     })
-    expect(create.status).toBe(403)
+    await expectStatus(create, 403)
 
     // Granting read opens both.
     await grantRole(admin, { table: DT, role: 'All', can_read: true })
     const listOk = await api.fetch(`/api/saved_views?table=${encodeURIComponent(DT)}`, {
       headers: auth,
     })
-    expect(listOk.status).toBe(200)
+    await expectStatus(listOk, 200)
     const createOk = await api.fetch('/api/saved_views', {
       method: 'POST',
       headers: auth,
       body: JSON.stringify({ table: DT, label: 'legit', filters: FILTERS }),
     })
-    expect(createOk.status).toBe(201)
+    await expectStatus(createOk, 201)
   })
 
   test('the owner can delete; a missing view 404s', async ({ admin }) => {

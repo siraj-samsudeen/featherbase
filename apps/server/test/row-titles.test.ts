@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { grantRole, makePerson, makeTable } from './fixtures'
+import { expectStatus, grantRole, makePerson, makeTable } from './fixtures'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
 
@@ -122,6 +122,6 @@ describe('POST /api/row_titles', () => {
 
   test('a malformed body is refused', async ({ admin }) => {
     const res = await admin.fetch('/api/row_titles', { method: 'POST', body: JSON.stringify({ rows: 'nope' }), headers: { 'content-type': 'application/json' } })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
   })
 })

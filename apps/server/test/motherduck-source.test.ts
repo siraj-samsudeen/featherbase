@@ -12,6 +12,7 @@ import { getSource, invalidateSources, testSource } from '../src/sources/registr
 import { duckdbDriver, run, stream } from '../src/sources/duckdb-driver'
 import { readMotherDuck } from '../src/sources/motherduck'
 import { addStandinTable, buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
+import { expectRefused, expectStatus } from './fixtures'
 
 let dir: string
 beforeAll(async () => {
@@ -52,7 +53,7 @@ describe("Connect a MotherDuck warehouse with the instance's token", () => {
   test('a refused token is explained in plain words, and never echoed', async ({ admin }) => {
     overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.refused)
     const res = await admin.fetch(`${SOURCES}:motherduck_databases`)
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     const text = await res.text()
     expect(text).toMatch(/MotherDuck refused this server's token/)
     expect(text).not.toContain(STANDIN_TOKENS.refused)
@@ -61,10 +62,10 @@ describe("Connect a MotherDuck warehouse with the instance's token", () => {
   test('an instance with no token says so before MotherDuck is asked', async ({ admin }) => {
     overrideVariable('MOTHERDUCK_TOKEN', undefined)
     const res = await admin.fetch(`${SOURCES}:motherduck_databases`)
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(await res.text()).toMatch(/MOTHERDUCK_TOKEN is not set/)
     overrideVariable('MOTHERDUCK_TOKEN', '   ')
-    expect((await admin.fetch(`${SOURCES}:motherduck_databases`)).status).toBe(417)
+    await expectStatus(await admin.fetch(`${SOURCES}:motherduck_databases`), 417)
   })
 })
 
@@ -79,15 +80,15 @@ describe('Choose which databases a warehouse source reads', () => {
   })
 
   test('saving with no database chosen, or one the token cannot read, is refused', async ({ admin }) => {
-    await expect(connect(admin, 'md-none', [])).rejects.toMatchObject({ status: 417 })
-    await expect(connect(admin, 'md-unknown', ['sales', 'not-there'])).rejects.toMatchObject({ status: 417 })
+    await expectRefused(connect(admin, 'md-none', []), 417)
+    await expectRefused(connect(admin, 'md-unknown', ['sales', 'not-there']), 417)
     const [left] = await sql`select count(*)::int as n from featherbase.data_source where row_id in ('md-none', 'md-unknown')`
     expect(left.n).toBe(0)
   })
 
   test('a refused token saves nothing', async ({ admin }) => {
     overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.refused)
-    await expect(connect(admin, 'md-refused', ['sales'])).rejects.toMatchObject({ status: 417 })
+    await expectRefused(connect(admin, 'md-refused', ['sales']), 417)
     const [left] = await sql`select count(*)::int as n from featherbase.data_source where row_id = 'md-refused'`
     expect(left.n).toBe(0)
   })
@@ -110,13 +111,13 @@ describe("The instance's token stays secret", () => {
 describe('What a MotherDuck source saves', () => {
   test('its databases must be a list of named databases', async ({ admin }) => {
     const res = await admin.fetch(SOURCES, { method: 'POST', body: JSON.stringify({ row_id: 'md-bad-list', engine: 'motherduck', databases: [{ address: 'md:gold' }] }) })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(await res.text()).toMatch(/Name each database/)
   })
 
   test('it names no variable: the instance has one token', async ({ admin }) => {
     const res = await admin.fetch(SOURCES, { method: 'POST', body: JSON.stringify({ row_id: 'md-var', engine: 'motherduck', url_env: 'MD_OTHER_TOKEN' }) })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(await res.text()).toMatch(/names no variable/)
   })
 })
@@ -167,7 +168,7 @@ describe('A MotherDuck warehouse is only ever read', () => {
       [`${path}/S001`, { method: 'DELETE' }],
     ] as const) {
       const res = await admin.fetch(url, init)
-      expect(res.status).toBe(403)
+      await expectStatus(res, 403)
       expect(await res.text()).toMatch(/read-only/)
     }
     const [row] = await run(await getSource('md-bound'), "select name from sales.main.stores where code = 'S001'", [])
@@ -208,7 +209,7 @@ describe('A session follows the instance token', () => {
     await connect(admin, 'md-replace')
     overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.refused)
     const res = await admin.fetch(`${SOURCES}/md-replace:refresh_tables`, { method: 'POST', body: JSON.stringify({ database: 'sales' }) })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(await res.text()).not.toContain(STANDIN_TOKENS.refused)
     overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.second)
     const tables = await admin.post<{ schemas: { schema: string }[] }>(`${SOURCES}/md-replace:refresh_tables`, { database: 'sales' })
@@ -239,13 +240,13 @@ describe('Browse a warehouse table by table', () => {
 
   test('a database that was not chosen is refused', async ({ admin }) => {
     await connect(admin, 'md-fence')
-    await expect(admin.get(`${SOURCES}/md-fence:tables?database=finance`)).rejects.toMatchObject({ status: 403 })
-    await expect(admin.get(`${SOURCES}/md-fence:preview?database=finance&schema=main&table=notes`)).rejects.toMatchObject({ status: 403 })
+    await expectRefused(admin.get(`${SOURCES}/md-fence:tables?database=finance`), 403)
+    await expectRefused(admin.get(`${SOURCES}/md-fence:preview?database=finance&schema=main&table=notes`), 403)
   })
 
   test('a table that does not exist is a plain not-found', async ({ admin }) => {
     await connect(admin, 'md-missing')
-    await expect(admin.get(`${SOURCES}/md-missing:preview?database=sales&schema=main&table=nope`)).rejects.toMatchObject({ status: 404 })
+    await expectRefused(admin.get(`${SOURCES}/md-missing:preview?database=sales&schema=main&table=nope`), 404)
   })
 })
 
@@ -266,30 +267,30 @@ describe('Only a System Manager reaches a warehouse source', () => {
   test('every action is refused to anyone else', async ({ admin, createUser }) => {
     await connect(admin, 'md-guard')
     const user = await createUser({ roles: [] })
-    await expect(user.get(`${SOURCES}:motherduck_databases`)).rejects.toMatchObject({ status: 403 })
-    await expect(user.post(`${SOURCES}:motherduck_connect`, { name: 'md-rogue', databases: ['sales'] })).rejects.toMatchObject({ status: 403 })
-    await expect(user.get(`${SOURCES}/md-guard:tables?database=sales`)).rejects.toMatchObject({ status: 403 })
-    await expect(user.get(`${SOURCES}/md-guard:preview?database=sales&schema=main&table=stores`)).rejects.toMatchObject({ status: 403 })
-    await expect(user.post(`${SOURCES}/md-guard:refresh_tables`, { database: 'sales' })).rejects.toMatchObject({ status: 403 })
+    await expectRefused(user.get(`${SOURCES}:motherduck_databases`), 403)
+    await expectRefused(user.post(`${SOURCES}:motherduck_connect`, { name: 'md-rogue', databases: ['sales'] }), 403)
+    await expectRefused(user.get(`${SOURCES}/md-guard:tables?database=sales`), 403)
+    await expectRefused(user.get(`${SOURCES}/md-guard:preview?database=sales&schema=main&table=stores`), 403)
+    await expectRefused(user.post(`${SOURCES}/md-guard:refresh_tables`, { database: 'sales' }), 403)
   })
 })
 
 describe('Requests a warehouse source refuses', () => {
   test('a missing name or database list, and an action on another table, are refused plainly', async ({ admin }) => {
-    await expect(admin.post(`${SOURCES}:motherduck_connect`, { databases: ['sales'] })).rejects.toMatchObject({ status: 417 })
-    await expect(admin.post(`${SOURCES}:motherduck_connect`, { name: 'md-no-list' })).rejects.toMatchObject({ status: 417 })
-    await expect(admin.get('/api/table/Role:motherduck_databases')).rejects.toMatchObject({ status: 404 })
+    await expectRefused(admin.post(`${SOURCES}:motherduck_connect`, { databases: ['sales'] }), 417)
+    await expectRefused(admin.post(`${SOURCES}:motherduck_connect`, { name: 'md-no-list' }), 417)
+    await expectRefused(admin.get('/api/table/Role:motherduck_databases'), 404)
   })
 
   test('a preview with no schema is a plain not-found', async ({ admin }) => {
     await connect(admin, 'md-no-schema')
-    await expect(admin.get(`${SOURCES}/md-no-schema:preview?database=sales&table=stores`)).rejects.toMatchObject({ status: 404 })
-    await expect(admin.get(`${SOURCES}/md-no-schema:preview?database=sales&schema=main`)).rejects.toMatchObject({ status: 404 })
+    await expectRefused(admin.get(`${SOURCES}/md-no-schema:preview?database=sales&table=stores`), 404)
+    await expectRefused(admin.get(`${SOURCES}/md-no-schema:preview?database=sales&schema=main`), 404)
   })
 
   test('a source of another engine has no warehouse actions', async ({ admin }) => {
     await admin.post(SOURCES, { row_id: 'md-plain-pg', engine: 'postgres', url_env: 'MD_PLAIN_UNSET_URL', access: 'read_only' })
-    await expect(admin.get(`${SOURCES}/md-plain-pg:tables?database=sales`)).rejects.toMatchObject({ status: 417 })
+    await expectRefused(admin.get(`${SOURCES}/md-plain-pg:tables?database=sales`), 417)
   })
 
   test('a MotherDuck source with no databases says so, and its connection test fails', async ({ admin }) => {
@@ -303,13 +304,13 @@ describe('Requests a warehouse source refuses', () => {
     await admin.post(SOURCES, { row_id: 'md-tokenless', engine: 'motherduck', access: 'read_only', databases: [{ name: 'sales' }] })
     overrideVariable('MOTHERDUCK_TOKEN', undefined)
     const res = await admin.fetch(`${SOURCES}/md-tokenless:tables?database=sales`)
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(await res.text()).toMatch(/MOTHERDUCK_TOKEN is not set/)
   })
 
   test('a MotherDuck source cannot be made writable', async ({ admin }) => {
     const res = await admin.fetch(SOURCES, { method: 'POST', body: JSON.stringify({ row_id: 'md-rw', engine: 'motherduck', access: 'read_write' }) })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(await res.text()).toMatch(/MotherDuck sources are read-only/)
   })
 
@@ -317,7 +318,7 @@ describe('Requests a warehouse source refuses', () => {
     await connect(admin, 'md-revoked')
     overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.refused)
     const res = await admin.fetch(`${SOURCES}/md-revoked:tables?database=sales`)
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     const text = await res.text()
     expect(text).toMatch(/MotherDuck refused this server's token/)
     expect(text).not.toContain(STANDIN_TOKENS.refused)
@@ -329,7 +330,7 @@ describe('Requests a warehouse source refuses', () => {
     invalidateSources('md-gone')
     for (let attempt = 0; attempt < 2; attempt++) {
       const res = await admin.fetch(`${SOURCES}/md-gone:tables?database=archive`)
-      expect(res.status).toBe(417)
+      await expectStatus(res, 417)
       const text = await res.text()
       expect(text).toMatch(/token cannot read the database archive/)
       expect(text).not.toContain(STANDIN_TOKENS.reader)
@@ -398,7 +399,7 @@ describe('Review fixes (#772 security review)', () => {
     overrideVariable('MOTHERDUCK_STANDIN', twin)
     try {
       const res = await admin.fetch(`${SOURCES}:motherduck_connect`, { method: 'POST', body: JSON.stringify({ name: 'md-twin', databases: ['stock'] }) })
-      expect(res.status).toBe(417)
+      await expectStatus(res, 417)
       expect(await res.text()).toMatch(/Two databases the token can read are called stock/)
     } finally {
       overrideVariable('MOTHERDUCK_STANDIN', dir)

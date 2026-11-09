@@ -1,6 +1,7 @@
 import { describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { setUserPassword } from '../src/auth'
+import { expectStatus } from './fixtures'
 
 // API-006: every error answer — validation, auth, permission, not-found,
 // conflict, malformed request, unknown route — uses the envelope
@@ -25,7 +26,7 @@ async function envelope(res: Response) {
 describe('API-006: consistent error envelope', () => {
   test('401 AuthenticationError without a token', async ({ api }) => {
     const res = await api.fetch('/api/whoami')
-    expect(res.status).toBe(401)
+    await expectStatus(res, 401)
     expect((await envelope(res)).type).toBe('AuthenticationError')
   })
 
@@ -33,20 +34,20 @@ describe('API-006: consistent error envelope', () => {
     const res = await api.fetch('/api/whoami', {
       headers: { authorization: 'Bearer garbage' },
     })
-    expect(res.status).toBe(401)
+    await expectStatus(res, 401)
     expect((await envelope(res)).type).toBe('AuthenticationError')
   })
 
   test('404 NotFoundError for an unknown route (authed)', async ({ admin }) => {
     const res = await admin.fetch('/api/definitely-not-a-route')
-    expect(res.status).toBe(404)
+    await expectStatus(res, 404)
     expect((await envelope(res)).type).toBe('NotFoundError')
   })
 
   test('404 NotFoundError for a missing document and Table', async ({ admin }) => {
     for (const path of ['/api/table/Person/no-such-user', '/api/table/NoSuchDT/x']) {
       const res = await admin.fetch(path)
-      expect(res.status).toBe(404)
+      await expectStatus(res, 404)
       expect((await envelope(res)).type).toBe('NotFoundError')
     }
   })
@@ -56,7 +57,7 @@ describe('API-006: consistent error envelope', () => {
   }) => {
     for (const qs of ['limit_start=abc', 'limit_page_length=xyz', 'limit_start=Infinity']) {
       const res = await admin.fetch(`/api/table/Person?${qs}`)
-      expect(res.status).toBe(400)
+      await expectStatus(res, 400)
       expect((await envelope(res)).type).toBe('BadRequestError')
     }
   })
@@ -66,7 +67,7 @@ describe('API-006: consistent error envelope', () => {
       method: 'POST',
       body: '{not json',
     })
-    expect(res.status).toBe(400)
+    await expectStatus(res, 400)
     expect((await envelope(res)).type).toBe('BadRequestError')
   })
 
@@ -75,7 +76,7 @@ describe('API-006: consistent error envelope', () => {
       method: 'POST',
       body: JSON.stringify({ table: 'Person', row: { username: 'Not A Slug' } }),
     })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     const err = await envelope(res)
     expect(err.type).toBe('ValidationError')
     // person-rename: a Person's id is minted, so an empty row is valid; a
@@ -88,7 +89,7 @@ describe('API-006: consistent error envelope', () => {
       method: 'POST',
       body: JSON.stringify({ row_id: 'Administrator', email: 'admin@example.com' }),
     })
-    expect(res.status).toBe(409)
+    await expectStatus(res, 409)
     expect((await envelope(res)).type).toBe('ConflictError')
   })
 
@@ -102,20 +103,20 @@ describe('API-006: consistent error envelope', () => {
       method: 'POST',
       body: JSON.stringify({ table: 'Person', row: { email } }),
     })
-    expect(mk.status).toBe(201)
+    await expectStatus(mk, 201)
     await setUserPassword(((await mk.json()) as { row_id: string }).row_id, 'probe-pw-12345')
     const login = await api.fetch('/api/login', {
       method: 'POST',
       body: JSON.stringify({ usr: email, pwd: 'probe-pw-12345' }),
     })
-    expect(login.status).toBe(200)
+    await expectStatus(login, 200)
     const tok = ((await login.json()) as { token: string }).token
     const res = await api.fetch('/api/table_def', {
       method: 'POST',
       headers: { authorization: `Bearer ${tok}` },
       body: JSON.stringify({ row_id: 'Envelope Probe DT', columns: [] }),
     })
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
     expect((await envelope(res)).type).toBe('PermissionError')
   })
 })
@@ -141,7 +142,7 @@ describe('every failure answers in one shape: unexpected faults', () => {
 
   test('500 InternalError says only that something went wrong, never the detail', async () => {
     const res = await faulty(new Error('relation "secret_table" does not exist'))
-    expect(res.status).toBe(500)
+    await expectStatus(res, 500)
     const body = (await res.json()) as { error: { type: string; message: string } }
     expect(body).toEqual({ error: { type: 'InternalError', message: 'Internal server error' } })
     expect(JSON.stringify(body)).not.toContain('secret_table')
@@ -149,7 +150,7 @@ describe('every failure answers in one shape: unexpected faults', () => {
 
   test('409 ConflictError when the database refuses an overlapping period', async () => {
     const res = await faulty(Object.assign(new Error('conflicting key value violates exclusion constraint'), { code: '23P01' }))
-    expect(res.status).toBe(409)
+    await expectStatus(res, 409)
     expect(((await res.json()) as { error: { type: string } }).error.type).toBe('ConflictError')
   })
 })

@@ -5,7 +5,7 @@
 import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from '../pg-test'
-import { expectApiError, makeTable } from '../fixtures'
+import { expectRefused, makeTable } from '../fixtures'
 import { scenarioFor } from '../scenario'
 
 const scenario = scenarioFor(test, 'naming-and-numbering')
@@ -74,8 +74,7 @@ describe('naming-and-numbering', () => {
       refusal = admin.post('/api/save_row', { table: 'Plant', row: { plant_code: '8151', city: 'Madurai' } })
     })
     await step('the save is refused, naming the plant code', async () => {
-      const err = await expectApiError(refusal, { status: 417 })
-      expect(err.message).toMatch(/plant_code/)
+      await expectRefused(refusal, 417, 'plant_code')
     })
     await step('PLANT-8151 is unchanged', async () => {
       const row = await admin.get<{ city: string }>(`/api/table/Plant/${encodeURIComponent('PLANT-8151')}`)

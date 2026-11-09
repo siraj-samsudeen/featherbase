@@ -15,6 +15,7 @@ import { test, patchDoc } from './pg-test'
 import { invalidateSources } from '../src/sources/registry'
 import { mysqlDriver } from '../src/sources/mysql-driver'
 import type { Binding, SourceFilter } from '../src/sources/types'
+import { expectStatus } from './fixtures'
 
 // mysql2's promise wrappers; their typings leave the classes out.
 type QueryProto = { prototype: { query: (...args: unknown[]) => Promise<unknown> } }
@@ -219,7 +220,7 @@ async function makeSource(
       ...overrides,
     }),
   })
-  expect(res.status).toBe(201)
+  await expectStatus(res, 201)
 }
 
 async function reflectTenant(admin: {
@@ -229,7 +230,7 @@ async function reflectTenant(admin: {
     method: 'POST',
     body: JSON.stringify({ schema: 'ext_mysql', tables: ['tenant'] }),
   })
-  expect(res.status).toBe(200)
+  await expectStatus(res, 200)
   const body = (await res.json()) as { created: { name: string }[]; skipped: unknown[] }
   expect(body.created).toHaveLength(1)
   return body.created[0].name
@@ -314,7 +315,7 @@ async function reflect(
     method: 'POST',
     body: JSON.stringify({ schema: 'ext_mysql', tables }),
   })
-  expect(res.status).toBe(200)
+  await expectStatus(res, 200)
   const body = (await res.json()) as {
     created: { table: string; name: string }[]
     skipped: { table: string; reason: string }[]
@@ -542,7 +543,7 @@ describe.skipIf(!MYSQL_URL)('mysql: writing bound rows', () => {
       `/api/table/Ext%20Tenant/${list.data[0].row_id}?updated_at=${encodeURIComponent(String(loaded.updated_at))}`,
       { method: 'DELETE' },
     )
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const [rows] = await cli.query(`select 1 from ext_mysql.tenant where slug = 'doomed'`)
     expect(rows as unknown[]).toHaveLength(0)
   })
@@ -894,7 +895,7 @@ describe.skipIf(!MYSQL_URL)('mysql: writing rows in more shapes', () => {
       method: 'PATCH',
       body: JSON.stringify({ qty: 20 }),
     })
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const [after] = await cli.query(`select qty from ext_mysql.plain where id = ?`, [id])
     expect((after as { qty: number }[])[0].qty).toBe(20)
     await cli.query(`update ext_mysql.plain set qty = 2 where id = ?`, [id])
@@ -907,10 +908,10 @@ describe.skipIf(!MYSQL_URL)('mysql: writing rows in more shapes', () => {
     const [rows] = await cli.query(`select id from ext_mysql.plain where note = 'alpha'`)
     const id = (rows as { id: number }[])[0].id
     const saved = await admin.fetch(`/api/table/${enc}/${id}`, { method: 'PATCH', body: JSON.stringify({}) })
-    expect(saved.status).toBe(200)
+    await expectStatus(saved, 200)
     expect(await saved.json()).toMatchObject({ row_id: String(id), note: 'alpha' })
     const missing = await admin.fetch(`/api/table/${enc}/999999`, { method: 'PATCH', body: JSON.stringify({}) })
-    expect(missing.status).toBe(404)
+    await expectStatus(missing, 404)
   })
 
   test('an update or delete of a row that is gone reports it missing', async () => {
@@ -1202,9 +1203,9 @@ describe.skipIf(!MYSQL_URL)('mysql: writing rows in more shapes', () => {
       method: 'PATCH',
       body: JSON.stringify({ plan: 'nope' }),
     })
-    expect(patch.status).toBe(403)
+    await expectStatus(patch, 403)
     const del = await admin.fetch(`/api/table/Ext%20Tenant/${id}`, { method: 'DELETE' })
-    expect(del.status).toBe(403)
+    await expectStatus(del, 403)
   })
 })
 
@@ -1455,7 +1456,7 @@ describe.skipIf(!MYSQL_URL)('mysql: transaction transport failures', () => {
       mysqlDriver.dispose('ext-mysql')
       await cli.query(`KILL CONNECTION ${Number(blockedId)}`)
       const response = await pending
-      expect(response.status).toBe(502)
+      await expectStatus(response, 502)
       expect(await response.json()).toMatchObject({
         error: { type: 'DataSourceError', message: expect.stringContaining('ext-mysql') },
       })
@@ -1553,7 +1554,7 @@ describe.skipIf(!MYSQL_URL)('mysql: connection settings and failures', () => {
       const response = await admin.fetch(path, {
         method: 'PATCH', body: JSON.stringify({ note: 'cannot-save', qty: 99 }),
       })
-      expect(response.status).toBe(502)
+      await expectStatus(response, 502)
       expect(await response.json()).toMatchObject({
         error: {
           type: 'DataSourceError',
@@ -1588,12 +1589,12 @@ describe.skipIf(!MYSQL_URL)('mysql: connection settings and failures', () => {
       updated_at: src.updated_at,
     })
     const down = await admin.fetch('/api/table/Ext%20Tenant')
-    expect(down.status).toBe(502)
+    await expectStatus(down, 502)
     const body = (await down.json()) as { error: { type: string; message: string } }
     expect(body.error.type).toBe('DataSourceError')
     expect(body.error.message).toContain('ext-mysql')
     expect(body.error.message).not.toContain('nothing@')
-    expect((await admin.fetch('/api/table/Role')).status).toBe(200)
+    await expectStatus(await admin.fetch('/api/table/Role'), 200)
   })
 
   test('testing the connection names an unset variable, and a value that is not a mysql URL', async ({ admin }) => {
@@ -1645,10 +1646,10 @@ describe.skipIf(!MYSQL_URL)('mysql: connection settings and failures', () => {
         body: JSON.stringify({ schema: 'ext_mysql', tables }),
       })
     const refused = await reflect(['plain'])
-    expect(refused.status).toBe(403)
+    await expectStatus(refused, 403)
     expect(((await refused.json()) as { error: { message: string } }).error.message).toContain('not in the allowlist')
     const allowed = await reflect(['tenant'])
-    expect(allowed.status).toBe(200)
+    await expectStatus(allowed, 200)
     expect(((await allowed.json()) as { created: { name: string }[] }).created.map((c) => c.name)).toEqual(['Ext Tenant'])
   })
 })

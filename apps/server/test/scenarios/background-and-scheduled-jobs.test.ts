@@ -20,6 +20,7 @@ import { registerCopyRefreshJobs } from '../../src/copy-refresh'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from '../motherduck-standin'
 import { test } from '../pg-test'
 import { scenarioFor } from '../scenario'
+import { expectRefused } from '../fixtures'
 
 const scenario = scenarioFor(test, 'background-and-scheduled-jobs')
 
@@ -131,7 +132,7 @@ describe('background-and-scheduled-jobs', () => {
   scenario('A reader cannot schedule Plants', async ({ admin, createUser, seed }, step) => {
     let plants!: Plants
     let reader!: TestClient
-    let refusal = 0
+    let refusal!: Response
     await step('the user can read the copied Plants table but is not a System Manager', async () => {
       plants = await new Plants(admin).create()
       await seed('Role', { row_id: 'Plants Reader' })
@@ -140,12 +141,12 @@ describe('background-and-scheduled-jobs', () => {
       expect((await reader.get<{ data: unknown[] }>('/api/table/Plants')).data).toHaveLength(2)
     })
     await step('the user tries to schedule Plants to refresh hourly', async () => {
-      refusal = (await reader.fetch('/api/table/Plants:set_copy_schedule', {
+      refusal = await reader.fetch('/api/table/Plants:set_copy_schedule', {
         method: 'POST', body: JSON.stringify({ cadence: 'hourly', enabled: true }),
-      })).status
+      })
     })
     await step('the request is refused and Plants has no new schedule', async () => {
-      expect(refusal).toBe(403)
+      await expectRefused(refusal, 403)
       expect(await plants.scheduleInfo()).toBeNull()
     })
   })

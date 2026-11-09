@@ -5,7 +5,7 @@
 import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { patchDoc, test } from '../pg-test'
-import { grantRole, makeTable, tableRef } from '../fixtures'
+import { expectStatus, grantRole, makeTable, tableRef } from '../fixtures'
 import { scenarioFor } from '../scenario'
 import { connectAgent, issueToken, postMcp, type Agent } from '../agent-driver'
 import { saveDoc } from '../../src/document'
@@ -109,7 +109,7 @@ describe('agent-access', () => {
       response = await postMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'list_tables', arguments: {} } }, { cookie: `sid=${client.token}` })
     })
     await step('the connection is refused and no Table is reachable', async () => {
-      expect(response.status).toBe(401)
+      await expectStatus(response, 401)
       const body = await response.json() as Record<string, unknown>
       expect(body).not.toHaveProperty('result')
       expect(JSON.stringify(body)).not.toContain('Customer')

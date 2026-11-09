@@ -3,6 +3,7 @@
 import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
+import { expectRefused } from './fixtures'
 
 const rowUrl = (table: string, id: string) => `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(id)}`
 const rename = (admin: TestClient, table: string, from: string, to: string) =>
@@ -39,22 +40,22 @@ describe('renaming a row named after its own column', () => {
     await cluster(admin, { id_pattern: 'CL-{code}' })
     await save(admin, 'Rs Cluster', { code: 'VLM' })
     expect(await rename(admin, 'Rs Cluster', 'CL-VLM', 'CL-TVM')).toMatchObject({ row_id: 'CL-TVM', code: 'TVM' })
-    await expect(rename(admin, 'Rs Cluster', 'CL-TVM', 'TVM')).rejects.toMatchObject({ status: 417 })
-    await expect(rename(admin, 'Rs Cluster', 'CL-TVM', 'CL-')).rejects.toMatchObject({ status: 417 })
+    await expectRefused(rename(admin, 'Rs Cluster', 'CL-TVM', 'TVM'), 417)
+    await expectRefused(rename(admin, 'Rs Cluster', 'CL-TVM', 'CL-'), 417)
     expect(await admin.get(rowUrl('Rs Cluster', 'CL-TVM'))).toMatchObject({ code: 'TVM' })
   })
 
   test("refuses a value the column's type refuses, and leaves the row", async ({ admin }) => {
     await cluster(admin, { column: { column_type: 'Int' } })
     await save(admin, 'Rs Cluster', { code: 12 })
-    await expect(rename(admin, 'Rs Cluster', '12', 'twelve')).rejects.toMatchObject({ status: 417 })
+    await expectRefused(rename(admin, 'Rs Cluster', '12', 'twelve'), 417)
     expect(await rename(admin, 'Rs Cluster', '12', '13')).toMatchObject({ row_id: '13', code: 13 })
   })
 
   test('refuses a value a Choice column does not offer', async ({ admin }) => {
     await cluster(admin, { column: { column_type: 'Choice', choices: 'VLM\nTVM' } })
     await save(admin, 'Rs Cluster', { code: 'VLM' })
-    await expect(rename(admin, 'Rs Cluster', 'VLM', 'KOC')).rejects.toMatchObject({ status: 417 })
+    await expectRefused(rename(admin, 'Rs Cluster', 'VLM', 'KOC'), 417)
   })
 
   test('refuses a value another row holds in a unique column, and leaves the row', async ({ admin }) => {
@@ -63,7 +64,7 @@ describe('renaming a row named after its own column', () => {
     const second = await save(admin, 'Rs Cluster', { code: 'KOC' })
     // The two get out of step when a save changes the column and keeps the id.
     await save(admin, 'Rs Cluster', { ...second, code: 'TVM' })
-    await expect(rename(admin, 'Rs Cluster', String(first.row_id), 'TVM')).rejects.toMatchObject({ status: 417 })
+    await expectRefused(rename(admin, 'Rs Cluster', String(first.row_id), 'TVM'), 417)
     expect(await admin.get(rowUrl('Rs Cluster', 'VLM'))).toMatchObject({ row_id: 'VLM', code: 'VLM' })
   })
 
@@ -72,13 +73,13 @@ describe('renaming a row named after its own column', () => {
     await save(admin, 'Rs Plant', { row_id: 'P1', label: 'One' })
     await cluster(admin, { column: { column_type: 'Reference', reference_table: 'Rs Plant' } })
     await save(admin, 'Rs Cluster', { code: 'P1' })
-    await expect(rename(admin, 'Rs Cluster', 'P1', 'P2')).rejects.toMatchObject({ status: 417 })
+    await expectRefused(rename(admin, 'Rs Cluster', 'P1', 'P2'), 417)
   })
 
   test('a read-only column is not moved by a rename', async ({ admin }) => {
     await admin.post('/api/table_def', { name: 'Rs Fixed', id_pattern: 'field:code', columns: [{ column_name: 'code', column_type: 'Data', read_only: true, default_value: 'VLM' }] })
     const row = await save(admin, 'Rs Fixed', { code: 'VLM' })
-    await expect(rename(admin, 'Rs Fixed', String(row.row_id), 'TVM')).rejects.toMatchObject({ status: 417 })
+    await expectRefused(rename(admin, 'Rs Fixed', String(row.row_id), 'TVM'), 417)
   })
 
   test('a Table with another naming rule is unchanged', async ({ admin }) => {

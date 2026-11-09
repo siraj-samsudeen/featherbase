@@ -3,7 +3,7 @@ import { test } from './pg-test'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { deliverAutoEmailReport, runDueAutoEmailReports } from '../src/auto-email-report'
-import { createUserWithRole, grantRole } from './fixtures'
+import { createUserWithRole, expectStatus, grantRole } from './fixtures'
 
 // #338: a scheduled report email shows its recipients what the person who
 // set the schedule up may see — their row limits, Data Scopes and restricted
@@ -112,13 +112,13 @@ describe('#338: scheduled report emails run as the person who set them up', () =
       method: 'PATCH',
       body: JSON.stringify({ updated_at: cur.updated_at, recipients: 'outsider@elsewhere.test' }),
     })
-    expect(res.status).toBe(403)
+    await expectStatus(res, 403)
     // A change to anything else is theirs to make.
     const renamed = await colleague.fetch(url, {
       method: 'PATCH',
       body: JSON.stringify({ updated_at: cur.updated_at, frequency: 'Weekly' }),
     })
-    expect(renamed.status).toBe(200)
+    await expectStatus(renamed, 200)
     const now = await admin.get<Record<string, any>>(url)
     await admin.fetch(url, { method: 'PATCH', body: JSON.stringify({ updated_at: now.updated_at, recipients: 'lead@store.test' }) })
     expect((await admin.get<Record<string, any>>(url)).recipients).toBe('lead@store.test')
@@ -139,14 +139,14 @@ describe('#611: a report a schedule sends changes only with its scheduler', () =
   test('a colleague who may edit reports cannot change one a schedule sends', async ({ admin, createUser }) => {
     await setup(admin, createUser)
     const colleague = await createUser({ roles: [ROLE] })
-    expect((await widen(colleague)).status).toBe(403)
+    await expectStatus(await widen(colleague), 403)
     expect((await admin.get<Record<string, any>>(reportUrl)).config).toEqual({ columns: ['title'], filters: [] })
   })
 
   test('the person who set up every schedule that sends it, or a System Manager, may change it', async ({ admin, createUser }) => {
     const planner = await setup(admin, createUser)
-    expect((await widen(planner)).status).toBe(200)
-    expect((await widen(admin)).status).toBe(200)
+    await expectStatus(await widen(planner), 200)
+    await expectStatus(await widen(admin), 200)
   })
 
   test('once a second person schedules the report, neither may change it alone', async ({ admin, createUser }) => {
@@ -156,14 +156,14 @@ describe('#611: a report a schedule sends changes only with its scheduler', () =
       table: 'Auto Email Report',
       row: { row_id: 'Aeo Colleague', report: REPORT, recipients: 'me@store.test', file_format: 'CSV', frequency: 'Daily', enabled: true },
     })
-    expect((await widen(planner)).status).toBe(403)
-    expect((await widen(colleague)).status).toBe(403)
+    await expectStatus(await widen(planner), 403)
+    await expectStatus(await widen(colleague), 403)
   })
 
   test('a report no schedule sends stays open to anyone who may edit reports', async ({ admin, createUser }) => {
     await setup(admin, createUser)
     const colleague = await createUser({ roles: [ROLE] })
     await sql`delete from auto_email_report where row_id = ${AER}`
-    expect((await widen(colleague)).status).toBe(200)
+    await expectStatus(await widen(colleague), 200)
   })
 })

@@ -8,6 +8,7 @@ import postgres from 'postgres'
 import { app } from '../src/index'
 import { sql } from '../src/db'
 import { config } from '../src/config'
+import { expectStatus } from './fixtures'
 
 // NOT sandbox-migrated (see below), so this file authenticates directly
 // against the real app instead of using the pg-test fixtures. All API routes
@@ -135,7 +136,7 @@ beforeAll(async () => {
       row: { ref_table: DT, role: ROLE, operation: 'read' },
     }),
   })
-  expect(permission.status).toBe(201)
+  await expectStatus(permission, 201)
   await areq('/api/save_row', {
     method: 'POST',
     body: JSON.stringify({

@@ -4,7 +4,7 @@ import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { choiceLabel } from 'shared'
 import { test } from './pg-test'
-import { makeTable, patchDoc } from './fixtures'
+import { expectRefused, expectStatus, makeTable, patchDoc } from './fixtures'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
 import { reapplyCustomFields } from '../src/custom-fields'
@@ -43,7 +43,7 @@ test('HTTP Choice values remain canonical', async ({ admin }) => {
   expect(await admin.get(table.rowUrl(row.row_id))).toMatchObject({ policy: 'raw_value' })
   const listed = await admin.get<{ data: Record<string, unknown>[] }>(table.listUrl({ filters: [['policy', '=', 'raw_value']] }))
   expect(listed.data).toHaveLength(1)
-  await expect(admin.post('/api/save_row', { table: table.name, row: { policy: 'Readable value' } })).rejects.toMatchObject({ status: 417 })
+  await expectRefused(admin.post('/api/save_row', { table: table.name, row: { policy: 'Readable value' } }), 417)
 })
 
 test('HTTP definition update round-trips Choice labels', async ({ admin }) => {
@@ -53,7 +53,7 @@ test('HTTP definition update round-trips Choice labels', async ({ admin }) => {
   })
   const definition = await admin.get<Record<string, unknown>>(table.metaUrl)
   const response = await admin.fetch(table.defUrl, { method: 'PUT', body: JSON.stringify(definition) })
-  expect(response.status).toBe(200)
+  await expectStatus(response, 200)
   const meta = await admin.get<{ columns: Record<string, unknown>[] }>(table.metaUrl)
   expect(meta.columns[0].choice_labels).toEqual(labels)
 })

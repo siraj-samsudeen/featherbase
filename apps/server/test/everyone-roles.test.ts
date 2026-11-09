@@ -3,7 +3,7 @@
 // setting takes it from everyone who held it only that way.
 import { expect } from 'vitest'
 import { test } from './pg-test'
-import { grantRole, makeTable } from './fixtures'
+import { expectRefused, expectStatus, grantRole, makeTable } from './fixtures'
 import { managedScope } from '../src/instance-settings'
 import { getRoles } from '../src/permissions'
 import { sql } from '../src/db'
@@ -25,13 +25,13 @@ test('everyone who signs in holds the roles the setting names, and loses them wh
   await setup(admin)
   const newcomer = await createUser({})
   const member = await createUser({ roles: [MEMBER] })
-  expect((await newcomer.fetch(notes)).status).toBe(403)
+  await expectStatus(await newcomer.fetch(notes), 403)
 
   await setEveryone(admin, MEMBER)
-  expect((await newcomer.fetch(notes)).status).toBe(200)
+  await expectStatus(await newcomer.fetch(notes), 200)
   // Someone who signs in for the first time later holds it too.
   const later = await createUser({})
-  expect((await later.fetch(notes)).status).toBe(200)
+  await expectStatus(await later.fetch(notes), 200)
 
   // A service account is not a person who signs in.
   await grantRole(admin, { role: 'Er Robot', table: NOTES, can_read: true })
@@ -40,9 +40,9 @@ test('everyone who signs in holds the roles the setting names, and loses them wh
   expect(await getRoles(String(newcomer.user))).toContain(MEMBER)
 
   await setEveryone(admin, null)
-  expect((await newcomer.fetch(notes)).status).toBe(403)
+  await expectStatus(await newcomer.fetch(notes), 403)
   // A role given to the person directly stays.
-  expect((await member.fetch(notes)).status).toBe(200)
+  await expectStatus(await member.fetch(notes), 200)
 })
 
 test('the setting holds existing roles, one per line, and never a platform role', async ({ admin }) => {
@@ -61,7 +61,7 @@ test('only a System Manager changes it, though others may edit the rest of Syste
   await grantRole(admin, { role: 'Er Settings Editor', table: 'System Settings', can_read: true, can_write: true })
   const editor = await createUser({ roles: ['Er Settings Editor'] })
   await editor.post('/api/save_row', { table: 'System Settings', row: { app_name: 'Er Instance' } })
-  await expect(setEveryone(editor, MEMBER)).rejects.toMatchObject({ status: 403 })
+  await expectRefused(setEveryone(editor, MEMBER), 403)
   // Saving the form back with the setting unchanged is not a change to it.
   await setEveryone(admin, MEMBER)
   await editor.post('/api/save_row', { table: 'System Settings', row: { app_name: 'Er Instance 2', everyone_roles: MEMBER } })

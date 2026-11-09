@@ -5,7 +5,7 @@ import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { makePerson } from './fixtures'
+import { expectStatus, makePerson } from './fixtures'
 import { configureDelegated, configureGoogle } from './identity-fixtures'
 import { googleLink, googleSignIn, linkOutcome, redeemSession } from './google-mock'
 
@@ -74,7 +74,7 @@ describe('signing in through an existing link re-checks the domains', () => {
     const adminLinked = await makePerson({})
     await rawLink(selfLinked, 'uid_693_self', 'g-693-self', 'old.self@gmail.com', 'self')
     await rawLink(adminLinked, 'uid_693_admin', 'g-693-admin', 'contractor@gmail.com', 'Administrator')
-    expect((await googleSignIn(api, 'old.self@gmail.com', { subject: 'g-693-self' })).status).toBe(401)
+    await expectStatus(await googleSignIn(api, 'old.self@gmail.com', { subject: 'g-693-self' }), 401)
     expect((await redeemSession(api, await googleSignIn(api, 'contractor@gmail.com', { subject: 'g-693-admin' }))).user.row_id).toBe(adminLinked)
     // The refused link is not ended: re-admitting the domain (or clearing the list) restores it.
     await configureGoogle({ allowed_email_domains: '' })
@@ -87,7 +87,7 @@ describe('signing in through an existing link re-checks the domains', () => {
     const arrival = (await redeemSession(api, first)).user.row_id
     expect(await googleLinksOf(arrival)).toEqual([{ subject: 'g-693-sister', linked_by: 'new-person' }])
     await configureGoogle({ allowed_email_domains: COMPANY })
-    expect((await googleSignIn(api, 'arrival@sister.test', { subject: 'g-693-sister' })).status).toBe(401)
+    await expectStatus(await googleSignIn(api, 'arrival@sister.test', { subject: 'g-693-sister' }), 401)
   })
 
   test('narrowing the list may not lock out a System Manager whose only way in it would end', async ({ admin }) => {
@@ -102,14 +102,14 @@ describe('signing in through an existing link re-checks the domains', () => {
       })
     }
     const refused = await narrow()
-    expect(refused.status).toBe(417)
+    await expectStatus(refused, 417)
     expect(((await refused.json()) as { error: { message: string } }).error.message).toContain(`would lock out ${sm}`)
     expect(await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`).toEqual([
       { allowed_email_domains: `${COMPANY},sister.test` },
     ])
     // With another way in (a password), the same change goes through.
     await admin.post('/api/set_password', { user: sm, password: 'sm-693-pw-1' })
-    expect((await narrow()).status).toBe(200)
+    await expectStatus(await narrow(), 200)
   })
 })
 
@@ -123,7 +123,7 @@ describe('the way-in counts need the hosted-domain claim for a company domain', 
       const sm = await makePerson({ username: `sm.693.nohd${before ? '.star' : ''}`, roles: [{ role: 'System Manager' }] })
       await rawLink(sm, `uid_693_nohd${before ? '_star' : ''}`, 'g-693-nohd', `sm@${COMPANY}`, 'self', '')
       const refused = await setDomains(admin, COMPANY)
-      expect(refused.status).toBe(417)
+      await expectStatus(refused, 417)
       expect(((await refused.json()) as { error: { message: string } }).error.message).toContain(`would lock out ${sm}`)
       expect(await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`).toEqual([{ allowed_email_domains: before }])
     })
@@ -132,7 +132,7 @@ describe('the way-in counts need the hosted-domain claim for a company domain', 
       await configureGoogle({ allowed_email_domains: before })
       const sm = await makePerson({ username: `sm.693.hd${before ? '.star' : ''}`, roles: [{ role: 'System Manager' }] })
       await rawLink(sm, `uid_693_hd${before ? '_star' : ''}`, 'g-693-hd', `sm@${COMPANY}`, 'self', COMPANY)
-      expect((await setDomains(admin, COMPANY)).status).toBe(200)
+      await expectStatus(await setDomains(admin, COMPANY), 200)
     })
   }
 
@@ -141,12 +141,12 @@ describe('the way-in counts need the hosted-domain claim for a company domain', 
     const noClaim = await passwordSession(api, admin, 'pw.693.nohd')
     await rawLink(noClaim.id, 'uid_693_pw_nohd', 'g-693-pw-nohd', `pw.nohd@${COMPANY}`, 'self', '')
     const call = (token: string) => api.fetch('/api/me/password', { method: 'DELETE', headers: { authorization: `Bearer ${token}` } })
-    expect((await call(noClaim.token)).status).toBe(409)
+    await expectStatus(await call(noClaim.token), 409)
     expect(await sql`select password_hash is not null as kept from person where row_id = ${noClaim.id}`).toEqual([{ kept: true }])
     // With the matching claim recorded, the link is a way in and the password can go.
     const withClaim = await passwordSession(api, admin, 'pw.693.hd')
     await rawLink(withClaim.id, 'uid_693_pw_hd', 'g-693-pw-hd', `pw.hd@${COMPANY}`, 'self', COMPANY)
-    expect((await call(withClaim.token)).status).toBe(200)
+    await expectStatus(await call(withClaim.token), 200)
   })
 })
 
@@ -164,7 +164,7 @@ describe('a malformed domain list is refused when saved', () => {
     test(`"${typo}" is refused with a clear message, and the list is unchanged`, async ({ admin }) => {
       await configureGoogle({ allowed_email_domains: COMPANY })
       const res = await setDomains(admin, typo)
-      expect(res.status).toBe(417)
+      await expectStatus(res, 417)
       expect(((await res.json()) as { error: { message: string } }).error.message).toBe(`Allowed email domains ${says}`)
       expect(await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`).toEqual([{ allowed_email_domains: COMPANY }])
     })
@@ -174,19 +174,19 @@ describe('a malformed domain list is refused when saved', () => {
     await configureGoogle({ allowed_email_domains: COMPANY })
     const sm = await makePerson({ username: 'sm.693.typo', roles: [{ role: 'System Manager' }] })
     await rawLink(sm, 'uid_693_typo', 'g-693-typo', `sm.typo@${COMPANY}`, 'self', COMPANY)
-    expect((await setDomains(admin, 'exam ple.com')).status).toBe(417)
+    await expectStatus(await setDomains(admin, 'exam ple.com'), 417)
     expect((await redeemSession(api, await googleSignIn(api, `sm.typo@${COMPANY}`, { subject: 'g-693-typo' }))).user.row_id).toBe(sm)
   })
 
   test('spaces around entries, mixed case and * are accepted and read the same everywhere', async ({ api, admin }) => {
     await configureGoogle({ allowed_email_domains: '' })
-    expect((await setDomains(admin, ` Example.COM ,  sister.test `)).status).toBe(200)
+    await expectStatus(await setDomains(admin, ` Example.COM ,  sister.test `), 200)
     const sm = await makePerson({ username: 'sm.693.spaced', roles: [{ role: 'System Manager' }] })
     await rawLink(sm, 'uid_693_spaced', 'g-693-spaced', 'sm@sister.test', 'self', 'sister.test')
     expect((await redeemSession(api, await googleSignIn(api, 'sm@sister.test', { subject: 'g-693-spaced' }))).user.row_id).toBe(sm)
     // Dropping sister.test would strand them: the guard reads the same list.
-    expect((await setDomains(admin, ' Example.COM ')).status).toBe(417)
-    expect((await setDomains(admin, '*')).status).toBe(200)
+    await expectStatus(await setDomains(admin, ' Example.COM '), 417)
+    await expectStatus(await setDomains(admin, '*'), 200)
   })
 })
 
@@ -208,7 +208,7 @@ describe('a link whose claim was never recorded', () => {
     })
   }
   const refusesNaming = async (res: Response, who: string) => {
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(((await res.json()) as { error: { message: string } }).error.message).toContain(`would lock out ${who}`)
   }
 
@@ -234,7 +234,7 @@ describe('a link whose claim was never recorded', () => {
     const { id, token } = await passwordSession(api, admin, 'pw.693.unrecorded')
     await rawLink(id, 'uid_693_pw_unrecorded', 'g-693-pw-unrecorded', `pw.unrecorded@${COMPANY}`, 'self', null)
     const res = await api.fetch('/api/me/password', { method: 'DELETE', headers: { authorization: `Bearer ${token}` } })
-    expect(res.status).toBe(409)
+    await expectStatus(res, 409)
     expect(await sql`select password_hash is not null as kept from person where row_id = ${id}`).toEqual([{ kept: true }])
   })
 
@@ -242,7 +242,7 @@ describe('a link whose claim was never recorded', () => {
     await configureGoogle({ allowed_email_domains: '*' })
     const { id, token } = await passwordSession(api, admin, 'pw.693.star')
     await rawLink(id, 'uid_693_pw_star', 'g-693-pw-star', `pw.star@${COMPANY}`, 'self', null)
-    expect((await api.fetch('/api/me/password', { method: 'DELETE', headers: { authorization: `Bearer ${token}` } })).status).toBe(200)
+    await expectStatus(await api.fetch('/api/me/password', { method: 'DELETE', headers: { authorization: `Bearer ${token}` } }), 200)
   })
 
   test('once a sign-in records that Google sent no claim, the recorded-claim rule decides', async ({ api, admin }) => {
@@ -255,19 +255,19 @@ describe('a link whose claim was never recorded', () => {
     // Under the company domain that link cannot sign in at all, so turning
     // Google off takes nothing away from them.
     await configureGoogle({ allowed_email_domains: COMPANY })
-    expect((await setGoogle(admin, { enabled: false })).status).toBe(200)
+    await expectStatus(await setGoogle(admin, { enabled: false }), 200)
   })
 
   test('widening the list, or changing another method, restricts nothing and is allowed', async ({ admin }) => {
     await configureGoogle({ allowed_email_domains: COMPANY })
     await googleOnlySm('sm.693.widen', 'uid_693_widen', 'g-693-widen', null)
-    expect((await setGoogle(admin, { allowed_email_domains: `${COMPANY},sister.test` })).status).toBe(200)
+    await expectStatus(await setGoogle(admin, { allowed_email_domains: `${COMPANY},sister.test` }), 200)
     const [pw] = await sql`select updated_at, label from sign_in_method where row_id = 'password'`
     const other = await admin.fetch(`/api/table/${encodeURIComponent('Sign In Method')}/password`, {
       method: 'PATCH',
       body: JSON.stringify({ label: `${pw.label ?? 'Password'} (renamed)`, updated_at: pw.updated_at }),
     })
-    expect(other.status).toBe(200)
+    await expectStatus(other, 200)
     // Another method turned off and on again restricts none of their Google ways in either.
     await configureDelegated()
     const [hr] = await sql`select updated_at from sign_in_method where row_id = 'stylehr'`
@@ -281,7 +281,7 @@ describe('a link whose claim was never recorded', () => {
     await configureGoogle({ allowed_email_domains: COMPANY })
     const sm = await googleOnlySm('sm.693.matching', 'uid_693_matching', 'g-693-matching', COMPANY)
     await refusesNaming(await setGoogle(admin, { allowed_email_domains: 'other.test' }), sm)
-    expect((await setGoogle(admin, { allowed_email_domains: `${COMPANY},other.test` })).status).toBe(200)
+    await expectStatus(await setGoogle(admin, { allowed_email_domains: `${COMPANY},other.test` }), 200)
   })
 })
 
@@ -305,7 +305,7 @@ describe('a link with no verified address', () => {
     const sm = await makePerson({ username: 'sm.693.noemail', roles: [{ role: 'System Manager' }] })
     await noEmailLink(sm, 'uid_693_noemail', 'g-693-noemail')
     const res = await setGoogle(admin, { allowed_email_domains: '*' })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(((await res.json()) as { error: { message: string } }).error.message).toContain(`would lock out ${sm}`)
     expect(await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`).toEqual([{ allowed_email_domains: '' }])
   })
@@ -315,7 +315,7 @@ describe('a link with no verified address', () => {
     const { id, token } = await passwordSession(api, admin, 'pw.693.noemail')
     await noEmailLink(id, 'uid_693_pw_noemail', 'g-693-pw-noemail')
     const res = await api.fetch('/api/me/password', { method: 'DELETE', headers: { authorization: `Bearer ${token}` } })
-    expect(res.status).toBe(409)
+    await expectStatus(res, 409)
     expect(await sql`select password_hash is not null as kept from person where row_id = ${id}`).toEqual([{ kept: true }])
   })
 
@@ -332,7 +332,7 @@ describe('a link with no verified address', () => {
       { email: 'sm.stale@gmail.com', email_verified: false },
     ])
     const res = await setGoogle(admin, { allowed_email_domains: '*' })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(((await res.json()) as { error: { message: string } }).error.message).toContain(`would lock out ${sm}`)
   })
 
@@ -340,10 +340,10 @@ describe('a link with no verified address', () => {
     await configureGoogle({ allowed_email_domains: '' })
     const sm = await makePerson({ username: 'sm.693.withemail', roles: [{ role: 'System Manager' }] })
     await rawLink(sm, 'uid_693_withemail', 'g-693-withemail', 'sm.withemail@gmail.com', 'self', '')
-    expect((await setGoogle(admin, { allowed_email_domains: '*' })).status).toBe(200)
+    await expectStatus(await setGoogle(admin, { allowed_email_domains: '*' }), 200)
     const { id, token } = await passwordSession(api, admin, 'pw.693.withemail')
     await rawLink(id, 'uid_693_pw_withemail', 'g-693-pw-withemail', `pw.withemail@${COMPANY}`, 'self', '')
-    expect((await api.fetch('/api/me/password', { method: 'DELETE', headers: { authorization: `Bearer ${token}` } })).status).toBe(200)
+    await expectStatus(await api.fetch('/api/me/password', { method: 'DELETE', headers: { authorization: `Bearer ${token}` } }), 200)
   })
 })
 
@@ -358,10 +358,10 @@ describe('a listed consumer domain is read the same by sign-in and the guard', (
     await rawLink(sm, 'uid_693_consumer', 'g-693-consumer', 'sm.consumer@gmail.com', 'self', '')
     expect((await redeemSession(api, await googleSignIn(api, 'sm.consumer@gmail.com', { subject: 'g-693-consumer' }))).user.row_id).toBe(sm)
     const res = await setDomains(admin, COMPANY)
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(((await res.json()) as { error: { message: string } }).error.message).toContain(`would lock out ${sm}`)
     // Keeping gmail.com keeps them in: the change is allowed.
-    expect((await setDomains(admin, `gmail.com,${COMPANY},sister.test`)).status).toBe(200)
+    await expectStatus(await setDomains(admin, `gmail.com,${COMPANY},sister.test`), 200)
   })
 })
 
@@ -382,10 +382,10 @@ describe('narrowing the list ends sessions through links it no longer admits', (
     const password = await passwordSession(api, admin, 'pw.693.end')
     for (const token of [selfSession.token, adminSession.token, password.token]) expect((await whoami(api, token)).status).toBe(200)
 
-    expect((await setDomains(admin, COMPANY)).status).toBe(200)
-    expect((await whoami(api, selfSession.token)).status).toBe(401)
-    expect((await whoami(api, adminSession.token)).status).toBe(200)
-    expect((await whoami(api, password.token)).status).toBe(200)
+    await expectStatus(await setDomains(admin, COMPANY), 200)
+    await expectStatus(await whoami(api, selfSession.token), 401)
+    await expectStatus(await whoami(api, adminSession.token), 200)
+    await expectStatus(await whoami(api, password.token), 200)
     // The link is kept; one log entry for that person, with no address in it.
     expect(await sql`select ended_at from sign_in_identity where id = 'uid_693_end_self'`).toEqual([{ ended_at: null }])
     const logged = await sql`select "user", operation from activity_log where "user" = ${selfLinked} and operation like 'google_sessions_ended%'`
@@ -394,12 +394,12 @@ describe('narrowing the list ends sessions through links it no longer admits', (
     expect(await sql`select 1 from activity_log where "user" = ${adminLinked} and operation like 'google_sessions_ended%'`).toHaveLength(0)
 
     // Re-widening lets them sign in again, but the ended session stays ended.
-    expect((await setDomains(admin, `${COMPANY},gmail.com`)).status).toBe(200)
-    expect((await whoami(api, selfSession.token)).status).toBe(401)
+    await expectStatus(await setDomains(admin, `${COMPANY},gmail.com`), 200)
+    await expectStatus(await whoami(api, selfSession.token), 401)
     await new Promise((r) => setTimeout(r, 1100)) // sessions carry whole seconds
     const fresh = await redeemSession(api, await googleSignIn(api, 'end.self@gmail.com', { subject: 'g-693-end-self' }))
     expect(fresh.user.row_id).toBe(selfLinked)
-    expect((await whoami(api, fresh.token)).status).toBe(200)
+    await expectStatus(await whoami(api, fresh.token), 200)
   })
 
   test('a change that keeps the link admitted ends nothing', async ({ api, admin }) => {
@@ -407,8 +407,8 @@ describe('narrowing the list ends sessions through links it no longer admits', (
     const p = await makePerson({})
     await rawLink(p, 'uid_693_keep', 'g-693-keep', 'keep@gmail.com', 'self', '')
     const session = await redeemSession(api, await googleSignIn(api, 'keep@gmail.com', { subject: 'g-693-keep' }))
-    expect((await setDomains(admin, `gmail.com,${COMPANY}`)).status).toBe(200)
-    expect((await whoami(api, session.token)).status).toBe(200)
+    await expectStatus(await setDomains(admin, `gmail.com,${COMPANY}`), 200)
+    await expectStatus(await whoami(api, session.token), 200)
     expect(await sql`select sessions_ended_at from sign_in_identity where id = 'uid_693_keep'`).toEqual([{ sessions_ended_at: null }])
   })
 })

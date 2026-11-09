@@ -12,7 +12,7 @@ import { test as pgTest } from './pg-test'
 import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packages'
 import { withNamedVariable } from '../src/env'
 import { sql } from '../src/db'
-import { expectApiError } from './fixtures'
+import { expectApiError, expectStatus } from './fixtures'
 import { applyInstanceSettings, exportInstanceSettings } from '../src/instance-settings'
 import { WITHHELD_ANSWER, WITHHELD_MESSAGE, holdsSecret, keptSecrets, withSecretsKept } from '../src/app-settings'
 
@@ -59,7 +59,7 @@ describe('declared app settings', () => {
     const response = await admin.fetch('/api/save_row', {
       method: 'POST', body: JSON.stringify({ table: 'App Setting', row: { row_id: 'setupproof-report_id', value: 'R-99' } }),
     })
-    expect(response.status).toBe(417)
+    await expectStatus(response, 417)
     expect(await response.json()).toEqual({ error: {
       type: 'ValidationError', message: 'An app setting is named <app>.<setting>, like tasker.report_id',
       fields: { row_id: 'app.setting' },
@@ -167,7 +167,7 @@ describe('an app secret', () => {
     await setting(admin, 'theme', TOKEN)
     const response = await withNamedVariable('SETUPPROOF_TOKEN', TOKEN, () => reader.fetch('/api/app_actions/setupproof/record', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idempotencyKey: 'leak', payload: {} }) }))
-    expect(response.status).toBe(500)
+    await expectStatus(response, 500)
     expect(await response.text()).not.toContain(TOKEN)
     expect(JSON.stringify(await sql`select result from runtime_action_result where app = 'setupproof'`)).not.toContain(TOKEN)
   })
@@ -192,7 +192,7 @@ describe('an app secret', () => {
     await setting(admin, 'report_id', 'R-1')
     const response = await withNamedVariable('SETUPPROOF_TOKEN', token, () => reader.fetch('/api/app_actions/setupproof/echo_secret', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idempotencyKey: 'escaped', payload: {} }) }))
-    expect(response.status).toBe(500)
+    await expectStatus(response, 500)
     expect(await sql`select 1 from runtime_action_result where app = 'setupproof'`).toHaveLength(0)
   })
 

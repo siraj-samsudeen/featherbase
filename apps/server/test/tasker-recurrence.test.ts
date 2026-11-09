@@ -8,6 +8,7 @@ import { enqueue, drainJobs } from '../src/jobs'
 import { sql } from '../src/db'
 import { issueSession } from '../src/auth'
 import type { CreateUserFn } from 'feather-testing-postgres'
+import { expectRefused } from './fixtures'
 
 async function tick() {
   await enqueue('tasker.repeat_tasks', {})
@@ -95,13 +96,13 @@ async function createNextByWorker(createUser: CreateUserFn) {
 databaseTest('Undo Done cannot reopen a historical occurrence after its series advances', async ({ createUser }) => {
   const { member, task } = await createNextByWorker(createUser)
   const previous = await member.get<{ updated_at: string }>(`/api/table/tasker.task/${task.row_id}`)
-  await expect(member.post('/api/save_row', { table: 'tasker.task', row: { row_id: task.row_id, updated_at: previous.updated_at, is_done: false } })).rejects.toMatchObject({ status: 417 })
+  await expectRefused(member.post('/api/save_row', { table: 'tasker.task', row: { row_id: task.row_id, updated_at: previous.updated_at, is_done: false } }), 417)
 })
 
 databaseTest('an occurrence keeps its original occurrence key', async ({ createUser }) => {
   const { member, current } = await createNextByWorker(createUser)
   const occurrence = await member.get<{ updated_at: string }>(`/api/table/tasker.task/${current}`)
-  await expect(member.post('/api/save_row', { table: 'tasker.task', row: { row_id: current, updated_at: occurrence.updated_at, occurrence_key: 'changed-slot' } })).rejects.toMatchObject({ status: 417 })
+  await expectRefused(member.post('/api/save_row', { table: 'tasker.task', row: { row_id: current, updated_at: occurrence.updated_at, occurrence_key: 'changed-slot' } }), 417)
 })
 
 databaseTest('a direct series edit cannot replace its computed next date', async ({ createUser }) => {

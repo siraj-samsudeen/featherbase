@@ -4,6 +4,7 @@ import { test } from './pg-test'
 import { installApp } from '../src/apps'
 import { discoverPackages } from '../src/runtime-packages'
 import { taskerClient } from './tasker-client'
+import { expectRefused } from './fixtures'
 
 async function install() {
   expect(await discoverPackages([resolve('../..', 'example-apps/tasker')])).toEqual([])
@@ -15,7 +16,7 @@ test('a subtask cannot contain another subtask', async ({ createUser }) => {
   const member = taskerClient(await createUser({ roles: ['Tasker Member'] }))
   const parent = await member.post<{ row_id: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Monthly review' } })
   const child = await member.post<{ row_id: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Collect figures', parent_task: parent.row_id } })
-  await expect(member.post('/api/save_row', { table: 'tasker.task', row: { task_title: 'Another level', parent_task: child.row_id } })).rejects.toMatchObject({ status: 417 })
+  await expectRefused(member.post('/api/save_row', { table: 'tasker.task', row: { task_title: 'Another level', parent_task: child.row_id } }), 417)
 })
 
 test('an open subtask prevents parent completion', async ({ createUser }) => {
@@ -23,7 +24,7 @@ test('an open subtask prevents parent completion', async ({ createUser }) => {
   const member = taskerClient(await createUser({ roles: ['Tasker Member'] }))
   const parent = await member.post<{ row_id: string; updated_at: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Monthly review' } })
   await member.post('/api/save_row', { table: 'tasker.task', row: { task_title: 'Collect figures', parent_task: parent.row_id } })
-  await expect(member.post('/api/save_row', { table: 'tasker.task', row: { row_id: parent.row_id, updated_at: parent.updated_at, is_done: true } })).rejects.toMatchObject({ status: 417 })
+  await expectRefused(member.post('/api/save_row', { table: 'tasker.task', row: { row_id: parent.row_id, updated_at: parent.updated_at, is_done: true } }), 417)
 })
 
 test.for(['Done', 'Cancelled'])('a %s subtask permits explicit parent completion', async (state, { createUser }) => {
@@ -42,7 +43,7 @@ test('a subtask reopens only after its completed parent reopens', async ({ creat
   const parent = await member.post<{ row_id: string; updated_at: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Monthly review' } })
   const child = await member.post<{ row_id: string; updated_at: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Collect figures', parent_task: parent.row_id, task_state: 'Done' } })
   const completed = await member.post<{ row_id: string; updated_at: string }>('/api/save_row', { table: 'tasker.task', row: { row_id: parent.row_id, updated_at: parent.updated_at, task_state: 'Done' } })
-  await expect(member.post('/api/save_row', { table: 'tasker.task', row: { row_id: child.row_id, updated_at: child.updated_at, task_state: 'In progress' } })).rejects.toMatchObject({ status: 417 })
+  await expectRefused(member.post('/api/save_row', { table: 'tasker.task', row: { row_id: child.row_id, updated_at: child.updated_at, task_state: 'In progress' } }), 417)
   await member.post('/api/save_row', { table: 'tasker.task', row: { row_id: completed.row_id, updated_at: completed.updated_at, task_state: 'In progress' } })
   expect(await member.post('/api/save_row', { table: 'tasker.task', row: { row_id: child.row_id, updated_at: child.updated_at, task_state: 'In progress' } })).toMatchObject({ task_state: 'In progress' })
 })
@@ -52,7 +53,7 @@ test('private subtask cannot be assigned to a teammate', async ({ createUser }) 
   const member = taskerClient(await createUser({ roles: ['Tasker Member'] }))
   const teammate = taskerClient(await createUser({ roles: ['Tasker Member'] }))
   const parent = await member.post<{ row_id: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Private review' } })
-  await expect(member.post('/api/save_row', { table: 'tasker.task', row: { task_title: 'Private step', parent_task: parent.row_id, assigned_to: teammate.user } })).rejects.toMatchObject({ status: 417 })
+  await expectRefused(member.post('/api/save_row', { table: 'tasker.task', row: { task_title: 'Private step', parent_task: parent.row_id, assigned_to: teammate.user } }), 417)
 })
 
 test('sharing a parent makes its existing subtask accessible to teammates', async ({ createUser }) => {
@@ -62,7 +63,7 @@ test('sharing a parent makes its existing subtask accessible to teammates', asyn
   const project = await member.post<{ row_id: string }>('/api/save_row', { table: 'tasker.project', row: { project_name: 'Team review' } })
   const parent = await member.post<{ row_id: string; updated_at: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Review instructions' } })
   const child = await member.post<{ row_id: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Collect team figures', parent_task: parent.row_id } })
-  await expect(teammate.get(`/api/table/tasker.task/${child.row_id}`)).rejects.toMatchObject({ status: 403 })
+  await expectRefused(teammate.get(`/api/table/tasker.task/${child.row_id}`), 403)
   await member.post('/api/save_row', { table: 'tasker.task', row: { row_id: parent.row_id, updated_at: parent.updated_at, project: project.row_id } })
   expect(await teammate.get(`/api/table/tasker.task/${child.row_id}`)).toMatchObject({ task_title: 'Collect team figures', parent_task: parent.row_id })
 })

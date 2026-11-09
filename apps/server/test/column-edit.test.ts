@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { expectApiError, makeTable, tableRef } from './fixtures'
+import { expectApiError, expectRefused, makeTable, tableRef } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
 
 // #209 (issue #197): changing a Table's columns AFTER the rows are in it.
@@ -73,26 +73,26 @@ describe('#209: renaming a column keeps its rows', () => {
 
   test('a name already taken is refused, and nothing moves', async ({ admin }) => {
     await setup(admin)
-    await expect(rename(admin, 'glor', 'pop')).rejects.toMatchObject({ status: 417 })
+    await expectRefused(rename(admin, 'glor', 'pop'), 417)
     expect((await meta(admin)).columns.map((c) => c.column_name)).toEqual(['glor', 'pop'])
     expect((await rows(admin)).map((r) => r.glor)).toEqual(['Mezzanine', 'Ground'])
   })
 
   test('a standard column cannot be renamed away', async ({ admin }) => {
     await setup(admin)
-    await expect(rename(admin, 'created_at', 'made_at')).rejects.toMatchObject({ status: 417 })
+    await expectRefused(rename(admin, 'created_at', 'made_at'), 417)
   })
 
   test('a name that is not snake_case is refused', async ({ admin }) => {
     await setup(admin)
     for (const bad of ['Floor', 'floor name', '1floor', '']) {
-      await expect(rename(admin, 'glor', bad)).rejects.toMatchObject({ status: 417 })
+      await expectRefused(rename(admin, 'glor', bad), 417)
     }
   })
 
   test('renaming a column that is not there says so', async ({ admin }) => {
     await setup(admin)
-    await expect(rename(admin, 'nope', 'floor')).rejects.toMatchObject({ status: 404 })
+    await expectRefused(rename(admin, 'nope', 'floor'), 404)
   })
 
   test('renaming to the same name is a no-op, not an error', async ({ admin }) => {

@@ -5,7 +5,7 @@ import { afterEach, describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test, patchDoc } from './pg-test'
 import { sql } from '../src/db'
-import { expectApiError, makePerson } from './fixtures'
+import { expectApiError, expectStatus, makePerson } from './fixtures'
 import { issueSession } from '../src/auth'
 import { configureGoogle, inviteGoogleRaw, linkDelegated, configureDelegated } from './identity-fixtures'
 import { googleSignIn, redeemSession } from './google-mock'
@@ -40,7 +40,7 @@ describe('email is optional contact data', () => {
       method: 'POST',
       body: JSON.stringify({ table: 'Person', row: { email: 'rr-7964@staff.jeyarama.invalid', enabled: true } }),
     })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     expect(Object.keys(((await res.json()) as { error: { fields: Record<string, string> } }).error.fields)).toEqual(['email'])
   })
 
@@ -50,7 +50,7 @@ describe('email is optional contact data', () => {
       method: 'POST',
       body: JSON.stringify({ table: 'Person', row: { email: 'Asha@Example.com', enabled: true } }),
     })
-    expect(res.status).toBe(417)
+    await expectStatus(res, 417)
     const body = (await res.json()) as { error: { fields?: Record<string, string> } }
     expect(Object.keys(body.error.fields ?? {})).toEqual(['email'])
   })
@@ -71,18 +71,18 @@ describe('Google is matched by its permanent account ID', () => {
     await configureGoogle({ allowed_email_domains: '*' })
     const first = await redeemSession(api, await googleSignIn(api, 'kavya@gmail.com', { subject: 'g-100' }))
     const again = await googleSignIn(api, 'kavya.renamed@gmail.com', { subject: 'g-100' })
-    expect(again.status).toBe(302)
+    await expectStatus(again, 302)
     expect((await redeemSession(api, again)).user.row_id).toBe(first.user.row_id)
   })
 
   test('an unlinked Google account with someone else\'s address never opens that account', async ({ api }) => {
     const meera = await makePerson({ email: 'member@jeyarama.com' })
     await configureGoogle({ allowed_email_domains: '' })
-    expect((await googleSignIn(api, 'member@jeyarama.com', { subject: 'g-stranger' })).status).toBe(401)
+    await expectStatus(await googleSignIn(api, 'member@jeyarama.com', { subject: 'g-stranger' }), 401)
     // Even with open admission it is refused, not linked: the address is in use.
     await configureGoogle({ allowed_email_domains: '*' })
     const res = await googleSignIn(api, 'member@jeyarama.com', { subject: 'g-stranger' })
-    expect(res.status).toBe(401)
+    await expectStatus(res, 401)
     const links = await sql`select 1 from sign_in_identity where person_id = ${meera}`
     expect(links).toHaveLength(0)
   })
@@ -91,7 +91,7 @@ describe('Google is matched by its permanent account ID', () => {
     const rr1 = await makePerson({ email: 'sm.atk@jeyarama.com' })
     const invite = await inviteGoogleRaw(rr1, 'sm.atk@jeyarama.com')
     const first = await googleSignIn(api, 'SM.ATK@jeyarama.com', { subject: 'g-sm-1' })
-    expect(first.status).toBe(302)
+    await expectStatus(first, 302)
     const session = await redeemSession(api, first)
     expect(session.user.row_id).toBe(rr1)
     expect(session.user.sign_in).toMatchObject({ method: 'google', identity: invite })
@@ -100,13 +100,13 @@ describe('Google is matched by its permanent account ID', () => {
     const audit = await sql`select operation from activity_log where "user" = ${rr1} and operation like 'identity_claimed%'`
     expect(audit).toHaveLength(1)
     // A different Google account with the same address later: not this person.
-    expect((await googleSignIn(api, 'sm.atk@jeyarama.com', { subject: 'g-sm-2' })).status).toBe(401)
+    await expectStatus(await googleSignIn(api, 'sm.atk@jeyarama.com', { subject: 'g-sm-2' }), 401)
   })
 
   test('an invite is never claimed onto a disabled account', async ({ api }) => {
     const rr2 = await makePerson({ email: 'gone@jeyarama.com', enabled: false })
     const invite = await inviteGoogleRaw(rr2, 'gone@jeyarama.com')
-    expect((await googleSignIn(api, 'gone@jeyarama.com', { subject: 'g-gone' })).status).toBe(401)
+    await expectStatus(await googleSignIn(api, 'gone@jeyarama.com', { subject: 'g-gone' }), 401)
     const [row] = await sql`select subject from sign_in_identity where id = ${invite}`
     expect(row.subject).toBeNull()
   })
@@ -119,21 +119,21 @@ describe('Google is matched by its permanent account ID', () => {
     expect(res.ok).toBe(true)
     expect(await sql`select 1 from sign_in_identity where person_id = ${rr3}`).toHaveLength(0)
     await configureGoogle({ allowed_email_domains: '' })
-    expect((await googleSignIn(api, 'old@jeyarama.com', { subject: 'g-old' })).status).toBe(401)
+    await expectStatus(await googleSignIn(api, 'old@jeyarama.com', { subject: 'g-old' }), 401)
   })
 
   test('domain admission needs the Workspace claim for a company domain', async ({ api }) => {
     await configureGoogle({ allowed_email_domains: 'jeyarama.com' })
     // A personal Google account registered on a company address: no hd claim.
-    expect((await googleSignIn(api, 'someone@jeyarama.com', { subject: 'g-personal', hd: '' })).status).toBe(401)
-    expect((await googleSignIn(api, 'someone@jeyarama.com', { subject: 'g-workspace', hd: 'jeyarama.com' })).status).toBe(302)
+    await expectStatus(await googleSignIn(api, 'someone@jeyarama.com', { subject: 'g-personal', hd: '' }), 401)
+    await expectStatus(await googleSignIn(api, 'someone@jeyarama.com', { subject: 'g-workspace', hd: 'jeyarama.com' }), 302)
   })
 
   test('the method\'s rule decides unknown people: refuse, or create for anyone', async ({ api }) => {
     await configureGoogle({ allowed_email_domains: '*', new_person: 'refuse' })
-    expect((await googleSignIn(api, 'nobody@gmail.com', { subject: 'g-nobody' })).status).toBe(401)
+    await expectStatus(await googleSignIn(api, 'nobody@gmail.com', { subject: 'g-nobody' }), 401)
     await configureGoogle({ allowed_email_domains: '', new_person: 'create' })
-    expect((await googleSignIn(api, 'anybody@outside.io', { subject: 'g-anybody' })).status).toBe(302)
+    await expectStatus(await googleSignIn(api, 'anybody@outside.io', { subject: 'g-anybody' }), 302)
   })
 
   test('turning Google off ends Google sessions; sessions opened by password continue', async ({ api, admin }) => {
@@ -141,12 +141,12 @@ describe('Google is matched by its permanent account ID', () => {
     const google = await redeemSession(api, await googleSignIn(api, 'ends@gmail.com', { subject: 'g-ends' }))
     const legacy = (await issueSession(google.user.row_id)).token // minted before the upgrade: no method
     const who = (token: string) => api.fetch('/api/whoami', { headers: { authorization: `Bearer ${token}` } })
-    expect((await who(google.token)).status).toBe(200)
-    expect((await setEnabled(admin, 'Sign In Method', 'google', false)).status).toBe(200)
-    expect((await who(google.token)).status).toBe(401)
+    await expectStatus(await who(google.token), 200)
+    await expectStatus(await setEnabled(admin, 'Sign In Method', 'google', false), 200)
+    await expectStatus(await who(google.token), 401)
     // Sessions from before the upgrade carry no method and run to expiry.
-    expect((await who(legacy)).status).toBe(200)
-    expect((await googleSignIn(api, 'ends@gmail.com', { subject: 'g-ends' })).status).toBe(401)
+    await expectStatus(await who(legacy), 200)
+    await expectStatus(await googleSignIn(api, 'ends@gmail.com', { subject: 'g-ends' }), 401)
   })
 })
 
@@ -157,9 +157,9 @@ describe('password sign-in', () => {
     await admin.post('/api/set_password', { user: meena, password: 'meena-pw-1' })
     await admin.post('/api/set_password', { user: other, password: 'other-pw-1' })
     const login = (usr: string, pwd: string) => api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr, pwd }) })
-    expect((await login('meena', 'other-pw-1')).status).toBe(401)
+    await expectStatus(await login('meena', 'other-pw-1'), 401)
     const ok = await login('MEENA', 'meena-pw-1')
-    expect(ok.status).toBe(200)
+    await expectStatus(ok, 200)
     expect(((await ok.json()) as { user: { row_id: string; sign_in: { method: string } } }).user).toMatchObject({ row_id: meena, sign_in: { method: 'password' } })
   })
 
@@ -168,11 +168,11 @@ describe('password sign-in', () => {
     await admin.post('/api/set_password', { user: ravi, password: 'ravi-pw-1' })
     const { token } = (await (await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'ravi', pwd: 'ravi-pw-1' }) })).json()) as { token: string }
     const as = (path: string, init: RequestInit = {}) => api.fetch(path, { ...init, headers: { authorization: `Bearer ${token}` } })
-    expect((await as('/api/me/password', { method: 'DELETE' })).status).toBe(409)
+    await expectStatus(await as('/api/me/password', { method: 'DELETE' }), 409)
     await configureDelegated()
     await linkDelegated(ravi, 'ravi_hr')
-    expect((await as('/api/me/password', { method: 'DELETE' })).status).toBe(200)
-    expect((await as('/api/whoami')).status).toBe(401)
+    await expectStatus(await as('/api/me/password', { method: 'DELETE' }), 200)
+    await expectStatus(await as('/api/whoami'), 401)
   })
 
   test('a reset never gives a password to an account without one, nor mails an account without email', async ({ api }) => {
@@ -181,7 +181,7 @@ describe('password sign-in', () => {
     await sql`update person set password_hash = 'x:y' where row_id = ${noMail}`
     const before = await sql`select count(*)::int as n from password_reset`
     for (const usr of ['hr.only', 'hr.only@jeyarama.com', 'no.mail'])
-      expect((await api.fetch('/api/reset_password_request', { method: 'POST', body: JSON.stringify({ usr }) })).status).toBe(200)
+      await expectStatus(await api.fetch('/api/reset_password_request', { method: 'POST', body: JSON.stringify({ usr }) }), 200)
     const after = await sql`select count(*)::int as n from password_reset`
     expect(after[0].n).toBe(before[0].n)
   })
@@ -203,7 +203,7 @@ describe('One person, several ways to sign in', () => {
     const person = monday.user.row_id
     await linkDelegated(person, 'tl_both_hr')
     const tuesday = await hrSignIn(api, 'tl_both_hr')
-    expect(tuesday.status).toBe(200)
+    await expectStatus(tuesday, 200)
     expect(((await tuesday.json()) as { user: { row_id: string } }).user.row_id).toBe(person)
     // One account: the two links hang off the same person, nothing was copied.
     const links = await sql`select method from sign_in_identity where person_id = ${person} and ended_at is null order by method`
@@ -222,7 +222,7 @@ describe('Email is optional: store staff without email', () => {
     expect((await sql`select email from person where row_id = ${staff}`)[0].email).toBeNull()
     await linkDelegated(staff, 'staff_no_mail')
     const res = await hrSignIn(api, 'staff_no_mail')
-    expect(res.status).toBe(200)
+    await expectStatus(res, 200)
     const body = (await res.json()) as { user: { row_id: string; email: string | null } }
     expect(body.user).toMatchObject({ row_id: staff, email: null })
   })

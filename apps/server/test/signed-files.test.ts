@@ -2,7 +2,7 @@ import { describe, expect } from 'vitest'
 import { deleteStored } from '../src/storage'
 import { test } from './pg-test'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
-import { grantRole } from './fixtures'
+import { expectStatus, grantRole } from './fixtures'
 
 // FILE-003: private files are served only after a permission check on the
 // document they are attached to. A signed URL, minted after that check,
@@ -55,7 +55,7 @@ describe('FILE-003: private files via signed URLs', () => {
       // #173: authenticated as the outsider (header credential), so a 403 here
       // is the permission check refusing — not a missing session.
       const res = await api.fetch(fileUrl, { headers: { cookie: `sid=${outsider.token}` } })
-      expect(res.status).toBe(403)
+      await expectStatus(res, 403)
     } finally {
       await deleteStored(fileUrl).catch(() => {})
     }
@@ -86,7 +86,7 @@ describe('FILE-003: private files via signed URLs', () => {
 
       // No Authorization header at all — the signature carries the grant.
       const served = await api.fetch(signed_url)
-      expect(served.status).toBe(200)
+      await expectStatus(served, 200)
       expect(await served.text()).toBe('classified')
     } finally {
       await deleteStored(fileUrl).catch(() => {})
@@ -128,13 +128,13 @@ describe('A private file opens through a short-lived link', () => {
       const { signed_url } = await outsider.get<{ signed_url: string }>(
         `/api/signed_url?file_url=${encodeURIComponent(fileUrl)}`,
       )
-      expect((await api.fetch(signed_url)).status).toBe(200)
+      await expectStatus(await api.fetch(signed_url), 200)
 
       await admin.delete(`/api/table/Share/${share.row_id}`)
 
       // The link in hand still works until it expires…
       const served = await api.fetch(signed_url)
-      expect(served.status).toBe(200)
+      await expectStatus(served, 200)
       expect(await served.text()).toBe('classified')
       // …but access is checked afresh for any new link.
       await expect(
