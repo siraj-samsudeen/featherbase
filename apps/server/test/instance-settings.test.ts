@@ -152,6 +152,23 @@ describe('apply (D4)', () => {
     expect((await applyInstanceSettings({ settings: { 'System Settings': { app_name: null, allow_signup: false } } }, { by: 'Administrator' })).changes).toEqual([])
   })
 
+  test('a switch the file sets to null is turned off', async () => {
+    await applyInstanceSettings({ settings: { 'System Settings': { allow_signup: true } } }, { by: 'Administrator' })
+    await applyInstanceSettings({ settings: { 'System Settings': { allow_signup: null } } } as unknown as InstanceSettingsFile, { by: 'Administrator' })
+    expect(await sql`select value from single_value where table_name = 'System Settings' and field = 'allow_signup'`).toEqual([{ value: '0' }])
+  })
+
+  test('a blank text setting is cleared', async () => {
+    await applyInstanceSettings({ settings: { 'System Settings': { app_name: 'Acme' } } }, { by: 'Administrator' })
+    await applyInstanceSettings({ settings: { 'System Settings': { app_name: '' } } }, { by: 'Administrator' })
+    expect(await sql`select value from single_value where table_name = 'System Settings' and field = 'app_name'`).toEqual([{ value: null }])
+  })
+
+  test('a text setting given a number is refused', async () => {
+    const err = await problemsOf(applyInstanceSettings({ settings: { 'System Settings': { app_name: 5 } } } as unknown as InstanceSettingsFile, { by: 'Administrator' }))
+    expect(err.fields).toEqual({ 'System Settings.app_name': 'System Settings.app_name wants text' })
+  })
+
   test('a System Settings change is versioned through the normal save path', async () => {
     await applyInstanceSettings({ settings: { 'System Settings': { app_name: 'Before' } } }, { by: 'Administrator' })
     await applyInstanceSettings({ settings: { 'System Settings': { app_name: 'After' } } }, { by: 'Administrator' })
@@ -786,6 +803,13 @@ describe('values from variables (#703)', () => {
       'Sign In Method.password.settings': expect.stringContaining('wants JSON'),
     })
     expect(bad.message).not.toContain('{not json')
+  })
+
+  test('a switch from a variable set to true turns it on', async () => {
+    await sql`update scheduled_job set enabled = false where row_id = 'check_sla'`
+    await applyInstanceSettings({ settings: { 'Scheduled Job': [{ row_id: 'check_sla', enabled: { env: 'ON' } }] } } as unknown as InstanceSettingsFile,
+      { by: 'Administrator', env: { ON: 'true' } })
+    expect(await sql`select enabled from scheduled_job where row_id = 'check_sla'`).toEqual([{ enabled: true }])
   })
 
   test('a save that quotes the refused value has it taken out', async () => {
