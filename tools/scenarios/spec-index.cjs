@@ -6,8 +6,8 @@
 // requirement of the same name; REMOVED ones drop it). A scenario carries its
 // fenced Gherkin steps, or none when it is still prose.
 //
-// Dependency-free (node:fs/node:path), so cucumber's CommonJS config, the
-// Vitest binding and the check all read the same index.
+// Dependency-free (node:fs/node:path), so the Vitest binding and the check
+// read the same index.
 
 const fs = require('node:fs');
 const path = require('node:path');

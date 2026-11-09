@@ -1,10 +1,9 @@
 'use strict';
 
-// Which spec scenarios a Vitest test proves (#1070, step 2), read from the
+// Which spec scenarios a Vitest test proves (#1070), read from the
 // test files without running them: a file names its capability once with
 // `scenarioFor(test, '<capability>')`, then each `scenario('<name>', …)` is a
-// binding. A capability with any binding has moved off cucumber: every one of
-// its fenced scenarios must then be bound, and cucumber leaves it out.
+// binding. Every fenced scenario of the effective spec must be bound.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -51,9 +50,4 @@ function scenarioBindings() {
   return { bindings, problems };
 }
 
-/** The capabilities whose scenarios Vitest runs; cucumber leaves them out. */
-function migratedCapabilities() {
-  return new Set(scenarioBindings().bindings.map((b) => b.capability));
-}
-
-module.exports = { scenarioBindings, migratedCapabilities };
+module.exports = { scenarioBindings };

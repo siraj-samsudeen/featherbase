@@ -53,6 +53,8 @@ test('mixed changes take the union', () => {
 
 test('Tasker\'s layers do not run twice beside the full suites', () => {
   assert.equal(pr('example-apps/t/x.ts', 'apps/web/x.ts').tasker_tests, false)
+  // The web suite runs them, and runtime-coverage proves the packages, with or without e2e.
+  assert.equal(pr('example-apps/t/x.ts', 'openspec/specs/x/spec.md').tasker_tests, false)
   assert.equal(decide({ event: 'push', files: [] }).tasker_tests, false)
 })
 
@@ -71,10 +73,10 @@ test('labels ask for more', () => {
   assert.deepEqual(on(decide({ event: 'pull_request', labels: ['run-e2e'], files: ['apps/server/x.ts'] })), ['client_apps', 'e2e', 'platform_checks', 'server'])
 })
 
-test('merged coverage is only ever wanted when both its inputs run', () => {
-  for (const files of [['README.md'], ['client-apps/c/a/x'], ['example-apps/t/x'], ['apps/server/x'], ['apps/web/x'], ['tools/x']]) {
+test('merged coverage is wanted exactly when the web suite, its input, runs', () => {
+  for (const files of [['README.md'], ['client-apps/c/a/x'], ['example-apps/t/x'], ['apps/server/x'], ['apps/web/x'], ['tools/x'], ['openspec/specs/x/spec.md']]) {
     const d = pr(...files)
-    assert.equal(d.coverage_merged, d.web && d.e2e, files[0])
+    assert.equal(d.coverage_merged, d.web, files[0])
   }
 })
 
@@ -82,10 +84,8 @@ test('suitesFor returns no suites for prose', () => {
   assert.equal(suitesFor('docs/x.md').size, 0)
 })
 
-test('a spec or the acceptance suite runs e2e, where the acceptance suite runs (#738)', () => {
-  assert.deepEqual([...suitesFor('openspec/changes/x/specs/list-view/spec.md')], ['e2e'])
-  assert.deepEqual([...suitesFor('openspec/specs/list-view/spec.md')], ['e2e'])
-  assert.deepEqual([...suitesFor('acceptance-tests/step-definitions/list-view.steps.js')], ['e2e'])
+test('a spec runs the server and web suites, where its scenarios run (#1070)', () => {
+  assert.deepEqual([...suitesFor('openspec/changes/x/specs/list-view/spec.md')].sort(), ['server', 'web'])
+  assert.deepEqual([...suitesFor('openspec/specs/list-view/spec.md')].sort(), ['server', 'web'])
   assert.equal(suitesFor('openspec/changes/x/design.md').size, 0)
-  assert.equal(suitesFor('acceptance-tests/README.md').size, 0)
 })
