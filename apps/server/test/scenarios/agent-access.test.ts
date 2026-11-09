@@ -1,6 +1,7 @@
 // agent-access's scenarios (#1083): an agent connected to /mcp with an access
 // token, driven by the MCP SDK's own client against the real app. Each test
-// is one fenced scenario of the agent-access spec, step by step.
+// is one fenced scenario of the agent-access spec, step by step. "A change
+// through an agent is marked" reads on screen: apps/web/test/scenarios/.
 import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { patchDoc, test } from '../pg-test'
@@ -95,25 +96,6 @@ describe('agent-access', () => {
       expect(body).not.toHaveProperty('result')
       expect(JSON.stringify(body)).not.toContain('Customer')
     })
-  })
-
-  scenario('A change through an agent is marked', async ({ admin, createUser }, step) => {
-    let user!: TestClient
-    let agent!: Agent
-    let ids: Record<string, string> = {}
-    await step('the user has connected an agent with their access token labelled "Claude on my laptop"', async () => {
-      ids = await setUp(admin)
-      ;({ user, agent } = await clerkAgent(admin, createUser, 'Claude on my laptop'))
-    })
-    await step('the agent changes the city of "Acme Traders" to "Madurai"', () => agentMoves(agent, ids['Acme Traders']!, 'Madurai'))
-    let change!: Version
-    await step('the change in its history is by the user', async () => {
-      change = (await history(admin, ids['Acme Traders']!)).at(-1)!
-      expect(change.created_by).toBe(user.user)
-      expect(change.data.changed).toContainEqual(['city', 'Chennai', 'Madurai'])
-    })
-    await step('it is marked as made through an agent with the token "Claude on my laptop"', () =>
-      expect(change.data.agent).toMatchObject({ token_label: 'Claude on my laptop', token_id: expect.stringMatching(/^tok_/) }))
   })
 
   scenario('A change by hand is not marked', async ({ admin, createUser }, step) => {
