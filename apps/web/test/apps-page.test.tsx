@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
+import { onTestFinished, vi } from 'vitest'
 import { discoverAppLibrary } from 'server/src/app-library'
 import { loadInstalledApps } from 'server/src/apps'
 import { overrideVariable, withNamedVariable } from 'server/src/env'
@@ -135,6 +136,44 @@ test('an issue reference in a release note links to that issue in the repository
   } finally {
     for (const name of Object.keys(host)) overrideVariable(name as keyof typeof host, undefined)
   }
+})
+
+test("an app's declarations read in words: a grant on every column, its role mappings, and release notes kept as written", async ({ admin }) => {
+  // A build that names its commit but no repository.
+  overrideVariable('RAILWAY_GIT_COMMIT_SHA', 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0')
+  onTestFinished(() => overrideVariable('RAILWAY_GIT_COMMIT_SHA', undefined))
+  await withSource('true', async () => {
+    renderApps(admin)
+    const details = await screen.findByRole('region', { name: 'Other tasks details' })
+    const permissions = within(details).getByRole('region', { name: 'Permissions' })
+    expect(permissions).toHaveTextContent('read (every column)')
+    expect(details).toHaveTextContent('Default mapping: Other Worker → Other Lead')
+    // No repository is known for this build, so an issue number stays text.
+    const notes = within(details).getByRole('region', { name: "What's new" })
+    expect(notes).toHaveTextContent('Labels print by roll (#563)')
+    expect(within(notes).queryByRole('link')).not.toBeInTheDocument()
+  }, {
+    roles: ['Other Worker'],
+    roleDefaults: { 'Other Worker': ['Other Lead'] },
+    permissions: [{ table: 'other.task', role: 'Other Worker', operations: { read: '*' } }],
+    releaseNotes: [{ version: '0.0.1', changes: ['Labels print by roll (#563)'] }],
+  })
+})
+
+test('an app list the network could not load says so, and Try again loads it', async ({ admin }) => {
+  await discoverAppLibrary([])
+  let down = true
+  const real = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const path = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (down && path === '/api/apps') throw new TypeError('Failed to fetch')
+    return real(input, init)
+  })
+  renderApps(admin)
+  expect(await screen.findByText(/Available apps could not be loaded/)).toBeInTheDocument()
+  down = false
+  await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+  expect(await screen.findByRole('navigation', { name: 'Available apps' })).toBeInTheDocument()
 })
 
 test('a real failed build remains uninstalled, explains recovery and allows retry', async ({ admin }) => {
