@@ -519,10 +519,9 @@ async function emailStillBacked(person: string, address: string, db: Db, excludi
 }
 
 /** Close a current row today; a row opened today is removed instead (an
- *  empty period is no history). */
+ *  empty period is no history). Every caller passes a row it just read. */
 async function closeRow(id: string, db: Db) {
   const [row] = await db`select lower(valid) >= current_date as same_day from person_identifier where id = ${id}`
-  if (!row) return
   if (row.same_day) await db`delete from person_identifier where id = ${id}`
   else await db`update person_identifier set valid = daterange(lower(valid), current_date, '[)'), edited_at = now() where id = ${id}`
 }
