@@ -211,3 +211,14 @@ test('On a phone a Table with no title and no listed columns titles each card by
   await openList(admin, 'Lp Bare')
   await waitFor(() => expect(titles()).toEqual(['B-1']))
 })
+
+test('On a phone a list whose rows the network drops says it cannot load them', async ({ admin }) => {
+  await seedTickets(admin, 'Lp Lost', 2)
+  const bridge = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    const url = String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
+    return url.startsWith(`/api/table/${enc('Lp Lost')}?`) ? Promise.reject(new TypeError('Failed to fetch')) : bridge(input, init)
+  })
+  await openList(admin, 'Lp Lost')
+  expect(await screen.findByTestId('list-rows-error', {}, { timeout: 8000 })).toHaveTextContent('Cannot load rows for Lp Lost')
+})
