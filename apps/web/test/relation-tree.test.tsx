@@ -191,3 +191,24 @@ test('choosing an earlier step brings back what was unfolded at that step', asyn
   await screen.findByRole('complementary', { name: 'Enchakkal Textiles · 1504' })
   await waitFor(async () => expect(await line('Enchakkal Supermarket · 1503')).toHaveAttribute('aria-expanded', 'true'))
 })
+
+test("clicking a tree line for a row the viewer can't read opens no pane", async ({ admin, createUser }) => {
+  await seedSites(admin)
+  const viewer = await createUserWithRole(admin, createUser, { role: 'Nv Tree Site Reader', table: SITE, can_read: true })
+  await openTree(viewer, SITE, 'ENK')
+  const unseen = await line('A row you cannot see')
+  fireEvent.click(within(unseen).getByText('A row you cannot see'))
+  await new Promise((r) => setTimeout(r, 300))
+  expect(screen.queryByRole('complementary', { name: /cannot see|Kerala/ })).not.toBeInTheDocument()
+})
+
+test('unfolding a line whose row was deleted meanwhile shows nothing under it', async ({ admin }) => {
+  await seedSites(admin, { profitCentres: 0 })
+  await openTree(admin, SITE, 'ENK')
+  const plant = await line('Enchakkal Textiles · 1504')
+  await admin.delete(`/api/table/${encodeURIComponent(PLANT)}/1504`)
+  unfold(plant)
+  // Its read fails, so it has nothing to unfold.
+  await waitFor(() => expect(plant).not.toHaveAttribute('aria-expanded'))
+  expect(within(plant).queryAllByRole('treeitem')).toEqual([])
+})
