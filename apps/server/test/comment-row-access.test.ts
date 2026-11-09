@@ -3,6 +3,7 @@ import { test } from './pg-test'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { createUserWithRole, expectRefused, expectStatus, grantRole, patchDoc, tableRef } from './fixtures'
 import { sql } from '../src/db'
+import { saveDoc } from '../src/document'
 import { countDocs } from '../src/query'
 
 // #342: a comment or an edit is about one row, so it is readable only where
@@ -77,6 +78,14 @@ describe('#342: comments follow the row they are on', () => {
     const comment = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Comment', row: { ref_table: PLAIN, ref_name: mine, content: 'orphaned' } })
     await sql`update comment set ref_table = 'Cra Dropped Table' where row_id = ${comment.row_id}`
     await expectRefused(agent.get(COMMENT.rowUrl(comment.row_id)), 403)
+  })
+
+  test('the platform\'s own trusted save may change a file on a row its author cannot open', async ({ admin, createUser }) => {
+    const { agent, theirs } = await setup(admin, createUser)
+    const [file] = await sql`insert into file (row_id, file_name, file_url, ref_table, ref_name, created_by, updated_by)
+      values ('trusted-file', 'plan.txt', '/files/0123456789abcdef_plan.txt', ${PLAIN}, ${theirs}, 'Administrator', 'Administrator') returning row_id, updated_at`
+    await saveDoc('File', { row_id: file.row_id, updated_at: file.updated_at, file_name: 'renamed.txt' }, agent.user!, 'update', { skipPermissions: true })
+    expect(await sql`select file_name from file where row_id = ${String(file.row_id)}`).toEqual([{ file_name: 'renamed.txt' }])
   })
 
   test('a broad Comment grant lists only the comments on rows the reader may open', async ({ admin, createUser }) => {
