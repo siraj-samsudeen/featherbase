@@ -175,7 +175,7 @@ describe('completion_restores_state: completion shortcut', () => {
 
       const reopened = await admin.post<Record<string, unknown>>('/api/save_row', {
         table: TASK,
-        row: { row_id: done.row_id, updated_at: done.updated_at, is_done: false, task_state: 'Cancelled' },
+        row: { row_id: done.row_id, updated_at: done.updated_at, is_done: false, task_state: 'Cancelled', change_reason: 'No longer needed' },
       })
       expect(await admin.get(`/api/table/${TASK}/${task.row_id}`)).toMatchObject({
         updated_at: reopened.updated_at,
@@ -267,7 +267,7 @@ describe('completion_restores_state: completion shortcut', () => {
 
       const cancelled = await admin.post<Record<string, unknown>>('/api/save_row', {
         table: TASK,
-        row: { row_id: done.row_id, updated_at: done.updated_at, task_state: 'Cancelled' },
+        row: { row_id: done.row_id, updated_at: done.updated_at, task_state: 'Cancelled', change_reason: 'No longer needed' },
       })
       expect(cancelled).toMatchObject({ task_state: 'Cancelled', is_done: false })
     } finally {

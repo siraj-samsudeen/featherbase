@@ -711,3 +711,65 @@ describe('#396: the sign-in records the client address', () => {
     expect((await signInAddresses(tl.user!)).sort()).toEqual([CLIENT, null])
   })
 })
+
+// #376: once the method says where StyleHR's answer names the employee record,
+// every link is held to its own record, not only the links a roster made.
+describe('#376: the answer must name the linked record', () => {
+  const keyed = (settings: unknown) => sql`update sign_in_method set settings = ${sql.json(settings as never)} where row_id = 'stylehr'`
+  const heldNotes = async () => (await sql`select operation from activity_log where operation like 'first_sign_in_held %'`).map((r) => String(r.operation))
+
+  test('an answer naming the linked record signs the person in', async ({ api, admin, createUser }) => {
+    await configure()
+    await keyed({ provider_record_key: 'Employee_ID' })
+    const tl = await createUser({ email: 'tl.keyed@example.com' })
+    await linkDelegated(tl.user!, 'tl_keyed', { subject: '7001' })
+    for (const body of [{ token: 'opaque', employee_id: 7001 }, { data: { employee_id: ' 7001 ' } }]) {
+      provider(() => Response.json(body))
+      expect((await signIn(api, 'tl_keyed')).status).toBe(200)
+    }
+  })
+
+  test('an answer naming another record, or none, is refused and noted on the link', async ({ api, admin, createUser }) => {
+    await configure()
+    await keyed({ provider_record_key: 'employee_id' })
+    const tl = await createUser({ email: 'tl.other@example.com' })
+    const identity = await linkDelegated(tl.user!, 'tl_other', { subject: '7001' })
+    for (const body of [{ token: 'opaque', employee_id: 7002 }, { token: 'opaque' }, { employee_id: 7002, exit_date: '2026-01-01' }]) {
+      provider(() => Response.json(body))
+      const res = await signIn(api, 'tl_other')
+      expect(res.status).toBe(401)
+      expect(sidCookie(res)).toBeUndefined()
+    }
+    // An answer about somebody else who has left disables nobody here.
+    expect((await sql`select enabled from person where row_id = ${tl.user!}`)[0].enabled).toBeTruthy()
+    expect(await heldNotes()).toEqual([`first_sign_in_held stylehr ${identity} service_named_another_record`])
+  })
+
+  test('a method that does not say where keeps signing in on any yes', async ({ api, admin, createUser }) => {
+    await configure()
+    await keyed({})
+    const tl = await createUser({ email: 'tl.unkeyed@example.com' })
+    await linkDelegated(tl.user!, 'tl_unkeyed', { subject: '7001' })
+    provider(() => Response.json({ token: 'opaque', employee_id: 7002 }))
+    expect((await signIn(api, 'tl_unkeyed')).status).toBe(200)
+  })
+
+  test('a malformed key refuses the sign-in without asking the service', async ({ api, admin, createUser }) => {
+    await configure()
+    await keyed({ provider_record_key: 42 })
+    const tl = await createUser({ email: 'tl.badkey@example.com' })
+    await linkDelegated(tl.user!, 'tl_badkey', { subject: '7001' })
+    const calls = provider(() => Response.json({ token: 'opaque', employee_id: 7001 }))
+    expect((await signIn(api, 'tl_badkey')).status).toBe(401)
+    expect(calls).toHaveLength(0)
+  })
+
+  test('an administrator cannot save a malformed key', async ({ admin }) => {
+    const res = await admin.fetch(`/api/table/${encodeURIComponent('Sign In Method')}`, {
+      method: 'POST',
+      body: JSON.stringify({ row_id: 'hr_keyed', kind: 'delegated_password', label: 'HR', enabled: false, settings: JSON.stringify({ provider_record_key: '' }) }),
+    })
+    expect(res.status).toBe(417)
+    expect(JSON.stringify(await res.json())).toContain('provider_record_key')
+  })
+})

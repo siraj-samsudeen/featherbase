@@ -18,7 +18,7 @@ test("the process template's files run only the fast checks", () => {
 
 test('a markdown file something reads is not prose', () => {
   assert.deepEqual(on(pr('docs/DEPLOY.md')), ['client_apps', 'platform_checks', 'server'])
-  assert.deepEqual(on(pr('apps/web/e2e/fixtures/zones.claims.md')), ['coverage_merged', 'e2e', 'platform_checks', 'web'])
+  assert.deepEqual(on(pr('apps/web/e2e/fixtures/example.md')), ['coverage_merged', 'e2e', 'platform_checks', 'web'])
   assert.deepEqual(on(pr('client-apps/c/instances/a/privacy-notice.md')), ['client_apps'])
 })
 

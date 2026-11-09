@@ -8,6 +8,7 @@ import { discoverAppLibrary } from 'server/src/app-library'
 import { loadInstalledApps } from 'server/src/apps'
 import { overrideVariable, withNamedVariable } from 'server/src/env'
 import { setSession } from '../src/lib/api'
+import taskerManifest from '../../../example-apps/tasker/featherbase.json'
 import { Apps } from '../src/pages/Apps'
 import { test, expect, renderApp } from './pg-test'
 
@@ -77,7 +78,7 @@ test('an empty server catalog tells the operator how to make a trusted package a
 
 // Exercise the real trusted-source build and install endpoint, with a tiny
 // disposable package instead of building Tasker's client in every test run.
-async function withSource(build: string, run: () => Promise<void>) {
+async function withSource(build: string, run: () => Promise<void>, manifestChanges: Record<string, unknown> = {}) {
   const root = await mkdtemp(resolve('test/.apps-page-'))
   try {
     await mkdir(resolve(root, '.git'))
@@ -85,7 +86,7 @@ async function withSource(build: string, run: () => Promise<void>) {
     await cp(resolve('../..', 'test-apps/other'), source, { recursive: true })
     const file = resolve(source, 'featherbase.json')
     const manifest = JSON.parse(await readFile(file, 'utf8'))
-    await writeFile(file, JSON.stringify({ ...manifest, server: 'built.mjs' }))
+    await writeFile(file, JSON.stringify({ ...manifest, server: 'built.mjs', ...manifestChanges }))
     await writeFile(resolve(source, 'package.json'), JSON.stringify({ name: 'apps-page-source', version: '0.0.1', type: 'module', scripts: { build } }))
     await discoverAppLibrary([], root)
     await run()
@@ -121,6 +122,21 @@ test('explicit preparation shows progress, installs only after building, and off
   })
 }, 30000)
 
+test('an issue reference in a release note links to that issue in the repository', async ({ admin }) => {
+  const host = { RAILWAY_GIT_COMMIT_SHA: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0', RAILWAY_GIT_REPO_OWNER: 'example-owner', RAILWAY_GIT_REPO_NAME: 'featherbase' } as const
+  for (const [name, value] of Object.entries(host)) overrideVariable(name as keyof typeof host, value)
+  try {
+    await withSource('true', async () => {
+      renderApps(admin)
+      const details = await screen.findByRole('region', { name: 'Other tasks details' })
+      const notes = within(details).getByRole('region', { name: "What's new" })
+      expect(within(notes).getByRole('link', { name: '#563' })).toHaveAttribute('href', 'https://github.com/example-owner/featherbase/issues/563')
+    }, { releaseNotes: [{ version: '0.0.1', changes: ['Labels print by roll (#563)'] }] })
+  } finally {
+    for (const name of Object.keys(host)) overrideVariable(name as keyof typeof host, undefined)
+  }
+})
+
 test('a real failed build remains uninstalled, explains recovery and allows retry', async ({ admin }) => {
   await withSource(`node -e "process.exit(1)"`, async () => {
     renderApps(admin)
@@ -149,10 +165,12 @@ test('the page shows the build the instance runs and what changed in the selecte
     expect(within(build).getByRole('link', { name: 'Changes up to this build' })).toHaveAttribute('href', `https://github.com/example-owner/featherbase/commits/${sha}`)
     expect(build).toHaveTextContent(/Running since/)
     await userEvent.click(within(screen.getByRole('navigation', { name: 'Available apps' })).getByRole('button', { name: /Tasker/ }))
+    // The panel shows the three newest releases from the app's own manifest, newest first.
+    // Issue references link the same way as the build's commit title above (#903).
     const notes = within(screen.getByRole('region', { name: 'Tasker details' })).getByRole('region', { name: "What's new" })
-    expect(notes).toHaveTextContent('3.0.2')
-    expect(notes).toHaveTextContent('3.0.1')
-    expect(within(notes).getAllByRole('link', { name: '#563' })[0]).toHaveAttribute('href', 'https://github.com/example-owner/featherbase/issues/563')
+    const versions = taskerManifest.releaseNotes.map(note => note.version)
+    expect(within(notes).getAllByRole('heading', { level: 4 }).map(heading => heading.textContent)).toEqual(versions.slice(0, 3))
+    expect(notes).not.toHaveTextContent(versions[3])
   } finally {
     for (const name of Object.keys(host)) overrideVariable(name as keyof typeof host, undefined)
   }

@@ -168,3 +168,41 @@ test('renaming uses a cancellable dialog with server refusal feedback', async ({
   const listed = await admin.get<{ tokens: { id: string; label: string; owner_name: string }[] }>('/api/access_tokens')
   expect(listed.tokens.find((t) => t.id === token.id)).toMatchObject({ label: 'after rename', owner_name: 'svc-after-rename' })
 })
+
+// Moved from e2e/access-tokens.spec.ts (#131, #1080): the create form and the
+// Revoke button, driven through the page rather than the API. That the
+// secret then authenticates, and stops once revoked, is the server's
+// access-tokens.test.ts.
+test('a service account created with a role is listed under its name with that role', async ({ admin }) => {
+  const user = userEvent.setup()
+  await renderApp('/featherbase/admin/access-tokens', admin)
+  await user.click(await screen.findByRole('tab', { name: 'Service accounts' }, { timeout: 10_000 }))
+  await user.click(screen.getByTestId('sa-create-open'))
+  await user.type(await screen.findByTestId('sa-name', {}, { timeout: 10_000 }), 'svc-created-here')
+  await user.click(await screen.findByTestId('sa-role-System Manager', {}, { timeout: 10_000 }))
+  await user.click(screen.getByTestId('sa-create'))
+
+  let id = ''
+  await waitFor(async () => {
+    const list = await admin.get<{ service_accounts: { row_id: string; label: string; roles: string[] }[] }>('/api/service_accounts')
+    const made = list.service_accounts.find((a) => a.label === 'svc-created-here')
+    expect(made?.row_id).toMatch(/^svc_[a-z2-7]{20}$/)
+    expect(made?.roles).toEqual(['System Manager'])
+    id = made!.row_id
+  })
+  const row = await screen.findByTestId(`sa-${id}`, {}, { timeout: 10_000 })
+  expect(row).toHaveTextContent('svc-created-here')
+  expect(row).toHaveTextContent('System Manager')
+})
+
+test('Revoke on a token row marks it revoked', async ({ admin }) => {
+  const user = userEvent.setup()
+  const svc = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-revoke-here' })
+  const tok = await admin.post<{ id: string }>('/api/access_tokens', { label: 'revoke me', owner: svc.row_id })
+  await renderApp('/featherbase/admin/access-tokens', admin)
+  expect((await screen.findByTestId(`token-state-${tok.id}`, {}, { timeout: 10_000 })).textContent).toBe('active')
+  await user.click(screen.getByTestId(`revoke-${tok.id}`))
+  await waitFor(() => expect(screen.getByTestId(`token-state-${tok.id}`).textContent).toBe('revoked'))
+  const { tokens } = await admin.get<{ tokens: { id: string; revoked_at: string | null }[] }>('/api/access_tokens')
+  expect(tokens.find((t) => t.id === tok.id)?.revoked_at).toEqual(expect.any(String))
+})

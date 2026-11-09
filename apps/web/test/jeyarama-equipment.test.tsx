@@ -68,6 +68,21 @@ test('store staff report a fault from the asset page and see it as an open job',
   expect(jobs.data).toEqual([{ problem: 'Not cooling', priority: 'Urgent', job_state: 'Reported' }])
 })
 
+// Moved from e2e/jeyarama-equipment.spec.ts (assets_fault_report, #1080): the
+// way from the asset page to the board. The job's place and fix-by time are
+// the server's jeyarama-equipment.test.ts.
+test('from an asset page the Repair jobs link opens the board, where a reported fault waits under Reported', async ({ createUser }) => {
+  await install()
+  const manager = assetsClient(await createUser({ roles: ['Assets Manager'] }))
+  const { voltas } = await register(manager)
+  await manager.post('/api/save_row', { table: 'equipment.job', row: { asset: voltas.row_id, problem: 'Not cooling', priority: 'Urgent' } })
+  renderAssets(manager, ['Assets Manager'], `#asset=${voltas.row_id}`)
+  expect(await screen.findByRole('heading', { name: 'Voltas 2-ton split AC' })).toBeInTheDocument()
+  await userEvent.setup().click(screen.getByRole('link', { name: 'Repair jobs' }))
+  const reported = await screen.findByRole('region', { name: 'Reported' })
+  expect(await within(reported).findByText('Not cooling')).toBeInTheDocument()
+})
+
 test('a manager assigns a job and a technician fixes it with a note and a cost', async ({ createUser }) => {
   await install()
   const manager = assetsClient(await createUser({ roles: ['Assets Manager'], fullName: 'Meena' }))

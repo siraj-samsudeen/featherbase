@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { openLanding, safeLoginNext } from '../src/pages/Login'
+import { openLanding, openReturnPath, safeLoginNext } from '../src/pages/Login'
 
 describe('login return path', () => {
   test('accepts canonical and application paths, preserving explicit or inherited state', () => {
@@ -11,6 +11,13 @@ describe('login return path', () => {
       .toBe('/tasker/?view=work#task=EXPLICIT')
     expect(safeLoginNext('/featherbase/admin/table/user?view=active', '#row=Administrator'))
       .toBe('/featherbase/admin/table/user?view=active#row=Administrator')
+  })
+
+  // #1080, from e2e/runtime-login-return.spec.ts: repeated keys and escaped
+  // characters in a runtime app's query come back exactly as they were sent.
+  test('a runtime app query with repeated and escaped values returns unchanged, with the selected-work fragment', () => {
+    expect(safeLoginNext('/tasker/?review=deep-link&note=37%20cartons%2F83&review=again', '#task=TASK-00001'))
+      .toBe('/tasker/?review=deep-link&note=37%20cartons%2F83&review=again#task=TASK-00001')
   })
 
   test.each([
@@ -47,5 +54,14 @@ describe('opening the landing after sign-in', () => {
     const loaded: string[] = []
     openLanding(user('/featherbase/sales-target'), (p) => pushed.push(p), (p) => loaded.push(p))
     expect([pushed, loaded]).toEqual([['/featherbase/sales-target'], []])
+  })
+})
+
+describe('opening the return path after sign-in', () => {
+  test("a runtime app's deep link, fragment and all, is opened by a full page load", () => {
+    const pushed: string[] = []
+    const loaded: string[] = []
+    openReturnPath('/tasker/?review=deep-link#task=TASK-00001', (p) => pushed.push(p), (p) => loaded.push(p))
+    expect([pushed, loaded]).toEqual([[], ['/tasker/?review=deep-link#task=TASK-00001']])
   })
 })

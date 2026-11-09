@@ -1,3 +1,5 @@
+import { NO_STORE, dueMark, localDay, type DatedTask, type DueMark } from './storeWork'
+
 export const UNASSIGNED = '__unassigned__'
 
 export interface TaskViewFilters {
@@ -5,6 +7,8 @@ export interface TaskViewFilters {
   responsiblePeople: string[]
   urgencies: ('urgent' | 'not_urgent')[]
   projects: string[]
+  stores: string[]
+  dueMarks: DueMark[]
 }
 
 export interface TaskViewSetup {
@@ -27,19 +31,20 @@ export interface SavedTaskView {
   setup: TaskViewSetup
 }
 
-export interface FilterableTask {
+export interface FilterableTask extends DatedTask {
   task_title: string
   description?: string | null
   task_state: string
   urgent: boolean
   assigned_to: string | null
   project: string | null
+  store?: string | null
 }
 
 export function emptyTaskViewSetup(): TaskViewSetup {
   return {
     search: '',
-    filters: { states: [], responsiblePeople: [], urgencies: [], projects: [] },
+    filters: { states: [], responsiblePeople: [], urgencies: [], projects: [], stores: [], dueMarks: [] },
   }
 }
 
@@ -47,9 +52,9 @@ function selectedOrAll<T>(selected: T[], value: T): boolean {
   return selected.length === 0 || selected.includes(value)
 }
 
-export function filterTasks<T extends FilterableTask>(tasks: T[], setup: TaskViewSetup): T[] {
+export function filterTasks<T extends FilterableTask>(tasks: T[], setup: TaskViewSetup, today = localDay()): T[] {
   const query = setup.search.trim().toLocaleLowerCase()
-  const { states, responsiblePeople, urgencies, projects } = setup.filters
+  const { states, responsiblePeople, urgencies, projects, stores, dueMarks } = setup.filters
   return tasks.filter((task) => {
     const textMatches = !query
       || task.task_title.toLocaleLowerCase().includes(query)
@@ -61,6 +66,8 @@ export function filterTasks<T extends FilterableTask>(tasks: T[], setup: TaskVie
       && selectedOrAll(responsiblePeople, responsiblePerson)
       && selectedOrAll(urgencies, urgency)
       && selectedOrAll(projects, task.project ?? '')
+      && selectedOrAll(stores, task.store ?? NO_STORE)
+      && (dueMarks.length === 0 || dueMarks.includes(dueMark(task, today)!))
   })
 }
 
@@ -71,11 +78,17 @@ export function taskViewSetupEquals(left: TaskViewSetup, right: TaskViewSetup): 
     && normalized(left.filters.responsiblePeople) === normalized(right.filters.responsiblePeople)
     && normalized(left.filters.urgencies) === normalized(right.filters.urgencies)
     && normalized(left.filters.projects) === normalized(right.filters.projects)
+    && normalized(left.filters.stores) === normalized(right.filters.stores)
+    && normalized(left.filters.dueMarks) === normalized(right.filters.dueMarks)
 }
 
 export function parseSavedTaskViews(value: unknown): SavedTaskView[] {
   if (!value || typeof value !== 'object' || !Array.isArray((value as { views?: unknown }).views)) return []
-  return (value as { views: unknown[] }).views.filter(isSavedTaskView)
+  // A view saved before the Store and Due filters existed has neither, which means no narrowing.
+  return (value as { views: unknown[] }).views.filter(isSavedTaskView).map((view) => ({
+    ...view,
+    setup: { ...view.setup, filters: { ...view.setup.filters, stores: view.setup.filters.stores ?? [], dueMarks: view.setup.filters.dueMarks ?? [] } },
+  }))
 }
 
 function isSavedTaskView(value: unknown): value is SavedTaskView {
@@ -99,4 +112,6 @@ function isSavedTaskView(value: unknown): value is SavedTaskView {
     && Array.isArray(filters?.responsiblePeople)
     && Array.isArray(filters?.urgencies)
     && Array.isArray(filters?.projects)
+    && (filters?.stores === undefined || Array.isArray(filters.stores))
+    && (filters?.dueMarks === undefined || Array.isArray(filters.dueMarks))
 }

@@ -313,7 +313,9 @@ access decisions. Use the existing App Setting/instance-settings interface.
 Tickets uses ordinary platform Table permissions: Administrator and System
 Manager retain privileged read access. The `Tickets Support` role grants private
 reads independently of action membership; removing someone from an action
-setting alone does not revoke that role's read access.
+setting alone does not revoke that role's read access. A private ticket's
+assignee and the person it is raised for read its request through a read-only
+share of that one row, which Tickets resets whenever either changes.
 
 For an explicitly disposable, local development instance only:
 

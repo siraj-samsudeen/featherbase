@@ -342,9 +342,763 @@
       "fromVersion": "3.0.2",
       "toVersion": "3.0.3",
       "operations": []
+    },
+    {
+      "id": "due_dates_and_stores",
+      "fromVersion": "3.0.3",
+      "toVersion": "3.1.0",
+      "operations": [
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "tasker.store",
+            "label": "Store",
+            "module": "Tasker",
+            "id_pattern": "STORE-.####",
+            "title_column": "store_name",
+            "columns": [
+              {
+                "column_name": "store_name",
+                "label": "Store name",
+                "column_type": "Data",
+                "reqd": true,
+                "unique": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "store_type",
+                "label": "Type",
+                "column_type": "Choice",
+                "choices": "Store\nWarehouse",
+                "default_value": "Store",
+                "reqd": true,
+                "in_list_view": true
+              }
+            ],
+            "access_policy": {
+              "version": 1,
+              "roles": [
+                "Tasker Member"
+              ]
+            }
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "store",
+            "label": "Store",
+            "column_type": "Reference",
+            "reference_table": "tasker.store",
+            "in_list_view": true
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "start_date",
+            "label": "Start date",
+            "column_type": "Date"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "due_date",
+            "label": "Due date",
+            "column_type": "Date",
+            "in_list_view": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "verified_closure",
+      "fromVersion": "3.1.0",
+      "toVersion": "3.2.0",
+      "operations": [
+        {
+          "kind": "alterColumn",
+          "table": "tasker.task",
+          "column": "task_state",
+          "from": {
+            "choices": "Not started\nIn progress\nBlocked\nOn hold\nDone\nCancelled"
+          },
+          "to": {
+            "choices": "Not started\nIn progress\nBlocked\nOn hold\nSubmitted for verification\nDone\nCancelled"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "verifier",
+            "label": "Verifier",
+            "column_type": "Reference",
+            "reference_table": "Person"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "acknowledged_at",
+            "label": "Acknowledged at",
+            "column_type": "Datetime",
+            "hidden": true
+          },
+          "backfill": "2026-11-07 00:00:00"
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "evidence_note",
+            "label": "What was done",
+            "column_type": "Text"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "evidence_photo",
+            "label": "Evidence photo",
+            "column_type": "Attach Image"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "submitted_at",
+            "label": "Submitted at",
+            "column_type": "Datetime",
+            "hidden": true
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "submitted_by",
+            "label": "Submitted by",
+            "column_type": "Reference",
+            "reference_table": "Person",
+            "hidden": true
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "verified_by",
+            "label": "Verified by",
+            "column_type": "Reference",
+            "reference_table": "Person",
+            "hidden": true
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "verified_at",
+            "label": "Verified at",
+            "column_type": "Datetime",
+            "hidden": true
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "return_reason",
+            "label": "Returned because",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "return_count",
+            "label": "Times returned",
+            "column_type": "Int",
+            "default_value": "0"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "original_due_date",
+            "label": "First due date",
+            "column_type": "Date"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "extension_count",
+            "label": "Times extended",
+            "column_type": "Int",
+            "default_value": "0"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "extension_reason",
+            "label": "Last extension reason",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "cancel_reason",
+            "label": "Cancelled because",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "change_reason",
+            "label": "Reason for this change",
+            "column_type": "Data",
+            "hidden": true
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.project",
+          "column": {
+            "column_name": "default_verifier",
+            "label": "Default verifier",
+            "column_type": "Reference",
+            "reference_table": "Person"
+          }
+        }
+      ]
+    },
+    {
+      "id": "issues_and_sla",
+      "fromVersion": "3.2.0",
+      "toVersion": "3.3.0",
+      "operations": [
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "tasker.issue",
+            "label": "Issue",
+            "module": "Tasker",
+            "id_pattern": "ISSUE-.#####",
+            "title_column": "issue_title",
+            "columns": [
+              {
+                "column_name": "issue_title",
+                "label": "Issue",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "category",
+                "label": "Category",
+                "column_type": "Choice",
+                "choices": "Equipment failure\nCash shortage\nStock and inventory\nHygiene\nSafety\nCustomer complaint\nIT and billing\nOther",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "severity",
+                "label": "Severity",
+                "column_type": "Choice",
+                "choices": "Critical\nHigh\nMedium\nLow",
+                "default_value": "Medium",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "store",
+                "label": "Store",
+                "column_type": "Reference",
+                "reference_table": "tasker.store",
+                "in_list_view": true
+              },
+              {
+                "column_name": "occurred_at",
+                "label": "Happened at",
+                "column_type": "Datetime"
+              },
+              {
+                "column_name": "asset_area",
+                "label": "Asset or area",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "impact",
+                "label": "Impact",
+                "column_type": "Text"
+              },
+              {
+                "column_name": "containment",
+                "label": "Done right away",
+                "column_type": "Text"
+              },
+              {
+                "column_name": "photo",
+                "label": "Photo",
+                "column_type": "Attach Image"
+              },
+              {
+                "column_name": "owner_function",
+                "label": "Owner function",
+                "column_type": "Choice",
+                "choices": "Store operations\nFacilities\nIT\nFinance\nSupply chain\nHR",
+                "reqd": true
+              },
+              {
+                "column_name": "owner",
+                "label": "Owner",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "verifier",
+                "label": "Verifier",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "issue_state",
+                "label": "State",
+                "column_type": "Choice",
+                "choices": "Open\nAcknowledged\nSubmitted for verification\nClosed",
+                "default_value": "Open",
+                "in_list_view": true
+              },
+              {
+                "column_name": "shared",
+                "label": "Shared with team",
+                "column_type": "Check",
+                "default_value": "1",
+                "hidden": true
+              },
+              {
+                "column_name": "raised_at",
+                "label": "Raised at",
+                "column_type": "Datetime",
+                "hidden": true
+              },
+              {
+                "column_name": "acknowledged_at",
+                "label": "Acknowledged at",
+                "column_type": "Datetime",
+                "hidden": true
+              },
+              {
+                "column_name": "submitted_at",
+                "label": "Submitted at",
+                "column_type": "Datetime",
+                "hidden": true
+              },
+              {
+                "column_name": "submitted_by",
+                "label": "Submitted by",
+                "column_type": "Data",
+                "hidden": true
+              },
+              {
+                "column_name": "closed_at",
+                "label": "Closed at",
+                "column_type": "Datetime",
+                "hidden": true
+              },
+              {
+                "column_name": "verified_by",
+                "label": "Verified by",
+                "column_type": "Data",
+                "hidden": true
+              },
+              {
+                "column_name": "evidence_note",
+                "label": "What was done",
+                "column_type": "Text"
+              },
+              {
+                "column_name": "evidence_photo",
+                "label": "Evidence photo",
+                "column_type": "Attach Image"
+              },
+              {
+                "column_name": "return_reason",
+                "label": "Returned because",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "return_count",
+                "label": "Times returned",
+                "column_type": "Int",
+                "default_value": "0"
+              },
+              {
+                "column_name": "clock",
+                "label": "Clock",
+                "column_type": "Data",
+                "hidden": true
+              },
+              {
+                "column_name": "opens_at",
+                "label": "Store opens",
+                "column_type": "Data",
+                "hidden": true
+              },
+              {
+                "column_name": "closes_at",
+                "label": "Store closes",
+                "column_type": "Data",
+                "hidden": true
+              },
+              {
+                "column_name": "respond_minutes",
+                "label": "Respond within (minutes)",
+                "column_type": "Int",
+                "hidden": true
+              },
+              {
+                "column_name": "fix_minutes",
+                "label": "Fix within (minutes)",
+                "column_type": "Int",
+                "hidden": true
+              },
+              {
+                "column_name": "respond_by",
+                "label": "Respond by",
+                "column_type": "Datetime"
+              },
+              {
+                "column_name": "fix_by",
+                "label": "Fix by",
+                "column_type": "Datetime",
+                "in_list_view": true
+              },
+              {
+                "column_name": "response_breached",
+                "label": "Response missed",
+                "column_type": "Check",
+                "default_value": "0"
+              },
+              {
+                "column_name": "fix_breached",
+                "label": "Fix time breached",
+                "column_type": "Check",
+                "default_value": "0",
+                "in_list_view": true
+              },
+              {
+                "column_name": "breached_at",
+                "label": "Breached at",
+                "column_type": "Datetime",
+                "hidden": true
+              },
+              {
+                "column_name": "pause_requested",
+                "label": "Pause asked for",
+                "column_type": "Check",
+                "default_value": "0"
+              },
+              {
+                "column_name": "pause_reason",
+                "label": "Pause reason",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "pause_review_on",
+                "label": "Next review",
+                "column_type": "Date"
+              },
+              {
+                "column_name": "paused",
+                "label": "Paused",
+                "column_type": "Check",
+                "default_value": "0"
+              },
+              {
+                "column_name": "paused_since",
+                "label": "Paused since",
+                "column_type": "Datetime",
+                "hidden": true
+              },
+              {
+                "column_name": "pause_approved_by",
+                "label": "Pause approved by",
+                "column_type": "Data",
+                "hidden": true
+              },
+              {
+                "column_name": "paused_minutes",
+                "label": "Minutes not counted",
+                "column_type": "Int",
+                "default_value": "0",
+                "hidden": true
+              },
+              {
+                "column_name": "on_clock_minutes",
+                "label": "Minutes on the clock",
+                "column_type": "Int",
+                "hidden": true
+              },
+              {
+                "column_name": "used_pct",
+                "label": "Fix time used (%)",
+                "column_type": "Int",
+                "hidden": true
+              },
+              {
+                "column_name": "escalation_level",
+                "label": "Escalation level",
+                "column_type": "Int",
+                "default_value": "0",
+                "hidden": true
+              },
+              {
+                "column_name": "notified_owner",
+                "label": "Owner notified",
+                "column_type": "Data",
+                "hidden": true
+              },
+              {
+                "column_name": "needs_owner",
+                "label": "Needs an owner",
+                "column_type": "Check",
+                "default_value": "0"
+              },
+              {
+                "column_name": "missing_contact",
+                "label": "No one to escalate to",
+                "column_type": "Check",
+                "default_value": "0",
+                "hidden": true
+              },
+              {
+                "column_name": "issue_log",
+                "label": "Escalation log",
+                "column_type": "Text",
+                "hidden": true
+              },
+              {
+                "column_name": "checked_at",
+                "label": "Clock checked at",
+                "column_type": "Datetime",
+                "hidden": true
+              },
+              {
+                "column_name": "change_reason",
+                "label": "Reason for this change",
+                "column_type": "Data",
+                "hidden": true
+              }
+            ],
+            "access_policy": {
+              "version": 1,
+              "roles": [
+                "Tasker Member"
+              ],
+              "shared_column": "shared"
+            }
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "tasker.sla_rule",
+            "label": "SLA rule",
+            "module": "Tasker",
+            "id_pattern": "SLA-.####",
+            "columns": [
+              {
+                "column_name": "severity",
+                "label": "Severity",
+                "column_type": "Choice",
+                "choices": "Critical\nHigh\nMedium\nLow",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "category",
+                "label": "Category",
+                "column_type": "Choice",
+                "choices": "Equipment failure\nCash shortage\nStock and inventory\nHygiene\nSafety\nCustomer complaint\nIT and billing\nOther",
+                "in_list_view": true
+              },
+              {
+                "column_name": "respond_minutes",
+                "label": "Respond within (minutes)",
+                "column_type": "Int",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "fix_minutes",
+                "label": "Fix within (minutes)",
+                "column_type": "Int",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "clock",
+                "label": "Clock",
+                "column_type": "Choice",
+                "choices": "Round the clock\nStore hours",
+                "default_value": "Store hours",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "director",
+                "label": "Director",
+                "column_type": "Reference",
+                "reference_table": "Person"
+              },
+              {
+                "column_name": "director_after_minutes",
+                "label": "Director after (minutes past breach)",
+                "column_type": "Int"
+              }
+            ],
+            "access_policy": {
+              "version": 1,
+              "roles": [
+                "Tasker Member"
+              ]
+            }
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "tasker.function_head",
+            "label": "Function head",
+            "module": "Tasker",
+            "id_pattern": "FHEAD-.####",
+            "title_column": "owner_function",
+            "columns": [
+              {
+                "column_name": "owner_function",
+                "label": "Function",
+                "column_type": "Choice",
+                "choices": "Store operations\nFacilities\nIT\nFinance\nSupply chain\nHR",
+                "reqd": true,
+                "unique": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "head",
+                "label": "Head",
+                "column_type": "Reference",
+                "reference_table": "Person",
+                "reqd": true,
+                "in_list_view": true
+              }
+            ],
+            "access_policy": {
+              "version": 1,
+              "roles": [
+                "Tasker Member"
+              ]
+            }
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.store",
+          "column": {
+            "column_name": "store_manager",
+            "label": "Store manager",
+            "column_type": "Reference",
+            "reference_table": "Person",
+            "in_list_view": true
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.store",
+          "column": {
+            "column_name": "opens_at",
+            "label": "Opens at",
+            "column_type": "Data",
+            "default_value": "09:00"
+          },
+          "backfill": "09:00"
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.store",
+          "column": {
+            "column_name": "closes_at",
+            "label": "Closes at",
+            "column_type": "Data",
+            "default_value": "22:00"
+          },
+          "backfill": "22:00"
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "issue",
+            "label": "Issue",
+            "column_type": "Reference",
+            "reference_table": "tasker.issue"
+          }
+        }
+      ]
+    },
+    {
+      "id": "member_photo_uploads",
+      "fromVersion": "3.3.0",
+      "toVersion": "3.3.1",
+      "operations": []
     }
   ],
   "releaseNotes": [
+    {
+      "version": "3.3.1",
+      "changes": [
+        "A photo added when submitting a task or raising an issue is attached to it, so anyone who can open the task or issue can open the photo",
+        "An acknowledged issue can be given a new owner, who acknowledges it afresh"
+      ]
+    },
+    {
+      "version": "3.3.0",
+      "changes": [
+        "Issues with severity, SLA clocks in store hours or round the clock, and escalation at 75% and at breach",
+        "Waiting for a vendor pauses an issue only with the store manager's approval; issues close through verification"
+      ]
+    },
+    {
+      "version": "3.2.0",
+      "changes": [
+        "A task can have a verifier; it is submitted with a note and closed only when the verifier accepts it",
+        "Assignees acknowledge new work; due date moves and cancellations need a reason"
+      ]
+    },
+    {
+      "version": "3.1.0",
+      "changes": [
+        "Tasks can have a start date and a due date, and show Overdue, Due today or Scheduled",
+        "Tasks can belong to a store or warehouse; the Stores page counts each store's work"
+      ]
+    },
     {
       "version": "3.0.3",
       "changes": [
@@ -393,6 +1147,12 @@
           "column_name": "description",
           "label": "Description",
           "column_type": "Text"
+        },
+        {
+          "column_name": "default_verifier",
+          "label": "Default verifier",
+          "column_type": "Reference",
+          "reference_table": "Person"
         }
       ],
       "access_policy": {
@@ -425,7 +1185,7 @@
           "column_name": "task_state",
           "label": "State",
           "column_type": "Choice",
-          "choices": "Not started\nIn progress\nBlocked\nOn hold\nDone\nCancelled",
+          "choices": "Not started\nIn progress\nBlocked\nOn hold\nSubmitted for verification\nDone\nCancelled",
           "default_value": "Not started",
           "in_list_view": true
         },
@@ -500,6 +1260,116 @@
           "label": "Completed at",
           "column_type": "Datetime",
           "hidden": true
+        },
+        {
+          "column_name": "store",
+          "label": "Store",
+          "column_type": "Reference",
+          "reference_table": "tasker.store",
+          "in_list_view": true
+        },
+        {
+          "column_name": "start_date",
+          "label": "Start date",
+          "column_type": "Date"
+        },
+        {
+          "column_name": "due_date",
+          "label": "Due date",
+          "column_type": "Date",
+          "in_list_view": true
+        },
+        {
+          "column_name": "verifier",
+          "label": "Verifier",
+          "column_type": "Reference",
+          "reference_table": "Person"
+        },
+        {
+          "column_name": "acknowledged_at",
+          "label": "Acknowledged at",
+          "column_type": "Datetime",
+          "hidden": true
+        },
+        {
+          "column_name": "evidence_note",
+          "label": "What was done",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "evidence_photo",
+          "label": "Evidence photo",
+          "column_type": "Attach Image"
+        },
+        {
+          "column_name": "submitted_at",
+          "label": "Submitted at",
+          "column_type": "Datetime",
+          "hidden": true
+        },
+        {
+          "column_name": "submitted_by",
+          "label": "Submitted by",
+          "column_type": "Reference",
+          "reference_table": "Person",
+          "hidden": true
+        },
+        {
+          "column_name": "verified_by",
+          "label": "Verified by",
+          "column_type": "Reference",
+          "reference_table": "Person",
+          "hidden": true
+        },
+        {
+          "column_name": "verified_at",
+          "label": "Verified at",
+          "column_type": "Datetime",
+          "hidden": true
+        },
+        {
+          "column_name": "return_reason",
+          "label": "Returned because",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "return_count",
+          "label": "Times returned",
+          "column_type": "Int",
+          "default_value": "0"
+        },
+        {
+          "column_name": "original_due_date",
+          "label": "First due date",
+          "column_type": "Date"
+        },
+        {
+          "column_name": "extension_count",
+          "label": "Times extended",
+          "column_type": "Int",
+          "default_value": "0"
+        },
+        {
+          "column_name": "extension_reason",
+          "label": "Last extension reason",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "cancel_reason",
+          "label": "Cancelled because",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "change_reason",
+          "label": "Reason for this change",
+          "column_type": "Data",
+          "hidden": true
+        },
+        {
+          "column_name": "issue",
+          "label": "Issue",
+          "column_type": "Reference",
+          "reference_table": "tasker.issue"
         }
       ],
       "access_policy": {
@@ -638,6 +1508,471 @@
           "default_value": "0"
         }
       ]
+    },
+    {
+      "name": "tasker.store",
+      "label": "Store",
+      "module": "Tasker",
+      "id_pattern": "STORE-.####",
+      "title_column": "store_name",
+      "columns": [
+        {
+          "column_name": "store_name",
+          "label": "Store name",
+          "column_type": "Data",
+          "reqd": true,
+          "unique": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "store_type",
+          "label": "Type",
+          "column_type": "Choice",
+          "choices": "Store\nWarehouse",
+          "default_value": "Store",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "store_manager",
+          "label": "Store manager",
+          "column_type": "Reference",
+          "reference_table": "Person",
+          "in_list_view": true
+        },
+        {
+          "column_name": "opens_at",
+          "label": "Opens at",
+          "column_type": "Data",
+          "default_value": "09:00"
+        },
+        {
+          "column_name": "closes_at",
+          "label": "Closes at",
+          "column_type": "Data",
+          "default_value": "22:00"
+        }
+      ],
+      "access_policy": {
+        "version": 1,
+        "roles": [
+          "Tasker Member"
+        ]
+      }
+    },
+    {
+      "name": "tasker.issue",
+      "label": "Issue",
+      "module": "Tasker",
+      "id_pattern": "ISSUE-.#####",
+      "title_column": "issue_title",
+      "columns": [
+        {
+          "column_name": "issue_title",
+          "label": "Issue",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "category",
+          "label": "Category",
+          "column_type": "Choice",
+          "choices": "Equipment failure\nCash shortage\nStock and inventory\nHygiene\nSafety\nCustomer complaint\nIT and billing\nOther",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "severity",
+          "label": "Severity",
+          "column_type": "Choice",
+          "choices": "Critical\nHigh\nMedium\nLow",
+          "default_value": "Medium",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "store",
+          "label": "Store",
+          "column_type": "Reference",
+          "reference_table": "tasker.store",
+          "in_list_view": true
+        },
+        {
+          "column_name": "occurred_at",
+          "label": "Happened at",
+          "column_type": "Datetime"
+        },
+        {
+          "column_name": "asset_area",
+          "label": "Asset or area",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "impact",
+          "label": "Impact",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "containment",
+          "label": "Done right away",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "photo",
+          "label": "Photo",
+          "column_type": "Attach Image"
+        },
+        {
+          "column_name": "owner_function",
+          "label": "Owner function",
+          "column_type": "Choice",
+          "choices": "Store operations\nFacilities\nIT\nFinance\nSupply chain\nHR",
+          "reqd": true
+        },
+        {
+          "column_name": "owner",
+          "label": "Owner",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "verifier",
+          "label": "Verifier",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "issue_state",
+          "label": "State",
+          "column_type": "Choice",
+          "choices": "Open\nAcknowledged\nSubmitted for verification\nClosed",
+          "default_value": "Open",
+          "in_list_view": true
+        },
+        {
+          "column_name": "shared",
+          "label": "Shared with team",
+          "column_type": "Check",
+          "default_value": "1",
+          "hidden": true
+        },
+        {
+          "column_name": "raised_at",
+          "label": "Raised at",
+          "column_type": "Datetime",
+          "hidden": true
+        },
+        {
+          "column_name": "acknowledged_at",
+          "label": "Acknowledged at",
+          "column_type": "Datetime",
+          "hidden": true
+        },
+        {
+          "column_name": "submitted_at",
+          "label": "Submitted at",
+          "column_type": "Datetime",
+          "hidden": true
+        },
+        {
+          "column_name": "submitted_by",
+          "label": "Submitted by",
+          "column_type": "Data",
+          "hidden": true
+        },
+        {
+          "column_name": "closed_at",
+          "label": "Closed at",
+          "column_type": "Datetime",
+          "hidden": true
+        },
+        {
+          "column_name": "verified_by",
+          "label": "Verified by",
+          "column_type": "Data",
+          "hidden": true
+        },
+        {
+          "column_name": "evidence_note",
+          "label": "What was done",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "evidence_photo",
+          "label": "Evidence photo",
+          "column_type": "Attach Image"
+        },
+        {
+          "column_name": "return_reason",
+          "label": "Returned because",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "return_count",
+          "label": "Times returned",
+          "column_type": "Int",
+          "default_value": "0"
+        },
+        {
+          "column_name": "clock",
+          "label": "Clock",
+          "column_type": "Data",
+          "hidden": true
+        },
+        {
+          "column_name": "opens_at",
+          "label": "Store opens",
+          "column_type": "Data",
+          "hidden": true
+        },
+        {
+          "column_name": "closes_at",
+          "label": "Store closes",
+          "column_type": "Data",
+          "hidden": true
+        },
+        {
+          "column_name": "respond_minutes",
+          "label": "Respond within (minutes)",
+          "column_type": "Int",
+          "hidden": true
+        },
+        {
+          "column_name": "fix_minutes",
+          "label": "Fix within (minutes)",
+          "column_type": "Int",
+          "hidden": true
+        },
+        {
+          "column_name": "respond_by",
+          "label": "Respond by",
+          "column_type": "Datetime"
+        },
+        {
+          "column_name": "fix_by",
+          "label": "Fix by",
+          "column_type": "Datetime",
+          "in_list_view": true
+        },
+        {
+          "column_name": "response_breached",
+          "label": "Response missed",
+          "column_type": "Check",
+          "default_value": "0"
+        },
+        {
+          "column_name": "fix_breached",
+          "label": "Fix time breached",
+          "column_type": "Check",
+          "default_value": "0",
+          "in_list_view": true
+        },
+        {
+          "column_name": "breached_at",
+          "label": "Breached at",
+          "column_type": "Datetime",
+          "hidden": true
+        },
+        {
+          "column_name": "pause_requested",
+          "label": "Pause asked for",
+          "column_type": "Check",
+          "default_value": "0"
+        },
+        {
+          "column_name": "pause_reason",
+          "label": "Pause reason",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "pause_review_on",
+          "label": "Next review",
+          "column_type": "Date"
+        },
+        {
+          "column_name": "paused",
+          "label": "Paused",
+          "column_type": "Check",
+          "default_value": "0"
+        },
+        {
+          "column_name": "paused_since",
+          "label": "Paused since",
+          "column_type": "Datetime",
+          "hidden": true
+        },
+        {
+          "column_name": "pause_approved_by",
+          "label": "Pause approved by",
+          "column_type": "Data",
+          "hidden": true
+        },
+        {
+          "column_name": "paused_minutes",
+          "label": "Minutes not counted",
+          "column_type": "Int",
+          "default_value": "0",
+          "hidden": true
+        },
+        {
+          "column_name": "on_clock_minutes",
+          "label": "Minutes on the clock",
+          "column_type": "Int",
+          "hidden": true
+        },
+        {
+          "column_name": "used_pct",
+          "label": "Fix time used (%)",
+          "column_type": "Int",
+          "hidden": true
+        },
+        {
+          "column_name": "escalation_level",
+          "label": "Escalation level",
+          "column_type": "Int",
+          "default_value": "0",
+          "hidden": true
+        },
+        {
+          "column_name": "notified_owner",
+          "label": "Owner notified",
+          "column_type": "Data",
+          "hidden": true
+        },
+        {
+          "column_name": "needs_owner",
+          "label": "Needs an owner",
+          "column_type": "Check",
+          "default_value": "0"
+        },
+        {
+          "column_name": "missing_contact",
+          "label": "No one to escalate to",
+          "column_type": "Check",
+          "default_value": "0",
+          "hidden": true
+        },
+        {
+          "column_name": "issue_log",
+          "label": "Escalation log",
+          "column_type": "Text",
+          "hidden": true
+        },
+        {
+          "column_name": "checked_at",
+          "label": "Clock checked at",
+          "column_type": "Datetime",
+          "hidden": true
+        },
+        {
+          "column_name": "change_reason",
+          "label": "Reason for this change",
+          "column_type": "Data",
+          "hidden": true
+        }
+      ],
+      "access_policy": {
+        "version": 1,
+        "roles": [
+          "Tasker Member"
+        ],
+        "shared_column": "shared"
+      }
+    },
+    {
+      "name": "tasker.sla_rule",
+      "label": "SLA rule",
+      "module": "Tasker",
+      "id_pattern": "SLA-.####",
+      "columns": [
+        {
+          "column_name": "severity",
+          "label": "Severity",
+          "column_type": "Choice",
+          "choices": "Critical\nHigh\nMedium\nLow",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "category",
+          "label": "Category",
+          "column_type": "Choice",
+          "choices": "Equipment failure\nCash shortage\nStock and inventory\nHygiene\nSafety\nCustomer complaint\nIT and billing\nOther",
+          "in_list_view": true
+        },
+        {
+          "column_name": "respond_minutes",
+          "label": "Respond within (minutes)",
+          "column_type": "Int",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "fix_minutes",
+          "label": "Fix within (minutes)",
+          "column_type": "Int",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "clock",
+          "label": "Clock",
+          "column_type": "Choice",
+          "choices": "Round the clock\nStore hours",
+          "default_value": "Store hours",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "director",
+          "label": "Director",
+          "column_type": "Reference",
+          "reference_table": "Person"
+        },
+        {
+          "column_name": "director_after_minutes",
+          "label": "Director after (minutes past breach)",
+          "column_type": "Int"
+        }
+      ],
+      "access_policy": {
+        "version": 1,
+        "roles": [
+          "Tasker Member"
+        ]
+      }
+    },
+    {
+      "name": "tasker.function_head",
+      "label": "Function head",
+      "module": "Tasker",
+      "id_pattern": "FHEAD-.####",
+      "title_column": "owner_function",
+      "columns": [
+        {
+          "column_name": "owner_function",
+          "label": "Function",
+          "column_type": "Choice",
+          "choices": "Store operations\nFacilities\nIT\nFinance\nSupply chain\nHR",
+          "reqd": true,
+          "unique": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "head",
+          "label": "Head",
+          "column_type": "Reference",
+          "reference_table": "Person",
+          "reqd": true,
+          "in_list_view": true
+        }
+      ],
+      "access_policy": {
+        "version": 1,
+        "roles": [
+          "Tasker Member"
+        ]
+      }
     }
   ],
   "permissions": [
@@ -677,6 +2012,34 @@
       "can_create": true,
       "can_read": true,
       "can_write": true
+    },
+    {
+      "table": "tasker.store",
+      "role": "Tasker Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "tasker.issue",
+      "role": "Tasker Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "tasker.sla_rule",
+      "role": "Tasker Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "tasker.function_head",
+      "role": "Tasker Member",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
     }
   ],
   "roles": [
@@ -692,6 +2055,17 @@
         "tables": [
           "tasker.recurrence",
           "tasker.task"
+        ]
+      }
+    },
+    {
+      "name": "escalate_issues",
+      "cadence": "every minute",
+      "description": "Remind issue owners at 75% of the fix time and escalate breached issues",
+      "documents": {
+        "owner_table": "tasker.issue",
+        "tables": [
+          "tasker.issue"
         ]
       }
     }

@@ -5,4 +5,6 @@ export function canRetire(meta: { name: string; kind?: string | null; data_sourc
   if (!meta) return false
   return (meta.kind ?? 'table') === 'table' && !meta.data_source && !meta.system_written
     && meta.name !== 'Table' && meta.name !== 'Column'
+    // #1060: a grant ends in the permission matrix; retiring never changes who may see what.
+    && meta.name !== 'Permission'
 }

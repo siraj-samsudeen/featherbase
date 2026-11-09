@@ -152,6 +152,30 @@ test('Calendar: next and previous month page the grid', async ({ admin }) => {
   await waitFor(() => expect(screen.getByTestId('cal-month').textContent).toBe(first))
 })
 
+// From the deleted e2e/calendar.spec.ts (UI-021): the calendar is reached from
+// the list's View menu, and its header keeps the Table's name and a way back.
+const pathOf = (r: { router: unknown }) =>
+  (r.router as { state: { location: { pathname: string } } }).state.location.pathname
+
+test('Calendar: the View menu of the list opens the calendar', async ({ admin }) => {
+  await seedSchedule(admin)
+  const app = await renderApp(`/featherbase/admin/table/${tableSlug(SCHED)}`, admin)
+  fireEvent.click(await screen.findByRole('button', { name: 'View: List' }))
+  fireEvent.click(await screen.findByRole('link', { name: 'Calendar' }))
+  expect(await screen.findByTestId('calendar-view')).toBeInTheDocument()
+  expect(pathOf(app)).toBe(`/featherbase/admin/table/${tableSlug(SCHED)}/view/calendar`)
+})
+
+test('Calendar: the header names the Table, and its List view link goes back to the list', async ({ admin }) => {
+  await seedSchedule(admin)
+  const app = await renderApp(`/featherbase/admin/table/${tableSlug(SCHED)}/view/calendar`, admin)
+  const heading = await screen.findByRole('heading', { level: 1 })
+  expect(heading.textContent).toBe(`${SCHED} — Calendar`)
+  fireEvent.click(screen.getByTestId('cal-to-list'))
+  expect(await screen.findByTestId('list-view')).toBeInTheDocument()
+  expect(pathOf(app)).toBe(`/featherbase/admin/table/${tableSlug(SCHED)}`)
+})
+
 test('Calendar: the next month shows the rows dated in it', async ({ admin }) => {
   await seedSchedule(admin)
   const now = new Date()
@@ -230,4 +254,15 @@ test('Board: with two choice columns the user picks which one the board follows'
   fireEvent.change(screen.getByTestId('kanban-groupby'), { target: { value: 'priority' } })
   await waitFor(() => expect(within(screen.getByTestId('kanban-column-High')).getByText('Deal One')).toBeInTheDocument())
   expect(screen.queryByTestId('kanban-column-Open')).not.toBeInTheDocument()
+})
+
+// Moved from e2e/kanban.spec.ts (#1080): the Board is reached from the list.
+test('Board: the list\'s view menu opens the Board', async ({ admin }) => {
+  await seedBoard(admin)
+  const { router } = await renderApp(`/featherbase/admin/table/${tableSlug(BOARD)}`, admin)
+  fireEvent.click(await screen.findByRole('button', { name: 'View: List' }))
+  fireEvent.click(await screen.findByTestId('open-kanban'))
+  await screen.findByTestId('kanban-view')
+  await waitFor(() => expect(within(screen.getByTestId('kanban-column-Open')).getAllByTestId('kanban-card')).toHaveLength(2))
+  expect((router.state as { location: { pathname: string } }).location.pathname).toBe(`/featherbase/admin/table/${tableSlug(BOARD)}/view/kanban`)
 })

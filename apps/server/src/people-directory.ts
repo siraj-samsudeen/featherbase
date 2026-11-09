@@ -56,6 +56,20 @@ export async function principalNames(ids: unknown, viewer: string): Promise<Reco
   return out
 }
 
+/** #1097: names for people an app's own settings name (support lists, assignees,
+ *  approvers). The administrator chose them for this app, so its users see them
+ *  by name even without the Person permission; every other id is read as the
+ *  viewer, as in `principalNames`. */
+export async function namesForApp(ids: unknown, viewer: string, settings: Readonly<Record<string, string>>) {
+  const out = await principalNames(ids, viewer)
+  const named = new Set(Object.values(settings).join(' ').match(/\bpsn_[A-Za-z0-9]+\b/g) ?? [])
+  const missing = Object.keys(out).filter((id) => out[id] === null && named.has(id))
+  if (missing.length) for (const r of await sql`select row_id, full_name, username from person
+    where row_id in ${sql(missing)} and replaced_by is null and retired_at is null and not coalesce(built_in, false)`)
+    out[String(r.row_id)] = displayName(r)
+  return out
+}
+
 /** #963: which of these ids are enabled people, read as the viewer: never a
  *  built-in or merged-away account, and a service account is not a Person. */
 export async function enabledPeople(ids: string[], viewer: string): Promise<string[]> {

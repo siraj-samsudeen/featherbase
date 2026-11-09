@@ -10,7 +10,7 @@ import { sessionMayAddWayIn } from './session-context'
 import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
 import { mayPurge } from './purge'
-import { RETIRE_INSTEAD, assertNothingRetained, repointRowActivity, retainedActivityCounts, retainedDocumentCounts } from './document-activity'
+import { UNTICK_INSTEAD, assertNothingRetained, deleteInstead, repointRowActivity, retainedActivityCounts, retainedDocumentCounts } from './document-activity'
 import { rowLabel } from './row-titles'
 import { allowedTables, anyTableLinkHolder, linkableTable, repointAnyTableLinks } from './any-table-link'
 import { EVERYONE_ROLES_FIELD, checkEveryoneRoles, parseEveryoneRoles } from './everyone-roles'
@@ -853,7 +853,11 @@ export async function checkRowForInsert(meta: TableMeta, values: RowValues, user
     const childReach = await childWriteColumns(user, reach, meta.name, childMeta.name, link.row_id, 'create', user)
     for (const line of values[link.column_name] as RowValues[]) stripUnwritableFields(childMeta.columns, childReach, pickFieldValues(childMeta, line))
   }
-  validateValues(meta, applyDefaults(meta, pickFieldValues(meta, values)), 'insert')
+  const inserted = applyDefaults(meta, pickFieldValues(meta, values))
+  validateValues(meta, inserted, 'insert')
+  // #1072: the save refuses a link to no row; a rehearsal that passed one
+  // would let Check say "ready" about a row the import then refuses.
+  await validateLinks(sql, meta, inserted, user)
   // #231: the real import inserts through saveDoc, so the dry run has to
   // apply the same required-children rule or it would pass rows the import
   // then refuses.
@@ -878,6 +882,11 @@ export async function checkRowForInsert(meta: TableMeta, values: RowValues, user
   return rowId
 }
 
+/** #1072: a rehearsed update checks its links as the save will, against the row it changes. */
+export async function checkLinksForUpdate(meta: TableMeta, values: RowValues, user: string, current: RowValues): Promise<void> {
+  await validateLinks(sql, meta, values, user, '', current)
+}
+
 // UPS-R1: the dry-run counterpart for rows an upsert will UPDATE — the same
 // field filtering and zod validation the update runs (partial schema: reqd
 // columns may stay untouched on the matched row), no writes. Insert-only
@@ -896,6 +905,11 @@ interface SaveOptions {
   // Only the upload route supplies the exact path returned by storage.
   // Never derive this option from a client row or request body.
   uploadedFileUrl?: string
+  // Only the upload route sets this, after rowCapabilities found that the
+  // uploader may write the row the new File is attached to: that write stands
+  // in for create on File. Every other check still runs. Never derive it from
+  // a client row or request body.
+  attachedRowWritable?: boolean
   // Trusted import/copy writers and version-backed undo only. This is NOT
   // read from HTTP args; permissions, tiers, validation and hooks still run.
   managedValues?: RowValues
@@ -987,11 +1001,13 @@ async function writeDoc(
     if (meta.id_pattern !== 'prompt' && values.amended_from == null && mode !== 'insert')
       throw new AppError('NotFoundError', `${table} ${values[ROW_KEY]} not found`)
   }
+  // The upload route fills every column of a File on a writable row itself.
+  const attachedWrite = Boolean(opts.attachedRowWritable) && meta.name === 'File' && Boolean(values.ref_table) && Boolean(values.ref_name)
   if (!opts.skipPermissions) {
-    await assertPermission(user, table, 'create')
+    if (!attachedWrite) await assertPermission(user, table, 'create')
     await assertUserPermissions(user, meta, { ...values, created_by: user })
   }
-  const writeTiers = opts.skipPermissions
+  const writeTiers = opts.skipPermissions || attachedWrite
     ? new Set(ALL_COLUMNS)
     : await insertColumns(user, table)
   const fieldValues = validateValues(
@@ -1657,17 +1673,18 @@ async function deleteDocImpl(
     await assertRowNotManaged(stx, meta, name, user)
     // #959: the refusals below name each row as this caller reads it.
     const label = () => rowLabel(user, table, name)
+    const instead = deleteInstead(table, true)
     if (revoking) {
       // Nothing held back and nothing removed: see revokeGrant.
     } else if (meta.owner_app) {
       if (!opts.expectUpdatedAt || !Number.isFinite(Date.parse(opts.expectUpdatedAt))
         || new Date(existing.updated_at as string).getTime() !== Date.parse(opts.expectUpdatedAt))
         throw new AppError('ConflictError', `${table} ${name} has been modified after you loaded it; supply its current updated_at`)
-      await assertNothingRetained(await retainedDocumentCounts(stx, table, name), true, label)
+      await assertNothingRetained(await retainedDocumentCounts(stx, table, name), instead, label)
     } else {
       // #321: a plain row keeps its comments, history, attachments and shares
       // by refusing the delete while it has any (links are checked below).
-      await assertNothingRetained(await retainedActivityCounts(stx, table, name), true, label)
+      await assertNothingRetained(await retainedActivityCounts(stx, table, name), instead, label)
     }
     if (!revoking) await tx`delete from version where ref_table = ${table} and ref_name = ${name} and data->>'created' = 'true'`
     if ((existing.submission_status as string) === 'submitted')
@@ -1699,8 +1716,8 @@ async function deleteDocImpl(
           : await rowLabel(user, parentTable, ref[parentKey] as string)
         throw new AppError(
           'ValidationError',
-          `Cannot delete ${await label()}: it is linked from ${holder}. ${RETIRE_INSTEAD}`,
-          { retire: 'available' },
+          `Cannot delete ${await label()}: it is linked from ${holder}. ${instead!.advice}`,
+          instead!.fields,
         )
       }
     }
@@ -1709,8 +1726,8 @@ async function deleteDocImpl(
     if (anyHolder)
       throw new AppError(
         'ValidationError',
-        `Cannot delete ${await label()}: it is linked from ${await rowLabel(user, anyHolder.table, anyHolder.row_id)}. ${RETIRE_INSTEAD}`,
-        { retire: 'available' },
+        `Cannot delete ${await label()}: it is linked from ${await rowLabel(user, anyHolder.table, anyHolder.row_id)}. ${instead!.advice}`,
+        instead!.fields,
       )
 
     const ctx: HookContext = {
@@ -1798,7 +1815,7 @@ async function deleteBoundDoc(
   }
   // #321: a connected row's comments, history, attachments and shares live
   // here; the delete is refused while it has any, as for a stored row.
-  await assertNothingRetained(await retainedActivityCounts(sql, meta.name, name), false, () => rowLabel(user, meta.name, name))
+  await assertNothingRetained(await retainedActivityCounts(sql, meta.name, name), null, () => rowLabel(user, meta.name, name))
   await runHooks('on_trash', hctx)
   const outcome = await ctx.driver
     .remove(ctx.bind, name, expectUpdatedAt)
@@ -1833,7 +1850,7 @@ async function setRetirement(
   const meta = await getMeta(table)
   assertRowsWritable(meta, retire ? 'retired' : 'reactivated')
   if (!canRetire(meta))
-    throw new AppError('ValidationError', `${table} rows cannot be retired`)
+    throw new AppError('ValidationError', `${table} rows cannot be retired${table === 'Permission' ? `. ${UNTICK_INSTEAD}` : ''}`)
   await assertSecurityWriter(table, user)
   let reason: string | null = null
   if (retire) {

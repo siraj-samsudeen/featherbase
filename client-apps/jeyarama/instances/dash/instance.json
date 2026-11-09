@@ -36,6 +36,11 @@
       "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/af12483fec6c9f17b32bd2f3ef916899c875fbaa"
     },
     {
+      "path": "example-apps/tickets",
+      "version": "0.2.5",
+      "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/26f2bf929001ea54fcb5248f93799a049c7f0909"
+    },
+    {
       "path": "example-apps/tasker",
       "version": "3.0.1",
       "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/ace7d8f12fc53dc595f7dbd74e5a46448c7a5bbf"
@@ -44,6 +49,11 @@
       "path": "example-apps/tasker",
       "version": "3.0.2",
       "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/97b7818c23ae8767ca0a184acd30033fb00954d3"
+    },
+    {
+      "path": "example-apps/tasker",
+      "version": "3.0.3",
+      "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/f4b2519e5424314b010299e654a83570d20e2893"
     },
     {
       "path": "client-apps/jeyarama/dash",

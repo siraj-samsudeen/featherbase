@@ -17,7 +17,7 @@ import { expectApiError, grantRole } from '../fixtures'
 // RVT-R6: whole-request permission refusal (write for restores, delete
 //         for removals).
 // RVT-I1–I3: reconciliation, touches-only-the-run, second-revert no-op.
-// Journey-tier proof lives in apps/web/e2e/import-revert-journey.spec.ts.
+// Journey-tier proof lives in apps/web/test/import-revert-journey.test.tsx.
 
 const DT = 'Revert Target'
 const IMPORT = `/api/table/${encodeURIComponent(DT)}:import`

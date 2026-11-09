@@ -1,7 +1,9 @@
 // #1014: a new Table's link column. The wizard offered Reference as a type, but
 // nothing asked which Table it links to, so the Table could not be made with a
 // working link. Requests and refusals are the real server's.
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { tableSlug } from 'shared'
+import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 import { clearSession } from '../src/lib/import-session'
 import { makeTable } from 'server/test/fixtures'
@@ -139,5 +141,62 @@ test('importing makes the link: good rows land, and a row with no match is repor
   const meta = await admin.get<{ columns: { column_name: string; column_type: string; reference_table: string | null }[] }>(`/api/table/${encodeURIComponent('Iwl Store')}:meta`)
   expect(meta.columns.find((c) => c.column_name === 'cluster')).toMatchObject({ column_type: 'Reference', reference_table: 'Iwl Cluster' })
   expect(await screen.findByTestId('iw-results', undefined, { timeout: 8000 })).toHaveTextContent('Iwl Store')
+  clearSession()
+})
+
+// Moved from the deleted e2e/import-reference-column.spec.ts: the imported
+// link works as a link — the new Table's list reads it by the linked row's
+// title, and its address is that row's page.
+test('the imported link reads by the linked row\'s title in the new list, and leads to that row', async ({ admin }) => {
+  await clusters(admin)
+  const row = await openNewTable(admin)
+  await waitFor(() => expect(within(picker(row)).getByRole('option', { name: 'Iwl Cluster' })).toBeInTheDocument())
+  fireEvent.change(picker(row), { target: { value: 'Iwl Cluster' } })
+  fireEvent.click(screen.getByTestId('iw-import'))
+  await screen.findByTestId('iw-results', undefined, { timeout: 8000 })
+  clearSession()
+  cleanup()
+
+  await renderApp(`/featherbase/admin/table/${tableSlug('Iwl Store')}`, admin)
+  const links = await screen.findAllByRole('link', { name: /Vellayambalam/ }, { timeout: 8000 })
+  expect(links).toHaveLength(2)
+  const href = links[0].getAttribute('href')!
+  expect(href).toMatch(/\/row\/VLM$/)
+  cleanup()
+  await renderApp(href, admin)
+  await screen.findByTestId('form-view', {}, { timeout: 8000 })
+  await waitFor(() => expect(document.querySelector('[data-field=cluster_name]')).toHaveValue('Vellayambalam'))
+})
+
+// The verifier's find on #1014: the ids being checked travel in a read's
+// address, and 600 long ones passed the real Node server's 16 KB header limit
+// (431). The in-process server has no such limit, so the addresses are measured.
+test('Check reads many long values in reads whose addresses stay under the server\'s 16 KB limit', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Iwl Long Names', id_pattern: 'field:zone_name', columns: [{ column_name: 'zone_name', column_type: 'Data' }] })
+  const value = (i: number) => `Vellayambalam Regional Distribution Centre ${String(i).padStart(4, '0')}`
+  await admin.post('/api/save_row', { table: 'Iwl Long Names', row: { zone_name: value(0) } })
+  const csv = ['store_name,zone', ...Array.from({ length: 600 }, (_, i) => `S${i},${value(i)}`)].join('\n')
+
+  clearSession()
+  await renderApp('/featherbase/admin/import', admin)
+  await upload(csv, 'long.csv')
+  fireEvent.change(await screen.findByTestId('iw-new-name-0', undefined, { timeout: 8000 }), { target: { value: 'Iwl Long Stores' } })
+  const zone = [...document.querySelectorAll<HTMLElement>('[data-columnrow]')].find((r) => within(r).queryByText('zone'))!
+  setType(zone, 'Reference')
+  const zonePicker = within(zone).getByRole('combobox', { name: 'Table Zone links to' })
+  await waitFor(() => expect(within(zonePicker).getByRole('option', { name: 'Iwl Long Names' })).toBeInTheDocument())
+  fireEvent.change(zonePicker, { target: { value: 'Iwl Long Names' } })
+
+  const connected = globalThis.fetch
+  const reads: string[] = []
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (url.includes(encodeURIComponent('Iwl Long Names'))) reads.push(url)
+    return connected(input, init)
+  })
+  fireEvent.click(screen.getByTestId('iw-check'))
+  expect(await screen.findByTestId('iw-check-0', undefined, { timeout: 15_000 })).toHaveTextContent('1 row ready, 599 with problems')
+  expect(reads.length).toBeGreaterThan(1)
+  for (const url of reads) expect(new TextEncoder().encode(url).length).toBeLessThan(16 * 1024)
   clearSession()
 })

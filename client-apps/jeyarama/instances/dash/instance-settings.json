@@ -34,6 +34,7 @@
         "new_person": "create_if_on_roster",
         "self_link": false,
         "settings": {
+          "provider_record_key": "employee_id",
           "roster": {
             "table": "Employee",
             "sign_in_id_column": "employee_code",

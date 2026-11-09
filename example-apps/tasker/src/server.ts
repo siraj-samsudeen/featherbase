@@ -2,6 +2,8 @@ import { prepareRecurrence, recurrenceActions, runRecurrence } from './recurrenc
 import { actions as taskActions } from './actions'
 import { prepareSubtaskIdentity, validateSubtaskCompletion } from './subtasks-server'
 import { prepareDiscussion } from './discussion-server'
+import { prepareVerification } from './verification-server'
+import { prepareIssue, runEscalation } from './issue-server'
 // Featherbase runtime hook API v1. Structural contract; no core dependency.
 export interface Context {
   user: string
@@ -18,20 +20,27 @@ export interface Context {
   reject(message: string, fields?: Record<string, string>): never
 }
 export const platformVersion = '2026-10'
-export const validators = { 'tasker.task': prepareTask, 'tasker.discussion': prepareDiscussion, 'tasker.recurrence': prepareRecurrence }
+export const validators = { 'tasker.issue': prepareIssue, 'tasker.task': prepareTask, 'tasker.discussion': prepareDiscussion, 'tasker.recurrence': prepareRecurrence }
 export const actions = { ...taskActions, ...recurrenceActions }
-export const jobs = { repeat_tasks: runRecurrence }
+export const jobs = { repeat_tasks: runRecurrence, escalate_issues: runEscalation }
+
+// A stored date arrives as midnight UTC, a proposed one as 'YYYY-MM-DD'; both start with the day.
+function calendarDay(value: unknown): string {
+  return value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10)
+}
 
 async function prepareTask(ctx: Context): Promise<void> {
   let recurrenceSeries: Record<string, unknown> | undefined
   if (!ctx.isNew && (ctx.row.occurrence_key || null) !== (ctx.old?.occurrence_key || null))
     ctx.reject('An occurrence keeps its original identity')
   if (ctx.row.occurrence_key && !ctx.row.recurrence) ctx.reject('An occurrence belongs to its recurring series')
-  if (ctx.isNew) ctx.row.shared = Boolean(ctx.row.project)
+  // A corrective task is shared with the team and works in its issue's store.
+  if (ctx.row.issue && !ctx.row.parent_task) ctx.row.store = (await ctx.documents.get('tasker.issue', String(ctx.row.issue))).store ?? null
+  if (ctx.isNew) ctx.row.shared = Boolean(ctx.row.project || ctx.row.issue)
   else {
     if (ctx.old?.shared && ctx.row.shared === false)
       ctx.reject('Shared work cannot become private again')
-    ctx.row.shared = Boolean(ctx.old?.shared || ctx.row.project)
+    ctx.row.shared = Boolean(ctx.old?.shared || ctx.row.project || ctx.row.issue)
   }
   if (!ctx.isNew && ctx.old?.shared && ctx.old.project && !ctx.row.project && !ctx.row.parent_task)
     ctx.reject('Shared work stays in a shared project; it cannot return to your private Inbox')
@@ -50,6 +59,8 @@ async function prepareTask(ctx: Context): Promise<void> {
     } else if (!ctx.old?.recurrence && series.active_task !== ctx.row.row_id) ctx.reject('This series belongs to another task')
   } else if (ctx.old?.recurrence) ctx.reject('An occurrence stays in its original recurring series')
   await prepareSubtaskIdentity(ctx)
+  if (ctx.row.start_date && ctx.row.due_date && calendarDay(ctx.row.due_date) < calendarDay(ctx.row.start_date))
+    ctx.reject('The due date can’t be before the start date', { due_date: 'Choose the start date or a later day' })
   if (!ctx.row.shared) {
     if (ctx.row.personal_tasks_owner && ctx.row.personal_tasks_owner !== ctx.user)
       ctx.reject('Private tasks belong only to their creator')
@@ -85,6 +96,7 @@ async function prepareTask(ctx: Context): Promise<void> {
     ctx.row.is_done = false
     ctx.row.state_before_done = null
   }
+  await prepareVerification(ctx)
   if (recurrenceSeries) {
     const settled = ['Done', 'Cancelled'].includes(String(ctx.row.task_state))
     const wasSettled = ['Done', 'Cancelled'].includes(String(ctx.old?.task_state))

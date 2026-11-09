@@ -1,0 +1,26 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":semanticCommitsDisabled"],
+  "timezone": "Asia/Kolkata",
+  "schedule": ["before 9am on monday"],
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 5,
+  "lockFileMaintenance": { "enabled": true, "schedule": ["before 9am on monday"] },
+  "packageRules": [
+    {
+      "description": "Patch and minor updates arrive together, once a week.",
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "minor and patch updates"
+    },
+    {
+      "description": "A major update gets its own PR, so its changes can be read on their own.",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Playwright drives the tours: its package and browser move together.",
+      "matchPackageNames": ["@playwright/test", "playwright", "playwright-core"],
+      "groupName": "Playwright"
+    }
+  ]
+}
