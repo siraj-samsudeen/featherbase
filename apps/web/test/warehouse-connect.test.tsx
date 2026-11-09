@@ -74,6 +74,22 @@ test('a name already taken by another source is refused with the reason', async 
   expect(screen.queryByTestId('warehouse-browser')).not.toBeInTheDocument()
 })
 
+test('a source the network drops on saving says it could not be saved', async ({ admin }) => {
+  const user = await newSource(admin, 'motherduck')
+  await user.clear(screen.getByTestId('connect-name'))
+  await user.type(screen.getByTestId('connect-name'), 'web-wh-lost')
+  await user.click(await screen.findByTestId('db-sales', {}, WAIT))
+  const real = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const path = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (path.includes(':motherduck_connect')) throw new TypeError('Failed to fetch')
+    return real(input, init)
+  })
+  await user.click(screen.getByTestId('connect-save'))
+  expect(await screen.findByText('The source could not be saved', {}, WAIT)).toBeInTheDocument()
+  expect(screen.queryByTestId('warehouse-browser')).not.toBeInTheDocument()
+})
+
 async function openBrowser(admin: Client, name: string) {
   await connect(admin, name)
   await renderApp(`/featherbase/admin/source/${name}?database=sales`, admin)
