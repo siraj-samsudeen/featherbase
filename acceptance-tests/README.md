@@ -28,11 +28,6 @@ every failed scenario.
 - `.extracted/` and `reports/` are generated; never edit or commit them.
 - Steps say what the user does and sees; screens, selectors and URLs live in
   the page objects under `support/pages/`.
-- A scenario that says what time it is ("today is 6 November 2026") sets the
-  app's clock with `support/app-clock.js`: the run's API is started with
-  `support/server-clock.cjs` preloaded, so the server and every browser of the
-  scenario stand at that instant until the scenario moves the clock, and go
-  back to real time after it.
 
 ## Watching and debugging
 
