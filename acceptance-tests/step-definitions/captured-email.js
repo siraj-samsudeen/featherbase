@@ -19,11 +19,3 @@ Then('raw values are initially collapsed and cannot be edited', async function (
 Then('the user sees that there is no message body and no attachments', async function () { await this.capturedEmail.expectEmpty(); });
 Then('the markup remains visible text without executable content or remote requests', async function () { await this.capturedEmail.expectInert(); });
 Then('the message preserves line breaks and fits its reading area', async function () { await this.capturedEmail.expectWrapped(); });
-
-Given('the user can read a reference notice with a configured reading presentation', async function () {
-  this.capturedEmail = new CapturedEmail(await this.asSystemManager());
-  await this.capturedEmail.seedReference();
-});
-When('the user opens the reference notice', async function () { await this.capturedEmail.openReference(); });
-Then('the reference notice uses its configured reading presentation', async function () { await this.capturedEmail.expectReference(); });
-Then('the ordinary editable reference form remains available for writable rows', async function () { await this.capturedEmail.expectEditable(); });
