@@ -134,12 +134,14 @@ export async function documentActivity(table: string, name: string, user: string
     author_name: names.get(String(entry.created_by)) ?? SYSTEM_ACTOR_LABELS[String(entry.created_by)] ?? 'Unknown person',
   })
   const visibleVersions = versions.map((version) => {
-    const data = version.data as { changed?: [string, unknown, unknown][]; created?: boolean; import_run?: string; resolution?: { field: string; decision: string; incoming: unknown }; retirement?: { action: string; reason?: string } } | null
+    const data = version.data as { changed?: [string, unknown, unknown][]; created?: boolean; import_run?: string; resolution?: { field: string; decision: string; incoming: unknown }; retirement?: { action: string; reason?: string }; agent?: { token_id: string; token_label: string } } | null
     return {
       ...withAuthor(version),
       data: {
         ...(data?.created ? { created: true } : {}),
         ...(data?.import_run ? { import_run: data.import_run } : {}),
+        // #1083 (D8): made by an agent through /mcp, with this access token.
+        ...(data?.agent ? { agent: data.agent } : {}),
         // #859: who retired or reactivated the row, and why.
         ...(data?.retirement ? { retirement: data.retirement } : {}),
         ...(data?.resolution && visibleFields.has(data.resolution.field) ? { resolution: data.resolution } : {}),

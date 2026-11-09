@@ -29,6 +29,7 @@ import { FULL_READER, ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, childColumn
 import { assertRowsWritable } from './system-written'
 import { assertNotView, linkTargetNames, rowsInView } from './views'
 import { scopedWhere } from './query'
+import { agentMark } from './agent-context'
 import { assertManagedUnchanged, assertNoManagedReference, assertRowNotManaged, holdManagedSet } from './managed-settings'
 import { assertSecurityWriter, isSecurityTable, securityRefusal } from './security-tables'
 import {
@@ -1437,7 +1438,11 @@ async function recordVersion(
     if (JSON.stringify(b) !== JSON.stringify(a)) changed.push([f.column_name, b, a])
   }
   changed.push(...childChanges)
-  if (!changed.length) return
+  // #1083 (D8): a row an agent creates gets its created entry, so the mark
+  // has somewhere to live; a row created by hand needs none (#829 reads its
+  // creator off the row).
+  const agent = agentMark()
+  if (!changed.length && !(created && agent)) return
   // #432: dated by the database's wall clock, like its Table, so a skewed
   // app clock never misdates history. clock_timestamp(), not now(): the
   // import's revert trail ties a version to its run by comparing against a
@@ -1453,7 +1458,8 @@ async function recordVersion(
     position: 0,
     ref_table: meta.name,
     ref_name: name,
-    data: (created ? { changed, created } : { changed }) as unknown as string,
+    // #1083 (D8): a change an agent made through /mcp says so, with its token.
+    data: { ...(created ? { changed, created } : { changed }), ...(agent ? { agent } : {}) } as unknown as string,
   })}`
 }
 

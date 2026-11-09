@@ -38,6 +38,8 @@ export function hideRetired(meta: TableMeta, filters: Filter[], withRetired = fa
 }
 
 const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in', ...RELATED_OPS] as const
+/** The list language's filter operators, for texts that describe it (#1083, /mcp). */
+export const LIST_OPERATORS: readonly string[] = OPS
 
 // NAV-002: the 'related' operator — the ONE relationship-shaped filter the
 // list language understands. It constrains rows by a relationship to

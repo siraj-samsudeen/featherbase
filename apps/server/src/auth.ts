@@ -326,7 +326,26 @@ export async function revokeAccessToken(id: string): Promise<void> {
   if (!row) throw new AppError('NotFoundError', `Access token ${id} not found`)
 }
 
+/** An access token's caller: its owner, and the token itself (#1083, D8). */
+export interface AccessTokenCaller {
+  user: SessionUser
+  token: { id: string; label: string }
+}
+
+/** #1083 (mcp-server D2): an access token and nothing else — never a session
+ *  token or a cookie — with the token's id and label. */
+export async function resolveAccessTokenCaller(authorization?: string): Promise<AccessTokenCaller> {
+  const token = authorization?.match(/^Bearer (.+)$/)?.[1]
+  if (!token?.startsWith(TOKEN_PREFIX))
+    throw new AppError('AuthenticationError', 'An access token is required: Authorization: Bearer fbt_…')
+  return lookupAccessToken(token)
+}
+
 async function resolveAccessToken(token: string): Promise<SessionUser> {
+  return (await lookupAccessToken(token)).user
+}
+
+async function lookupAccessToken(token: string): Promise<AccessTokenCaller> {
   // The update doubles as the lookup: a live token gets its last_used_at
   // stamped in the same round-trip.
   const [hit] = await sql`
@@ -334,7 +353,7 @@ async function resolveAccessToken(token: string): Promise<SessionUser> {
     where token_hash = ${hashToken(token)}
       and revoked_at is null
       and (expires_at is null or expires_at > now())
-    returning person, service_account`
+    returning id, label, person, service_account`
   if (!hit) throw new AppError('AuthenticationError', 'Invalid or expired access token')
   // Whichever column is set (person-rename R2); a disabled owner of either
   // kind is refused.
@@ -345,10 +364,13 @@ async function resolveAccessToken(token: string): Promise<SessionUser> {
   if (!owner || !owner.enabled)
     throw new AppError('AuthenticationError', 'Invalid or expired access token')
   return {
-    row_id: owner.row_id as string,
-    kind: owner.kind as PrincipalKind,
-    email: (owner.email as string | null) ?? null,
-    full_name: owner.full_name as string | null,
+    user: {
+      row_id: owner.row_id as string,
+      kind: owner.kind as PrincipalKind,
+      email: (owner.email as string | null) ?? null,
+      full_name: owner.full_name as string | null,
+    },
+    token: { id: hit.id as string, label: hit.label as string },
   }
 }
 
