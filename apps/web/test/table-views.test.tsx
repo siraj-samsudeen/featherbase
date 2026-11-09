@@ -4,6 +4,7 @@
 
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
+import { tableSlug } from 'shared'
 import { test, expect, renderApp } from './pg-test'
 import { holdResponses } from './held-requests'
 
@@ -112,4 +113,17 @@ test('a new row on a view is offered on its base instead', async ({ admin }) => 
   const notice = await screen.findByTestId('view-new-row', {}, T)
   expect(notice).toHaveTextContent('Vwd Store is a view of Vwd Site and holds no rows of its own.')
   expect(within(notice).getByTestId('view-new-row-base')).toHaveAttribute('href', '/featherbase/admin/table/vwd-site/new')
+})
+
+test("a view's banner reads No, empty and lists in plain words", async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/table_def', {
+    name: 'Vwd Odd Sites',
+    kind: 'view',
+    view_of: 'Vwd Site',
+    view_filters: [['is_store', '=', false], ['site_name', '!=', null], ['site_name', 'in', ['North', 'South']]],
+  })
+  await renderApp(`/featherbase/admin/table/${tableSlug('Vwd Odd Sites')}`, admin)
+  const banner = await screen.findByTestId('view-banner', {}, T)
+  expect(within(banner).getByTestId('view-banner-filter')).toHaveTextContent('Is store is No, Site name is not empty, Site name is one of North, South')
 })
