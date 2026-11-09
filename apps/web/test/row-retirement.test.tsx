@@ -4,6 +4,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { tableSlug } from 'shared'
+import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 
 const TABLE = 'Retire Bin'
@@ -204,3 +205,39 @@ test('#859 Delete permanently can go back from clearing the links to deleting wh
   await user.click(within(dialog).getByTestId('purge-links-cascade'))
   await waitFor(() => expect(within(dialog).getByTestId('purge-group').getAttribute('data-action')).toBe('delete'), WAIT)
 }, 40_000)
+
+/** Requests whose address ends with `suffix` are lost, as offline. */
+function dropNetwork(suffix: string) {
+  const bridge = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+    String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).endsWith(suffix)
+      ? Promise.reject(new TypeError('Failed to fetch'))
+      : bridge(input, init))
+}
+
+test('#859 a retire the network drops says it failed and leaves the row active', async ({ admin }) => {
+  const user = userEvent.setup()
+  await seed(admin)
+  await renderApp(`${path}/row/${encodeURIComponent('Sample plant')}`, admin)
+  await user.click(await screen.findByRole('button', { name: 'Record actions' }))
+  await user.click(await screen.findByTestId('form-retire', {}, WAIT))
+  const dialog = screen.getByTestId('retire-row-dialog')
+  await user.type(within(dialog).getByTestId('retire-reason'), 'Not a real location')
+  dropNetwork(':retire')
+  await user.click(within(dialog).getByTestId('retire-row-confirm'))
+  expect(await within(dialog).findByTestId('retire-row-error')).toHaveTextContent('Retire failed')
+  expect(screen.queryByTestId('retired-badge')).not.toBeInTheDocument()
+})
+
+test('#859 a reactivation the network drops says it failed and leaves the row retired', async ({ admin }) => {
+  const user = userEvent.setup()
+  await seed(admin)
+  await admin.post(`${api}/${encodeURIComponent('Sample plant')}:retire`, { reason: 'closed' })
+  await renderApp(`${path}/row/${encodeURIComponent('Sample plant')}`, admin)
+  await screen.findByTestId('retired-badge', {}, WAIT)
+  await user.click(await screen.findByRole('button', { name: 'Record actions' }))
+  dropNetwork(':reactivate')
+  await user.click(await screen.findByTestId('form-reactivate', {}, WAIT))
+  expect(await screen.findByTestId('form-banner')).toHaveTextContent('Reactivate failed')
+  expect(screen.getByTestId('retired-badge')).toBeInTheDocument()
+})
