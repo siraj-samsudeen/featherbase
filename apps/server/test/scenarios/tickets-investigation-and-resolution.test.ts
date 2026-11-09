@@ -121,9 +121,15 @@ describe('tickets-investigation-and-resolution', () => {
       // The explicit development-only script, never a product action or install hook.
       const password = 'seed-admin-password-1070'
       await admin.post('/api/set_password', { user: admin.user, password })
-      vi.stubGlobal('fetch', (url: URL | string, init?: RequestInit) => {
+      vi.stubGlobal('fetch', async (url: URL | string, init?: RequestInit) => {
         const { pathname, search } = new URL(String(url))
-        return sandboxRequest(pathname + search, init)
+        const response = await sandboxRequest(pathname + search, init)
+        if (pathname !== '/api/ping') return response
+        // CI's PostgreSQL is a Docker service, so the server sees a non-loopback
+        // address and the script's local-database guard would refuse. That guard
+        // is proven on its own in tools/seed-tickets-development.test.mjs; this
+        // scenario is about the samples, so the ping reports a local database.
+        return Response.json({ ...(await response.json()), database_server_local: true }, { status: response.status })
       })
       await seedTickets({ baseUrl: 'http://127.0.0.1:8110', password, expectedEnvironment: 'test' })
       vi.unstubAllGlobals()
