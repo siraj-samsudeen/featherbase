@@ -16,6 +16,7 @@ import {
 } from '../src/realtime'
 import type { SessionUser } from '../src/auth'
 import { realtimeFrames } from 'shared'
+import { sql } from '../src/db'
 import { expectRefused, grantRole, makeTable } from './fixtures'
 
 // RT-001/002/003 (server side): the lifecycle publishes the right channel
@@ -376,6 +377,44 @@ describe('Open pages hear about changes as they happen', () => {
     } finally {
       vi.useRealTimers()
       server.close()
+    }
+  })
+
+  test('an event whose visibility cannot be decided for a database failure is simply not delivered', async ({ admin, createUser }) => {
+    const table = await makeTable(admin, { name: 'Realtime Undecided', naming_rule: 'prompt', columns: ['title'] })
+    await grantRole(admin, { role: 'Realtime Undecided Reader', table: table.name, can_read: true })
+    const reader = await createUser({ email: 'rt.undecided@example.com', roles: ['Realtime Undecided Reader'] })
+    const live = await listen()
+    try {
+      const page = live.connect(reader.token!)
+      await page.waitFor((f) => f.event === 'ready')
+      page.socket.send(JSON.stringify({ subscribe: [`list:${table.name}`] }))
+      await page.waitFor((f) => f.event === 'subscribed')
+      await sql.unsafe('alter table featherbase.data_scope rename to data_scope_gone')
+      publishDocEvent(table.name, 'row-1', 'updated')
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      expect(page.frames.some((f) => f.channel === `list:${table.name}`)).toBe(false)
+    } finally {
+      await live.close()
+    }
+  })
+
+  test('a session recheck that cannot reach the database leaves the sockets as they are', async ({ createUser }) => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const person = await createUser({ email: 'rt.recheck@example.com' })
+      const live = await listen()
+      try {
+        const page = live.connect(person.token!)
+        await page.waitFor((f) => f.event === 'ready')
+        await sql.unsafe('alter table featherbase.revoked_session rename to revoked_session_gone')
+        await vi.advanceTimersByTimeAsync(60_000)
+        expect(page.socket.readyState).toBe(page.socket.OPEN)
+      } finally {
+        await live.close()
+      }
+    } finally {
+      vi.useRealTimers()
     }
   })
 
