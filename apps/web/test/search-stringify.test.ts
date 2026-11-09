@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { defaultParseSearch, defaultStringifySearch } from '@tanstack/react-router'
-import { filterValueLabel } from '../src/components/ListView'
+import { filterValueLabel } from '../src/components/ListFilters'
 
 // #106 review: pins the invariant main.tsx's stringifySearch wrapper relies
 // on — the default stringifier emits a LITERAL '+' as %2B, so a raw '+' in

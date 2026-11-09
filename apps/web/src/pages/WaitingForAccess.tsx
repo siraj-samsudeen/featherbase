@@ -2,7 +2,8 @@ import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-quer
 import { api } from '../lib/api'
 import { Link } from '@tanstack/react-router'
 import { adminPageTitle } from 'shared'
-import { ListView, type Filter } from '../components/ListView'
+import { ListView } from '../components/ListView'
+import type { Filter } from '../components/ListFilters'
 
 // #429, #835, #955: who is waiting for access, per app. Someone who opens an
 // app (or Featherbase itself) without access asks for it, and each request is
