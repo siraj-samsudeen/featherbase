@@ -156,7 +156,7 @@ describe('#1083 /mcp: tools served by the HTTP API (D3, D4, D7)', () => {
     const before = await admin.get<Row>(NOTE.rowUrl(id!))
     const result = await agent.call('update_row', { table: 'Mcp Note', id, values: { body: 'new' } })
     expect(result.isError).toBe(true)
-    expect(text(result)).toMatch(/updated_at: Read the row first \(get_row or query_rows\) and pass the updated_at it gave/)
+    expect(text(result)).toMatch(/^MCP error -32602: .*Read the row first \(get_row or query_rows\) and pass the updated_at it gave/)
     expect(await admin.get<Row>(NOTE.rowUrl(id!))).toEqual(before)
   })
 
@@ -180,7 +180,7 @@ describe('#1083 /mcp: tools served by the HTTP API (D3, D4, D7)', () => {
     const { agent } = await keeper(createUser)
     const result = await agent.call('delete_row', { table: 'Mcp Note', id })
     expect(result.isError).toBe(true)
-    expect(text(result)).toMatch(/updated_at: Read the row first/)
+    expect(text(result)).toMatch(/Read the row first \(get_row or query_rows\)/)
     expect((await admin.fetch(NOTE.rowUrl(id!))).status).toBe(200)
   })
 
