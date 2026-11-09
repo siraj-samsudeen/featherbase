@@ -242,7 +242,6 @@ describe('core-forms', () => {
     await step('the user is a System Manager', () => {})
     await step('orders from the customers "Globex Ltd" and "Initech"', () => ordersFromCustomers(admin))
     await step('the user types "Ltd" into a new order\'s customer and picks "Globex Ltd"', async () => {
-      const user = userEvent.setup()
       view = await renderApp(`${tableHref(ORDERS)}/new`, admin)
       await screen.findByTestId('form-view')
       fireEvent.focus(customerBox())
@@ -494,7 +493,6 @@ describe('core-forms', () => {
   })
 
   scenario('Whole-Table adjustments remain available', async ({ admin }, step) => {
-    const user = userEvent.setup()
     let view!: View
     let id = ''
     await step('the user can adjust a Table with a column called "floor"', async () => {

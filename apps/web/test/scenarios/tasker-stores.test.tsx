@@ -99,7 +99,7 @@ describe('tasker-stores', () => {
     })
     await step('the subtask shows "Keelkattalai Store"', async () => {
       const page = await tasker.viewerPage()
-      const detail = await page.openTask(parent.row_id, String(parent.task_title))
+      await page.openTask(parent.row_id, String(parent.task_title))
       await page.session.within('[aria-label="Subtasks"]', (region) => region.clickButton('Count the cold room'))
       const sub = page.detail()
       await within(sub).findByRole('heading', { name: 'Count the cold room' })

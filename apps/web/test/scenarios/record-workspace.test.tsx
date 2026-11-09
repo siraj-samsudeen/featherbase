@@ -148,7 +148,6 @@ describe('record-workspace', () => {
   })
 
   scenario('Ordinary readers do not get Table administration', async ({ admin, createUser }, step) => {
-    const user = userEvent.setup()
     let reader!: Client
     await step('the user can only read the Plant row for Tenkasi', async () => {
       await plant(admin)
@@ -206,7 +205,6 @@ describe('record-workspace', () => {
   })
 
   scenario('Existing collaboration remains readable when disabled', async ({ admin }, step) => {
-    const user = userEvent.setup()
     await step('Tenkasi has an assignment, a tag, a file and a discussion', () => collaborate(admin))
     await step('the user opens Tenkasi with collaboration disabled', () => openRow(admin))
     await step('the existing collaboration is readable without collaboration mutation controls', async () => {
