@@ -323,6 +323,14 @@ describe('#437: nothing that runs during a save, or on its own, opens access', (
     expect((await loaded(admin, target)).roles.map((r) => r.role)).toEqual([EDITOR])
   })
 
+  test('a script that leaves expects-Google-sign-in as a non-boolean is refused', async ({ admin }) => {
+    const target = await makePerson({ full_name: 'Flagged' })
+    await admin.post('/api/save_row', { table: 'Server Script', row: { row_id: 'ss-473-type', script_type: 'Document Event', ref_table: 'Person', event: 'before_save', script: 'doc.expects_google_sign_in = "yes"', enabled: true } })
+    const doc = await loaded(admin, target)
+    await expectRefused(patchDoc(admin, PERSON.rowUrl(target), { updated_at: doc.updated_at, full_name: 'Renamed' }), 417)
+    expect((await loaded(admin, target)).full_name).toBe('Flagged')
+  })
+
   test('a grant on Server Script, Workflow or Assignment Rule does not let a non-manager write them', async ({ admin, createUser }) => {
     const user = await createUserWithRole(admin, createUser, { role: 'Automation Writer 437', table: ['Server Script', 'Workflow', 'Assignment Rule'], ...ALL_ACTIONS })
     await expectRefused(user.post('/api/save_row', { table: 'Server Script', row: { row_id: 'ss-437-x', script_type: 'Document Event', ref_table: 'Person', event: 'before_save', script: 'doc.enabled = true', enabled: true } }), 403)
