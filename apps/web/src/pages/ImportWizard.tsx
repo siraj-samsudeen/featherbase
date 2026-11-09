@@ -5,7 +5,7 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 // imports this file — a strict useSearch would need the route object back)
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { adminPageTitle } from 'shared'
-import { DEFAULT_ID_PATTERN, applyColumnCombines, autoMapImportColumns, choiceOptions, listColumnsInUse, retiredColumnNotice, coerceRows, combineOverlap, inferTableDef, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
+import { DEFAULT_ID_PATTERN, applyColumnCombines, autoMapImportColumns, choiceOptions, listColumnsInUse, retiredColumnNotice, coerceRows, splitForSend, combineOverlap, inferTableDef, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { ImportOverview, type GroupMode } from '../components/ImportOverview'
 import { NamingControl } from '../components/NamingControl'
@@ -21,7 +21,7 @@ import {
   parseWorkbook,
   type ParsedSheet,
 } from '../lib/parse-file'
-import { analyzeImportKeys, sendImportRun, splitForSend, type ImportUpsertArgs } from '../lib/import-run'
+import { analyzeImportKeys, sendImportRun, type ImportUpsertArgs } from '../lib/import-run'
 import {
   clearSession,
   loadDecisions,

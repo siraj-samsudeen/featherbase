@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { CoercedRow } from 'shared'
-import { splitForSend } from '../src/lib/import-run'
+import type { CoercedRow } from '../src/import'
+import { splitForSend } from '../src/import'
 
 // UPS-R2 × IMPORT_CHUNK — the wizard-side half of duplicate catching. The
 // server fails duplicates within one request; a duplicate SPLIT ACROSS TWO

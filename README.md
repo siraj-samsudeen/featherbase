@@ -369,8 +369,21 @@ bearer_token_env_var = "FEATHERBASE_TOKEN"   # export FEATHERBASE_TOKEN=fbt_…
 ```
 
 Use your instance's `API_PORT` (or its public address) in place of `8000`. The
-tools: `list_tables`, `describe_table`, `query_rows`, `get_row`, `create_row`,
-`update_row`, `delete_row`.
+tools:
+
+- rows: `list_tables`, `describe_table`, `query_rows`, `get_row`, `create_row`,
+  `update_row`, `delete_row`;
+- a Table's structure, if you may build Tables (System Manager): `create_table`,
+  `add_column`, `change_column`, `rename_column`, `remove_column`;
+- importing a file: `suggest_table` (a Table for a new file), `check_import`,
+  `run_import`, `list_imports`, `undo_import`.
+
+An import takes the file as CSV text (at most 10,000 rows and 3 MB; save a
+workbook as CSV first). `run_import` runs only with the `check` that
+`check_import` returned for the same file, options and Table, and keeps the
+import wizard's guards: a file whose every row is already there needs
+`add_anyway`, and more than 20 changed rows need `confirm_changes`. Your agent's
+app asks you before a tool that changes or removes what is there.
 
 ## Commands
 
