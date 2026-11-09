@@ -3,7 +3,7 @@
 // managers leave it alone, its values sort by name, and the Add filter row
 // offers the same box as the quick filters. Made-up rows only.
 import { act, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { vi } from 'vitest'
+import { holdResponses } from './held-requests'
 import userEvent from '@testing-library/user-event'
 import { tableHref } from 'shared'
 import { test, expect, renderApp } from './pg-test'
@@ -264,23 +264,6 @@ test("Enter in a form link's search box does not submit the form", async ({ admi
   // fireEvent answers false when a handler kept the key from the page.
   expect(fireEvent.keyDown(search, { key: 'Enter' })).toBe(false)
 })
-
-/** Holds every response whose address contains `part` until released. */
-function holdResponses(part: string) {
-  let release!: () => void
-  const held = new Promise<void>((resolve) => { release = resolve })
-  let reached!: () => void
-  const asked = new Promise<void>((resolve) => { reached = resolve })
-  const real = globalThis.fetch
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
-    const path = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-    if (!path.includes(part)) return real(input, init)
-    reached()
-    await held
-    return real(input, init)
-  })
-  return { asked, release }
-}
 
 test("a form link's list opened before its Table's details arrive lists names once they do", async ({ admin }) => {
   await seed(admin)

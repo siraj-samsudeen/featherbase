@@ -1,9 +1,10 @@
 // #905: a System Manager archives a custom Table from its list. A banner says
 // who, when and what replaced it; nobody can add rows; it moves to Archived
 // tables and out of the table pickers; Un-archive brings it all back.
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
+import { holdResponses } from './held-requests'
 import { canArchive } from '../src/components/ArchiveTable'
 import type { TableMeta } from '../src/lib/meta'
 
@@ -103,4 +104,41 @@ test("#1041: an app's table offers Archive; the platform's, a settings table and
   expect(canArchive({ ...table, system_written: true })).toBe(false)
   expect(canArchive({ ...table, kind: 'settings' } as TableMeta)).toBe(false)
   expect(canArchive({ ...table, kind: 'sub_table' } as TableMeta)).toBe(false)
+})
+
+async function openArchive(admin: Admin) {
+  await seed(admin)
+  await renderApp('/featherbase/admin/table/twa-sap-plant', admin)
+  await userEvent.click(await screen.findByRole('button', { name: 'Table administration' }, { timeout: 10_000 }))
+  await userEvent.click(await screen.findByTestId('archive-table'))
+  return screen.findByTestId('archive-table-dialog')
+}
+
+test('Cancel closes the Archive dialog, archiving nothing', async ({ admin }) => {
+  const dialog = await openArchive(admin)
+  await userEvent.click(within(dialog).getByTestId('archive-table-cancel'))
+  expect(screen.queryByTestId('archive-table-dialog')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('archived-banner')).not.toBeInTheDocument()
+})
+
+test('a click outside the Archive dialog while it archives keeps it open', async ({ admin }) => {
+  const dialog = await openArchive(admin)
+  const archiving = holdResponses('/archive')
+  await userEvent.click(within(dialog).getByTestId('archive-table-confirm'))
+  await archiving.asked
+  await userEvent.click(dialog.parentElement!)
+  expect(screen.getByTestId('archive-table-dialog')).toBeInTheDocument()
+  await act(async () => { archiving.release() })
+  expect(await screen.findByTestId('archived-banner', undefined, { timeout: 10_000 })).toBeInTheDocument()
+})
+
+test('an Un-archive the server refuses says why on the banner', async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/table_def/Twa%20SAP%20Plant/archive', { note: 'Replaced by Plant' })
+  await renderApp('/featherbase/admin/table/twa-sap-plant', admin)
+  const banner = await screen.findByTestId('archived-banner', undefined, { timeout: 10_000 })
+  // Un-archived meanwhile, from elsewhere.
+  await admin.post('/api/table_def/Twa%20SAP%20Plant/unarchive', {})
+  await userEvent.click(within(banner).getByTestId('unarchive-table'))
+  expect(await within(banner).findByText(/not archived/i, undefined, { timeout: 10_000 })).toBeInTheDocument()
 })
