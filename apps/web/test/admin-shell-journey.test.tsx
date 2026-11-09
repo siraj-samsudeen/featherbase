@@ -28,6 +28,16 @@ test('signed out, the root address goes to the sign-in page', async () => {
   await waitFor(() => expect(pathOf(r)).toBe('/featherbase/login'))
 })
 
+test('signed in, the root address goes to the Admin', async ({ admin }) => {
+  const r = await renderApp('/', admin)
+  await waitFor(() => expect(pathOf(r)).toMatch(/^\/featherbase\/admin/))
+})
+
+test("a new Data Source opened as a row is the guided connect page", async ({ admin }) => {
+  await renderApp('/featherbase/admin/table/data-source/row/new', admin)
+  expect(await screen.findByTestId('connect-source', {}, { timeout: 8000 })).toBeInTheDocument()
+})
+
 test('a sign-in lost to the connection says it failed, and the same credentials work once it returns', async ({ admin, createUser }) => {
   const person = await createUser({ email: 'offline.signin@example.com', roles: ['System Manager'] })
   await admin.post('/api/set_password', { user: person.user, password: 'offline-pw-1' })
