@@ -3,7 +3,8 @@
 // saved by the System Manager, calls made as a person over HTTP, and its
 // pages rendered in jsdom for whoever is looking. Steps never see a route or
 // a selector they don't name.
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
@@ -14,6 +15,7 @@ import { discoverPackages } from 'server/src/runtime-packages'
 import { getDoc, saveDoc } from 'server/src/document'
 import { issueSession } from 'server/src/auth'
 import { sandboxRequest } from 'server/test/pg-test-shared'
+import { sql } from 'server/src/db'
 import { AssetsApp } from '../../../../client-apps/jeyarama/equipment/src/AssetsApp'
 import { version } from '../../../../client-apps/jeyarama/equipment/package.json'
 import { setSession } from '../../src/lib/api'
@@ -65,6 +67,8 @@ export class Assets {
   assets: Record<string, string> = {}
   /** The last call's { status, body }, for "it is refused". */
   last: { status: number; body: any } | null = null
+  /** The roles of people the scenario names beyond the cast ('a counter'), and roles added since. */
+  roles: Record<string, string[]> = {}
   private sessions = new Map<string, { clock: number | null; client: TestClient }>()
   private clock: number | null = null
 
@@ -92,8 +96,9 @@ export class Assets {
   /** A person of the scenario, made the first time they are named, with their full name. */
   async who(name: string) {
     if (this.ids[name]) return this.ids[name]
-    const roles = CAST[name]
+    const roles = this.roles[name] ?? CAST[name]
     if (!roles) throw new Error(`Assets has no one called "${name}"`)
+    this.roles[name] = [...roles]
     const fullName = name.replace(/^(a|an|the|another) /, '').replace(/^\w/, c => c.toUpperCase())
     const client = assetsClient(await this.createUser({ roles, fullName }))
     this.ids[name] = client.user!
@@ -166,6 +171,22 @@ export class Assets {
     if (pattern) expect(JSON.stringify(this.last!.body)).toMatch(pattern)
   }
 
+  /** A person the shared cast has no name for ('the site manager'), made like the cast's people. */
+  extra(name: string, roles: string[]) {
+    this.roles[name] ??= roles
+    return this.who(name)
+  }
+
+  /** Gives a person of the scenario one more Featherbase role. */
+  async addRole(name: string, role: string) {
+    const id = await this.who(name)
+    const person = await this.get('Person', id)
+    const roles = person.roles as { role: string }[]
+    if (roles.some(entry => entry.role === role)) return
+    await this.setupRow('Person', { row_id: id, updated_at: person.updated_at, roles: [...roles, { role }] })
+    this.roles[name] = [...this.roles[name]!, role]
+  }
+
   // ---- The pilot's places, types, legal entities and assets ----
 
   /** A place; `parent` names the place it sits in. */
@@ -202,7 +223,7 @@ export class Assets {
     cleanup()
     setSession(client.token!, { row_id: client.user!, email: client.user!, full_name: null })
     location.hash = `#${route}`
-    const roles = name === ADMIN ? ['System Manager', 'Assets Manager'] : CAST[name]!
+    const roles = name === ADMIN ? ['System Manager', 'Assets Manager'] : this.roles[name]!
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <AssetsApp roles={roles} />
     </QueryClientProvider>)
@@ -216,4 +237,194 @@ export class Assets {
   }
 
   main() { return screen.getByRole('main') }
+}
+
+const short = () => randomUUID().slice(0, 8)
+
+/**
+ * Counts and the ATK fresh count, on top of the Assets world: the scenario's
+ * sites and areas, its count, its counters and reviewer, and what they record.
+ */
+export class AssetCounts {
+  /** The scenario's count row. */
+  count: Row = null as unknown as Row
+  private nextTag = 300001
+
+  constructor(readonly assets: Assets) {}
+
+  /** Names a person as the pilot's asset accountant or finance controller. */
+  async financeRole(name: string, financeRole: string) {
+    await this.assets.setupRow('equipment.finance_person', { person: await this.assets.who(name), finance_role: financeRole })
+  }
+
+  site(name = 'ATK 1501', extra: Record<string, unknown> = {}) {
+    return this.assets.place(name, 'Site', null, extra)
+  }
+
+  async area(name: string, site = 'ATK 1501') {
+    await this.site(site)
+    return this.assets.place(name, 'Area', site)
+  }
+
+  /** Makes a place's site manager a named person. */
+  async siteManager(name: string, site = 'ATK 1501') {
+    const id = await this.site(site)
+    const place = await this.assets.get('equipment.place', id)
+    await this.assets.setupRow('equipment.place', { row_id: id, updated_at: place.updated_at, site_manager: await this.assets.who(name) })
+  }
+
+  /** A manager plans a count of a site, with its counters and reviewer. */
+  async plan({ kind = 'Full', site = 'ATK 1501', counters = ['Suresh'], reviewer = 'Meena', by = 'a manager', extra = {} }:
+    { kind?: string; site?: string; counters?: string[]; reviewer?: string; by?: string; extra?: Record<string, unknown> } = {}) {
+    this.count = await this.assets.save(by, 'equipment.count', {
+      count_name: `ATK count ${short()}`, scope_place: await this.site(site), count_kind: kind, reviewer: await this.assets.who(reviewer), ...extra,
+    })
+    for (const counter of counters) await this.addCounter(by, counter)
+    return this.count
+  }
+
+  async addCounter(by: string, name: string, attempt = false) {
+    return this.assets.save(by, 'equipment.counter', { count: this.count.row_id, person: await this.assets.who(name) }, attempt)
+  }
+
+  current() { return this.assets.get('equipment.count', this.count.row_id) }
+
+  async start(by = 'a manager') {
+    const current = await this.current()
+    return this.assets.act(by, 'start_count', { row_id: current.row_id, updated_at: current.updated_at })
+  }
+
+  async moveTo(stage: string, by = 'a manager', attempt = false) {
+    const current = await this.current()
+    return this.assets.save(by, 'equipment.count', { row_id: current.row_id, updated_at: current.updated_at, count_state: stage }, attempt)
+  }
+
+  /** The asset IDs fixed as expected when the count started, as an Assets Manager reads them. */
+  async expected() {
+    return (await this.assets.list('equipment.count_expected', [['count', '=', this.count.row_id]], ['asset'])).map(row => row.asset)
+  }
+
+  /** Asks for the count's expected list as a person; the answer is kept for `refused`. */
+  askExpected(name: string) {
+    const filters = encodeURIComponent(JSON.stringify([['count', '=', this.count.row_id]]))
+    return this.assets.call(name, `/api/table/equipment.count_expected?filters=${filters}&fields=["asset"]`, undefined, 'GET')
+  }
+
+  /** A counter records an item of the register in an area. */
+  record(name: string, { asset, area, outcome = 'Found here', ...rest }: { asset?: string; area: string; outcome?: string; [field: string]: unknown }, attempt = false) {
+    return this.assets.save(name, 'equipment.scan', {
+      count: this.count.row_id, ...(asset ? { asset: this.assets.assets[asset] } : {}), area: this.assets.places[area], outcome, ...rest,
+    }, attempt)
+  }
+
+  /** A counter types an asset's tag by hand. */
+  typeTag(name: string, asset: string, area: string, reason: string | null, attempt = false) {
+    return this.assets.save(name, 'equipment.scan', {
+      count: this.count.row_id, typed_tag: this.assets.assets[asset], area: this.assets.places[area], outcome: 'Found here', ...(reason ? { reason } : {}),
+    }, attempt)
+  }
+
+  scans() {
+    return this.assets.list('equipment.scan', [['count', '=', this.count.row_id]], ['row_id', 'asset', 'outcome', 'area', 'duplicate', 'created_by', 'created_at'])
+  }
+
+  /** The reviewer decides a missing asset's line. */
+  decide(name: string, asset: string, decision: string) {
+    return this.assets.save(name, 'equipment.count_decision', { count: this.count.row_id, asset: this.assets.assets[asset], decision })
+  }
+
+  /** Moves a recorded scan back to a past moment: the platform stamps records with the database's clock. */
+  async backdate(scanId: string, instant: string) {
+    const [table] = await sql`
+      select table_schema as schema, table_name as name from information_schema.columns
+       where column_name = 'typed_tag' and table_name in (select table_name from information_schema.columns where column_name = 'new_tag')` as unknown as { schema: string; name: string }[]
+    expect(table, 'no table holds count records').toBeTruthy()
+    const updated = await sql.unsafe(`update "${table!.schema}"."${table!.name}" set created_at = $1 where row_id = $2 returning row_id`, [instant, scanId])
+    expect(updated, `record ${scanId} was not found`).toHaveLength(1)
+  }
+
+  // ---- Pages ----
+
+  /** The Counts list, as a person sees it: the row of this scenario's count. */
+  async countsRow(name: string) {
+    await this.assets.open(name, 'counts')
+    const table = await screen.findByRole('table', { name: 'Counts' })
+    const row = await waitFor(() => {
+      const found = within(table).getAllByRole('row').find(r => r.textContent!.includes(String(this.count.count_name)))
+      expect(found, 'the count is listed').toBeTruthy()
+      return found!
+    })
+    return { text: row.textContent!, canStart: Boolean(within(row).queryByRole('button', { name: 'Start count' })) }
+  }
+
+  /** Picks an area on the open count page; the areas offered, once the page has them. */
+  private async chooseArea(areaName: string) {
+    const select = await screen.findByRole('combobox', { name: 'Area' }) as HTMLSelectElement
+    const areas = await waitFor(() => {
+      const labels = [...select.options].map(o => o.textContent!).filter(label => label !== 'Choose where you are')
+      expect(labels.find(label => label.endsWith(areaName)), `${areaName} is not offered: ${labels.join(', ')}`).toBeTruthy()
+      return labels
+    })
+    const option = [...select.options].find(o => o.textContent!.endsWith(areaName))!
+    await userEvent.setup().selectOptions(select, option.value)
+    return areas
+  }
+
+  /** A counter's count page, with an area chosen: the areas offered, and the page's text. */
+  async counterPage(name: string, areaName: string) {
+    const main = await this.assets.open(name, `count=${encodeURIComponent(this.count.row_id)}`)
+    const areas = await this.chooseArea(areaName)
+    await waitFor(() => expect(screen.getAllByRole('status').some(s => s.textContent!.includes('You have recorded'))).toBe(true))
+    return { areas, text: main.textContent! }
+  }
+
+  /** The reviewer's page, opened: the text under each heading. */
+  async review(name: string) {
+    await this.assets.open(name, `review=${encodeURIComponent(this.count.row_id)}`)
+    await screen.findByRole('table', { name: 'Outcomes' })
+    return this.reviewShown()
+  }
+
+  /** The open review page's text under each heading, as it reads now. */
+  reviewShown() {
+    const section = (heading: string) => screen.getByRole('heading', { name: heading }).closest('section')!.textContent!
+    return { missing: section('Missing'), moved: section('Moved since the start'), found: section('Found') }
+  }
+
+  // ---- Fresh counts and tags ----
+
+  /** A tag that is on an issued roll; a roll of its own number when no roll holds it. */
+  async issuedTag(number: number) {
+    const rolls = await this.assets.list('equipment.tag_roll', [], ['first_no', 'last_no'])
+    if (!rolls.some(roll => Number(roll.first_no) <= number && number <= Number(roll.last_no)))
+      await this.assets.setupRow('equipment.tag_roll', { roll_name: `Roll ${number}`, first_no: number, last_no: number })
+    return `JRA-${String(number).padStart(6, '0')}`
+  }
+
+  /** An issued tag nothing carries yet. */
+  freshTag() { return this.issuedTag(this.nextTag++) }
+
+  /** A manager plans and starts a fresh inventory count of a site with its two-person team. */
+  async freshCount(team: string[], site = 'ATK 1501') {
+    await this.plan({ kind: 'Fresh inventory', site, counters: team, reviewer: 'a manager' })
+    await this.start()
+    return this.count
+  }
+
+  /** One count sheet line, recorded by one team member and initialled by the other. */
+  async line(name: string, { tag, taggedBy, area, ...rest }: { tag: string; taggedBy: string; area: string; [field: string]: unknown }, attempt = false) {
+    return this.assets.save(name, 'equipment.count_line', {
+      count: this.count.row_id, place: this.assets.places[area], asset_type: await this.assets.type('Display chiller'), asset_name: '3-door upright chiller',
+      tag_status: 'Tagged', tag_no: tag, ownership: 'Group owned', condition: 'Working', usage: 'In use', tagged_by: await this.assets.who(taggedBy), ...rest,
+    }, attempt)
+  }
+
+  /** The lines table of one area of the fresh count, as a person sees it. */
+  async freshLines(name: string, areaName: string) {
+    await this.assets.open(name, `count=${encodeURIComponent(this.count.row_id)}`)
+    await this.chooseArea(areaName)
+    const table = await screen.findByRole('table', { name: 'Count lines' })
+    await waitFor(() => expect(within(table).getAllByRole('row').length).toBeGreaterThan(1))
+    return table
+  }
 }
