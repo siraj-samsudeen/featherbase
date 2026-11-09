@@ -724,3 +724,16 @@ describe('an address whose app is installed under the interim name', () => {
     expect((await get(api, `${DASH}/`)).headers.get('location')).toBe(ROOT)
   })
 })
+
+describe('a hand-off whose source address left the list', () => {
+  test('the target refuses a ticket from an address no longer listed', async ({ api, admin }) => {
+    const viewer = await personWith(admin, 'viewer.delisted', ['Sales Target Viewer'])
+    const source = await signIn(api, ADMIN, viewer.usr)
+    const handoff = source.body.handoff!
+    config.instanceAddresses = parseInstanceAddresses(JSON.stringify([{ address: DASH, opens: 'dash', emails: true }, { address: 'https://new-admin.example.com', opens: 'admin' }]), 'test')
+    const start = await api.fetch(handoff)
+    expect(start.status).toBe(401)
+    expect(await start.json()).toEqual({ error: { type: 'AuthenticationError', message: 'Invalid or expired sign-in code' } })
+    expect(cookieOf(start, 'handoff_nonce')).toBe('')
+  })
+})

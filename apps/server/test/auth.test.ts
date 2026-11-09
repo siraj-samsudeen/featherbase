@@ -4,6 +4,8 @@ import { sql } from '../src/db'
 import { config } from '../src/config'
 import { parseInstanceAddresses } from '../src/instance-addresses'
 import { expectSessionCookie, setSessionHours } from './session-cookie-test-utils'
+import { endedSessionIds, issueSession, renameAccessToken, revokeAccessToken } from '../src/auth'
+import { expectApiError, makePerson } from './fixtures'
 
 const json = (body: unknown) => ({
   method: 'POST',
@@ -206,5 +208,34 @@ describe('reading a credential for sign-out and from the cookie', () => {
     expect(await sessionToRevoke(`Bearer ${await sign({ sub: 'p', exp }, secret)}`)).toBeNull()
     expect(await sessionToRevoke(`Bearer ${await sign({ sub: 'p', jti: 'j' }, secret)}`)).toBeNull()
     expect(await sessionToRevoke(`Bearer ${await sign({ sub: 'p', jti: 'j', exp }, secret)}`)).toEqual({ jti: 'j', person: 'p', expiresAt: exp })
+  })
+})
+
+describe('credentials that cannot be honoured', () => {
+  test('a stored password hash without a salt signs nobody in', async ({ api }) => {
+    const person = await makePerson({ email: 'corrupt.hash@example.com' })
+    await sql`update person set password_hash = 'no-salt-here' where row_id = ${person}`
+    const res = await api.fetch('/api/login', json({ usr: 'corrupt.hash@example.com', pwd: 'no-salt-here' }))
+    expect(res.status).toBe(401)
+  })
+
+  test('a session whose expiry has already passed is never issued', async () => {
+    const person = await makePerson({ email: 'late.session@example.com' })
+    await expect(issueSession(person, { expiresAt: Math.floor(Date.now() / 1000) - 1 }))
+      .rejects.toMatchObject({ type: 'AuthenticationError', message: 'Invalid or expired session' })
+  })
+
+  test('a token for an account that does not exist is refused as not found', async ({ admin }) => {
+    await expectApiError(admin.post('/api/access_tokens', { label: 'ghost', owner: 'psn_nobody_at_all' }), { status: 404 })
+    expect(await sql`select 1 from access_token where label = 'ghost'`).toHaveLength(0)
+  })
+
+  test('renaming or revoking a token that does not exist is refused as not found', async () => {
+    await expect(renameAccessToken('tok_missing', 'new name', 'Administrator')).rejects.toMatchObject({ type: 'NotFoundError' })
+    await expect(revokeAccessToken('tok_missing')).rejects.toMatchObject({ type: 'NotFoundError' })
+  })
+
+  test('with no open sessions to check, none has ended', async () => {
+    expect(await endedSessionIds([])).toEqual(new Set())
   })
 })

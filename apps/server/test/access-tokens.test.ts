@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { issueSession, setUserPassword } from '../src/auth'
 import { sql } from '../src/db'
+import { getServiceAccount } from '../src/service-accounts'
 import type { TestClient } from 'feather-testing-postgres'
 
 // #131: named access tokens (the API-005 replacement) + service accounts.
@@ -590,5 +591,11 @@ describe('#853: rename service accounts', () => {
     const response = await admin.fetch('/api/service_accounts/svc_aaaaaaaaaaaaaaaaaaaa', { method: 'PATCH', body: JSON.stringify({ label: 'svc-missing' }) })
     expect(response.status).toBe(404)
     expect(await sql`select 1 from service_account where row_id = 'svc_aaaaaaaaaaaaaaaaaaaa'`).toHaveLength(0)
+  })
+})
+
+describe('looking up a service account', () => {
+  test('one that does not exist is not found', async () => {
+    await expect(getServiceAccount('svc_missing')).rejects.toMatchObject({ type: 'NotFoundError', message: 'Service account svc_missing not found' })
   })
 })

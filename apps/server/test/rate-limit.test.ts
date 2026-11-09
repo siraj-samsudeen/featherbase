@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { setUserPassword } from '../src/auth'
-import { resetRateLimit } from '../src/rate-limit'
+import { rateLimit, resetRateLimit } from '../src/rate-limit'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 
@@ -67,5 +67,13 @@ describe('API-007: rate limiting', () => {
       const res = await admin.fetch('/api/whoami')
       expect(res.status).toBe(200)
     }
+  })
+})
+
+describe('API-007: an anonymous request', () => {
+  test('passes the per-user limiter untouched', async () => {
+    let passed = false
+    await rateLimit({ get: () => undefined } as unknown as Parameters<typeof rateLimit>[0], async () => { passed = true })
+    expect(passed).toBe(true)
   })
 })
