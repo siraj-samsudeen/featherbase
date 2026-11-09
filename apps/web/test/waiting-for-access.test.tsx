@@ -45,6 +45,32 @@ test('a System Manager sees the count and the list, with the App, and opens a re
   expect(screen.queryByTestId('waiting-for-access')).not.toBeInTheDocument()
 })
 
+test('Tree of all on Waiting for access lists each request as a line', async ({ admin }) => {
+  await waitingPerson('Waiting Person', 'waiting.person@staff.example.com')
+  await waitingPerson('Second Person', 'second.person@staff.example.com', 'dash')
+  await renderApp('/featherbase/admin/waiting-for-access', admin)
+  const page = await screen.findByTestId('waiting-for-access')
+  await waitFor(() => expect(within(page).getByTestId('list-total')).toHaveTextContent('2 total'))
+  await userEvent.click(within(page).getByRole('button', { name: 'Tree of all' }))
+  const tree = await within(page).findByRole('tree')
+  await waitFor(() => expect(within(tree).getAllByRole('treeitem').filter((i) => i.getAttribute('aria-level') === '1')).toHaveLength(2))
+})
+
+test('a filter on Waiting for access is kept in the address', async ({ admin }) => {
+  await waitingPerson('Waiting Person', 'waiting.person@staff.example.com')
+  await waitingPerson('Second Person', 'second.person@staff.example.com', 'dash')
+  const app = await renderApp('/featherbase/admin/waiting-for-access', admin)
+  const page = await screen.findByTestId('waiting-for-access')
+  await waitFor(() => expect(within(page).getByTestId('list-total')).toHaveTextContent('2 total'))
+  await userEvent.click(within(page).getByTestId('filter-toggle'))
+  await userEvent.selectOptions(within(page).getByTestId('filter-field'), 'app')
+  await userEvent.type(within(page).getByTestId('filter-value'), 'dash')
+  await userEvent.click(within(page).getByTestId('filter-add'))
+  await waitFor(() => expect(within(page).getByTestId('filter-chip')).toHaveTextContent('dash'))
+  const search = (app.router.state as { location: { search: { filters?: string } } }).location.search
+  expect(JSON.parse(search.filters!)).toEqual([['app', expect.any(String), expect.stringContaining('dash')]])
+})
+
 test('nobody waiting: an empty state and no badge', async ({ admin }) => {
   await renderApp('/featherbase/admin/waiting-for-access', admin)
   expect(await screen.findByTestId('waiting-empty')).toHaveTextContent('Nobody is waiting.')
