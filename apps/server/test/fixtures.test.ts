@@ -45,4 +45,10 @@ describe('expectStatus', () => {
     const res = new Response('{"error":{"message":"no such row"}}', { status: 404 })
     await expect(expectStatus(res, 200)).rejects.toThrow(/no such row/)
   })
+
+  it('fails as an assertion on another status when the body was already read', async () => {
+    const res = new Response('gone', { status: 404 })
+    await res.text()
+    await expect(expectStatus(res, 200)).rejects.toThrow(/expected 404 to be 200/)
+  })
 })

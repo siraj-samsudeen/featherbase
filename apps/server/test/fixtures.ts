@@ -111,7 +111,11 @@ export async function expectRefused(
 //   const res = await expectStatus(await user.fetch(url), 200)
 export async function expectStatus(res: Response, status: number): Promise<Response> {
   if (res.status !== status) {
-    const body = await res.clone().text().catch(() => '<unreadable body>')
+    // clone() throws outright on a body already read; that is no reason to
+    // lose the status assertion itself.
+    const body = await Promise.resolve()
+      .then(() => res.clone().text())
+      .catch(() => '<body already read>')
     expect(res.status, `${res.status} response body: ${body}`).toBe(status)
   }
   return res
