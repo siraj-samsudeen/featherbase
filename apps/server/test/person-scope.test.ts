@@ -11,8 +11,9 @@ import { describe, expect } from 'vitest'
 import { test as pgTest } from './pg-test'
 import { availableRuntimeVersions, discoverPackages, findScopeProvider, runPackageRead } from '../src/runtime-packages'
 import { sql } from '../src/db'
-import { resolvePersonScope } from '../src/person-scope'
-import { expectApiError, expectRefused, expectStatus, tableRef } from './fixtures'
+import { resolvePersonScope, type ScopeProviderBinding } from '../src/person-scope'
+import { invalidateMeta } from '../src/meta'
+import { expectApiError, expectRefused, expectStatus, makeTable, tableRef } from './fixtures'
 import { newIdentifierId } from '../src/person-identifiers'
 import { runHealthChecks } from '../src/instance-health'
 
@@ -800,3 +801,23 @@ async function refusals(user: TestClient) {
   const rows = await sql`select method from access_log where "user" = ${user.user} and operation = 'app_access_denied' order by created_at`
   return rows.map(row => row.method)
 }
+
+describe('what a scope provider may ask of its Tables', () => {
+  async function providerReading(admin: TestClient, ask: (documents: Parameters<ScopeProviderBinding['provide']>[0]['documents'], table: string) => Promise<unknown>) {
+    const roster = await makeTable(admin, { name: 'Scope Roster', columns: ['store'] })
+    await sql`update table_def set decides_scope = true where name = ${roster.name}`
+    invalidateMeta()
+    const binding: ScopeProviderBinding = { app: 'readproof', title: 'Read proof', version: '1.0.0', tables: [roster.name], identifiers: [],
+      provide: async ({ documents }) => { await ask(documents, roster.name); return [{ label: 'North', filters: { store: ['N1'] } }] } }
+    return resolvePersonScope('Administrator', binding)
+  }
+
+  test('a row read without a row id fails the whole scope', async ({ admin }) => {
+    await expect(providerReading(admin, (documents, table) => documents.get(table, ''))).rejects.toMatchObject({ reason: 'provider' })
+  })
+
+  test('a list with a related filter fails the whole scope', async ({ admin }) => {
+    await expect(providerReading(admin, (documents, table) => documents.list(table, { filters: [['store', 'related', 'x']] } as never)))
+      .rejects.toMatchObject({ reason: 'provider' })
+  })
+})

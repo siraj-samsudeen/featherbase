@@ -63,3 +63,13 @@ describe('INSTANCE_ADDRESSES validation', () => {
     expect(() => parse([DASH])).toThrow(/admin/)
   })
 })
+
+describe('an INSTANCE_ADDRESSES entry', () => {
+  test('that is not an object is refused', () => {
+    expect(() => parseInstanceAddresses('[1]', 'test')).toThrow('each entry must be an object { address, opens, emails? }')
+  })
+
+  test('without an address is refused', () => {
+    expect(() => parseInstanceAddresses('[{"opens":"admin"}]', 'test')).toThrow('each entry needs an address')
+  })
+})
