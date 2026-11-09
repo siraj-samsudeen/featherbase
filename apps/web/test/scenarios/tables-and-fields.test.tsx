@@ -16,7 +16,7 @@ import { invalidateSources } from 'server/src/sources/registry'
 import { discoverPackages } from 'server/src/runtime-packages'
 import { scenarioFor } from 'server/test/scenario'
 import { clearSession } from '../../src/lib/import-session'
-import { test, expect, renderApp } from '../pg-test'
+import { test, expect, renderApp, onScreen } from '../pg-test'
 
 const scenario = scenarioFor(test, 'tables-and-fields')
 const WAIT = { timeout: 15_000 }
@@ -127,6 +127,7 @@ async function importAsNewTable(user: User, admin: TestClient, columns: string[]
     if (!row) throw new Error(`The Import Wizard has no column "${label}"`)
     await user.click(field(row, 'include'))
   }
+  // Named by aria-label only: clickButton matches a button's visible text.
   if (opts.tickAll) await user.click(screen.getByRole('button', { name: 'Tick all in the list' }))
   await user.click(screen.getByTestId('iw-import'))
   await waitFor(() => expect(screen.queryByTestId('iw-done') ?? screen.queryByTestId('list-view')).not.toBeNull(), { timeout: 30_000 })
@@ -186,7 +187,7 @@ async function expectCopyable(user: User, expected: string[]) {
   expect(storage.querySelectorAll('input:not([readonly]), textarea:not([readonly]), select')).toHaveLength(0)
   const button = within(storage).getByRole('button', { name: 'Copy storage' })
   button.focus()
-  await user.keyboard('{Enter}')
+  await onScreen().pressKey('Enter')
   await waitFor(() => expect(within(storage).getByRole('status')).toHaveTextContent('Copied'), WAIT)
   const copied = await navigator.clipboard.readText()
   for (const value of expected) expect(copied, `clipboard missing ${value}`).toContain(value)
@@ -413,7 +414,7 @@ describe('tables-and-fields', () => {
       const sent = vi.spyOn(globalThis, 'fetch')
       try {
         await user.selectOptions(policyControl(), RAW)
-        await user.click(screen.getByRole('button', { name: 'Save' }))
+        await onScreen().clickButton('Save')
         const save = await waitFor(() => {
           const at = sent.mock.calls.findIndex(([url, init]) => String(url).includes('/api/save_row') && init?.method === 'POST')
           expect(at).toBeGreaterThanOrEqual(0)
@@ -596,7 +597,7 @@ describe('tables-and-fields', () => {
     })
     await step('the System Manager renames the table to "Plant"', async () => {
       const app = await openList(admin, SAP_PLANT)
-      await user.click(screen.getByRole('button', { name: 'Table administration' }))
+      await onScreen().clickButton('Table administration')
       await user.click(await screen.findByTestId('rename-table'))
       const dialog = await screen.findByTestId('rename-table-dialog')
       await user.clear(within(dialog).getByTestId('rename-table-input'))
