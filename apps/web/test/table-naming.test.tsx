@@ -5,6 +5,7 @@
 import { tableSlug } from 'shared'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 
 type Admin = Parameters<typeof renderApp>[1]
@@ -85,4 +86,18 @@ test('choosing a random id stores that rule', async ({ admin }) => {
   await user.click(screen.getByTestId('naming-save'))
   expect(await screen.findByTestId('naming-saved')).toHaveTextContent('Saved')
   expect(((await admin.get(`/api/table/${encodeURIComponent('Tnm Bin')}:meta`)) as { id_pattern: string }).id_pattern).toBe('hash')
+})
+
+test('a rule the network drops says it failed to save', async ({ admin }) => {
+  const user = userEvent.setup()
+  await seed(admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(T))}/naming`, admin)
+  await user.selectOptions(await screen.findByTestId('naming-naming', {}, { timeout: 8000 }), 'field:code')
+  const bridge = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+    String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).endsWith('/id_pattern')
+      ? Promise.reject(new TypeError('Failed to fetch'))
+      : bridge(input, init))
+  await user.click(screen.getByTestId('naming-save'))
+  expect(await screen.findByTestId('naming-save-error')).toHaveTextContent('Failed to save')
 })
