@@ -215,3 +215,9 @@ test('a token that has been used says when it was last used', async ({ admin }) 
   const row = await screen.findByTestId(`token-${tok.id}`, {}, { timeout: 10_000 })
   expect(row).toHaveTextContent('04-Mar-2026 11:00 IST')
 })
+
+test("a System Manager's own token names them as its owner, marked as theirs", async ({ admin }) => {
+  const tok = await admin.post<{ id: string }>('/api/access_tokens', { label: 'my own' })
+  await renderApp('/featherbase/admin/access-tokens', admin)
+  expect(await screen.findByTestId(`token-owner-${tok.id}`, {}, { timeout: 10_000 })).toHaveTextContent(/ \(you\)$/)
+})
