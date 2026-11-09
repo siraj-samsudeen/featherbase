@@ -98,43 +98,16 @@ class Tickets {
     this.initial = { ...this.ticket };
   }
   async access(email = 'anjali@example.com', scope = 'Gold sales, read only') { await this.create('access', { email, scope }); }
-  async verified(active = true, region = 'Kerala') {
-    if (!this.ticket) await this.access();
-    await this.action('verify', { email: this.details.email, active, region, evidence: 'Fictional HR confirmation 2026-11-03' }, 'Verifier');
-  }
   async complaint(original = 'Invoices cleared two days ago are missing from the report') { await this.create('freshness', { complaint: original }, original); }
   async finding() {
     await this.action('evidence', { expected: '2 invoices from source-check-1', observed: '0 from report-check-1',
       reference: 'source-check-1; report-check-1', observed_at: '2026-11-03T09:00:00Z', finding: 'confirmed_mismatch' }, 'Support');
   }
   async resolved() { await this.complaint(); await this.finding(); await this.action('resolve', { reason: 'Report refreshed and both invoices present', reference: 'report-check-2' }, 'Support'); }
-  async progress(employee = false) {
-    await this.access();
-    if (employee) await this.verified();
-    await this.action('note', { text: 'PRIVATE support note 431' }, 'Support');
-    await this.action('edit', { public_update: 'Support is checking this request' }, 'Support');
-  }
   async denied() { assert.ok([403, 409, 417].includes(this.last.status), JSON.stringify(this.last)); }
   async includes(...values) { const text = await this.text(); for (const value of values) assert.ok(text.includes(value), `missing ${value}: ${text}`); }
   async excludes(...values) { const text = await this.text(); for (const value of values) assert.ok(!text.includes(value), `leaked ${value}: ${text}`); }
   async unfulfilled() { assert.notEqual((await this.open()).ticket.ticket_state, 'Resolved'); }
-  async publicPrivacy(owner = false) {
-    const detail = await this.open();
-    const text = JSON.stringify(detail);
-    assert.ok(text.includes('Support is checking this request'));
-    for (const secret of ['PRIVATE support note 431', 'Fictional HR confirmation']) assert.ok(!text.includes(secret));
-    if (!owner) { assert.equal(detail.details, undefined); assert.ok(!text.includes('anjali@example.com')); }
-    for (const table of ['tickets.ticket', 'tickets.event', ...(owner ? [] : ['tickets.request'])]) {
-      const list = await this.call(this.actor, `/api/table/${table}?limit_page_length=500`, undefined, 'GET');
-      assert.ok([200, 403].includes(list.status));
-      const body = JSON.stringify(list.body);
-      for (const secret of ['PRIVATE support note 431', 'Fictional HR confirmation']) assert.ok(!body.includes(secret));
-      if (!owner) assert.ok(!body.includes('anjali@example.com'));
-    }
-    const activity = await this.call(this.actor, `/api/activity/tickets.ticket/${this.ticket.row_id}`, undefined, 'GET');
-    assert.equal(activity.status, 200);
-    assert.ok(!JSON.stringify(activity.body).includes('PRIVATE support note 431'));
-  }
   async search(query) { this.queue = (await this.read('queue', { search: query })).tickets; }
   async renameTicket() {
     this.last = await this.call(this.actor, `/api/table/tickets.ticket/${this.ticket.row_id}:rename`, { new_name: 'changed-by-another-requester' });
@@ -157,31 +130,6 @@ class Tickets {
     const api = await ticketsAdmin();
     assert.deepEqual(await api.row('tickets.event', this.evidenceBeforeDelete.row_id), this.evidenceBeforeDelete);
     await this.includes('source-check-1', 'report-check-1', this.ids.Support);
-  }
-  async referenceFixture(reference) {
-    await this.setup();
-    const api = await ticketsAdmin();
-    // Allocate the exact example reference through normal naming and creation,
-    // rather than bypassing Tickets' generic-write protection for a fixture.
-    const metadata = await api.call('GET', '/api/table/tickets.ticket:meta', undefined, [200], 'read naming');
-    const { id_pattern } = await metadata.json();
-    await api.call('PUT', '/api/table_def/tickets.ticket/id_pattern', { id_pattern: 'field:title' }, [200], 'configure fixture naming');
-    try {
-      await this.action('create', { title: reference, original: 'Copied reference fixture', kind: 'generic', details: {} }, 'Anjali');
-      assert.equal(this.ticket.row_id, reference);
-    } finally {
-      await api.call('PUT', '/api/table_def/tickets.ticket/id_pattern', { id_pattern }, [200], 'restore naming');
-    }
-  }
-  async assignedTicket() {
-    await this.setup();
-    await this.access(); await this.action('edit', { assigned_to: this.ids.Support }, 'Support');
-    this.assigned = this.ticket;
-  }
-  async assignedWork() {
-    await this.create('report', { format: 'Excel' }, 'A colleague report');
-    await this.action('edit', { assigned_to: this.ids.Bala }, 'Support'); this.unrelated = this.ticket;
-    this.ticket = this.assigned;
   }
   async connections() { this.connectionStatus = (await this.read('session')).connections; }
   async ordinaryInstall() {
