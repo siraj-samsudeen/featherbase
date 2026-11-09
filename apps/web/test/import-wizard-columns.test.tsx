@@ -129,3 +129,29 @@ test('a match key set back to none appends every row again', async ({ admin }) =
   expect(screen.getByTestId('iw-key-0')).toHaveValue('')
   clearSession()
 })
+
+/** Rows of the Stock Table openOnStock made, the named ones retired. */
+async function retiredStock(admin: Parameters<typeof renderApp>[1], retired: string[]) {
+  for (const sku of ['A-1', 'A-2', 'A-3']) {
+    const row = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Iwc Stock', row: { iwc_sku: sku, iwc_qty: 1 } })
+    if (retired.includes(sku)) await admin.post(`/api/table/${encodeURIComponent('Iwc Stock')}/${encodeURIComponent(row.row_id)}:retire`, { reason: 'closed' })
+  }
+}
+
+test('Check with a match key says the one matched row that is retired stays retired', async ({ admin }) => {
+  const user = await openOnStock(admin, 'iwc_sku,iwc_qty\nA-1,5\nA-2,6\n')
+  await retiredStock(admin, ['A-1'])
+  await user.selectOptions(screen.getByTestId('iw-key-0'), 'iwc_sku')
+  await user.click(screen.getByTestId('iw-check'))
+  expect(await screen.findByTestId('iw-check-fields-0', undefined, { timeout: 8000 })).toHaveTextContent('1 matched row is retired and stays retired')
+  clearSession()
+})
+
+test('Check with a match key counts the matched rows that are retired and stay retired', async ({ admin }) => {
+  const user = await openOnStock(admin, 'iwc_sku,iwc_qty\nA-1,5\nA-2,6\n')
+  await retiredStock(admin, ['A-1', 'A-2'])
+  await user.selectOptions(screen.getByTestId('iw-key-0'), 'iwc_sku')
+  await user.click(screen.getByTestId('iw-check'))
+  expect(await screen.findByTestId('iw-check-fields-0', undefined, { timeout: 8000 })).toHaveTextContent('2 matched rows are retired and stay retired')
+  clearSession()
+})
