@@ -435,7 +435,7 @@ export function splitForSend(rows: CoercedRow[], key: string | null) {
   const dupFailed: { sourceIndex: number; message: string }[] = []
   for (const r of rows) {
     const k = r.values[key] == null ? '' : String(r.values[key]).trim()
-    if (k && (counts.get(k) ?? 0) > 1)
+    if (k && counts.get(k)! > 1)
       dupFailed.push({
         sourceIndex: r.sourceIndex,
         message: `key ${k} appears more than once in the file`,
