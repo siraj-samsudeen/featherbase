@@ -277,9 +277,8 @@ function GroupRows({ group, nav, onOpen }: { group: BacklinkGroup; nav: Navigati
 }
 
 /** One value of a group's row: a link by its name and code, else formatted. */
-function CellValue({ col, row, settings, lead = false }: { col: ListColumn | undefined; row: Row; settings: Settings; lead?: boolean }) {
+function CellValue({ col, row, settings, lead = false }: { col: ListColumn; row: Row; settings: Settings; lead?: boolean }) {
   const { t } = useI18n()
-  if (!col) return null
   const value = row[col.column_name]
   if (col.column_name === 'row_id') return <>{String(row.row_id)}</>
   if (isEmpty(value)) return lead ? <>{String(row.row_id)}</> : <span className="text-ink-subtle">—</span>
@@ -330,7 +329,6 @@ function PaneFields({ meta, row, onOpen }: { meta: TableMeta; row: Row; onOpen: 
 
 function FieldValue({ col, value, settings, onOpen }: { col: ColumnDef; value: unknown; settings: Settings; onOpen: (pane: NavPane) => void }) {
   const { t } = useI18n()
-  if (isEmpty(value)) return null
   if (col.column_type === 'Reference' && col.reference_table) return <PaneLink table={linkRowsTable(col) ?? col.reference_table} rowId={String(value)} onOpen={onOpen} />
   if (col.column_type === 'Check') return <>{value ? 'Yes' : 'No'}</>
   if (col.column_type === 'Choice') return <>{choiceLabel(String(value), col.choice_labels, t)}</>

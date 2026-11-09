@@ -1,6 +1,6 @@
 // #1009: a change that looks done but isn't saved must be hard to miss. Every
 // form keeps Save in view while it has unsaved changes, and asks before leaving.
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createBrowserHistory, createRouter } from '@tanstack/react-router'
@@ -74,6 +74,28 @@ test('leaving with unsaved changes asks first: Stay keeps the edit, Leave goes',
   await userEvent.click(listLink())
   await userEvent.click(within(await screen.findByTestId('unsaved-leave-dialog', {}, WAIT)).getByRole('button', { name: 'Leave without saving' }))
   await waitFor(() => expect(screen.queryByTestId('form-view')).not.toBeInTheDocument(), WAIT)
+})
+
+test('a click outside the leave question stays, keeping the edit', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(rowHref(TABLE, 'D-1'), admin)
+  await userEvent.type(await note(), ' new')
+  await userEvent.click(listLink())
+  const dialog = await screen.findByTestId('unsaved-leave-dialog', {}, WAIT)
+  await userEvent.click(dialog.parentElement!)
+  await waitFor(() => expect(screen.queryByTestId('unsaved-leave-dialog')).not.toBeInTheDocument())
+  expect(await note()).toHaveValue('old new')
+})
+
+test('Escape on the leave question stays, keeping the edit', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(rowHref(TABLE, 'D-1'), admin)
+  await userEvent.type(await note(), ' new')
+  await userEvent.click(listLink())
+  const dialog = await screen.findByTestId('unsaved-leave-dialog', {}, WAIT)
+  fireEvent.keyDown(within(dialog).getByRole('button', { name: 'Stay' }), { key: 'Escape' })
+  await waitFor(() => expect(screen.queryByTestId('unsaved-leave-dialog')).not.toBeInTheDocument())
+  expect(await note()).toHaveValue('old new')
 })
 
 test('with nothing unsaved, leaving asks nothing', async ({ admin }) => {

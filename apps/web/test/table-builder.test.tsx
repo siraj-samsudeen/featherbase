@@ -96,6 +96,17 @@ describe('Choose how each new row gets its id', () => {
     expect(screen.getByTestId('dt-naming-preview')).toHaveTextContent('Rows will be numbered 1, 2, 3')
   })
 
+  test('numbering 1, 2, 3 can be chosen again after picking another way', async ({ admin }) => {
+    const user = userEvent.setup()
+    await renderApp('/featherbase/admin/new-table', admin)
+    await screen.findByTestId('table-builder')
+    await user.selectOptions(screen.getByTestId('dt-naming'), 'prompt')
+    expect(screen.getByTestId('dt-naming')).toHaveValue('prompt')
+    await user.selectOptions(screen.getByTestId('dt-naming'), 'integer')
+    expect(screen.getByTestId('dt-naming')).toHaveValue('integer')
+    expect(screen.getByTestId('dt-naming-preview')).toHaveTextContent('Rows will be numbered 1, 2, 3')
+  })
+
   test('a series prefix shows the first ids before anything is saved', async ({ admin }) => {
     const user = userEvent.setup()
     await renderApp('/featherbase/admin/new-table', admin)

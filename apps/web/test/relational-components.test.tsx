@@ -1,10 +1,11 @@
 // The presentational pieces relational navigation composes (#910, D6): plain
 // props and callbacks, no Table metadata, no server.
-import { render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { Gallery } from '../src/gallery/Gallery'
+import { ChipsDemo, DrillPaneDemo, PathBarDemo, TreeDemo } from '../src/gallery/RelationalExamples'
 import { DrillPane, FieldGrid, GroupChip, LinkChip, PanePlace, PaneSection, PathBar, RecentPaths, resolvePanePlace, SplitWithPane, TreeOutline, ViewToggle, type TreeNode } from '@featherbase/shop-floor'
 
 describe('ViewToggle', () => {
@@ -135,6 +136,18 @@ describe('FieldGrid', () => {
     expect(value.className).not.toMatch(/line-clamp-3/)
     expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true')
   })
+  test('a long value that fits its three lines offers no Show more', () => {
+    const sizes = ['clientHeight', 'scrollHeight'].map((name) => [name, Object.getOwnPropertyDescriptor(Element.prototype, name)!] as const)
+    // Laid out: the value takes 60px and needs no more.
+    for (const [name] of sizes) Object.defineProperty(Element.prototype, name, { configurable: true, get: () => 60 })
+    try {
+      render(<FieldGrid groups={groups} />)
+      expect(screen.getByText(/Keep upright/)).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Show more' })).not.toBeInTheDocument()
+    } finally {
+      for (const [name, descriptor] of sizes) Object.defineProperty(Element.prototype, name, descriptor)
+    }
+  })
 })
 
 describe('DrillPane', () => {
@@ -181,6 +194,14 @@ describe('DrillPane', () => {
   test('takes focus when it opens, so Escape closes it at once', () => {
     pane()
     expect(screen.getByRole('complementary', { name: 'North bay · B-104' })).toHaveFocus()
+  })
+
+  test('a key other than Escape inside the pane leaves it open', async () => {
+    const user = userEvent.setup()
+    const onClose = pane()
+    await user.click(screen.getByText('Aisle 4'))
+    await user.keyboard('{Enter}')
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   test('Escape inside the pane closes it', async () => {
@@ -290,6 +311,17 @@ describe('SplitWithPane', () => {
     expect(screen.getByRole('button', { name: 'North bay' })).toHaveFocus()
   })
 
+  test('closing the pane leaves focus where the person has since moved it', () => {
+    const content = <div><button type="button">Aisle 4</button><button type="button">North bay</button></div>
+    const drill = <DrillPane kind="Bin" title="North bay" place="right" onClose={() => {}}><p>Fields</p></DrillPane>
+    const { rerender } = render(<SplitWithPane place="right" pane={null}>{content}</SplitWithPane>)
+    screen.getByRole('button', { name: 'North bay' }).focus()
+    rerender(<SplitWithPane place="right" pane={drill}>{content}</SplitWithPane>)
+    screen.getByRole('button', { name: 'Aisle 4' }).focus()
+    rerender(<SplitWithPane place="right" pane={null}>{content}</SplitWithPane>)
+    expect(screen.getByRole('button', { name: 'Aisle 4' })).toHaveFocus()
+  })
+
   test('says where its pane is, so the page around it can make room', () => {
     render(<SplitWithPane place="right" pane={<p>Pane</p>}><p>List</p></SplitWithPane>)
     expect(screen.getByTestId('split-with-pane')).toHaveAttribute('data-pane', 'right')
@@ -396,6 +428,24 @@ describe('PathBar', () => {
       expect(onStep).toHaveBeenCalledWith(1)
     })
 
+    test('a two-word step longer than the whole bar keeps only its first word', () => {
+      widths = [500]
+      render(<PathBar steps={[{ key: 'a', label: 'Vellayani renewal' }]} current={0}
+        onStep={() => {}} onBack={() => {}} onForward={() => {}} onCopyLink={() => {}} />)
+      const step = within(screen.getByRole('navigation', { name: 'Path' })).getByRole('button')
+      expect(step).toHaveTextContent(/^Vellayani…$/)
+      expect(step).toHaveAccessibleName('Vellayani renewal')
+    })
+
+    test('Escape closes the "…" menu', async () => {
+      const user = userEvent.setup()
+      bar(2)
+      await user.click(screen.getByRole('button', { name: 'Earlier steps' }))
+      await user.keyboard('{Escape}')
+      expect(screen.queryByRole('menu', { name: 'Earlier steps' })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Earlier steps' })).toHaveAttribute('aria-expanded', 'false')
+    })
+
     test('a step longer than the whole bar is shortened at a word, its full name kept', () => {
       widths = [500]
       render(<PathBar steps={[{ key: 'a', label: 'Vellayani ground floor storage lease renewal' }]} current={0}
@@ -415,6 +465,24 @@ describe('PathBar', () => {
     expect(whole.className).toMatch(/(^|\s)@container(\s|$)/)
     expect(whole.className).toMatch(/\bflex-wrap\b/)
     expect(line.className).toMatch(/@max-5xl:basis-full/)
+  })
+
+  test('Copied goes away after two seconds', () => {
+    vi.useFakeTimers()
+    try {
+      bar(2)
+      fireEvent.click(screen.getByRole('button', { name: 'Copy link' }))
+      expect(screen.getByRole('status')).toHaveTextContent('Copied')
+      act(() => { vi.advanceTimersByTime(2000) })
+      expect(screen.getByRole('status')).toHaveTextContent('')
+    } finally { vi.useRealTimers() }
+  })
+
+  test('a path with no steps yet offers neither Back nor Forward', () => {
+    render(<PathBar steps={[]} current={0} onStep={() => {}} onBack={() => {}} onForward={() => {}} onCopyLink={() => {}} />)
+    expect(screen.getByRole('button', { name: 'Back' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Forward' })).toBeDisabled()
+    expect(within(screen.getByRole('navigation', { name: 'Path' })).queryAllByRole('button')).toEqual([])
   })
 
   test('a path that fits says nothing about earlier steps', () => {
@@ -448,6 +516,26 @@ describe('RecentPaths', () => {
     await user.click(screen.getByRole('menuitem', { name: 'Path 2' }))
     expect(onPick).toHaveBeenCalledWith('p1')
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+})
+
+describe('RecentPaths closing', () => {
+  const paths = [{ key: 'p1', label: 'Bins › Aisle 4' }]
+
+  test('a click outside the menu closes it', async () => {
+    const user = userEvent.setup()
+    render(<><p>Elsewhere</p><RecentPaths paths={paths} onPick={() => {}} /></>)
+    await user.click(screen.getByRole('button', { name: 'Recent paths' }))
+    await user.click(screen.getByText('Elsewhere'))
+    expect(screen.queryByRole('menu', { name: 'Recent paths' })).not.toBeInTheDocument()
+  })
+
+  test('Escape closes the menu', async () => {
+    const user = userEvent.setup()
+    render(<RecentPaths paths={paths} onPick={() => {}} />)
+    await user.click(screen.getByRole('button', { name: 'Recent paths' }))
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('menu', { name: 'Recent paths' })).not.toBeInTheDocument()
   })
 })
 
@@ -553,6 +641,53 @@ describe('TreeOutline', () => {
     expect(onToggle).toHaveBeenCalledWith('shelves')
   })
 
+  test('Home moves to the first line', async () => {
+    const user = userEvent.setup()
+    render(<Tree />)
+    item('Shelf 40').focus()
+    await user.keyboard('{Home}')
+    expect(item('Aisle 4')).toHaveFocus()
+  })
+
+  test('End moves to the last line', async () => {
+    const user = userEvent.setup()
+    render(<Tree open={['shelves']} />)
+    item('Aisle 4').focus()
+    await user.keyboard('{End}')
+    expect(item('Middle shelf · S-2')).toHaveFocus()
+  })
+
+  test('Down on the last line stays there', async () => {
+    const user = userEvent.setup()
+    render(<Tree />)
+    item('Shelf 40').focus()
+    await user.keyboard('{ArrowDown}')
+    expect(item('Shelf 40')).toHaveFocus()
+  })
+
+  test('Right on a line with nothing under it leaves the key to the page', () => {
+    render(<Tree />)
+    // fireEvent answers false when a handler took the key (preventDefault).
+    expect(fireEvent.keyDown(item('Aisle 4'), { key: 'ArrowRight' })).toBe(true)
+    expect(item('Aisle 4')).not.toHaveAttribute('aria-expanded')
+  })
+
+  test('a key the tree does not use is left to the page', () => {
+    render(<Tree />)
+    expect(fireEvent.keyDown(item('Aisle 4'), { key: 'a' })).toBe(true)
+  })
+
+  test("a line's arrow opens it without choosing it", async () => {
+    const onToggle = vi.fn()
+    const onActivate = vi.fn()
+    const user = userEvent.setup()
+    render(<Tree onToggle={onToggle} onActivate={onActivate} />)
+    await user.click(item('Shelf 40').querySelector('button')!)
+    expect(onToggle).toHaveBeenCalledWith('shelves')
+    expect(onActivate).not.toHaveBeenCalled()
+    expect(item('Shelf 40')).toHaveAttribute('aria-expanded', 'true')
+  })
+
   test('Enter activates the focused line', async () => {
     const onActivate = vi.fn()
     const user = userEvent.setup()
@@ -615,6 +750,142 @@ describe('UI Lab', () => {
   test('section headings are sentence case, never all capitals', () => {
     render(<Gallery />)
     for (const heading of screen.getAllByRole('heading', { level: 2 })) expect(heading.className).not.toMatch(/\buppercase\b/)
+  })
+})
+
+describe('UI Lab drill pane example', () => {
+  test("Filter on the pane's Aisle says what the list behind would be filtered by", async () => {
+    const user = userEvent.setup()
+    render(<DrillPaneDemo />)
+    const pane = screen.getByRole('complementary', { name: 'North bay · B-104' })
+    await user.click(within(pane).getAllByRole('button', { name: 'Filter' })[0])
+    expect(pane).toHaveTextContent('The list behind would now be filtered by Aisle: Aisle 4.')
+  })
+
+  test('opening or going to a linked row stays on the example', async () => {
+    const user = userEvent.setup()
+    render(<DrillPaneDemo />)
+    const pane = screen.getByRole('complementary', { name: 'North bay · B-104' })
+    for (const name of ['Aisle 4 · A-04', 'Riverside depot']) await user.click(within(pane).getByRole('button', { name }))
+    for (const goThere of within(pane).getAllByRole('button', { name: 'Go there' })) await user.click(goThere)
+    expect(screen.getByRole('complementary', { name: 'North bay · B-104' })).toBeInTheDocument()
+  })
+
+  test.each([
+    ['Fields', 'Temperature zone'],
+    ['Stock count 1,240', 'Stock counts would list here, 20 at a time.'],
+  ])('choosing the %s group shows its rows', async (group, shows) => {
+    const user = userEvent.setup()
+    render(<DrillPaneDemo />)
+    await user.click(screen.getByRole('button', { name: group }))
+    expect(screen.getByRole('button', { name: group })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText(shows)).toBeInTheDocument()
+  })
+
+  test('the Shelf group comes back after another group', async () => {
+    const user = userEvent.setup()
+    render(<DrillPaneDemo />)
+    await user.click(screen.getByRole('button', { name: 'Fields' }))
+    await user.click(screen.getByRole('button', { name: 'Shelf 3' }))
+    expect(screen.getByRole('heading', { name: 'Shelf · 3 rows' })).toBeInTheDocument()
+  })
+
+  test('Compact lists each shelf by name and load', async () => {
+    const user = userEvent.setup()
+    render(<DrillPaneDemo />)
+    await user.click(screen.getByRole('button', { name: 'Compact' }))
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(screen.getByText('Top shelf · S-1').closest('li')).toHaveTextContent('Light cartons')
+  })
+
+  test('a closed pane can be opened again', async () => {
+    const user = userEvent.setup()
+    render(<DrillPaneDemo />)
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('complementary')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Open the pane again' }))
+    expect(screen.getByRole('complementary', { name: 'North bay · B-104' })).toBeInTheDocument()
+  })
+})
+
+describe('UI Lab path bar example', () => {
+  const current = () => screen.getByRole('navigation', { name: 'Path' }).querySelector('[aria-current="step"]')
+
+  test('Back moves to the step before', async () => {
+    const user = userEvent.setup()
+    render(<PathBarDemo />)
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    expect(current()).toHaveTextContent('North bay · B-104')
+  })
+
+  test('Forward moves to the step after', async () => {
+    const user = userEvent.setup()
+    render(<PathBarDemo />)
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    await user.click(screen.getByRole('button', { name: 'Forward' }))
+    expect(current()).toHaveTextContent('Top shelf · S-1')
+  })
+
+  test('Copy link says Copied', async () => {
+    const user = userEvent.setup()
+    render(<PathBarDemo />)
+    await user.click(screen.getByRole('button', { name: 'Copy link' }))
+    expect(screen.getByRole('status')).toHaveTextContent('Copied')
+  })
+})
+
+describe('UI Lab chips example', () => {
+  test.each([
+    ['Aisle 4 · A-04', 0, 'Opened Aisle 4'],
+    ['Go there', 0, 'Went to Aisle 4'],
+    ['Filter', 0, 'Filtered by Aisle 4'],
+    ['Riverside depot', 0, 'Opened Riverside depot'],
+    ['Go there', 1, 'Went to Riverside depot'],
+  ])('pressing %s (number %i) says what it would do', async (name, index, said) => {
+    const user = userEvent.setup()
+    render(<ChipsDemo />)
+    await user.click(screen.getAllByRole('button', { name })[index])
+    expect(screen.getByRole('status')).toHaveTextContent(said)
+  })
+
+  test('choosing a group marks it pressed', async () => {
+    const user = userEvent.setup()
+    render(<ChipsDemo />)
+    await user.click(screen.getByRole('button', { name: 'Spare shelf 0' }))
+    expect(screen.getByRole('button', { name: 'Spare shelf 0' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Shelf 3' })).toHaveAttribute('aria-pressed', 'false')
+  })
+})
+
+describe('UI Lab tree example', () => {
+  const item = (name: string) => screen.getByRole('treeitem', { name })
+
+  test('a line closes and opens again', async () => {
+    const user = userEvent.setup()
+    render(<TreeDemo />)
+    item('Top shelf · S-1').focus()
+    await user.keyboard('{ArrowLeft}')
+    expect(item('Top shelf · S-1')).toHaveAttribute('aria-expanded', 'false')
+    await user.keyboard('{ArrowRight}')
+    expect(item('Top shelf · S-1')).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  test('show all lists every stock count', async () => {
+    const user = userEvent.setup()
+    render(<TreeDemo />)
+    item('Stock count 8').focus()
+    await user.keyboard('{ArrowRight}')
+    await user.click(screen.getByRole('button', { name: 'show all 8' }))
+    expect(screen.getAllByRole('treeitem', { name: /^Count / })).toHaveLength(8)
+  })
+
+  test('Focus here on another line brings the choice back to the bin', async () => {
+    const user = userEvent.setup()
+    render(<TreeDemo />)
+    await user.click(screen.getByText('Riverside depot'))
+    expect(item('Riverside depot')).toHaveAttribute('aria-selected', 'true')
+    await user.click(screen.getByRole('button', { name: 'Focus here' }))
+    expect(item('North bay · B-104')).toHaveAttribute('aria-selected', 'true')
   })
 })
 

@@ -68,11 +68,8 @@ export function RowMap({ table, name }: { table: string; name: string }) {
       api.get<Row>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`),
   })
 
-  if (meta.isLoading || doc.isLoading)
-    return <p className="text-sm text-ink-subtle">Loading…</p>
-  if (meta.isError || doc.isError)
-    return <p className="text-sm text-negative">Cannot load {table} {name}</p>
-
+  // The row page draws this tab only once it holds the same two queries
+  // loaded, and stops drawing it when either fails.
   const m = meta.data!
   const d = doc.data!
   const centreTitle = centre.state === 'read' ? centre.title : rowNameText(centre)

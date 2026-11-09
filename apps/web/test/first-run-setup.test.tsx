@@ -175,3 +175,20 @@ test('a slow health answer never pulls the Administrator off a page they moved o
   expect(screen.queryByTestId('welcome-setup')).not.toBeInTheDocument()
   expect(screen.queryByTestId('first-run-setup')).not.toBeInTheDocument()
 })
+
+test('setup progress the network could not load says so, and Try again loads it', async ({ admin }) => {
+  let down = true
+  const real = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url
+    if (down && url.includes('/api/instance-health')) throw new TypeError('Failed to fetch')
+    return real(input, init)
+  })
+  await renderApp('/featherbase/admin/setup', admin)
+  const setup = await screen.findByTestId('welcome-setup')
+  expect(await within(setup).findByText(/Setup progress could not be loaded/)).toBeInTheDocument()
+  down = false
+  await userEvent.click(within(setup).getByRole('button', { name: 'Try again' }))
+  expect(await within(setup).findByRole('link', { name: 'Set up administrators' })).toBeInTheDocument()
+  expect(within(setup).queryByText(/Setup progress could not be loaded/)).not.toBeInTheDocument()
+})

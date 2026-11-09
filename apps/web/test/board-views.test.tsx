@@ -210,6 +210,15 @@ test('Timeline: each row is a bar from its first date to its second; a row missi
   expect(screen.getByTestId('gantt-bar-reversed')).toHaveAttribute('data-end', '2026-03-04')
 })
 
+test('Timeline: moving the pointer over the chart without holding a bar end changes nothing', async ({ admin }) => {
+  await seedSchedule(admin)
+  await admin.post('/api/save_row', { table: SCHED, row: { row_id: 't1', title: 'Design', start_date: '2026-03-02', end_date: '2026-03-05' } })
+  await renderApp(`/featherbase/admin/table/${tableSlug(SCHED)}/view/gantt`, admin)
+  const bar = await screen.findByTestId('gantt-bar-t1')
+  pointer(screen.getByTestId('gantt-view'), 'pointermove', 400)
+  expect(bar).toHaveAttribute('data-end', '2026-03-05')
+})
+
 test('Timeline: dragging a bar\'s end three days later moves the row\'s second date, never before the first', async ({ admin }) => {
   await seedSchedule(admin)
   await admin.post('/api/save_row', { table: SCHED, row: { row_id: 't1', title: 'Design', start_date: '2026-03-02', end_date: '2026-03-05' } })

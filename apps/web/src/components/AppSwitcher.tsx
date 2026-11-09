@@ -56,7 +56,6 @@ export function AppSwitcher({ app, compact = false }: { app?: { name: string; ti
       disabled={busy}
       onChange={(event) => {
         const href = event.target.value
-        if (href === current) return
         if (app && href === FEATHERBASE_ADMIN_DESTINATION.href) void open()
         else window.location.assign(href)
       }}

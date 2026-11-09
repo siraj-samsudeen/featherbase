@@ -95,9 +95,10 @@ function nameOf(context: string, brand: Brand | undefined): string {
 const DASH = 'dash'
 
 /** #501 item 3: on the Admin side, a page of the person's own (the account
- *  page) is named for where they belong — the Admin if they can use it, else
- *  Feather Dash if they can open it, else the platform. Undefined until
- *  whoami answers.
+ *  page) is named for where they belong — Feather Dash if they can open it,
+ *  else the platform. Undefined until whoami answers. Someone who can use the
+ *  Admin reads their own pages in the Admin's frame (#1006, AccountLayout),
+ *  never under this bar.
  *
  *  Other installed apps never name the page: one every person can open
  *  (Tasker grants All) is no one's in particular. Since #659 a reader of
@@ -106,7 +107,6 @@ const DASH = 'dash'
  *  platform's name. */
 function personalName(caps: Capabilities | undefined, apps: OpenableApp[] = [], installed: string[] = []): string | undefined {
   if (!caps) return undefined
-  if (caps.admin) return ADMIN_NAME
   // #671: once an app is installed under Feather Dash's name, its readers
   // belong to it; until then, the report role does (design D8).
   if (installed.includes(DASH)) {

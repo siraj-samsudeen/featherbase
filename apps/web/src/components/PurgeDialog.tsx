@@ -90,7 +90,6 @@ export function PurgeDialog({ table, ids, runId, onClose, onDone }: {
     && reason.trim().length > 0 && typed.trim() === CONFIRM_WORD && !busy
 
   async function confirm() {
-    if (!ready) return
     setBusy(true)
     setError(null)
     try {

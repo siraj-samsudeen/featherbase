@@ -1,8 +1,9 @@
 // #871: a System Manager renames a custom Table from its list. Its rows come
 // along, and the old address says where the Table went.
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
+import { holdResponses } from './held-requests'
 
 type Admin = Parameters<typeof renderApp>[1]
 const OLD = 'Twr SAP Plant'
@@ -81,4 +82,33 @@ test('a platform Table offers no Rename', async ({ admin }) => {
   await renderApp('/featherbase/admin/table/comment', admin)
   await screen.findByTestId('list-view', undefined, { timeout: 10_000 })
   expect(screen.queryByTestId('rename-table')).not.toBeInTheDocument()
+})
+
+async function openRename(admin: Admin) {
+  await seed(admin)
+  await renderApp('/featherbase/admin/table/twr-sap-plant', admin)
+  await userEvent.click(await screen.findByRole('button', { name: 'Table administration' }, { timeout: 10_000 }))
+  await userEvent.click(await screen.findByTestId('rename-table', undefined, { timeout: 10_000 }))
+  return screen.findByTestId('rename-table-dialog')
+}
+
+test('Cancel closes the Rename dialog, renaming nothing', async ({ admin }) => {
+  const dialog = await openRename(admin)
+  await userEvent.click(within(dialog).getByTestId('rename-table-cancel'))
+  expect(screen.queryByTestId('rename-table-dialog')).not.toBeInTheDocument()
+  expect(screen.getByRole('heading', { level: 1, name: OLD })).toBeInTheDocument()
+})
+
+test('a click outside the Rename dialog while it renames keeps it open', async ({ admin }) => {
+  const dialog = await openRename(admin)
+  const input = within(dialog).getByTestId('rename-table-input')
+  await userEvent.clear(input)
+  await userEvent.type(input, NEW)
+  const renaming = holdResponses('/rename')
+  await userEvent.click(within(dialog).getByTestId('rename-table-confirm'))
+  await renaming.asked
+  await userEvent.click(dialog.parentElement!)
+  expect(screen.getByTestId('rename-table-dialog')).toBeInTheDocument()
+  await act(async () => { renaming.release() })
+  expect(await screen.findByRole('heading', { level: 1, name: NEW }, { timeout: 10_000 })).toBeInTheDocument()
 })

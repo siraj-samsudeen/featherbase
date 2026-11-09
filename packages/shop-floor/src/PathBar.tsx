@@ -97,8 +97,8 @@ export function PathBar({ steps, current, onStep, onBack, onForward, onCopyLink,
       while (to < steps.length - 1 && total(from, to + 1) <= space) to++
       let short: string | undefined
       if (total(at, at) > space) {
-        const text = ruler.querySelector<HTMLElement>('[data-measure-text]')
-        const textWidth = (t: string) => { if (!text) return 0; text.textContent = t; return width(text) }
+        const text = ruler.querySelector<HTMLElement>('[data-measure-text]')!
+        const textWidth = (t: string) => { text.textContent = t; return width(text) }
         short = fitWords(steps[at].label, space - (at > 0 ? more : 0) - (at < steps.length - 1 ? more : 0) - 40, textWidth)
       }
       setShown((was) => (was.from === from && was.to === to && was.short === short ? was : { from, to, short }))

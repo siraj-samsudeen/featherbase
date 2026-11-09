@@ -1,6 +1,6 @@
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { listResource } from './api'
-import { useConnections, type Connection } from './connections'
+import type { Connection } from './connections'
 import { dataColumns } from './list-view-columns'
 import { linkRowsTable, metaQuery, type TableMeta } from './meta'
 import { rowTitleQuery } from './row-titles'
@@ -82,11 +82,6 @@ export function backlinkGroups(
     count: c.count,
     connection: c,
   }))
-}
-
-export function useBacklinkGroups(table: string, row: string, enabled = true) {
-  const q = useConnections(table, row, enabled)
-  return { ...q, groups: q.data ? backlinkGroups(q.data.connections) : undefined }
 }
 
 /** How many rows a tree group shows before "show all". */

@@ -67,6 +67,22 @@ describe('recordAction / recentActions', () => {
     expect(recentActions('someone-else', 10)).toEqual([])
   })
 
+  it('one destination the server lists twice is merged, its visits once each in time order', () => {
+    replaceServerEntries(USER, [
+      { ...row('TWICE'), visits: [NOW + 3, NOW + 1] },
+      { ...row('TWICE'), visits: [NOW + 2, NOW + 1] },
+    ])
+    expect(recentActions(USER, 10).filter((e) => e.label === 'TWICE')).toEqual([{ ...row('TWICE'), visits: [NOW + 1, NOW + 2, NOW + 3] }])
+  })
+
+  it('a server history longer than the buffer keeps its most recent destinations', () => {
+    replaceServerEntries(USER, Array.from({ length: 90 }, (_, i) => ({ ...row(`SRV-${i}`), visits: [NOW + i] })))
+    const recents = recentActions(USER, 100)
+    expect(recents).toHaveLength(80)
+    expect(recents[0].label).toBe('SRV-89')
+    expect(recents.some((r) => r.label === 'SRV-9')).toBe(false)
+  })
+
   it('caps the buffer by dropping the least-recent entries', () => {
     for (let i = 0; i < 90; i++) recordAction(USER, row(`CUST-${i}`), NOW - (90 - i) * 1000)
     const recents = recentActions(USER, 100)

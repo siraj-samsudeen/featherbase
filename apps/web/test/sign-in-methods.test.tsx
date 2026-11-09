@@ -210,6 +210,17 @@ test('a linked Google account reads as its address, when and how it was linked, 
   confirm.mockRestore()
 })
 
+test('a link the person made themselves names them', async ({ admin, createUser }) => {
+  const { sql } = await import('server/src/db')
+  const tl = await createUser({ email: 'tl.self@example.com', fullName: 'Tara Self' })
+  const linked = await inviteGoogleRaw(tl.user!, 'tl.self@gmail.com')
+  await sql`update sign_in_identity set subject = 'g-self', email = 'tl.self@gmail.com', pending_email = null,
+    linked_by = 'self', linked_at = '2026-11-03T06:41:00Z', last_used_at = null where id = ${linked}`
+  await renderApp(rowHref('Person', tl.user!), admin)
+  const row = await screen.findByTestId(`user-method-${linked}`)
+  await waitFor(() => expect(within(row).getByTestId('identity-linked')).toHaveTextContent('linked 03-Nov-2026 12:11 IST by Tara Self'))
+})
+
 test('a link an administrator made names them, and an unused one says so', async ({ admin, createUser }) => {
   const { sql } = await import('server/src/db')
   const tl = await createUser({ email: 'tl.byadmin@example.com' })

@@ -17,10 +17,11 @@ import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
-import { afterAll, afterEach, beforeAll, describe } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, vi } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { rowHref } from 'shared'
 import { scenarioFor } from 'server/test/scenario'
+import { sandboxRequest } from 'server/test/pg-test-shared'
 import { setSession } from '../../src/lib/api'
 import { createPrototypeRouter } from '../../src/gallery/PrototypeApp'
 import { PrototypeLibrary } from '../../src/gallery/PrototypeLibrary'
@@ -321,3 +322,92 @@ async function realForm(admin: TestClient) {
   await screen.findByRole('textbox', { name: 'Region' }, WAIT)
 }
 afterEach(() => { real?.unmount(); real = null })
+
+// The lab's own page entry (src/gallery/prototype-main.tsx): it mounts itself
+// on #root once it has made sure it is talking to the synthetic server.
+describe('the UI Lab page entry', () => {
+  let copy = 0
+  const MAIN = '../../src/gallery/prototype-main'
+  const startEntry = () => import(/* @vite-ignore */ `${MAIN}?entry=${++copy}`)
+  function blankPage(path = '/prototype.html') {
+    unload()
+    window.history.replaceState(null, '', path)
+    document.body.innerHTML = '<div id="root"></div>'
+  }
+
+  test('served by the synthetic server, it opens the library', async () => {
+    useSyntheticServer()
+    blankPage()
+    await act(startEntry)
+    expect(await screen.findByRole('heading', { name: 'Build with what exists' }, WAIT)).toBeInTheDocument()
+  })
+
+  test('answered by a normal server, it refuses to start', async () => {
+    blankPage()
+    bridged = globalThis.fetch
+    // The handshake reaches the real in-process server, which is not the lab.
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => sandboxRequest(String(input), init)) as typeof fetch
+    await expect(startEntry()).rejects.toThrow('Use the isolated prototype server; refusing to initialize against a normal API')
+    expect(document.getElementById('root')).toBeEmptyDOMElement()
+  })
+
+  test('outside development, it refuses to start', async () => {
+    vi.stubEnv('DEV', false)
+    try {
+      blankPage()
+      await expect(startEntry()).rejects.toThrow('The synthetic lab is development-only')
+    } finally { vi.unstubAllEnvs() }
+  })
+})
+
+describe('the UI Lab scenario picker', () => {
+  test('a scenario the lab server refuses to switch to is not shown as chosen', async () => {
+    await open()
+    await onScreen().clickButton('Native Table list')
+    const lab = globalThis.fetch
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => init?.method === 'POST' && String(input).endsWith('/__lab/scenario')
+      ? Promise.resolve(new Response('{}', { status: 503 })) : lab(input, init)) as typeof fetch
+    // The picker drops the refusal (`void reset(...)`); catch it here instead of failing the run.
+    const vitest = process.listeners('unhandledRejection')
+    process.removeAllListeners('unhandledRejection')
+    const refused = new Promise<unknown>((resolve) => process.once('unhandledRejection', resolve))
+    try {
+      await onScreen().selectOption('Synthetic scenario', 'empty')
+      expect(await refused).toEqual(new Error('Cannot reset synthetic scenario'))
+      expect(screen.getByRole('combobox', { name: 'Synthetic scenario' })).toHaveValue('populated')
+    } finally {
+      for (const listener of vitest) process.on('unhandledRejection', listener)
+    }
+  })
+})
+
+describe('the UI Lab new row page', () => {
+  test('opens an empty form for the Table', async () => {
+    await open()
+    await load('/featherbase/admin/table/lab-project/new')
+    expect(await screen.findByRole('textbox', { name: 'Name' }, WAIT)).toHaveValue('')
+  })
+})
+
+// The lab's pages keep no walk of their own (no path in the address).
+describe('the UI Lab row page', () => {
+  test('steps to the next record of the list it was opened from', async () => {
+    await open()
+    await load('/featherbase/admin/table/lab-project')
+    await waitFor(() => expect(rowLink('North workshop')).toBeInTheDocument(), WAIT)
+    await click(rowLink('North workshop'))
+    await screen.findByRole('textbox', { name: 'Region' }, WAIT)
+    await userEvent.click(await screen.findByRole('button', { name: 'Next record' }, WAIT))
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Region' })).toHaveValue('South'), WAIT)
+  })
+
+  test("a collection on its map opens no pane, since the lab keeps no walk", async () => {
+    await open()
+    await rowForm()
+    await userEvent.click(screen.getByRole('tab', { name: 'Map' }))
+    const [group] = await screen.findAllByTestId('map-group-Lab Task', {}, WAIT)
+    await userEvent.click(group)
+    await new Promise((r) => setTimeout(r, 300))
+    expect(screen.queryByRole('complementary', { name: /North workshop/ })).not.toBeInTheDocument()
+  }, 60_000)
+})

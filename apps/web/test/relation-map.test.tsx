@@ -254,3 +254,35 @@ test('a link to a row of any Table shows the row it points at (#881)', async ({ 
   await openMap(admin, 'Rm Decision', 'dec-1')
   expect(await screen.findByTestId('map-forward-Rm Customer')).toHaveTextContent('About · Rm Customer')
 })
+
+test('a linked row in the narrow map shows it in the drill pane', async ({ admin }) => {
+  await seed(admin)
+  await openMap(admin, 'Rm Order', 'ord-1')
+  const narrow = within(await screen.findByTestId('map-narrow'))
+  fireEvent.click(await narrow.findByTestId('map-narrow-forward-Rm Customer'))
+  expect(await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })).toBeInTheDocument()
+})
+
+test('a key other than Enter or Space on a map box opens nothing', async ({ admin }) => {
+  await seed(admin)
+  await openMap(admin, 'Rm Order', 'ord-1')
+  const box = await screen.findByTestId('map-forward-Rm Customer')
+  expect(fireEvent.keyDown(box, { key: 'a' })).toBe(true)
+  await new Promise((r) => setTimeout(r, 300))
+  expect(screen.queryByRole('complementary', { name: 'Asha Stores · cust-1' })).not.toBeInTheDocument()
+})
+
+test("a link's long name is cut to two lines on its map box, ending in …", async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/table_def', {
+    name: 'Rm Claim', id_pattern: 'prompt',
+    columns: [{ column_name: 'customer', column_type: 'Reference', reference_table: 'Rm Customer',
+      label: 'The customer who first raised this claim with the regional office last year' }],
+  })
+  await admin.post('/api/save_row', { table: 'Rm Claim', row: { row_id: 'claim-1', customer: 'cust-1' } })
+  await openMap(admin, 'Rm Claim', 'claim-1')
+  const box = await screen.findByTestId('map-forward-Rm Customer')
+  // Its full name stays the box's tooltip; the box draws two lines.
+  const drawn = [...box.querySelectorAll('tspan')].map((t) => t.textContent)
+  expect(drawn).toEqual(['The customer who first raised', 'this claim with the regional…'])
+})

@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { PathBar, RecentPaths } from '@featherbase/shop-floor'
 import { encodePath, type NavPath } from '../lib/nav-path'
-import { useNavigation } from '../lib/navigation'
+import { usePageNavigation } from '../lib/navigation'
 import { useNavigationSettings } from '../lib/nav-settings'
 import { useStepLabels } from '../lib/step-labels'
 
@@ -11,17 +11,17 @@ import { useStepLabels } from '../lib/step-labels'
 // offers the person's last ten walks, remembered in their settings.
 
 export function NavPathBar() {
-  const nav = useNavigation()
+  // Drawn only by the list and row pages, inside their walk's provider.
+  const nav = usePageNavigation()!
   const settings = useNavigationSettings()
-  const path = nav?.path
-  const key = path ? encodePath(path) : ''
-  const labels = useStepLabels(path?.steps ?? [])
+  const path = nav.path
+  const key = encodePath(path)
+  const labels = useStepLabels(path.steps)
   // Every walk the person takes is remembered as they go.
   useEffect(() => {
-    if (path && nav?.addressed && settings.ready) settings.remember(path)
+    if (settings.ready) settings.remember(path)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, settings.ready])
-  if (!nav || !path) return null
   // #1013: one step is no path, and would only repeat the page's own heading.
   // Only the way back to remembered walks stays, so they survive signing in.
   if (path.steps.length < 2) {

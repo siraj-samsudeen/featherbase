@@ -117,9 +117,9 @@ const rowAddress = {
 
 const resolvedTable = createContext<TableMeta | null>(null)
 
+/** For the pages tablePage() wraps: the metadata its boundary resolved. */
 function useTableAddress() {
-  const tableMeta = useContext(resolvedTable)
-  if (!tableMeta) throw new Error('Table pages must render inside their metadata boundary')
+  const tableMeta = useContext(resolvedTable)!
   return { table: tableMeta.name, tableMeta }
 }
 

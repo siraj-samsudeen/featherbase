@@ -94,6 +94,15 @@ test('#628 a Person\'s row links to what they can see', async ({ admin, createUs
   expect(link).toHaveAttribute('href', pageOf(person.user!))
 })
 
+test('#628 an app that gives a person no places says so', async ({ admin, createUser }) => {
+  expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/place-roster')])).toEqual([])
+  await admin.post('/api/install_app', { name: 'placeroster' })
+  const me = await createUser({ roles: [] })
+  await renderApp(pageOf(me.user!), me)
+  expect(await screen.findByTestId('access-places', {}, WAIT)).toHaveTextContent('Place roster proof gives you no places.')
+  expect(screen.queryByTestId('access-place')).not.toBeInTheDocument()
+})
+
 test('#628 the places an app gives a person show with their reasons and days', async ({ admin, createUser }) => {
   expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/place-roster')])).toEqual([])
   await admin.post('/api/install_app', { name: 'placeroster' })

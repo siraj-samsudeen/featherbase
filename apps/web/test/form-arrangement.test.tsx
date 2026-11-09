@@ -224,3 +224,18 @@ test('a read-only row shows each value by its type, folds its empty fields and p
 
   expect(screen.getByTestId('bookkeeping-line')).toHaveTextContent(/Created On .* · Updated By kiosk/)
 })
+
+test("a connected row whose source keeps its last change as words, not a time, shows no Updated day", async ({ admin }) => {
+  invalidateSources()
+  await admin.post('/api/table/Data%20Source', { row_id: 'web-arrange-words', engine: 'postgres', url_env: ENV, default_schema: 'web_arrange', access: 'read_only' })
+  // A binding written by hand, whose "last changed" column holds words.
+  await admin.post('/api/table_def', {
+    name: 'Arrange Worded Parcel', data_source: 'web-arrange-words', external_schema: 'web_arrange', external_table: 'parcel',
+    external_pk: 'id', external_modified: 'instructions', columns: [{ column_name: 'label', column_type: 'Data', label: 'Label' }],
+  })
+  expect(await admin.get('/api/table/Arrange%20Worded%20Parcel/7')).toMatchObject({ updated_at: 'Keep upright' })
+  await renderApp('/featherbase/admin/table/arrange-worded-parcel/row/7', admin)
+  await waitFor(() => expect(labels()).toEqual(['Label']), { timeout: 8000 })
+  expect(screen.queryByText(/^Updated/)).not.toBeInTheDocument()
+  expect(document.body).not.toHaveTextContent('Keep upright')
+})

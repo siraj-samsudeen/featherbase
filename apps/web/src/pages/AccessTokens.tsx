@@ -481,7 +481,6 @@ export function AccessTokens() {
             className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault()
-              if (!label.trim() || issue.isPending) return
               if (expiryDays === 0 && !askedNoExpiry) setAskedNoExpiry(true)
               else issue.mutate()
             }}
@@ -775,7 +774,7 @@ function CredentialDialog({
 }) {
   const heading = useId()
   const panel = useRef<HTMLDivElement>(null)
-  const dismiss = useRef(() => {})
+  const dismiss = useRef(onClose)
   dismiss.current = () => {
     if (!busy) onClose()
   }

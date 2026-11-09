@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigation } from '../lib/navigation'
+import { usePageNavigation } from '../lib/navigation'
 import { backlinkGroups, rowNameText, useRowName } from '../lib/relations'
 import { useConnections } from '../lib/connections'
 import { RowRelationTree, defaultExpansion } from './RelationTree'
@@ -11,7 +11,7 @@ import { RowRelationTree, defaultExpansion } from './RelationTree'
  * back) brings it back. A line opens in the drill pane; Focus here re-centres.
  */
 export function RowTree({ table, name }: { table: string; name: string }) {
-  const nav = useNavigation()
+  const nav = usePageNavigation()
   const rowNav = nav?.step.screen === 'row' && nav.step.table === table && nav.step.row === name ? nav : null
   const centre = useRowName(table, name)
   const cnx = useConnections(table, name)

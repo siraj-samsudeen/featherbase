@@ -310,3 +310,14 @@ test("opening a group on the row page's own row changes its step in place, addin
   expect(screen.queryByRole('navigation', { name: 'Path' })).not.toBeInTheDocument()
   expect(history.length).toBe(before)
 })
+
+test('a filter added while a row is in the pane is named on the path by the filter', async ({ admin }) => {
+  await openEnchakkal(admin)
+  const before = pathSteps().length
+  fireEvent.focus(screen.getByTestId('std-filter-region'))
+  const options = await screen.findByTestId('link-options-region')
+  fireEvent.mouseDown((await within(options).findAllByTestId('link-option')).find((o) => o.textContent === 'Kerala')!)
+  await waitFor(() => expect(pathSteps()).toHaveLength(before + 1))
+  expect(within(screen.getByRole('navigation', { name: 'Path' })).getByRole('button', { current: 'step' })).toHaveTextContent('Region: Kerala · KL')
+  expect(await pane('Enchakkal')).toBeInTheDocument()
+})

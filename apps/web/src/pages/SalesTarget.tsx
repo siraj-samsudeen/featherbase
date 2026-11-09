@@ -191,8 +191,6 @@ function SalesTargetReport() {
   const [identityAttempt, setIdentityAttempt] = useState(0)
   const [openingAttempt, setOpeningAttempt] = useState(0)
   const [retrying, setRetrying] = useState<Retry | null>(null)
-  const retryingRef = useRef<Retry | null>(null)
-  retryingRef.current = retrying
   // Which reads the next opening re-runs; read once by that opening, so a later one (a store
   // fallback) is a full opening again.
   const retryPartsRef = useRef<{ embed: boolean; pre: boolean } | null>(null)
@@ -350,12 +348,11 @@ function SalesTargetReport() {
     }
   }, [me, store, openingAttempt])
 
+  // Both Try again buttons are loading, so disabled, from the moment one is pressed.
   function tryAgain() {
-    if (retryingRef.current) return
     // No identity yet: the identity call is what failed, and only the live report's card shows.
     const parts = me ? { embed: embed.kind === 'error', pre: pre.kind === 'error' } : { embed: true, pre: false }
     const r = { ...parts, embedAt: embed, preAt: pre }
-    retryingRef.current = r
     setRetrying(r)
     if (me) {
       retryPartsRef.current = parts

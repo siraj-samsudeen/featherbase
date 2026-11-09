@@ -1,12 +1,13 @@
 // The gallery renders shared primitives; the prototype starter retains drafts
 // while switching to an actual metadata-driven list.
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, test } from 'vitest'
 import { createRootRoute } from '@tanstack/react-router'
 import { renderApp } from 'feather-testing-postgres/react'
 import { test as databaseTest } from './pg-test'
 import { Gallery } from '../src/gallery/Gallery'
+import { initialLabRows } from '../src/gallery/fixtures'
 import { PrototypeLibrary } from '../src/gallery/PrototypeLibrary'
 import { useState } from 'react'
 import { Breadcrumbs, ContentTabs, SearchableList, TextInput } from '@featherbase/shop-floor'
@@ -106,6 +107,27 @@ test('filters component examples by purpose', async () => {
   expect(screen.getByRole('heading', { name: 'List (a table when wide, cards on a phone)' })).toBeInTheDocument()
   expect(screen.queryByRole('heading', { name: 'Buttons' })).not.toBeInTheDocument()
   expect(screen.getByText('packages/shop-floor/src/DataList.tsx')).toBeInTheDocument()
+})
+
+test('Clear search brings every component example back', async () => {
+  const user = userEvent.setup()
+  render(<Gallery />)
+  await user.type(screen.getByRole('searchbox', { name: 'Search components' }), 'list')
+  await user.click(screen.getByRole('button', { name: 'Clear search' }))
+  expect(screen.getByRole('searchbox', { name: 'Search components' })).toHaveValue('')
+  expect(screen.getByRole('heading', { name: 'Buttons' })).toBeInTheDocument()
+})
+
+test('the gallery page draws the components on its own root', async () => {
+  document.body.innerHTML = '<div id="root"></div>'
+  await act(() => import('../src/gallery/main'))
+  expect(await screen.findByRole('heading', { level: 1, name: 'Components' })).toBeInTheDocument()
+})
+
+test('the synthetic lab starts with two projects and their two tasks', () => {
+  const rows = initialLabRows()
+  expect(rows['Lab Project'].map((row) => row.name)).toEqual(['North workshop', 'South studio'])
+  expect(rows['Lab Task'].map((row) => row.project)).toEqual(['lab-north', 'lab-north'])
 })
 
 test('shows every section, flips light and dark, and raises both toasts', async () => {
