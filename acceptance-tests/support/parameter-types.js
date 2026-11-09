@@ -29,22 +29,3 @@ defineParameterType({
   regexp: new RegExp(COUNTS.join('|')),
   transformer: (word) => COUNTS.indexOf(word) + 1,
 });
-
-// {day}: a calendar day as people write it, "4 November 2026", given to steps
-// as 'YYYY-MM-DD'.
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-
-defineParameterType({
-  name: 'day',
-  regexp: new RegExp(`\\d{1,2} (?:${MONTHS.join('|')}) \\d{4}`),
-  transformer: (text) => {
-    const [day, month, year] = text.split(' ');
-    return `${year}-${String(MONTHS.indexOf(month) + 1).padStart(2, '0')}-${day.padStart(2, '0')}`;
-  },
-});
-
-// {member}: a Tasker member a scenario names by first name.
-defineParameterType({
-  name: 'member',
-  regexp: /Meena|Ravi|Suresh|Kumar/,
-});
