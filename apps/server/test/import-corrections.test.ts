@@ -3,7 +3,7 @@
 import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
-import { createUserWithRole, makeTable, patchDoc } from './fixtures'
+import { createUserWithRole, expectRefused, makeTable, patchDoc } from './fixtures'
 import { sql } from '../src/db'
 import { getMeta } from '../src/meta'
 import { mayResolve, planImport, saveImportedRow } from '../src/import-corrections'
@@ -24,6 +24,16 @@ describe('listing held import values', () => {
     await sql`insert into featherbase.import_conflict (row_id, ref_table, ref_name, field, kept, incoming, created_by, updated_by)
       values ('ic-gone', ${T}, 'PLANT-0000', 'city', ${sql.json('a')}, ${sql.json('b')}, 'Administrator', 'Administrator')`
     expect((await admin.get<{ conflicts: unknown[] }>(`${url}:import-conflicts`)).conflicts).toEqual([])
+  })
+})
+
+describe('listing held values when the rows cannot be read', () => {
+  test('is a server error, not an empty list', async ({ admin }) => {
+    const row = await plants(admin)
+    await sql`insert into featherbase.import_conflict (row_id, ref_table, ref_name, field, kept, incoming, created_by, updated_by)
+      values ('ic-held', ${T}, ${row.row_id}, 'city', ${sql.json('a')}, ${sql.json('b')}, 'Administrator', 'Administrator')`
+    await sql.unsafe('alter table featherbase.ic_plant rename to ic_plant_gone')
+    await expectRefused(admin.get(`${url}:import-conflicts`), 500)
   })
 })
 
