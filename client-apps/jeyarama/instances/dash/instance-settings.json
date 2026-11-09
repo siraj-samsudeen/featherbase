@@ -37,7 +37,7 @@
           "provider_record_key": "employee_id",
           "roster": {
             "table": "Employee",
-            "sign_in_id_column": "employee_code",
+            "sign_in_id_column": "employee_code_stylehr",
             "record_number_column": "employee_id_stylehr",
             "person_column": "person",
             "name_column": "name",
@@ -45,7 +45,7 @@
             "current_status": "Current",
             "provider_record_key": "employee_id",
             "identifiers": {
-              "stylehr-employee-code": "employee_code"
+              "stylehr-employee-code": "employee_code_stylehr"
             }
           }
         }
