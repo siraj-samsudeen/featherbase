@@ -10,7 +10,7 @@ import { rowHref, tableHref } from 'shared'
 import { deleteStored } from 'server/src/storage'
 import { grantRole, patchDoc } from 'server/test/fixtures'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp } from '../pg-test'
+import { test, expect, renderApp, onScreen, inside } from '../pg-test'
 import { useNodeMultipart } from '../node-multipart'
 
 configure({ asyncUtilTimeout: 10_000 })
@@ -85,8 +85,8 @@ async function tagPlant(as: Client) {
   await openRow(as)
   await area('Collaboration')
   await userEvent.type(await screen.findByTestId('tag-input'), 'priority')
-  await userEvent.click(screen.getByTestId('tag-add'))
-  await waitFor(() => expect(screen.getByTestId('tag-chip')).toHaveTextContent('priority'))
+  await onScreen().clickButton('Add')
+  await inside(onScreen(), 'tag-chip', (el) => el.assertText('priority'))
   expect(screen.getByRole('button', { name: 'Remove priority' })).toBeVisible()
 }
 
@@ -98,28 +98,28 @@ describe('record-workspace', () => {
       await openRow(admin)
       await user.clear(plantName())
       await user.type(plantName(), 'Tenkasi distribution')
-      await user.click(screen.getByRole('tab', { name: 'Activity' }))
+      await onScreen().clickButton('Activity')
       await screen.findByTestId('activity-timeline')
-      await user.click(screen.getByRole('tab', { name: 'Form' }))
+      await onScreen().clickButton('Form')
     })
     await step('the unfinished name is still present and can be saved', async () => {
       expect(plantName()).toHaveValue('Tenkasi distribution')
       await user.click(screen.getByTestId('form-save'))
-      await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Saved'))
+      await inside(onScreen(), 'form-banner', (el) => el.assertText('Saved'))
       expect((await admin.get<{ plant_name: string }>('/api/table/Plant/9154')).plant_name).toBe('Tenkasi distribution')
     })
     await step("the row's print and related navigation remain reachable", async () => {
       const actions = screen.getByRole('button', { name: 'Record actions' })
       actions.focus()
-      await user.keyboard('{Enter}')
+      await onScreen().pressKey('Enter')
       expect(await screen.findByTestId('form-print')).toBeVisible()
-      await user.keyboard('{Escape}')
+      await onScreen().pressKey('Escape')
       expect(actions).toHaveFocus()
       expect(screen.queryByTestId('form-print')).not.toBeInTheDocument()
       // #910: related navigation is the row's Map and Tree tabs.
-      await user.click(screen.getByRole('tab', { name: 'Map' }))
+      await onScreen().clickButton('Map')
       expect(await screen.findByTestId('relation-map')).toBeVisible()
-      await user.click(screen.getByRole('tab', { name: 'Tree' }))
+      await onScreen().clickButton('Tree')
       expect(await screen.findByRole('tree')).toBeVisible()
     })
   })
@@ -133,14 +133,14 @@ describe('record-workspace', () => {
       await user.click(screen.getByRole('checkbox', { name: 'Select Tenkasi' }))
     })
     await step('the selection offers deletion of rows separately from deletion of the Table', async () => {
-      expect(await screen.findByTestId('bulk-delete')).toHaveTextContent('Delete rows')
+      await inside(onScreen(), 'bulk-delete', (el) => el.assertText('Delete rows'))
       expect(screen.queryByTestId('delete-table')).not.toBeInTheDocument()
-      await user.click(screen.getByRole('button', { name: 'Table administration' }))
-      expect(await screen.findByTestId('delete-table')).toHaveTextContent('Delete Table')
-      await user.keyboard('{Escape}')
+      await onScreen().clickButton('Table administration')
+      await inside(onScreen(), 'delete-table', (el) => el.assertText('Delete Table'))
+      await onScreen().pressKey('Escape')
     })
     await step('clearing the selection removes the row operations without changing Tenkasi', async () => {
-      await user.click(screen.getByRole('button', { name: 'Clear selection' }))
+      await onScreen().clickButton('Clear selection')
       await waitFor(() => expect(screen.queryByTestId('bulk-bar')).not.toBeInTheDocument())
       expect(screen.getByRole('checkbox', { name: 'Select Tenkasi' })).not.toBeChecked()
       expect((await admin.get<{ plant_name: string }>('/api/table/Plant/9154')).plant_name).toBe('Tenkasi')
@@ -156,9 +156,9 @@ describe('record-workspace', () => {
     })
     await step('the user consults its list views and related navigation', async () => {
       await openList(reader)
-      await user.click(screen.getByRole('button', { name: 'View: List' }))
+      await onScreen().clickButton('View: List')
       expect(await screen.findByTestId('open-report')).toBeVisible()
-      await user.keyboard('{Escape}')
+      await onScreen().pressKey('Escape')
       expect(screen.getByTestId('open-explore')).toBeVisible()
     })
     await step('the list does not offer Table administration', () => {
@@ -183,15 +183,15 @@ describe('record-workspace', () => {
       expect(plantName()).toHaveTextContent('Tenkasi')
       expect(screen.queryByRole('textbox', { name: 'Plant name' })).not.toBeInTheDocument()
       expect(screen.queryByTestId('form-save')).not.toBeInTheDocument()
-      await user.click(screen.getByRole('button', { name: 'Record actions' }))
+      await onScreen().clickButton('Record actions')
       for (const id of ['form-rename', 'form-delete']) expect(screen.queryByTestId(id)).not.toBeInTheDocument()
-      await user.keyboard('{Escape}')
+      await onScreen().pressKey('Escape')
     })
     await step('assigning, uploading and composing discussion are absent', async () => {
-      await user.click(screen.getByRole('tab', { name: 'Collaboration' }))
+      await onScreen().clickButton('Collaboration')
       await screen.findByTestId('tags-panel')
       for (const id of ['assign-to', 'attach-file', 'attachment-delete']) expect(screen.queryByTestId(id)).not.toBeInTheDocument()
-      await user.click(screen.getByRole('tab', { name: 'Activity' }))
+      await onScreen().clickButton('Activity')
       await screen.findByTestId('activity-timeline')
       expect(screen.queryByTestId('comment-input')).not.toBeInTheDocument()
     })
@@ -201,7 +201,7 @@ describe('record-workspace', () => {
       await user.click(screen.getByRole('checkbox', { name: 'Select Tenkasi' }))
       await screen.findByRole('button', { name: 'Clear selection' })
       for (const id of ['bulk-delete', 'bulk-edit-field']) expect(screen.queryByTestId(id)).not.toBeInTheDocument()
-      await user.click(screen.getByRole('button', { name: 'Clear selection' }))
+      await onScreen().clickButton('Clear selection')
     })
   })
 
@@ -210,20 +210,20 @@ describe('record-workspace', () => {
     await step('Tenkasi has an assignment, a tag, a file and a discussion', () => collaborate(admin))
     await step('the user opens Tenkasi with collaboration disabled', () => openRow(admin))
     await step('the existing collaboration is readable without collaboration mutation controls', async () => {
-      await user.click(screen.getByRole('tab', { name: 'Collaboration' }))
+      await onScreen().clickButton('Collaboration')
       const me = await admin.get<{ full_name: string }>(`/api/table/Person/${encodeURIComponent(admin.user!)}`)
       await waitFor(() => expect(screen.getByTestId('assignments-panel')).toHaveTextContent(me.full_name))
-      await waitFor(() => expect(screen.getByTestId('tags-panel')).toHaveTextContent('priority'))
-      await waitFor(() => expect(screen.getByTestId('attachments-panel')).toHaveTextContent('plant-note.txt'))
+      await inside(onScreen(), 'tags-panel', (el) => el.assertText('priority'))
+      await inside(onScreen(), 'attachments-panel', (el) => el.assertText('plant-note.txt'))
       for (const id of ['assign-submit', 'tag-add', 'attach-file', 'attachment-delete'])
         expect(screen.queryByTestId(id)).not.toBeInTheDocument()
-      await user.click(screen.getByRole('tab', { name: 'Activity' }))
-      await waitFor(() => expect(screen.getByTestId('activity-timeline')).toHaveTextContent('Supplier called'))
+      await onScreen().clickButton('Activity')
+      await inside(onScreen(), 'activity-timeline', (el) => el.assertText('Supplier called'))
       expect(screen.queryByTestId('comment-input')).not.toBeInTheDocument()
     })
     await step('the user can still consult its audit history', async () => {
-      await user.click(screen.getByRole('tab', { name: 'Activity' }))
-      await waitFor(() => expect(screen.getByTestId('activity-timeline')).toHaveTextContent('Tenkasi before review'))
+      await onScreen().clickButton('Activity')
+      await inside(onScreen(), 'activity-timeline', (el) => el.assertText('Tenkasi before review'))
     })
   })
 
@@ -236,7 +236,7 @@ describe('record-workspace', () => {
     await step('the tag is saved and the other empty collaboration features stay absent', async () => {
       expect(await admin.get('/api/tags/Plant/9154')).toEqual({ tags: ['priority'] })
       for (const id of ['assignments-panel', 'attachments-panel']) expect(screen.queryByTestId(id)).not.toBeInTheDocument()
-      await userEvent.click(screen.getByRole('tab', { name: 'Activity' }))
+      await onScreen().clickButton('Activity')
       await screen.findByTestId('activity-timeline')
       expect(screen.queryByTestId('comment-input')).not.toBeInTheDocument()
     })

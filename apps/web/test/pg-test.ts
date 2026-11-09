@@ -145,6 +145,8 @@ export function insideOf<S extends Session>(session: S, selector: string, fn: Pa
 /** A Session over whatever is on screen: for pages a test mounts itself (an
  *  app's own page) rather than through renderSession. */
 export const screenSession = (opts: SessionOptions = {}) => createSession({ timeout: SESSION_TIMEOUT, ...opts })
+/** `screenSession()`, read as a sentence: `await onScreen().clickButton('Save')`. */
+export const onScreen = () => screenSession()
 
 /** renderApp + fluent Session. */
 export function renderSession(path: string, as: TestClient, opts: Opts & { session?: SessionOptions } = {}) {
