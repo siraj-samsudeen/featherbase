@@ -582,6 +582,10 @@ describe('agent-access', () => {
 
   scenario('Undoing the agent\'s import', async ({ admin, createUser }, step) => {
     const ids = await setUp(admin)
+    // The list of imports is a reading of the Import Log, under its own read
+    // permission; undoing deletes the rows the import added, so it needs delete.
+    await grantRole(admin, { role: CLERK, table: 'Import Log', can_read: true })
+    await grantRole(admin, { role: CLERK, table: 'Customer', can_delete: true })
     const { agent } = await clerkAgent(admin, createUser)
     await step('the agent has imported a file that added "Dhan Agencies" and moved "Acme Traders" to Salem', () =>
       importFile(agent, { table: 'Customer', csv: 'Customer Name,City\nDhan Agencies,Salem\nAcme Traders,Salem\n', key_column: 'customer_name', file_name: 'customers.csv' }))

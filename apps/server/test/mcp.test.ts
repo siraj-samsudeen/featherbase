@@ -51,10 +51,13 @@ describe('#1083 /mcp: the mount (D1)', () => {
     expect(body.result.capabilities).toHaveProperty('tools')
   })
 
-  test('the seven tools are listed', async ({ admin }) => {
+  test('the seventeen tools are listed: rows, then a Table\'s structure and imports (#1105)', async ({ admin }) => {
     const agent = await connectAgent(await issueToken(admin))
     expect((await agent.client.listTools()).tools.map((t) => t.name).sort())
-      .toEqual(['create_row', 'delete_row', 'describe_table', 'get_row', 'list_tables', 'query_rows', 'update_row'])
+      .toEqual([
+        'add_column', 'change_column', 'check_import', 'create_row', 'create_table', 'delete_row', 'describe_table', 'get_row',
+        'list_imports', 'list_tables', 'query_rows', 'remove_column', 'rename_column', 'run_import', 'suggest_table', 'undo_import', 'update_row',
+      ])
   })
 
   for (const method of ['GET', 'DELETE'])
