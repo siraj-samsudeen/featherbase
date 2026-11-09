@@ -14,7 +14,8 @@ const capabilityOf = (feature) => {
 const notMigrated = (paths) => paths.filter((p) => !migrated.has(capabilityOf(p)));
 
 const common = {
-  paths: notMigrated(effectivePaths()),
+  // tools/ci-shards.mjs names this runner's share; a person runs them all.
+  paths: process.env.ACCEPTANCE_PATHS ? JSON.parse(process.env.ACCEPTANCE_PATHS) : notMigrated(effectivePaths()),
   import: ['support/**/*.js', 'step-definitions/**/*.js'],
   format: ['progress-bar', ['html', 'reports/cucumber-report.html']],
 };

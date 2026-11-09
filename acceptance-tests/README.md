@@ -18,8 +18,8 @@ migrated fresh on every run through the e2e suite's own reset
 headless. Each run writes `reports/cucumber-report.html`, with a screenshot of
 every failed scenario.
 
-- `extract-gherkin.cjs`, `cucumber.cjs` and `openspec-effective-paths.cjs`
-  are copied from the skill's references, unchanged. There is no separate spec
+- `extract-gherkin.cjs` and `openspec-effective-paths.cjs` are copied from the
+  skill's references, unchanged, and `cucumber.cjs` with one line for CI's shards. There is no separate spec
   lint: cucumber-js refuses malformed Gherkin on every run. A `#### Scenario:`
   with no gherkin fence (most main specs today are still prose) is left out,
   and the run names each one. While those prose specs are left out, a delta

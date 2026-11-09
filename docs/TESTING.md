@@ -65,12 +65,14 @@ On a pull request `tools/ci-scope.mjs` picks the suites from the changed paths:
 
 | A PR changes | What runs |
 |---|---|
-| `*.md`, `docs/**`, `openspec/**`, agent files | the fast checks: specs, sensitive data, vocabulary, the other guards |
+| `*.md`, `docs/**`, `openspec/**`, agent files, a workflow other than `test.yml` | the fast checks: specs, sensitive data, vocabulary, the other guards |
+| a `spec.md` with Gherkin, in `openspec/specs/` or an active change | fast checks and that capability's acceptance scenarios, on one runner |
+| `acceptance-tests/**` | fast checks and all of acceptance |
 | `client-apps/**` | fast checks, the app's `npm test` and platform tests |
 | `example-apps/**` | fast checks, Tasker's unit tests, the server and web tests that name an example app, its runtime components and packaged journeys |
 | `apps/server/**`, `docs/DEPLOY.md` | fast checks, typechecks, server suite, release preflight, client platform tests |
 | `apps/web/**` | fast checks, typechecks, web suite, e2e, merged coverage |
-| anything else (`packages/**`, lockfile, `package.json`, `tools/**`, workflows) | everything |
+| anything else (`packages/**`, lockfile, `package.json`, `tools/**`, `test.yml`) | everything |
 
 A change across several areas gets the union. Add the `run-all` label to force
 everything, or `run-e2e` for e2e alone (say, a server change to a route the UI
@@ -78,16 +80,21 @@ depends on). `unit` and `e2e` report on every PR, so never add a workflow-level
 `paths` filter to `test.yml`. The checks also fail a PR that changes an app's
 `version` to one not greater than `main`'s (`pnpm check:app-versions`).
 
-The component and browser suites each use four CI shards, with a separate
+The component suite uses four CI shards, with a separate
 runner and PostgreSQL service per shard. Files still run sequentially within
 each shard: their server and instance-wide state is shared. `unit-web` merges
 all four Vitest blobs and enforces the component suite's unchanged coverage
-floor; `coverage-merged` combines that report with every browser shard.
-Acceptance and served-page tests run in separate jobs. Acceptance executes the
-packaged delivery proof with coverage, so CI does not invoke it again.
-The required `e2e` check aggregates browser, acceptance and served-page results;
+floor; `coverage-merged` reads that report.
+Served-page tests run in a separate job. Acceptance uses six shards, each with
+its own runner and databases, keeping every Feature file whole and in order; a
+PR that changed only specs uses one. `tools/acceptance-weights.json` holds each
+file's measured seconds so the runners finish together. A wrong figure only makes
+one runner finish later, and the `e2e` job's log prints current ones to paste in.
+Acceptance executes the packaged delivery proof with coverage, so CI does not
+invoke it again.
+The required `e2e` check aggregates smoke, acceptance, served-page and tour results;
 only an explicit scope decision permits skipped suites. Server coverage merges
-as soon as its three shards and PostgreSQL 18 preflight finish, leaving `unit`
+as soon as its five shards and PostgreSQL 18 preflight finish, leaving `unit`
 as a lightweight final verdict rather than another serial setup/merge step.
 
 A scoped PR can break what it did not run; that shows on `main`, which runs it all.
