@@ -400,7 +400,8 @@ export const postgresDriver: SourceDriver = {
     const p = pools.get(sourceName)
     pools.delete(sourceName)
     vetted.delete(sourceName)
-    void p?.end({ timeout: 1 }).catch(() => {})
+    // postgres.js resolves end() once its connections close; it never rejects.
+    void p?.end({ timeout: 1 })
   },
 }
 

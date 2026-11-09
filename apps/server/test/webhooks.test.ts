@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
-import { drainJobs } from '../src/jobs'
+import { drainJobs, enqueue } from '../src/jobs'
 
 // PLAT-005: a lifecycle event enqueues a webhook delivery that POSTs the doc
 // JSON with a valid HMAC signature; non-2xx responses are retried.
@@ -200,5 +200,13 @@ describe('PLAT-005: webhooks', () => {
     expect(hits[0].event).toBe('on_submit')
     expect(JSON.parse(hits[0].body)).toMatchObject({ row_id: doc.row_id, title: 'final', submission_status: 'submitted' })
     expect(hits[0].signature).toBe(createHmac('sha256', SECRET).update(hits[0].body).digest('hex'))
+  })
+})
+
+describe('a webhook deleted after its delivery was queued', () => {
+  test('is skipped, and the delivery job still finishes', async () => {
+    const id = await enqueue('deliver_webhook', { webhook: 'deleted-hook', event: 'on_save', row: { row_id: 'x' } })
+    await drainDueJobs()
+    expect(await sql`select job_status from background_job where row_id = ${id}`).toEqual([{ job_status: 'done' }])
   })
 })

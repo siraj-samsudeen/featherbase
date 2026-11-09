@@ -1,7 +1,9 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
+import { committedTest } from './pg-test-shared'
 import { expectApiError, expectRefused, makeTable, tableRef } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
+import { sql } from '../src/db'
 
 // #209 (issue #197): changing a Table's columns AFTER the rows are in it.
 //
@@ -216,5 +218,23 @@ describe('#209: renaming a Sub-table column carries its children', () => {
       `/api/table/${encodeURIComponent(ORDER)}/${doc.row_id}`,
     )
     expect(again.lines?.map((r: any) => r.item)).toEqual(['apple', 'pear'])
+  })
+})
+
+describe('a column rename the Access Log cannot record', () => {
+  // Committed: in production the rename commits before its log line is
+  // written, so a failed log line must not undo or hide it.
+  committedTest('is still answered: the rename itself is done', async ({ admin }) => {
+    await setup(admin)
+    await sql.unsafe(`create function featherbase.refuse_rename_log() returns trigger language plpgsql as $$
+      begin if new.operation like 'rename_column%' then raise exception 'log is read-only'; end if; return new; end $$`)
+    try {
+      await sql.unsafe('create trigger refuse_rename_log before insert on featherbase.access_log for each row execute function featherbase.refuse_rename_log()')
+      const after = await rename(admin, 'glor', 'floor')
+      expect(after.columns.map((c) => c.column_name)).toContain('floor')
+    } finally {
+      await sql.unsafe('drop trigger if exists refuse_rename_log on featherbase.access_log')
+      await sql.unsafe('drop function if exists featherbase.refuse_rename_log()')
+    }
   })
 })

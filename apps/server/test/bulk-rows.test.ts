@@ -11,6 +11,8 @@ import { createUserWithRole, expectApiError, expectRefused } from './fixtures'
 import { EXTERNAL_DATABASE_URL } from './external-database'
 import { invalidateSources } from '../src/sources/registry'
 import { registerController, unregisterController, type TableController } from '../src/controllers'
+import { sql } from '../src/db'
+import { invalidateMeta } from '../src/meta'
 
 const T = 'Bulk Order'
 const enc = encodeURIComponent
@@ -52,6 +54,12 @@ describe('bulk edit', () => {
       message: expect.stringMatching(/No rows were changed\. r2: .*submitted/),
     })
     for (const id of ['r1', 'r2', 'r3']) expect(await stageOf(admin, id)).toBe('Open')
+  })
+
+  test('a row name the database cannot read fails the whole edit, changing nothing', async ({ admin }) => {
+    await seed(admin)
+    await expectRefused(edit(admin, ['r1', 'bad\u0000name'], { stage: 'Closed' }), 500)
+    expect(await stageOf(admin, 'r1')).toBe('Open')
   })
 
   test('a refused value keeps the field and the reason (#540)', async ({ admin }) => {
@@ -168,6 +176,38 @@ describe('on a connected Table', () => {
     expect(await cli`select label from bulk_fixture.shelf order by id`).toEqual([
       { label: 'Z' }, { label: 'Z' }, { label: 'A3' },
     ])
+  })
+
+  test('a row removed from its source while it is being saved or deleted is not found', async ({ admin }) => {
+    await bind(admin)
+    const controller: TableController = { table: BOUND, hooks: {
+      async validate() { await cli`delete from bulk_fixture.shelf where id = 1` },
+      async on_trash() { await cli`delete from bulk_fixture.shelf where id = 2` },
+    } }
+    registerController(controller)
+    try {
+      const one = await admin.get<{ updated_at: string }>(`/api/table/${enc(BOUND)}/1`)
+      await expectRefused(admin.post('/api/save_row', { table: BOUND, row: { row_id: '1', updated_at: one.updated_at, label: 'gone' } }), 404)
+      const two = await admin.get<{ updated_at: string }>(`/api/table/${enc(BOUND)}/2`)
+      await expectRefused(admin.delete(`/api/table/${enc(BOUND)}/2?updated_at=${enc(two.updated_at)}`), 404)
+    } finally {
+      unregisterController(controller)
+    }
+  })
+
+  test('a binding written by hand without its external table has no storage and refuses its rows', async ({ admin }) => {
+    await bind(admin)
+    await sql`update table_def set external_table = null where name = ${BOUND}`
+    invalidateMeta()
+    expect(await admin.get<{ storage_identity: unknown }>(`/api/table/${enc(BOUND)}:meta`)).toMatchObject({ storage_identity: null })
+    await expectRefused(admin.get(`/api/table/${enc(BOUND)}`), 417, `${BOUND} is bound to bulk-src but has no external_table`)
+  })
+
+  test('a write to a Data Source deleted since it was read is not found', async ({ admin }) => {
+    await bind(admin)
+    const one = await admin.get<{ updated_at: string }>(`/api/table/${enc(BOUND)}/1`)
+    await sql`delete from data_source where row_id = 'bulk-src'`
+    await expectRefused(admin.post('/api/save_row', { table: BOUND, row: { row_id: '1', updated_at: one.updated_at, label: 'x' } }), 404, 'Data Source bulk-src no longer exists')
   })
 
   test('an unexpected controller failure is reported per row while later rows still change', async ({ admin }) => {

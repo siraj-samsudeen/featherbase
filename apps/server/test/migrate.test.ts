@@ -7,7 +7,7 @@
 // copy of the module graph pointed at a disposable database, then drops it.
 // The rest run on the shared test database inside a rolled-back sandbox.
 import { readdirSync } from 'node:fs'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import { _getUnqualifiedSql, sql, withTransaction } from '../src/db'
 import { applyMigrationFile, pendingMigrations } from '../src/migrate'
 import { runMain } from './command-io'
@@ -49,6 +49,30 @@ describe('migrate: one file', () => {
 })
 
 describe('migrate: a new database', () => {
+  it('a process that never booted the server reads the app library from the checkout', async () => {
+    const scratch = await scratchInstalled()
+    try {
+      const { appLibraryPaths } = await import('../src/app-library')
+      expect(await appLibraryPaths(['/configured/app'])).toEqual(['/configured/app'])
+    } finally {
+      await scratch.close()
+    }
+  })
+
+  it('a release onto an empty database skips the Administrator password check', async () => {
+    const scratch = await scratchDatabase()
+    try {
+      vi.stubEnv('ADMIN_PASSWORD', 'first-admin-password')
+      vi.stubEnv('FEATHERBASE_APP_PATHS', '[]')
+      const { preflightRelease } = await import('../src/release-preflight')
+      const lines = await preflightRelease({ environment: 'test' })
+      expect(lines).toContain('Administrator password check skipped (no Person table yet)')
+    } finally {
+      vi.unstubAllEnvs()
+      await scratch.close()
+    }
+  })
+
   it('legacy creator grants retain their dependent Column reach after migration', async () => {
     const scratch = await scratchDatabase()
     try {

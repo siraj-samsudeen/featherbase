@@ -2,6 +2,7 @@ import { describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { setUserPassword } from '../src/auth'
 import { expectStatus } from './fixtures'
+import { AppError, statusOf } from '../src/errors'
 
 // API-006: every error answer — validation, auth, permission, not-found,
 // conflict, malformed request, unknown route — uses the envelope
@@ -152,5 +153,14 @@ describe('every failure answers in one shape: unexpected faults', () => {
     const res = await faulty(Object.assign(new Error('conflicting key value violates exclusion constraint'), { code: '23P01' }))
     await expectStatus(res, 409)
     expect(((await res.json()) as { error: { type: string } }).error.type).toBe('ConflictError')
+  })
+})
+
+describe('the status a log line names for an error', () => {
+  test('is the envelope\'s own status for each kind of error', () => {
+    expect(statusOf(new AppError('NotFoundError', 'gone'))).toBe(404)
+    expect(statusOf(Object.assign(new Error('overlap'), { code: '23P01' }))).toBe(409)
+    expect(statusOf(new SyntaxError('bad json'))).toBe(400)
+    expect(statusOf(new Error('boom'))).toBe(500)
   })
 })

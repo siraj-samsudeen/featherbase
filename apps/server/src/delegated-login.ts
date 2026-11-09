@@ -340,8 +340,8 @@ function logOutcome(cfg: DelegatedLoginConfig, outcome: ProviderOutcome, detail:
  *  get password login's refusal, and the password is never forwarded for
  *  them: answering "not linked" after a provider check would turn this route
  *  into a password checker for every unlinked ID. Matching ignores case and
- *  surrounding spaces; the unique index makes a second match impossible, but
- *  ambiguity still refuses rather than picking. */
+ *  surrounding spaces; the unique index makes a second match impossible, and
+ *  anything but exactly one match refuses rather than picking. */
 export async function linkedUser(cfg: DelegatedLoginConfig, id: string): Promise<{ user: string; identity: string | null }> {
   if (delegatedTestMode()) return testModeUser(cfg, id)
   const rows = await sql`
@@ -352,13 +352,11 @@ export async function linkedUser(cfg: DelegatedLoginConfig, id: string): Promise
     where i.method = ${cfg.key} and i.subject is not null and i.ended_at is null
       and lower(i.sign_in_name) = lower(trim(${id}))
     limit 2`
-  return eligibleOne(cfg, rows)
+  return eligibleOne(rows)
 }
 
-function eligibleOne(cfg: DelegatedLoginConfig, rows: Record<string, unknown>[]): { user: string; identity: string | null } {
-  if (rows.length === 0) throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
-  if (rows.length > 1)
-    throw new AppError('ConflictError', `More than one account is linked to this ${cfg.label} ID. Contact your administrator.`)
+function eligibleOne(rows: Record<string, unknown>[]): { user: string; identity: string | null } {
+  if (rows.length !== 1) throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
   // Whoever administers the outside service can reset passwords there; that must
   // never reach the Administrator or a System Manager here. They use their own password.
   if (!rows[0].enabled || rows[0].privileged)
@@ -444,5 +442,5 @@ export async function testModeUser(cfg: DelegatedLoginConfig, typed: string): Pr
       and i.person_id = ${String(holders[0].person_id)}
     order by i.linked_at
     limit 1`
-  return eligibleOne(cfg, rows)
+  return eligibleOne(rows)
 }

@@ -106,6 +106,18 @@ describe('any condition missing keeps today\'s answer', () => {
     expect(await flagOf(asha)).toBe(true)
   })
 
+  // Postgres folds a final capital sigma to σ, JavaScript to ς: the database
+  // match alone is not the person's own address.
+  test('4. an address that only the database folds to match does not link', async ({ api }) => {
+    await configureGoogle({ allowed_email_domains: DOMAIN, new_person: 'refuse' })
+    const asha = await expectedPerson()
+    await sql`update person set email = ${`ASHAΣ@${DOMAIN}`} where row_id = ${asha}`
+    await sql`update person set expects_google_sign_in = true where row_id = ${asha}`
+    await expectStatus(await googleSignIn(api, `ashaσ@${DOMAIN}`, { subject: 'g-sigma' }), 401)
+    expect(await googleLinks(asha)).toHaveLength(0)
+    expect(await flagOf(asha)).toBe(true)
+  })
+
   test('5. a disabled person is not linked', async ({ api }) => {
     await configureGoogle({ allowed_email_domains: DOMAIN })
     const asha = await expectedPerson({ enabled: false })

@@ -108,6 +108,19 @@ describe('first-run setup (6.1)', () => {
     expect(await rolesOf('asha@example.com')).toContain('System Manager')
   })
 
+  test('an invitation whose sending fails outright is reported as not sent, with its link', async ({ admin }) => {
+    await noManagerEmails()
+    await googleOn()
+    process.env.SMTP_HOST = 'smtp.example.com'
+    // The relay refuses, and giving the invitation's send window back fails too.
+    _setInvitationDeliveryForTests(async () => {
+      await sql.unsafe('alter table featherbase.sign_in_identity rename to sign_in_identity_gone')
+      throw new Error('relay down')
+    })
+    const res = await admin.post<{ people: Outcome[] }>(SETUP, { people: [{ full_name: 'Asha Keeper', email: 'asha@example.com' }] })
+    expect(res.people[0].invitation).toMatchObject({ status: 'failed', error: 'The invitation email was not sent', link: expect.stringMatching(/\/featherbase\/login$/) })
+  })
+
   test('an incomplete SMTP configuration still returns what was committed, each invitation with its link (Codex review)', async ({ admin }) => {
     await noManagerEmails()
     await googleOn()

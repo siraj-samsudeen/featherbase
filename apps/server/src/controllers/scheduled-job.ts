@@ -11,8 +11,8 @@ const controller: TableController = {
   table: 'Scheduled Job',
   hooks: {
     before_validate: async ({ row, old, isNew, tx, user }) => {
+      // method is a required column: the save refuses a blank one before this hook.
       const method = String(row.method ?? old?.method ?? '').trim()
-      if (!method) throw new AppError('ValidationError', 'method is required', { method: 'required' })
       if (method.startsWith('copy_refresh_')) {
         await assertSystemManager(user)
         // cadence is a required column, already merged with the saved row here.

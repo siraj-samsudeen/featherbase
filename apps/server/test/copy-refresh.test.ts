@@ -217,6 +217,10 @@ describe('Scheduled copied-table refresh', () => {
     expect(queued).toEqual([{ attempts: 0, future: true }])
     await admin.post('/api/table/Scheduled%20Stores:import-revert', { run_id: info.last_run_id })
     expect(await admin.get('/api/table/Scheduled%20Stores/S002')).toMatchObject({ title: 'Hill Street' })
+    // The reverted batch still lists, stamped with when it was reverted.
+    const listed = await admin.get<{ batches: { targets: { run_id: string; reverted_at: string | null }[] }[] }>('/api/import/batches')
+    const reverted = listed.batches.flatMap((b) => b.targets).find((t) => t.run_id === info.last_run_id)
+    expect(Date.parse(String(reverted?.reverted_at))).not.toBeNaN()
     // #934: the notice is not lost. It waits in its own job, apart from the
     // copy, and goes out once the queue is back, with no new import batch.
     const [notice] = await sql`select payload, run_at > now() as later from background_job

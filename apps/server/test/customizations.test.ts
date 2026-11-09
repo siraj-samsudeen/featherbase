@@ -277,3 +277,10 @@ describe('CUST-005: export/import customizations', () => {
     expect(bundle.custom_fields.length).toBe(1)
   })
 })
+
+describe('importing customizations from a body that is not JSON', () => {
+  test('imports an empty bundle', async ({ admin }) => {
+    const res = await admin.fetch('/api/import_customizations', { method: 'POST', body: 'not json' })
+    expect(await res.json()).toEqual({ custom_fields: 0, property_setters: 0 })
+  })
+})

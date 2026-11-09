@@ -1,5 +1,6 @@
 import { describe, expect } from 'vitest'
 import { sql } from '../src/db'
+import { config } from '../src/config'
 import { passwordSignIn as login } from '../src/sign-in'
 import { requestPasswordReset, resetPassword } from '../src/password-reset'
 import { test } from './pg-test'
@@ -139,5 +140,19 @@ describe('SET-002: password reset', () => {
     await sql`update person set sessions_ended_at = now() where lower(email) = ${USER}`
     await expect(resetPassword(token as string, 'linkpw45678')).rejects.toThrow('invalid or has expired')
     await expect(login(USER, 'origpw123')).resolves.toHaveProperty('token')
+  })
+})
+
+describe('a reset link needs an address to point at', () => {
+  test('outside development and test, with no instance addresses, no link is issued', async ({ admin }) => {
+    await setup(admin)
+    const was = config.environment
+    config.environment = 'production'
+    try {
+      expect(await requestPasswordReset(USER, 'http://asker.example')).toBeNull()
+    } finally {
+      config.environment = was
+    }
+    expect(await sql`select 1 from password_reset`).toHaveLength(0)
   })
 })

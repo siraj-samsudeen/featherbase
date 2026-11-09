@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { issueSession } from '../src/auth'
+import { whoLabels } from '../src/events'
 import { expectRefused, expectStatus } from './fixtures'
 
 // #101 Phase 3: batched capture of read-side intent into user_event —
@@ -141,5 +142,11 @@ describe('#101: POST /api/events + GET /api/events/summary', () => {
     expect(summary.entries.some((e) => e.key === 'row:X/ancient')).toBe(false)
     const [dormant] = await sql`select 1 from user_event where row_id = 'evt-dormant'`
     expect(dormant).toBeUndefined()
+  })
+})
+
+describe('labelling who did something', () => {
+  test('nobody to label is an empty answer', async () => {
+    expect(await whoLabels([])).toEqual(new Map())
   })
 })

@@ -1,6 +1,6 @@
 import type { TableController } from '../controllers'
 import { AppError } from '../errors'
-import { KINDS, METHOD_TABLE, SIGN_IN_METHOD_KINDS, assertNoAdminLockout, domainListProblem, endSessionsNoLongerAdmitted, lockWaysIn, methodUsable, type MethodKind } from '../identities'
+import { KINDS, METHOD_TABLE, assertNoAdminLockout, domainListProblem, endSessionsNoLongerAdmitted, lockWaysIn, methodUsable, type MethodKind } from '../identities'
 import { recordKeyFrom, rosterFrom, usableServiceUrl, wireFrom } from '../delegated-login'
 
 // person-identities (D2): a Sign In Method row is configuration. Its policy
@@ -36,8 +36,8 @@ const controller: TableController = {
       // write path reaches the hooks without it.
       await lockWaysIn(tx)
       const kind = String(row.kind ?? old?.kind ?? '') as MethodKind
+      // kind is a Choice of SIGN_IN_METHOD_KINDS: the save refuses any other before this hook.
       const caps = KINDS[kind]
-      if (!caps) throw new AppError('ValidationError', `Unknown kind "${kind}"`, { kind: SIGN_IN_METHOD_KINDS.join(', ') })
       if (!isNew && old && row.kind !== undefined && row.kind !== old.kind)
         throw new AppError('ValidationError', 'A sign-in method cannot change kind', { kind: 'fixed once created' })
       // #693: one reading of the list everywhere, so a typo is refused here

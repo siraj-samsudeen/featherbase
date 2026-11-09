@@ -22,6 +22,7 @@ import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packa
 import { invalidateSources } from '../src/sources/registry'
 import { activeSnapshot, buildSnapshot, pendingMisses, recordMiss } from '../src/dataset-snapshot'
 import { expectApiError, expectRefused, expectStatus } from './fixtures'
+import { datasetQueryText } from '../src/sources/dataset-query'
 import type { RuntimeReadContext } from 'shared'
 import { withNamedVariable } from '../src/env'
 import { appSetupState } from '../src/app-settings'
@@ -1046,6 +1047,12 @@ describe('a dataset guard', () => {
     expect(check(sumWithin, inPeriod(10, '100', month), null)).toBe(refusal)
   })
 
+  test('a total that is not plain decimal text is refused rather than compared', () => {
+    const sums = (amount: string) => ({ rows: 1, nonZero: {}, sums: { amount }, periods: {} })
+    expect(() => guardRefusal('sales', [{ kind: 'max_sum_drop_pct', column: 'amount', value: 10 }], sums('1e3'), sums('100')))
+      .toThrow('not a decimal total: 1e3')
+  })
+
   test('the first guard that fails is the one named', () => {
     expect(guardRefusal('sales', [{ kind: 'min_rows', value: 1 }, { kind: 'not_all_zero', column: 'target' }], counts(2, 0), null))
       .toBe('sales: every target value is empty or zero (2 rows)')
@@ -1179,6 +1186,23 @@ describe('a place a dataset cannot apply', () => {
   ] as const)('answers not found for %s', async ([, person, app], { admin, createUser }) => {
     const { reader } = await setup(admin, createUser)
     await withPlaces(FLOOR_PLACES, () => expectApiError(scopeOf(admin, person ?? reader.user!, app), { status: 404 }))
+  })
+
+  test('a provider that is not set up yet answers so, rather than a reason', async ({ admin, createUser }) => {
+    const copy = await mkdtemp(resolve('test/.place-roster-'))
+    try {
+      await cp(provider, copy, { recursive: true })
+      const manifest = JSON.parse(await readFile(resolve(copy, 'featherbase.json'), 'utf8'))
+      manifest.scopeProvider.identifiers = ['roster-badge']
+      await writeFile(resolve(copy, 'featherbase.json'), JSON.stringify(manifest))
+      expect(await discoverPackages([fixture, copy])).toEqual([])
+      await admin.post('/api/install_app', { name: 'datasetproof' })
+      await admin.post('/api/install_app', { name: 'placeroster' })
+      const reader = await createUser({ email: 'reader@example.test', roles: ['Dataset Reader'] })
+      await expectRefused(scopeOf(admin, reader.user!), 409, 'is not set up yet')
+    } finally {
+      await rm(copy, { recursive: true, force: true })
+    }
   })
 
   const dropsCheck = async () => (await runHealthChecks()).find(check => check.key === 'scope-place-drops:datasetproof')
@@ -1423,5 +1447,13 @@ describe('recording a dropped place', () => {
       const results = await both
       expect(results.reduce((a, b) => a + b)).toBe(1)
     } finally { await cleanUp() }
+  })
+})
+
+describe('a dataset query condition', () => {
+  test('on an empty list of values matches no row', () => {
+    const dialect = { placeholder: (n: number) => `$${n}`, asText: (q: string) => q, asDay: (q: string) => q }
+    expect(datasetQueryText('select 1 as a', [{ name: 'a', type: 'text' }], { any: [[{ column: 'a', values: [] }]], all: [] }, dialect))
+      .toEqual({ text: 'select * from (select "a" from (select 1 as a) as source) as dataset where ((false)) and (true)', values: [] })
   })
 })

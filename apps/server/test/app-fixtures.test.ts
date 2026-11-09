@@ -421,3 +421,33 @@ describe('#465: a manifest cannot carry instance settings', () => {
     expect(await sql`select field, value from single_value where table_name = 'System Settings' order by field`).toEqual(before)
   })
 })
+
+describe('an install ledger in an unexpected shape', () => {
+  test('fixtures recorded as JSON text are still removed on uninstall', async () => {
+    registerApp(manifest())
+    try {
+      await installApp(APP)
+      await sql`update installed_app set fixtures = to_jsonb(fixtures::text) where name = ${APP}`
+      await uninstallApp(APP)
+      expect(await sql`select 1 from email_rule where row_id = ${RULE}`).toHaveLength(0)
+    } finally {
+      await unwire()
+    }
+  })
+
+  test('fixtures recorded as unreadable text or a non-list remove nothing by the ledger', async () => {
+    for (const ledger of ['"not json"', '{"table": "Email Rule"}']) {
+      registerApp(manifest())
+      try {
+        await installApp(APP)
+        await sql`update installed_app set fixtures = (${ledger}::text)::jsonb where name = ${APP}`
+        await uninstallApp(APP)
+        expect(await isInstalled(APP)).toBe(false)
+        expect(await sql`select 1 from email_rule where row_id = ${RULE}`).toHaveLength(1)
+      } finally {
+        await unwire()
+        await deleteDoc('Email Rule', RULE).catch(() => {})
+      }
+    }
+  })
+})

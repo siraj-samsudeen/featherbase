@@ -102,14 +102,24 @@ export default defineConfig({
       // (v8's default), which hides the numbers exactly when they are most
       // useful for diagnosing what a broken run stopped exercising.
       reportOnFailure: true,
-      // ADR 0017: negative thresholds cap uncovered counts, not percentages.
-      // Fresh CI run 41391014265 merged all three shards and PG18 with MySQL
-      // enabled. Tighten these caps as coverage improves; never exclude code
-      // to meet them. An additional uncovered item fails even if % rounds up.
+      // ADR 0017: negative thresholds cap uncovered counts, not percentages;
+      // 100 means none uncovered (a cap of -0 would read as a 0% floor).
+      // Tighten these caps as coverage improves; never exclude code to meet
+      // them. An additional uncovered item fails even if % rounds up.
+      // Stage 1 (lines, statements, functions): measured on a fresh database,
+      // the full suite on PostgreSQL 18 with MySQL enabled, as CI merges it.
+      // Three statements are left. Two run only when another transaction
+      // commits in a window no test can hold open: a row deleted between its
+      // read and rowCapabilities' re-read (document.ts), and the scope
+      // provider turned off between authorizing a read and recording its
+      // drops (runtime-actions.ts dropVersions). The third needs a key column
+      // the caller reads on the Table but not on one matched row, which no
+      // grant set tried so far produces (collection-import.ts key analysis).
+      // Branches are a later stage.
       thresholds: {
-        lines: -25,
-        statements: -232,
-        functions: -22,
+        lines: 100,
+        statements: -3,
+        functions: 100,
         branches: -870,
       },
     },

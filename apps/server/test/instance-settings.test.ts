@@ -203,6 +203,28 @@ describe('apply (D4)', () => {
   })
 })
 
+describe('a settings file that cannot be applied as written', () => {
+  test('naming one row twice is refused before anything is saved', async () => {
+    const err = await problemsOf(applyInstanceSettings({
+      settings: { 'Sign In Method': [{ row_id: 'google', enabled: true }, { row_id: 'google', enabled: false }] },
+    }, { by: 'Administrator' }))
+    expect(err.fields).toMatchObject({ 'Sign In Method.google': 'Sign In Method names row google twice' })
+  })
+
+  test('a value the database itself refuses fails the apply outright, not as a named problem', async () => {
+    await expect(applyInstanceSettings({ settings: { 'System Settings': { app_name: 'Bad\u0000Name' } } }, { by: 'Administrator' }))
+      .rejects.not.toBeInstanceOf(AppError)
+  })
+
+  test('a created row whose field the file sets to empty records no change for that field', async () => {
+    const result = await applyInstanceSettings({
+      settings: { 'Sign In Method': [{ row_id: 'hr_two', kind: 'delegated_password', label: 'HR Two', enabled: false, service_url: 'https://hr2.example.com/login', allowed_email_domains: null }] },
+    }, { by: 'Administrator' })
+    expect(result.changes.filter((c) => c.row_id === 'hr_two').map((c) => c.field)).not.toContain('allowed_email_domains')
+    expect(result.changes).toContainEqual(expect.objectContaining({ row_id: 'hr_two', field: 'label', new: 'HR Two' }))
+  })
+})
+
 describe('values that differ by environment', () => {
   const file: InstanceSettingsFile = {
     settings: { 'Scheduled Job': [{ row_id: 'disable_leavers', enabled: true }] },

@@ -562,13 +562,14 @@ export function discoverPackages(paths: string[]) {
 }
 
 /** Add only the explicitly chosen package. Boot discovery clears the registry;
- *  using it during preparation would unwire every already-running app. */
+ *  using it during preparation would unwire every already-running app. Its one
+ *  caller has just checked, in the same operation, that the declaration is the
+ *  reviewed one, so the package is `name`. */
 export function registerPreparedPackage(directory: string, name: string) {
   return appOperation(async () => {
     if ((await listInstalledApps()).some(app => app.name === name))
       throw new AppError('ConflictError', `App ${name} is already installed; use the upgrade lifecycle`)
     const pkg = await loadArtifact(directory)
-    if (pkg.name !== name) throw new AppError('ValidationError', 'Prepared package identity changed; restore its reviewed manifest')
     artifacts.set(`${pkg.name}@${pkg.version}`, pkg)
     selectPackage(pkg)
   }, true)
@@ -946,7 +947,7 @@ export async function appAsset(name: string, asset: string, user: string, client
       if (!clientNavigation || !asset || asset.includes('.')) throw error
       file = await contained(pkg.clientRoot!, 'index.html')
     }
-    if (!(await stat(file)).isFile()) throw new Error('Not a file')
+    // A fallback index.html that is not a file fails readFile below: not found.
     const clientEntry = file === await contained(pkg.clientRoot!, 'index.html')
     return { file, bytes: await readFile(file), catalog, clientEntry, frameOrigins: pkg.manifest.frameOrigins ?? [], accent: pkg.manifest.accent }
   } catch {

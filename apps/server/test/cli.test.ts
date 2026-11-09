@@ -619,6 +619,24 @@ describe('Running an Instance: rehearse an environment\'s start-up checks', () =
     expect(`${f?.stdout}`).not.toMatch(/the server will start/)
   })
 
+  test('a Data Source whose variable is unset is warned of, and the server will still start', async () => {
+    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    await sql`insert into data_source (row_id, engine, url_env) values ('boot-check-src', 'postgres', 'BOOT_CHECK_UNSET_URL')`
+    const out = await cli(['boot-check'])
+    expect(out).toMatch(/boot-check: WARNING: BOOT_CHECK_UNSET_URL is not set on a "test" server/)
+    expect(out).toMatch(/the server will start/)
+  })
+
+  test('on a developer machine, an installed app this server lacks is named, and the server will still start', async () => {
+    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    vi.stubEnv('FEATHERBASE_ENV', 'development')
+    vi.stubEnv('FEATHERBASE_APP_PATHS', '[]')
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package, package_version, artifact_digest)
+      values ('acme_board', ${sql.json({ name: 'acme_board' })}, true, true, '1.2.0', 'fingerprint-of-1.2.0')`
+    const r = await runMain(main, ['boot-check'], '')
+    expect(r.stdout).toMatch(/boot-check: WARNING: App acme_board version 1\.2\.0 is installed and enabled, but this server does not have it/)
+  })
+
   test('a production configuration with a forbidden switch on fails and names the switch', async () => {
     vi.stubEnv('FEATHERBASE_ENV', 'production')
     vi.stubEnv('ALLOW_MOCK_OAUTH', '1')
@@ -702,6 +720,12 @@ describe('the command line, command by command', () => {
       .toEqual([{ row_id: 'Administrator', built_in: true }, { row_id: 'Guest', built_in: true }])
     expect(await sql`select role from has_role where parent = 'Administrator'`).toEqual([{ role: 'System Manager' }])
     expect(await sql`select 1 from role where row_id = 'Guest'`).toHaveLength(1)
+  })
+
+  test('seed on a database that has its built-in persons leaves them as they are', async () => {
+    const before = await sql`select row_id, full_name, updated_at from person where row_id in ('Administrator', 'Guest') order by row_id`
+    expect(await cli(['seed'])).toBe('seed complete\n')
+    expect(await sql`select row_id, full_name, updated_at from person where row_id in ('Administrator', 'Guest') order by row_id`).toEqual(before)
   })
 
   test('migrate on an up-to-date database applies nothing and succeeds', async () => {

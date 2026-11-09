@@ -452,6 +452,13 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     })).toMatchObject({ validation_runs: 2 })
   })
 
+  test('an app page whose catalog cannot be read is a server error, not a sign-in or not-found', async ({ admin }) => {
+    expect(await discoverPackages([resolve('../..', 'test-apps/other')])).toEqual([])
+    await admin.post('/api/install_app', { name: 'other' })
+    await sql.unsafe('alter table featherbase.installed_app rename to installed_app_gone')
+    await expectStatus(await admin.fetch('/other/', { headers: { accept: 'text/html' } }), 500)
+  })
+
   test('PKG-R4: ordinary member catalog and client root are separate from management and server files', async ({ api, admin, createUser }) => {
     expect(await discoverPackages([resolve('../..', 'test-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'other' })

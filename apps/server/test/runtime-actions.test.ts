@@ -11,6 +11,7 @@ import { loadInstalledApps } from '../src/apps'
 import { sql } from '../src/db'
 import { app } from '../src/index'
 import { registerController, unregisterController, type TableController } from '../src/controllers'
+import { callerDocuments } from '../src/runtime-actions'
 import { expectRefused, expectStatus, makeTable } from './fixtures'
 
 const directory = resolve('../..', 'test-apps/action-proof')
@@ -368,5 +369,17 @@ export const reads = {
       status: 417, type: 'ValidationError', message: '417 ValidationError: Expected { payload }', fields: undefined,
     })
     expect(await sql`select * from runtime_action_result`).toEqual([])
+  })
+})
+
+describe('an action\'s document access', () => {
+  pgTest('never reaches a Table another app owns, even when named', async ({ admin }) => {
+    expect(await discoverPackages([resolve('../..', 'test-apps/other')])).toEqual([])
+    await admin.post('/api/install_app', { name: 'other' })
+    const access = callerDocuments('borrower', ['other.task'], 'Administrator')
+    const refused = { message: 'Actions cannot access another application’s owned Tables' }
+    await expect(access.documents.get('other.task', 'any')).rejects.toMatchObject(refused)
+    // The refusal also fails the action as a whole, whatever the handler did with it.
+    await expect(access.close()).rejects.toMatchObject(refused)
   })
 })

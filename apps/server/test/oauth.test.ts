@@ -6,7 +6,7 @@ import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { getBrowser } from '../src/print'
 import { expectStatus, makePerson } from './fixtures'
-import { mockConsentHtml } from '../src/oauth'
+import { _setGoogleFetch, assertSignInAvailable, exchangeCode, googleAuthorizeUrl, mintHandoffCode, mockApproveRedirect, mockConsentHtml, redeemHandoffCode, verifyState } from '../src/oauth'
 import type { TestClient } from 'feather-testing-postgres'
 import { expectSessionCookie, setSessionHours } from './session-cookie-test-utils'
 import { configureGoogle, inviteGoogleRaw } from './identity-fixtures'
@@ -630,5 +630,67 @@ describe('#396: the sign-in records the client address', () => {
     await expectStatus(res, 302)
     const [person] = await sql`select row_id from person where email = 'google.address@gmail.com'`
     expect(await signInAddresses(person.row_id as string)).toEqual([CLIENT])
+  })
+})
+
+describe('the OAuth steps refuse what they cannot use', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.useRealTimers()
+  })
+
+  test('with no client id and the mock provider off, sign-in is not available', () => {
+    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    expect(() => assertSignInAvailable('')).toThrow('Google sign-in is not configured')
+  })
+
+  test('a callback without a state is refused', () => {
+    expect(() => verifyState(undefined, 'cookie-state', 'localhost')).toThrow('Missing OAuth state')
+  })
+
+  test('the mock consent page carries every hint it is given', () => {
+    const url = new URL(googleAuthorizeUrl('', 'st', '/api/oauth/google/callback', 'ch', { email: 'jo@example.com', name: 'Jo', subject: 'g-1', hd: '' }), 'http://x')
+    expect(Object.fromEntries(url.searchParams)).toEqual({ state: 'st', redirect_uri: '/api/oauth/google/callback', email: 'jo@example.com', name: 'Jo', subject: 'g-1', hd: '' })
+  })
+
+  test('a code exchange without a code is refused', async () => {
+    await expect(exchangeCode(undefined, '/api/oauth/google/callback', '', undefined)).rejects.toThrow('Missing authorization code')
+  })
+
+  test('a mock code is not exchanged once the mock provider is off', async () => {
+    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    await expect(exchangeCode('any', '/api/oauth/google/callback', '', undefined)).rejects.toThrow('Mock OAuth provider is disabled')
+  })
+
+  test('a mock code that names no email is refused', async () => {
+    const location = mockApproveRedirect('st', '/api/oauth/google/callback', '  ', 'No One')
+    const code = new URLSearchParams(location.split('?')[1]).get('code') as string
+    await expect(exchangeCode(code, '/api/oauth/google/callback', '', undefined)).rejects.toThrow('No email in code')
+  })
+
+  test('an abandoned hand-off code stays refused after later codes clear it away', () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const session = { token: 'tok-abandoned', user: { row_id: 'psn_x' } } as unknown as Parameters<typeof mintHandoffCode>[0]
+    const abandoned = mintHandoffCode(session)
+    vi.advanceTimersByTime(61_000)
+    mintHandoffCode({ ...session, token: 'tok-later' })
+    expect(() => redeemHandoffCode(abandoned, 'tok-abandoned', 'localhost')).toThrow('Invalid or expired sign-in code')
+  })
+
+  test('a browser sign-in whose call to Google fails outright lands on the sign-in page, logged', async ({ api }) => {
+    await configureGoogle({ client_id: 'client-1', allowed_email_domains: '*' })
+    const start = await api.fetch('/api/oauth/google/login')
+    const state = new URL(start.headers.get('location') as string).searchParams.get('state') as string
+    const cookie = start.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    _setGoogleFetch(async () => { throw new TypeError('fetch failed') })
+    try {
+      const res = await expectStatus(await api.fetch(`/api/oauth/google/callback?state=${encodeURIComponent(state)}&code=c`, { headers: { cookie, accept: 'text/html' } }), 302)
+      expect(res.headers.get('location')).toBe('/featherbase/login?error=google_failed')
+      expect(error.mock.calls.some((call) => call[0] === '[sign-in] google callback failed')).toBe(true)
+    } finally {
+      _setGoogleFetch(null)
+      error.mockRestore()
+    }
   })
 })

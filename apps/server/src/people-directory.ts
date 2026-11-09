@@ -27,6 +27,17 @@ export async function ownDisplayName(user: string): Promise<string> {
   return person ? displayName(person) : String(account?.label ?? UNNAMED)
 }
 
+/** Person, read as `viewer` with these filters; null when the viewer may not
+ *  read Person at all. Any other failure is the caller's. */
+async function readablePeople(viewer: string, filters: Parameters<typeof scopedWhere>[2]) {
+  try {
+    return await scopedWhere('Person', viewer, filters)
+  } catch (error) {
+    if (error instanceof AppError && error.type === 'PermissionError') return null
+    throw error
+  }
+}
+
 /** Display names for principal ids, as `viewer` may see them. A person the
  *  viewer may not read, or an id that names nobody, maps to null — the
  *  caller shows a neutral placeholder, never the opaque id. A service
@@ -37,12 +48,7 @@ export async function principalNames(ids: unknown, viewer: string): Promise<Reco
   const wanted = [...new Set(ids as string[])].slice(0, MAX_NAMES)
   const out: Record<string, string | null> = Object.fromEntries(wanted.map((id) => [id, null]))
   if (!wanted.length) return out
-  let readable: Awaited<ReturnType<typeof scopedWhere>> | null = null
-  try {
-    readable = await scopedWhere('Person', viewer, [['row_id', 'in', wanted]])
-  } catch (err) {
-    if (!(err instanceof AppError && err.type === 'PermissionError')) throw err
-  }
+  const readable = await readablePeople(viewer, [['row_id', 'in', wanted]])
   if (readable) {
     const { table, where, cols, readExpression } = readable
     const rows = await sql`
@@ -75,13 +81,8 @@ export async function namesForApp(ids: unknown, viewer: string, settings: Readon
 export async function enabledPeople(ids: string[], viewer: string): Promise<string[]> {
   const wanted = [...new Set(ids)].slice(0, MAX_NAMES)
   if (!wanted.length) return []
-  let scoped
-  try {
-    scoped = await scopedWhere('Person', viewer, [['row_id', 'in', wanted], ['enabled', '=', true], ['built_in', '=', false]])
-  } catch (err) {
-    if (!(err instanceof AppError && err.type === 'PermissionError')) throw err
-    return []
-  }
+  const scoped = await readablePeople(viewer, [['row_id', 'in', wanted], ['enabled', '=', true], ['built_in', '=', false]])
+  if (!scoped) return []
   const rows = await sql`select row_id from ${sql(scoped.table)} where ${scoped.where} and replaced_by is null order by row_id`
   return rows.map((row) => String(row.row_id))
 }
@@ -91,13 +92,8 @@ export async function enabledPeople(ids: string[], viewer: string): Promise<stri
  *  viewer may not read Person or its email (so an address can't be probed
  *  past what the viewer could already look up). Any letter case. */
 export async function personByEmail(address: string, viewer: string): Promise<string | null> {
-  let scoped
-  try {
-    scoped = await scopedWhere('Person', viewer, [])
-  } catch (error) {
-    if (error instanceof AppError && error.type === 'PermissionError') return null
-    throw error
-  }
+  const scoped = await readablePeople(viewer, [])
+  if (!scoped) return null
   if (!scoped.cols.has('email')) return null
   const [row] = await sql`
     select p.row_id from (

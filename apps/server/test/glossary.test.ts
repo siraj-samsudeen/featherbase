@@ -10,7 +10,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { discoverPackages, packageFailures } from '../src/runtime-packages'
 import { uninstallApp } from '../src/apps'
-import { glossaryDeclaration } from '../src/glossary'
+import { glossaryDeclaration, readGlossary, takeAppWording } from '../src/glossary'
 import { expectApiError, expectRefused, expectStatus, grantRole } from './fixtures'
 import { sql } from '../src/db'
 import { deleteStored } from '../src/storage'
@@ -271,5 +271,28 @@ describe('a term carries a picture', () => {
       definition: 'The person who keeps one aisle\'s shelves full and tidy for a whole shift.' })
     await admin.post('/api/glossary/take_app_wording', { id: coverage })
     expect(await named(admin, 'Coverage')).toMatchObject({ editedHere: false, picture: '/files/coverage.png' })
+  })
+})
+
+describe('taking an app\'s wording', () => {
+  test('of a term that does not exist is not found', async () => {
+    await expect(takeAppWording('gt_missing', 'Administrator')).rejects.toMatchObject({ type: 'NotFoundError' })
+  })
+
+  test('of an instance term, which has none, is refused', async ({ admin }) => {
+    const term = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Glossary Term', row: { term: 'Plant', definition: 'A store.' } })
+    await expect(takeAppWording(term.row_id, 'Administrator')).rejects.toMatchObject({ type: 'ValidationError', message: 'This term belongs to the instance; it has no app wording to take' })
+  })
+
+  test('reading the glossary without the grant to read terms is refused', async () => {
+    await expect(readGlossary('Guest')).rejects.toMatchObject({ type: 'PermissionError', message: 'Not permitted to read the glossary' })
+  })
+})
+
+describe('what a term describes', () => {
+  test('a blank Table is skipped, and a Table that does not exist is refused', async ({ admin }) => {
+    await expectRefused(admin.post('/api/save_row', { table: 'Glossary Term', row: {
+      term: 'Ghost', definition: 'Nothing.', describes: [{ link_table: '  ' }, { link_table: 'No Such Table' }],
+    } }), 417, 'There is no Table No Such Table')
   })
 })

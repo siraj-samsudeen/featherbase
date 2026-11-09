@@ -467,3 +467,14 @@ describe('DEL-R6: a bound Table sheds its binding, never its source', () => {
     expect(readFileSync(path.join(dir, 'zones.csv'), 'utf8')).toBe(CSV)
   })
 })
+
+describe('deleting a Table with a file that is not stored here', () => {
+  test('removes the File row and touches no storage for it', async ({ admin }) => {
+    await makeTable(admin)
+    const row = await admin.post<{ row_id: string }>('/api/save_row', { table: DT, row: { title: 'linked' } })
+    await sql`insert into file (row_id, file_name, file_url, ref_table, ref_name, created_by, updated_by)
+      values ('external-file', 'elsewhere.pdf', 'https://cdn.example.com/elsewhere.pdf', ${DT}, ${row.row_id}, 'Administrator', 'Administrator')`
+    await admin.delete(`/api/table_def/${ENC}`)
+    expect(await sql`select 1 from file where row_id = 'external-file'`).toHaveLength(0)
+  })
+})
