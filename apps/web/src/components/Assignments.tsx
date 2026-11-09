@@ -13,7 +13,7 @@ interface ToDoRow {
 
 // EML-006 / UI-017: assign this row to a user. Creates a ToDo in their
 // list and notifies them.
-export function Assignments({ table, name, readOnly = false }: { table: string; name: string; readOnly?: boolean }) {
+export function Assignments({ table, name, readOnly }: { table: string; name: string; readOnly: boolean }) {
   const queryClient = useQueryClient()
   const [assignTo, setAssignTo] = useState('')
   const [busy, setBusy] = useState(false)

@@ -41,7 +41,7 @@ export function useConnections(table: string, name: string, enabled = true) {
   })
 }
 
-export function useBacklinks(table: string, enabled = true) {
+export function useBacklinks(table: string, enabled: boolean) {
   return useQuery({
     queryKey: ['backlinks', table],
     enabled: enabled && Boolean(table),

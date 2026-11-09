@@ -18,7 +18,7 @@ export function indicatorColor(value: string): string {
   return INDICATOR_PALETTE[h % INDICATOR_PALETTE.length]
 }
 
-export function Indicator({ value, label = value }: { value: string; label?: string }) {
+export function Indicator({ value, label }: { value: string; label: string }) {
   return (
     // Not inline-flex: a browser drops an atomic box whole when it runs out of
     // room, where plain text clips with an ellipsis (#1015).

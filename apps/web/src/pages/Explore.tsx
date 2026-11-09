@@ -70,15 +70,15 @@ function chainFilters(
 export function ExploreView({
   root,
   onRootChange,
-  initialChain = [],
-  initialSelect = [],
+  initialChain,
+  initialSelect,
 }: {
   root: string | undefined
   onRootChange: (root: string) => void
   // Entry-point deep links: pre-built chain steps and pane-1 preselection.
   // Applied once at mount (the route keys this component on the params).
-  initialChain?: Step[]
-  initialSelect?: string[]
+  initialChain: Step[]
+  initialSelect: string[]
 }) {
   // Candidate roots come from the permission-filtered navigation endpoint —
   // NOT from reading the metadata `Table` table, which most roles cannot
