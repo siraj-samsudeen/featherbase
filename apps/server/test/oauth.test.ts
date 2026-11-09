@@ -5,7 +5,7 @@ import { parseInstanceAddresses } from '../src/instance-addresses'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { getBrowser } from '../src/print'
-import { expectStatus, makePerson } from './fixtures'
+import { expectRefused, expectStatus, makePerson } from './fixtures'
 import { _setGoogleFetch, assertSignInAvailable, exchangeCode, googleAuthorizeUrl, mintHandoffCode, mockApproveRedirect, mockConsentHtml, redeemHandoffCode, verifyState } from '../src/oauth'
 import type { TestClient } from 'feather-testing-postgres'
 import { expectSessionCookie, setSessionHours } from './session-cookie-test-utils'
@@ -651,6 +651,28 @@ describe('the OAuth steps refuse what they cannot use', () => {
   test('the mock consent page carries every hint it is given', () => {
     const url = new URL(googleAuthorizeUrl('', 'st', '/api/oauth/google/callback', 'ch', { email: 'jo@example.com', name: 'Jo', subject: 'g-1', hd: '' }), 'http://x')
     expect(Object.fromEntries(url.searchParams)).toEqual({ state: 'st', redirect_uri: '/api/oauth/google/callback', email: 'jo@example.com', name: 'Jo', subject: 'g-1', hd: '' })
+  })
+
+  test('the mock consent page opened with no query carries a blank state and callback', async ({ api }) => {
+    const html = await (await expectStatus(await api.fetch('/api/oauth/mock/consent'), 200)).text()
+    expect(html).toContain('<input type="hidden" name="state" value="" />')
+    expect(html).toContain('<input type="hidden" name="redirect_uri" value="" />')
+  })
+
+  test('a mock approval with no state is refused', async ({ api }) => {
+    const { cookie } = await beginLogin(api)
+    await expectStatus(await api.fetch('/api/oauth/mock/approve', { headers: { cookie } }), 401)
+  })
+
+  test('a mock approval with no callback address is refused', async ({ api }) => {
+    const { state, cookie } = await beginLogin(api)
+    await expectStatus(await api.fetch(`/api/oauth/mock/approve?${new URLSearchParams({ state })}`, { headers: { cookie } }), 400)
+  })
+
+  test('a mock approval that names no email signs nobody in', async ({ api }) => {
+    const { state, cookie } = await beginLogin(api)
+    const approve = await expectStatus(await api.fetch(`/api/oauth/mock/approve?${new URLSearchParams({ state, redirect_uri: '/api/oauth/google/callback' })}`, { headers: { cookie } }), 302)
+    await expectRefused(api.fetch(approve.headers.get('location') as string, { headers: { cookie } }), 401, 'No email in code')
   })
 
   test('a code exchange without a code is refused', async () => {

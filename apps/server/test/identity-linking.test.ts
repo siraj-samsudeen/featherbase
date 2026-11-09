@@ -12,6 +12,7 @@ import { googleLink, googleSignIn, linkOutcome, redeemSession } from './google-m
 import { _setGoogleFetch } from '../src/oauth'
 import { getSignInMethod } from '../src/identities'
 import { completeSignIn, linkVerifiedToSelf, resolveVerified } from '../src/sign-in'
+import { issueSession } from '../src/auth'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -279,6 +280,37 @@ describe('a Google link that cannot finish comes back with its reason', () => {
     const res = await api.fetch(callback, { headers: { cookie: [`sid=${me.token}`, ...challenge].join('; ') } })
     expect(linkOutcome(res)).toBe('not_allowed')
     expect(await sql`select 1 from sign_in_identity where subject = 'g-off'`).toHaveLength(0)
+  })
+
+  test('a link finished after Google was turned off comes back as a Google failure', async ({ api, admin }) => {
+    await configureGoogle({ allowed_email_domains: '' })
+    const me = await passwordSession(api, admin, 'link.google.off')
+    const { callback, challenge } = await approvedLink(api, me.token, 'goneoff@gmail.com', 'g-gone-off')
+    await configureGoogle({ enabled: false })
+    const res = await api.fetch(callback, { headers: { cookie: [`sid=${me.token}`, ...challenge].join('; ') } })
+    expect(linkOutcome(res)).toBe('google_failed')
+  })
+
+  test('a link finished in a preview session of the same person links nothing', async ({ api, admin }) => {
+    await configureGoogle({ allowed_email_domains: '' })
+    const me = await passwordSession(api, admin, 'link.preview.finish')
+    const { callback, challenge } = await approvedLink(api, me.token, 'preview.finish@gmail.com', 'g-preview-finish')
+    const preview = (await issueSession(me.id, { preview: true })).token
+    const res = await api.fetch(callback, { headers: { cookie: [`sid=${preview}`, ...challenge].join('; ') } })
+    expect(linkOutcome(res)).toBe('not_allowed')
+    expect(await sql`select 1 from sign_in_identity where subject = 'g-preview-finish'`).toHaveLength(0)
+  })
+
+  test('a link finished once the sign-in is no longer fresh asks to sign in again', async ({ api, admin }) => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    await configureGoogle({ allowed_email_domains: '' })
+    const me = await passwordSession(api, admin, 'link.stale')
+    vi.advanceTimersByTime(6 * 60_000)
+    const { callback, challenge } = await approvedLink(api, me.token, 'stale@gmail.com', 'g-stale')
+    vi.advanceTimersByTime(9.5 * 60_000)
+    const res = await api.fetch(callback, { headers: { cookie: [`sid=${me.token}`, ...challenge].join('; ') } })
+    expect(linkOutcome(res)).toBe('sign_in_again')
+    expect(await sql`select 1 from sign_in_identity where subject = 'g-stale'`).toHaveLength(0)
   })
 
   test('a link whose call to Google fails outright comes back as failed', async ({ api, admin }) => {
