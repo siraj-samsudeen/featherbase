@@ -722,6 +722,12 @@ describe('the command line, command by command', () => {
     expect(await sql`select 1 from role where row_id = 'Guest'`).toHaveLength(1)
   })
 
+  test('seed on a database that has its built-in persons leaves them as they are', async () => {
+    const before = await sql`select row_id, full_name, updated_at from person where row_id in ('Administrator', 'Guest') order by row_id`
+    expect(await cli(['seed'])).toBe('seed complete\n')
+    expect(await sql`select row_id, full_name, updated_at from person where row_id in ('Administrator', 'Guest') order by row_id`).toEqual(before)
+  })
+
   test('migrate on an up-to-date database applies nothing and succeeds', async () => {
     const [before] = await sql`select count(*)::int as n from migration`
     expect(await runMain(main, ['migrate'])).toMatchObject({ code: 0, stderr: '' })

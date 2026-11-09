@@ -5,7 +5,7 @@
 import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
-import { expectApiError, expectRefused, grantRole, makeTable } from './fixtures'
+import { expectApiError, expectRefused, expectStatus, grantRole, makeTable } from './fixtures'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
 
@@ -142,5 +142,13 @@ describe('#905: archiving a Table', () => {
     await expectApiError(unarchive(admin), { status: 417, message: expect.stringContaining('is not archived') })
     await archive(admin)
     await expectApiError(archive(admin), { status: 417, message: expect.stringContaining('already archived') })
+  })
+})
+
+describe('archiving with a body that is not JSON', () => {
+  test('archives with no note', async ({ admin }) => {
+    await plants(admin)
+    await expectStatus(await admin.fetch(`/api/table_def/${encodeURIComponent(T)}/archive`, { method: 'POST', body: 'not json' }), 200)
+    expect(await sql`select archived_at is not null as archived from table_def where name = ${T}`).toEqual([{ archived: true }])
   })
 })
