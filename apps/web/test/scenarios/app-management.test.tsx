@@ -16,7 +16,7 @@ import { loadInstalledApps } from 'server/src/apps'
 import { sql } from 'server/src/db'
 import { withNamedVariable } from 'server/src/env'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp } from '../pg-test'
+import { test, expect, renderApp, onScreen } from '../pg-test'
 
 type Client = Parameters<typeof renderApp>[1]
 type Rendered = Awaited<ReturnType<typeof renderApp>>
@@ -326,7 +326,7 @@ describe('app-management', () => {
         expect(value).toBeEnabled()
         await userEvent.clear(value)
         await userEvent.type(value, 'acceptance-account')
-        await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+        await onScreen().clickButton('Save')
         await waitFor(async () =>
           expect((await admin.get<{ value: string }>('/api/table/App Setting/dash.embed_service_account')).value).toBe('acceptance-account'), LONG)
       })
