@@ -4,10 +4,11 @@
 // $GITHUB_OUTPUT. Anything it does not recognise runs everything, and a failure
 // here runs everything too: test.yml treats a missing answer as "run it".
 import { appendFileSync, existsSync, readFileSync, readdirSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { acceptanceShardCount } from './ci-shards.mjs'
 
-const EVERYTHING = new Set(['server', 'web', 'browser', 'acceptance', 'client', 'example'])
+const EVERYTHING = new Set(['server', 'web', 'smoke', 'acceptance', 'client', 'example'])
 const TEMPLATE_FILES = new Set(['.copier-answers.yml', 'opencode.json', 'skills-lock.json', 'scripts/create-labels.sh'])
 
 // A spec's capability, when it is one the acceptance suite can run alone. An
@@ -31,7 +32,7 @@ export function suitesFor(path) {
   if (path.startsWith('client-apps/')) return new Set(['client'])
   if (path.startsWith('example-apps/')) return new Set(['example'])
   if (path.startsWith('apps/server/')) return new Set(['server', 'client'])
-  if (path.startsWith('apps/web/')) return new Set(['web', 'browser', 'acceptance'])
+  if (path.startsWith('apps/web/')) return new Set(['web', 'smoke', 'acceptance'])
   // A workflow runs on its own triggers; only this one changes what runs here.
   if (/^\.github\/workflows\//.test(path) && path !== '.github/workflows/test.yml') return new Set()
   return EVERYTHING
@@ -46,10 +47,10 @@ export function suitesFor(path) {
 export function decide({ event, labels = [], files, hasScenarios = () => true }) {
   const scoped = event === 'pull_request' && !labels.includes('run-all') && files.length > 0
   const suites = new Set(scoped ? files.flatMap(file => [...suitesFor(file)]) : EVERYTHING)
-  if (scoped && labels.includes('run-e2e')) { suites.add('browser'); suites.add('acceptance') }
+  if (scoped && labels.includes('run-e2e')) { suites.add('smoke'); suites.add('acceptance') }
   const server = suites.has('server')
   const web = suites.has('web')
-  const browser = suites.has('browser')
+  const smoke = suites.has('smoke')
   const allAcceptance = suites.has('acceptance')
   const capabilities = allAcceptance ? [] : [...new Set(files.map(file => CAPABILITY.exec(file)?.[1]).filter(Boolean))].filter(hasScenarios).sort()
   return {
@@ -57,20 +58,21 @@ export function decide({ event, labels = [], files, hasScenarios = () => true })
     platform_checks: server || web,
     server,
     web,
-    browser,
+    smoke,
     acceptance: allAcceptance || capabilities.length > 0,
     // Empty when all of acceptance runs: this only ever narrows it.
     acceptance_capabilities: capabilities.join(','),
     client_apps: suites.has('client'),
     // Tasker's own layers, unless the full web and e2e suites already run them.
-    tasker_tests: suites.has('example') && !(web && browser && allAcceptance),
-    // Merges the web, browser and acceptance reports, so it needs all to have run.
-    coverage_merged: web && browser && allAcceptance,
+    tasker_tests: suites.has('example') && !(web && smoke && allAcceptance),
+    // Merges the web and acceptance reports, so it needs both to have run.
+    coverage_merged: web && smoke && allAcceptance,
   }
 }
 
-/** Whether a capability's spec, or an active change's delta to it, has a Gherkin fence. */
+/** Whether cucumber has scenarios to run for a capability: Gherkin, and not moved to Vitest (#1070). */
 function capabilityHasGherkin(capability) {
+  if (createRequire(import.meta.url)('./scenarios/bindings.cjs').migratedCapabilities().has(capability)) return false
   const changes = existsSync('openspec/changes') ? readdirSync('openspec/changes').filter(name => name !== 'archive') : []
   return ['openspec/specs', ...changes.map(change => `openspec/changes/${change}/specs`)]
     .map(directory => `${directory}/${capability}/spec.md`)

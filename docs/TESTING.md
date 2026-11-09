@@ -80,11 +80,11 @@ depends on). `unit` and `e2e` report on every PR, so never add a workflow-level
 `paths` filter to `test.yml`. The checks also fail a PR that changes an app's
 `version` to one not greater than `main`'s (`pnpm check:app-versions`).
 
-The component and browser suites each use four CI shards, with a separate
+The component suite uses four CI shards, with a separate
 runner and PostgreSQL service per shard. Files still run sequentially within
 each shard: their server and instance-wide state is shared. `unit-web` merges
 all four Vitest blobs and enforces the component suite's unchanged coverage
-floor; `coverage-merged` combines that report with every browser shard.
+floor; `coverage-merged` reads that report.
 Served-page tests run in a separate job. Acceptance uses six shards, each with
 its own runner and databases, keeping every Feature file whole and in order; a
 PR that changed only specs uses one. `tools/acceptance-weights.json` holds each
@@ -92,7 +92,7 @@ file's measured seconds so the runners finish together. A wrong figure only make
 one runner finish later, and the `e2e` job's log prints current ones to paste in.
 Acceptance executes the packaged delivery proof with coverage, so CI does not
 invoke it again.
-The required `e2e` check aggregates browser, acceptance and served-page results;
+The required `e2e` check aggregates smoke, acceptance, served-page and tour results;
 only an explicit scope decision permits skipped suites. Server coverage merges
 as soon as its five shards and PostgreSQL 18 preflight finish, leaving `unit`
 as a lightweight final verdict rather than another serial setup/merge step.
@@ -200,16 +200,84 @@ Every non-sandboxed test file says why in its header comment.
   to `dist/runtime-proof-*/`. It uses only `featherbase_runtime_proof_e2e`
   (override with `RUNTIME_PROOF_DATABASE_URL` / `RUNTIME_PROOF_PORT`).
 
+## Spec scenarios
+
+A fenced scenario in `openspec/**/spec.md` is proven by one Vitest test bound
+to it (#1070): `scenarioFor(test, '<capability>')` from
+`apps/server/test/scenario.ts`, then `scenario('<the scenario's name>', …)`.
+The body walks the scenario's Gherkin in order. Each `step(...)` names the
+next line, by its exact text or a pattern, and a step out of order, changed or
+left out fails the test. Put it at the fastest layer that proves it:
+`apps/server/test/scenarios/` for the server, `apps/web/test/scenarios/` for
+what a person reads on screen.
+
+```ts
+const scenario = scenarioFor(test, 'naming-and-numbering')
+describe('naming-and-numbering', () => {
+  scenario('An imported row already holds the next number', async ({ admin }, step) => {
+    await step('a table "Bin" whose rows are numbered 1, 2, 3', () => makeTable(admin, { … }))
+    …
+  })
+})
+```
+
+`pnpm check:scenarios` (CI's `checks` job) runs every fenced scenario of the
+effective spec on exactly one runner. A capability with any bound test is
+Vitest's: each of its fenced scenarios needs a test, and the cucumber suite
+(`acceptance-tests/`) leaves it out. `pnpm scenarios:report` runs the bound
+tests and writes `scenarios-report/index.html`. It lists every capability,
+requirement and scenario with its Gherkin, where it runs and whether it
+passed, prose scenarios included.
+
+## Tours
+
+A tour (`apps/web/tours/*.tour.ts`, #1070) is one long browser test that tells
+one story the way a demo does. It catches what narrow tests miss: one feature
+handing over to the next, a normal user rather than Administrator, realistic
+amounts of data, and steps that are too slow.
+
+- **Through the screen only.** The one setup is the people who sign in.
+  Everything else is done the way a person does it, and later chapters use what
+  earlier chapters made.
+- **The watchdog.** A tour fails on any uncaught page error, server error
+  (5xx) or request that got no answer, even if every assertion passes. It also
+  fails on any chapter slower than its time limit.
+  `tours/harness.tour.ts` proves the watchdog itself still works.
+- **Gaps.** A step the platform can't do yet is a `gap(...)` naming its issue.
+  It shows as a card in the video and a note in the report, and never fails the
+  tour.
+- **One install per run.** `playwright.tours.config.ts` builds the web app,
+  resets its own database (`<name>_tours_e2e`) and serves both from the API
+  server, as an instance does.
+- **Every CI run.** The `tours` job runs on every push and PR, whatever the
+  change touches. It is part of the required `e2e` check.
+
+```bash
+pnpm tour                                   # every tour, as CI runs them
+VIDEO=1 pnpm tour --grep "Featherbase:"     # slow, captioned: test-results/tours/**/video.webm
+TOUR_URL=https://<preview> pnpm tour        # against a running instance, before a demo
+TOUR_ROWS=500 pnpm tour                     # the base tour with bigger sheets
+```
+
+`VIDEO=1` shows each chapter as a title card and each step as a caption, so the
+recording can serve as a product video. Playwright records it with its own
+ffmpeg (`pnpm --filter web exec playwright install ffmpeg`). Each chapter's time
+is printed and kept in the HTML report (`apps/web/tours-report/`).
+
+The **Featherbase base tour** (`featherbase.tour.ts`) goes from a spreadsheet to
+an app you can navigate: first the simple path with one clean sheet, then the
+stores' own messy sheets layered on top. Each app gets its own tour, and that tour shows the
+platform features the app relies on.
+
 ## E2E specs
 
 Every spec imports `test` or `anonymousTest` from `./fixtures`, and which one
 *is* its auth story: `test` is already signed in as Administrator (a
 `storageState` captured once per worker through the real login form);
 `anonymousTest` starts signed out, for the login surface itself, another
-identity, or a page reached with no session. Shared Table builders
-(`ensureTable`, `ensureFormFixtures`, `fillRows`) live in `e2e/fixtures-ui.ts`;
-each spec still creates its fixtures idempotently in its own `beforeAll`, using
-`request` for API setup.
+identity, or a page reached with no session. Only `smoke.spec.ts` remains
+(#1080): behaviour is tested in the server and component suites, layout in
+Storybook, and demos in the tours.
 
 Both fixtures are backed by the
 [feather-testing-core](https://github.com/siraj-samsudeen/feather-testing-core)

@@ -4,7 +4,7 @@ import { decide, suitesFor } from './ci-scope.mjs'
 
 const pr = (...files) => decide({ event: 'pull_request', files })
 const on = (decision) => Object.keys(decision).filter(key => decision[key]).sort()
-const ALL = ['acceptance', 'browser', 'client_apps', 'coverage_merged', 'platform_checks', 'server', 'web']
+const ALL = ['acceptance', 'client_apps', 'coverage_merged', 'platform_checks', 'server', 'smoke', 'web']
 
 test('prose runs only the fast checks', () => {
   assert.deepEqual(on(pr('README.md', 'adr/0014-x.md', 'openspec/changes/a/design.md', '.github/PULL_REQUEST_TEMPLATE.md',
@@ -18,7 +18,7 @@ test("the process template's files run only the fast checks", () => {
 
 test('a markdown file something reads is not prose', () => {
   assert.deepEqual(on(pr('docs/DEPLOY.md')), ['client_apps', 'platform_checks', 'server'])
-  assert.deepEqual(on(pr('apps/web/e2e/fixtures/zones.claims.md')), ['acceptance', 'browser', 'coverage_merged', 'platform_checks', 'web'])
+  assert.deepEqual(on(pr('apps/web/e2e/fixtures/example.md')), ['acceptance', 'coverage_merged', 'platform_checks', 'smoke', 'web'])
   assert.deepEqual(on(pr('client-apps/c/instances/a/privacy-notice.md')), ['client_apps'])
 })
 
@@ -35,7 +35,7 @@ test('the server runs its suite and the client platform tests, not web or e2e', 
 })
 
 test('web runs web and e2e, and so the merged coverage, not the server suite', () => {
-  assert.deepEqual(on(pr('apps/web/src/x.tsx')), ['acceptance', 'browser', 'coverage_merged', 'platform_checks', 'web'])
+  assert.deepEqual(on(pr('apps/web/src/x.tsx')), ['acceptance', 'coverage_merged', 'platform_checks', 'smoke', 'web'])
 })
 
 test('a change that can reach anything runs everything', () => {
@@ -68,13 +68,13 @@ test('an empty diff tells us nothing, so everything runs', () => {
 test('labels ask for more', () => {
   assert.deepEqual(on(decide({ event: 'pull_request', labels: ['run-all'], files: ['README.md'] })), ALL)
   // No merged coverage: the web suite it also needs did not run.
-  assert.deepEqual(on(decide({ event: 'pull_request', labels: ['run-e2e'], files: ['apps/server/x.ts'] })), ['acceptance', 'browser', 'client_apps', 'platform_checks', 'server'])
+  assert.deepEqual(on(decide({ event: 'pull_request', labels: ['run-e2e'], files: ['apps/server/x.ts'] })), ['acceptance', 'client_apps', 'platform_checks', 'server', 'smoke'])
 })
 
 test('merged coverage is only ever wanted when both its inputs run', () => {
   for (const files of [['README.md'], ['client-apps/c/a/x'], ['example-apps/t/x'], ['apps/server/x'], ['apps/web/x'], ['tools/x']]) {
     const d = pr(...files)
-    assert.equal(d.coverage_merged, d.web && d.browser && d.acceptance, files[0])
+    assert.equal(d.coverage_merged, d.web && d.smoke && d.acceptance, files[0])
   }
 })
 
@@ -86,7 +86,7 @@ test("a spec runs only its capability's scenarios: nothing else reads a spec", (
   const d = pr('openspec/specs/list-view/spec.md', 'openspec/changes/x/specs/core-forms/spec.md', 'openspec/changes/x/design.md')
   assert.deepEqual(on(d), ['acceptance', 'acceptance_capabilities'])
   assert.equal(d.acceptance_capabilities, 'core-forms,list-view')
-  assert.equal(d.browser, false)
+  assert.equal(d.smoke, false)
   assert.equal(d.web, false)
 })
 
@@ -112,7 +112,7 @@ test('all of acceptance wins over a capability', () => {
   }
 })
 
-test('the step definitions run all of acceptance and not the browser suite', () => {
+test('the step definitions run all of acceptance and not the smoke test', () => {
   assert.deepEqual(on(pr('acceptance-tests/step-definitions/list-view.steps.js')), ['acceptance'])
   assert.equal(suitesFor('acceptance-tests/README.md').size, 0)
 })

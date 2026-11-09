@@ -54,16 +54,16 @@ When support assigns Anjali's ticket to themselves
 Then nobody is emailed about the ticket
 ```
 
-### Requirement: The email holds only what the assignee may read
-The email SHALL give the ticket's title, who assigned it and a link that opens the ticket. It SHALL include the ticket's description only if the assignee may read it on the ticket, and otherwise SHALL say it is left out.
+### Requirement: The email holds what the assignee reads on the ticket
+The email SHALL give the ticket's title, who assigned it and a link that opens the ticket. It SHALL include the ticket's description only if the assignee may read it on the ticket, and otherwise SHALL say it is left out. A private ticket's assignee reads its description.
 
-#### Scenario: A private description stays out of the email
+#### Scenario: A private ticket's assignee gets its description
 
 ```gherkin
 Given Anjali has raised a ticket that support can assign
 When support assigns Anjali's ticket to Colleague
 Then the email to Colleague names the ticket, who assigned it and a link to it
-And the email to Colleague leaves out the private description
+And the email to Colleague includes the description
 ```
 
 #### Scenario: Someone who may read the description gets it
@@ -72,4 +72,39 @@ And the email to Colleague leaves out the private description
 Given Anjali has raised a ticket that support can assign
 When support assigns Anjali's ticket to Verifier
 Then the email to Verifier includes the description
+```
+
+### Requirement: Support assigns from the ticket's header, after confirming
+On the ticket screen, Tickets SHALL show support "Assigned to" in the ticket's header as a picker listing Unassigned and the people tickets can be assigned to. Picking SHALL save nothing: a confirm row SHALL ask "Assign to <person> and email them?", "Assign to yourself?" for the person picking, or "Remove the assignee?" for Unassigned, with Assign and Cancel. Cancel SHALL restore the current assignee. Assign SHALL save through the ticket's edit, so the mail rules above apply.
+
+#### Scenario: Picking a person asks before anything is saved
+
+```gherkin
+Given Anjali has raised a ticket that support can assign
+And Colleague is listed as someone tickets can be assigned to
+When support picks Colleague as the assignee on the ticket screen
+Then the ticket screen asks "Assign to Colleague and email them?"
+And nobody is emailed about the ticket
+```
+
+#### Scenario: Cancelling keeps the ticket as it was
+
+```gherkin
+Given Anjali has raised a ticket that support can assign
+And Colleague is listed as someone tickets can be assigned to
+When support picks Colleague as the assignee on the ticket screen
+And support cancels the assignment
+Then the ticket screen shows the ticket as Unassigned
+And nobody is emailed about the ticket
+```
+
+### Requirement: There is one way to assign, and only support has it
+Anyone who is not support SHALL see a ticket's assignee as plain text. The Edit request form SHALL NOT offer an assignee; the header's picker is the only place to assign.
+
+#### Scenario: The requester sees the assignee as text
+
+```gherkin
+Given Anjali has raised a ticket that support can assign
+When Anjali opens her ticket on the ticket screen
+Then Anjali sees the ticket as Unassigned, with no way to assign it
 ```

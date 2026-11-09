@@ -1,5 +1,5 @@
-# CI: static checks, the unit/component suites and the Playwright e2e suite,
-# in parallel jobs.
+# CI: static checks, the unit/component suites, acceptance and the browser smoke
+# test, in parallel jobs.
 #
 # Each job that touches a database gets its own Postgres service container
 # (17; the preflight job, 18). The service's POSTGRES_DB/POSTGRES_USER env
@@ -7,15 +7,14 @@
 # machine (init.sh assumes brew or pg_ctlcluster, neither of which applies
 # here). Everything else the app needs in the database is created by
 # `pnpm --filter server migrate`, exactly as init.sh runs it;
-# the RLS suite creates its own login role for the run. The e2e specs seed
-# their own documents.
+# the RLS suite creates its own login role for the run.
 #
 # Shape of the gate. `changes` (tools/ci-scope.mjs) picks the suites a PR needs
 # from its paths; everything runs on main and on whatever it cannot place:
 #
 #   changes -> unit-server (5), PG18 preflight -> coverage-server
 #           -> component-shards (4), web-support -> unit-web
-#           -> browser-shards (4), acceptance (6), served -> e2e
+#           -> smoke, acceptance (6), served, tours -> e2e
 #   unit-web + e2e -> coverage-merged
 #   checks + unit suites + app-tests + coverage gates -> unit
 #
@@ -76,7 +75,7 @@ jobs:
     timeout-minutes: 15
     services:
       postgres:
-        image: postgres:17
+        image: postgres:18.6
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -111,7 +110,7 @@ jobs:
       platform_checks: ${{ steps.decide.outputs.platform_checks }}
       server: ${{ steps.decide.outputs.server }}
       web: ${{ steps.decide.outputs.web }}
-      browser: ${{ steps.decide.outputs.browser }}
+      smoke: ${{ steps.decide.outputs.smoke }}
       acceptance: ${{ steps.decide.outputs.acceptance }}
       acceptance_capabilities: ${{ steps.decide.outputs.acceptance_capabilities }}
       acceptance_shards: ${{ steps.decide.outputs.acceptance_shards }}
@@ -181,6 +180,9 @@ jobs:
 
       - name: Validate E2E suite uses DSL fixtures
         run: pnpm check:e2e-dsl
+      # #1070: each fenced spec scenario runs on exactly one runner.
+      - name: Every spec scenario has one runner
+        run: pnpm check:scenarios
 
       # This repository is public. Covers tracked text files only: Aadhaar-like
       # numbers (Verhoeff-valid), Indian mobile numbers and client-domain
@@ -285,7 +287,7 @@ jobs:
       NODE_ENV: test
     services:
       postgres:
-        image: postgres:17
+        image: postgres:18.6
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -397,7 +399,7 @@ jobs:
       NODE_ENV: test
     services:
       postgres:
-        image: postgres:17
+        image: postgres:18.6
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -474,7 +476,7 @@ jobs:
       NODE_ENV: test
     services:
       postgres:
-        image: postgres:17
+        image: postgres:18.6
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -617,7 +619,7 @@ jobs:
       NODE_ENV: test
     services:
       postgres:
-        image: postgres:18
+        image: postgres:18.6
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -678,7 +680,7 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:18
+        image: postgres:18.6
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -780,76 +782,45 @@ jobs:
           path: coverage/dash-backend/
           if-no-files-found: error
 
-  browser-shards:
+  # The browser suite is the smoke test alone (#1080): behaviour is proved by
+  # the server and component suites, layout by Storybook, demos by the tours.
+  smoke:
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.smoke != 'false') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: ${{ fromJSON(needs.changes.outputs.shards || '[1]') }}
+    timeout-minutes: 15
     services:
       postgres:
-        image: postgres:17
+        image: postgres:18.6
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: featherbase
-        ports:
-          - 5432:5432
+        ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
-
       - uses: pnpm/action-setup@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: '26.13.0'
           cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build independent runtime test packages
-        run: pnpm apps:prepare
-
-      - name: Install Playwright Chromium
-        uses: ./.github/actions/install-chromium
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm apps:prepare
+      - uses: ./.github/actions/install-chromium
         with:
           package: web
-
-      # No migrate step and no boot step: in isolated mode
-      # (E2E_ISOLATED=1, set by the `e2e` script) Playwright owns the whole
-      # stack. It resets its own database, migrates it, then
-      # starts the API and web servers on their own ports and tears them down
-      # after. Booting a second stack here would only race with that one.
-
-      # playwright.config.ts pins workers: 1 (specs share one server and
-      # database) — keep it. The trace flag is CI-only so failures leave
-      # something inspectable in test-results/ for the artifact below.
-      - name: Run browser shard with coverage and execution receipt
-        run: node tools/ci-shards.mjs run browser ${{ matrix.shard }}
-
-      - uses: actions/upload-artifact@v4
-        if: success()
-        with:
-          name: browser-${{ matrix.shard }}
-          path: .ci-shards/browser-${{ matrix.shard }}/
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 1
-
+      # Isolated mode (E2E_ISOLATED=1, set by the `e2e` script): Playwright
+      # resets and migrates its own database and starts its own servers.
+      - name: Run the smoke test
+        run: pnpm --filter web e2e --trace retain-on-failure
       - name: Upload Playwright artifacts
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-browser-${{ matrix.shard }}
+          name: playwright-smoke-artifacts
           path: |
             apps/web/test-results/
             apps/web/playwright-report/
@@ -871,7 +842,7 @@ jobs:
       ACCEPTANCE_CAPABILITIES: ${{ needs.changes.outputs.acceptance_capabilities }}
     services:
       postgres:
-        image: postgres:17
+        image: postgres:18.6
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -958,12 +929,12 @@ jobs:
 
   served:
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.smoke != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
       postgres:
-        image: postgres:17
+        image: postgres:18.6
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -1008,34 +979,83 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # #1070: tours, the demo-length stories (docs/TESTING.md, "Tours"). They run
+  # on every push and PR, whatever it changes: a server-only change can break
+  # a screen, and a tour is the check that says the product still works.
+  tours:
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.6
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: featherbase
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.13.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The apps a tour installs (Tasker) are offered from their built packages.
+      - run: pnpm apps:prepare
+      - uses: ./.github/actions/install-chromium
+        with:
+          package: web
+      # Builds the web app, resets its own database and serves both from the
+      # API server, as an instance does (playwright.tours.config.ts).
+      - name: Run tours
+        run: pnpm tour
+      - name: Upload tour report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: tours-report
+          path: |
+            apps/web/tours-report/
+            apps/web/test-results/tours/
+          if-no-files-found: ignore
+          retention-days: 7
+
   # Keep the required check name, and reject failed or unexpectedly skipped
   # producers even when one of its dependencies fails before uploading.
   e2e:
-    needs: [changes, browser-shards, acceptance, served]
+    needs: [changes, smoke, acceptance, served, tours]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Require every requested producer
         env:
           CHANGES: ${{ needs.changes.result }}
-          BROWSER_WANTED: ${{ needs.changes.outputs.browser }}
+          SMOKE_WANTED: ${{ needs.changes.outputs.smoke }}
           ACCEPTANCE_WANTED: ${{ needs.changes.outputs.acceptance }}
-          BROWSER: ${{ needs.browser-shards.result }}
+          SMOKE: ${{ needs.smoke.result }}
           ACCEPTANCE: ${{ needs.acceptance.result }}
           SERVED: ${{ needs.served.result }}
+          TOURS: ${{ needs.tours.result }}
         run: |
           [ "$CHANGES" = success ] || exit 1
-          for result in "$BROWSER" "$SERVED"; do
-            [ "$result" = success ] || { [ "$result" = skipped ] && [ "$BROWSER_WANTED" = false ]; } || exit 1
+          # Tours are never scoped out.
+          [ "$TOURS" = success ] || exit 1
+          for result in "$SMOKE" "$SERVED"; do
+            [ "$result" = success ] || { [ "$result" = skipped ] && [ "$SMOKE_WANTED" = false ]; } || exit 1
           done
           [ "$ACCEPTANCE" = success ] || { [ "$ACCEPTANCE" = skipped ] && [ "$ACCEPTANCE_WANTED" = false ]; } || exit 1
 
       - uses: actions/checkout@v4
-        if: needs.browser-shards.result == 'success' || needs.acceptance.result == 'success'
+        if: needs.acceptance.result == 'success'
       - uses: pnpm/action-setup@v4
-        if: needs.browser-shards.result == 'success' || needs.acceptance.result == 'success'
+        if: needs.acceptance.result == 'success'
       - uses: actions/setup-node@v4
-        if: needs.browser-shards.result == 'success' || needs.acceptance.result == 'success'
+        if: needs.acceptance.result == 'success'
         with:
           node-version: '26.13.0'
           cache: pnpm
@@ -1051,35 +1071,18 @@ jobs:
         run: |
           npm --prefix acceptance-tests ci --no-audit --no-fund
           node tools/ci-shards.mjs collect acceptance
-      - run: pnpm install --frozen-lockfile
-        if: needs.browser-shards.result == 'success'
-      - uses: actions/download-artifact@v4
-        if: needs.browser-shards.result == 'success'
-        with:
-          pattern: browser-[0-9]*
-          path: .ci-shards
-      - name: Require every browser artifact and exact-once file execution
-        if: needs.browser-shards.result == 'success'
-        run: node tools/ci-shards.mjs collect browser
-      - uses: actions/upload-artifact@v4
-        if: needs.browser-shards.result == 'success'
-        with:
-          name: browser-coverage
-          path: apps/web/.nyc_output/
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 1
 
-  # One source-level web report, not separate component/browser percentages.
-  # It reads artifacts from both suites, so `changes` only asks for it when both
-  # run; main always runs both.
+  # One source-level web report from the component suite, and Tasker's 100%
+  # gate over its unit, HTTP and packaged coverage. It reads artifacts from the
+  # web suite and acceptance, so `changes` only asks for it when both run; main
+  # always runs both.
   coverage-merged:
     needs: [changes, unit-web, e2e]
     if: ${{ !cancelled() && needs.changes.outputs.coverage_merged != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Require successful component and browser suites
+      - name: Require successful component suite and acceptance
         if: needs.unit-web.result != 'success' || needs.e2e.result != 'success'
         run: exit 1
 
@@ -1100,11 +1103,6 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: browser-coverage
-          path: apps/web/.nyc_output
-
-      - uses: actions/download-artifact@v4
-        with:
           name: runtime-support-coverage
           path: coverage/tasker
 
@@ -1117,13 +1115,12 @@ jobs:
       - name: Install runtime coverage reporter
         run: npm ci --prefix example-apps/tasker --no-audit --no-fund
 
-      - name: Merge component and browser coverage
+      - name: Report component coverage
         run: pnpm --filter web coverage:merged
 
-      - name: Merge runtime unit, HTTP, browser and packaged coverage
+      - name: Merge runtime unit, HTTP and packaged coverage
         run: >-
           npm run coverage:merged --prefix example-apps/tasker --
-          --browser-dir "$PWD/apps/web/.nyc_output"
           "$PWD"/coverage/tasker/components/coverage-final.json
           "$PWD"/coverage/tasker/integration/*.json
           "$PWD"/coverage/tasker/packaged/*.json

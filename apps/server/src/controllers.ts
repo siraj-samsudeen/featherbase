@@ -72,6 +72,11 @@ export function registerController(controller: TableController) {
   registry.set(controller.table, list)
 }
 
+/** Does any controller hook run for this Table's rows (its own or a wildcard)? */
+export function hasControllers(table: string): boolean {
+  return registry.has(table) || registry.has(WILDCARD_TABLE)
+}
+
 export function clearControllers(table: string) {
   registry.delete(table)
 }

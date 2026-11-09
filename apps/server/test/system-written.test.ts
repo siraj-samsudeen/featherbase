@@ -274,7 +274,7 @@ describe('#432: every write entry point is covered', () => {
 
   // Every exported function of the document engine is either a reader, the
   // trusted internal writer, or a public writer that refuses audit tables.
-  const READERS = ['assertUserPermissions', 'checkRowForInsert', 'duplicateValueFields', 'getDoc', 'rowCapabilities', 'validateRowForUpdate']
+  const READERS = ['assertUserPermissions', 'checkLinksForUpdate', 'checkRowForInsert', 'duplicateValueFields', 'getDoc', 'rowCapabilities', 'validateRowForUpdate']
   const TRUSTED = ['saveSystemRow']
   // #1034: names no Table, so it has no way to an audit table.
   const PERMISSION_ONLY = ['revokeGrant']

@@ -105,6 +105,32 @@ test('only warnings: the banner is amber; once fixed it goes on the next page ch
   expect(await screen.findByTestId('instance-health-summary')).toHaveTextContent('Ready to explore.')
 })
 
+// The next two moved from e2e/instance-health.spec.ts (#1080).
+test('settings managed in Featherbase: the settings file card reads Optional and asks for no fix', async ({ admin, createUser }) => {
+  await healthy(createUser)
+  await sql`delete from instance_settings_apply`
+  await renderApp('/featherbase/admin/instance-health', admin)
+  const applied = await card('settings-applied')
+  expect(within(applied).getByTestId('health-state')).toHaveTextContent(/^Optional$/)
+  expect(within(applied).getByTestId('health-message')).toHaveTextContent(
+    /^Settings are managed in Featherbase\. A managed settings file is optional\.$/,
+  )
+  expect(within(applied).queryByTestId('health-fix')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('health-banner')).not.toBeInTheDocument()
+})
+
+test('a scheduled job whose last run failed is one problem in the banner and reads Failing on its card', async ({ admin, createUser }) => {
+  await healthy(createUser)
+  await sql`update scheduled_job set enabled = true, last_run_at = now(), last_outcome = 'error' where method = 'disable_leavers'`
+  await renderApp('/featherbase/admin/all-tables', admin)
+  const banner = await screen.findByTestId('health-banner')
+  expect(banner).toHaveTextContent('1 problem needs attention')
+  expect(banner).toHaveAttribute('data-severity', 'error')
+  await userEvent.click(within(banner).getByRole('link', { name: 'Open instance health' }))
+  const job = await card('scheduled-job:disable_leavers')
+  expect(within(job).getByTestId('health-state')).toHaveTextContent(/^Failing$/)
+})
+
 test('someone without the System Manager role sees no banner, no link and never asks (item 13)', async ({ admin, createUser }) => {
   await sql`delete from instance_settings_apply`
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Shelf Clerk' } })

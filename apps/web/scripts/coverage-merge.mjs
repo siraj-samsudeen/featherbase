@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Merge the web suites' Istanbul coverage into one map (ADR 0012).
 //
-// Inputs: every `*.json` in apps/web/.nyc_output — `e2e-*.json` written by the
-// Playwright fixtures (raw browser counters, still in the coordinates of the
+// Inputs: every `*.json` in apps/web/.nyc_output — any `e2e-*.json` written by
+// the Playwright fixtures under E2E_COVERAGE=1 (raw browser counters, still in the coordinates of the
 // code Vite served, each file carrying its `inputSourceMap`) and `jsdom.json`
 // written by `vitest --coverage` (already remapped to the original source).
 // Output: .coverage/merged.json, which `nyc report --temp-dir .coverage` reads.
@@ -27,8 +27,9 @@ const output = path.join(root, '.coverage', 'merged.json')
 const src = path.join(root, 'src') + path.sep
 
 const files = fs.existsSync(input) ? fs.readdirSync(input).filter((f) => f.endsWith('.json')) : []
-if (!files.includes('jsdom.json') || !files.some((f) => f.startsWith('e2e-'))) {
-  console.error(`incomplete coverage in ${input} — run both test:coverage and coverage:e2e first`)
+// The browser suite is down to the smoke test (#1080), so its maps are optional.
+if (!files.includes('jsdom.json')) {
+  console.error(`incomplete coverage in ${input} — run test:coverage first`)
   process.exit(1)
 }
 
@@ -73,7 +74,7 @@ for (const f of files.sort()) {
 // that silently omits executable files; type declarations and pure re-export
 // barrels have no Istanbul counters and are identified by syntax, not names.
 const missing = fs.readdirSync(src, { recursive: true })
-  .filter((file) => /\.tsx?$/.test(file) && !/\.d\.ts$|\.test\.tsx?$/.test(file))
+  .filter((file) => /\.tsx?$/.test(file) && !/\.d\.ts$|\.test\.tsx?$|\.stories\.tsx?$/.test(file))
   .map((file) => path.join(src, file))
   .filter((file) => !merged.files().includes(file))
   .filter((file) => {

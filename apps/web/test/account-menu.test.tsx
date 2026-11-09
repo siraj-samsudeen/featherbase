@@ -91,3 +91,23 @@ test('a mismatched confirmation blocks the submit', async ({ admin }) => {
     expect(screen.queryByTestId('change-password-modal')).not.toBeInTheDocument(),
   )
 })
+
+// Moved from e2e/account-menu.spec.ts (ACCT-001, #1080): the end of that loop.
+const pathOf = (r: { router: unknown }) =>
+  (r.router as { state: { location: { pathname: string } } }).state.location.pathname
+
+test('Log out from the account menu lands on the sign-in page', async ({ admin }) => {
+  const r = await renderApp('/featherbase/admin', admin)
+  await userEvent.click(await screen.findByTestId('session-user', {}, { timeout: 8000 }))
+  await userEvent.click(screen.getByTestId('logout'))
+  await waitFor(() => expect(pathOf(r)).toBe('/featherbase/login'))
+  expect(await screen.findByTestId('login-submit')).toBeInTheDocument()
+})
+
+test('a password the account no longer has is refused on the sign-in form', async ({ admin }) => {
+  await renderApp('/featherbase/login', { user: null, token: null } as never)
+  await userEvent.type(await screen.findByLabelText('Email or username'), admin.user!)
+  await userEvent.type(screen.getByLabelText('Password'), 'not-the-password-anymore')
+  await userEvent.click(screen.getByTestId('login-submit'))
+  expect(await screen.findByTestId('login-error')).toHaveTextContent('Invalid login credentials')
+})

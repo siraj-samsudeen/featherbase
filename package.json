@@ -15,6 +15,8 @@
     "check:openspec:changes": "openspec validate --changes --strict --no-interactive",
     "check:specs": "pnpm check:openspec:specs && pnpm check:openspec:changes && pnpm check:unarchived-changes",
     "check:unarchived-changes": "node --test tools/check-unarchived-changes.test.mjs && node tools/check-unarchived-changes.mjs",
+    "check:scenarios": "node --test tools/scenarios/check.test.cjs && node tools/scenarios/check.cjs",
+    "scenarios:report": "pnpm --filter server exec vitest run test/scenarios --reporter=default --reporter=json --outputFile.json=../../scenarios-report/server.json; pnpm --filter web exec vitest run test/scenarios --reporter=default --reporter=json --outputFile.json=../../scenarios-report/web.json; node tools/scenarios/check.cjs --results scenarios-report/server.json scenarios-report/web.json",
     "check:e2e-dsl": "node --test tools/check-e2e-dsl.test.mjs && node tools/check-e2e-dsl.mjs",
     "check:sensitive": "node --test tools/check-sensitive.test.mjs && node tools/check-sensitive.mjs",
     "check:dev": "node --test tools/dev.test.mjs tools/build-instance-apps.test.mjs tools/check-app-digests.test.mjs tools/featherbase.test.mjs",
@@ -27,6 +29,7 @@
     "smoke": "pnpm --filter server test:smoke && pnpm --filter web smoke",
     "test": "pnpm -r test",
     "test:coverage": "pnpm -r test:coverage && npm run test:coverage --prefix example-apps/tasker",
+    "tour": "pnpm --filter web tour",
     "test:all": "pnpm -r test && pnpm --filter web e2e"
   },
   "packageManager": "pnpm@12.16.1+sha512.091d1dee7927575661b25dab3c2ae31cafc1c54d6b71ed6a6600cf0c1cb10434a447eae14015f1b23e2e6bedeed79df94a932e2164d2832280dce3fb32f656d1",

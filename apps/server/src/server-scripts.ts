@@ -1,5 +1,7 @@
 import vm from 'node:vm'
 import { sql } from './db'
+import { platformTableExists } from './platform-tables'
+import { readOnce } from './permission-reads'
 import { AppError } from './errors'
 
 // CUST-004: sandboxed Server Scripts. Scripts run in a fresh V8 context
@@ -123,13 +125,11 @@ export async function runDocEventScripts(
   row: Record<string, unknown>,
   db: typeof sql = sql,
 ): Promise<void> {
-  const [ok] = await db`
-    select 1 from information_schema.tables where table_name = 'server_script'`
-  if (!ok) return
-  const scripts = await db`
+  if (!(await platformTableExists('server_script', db))) return
+  const scripts = await readOnce(JSON.stringify(['row scripts', table, event]), () => db`
     select row_id, script from server_script
     where script_type = 'Document Event' and ref_table = ${table}
-      and event = ${event} and enabled = true`
+      and event = ${event} and enabled = true`)
   for (const s of scripts) runRowScript(s.script as string, row, s.row_id as string)
 }
 
@@ -139,9 +139,7 @@ export async function runApiScript(
   method: string,
   args: Record<string, unknown>,
 ): Promise<unknown> {
-  const [ok] = await sql`
-    select 1 from information_schema.tables where table_name = 'server_script'`
-  if (!ok) throw new AppError('NotFoundError', `No such server script: ${method}`)
+  if (!(await platformTableExists('server_script'))) throw new AppError('NotFoundError', `No such server script: ${method}`)
   const [s] = await sql`
     select row_id, script from server_script
     where script_type = 'API' and api_method = ${method} and enabled = true`

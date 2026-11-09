@@ -4,12 +4,12 @@ import { getDoc } from '../document'
 import { createHash } from 'node:crypto'
 import { quoteIdent } from '../sql-identifier'
 import { AppError } from '../errors'
-import { checkRowForInsert, saveDoc, saveSystemRow, validateRowForUpdate } from '../document'
+import { checkLinksForUpdate, checkRowForInsert, saveDoc, saveSystemRow, validateRowForUpdate } from '../document'
 import { ROW_KEY, getMeta, type TableMeta } from '../meta'
 import { assertDocPermission, assertPermission, permissionScope, permittedColumns, includesColumn } from '../permissions'
 import { registerCollectionAction, type CollectionActionContext } from '../actions'
 import { sql } from '../db'
-import { withStablePermissionReads } from '../permission-reads'
+import { withStablePermissionReads, writesNoRememberedFacts } from '../permission-reads'
 import { canRetire, tableRelation, quoteRelation } from '../table-engine'
 
 // IMP-005: bulk import — POST /api/table/:table:import { rows: [...] }.
@@ -348,6 +348,13 @@ export async function importRows({ table, args, user }: CollectionActionContext,
       return { key_candidates }
     }
 
+    // #1074: a run into a Table someone made reads each person-and-Table
+    // fact once, not once a row: its saves cannot change those facts.
+    const run = () => runImport(meta, rows, { table, args, user } as CollectionActionContext, managedColumns, opts)
+    return writesNoRememberedFacts(meta) ? withStablePermissionReads(run) : run()
+}
+
+async function runImport(meta: TableMeta, rows: unknown[], { table, args, user }: CollectionActionContext, managedColumns: readonly string[], opts: { skipUnchanged?: boolean }) {
     const upsert = parseUpsertArgs(meta, args)
     // #145 (ruled 2026-08-11): the match key gets its index the first time a
     // REAL keyed run uses it — before resolution, so even this request's
@@ -396,6 +403,8 @@ export async function importRows({ table, args, user }: CollectionActionContext,
             await getDoc(table, resolution.row_id!, user.row_id)
             const current = await getDoc(table, resolution.row_id!)
             const plan = await planImport(meta, current, updateValues(row as Record<string, unknown>, upsert!, resolution), user.row_id)
+            // A value kept as someone's correction is not written, so only the planned values are checked.
+            await checkLinksForUpdate(meta, plan.values, user.row_id, current)
             fieldsUpdated += plan.fields_updated
             fieldsKept += plan.fields_kept
             if (plan.fields_updated > 0) changed++

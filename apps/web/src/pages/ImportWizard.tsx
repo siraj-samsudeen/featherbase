@@ -194,10 +194,12 @@ async function fetchTargets(): Promise<ImportTarget[]> {
   // #1007: the list names every Table, but an app's mandatory access can still
   // refuse this person one, even a System Manager. A refusal only leaves that
   // Table out; anything else, like an outage, is not "no targets" and still fails.
+  // #1076: so does an app installed or upgraded after this page loaded (409):
+  // its Tables are offered from the next reload, the rest import as usual.
   const metas = await Promise.all(
     list.data.map((t) =>
       api.get<TableMeta>(`/api/table/${encodeURIComponent(t.row_id)}:meta`).catch((err: unknown) => {
-        if (err instanceof ApiError && err.status === 403) return null
+        if (err instanceof ApiError && (err.status === 403 || err.status === 409)) return null
         throw err
       }),
     ),
