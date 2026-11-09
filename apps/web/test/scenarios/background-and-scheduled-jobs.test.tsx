@@ -46,8 +46,7 @@ async function copiedPlants(admin: TestClient) {
   })
 }
 
-// The control's <label> also holds its options' text, so the DSL's label lookup can't
-// name it; and the DSL has no verb for a control being enabled.
+// Whether the control is enabled: the DSL has no verb for that.
 const refreshControl = () => screen.getByRole('combobox', { name: 'Refresh automatically' }) as HTMLSelectElement
 
 async function openPlants(admin: TestClient): Promise<{ session: Session }> {
@@ -57,9 +56,12 @@ async function openPlants(admin: TestClient): Promise<{ session: Session }> {
   return { session }
 }
 
+/** The cadence as the control's option reads it: 'hourly' is "Hourly". */
+const shown = (cadence: string) => cadence[0]!.toUpperCase() + cadence.slice(1)
+
 function schedule(session: Session, cadence: string): Session {
   return session
-    .step(`refresh automatically: ${cadence}`, ({ user }) => user.selectOptions(refreshControl(), cadence))
+    .selectOption('Refresh automatically', shown(cadence))
     .until('the refresh control is enabled again', () => !refreshControl().disabled)
     .assertText('Pause')
 }
@@ -78,11 +80,9 @@ describe('background-and-scheduled-jobs', () => {
       expect(original.cadence).toBe('hourly')
       expect(original.enabled).toBe(true)
       ;({ session } = await openPlants(admin))
-      expect(refreshControl().value).toBe('hourly')
-      await session.clickButton('Pause').assertText('Resume')
+      await session.assertSelected('Refresh automatically', shown('hourly')).clickButton('Pause').assertText('Resume')
       ;({ session } = await openPlants(admin))
-      expect(refreshControl().value).toBe('off')
-      await schedule(session, 'daily')
+      await schedule(session.assertSelected('Refresh automatically', shown('off')), 'daily')
       const changed = (await scheduleInfo())!
       expect(changed.row_id).toBe(original.row_id)
       expect(changed.cadence).toBe('daily')
