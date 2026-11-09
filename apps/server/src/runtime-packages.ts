@@ -9,7 +9,7 @@ import { applyJobPlan, bindAppJobs, jobsDeclaration, planJobChanges, validateApp
 import { tableDefSchema } from './table-engine'
 import { hasPermission } from './permissions'
 import { tableAccessPolicy } from './mandatory-access'
-import { AppError } from './errors'
+import { AppError, errorMessage } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
 import { APP_ACCENTS, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
 import { callerDocuments, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
@@ -495,7 +495,7 @@ async function loadArtifacts(paths: string[]) {
       const entries = await readdir(folder, { withFileTypes: true })
       directories.push(...entries.filter(e => e.isDirectory()).map(e => resolve(folder, e.name)).sort())
     } catch (error) {
-      failures.push({ path, error: error instanceof Error ? error.message : String(error) })
+      failures.push({ path, error: errorMessage(error) })
     }
   }
   for (const directory of directories) {
@@ -512,7 +512,7 @@ async function loadArtifacts(paths: string[]) {
       }
       loaded.set(key, pkg)
     } catch (error) {
-      failures.push({ path: directory, error: error instanceof Error ? error.message : String(error) })
+      failures.push({ path: directory, error: errorMessage(error) })
     }
   }
   return { loaded, failures }
@@ -817,7 +817,7 @@ export async function rehearseAppUpgrades(paths: string[]): Promise<string[]> {
         applyMigrations(upgrade.migrations, upgrade.name, 'Administrator', { ownsClient: upgrade.ownsClient })))).filter(removesData)
       lines.push(`${label}: rehearsed; ${losses.length ? `it removes ${losses.map(describeLoss).join('; ')}` : 'it removes no data'}`)
     } catch (error) {
-      lines.push(`${label}: the upgrade would fail: ${error instanceof Error ? error.message : String(error)}`)
+      lines.push(`${label}: the upgrade would fail: ${errorMessage(error)}`)
     }
   }
   return lines

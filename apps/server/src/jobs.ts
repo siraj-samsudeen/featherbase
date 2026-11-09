@@ -9,6 +9,7 @@ import { sql } from './db'
 import { publishUserEvent } from './realtime'
 import { activeApps, appOperation } from './app-lifecycle'
 import { readVariable } from './env'
+import { errorMessage } from './errors'
 
 // JOB-001/002/003: durable job queue with an in-process worker.
 //
@@ -312,7 +313,7 @@ async function runClaimed(claimed: postgres.Row): Promise<boolean> {
     })
   } catch (err) {
     return appOperation(async () => {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = errorMessage(err)
       // JOB-002: retry until max_attempts, then land in failed. A final
       // failure lands there now.
       const nextStatus = err instanceof FinalJobFailure || attempt >= maxAttempts ? 'failed' : 'queued'

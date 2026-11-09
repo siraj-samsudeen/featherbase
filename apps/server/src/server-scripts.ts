@@ -2,7 +2,7 @@ import vm from 'node:vm'
 import { sql } from './db'
 import { platformTableExists } from './platform-tables'
 import { readOnce } from './permission-reads'
-import { AppError } from './errors'
+import { AppError, errorMessage } from './errors'
 
 // CUST-004: sandboxed Server Scripts. Scripts run in a fresh V8 context
 // (node:vm). SECURITY: we expose NO host objects to the script — not even
@@ -63,7 +63,7 @@ function run(userCode: string, kind: 'row' | 'api', inputJson: string, scriptNam
     // failure it raises is the script's own, reported by name.
     throw new AppError(
       'ValidationError',
-      `Server Script "${scriptName}": ${err instanceof Error ? err.message : String(err)}`,
+      `Server Script "${scriptName}": ${errorMessage(err)}`,
     )
   }
   const c = context as { __outDocJson: string | null; __outResultJson: string | null }
@@ -107,7 +107,7 @@ export function evalCondition(
   } catch (err) {
     throw new AppError(
       'ValidationError',
-      `Workflow condition (${label}): ${err instanceof Error ? err.message : String(err)}`,
+      `Workflow condition (${label}): ${errorMessage(err)}`,
     )
   }
   return (context as { __outResultJson: string | null }).__outResultJson === 'true'

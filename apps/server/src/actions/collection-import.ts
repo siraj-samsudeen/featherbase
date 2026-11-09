@@ -3,7 +3,7 @@ import { observeUnchangedRows, planImport, saveImportedRow } from '../import-cor
 import { getDoc } from '../document'
 import { createHash } from 'node:crypto'
 import { quoteIdent } from '../sql-identifier'
-import { AppError, orWhenRefused } from '../errors'
+import { AppError, errorMessage, orWhenRefused } from '../errors'
 import { checkLinksForUpdate, checkRowForInsert, saveDoc, saveSystemRow, validateRowForUpdate } from '../document'
 import { ROW_KEY, getMeta, type TableMeta } from '../meta'
 import { assertDocPermission, assertPermission, permissionScope, permittedColumns, includesColumn } from '../permissions'
@@ -414,7 +414,7 @@ async function runImport(meta: TableMeta, rows: unknown[], { table, args, user }
         } catch (err) {
           failed.push({
             index,
-            message: err instanceof Error ? err.message : String(err),
+            message: errorMessage(err),
             ...(err instanceof AppError && err.fields ? { fields: err.fields } : {}),
           })
           actions.push('fail')
@@ -494,7 +494,7 @@ async function runImport(meta: TableMeta, rows: unknown[], { table, args, user }
         if (err instanceof AppError && err.type === 'PermissionError') throw err
         failed.push({
           index,
-          message: err instanceof Error ? err.message : String(err),
+          message: errorMessage(err),
           ...(err instanceof AppError && err.fields ? { fields: err.fields } : {}),
         })
       }

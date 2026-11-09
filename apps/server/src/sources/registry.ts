@@ -1,6 +1,6 @@
 import { sql } from '../db'
 import { readNamedVariable } from '../env'
-import { AppError } from '../errors'
+import { AppError, errorMessage } from '../errors'
 import type { SourceConfig, SourceDriver, SourceEngine } from './types'
 import { postgresDriver } from './postgres-driver'
 import { mysqlDriver } from './mysql-driver'
@@ -129,7 +129,7 @@ export async function testSource(name: string): Promise<{ ok: boolean; error?: s
     return { ok: true }
   } catch (err) {
     // Never echo a connection string: driver errors can embed the URL.
-    const message = scrubSecrets(cfg, err instanceof Error ? err.message : String(err))
+    const message = scrubSecrets(cfg, errorMessage(err))
     await sql`update data_source set conn_status = 'error', last_checked_at = ${new Date()},
       last_error = ${message} where row_id = ${name}`
     return { ok: false, error: message }

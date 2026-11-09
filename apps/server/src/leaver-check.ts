@@ -18,6 +18,7 @@ import { queueEmail, type MailMessage } from './email'
 import { NO_RECIPIENTS, recordUndeliveredNotice, systemManagerEmails } from './system-notice'
 import { readMotherDuck } from './sources/motherduck'
 import type { WarehouseReader } from './motherduck-reader'
+import { errorMessage } from './errors'
 
 export const LEAVER_CHECK_JOB = 'disable_leavers'
 export const LEAVER_CHECK_SUBJECT = 'Leaver check: people disabled from the StyleHR record'
@@ -365,7 +366,7 @@ export async function runLeaverCheck(opts: RunOpts = {}): Promise<LeaverRun> {
       try {
         if (await disableOne(l)) disabled.push(l)
       } catch (err) {
-        failed.push(`${l.person}: ${err instanceof Error ? err.message : String(err)}`)
+        failed.push(`${l.person}: ${errorMessage(err)}`)
       }
   if (plan.refused) await logActivity(ACTOR, `leaver_check_refused: ${plan.refused}`.slice(0, 140))
   const emailed = await sendSummary(plan, disabled, failed)

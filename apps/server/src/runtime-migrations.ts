@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { quoteIdent } from './sql-identifier'
 import { z } from 'zod'
 import { accessPolicySchema } from './access-policy'
-import { AppError } from './errors'
+import { AppError, errorMessage } from './errors'
 import { sql, withTransaction } from './db'
 import { provisionApp } from './app-lifecycle'
 import { namingColumn, renameNamingColumn, tableSchemaToZod } from 'shared'
@@ -435,7 +435,7 @@ export async function countLosses(owner: string, migrations: PackageMigration[],
   } catch (error) {
     if (error !== DRY_RUN) {
       if (error instanceof AppError) throw error
-      refuse(`The upgrade would fail here: ${error instanceof Error ? error.message : String(error)}`)
+      refuse(`The upgrade would fail here: ${errorMessage(error)}`)
     }
   } finally {
     invalidateMeta()

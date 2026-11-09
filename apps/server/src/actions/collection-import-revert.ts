@@ -14,7 +14,7 @@ import { actionTransaction } from '../action-transaction'
 // the full save lifecycle — a revert is saveDoc updates and deleteDoc
 // deletes, never raw SQL — so the revert itself is versioned (RVT-H1's
 // recovery path).
-import { AppError } from '../errors'
+import { AppError, errorMessage } from '../errors'
 import { deleteDoc, saveDoc, getDoc } from '../document'
 import { ROW_KEY, getMeta, physicalRowKey } from '../meta'
 import { assertDocPermission, permissionScope } from '../permissions'
@@ -217,7 +217,7 @@ registerCollectionAction('import-revert', {
         })
         restored++
       } catch (err) {
-        failed.push({ row_id: r.touched.row_id, message: err instanceof Error ? err.message : String(err) })
+        failed.push({ row_id: r.touched.row_id, message: errorMessage(err) })
       }
     }
     for (const d of plan.deletes) {
@@ -227,7 +227,7 @@ registerCollectionAction('import-revert', {
         })
         deleted++
       } catch (err) {
-        failed.push({ row_id: d.touched.row_id, message: err instanceof Error ? err.message : String(err) })
+        failed.push({ row_id: d.touched.row_id, message: errorMessage(err) })
       }
     }
 

@@ -16,6 +16,7 @@ import { getRoles } from './permissions'
 import { accessApprovers, servedApp } from './runtime-packages'
 import { isInstalled } from './apps'
 import { VIEWER_ROLE } from './sales-target'
+import { errorMessage } from './errors'
 
 export const ALERT_SUBJECT = 'Someone is waiting for access'
 export const REMINDER_SUBJECT = 'Still waiting for access'
@@ -185,7 +186,7 @@ export async function alertAccessRequest(person: string, target: AccessTarget): 
       delivered = managers.length + others.length
     })
   } catch (err) {
-    console.warn(JSON.stringify({ event: 'waiting_for_access_alert_failed', person, app: target.name, error: err instanceof Error ? err.message : String(err) }))
+    console.warn(JSON.stringify({ event: 'waiting_for_access_alert_failed', person, app: target.name, error: errorMessage(err) }))
     return 0
   }
   return delivered

@@ -1,4 +1,4 @@
-import { AppError } from '../errors'
+import { AppError, errorMessage } from '../errors'
 import { datasetQueryText } from './dataset-query'
 import { readNamedVariable } from '../env'
 import { instanceToken, openSourceSession } from './motherduck'
@@ -125,7 +125,7 @@ async function instanceFor(cfg: SourceConfig): Promise<InstanceEntry & { release
 
 function wrapError(cfg: SourceConfig, err: unknown, secret?: string): never {
   if (err instanceof AppError) throw err
-  const message = err instanceof Error ? err.message : String(err)
+  const message = errorMessage(err)
   secret ??= cfg.url_env ? readNamedVariable(cfg.url_env) : undefined
   throw new AppError(
     'DataSourceError',

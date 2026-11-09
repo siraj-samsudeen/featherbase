@@ -14,7 +14,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { readVariable } from './env'
 import { Hono, type Context } from 'hono'
 import { sql } from './db'
-import { AppError, markLogged, statusOf } from './errors'
+import { AppError, errorMessage, markLogged, statusOf } from './errors'
 import { getRoles } from './permissions'
 import { logAccess } from './audit'
 import type { SessionUser } from './auth'
@@ -663,7 +663,7 @@ salesTargetRoutes.get('/report', async (c) => {
         person: user.row_id,
         call: 'GET /api/sales_target/report',
         status: statusOf(err),
-        message: err instanceof Error ? err.message : String(err),
+        message: errorMessage(err),
       }))
       // This line is the failure's one log line: the generic handler answers without logging it again.
       markLogged(err)
