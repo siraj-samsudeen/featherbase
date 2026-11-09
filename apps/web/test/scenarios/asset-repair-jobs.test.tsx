@@ -8,7 +8,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe } from 'vitest'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect } from '../pg-test'
+import { test, expect, screenSession } from '../pg-test'
 import { Assets, type Row, istLabel, realTime } from './assets'
 
 const scenario = scenarioFor(test, 'asset-repair-jobs')
@@ -86,12 +86,11 @@ describe('asset-repair-jobs', () => {
       await openAsset(assets, 'store staff', assetId)
     })
     await step('they report "Not cooling" as Urgent', async () => {
-      const user = userEvent.setup()
-      const form = screen.getByRole('region', { name: 'Report a fault' })
-      await user.type(within(form).getByLabelText('What’s wrong?'), 'Not cooling')
-      await user.click(within(form).getByRole('radio', { name: 'Urgent' }))
-      await user.click(within(form).getByRole('button', { name: 'Send report' }))
-      await waitFor(() => expect(within(form).getByRole('status')).toHaveTextContent('Report sent'))
+      await screenSession().within('[aria-labelledby="report-fault"]', (form) => form
+        .fillIn('What’s wrong?', 'Not cooling')
+        .choose('Urgent')
+        .clickButton('Send report')
+        .assertText('Report sent'))
     })
     await step('a repair job "Not cooling" is waiting for the AC at ATK 1501', async () => {
       const jobs = (await assets.list('equipment.job', [['asset', '=', assetId]], ['row_id', 'problem', 'priority', 'job_state', 'place'])).filter(job => job.problem === 'Not cooling')
