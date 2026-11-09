@@ -28,7 +28,6 @@ import { hold, rosterFirstSignIn } from './roster-first-sign-in'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
 import { ADMIN, addressRedirect, interimApp, linkAddress, matchAddress, requestHost } from './instance-addresses'
 import { USERNAME_RE, methodOfKind } from './identities'
-import { buildInfo } from './build-info'
 import { assertPermission, assertSystemManager, getRoles, includesColumn, permissionScope, permittedColumns, tableAccessFor } from './permissions'
 import { getVisibleHomePages } from './home-pages'
 import { EMBED_ORIGIN, VIEWER_ROLE, salesTargetRoutes } from './sales-target'
@@ -81,12 +80,12 @@ import { mcpHandler, mcpMethodNotAllowed } from './mcp'
 import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
-import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled, isInstalled, installedAppNames } from './apps'
-import { packageTitle, appCatalog, closedApps, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
-import { discoverAppLibrary, appLibraryCatalog, prepareAndInstallApp } from './app-library'
+import { registerApp, loadInstalledApps, isInstalled, installedAppNames } from './apps'
+import { packageTitle, appCatalog, appAsset } from './runtime-packages'
+import { discoverAppLibrary } from './app-library'
 import { documentActivity } from './document-activity'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage, rowHref } from 'shared'
-import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
+import { appOperation, withAppClientVersion } from './app-lifecycle'
 import { composeRuntimeShell } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
 import { assertServerStart, readVariable } from './env'
@@ -99,6 +98,7 @@ import { OAUTH_STATE_COOKIE, OAUTH_VERIFIER_COOKIE, authCredential, clearLoginCh
 import { mimeEssence, serveFile } from './file-serving'
 import { peopleRoutes } from './people-routes'
 import { tableDefRoutes } from './table-def-routes'
+import { appRoutes } from './app-routes'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -1385,26 +1385,7 @@ app.post('/api/permissions/:table', async (c) => {
   return c.json({ ok: true })
 })
 
-// PLAT-001: app management (System Manager only). Apps are code-defined; these
-// install/uninstall their Tables + doc_events and report installed state.
-app.get('/api/apps', async (c) => {
-  await assertSystemManager(who(c))
-  c.header('Cache-Control', 'no-store')
-  return c.json({ build: buildInfo(), available: getAvailableApps(), installed: await listInstalledApps(), versions: availableRuntimeVersions(), actions: declaredPackageActions(), catalog: await appLibraryCatalog(),
-    failures: packageFailures.map(() => ({ error: 'A configured artifact failed validation. Restore a compatible immutable package and inspect the server discovery log' })) })
-})
-app.post('/api/apps/prepare-install', async c => {
-  await assertSystemManager(who(c))
-  const body = await c.req.json().catch(() => null)
-  if (!body || typeof body.name !== 'string' || !/^[a-z][a-z0-9_]{0,30}$/.test(body.name) || Object.keys(body).some(key => key !== 'name'))
-    throw new AppError('ValidationError', 'Expected { name } naming an app in the catalog; paths and commands are not accepted')
-  return c.json(await prepareAndInstallApp(body.name), 201)
-})
-app.get('/api/app_catalog', async (c) => c.json(await appCatalog(who(c))))
-app.get('/api/app_catalog/closed', async (c) => {
-  await assertSystemManager(who(c))
-  return c.json(await closedApps(who(c)))
-})
+app.route('/', appRoutes)
 // #629: the glossary everyone signed in reads, and an editor's way back to an
 // app's own wording of a term the instance reworded.
 app.get('/api/glossary', async (c) => c.json(await readGlossary(who(c))))
@@ -1413,70 +1394,6 @@ app.post('/api/glossary/take_app_wording', async (c) => {
   if (typeof id !== 'string') throw new AppError('ValidationError', 'Expected { id }')
   await takeAppWording(id, who(c))
   return c.json({ ok: true })
-})
-// #642 (E8): the controls an app declared for the shared top bar, filled for
-// this person.
-app.get('/api/app_bar/:app', async (c) => {
-  c.header('Cache-Control', 'no-store')
-  return c.json(await appBar(c.req.param('app'), who(c), c.req.query()))
-})
-// Authenticated bootstrap contains identities only, never manager metadata.
-app.get('/api/runtime_app_versions', async (c) => {
-  c.header('Cache-Control', 'no-store')
-  return c.json(await activeRuntimeVersions())
-})
-app.post('/api/app_actions/:app/:action', async (c) =>
-  c.json(await runPackageAction(c.req.param('app'), c.req.param('action'), await c.req.json(), who(c))))
-app.post('/api/app_reads/:app/:read', async (c) => {
-  c.header('Cache-Control', 'no-store')
-  return c.json(await runPackageRead(c.req.param('app'), c.req.param('read'), await c.req.json(), who(c)))
-})
-app.get('/api/app_reads/:app/:read/access', async (c) => {
-  c.header('Cache-Control', 'no-store')
-  if (new URL(c.req.url).search || (await c.req.text()).length)
-    return recordAppAccessRefusal(who(c), c.req.param('app'), c.req.param('read'), 'override')
-  return c.json(await runPackageRead(c.req.param('app'), c.req.param('read'), undefined, who(c), true))
-})
-for (const operation of ['preview_app_upgrade', 'upgrade_app', 'activate_app_upgrade'] as const) {
-  app.post(`/api/${operation}`, async c => {
-    await assertSystemManager(who(c))
-    const body = await c.req.json().catch(() => ({}))
-    if (typeof body.name !== 'string' || typeof body.version !== 'string' ||
-        (operation === 'upgrade_app' && typeof body.planId !== 'string'))
-      throw new AppError('ValidationError', 'Expected application name, target version and reviewed planId for upgrade')
-    if (operation === 'preview_app_upgrade') return c.json(await previewAppUpgrade(body.name, body.version))
-    if (operation === 'upgrade_app') return c.json(await upgradeApp(body.name, body.version, body.planId, who(c)))
-    return c.json(await activateAppUpgrade(body.name, body.version))
-  })
-}
-app.post('/api/set_app_enabled', async (c) => {
-  await assertSystemManager(who(c))
-  const body = await c.req.json()
-  if (typeof body.name !== 'string' || typeof body.enabled !== 'boolean')
-    throw new AppError('ValidationError', 'Expected { name, enabled: boolean }')
-  return c.json(await setAppEnabled(body.name, body.enabled))
-})
-// Accepts { name } for a code-registered app, or { manifest } — a declarative
-// manifest of Tables, roles and permissions installed as pure data (#55).
-// System Manager only, and deliberately so: { manifest } lets the caller
-// define schema, so this endpoint is a create-arbitrary-tables surface.
-app.post('/api/install_app', async (c) => {
-  await assertSystemManager(who(c))
-  const body = (await c.req.json().catch(() => ({}))) as { name?: string; manifest?: unknown }
-  if (body.manifest !== undefined) return c.json(await installAppFromManifest(body.manifest), 201)
-  if (!body.name) throw new AppError('ValidationError', 'Expected { name } or { manifest }')
-  return c.json(await installApp(body.name), 201)
-})
-app.post('/api/uninstall_app', async (c) => {
-  await assertSystemManager(who(c))
-  const { name } = (await c.req.json().catch(() => ({}))) as { name?: string }
-  if (!name) throw new AppError('ValidationError', 'Expected { name }')
-  return appOperation(async () => {
-    const [installed] = await sql`select runtime_package from installed_app where name = ${name}`
-    if (installed?.runtime_package)
-      throw new AppError('ValidationError', 'Use disable. Removing applications and deleting their data are separate, unsupported operations')
-    return c.json(await uninstallApp(name))
-  }, true)
 })
 
 // EML-007: trigger an Auto Email Report immediately (the "run now" a scheduler
