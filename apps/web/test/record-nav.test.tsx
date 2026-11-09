@@ -138,3 +138,13 @@ test('record nav: unsaved changes are kept unless the user agrees to leave', asy
   await userEvent.click(within(await screen.findByTestId('unsaved-leave-dialog', {}, WAIT)).getByRole('button', { name: 'Leave without saving' }))
   await formAt(app, titles[1])
 })
+
+test('a record whose list place in this tab cannot be read shows no record buttons', async ({ admin }) => {
+  await seed(admin)
+  const { data } = await admin.get<{ data: { row_id: string }[] }>(`/api/table/${encodeURIComponent(TABLE)}?fields=["row_id"]&limit_page_length=1`)
+  sessionStorage.setItem(`featherbase.listPlace.${TABLE}`, '{not json')
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(TABLE))}/row/${data[0].row_id}`, admin)
+  await screen.findByTestId('form-view', {}, WAIT)
+  await new Promise((r) => setTimeout(r, 300))
+  expect(screen.queryByTestId('record-nav')).not.toBeInTheDocument()
+})

@@ -388,3 +388,26 @@ describe('the UI Lab new row page', () => {
     expect(await screen.findByRole('textbox', { name: 'Name' }, WAIT)).toHaveValue('')
   })
 })
+
+// The lab's pages keep no walk of their own (no path in the address).
+describe('the UI Lab row page', () => {
+  test('steps to the next record of the list it was opened from', async () => {
+    await open()
+    await load('/featherbase/admin/table/lab-project')
+    await waitFor(() => expect(rowLink('North workshop')).toBeInTheDocument(), WAIT)
+    await click(rowLink('North workshop'))
+    await screen.findByRole('textbox', { name: 'Region' }, WAIT)
+    await userEvent.click(await screen.findByRole('button', { name: 'Next record' }, WAIT))
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Region' })).toHaveValue('South'), WAIT)
+  })
+
+  test("a collection on its map opens no pane, since the lab keeps no walk", async () => {
+    await open()
+    await rowForm()
+    await userEvent.click(screen.getByRole('tab', { name: 'Map' }))
+    const [group] = await screen.findAllByTestId('map-group-Lab Task', {}, WAIT)
+    await userEvent.click(group)
+    await new Promise((r) => setTimeout(r, 300))
+    expect(screen.queryByRole('complementary', { name: /North workshop/ })).not.toBeInTheDocument()
+  }, 60_000)
+})
