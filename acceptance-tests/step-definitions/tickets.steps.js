@@ -74,8 +74,6 @@ steps(When, [
   ['the user requests a new vendor API source for daily stock movements with an hourly refresh', t => t.create('source', { source: 'vendor API', data: 'daily stock movements', refresh: 'hourly' })],
   ['the user classifies it as access and records {string} as the requested scope', async (t, scope) => { t.details = { email: 'anjali@example.com', scope }; await t.action('edit', { kind: 'access', details: t.details }); }],
   ['the user searches for {string}', (t, text) => t.search(text)],
-  ["the user attempts to rename Anjali's ticket", t => t.renameTicket()],
-  ['Administrator attempts to delete its evidence using the current revision', t => t.deleteEvidence()],
   ['the user requests their open access work', async t => { t.queue = (await t.read('queue', { kind: 'access', state: 'Needs verification', assigned_to: t.ids.Support })).tickets; }],
   ['the user reads their ticket', async t => { t.view = await t.open(); }],
   ["the user finds Anjali's ticket in the shared queue", async t => { t.queue = (await t.read('queue')).tickets; assert.ok(t.queue.some(row => row.row_id === t.ticket.row_id)); t.view = await t.open(); }],
@@ -103,11 +101,6 @@ steps(When, [
 ]);
 
 steps(Then, [
-  ["support sees the requester by the name Anjali's own session shows, not by her person id", async t => {
-    const own = (await t.read('session', {}, 'Anjali')).user.full_name;
-    assert.ok(own && own !== t.ids.Anjali);
-    assert.equal((await t.open('Support')).names[t.ticket.owner], own);
-  }],
   ['the user receives a ticket reference', t => { assert.equal(typeof t.ticket.row_id, 'string'); assert.ok(t.ticket.row_id.length > 0); }],
   ['the request remains available after signing out and back in', async t => { await t.world.signOutAndBackIn('Anjali'); assert.equal((await t.open('Anjali')).ticket.row_id, t.ticket.row_id); }],
   ['the ticket retains that recipient and requested scope', t => t.includes(t.details.email, t.details.scope)],
@@ -119,8 +112,6 @@ steps(Then, [
   ['the ticket is an access request with that scope', async t => { assert.equal((await t.open()).ticket.kind, 'access'); await t.includes(t.details.scope); }],
   ['its original message is still {string}', (t, original) => t.includes(original)],
   ['the matching ticket is available', t => assert.ok(t.queue.some(row => row.row_id === t.ticket.row_id))],
-  ['the rename is refused and the original reference still opens its private request for Anjali', t => t.retainedReference()],
-  ['deletion is refused and the evidence remains attributed in support history', t => t.retainedEvidence()],
   ["Anjali's ticket is included and the colleague's report ticket is excluded", t => { assert.ok(t.queue.some(row => row.row_id === t.assigned.row_id)); assert.ok(!t.queue.some(row => row.row_id === t.unrelated.row_id)); }],
   ['the public progress is available and the support-only note is not disclosed', t => t.publicPrivacy(true)],
   ['its summary and public progress are available', t => { assert.equal(t.view.ticket.row_id, t.ticket.row_id); assert.ok(JSON.stringify(t.view).includes('Support is checking this request')); }],

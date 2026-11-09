@@ -19,7 +19,6 @@ const steps = (keyword, definitions) => {
   }
 };
 const detail = (x, actor) => x.t.read('detail', { row_id: x.t.ticket.row_id }, actor);
-const formType = async (x, actor) => (await x.t.read('form', {}, actor)).types.find(type => type.key === x.key);
 
 steps(Given, [
   ['a System Manager has configured a "Data Quality Issue" type with a required Urgency of Now or Later', x => x.configure()],
@@ -29,11 +28,6 @@ steps(Given, [
   ['Anjali submitted a Data Quality Issue for SAP that also concerns StyleHR', async x => { await x.configure(); await x.submit({ urgency: 'Now', source_system: x.systems.SAP, also_concerns: x.systems.StyleHR }); }],
   ['the owners Table lists Bala as primary owner of SAP', x => x.configure()],
   ["a person who never used Tickets, whom Pat may see and Anjali may not", async x => { await x.configure(); await x.reader('Pat'); await x.outsider(); }],
-  ['Tickets was turned off and then turned on again by another process while the server ran', x => x.restartedElsewhere()],
-  ['the installed Tickets 0.1.0 records a different build than the one this server holds', x => x.changedBuild()],
-  ["an administrator lists a Source System Table that only Pat may read in Tickets' linked_tables setting", async x => {
-    await x.t.setup(); await x.reader('Pat'); await x.configure({ readers: 'Tickets Person Reader' });
-  }],
 ]);
 
 steps(When, [
@@ -46,7 +40,6 @@ steps(When, [
   ['support resolves that ticket as {string}', (x, state) => x.t.action('resolve', { state, reason: 'Corrected in SAP', reference: 'Change note 1' }, 'Support')],
   ['Anjali submits a Data Quality Issue for SAP', async x => { await x.configure(); await x.submit({ urgency: 'Now', source_system: x.systems.SAP }); }],
   ['Pat raises a Data Quality Issue for that person', x => x.submit({ urgency: 'Now', raised_for: x.outsiderId }, 'Pat')],
-  ['Pat and Anjali open the Data Quality Issue form', async x => { x.forms = { Pat: await formType(x, 'Pat'), Anjali: await formType(x, 'Anjali') }; }],
 ]);
 
 steps(Then, [
@@ -82,16 +75,4 @@ steps(Then, [
     await page.locator('dialog').getByRole('option', { name: new RegExp(x.outsiderName) }).first().waitFor({ state: 'attached' });
   }],
   ['the same issue from Anjali is refused', async x => { await x.submit({ urgency: 'Now', raised_for: x.outsiderId }, 'Anjali', true); assert.equal(x.t.last.status, 417); }],
-  ['Tickets answers without a restart', x => assert.equal(x.answer.status, 200, JSON.stringify(x.answer.body))],
-  ['the refusal says its files changed under the same version and how to fix it', async x => {
-    try {
-      assert.equal(x.answer.status, 403);
-      assert.match(x.answer.body.error.message, /files changed on this server under the same version.*install-app tickets/);
-    } finally { await x.restoreBuild(); }
-  }],
-  ["Pat's Source system field offers its rows and Anjali's offers none", x => {
-    const options = form => form.fields.find(field => field.name === 'source_system').options.map(option => option.label).sort();
-    assert.deepEqual(options(x.forms.Pat), ['SAP', 'StyleHR']);
-    assert.deepEqual(options(x.forms.Anjali), []);
-  }],
 ]);

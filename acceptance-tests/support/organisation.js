@@ -135,39 +135,7 @@ async function limitRows(api, email, table, rowIds) {
   for (const rowId of rowIds) await api.saveRow('Data Scope', { person, allow_table: table, for_value: rowId });
 }
 
-// ---- Explore's purchasing chain: Supplier ← Purchase Order ← PO Line ----
-
-const PURCHASING = ['PO Line', 'Purchase Order', 'Purchase', 'Supplier'];
-
-async function dropPurchasing(api) {
-  for (const table of PURCHASING) await api.removeTableIfPresent(table);
-}
-
-/** Acme has two orders with three lines (amounts 100, 150, 100); Bolt Co one order with one line. */
-async function seedPurchasing(api) {
-  await dropPurchasing(api);
-  await api.createTable({ name: 'Supplier', id_pattern: 'prompt', title_column: 'title',
-    columns: [data('title', 'Title')] },
-  [{ row_id: 'sup-acme', title: 'Acme' }, { row_id: 'sup-bolt', title: 'Bolt Co' }]);
-  await api.createTable({ name: 'Purchase Order', id_pattern: 'prompt', title_column: 'title',
-    columns: [data('title', 'Title'), link('supplier', 'Supplier', 'Supplier')] },
-  [
-    { row_id: 'po-1', title: 'Acme order 1', supplier: 'sup-acme' },
-    { row_id: 'po-2', title: 'Acme order 2', supplier: 'sup-acme' },
-    { row_id: 'po-3', title: 'Bolt order 1', supplier: 'sup-bolt' },
-  ]);
-  await api.createTable({ name: 'PO Line', id_pattern: 'prompt', title_column: 'title',
-    columns: [data('title', 'Title'), link('purchase_order', 'Purchase Order', 'Purchase Order'),
-      { column_name: 'amount', column_type: 'Int', label: 'Amount', in_list_view: true }] },
-  [
-    { row_id: 'pol-1', title: 'Bolts', purchase_order: 'po-1', amount: 100 },
-    { row_id: 'pol-2', title: 'Nuts', purchase_order: 'po-1', amount: 150 },
-    { row_id: 'pol-3', title: 'Washers', purchase_order: 'po-2', amount: 100 },
-    { row_id: 'pol-4', title: 'Screws', purchase_order: 'po-3', amount: 999 },
-  ]);
-}
-
 module.exports = {
   add, SITE, seedOrganisation, dropOrganisation, readerRoles, limitRows, listColumns,
-  seedPurchasing, dropPurchasing, PLANTS, PROFIT_CENTRES, COST_CENTRES,
+  PLANTS, PROFIT_CENTRES, COST_CENTRES,
 };
