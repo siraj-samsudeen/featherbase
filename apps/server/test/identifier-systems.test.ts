@@ -5,7 +5,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { kindPreset, assuranceOf } from '../src/identifiers'
+import { kindPreset, assuranceOf, completeSystemRow, displayValue, verhoeffValid } from '../src/identifiers'
 import { applySeedPack } from '../src/seed-packs'
 import { addIdentifier } from '../src/person-identifiers'
 import { CORE_PEOPLE_REVIEW } from '../src/person-identifiers'
@@ -259,5 +259,21 @@ describe('the Jeyarama seed pack', () => {
     const again = await applySeedPack('jeyarama')
     expect(again).toMatchObject({ added: [], methodsLinked: [], peopleReview: 'kept' })
     expect(again.kept.sort()).toEqual(['stylehr-employee-code', 'stylehr-employee-id'])
+  })
+})
+
+describe('identifier helpers', () => {
+  test('a system row of a kind Featherbase does not know is left as given', () => {
+    const row = { row_id: 'odd', kind: 'astrology' }
+    expect(completeSystemRow(row)).toEqual({ row_id: 'odd', kind: 'astrology' })
+  })
+
+  test('a Verhoeff check refuses anything but digits', () => {
+    expect(verhoeffValid('2363 4f')).toBe(false)
+  })
+
+  test('a Secret value shows only its last four, and nothing when no hint was kept', () => {
+    expect(displayValue({ value: null, value_hint: '1234' }, 'Secret', true)).toEqual({ shown: true, value: '•••• 1234' })
+    expect(displayValue({ value: null, value_hint: null }, 'Secret', true)).toEqual({ shown: true, value: null })
   })
 })
