@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { coverNotice, fixByFor, isOpen, jobClock, jobStage, placePath, siteOf, warrantyNotice, workflowState } from './jobRules'
+import { coverChip, coverNotice, fixByFor, fixedSummary, initials, isOpen, jobClock, jobStage, placeName, placePath, siteOf, warrantyNotice, workflowState } from './jobRules'
 
 describe('fix-by time', () => {
   it.each([
@@ -119,5 +119,38 @@ describe('cover notice', () => {
 
   it('says nothing once cover has ended', () => {
     expect(coverNotice({ warranty_until: '2026-10-01', amc_until: '2026-11-06', amc_vendor: 'Blue Star' }, today)).toBeNull()
+  })
+})
+
+describe('compact job card', () => {
+  const today = '2026-11-07'
+
+  it('names a place by its last part, the whole path kept for a tooltip', () => {
+    const places = [
+      { row_id: 'site', place_name: 'ATK 1501', parent_place: null },
+      { row_id: 'area', place_name: 'ATK Billing', parent_place: 'site' },
+    ]
+    expect(placeName('area', places)).toBe('ATK Billing')
+    expect(placeName('missing', places)).toBe('missing')
+  })
+
+  it('shortens cover to a chip: warranty first, then AMC', () => {
+    expect(coverChip({ warranty_until: '2027-03-12', amc_until: '2027-06-30', amc_vendor: 'Voltas' }, today)).toBe('Warranty to 12-Mar-2027')
+    expect(coverChip({ warranty_until: '2026-10-01', amc_until: '2027-06-30', amc_vendor: 'Blue Star' }, today)).toBe('AMC to 30-Jun-2027')
+    expect(coverChip({ warranty_until: '2026-10-01', amc_until: null, amc_vendor: null }, today)).toBeNull()
+  })
+
+  it('sums up a fixed job in one line: on time or late, then what was done', () => {
+    const job = { job_state: 'Fixed', reported_at: '2026-11-07T10:00:00.000Z', fix_by: '2026-11-07T14:00:00.000Z', work_done: 'Replaced the thermostat' }
+    expect(fixedSummary({ ...job, restored_at: '2026-11-07T12:00:00.000Z' })).toBe('Fixed on time · Replaced the thermostat')
+    expect(fixedSummary({ ...job, restored_at: '2026-11-07T16:30:00.000Z' })).toBe('Fixed 2h late · Replaced the thermostat')
+    expect(fixedSummary({ ...job, restored_at: null, work_done: null })).toBe('Fixed')
+  })
+
+  it('shows a person by up to two initials', () => {
+    expect(initials('Ravi (technician)')).toBe('RT')
+    expect(initials('Meena')).toBe('M')
+    expect(initials('suresh k')).toBe('SK')
+    expect(initials('')).toBe('?')
   })
 })

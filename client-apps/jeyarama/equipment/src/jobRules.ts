@@ -100,6 +100,32 @@ export function placePath(id: string, places: PlaceNode[]): string {
   return names.join(' › ')
 }
 
+/** A place by its own name, the last part of its path. */
+export function placeName(id: string, places: PlaceNode[]): string {
+  return places.find(place => place.row_id === id)?.place_name ?? id
+}
+
+/** Warranty or, failing that, AMC cover as a short chip. */
+export function coverChip(asset: { warranty_until?: string | null; amc_until?: string | null; amc_vendor?: string | null }, today: string): string | null {
+  if (asset.warranty_until && asset.warranty_until.slice(0, 10) >= today) return `Warranty to ${dayLabel(asset.warranty_until)}`
+  if (asset.amc_until && asset.amc_until.slice(0, 10) >= today) return `AMC to ${dayLabel(asset.amc_until)}`
+  return null
+}
+
+/** A fixed job in one line: whether it met its fix-by time, then what was done. */
+export function fixedSummary(job: { fix_by?: string | null; restored_at?: string | null; work_done?: string | null }): string {
+  const fixed = job.restored_at ? Date.parse(job.restored_at) : NaN
+  const due = job.fix_by ? Date.parse(job.fix_by) : NaN
+  const timing = Number.isNaN(fixed) || Number.isNaN(due) ? 'Fixed' : fixed <= due ? 'Fixed on time' : `Fixed ${span(fixed - due)} late`
+  return job.work_done ? `${timing} · ${job.work_done}` : timing
+}
+
+/** Up to two initials for a person's avatar. */
+export function initials(name: string): string {
+  const letters = name.split(/[\s()]+/).filter(Boolean).map(word => word[0].toUpperCase())
+  return letters.length ? letters.slice(0, 2).join('') : '?'
+}
+
 /** The site a place belongs to, following parents up. */
 export function siteOf(id: string | null | undefined, places: PlaceNode[]): string | null {
   if (!id) return null

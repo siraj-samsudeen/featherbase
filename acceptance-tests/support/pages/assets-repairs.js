@@ -113,6 +113,12 @@ class Repairs {
     if (at) await this.setClock(name, at);
     const page = await this.flow.page(name);
     await this.flow.pageText(name, 'jobs');
+    // Empty columns, and Closed and Cancelled, start folded to a strip: open them all to find the card.
+    const strips = page.getByRole('button', { name: /^Show .+, \d+ jobs?$/ });
+    for (let left = await strips.count(); left > 0; left -= 1) {
+      await strips.first().click();
+      await strips.nth(left - 1).waitFor({ state: 'detached' }); // that strip is now a column
+    }
     const link = page.locator(`a[href="#asset=${encodeURIComponent(assetId)}"]`);
     const card = page.locator('article.job-card', { has: link });
     await card.first().waitFor();
