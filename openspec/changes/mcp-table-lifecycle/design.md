@@ -90,7 +90,7 @@ and must write the other.
 
 `check_import`, `run_import` and `suggest_table` take `csv` (the file's text, header row first)
 and an optional `delimiter` (comma, tab or semicolon). At most 10,000 data rows (the import
-route's own cap per request) and 5 MB of text. The server parses it (RFC 4180 quoting) and then
+route's own cap per request) and 3 MB of text, below the 4 MB the MCP SDK's transport takes for a whole request, so the refusal is in words the agent reads rather than a protocol error. The server parses it (RFC 4180 quoting) and then
 does what the wizard's browser code does, with the same shared functions: match headings to
 columns by name, then label (`autoMapImportColumns`), let `columns` override or skip a heading,
 coerce cells by column type (`coerceRows`), fail rows whose key repeats in the file

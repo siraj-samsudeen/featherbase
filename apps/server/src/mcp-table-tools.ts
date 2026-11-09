@@ -12,13 +12,16 @@ import { parseCsv, type CsvDelimiter } from './csv'
 import { AppError } from './errors'
 import { COLUMN_TYPE_VALUES, ROW_KEY } from './meta'
 import {
-  ADDS, ALTERS, LAYOUT_TYPES, NESTED, READS, describeColumn, tablePath,
+  ADDS, ALTERS, ALTERS_AGAIN, LAYOUT_TYPES, NESTED, READS, describeColumn, tablePath,
   type Api, type ColumnMeta, type Json, type RegisterTool,
 } from './mcp-common'
 
-/** D3: the import route's own cap per request, and a ceiling on the text. */
+/** D3: the import route's own cap per request, and a ceiling on the text below
+ *  the 4 MB the MCP transport takes for a whole request, so an agent is told
+ *  in words it can act on rather than by a protocol error. */
 export const MCP_IMPORT_MAX_ROWS = 10_000
-export const MCP_IMPORT_MAX_BYTES = 5 * 1024 * 1024
+export const MCP_IMPORT_MAX_MB = 3
+const MCP_IMPORT_MAX_BYTES = MCP_IMPORT_MAX_MB * 1024 * 1024
 /** The parts the wizard sends (lib/import-run.ts IMPORT_CHUNK). */
 const IMPORT_PART = 500
 /** spreadsheet-import "A large update is confirmed before it runs". */
@@ -72,13 +75,13 @@ const noColumn = (table: string, column: string) =>
 // ---- the file --------------------------------------------------------------
 
 const csvArgs = {
-  csv: z.string().describe(`The file as CSV text, its header row first. At most ${MCP_IMPORT_MAX_ROWS} rows and 5 MB; an Excel workbook is saved as CSV first.`),
+  csv: z.string().describe(`The file as CSV text, its header row first. At most ${MCP_IMPORT_MAX_ROWS} rows and ${MCP_IMPORT_MAX_MB} MB; an Excel workbook is saved as CSV first.`),
   delimiter: z.enum([',', '\t', ';']).optional().describe('What separates cells: a comma (the default), a tab or a semicolon'),
 }
 
 function readFile(csv: string, delimiter: CsvDelimiter = ','): { headers: string[]; rows: string[][] } {
   if (Buffer.byteLength(csv, 'utf8') > MCP_IMPORT_MAX_BYTES)
-    throw new AppError('ValidationError', `The file is over 5 MB; send it in smaller files of at most ${MCP_IMPORT_MAX_ROWS} rows`)
+    throw new AppError('ValidationError', `The file is over ${MCP_IMPORT_MAX_MB} MB; send it in smaller files of at most ${MCP_IMPORT_MAX_ROWS} rows`)
   const [headers, ...rows] = parseCsv(csv, delimiter)
   if (!headers || !headers.some((h) => h.trim())) throw new AppError('ValidationError', 'The file has no header row')
   if (rows.length > MCP_IMPORT_MAX_ROWS)
@@ -365,7 +368,7 @@ export function registerTableTools(tool: RegisterTool, api: Api, tokenId: string
       confirm_changes: z.number().int().optional().describe(`With key_column, the number of rows the import changes, when over ${CONFIRM_CHANGES_OVER}`),
       file_name: z.string().optional().describe('The file\'s name, recorded with the import'),
     },
-    ALTERS,
+    ALTERS_AGAIN,
     async ({ check, add_anyway, confirm_changes, file_name, ...args }) => {
       const def = await definition(args.table)
       if (check !== checkDigest(tokenId, def, args)) throw new AppError('ValidationError', CHECK_FIRST)

@@ -36,7 +36,7 @@ Design decisions are D1 to D6 in `design.md`.
 - [ ] 3.2 Structure: `create_table` refuses a platform claim and a bad column the route's way;
   `change_column` sets choices and turns text into a link and back; `rename_column` keeps values;
   `remove_column` keeps values and names a column that is not there.
-- [ ] 3.3 Import: a CSV over 10,000 rows or 5 MB is refused before any request; a `columns`
+- [ ] 3.3 Import: a CSV over 10,000 rows or 3 MB is refused before any request; a `columns`
   mapping naming a heading the file lacks or a column the Table lacks is refused; a skipped heading
   (`null`) is left out; a repeated key in the file fails its rows by row number; `add_anyway`
   adds the overlapping rows; `confirm_changes` with the right count runs; a structure change after

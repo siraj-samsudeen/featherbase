@@ -11,6 +11,8 @@ export type Api = (method: string, path: string, body?: Json) => Promise<Json>
 export const READS = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
 export const ADDS = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
 export const ALTERS = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }
+/** Alters, and a second call does it again (an import run twice adds twice). */
+export const ALTERS_AGAIN = { ...ALTERS, idempotentHint: false }
 export type Annotations = typeof READS
 
 /** Registers one tool: its answer is the JSON `run` returns, a thrown envelope its refusal. */
