@@ -19,9 +19,7 @@ const steps = (keyword, definitions) => {
 };
 
 steps(Given, [
-  ['Anjali raised a Data Quality Issue for SAP, assigned to Bala', x => x.raise()],
   ['a Data Quality Issue that Bala has marked fixed', x => x.markedFixed()],
-  ['the Data Quality Issue type is private', x => { x.private = true; }],
   ['a person who holds the "Data Quality Verifier" role and is not involved in the ticket', x => x.roleHolder()],
 ]);
 

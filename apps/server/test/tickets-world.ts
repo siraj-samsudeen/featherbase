@@ -36,8 +36,8 @@ export type Ticket = { row_id: string; updated_at: string; ticket_state: string;
 
 const STAFF = ['Support', 'Verifier', 'Bala', 'Karthik', 'Shiva', 'Fulfiller']
 const REQUESTERS = ['Anjali', 'Colleague']
-/** Who may act: a scenario's people, plus the System Manager who installs and configures. */
-export const MANAGER = 'Manager'
+/** The platform's Administrator, who installs and configures Tickets, may act too. */
+export const ADMINISTRATOR = 'Administrator'
 
 export class Tickets {
   people: Record<string, TestClient> = {}
@@ -51,8 +51,8 @@ export class Tickets {
   private ready = false
 
   constructor(readonly admin: TestClient, readonly createUser: CreateUserFn) {
-    this.people[MANAGER] = admin
-    this.ids[MANAGER] = admin.user!
+    this.people[ADMINISTRATOR] = admin
+    this.ids[ADMINISTRATOR] = admin.user!
   }
 
   /** A person of the scenario, created once, named by their part. */
@@ -151,6 +151,12 @@ export class Tickets {
   changeDetails(patch: Record<string, unknown>) {
     this.details = { ...this.details, ...patch }
     return this.action('edit', { details: this.details })
+  }
+
+  /** A change of raiser (#963), by 'Manager' (a System Manager) or anyone else; refused or not. */
+  async changeRaiser(actor: string, person: string, reason: string) {
+    if (actor === 'Manager') await this.person('Manager', ['System Manager'])
+    return this.action('change_raiser', { new_raiser: this.ids[person], reason }, actor, true)
   }
 
   // ---- what the scenarios check ----
