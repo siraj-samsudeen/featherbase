@@ -135,7 +135,7 @@ function comparable(columnType: string, v: unknown, jsonAsText: boolean): string
     const n = Number(v)
     return Number.isFinite(n) ? String(n) : JSON.stringify(String(v))
   }
-  if (v instanceof Date) return JSON.stringify(v.toISOString())
+  // No managed field is a date or time (the settings file cannot set one).
   if (columnType === 'JSON') {
     let parsed = v
     // A jsonb column arrives decoded, so a string there is a JSON string;

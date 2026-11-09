@@ -362,3 +362,62 @@ describe('the leaver plan as printed for logs', () => {
     expect(formatLeaverPlan(null)).toBe('leaver check: this instance has no StyleHR identifier system; nothing to check')
   })
 })
+
+describe('the check meets the world as it is', () => {
+  test('dates the warehouse hands back as Date values are read as days', async () => {
+    await applySeedPack('jeyarama')
+    const p = await makePerson({ full_name: 'Dated Leaver' })
+    await link(p, 'stylehr-employee-id', '601')
+    _setWarehouseReader(async (q) => q.includes('attendance')
+      ? [[new Date(`${TODAY}T00:00:00Z`)]]
+      : [['601', 'C-601', true, false, new Date('2024-01-01T00:00:00Z'), new Date('2026-10-20T00:00:00Z')]])
+    const run = await runLeaverCheck({ today: TODAY })
+    expect(run.disabled.map((l) => [l.person, l.reason])).toEqual([[p, 'exit date 20-Oct-2026 has passed']])
+  })
+
+  test('a leaver disabled by someone else while the check runs is left as they are', async () => {
+    await applySeedPack('jeyarama')
+    const p = await makePerson({ full_name: 'Already Gone' })
+    await link(p, 'stylehr-employee-id', '701')
+    _setWarehouseReader(async (q) => {
+      if (q.includes('attendance')) return [[TODAY]]
+      await sql`update person set enabled = false where row_id = ${p}`
+      return [['701', 'C-701', true, false, '2024-01-01', '2026-10-20']]
+    })
+    const run = await runLeaverCheck({ today: TODAY })
+    expect(run.disabled).toEqual([])
+    expect(await sql`select 1 from activity_log where operation like ${`disabled_as_leaver for ${p}%`}`).toHaveLength(0)
+  })
+
+  test('a refused check tells the System Managers why it disabled nobody', async ({ createUser }) => {
+    await applySeedPack('jeyarama')
+    await createUser({ email: 'mgr.refused@example.com', roles: ['System Manager'] })
+    const p = await makePerson({ full_name: 'Gone Person' })
+    await link(p, 'stylehr-employee-id', '801')
+    warehouse('2026-10-20', [rec('801', 'C-801', { movement_active: false })])
+    const sent: MailMessage[] = []
+    _setLeaverSummarySender(async (m) => sent.push(m))
+    await runLeaverCheck({ today: TODAY })
+    const [mail] = sent.filter((m) => m.to === 'mgr.refused@example.com')
+    expect(mail.body).toContain("It disabled nobody: the warehouse's StyleHR data is stale")
+  })
+
+  test('the summary counts linked people the warehouse has no record of', async ({ createUser }) => {
+    await applySeedPack('jeyarama')
+    await createUser({ email: 'mgr.missing@example.com', roles: ['System Manager'] })
+    const gone = await makePerson({ full_name: 'Gone Person' })
+    const unknown = await makePerson({ full_name: 'Not In Warehouse' })
+    await link(gone, 'stylehr-employee-id', '901')
+    await link(unknown, 'stylehr-employee-id', '999')
+    warehouse(TODAY, [rec('901', 'C-901', { movement_active: false }), ...crowdRecords(40)])
+    for (const [i, r] of crowdRecords(40).entries()) {
+      const p = await makePerson({ full_name: `Staff ${i}` })
+      await link(p, 'stylehr-employee-id', r.employee_key)
+    }
+    const sent: MailMessage[] = []
+    _setLeaverSummarySender(async (m) => sent.push(m))
+    await runLeaverCheck({ today: TODAY })
+    const [mail] = sent.filter((m) => m.to === 'mgr.missing@example.com')
+    expect(mail.body).toContain('1 linked people have no StyleHR record in the warehouse')
+  })
+})

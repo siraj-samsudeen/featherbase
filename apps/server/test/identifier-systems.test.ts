@@ -5,8 +5,9 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { kindPreset, assuranceOf } from '../src/identifiers'
+import { kindPreset, assuranceOf, completeSystemRow, displayValue, verhoeffValid } from '../src/identifiers'
 import { applySeedPack } from '../src/seed-packs'
+import { applyInstanceSettings } from '../src/instance-settings'
 import { addIdentifier } from '../src/person-identifiers'
 import { CORE_PEOPLE_REVIEW } from '../src/person-identifiers'
 import { expectRefused, expectStatus, makePerson } from './fixtures'
@@ -259,5 +260,47 @@ describe('the Jeyarama seed pack', () => {
     const again = await applySeedPack('jeyarama')
     expect(again).toMatchObject({ added: [], methodsLinked: [], peopleReview: 'kept' })
     expect(again.kept.sort()).toEqual(['stylehr-employee-code', 'stylehr-employee-id'])
+  })
+})
+
+describe('the seed pack and the settings file', () => {
+  test('a sign-in method link the settings file manages is left to the file', async () => {
+    await sql`insert into sign_in_method (row_id, kind, label, enabled, new_person) values ('stylehr', 'delegated_password', 'StyleHR', false, 'refuse')
+      on conflict (row_id) do nothing`
+    await sql`delete from identifier_system where row_id like 'stylehr-%'`
+    await sql`update sign_in_method set identifier_system = null where row_id = 'stylehr'`
+    await applyInstanceSettings({ settings: { 'Sign In Method': [{ row_id: 'stylehr', identifier_system: null }] } }, { by: 'Administrator' })
+    const applied = await applySeedPack('jeyarama')
+    expect(applied.methodsLinked).toEqual([])
+    expect(await sql`select identifier_system from sign_in_method where row_id = 'stylehr'`).toEqual([{ identifier_system: null }])
+  })
+})
+
+describe('identifier helpers', () => {
+  test('a system row of a kind Featherbase does not know is left as given', () => {
+    const row = { row_id: 'odd', kind: 'astrology' }
+    expect(completeSystemRow(row)).toEqual({ row_id: 'odd', kind: 'astrology' })
+  })
+
+  test('a Verhoeff check refuses anything but digits', () => {
+    expect(verhoeffValid('2363 4f')).toBe(false)
+  })
+
+  test('a Secret value shows only its last four, and nothing when no hint was kept', () => {
+    expect(displayValue({ value: null, value_hint: '1234' }, 'Secret', true)).toEqual({ shown: true, value: '•••• 1234' })
+    expect(displayValue({ value: null, value_hint: null }, 'Secret', true)).toEqual({ shown: true, value: null })
+  })
+})
+
+describe('one current value per person', () => {
+  test('cannot be turned on while someone holds two', async ({ admin }) => {
+    await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'probe-pass', label: 'Pass', kind: 'contact', match: 'Off', edited_by: 'system-manager' } })
+    const a = await makePerson({ email: 'pass.a@x.test' })
+    await addIdentifier(a, { system: 'probe-pass', value: 'P-1' }, 'Administrator')
+    await addIdentifier(a, { system: 'probe-pass', value: 'P-2' }, 'Administrator')
+    const row = await admin.get<{ updated_at: string }>('/api/table/Identifier%20System/probe-pass')
+    await expectRefused(admin.fetch('/api/table/Identifier%20System/probe-pass', {
+      method: 'PATCH', body: JSON.stringify({ one_per_person: true, updated_at: row.updated_at }),
+    }), 409, 'Some people hold two current values')
   })
 })

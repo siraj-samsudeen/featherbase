@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import { calendarDay } from 'shared'
-import { AppError } from './errors'
+import { AppError, orWhenRefused } from './errors'
 import { sql } from './db'
 import { actionTransaction } from './action-transaction'
 import { getMeta, type TableMeta } from './meta'
@@ -191,7 +191,7 @@ export async function mayResolve(meta: TableMeta, row: Row, field: string, user:
   const column = meta.columns.find(c => c.column_name === field)
   if (!column || column.read_only) return false
   if (await isSharedWith(user, meta.name, String(row.row_id), 'write')) return true
-  try { await assertDocPermission(user, meta.name, 'write', String(row.created_by)) } catch (e) { if (e instanceof AppError) return false; throw e }
+  if (!(await orWhenRefused(async () => { await assertDocPermission(user, meta.name, 'write', String(row.created_by)); return true }, () => false))) return false
   return includesColumn(await permittedColumns(user, meta.name, 'write', String(row.created_by)), column)
 }
 registerCollectionAction('import-conflicts', {
@@ -201,8 +201,8 @@ registerCollectionAction('import-conflicts', {
     const rows = await sql`select * from featherbase.import_conflict where ref_table = ${table} and closed is not true and created_at >= (select created_at from table_def where name = ${table}) order by created_at, row_id`
     const conflicts = []
     for (const conflict of rows) {
-      let row: Row
-      try { row = await getDoc(table, String(conflict.ref_name), user.row_id) } catch (e) { if (e instanceof AppError && ['PermissionError', 'NotFoundError'].includes(e.type)) continue; throw e }
+      const row: Row | null = await orWhenRefused(() => getDoc(table, String(conflict.ref_name), user.row_id), () => null, ['PermissionError', 'NotFoundError'])
+      if (!row) continue
       const column = meta.columns.find(c => c.column_name === conflict.field)
       if (!column || !Object.hasOwn(row, column.column_name)) continue
       conflicts.push({ id: conflict.row_id, row_id: conflict.ref_name, field: conflict.field, label: column.label || column.column_name, kept: conflict.kept, incoming: conflict.incoming, editor: conflict.editor, edited_at: conflict.edited_at, run_id: conflict.run_id, can_resolve: await mayResolve(meta, row, column.column_name, user.row_id) })

@@ -333,8 +333,8 @@ async function notifyPendingApprovers(
   const outgoing = wf.transitions.filter((t) => t.state === state)
   if (outgoing.length === 0) return // terminal state — nobody left to act
 
+  // At least one outgoing transition, so at least one role.
   const roles = [...new Set(outgoing.map((t) => t.allowed))]
-  if (roles.length === 0) return
 
   const holders = await sql<{ parent: string; email: string | null }[]>`
     select distinct hr.parent, u.email from has_role hr

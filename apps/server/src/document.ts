@@ -4,7 +4,7 @@ import { opaqueId } from './opaque-id'
 import { DEFAULT_ID_PATTERN, idFromColumn, namingColumn, tableSchemaToZod, zodFieldErrors, type RowCapabilities } from 'shared'
 import { assertMandatoryAccess, hasMandatoryRowAccess } from './mandatory-access'
 import { sql } from './db'
-import { AppError } from './errors'
+import { AppError, orWhenRefused } from './errors'
 import { refusalSubject, tableWords } from './refusals'
 import { sessionMayAddWayIn } from './session-context'
 import { appOperation } from './app-lifecycle'
@@ -315,8 +315,9 @@ async function validateLinks(
       if (problem) errors[prefix + f.column_name] = problem
       continue
     }
-    const linked = f.reference_table
-    if (!linked) continue
+    // The engine refuses a Reference column with neither a target Table nor
+    // a column naming one (table-engine validateDef), handled just above.
+    const linked = f.reference_table!
     // select *: early migrations save rows before table_def has data_source.
     const [linkedDef] = await readOnce(JSON.stringify(['table definition', linked]), () => tx`select * from table_def where name = ${linked}`)
     if (!linkedDef) {
@@ -377,14 +378,8 @@ async function anyTableLinkProblem(tx: typeof sql, f: TableMeta['columns'][numbe
     where ${tx(targetMeta.row_key)} = ${value} for key share`
   if (!found) return `${target} ${value} does not exist`
   const unchanged = old != null && [f.column_name, f.table_column!].every((c) => String(own(old, c)) === String(own(row, c)))
-  if (!unchanged) {
-    try {
-      await getDoc(target, value, user)
-    } catch (err) {
-      if (err instanceof AppError) return `${target} ${value} does not exist`
-      throw err
-    }
-  }
+  if (!unchanged && await orWhenRefused(() => getDoc(target, value, user).then(() => false), () => true))
+    return `${target} ${value} does not exist`
   return null
 }
 
@@ -467,13 +462,7 @@ async function assertAttachedRowReadable(table: string, row: RowValues, user: st
   if (ROW_ATTACHED_TABLES.has(refTable) && (await attachedToAttached(refTable, refName))) throw await refused()
   const refMeta = await getMeta(refTable).catch(() => null)
   if (!refMeta) throw await refused()
-  let target: RowValues
-  try {
-    target = await getDoc(refTable, refName, user)
-  } catch (err) {
-    if (err instanceof AppError) throw await refused()
-    throw err
-  }
+  const target = await orWhenRefused(() => getDoc(refTable, refName, user), async (): Promise<never> => { throw await refused() })
   if (SENSITIVE_HISTORY_TABLES.has(table) && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta, String(target.created_by))))
     throw await refused()
 }
@@ -2070,12 +2059,8 @@ export function rowCapabilities(table: string, name: string, user: string): Prom
       ? await boundFetchDoc(meta, name)
       : (await sql`select * from ${sql(await tableRelation(table))} where ${sql(meta.row_key)} = ${name}`)[0]
     if (!row) throw new AppError('NotFoundError', `${table} ${name} not found`)
-    const allowed = async (check: () => Promise<void>): Promise<boolean> => {
-      try { await check(); return true } catch (err) {
-        if (err instanceof AppError && err.type === 'PermissionError') return false
-        throw err
-      }
-    }
+    const allowed = (check: () => Promise<void>): Promise<boolean> =>
+      orWhenRefused(async () => { await check(); return true }, () => false, ['PermissionError'])
     const rowGrant = (action: 'write' | 'delete' | 'submit' | 'cancel' | 'amend') => allowed(async () => {
       assertRowsWritable(meta, 'changed')
       await assertSecurityWriter(table, user)

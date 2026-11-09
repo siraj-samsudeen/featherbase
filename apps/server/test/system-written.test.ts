@@ -781,3 +781,15 @@ describe('#432: a Custom Field column name is an identifier, never SQL', () => {
     expect(canary).toBeNull()
   })
 })
+
+describe('reverting an import whose log cannot record it', () => {
+  test('still reverts the rows; the log entry is best-effort', async ({ admin }) => {
+    await makeTable(admin, { name: 'Revert Log Target', columns: ['title'] })
+    const imported = await admin.post<{ run_id: string }>('/api/table/Revert%20Log%20Target:import', { rows: [{ title: 'one' }] })
+    await sql.unsafe(`create function featherbase.refuse_revert_stamp() returns trigger language plpgsql as $$
+      begin if new.reverted_at is not null then raise exception 'log is read-only'; end if; return new; end $$`)
+    await sql.unsafe('create trigger refuse_revert_stamp before update on featherbase.import_log for each row execute function featherbase.refuse_revert_stamp()')
+    const reverted = await admin.post<{ deleted: number }>('/api/table/Revert%20Log%20Target:import-revert', { run_id: imported.run_id })
+    expect(reverted.deleted).toBe(1)
+  })
+})

@@ -12,7 +12,7 @@ import { expectApiError, expectRefused, expectStatus, grantRole } from './fixtur
 import { EXTERNAL_DATABASE_URL } from './external-database'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
-import { invalidateSources } from '../src/sources/registry'
+import { getSource, invalidateSources } from '../src/sources/registry'
 import { tableRelation } from '../src/table-engine'
 import { registerController, unregisterController, type TableController } from '../src/controllers'
 
@@ -848,5 +848,12 @@ describe('a bound Table keeps its binding', () => {
     await expectRefused(guest.get(`/api/table/${encodeURIComponent(BOUND)}/ACC-A`), 403)
     await admin.post('/api/save_row', { table: 'Share', row: { share_table: BOUND, share_name: 'ACC-A', person: guest.user, read: true } })
     expect(await guest.get(`/api/table/${encodeURIComponent(BOUND)}/ACC-A`)).toMatchObject({ row_id: 'ACC-A', label: 'Alpha' })
+  })
+})
+
+describe('a Data Source row naming an engine this server does not have', () => {
+  test('is refused when read', async () => {
+    await sql`insert into data_source (row_id, engine) values ('unknown-engine-src', 'oracle')`
+    await expect(getSource('unknown-engine-src')).rejects.toMatchObject({ type: 'ValidationError', message: 'Unknown data source engine oracle' })
   })
 })

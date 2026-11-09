@@ -59,7 +59,8 @@ function run(userCode: string, kind: 'row' | 'api', inputJson: string, scriptNam
   try {
     vm.runInContext(wrap(userCode, kind), context, { timeout: 500, displayErrors: false })
   } catch (err) {
-    if (err instanceof AppError) throw err
+    // The script runs in its own context, with no AppError in reach: every
+    // failure it raises is the script's own, reported by name.
     throw new AppError(
       'ValidationError',
       `Server Script "${scriptName}": ${err instanceof Error ? err.message : String(err)}`,

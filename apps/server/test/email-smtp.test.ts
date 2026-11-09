@@ -12,6 +12,7 @@ import { sql } from '../src/db'
 import { drainJobs, loadJobs, retryJob } from '../src/jobs'
 import {
   _setSmtpTestOverrides,
+  deliverWithoutWaiting,
   flushPendingMail,
   queueEmail,
   readSmtpConfig,
@@ -827,5 +828,25 @@ describe('#395: cli mail:test', () => {
     const err = (await run(['mail:test'], {}).catch((e: unknown) => e)) as { code?: number; stderr?: string }
     expect(err.code).toBe(1)
     expect(err.stderr).toMatch(/usage: cli mail:test <to>/)
+  })
+})
+
+describe('greeting the SMTP server', () => {
+  test('a sender address with no domain and no SMTP_NAME is a configuration error', async () => {
+    await expect(sendViaSmtp({ host: '127.0.0.1', port: 1 }, { to: 'ops@example.test', from: 'noreply', subject: 's', body: 'b' }))
+      .rejects.toMatchObject({ code: 'ECONFIG', message: expect.stringContaining('set SMTP_NAME') })
+  })
+})
+
+describe('a mail that cannot even reach the Email Sink', () => {
+  test('is logged under its purpose, never thrown at the caller', async () => {
+    await sql`alter table featherbase.email_sink rename to email_sink_gone`
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      await deliverWithoutWaiting({ to: 'ops@example.test', subject: 's', body: 'b' }, 'sink_probe')
+      expect(error.mock.calls.map((call) => String(call[0])).some((line) => line.includes('mail_delivery_failed') && line.includes('sink_probe'))).toBe(true)
+    } finally {
+      error.mockRestore()
+    }
   })
 })

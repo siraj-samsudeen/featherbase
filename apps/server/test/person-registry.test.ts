@@ -6,6 +6,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { classifyColumns } from '../src/person-registry'
+import { expectRefused, makePerson } from './fixtures'
 
 const cls = async () => {
   const c = await classifyColumns()
@@ -89,3 +90,20 @@ describe('person registry: classification', () => {
   })
 })
 
+describe('what a Person save refuses', () => {
+  test('an edit to a person merged into another', async ({ admin }) => {
+    const survivor = await makePerson({ email: 'survivor.p@example.com' })
+    const merged = await makePerson({ email: 'merged.p@example.com' })
+    await sql`update person set enabled = false, replaced_by = ${survivor} where row_id = ${merged}`
+    const row = await admin.get<{ updated_at: string }>(`/api/table/Person/${merged}`)
+    await expectRefused(admin.post('/api/save_row', { table: 'Person', row: { row_id: merged, updated_at: row.updated_at, full_name: 'Renamed' } }), 409, 'This record was merged into survivor.p@example.com')
+  })
+})
+
+describe('person registry: an app Table\'s JSON column', () => {
+  test('is free text, classified by its type', async ({ admin }) => {
+    await admin.post('/api/table_def', { name: 'Registry Json Probe', columns: [{ column_name: 'payload', column_type: 'JSON' }] })
+    const { byKey } = await cls()
+    expect(byKey.get('registry_json_probe.payload')).toMatchObject({ class: 'free-text', rule: 'JSON on an app Table' })
+  })
+})

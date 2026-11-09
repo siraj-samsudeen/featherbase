@@ -6,10 +6,10 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { normaliseValue, verhoeffValid } from '../src/identifiers'
-import { addIdentifier, deleteIdentifier, listIdentifiers, updateIdentifier } from '../src/person-identifiers'
+import { addIdentifier, addableSystems, deleteIdentifier, endIdentityIdentifiers, listIdentifiers, reconcileIdentityEmail, updateIdentifier, writeThroughIdentity } from '../src/person-identifiers'
 import { applySeedPack } from '../src/seed-packs'
 import { expectApiError, expectRefused, expectStatus, grantRole, makePerson } from './fixtures'
-import { configureDelegated, inviteGoogleRaw } from './identity-fixtures'
+import { configureDelegated, inviteGoogleRaw, linkDelegated } from './identity-fixtures'
 import { saveIdentifierSystem } from '../src/seed-packs'
 
 const ROSTER = { internal: { source: 'stylehr-roster-sync', verified: true } }
@@ -644,5 +644,73 @@ describe('write-through skips a provider value that does not fit its system', ()
     expect(await sql`select 1 from person_identifier where person_id = ${p} and system = 'phone'`).toEqual([])
     await expectStatus(await admin.fetch(`/api/identities/${id}`, { method: 'DELETE' }), 200)
     expect(await sql`select ended_reason from sign_in_identity where id = ${id}`).toEqual([{ ended_reason: 'unlinked' }])
+  })
+})
+
+describe('who may write a source-fed value', () => {
+  const sourceSystem = (row_id: string, source: string | null) =>
+    saveIdentifierSystem({ row_id, label: row_id, kind: 'contact', sensitivity: 'Normal', match: 'Off', enabled: true, edited_by: 'source', source })
+
+  test('the Identity Sync role writes it, verified', async ({ createUser }) => {
+    await sourceSystem('probe-synced', 'probe-roster')
+    const sync = await createUser({ roles: ['Identity Sync'] })
+    const p = await makePerson({})
+    await addIdentifier(p, { system: 'probe-synced', value: 'S-1' }, sync.user!)
+    expect(await sql`select verified from person_identifier where person_id = ${p} and system = 'probe-synced'`).toEqual([{ verified: true }])
+  })
+
+  test('with no source named, a System Manager may not write it by hand', async () => {
+    await sourceSystem('probe-sourceless', null)
+    const p = await makePerson({})
+    await expect(addIdentifier(p, { system: 'probe-sourceless', value: 'S-1' }, 'Administrator')).rejects.toMatchObject({ type: 'PermissionError' })
+  })
+
+  test('a Secret system is never offered in the add form', async () => {
+    await sql`insert into identifier_system (row_id, label, kind, sensitivity, match, enabled, edited_by)
+      values ('probe-secret', 'Probe secret', 'national-id', 'Secret', 'Off', true, 'system-manager')`
+    const p = await makePerson({})
+    expect((await addableSystems(p, 'Administrator')).map((s) => s.row_id)).not.toContain('probe-secret')
+  })
+})
+
+describe('the identifiers a sign-in mirrors', () => {
+  test('a sign-in whose identifier system is turned off mirrors nothing, and ends cleanly once that system is gone', async () => {
+    await configureDelegated()
+    await sql`insert into identifier_system (row_id, label, kind, sensitivity, match, enabled) values ('probe-off', 'Probe off', 'external-record', 'Normal', 'Off', false)`
+    await sql`update sign_in_method set identifier_system = 'probe-off' where row_id = 'stylehr'`
+    const p = await makePerson({})
+    const id = await linkDelegated(p, 'probe_off_user', { subject: 'OFF-1' })
+    await writeThroughIdentity(id)
+    expect(await sql`select 1 from person_identifier where system = 'probe-off'`).toHaveLength(0)
+    await sql`delete from identifier_system where row_id = 'probe-off'`
+    await expect(endIdentityIdentifiers(id)).resolves.toBeUndefined()
+  })
+
+  test('a sign-in of a person merged into another mirrors nothing', async () => {
+    await configureDelegated()
+    await applySeedPack('jeyarama')
+    const survivor = await makePerson({})
+    const merged = await makePerson({})
+    const id = await linkDelegated(merged, 'merged_user', { subject: 'M-1' })
+    await sql`update person set enabled = false, replaced_by = ${survivor} where row_id = ${merged}`
+    await writeThroughIdentity(id)
+    expect(await sql`select 1 from person_identifier where person_id = ${merged} and source = 'sign-in'`).toHaveLength(0)
+  })
+
+  test('ending a Google link keeps the address the person still holds as their own', async () => {
+    const p = await makePerson({ email: 'kept.address@gmail.com' })
+    await sql`insert into sign_in_identity (id, person_id, method, subject, email, linked_by) values ('uid_keep', ${p}, 'google', 'g-keep', 'kept.address@gmail.com', 'test')`
+    await writeThroughIdentity('uid_keep')
+    await endIdentityIdentifiers('uid_keep')
+    expect(await sql`select 1 from person_identifier where person_id = ${p} and system = 'email' and value = 'kept.address@gmail.com' and upper_inf(valid)`).not.toHaveLength(0)
+  })
+
+  test('a Google address reported unchanged moves nothing', async () => {
+    const p = await makePerson({})
+    await sql`insert into sign_in_identity (id, person_id, method, subject, email, linked_by) values ('uid_same', ${p}, 'google', 'g-same', 'same@gmail.com', 'test')`
+    await writeThroughIdentity('uid_same')
+    const before = await sql`select * from person_identifier where person_id = ${p} order by id`
+    await reconcileIdentityEmail('uid_same', 'Same@Gmail.com')
+    expect(await sql`select * from person_identifier where person_id = ${p} order by id`).toEqual(before)
   })
 })

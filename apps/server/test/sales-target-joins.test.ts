@@ -214,3 +214,12 @@ describe('an empty or partial target mart', () => {
     }
   })
 })
+
+test('the live read refuses a store or subcategory code that is not all digits', async () => {
+  duckdb()
+  await expect(reportFor({ ...READER, material_groups: ["01' or '1'='1"] })).rejects.toThrow('refusing a store or subcategory code that is not all digits')
+})
+
+test('a snapshot of a dataset nobody registered fails, naming it', async () => {
+  expect(await buildSnapshot('no.such.dataset')).toEqual({ status: 'failed', reason: 'no dataset registered as no.such.dataset' })
+})

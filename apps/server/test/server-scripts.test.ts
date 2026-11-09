@@ -119,3 +119,11 @@ describe('CUST-004: server scripts', () => {
     await expect(runApiScript('srv_esc2', {})).rejects.toMatchObject({ type: 'ValidationError' })
   })
 })
+
+describe('a row script whose row serialises to nothing', () => {
+  test('changes nothing on the save', async ({ admin }) => {
+    await sql`insert into server_script ${sql({ row_id: 'vanish-doc', script_type: 'Document Event', ref_table: 'ToDo', event: 'before_save', script: 'doc.description = "changed"; doc.toJSON = function () { return undefined }', enabled: true })}`
+    const saved = await admin.post<{ description: string }>('/api/save_row', { table: 'ToDo', row: { description: 'kept as typed', allocated_to: 'Administrator' } })
+    expect(saved.description).toBe('kept as typed')
+  })
+})

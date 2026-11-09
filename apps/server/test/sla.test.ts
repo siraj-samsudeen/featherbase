@@ -215,3 +215,16 @@ describe('SLA: non-matching paths', () => {
     expect(mails.length).toBe(0)
   })
 })
+
+describe('the escalation sweep skips what it cannot escalate', () => {
+  test('an SLA on a Table that is gone, or one without a deadline and a status, is passed over', async () => {
+    await loadJobs()
+    await sql`insert into service_level_agreement (row_id, ref_table, enabled, created_by, updated_by) values
+      ('sla-gone', 'Sla Vanished Table', true, 'Administrator', 'Administrator'),
+      ('sla-plain', 'ToDo', true, 'Administrator', 'Administrator')`
+    const id = await enqueue('check_sla', {})
+    await nudgeDueJobs()
+    await drainJobs()
+    expect(await sql`select job_status from background_job where row_id = ${id}`).toEqual([{ job_status: 'done' }])
+  })
+})

@@ -1,6 +1,6 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { describe, expect } from 'vitest'
+import { describe, expect, vi } from 'vitest'
 import WebSocket from 'ws'
 import { test } from './pg-test'
 import {
@@ -8,6 +8,7 @@ import {
   MAX_PENDING_FRAMES,
   attachRealtime,
   canSubscribe,
+  eventVisibleTo,
   onEvent,
   publishDocEvent,
   publishUserEvent,
@@ -15,6 +16,7 @@ import {
 } from '../src/realtime'
 import type { SessionUser } from '../src/auth'
 import { realtimeFrames } from 'shared'
+import { sql } from '../src/db'
 import { expectRefused, grantRole, makeTable } from './fixtures'
 
 // RT-001/002/003 (server side): the lifecycle publishes the right channel
@@ -355,6 +357,67 @@ describe('Open pages hear about changes as they happen', () => {
     }
   })
 
+  test('a socket opened with an access token is served; there is no session to have been signed out', async ({ admin }) => {
+    const issued = await admin.post<{ token: string }>('/api/access_tokens', { label: 'socket token' })
+    const live = await listen()
+    try {
+      const page = live.connect(issued.token)
+      expect(await page.waitFor((f) => f.event === 'ready')).toMatchObject({ payload: { user: 'Administrator' } })
+    } finally {
+      await live.close()
+    }
+  })
+
+  test('open sockets are rechecked on a timer', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const server = createServer()
+    try {
+      attachRealtime(server)
+      await vi.advanceTimersByTimeAsync(60_000)
+    } finally {
+      vi.useRealTimers()
+      server.close()
+    }
+  })
+
+  test('an event whose visibility cannot be decided for a database failure is simply not delivered', async ({ admin, createUser }) => {
+    const table = await makeTable(admin, { name: 'Realtime Undecided', naming_rule: 'prompt', columns: ['title'] })
+    await grantRole(admin, { role: 'Realtime Undecided Reader', table: table.name, can_read: true })
+    const reader = await createUser({ email: 'rt.undecided@example.com', roles: ['Realtime Undecided Reader'] })
+    const live = await listen()
+    try {
+      const page = live.connect(reader.token!)
+      await page.waitFor((f) => f.event === 'ready')
+      page.socket.send(JSON.stringify({ subscribe: [`list:${table.name}`] }))
+      await page.waitFor((f) => f.event === 'subscribed')
+      await sql.unsafe('alter table featherbase.data_scope rename to data_scope_gone')
+      publishDocEvent(table.name, 'row-1', 'updated')
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      expect(page.frames.some((f) => f.channel === `list:${table.name}`)).toBe(false)
+    } finally {
+      await live.close()
+    }
+  })
+
+  test('a session recheck that cannot reach the database leaves the sockets as they are', async ({ createUser }) => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const person = await createUser({ email: 'rt.recheck@example.com' })
+      const live = await listen()
+      try {
+        const page = live.connect(person.token!)
+        await page.waitFor((f) => f.event === 'ready')
+        await sql.unsafe('alter table featherbase.revoked_session rename to revoked_session_gone')
+        await vi.advanceTimersByTimeAsync(60_000)
+        expect(page.socket.readyState).toBe(page.socket.OPEN)
+      } finally {
+        await live.close()
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   test('row subscriptions respect reader scope and the team feed requires System Manager', async ({ admin, createUser }) => {
     const table = await makeTable(admin, { name: 'Realtime Policy', naming_rule: 'prompt', columns: ['title'] })
     await admin.post(table.url, { row_id: 'North', title: 'Visible northern row' })
@@ -439,5 +502,22 @@ describe('Open pages hear about changes as they happen', () => {
     } finally {
       await live.close()
     }
+  })
+})
+
+describe('who sees an event that names no single row', () => {
+  test('an event without a row is visible to every subscriber of its channel', async ({ createUser }) => {
+    const anyone = await createUser({ email: 'rt.anyone@example.com' })
+    expect(await eventVisibleTo(anyone.user!, { channel: 'feed', event: 'changed' })).toBe(true)
+  })
+
+  test('a deleted row of a Table a scoped reader\'s scope does not narrow reaches them', async ({ admin, createUser }) => {
+    const scopedTable = await makeTable(admin, { name: 'Realtime Scoped', naming_rule: 'prompt', columns: ['title'] })
+    const open = await makeTable(admin, { name: 'Realtime Open', naming_rule: 'prompt', columns: ['title'] })
+    await grantRole(admin, { role: 'Realtime Open Reader', table: [scopedTable.name, open.name], can_read: true })
+    const scoped = await createUser({ email: 'rt.open.scoped@example.com', roles: ['Realtime Open Reader'] })
+    await admin.post(scopedTable.url, { row_id: 'North', title: 'n' })
+    await admin.post('/api/save_row', { table: 'Data Scope', row: { person: scoped.user, allow_table: scopedTable.name, for_value: 'North' } })
+    expect(await eventVisibleTo(scoped.user!, { channel: `list:${open.name}`, event: 'deleted', payload: { table: open.name, row_id: 'gone' } })).toBe(true)
   })
 })

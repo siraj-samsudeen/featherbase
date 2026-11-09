@@ -9,7 +9,8 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { config } from '../src/config'
 import { applyInstanceSettings, managedScope } from '../src/instance-settings'
-import { BREAK_GLASS_ACTOR, lastApply, managedFieldsOf } from '../src/managed-settings'
+import { BREAK_GLASS_ACTOR, INSTANCE_SETTINGS_ACTOR, assertFieldNotManaged, assertNoManagedReference, assertRowNotManaged, lastApply, managedFieldsOf } from '../src/managed-settings'
+import { getMeta } from '../src/meta'
 import { runAsSystemActor } from '../src/system-actor'
 import { deleteDoc, getDoc, renameDoc, saveDoc } from '../src/document'
 import { expectApiError, expectRefused, patchDoc } from './fixtures'
@@ -338,5 +339,30 @@ describe('direct writes wait for an apply in progress (#493)', () => {
     await waitsForAnApply(() => evaluateAssignmentRules('Scheduled Job', { row_id: 'disable_leavers' }))
     const [job] = await sql`select description from scheduled_job where row_id = 'disable_leavers'`
     expect(job.description).toBe('Administrator')
+  })
+})
+
+describe('the checks a locked field answers to', () => {
+  test('the apply itself, acting as itself, may change, remove or rename what it locked', async () => {
+    await apply()
+    const meta = await getMeta('Sign In Method')
+    await runAsSystemActor(INSTANCE_SETTINGS_ACTOR, async () => {
+      await assertRowNotManaged(sql, meta, 'google', INSTANCE_SETTINGS_ACTOR)
+      await assertNoManagedReference(sql, 'Sign In Method', 'google', INSTANCE_SETTINGS_ACTOR)
+      await assertFieldNotManaged(sql, 'Sign In Method', 'google', 'allowed_email_domains', INSTANCE_SETTINGS_ACTOR)
+    })
+  })
+
+  test('a rename is not held back by locked fields that are no Reference to it', async () => {
+    await apply()
+    await expect(assertNoManagedReference(sql, 'ToDo', 'any-todo', 'Administrator')).resolves.toBeUndefined()
+  })
+
+  test('a locked JSON value saved back with its keys in another order is no change', async () => {
+    const review = JSON.parse(CORE_PEOPLE_REVIEW_JSON) as Record<string, unknown>
+    await apply({ settings: { 'System Settings': { people_review: review } } })
+    const reordered = Object.fromEntries(Object.entries(review).reverse())
+    await saveDoc('System Settings', { people_review: JSON.stringify(reordered) }, 'Administrator')
+    expect(await managedFieldsOf('System Settings', 'System Settings')).toEqual(['people_review'])
   })
 })

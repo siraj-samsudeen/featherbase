@@ -1541,6 +1541,17 @@ describe.skipIf(!MYSQL_URL)('mysql: connection settings and failures', () => {
     },
   )
 
+  test('a write to a source whose variable is unset is refused naming the variable, not as a connection failure', async () => {
+    const bind = bindFor('plain', 'id')
+    bind.source = { ...bind.source, name: 'mysql-unset-variable', url_env: 'EXT_MYSQL_UNSET_URL' }
+    try {
+      await expect(mysqlDriver.insert(bind, { note: 'never written', qty: 1 }, '999'))
+        .rejects.toMatchObject({ type: 'ValidationError', message: 'Environment variable EXT_MYSQL_UNSET_URL is not set (required by data source mysql-unset-variable)' })
+    } finally {
+      mysqlDriver.dispose(bind.source.name)
+    }
+  })
+
   test('a source column removed after reflection gives a named source error and leaves its other data intact', async ({ admin }) => {
     await cli.query('create table ext_mysql.schema_drift (id int primary key, note varchar(50), qty int)')
     try {

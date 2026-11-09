@@ -3,7 +3,7 @@ import { observeUnchangedRows, planImport, saveImportedRow } from '../import-cor
 import { getDoc } from '../document'
 import { createHash } from 'node:crypto'
 import { quoteIdent } from '../sql-identifier'
-import { AppError } from '../errors'
+import { AppError, orWhenRefused } from '../errors'
 import { checkLinksForUpdate, checkRowForInsert, saveDoc, saveSystemRow, validateRowForUpdate } from '../document'
 import { ROW_KEY, getMeta, type TableMeta } from '../meta'
 import { assertDocPermission, assertPermission, permissionScope, permittedColumns, includesColumn } from '../permissions'
@@ -314,32 +314,24 @@ export async function importRows({ table, args, user }: CollectionActionContext,
           const matches = await resolveRows(meta, rows, column)
           // A single blank, duplicate or ambiguous key invalidates the column.
           if (matches.some((r) => r.action === 'fail')) continue
-          let hidden = false
-          try {
+          const hidden = await orWhenRefused(async () => {
+            let hides = false
             for (const match of matches) {
               if (match.action !== 'update') continue
               // getDoc includes own-row, reference-scope and attached-row gates,
               // and drops the Columns this caller may not read on that row: a
               // key matched on a hidden value would disclose it.
               const readable = await getDoc(table, match.row_id!, user.row_id)
-              hidden ||= column !== ROW_KEY && !Object.hasOwn(readable, column)
+              hides ||= column !== ROW_KEY && !Object.hasOwn(readable, column)
             }
-          } catch (err) {
-            if (err instanceof AppError && err.type === 'PermissionError') continue
-            throw err
-          }
+            return hides
+          }, () => undefined, ['PermissionError'])
+          if (hidden === undefined) continue
           if (hidden) continue
           // Readable overlap still matters to an append-only caller. Whether
           // this key can authorize an upsert is a separate permission fact.
-          let can_match = reaches(writeColumns, definition)
-          if (can_match) {
-            try {
-              await assertRunPermitted(user.row_id, table, matches)
-            } catch (err) {
-              if (err instanceof AppError && err.type === 'PermissionError') can_match = false
-              else throw err
-            }
-          }
+          const can_match = reaches(writeColumns, definition)
+            && await orWhenRefused(async () => { await assertRunPermitted(user.row_id, table, matches); return true }, () => false, ['PermissionError'])
           const matched = matches.filter((r) => r.action === 'update').length
           key_candidates.push({ column, matched, complete: matched === rows.length, can_match })
         }

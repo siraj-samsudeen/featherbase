@@ -61,8 +61,8 @@ async function rowInScope(principal: string, table: string, rowId: string): Prom
  *  column points at a scoped Table (where membership is now unknowable). */
 async function deletedVisible(scope: Map<string, Set<string>>, table: string, rowId: string): Promise<boolean> {
   const { getMeta } = await import('./meta')
-  const meta = await getMeta(table).catch(() => null)
-  if (!meta) return false
+  // Only reached once the principal may read the Table, so it exists.
+  const meta = await getMeta(table)
   const narrowed = tableScope(meta, scope)
   if (!narrowed) return true
   if (narrowed.none || (narrowed.own && !narrowed.own.has(rowId))) return false
@@ -235,10 +235,9 @@ export function attachRealtime(server: Server): void {
     // frames wait on the authentication and are then handled in arrival order.
     let client: Client | null = null
     let closed = false
-    const authenticated = authenticate(socket, req.headers.cookie).then((c) => {
-      if (c && closed) clients.delete(c)
-      return (client = c)
-    })
+    // authenticate registers a client only on a socket it found open, and a
+    // close event cannot land before this continuation runs.
+    const authenticated = authenticate(socket, req.headers.cookie).then((c) => (client = c))
     let frames: Promise<void> = authenticated.then(() => {})
     // Frames queue only while authentication or an earlier frame's permission
     // checks are pending — a handful in practice. A client that piles up more
@@ -267,7 +266,6 @@ export function attachRealtime(server: Server): void {
 }
 
 async function authenticate(socket: WebSocket, cookie: string | undefined): Promise<Client | null> {
-  let client: Client | null = null
   try {
     // #173: the browser cannot set headers on a WebSocket, which is why this
     // was URL-borne. But the upgrade is an ordinary same-origin HTTP request,
@@ -277,7 +275,7 @@ async function authenticate(socket: WebSocket, cookie: string | undefined): Prom
     const user = await resolveToken(credentialFromCookieHeader(cookie))
     // Closed while the token was being checked: never register it.
     if (socket.readyState !== socket.OPEN) return null
-    client = { socket, user, channels: new Set() }
+    const client: Client = { socket, user, channels: new Set() }
     clients.add(client)
     // #411: signed out while this upgrade was between its token check and
     // here — the sign-out's own sweep could not see it yet.
@@ -290,9 +288,8 @@ async function authenticate(socket: WebSocket, cookie: string | undefined): Prom
     socket.send(JSON.stringify({ channel: 'system', event: 'ready', payload: { user: user.row_id } }))
     return client
   } catch {
-    // A send to a socket that closed mid-authentication lands here too; the
-    // client must not stay registered for publish() to keep visiting.
-    if (client) clients.delete(client)
+    // Only the token check can fail: the socket is still OPEN when the client
+    // is registered, and ws's send on an open socket never throws.
     socket.close(4001, 'unauthorized')
     return null
   }

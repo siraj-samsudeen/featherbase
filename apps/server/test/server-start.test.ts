@@ -41,6 +41,24 @@ describe('booting the server', () => {
   })
 })
 
+describe('booting with a Data Source whose variable is unset', () => {
+  test('the server starts and warns, naming the variable', async () => {
+    vi.stubEnv('JOB_POLL_MS', '600000')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await sql`insert into data_source (row_id, engine, url_env) values ('boot-src', 'postgres', 'BOOT_UNSET_URL')`
+    try {
+      const { stop } = await startServer(0)
+      await stop()
+      expect(warn.mock.calls.flat().some((line) => String(line).startsWith('WARNING: BOOT_UNSET_URL is not set'))).toBe(true)
+    } finally {
+      warn.mockRestore()
+      log.mockRestore()
+      vi.unstubAllEnvs()
+    }
+  })
+})
+
 // #642 (E7): the boot-check repeats the release's refusal, so a server whose
 // image lacks an installed, enabled app never starts serving without it.
 describe('booting without an installed app', () => {

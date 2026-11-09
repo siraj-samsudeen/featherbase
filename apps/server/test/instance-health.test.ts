@@ -428,3 +428,9 @@ describe('the health API (5.3, 5.4)', () => {
     await expectRefused(person.get('/api/instance-health'), 403)
   })
 })
+
+describe('recording health transitions', () => {
+  test('no checks record nothing', async () => {
+    expect(await recordHealthTransitions([])).toBe(0)
+  })
+})

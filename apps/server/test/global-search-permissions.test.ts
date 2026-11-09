@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
 import { resolve } from 'node:path'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
-import { registryLabel, type SearchHit } from '../src/search'
+import { globalSearch, registryLabel, type SearchHit } from '../src/search'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { discoverPackages } from '../src/runtime-packages'
@@ -350,5 +350,11 @@ describe('global search while an app is unavailable', () => {
     // version; this client named none.
     await sql`update installed_app set migration_ledger = '["0001"]'::jsonb where name = 'placeroster'`
     expect(await tables(admin)).toEqual(['Gs 648 Customer'])
+  })
+})
+
+describe('an empty search', () => {
+  test('of only spaces finds nothing', async () => {
+    expect(await globalSearch('   ', 'Administrator')).toEqual([])
   })
 })

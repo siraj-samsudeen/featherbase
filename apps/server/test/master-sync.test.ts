@@ -18,6 +18,7 @@ import { readFileSync } from 'node:fs'
 import { makeClient } from 'feather-testing-postgres'
 import { runOneJob } from '../src/jobs'
 import { invalidateMeta } from '../src/meta'
+import { renameColumnInSyncRules } from '../src/master-sync-names'
 
 describe('the three-way rule for one column', () => {
   // snapshot = last source value seen, source = now, featherbase = now.
@@ -462,5 +463,14 @@ describe('Master sync (#927)', { timeout: 60_000 }, () => {
     await expectRefused(admin.post(`${COPY}:set_master_sync`, { rule: { ...rule, columns: { nope: { source: 'name', owner: 'source' } } } }), 417)
     await expectRefused(admin.post(`${COPY}:set_master_sync`, { rule: { ...rule, columns: { full_name: { source: 'name', owner: 'everyone' } } } }), 417)
     await expectRefused(admin.post('/api/table/Sync%20Person:set_master_sync', { rule }), 404)
+  })
+})
+
+describe('renaming a column no sync rule names', () => {
+  test('leaves every rule as it was', async ({ admin }) => {
+    await world(admin, 'staff_untouched')
+    const before = await sql`select rule from featherbase.master_sync order by copied_table`
+    await renameColumnInSyncRules(sql as never, 'Sync Person', 'nickname', 'alias')
+    expect(await sql`select rule from featherbase.master_sync order by copied_table`).toEqual(before)
   })
 })

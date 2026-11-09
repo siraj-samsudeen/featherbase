@@ -9,6 +9,9 @@ import { expectStatus, makePerson } from './fixtures'
 import { sign } from 'hono/jwt'
 import { configureDelegated, giveEmployeeCode, configureGoogle, inviteGoogleRaw, linkDelegated } from './identity-fixtures'
 import { googleLink, googleSignIn, linkOutcome, redeemSession } from './google-mock'
+import { _setGoogleFetch } from '../src/oauth'
+import { getSignInMethod } from '../src/identities'
+import { completeSignIn, linkVerifiedToSelf, resolveVerified } from '../src/sign-in'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -243,5 +246,93 @@ describe('write-through to identifiers', () => {
     await admin.delete(`/api/identities/${id}`)
     await expectStatus(await as(api, token)('/api/whoami'), 401)
     await expectStatus(await login(), 401)
+  })
+})
+
+describe('a Google link that cannot finish comes back with its reason', () => {
+  // Starts a link as `token` and approves it at the mock; returns the
+  // callback URL and the challenge cookies the browser carries back.
+  async function approvedLink(api: TestClient, token: string, email: string, subject: string) {
+    const start = await api.fetch('/api/oauth/google/link', { headers: { cookie: `sid=${token}` } })
+    const state = new URLSearchParams((start.headers.get('location') ?? '').split('?')[1]).get('state') as string
+    const challenge = start.headers.getSetCookie().map((c) => c.split(';')[0])
+    const approve = await api.fetch('/api/oauth/mock/approve?' + new URLSearchParams({ state, redirect_uri: '/api/oauth/google/callback', email, name: 'Linker', subject }).toString(),
+      { headers: { cookie: [`sid=${token}`, ...challenge].join('; ') } })
+    return { callback: approve.headers.get('location') as string, challenge }
+  }
+
+  test('a callback arriving with another person\'s session links nothing', async ({ api, admin }) => {
+    await configureGoogle({ allowed_email_domains: '' })
+    const starter = await passwordSession(api, admin, 'link.starter')
+    const other = await passwordSession(api, admin, 'link.other')
+    const { callback, challenge } = await approvedLink(api, starter.token, 'starter@gmail.com', 'g-starter')
+    const res = await api.fetch(callback, { headers: { cookie: [`sid=${other.token}`, ...challenge].join('; ') } })
+    expect(linkOutcome(res)).toBe('wrong_session')
+    expect(await sql`select 1 from sign_in_identity where subject = 'g-starter'`).toHaveLength(0)
+  })
+
+  test('a link finished after self-linking was turned off links nothing', async ({ api, admin }) => {
+    await configureGoogle({ allowed_email_domains: '' })
+    const me = await passwordSession(api, admin, 'link.turned.off')
+    const { callback, challenge } = await approvedLink(api, me.token, 'off@gmail.com', 'g-off')
+    await configureGoogle({ self_link: false })
+    const res = await api.fetch(callback, { headers: { cookie: [`sid=${me.token}`, ...challenge].join('; ') } })
+    expect(linkOutcome(res)).toBe('not_allowed')
+    expect(await sql`select 1 from sign_in_identity where subject = 'g-off'`).toHaveLength(0)
+  })
+
+  test('a link whose call to Google fails outright comes back as failed', async ({ api, admin }) => {
+    await configureGoogle({ client_id: 'client-1', allowed_email_domains: '' })
+    const me = await passwordSession(api, admin, 'link.network')
+    const start = await api.fetch('/api/oauth/google/link', { headers: { cookie: `sid=${me.token}` } })
+    const state = new URL(start.headers.get('location') as string).searchParams.get('state') as string
+    const cookie = [`sid=${me.token}`, ...start.headers.getSetCookie().map((c) => c.split(';')[0])].join('; ')
+    _setGoogleFetch(async () => { throw new TypeError('fetch failed') })
+    try {
+      const res = await api.fetch(`/api/oauth/google/callback?state=${encodeURIComponent(state)}&code=c`, { headers: { cookie } })
+      expect(linkOutcome(res)).toBe('failed')
+    } finally {
+      _setGoogleFetch(null)
+    }
+  })
+
+  test('linking the Google account a person already holds again keeps the one link', async ({ api, admin }) => {
+    await configureGoogle({ allowed_email_domains: '' })
+    const me = await passwordSession(api, admin, 'link.twice')
+    expect(linkOutcome(await googleLink(api, me.token, 'twice@gmail.com', { subject: 'g-twice' }))).toBe('linked')
+    expect(linkOutcome(await googleLink(api, me.token, 'twice@gmail.com', { subject: 'g-twice' }))).toBe('linked')
+    expect(await sql`select person_id from sign_in_identity where subject = 'g-twice' and ended_at is null`).toEqual([{ person_id: me.id }])
+  })
+
+  test('a person linking the address they were invited on takes the invite over', async ({ api, admin }) => {
+    await configureGoogle({ allowed_email_domains: '' })
+    const me = await passwordSession(api, admin, 'link.invited')
+    const invite = await inviteGoogleRaw(me.id, 'invited.self@gmail.com')
+    expect(linkOutcome(await googleLink(api, me.token, 'invited.self@gmail.com', { subject: 'g-invited-self' }))).toBe('linked')
+    expect(await sql`select 1 from sign_in_identity where id = ${invite}`).toHaveLength(0)
+    expect(await sql`select person_id from sign_in_identity where subject = 'g-invited-self'`).toEqual([{ person_id: me.id }])
+  })
+})
+
+describe('the sign-in pipeline refuses what it cannot vouch for', () => {
+  const verified = { status: 'verified' as const, subject: 'g-pipeline', email: 'pipe@gmail.com', email_verified: true, display_name: null, hosted_domain: null }
+
+  test('an outside identity with no subject resolves to nobody', async () => {
+    const google = (await getSignInMethod('google'))!
+    await expect(resolveVerified(google, { ...verified, subject: '' })).rejects.toThrow('Invalid login credentials')
+  })
+
+  test('a turned-off method completes no sign-in, even for a verified identity', async () => {
+    await configureGoogle({ enabled: false, allowed_email_domains: '*' })
+    const google = (await getSignInMethod('google'))!
+    await expect(completeSignIn(google, verified, null)).rejects.toThrow('Invalid login credentials')
+    expect(await sql`select 1 from sign_in_identity where subject = 'g-pipeline'`).toHaveLength(0)
+  })
+
+  test('a method that does not vouch for its subjects cannot be linked by its owner', async () => {
+    await configureDelegated()
+    const me = await makePerson({})
+    const delegated = (await getSignInMethod('stylehr'))!
+    await expect(linkVerifiedToSelf(delegated, me, verified)).rejects.toMatchObject({ type: 'PermissionError' })
   })
 })

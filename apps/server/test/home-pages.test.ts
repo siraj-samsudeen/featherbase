@@ -10,6 +10,7 @@ import { sql } from '../src/db'
 import { createTable } from '../src/table-engine'
 import { invalidateMeta } from '../src/meta'
 import { expectStatus, grantRole } from './fixtures'
+import { getVisibleHomePages } from '../src/home-pages'
 
 interface Card {
   label: string | null
@@ -377,5 +378,12 @@ describe('System membership comes from the current catalogue', () => {
     expect((await pages(manager)).find((p) => p.row_id === 'system')!.cards.flatMap((c) => c.links))
       .toContainEqual({ label: 'Sign-in providers', link_to: 'Sign In Method' })
     expect((await pages(admin)).some((p) => p.row_id === 'system')).toBe(true)
+  })
+})
+
+describe('with no Home Pages at all', () => {
+  test('nobody sees any', async () => {
+    await sql`delete from home_page`
+    expect(await getVisibleHomePages('Administrator')).toEqual([])
   })
 })

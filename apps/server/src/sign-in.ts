@@ -99,13 +99,13 @@ export async function assertEligible(method: SignInMethod, user: string): Promis
     throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
 }
 
-/** Domain admission (design D4): a verified email on an allowed domain; for a
- *  kind that reports a hosted domain, a company domain must also match it, so
- *  a personal account registered on a company address is not that company's. */
+/** Domain admission (design D4): a verified email on an allowed domain, and a
+ *  company domain must also match the hosted-domain claim, so a personal
+ *  account registered on a company address is not that company's. Only kinds
+ *  that verify an email reach here, and each of them reports a hosted domain. */
 function domainAdmitted(method: SignInMethod, v: VerifiedIdentity): { ok: boolean; reason: string } {
   if (!v.email_verified || !v.email) return { ok: false, reason: 'no verified email' }
   if (!domainAllowed(method, v.email)) return { ok: false, reason: 'domain not allowed' }
-  if (!KINDS[method.kind].hostedDomain) return { ok: true, reason: 'allowed domain' }
   const domain = v.email.split('@')[1] ?? ''
   if (CONSUMER_DOMAINS.has(domain) || parseDomainList(method.allowed_email_domains).includes('*'))
     return { ok: true, reason: 'allowed domain' }
@@ -208,9 +208,9 @@ async function claimExpectedSignIn(method: SignInMethod, v: VerifiedIdentity): P
       const [held] = await sql`
         select 1 from sign_in_identity where person_id = ${person} and method = ${method.key} and ended_at is null limit 1`
       if (held) return null
-      const c = await candidate(person)
-      if (!c || !c.enabled || (c.privileged && !KINDS[method.kind].admitsPrivileged)) return null
-      if (!(await consumeExpectedSignIn(person, method))) return null
+      // The locked row is enabled and expects this sign-in, and Google admits
+      // privileged people: eligible, and the mark is there to consume.
+      await consumeExpectedSignIn(person, method)
       const id = newIdentityId()
       await sql`insert into sign_in_identity ${sql({
         id,

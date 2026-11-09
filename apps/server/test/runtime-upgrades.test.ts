@@ -480,3 +480,33 @@ describe('explicit_runtime_policy_upgrade', () => {
     } finally { await rm(copy, { recursive: true, force: true }) }
   })
 })
+
+describe('activating an upgrade', () => {
+  test('of a version that was never committed is refused', async ({ admin }) => {
+    await discoverPackages([resolve('../..', 'test-apps/other')])
+    await admin.post('/api/install_app', { name: 'other' })
+    await expectRefused(admin.post('/api/activate_app_upgrade', { name: 'other', version: '9.9.9' }), 417, 'Activate requires the committed package version')
+  })
+
+  test('that adds mandatory access a drifted Table already has is refused', async ({ admin }) => {
+    const source = resolve('../..', 'test-apps/other')
+    const { directory, manifest } = await targetPackage()
+    const policy = { version: 1, roles: ['System Manager'] }
+    manifest.tables[0].access_policy = policy
+    manifest.migrations[0].operations.push({ kind: 'addAccessPolicy', table: 'other.task', policy })
+    await writeFile(resolve(directory, 'featherbase.json'), JSON.stringify(manifest))
+    try {
+      await discoverPackages([source])
+      await admin.post('/api/install_app', { name: 'other' })
+      // The instance has drifted from the app's history: the Table already
+      // carries mandatory access the upgrade means to add.
+      await sql`update table_def set access_policy = ${sql.json(policy)} where name = 'other.task'`
+      invalidateMeta()
+      expect(await discoverPackages([source, directory])).toEqual([])
+      await loadInstalledApps()
+      const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' }).catch((error: Error) => error)
+      const refused = plan instanceof Error ? plan : await admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: plan.planId }).catch((error: Error) => error)
+      expect(String(refused)).toContain('The Table already has mandatory access')
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+})
