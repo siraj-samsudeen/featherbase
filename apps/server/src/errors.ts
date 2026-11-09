@@ -47,6 +47,22 @@ export class AppError extends Error {
   }
 }
 
+/** Run `work`; a refusal it raises (an AppError, of one of the `accept`ed
+ *  types when given) is answered by `refused`. Any other failure, such as a
+ *  database fault, is re-thrown unchanged, never mistaken for a refusal. */
+export async function orWhenRefused<T, R>(
+  work: () => Promise<T>,
+  refused: (err: AppError) => R | Promise<R>,
+  accept?: readonly ErrorType[],
+): Promise<T | R> {
+  try {
+    return await work()
+  } catch (err) {
+    if (err instanceof AppError && (!accept || accept.includes(err.type))) return refused(err)
+    throw err
+  }
+}
+
 /** The HTTP status errorResponse answers `err` with — for a log line that names it. */
 export function statusOf(err: unknown): number {
   if (err instanceof AppError) return STATUS[err.type]
