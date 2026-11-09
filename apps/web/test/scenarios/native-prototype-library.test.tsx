@@ -24,7 +24,7 @@ import { scenarioFor } from 'server/test/scenario'
 import { setSession } from '../../src/lib/api'
 import { createPrototypeRouter } from '../../src/gallery/PrototypeApp'
 import { PrototypeLibrary } from '../../src/gallery/PrototypeLibrary'
-import { test, expect, renderApp, onScreen } from '../pg-test'
+import { test, expect, renderApp, onScreen, inside } from '../pg-test'
 
 const scenario = scenarioFor(test, 'native-prototype-library')
 const WAIT = { timeout: 15_000 }
@@ -134,12 +134,9 @@ async function open() {
 const listRows = () => screen.getByTestId('list-rows')
 const rowLink = (name: string) => within(listRows()).getByRole('link', { name })
 const breadcrumb = (name: string) => within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole('link', { name })
-const textbox = (name: string) => screen.getByRole('textbox', { name }) as HTMLInputElement
+// Whether a search box is on screen at all: the DSL has no verb for presence.
 const searchbox = (name: string) => screen.getByRole('searchbox', { name }) as HTMLInputElement
-async function fill(box: HTMLInputElement, value: string) {
-  await userEvent.clear(box)
-  if (value) await userEvent.type(box, value)
-}
+const fill = (label: string, value: string) => onScreen().fillIn(label, value)
 
 /** The form's controls, in order: what each is and is called. */
 function controls() {
@@ -162,7 +159,7 @@ describe('native-prototype-library', () => {
     await step('the user is exploring the native prototype library', open)
     await step('the user searches the examples for "list"', async () => {
       await onScreen().clickButton('Component gallery')
-      await fill(searchbox('Search components'), 'list')
+      await fill('Search components', 'list')
     })
     await step('the user sees matching working examples and their reuse locations', async () => {
       expect(await screen.findByRole('heading', { name: 'List (a table when wide, cards on a phone)' }, WAIT)).toBeInTheDocument()
@@ -175,12 +172,12 @@ describe('native-prototype-library', () => {
     let original = ''
     await step('the user has searched the prototype collection for "North"', async () => {
       await open()
-      await fill(textbox('Search or type a command'), 'Lab')
+      await fill('Search or type a command', 'Lab')
       await waitFor(() => expect(screen.getAllByTestId('awesomebar-table').some((t) => t.textContent?.includes('Lab Project'))).toBe(true), WAIT)
       expect(screen.getAllByTestId('awesomebar-table')).toHaveLength(2)
       expect(screen.getAllByTestId('awesomebar-new')).toHaveLength(2)
       await click(screen.getAllByTestId('awesomebar-table').find((t) => t.textContent?.includes('Lab Project'))!)
-      await fill(await screen.findByRole('searchbox', { name: 'Search Lab Project names' }, WAIT), 'North')
+      await fill('Search Lab Project names', 'North')
       await waitFor(() => expect(rowLink('North workshop')).toBeInTheDocument(), WAIT)
       original = window.location.href
       expect(within(listRows()).queryByText('South studio', { exact: true })).toBeNull()
@@ -200,16 +197,16 @@ describe('native-prototype-library', () => {
     })
     await step('the original search and selected section are retained', async () => {
       expect(window.location.href).toBe(original)
-      expect(searchbox('Search Lab Project names').value).toBe('North')
+      await onScreen().assertValue('Search Lab Project names', 'North')
       expect(within(listRows()).queryByText('South studio', { exact: true })).toBeNull()
       await open()
       await onScreen().clickButton('Native Table list')
-      await fill(searchbox('Search Lab Project names'), 'South')
+      await fill('Search Lab Project names', 'South')
       await click(await waitFor(() => rowLink('South studio'), WAIT))
       await screen.findByRole('textbox', { name: 'Region' }, WAIT)
       await click(breadcrumb('Lab Project'))
       expect(await screen.findByRole('tabpanel', { name: 'Native Table list' }, WAIT)).toBeInTheDocument()
-      expect(searchbox('Search Lab Project names').value).toBe('South')
+      await onScreen().assertValue('Search Lab Project names', 'South')
       await waitFor(() => expect(within(listRows()).getByText('South studio', { exact: true })).toBeInTheDocument(), WAIT)
       expect(within(listRows()).queryByText('North workshop', { exact: true })).toBeNull()
     })
@@ -219,19 +216,19 @@ describe('native-prototype-library', () => {
     await step('the user is exploring the populated synthetic prototype', open)
     await step('the user edits an example and resets the prototype', async () => {
       await rowForm()
-      await fill(textbox('Region'), 'Edited synthetic region')
+      await fill('Region', 'Edited synthetic region')
       await save()
       await reload()
-      await waitFor(() => expect(textbox('Region').value).toBe('Edited synthetic region'), WAIT)
+      await onScreen().assertValue('Region', 'Edited synthetic region')
       await onScreen().clickButton('Reset data')
     })
     await step('the original synthetic example is restored', async () => {
       await waitFor(() => expect(document.querySelector<HTMLInputElement>('input[data-field="region"]')?.value).toBe('North'), WAIT)
       await open()
       await onScreen().clickButton('Native Table list')
-      const choose = (value: string) => userEvent.selectOptions(screen.getByRole('combobox', { name: 'Synthetic scenario' }), value)
+      const choose = (value: string) => onScreen().selectOption('Synthetic scenario', value)
       await choose('empty')
-      await waitFor(() => expect(listRows()).toHaveTextContent('No rows'), WAIT)
+      await inside(onScreen(), 'list-rows', (rows) => rows.assertText('No rows'))
       await choose('loading')
       await waitFor(() => expect(screen.getAllByRole('status').some((s) => s.textContent?.includes('Loading Lab Project'))).toBe(true), WAIT)
       await choose('error')
@@ -309,10 +306,10 @@ describe('native-prototype-library', () => {
       expect(controls()).toEqual(syntheticControls)
     })
     await step('a saved change is still visible after reloading', async () => {
-      await fill(textbox('Region'), 'Saved on isolated server')
+      await fill('Region', 'Saved on isolated server')
       await save()
       await realForm(admin)
-      await waitFor(() => expect(textbox('Region').value).toBe('Saved on isolated server'), WAIT)
+      await onScreen().assertValue('Region', 'Saved on isolated server')
     })
   }, 60_000)
 })

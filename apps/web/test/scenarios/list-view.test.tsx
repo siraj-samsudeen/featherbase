@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, vi } from 'vitest'
 import { tableHref } from 'shared'
 import { grantRole } from 'server/test/fixtures'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp, onScreen, inside } from '../pg-test'
+import { test, expect, renderApp, onScreen, inside, byTestId } from '../pg-test'
 import { SITE, listColumns, readerRoles, seedOrganisation } from '../organisation-fixture'
 
 configure({ asyncUtilTimeout: 10_000 })
@@ -138,6 +138,11 @@ async function openMenu() {
   if (!screen.queryByTestId('list-columns-popup')) fireEvent.click(screen.getByTestId('list-columns'))
   return screen.findByTestId('list-columns-popup')
 }
+/** The "Show columns" menu, opened, for the Session DSL. */
+const inMenu = async (fn: Parameters<ReturnType<typeof onScreen>['within']>[1]) => {
+  await openMenu()
+  return onScreen().within(byTestId('list-columns-popup'), fn)
+}
 
 /**
  * Ticks or unticks a column in "Show columns" and waits until the person's
@@ -146,8 +151,7 @@ async function openMenu() {
  */
 async function switchColumn(as: Client, table: string, label: string, on: boolean) {
   const name = COLUMN_NAMES[label] ?? label.toLowerCase().replace(/ /g, '_')
-  const box = within(await openMenu()).getByRole('checkbox', { name: label }) as HTMLInputElement
-  if (box.checked !== on) fireEvent.click(box)
+  await inMenu((menu) => on ? menu.check(label) : menu.uncheck(label))
   await waitFor(async () => {
     const saved = await settingsOf(as, table)
     if (on) expect(columnLabels()).toContain(label)
@@ -158,12 +162,13 @@ async function switchColumn(as: Client, table: string, label: string, on: boolea
 
 /** Unticks every column the menu lets the person untick, each saved. */
 async function switchOffEverything(as: Client, table: string) {
+  // Every box the menu offers, read whole: the DSL reads text, not lists.
   const menu = await openMenu()
   const labels = within(menu).getAllByRole('checkbox')
     .filter((box) => (box as HTMLInputElement).checked && !(box as HTMLInputElement).disabled)
     .map((box) => (box.closest('label')?.textContent ?? '').trim())
   for (const [n, label] of labels.entries()) {
-    fireEvent.click(within(await openMenu()).getByRole('checkbox', { name: label }))
+    await inMenu((m) => m.uncheck(label))
     await waitFor(async () => {
       expect(columnLabels()).not.toContain(label)
       expect((await settingsOf(as, table)).hiddenCols ?? []).toHaveLength(n + 1)
@@ -178,7 +183,7 @@ async function switchOffEverything(as: Client, table: string) {
  * else signs in on it.
  */
 async function makeDefaultForEveryone(admin: Client, table: string, want: Record<string, boolean>) {
-  fireEvent.click(within(await openMenu()).getByRole('button', { name: 'Make this the default for everyone' }))
+  await inMenu((menu) => menu.clickButton('Make this the default for everyone'))
   await waitFor(async () => {
     const meta = await admin.get<{ columns: { label?: string; in_list_view?: boolean }[] }>(`/api/table/${enc(table)}:meta`)
     for (const [label, listed] of Object.entries(want))
@@ -250,7 +255,8 @@ async function namelessCustomer(admin: Client, rowId: string, item: string) {
 
 // ---- the sites (#910): compact and tree layouts ----
 
-/** A list layout: "Table" and "Compact" in its group, and the list header's "Tree of all" (#910 checklist 19). */
+/** A list layout: "Table" and "Compact" in its group, and the list header's "Tree of all" (#910 checklist 19).
+ *  Found by role and name, so its aria-pressed is read raw: the DSL's attribute verbs need a selector. */
 const layout = (name: string) => name === 'Tree'
   ? screen.getByRole('button', { name: /^Tree( of all)?$/ })
   : within(screen.getByRole('group', { name: 'List layout' })).getByRole('button', { name })
@@ -450,7 +456,7 @@ describe('list-view', () => {
     await step('the user opens a link to the orders list filtered to the customer "Globex Ltd"', () =>
       openList(admin, ORDERS, customerFilter('Globex Ltd')))
     await step('the user sees the quick customer filter reading "Globex Ltd"', () =>
-      waitFor(() => expect(screen.getByTestId('std-filter-customer')).toHaveValue('Globex Ltd')))
+      onScreen().assertValue('Customer', 'Globex Ltd'))
   })
 
   scenario('The filter in use names Globex Ltd', async ({ admin }, step) => {

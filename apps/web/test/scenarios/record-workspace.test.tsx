@@ -10,7 +10,7 @@ import { rowHref, tableHref } from 'shared'
 import { deleteStored } from 'server/src/storage'
 import { grantRole, patchDoc } from 'server/test/fixtures'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp, onScreen, inside } from '../pg-test'
+import { test, expect, renderApp, onScreen, inside, byTestId } from '../pg-test'
 import { useNodeMultipart } from '../node-multipart'
 
 configure({ asyncUtilTimeout: 10_000 })
@@ -59,7 +59,8 @@ async function collaborate(admin: Client) {
   await patchDoc(admin, '/api/table/Plant/9154', { plant_name: 'Tenkasi', updated_at: edited.updated_at })
 }
 
-/** The Plant name: a text box to whoever may edit the row; its value, read only, to a reader (#795). */
+/** The Plant name: a text box to whoever may edit the row; its value, read only, to a reader (#795).
+ *  Read raw where either may be on screen: the DSL's field verbs need a form control. */
 const plantName = () => within(screen.getByTestId('form-view')).getByLabelText('Plant name', { exact: true })
 
 async function openRow(as: Client) {
@@ -96,14 +97,13 @@ describe('record-workspace', () => {
     await step('the user can edit the Plant row for Tenkasi', () => plant(admin))
     await step('the user changes its name and consults its activity before returning to work', async () => {
       await openRow(admin)
-      await user.clear(plantName())
-      await user.type(plantName(), 'Tenkasi distribution')
+      await onScreen().within(byTestId('form-view'), (form) => form.fillIn('Plant name', 'Tenkasi distribution'))
       await onScreen().clickButton('Activity')
       await screen.findByTestId('activity-timeline')
       await onScreen().clickButton('Form')
     })
     await step('the unfinished name is still present and can be saved', async () => {
-      expect(plantName()).toHaveValue('Tenkasi distribution')
+      await onScreen().within(byTestId('form-view'), (form) => form.assertValue('Plant name', 'Tenkasi distribution'))
       await user.click(screen.getByTestId('form-save'))
       await inside(onScreen(), 'form-banner', (el) => el.assertText('Saved'))
       expect((await admin.get<{ plant_name: string }>('/api/table/Plant/9154')).plant_name).toBe('Tenkasi distribution')
@@ -125,12 +125,11 @@ describe('record-workspace', () => {
   })
 
   scenario('Selection reveals operations on rows, not the Table', async ({ admin }, step) => {
-    const user = userEvent.setup()
     await step('the user manages the Plant Table containing Tenkasi', () => plant(admin))
     await step('the user selects Tenkasi in its list', async () => {
       await openList(admin)
       expect(screen.queryByTestId('bulk-bar')).not.toBeInTheDocument()
-      await user.click(screen.getByRole('checkbox', { name: 'Select Tenkasi' }))
+      await onScreen().check('Select Tenkasi')
     })
     await step('the selection offers deletion of rows separately from deletion of the Table', async () => {
       await inside(onScreen(), 'bulk-delete', (el) => el.assertText('Delete rows'))
@@ -142,7 +141,7 @@ describe('record-workspace', () => {
     await step('clearing the selection removes the row operations without changing Tenkasi', async () => {
       await onScreen().clickButton('Clear selection')
       await waitFor(() => expect(screen.queryByTestId('bulk-bar')).not.toBeInTheDocument())
-      expect(screen.getByRole('checkbox', { name: 'Select Tenkasi' })).not.toBeChecked()
+      await onScreen().refuteChecked('Select Tenkasi')
       expect((await admin.get<{ plant_name: string }>('/api/table/Plant/9154')).plant_name).toBe('Tenkasi')
     })
   })
@@ -168,7 +167,6 @@ describe('record-workspace', () => {
   })
 
   scenario('A reader sees only available enabled collaboration', async ({ admin, createUser }, step) => {
-    const user = userEvent.setup()
     let reader!: Client
     await step('the user reads Tenkasi with collaboration enabled but no collaboration grants', async () => {
       await plant(admin)
@@ -197,7 +195,7 @@ describe('record-workspace', () => {
     await step('the reader can still label Tenkasi with a tag', () => tagPlant(reader))
     await step('selecting Tenkasi offers no unavailable bulk mutations', async () => {
       await openList(reader)
-      await user.click(screen.getByRole('checkbox', { name: 'Select Tenkasi' }))
+      await onScreen().check('Select Tenkasi')
       await screen.findByRole('button', { name: 'Clear selection' })
       for (const id of ['bulk-delete', 'bulk-edit-field']) expect(screen.queryByTestId(id)).not.toBeInTheDocument()
       await onScreen().clickButton('Clear selection')
@@ -210,7 +208,7 @@ describe('record-workspace', () => {
     await step('the existing collaboration is readable without collaboration mutation controls', async () => {
       await onScreen().clickButton('Collaboration')
       const me = await admin.get<{ full_name: string }>(`/api/table/Person/${encodeURIComponent(admin.user!)}`)
-      await waitFor(() => expect(screen.getByTestId('assignments-panel')).toHaveTextContent(me.full_name))
+      await inside(onScreen(), 'assignments-panel', (el) => el.assertText(me.full_name))
       await inside(onScreen(), 'tags-panel', (el) => el.assertText('priority'))
       await inside(onScreen(), 'attachments-panel', (el) => el.assertText('plant-note.txt'))
       for (const id of ['assign-submit', 'tag-add', 'attach-file', 'attachment-delete'])

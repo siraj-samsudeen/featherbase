@@ -8,7 +8,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe } from 'vitest'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect } from '../pg-test'
+import { test, expect, insideOf } from '../pg-test'
 import { TaskerWorld, type TaskerPage, dayFrom, realTime } from './tasker'
 
 const scenario = scenarioFor(test, 'tasker-issues')
@@ -51,15 +51,18 @@ async function openIssues(page: TaskerPage) {
 
 const issueList = (closed = false) => screen.findByRole('list', { name: closed ? 'All issues' : 'Open issues' })
 const issueRow = async (title: string, closed = false) => within(await issueList(closed)).findByRole('listitem', { name: title })
+/** The selector of an issue's row in the list: each row is named by the issue's title. */
+const issueItem = (title: string, closed = false) =>
+  `[aria-label="${closed ? 'All issues' : 'Open issues'}"] li[aria-label=${JSON.stringify(title)}]`
 
 async function openIssue(page: TaskerPage, title: string, closed = false) {
-  await page.user.click(within(await issueRow(title, closed)).getByRole('link', { name: title }))
+  await insideOf(page.session, issueItem(title, closed), (row) => row.clickLink(title))
   const detail = await screen.findByRole('region', { name: 'Issue detail' })
   await within(detail).findByRole('heading', { name: title })
   return detail
 }
 
-/** The one-line clock an issue's row shows. */
+/** The one-line clock an issue's row shows, for a pattern: the DSL's text verbs match literal text only. */
 const clockChip = async (title: string, closed = false) =>
   (await issueRow(title, closed)).querySelector('.tasker-issue-clock-chip')!.textContent!.trim()
 
@@ -89,18 +92,15 @@ describe('tasker-issues', () => {
       await tasker.store('ATK Avadi')
       const page = await tasker.as('Meena')
       await openIssues(page)
-      await page.session.clickButton('Raise an issue')
-      const form = await screen.findByRole('form', { name: 'Raise an issue' })
-      // Each choice's <label> also holds its options' text, which the DSL's label lookup can't match.
-      const choose = (name: string, option: string) => page.user.selectOptions(within(form).getByRole('combobox', { name }), option)
-      await page.session.within('form[aria-label="Raise an issue"]', (raise) => raise
+      await insideOf(page.session.clickButton('Raise an issue'), 'form[aria-label="Raise an issue"]', (raise) => raise
         .fillIn('What happened', title)
-        .step('category: Equipment failure', () => choose('Category', 'Equipment failure'))
-        .step('severity: High', () => choose('Severity', 'High'))
+        .selectOption('Category', 'Equipment failure')
+        .selectOption('Severity', 'High')
         .assertText('ATK Avadi')
-        .step('store: ATK Avadi', () => choose('Store', 'ATK Avadi'))
+        .selectOption('Store', 'ATK Avadi')
         .fillIn('Asset or area', 'Dairy chiller 2')
         .clickButton('Raise issue'))
+      // Waits for the form to close: the DSL has no verb for disappearance yet.
       await waitFor(() => expect(screen.queryByRole('form', { name: 'Raise an issue' })).not.toBeInTheDocument())
       await tasker.findIssue(title)
     })
@@ -222,8 +222,8 @@ describe('tasker-issues', () => {
     await step('it is closed and still shows it breached', async () => {
       const page = await tasker.as('Meena')
       await openIssues(page)
-      await page.session.check('Show closed')
-      await waitFor(async () => expect(await clockChip(CHILLER, true)).toBe('Closed · fix time was breached'))
+      await insideOf(page.session.check('Show closed'), `${issueItem(CHILLER, true)} .tasker-issue-clock-chip`,
+        (chip) => chip.assertExactText('Closed · fix time was breached'))
       const detail = await openIssue(page, CHILLER, true)
       expect(detail.textContent).toMatch(/Fix time breached \d{2}-[A-Z][a-z]{2}-\d{4}/)
       expect(clockText(detail, 'Verification clock')).toMatch(/Verified by Meena/)

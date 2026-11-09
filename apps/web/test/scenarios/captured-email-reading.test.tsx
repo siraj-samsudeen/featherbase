@@ -47,7 +47,7 @@ describe('captured-email-reading', () => {
     await step('the user can read the locally captured invoice notice', async () => { notice = await seed('normal') })
     await step('the user opens the captured invoice notice', async () => { ({ session, reading } = await open(admin, notice.id)) })
     await step('the user reads the invoice notice as an email with its attachment names', () => {
-      // Visible, exact and absent: the DSL's text verbs check containment in the text, shown or hidden.
+      // Visible, exact and absent: the DSL's text verbs read text, shown or hidden; the body keeps its line breaks, which assertExactText folds.
       expect(within(reading).getByRole('heading', { name: 'Your November invoice' })).toBeVisible()
       for (const text of ['accounts@example.test', 'priya@example.test', NAMES]) expect(within(reading).getByText(text, { exact: true })).toBeVisible()
       expect(within(reading).getByTestId('reading-body').textContent).toBe(notice.body)
@@ -58,8 +58,7 @@ describe('captured-email-reading', () => {
       session.within(READING, (email) => email.assertText('Captured locally in Email Sink. This does not confirm external delivery.')))
     await step('raw values are initially collapsed and cannot be edited', async () => {
       const details = screen.getByTestId('raw-details') as HTMLDetailsElement
-      expect(details.open).toBe(false)
-      await session.within(byTestId('raw-details'), (raw) => raw.click('Raw details'))
+      await session.within(byTestId('raw-details'), (raw) => raw.refuteAttribute('open').click('Raw details'))
       // A value the user can't edit: shown as a value (#795) or as a disabled
       // control; either way nothing in it accepts input.
       for (const column of ['body', 'attachment_b64']) {

@@ -16,7 +16,7 @@ import { loadInstalledApps } from 'server/src/apps'
 import { sql } from 'server/src/db'
 import { withNamedVariable } from 'server/src/env'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp, onScreen } from '../pg-test'
+import { test, expect, renderApp, onScreen, insideOf, screenSession } from '../pg-test'
 
 type Client = Parameters<typeof renderApp>[1]
 type Rendered = Awaited<ReturnType<typeof renderApp>>
@@ -75,8 +75,9 @@ async function resetLibrary() {
 
 const nav = () => screen.getByRole('navigation', { name: 'Available apps' })
 const details = (title = 'Tasker') => screen.getByRole('region', { name: `${title} details` })
-const detailsContain = (text: string, title = 'Tasker') =>
-  waitFor(() => expect(details(title)).toHaveTextContent(text))
+/** The app's details read this, waiting as long as an install may take. */
+const detailsContain = (text: string, title = 'Tasker', timeout = LONG.timeout) =>
+  insideOf(screenSession({ timeout }), `[aria-label="${title} details"]`, (app) => app.assertText(text))
 
 async function openApps(admin: Client) {
   const view = await renderApp(APPS, admin)
@@ -109,7 +110,7 @@ async function chooseInstall(admin: Client) {
 async function finishInstall(admin: Client, { answer }: { answer: Promise<Response> }) {
   const res = await answer
   expect(res.status, await res.clone().text()).toBe(201)
-  await waitFor(() => expect(details()).toHaveTextContent('Installed on this instance'), { timeout: 120_000 })
+  await detailsContain('Installed on this instance', 'Tasker', 120_000)
   expect((await app(admin)).installed).toBe(true)
 }
 
@@ -280,7 +281,7 @@ describe('app-management', () => {
         const tasker = await app(admin)
         expect(tasker.installed).toBe(false)
         expect(tasker.preparation.state).toBe('failed')
-        await waitFor(() => expect(details()).toHaveTextContent('Ask the operator'), LONG)
+        await detailsContain('Ask the operator')
         await detailsContain('Not installed')
       })
     } finally { await resetLibrary() }
@@ -318,15 +319,10 @@ describe('app-management', () => {
       await step('the user can change the report account', async () => {
         cleanup()
         await renderApp('/featherbase/admin/table/app-setting/row/dash.embed_service_account', admin)
-        const value = await waitFor(() => {
-          const input = screen.getByLabelText('Value') as HTMLInputElement
-          expect(input).toHaveValue('initial-account')
-          return input
-        }, LONG)
-        expect(value).toBeEnabled()
-        await userEvent.clear(value)
-        await userEvent.type(value, 'acceptance-account')
-        await onScreen().clickButton('Save')
+        await screenSession(LONG).assertValue('Value', 'initial-account')
+        // Editable: the DSL has no verb for a field being enabled.
+        expect(screen.getByLabelText('Value')).toBeEnabled()
+        await onScreen().fillIn('Value', 'acceptance-account').clickButton('Save')
         await waitFor(async () =>
           expect((await admin.get<{ value: string }>('/api/table/App Setting/dash.embed_service_account')).value).toBe('acceptance-account'), LONG)
       })

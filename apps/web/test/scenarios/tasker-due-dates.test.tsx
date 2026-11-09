@@ -2,7 +2,7 @@
 // openspec/specs/tasker-due-dates/spec.md, step by step, with Tasker's page
 // rendered in jsdom against the real in-process server. "Today is" sets the
 // clock both the server and the page read.
-import { fireEvent, waitFor, within } from '@testing-library/react'
+import { waitFor, within } from '@testing-library/react'
 import { afterEach, describe } from 'vitest'
 import { scenarioFor } from 'server/test/scenario'
 import { test, expect } from '../pg-test'
@@ -27,18 +27,28 @@ async function dated(tasker: TaskerWorld, title: string, values: Record<string, 
   return tasker.tasks.has(title) ? tasker.change(title, values) : tasker.task(title, values)
 }
 
-const dueDateField = (detail: HTMLElement) => within(detail).getByLabelText('Due date') as HTMLInputElement
+const DETAIL = '[aria-label="Task detail content"]'
 
 /** The user sets the current task's due date in its details, and the change reaches the server. */
 async function setDueDate(tasker: TaskerWorld, value: string) {
   const task = tasker.current!
   const page = await tasker.as('the user')
   const detail = await page.openTask(task.row_id, String(task.task_title))
-  await waitFor(() => expect(dueDateField(detail)).toBeEnabled())
-  fireEvent.change(dueDateField(detail), { target: { value } })
+  // Enabled once the page has the task: the DSL has no verb for a field being enabled.
+  await waitFor(() => expect(within(detail).getByLabelText('Due date')).toBeEnabled())
+  await page.session.within(DETAIL, (details) => details.fillIn('Due date', value))
   return { page, detail }
 }
 
+/** The due date the current task's details show, opened afresh by whoever last looked. */
+async function dueDateShown(tasker: TaskerWorld, value: string) {
+  const task = tasker.current!
+  const page = await tasker.viewerPage()
+  await page.openTask(task.row_id, String(task.task_title))
+  await page.session.within(DETAIL, (details) => details.assertValue('Due date', value))
+}
+
+// The row is found by its title, which no selector names.
 async function rowMarked(tasker: TaskerWorld, mark: 'overdue' | 'scheduled', word: RegExp) {
   const task = tasker.current!
   const page = await tasker.viewerPage()
@@ -58,12 +68,7 @@ describe('tasker-due-dates', () => {
       await setDueDate(tasker, day('4 November 2026'))
       await waitFor(async () => expect(String((await tasker.fresh()).due_date).slice(0, 10)).toBe('2026-11-04'))
     })
-    await step('the task shows it is due on 4 November 2026', async () => {
-      const task = tasker.current!
-      const page = await tasker.viewerPage()
-      const detail = await page.openTask(task.row_id, String(task.task_title))
-      await waitFor(() => expect(dueDateField(detail)).toHaveValue('2026-11-04'))
-    })
+    await step('the task shows it is due on 4 November 2026', () => dueDateShown(tasker, '2026-11-04'))
   })
 
   scenario('A due date before the start date', async ({ createUser, admin }, step) => {
@@ -75,11 +80,9 @@ describe('tasker-due-dates', () => {
       ;({ detail } = await setDueDate(tasker, day('4 November 2026')))
     })
     await step("the due date is refused, saying it can't be before the start date", async () => {
+      // A pattern, for either apostrophe: the DSL's text verbs match literal text only.
       expect(await within(detail).findByRole('alert')).toHaveTextContent(/due date can[’']t be before the start date/i)
-      const task = tasker.current!
-      const page = await tasker.viewerPage()
-      const reopened = await page.openTask(task.row_id, String(task.task_title))
-      expect(dueDateField(reopened)).toHaveValue('')
+      await dueDateShown(tasker, '')
       expect((await tasker.fresh()).due_date).toBeNull()
     })
   })
@@ -112,7 +115,7 @@ describe('tasker-due-dates', () => {
       const page = await tasker.as('the user')
       await page.openProject(tasker.projectOf(task))
       await page.row(String(task.task_title))
-      await page.user.click(page.doneBox(String(task.task_title)))
+      await page.session.check(page.doneBox(String(task.task_title)))
       await waitFor(async () => expect((await tasker.fresh()).is_done).toBe(true))
     })
     await step('the task is not marked Overdue', async () => {
@@ -120,7 +123,7 @@ describe('tasker-due-dates', () => {
       const page = await tasker.viewerPage()
       await page.openProject(tasker.projectOf(task))
       await page.row(String(task.task_title))
-      await waitFor(() => expect(page.doneBox(String(task.task_title))).toBeChecked())
+      await page.session.assertChecked(page.doneBox(String(task.task_title)))
       expect((await page.dueMark(String(task.task_title)))?.mark).not.toBe('overdue')
     })
   })

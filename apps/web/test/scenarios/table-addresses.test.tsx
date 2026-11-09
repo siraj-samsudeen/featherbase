@@ -51,7 +51,17 @@ const search = (key: string) => {
   return typeof value === 'string' ? JSON.parse(value) : value
 }
 const expectPath = (expected: string) => waitFor(() => expect(pathname()).toBe(expected), WAIT)
+// Whether a field is on screen at all: the DSL has no verb for presence.
 const byLabel = (label: string) => screen.getByLabelText(label, { exact: true, selector: 'input, textarea, select' }) as HTMLInputElement
+/** The form's fields hold these values, once the row has arrived. */
+const formShows = (values: Record<string, string>) =>
+  Object.entries(values).reduce((session, [label, value]) => session.assertValue(label, value), onScreen())
+/** The form's status reads exactly this. */
+const formStatus = (text: string) => inside(onScreen(), 'form-status', (status) => status.assertExactText(text))
+/** The element with this data-testid links to this address. */
+const linksTo = (testId: string, address: string) => inside(onScreen(), testId, (link) => link.assertAttribute('href', address))
+/** The element with this data-testid reads exactly this. */
+const reads = (testId: string, text: string) => inside(onScreen(), testId, (el) => el.assertExactText(text))
 const formReady = () => screen.findByTestId('form-view', {}, WAIT)
 const rowLink = async (name: string) => within(await screen.findByTestId('list-rows', {}, WAIT)).findByRole('link', { name }, WAIT)
 const enc = encodeURIComponent
@@ -97,14 +107,11 @@ async function save() {
   try {
     await userEvent.click(screen.getByTestId('form-save'))
     await waitFor(() => expect(sent).toHaveLength(1), WAIT)
-    await waitFor(() => expect(screen.getByTestId('form-status')).toHaveTextContent(/^Saved$/), WAIT)
+    await formStatus('Saved')
   } finally { globalThis.fetch = bridged }
   return sent[0]!
 }
-async function fill(label: string, value: string) {
-  await userEvent.clear(byLabel(label))
-  await userEvent.type(byLabel(label), value)
-}
+const fill = (label: string, value: string) => onScreen().fillIn(label, value)
 async function navigate(name: string, who: TestClient) {
   await visit('/featherbase/admin/all-tables', who)
   await userEvent.click(await within(await screen.findByTestId('table-nav', {}, WAIT)).findByRole('link', { name }, WAIT))
@@ -163,7 +170,7 @@ describe('table-addresses', () => {
       await navigate('Route Probe', editor)
       await expectPath(ROOT)
       // A raw URL slug used to gate canonical capability arrays hides this.
-      await waitFor(() => expect(screen.getByTestId('list-new')).toHaveAttribute('href', ROOT + '/new'), WAIT)
+      await linksTo('list-new', ROOT + '/new')
       await userEvent.click(await rowLink('Stock review'))
       await expectPath(STOCK)
       await formReady()
@@ -178,14 +185,14 @@ describe('table-addresses', () => {
     await step('the saved row belongs to Route Probe with its original labels', async () => {
       const stored = await row(admin, 'Route Probe', 'Stock review')
       expect(stored).toMatchObject({ row_id: 'Stock review', subject: 'Stock review', notes: 'Reviewed through readable address' })
-      expect(within(screen.getByTestId('breadcrumbs')).getByRole('link', { name: 'Route Probe' })).toHaveAttribute('href', ROOT)
+      await onScreen().within(`${byTestId('breadcrumbs')} a[href="${ROOT}"]`, (link) => link.assertExactText('Route Probe'))
       expect(screen.getByRole('heading', { name: 'Route Probe: Stock review' })).toBeVisible()
       expect(byLabel('Review title')).toBeInTheDocument()
       const meta = await admin.get<{ name: string; columns: { column_name: string; label: string }[] }>('/api/table/route-probe:meta')
       expect(meta.name).toBe('Route Probe')
       expect(meta.columns.find((column) => column.column_name === 'subject')!.label).toBe('Review title')
       await reload()
-      await waitFor(() => expect(byLabel('Review notes')).toHaveValue('Reviewed through readable address'), WAIT)
+      await formShows({ 'Review notes': 'Reviewed through readable address' })
     })
   })
 
@@ -209,9 +216,8 @@ describe('table-addresses', () => {
         await visit(PATHS[index]!, admin)
         await formReady()
         await expectPath(PATHS[index]!)
-        await waitFor(() => expect(screen.getByTestId('form-status')).toHaveTextContent(/^Saved$/), WAIT)
-        await waitFor(() => expect(byLabel('Review title')).toHaveValue(IDS[index]), WAIT)
-        expect(byLabel('Review notes')).toHaveValue(`Existing ${IDS[index]}`)
+        await formStatus('Saved')
+        await formShows({ 'Review title': IDS[index]!, 'Review notes': `Existing ${IDS[index]}` })
         await fill('Review notes', `Edited ${IDS[index]}`)
         expect((await save()).row_id).toBe(IDS[index])
       }
@@ -234,22 +240,21 @@ describe('table-addresses', () => {
       expect(search('filters')).toEqual(FILTERS)
       await waitFor(() => expect(screen.getByTestId('list-rows').querySelectorAll('tr')).toHaveLength(1), WAIT)
       // Generated links, not just successful direct loads.
-      await waitFor(() => expect(screen.getByTestId('list-new')).toHaveAttribute('href', ROOT + '/new'), WAIT)
+      await linksTo('list-new', ROOT + '/new')
       await onScreen().clickButton('Table administration')
       for (const [control, path] of [
         ['open-columns', ROOT + '/columns'], ['open-merge', ROOT + '/merge'],
         ['open-naming', ROOT + '/naming'], ['open-permissions', ROOT + '/permissions'],
-      ] as const) expect(await screen.findByTestId(control)).toHaveAttribute('href', path)
+      ] as const) await linksTo(control, path)
       await onScreen().pressKey('Escape')
       await onScreen().clickButton('View: List')
-      expect(await screen.findByTestId('open-report')).toHaveAttribute('href', ROOT + '/view/report')
+      await linksTo('open-report', ROOT + '/view/report')
 
       await visit(ROOT + '/new?prefill=' + enc(JSON.stringify(PREFILL)), admin)
       await formReady()
       expect(search('prefill')).toEqual(PREFILL)
-      await waitFor(() => expect(byLabel('Review title')).toHaveValue(PREFILL.subject), WAIT)
-      expect(byLabel('Review notes')).toHaveValue(PREFILL.notes)
-      expect(screen.getByTestId('form-status')).toHaveTextContent(/^Not saved$/)
+      await formShows({ 'Review title': PREFILL.subject, 'Review notes': PREFILL.notes })
+      await formStatus('Not saved')
       await save()
       await expectPath('/featherbase/admin/table/route-probe/row/A%20%2F%20B%3Fx%23%25')
       expect((await row(admin, 'Route Probe', PREFILL.subject)).notes).toBe(PREFILL.notes)
@@ -260,14 +265,15 @@ describe('table-addresses', () => {
       await visit(STOCK, admin)
       await formReady()
       await onScreen().clickButton('Record actions')
-      const print = await screen.findByTestId('form-print')
-      expect(print).toHaveAttribute('href', '/featherbase/print/route-probe/Stock%20review')
-      await user.click(print)
-      await waitFor(() => expect(screen.getByTestId('print-format-body').textContent).toBe('Canonical review: Stock review'), WAIT)
+      await linksTo('form-print', '/featherbase/print/route-probe/Stock%20review')
+      // A link named only by its test id: clickLink finds a link by its text.
+      await user.click(screen.getByTestId('form-print'))
+      await reads('print-format-body', 'Canonical review: Stock review')
       await onScreen().within(byTestId('print-docname'), (el) => el.assertText('Stock review'))
 
       await visit('/featherbase/portal/route-probe', admin)
-      await waitFor(() => expect(screen.getByTestId('portal-title').textContent).toBe('My Route Probe'), WAIT)
+      await reads('portal-title', 'My Route Probe')
+      // Exactly one row links to it: the DSL reads text, not counts.
       const portalLink = await waitFor(() => {
         const links = screen.getAllByTestId('portal-row').flatMap((r) => within(r).queryAllByRole('link', { name: 'Stock review' }))
         expect(links).toHaveLength(1)
@@ -276,7 +282,7 @@ describe('table-addresses', () => {
       expect(portalLink).toHaveAttribute('href', '/featherbase/portal/route-probe/Stock%20review')
       await user.click(portalLink)
       await inside(onScreen(), 'portal-doc', (el) => el.assertText('Stock review'))
-      await waitFor(() => expect(screen.getByTestId('portal-field-subject').textContent).toBe('Stock review'), WAIT)
+      await reads('portal-field-subject', 'Stock review')
 
       // #910: the map is the row page's Map tab, at the row's own address.
       await visit(STOCK, admin)
@@ -286,9 +292,10 @@ describe('table-addresses', () => {
       expect(pathname()).toBe(STOCK)
       await visit(ROOT + '/view/report', admin)
       expect(await screen.findByTestId('report-view', {}, WAIT)).toBeVisible()
-      expect(screen.getByTestId('report-to-list')).toHaveAttribute('href', ROOT)
+      await linksTo('report-to-list', ROOT)
       await visit(ROOT + '/permissions', admin)
       await inside(onScreen(), 'permission-manager', (el) => el.assertText('Route Probe'))
+      // Named only by their test ids: the DSL's checked verbs find a box by its label.
       expect(await screen.findByTestId('perm-Route Probe Reader-can_read', {}, WAIT)).toBeChecked()
       expect(screen.getByTestId('perm-Route Probe Reader-can_write')).not.toBeChecked()
     })
@@ -310,7 +317,7 @@ describe('table-addresses', () => {
         await waitFor(() => expect(read[0]).toBe(200), WAIT)
       } finally { globalThis.fetch = bridged }
       await inside(onScreen(), 'breadcrumbs', (el) => el.assertText('System Settings'))
-      await waitFor(() => expect(screen.getByTestId('form-status')).toHaveTextContent(/^Saved$/), WAIT)
+      await formStatus('Saved')
       expect(screen.getByRole('heading', { name: /System Settings:/ })).toBeVisible()
     })
   })
@@ -356,10 +363,9 @@ describe('table-addresses', () => {
       await userEvent.click(await rowLink('Stock review'))
       await expectPath(STOCK)
       await formReady()
-      await waitFor(() => expect(byLabel('Review title')).toHaveValue('Stock review'), WAIT)
-      expect(byLabel('Review notes')).toHaveValue('Existing Stock review')
+      await formShows({ 'Review title': 'Stock review', 'Review notes': 'Existing Stock review' })
       await reload()
-      await waitFor(() => expect(byLabel('Review notes')).toHaveValue('Existing Stock review'), WAIT)
+      await formShows({ 'Review notes': 'Existing Stock review' })
     })
   })
 
