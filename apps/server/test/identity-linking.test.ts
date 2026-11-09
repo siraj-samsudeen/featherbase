@@ -16,6 +16,7 @@ import { issueSession } from '../src/auth'
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.restoreAllMocks()
 })
 
 // person-rename: ids are minted; the typed name is the person's username.
@@ -359,6 +360,53 @@ describe('the sign-in pipeline refuses what it cannot vouch for', () => {
     const google = (await getSignInMethod('google'))!
     await expect(completeSignIn(google, verified, null)).rejects.toThrow('Invalid login credentials')
     expect(await sql`select 1 from sign_in_identity where subject = 'g-pipeline'`).toHaveLength(0)
+  })
+
+  test('a method with no label that is not answering is named by its key', async () => {
+    await configureDelegated()
+    const delegated = { ...(await getSignInMethod('stylehr'))!, label: '' }
+    await expect(completeSignIn(delegated, { status: 'unavailable' }, null)).rejects.toThrow('stylehr is not responding right now')
+  })
+
+  test('a method with no label that shows an unknown account as gone is named by its key', async () => {
+    await configureDelegated()
+    const delegated = { ...(await getSignInMethod('stylehr'))!, label: '' }
+    await expect(completeSignIn(delegated, { status: 'left' }, null)).rejects.toThrow('stylehr shows this account as no longer active')
+  })
+
+  test('a Google sign-in that carries no address keeps the one on file, no longer verified', async () => {
+    await configureGoogle({ allowed_email_domains: '' })
+    const me = await makePerson({})
+    const google = (await getSignInMethod('google'))!
+    const id = await linkVerifiedToSelf(google, me, { ...verified, subject: 'g-no-address' })
+    await completeSignIn(google, { ...verified, subject: 'g-no-address', email: undefined }, null)
+    expect(await sql`select email, email_verified from sign_in_identity where id = ${id}`).toEqual([{ email: 'pipe@gmail.com', email_verified: false }])
+  })
+
+  test('a self-link from an address Google has not verified records no address', async () => {
+    await configureGoogle({ allowed_email_domains: '' })
+    const me = await makePerson({})
+    const google = (await getSignInMethod('google'))!
+    const id = await linkVerifiedToSelf(google, me, { ...verified, subject: 'g-unverified-self', email_verified: false })
+    expect(await sql`select email, email_verified from sign_in_identity where id = ${id}`).toEqual([{ email: null, email_verified: false }])
+  })
+
+  test('a self-link Google vouches for but sends no address for records no address', async () => {
+    await configureGoogle({ allowed_email_domains: '' })
+    const me = await makePerson({})
+    const google = (await getSignInMethod('google'))!
+    const id = await linkVerifiedToSelf(google, me, { ...verified, subject: 'g-blank-self', email: undefined })
+    expect(await sql`select email from sign_in_identity where id = ${id}`).toEqual([{ email: null }])
+  })
+
+  test('a self-link from a company address whose Google account names another hosted domain is refused', async () => {
+    await configureGoogle({ allowed_email_domains: 'acme.example' })
+    const me = await makePerson({})
+    const google = (await getSignInMethod('google'))!
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await expect(linkVerifiedToSelf(google, me, { ...verified, subject: 'g-other-hd', email: 'jo@acme.example', hosted_domain: 'other.example' }))
+      .rejects.toMatchObject({ type: 'PermissionError' })
+    expect(warn).toHaveBeenCalledWith('[link] google: self-link refused (hosted domain differs; hd present)')
   })
 
   test('a method that does not vouch for its subjects cannot be linked by its owner', async () => {
