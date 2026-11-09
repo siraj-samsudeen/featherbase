@@ -40,7 +40,7 @@ async function setUp(admin: TestClient, seed = true) {
     for (const [name, city] of [['Acme Traders', 'Chennai'], ['Bala Stores', 'Chennai'], ['Coral Mart', 'Madurai']]) {
       const row = await admin.post<Row>(CUSTOMER.url, {
         customer_name: name, customer_type: 'Retail', city, credit_limit: 50000,
-        contacts: name === 'Acme Traders' ? [{ contact_name: 'Anand', phone: '98400 11111' }] : [],
+        contacts: name === 'Acme Traders' ? [{ contact_name: 'Anand', phone: '044 2000 0000' }] : [],
       })
       ids[name] = row.row_id
     }
@@ -252,7 +252,7 @@ describe('agent-access', () => {
     })
     await step('it gets its city "Chennai" and its contacts', () => {
       expect(row.city).toBe('Chennai')
-      expect(row.contacts).toEqual([expect.objectContaining({ contact_name: 'Anand', phone: '98400 11111' })])
+      expect(row.contacts).toEqual([expect.objectContaining({ contact_name: 'Anand', phone: '044 2000 0000' })])
     })
   })
 
