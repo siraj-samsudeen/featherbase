@@ -41,6 +41,7 @@ async function setUp(admin: TestClient, o: { rule?: string; roster?: unknown; ro
     columns: [
       { column_name: 'crew_name', column_type: 'Data', reqd: true },
       { column_name: 'crew_no', column_type: 'Data' },
+      { column_name: 'crew_login', column_type: 'Data' },
       { column_name: 'hr_record', column_type: 'Data' },
       { column_name: 'crew_state', column_type: 'Data' },
       { column_name: 'login', column_type: 'Reference', reference_table: 'Person' },
@@ -107,6 +108,38 @@ describe('a first sign-in links the roster row', () => {
       { system: 'stylehr-employee-code', value: CODE, verified: true, current: true },
       { system: 'stylehr-employee-id', value: RECORD, verified: true, current: true },
     ])
+  })
+
+  // #1104: the roster's code carries a region prefix the service has never heard of.
+  describe('the ID staff type sits in its own column, beside a prefixed code', () => {
+    const PREFIXED = `KL-${CODE}`
+    const ownColumn = { ...ROSTER, sign_in_id_column: 'crew_login', identifiers: { 'stylehr-employee-code': 'crew_login' } }
+
+    test('the ID staff type signs in, and is what the service is asked about', async ({ api, admin }) => {
+      await setUp(admin, { roster: ownColumn, rows: [crewRow({ crew_no: PREFIXED, crew_login: CODE })] })
+      const calls = provider()
+
+      const res = await signIn(api, CODE)
+
+      expect(res.status).toBe(200)
+      expect(calls).toEqual([{ body: { email: CODE, password: PASSWORD } }])
+      const [row] = await crew(PREFIXED)
+      expect(row.login).toBeTruthy()
+    })
+
+    test('the prefixed code is not a sign-in ID', async ({ api, admin }) => {
+      await setUp(admin, { roster: ownColumn, rows: [crewRow({ crew_no: PREFIXED, crew_login: CODE })] })
+      await expectRefusedWithoutAsking(api, provider(), PREFIXED)
+    })
+
+    test('two people sharing the typed ID are both refused, and it is noted', async ({ api, admin }) => {
+      await setUp(admin, {
+        roster: ownColumn,
+        rows: [crewRow({ crew_no: PREFIXED, crew_login: CODE }), crewRow({ crew_no: `TN-${CODE}`, crew_login: CODE, hr_record: '7002' })],
+      })
+      await expectRefusedWithoutAsking(api, provider(), CODE)
+      expect((await heldNotes())[0]).toMatch(/ duplicate_id$/)
+    })
   })
 
   test('a new person holds no role', async ({ api, admin }) => {
@@ -598,6 +631,8 @@ describe('the rule is configuration', () => {
     }
     const stylehr = file.settings['Sign In Method'].find((m) => m.row_id === 'stylehr')
     expect(stylehr).toMatchObject({ kind: 'delegated_password', enabled: true, new_person: 'create_if_on_roster', settings: { provider_record_key: 'employee_id' } })
+    // #1104: staff type StyleHR's own code; employee_code carries a region prefix.
+    expect(stylehr).toMatchObject({ settings: { roster: { sign_in_id_column: 'employee_code_stylehr', identifiers: { 'stylehr-employee-code': 'employee_code_stylehr' } } } })
     for (const section of Object.values(file.environments))
       expect((section.settings['Sign In Method'] ?? []).some((m) => m.row_id === 'stylehr')).toBe(false)
     await applyInstanceSettings({ settings: { 'Sign In Method': [stylehr!] } }, { by: 'Administrator' })

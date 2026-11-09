@@ -180,10 +180,10 @@ long collection visible search and keep return context in breadcrumbs/URLs.
 
 For integration, keep those same screen imports, define the corresponding Table
 through the existing API, and open it on the **normal isolated development API**.
-Do not add a live-forwarding switch to fixture mode. The acceptance journey in
-`acceptance-tests/support/pages/prototype-library.js` compares native field
-order, labels, types and geometry across both origins, then saves and reloads
-the real form. Synthetic approval is not proof of permissions, persistence,
+Do not add a live-forwarding switch to fixture mode. The scenario tests in
+`apps/web/test/scenarios/native-prototype-library.test.tsx` compare native
+field order, labels and types across both origins, then save and reload the
+real form. Synthetic approval is not proof of permissions, persistence,
 concurrency or deployment readiness. Grow this library from consumer needs;
 do not fork native renderers or build a second design system.
 
@@ -345,7 +345,7 @@ pnpm test
 ```
 
 Tests normally use their own `featherbase_test` database, not development data.
-See [docs/TESTING.md](docs/TESTING.md) for the individual suites and acceptance runner.
+See [docs/TESTING.md](docs/TESTING.md) for the individual suites and spec scenarios.
 
 ### Connect an agent
 

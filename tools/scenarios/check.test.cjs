@@ -12,13 +12,14 @@ const s = (capability, scenario, fenced = true) => ({ capability, scenario, requ
 const b = (capability, scenario, file = 'apps/server/test/x.test.ts') => ({ capability, scenario, file, line: 1 });
 const run = (scenarios, bindings, problems = []) => check({ scenarios, bound: { bindings, problems } });
 
-test('a capability with no binding stays on cucumber', () => {
+test('a fenced scenario with no test is a problem, even in a capability with no bindings', () => {
   const { rows, problems } = run([s('naming', 'One')], []);
-  assert.equal(rows[0].runner, 'cucumber');
-  assert.deepEqual(problems, []);
+  assert.equal(rows[0].runner, 'unbound');
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /naming › "One" .* has no test/);
 });
 
-test('once a capability has a binding, each of its fenced scenarios needs one', () => {
+test('each fenced scenario of a capability needs its own test; prose needs none', () => {
   const { rows, problems } = run([s('naming', 'One'), s('naming', 'Two'), s('naming', 'Prose', false)], [b('naming', 'One')]);
   assert.deepEqual(rows.map((r) => r.runner), ['vitest', 'unbound', 'prose']);
   assert.equal(problems.length, 1);

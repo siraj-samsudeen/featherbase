@@ -9,8 +9,9 @@ stack: javascript
 context: |
   Every change is built in one of three modes, chosen in the session and
   switchable at any time; the mode is never written into the change. In every
-  mode a spec's scenarios are fenced Gherkin that the acceptance runner
-  executes (spec-as-source skill); the mode decides only who builds and where
+  mode a spec's scenarios are fenced Gherkin, each run by one bound Vitest
+  test (spec-as-source skill, `binding` runner; docs/TESTING.md, "Spec
+  scenarios"); the mode decides only who builds and where
   the human stops: autopilot (subagents build), build (the default: one stop
   per test for the human's prediction, red/green/refactor as separate commits,
   outside-in-tdd skill) and learning (build, plus every command shown and
@@ -31,7 +32,7 @@ context: |
 rules:
   proposal:
     - Keep it short and say why in terms of what users get.
-    - List the capabilities (New, then Modified) in the order a person meets them in the user journey. The acceptance suite runs the change's scenarios, and records review videos, in that order.
+    - List the capabilities (New, then Modified) in the order a person meets them in the user journey.
     - Must use grill-me skill - one decision per question, showing the text it will write into the artifact (paraphrased is fine), with the alternatives
     # - Must use adversarial-authoring skill - only with the human's consent (AGENTS.md § Review guidelines)
     # - Must use glossary skill
@@ -58,7 +59,7 @@ rules:
     - No layout detail, such as where a panel opens or a pixel width. Product-wide promises (works on a phone, works by keyboard, nothing shown by colour alone) live in one product-wide spec; don't repeat them in feature specs.
     - Explain a term the first time it is used.
     - Name requirements and scenarios in plain words, for example "Capture a task", not identifiers. A capability with one requirement names it after the capability.
-    - Start every spec.md, delta specs included, with its capability title as the one H1 (`# List View`); the acceptance extractor turns it into the Feature and refuses a spec without it. Upstream's spec template leaves it out.
+    - Start every spec.md, delta specs included, with its capability title as the one H1 (`# List View`); the scenarios report names the capability by it. Upstream's spec template leaves it out.
     - Use only OpenSpec's own structure (Purpose, Requirements, Scenarios). Each scenario's steps go in a fenced gherkin block (Given/When/Then); the requirement text stays outside it. No status, evidence, ID or legacy labels.
     - Order requirements as a person meets them. Within a requirement, the common case comes first, then the edge cases.
     - Run one example (one record, one person) through every scenario of a change, so each scenario differs from the last by one fact.
@@ -70,14 +71,14 @@ rules:
     - Must use spec-as-source skill
   tasks:
     - Must use grill-me skill - one decision per question, showing the text it will write into the artifact (paraphrased is fine), with the alternatives
-    - Must use spec-as-source skill - the same acceptance-test-first task list in every mode; switching mode changes no task
+    - Must use spec-as-source skill - the same scenario-test-first task list in every mode; switching mode changes no task
 
 # Per-operation guidance for apply and archive.
 operations:
   apply:
     guidance:
       - Must use test-driven-development skill
-      - Autopilot only - use the senior-qa sub-agent for acceptance tests and the senior-dev sub-agent for all src work, acceptance tests first. Do not batch the tasks to save calls; call them as many times as needed in small batches, as dev and qa work may interleave
+      - Autopilot only - use the senior-qa sub-agent for scenario tests and the senior-dev sub-agent for all src work, scenario tests first. Do not batch the tasks to save calls; call them as many times as needed in small batches, as dev and qa work may interleave
       - Build and learning only - follow the outside-in-tdd skill; do the work in the main session, never hand it to sub-agents
       - Apply on the change's own branch and worktree, in the same PR as its planning artifacts (the change-modes skill)
   archive:

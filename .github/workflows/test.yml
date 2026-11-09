@@ -1,5 +1,5 @@
-# CI: static checks, the unit/component suites, acceptance and the browser smoke
-# test, in parallel jobs.
+# CI: static checks, the unit/component suites (spec scenarios run inside the
+# server and web suites), the browser smoke test and tours, in parallel jobs.
 #
 # Each job that touches a database gets its own Postgres service container
 # (17; the preflight job, 18). The service's POSTGRES_DB/POSTGRES_USER env
@@ -14,8 +14,9 @@
 #
 #   changes -> unit-server (3), PG18 preflight -> coverage-server
 #           -> component-shards (4), web-support -> unit-web
-#           -> smoke, acceptance, served, tours -> e2e
-#   unit-web + e2e -> coverage-merged
+#           -> runtime-coverage
+#           -> smoke, served, tours -> e2e
+#   unit-web + runtime-coverage -> coverage-merged
 #   checks + unit suites + app-tests + coverage gates -> unit
 #
 #   docs and prose      checks' fast half only
@@ -23,6 +24,7 @@
 #   example-apps/**     app-tests: Tasker's own layers
 #   apps/server/**      platform checks, server suite, preflight, client platform tests
 #   apps/web/**         platform checks, web suite, e2e, merged coverage
+#   openspec/**/spec.md platform checks, server and web suites, merged coverage
 #   anything else       everything
 #
 # `unit` and `e2e` are required by the ruleset on main, so they must report on
@@ -32,7 +34,7 @@
 #
 # Coverage gates apply only where what they measure ran. The server gate merges
 # the three shards and the preflight, which share one switch, and is skipped with
-# them. coverage-merged needs both unit-web and e2e. Each suite's own floor stays
+# them. coverage-merged needs both unit-web and runtime-coverage. Each suite's own floor stays
 # inside its job. Labels: `run-all` for everything, `run-e2e` for e2e alone.
 name: test
 
@@ -812,11 +814,15 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  acceptance:
+  # Tasker's runtime coverage beyond its unit and component layers, for
+  # coverage-merged: its HTTP tests and the packaged delivery proof, each
+  # against a build instrumented with VITE_COVERAGE. On PRs without the web
+  # suite, app-tests runs the same layers without coverage.
+  runtime-coverage:
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.e2e != 'false') }}
+    if: ${{ !cancelled() && needs.changes.outputs.coverage_merged != 'false' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:18.6
@@ -836,7 +842,7 @@ jobs:
           node-version: '26.13.0'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # HTTP coverage is collected before acceptance rebuilds packages.
+      # HTTP coverage is collected before apps:prove rebuilds the packages.
       - name: Build independent runtime test packages with coverage
         env:
           VITE_COVERAGE: 'true'
@@ -848,8 +854,8 @@ jobs:
           pnpm --filter server exec vitest run
           --config ../../example-apps/tasker/vitest.integration.config.ts
 
-      # Acceptance also runs the packaged delivery proof. Its development seed
-      # checks PostgreSQL's actual server address; Docker forwarding is not local.
+      # The packaged proof's development seed checks PostgreSQL's actual
+      # server address; Docker forwarding is not local.
       - name: Start loopback PostgreSQL for the packaged seed proof
         run: |
           sudo apt-get update -qq
@@ -858,26 +864,12 @@ jobs:
           "$PG_BIN/initdb" -D "$RUNNER_TEMP/runtime-proof-pg" -U postgres --auth=trust
           "$PG_BIN/pg_ctl" -D "$RUNNER_TEMP/runtime-proof-pg" -l "$RUNNER_TEMP/runtime-proof-pg.log" -o "-h 127.0.0.1 -p 5433 -k $RUNNER_TEMP" -w start
 
-      # Effective specs run on their own runner. The packaged proof invoked
-      # by acceptance supplies coverage here; do not execute it a second time.
-      - name: Run acceptance suite
+      # Writes coverage/tasker/packaged/ (tools/prove-runtime-packages.mjs).
+      - name: Prove packaged runtime journeys with coverage
         env:
           VITE_COVERAGE: 'true'
-          # Samples require PostgreSQL itself to be local, not Docker forwarding.
-          # The harness derives its disposable *_e2e databases from this URL.
-          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5433/postgres
           RUNTIME_PROOF_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5433/featherbase_runtime_proof_e2e
-        run: |
-          npm --prefix acceptance-tests ci
-          npm --prefix acceptance-tests test
-
-      - name: Upload acceptance report
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: acceptance-report
-          path: acceptance-tests/reports/
-          if-no-files-found: ignore
+        run: pnpm apps:prove
 
       - name: Upload runtime integration coverage
         if: ${{ !cancelled() }}
@@ -987,7 +979,7 @@ jobs:
   # Keep the required check name, and reject failed or unexpectedly skipped
   # producers even when one of its dependencies fails before uploading.
   e2e:
-    needs: [changes, smoke, acceptance, served, tours]
+    needs: [changes, smoke, served, tours]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
@@ -996,29 +988,28 @@ jobs:
           CHANGES: ${{ needs.changes.result }}
           WANTED: ${{ needs.changes.outputs.e2e }}
           SMOKE: ${{ needs.smoke.result }}
-          ACCEPTANCE: ${{ needs.acceptance.result }}
           SERVED: ${{ needs.served.result }}
           TOURS: ${{ needs.tours.result }}
         run: |
           [ "$CHANGES" = success ] || exit 1
           # Tours are never scoped out.
           [ "$TOURS" = success ] || exit 1
-          for result in "$SMOKE" "$ACCEPTANCE" "$SERVED"; do
+          for result in "$SMOKE" "$SERVED"; do
             [ "$result" = success ] || { [ "$result" = skipped ] && [ "$WANTED" = false ]; } || exit 1
           done
 
   # One source-level web report from the component suite, and Tasker's 100%
   # gate over its unit, HTTP and packaged coverage. It reads artifacts from the
-  # web suite and acceptance, so `changes` only asks for it when both run; main
-  # always runs both.
+  # web suite and runtime-coverage, which `changes` runs together; main always
+  # runs both.
   coverage-merged:
-    needs: [changes, unit-web, e2e]
+    needs: [changes, unit-web, runtime-coverage]
     if: ${{ !cancelled() && needs.changes.outputs.coverage_merged != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Require successful component suite and acceptance
-        if: needs.unit-web.result != 'success' || needs.e2e.result != 'success'
+      - name: Require successful component suite and runtime coverage
+        if: needs.unit-web.result != 'success' || needs.runtime-coverage.result != 'success'
         run: exit 1
 
       - uses: actions/checkout@v4

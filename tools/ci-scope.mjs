@@ -13,10 +13,9 @@ const TEMPLATE_FILES = new Set(['.copier-answers.yml', 'opencode.json', 'skills-
 export function suitesFor(path) {
   // Read by the server suite and by check:env, so not prose.
   if (path === 'docs/DEPLOY.md') return new Set(['server', 'client'])
-  // A spec's fenced Gherkin is the acceptance suite's source, and that suite
-  // runs in the e2e job (#738), so neither is prose.
-  if (/^openspec\/.*\/spec\.md$/.test(path)) return new Set(['e2e'])
-  if (path.startsWith('acceptance-tests/') && !path.endsWith('.md')) return new Set(['e2e'])
+  // A spec's fenced scenarios are run by scenario(...) tests in the server and
+  // web suites (#1070), so a spec is not prose.
+  if (/^openspec\/.*\/spec\.md$/.test(path)) return new Set(['server', 'web'])
   const prose = path.endsWith('.md') && !path.includes('/fixtures/') && !/^client-apps\/[^/]+\/instances\//.test(path)
   if (prose || /^(docs|openspec|\.claude|\.agents|\.amp)\//.test(path) || path === 'LICENSE') return new Set()
   // The shared process template's files, which `copier update` brings (#753).
@@ -47,10 +46,11 @@ export function decide({ event, labels = [], files }) {
     web,
     e2e,
     client_apps: suites.has('client'),
-    // Tasker's own layers, unless the full web and e2e suites already run them.
-    tasker_tests: suites.has('example') && !(web && e2e),
-    // Merges the web and browser reports, so it needs both to have run.
-    coverage_merged: web && e2e,
+    // Tasker's own layers, unless the full web suite and runtime-coverage
+    // already run them.
+    tasker_tests: suites.has('example') && !web,
+    // runtime-coverage and the merge of its report with the web suite's.
+    coverage_merged: web,
   }
 }
 
