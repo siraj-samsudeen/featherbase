@@ -2,10 +2,9 @@
 // openspec/specs/asset-labels/spec.md, step by step, with the Assets app
 // rendered in jsdom against the real in-process server.
 import { screen, waitFor, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { afterEach, describe } from 'vitest'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect } from '../pg-test'
+import { test, expect, screenSession } from '../pg-test'
 import { Assets, realTime } from './assets'
 
 const scenario = scenarioFor(test, 'asset-labels')
@@ -19,9 +18,7 @@ describe('asset-labels', () => {
       assets.setupRow('equipment.tag_roll', { roll_name: 'R-03', first_no: 301, last_no: 400 }))
     await step('the user prints labels from JRA-000301 to JRA-000306', async () => {
       await assets.open('the user', 'labels')
-      const user = userEvent.setup()
-      await user.type(await screen.findByRole('textbox', { name: 'Print from' }), 'JRA-000301')
-      await user.type(screen.getByRole('textbox', { name: 'Print to' }), 'JRA-000306')
+      await screenSession().fillIn('From', 'JRA-000301').fillIn('To', 'JRA-000306')
       const sheet = await screen.findByRole('region', { name: 'Label sheet' })
       expect(screen.getByRole('button', { name: 'Print labels' })).toBeEnabled()
       await waitFor(() => expect(within(sheet).getAllByRole('article')[0]!.querySelector('[role="img"][aria-label^="QR code for"] svg')).not.toBeNull())
