@@ -10,6 +10,7 @@ import { connectAgent, issueToken, MCP_URL, postMcp, type Agent } from './agent-
 import { sandboxRequest } from './pg-test-shared'
 import { sql } from '../src/db'
 import { config } from '../src/config'
+import { resetRateLimit } from '../src/rate-limit'
 import { LIST_OPERATORS } from '../src/query'
 
 const NOTE = tableRef('Mcp Note')
@@ -21,7 +22,7 @@ async function notes(admin: TestClient, count = 3) {
   await makeTable(admin, { name: 'Mcp Line', module: 'Custom', kind: 'sub_table', columns: ['item'] })
   await makeTable(admin, {
     name: 'Mcp Note', module: 'Custom', track_changes: true,
-    columns: ['title', 'body', { column_name: 'lines', column_type: 'Sub-table', row_table: 'Mcp Line' },
+    columns: ['title', { column_name: 'body', column_type: 'Text', description: 'The note itself' }, { column_name: 'lines', column_type: 'Sub-table', row_table: 'Mcp Line' },
       { column_name: 'author', column_type: 'Reference', reference_table: 'Person', read_only: true }],
   })
   await grantRole(admin, { role: ROLE, table: ['Mcp Note', 'Mcp Line'], can_read: true, can_write: true, can_create: true, can_delete: true })
@@ -56,11 +57,12 @@ describe('#1083 /mcp: the mount (D1)', () => {
       .toEqual(['create_row', 'delete_row', 'describe_table', 'get_row', 'list_tables', 'query_rows', 'update_row'])
   })
 
-  test.each(['GET', 'DELETE'])('%s /mcp is 405: no stream and no session to end', async (method, { admin }) => {
-    const res = await sandboxRequest(MCP_URL, { method, headers: { authorization: `Bearer ${await issueToken(admin)}`, accept: 'text/event-stream' } })
-    expect(res.status).toBe(405)
-    expect(res.headers.get('allow')).toBe('POST')
-  })
+  for (const method of ['GET', 'DELETE'])
+    test(`${method} /mcp is 405: no stream and no session to end`, async ({ admin }) => {
+      const res = await sandboxRequest(MCP_URL, { method, headers: { authorization: `Bearer ${await issueToken(admin)}`, accept: 'text/event-stream' } })
+      expect(res.status).toBe(405)
+      expect(res.headers.get('allow')).toBe('POST')
+    })
 })
 
 describe('#1083 /mcp: who may connect (D2)', () => {
@@ -111,6 +113,7 @@ describe('#1083 /mcp: tools served by the HTTP API (D3, D4, D7)', () => {
     expect(described.table).toBe('Mcp Note')
     expect(described.columns.find((c) => c.name === 'lines')).toMatchObject({ type: 'Sub-table', columns: [expect.objectContaining({ name: 'item', type: 'Data' })] })
     expect(described.columns.find((c) => c.name === 'author')).toMatchObject({ type: 'Reference', links_to: 'Person', read_only: true })
+    expect(described.columns.find((c) => c.name === 'body')).toMatchObject({ type: 'Text', description: 'The note itself' })
   })
 
   test('query_rows defaults to 20 rows of every readable column but nested rows', async ({ admin, createUser }) => {
@@ -158,8 +161,9 @@ describe('#1083 /mcp: tools served by the HTTP API (D3, D4, D7)', () => {
     await notes(admin)
     const { user, agent } = await keeper(createUser)
     await sql`update person set api_rate_limit = 1 where row_id = ${user.user}`
-    await agent.ok('query_rows', { table: 'Mcp Note' })
-    const result = await agent.call('query_rows', { table: 'Mcp Note' })
+    resetRateLimit(user.user!)
+    await agent.ok('query_rows', { table: 'Mcp Note', columns: ['title'] })
+    const result = await agent.call('query_rows', { table: 'Mcp Note', columns: ['title'] })
     expect(result.isError).toBe(true)
     expect(text(result)).toMatch(/^RateLimitError: /)
   })

@@ -15,6 +15,7 @@ const CUSTOMER = tableRef('Customer')
 const CLERK = 'Customer Clerk'
 
 type Row = Record<string, unknown> & { row_id: string }
+type Activity = { created: { created_by: string; author_name: string }; versions: Version[] }
 type Version = { created_by: string; author_name: string; data: { created?: boolean; changed: [string, unknown, unknown][]; agent?: { token_id: string; token_label: string } } }
 
 /** "Customer" (a required name, a Retail/Wholesale type, a city, contacts, a
@@ -52,8 +53,8 @@ async function clerkAgent(admin: TestClient, createUser: (opts?: { roles?: strin
   return { user, agent }
 }
 
-const history = async (admin: TestClient, id: string) =>
-  (await admin.get<{ versions: Version[] }>(`/api/activity/Customer/${encodeURIComponent(id)}`)).versions
+const activity = (admin: TestClient, id: string) => admin.get<Activity>(`/api/activity/Customer/${encodeURIComponent(id)}`)
+const history = async (admin: TestClient, id: string) => (await activity(admin, id)).versions
 
 const refusalText = (result: { content: { text: string }[] }) => result.content.map((c) => c.text).join('\n')
 
@@ -70,8 +71,9 @@ describe('agent-access', () => {
       id = (await agent.ok<Row>('create_row', { table: 'Customer', values: { customer_name: 'Dhan Agencies', city: 'Salem' } })).row_id
     })
     await step('the customer\'s history shows the user added it', async () => {
-      const [created] = await history(admin, id)
-      expect(created).toMatchObject({ created_by: user.user, data: { created: true } })
+      const { created, versions } = await activity(admin, id)
+      expect(created.created_by).toBe(user.user)
+      expect(versions).toEqual([expect.objectContaining({ created_by: user.user, data: expect.objectContaining({ created: true }) })])
     })
   })
 
@@ -127,9 +129,9 @@ describe('agent-access', () => {
 
   scenario('A service account\'s agent sees only what the account may read', async ({ admin }, step) => {
     let agent!: Agent
-    await step('a service account "Nightly Sync" that can read "Customer" but not "Payroll"', async () => {
+    await step('a service account "nightly-sync" that can read "Customer" but not "Payroll"', async () => {
       await setUp(admin)
-      const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'Nightly Sync', roles: [CLERK] })
+      const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'nightly-sync', roles: [CLERK] })
       agent = await connectAgent(await issueToken(admin, 'Sync agent', account.row_id))
     })
     let tables: string[] = []
@@ -143,22 +145,24 @@ describe('agent-access', () => {
   scenario('A service account\'s change is marked', async ({ admin }, step) => {
     let agent!: Agent
     let account = ''
-    await step('an agent connected with the access token "Sync agent" of the service account "Nightly Sync"', async () => {
+    await step('an agent connected with the access token "Sync agent" of the service account "nightly-sync"', async () => {
       await setUp(admin)
-      account = (await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'Nightly Sync', roles: [CLERK] })).row_id
+      account = (await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'nightly-sync', roles: [CLERK] })).row_id
       agent = await connectAgent(await issueToken(admin, 'Sync agent', account))
     })
     let id = ''
     await step('the agent adds a customer "Dhan Agencies"', async () => {
       id = (await agent.ok<Row>('create_row', { table: 'Customer', values: { customer_name: 'Dhan Agencies' } })).row_id
     })
-    let created!: Version
-    await step('the customer\'s history shows "Nightly Sync" added it', async () => {
-      ;[created] = await history(admin, id)
-      expect(created).toMatchObject({ created_by: account, author_name: 'Nightly Sync', data: { created: true } })
+    let entry!: Version
+    await step('the customer\'s history shows "nightly-sync" added it', async () => {
+      const { created, versions } = await activity(admin, id)
+      expect(created).toMatchObject({ created_by: account, author_name: 'nightly-sync' })
+      ;[entry] = versions
+      expect(entry).toMatchObject({ created_by: account, data: { created: true } })
     })
     await step('it is marked as made through an agent with the token "Sync agent"', () =>
-      expect(created!.data.agent).toMatchObject({ token_label: 'Sync agent' }))
+      expect(entry.data.agent).toMatchObject({ token_label: 'Sync agent' }))
   })
 
   scenario('A Table the user cannot read is not listed', async ({ admin, createUser }, step) => {
