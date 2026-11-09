@@ -22,6 +22,7 @@ import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packa
 import { invalidateSources } from '../src/sources/registry'
 import { activeSnapshot, buildSnapshot, pendingMisses, recordMiss } from '../src/dataset-snapshot'
 import { expectApiError, expectRefused, expectStatus } from './fixtures'
+import { datasetQueryText } from '../src/sources/dataset-query'
 import type { RuntimeReadContext } from 'shared'
 import { withNamedVariable } from '../src/env'
 import { appSetupState } from '../src/app-settings'
@@ -1187,6 +1188,23 @@ describe('a place a dataset cannot apply', () => {
     await withPlaces(FLOOR_PLACES, () => expectApiError(scopeOf(admin, person ?? reader.user!, app), { status: 404 }))
   })
 
+  test('a provider that is not set up yet answers so, rather than a reason', async ({ admin, createUser }) => {
+    const copy = await mkdtemp(resolve('test/.place-roster-'))
+    try {
+      await cp(provider, copy, { recursive: true })
+      const manifest = JSON.parse(await readFile(resolve(copy, 'featherbase.json'), 'utf8'))
+      manifest.scopeProvider.identifiers = ['roster-badge']
+      await writeFile(resolve(copy, 'featherbase.json'), JSON.stringify(manifest))
+      expect(await discoverPackages([fixture, copy])).toEqual([])
+      await admin.post('/api/install_app', { name: 'datasetproof' })
+      await admin.post('/api/install_app', { name: 'placeroster' })
+      const reader = await createUser({ email: 'reader@example.test', roles: ['Dataset Reader'] })
+      await expectRefused(scopeOf(admin, reader.user!), 409, 'is not set up yet')
+    } finally {
+      await rm(copy, { recursive: true, force: true })
+    }
+  })
+
   const dropsCheck = async () => (await runHealthChecks()).find(check => check.key === 'scope-place-drops:datasetproof')
 
   test('turning off the provider stops reporting drops from its old answers', async ({ admin, createUser }) => {
@@ -1429,5 +1447,13 @@ describe('recording a dropped place', () => {
       const results = await both
       expect(results.reduce((a, b) => a + b)).toBe(1)
     } finally { await cleanUp() }
+  })
+})
+
+describe('a dataset query condition', () => {
+  test('on an empty list of values matches no row', () => {
+    const dialect = { placeholder: (n: number) => `$${n}`, asText: (q: string) => q, asDay: (q: string) => q }
+    expect(datasetQueryText('select 1 as a', [{ name: 'a', type: 'text' }], { any: [[{ column: 'a', values: [] }]], all: [] }, dialect))
+      .toEqual({ text: 'select * from (select "a" from (select 1 as a) as source) as dataset where ((false)) and (true)', values: [] })
   })
 })

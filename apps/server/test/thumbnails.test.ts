@@ -1,4 +1,4 @@
-import { describe, expect } from 'vitest'
+import { describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { getBrowser } from '../src/print'
 import { isThumbnable, makeThumbnailDataUrl } from '../src/thumbnails'
@@ -127,6 +127,25 @@ describe('FILE-004: thumbnails', () => {
     expect(thumb!.startsWith('data:image/jpeg;base64,')).toBe(true)
     expect((await getBrowser()).isConnected()).toBe(true)
   }, 30_000)
+
+  // Chromium is the boundary here: its page refuses to close, as one does
+  // when the browser died under it.
+  test('a page that cannot be closed after resizing does not fail the thumbnail', async () => {
+    const png = await makePng(40, 20)
+    const browser = await getBrowser()
+    const newPage = browser.newPage.bind(browser)
+    const spy = vi.spyOn(browser, 'newPage').mockImplementationOnce(async (...args) => {
+      const page = await newPage(...args)
+      const close = page.close.bind(page)
+      vi.spyOn(page, 'close').mockImplementationOnce(async () => { await close(); throw new Error('Target page, context or browser has been closed') })
+      return page
+    })
+    try {
+      expect(await makeThumbnailDataUrl(png, 'image/png', 128)).toMatch(/^data:image\/jpeg;base64,/)
+    } finally {
+      spy.mockRestore()
+    }
+  }, 30_000)
 })
 
 describe('Pictures get a small preview when uploaded', () => {
@@ -149,6 +168,19 @@ describe('Pictures get a small preview when uploaded', () => {
     } finally {
       await deleteStored(pic.file_url).catch(() => {})
       await deleteStored(note.file_url).catch(() => {})
+    }
+  }, 30_000)
+
+  test('a picture is still uploaded, with no preview, when the browser cannot open a page', async ({ admin }) => {
+    const png = await makePng(30, 30)
+    const browser = await getBrowser()
+    const spy = vi.spyOn(browser, 'newPage').mockRejectedValueOnce(new Error('Browser has been closed'))
+    try {
+      const pic = await uploadAs(admin, 'no-preview.png', new Uint8Array(png), 'image/png')
+      expect(pic.thumbnail_url ?? null).toBeNull()
+      await deleteStored(pic.file_url).catch(() => {})
+    } finally {
+      spy.mockRestore()
     }
   }, 30_000)
 })

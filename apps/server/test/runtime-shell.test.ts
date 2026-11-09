@@ -73,3 +73,10 @@ describe("an app's entry document", () => {
     }
   })
 })
+
+describe('an image source set', () => {
+  test('ending in a comma and spaces roots each candidate and keeps the rest', () => {
+    const html = composeRuntimeShell('<body><img srcset="small.png 1x, large.png 2x, "></body>', app)
+    expect(html).toContain('srcset="/notes/small.png 1x, /notes/large.png 2x, "')
+  })
+})
