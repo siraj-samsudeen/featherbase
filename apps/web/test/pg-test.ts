@@ -24,6 +24,8 @@ import {
   renderApp as baseRenderApp,
   renderSession as baseRenderSession,
   type RenderAppOptions,
+  type Session,
+  type SessionOptions,
 } from 'feather-testing-postgres/react'
 import { routeTree } from '../src/router'
 import { flushPendingEvents } from '../src/lib/recents'
@@ -118,14 +120,32 @@ export function renderApp(path: string, as: TestClient, opts: Opts = {}) {
   })
 }
 
+/** How long a Session verb waits for the screen: a first page load runs every
+ *  query through the in-process server, which can take seconds on a busy
+ *  machine. */
+export const SESSION_TIMEOUT = 8000
+
+/** The selector `session.within(...)` takes for an element's data-testid. */
+export const byTestId = (id: string) => `[data-testid="${id}"]`
+
+/** `session.within(...)` once the element with this data-testid is on screen:
+ *  `within` alone looks for its element once, without waiting. */
+export function inside<S extends Session>(session: S, testId: string, fn: Parameters<S['within']>[1]): S {
+  return session
+    .until(`${testId} is on screen`, ({ container }) => container.queryByTestId(testId))
+    .within(byTestId(testId), fn)
+}
+
 /** renderApp + fluent Session. */
-export function renderSession(path: string, as: TestClient, opts: Opts = {}) {
+export function renderSession(path: string, as: TestClient, opts: Opts & { session?: SessionOptions } = {}) {
   return baseRenderSession(path, {
     routeTree,
     token: as.token,
     user: as.user ? { row_id: as.user } : undefined,
     ...opts,
+    session: { timeout: SESSION_TIMEOUT, ...opts.session },
   })
 }
 
 export { expect } from 'vitest'
+export type { Session } from 'feather-testing-postgres/react'
