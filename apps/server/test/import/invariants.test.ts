@@ -161,3 +161,58 @@ describe('IMP-I3: rehearsal writes nothing', () => {
     expect(list.data[0].row_id).toMatch(/(^|\D)0*1$/)
   })
 })
+
+// IMP-I4: a rehearsal refuses what the import refuses. A link to a row that
+// doesn't exist passed Check ("All rows are ready") and was then refused by
+// the import, found by the Featherbase base tour (#1072).
+describe('IMP-I4: a rehearsal refuses a link to no row', () => {
+  const STORES = 'Invariant Store'
+  const ASSETS = 'Invariant Asset'
+  const ASSETS_PATH = `/api/table/${encodeURIComponent(ASSETS)}:import`
+
+  async function linked(admin: TestClient) {
+    await admin.post('/api/table_def', { name: STORES, id_pattern: 'prompt', columns: [{ column_name: 'city', column_type: 'Data' }] })
+    await admin.post('/api/save_row', { table: STORES, row: { row_id: 'T Nagar', city: 'Chennai' } })
+    await admin.post('/api/table_def', {
+      name: ASSETS,
+      id_pattern: 'field:tag',
+      columns: [
+        { column_name: 'tag', column_type: 'Data' },
+        { column_name: 'store', column_type: 'Reference', reference_table: STORES },
+      ],
+    })
+  }
+  const rows = [
+    { tag: 'TN-1', store: 'T Nagar' },
+    { tag: 'TN-2', store: 'T. Nagar' },
+  ]
+
+  test('an appended row', async ({ admin }) => {
+    await linked(admin)
+    const rehearsal = await admin.post<{ valid: number; failed: { index: number; message: string }[] }>(ASSETS_PATH, { rows, dry_run: true })
+    const real = await admin.post<{ inserted: number; failed: { index: number; message: string }[] }>(ASSETS_PATH, { rows })
+    expect(real.failed.map((f) => f.index)).toEqual([1])
+    expect(rehearsal.failed.map((f) => f.index)).toEqual([1])
+    expect(rehearsal.failed[0]!.message).toBe(real.failed[0]!.message)
+  })
+
+  test('a new row in a matched import', async ({ admin }) => {
+    await linked(admin)
+    await admin.post(ASSETS_PATH, { rows: [rows[0]] })
+    const keyed = { rows, key_column: 'tag' }
+    const rehearsal = await admin.post<{ failed: { index: number }[] }>(ASSETS_PATH, { ...keyed, dry_run: true })
+    const real = await admin.post<{ failed: { index: number }[] }>(ASSETS_PATH, keyed)
+    expect(real.failed.map((f) => f.index)).toEqual([1])
+    expect(rehearsal.failed.map((f) => f.index)).toEqual([1])
+  })
+
+  test('a matched row changed to a link to no row', async ({ admin }) => {
+    await linked(admin)
+    await admin.post(ASSETS_PATH, { rows: [rows[0], { tag: 'TN-2', store: 'T Nagar' }] })
+    const keyed = { rows, key_column: 'tag' }
+    const rehearsal = await admin.post<{ failed: { index: number }[] }>(ASSETS_PATH, { ...keyed, dry_run: true })
+    const real = await admin.post<{ failed: { index: number }[] }>(ASSETS_PATH, keyed)
+    expect(real.failed.map((f) => f.index)).toEqual([1])
+    expect(rehearsal.failed.map((f) => f.index)).toEqual([1])
+  })
+})
