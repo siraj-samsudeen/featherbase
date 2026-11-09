@@ -174,6 +174,21 @@ describe('EML-003: PDF attachment', () => {
 })
 
 describe('a queued email already sent', () => {
+  test('a delivery job that names no queued email sends nothing', async () => {
+    await setup()
+    await enqueue('send_email', {})
+    await drainDueJobs()
+    expect(await sql`select count(*)::int as c from email_sink`).toEqual([{ c: 0 }])
+  })
+
+  test('a queued email with no subject, body or attachments is sent blank', async () => {
+    await setup()
+    const name = await queueEmail({ to: 'blank@x.com', subject: 'Blank', body: 'hi' })
+    await sql`update email_queue set subject = null, body = null, attachments = null where row_id = ${name}`
+    await drainDueJobs()
+    expect(await sql`select subject, body from email_sink where mail_to = 'blank@x.com'`).toEqual([{ subject: '', body: '' }])
+  })
+
   test('is not sent again when its delivery job runs again', async () => {
     await setup()
     const name = await queueEmail({ to: 'q@x.com', subject: 'Once Only', body: 'hi' })

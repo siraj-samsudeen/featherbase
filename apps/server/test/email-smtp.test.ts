@@ -19,7 +19,7 @@ import {
   sendTestEmail,
   sendViaSmtp,
   smtpTransportOptions,
-  type MailDeliveryError,
+  MailDeliveryError,
 } from '../src/email'
 import { requestPasswordReset } from '../src/password-reset'
 
@@ -253,6 +253,14 @@ describe('#395: transport selection and options', () => {
     const opts = smtpTransportOptions(cfg!)
     expect(opts).toMatchObject({ host: 'smtp-relay.gmail.com', port: 587, secure: false, requireTLS: true })
     expect(opts.auth).toEqual({ user: 'relay@example.test', pass: 'secret' })
+  })
+
+  test('a user with no password authenticates with an empty one', () => {
+    expect(smtpTransportOptions({ host: 'h', port: 587, user: 'relay@example.test' }).auth).toEqual({ user: 'relay@example.test', pass: '' })
+  })
+
+  test('a configuration refusal with no detail names only its class', () => {
+    expect(new MailDeliveryError('ECONFIG').message).toBe('Mail configuration invalid (ECONFIG)')
   })
 
   test('port 587 requires STARTTLS even without credentials', () => {
