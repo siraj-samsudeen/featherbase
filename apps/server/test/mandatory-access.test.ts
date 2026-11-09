@@ -3,6 +3,8 @@ import { test } from './pg-test'
 import { expectRefused, expectStatus, grantRole, makeTable } from './fixtures'
 import { eventVisibleTo } from '../src/realtime'
 import { deleteStored } from '../src/storage'
+import { assertMandatoryAccess, hasMandatoryRowAccess, needsMandatoryRowRead } from '../src/mandatory-access'
+import { getMeta } from '../src/meta'
 
 test('creator privacy hides a row from administrators, other members and their lists', async ({ admin, createUser }) => {
   const table = await makeTable(admin, {
@@ -155,4 +157,25 @@ test('members can choose teammates by name without broad Person access', async (
   ] })
   await expectRefused(outsider.get(url), 403)
   await expectRefused(admin.get(url), 403)
+})
+
+test('rows that record a reference (a Share) are always read under mandatory access', async () => {
+  expect(await needsMandatoryRowRead('Share')).toBe(true)
+})
+
+test('a chain of parents deeper than eight stops: the read answers, the check refuses', async ({ admin }) => {
+  const table = await makeTable(admin, { name: 'Deep Private', access_policy: { version: 1, roles: ['Deep Member'], shared_column: 'shared' }, columns: ['title', 'shared:Check'] })
+  expect(await hasMandatoryRowAccess(table.name, 'any', 9)).toBe(true)
+  await expect(assertMandatoryAccess('Administrator', await getMeta(table.name), { row_id: 'any' }, 9)).rejects.toMatchObject({ type: 'PermissionError' })
+})
+
+test('a Share or a dependent row naming a protected row that does not exist is refused', async ({ admin, createUser }) => {
+  const parent = await makeTable(admin, { name: 'Gone Dossier', access_policy: { version: 1, roles: ['Gone Member'], shared_column: 'shared' }, columns: ['title', 'shared:Check'] })
+  const child = await makeTable(admin, { name: 'Gone Note', access_policy: { version: 1, roles: ['Gone Member'], inherit_column: 'dossier' }, columns: ['body', { column_name: 'dossier', column_type: 'Reference', reference_table: parent.name }] })
+  await expect(assertMandatoryAccess('Administrator', await getMeta('Share'), { share_table: parent.name, share_name: 'no-such-row' }))
+    .rejects.toMatchObject({ type: 'PermissionError' })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Gone Member' } })
+  const member = await createUser({ roles: ['Gone Member'] })
+  await expect(assertMandatoryAccess(member.user!, await getMeta(child.name), { row_id: 'n1', dossier: 'no-such-dossier' }))
+    .rejects.toMatchObject({ type: 'PermissionError' })
 })
