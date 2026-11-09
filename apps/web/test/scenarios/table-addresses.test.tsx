@@ -13,7 +13,7 @@ import { sql } from 'server/src/db'
 import { invalidateMeta } from 'server/src/meta'
 import { scenarioFor } from 'server/test/scenario'
 import { clearSession } from '../../src/lib/import-session'
-import { test, expect, renderApp } from '../pg-test'
+import { test, expect, renderApp, onScreen, inside, byTestId } from '../pg-test'
 
 const scenario = scenarioFor(test, 'table-addresses')
 const WAIT = { timeout: 8000 }
@@ -195,7 +195,7 @@ describe('table-addresses', () => {
     await step('its list opens separately from the Table builder', async () => {
       await expectPath('/featherbase/admin/table/new-table')
       expect(await screen.findByTestId('list-view', {}, WAIT)).toBeVisible()
-      await waitFor(() => expect(screen.getByTestId('list-rows')).toHaveTextContent('Stock review'), WAIT)
+      await inside(onScreen(), 'list-rows', (el) => el.assertText('Stock review'))
       expect(screen.queryByTestId('table-builder')).toBeNull()
       await reload()
       expect(await screen.findByTestId('list-view', {}, WAIT)).toBeVisible()
@@ -230,18 +230,18 @@ describe('table-addresses', () => {
     await step('the user manages a Table named Route Probe with a row called Stock review', () => routeProbe(admin, createUser))
     await step('the user follows filtered, new-row, print, portal and map destinations for Route Probe', async () => {
       await visit(ROOT + '?filters=' + enc(JSON.stringify(FILTERS)), admin)
-      await waitFor(() => expect(screen.getByTestId('list-rows')).toHaveTextContent('Stock review'), WAIT)
+      await inside(onScreen(), 'list-rows', (el) => el.assertText('Stock review'))
       expect(search('filters')).toEqual(FILTERS)
       await waitFor(() => expect(screen.getByTestId('list-rows').querySelectorAll('tr')).toHaveLength(1), WAIT)
       // Generated links, not just successful direct loads.
       await waitFor(() => expect(screen.getByTestId('list-new')).toHaveAttribute('href', ROOT + '/new'), WAIT)
-      await user.click(screen.getByRole('button', { name: 'Table administration' }))
+      await onScreen().clickButton('Table administration')
       for (const [control, path] of [
         ['open-columns', ROOT + '/columns'], ['open-merge', ROOT + '/merge'],
         ['open-naming', ROOT + '/naming'], ['open-permissions', ROOT + '/permissions'],
       ] as const) expect(await screen.findByTestId(control)).toHaveAttribute('href', path)
-      await user.keyboard('{Escape}')
-      await user.click(screen.getByRole('button', { name: 'View: List' }))
+      await onScreen().pressKey('Escape')
+      await onScreen().clickButton('View: List')
       expect(await screen.findByTestId('open-report')).toHaveAttribute('href', ROOT + '/view/report')
 
       await visit(ROOT + '/new?prefill=' + enc(JSON.stringify(PREFILL)), admin)
@@ -259,12 +259,12 @@ describe('table-addresses', () => {
       } })
       await visit(STOCK, admin)
       await formReady()
-      await user.click(await screen.findByRole('button', { name: 'Record actions' }, WAIT))
+      await onScreen().clickButton('Record actions')
       const print = await screen.findByTestId('form-print')
       expect(print).toHaveAttribute('href', '/featherbase/print/route-probe/Stock%20review')
       await user.click(print)
       await waitFor(() => expect(screen.getByTestId('print-format-body').textContent).toBe('Canonical review: Stock review'), WAIT)
-      expect(screen.getByTestId('print-docname')).toHaveTextContent('Stock review')
+      await onScreen().within(byTestId('print-docname'), (el) => el.assertText('Stock review'))
 
       await visit('/featherbase/portal/route-probe', admin)
       await waitFor(() => expect(screen.getByTestId('portal-title').textContent).toBe('My Route Probe'), WAIT)
@@ -275,20 +275,20 @@ describe('table-addresses', () => {
       }, WAIT)
       expect(portalLink).toHaveAttribute('href', '/featherbase/portal/route-probe/Stock%20review')
       await user.click(portalLink)
-      await waitFor(() => expect(screen.getByTestId('portal-doc')).toHaveTextContent('Stock review'), WAIT)
+      await inside(onScreen(), 'portal-doc', (el) => el.assertText('Stock review'))
       await waitFor(() => expect(screen.getByTestId('portal-field-subject').textContent).toBe('Stock review'), WAIT)
 
       // #910: the map is the row page's Map tab, at the row's own address.
       await visit(STOCK, admin)
       await formReady()
-      await user.click(await screen.findByRole('tab', { name: 'Map' }, WAIT))
+      await onScreen().clickButton('Map')
       expect(await screen.findByTestId('relation-map', {}, WAIT)).toBeVisible()
       expect(pathname()).toBe(STOCK)
       await visit(ROOT + '/view/report', admin)
       expect(await screen.findByTestId('report-view', {}, WAIT)).toBeVisible()
       expect(screen.getByTestId('report-to-list')).toHaveAttribute('href', ROOT)
       await visit(ROOT + '/permissions', admin)
-      await waitFor(() => expect(screen.getByTestId('permission-manager')).toHaveTextContent('Route Probe'), WAIT)
+      await inside(onScreen(), 'permission-manager', (el) => el.assertText('Route Probe'))
       expect(await screen.findByTestId('perm-Route Probe Reader-can_read', {}, WAIT)).toBeChecked()
       expect(screen.getByTestId('perm-Route Probe Reader-can_write')).not.toBeChecked()
     })
@@ -309,7 +309,7 @@ describe('table-addresses', () => {
         await formReady()
         await waitFor(() => expect(read[0]).toBe(200), WAIT)
       } finally { globalThis.fetch = bridged }
-      await waitFor(() => expect(screen.getByTestId('breadcrumbs')).toHaveTextContent('System Settings'), WAIT)
+      await inside(onScreen(), 'breadcrumbs', (el) => el.assertText('System Settings'))
       await waitFor(() => expect(screen.getByTestId('form-status')).toHaveTextContent(/^Saved$/), WAIT)
       expect(screen.getByRole('heading', { name: /System Settings:/ })).toBeVisible()
     })
@@ -334,7 +334,7 @@ describe('table-addresses', () => {
       expect(screen.queryByTestId('list-view')).toBeNull()
       expect(screen.queryByTestId('form-view')).toBeNull()
       await visit('/featherbase/admin/table/Legacy%20Route%20Probe', admin)
-      await waitFor(() => expect(screen.getByTestId('list-rows')).toHaveTextContent('Stock review'), WAIT)
+      await inside(onScreen(), 'list-rows', (el) => el.assertText('Stock review'))
     })
   })
 
@@ -385,7 +385,7 @@ describe('table-addresses', () => {
     })
     await step('the imported Table is refused without changing Route Probe', async () => {
       await unchanged(admin, before, refusals[0]!.res)
-      await waitFor(() => expect(screen.getByTestId('iw-failure-0')).toHaveTextContent('Route Probe'), WAIT)
+      await inside(onScreen(), 'iw-failure-0', (el) => el.assertText('Route Probe'))
       expect(screen.queryByTestId('iw-result-0')).toBeNull()
       expect(screen.queryByTestId('list-view')).toBeNull()
     })
@@ -396,7 +396,7 @@ describe('table-addresses', () => {
       const done = screen.queryByTestId('iw-done')
       if (done) expect(screen.getByTestId('iw-result-0').textContent).toMatch(/Imported \d+ rows? into/)
       await expectPath('/featherbase/admin/table/route-import-other')
-      await waitFor(() => expect(screen.getByTestId('list-rows')).toHaveTextContent('Incoming'), WAIT)
+      await inside(onScreen(), 'list-rows', (el) => el.assertText('Incoming'))
       const imported = (await admin.get<{ data: { row_id: string }[] }>('/api/table/route-import-other')).data
       expect(imported).toHaveLength(1)
       expect((await row(admin, 'Route Import Other', imported[0]!.row_id)).notes).toBe('Allowed import')
