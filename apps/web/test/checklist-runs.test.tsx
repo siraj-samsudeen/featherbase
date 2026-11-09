@@ -6,6 +6,8 @@
 import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { onlineManager } from '@tanstack/react-query'
+import { vi } from 'vitest'
 import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
 import { dayLabel } from '../src/components/ChecklistView'
@@ -159,5 +161,23 @@ test('day headings follow the reader\'s calendar, and an older day reads DD-Mon-
     expect(dayLabel('', now)).toBe('Undated')
   } finally {
     process.env.TZ = before
+  }
+})
+
+test('a run opened with no connection saves nothing when its status is pressed', async ({ admin }) => {
+  await seedTables(admin)
+  const run = await admin.post<{ row_id: string }>('/api/save_row', { table: T, row: { run_title: 'Offline opening' } })
+  await renderApp(`/featherbase/admin/table/${tableSlug(T)}/view/checklist`, admin)
+  await screen.findByTestId('checklist-run-card', {}, { timeout: 10_000 })
+  // The connection drops: the run's own read waits for it to come back.
+  onlineManager.setOnline(false)
+  try {
+    const saves = vi.spyOn(globalThis, 'fetch')
+    await userEvent.click(screen.getByTestId('checklist-run-card'))
+    await userEvent.click(await screen.findByTestId('checklist-submit'))
+    expect(saves.mock.calls.filter(([input]) => String(input).includes('/api/save_row'))).toEqual([])
+    expect(((await admin.get(`/api/table/${ENC}/${run.row_id}`)) as { stage: string | null }).stage).toBeNull()
+  } finally {
+    onlineManager.setOnline(true)
   }
 })

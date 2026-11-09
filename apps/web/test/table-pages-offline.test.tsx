@@ -1,7 +1,8 @@
 // A Table's pages when the network drops as they ask for the Table's details:
 // with nothing read before, the page cannot open; with details read a while
 // ago, it opens from them and each page says it cannot load the Table now.
-import { QueryClient } from '@tanstack/react-query'
+import { QueryClient, onlineManager } from '@tanstack/react-query'
+import userEvent from '@testing-library/user-event'
 import { screen } from '@testing-library/react'
 import { vi } from 'vitest'
 import { tableHref } from 'shared'
@@ -37,6 +38,27 @@ test("a Table's page whose details the network drops on first opening says why i
   networkDown()
   await renderApp(tableHref(TABLE), admin)
   expect(await screen.findByRole('alert', {}, T)).toHaveTextContent('Failed to fetch')
+})
+
+test("with no connection, a list whose own details have not come yet makes no view everyone's default", async ({ admin }) => {
+  await seed(admin)
+  // Online once, so the page knows who is looking; then the connection drops
+  // and the list's own read of the Table's details waits for it to return.
+  const queryClient = await readEarlier(admin)
+  const first = await renderApp(tableHref(TABLE), admin, { queryClient })
+  await screen.findByTestId('list-columns', {}, T)
+  first.unmount()
+  queryClient.removeQueries({ queryKey: ['meta', TABLE] })
+  onlineManager.setOnline(false)
+  try {
+    const sent = vi.spyOn(globalThis, 'fetch')
+    await renderApp(tableHref(TABLE), admin, { queryClient })
+    await userEvent.click(await screen.findByTestId('list-columns', {}, T))
+    await userEvent.click(await screen.findByTestId('list-make-default', {}, T))
+    expect(sent.mock.calls.filter(([, init]) => init?.method === 'PUT')).toEqual([])
+  } finally {
+    onlineManager.setOnline(true)
+  }
 })
 
 test.for([
