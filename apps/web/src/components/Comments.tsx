@@ -99,7 +99,8 @@ export function Comments({ table, name }: { table: string; name: string }) {
   function applyMention(user: string, mention: { q: string; at: number }) {
     const fold = (n: string | null) => (n ?? '').trim().replace(/\s+/g, ' ').toLowerCase()
     const named = user.startsWith('[') ? fold(user.slice(1, -1)) : null
-    const twins = named ? (users.data?.data ?? []).filter((u) => fold(u.full_name) === named).length : 0
+    // Called from an offered person, so the people list has loaded.
+    const twins = named ? users.data!.data.filter((u) => fold(u.full_name) === named).length : 0
     setMentionWarning(
       twins > 1
         ? `${twins} people are named ${user.slice(1, -1)}, so this mention will notify nobody. Ask them to set a username, or mention them by it.`
@@ -186,9 +187,10 @@ export function Comments({ table, name }: { table: string; name: string }) {
   )
 }
 
-/** What a mention of this person looks like in the comment text. */
+/** What a mention of this person looks like in the comment text. Only people
+ *  with a username or a name are offered (candidates). */
 function mentionToken(u: { full_name: string | null; username: string | null }): string {
-  return u.username ? u.username : `[${(u.full_name ?? '').trim()}]`
+  return u.username ? u.username : `[${u.full_name!.trim()}]`
 }
 
 const initialsOf = (name: string) =>
