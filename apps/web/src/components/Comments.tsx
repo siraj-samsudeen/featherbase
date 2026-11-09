@@ -22,6 +22,8 @@ export interface VersionRow {
     resolution?: { field: string; decision: 'keep' | 'source'; incoming: unknown }
     // #859: a retirement or reactivation, with the reason given to retire.
     retirement?: { action: 'retired' | 'reactivated'; reason?: string }
+    // #1083 (D8): made by an agent through /mcp, with this access token.
+    agent?: { token_id: string; token_label: string }
   } | null
 }
 

@@ -7,6 +7,7 @@ export interface ChangeData {
   import_run?: string
   import_revert?: string
   resolution?: { field: string; decision: 'keep' | 'source'; incoming: unknown }
+  agent?: { token_id: string; token_label: string }
 }
 
 // #421, #825: a changed value reads the way the rest of the Admin shows it (a

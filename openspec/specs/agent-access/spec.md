@@ -40,8 +40,9 @@ Then the connection is refused and no Table is reachable
 
 A change an agent makes SHALL appear in the row's history under the token's owner, as any of the
 owner's changes does, and SHALL also be marked as made through an agent, with the label the
-access token had at that moment. A change the owner makes in Featherbase themselves SHALL carry no
-such mark.
+access token had at that moment. A person reading the history SHALL read the mark after the
+owner's name, as "<owner> edited via <token label>". A change the owner makes in Featherbase
+themselves SHALL carry no such mark.
 
 #### Scenario: A change through an agent is marked
 
@@ -49,7 +50,7 @@ such mark.
 Given the user has connected an agent with their access token labelled "Claude on my laptop"
 When the agent changes the city of "Acme Traders" to "Madurai"
 Then the change in its history is by the user
-And it is marked as made through an agent with the token "Claude on my laptop"
+And the history reads "edited via Claude on my laptop" after the user's name
 ```
 
 #### Scenario: A change by hand is not marked
@@ -220,4 +221,28 @@ at fault where there is one, and nothing SHALL be changed.
 When the agent changes the "region" of "Acme Traders" and "Customer" has no such column
 Then "Acme Traders" is unchanged
 And the agent is told "Customer" has no column "region"
+```
+
+### Requirement: A change never overwrites one the agent has not seen
+
+When the agent changes a row, it SHALL say which version of the row it read. If someone changed the
+row after that, or the agent says no version, nothing SHALL change and the agent SHALL be told to
+read the row again.
+
+#### Scenario: An agent's update of a row changed since it read it is refused
+
+```gherkin
+Given the agent has read "Acme Traders"
+And the user has since changed its city to "Salem" themselves
+When the agent changes the city of "Acme Traders" to "Madurai"
+Then "Acme Traders" is still in Salem
+And the agent is told it was changed after it read it
+```
+
+#### Scenario: An agent's update without the version it read is refused
+
+```gherkin
+When the agent changes the city of "Acme Traders" to "Madurai" without saying which version it read
+Then "Acme Traders" is still in Chennai
+And the agent is told to read the row first
 ```
