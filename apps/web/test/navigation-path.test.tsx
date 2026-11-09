@@ -155,7 +155,7 @@ test('Copy link copies the address of this step', async ({ admin }) => {
   expect(copied.searchParams.get('path')).toBe(pathParam(router))
 })
 
-// Defect pinned (coverage stage 2): the path bar says Copied even when the
+// Defect pinned (#1111): the path bar says Copied even when the
 // browser refused to copy, so the person believes a link is on their clipboard.
 test.fails('Copy link the browser refuses to copy does not say Copied', async ({ admin }) => {
   await seedSites(admin)
