@@ -49,3 +49,9 @@ test('asking for a Table that was never made, before the Access Log exists, is a
   await sql.unsafe('alter table featherbase.access_log rename to access_log_not_yet')
   await expect(getMeta('Never Made Table')).rejects.toMatchObject({ type: 'NotFoundError' })
 })
+
+test('a Table created before row security exists is created without it', async ({ admin }) => {
+  await sql.unsafe('alter function featherbase.fc_has_read(text) rename to fc_has_read_not_yet')
+  await admin.post('/api/table_def', { name: 'Early Table', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  expect(await sql`select relrowsecurity from pg_class where oid = 'featherbase.early_table'::regclass`).toEqual([{ relrowsecurity: false }])
+})
