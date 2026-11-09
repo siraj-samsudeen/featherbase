@@ -22,6 +22,7 @@ import {
 import './style.css'
 import { configuredTypes, connectionNames, display, fields, kindLabel, kinds, learnNames, learnTypes, person, short, stateLabel, time, type TicketAction } from './ticket-words'
 import { Label, Structured, TypeSelect } from './ticket-fields'
+import { StatePill, assignee, isDone, tone } from './ticket-state'
 
 function Facts({ values }: { values: RecordData }) {
   return (
@@ -278,30 +279,6 @@ const SETTINGS_HREF = `/featherbase/admin/table/app-setting?filters=${encodeURIC
   JSON.stringify([['app', '=', 'tickets']]),
 )}`
 const BUILT_IN_STATES = ['New', 'Needs verification', 'Awaiting approval', 'Approved', 'Rejected', 'Policy review', 'In progress', 'Resolved']
-const isDone = (ticket: Ticket) =>
-  configuredTypes[ticket.kind]
-    ? configuredTypes[ticket.kind].done.includes(ticket.ticket_state)
-    : ticket.ticket_state === 'Resolved'
-// A state's words decide its Shop Floor tone; the colour only repeats them.
-type Tone = 'negative' | 'caution' | 'positive' | 'opportunity' | 'missing' | 'neutral'
-const tone = (ticket: Ticket): Tone => {
-  const words = ticket.ticket_state.toLowerCase()
-  if (isDone(ticket)) return 'positive'
-  if (/reject|declin|cancel|fail/.test(words)) return 'negative'
-  if (/fixed|verify\b/.test(words)) return 'opportunity'
-  if (/^new$|^open$/.test(words)) return 'missing'
-  if (/need|await|wait|review|question|hold|blocked/.test(words)) return 'caution'
-  return 'neutral'
-}
-function StatePill({ ticket }: { ticket: Ticket }) {
-  return (
-    <span className={`pill tone-${tone(ticket)}`}>
-      {stateLabel(ticket.ticket_state)}
-    </span>
-  )
-}
-const assignee = (ticket: Ticket) =>
-  ticket.assigned_to ? person(ticket.assigned_to) : 'Unassigned'
 // What this person can do on this ticket now: the same conditions that enable
 // each action's form in the tabs below.
 type HeaderAction = { key: string; label: string; tab: string; target: string; transition?: TicketAction }
