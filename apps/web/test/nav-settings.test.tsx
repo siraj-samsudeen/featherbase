@@ -47,3 +47,22 @@ test('two quick saves of the recent walks land the newer one last', async ({ adm
   expect(JSON.parse(settings!.recentPaths![0] as string).steps).toHaveLength(3)
   qc.clear()
 })
+
+test('a pane place the server could not save is kept for this visit', async ({ admin }) => {
+  if (!admin.token) throw new Error('The signed-in fixture needs a session token')
+  setSession(admin.token, { row_id: 'Administrator', email: 'admin@example.test', full_name: null })
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
+  const { result } = renderHook(() => useNavigationSettings(), {
+    wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
+  })
+  await waitFor(() => expect(result.current.ready).toBe(true))
+  // The network drops as the choice is saved.
+  const put = vi.spyOn(api, 'put').mockRejectedValueOnce(new TypeError('Failed to fetch'))
+  act(() => result.current.setPanePlace('bottom'))
+  await waitFor(() => expect(put).toHaveBeenCalledTimes(1))
+  await expect(put.mock.results[0].value).rejects.toThrow('Failed to fetch')
+  expect(result.current.panePlace).toBe('bottom')
+  const { settings } = await admin.get<{ settings: { panePlace?: string } | null }>(`/api/user_settings/${NAVIGATION_SETTINGS}`)
+  expect(settings?.panePlace).toBeUndefined()
+  qc.clear()
+})
