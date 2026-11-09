@@ -10,7 +10,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { discoverPackages, packageFailures } from '../src/runtime-packages'
 import { uninstallApp } from '../src/apps'
-import { glossaryDeclaration, readGlossary, takeAppWording } from '../src/glossary'
+import { glossaryDeclaration, readGlossary, syncAppGlossary, takeAppWording, validateGlossary } from '../src/glossary'
 import { expectApiError, expectRefused, expectStatus, grantRole } from './fixtures'
 import { sql } from '../src/db'
 import { deleteStored } from '../src/storage'
@@ -290,6 +290,44 @@ describe('taking an app\'s wording', () => {
 })
 
 describe('what a term describes', () => {
+  test('a term that describes nothing is valid for any app', () => {
+    expect(() => validateGlossary({ version: 1, terms: [{ term: 'Bay', definition: 'A run of shelving.' }] }, [], [])).not.toThrow()
+  })
+
+  test("a term describing a column the app's own Table does not have names the column", () => {
+    expect(() => validateGlossary(
+      { version: 1, terms: [{ term: 'Bay', definition: 'A run of shelving.', describes: [{ table: 'shelves.aisle', column: 'bay' }] }] },
+      [{ name: 'shelves.aisle', columns: [{ column_name: 'label' }] }],
+      [],
+    )).toThrow('The glossary term Bay describes shelves.aisle.bay, which the app does not own or declare')
+  })
+
+  test('an app term that names no Table, and a word to avoid with no reason, is written with neither', async () => {
+    await syncAppGlossary('shelves', { version: 1, terms: [{ term: 'Bay', definition: 'A run of shelving.', avoid: [{ word: 'slot' }] }] }, 'Administrator')
+    const [row] = await sql`select row_id from glossary_term where app = 'shelves' and app_key = 'Bay'`
+    expect(await sql`select word, reason from glossary_avoid_word where parent = ${row.row_id}`).toEqual([{ word: 'slot', reason: null }])
+    expect(await sql`select 1 from glossary_link where parent = ${row.row_id}`).toHaveLength(0)
+  })
+
+  test("the instance's own terms are listed after every app's, by term", async ({ admin }) => {
+    for (const term of ['Zone', 'Aisle End'])
+      await admin.post('/api/save_row', { table: 'Glossary Term', row: { term, definition: 'An instance word.' } })
+    const own = (await glossary(admin)).terms.filter(t => t.app === null).map(t => t.term)
+    expect(own.indexOf('Aisle End')).toBeLessThan(own.indexOf('Zone'))
+  })
+
+  test('a described column that is gone from its Table is shown by its name', async ({ admin }) => {
+    await install(admin)
+    await sql`delete from column_def where parent = 'shelves.assignment' and column_name = 'job'`
+    expect((await named(admin, 'Shelf Lead'))!.describes).toEqual([{ table: 'shelves.assignment', column: 'job', columnLabel: 'job' }])
+  })
+
+  test('a described column with no label is shown by its name', async ({ admin }) => {
+    await install(admin)
+    await sql`update column_def set label = null where parent = 'shelves.assignment' and column_name = 'job'`
+    expect((await named(admin, 'Shelf Lead'))!.describes).toEqual([{ table: 'shelves.assignment', column: 'job', columnLabel: 'job' }])
+  })
+
   test('a blank Table is skipped, and a Table that does not exist is refused', async ({ admin }) => {
     await expectRefused(admin.post('/api/save_row', { table: 'Glossary Term', row: {
       term: 'Ghost', definition: 'Nothing.', describes: [{ link_table: '  ' }, { link_table: 'No Such Table' }],
