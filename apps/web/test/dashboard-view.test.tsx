@@ -65,7 +65,7 @@ function dropNetwork(lost: (url: string) => boolean) {
       : bridge(input, init))
 }
 
-// Defect (issue to be filed): the page reads the row's name from `name`, a
+// Defect pinned (#1118): the page reads the row's name from `name`, a
 // field the server no longer sends (rows carry `row_id`), so a dashboard with
 // no label has an empty heading.
 test.fails('a dashboard with no label is headed by its name', async ({ admin }) => {

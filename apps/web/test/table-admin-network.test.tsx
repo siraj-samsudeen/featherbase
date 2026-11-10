@@ -2,7 +2,7 @@
 // un-archiving and deleting the Table, and saving a filtered list as a view.
 // Each says the raw "TypeError: Failed to fetch" a browser gives a lost
 // request, where the rest of the Admin says in words that the action failed.
-// Pinned as one defect (issue to be filed); the Table is left as it was.
+// Pinned as one defect (#1117); the Table is left as it was.
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { tableSlug } from 'shared'
