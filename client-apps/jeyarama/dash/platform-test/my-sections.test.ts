@@ -139,12 +139,12 @@ describe('browsing to add', () => {
     const { maker } = await world(admin, createUser)
     const category = { job: 'JA-1', division: 'Women', subdivision: 'Ethnic Wear', category: 'Sarees and Blouses' }
     expect(await read(maker, 'category_subcategories', category)).toEqual([
-      { code: '010101004', name: 'Sari Blouses', holder: { kind: 'none' }, asked: false },
       { code: '010101001', name: 'Sarees', holder: { kind: 'mine' }, asked: false },
+      { code: '010101004', name: 'Sari Blouses', holder: { kind: 'none' }, asked: false },
       { code: '010101003', name: 'Silk Sarees', holder: { kind: 'other', section: 'Silk', team_leader: 'Bala Holder' }, asked: false },
     ])
     await act(maker, 'propose_adds', adds('010101004'))
-    expect((await read(maker, 'category_subcategories', category))[0]).toMatchObject({ code: '010101004', asked: true })
+    expect((await read(maker, 'category_subcategories', category))[1]).toMatchObject({ code: '010101004', asked: true })
   })
 })
 

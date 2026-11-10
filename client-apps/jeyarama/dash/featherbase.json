@@ -697,7 +697,31 @@
           "kind": "generic"
         }
       },
-      "subcategory_search": {
+      "subcategory_levels": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "category_subcategories": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "unplaced": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "holds_master_data": {
         "policy": {
           "kind": "table"
         },
@@ -1865,6 +1889,12 @@
           }
         }
       ]
+    },
+    {
+      "id": "sections_not_mine",
+      "fromVersion": "0.12.6",
+      "toVersion": "0.13.0",
+      "operations": []
     }
   ],
   "baseTables": {
@@ -1982,23 +2012,31 @@
       "dash.report_bundle_member"
     ],
     "operations": {
-      "propose_move": {
-        "policy": {
-          "kind": "table"
-        },
-        "authorization": {
-          "kind": "generic"
-        }
-      },
-      "propose_add": {
-        "policy": {
-          "kind": "table"
-        },
-        "authorization": {
-          "kind": "generic"
-        }
-      },
       "propose_section": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "propose_removal": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "propose_adds": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "withdraw": {
         "policy": {
           "kind": "table"
         },
