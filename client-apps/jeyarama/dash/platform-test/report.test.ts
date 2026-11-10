@@ -27,6 +27,8 @@ const READER = 'Dash Reader'
 // A declared secret is required by every read (featherbase app-settings.ts), so the
 // instance sets the token even where no Dive is configured.
 process.env.MOTHERDUCK_TOKEN = 'made-up-token'
+// #1139: the embed call has its own token; only the two reads that open a Dive need it.
+process.env.MOTHERDUCK_EMBED_TOKEN = 'made-up-embed-token'
 const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)
 const periodStart = `${today.slice(0, 8)}01`
 const lastMonthEnd = new Date(new Date(`${periodStart}T00:00:00Z`).getTime() - 86_400_000).toISOString().slice(0, 10)
@@ -197,17 +199,38 @@ describe('the report reads on the platform', () => {
   // the handler calls out afterwards. MotherDuck's API is the one thing played by a stand-in.
   describe('calling MotherDuck for a Dive', () => {
     afterEach(() => { vi.unstubAllGlobals() })
+    /** The bearer each MotherDuck call carried, in order. */
+    let tokens: string[] = []
     async function opening(admin: TestClient) {
       await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'dash.embed_service_account', value: 'svc-made-up' } })
       const real = globalThis.fetch
       const called: { url: string; body: unknown }[] = []
+      tokens = []
       vi.stubGlobal('fetch', async (url: string | URL | Request, init?: RequestInit) => {
         if (!String(url).startsWith('https://api.motherduck.com/')) return real(url, init)
         called.push({ url: String(url), body: JSON.parse(String(init?.body)) })
+        tokens.push((init?.headers as Record<string, string>).authorization)
         return new Response(JSON.stringify({ session: 'made-up-session' }), { status: 200 })
       })
       return called
     }
+
+    test('asks MotherDuck with the embed token, never the warehouse token (#1139)', async ({ admin, createUser }) => {
+      const { leader } = await setup(admin, createUser)
+      await opening(admin)
+      await leader.post('/api/app_reads/dash/embed_session', { payload: { report: 'sales', store: '9901' } })
+      expect(tokens).toEqual(['Bearer made-up-embed-token'])
+    })
+
+    test('without the embed token, only the Dive is not set up: the quick view still answers on the warehouse token', async ({ admin, createUser }) => {
+      const { leader } = await setup(admin, createUser)
+      const called = await opening(admin)
+      await withNamedVariable('MOTHERDUCK_EMBED_TOKEN', undefined, async () => {
+        await expect(leader.post('/api/app_reads/dash/embed_session', { payload: { report: 'sales', store: '9901' } })).rejects.toMatchObject({ status: 409 })
+        expect((await report(leader)).rows.map(r => r.code)).toEqual(['010101001'])
+      })
+      expect(called).toEqual([])
+    })
 
     test("sends a Team Leader's one-store Dive only their store, subcategories and month", async ({ admin, createUser }) => {
       const { leader } = await setup(admin, createUser)

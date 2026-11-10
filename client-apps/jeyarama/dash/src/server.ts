@@ -193,7 +193,10 @@ type Plain = { state: 'ready'; no_quick_view: true; heading: Heading; period_sta
 async function openDive(ctx: ScopedContext, report: ReportRecord | null) {
   if (!report) return { refused: 'no_access' }
   const { embed_service_account: account } = ctx.settings
-  if (!report.dive_id || !account) return { not_set_up: true }
+  // #1139: its own token. The warehouse token (MOTHERDUCK_TOKEN) is a read-only account's, which
+  // can't create embed sessions; the platform hands this one only to the two reads opening a Dive.
+  const token = ctx.secrets.MOTHERDUCK_EMBED_TOKEN
+  if (!report.dive_id || !account || !token) return { not_set_up: true }
   const store = chosenStore(ctx, report)
   const period = periodOf(istToday(), chosenMonth(ctx))
   const origin = appOrigin((ctx.payload as { app_origin?: unknown } | undefined)?.app_origin)
@@ -205,7 +208,7 @@ async function openDive(ctx: ScopedContext, report: ReportRecord | null) {
   const timer = setTimeout(() => abort.abort(), EMBED_API_TIMEOUT_MS)
   try {
     const response = await (embedFetch ?? fetch)(`${EMBED_API}/v1/dives/${encodeURIComponent(report.dive_id)}/embed-session`, {
-      method: 'POST', headers: { authorization: `Bearer ${ctx.secrets.MOTHERDUCK_TOKEN}`, 'content-type': 'application/json' }, body,
+      method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body,
       signal: abort.signal,
     })
     const answered = await response.json().catch(() => null) as { session?: unknown } | null

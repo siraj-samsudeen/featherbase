@@ -220,13 +220,26 @@ at the repository root.
 - **Settings:** `embed_service_account` (optional: without it a report shows its quick view or
   "This report couldn't open"), `linked_tables`; the secret `MOTHERDUCK_TOKEN` (every read answers
   "not set up" while it is missing); `frameOrigins: ["https://embed-motherduck.com"]`.
+- **Embed sessions use their own token** (#1139, [ADR 0022](../../../adr/0022-dive-embed-sessions-have-their-own-token.md)).
+  The optional secret `MOTHERDUCK_EMBED_TOKEN` is handed only to `embed_session` and `embed_open`,
+  and it is the only token the embed-session call sends. It holds the token of
+  `motherduck_dive_service_account`, the MotherDuck account that reads and writes Dives and may
+  create Dive embed sessions (the Admin preset role has that permission). The service
+  account in `embed_service_account` needs only access to the Dive and its data. `MOTHERDUCK_TOKEN`
+  stays the warehouse's read-only token: the quick view and every other read use it, and it can't
+  create embed sessions. While `MOTHERDUCK_EMBED_TOKEN` is unset, the two embed reads answer "not set
+  up", MotherDuck isn't called, and the page shows the quick view or "This report couldn't open".
+  There is deliberately no fallback to `MOTHERDUCK_TOKEN`: on production that is the account
+  MotherDuck refuses (HTTP 403), and a fallback would hide the missing setup behind the same quick view.
 
 ## Releasing a Dive
 
 Save the new version on MotherDuck; the next reader sees it. Nothing here names a version. Before
 saving, check the version still applies the filters its `dash.report` row sends and offers no picker
 beyond them, then check the real embed on dev, and whether the ready message arrives; only then set
-`ready_signal` on the row.
+`ready_signal` on the row. The ready message is `{ type: "dash:dive-ready" }`, posted to the parent
+window. Dash also accepts the legacy `{ type: "feather-dash:dive-ready" }` that Dives published before
+#966 still post (#1141). Either counts only from `https://embed-motherduck.com` and the Dive's own frame.
 
 **Known interim on an app address.** Until featherbase's cut-over retires
 today's Sales Target page (design D8, B9), the platform routes an address that

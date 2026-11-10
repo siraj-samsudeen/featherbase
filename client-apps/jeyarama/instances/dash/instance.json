@@ -69,6 +69,16 @@
       "path": "client-apps/jeyarama/dash",
       "version": "0.12.0",
       "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/32be813134d71cff11583e4228fa71139e5df877"
+    },
+    {
+      "path": "client-apps/jeyarama/dash",
+      "version": "0.12.1",
+      "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/e8890c684f999bce2abcef3c128bc3abd81a7d8d"
+    },
+    {
+      "path": "client-apps/jeyarama/dash",
+      "version": "0.12.2",
+      "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/a6a0fa531be1d0ef8ba5395fabb528cc4e7d0f21"
     }
   ],
   "madeUpData": "client-apps/jeyarama/dash/scripts/seed-made-up.mts"

@@ -13,7 +13,7 @@ type Dataset = { name: string; source: string; query: string; columns: { name: s
   guard?: { kind: string; column?: string; value?: number; within?: string }[] }
 const datasets = (manifest as unknown as { datasets: Dataset[] }).datasets
 const sales = () => datasets.find(d => d.name === SALES_DATASET)!
-const operations = manifest.reads.operations as Record<string, { policy: { kind: string; readRoles?: string[] }; outbound?: boolean }>
+const operations = manifest.reads.operations as Record<string, { policy: { kind: string; readRoles?: string[] }; outbound?: boolean; needs?: string[] }>
 const ROLES = ['Dash Reader', 'Dash Section Editor', 'Dash Section Reviewer', 'Report Access Manager']
 
 describe("the app's name in the manifest", () => {
@@ -98,8 +98,13 @@ describe('the report in the manifest', () => {
     expect(manifest.settings).toEqual([{ name: 'embed_service_account', required: false }, { name: 'linked_tables', required: false }])
   })
 
-  it('reads the MotherDuck token as a secret', () => {
-    expect(manifest.secrets).toEqual(['MOTHERDUCK_TOKEN'])
+  it('reads the MotherDuck token as a secret, and the embed token as an optional one', () => {
+    expect(manifest.secrets).toEqual(['MOTHERDUCK_TOKEN', { name: 'MOTHERDUCK_EMBED_TOKEN', optional: true }])
+  })
+
+  it('gives the embed token only to the two reads that open a Dive (#1139)', () => {
+    expect(Object.entries(operations).filter(([, o]) => o.needs?.includes('MOTHERDUCK_EMBED_TOKEN')).map(([name]) => name).sort())
+      .toEqual(['embed_open', 'embed_session'])
   })
 })
 
