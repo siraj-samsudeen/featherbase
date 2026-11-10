@@ -66,6 +66,11 @@ describe('global search permissions', () => {
     expect(await admin.get('/api/people/pick?q=wild_')).toEqual({ people: [] })
   })
 
+  test('the person picker with no query offers people, ten at most', async ({ admin }) => {
+    for (let i = 0; i < 11; i++) await makePerson({ full_name: `Gs Picker ${i}` })
+    expect((await admin.get<{ people: unknown[] }>('/api/people/pick')).people).toHaveLength(10)
+  })
+
   test('a scope storage failure is not disguised as an empty search result', async ({ admin, createUser }) => {
     const table = await makeTable(admin, { name: 'Gs Broken Scope', columns: ['title'] })
     const reader = await createUserWithRole(admin, createUser, { role: 'Gs Broken Scope Reader', table: table.name, can_read: true })
