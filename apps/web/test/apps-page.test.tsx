@@ -250,7 +250,7 @@ test("an app's declarations read in words: a grant on chosen columns, a grant on
   })
 })
 
-// Defect: version 1 actions name their actions in `names` and carry no
+// Defect pinned (#1132): version 1 actions name their actions in `names` and carry no
 // `operations`, and the details panel reads Object.keys(actions.operations).
 test.fails('an app that declares its actions by name lists them', async ({ admin }) => {
   vi.spyOn(console, 'error').mockImplementation(() => {})

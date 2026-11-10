@@ -215,7 +215,7 @@ test('a saved report naming a column the Table no longer has heads it with its n
   expect(screen.queryByTestId('chart-value')).not.toBeInTheDocument()
 })
 
-// Defect: the server refuses the rows request ("Unknown selected field"), and
+// Defect pinned (#1133): the server refuses the rows request ("Unknown selected field"), and
 // the report has no error state for its rows, so it reads "0 rows" and
 // "No rows" over a Table that has two.
 test.fails('a saved report naming a column the Table no longer has does not claim the Table has no rows', async ({ admin }) => {
