@@ -141,6 +141,21 @@ describe('Connecting Postgres tables: names and column types', () => {
     expect(res.tables.find((t) => t.table === '2024')!.proposed_name).toBe('Ext 2024')
   })
 
+  test.for([
+    ['has no letters or digits, the proposed name starts with Src', '__', 'Src Shelf'],
+    ['starts with a dot, the proposed name starts with the source\'s name', '.ledger', 'Ext Shelf'],
+  ])('when the schema name %s', async ([, schema, proposed], { admin }) => {
+    await cli.unsafe(`create schema "${schema}"; create table "${schema}".shelf (id serial primary key)`)
+    try {
+      await makeSource(admin)
+      const res = await admin.get(`/api/table/Data%20Source/ext-extra:introspect?schema=${encodeURIComponent(schema)}`) as
+        { tables: { table: string; proposed_name: string }[] }
+      expect(res.tables.find((t) => t.table === 'shelf')!.proposed_name).toBe(proposed)
+    } finally {
+      await cli.unsafe(`drop schema "${schema}" cascade`)
+    }
+  })
+
   test('a numeric reflection prefix is made into a legal Table name and binds the original relation', async ({ admin }) => {
     await makeSource(admin)
     const result = await admin.post<{ created: { table: string; name: string }[]; skipped: unknown[] }>(
