@@ -161,7 +161,9 @@ export async function introspectSource(
 // must exist, the relation must be in its allowlist, and every mapped
 // column (plus the pk and modified column) must actually be there. Without
 // this, a hand-written definition persists happily and only fails at query
-// time. Called from createTable.
+// time. Called from createTable. Returns the schema the relation was found
+// in, so a binding that names none is stored with the one it was checked
+// against (#1114).
 export async function assertBindingIsValid(def: {
   name: string
   data_source: string
@@ -170,7 +172,7 @@ export async function assertBindingIsValid(def: {
   external_pk: string
   external_modified?: string
   columns: { column_name: string; source_column?: string }[]
-}): Promise<void> {
+}): Promise<string> {
   const cfg = await getSource(def.data_source) // NotFoundError if absent
   assertNotPlatformRelation(cfg.name, def.external_schema)
   assertAllowed(cfg, def.external_schema ?? '', def.external_table)
@@ -210,6 +212,7 @@ export async function assertBindingIsValid(def: {
   }
   if (Object.keys(errors).length)
     throw new AppError('ValidationError', `Invalid binding for ${def.name}`, errors)
+  return match.schema
 }
 
 interface ReflectResult {
