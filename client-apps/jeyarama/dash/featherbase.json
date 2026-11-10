@@ -1891,7 +1891,8 @@
       ],
       "Plant": [
         "site",
-        "plant_type"
+        "plant_type",
+        "plant_name"
       ],
       "dash.report_access": [
         "report",
