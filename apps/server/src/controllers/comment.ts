@@ -1,6 +1,5 @@
 import { randomBytes } from 'node:crypto'
 import type { TableController } from '../controllers'
-import { sql } from '../db'
 import { publishUserEvent } from '../realtime'
 import { afterDocumentCommit } from '../action-transaction'
 import { getDoc } from '../document'
@@ -23,8 +22,9 @@ export function mentionedNames(content: string): { usernames: string[]; names: s
   const names = new Set<string>()
   for (const m of content.matchAll(MENTION)) {
     if (m[1]) names.add(m[1].trim().replace(/\s+/g, ' ').toLowerCase())
-    // A full stop after a mention is punctuation.
-    else if (m[2]) usernames.add(m[2].toLowerCase().replace(/[._-]+$/, ''))
+    // Otherwise the username alternative matched. A full stop after a
+    // mention is punctuation.
+    else usernames.add(m[2].toLowerCase().replace(/[._-]+$/, ''))
   }
   return { usernames: [...usernames], names: [...names] }
 }
@@ -34,15 +34,16 @@ const controller: TableController = {
   hooks: {
     // #507: a comment is about a row, so only someone who may open that row
     // can comment on it — otherwise a mention would hand others a link to a
-    // row the commenter was never shown.
+    // row the commenter was never shown. ref_table, ref_name and content are
+    // required columns, so every comment that reaches a hook has all three.
     validate: async ({ row, user }) => {
-      if (row.ref_table && row.ref_name) await getDoc(String(row.ref_table), String(row.ref_name), user)
+      await getDoc(String(row.ref_table), String(row.ref_name), user)
     },
     after_insert: async ({ row, tx, user }) => {
-      const content = String(row.content ?? '')
+      const content = String(row.content)
       const { usernames, names } = mentionedNames(content)
       if (!usernames.length && !names.length) return
-      const stx = (tx ?? sql) as typeof sql
+      const stx = tx
 
       const byUsername = usernames.length
         ? await stx`select row_id from person where not built_in and enabled and lower(username) in ${stx(usernames)}`
@@ -67,7 +68,7 @@ const controller: TableController = {
           values (
             ${randomBytes(5).toString('hex')}, ${user}, ${user}, ${target},
             ${`${who} mentioned you in a comment`},
-            ${String(row.ref_table ?? '')}, ${String(row.ref_name ?? '')}, false
+            ${String(row.ref_table)}, ${String(row.ref_name)}, false
           )`
         notified.push(target)
       }
