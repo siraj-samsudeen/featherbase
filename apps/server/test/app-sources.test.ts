@@ -200,6 +200,15 @@ describe('app manifests can declare Data Sources and reflections', () => {
     ).rejects.toMatchObject({ status: 417 })
   })
 
+  test('a CSV folder source names its folder and no variable', async ({ admin }) => {
+    const res = await admin.post<{ sources: string[] }>('/api/install_app', {
+      manifest: { name: 'appsrc-csv', sources: [{ name: 'appsrc-csv-folder', engine: 'csv-folder', root_path: 'appsrc-folder' }] },
+    })
+    expect(res.sources).toEqual(['appsrc-csv-folder'])
+    const [src] = await sql`select url_env, root_path from data_source where row_id = 'appsrc-csv-folder'`
+    expect(src).toEqual({ url_env: null, root_path: 'appsrc-folder' })
+  })
+
   test('a manifest may not carry a connection string, only an env var name', async ({ admin }) => {
     await expect(
       admin.post('/api/install_app', {

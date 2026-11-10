@@ -200,6 +200,12 @@ describe('app registry: install lifecycle', () => {
     expect(Object.keys(err.fields ?? {})).toEqual(['manifest'])
   })
 
+  test('an app Table with no name is refused, and the app is not installed', async ({ admin }) => {
+    registerApp({ name: 'nameless-table-app', tables: [{ module: 'Test', columns: [] } as never] })
+    await expect(installApp('nameless-table-app')).rejects.toMatchObject({ type: 'ValidationError' })
+    expect(await isInstalled('nameless-table-app')).toBe(false)
+  })
+
   test('enable requests for unknown or declarative apps preserve real installed state', async ({ admin }) => {
     const declarative = 'enable-declarative'
     await admin.post('/api/install_app', { manifest: { name: declarative, tables: noteApp.tables } })
