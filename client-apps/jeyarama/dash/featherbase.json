@@ -1905,6 +1905,9 @@
       ],
       "Subcategory": [
         "subcategory",
+        "division",
+        "subdivision",
+        "category",
         "subcategory_type"
       ],
       "Site": [
