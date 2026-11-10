@@ -104,6 +104,20 @@ export function openReturnPath(
   else load(path)
 }
 
+/**
+ * Found on staging (10-Nov-2026): a return path the person can't open sent them to a no-access page
+ * that emailed the admins. Someone who lands in an app goes there instead when the path is the
+ * Admin, or an app the sign-in didn't list. Anyone who lands in the Admin keeps the path: what they
+ * can't open says so there.
+ */
+export function returnOrLanding(path: string, user: Pick<SessionUser, 'landing' | 'apps'>): string {
+  const { landing, apps } = user
+  if (!landing) return path
+  if (path.startsWith('/featherbase/admin')) return landing
+  if (path.startsWith('/featherbase/')) return path
+  return apps && !apps.includes(path.split('/')[1] ?? '') ? landing : path
+}
+
 /** Go to where a signed-in person lands (#488): a Featherbase page inside the
  *  SPA, an app's root (on an app's own address) by a full page load. */
 export function openLanding(
@@ -198,7 +212,7 @@ export function LoginPage() {
       const returnTo = safeLoginNext(next)
       takeLoginNext() // signed in: whatever the Google round trip saved is spent
       if (returnTo) {
-        openReturnPath(returnTo, (path) => router.history.push(path))
+        openReturnPath(returnOrLanding(returnTo, user), (path) => router.history.push(path))
         return
       }
       // #465 D9: landing without a deep link, the Administrator may be asked

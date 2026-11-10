@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
 
-/** The server's answer: `waiting` once an admin has been told (#955). */
+/** The server's answer: `waiting` once an admin has been told (#955); `elsewhere` when the person
+ *  belongs in the app at `home`, and nobody was told. */
 export interface AccessAnswer {
-  state: 'open' | 'waiting'
+  state: 'open' | 'waiting' | 'elsewhere'
   title: string
+  home?: string
 }
 
 /**

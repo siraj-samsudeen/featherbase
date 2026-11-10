@@ -21,6 +21,8 @@ export interface SessionUser {
   // Where this account lands after sign-in on this address when it is not the
   // Admin (#3755, #488: on Feather Dash's address, its report). Absent = /admin.
   landing?: string
+  /** The apps this person can open, as the sign-in answered: a return path to any other goes to the landing. */
+  apps?: string[]
 }
 
 /** A sign-in's answer as the page acts on it: the session's user, plus — when
@@ -151,11 +153,11 @@ export const api = {
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 }
 
-type LoginResponse = { token: string; user: SessionUser; landing?: string; handoff?: string }
+type LoginResponse = { token: string; user: SessionUser; landing?: string; handoff?: string; apps?: string[] }
 
 /** Stores the session; returns the user, with the hand-off when there is one. */
 export function rememberLogin(res: LoginResponse): SignedIn {
-  const user = res.landing ? { ...res.user, landing: res.landing } : res.user
+  const user = { ...res.user, ...(res.landing ? { landing: res.landing } : {}), ...(res.apps ? { apps: res.apps } : {}) }
   setSession(res.token, user)
   return res.handoff ? { ...user, handoff: res.handoff } : user
 }

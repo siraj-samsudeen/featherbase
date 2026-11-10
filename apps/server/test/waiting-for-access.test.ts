@@ -6,7 +6,7 @@ import { resolve } from 'node:path'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { expectStatus, makePerson } from './fixtures'
+import { expectStatus, grantRole, makePerson } from './fixtures'
 import { configureGoogle } from './identity-fixtures'
 import { completeSignIn } from '../src/sign-in'
 import { methodOfKind } from '../src/identities'
@@ -123,8 +123,7 @@ describe('opening something without access is the request', () => {
     await managers()
     await installOther(admin)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Other Reader' } })
-    await sql`insert into permission (row_id, ref_table, role, operation, created_by, updated_by)
-      values ('wfa-other-read', 'other.task', 'Other Reader', 'read', 'Administrator', 'Administrator')`
+    await grantRole(admin, { table: 'other.task', role: 'Other Reader', can_read: true })
     const reader = await createUser({ email: 'other.reader@example.com', roles: ['Other Reader'] })
     expect(await (await ask(reader, 'featherbase')).json()).toEqual({ state: 'elsewhere', title: 'Featherbase', home: '/other/' })
     expect([(await list(admin)).total, (await mailsTo('manager.one@example.com')).length]).toEqual([0, 0])

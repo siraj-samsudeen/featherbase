@@ -89,15 +89,23 @@ export async function landingAfterSignIn(session: SignedInSession, host: string,
 
   // #659: no Admin and no address handed them on, but an app they can open
   // through a role of their own is served right here (the Admin address
-  // serves every app's root, as an unlisted host does): its root, the first by
-  // title when they have several. An app open to everyone (All) is no one's in
-  // particular, so it never claims a person with no role of use. Chosen from
-  // the catalog, so the platform names no app (ADR 0011).
+  // serves every app's root, as an unlisted host does).
+  const home = await homeApp(person)
+  return home ? { landing: home } : {}
+}
+
+/** #659: the root of the app a person belongs in: one they can open through a
+ *  role of their own, the first by title when they have several. An app open
+ *  to everyone (All) is no one's in particular, so it never claims a person
+ *  with no role of use. Chosen from the catalog, so the platform names no app
+ *  (ADR 0011). Found on staging (10-Nov-2026): the Admin's no-access page asks
+ *  this too, so a person who belongs in an app is sent there, not reported. */
+export async function homeApp(person: string): Promise<string | undefined> {
   const { readableByOwnRole } = await tableAccessFor(person, await getRoles(person))
   const [first] = (await appCatalog(person))
     .filter((entry) => readableByOwnRole.includes(appEntryTable(entry.name) ?? ''))
     .sort((a, b) => a.title.localeCompare(b.title) || a.name.localeCompare(b.name))
-  return first ? { landing: appRoot(first.name, true) } : {}
+  return first ? appRoot(first.name, true) : undefined
 }
 
 const ADMIN_ROOT = '/featherbase/admin'

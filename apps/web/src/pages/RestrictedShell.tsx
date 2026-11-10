@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Navigate } from '@tanstack/react-router'
 import { getSessionUser } from '../lib/api'
 import { TopBar } from '../components/TopBar'
@@ -40,10 +41,21 @@ export function ManageOnly({ children }: { children: React.ReactNode }) {
   return caps.manage ? <>{children}</> : <Navigate to="/featherbase/admin" replace />
 }
 
+/** Found on staging (10-Nov-2026): someone who belongs in an app is sent there, never told "no access". */
+function GoingToApp({ path }: { path: string }) {
+  useEffect(() => { window.location.assign(path) }, [path])
+  return (
+    <div className="flex min-h-screen flex-col bg-canvas" data-testid="going-to-app" data-path={path}>
+      <Waiting label="Opening your app" />
+    </div>
+  )
+}
+
 export function NoAccessPage() {
   const name = personName()
-  // #955: opening Featherbase with no access is the request for it.
+  // #955: opening Featherbase with no access is the request for it, unless they belong in an app.
   const asked = useAccessRequest('featherbase')
+  if (asked?.state === 'elsewhere' && asked.home) return <GoingToApp path={asked.home} />
   return (
     <div className="flex min-h-screen flex-col bg-canvas">
       <TopBar forPerson />
