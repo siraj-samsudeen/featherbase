@@ -389,8 +389,10 @@ describe('a report whose Dive has its own pickers', () => {
       return [answer.heading.name, answer.pickers_in_dive]
     }
     expect([await named({ store: '9902' }), await named({}), await named({ store: '9999' }),
-      await named({}, [row('9901', '010101001'), row('9902', '010101001', 'Hillview')]), await named({}, null)])
-      .toEqual([['Hillview', true], ['Lakeside', true], ['Lakeside', true], ['Hillview', true], ['Hillview', true]])
+      await named({}, [row('9901', '010101001'), row('9902', '010101001', 'Hillview')]), await named({}, null),
+      // Rows of an earlier month are no figures for this one (the report shows "not arrived yet").
+      await named({}, [row('9901', '010101001'), { ...row('9902', '010101001', 'Hillview'), period_start: '2026-09-01', data_through: '2026-09-30' }])])
+      .toEqual([['Hillview', true], ['Lakeside', true], ['Lakeside', true], ['Hillview', true], ['Hillview', true], ['Lakeside', true]])
   })
 })
 
