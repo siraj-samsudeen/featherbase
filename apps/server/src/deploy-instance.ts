@@ -40,12 +40,12 @@ export function followsAppFiles(environment: string, stamp: string | null): bool
   return environment === 'staging' && stamp === 'staging'
 }
 
-export function unshippedRefusal(name: string, version: string, reason: 'files' | 'manifest' | 'absent'): string {
+export function unshippedRefusal(name: string, version: string, reason: 'files' | 'manifest' | 'upgraded' | 'absent'): string {
   if (reason === 'manifest')
     return `App ${name} version ${version}: its manifest (featherbase.json) changed, but its version did not. Bump the version, with a migration from ${version}, and deploy again.`
   if (reason === 'files')
     return `App ${name} version ${version}: its files changed, but its version did not, and production never re-pins. Bump the version, with a migration from ${version}, and deploy again.`
-  return `App ${name} version ${version} is installed and enabled, but this release does not ship it. To upgrade from it, list it under previousVersions in the instance's instance.json so that the image holds both; or disable the app before releasing.`
+  return `App ${name} version ${version} is installed and enabled, but this release does not ship it or a newer version. Add the app to the instance's instance.json, or disable it before releasing.`
 }
 
 /** Re-pin every installed, enabled app whose files changed under the same

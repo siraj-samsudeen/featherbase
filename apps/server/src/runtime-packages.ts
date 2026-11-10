@@ -529,10 +529,11 @@ export async function unshippedApps<Row extends Record<string, unknown>>(install
 /** #703: why an installed row is not on `paths`: its files changed under the
  *  same version and manifest, its manifest changed under the same version, or
  *  that version is not there at all. */
-export async function whyUnshipped(row: Record<string, unknown>, paths: string[]): Promise<'files' | 'manifest' | 'absent'> {
+export async function whyUnshipped(row: Record<string, unknown>, paths: string[]): Promise<'files' | 'manifest' | 'upgraded' | 'absent'> {
   const shipped = [...(await loadArtifacts(paths)).loaded.values()]
   const pkg = shipped.find(p => p.name === row.name && p.version === row.package_version)
-  if (!pkg) return 'absent'
+  // #1178 (D4): a newer version replaces it; the deploy upgrades from the installed record.
+  if (!pkg) return shipped.some(p => p.name === row.name && compareVersions(p.version, String(row.package_version)) > 0) ? 'upgraded' : 'absent'
   return sameManifest(pkg, row) ? 'files' : 'manifest'
 }
 

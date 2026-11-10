@@ -206,13 +206,17 @@ export async function assertInstalledAppsShipped(instanceDeploy?: { followFiles:
     const paths = await appLibraryPaths(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
     const refusals: string[] = []
     const followed: string[] = []
+    const upgraded: string[] = []
     for (const row of found.missingRows) {
       const reason = await whyUnshipped(row, paths)
       if (reason === 'files' && instanceDeploy.followFiles) followed.push(String(row.name))
+      else if (reason === 'upgraded') upgraded.push(`${String(row.name)} ${String(row.package_version)}`)
       else refusals.push(unshippedRefusal(String(row.name), String(row.package_version), reason))
     }
     if (refusals.length) throw new Error(refusals.join('\n'))
-    return `every installed, enabled app ships in this release; the deploy step re-pins ${followed.join(', ')}, whose files changed`
+    return ['every installed, enabled app ships in this release',
+      ...(followed.length ? [`the deploy step re-pins ${followed.join(', ')}, whose files changed`] : []),
+      ...upgraded.map(app => `${app} is upgraded by this release`)].join('; ')
   }
   if (missing.length)
     throw new Error(missing.map(({ name, version }) =>
@@ -241,7 +245,7 @@ export async function installedAppsAtStart(environment = currentEnvironment()): 
     const name = String(row.name), version = String(row.package_version)
     lines.push(reason === 'absent'
       ? `WARNING: App ${name} version ${version} is installed and enabled, but this server does not have it, so it is unavailable. On a developer machine, add the folder holding ${name} ${version} to FEATHERBASE_APP_PATHS (init.sh sets it), or disable the app in Admin. A release refuses until it ships.`
-      : `WARNING: ${notRunningMessage(name, version, reason)} Until then it is unavailable here; a release refuses until it ships.`)
+      : `WARNING: ${notRunningMessage(name, version, reason === 'upgraded' ? 'version' : reason)} Until then it is unavailable here; a release refuses until it ships.`)
   }
   return lines
 }
