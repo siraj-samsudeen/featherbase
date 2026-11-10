@@ -1836,6 +1836,12 @@
       "fromVersion": "0.12.3",
       "toVersion": "0.12.4",
       "operations": []
+    },
+    {
+      "id": "stores_by_name",
+      "fromVersion": "0.12.4",
+      "toVersion": "0.12.5",
+      "operations": []
     }
   ],
   "baseTables": {
@@ -1885,7 +1891,8 @@
       ],
       "Plant": [
         "site",
-        "plant_type"
+        "plant_type",
+        "plant_name"
       ],
       "dash.report_access": [
         "report",
