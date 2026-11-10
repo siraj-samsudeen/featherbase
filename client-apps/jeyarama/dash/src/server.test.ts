@@ -56,17 +56,21 @@ interface Options {
   core?: Record<string, Row[]>
   /** Every core Table read throws, or only these. */
   coreThrows?: boolean | string[]
+  /** The secrets the platform hands the read: both MotherDuck tokens, unless a test says otherwise. */
+  secrets?: Record<string, string>
 }
 const DIVE = { embed_service_account: 'svc-made-up' }
+/** The warehouse token every read uses, and the separate one only the embed call uses (#1139). */
+const TOKENS = { MOTHERDUCK_TOKEN: 'token-made-up', MOTHERDUCK_EMBED_TOKEN: 'embed-token-made-up' }
 
 function context({ places = [place('9901 / Section: Sarees', '9901', ['010101001'])], rows = [row('9901', '010101001')], payload = {}, settings = DIVE,
-  cacheThrows = false, live = [], month = null, reports = [SALES], core = STORES, coreThrows = false }: Options = {}) {
+  cacheThrows = false, live = [], month = null, reports = [SALES], core = STORES, coreThrows = false, secrets = TOKENS }: Options = {}) {
   const views: unknown[] = []
   const asked: unknown[] = []
   return {
     views, asked,
     ctx: {
-      user: 'psn_103', payload, settings, secrets: { MOTHERDUCK_TOKEN: 'token-made-up' },
+      user: 'psn_103', payload, settings, secrets,
       authorization: { places },
       roles: ['Dash Reader'],
       documents: reader({ 'dash.report': reports }),
@@ -467,8 +471,21 @@ describe('the embed_session read', () => {
     const { ctx } = context({ payload: { store: '9901' } })
     await embedSession(ctx)
     const body = sentBody(calls)
-    expect([calls[0].url, (calls[0].init.headers as Record<string, string>).authorization, Object.keys(body).sort(), body.username, body.initial_state.plant_code])
-      .toEqual(['https://api.motherduck.com/v1/dives/dive-sales/embed-session', 'Bearer token-made-up', ['initial_state', 'username'], 'svc-made-up', '9901'])
+    expect([calls[0].url, Object.keys(body).sort(), body.username, body.initial_state.plant_code])
+      .toEqual(['https://api.motherduck.com/v1/dives/dive-sales/embed-session', ['initial_state', 'username'], 'svc-made-up', '9901'])
+  })
+
+  it("asks with the embed token, never the warehouse token (#1139: the warehouse's read-only account can't create embed sessions)", async () => {
+    const calls = upstream(ok)
+    await embedSession(context({ payload: { store: '9901' } }).ctx)
+    expect((calls[0].init.headers as Record<string, string>).authorization).toBe('Bearer embed-token-made-up')
+  })
+
+  it('says the Dive is not set up, and never calls MotherDuck, without the embed token', async () => {
+    const calls = upstream(ok)
+    const { ctx } = context({ payload: { store: '9901' }, secrets: { MOTHERDUCK_TOKEN: 'token-made-up' } })
+    expect(await embedSession(ctx)).toEqual({ not_set_up: true })
+    expect(calls).toEqual([])
   })
 
   it('opens the Dive of the report named, not the first', async () => {
