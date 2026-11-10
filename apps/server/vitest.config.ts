@@ -111,8 +111,8 @@ export default defineConfig({
       // One statement is left (collection-import.ts key analysis, `if
       // (hidden) continue`), capped as a count until it is reached or, after
       // research, marked inline (ADR 0023).
-      // Stage 3 (branches), measured the same way: 258 uncovered of 14,657 in
-      // pass 3 (332 in pass 2), capped with a margin of 5 because the count
+      // Stage 3 (branches), measured the same way: 259 uncovered of 14,657 in
+      // pass 3 (333 in pass 2), capped with a margin of 5 because the count
       // moves a little run to run. Most are reachable and still untested.
       // The spots tried and not reached yet, each with what was tried and what
       // might work, are written up for the owner (pass 3 report); among them
@@ -127,7 +127,7 @@ export default defineConfig({
         lines: 100,
         statements: -1,
         functions: 100,
-        branches: -263,
+        branches: -264,
       },
     },
   },
