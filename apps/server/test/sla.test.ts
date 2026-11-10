@@ -189,6 +189,35 @@ describe('SLA: non-matching paths', () => {
     expect(matched.sla_status).toBe('On Track')
   })
 
+  test('an SLA stored with no priority field reads the priority column, and a row with no priority gets no deadline', async ({ admin }) => {
+    const DT = 'Cov Sla Blank'
+    await makeSlaTable(admin, DT)
+    await saveDoc('Service Level Agreement', {
+      row_id: 'Cov Sla Blank', ref_table: DT, enabled: true,
+      priorities: [{ priority: 'High', response_hours: 1, resolution_hours: 2 }],
+    })
+    await sql`update service_level_agreement set priority_field = '' where row_id = 'Cov Sla Blank'`
+    const high: Record<string, unknown> = { title: 'a', priority: 'High' }
+    await applySla(await getMeta(DT), high)
+    expect(high.response_by).toBeInstanceOf(Date)
+    const none: Record<string, unknown> = { title: 'b' }
+    await applySla(await getMeta(DT), none)
+    expect(none.response_by).toBeUndefined()
+  })
+
+  test("a caller's own resolution deadline and status are kept", async ({ admin }) => {
+    const DT = 'Cov Sla Own'
+    await makeSlaTable(admin, DT)
+    await saveDoc('Service Level Agreement', {
+      row_id: 'Cov Sla Own', ref_table: DT, enabled: true, priority_field: 'priority',
+      priorities: [{ priority: 'High', response_hours: 1, resolution_hours: 2 }],
+    })
+    const due = new Date('2030-01-01T00:00:00Z')
+    const values: Record<string, unknown> = { title: 'c', priority: 'High', resolution_by: due, sla_status: 'Paused' }
+    await applySla(await getMeta(DT), values)
+    expect(values).toMatchObject({ resolution_by: due, sla_status: 'Paused' })
+  })
+
   test('escalation without an escalation role flips Overdue but sends no email', async ({
     admin,
   }) => {
