@@ -509,6 +509,11 @@ describe('an app job row stays the app\'s', () => {
     expect(calls()).toEqual([{ job: SWEEP, gone: [] }])
   })
 
+  test('Admin may add a job whose dotted name no app holds', async ({ admin }) => {
+    const saved = await admin.post<{ method: string }>('/api/save_row', { table: 'Scheduled Job', row: { method: 'nobody.job', cadence: 'hourly', enabled: false } })
+    expect(saved.method).toBe('nobody.job')
+  })
+
   test("the app's code never runs on a schedule row that is not the app's", async ({ admin }) => {
     expect(await discoverPackages([await writeApp({ jobs: [sweep] })])).toEqual([])
     await admin.post('/api/install_app', { name: APP })
