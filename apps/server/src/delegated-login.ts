@@ -23,6 +23,7 @@ import { AppError } from './errors'
 import { INVALID_CREDENTIALS } from './auth'
 import { listSignInMethods, type SignInMethod } from './identities'
 import { switchedOn, TEST_MODE_PHRASE } from './env'
+import { ROSTER_LINK_ACTOR } from './roster-link-actor'
 
 // person-identities: the connected service is a Sign In Method row of kind
 // `delegated_password`, and the person is found through a linked identity,
@@ -115,11 +116,8 @@ export interface RosterLink {
 
 /** `linked_by` on a link a roster first sign-in made. */
 export const ROSTER_LINK = 'roster-first-sign-in'
-/** `linked_by` on a link the roster link made before anyone signed in (#1157),
- *  and the actor it writes as. Server-only: the shared package is bundled into
- *  apps' clients, whose built files must not move for it. */
-export const ROSTER_LINK_RUN = 'roster-link'
-export const ROSTER_LINK_ACTOR = ROSTER_LINK_RUN
+/** `linked_by` on a link the roster link made before anyone signed in (#1157). */
+export const ROSTER_LINK_RUN = ROSTER_LINK_ACTOR
 /** Every link made from a roster row: a sign-in through one must have the
  *  service name the row's record. */
 export const ROSTER_LINKS = [ROSTER_LINK, ROSTER_LINK_RUN]

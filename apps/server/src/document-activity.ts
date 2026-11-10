@@ -8,7 +8,7 @@ import { PLATFORM_SCHEMA } from './platform-schema'
 import { anyTableLinkCount } from './any-table-link'
 import { displayName } from './people-directory'
 import { SYSTEM_ACTOR_LABELS } from 'shared'
-import { ROSTER_LINK_ACTOR } from './delegated-login'
+import { ROSTER_LINK_ACTOR } from './roster-link-actor'
 
 /** The shared labels, plus the server-only roster link (#1157). */
 const ACTOR_LABELS: Readonly<Record<string, string>> = { ...SYSTEM_ACTOR_LABELS, [ROSTER_LINK_ACTOR]: 'Staff roster' }
