@@ -163,6 +163,15 @@ describe('GET /api/home_pages: link permission filtering', () => {
     expect(page!.cards).toEqual([])
   })
 
+  test('a link with no label or type is shown by its Table, and a card break with no label heads an unlabelled card', async ({ admin }) => {
+    await makeTable(admin)
+    await admin.post('/api/save_row', { table: 'Home Page', row: { row_id: 'hp-bare', label: 'Bare Page' } })
+    const link = { parent: 'hp-bare', parenttype: 'Home Page', parentfield: 'links' }
+    await sql`insert into home_page_link ${sql({ ...link, row_id: 'hp-bare-break', position: 1, label: null, type: 'Card Break', link_to: null })}`
+    await sql`insert into home_page_link ${sql({ ...link, row_id: 'hp-bare-link', position: 2, label: null, type: null, link_to: DT })}`
+    expect((await pages(admin)).find((p) => p.row_id === 'hp-bare')!.cards).toEqual([{ label: null, links: [{ label: DT, link_to: DT }] }])
+  })
+
   test('a link to a table that no longer exists is filtered, not broken', async ({ admin }) => {
     await admin.post('/api/save_row', {
       table: 'Home Page',
@@ -238,6 +247,12 @@ describe('auto-membership: a built table never vanishes from navigation', () => 
     expect(page).toMatchObject({ row_id: 'home' })
     expect(page!.label).toBe('Home')
     expect(page!.cards.flatMap((c) => c.links.map((l) => l.link_to))).toContain('HP Zone')
+  })
+
+  test("a module whose name has no letters or digits lands on the 'Home' page", async ({ admin }) => {
+    await makeTable(admin, 'HP Symbol', '***')
+    const page = (await pages(admin)).find((p) => p.row_id === 'home')!
+    expect(page.cards.flatMap((c) => c.links.map((l) => l.link_to))).toContain('HP Symbol')
   })
 
   test('sub-tables get no navigation entry', async ({ admin }) => {
