@@ -104,7 +104,9 @@ export function AccessRequestDrawer({ id, onClose, onDone }: {
     set(list.includes(value) ? list.filter((v) => v !== value) : [...list, value])
 
   return (
-    <div data-testid="access-request-drawer" className="h-full">
+    // Its own height, short of the screen's bottom, so the sticky action row
+    // (and the Decline or Dismiss question in it) is always in view.
+    <div data-testid="access-request-drawer" className="flex max-h-[calc(100dvh-8rem)] min-h-0 flex-col">
       <DrillPane kind="Access request" title={name} onClose={onClose} place="right">
         {details.isPending && <p className="text-sm text-ink-subtle">Loading…</p>}
         {details.isError && <Notice tone="negative">{details.error instanceof Error ? details.error.message : 'Could not load this request'}</Notice>}
@@ -141,7 +143,7 @@ export function AccessRequestDrawer({ id, onClose, onDone }: {
                         {held && <span className="text-xs text-ink-subtle">{everyone ? 'Everyone has it' : 'Has it'}</span>}
                         {role === FULL_ADMIN && !held && roles.includes(role) && <span className="text-xs font-semibold text-negative" data-testid="full-admin-warning">Gives full admin access</span>}
                       </label>
-                      {hint ? <p className="ml-6 text-xs text-ink-subtle" data-testid="role-hint">{hint === 1 ? '1 other' : `${hint} others`} in this job {hint === 1 ? 'holds' : 'hold'} it</p> : null}
+                      {hint && !everyone ? <p className="ml-6 text-xs text-ink-subtle" data-testid="role-hint">{hint === 1 ? '1 other' : `${hint} others`} in this job {hint === 1 ? 'holds' : 'hold'} it</p> : null}
                     </li>
                   )
                 })}
@@ -197,7 +199,7 @@ export function AccessRequestDrawer({ id, onClose, onDone }: {
               </div>
             ) : dismissing ? (
               <div className="flex flex-wrap items-center gap-2" data-testid="dismiss-confirm-row">
-                <span className="text-sm">Dismiss this request? It is deleted; if they open {data.app} again, it comes back.</span>
+                <span className="text-sm">Dismiss? It comes back if they open {data.app} again.</span>
                 <Button variant="danger" onClick={dismiss} loading={busy} data-testid="dismiss-confirm">Dismiss</Button>
                 <Button variant="quiet" onClick={() => setDismissing(false)}>Cancel</Button>
               </div>
