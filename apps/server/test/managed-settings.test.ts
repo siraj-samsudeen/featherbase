@@ -107,6 +107,22 @@ describe('Admin saves of a locked field are refused (D5)', () => {
     expect(err.fields).toEqual({ app_name: 'set in the instance settings file' })
   })
 
+  test('a save that changes several locked fields names them all', async ({ admin }) => {
+    await apply({ settings: { 'System Settings': { app_name: 'Locked Name', session_hours: 24, time_zone: 'Asia/Kolkata' } } })
+    const err = await expectApiError(admin.post('/api/save_row', { table: 'System Settings', row: { app_name: 'Drifted', session_hours: 12, time_zone: 'UTC' } }), { status: 403 })
+    expect(err.message).toContain('App Name, Session Hours and Time Zone on System Settings are set in the instance settings file')
+    expect(err.message).toContain('so they cannot be changed here')
+  })
+
+  // Defect found in coverage stage 3 (no issue yet): the pronoun that is the
+  // subject ("they cannot be changed") is reused as the object, so the
+  // refusal reads "Change they in the file".
+  test.fails('a refusal naming several locked fields says to change them in the file', async ({ admin }) => {
+    await apply({ settings: { 'System Settings': { app_name: 'Locked Name', session_hours: 24 } } })
+    const err = await expectApiError(admin.post('/api/save_row', { table: 'System Settings', row: { app_name: 'Drifted', session_hours: 12 } }), { status: 403 })
+    expect(err.message).toContain('Change them in the file, then apply the file.')
+  })
+
   test('the form saving every field, with only an unlocked one changed, succeeds', async ({ admin }) => {
     await apply()
     const doc = await admin.get<Record<string, unknown>>('/api/table/System%20Settings/System%20Settings')
