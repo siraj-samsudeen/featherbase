@@ -237,6 +237,21 @@ describe("the Dive's ready signal (required only when the instance's `dive_ready
     await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS)
     expect(view()).toEqual({ kind: 'quick' })
   })
+
+  // #1141: Dives published before #966 renamed the message still post its old name.
+  it('keeps the Dive when it posts the legacy ready message, feather-dash:dive-ready', async () => {
+    const { loader, view } = await opened()
+    loader.message({ origin: 'https://embed-motherduck.com', source: frameWindow, data: { type: 'feather-dash:dive-ready' } }, frameWindow)
+    await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS)
+    expect(view()).toMatchObject({ kind: 'dive' })
+  })
+
+  it('ignores any other message type from the Dive', async () => {
+    const { loader, view } = await opened()
+    loader.message({ origin: 'https://embed-motherduck.com', source: frameWindow, data: { type: 'feather-dash:dive-loaded' } }, frameWindow)
+    await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS)
+    expect(view()).toEqual({ kind: 'quick' })
+  })
 })
 
 
