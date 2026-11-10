@@ -21,7 +21,7 @@ import { EXTERNAL_DATABASE_URL } from 'server/test/external-database'
 import { addStandinTable, buildStandin, changeStandin, STANDIN_TOKENS } from 'server/test/motherduck-standin'
 import { EXPLORE_FLOOR, EXPLORE_STORE, dropExploreSource, exploreSource } from 'server/test/explore-source'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp, onScreen, inside, byTestId } from '../pg-test'
+import { test, expect, renderApp, onScreen, byTestId } from '../pg-test'
 
 const scenario = scenarioFor(test, 'external-data-sources')
 const WAIT = { timeout: 15_000 }
@@ -244,7 +244,7 @@ async function pickTable(table: string) {
   await showCatalog()
   const catalog = await screen.findByRole('table', { name: 'Warehouse tables' }, WAIT)
   await userEvent.click(await within(catalog).findByRole('button', { name: table }, WAIT))
-  await inside(onScreen(), 'preview-size', (el) => el.assertText('rows'))
+  await onScreen().within(byTestId('preview-size'), (el) => el.assertText('rows'))
 }
 async function place() {
   await showCatalog()
@@ -422,7 +422,7 @@ describe('external-data-sources', () => {
     })
     await step("the user sees the database's shops listed in Featherbase", async () => {
       await openList(table, admin)
-      for (const shop of SHOPS) await inside(onScreen(), 'list-rows', (rows) => rows.assertText(shop))
+      for (const shop of SHOPS) await onScreen().within(byTestId('list-rows'), (rows) => rows.assertText(shop))
     })
   })
 
@@ -650,7 +650,7 @@ describe('external-data-sources', () => {
     })
     await step('the user can reopen the preview of "stores" without choosing it again', async () => {
       await userEvent.click(previewTab('stores'))
-      await inside(onScreen(), 'preview-size', (el) => el.assertText('rows'))
+      await onScreen().within(byTestId('preview-size'), (el) => el.assertText('rows'))
       expect(previewTab('stores')).toHaveAttribute('aria-selected', 'true')
       expect(previewTitle()).toBe('stores')
     })
@@ -730,7 +730,7 @@ describe('external-data-sources', () => {
     await step('a correction made in that form is saved', async () => {
       await onScreen().within(byTestId('form-view'), (form) => form.fillIn('Trading name', 'Native trading correction'))
       await userEvent.click(screen.getByTestId('form-save'))
-      await inside(onScreen(), 'form-status', (status) => status.assertExactText('Saved'))
+      await onScreen().within(byTestId('form-status'), (status) => status.assertExactText('Saved'))
       expect(await formValue(w.native, 'S001', 'Trading name', admin)).toBe('Native trading correction')
     })
   }, 60_000)

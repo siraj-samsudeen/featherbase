@@ -17,7 +17,7 @@ import { invalidateSources } from 'server/src/sources/registry'
 import { EXTERNAL_DATABASE_URL } from 'server/test/external-database'
 import { grantRole } from 'server/test/fixtures'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp, onScreen, inside, type Session } from '../pg-test'
+import { test, expect, renderApp, onScreen, byTestId, type Session } from '../pg-test'
 
 configure({ asyncUtilTimeout: 10_000 })
 
@@ -132,7 +132,7 @@ async function blueBoxReader(admin: Client, createUser: CreateUser, step: (text:
 // The form of the page now: saving a new row moves to its own page, a new form.
 const form = () => screen.getByTestId('form-view')
 /** The Session DSL inside the open form. */
-const onForm = (fn: Parameters<Session['within']>[1]) => inside(onScreen(), 'form-view', fn)
+const onForm = (fn: Parameters<Session['within']>[1]) => onScreen().within(byTestId('form-view'), fn)
 /** The labels of the fields shown, in order; folded fields and the foot line are not fields. */
 const fieldLabels = () => [...form().querySelectorAll<HTMLElement>('[data-form-field]')].map((e) => e.dataset.label)
 const field = (label: string) => form().querySelector<HTMLElement>(`[data-form-field][data-label="${label}"]`)

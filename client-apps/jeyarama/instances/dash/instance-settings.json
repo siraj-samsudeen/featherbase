@@ -69,6 +69,10 @@
         "enabled": false
       },
       {
+        "row_id": "link_roster",
+        "enabled": true
+      },
+      {
         "row_id": "refresh_datasets",
         "enabled": true
       }

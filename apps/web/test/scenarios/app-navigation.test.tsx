@@ -138,8 +138,9 @@ async function openAppPage(as: TestClient, app: 'tasker' | 'dash', path: string)
   return within(host.shadowRoot as unknown as HTMLElement)
 }
 const sidebar = () => document.querySelector('featherbase-sidebar') as HTMLElement
-/** The app's own page, driven through the Session DSL. The platform's bar draws its
- *  controls in a shadow root, which the DSL's lookups don't enter: those stay raw. */
+/** The app's own page, driven through the Session DSL. The bar's checks stay raw
+ *  Testing Library over its shadow root: they read a select's option values, an
+ *  element's absence and a select's whole text, which no DSL verb checks the same way. */
 const page = () => createSession({ timeout: WAIT.timeout })
 const switcher = (barView: ReturnType<typeof within>) => barView.findByRole('combobox', { name: 'Switch application' }, WAIT)
 

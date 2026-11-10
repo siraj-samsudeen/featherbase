@@ -25,7 +25,7 @@ import { sandboxRequest } from 'server/test/pg-test-shared'
 import { setSession } from '../../src/lib/api'
 import { createPrototypeRouter } from '../../src/gallery/PrototypeApp'
 import { PrototypeLibrary } from '../../src/gallery/PrototypeLibrary'
-import { test, expect, renderApp, onScreen, inside } from '../pg-test'
+import { test, expect, renderApp, onScreen, byTestId } from '../pg-test'
 
 const scenario = scenarioFor(test, 'native-prototype-library')
 const WAIT = { timeout: 15_000 }
@@ -229,7 +229,7 @@ describe('native-prototype-library', () => {
       await onScreen().clickButton('Native Table list')
       const choose = (value: string) => onScreen().selectOption('Synthetic scenario', value)
       await choose('empty')
-      await inside(onScreen(), 'list-rows', (rows) => rows.assertText('No rows'))
+      await onScreen().within(byTestId('list-rows'), (rows) => rows.assertText('No rows'))
       await choose('loading')
       await waitFor(() => expect(screen.getAllByRole('status').some((s) => s.textContent?.includes('Loading Lab Project'))).toBe(true), WAIT)
       await choose('error')

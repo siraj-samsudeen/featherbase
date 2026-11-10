@@ -345,6 +345,33 @@ describe('a report on the rendered page', () => {
   const plain = { state: 'ready', no_quick_view: true, heading: { name: null, sections: [], reasons: [] } }
   const frame = { frame: 'https://embed-motherduck.com/sandbox/#session=made-up' }
 
+  // #1159: the Dive has its own Store and Month pickers; the page passes it the address's choice.
+  describe('a report whose Dive has its own pickers', () => {
+    const PICKERS = { key: 'sales', name: 'Sales versus target', takes_store: false, takes_month: false, no_filter: false, pickers_in_dive: true }
+    const headed = { ...report('9901', 'Silk'), pickers_in_dive: true, heading: { name: 'Lakeside', sections: [], reasons: [{ basis: 'store_manager', sections: [] }] } }
+    afterEach(() => { reportsAnswer = [SALES, WHOLE] })
+
+    it("opens at once with the address's store and month, asking no store list, and draws no heading over the Dive", async () => {
+      reportsAnswer = [PICKERS]
+      const { answer, view, container, unmount } = await open('?store=9901&month=last')
+      const opened = [asked('report'), asked('stores')]
+      await answer('report', headed)
+      await answer('embed_session', frame)
+      expect([opened, view(), container.querySelector('[data-testid=report-heading]')])
+        .toEqual([[[{ store: '9901', month: 'last' }], []], 'dive', null])
+      await unmount()
+    })
+
+    it('names the store over the cached view while the Dive is not there', async () => {
+      reportsAnswer = [PICKERS]
+      const { answer, view, container, unmount } = await open('?store=9901')
+      await answer('report', headed)
+      await answer('embed_session', { unreachable: true })
+      expect([view(), container.querySelector('[data-testid=heading-title]')?.textContent]).toEqual(['quick', 'Lakeside'])
+      await unmount()
+    })
+  })
+
   it('opens a report taking no store at once, naming the report, with no store and no store check', async () => {
     const { answer, view, container, unmount } = await open('?report=whole')
     expect([asked('report'), asked('stores')]).toEqual([[{ report: 'whole', month: 'this' }], []])
@@ -418,6 +445,78 @@ describe('a report on the rendered page', () => {
       const shown = container.querySelector('[data-testid=report-frame]')
       expect([behind, [view(), shown === frame, shown?.closest('[aria-hidden=true]') ?? null]])
         .toEqual([['quick', true, true], ['dive', true, null]])
+      await act(async () => root.unmount())
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // #1143, found on production: past the deadline with the cached copy not built yet, the page says
+  // the figures are being prepared; a Dive that is ready later must still take over, in the same frame.
+  it('keeps the Dive behind "being prepared" past the deadline, and shows that same frame once it is ready', async () => {
+    const { act } = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { Dash } = await import('./app')
+    const { DIVE_READY_TIMEOUT_MS } = await import('./page')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      history.replaceState(null, '', '?store=9901')
+      calls.length = 0
+      const container = document.createElement('div')
+      document.body.appendChild(container)
+      const root = createRoot(container)
+      await act(async () => { root.render(<Dash />) })
+      await act(async () => { await settle() })
+      for (const c of calls.filter(c => c.store === '9901'))
+        c.answer.resolve(c.name === 'report' ? { ...report('9901', 'Silk'), state: 'not_built', rows: [] }
+          : { frame: 'https://embed-motherduck.com/sandbox/#session=made-up', ready_signal: true })
+      await act(async () => { await settle() })
+      await act(async () => { vi.advanceTimersByTime(DIVE_READY_TIMEOUT_MS); await settle() })
+      const view = () => container.querySelector('[data-testid=dash]')?.getAttribute('data-view')
+      const frame = container.querySelector('[data-testid=report-frame]') as HTMLIFrameElement | null
+      const behind = [view(), container.querySelector('[data-testid=empty-not_built]') !== null, !!frame && frame.closest('[aria-hidden=true]') !== null]
+      await act(async () => {
+        const JsdomMessageEvent = (window as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent
+        window.dispatchEvent(new JsdomMessageEvent('message', { origin: 'https://embed-motherduck.com', source: frame?.contentWindow ?? null, data: { type: 'dash:dive-ready' } }))
+        await settle()
+      })
+      expect([behind, [view(), container.querySelector('[data-testid=report-frame]') === frame]]).toEqual([['empty', true, true], ['dive', true]])
+      await act(async () => root.unmount())
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // #1159: "this month's figures haven't arrived" is about the cached copy of one store and month; a
+  // ready Dive, where the reader may choose another, takes over from it in the same frame.
+  it('keeps the Dive behind "not arrived yet", and shows that same frame once it is ready', async () => {
+    const { act } = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { Dash } = await import('./app')
+    const { DIVE_READY_TIMEOUT_MS } = await import('./page')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      history.replaceState(null, '', '?store=9901')
+      calls.length = 0
+      const container = document.createElement('div')
+      document.body.appendChild(container)
+      const root = createRoot(container)
+      await act(async () => { root.render(<Dash />) })
+      await act(async () => { await settle() })
+      for (const c of calls.filter(c => c.store === '9901'))
+        c.answer.resolve(c.name === 'report' ? { ...report('9901', 'Silk'), state: 'no_data_yet', rows: [] }
+          : { frame: 'https://embed-motherduck.com/sandbox/#session=made-up', ready_signal: true })
+      await act(async () => { await settle() })
+      await act(async () => { vi.advanceTimersByTime(DIVE_READY_TIMEOUT_MS); await settle() })
+      const view = () => container.querySelector('[data-testid=dash]')?.getAttribute('data-view')
+      const frame = container.querySelector('[data-testid=report-frame]') as HTMLIFrameElement | null
+      const behind = [view(), container.querySelector('[data-testid=empty-no_data_yet]') !== null, !!frame && frame.closest('[aria-hidden=true]') !== null]
+      await act(async () => {
+        const JsdomMessageEvent = (window as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent
+        window.dispatchEvent(new JsdomMessageEvent('message', { origin: 'https://embed-motherduck.com', source: frame?.contentWindow ?? null, data: { type: 'dash:dive-ready' } }))
+        await settle()
+      })
+      expect([behind, [view(), container.querySelector('[data-testid=report-frame]') === frame]]).toEqual([['empty', true, true], ['dive', true]])
       await act(async () => root.unmount())
     } finally {
       vi.useRealTimers()

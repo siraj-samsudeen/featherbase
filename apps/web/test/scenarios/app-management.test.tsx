@@ -16,7 +16,7 @@ import { loadInstalledApps } from 'server/src/apps'
 import { sql } from 'server/src/db'
 import { withNamedVariable } from 'server/src/env'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp, onScreen, insideOf, screenSession } from '../pg-test'
+import { test, expect, renderApp, onScreen, screenSession } from '../pg-test'
 
 type Client = Parameters<typeof renderApp>[1]
 type Rendered = Awaited<ReturnType<typeof renderApp>>
@@ -77,7 +77,7 @@ const nav = () => screen.getByRole('navigation', { name: 'Available apps' })
 const details = (title = 'Tasker') => screen.getByRole('region', { name: `${title} details` })
 /** The app's details read this, waiting as long as an install may take. */
 const detailsContain = (text: string, title = 'Tasker', timeout = LONG.timeout) =>
-  insideOf(screenSession({ timeout }), `[aria-label="${title} details"]`, (app) => app.assertText(text))
+  screenSession({ timeout }).within(`[aria-label="${title} details"]`, (app) => app.assertText(text))
 
 async function openApps(admin: Client) {
   const view = await renderApp(APPS, admin)

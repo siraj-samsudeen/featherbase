@@ -235,8 +235,8 @@ importers:
         specifier: ^4.10.2
         version: 4.10.2
       feather-testing-postgres:
-        specifier: 0.3.0
-        version: 0.3.0(@playwright/test@1.64.1)(@tanstack/react-query@5.105.1(@types/react@19.3.0)(react@19.3.1))(@tanstack/react-router@1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@testing-library/dom@10.4.2)(@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@testing-library/user-event@14.6.8(@testing-library/dom@10.4.2))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(vitest@5.0.5)
+        specifier: 0.4.0
+        version: 0.4.0(@tanstack/react-query@5.105.1(@types/react@19.3.0)(react@19.3.1))(@tanstack/react-router@1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@testing-library/dom@10.4.2)(@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@testing-library/user-event@14.6.8(@testing-library/dom@10.4.2))(playwright@1.64.1)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(vitest@5.0.5)
       pdf-parse:
         specifier: ^2.4.5
         version: 2.4.5
@@ -338,8 +338,8 @@ importers:
         specifier: 0.6.0
         version: 0.6.0(@playwright/test@1.64.1)(@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@testing-library/user-event@14.6.8(@testing-library/dom@10.4.2))
       feather-testing-postgres:
-        specifier: 0.3.0
-        version: 0.3.0(@playwright/test@1.64.1)(@tanstack/react-query@5.105.1(@types/react@19.3.0)(react@19.3.1))(@tanstack/react-router@1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@testing-library/dom@10.4.2)(@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@testing-library/user-event@14.6.8(@testing-library/dom@10.4.2))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(vitest@5.0.5)
+        specifier: 0.4.0
+        version: 0.4.0(@tanstack/react-query@5.105.1(@types/react@19.3.0)(react@19.3.1))(@tanstack/react-router@1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@testing-library/dom@10.4.2)(@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@testing-library/user-event@14.6.8(@testing-library/dom@10.4.2))(playwright@1.64.1)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(vitest@5.0.5)
       jsdom:
         specifier: ^30.1.3
         version: 30.1.3
@@ -2527,8 +2527,25 @@ packages:
       '@testing-library/user-event':
         optional: true
 
-  feather-testing-postgres@0.3.0:
-    resolution: {integrity: sha512-eW5/uAxAGeT/jgr/1Dav0w8TB3HpCs5xDbMxiQ1B+6n+qbOq/zD8Ij75pPM/diMiuUAXC1sdRjCRcvgvHzMIug==}
+  feather-testing-core@0.8.0:
+    resolution: {integrity: sha512-WEU4w2d2rhtgrsyzSMOBNXTfLYcGrCtWe0yZVj3y3v1c5FhXilW5vCajE3DfcFNft8JcEi3kcPassCuMXtqEsw==}
+    peerDependencies:
+      '@testing-library/react': '>=14.0.0'
+      '@testing-library/user-event': '>=14.0.0'
+      happy-dom: '>=20.0.0'
+      playwright: '>=1.51.0'
+    peerDependenciesMeta:
+      '@testing-library/react':
+        optional: true
+      '@testing-library/user-event':
+        optional: true
+      happy-dom:
+        optional: true
+      playwright:
+        optional: true
+
+  feather-testing-postgres@0.4.0:
+    resolution: {integrity: sha512-vtZbZsQIv6u7zhWDZ+5IF9wItoI00fqQTcqI++oaPyeb+bpwlwx9f19xPQpdX0TcUDoODJg9KzV8TWaiCm67nw==}
     peerDependencies:
       '@tanstack/react-query': '>=5'
       '@tanstack/react-router': '>=1'
@@ -5830,9 +5847,15 @@ snapshots:
       '@testing-library/react': 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@testing-library/user-event': 14.6.8(@testing-library/dom@10.4.2)
 
-  feather-testing-postgres@0.3.0(@playwright/test@1.64.1)(@tanstack/react-query@5.105.1(@types/react@19.3.0)(react@19.3.1))(@tanstack/react-router@1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@testing-library/dom@10.4.2)(@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@testing-library/user-event@14.6.8(@testing-library/dom@10.4.2))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(vitest@5.0.5):
+  feather-testing-core@0.8.0(@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@testing-library/user-event@14.6.8(@testing-library/dom@10.4.2))(playwright@1.64.1):
+    optionalDependencies:
+      '@testing-library/react': 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@testing-library/user-event': 14.6.8(@testing-library/dom@10.4.2)
+      playwright: 1.64.1
+
+  feather-testing-postgres@0.4.0(@tanstack/react-query@5.105.1(@types/react@19.3.0)(react@19.3.1))(@tanstack/react-router@1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@testing-library/dom@10.4.2)(@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@testing-library/user-event@14.6.8(@testing-library/dom@10.4.2))(playwright@1.64.1)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(vitest@5.0.5):
     dependencies:
-      feather-testing-core: 0.6.0(@playwright/test@1.64.1)(@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@testing-library/user-event@14.6.8(@testing-library/dom@10.4.2))
+      feather-testing-core: 0.8.0(@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@testing-library/user-event@14.6.8(@testing-library/dom@10.4.2))(playwright@1.64.1)
       vitest: 5.0.5(@types/node@26.6.6)(@vitest/browser-playwright@5.0.5)(@vitest/coverage-istanbul@5.0.5)(@vitest/coverage-v8@5.0.5)(@vitest/ui@5.0.5)(jsdom@30.1.3)(msw@3.0.4(@types/node@26.6.6)(graphql@16.14.2)(supports-color@7.2.0)(typescript@7.0.2)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
     optionalDependencies:
       '@tanstack/react-query': 5.105.1(@types/react@19.3.0)(react@19.3.1)
@@ -5843,7 +5866,8 @@ snapshots:
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
     transitivePeerDependencies:
-      - '@playwright/test'
+      - happy-dom
+      - playwright
 
   fflate@0.8.3: {}
 

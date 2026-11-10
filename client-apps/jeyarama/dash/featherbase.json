@@ -413,6 +413,12 @@
           "column_type": "Choice",
           "choices": "\nSales target",
           "description": "The built-in table shown when the Dive can't load. Empty: a message instead."
+        },
+        {
+          "column_name": "pickers_in_dive",
+          "label": "Pickers in the Dive",
+          "column_type": "Check",
+          "description": "The Dive has its own Store and Month pickers: Dash sends the reader's reach and shows no bar or store heading over it."
         }
       ]
     },
@@ -1836,6 +1842,29 @@
       "fromVersion": "0.12.3",
       "toVersion": "0.12.4",
       "operations": []
+    },
+    {
+      "id": "stores_by_name",
+      "fromVersion": "0.12.4",
+      "toVersion": "0.12.5",
+      "operations": []
+    },
+    {
+      "id": "pickers_in_dive",
+      "fromVersion": "0.12.5",
+      "toVersion": "0.12.6",
+      "operations": [
+        {
+          "kind": "addColumn",
+          "table": "dash.report",
+          "column": {
+            "column_name": "pickers_in_dive",
+            "label": "Pickers in the Dive",
+            "column_type": "Check",
+            "description": "The Dive has its own Store and Month pickers: Dash sends the reader's reach and shows no bar or store heading over it."
+          }
+        }
+      ]
     }
   ],
   "baseTables": {
@@ -1885,7 +1914,8 @@
       ],
       "Plant": [
         "site",
-        "plant_type"
+        "plant_type",
+        "plant_name"
       ],
       "dash.report_access": [
         "report",

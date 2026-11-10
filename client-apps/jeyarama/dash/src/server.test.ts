@@ -245,14 +245,67 @@ describe("the stores read (the bar's store picker)", () => {
   const TWO = [place('9902', '9902'), place('9901 / Section: Sarees', '9901', ['010101001'])]
   const SAME_NAME = { Plant: STORES.Plant, Site: STORES.Site.map(site => ({ ...site, name: 'Lakeside' })) }
 
-  it("offers each of the reader's stores from their places, named from the core Tables", async () => {
+  it("offers each of the reader's stores from their places, named from the core Tables, A–Z by name (#1153)", async () => {
     const { ctx } = context({ places: TWO })
-    expect(await reads.stores(ctx)).toEqual([{ value: '9901', label: 'Lakeside' }, { value: '9902', label: 'Hillview' }])
+    expect(await reads.stores(ctx)).toEqual([{ value: '9902', label: 'Hillview' }, { value: '9901', label: 'Lakeside' }])
+  })
+
+  // #1153: the picker shows no codes, so an order by code looked random.
+  it('orders the stores A–Z by name, whatever their codes', async () => {
+    const names = [['9901', 'Marthandam'], ['9902', 'kattakada'], ['9903', 'Attingal'], ['9904', 'Nagercoil']]
+    const core = { Plant: names.map(([code]) => ({ row_id: code, site: `S${code}`, plant_type: 'Store' })),
+      Site: names.map(([code, name]) => ({ row_id: `S${code}`, name, is_store: true, cluster: null })) }
+    const { ctx } = context({ places: names.map(([code]) => place(code, code)), core })
+    expect((await reads.stores(ctx)).map(option => option.label)).toEqual(['Attingal', 'kattakada', 'Marthandam', 'Nagercoil'])
+  })
+
+  // #1153, the owner's naming rule (10-Nov-2026): a store goes by its Site's name, unless more than one
+  // plant shares that site; then each of them goes by its Plant name.
+  describe('stores sharing a site', () => {
+    const SHARED = {
+      Plant: [{ row_id: '9901', site: 'LKS', plant_type: 'Store', plant_name: 'Lakeside Store' },
+        { row_id: '9903', site: 'LKS', plant_type: 'Store', plant_name: 'Lakeside Gold House' },
+        { row_id: '9902', site: 'HLV', plant_type: 'Store', plant_name: 'Hillview Store' }],
+      Site: STORES.Site,
+    }
+    const THREE = [place('9901', '9901'), place('9902', '9902'), place('9903', '9903')]
+
+    it('names each plant on a shared site by its Plant name, and a plant alone on its site by the Site name', async () => {
+      const { ctx } = context({ places: THREE, core: SHARED })
+      expect(await reads.stores(ctx)).toEqual([{ value: '9902', label: 'Hillview' }, { value: '9903', label: 'Lakeside Gold House' },
+        { value: '9901', label: 'Lakeside Store' }])
+    })
+
+    it("counts a plant on the same site that the reader doesn't cover", async () => {
+      const { ctx } = context({ places: [place('9901', '9901')], core: SHARED })
+      expect(await reads.stores(ctx)).toEqual([{ value: '9901', label: 'Lakeside Store' }])
+    })
+
+    it('names the store in the heading the same way', async () => {
+      const { ctx } = context({ places: [place('9901', '9901')], core: SHARED, payload: { store: '9901' } })
+      expect(((await reads.report(ctx)) as { heading: { name: string } }).heading.name).toBe('Lakeside Store')
+    })
+
+    it('keeps the Site name for a plant on a shared site with no Plant name, numbering the twins', async () => {
+      const core = { ...SHARED, Plant: SHARED.Plant.map(plant => ({ ...plant, plant_name: null })) }
+      const { ctx } = context({ places: THREE, core })
+      expect((await reads.stores(ctx)).map(option => option.label)).toEqual(['Hillview', 'Lakeside (1)', 'Lakeside (2)'])
+    })
+
+    it("keeps the Site names on an instance whose Plant Table has no Plant name, rather than failing", async () => {
+      const { ctx } = context({ places: THREE, core: SHARED })
+      const list = ctx.baseTables.list
+      ctx.baseTables.list = async (table: string, args: { fields?: string[] } & Record<string, unknown>) => {
+        if (table === 'Plant' && args.fields?.includes('plant_name')) throw new Error('Unknown column plant_name')
+        return list(table, args as Parameters<typeof list>[1])
+      }
+      expect((await reads.stores(ctx)).map(option => option.label)).toEqual(['Hillview', 'Lakeside (1)', 'Lakeside (2)'])
+    })
   })
 
   it('never reads the cached figures, so a failing cache leaves the picker whole', async () => {
     const { ctx, asked } = context({ places: TWO, cacheThrows: true })
-    expect(await reads.stores(ctx)).toEqual([{ value: '9901', label: 'Lakeside' }, { value: '9902', label: 'Hillview' }])
+    expect(await reads.stores(ctx)).toEqual([{ value: '9902', label: 'Hillview' }, { value: '9901', label: 'Lakeside' }])
     expect(asked).toEqual([])
   })
 
@@ -289,7 +342,57 @@ describe("the stores read (the bar's store picker)", () => {
 
   it('follows the report named, not the first', async () => {
     const { ctx } = context({ places: TWO, reports: [WHOLE, SALES], payload: { report: 'sales' } })
-    expect((await reads.stores(ctx)).map(option => option.value)).toEqual(['9901', '9902'])
+    expect((await reads.stores(ctx)).map(option => option.value)).toEqual(['9902', '9901'])
+  })
+})
+
+// #1159: a report whose Dive has its own Store and Month pickers.
+describe('a report whose Dive has its own pickers', () => {
+  const PICKERS = { ...SALES, pickers_in_dive: 1, ready_signal: 1 }
+  const TWO = [place('9902', '9902'), place('9901 / Section: Sarees', '9901', ['010101001'])]
+  const ok = () => Promise.resolve(new Response(JSON.stringify({ session: 'session-made-up' }), { status: 200 }))
+  function sent() {
+    const calls: { url: string; init: RequestInit }[] = []
+    setEmbedFetch(async (url, init) => { calls.push({ url: String(url), init: init! }); return ok() })
+    return () => JSON.parse(String(calls[0].init.body))
+  }
+
+  it('offers the bar no store and no month', async () => {
+    const { ctx } = context({ places: TWO, reports: [PICKERS] })
+    expect([await reads.stores(ctx), await reads.months(ctx)]).toEqual([[], []])
+  })
+
+  it('tells the page the Dive has the pickers, so it takes neither from the bar', async () => {
+    const { ctx } = context({ places: TWO, reports: [PICKERS] })
+    expect(await reads.reports(ctx)).toEqual([{ key: 'sales', name: 'Sales versus target', takes_store: false, takes_month: false, no_filter: false, pickers_in_dive: true }])
+  })
+
+  it('opens the Dive with the reach of every place, and the store and month from the address', async () => {
+    const body = sent()
+    const { ctx } = context({ places: TWO, reports: [PICKERS], payload: { store: '9901', month: 'last', app_origin: 'https://dash.example.test' } })
+    await embedSession(ctx)
+    expect(body()).toEqual({ username: 'svc-made-up',
+      initial_state: { reach: { 9901: ['010101001'], 9902: null }, store: '9901', month: 'last', app_origin: 'https://dash.example.test' } })
+  })
+
+  it("leaves out a store from the address that isn't the reader's, rather than refusing", async () => {
+    const body = sent()
+    const { ctx } = context({ places: TWO, reports: [PICKERS], payload: { store: '9999' } })
+    await embedSession(ctx)
+    expect(body().initial_state).toEqual({ reach: { 9901: ['010101001'], 9902: null }, month: 'this' })
+  })
+
+  // As the Dive opens with no store named: the first store A–Z that has figures (agreed with v16).
+  it("shows the cached view for the address's store, else the first store A–Z with figures, naming it", async () => {
+    const named = async (payload: Record<string, unknown>, rows: ReturnType<typeof row>[] | null = [row('9901', '010101001')]) => {
+      const answer = await reads.report(context({ places: TWO, reports: [PICKERS], payload, rows }).ctx) as { heading: { name: string }; pickers_in_dive?: boolean }
+      return [answer.heading.name, answer.pickers_in_dive]
+    }
+    expect([await named({ store: '9902' }), await named({}), await named({ store: '9999' }),
+      await named({}, [row('9901', '010101001'), row('9902', '010101001', 'Hillview')]), await named({}, null),
+      // Rows of an earlier month are no figures for this one (the report shows "not arrived yet").
+      await named({}, [row('9901', '010101001'), { ...row('9902', '010101001', 'Hillview'), period_start: '2026-09-01', data_through: '2026-09-30' }])])
+      .toEqual([['Hillview', true], ['Lakeside', true], ['Lakeside', true], ['Hillview', true], ['Hillview', true], ['Lakeside', true]])
   })
 })
 

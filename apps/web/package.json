@@ -49,7 +49,7 @@
     "@vitest/istanbul-lib-coverage": "2.1.0",
     "@vitest/istanbul-lib-source-maps": "2.1.0",
     "feather-testing-core": "0.6.0",
-    "feather-testing-postgres": "0.3.0",
+    "feather-testing-postgres": "0.4.0",
     "jsdom": "^30.1.3",
     "msw": "3.0.4",
     "msw-storybook-addon": "3.0.3",

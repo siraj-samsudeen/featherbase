@@ -14,7 +14,7 @@ import { cleanup, configure, fireEvent, screen, waitFor, within } from '@testing
 import { describe, vi } from 'vitest'
 import { rowHref, tableHref } from 'shared'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp, onScreen, inside, byTestId } from '../pg-test'
+import { test, expect, renderApp, onScreen, byTestId } from '../pg-test'
 import {
   add, ENCHAKKAL_PLANTS, PLANTS, SITE, limitRows, listColumns, readerRoles, seedOrganisation, type OrgIds,
 } from '../organisation-fixture'
@@ -550,13 +550,13 @@ describe('relational-navigation', () => {
       const org = await seedOrganisation(admin)
       await openRowPage(admin, SITE, org[SITE]!.Enchakkal!)
       await showTab('Map')
-      await inside(onScreen(), 'map-center', (el) => el.assertText('Enchakkal'))
+      await onScreen().within(byTestId('map-center'), (el) => el.assertText('Enchakkal'))
     })
     await step('the user clicks the region Kerala on the map', async () => {
       fireEvent.click(await screen.findByTestId('map-forward-Region'))
     })
     await step('Kerala shows in the drill pane', () => pane('Kerala'))
-    await step('the map is still centred on Enchakkal', () => inside(onScreen(), 'map-center', (el) => el.assertText('Enchakkal')))
+    await step('the map is still centred on Enchakkal', () => onScreen().within(byTestId('map-center'), (el) => el.assertText('Enchakkal')))
     await step('choosing to centre on Kerala redraws the map around Kerala', async () => {
       // #910 checklist 17: the drill pane's "Focus here" re-centres the map.
       fireEvent.click(await within(await pane('Kerala')).findByRole('button', { name: 'Focus here' }))

@@ -23,6 +23,7 @@ import { AppError } from './errors'
 import { INVALID_CREDENTIALS } from './auth'
 import { listSignInMethods, type SignInMethod } from './identities'
 import { switchedOn, TEST_MODE_PHRASE } from './env'
+import { ROSTER_LINK_ACTOR } from './roster-link-actor'
 
 // person-identities: the connected service is a Sign In Method row of kind
 // `delegated_password`, and the person is found through a linked identity,
@@ -115,6 +116,11 @@ export interface RosterLink {
 
 /** `linked_by` on a link a roster first sign-in made. */
 export const ROSTER_LINK = 'roster-first-sign-in'
+/** `linked_by` on a link the roster link made before anyone signed in (#1157). */
+export const ROSTER_LINK_RUN = ROSTER_LINK_ACTOR
+/** Every link made from a roster row: a sign-in through one must have the
+ *  service name the row's record. */
+export const ROSTER_LINKS = [ROSTER_LINK, ROSTER_LINK_RUN]
 
 const COLUMN_NAME = /^[a-z][a-z0-9_]*$/
 const ROSTER_COLUMNS = ['sign_in_id_column', 'record_number_column', 'person_column', 'name_column', 'status_column'] as const
@@ -382,7 +388,7 @@ export function recordKeyFrom(settings: Record<string, unknown> | null): string 
  *  the method's settings no longer say where, rather than stop checking. */
 export async function recordToName(cfg: DelegatedLoginConfig, identity: string | null): Promise<{ key: string; record: string } | undefined> {
   const [link] = await sql`select subject, linked_by from sign_in_identity where id = ${identity}`
-  if (link?.linked_by !== ROSTER_LINK) {
+  if (!ROSTER_LINKS.includes(String(link?.linked_by))) {
     let key: string | null
     try {
       key = recordKeyFrom(cfg.method.settings)
