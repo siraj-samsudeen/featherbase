@@ -142,6 +142,15 @@ at the repository root.
   stores`, `Stores and subcategories` or `No filter`), the Dive's own state keys, whether the Dive
   says when it has drawn (`ready_signal`), and its optional `quick_view`. No business data. Every
   app role reads it, because the platform opens an app only for people who can read its entry Table.
+  - **`pickers_in_dive`** (#1159, off by default): the Dive has its own Store and Month pickers
+    (v16 of the sales Dive, data-warehouse#4739). With it on, the embed session's `initial_state` is
+    exactly `reach` (`{ "<plant>": null | ["<subcategory>", ...] }` for every place the reader has,
+    `null` for the whole store), `store` (only when the address names one of the reader's), `month`
+    (`this` or `last`, from the address, default `this`) and `app_origin`. It carries none of the
+    one-store keys, because the Dive takes `reach` beside one of them as a scope error. The bar offers
+    no Store or Month for that report, and the page opens at once on the address's store. It draws
+    no heading over the Dive, only over its cached view, which is for the address's store or the
+    reader's first store A–Z. Turn it on only once the row's Dive reads these keys.
 - **`baseTables.read`**: the core Tables Dash reads by the columns named there. An instance lists all
   eight in the `dash.linked_tables` setting. `baseTables.propose` is what Your sections may propose.
 - **The scope provider, `org_chart`.** It reads the six Tables in `scopeProvider.tables`, each of
