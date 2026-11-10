@@ -347,6 +347,7 @@ describe('#432: every write entry point is covered', () => {
     'POST /api/set_password': 'credentials',
     'POST /api/people/names': 'read',
     'POST /api/access_request': 'audit: records an access request for the person asking (#955)',
+    'POST /api/access_request/:id/:decision': 'access control: a System Manager approves (roles through the Person save, app access through the app action), declines or dismisses a request; one activity row each (#1173)',
     'POST /api/row_titles': 'read',
     'POST /api/people/:id/identities': 'person identities',
     'POST /api/people/:id/identifiers': 'person identifiers',
