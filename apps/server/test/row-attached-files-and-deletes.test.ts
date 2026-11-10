@@ -162,6 +162,17 @@ describe('#609: attaching follows the row too', () => {
     await expectStatus(await agent.fetch(FILE.rowUrl(files.mine), { method: 'DELETE' }), 403)
   })
 
+  test('a comment on a file left naming a Table but no row opens as one on a loose file', async ({ admin, createUser }) => {
+    const { agent, files } = await setup(admin, createUser)
+    const note = await admin.post<Record<string, any>>('/api/save_row', {
+      table: 'Comment',
+      row: { ref_table: 'File', ref_name: files.loose, content: 'on the logo' },
+    })
+    // As only a direct write could leave it.
+    await sql`update file set ref_table = 'File', ref_name = null where row_id = ${files.loose}`
+    await expectStatus(await agent.fetch(COMMENT.rowUrl(note.row_id)), 200)
+  })
+
   test('a file with a comment of its own is not moved onto another file', async ({ admin, createUser }) => {
     const { files } = await setup(admin, createUser)
     await admin.post('/api/save_row', { table: 'Comment', row: { ref_table: 'File', ref_name: files.loose, content: 'on the logo' } })

@@ -57,7 +57,9 @@ const controller: TableController = {
         throw new AppError('ValidationError', 'This method does not return a verified email address', {
           new_person: kind === 'password' ? 'create or refuse' : 'refuse',
         })
-      const selfLink = row.self_link !== undefined ? truthy(row.self_link) : truthy(old?.self_link)
+      // An insert's row carries every column's default and an update's is
+      // merged with the saved one, so self_link is always present.
+      const selfLink = truthy(row.self_link)
       if (selfLink && !caps.trustedSubject)
         throw new AppError('ValidationError', 'People cannot link this method themselves: it cannot vouch for a permanent ID', {
           self_link: 'off',
@@ -99,18 +101,19 @@ const controller: TableController = {
           throw new AppError('ValidationError', 'A connected service needs an https address (or a local stub) while it is on', { service_url: 'https required' })
       }
       if (isNew || !old) return usableCheck()
-      const enabledChanged = row.enabled !== undefined && truthy(old.enabled) !== truthy(row.enabled)
-      const clientChanged = row.client_id !== undefined && String(row.client_id ?? '') !== String(old.client_id ?? '')
+      // Every update path hands the hooks the saved row merged with the
+      // change, so each column below is present on row (null at most).
+      const enabledChanged = truthy(old.enabled) !== truthy(row.enabled)
+      const clientChanged = String(row.client_id ?? '') !== String(old.client_id ?? '')
       // #693: links ruled by the domain list stop signing in when it narrows.
-      const domainsChanged =
-        row.allowed_email_domains !== undefined && String(row.allowed_email_domains ?? '') !== String(old.allowed_email_domains ?? '')
+      const domainsChanged = String(row.allowed_email_domains ?? '') !== String(old.allowed_email_domains ?? '')
       if (!enabledChanged && !clientChanged && !domainsChanged) return usableCheck()
       await assertNoAdminLockout(
         String(old.row_id),
         {
-          enabled: row.enabled !== undefined ? truthy(row.enabled) : truthy(old.enabled),
-          client_id: String((row.client_id !== undefined ? row.client_id : old.client_id) ?? ''),
-          allowed_email_domains: String((row.allowed_email_domains !== undefined ? row.allowed_email_domains : old.allowed_email_domains) ?? ''),
+          enabled: truthy(row.enabled),
+          client_id: String(row.client_id ?? ''),
+          allowed_email_domains: String(row.allowed_email_domains ?? ''),
         },
         tx,
       )

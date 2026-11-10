@@ -422,6 +422,18 @@ describe('#559: a Table marked as deciding scope', () => {
     expect(after.lines.map((line) => line.place)).toEqual(['South'])
   })
 
+  test('a non-manager may save the parent with its marked rows echoed back, empty values included', async ({ admin, createUser }) => {
+    await makeTable(admin, { name: 'Roster Line 559', kind: 'sub_table', decides_scope: true, columns: ['place', 'note'] })
+    await makeTable(admin, { name: 'Roster Sheet 559', columns: ['title', { column_name: 'lines', column_type: 'Sub-table', row_table: 'Roster Line 559' }] })
+    const user = await createUserWithRole(admin, createUser, { role: 'Sheet Writer 559', table: ['Roster Sheet 559'], ...ALL_ACTIONS })
+    const sheet = await admin.post<{ row_id: string }>(tableRef('Roster Sheet 559').url, { title: 'shared', lines: [{ place: 'South' }] })
+    const loaded = await user.get<{ updated_at: string; lines: Record<string, unknown>[] }>(tableRef('Roster Sheet 559').rowUrl(sheet.row_id))
+    expect(loaded.lines[0].note).toBeNull()
+    const saved = await patchDoc<{ title: string }>(user, tableRef('Roster Sheet 559').rowUrl(sheet.row_id),
+      { updated_at: loaded.updated_at, title: 'renamed', lines: loaded.lines })
+    expect(saved.title).toBe('renamed')
+  })
+
   // Codex round 2: deleting or renaming a parent removes or re-points its
   // child rows directly, so a marked Sub-table guards those too.
   async function sheetWithMarkedLines(admin: TestClient, createUser: Parameters<typeof createUserWithRole>[1]) {

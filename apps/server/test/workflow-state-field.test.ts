@@ -1,5 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
+import { expectStatus } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
@@ -87,6 +88,32 @@ describe('Workflow state_field binding', () => {
     await setup(admin)
     const doc = await saveDoc(DT, { title: 'smuggle', ticket_status: 'Closed' }, 'Administrator')
     expect(doc.ticket_status).toBe('Open')
+  })
+
+  test('once its bound column is removed from the Table, a row saves with no state', async ({ admin }) => {
+    await setup(admin)
+    await expectStatus(await admin.fetch(`/api/table_def/${encodeURIComponent(DT)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ remove_columns: ['ticket_status'], columns: [{ column_name: 'title', column_type: 'Data' }] }),
+    }), 200)
+    const doc = await saveDoc(DT, { title: 'after removal' }, 'Administrator')
+    expect(doc).toMatchObject({ title: 'after removal' })
+    expect(doc).not.toHaveProperty('ticket_status')
+  })
+
+  test('a direct save cannot clear the workflow-bound column', async ({ admin }) => {
+    await setup(admin)
+    const doc = await saveDoc(DT, { title: 'locked' }, 'Administrator')
+    await expect(saveDoc(DT, { row_id: doc.row_id, updated_at: (doc.updated_at as Date).toISOString(), ticket_status: null }, 'Administrator'))
+      .rejects.toThrow('ticket_status is controlled by workflow')
+  })
+
+  test('a direct save cannot give a state to a row stored with none', async ({ admin }) => {
+    await setup(admin)
+    const doc = await saveDoc(DT, { title: 'stateless' }, 'Administrator')
+    const [row] = await sql`update featherbase.wf_bind_ticket set ticket_status = null where row_id = ${String(doc.row_id)} returning updated_at`
+    await expect(saveDoc(DT, { row_id: doc.row_id, updated_at: (row.updated_at as Date).toISOString(), ticket_status: 'Closed' }, 'Administrator'))
+      .rejects.toThrow('ticket_status is controlled by workflow')
   })
 
   test('rejects a workflow that binds a nonexistent column', async ({ admin }) => {

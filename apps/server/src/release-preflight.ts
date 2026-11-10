@@ -109,7 +109,7 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
 /** 2. What the stored settings make required (D7). Preflight runs before
  *  the migrations, so on a new database there are no settings yet, and
  *  nothing to require. */
-export async function settingsRequirements(): Promise<Pick<CheckVariablesOptions, 'conditions' | 'named'>> {
+export async function settingsRequirements(): Promise<Required<Pick<CheckVariablesOptions, 'conditions' | 'named'>>> {
   const conditions = new Set<SettingsCondition>()
   const named: { name: string; reason: string }[] = []
   if (!(await installed())) return { conditions, named }

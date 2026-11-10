@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test, patchDoc } from './pg-test'
 import { sql } from '../src/db'
-import { reapplyCustomFields } from '../src/custom-fields'
+import { applyCustomField, reapplyCustomFields } from '../src/custom-fields'
 import { getMeta, invalidateMeta } from '../src/meta'
 import type { TestClient } from 'feather-testing-postgres'
 import { expectStatus } from './fixtures'
@@ -111,6 +111,20 @@ describe('CUST-001: custom fields', () => {
     // Column still present with data (non-destructive).
     const [row] = await sql.unsafe(`select ${FIELD} from person where row_id = 'Administrator'`)
     expect(row[FIELD]).toBe('vip')
+  })
+
+  test('a field recorded with no type, requirement or list flag is plain text, optional and off the list', async () => {
+    await applyCustomField({ dt: 'Person', column_name: 'srv_bare_field' } as Parameters<typeof applyCustomField>[0])
+    invalidateMeta('Person')
+    expect((await getMeta('Person')).columns.find((c) => c.column_name === 'srv_bare_field'))
+      .toMatchObject({ column_type: 'Data', reqd: false, in_list_view: false })
+  })
+
+  test('a layout field adds no database column', async () => {
+    await applyCustomField({ dt: 'Person', column_name: 'srv_break', column_type: 'Section Break' } as Parameters<typeof applyCustomField>[0])
+    expect(await sql`select 1 from information_schema.columns where table_name = 'person' and column_name = 'srv_break'`).toEqual([])
+    invalidateMeta('Person')
+    expect((await getMeta('Person')).columns.some((c) => c.column_name === 'srv_break')).toBe(true)
   })
 
   test('re-applying skips a record whose Table no longer exists and still applies the rest', async ({ admin }) => {

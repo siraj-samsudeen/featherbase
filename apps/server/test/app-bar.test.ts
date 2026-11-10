@@ -132,6 +132,13 @@ describe("declared bar controls: the picker's options", () => {
     expect(await admin.get('/api/app_bar/barproof?report=none')).toEqual({ controls: [{ picker: 'Part', sets: 'part', dependsOn: ['report'], options: [] }] })
   })
 
+  test('a picker hidden while an address key is set names that key to the bar', async ({ admin }) => {
+    const directory = await barProof((manifest) => ({ ...manifest, bar: [{ picker: 'Store', options: 'stores', sets: 'store', hiddenWhen: 'report' }] }))
+    expect(await discoverPackages([directory, ROSTER])).toEqual([])
+    await admin.post('/api/install_app', { name: 'barproof' })
+    expect(await admin.get('/api/app_bar/barproof')).toMatchObject({ controls: [{ picker: 'Store', sets: 'store', hiddenWhen: 'report' }] })
+  })
+
   test('an outbound read gets what its prepare step read in the transaction, and reads nothing itself', async ({ admin }) => {
     const directory = await barProof((manifest) => ({ ...manifest, bar: [{ picker: 'Note', options: 'prepared_outbound', sets: 'note' }] }))
     expect(await discoverPackages([directory, ROSTER])).toEqual([])

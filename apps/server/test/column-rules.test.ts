@@ -144,6 +144,16 @@ describe('line items outside a grant', () => {
     expect(saved).toMatchObject({ label: 'O-1b' })
     expect((await admin.get<{ lines: { qty: number }[] }>(`/api/table/Cg%20Order/${row}`)).lines).toMatchObject([{ qty: 1 }])
   })
+
+  test('a grid row sent back without its row id is a new row, and refused', async ({ admin, createUser }) => {
+    const { row } = await order(admin)
+    const reader = await createUser({ roles: ['Cg Reader'] })
+    const current = await reader.get<{ updated_at: string; lines: Record<string, unknown>[] }>(`/api/table/Cg%20Order/${row}`)
+    const { row_id: _lineId, ...line } = current.lines[0]
+    const res = await reader.fetch('/api/save_row', { method: 'POST', body: JSON.stringify({ table: 'Cg Order', row: {
+      row_id: row, updated_at: current.updated_at, label: 'O-1b', lines: [line] } }) })
+    await expectStatus(res, 403)
+  })
 })
 
 describe('listed grants on platform Tables', () => {
