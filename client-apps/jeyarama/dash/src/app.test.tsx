@@ -345,6 +345,33 @@ describe('a report on the rendered page', () => {
   const plain = { state: 'ready', no_quick_view: true, heading: { name: null, sections: [], reasons: [] } }
   const frame = { frame: 'https://embed-motherduck.com/sandbox/#session=made-up' }
 
+  // #1159: the Dive has its own Store and Month pickers; the page passes it the address's choice.
+  describe('a report whose Dive has its own pickers', () => {
+    const PICKERS = { key: 'sales', name: 'Sales versus target', takes_store: false, takes_month: false, no_filter: false, pickers_in_dive: true }
+    const headed = { ...report('9901', 'Silk'), pickers_in_dive: true, heading: { name: 'Lakeside', sections: [], reasons: [{ basis: 'store_manager', sections: [] }] } }
+    afterEach(() => { reportsAnswer = [SALES, WHOLE] })
+
+    it("opens at once with the address's store and month, asking no store list, and draws no heading over the Dive", async () => {
+      reportsAnswer = [PICKERS]
+      const { answer, view, container, unmount } = await open('?store=9901&month=last')
+      const opened = [asked('report'), asked('stores')]
+      await answer('report', headed)
+      await answer('embed_session', frame)
+      expect([opened, view(), container.querySelector('[data-testid=report-heading]')])
+        .toEqual([[[{ store: '9901', month: 'last' }], []], 'dive', null])
+      await unmount()
+    })
+
+    it('names the store over the cached view while the Dive is not there', async () => {
+      reportsAnswer = [PICKERS]
+      const { answer, view, container, unmount } = await open('?store=9901')
+      await answer('report', headed)
+      await answer('embed_session', { unreachable: true })
+      expect([view(), container.querySelector('[data-testid=heading-title]')?.textContent]).toEqual(['quick', 'Lakeside'])
+      await unmount()
+    })
+  })
+
   it('opens a report taking no store at once, naming the report, with no store and no store check', async () => {
     const { answer, view, container, unmount } = await open('?report=whole')
     expect([asked('report'), asked('stores')]).toEqual([[{ report: 'whole', month: 'this' }], []])

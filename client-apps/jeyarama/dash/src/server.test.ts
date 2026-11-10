@@ -346,6 +346,52 @@ describe("the stores read (the bar's store picker)", () => {
   })
 })
 
+// #1159: a report whose Dive has its own Store and Month pickers.
+describe('a report whose Dive has its own pickers', () => {
+  const PICKERS = { ...SALES, pickers_in_dive: 1, ready_signal: 1 }
+  const TWO = [place('9902', '9902'), place('9901 / Section: Sarees', '9901', ['010101001'])]
+  const ok = () => Promise.resolve(new Response(JSON.stringify({ session: 'session-made-up' }), { status: 200 }))
+  function sent() {
+    const calls: { url: string; init: RequestInit }[] = []
+    setEmbedFetch(async (url, init) => { calls.push({ url: String(url), init: init! }); return ok() })
+    return () => JSON.parse(String(calls[0].init.body))
+  }
+
+  it('offers the bar no store and no month', async () => {
+    const { ctx } = context({ places: TWO, reports: [PICKERS] })
+    expect([await reads.stores(ctx), await reads.months(ctx)]).toEqual([[], []])
+  })
+
+  it('tells the page the Dive has the pickers, so it takes neither from the bar', async () => {
+    const { ctx } = context({ places: TWO, reports: [PICKERS] })
+    expect(await reads.reports(ctx)).toEqual([{ key: 'sales', name: 'Sales versus target', takes_store: false, takes_month: false, no_filter: false, pickers_in_dive: true }])
+  })
+
+  it('opens the Dive with the reach of every place, and the store and month from the address', async () => {
+    const body = sent()
+    const { ctx } = context({ places: TWO, reports: [PICKERS], payload: { store: '9901', month: 'last', app_origin: 'https://dash.example.test' } })
+    await reads.embed_session(ctx)
+    expect(body()).toEqual({ username: 'svc-made-up',
+      initial_state: { reach: { 9901: ['010101001'], 9902: null }, store: '9901', month: 'last', app_origin: 'https://dash.example.test' } })
+  })
+
+  it("leaves out a store from the address that isn't the reader's, rather than refusing", async () => {
+    const body = sent()
+    const { ctx } = context({ places: TWO, reports: [PICKERS], payload: { store: '9999' } })
+    await reads.embed_session(ctx)
+    expect(body().initial_state).toEqual({ reach: { 9901: ['010101001'], 9902: null }, month: 'this' })
+  })
+
+  it("shows the cached view for the address's store, or the reader's first store A–Z, naming it", async () => {
+    const named = async (payload: Record<string, unknown>) => {
+      const answer = await reads.report(context({ places: TWO, reports: [PICKERS], payload }).ctx) as { heading: { name: string }; pickers_in_dive?: boolean }
+      return [answer.heading.name, answer.pickers_in_dive]
+    }
+    expect([await named({ store: '9901' }), await named({}), await named({ store: '9999' })])
+      .toEqual([['Lakeside', true], ['Hillview', true], ['Hillview', true]])
+  })
+})
+
 describe('the report read', () => {
   it("answers the chosen store's report", async () => {
     const { ctx } = context({ payload: { store: '9901' } })

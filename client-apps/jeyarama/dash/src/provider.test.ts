@@ -30,10 +30,10 @@ const PLACEMENTS: Row[] = [
   { row_id: 'p5', store: 'BBB', section: 'BBB-GF-Tops', subcategory: '000000005', starts_on: '2026-01-01', ends_on: null },
 ]
 
-function fake(jobs: Row[], { employee = { row_id: 'E1', person: 'me', status: 'Current' } as Row } = {}): Documents {
+function fake(jobs: Row[], { employee = { row_id: 'E1', person: 'me', status: 'Current' } as Row, plants = PLANTS } = {}): Documents {
   const tables: Record<string, Row[]> = {
     Employee: [employee], 'Job Assignment': jobs.map((job, i) => ({ row_id: `J${i}`, employee: 'E1', starts_on: '2026-01-01', ends_on: null, ...job })),
-    Site: SITES, Plant: PLANTS, Section: SECTIONS, 'Section Subcategory': PLACEMENTS,
+    Site: SITES, Plant: plants, Section: SECTIONS, 'Section Subcategory': PLACEMENTS,
   }
   return {
     async list(table, { filters = [], limit_start = 0, limit_page_length = 500 }) {
@@ -47,6 +47,21 @@ const reach = (...jobs: Row[]) => reachOf(fake(jobs), 'me', ON)
 const stores = async (...jobs: Row[]) => (await reach(...jobs)).places.map(place => place.filters)
 
 describe('who sees what', () => {
+  // #1155: a site may hold two Store plants; its readers reach both. Other plant types stay out.
+  describe('a site with two Store plants', () => {
+    const plants = [...PLANTS, { row_id: '9911', site: 'AAA', plant_type: 'Store' }, { row_id: '9291', site: 'AAA', plant_type: 'Shop-in-shop' }]
+    const reachOn = (job: Row) => reachOf(fake([job], { plants }), 'me', ON).then(answer => answer.places.map(place => place.filters))
+
+    it('gives a Store Manager both of them whole, and not the shop-in-shop', async () => {
+      expect(await reachOn({ job: 'Store Manager', site: 'AAA' })).toEqual([{ store: ['9901'] }, { store: ['9911'] }])
+    })
+
+    it("gives a section's reader that section in both", async () => {
+      expect(await reachOn({ job: 'Team Leader', site: 'AAA', section: 'AAA-GF-Tops' }))
+        .toEqual([{ store: ['9901'], subcategory: ['000000001'] }, { store: ['9911'], subcategory: ['000000001'] }])
+    })
+  })
+
   it('Staff and a Team Leader see their section\'s current subcategories', async () => {
     for (const job of ['Staff', 'Team Leader'])
       expect(await stores({ job, site: 'AAA', section: 'AAA-GF-Tops' })).toEqual([{ store: ['9901'], subcategory: ['000000001'] }])
