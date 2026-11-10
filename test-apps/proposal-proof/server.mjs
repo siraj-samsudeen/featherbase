@@ -20,6 +20,7 @@ export const actions = {
     if (payload.op === 'propose') return changeProposals.propose(payload.request)
     if (payload.op === 'approve') return changeProposals.approve(payload.id, payload.decision)
     if (payload.op === 'reject') return changeProposals.reject(payload.id, payload.decision)
+    if (payload.op === 'withdraw') return changeProposals.withdraw(payload.id)
     if (payload.op === 'needs_fresh_review') return changeProposals.needsFreshReview(payload.id, payload.decision)
     throw new Error('Unknown probe')
   },
