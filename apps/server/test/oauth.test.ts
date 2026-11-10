@@ -724,6 +724,10 @@ describe('the OAuth steps refuse what they cannot use', () => {
     expect(() => redeemHandoffCode(abandoned, 'tok-abandoned', 'localhost')).toThrow('Invalid or expired sign-in code')
   })
 
+  test('a callback with no state is refused to the API caller', async ({ api }) => {
+    await expectRefused(api.fetch('/api/oauth/google/callback?code=c'), 401, 'Missing OAuth state')
+  })
+
   test('a browser sign-in whose call to Google fails outright lands on the sign-in page, logged', async ({ api }) => {
     await configureGoogle({ client_id: 'client-1', allowed_email_domains: '*' })
     const start = await api.fetch('/api/oauth/google/login')

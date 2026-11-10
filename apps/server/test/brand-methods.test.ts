@@ -22,3 +22,15 @@ describe('a sign-in method with a blank label', () => {
     expect(await labelOf(api, 'google')).toBe('Google')
   })
 })
+
+describe('a sign-in method that cannot sign anyone in', () => {
+  test('password turned off is not listed', async ({ api }) => {
+    await sql`update sign_in_method set enabled = false where kind = 'password'`
+    expect(await labelOf(api, 'password')).toBeUndefined()
+  })
+
+  test('Google turned off is not listed', async ({ api }) => {
+    await configureGoogle({ client_id: 'client-1', enabled: false })
+    expect(await labelOf(api, 'google')).toBeUndefined()
+  })
+})
