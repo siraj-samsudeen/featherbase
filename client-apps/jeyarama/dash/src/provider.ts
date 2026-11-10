@@ -76,7 +76,7 @@ const BASIS: Record<string, string> = {
 }
 const EVERY_STORE = new Set(['Director', 'Managing Director', 'Chief Operating Officer'])
 /** The plant types a store sells through, which a site's readers reach. */
-const SOLD_THROUGH = ['Store', 'Shop-in-shop']
+const SOLD_THROUGH = ['Store', 'Shop-in-shop', 'E-commerce fulfilment']
 
 class Places {
   private merged = new Map<string, { store: string; codes: Set<string> | null; basis: Set<string>; reasons: Map<string, Reason> }>()
@@ -112,9 +112,10 @@ export async function reachOf(documents: Documents, person: string, on: string):
   const sites = await all(documents, T.site)
   const stores = sites.filter(site => checked(site.is_store))
   const siteOf = new Map(sites.map(site => [id(site), site]))
-  // A store sells through its Store plants and, the owner decided on 10-Nov-2026, its Shop-in-shop
-  // plants (a Gold House inside it): a site's readers reach each of them (#1155). A warehouse or an
-  // e-commerce fulfilment plant holds no store's sales; whether its readers reach the latter is open.
+  // #1155 (owner, 10-Nov-2026): a site's readers reach every plant on it that sells: Store,
+  // Shop-in-shop (a Gold House inside it) and E-commerce fulfilment. A warehouse sells nothing. A
+  // retired plant the platform's reads leave out. Plant.is_active waits for every instance to have
+  // the column (#1161): a provider read that fails refuses every reader.
   const plantsOf = new Map<string, string[]>()
   for (const plant of await all(documents, T.plant, [['plant_type', 'in', SOLD_THROUGH]]))
     plantsOf.set(exact(plant.site), [...(plantsOf.get(exact(plant.site)) ?? []), id(plant)])

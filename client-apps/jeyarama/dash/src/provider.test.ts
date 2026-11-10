@@ -47,31 +47,22 @@ const reach = (...jobs: Row[]) => reachOf(fake(jobs), 'me', ON)
 const stores = async (...jobs: Row[]) => (await reach(...jobs)).places.map(place => place.filters)
 
 describe('who sees what', () => {
-  // #1155 (owner, 10-Nov-2026): a site's readers reach every active plant on it that sells: Store,
-  // Shop-in-shop and E-commerce fulfilment, not only the last one read. A warehouse stays out, and
-  // so does a plant marked not active (`is_active` false); a retired one the platform leaves out.
+  // #1155 (owner, 10-Nov-2026): a site's readers reach every plant on it that sells: Store,
+  // Shop-in-shop and E-commerce fulfilment, not only the last one read. A warehouse stays out; a
+  // retired plant the platform leaves out. Plant.is_active waits for #1161.
   describe('a site with more than one plant', () => {
-    const plants = [...PLANTS, { row_id: '9911', site: 'AAA', plant_type: 'Store', is_active: true },
-      { row_id: '9291', site: 'AAA', plant_type: 'Shop-in-shop', is_active: true },
-      { row_id: '8191', site: 'AAA', plant_type: 'E-commerce fulfilment', is_active: null },
-      { row_id: '9912', site: 'AAA', plant_type: 'Store', is_active: false }]
-    const reachOn = (job: Row, documents?: Documents) =>
-      reachOf(documents ?? fake([job], { plants }), 'me', ON).then(answer => answer.places.map(place => place.filters))
+    const plants = [...PLANTS, { row_id: '9911', site: 'AAA', plant_type: 'Store' },
+      { row_id: '9291', site: 'AAA', plant_type: 'Shop-in-shop' },
+      { row_id: '8191', site: 'AAA', plant_type: 'E-commerce fulfilment' }]
+    const reachOn = (job: Row) => reachOf(fake([job], { plants }), 'me', ON).then(answer => answer.places.map(place => place.filters))
 
-    it('gives a Store Manager each Store, Shop-in-shop and E-commerce plant whole, and no warehouse or inactive plant', async () => {
+    it('gives a Store Manager each Store, Shop-in-shop and E-commerce plant whole, and no warehouse', async () => {
       expect(await reachOn({ job: 'Store Manager', site: 'AAA' })).toEqual(['8191', '9291', '9901', '9911'].map(store => ({ store: [store] })))
     })
 
     it("gives a section's reader that section in each of them", async () => {
       expect(await reachOn({ job: 'Team Leader', site: 'AAA', section: 'AAA-GF-Tops' })).toEqual(['8191', '9291', '9901', '9911']
         .map(store => ({ store: [store], subcategory: ['000000001'] })))
-    })
-
-    it('counts every plant as active on an instance whose Plant Table has no is_active, rather than failing', async () => {
-      const documents = fake([{ job: 'Store Manager', site: 'AAA' }], { plants })
-      const strict: Documents = { list: (table, args) => table === 'Plant' && args.fields.includes('is_active')
-        ? Promise.reject(new Error('Unknown column is_active')) : documents.list(table, args) }
-      expect(await reachOn({ job: 'Store Manager', site: 'AAA' }, strict)).toEqual(['8191', '9291', '9901', '9911', '9912'].map(store => ({ store: [store] })))
     })
   })
 
