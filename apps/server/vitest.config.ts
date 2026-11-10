@@ -118,8 +118,6 @@ export default defineConfig({
       // Stage 3 (branches), measured the same way: 332 uncovered in pass 2,
       // capped with a margin of 5 because the count moves a little run to
       // run. Of those left, no test can take these:
-      // - the real fetch behind the Google seam (oauth.ts exchangeCode, token
-      //   and userinfo), which would call Google itself;
       // - index.ts webDist's '' arm, taken only when the web suite loads this
       //   module under jsdom;
       // - meta.ts caching a slug map or a view's definition after an
