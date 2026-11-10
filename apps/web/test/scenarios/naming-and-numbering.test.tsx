@@ -7,7 +7,7 @@ import { tableSlug } from 'shared'
 import { screen } from '@testing-library/react'
 import { describe } from 'vitest'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderSession, byTestId, inside, type Session } from '../pg-test'
+import { test, expect, renderSession, byTestId, type Session } from '../pg-test'
 
 const scenario = scenarioFor(test, 'naming-and-numbering')
 
@@ -68,7 +68,7 @@ describe('naming-and-numbering', () => {
           ((await admin.get(`/api/table/Plant/PLANT-8151`)) as { plant_code: string }).plant_code === '8159')
     })
     await step('the plant keeps the id PLANT-8151', () =>
-      inside(session, 'form-id-out-of-step', (notice) => notice.assertText('This row keeps the id PLANT-8151.')))
+      session.within(byTestId('form-id-out-of-step'), (notice) => notice.assertText('This row keeps the id PLANT-8151.')))
     await step('the form offers Rename to PLANT-8159', async () => {
       await session.clickButton('Rename to PLANT-8159')
       // The rename box has no label or placeholder for assertValue to find it by.

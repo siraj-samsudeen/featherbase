@@ -8,7 +8,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe } from 'vitest'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, insideOf, screenSession } from '../pg-test'
+import { test, expect, screenSession } from '../pg-test'
 import { Assets, type Row, istLabel, realTime } from './assets'
 
 const scenario = scenarioFor(test, 'asset-repair-jobs')
@@ -230,7 +230,7 @@ describe('asset-repair-jobs', () => {
     await step('Ravi fixed "Not cooling"', async () => { state = await fixedByRavi(assets, 'Not cooling') })
     await step('store staff confirm it works', async () => {
       await openAsset(assets, 'store staff', state.assetId)
-      await insideOf(screenSession(), `[aria-labelledby="confirm-jobs"] article[aria-label=${JSON.stringify(state.problem)}]`,
+      await screenSession().within(`[aria-labelledby="confirm-jobs"] article[aria-label=${JSON.stringify(state.problem)}]`,
         (job) => job.clickButton('Confirm it works'))
         .within('[aria-labelledby="past-jobs"]', (past) => past.assertText('Closed · confirmed'))
     })

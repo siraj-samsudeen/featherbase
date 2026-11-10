@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, vi } from 'vitest'
 import { tableHref } from 'shared'
 import { grantRole } from 'server/test/fixtures'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp, onScreen, inside, byTestId } from '../pg-test'
+import { test, expect, renderApp, onScreen, byTestId } from '../pg-test'
 import { SITE, listColumns, readerRoles, seedOrganisation } from '../organisation-fixture'
 
 configure({ asyncUtilTimeout: 10_000 })
@@ -286,7 +286,7 @@ describe('list-view', () => {
       expect(columnLabels()).not.toContain('Floor')
     }))
     await step('the list is still sorted the way they left it', async () => {
-      await inside(onScreen(), 'col-section', (el) => el.assertText('↓'))
+      await onScreen().within(byTestId('col-section'), (el) => el.assertText('↓'))
       const values = await waitFor(() => {
         const v = columnValues('section')
         expect(v).toHaveLength(2)

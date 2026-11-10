@@ -16,7 +16,7 @@ import { invalidateSources } from 'server/src/sources/registry'
 import { discoverPackages } from 'server/src/runtime-packages'
 import { scenarioFor } from 'server/test/scenario'
 import { clearSession } from '../../src/lib/import-session'
-import { test, expect, renderApp, onScreen, inside, insideOf, byTestId } from '../pg-test'
+import { test, expect, renderApp, onScreen, byTestId } from '../pg-test'
 
 const scenario = scenarioFor(test, 'tables-and-fields')
 const WAIT = { timeout: 15_000 }
@@ -188,10 +188,10 @@ async function expectCopyable(user: User, expected: string[]) {
   const button = within(storage).getByRole('button', { name: 'Copy storage' })
   button.focus()
   await onScreen().pressKey('Enter')
-  await insideOf(onScreen(), `${byTestId('table-storage')} [role="status"]`, (status) => status.assertText('Copied'))
+  await onScreen().within(`${byTestId('table-storage')} [role="status"]`, (status) => status.assertText('Copied'))
   const copied = await navigator.clipboard.readText()
   for (const value of expected) expect(copied, `clipboard missing ${value}`).toContain(value)
-  await inside(onScreen(), 'form-status', (status) => status.assertExactText('Saved'))
+  await onScreen().within(byTestId('form-status'), (status) => status.assertExactText('Saved'))
 }
 
 // ---- Renaming a Table (#871) ----

@@ -10,7 +10,7 @@ import { rowHref, tableHref } from 'shared'
 import { sql } from 'server/src/db'
 import { patchDoc } from 'server/test/fixtures'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp, onScreen, inside } from '../pg-test'
+import { test, expect, renderApp, onScreen, byTestId } from '../pg-test'
 
 configure({ asyncUtilTimeout: 10_000 })
 type Client = Parameters<typeof renderApp>[1]
@@ -237,9 +237,9 @@ class Explore {
   }
 
   /** A pane's count reads exactly this. */
-  counts = (n: number, count: number) => inside(onScreen(), `explore-pane${n}-count`, (c) => c.assertExactText(String(count)))
+  counts = (n: number, count: number) => onScreen().within(byTestId(`explore-pane${n}-count`), (c) => c.assertExactText(String(count)))
   /** A pane's sum shows this. */
-  sums = (n: number, sum: string) => inside(onScreen(), `explore-pane${n}-sum`, (s) => s.assertText(sum))
+  sums = (n: number, sum: string) => onScreen().within(byTestId(`explore-pane${n}-sum`), (s) => s.assertText(sum))
 }
 
 async function exploreSuppliersAndOrders(admin: Client) {
@@ -299,7 +299,7 @@ class RelationMap {
     await waitFor(() => expect(el).toHaveTextContent(text))
     return (el.textContent ?? '').trim()
   }
-  centredOn = (title: string) => inside(onScreen(), 'map-center', (center) => center.assertText(title))
+  centredOn = (title: string) => onScreen().within(byTestId('map-center'), (center) => center.assertText(title))
 }
 
 describe('search-and-explore', () => {
