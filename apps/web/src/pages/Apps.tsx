@@ -12,7 +12,7 @@ interface CatalogApp {
   installed: boolean
   preparation: { state: 'needed' | 'preparing' | 'ready' | 'failed' | 'unavailable'; error?: string }
   declarations: {
-    tables: { name: string; label?: string }[]
+    tables: { name: string; label: string }[]
     permissions: { table: string; role: string; scope_mode?: 'all' | 'creator'; operations: Record<string, string[] | string | true> }[]
     roles: string[]
     settings: { name: string; required: boolean }[]
@@ -51,8 +51,8 @@ function WithIssueLinks({ text, repositoryUrl }: { text: string; repositoryUrl: 
 /** A merge commit says what it merged on its next line: show that, and the PR. */
 function commitTitle(message: string): string {
   const lines = message.split('\n').map(line => line.trim()).filter(Boolean)
-  const merged = /^Merge pull request (#\d+)/.exec(lines[0] ?? '')
-  return merged && lines[1] ? `${lines[1]} (${merged[1]})` : lines[0] ?? ''
+  const merged = /^Merge pull request (#\d+)/.exec(lines[0])
+  return merged && lines[1] ? `${lines[1]} (${merged[1]})` : lines[0]
 }
 
 function ThisBuild({ build }: { build: BuildInfo }) {
@@ -88,7 +88,7 @@ function describeGrant(operations: Record<string, string[] | string | true>): st
     const selection = operations[key]
     if (selection === '*') return `${label} (every column)`
     return Array.isArray(selection) ? `${label} (${selection.join(', ')})` : label
-  }).join(', ') || 'No grants'
+  }).join(', ')
 }
 
 function configurationPath(table: string, app: string) {
@@ -158,11 +158,11 @@ function AppDetails({ app, repositoryUrl }: { app: CatalogApp; repositoryUrl: st
         <h3 id="app-additions" className="font-semibold text-ink">What it adds</h3>
         <p className="mt-1 text-sm text-ink-muted">{tables.length} {tables.length === 1 ? 'Table' : 'Tables'}</p>
         <ul className="mt-2 flex flex-wrap gap-2 text-sm text-ink">
-          {tables.map(table => <li key={table.name} className="rounded-control bg-subtle px-2 py-1">{table.label ?? table.name}</li>)}
+          {tables.map(table => <li key={table.name} className="rounded-control bg-subtle px-2 py-1">{table.label}</li>)}
         </ul>
         <dl className="mt-3 space-y-2 text-sm text-ink-muted">
           {actions && <div><dt className="font-medium text-ink">Actions</dt><dd>{Object.keys(actions.operations).join(', ') || 'None'}</dd></div>}
-          {reads && <div><dt className="font-medium text-ink">Reads</dt><dd>{Object.keys(reads.operations).join(', ') || 'None'}</dd></div>}
+          {reads && <div><dt className="font-medium text-ink">Reads</dt><dd>{Object.keys(reads.operations).join(', ')}</dd></div>}
           {!!datasets?.length && <div><dt className="font-medium text-ink">Datasets and required data sources</dt><dd>{datasets.map(dataset => `${dataset.name} (source: ${dataset.source})`).join(', ')}</dd></div>}
           {!!jobs?.length && <div><dt className="font-medium text-ink">Scheduled jobs</dt><dd>{jobs.map(job => job.name).join(', ')}</dd></div>}
           {scopeProvider && <div><dt className="font-medium text-ink">Scope provider</dt><dd>{scopeProvider.name}{scopeProvider.identifiers?.length ? ` · Requires identifier systems: ${scopeProvider.identifiers.join(', ')}` : ''}</dd></div>}
@@ -205,7 +205,7 @@ function AppDetails({ app, repositoryUrl }: { app: CatalogApp; repositoryUrl: st
         <div className="space-y-2">
           <h4 className="text-sm font-semibold text-ink">Roles</h4>
           <p className="text-sm text-ink-muted">{roles.length ? roles.join(', ') : 'No app roles declared.'}</p>
-          {!!roleDefaults && Object.entries(roleDefaults).map(([role, bound]) => <p key={role} className="text-sm text-ink-muted">Default mapping: {role} → {bound.join(', ') || 'None'}</p>)}
+          {!!roleDefaults && Object.entries(roleDefaults).map(([role, bound]) => <p key={role} className="text-sm text-ink-muted">Default mapping: {role} → {bound.join(', ')}</p>)}
           {app.installed && <a className={buttonClasses({ variant: 'secondary' })} href={configurationPath('App Role Binding', app.name)}>Configure role mappings</a>}
         </div>
         <div className="space-y-2">
