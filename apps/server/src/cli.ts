@@ -54,6 +54,10 @@
 //   cli seed-pack apply <name>        apply an organisation's identifier systems (e.g. jeyarama); idempotent
 //   cli boot-check                    run the server's start-up refusal and the release preflight with this
 //                                     process's environment (rehearse a target's real variables); read-only
+//   cli roster:link <method> [--apply]
+//                                     link every current staff-roster row before they sign in, and end
+//                                     leavers' links (roster-link.ts, #1157): with no flag a dry run that
+//                                     changes nothing and prints counts only; --apply acts on it
 //   cli leavers:check [--apply [--accept <n>]]
 //                                     the daily warehouse exit-date check (leaver-check.ts): with no flag a
 //                                     dry run that changes nothing and prints counts only; --apply acts on
@@ -645,6 +649,22 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       io.out(`seed pack ${name}: added ${r.added.join(', ') || 'none'}; kept ${r.kept.join(', ') || 'none'}; sign-in methods linked ${r.methodsLinked.join(', ') || 'none'}; people_review ${r.peopleReview}`)
       break
     }
+    case 'roster:link': {
+      const [method] = positional
+      if (!method) throw new Error('usage: cli roster:link <method> [--apply]')
+      const { formatRosterLink, planRosterLink, runRosterLink } = await import('./roster-link')
+      if (!rest.includes('--apply')) {
+        io.out(formatRosterLink(await planRosterLink(method)))
+        io.out('roster link: dry run; nothing was changed')
+        break
+      }
+      const { assertDatabaseEnvironment } = await import('./db-environment')
+      await assertDatabaseEnvironment()
+      const run = await runRosterLink(method)
+      io.out(formatRosterLink(run.plan, run))
+      if (run.failed.length) throw new Error(`roster link could not finish ${run.failed.length} rows: ${run.failed.slice(0, 10).join('; ')}`)
+      break
+    }
     case 'leavers:check': {
       const { formatLeaverPlan, formatSummaryDelivery, planLeaverCheck, runLeaverCheck } = await import('./leaver-check')
       if (!rest.includes('--apply')) {
@@ -668,7 +688,7 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       await cmdConsole(io)
       break
     default:
-      io.out('usage: cli <migrate|seed|install-app|repin-apps|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|migrate:rehearse|leavers:check|settings:set|settings:apply|settings:export|settings:variables|settings:compare|mail:test|seed-pack|boot-check|console> [...]')
+      io.out('usage: cli <migrate|seed|install-app|repin-apps|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|migrate:rehearse|leavers:check|roster:link|settings:set|settings:apply|settings:export|settings:variables|settings:compare|mail:test|seed-pack|boot-check|console> [...]')
       return cmd ? 1 : 0
   }
   return 0
