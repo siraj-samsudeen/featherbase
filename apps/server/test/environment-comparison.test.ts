@@ -21,6 +21,7 @@ import {
   compareEnvironments,
   fingerprint,
   formatComparison,
+  parseVariableReport,
   variableReport,
   type VariableReport,
 } from '../src/environment-comparison'
@@ -131,6 +132,18 @@ describe('the variable report', () => {
     expect((await variableReport(KEY)).settings).toEqual({ applied: true, environment: null, revision: 'b'.repeat(40), matches_file: true })
     await sql`update single_value set value = 'Changed by hand' where table_name = 'System Settings' and field = 'app_name'`
     expect((await variableReport(KEY)).settings.matches_file).toBe(false)
+  })
+
+  test('an apply recorded before managed values were kept cannot say whether the settings still match', async () => {
+    await applyInstanceSettings({ settings: { 'System Settings': { app_name: 'Comparison Test' } } }, { by: 'Administrator', source: { revision: 'c'.repeat(40) } })
+    await sql`update instance_settings_apply set managed_values = null`
+    expect((await variableReport(KEY)).settings).toMatchObject({ applied: true, matches_file: null })
+  })
+
+  test('a data source naming a variable the environment requires leaves it required', async () => {
+    vi.stubEnv('FEATHERBASE_ENV', 'production')
+    await sql`insert into data_source (row_id, engine, url_env) values ('own', 'postgres', 'DATABASE_URL')`
+    expect(entry(await variableReport(KEY), 'DATABASE_URL').presence).toBe('required')
   })
 
   test('reads the applied revision and the drift under one lock, so an apply landing between them is not mixed in', async () => {
@@ -267,6 +280,24 @@ describe('the comparison', () => {
       { label: 'prod', report: await environment({ GOOGLE_CLIENT_SECRET: 'two' }) },
     ])
     expect(google.rows.find((r) => r.name === 'GOOGLE_CLIENT_SECRET')).toMatchObject({ verdict: 'problem', reason: 'differs between dev, staging and prod; it must be the same in every environment' })
+  })
+
+  test('a secret that must differ, set on one environment only, is missing where the other needs it', async () => {
+    const result = compareEnvironments([{ label: 'dev', report: await environment({ JWT_SECRET: JWT }) }, { label: 'prod', report: await environment({}) }])
+    expect(result.rows.find((r) => r.name === 'JWT_SECRET')).toMatchObject({ verdict: 'problem', reason: 'set on dev only; prod needs it' })
+  })
+
+  test('a required variable two environments lack says they need it', async () => {
+    const result = compareEnvironments([
+      { label: 'dev', report: await environment({}) },
+      { label: 'staging', report: await environment({}) },
+      { label: 'prod', report: await environment({ INSTANCE_ADDRESSES: ADDRESSES }) },
+    ])
+    expect(result.rows.find((r) => r.name === 'INSTANCE_ADDRESSES')).toMatchObject({ verdict: 'problem', reason: 'set on prod only; dev and staging need it' })
+  })
+
+  test('a file that is JSON but not an object is not a variable report', () => {
+    expect(() => parseVariableReport('5')).toThrow('it is not a variable report (the file)')
   })
 
   test('two environments applied with one section, or with no revision, are flagged', async () => {
