@@ -6,6 +6,9 @@ type Embed = { frame?: string; not_set_up?: boolean; unreachable?: boolean; refu
 /** Where the Dive is served from (featherbase.json's `frameOrigins`), and the message it posts once it has drawn (B7). */
 export const DIVE_ORIGIN = 'https://embed-motherduck.com'
 export const DIVE_READY_MESSAGE = 'dash:dive-ready'
+/** #1141: the name Dives published before #966's rename still post. */
+export const LEGACY_DIVE_READY_MESSAGE = 'feather-dash:dive-ready'
+const READY_MESSAGES: readonly unknown[] = [DIVE_READY_MESSAGE, LEGACY_DIVE_READY_MESSAGE]
 type ReportState = { state: string; no_quick_view?: boolean }
 
 export type View =
@@ -402,7 +405,7 @@ export function reportLoader<R = unknown>(read: (name: string, payload: Record<s
     message(event: { origin: string; source: unknown; data: unknown }, frameWindow: unknown, attempt = token) {
       if (!guard.alive(attempt)) return
       if (event.origin !== DIVE_ORIGIN || !frameWindow || event.source !== frameWindow) return
-      if ((event.data as { type?: unknown } | null)?.type !== DIVE_READY_MESSAGE || state.frameFailed) return
+      if (!READY_MESSAGES.includes((event.data as { type?: unknown } | null)?.type) || state.frameFailed) return
       guard.cancel(deadline)
       update(attempt, { diveReady: true })
     },
