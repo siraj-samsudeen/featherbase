@@ -14,6 +14,7 @@ import { sql } from '../src/db'
 import type { Binding, SourceConfig } from '../src/sources/types'
 import { expectRefused, expectStatus } from './fixtures'
 import { registerController, unregisterController } from '../src/controllers'
+import { scopedWhere } from '../src/query'
 
 const URL_ENV = 'EXT_EXTRA_URL'
 process.env[URL_ENV] = EXTERNAL_DATABASE_URL
@@ -318,6 +319,12 @@ describe('Writing to a Postgres table that has only defaults', () => {
     } finally {
       await cli`delete from ext_extra.kitchen where id = ${row.id}`
     }
+  })
+
+  test('a direct caller cannot compile a scoped query against a connected table', async ({ admin }) => {
+    await makeSource(admin)
+    const name = await reflect(admin, 'plain')
+    await expect(scopedWhere(name, 'Administrator', [])).rejects.toThrow(/^.* is bound to data source ext-extra — this operation cannot compile against it$/)
   })
 
   test('a value a hook drops from the row is still written as sent', async ({ admin }) => {
