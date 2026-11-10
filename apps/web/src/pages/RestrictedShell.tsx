@@ -49,7 +49,12 @@ export function NoAccessPage() {
       <TopBar forPerson />
       <main className="flex flex-1 items-center justify-center p-4">
         <Card className="w-full max-w-sm" data-testid="no-access">
-          {asked?.state === 'waiting' ? (
+          {asked?.state === 'declined' ? (
+            <EmptyState
+              title={`You don't have access to ${asked.title}`}
+              body="An admin declined your request. Ask your manager if you need it."
+            />
+          ) : asked?.state === 'waiting' ? (
             <EmptyState
               title={`You don't have access to ${asked.title} yet`}
               body="An admin has been told. Once they give you access, sign in again."

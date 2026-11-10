@@ -74,6 +74,10 @@ export function ListView({
   defaultOrderBy,
   empty,
   subtitle,
+  baseFilters,
+  onRowOpen,
+  openRow,
+  extraColumns,
 }: {
   table: string
   filters: Filter[]
@@ -87,14 +91,23 @@ export function ListView({
   empty?: ReactNode
   /** One line under the heading saying what the page lists. */
   subtitle?: ReactNode
+  /** #1173: filters the page always applies, not shown as chips nor saved in the address. */
+  baseFilters?: Filter[]
+  /** #1173: a click on a line opens the row in the page's own panel, in place of the drill pane. */
+  onRowOpen?: (row: string) => void
+  /** The row that panel shows, marked in the list. */
+  openRow?: string
+  /** #1173: columns this page shows on top of the person's own choice. */
+  extraColumns?: string[]
 }) {
   const meta = useMeta(table)
   const settings = useSettings()
   // #910: on a list page, selecting a row shows it in the drill pane.
   const navigation = useNavigation()
   const nav = navigation?.step.screen === 'list' && navigation.step.table === table ? navigation : null
-  const paneRow = nav?.step.pane?.table === table ? nav.step.pane.row : undefined
-  const openPane = nav ? (pane: { table: string; row: string }) => nav.push({ ...nav.step, pane }) : undefined
+  const paneRow = onRowOpen ? openRow : nav?.step.pane?.table === table ? nav.step.pane.row : undefined
+  const openPane = onRowOpen ? (pane: { table: string; row: string }) => onRowOpen(pane.row)
+    : nav ? (pane: { table: string; row: string }) => nav.push({ ...nav.step, pane }) : undefined
   // #910 checklist 19: every row as a folded tree line, kept in the path.
   const [localTree, setLocalTree] = useState<{ on: boolean; expanded: string[] }>({ on: false, expanded: [] })
   const treeOn = nav ? nav.step.view === 'tree' : localTree.on
@@ -180,7 +193,7 @@ export function ListView({
     const opener = bulkDeleteButton.current
     return () => opener?.focus()
   }, [confirmingBulkDelete])
-  const filterKey = JSON.stringify(filters)
+  const filterKey = JSON.stringify([baseFilters ?? [], filters])
   useEffect(() => setStart(0), [filterKey])
   useEffect(() => setSelected(new Set()), [filterKey, start, table])
   // DEL-J1 (docs/specs/0003-table-deletion.md): deleting the whole Table.
@@ -279,7 +292,9 @@ export function ListView({
       .catch(() => { if (getToken() === token) setSettingsUnsaved(true) })
   }
 
-  const allColumns = meta.data ? viewColumns(meta.data, arrangement) : []
+  const allColumns = meta.data
+    ? viewColumns(meta.data, extraColumns?.length ? { ...arrangement, shownCols: [...arrangement.shownCols, ...extraColumns] } : arrangement)
+    : []
   const columns = compact ? allColumns.slice(0, COMPACT_COLUMNS) : allColumns
   // #209 / #738: who may shape this Table's columns for everyone — "Edit
   // columns" and "Make this the default for everyone" show exactly here.
@@ -319,7 +334,7 @@ export function ListView({
     placeholderData: keepPreviousData,
     queryFn: () =>
       listResource(table, {
-        filters,
+        filters: [...(baseFilters ?? []), ...filters],
         fields: retirable ? [...listFields(columns), 'retired_at'] : listFields(columns),
         with_retired: withRetired,
         order_by: orderBy,
@@ -1000,7 +1015,7 @@ export function ListView({
       )}
       {treeOn ? (
         <div className={cardClasses('p-3')}>
-          <TreeOfAll table={table} filters={filters} expanded={treeExpanded}
+          <TreeOfAll table={table} filters={[...(baseFilters ?? []), ...filters]} expanded={treeExpanded}
             onExpandedChange={(next) => setTree(true, [...next])}
             onOpen={(pane) => openPane?.(pane)} />
         </div>

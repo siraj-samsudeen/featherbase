@@ -682,20 +682,23 @@ const waitingForAccessRoute = createRoute({
   path: 'waiting-for-access',
   validateSearch: (search: Record<string, unknown>) => ({
     filters: searchString(search.filters),
+    view: search.view === 'declined' ? ('declined' as const) : undefined,
   }),
   component: WaitingForAccessPage,
 })
 
 function WaitingForAccessPage() {
-  const { filters } = waitingForAccessRoute.useSearch()
+  const { filters, view } = waitingForAccessRoute.useSearch()
   const navigate = waitingForAccessRoute.useNavigate()
   return (
     <ManageOnly>
       <WaitingForAccess
         filters={parseFilters(filters)}
         onFiltersChange={(next) =>
-          navigate({ search: { filters: next.length ? JSON.stringify(next) : undefined }, replace: true })
+          navigate({ search: { filters: next.length ? JSON.stringify(next) : undefined, view }, replace: true })
         }
+        view={view ?? 'waiting'}
+        onViewChange={(next) => navigate({ search: { filters, view: next === 'declined' ? next : undefined }, replace: true })}
       />
     </ManageOnly>
   )
