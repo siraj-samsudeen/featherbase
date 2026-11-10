@@ -1818,6 +1818,12 @@
       "fromVersion": "0.12.0",
       "toVersion": "0.12.1",
       "operations": []
+    },
+    {
+      "id": "own_embed_token",
+      "fromVersion": "0.12.1",
+      "toVersion": "0.12.2",
+      "operations": []
     }
   ],
   "baseTables": {
