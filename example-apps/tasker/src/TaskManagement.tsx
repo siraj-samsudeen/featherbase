@@ -31,6 +31,7 @@ import {
   type TaskViewSetup,
 } from './taskViews'
 import { TASK_FIELDS, type Project, type Task } from './taskRows'
+import { hashSavedViewId, hashTaskId, sameDocumentHash, savedViewHash } from './taskHash'
 
 type View = 'inbox' | 'work' | 'verify' | 'issues' | 'together' | 'stores' | 'projects' | 'personal' | 'views'
 type DetailMode = 'compact' | 'inspector' | 'focus'
@@ -56,24 +57,6 @@ const FOCUS_SETTINGS = 'Task Management Focus'
 const PROJECT_SETTINGS = 'tasker.projects'
 const PREFERENCE_SETTINGS = 'tasker.preferences'
 const SAVED_VIEWS_SETTINGS = 'tasker.saved-views'
-
-function hashTaskId() {
-  return new URLSearchParams(location.hash.slice(1)).get('task')
-}
-
-function hashSavedViewId() {
-  return new URLSearchParams(location.hash.slice(1)).get('view')
-}
-
-function savedViewHash(viewId: string, taskId?: string) {
-  const params = new URLSearchParams({ view: viewId })
-  if (taskId) params.set('task', taskId)
-  return `#${params}`
-}
-
-function sameDocumentHash(hash: string) {
-  return `${location.pathname}${location.search}${hash}`
-}
 
 type TaskerIconName = 'inbox' | 'work' | 'verify' | 'issues' | 'together' | 'stores' | 'projects' | 'personal' | 'views'
 
