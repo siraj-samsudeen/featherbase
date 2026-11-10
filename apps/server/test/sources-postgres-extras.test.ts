@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect } from 'vitest'
 import postgres from 'postgres'
 import { test } from './pg-test'
 import { EXTERNAL_DATABASE_URL } from './external-database'
-import { invalidateSources, assertAllowed, resolveUrl } from '../src/sources/registry'
+import { allowlistQualificationGuidance, assertAllowed, getSource, invalidateSources, resolveUrl } from '../src/sources/registry'
 import { postgresDriver } from '../src/sources/postgres-driver'
 import { fkKey, singleColumnFks } from '../src/sources/fk'
 import { sql } from '../src/db'
@@ -424,6 +424,22 @@ describe('Connection variables and the table allowlist', () => {
     expect(() => assertAllowed(limited, 'ext_extra', 'kitchen')).toThrow(
       'Table ext_extra.kitchen is not in the allowlist of data source probe',
     )
+  })
+
+  test('an allowlist of only separators restricts nothing and needs no qualifying', () => {
+    expect(allowlistQualificationGuidance('postgres', ' ,\n, ')).toBeNull()
+  })
+
+  test('a source with no pool size or statement timeout set takes the defaults', async () => {
+    await sql`insert into data_source ${sql({ row_id: 'ext-defaults', engine: 'postgres', url_env: URL_ENV, pool_max: null, statement_timeout_ms: null })}`
+    invalidateSources()
+    expect(await getSource('ext-defaults')).toMatchObject({ pool_max: 5, statement_timeout_ms: 10000 })
+  })
+
+  test('a source whose pool size and statement timeout are zero takes the defaults', async () => {
+    await sql`insert into data_source ${sql({ row_id: 'ext-zeroes', engine: 'postgres', url_env: URL_ENV, pool_max: 0, statement_timeout_ms: 0 })}`
+    invalidateSources()
+    expect(await getSource('ext-zeroes')).toMatchObject({ pool_max: 5, statement_timeout_ms: 10000 })
   })
 })
 
