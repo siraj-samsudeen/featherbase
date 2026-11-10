@@ -126,9 +126,10 @@ test('a person with neither the viewer role nor a Table grant lands on a plain n
 })
 
 // (1) A failed background refetch must not unmount a shell that already has its answer.
-// #659: an installed app's own Tables do not open the Admin. A person who
-// reads only an app's Table is refused the Admin like anyone without access.
-test("a person whose only grant is on an installed app's Table gets the no-access page in the Admin", async ({ admin, createUser }) => {
+// #659: an installed app's own Tables do not open the Admin. A person who reads only an app's
+// Table is refused the Admin. Found on staging (10-Nov-2026): its no-access page then emailed
+// every System Manager for someone who belongs in their app; they are sent there instead.
+test("a person whose only grant is on an installed app's Table is sent from the Admin to that app, asking for nothing", async ({ admin, createUser }) => {
   expect(await discoverPackages([DASH_STAND_IN])).toEqual([])
   try {
     await admin.post('/api/install_app', { name: 'dash' })
@@ -136,9 +137,48 @@ test("a person whose only grant is on an installed app's Table gets the no-acces
     await grantRole(admin, { table: 'dash.note', role: 'Dash Reader', can_read: true })
     const reader = await createUser({ email: 'dash.reader.shell@example.com', roles: ['Dash Reader'] })
     await renderApp('/featherbase/admin', reader)
-    expect(await screen.findByTestId('no-access')).toBeInTheDocument()
+    const going = await screen.findByTestId('going-to-app')
+    const asked = await sql`select count(*)::int as n from access_request where person = ${reader.user}`
+    expect([going.getAttribute('data-path'), screen.queryByTestId('no-access'), asked[0].n]).toEqual(['/dash/', null, 0])
   } finally {
     await discoverPackages([])
+  }
+})
+
+// Someone whose only apps are open to everyone is shown those apps on the Admin's page instead of
+// "no access", and nobody is asked for anything.
+test('someone who can open only apps open to everyone is shown them, and asks for nothing', async ({ admin, createUser }) => {
+  expect(await discoverPackages([resolve('../..', 'test-apps/other')])).toEqual([])
+  try {
+    await admin.post('/api/install_app', { name: 'other' })
+    const anyone = await createUser({ email: 'open.apps.only@example.com', roles: [] })
+    // Any moment the no-access card is drawn counts, however briefly (the verifier saw a 50 ms flash).
+    let flashed = false
+    const watch = new MutationObserver(() => { flashed ||= !!document.querySelector('[data-testid=no-access]') })
+    watch.observe(document.body, { childList: true, subtree: true })
+    await renderApp('/featherbase/admin', anyone)
+    const list = await screen.findByTestId('app-list')
+    watch.disconnect()
+    const links = [...list.querySelectorAll('a')].map((a) => [a.textContent, a.getAttribute('href')])
+    const asked = await sql`select count(*)::int as n from access_request where person = ${anyone.user}`
+    expect([links, flashed, asked[0].n]).toEqual([[['Other tasks', '/other/']], false, 0])
+  } finally {
+    await discoverPackages([])
+  }
+})
+
+// When asking for access fails, the page doesn't wait forever: it says there's no access.
+test('the no-access page still says so when asking for access fails', async ({ createUser }) => {
+  const nobody = await createUser({ email: 'ask.fails@example.com', roles: [] })
+  const { api } = await import('../src/lib/api')
+  const post = api.post.bind(api)
+  const spy = vi.spyOn(api, 'post').mockImplementation(((path: string, body?: unknown) =>
+    path === '/api/access_request' ? Promise.reject(new Error('offline')) : post(path, body)) as typeof api.post)
+  try {
+    await renderApp('/featherbase/admin', nobody)
+    expect(await screen.findByText("You don't have access to anything here yet")).toBeInTheDocument()
+  } finally {
+    spy.mockRestore()
   }
 })
 
