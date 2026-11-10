@@ -12,6 +12,7 @@ import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { vi } from 'vitest'
+import type { Sql } from 'postgres'
 import { test, expect, renderApp } from './pg-test'
 
 const DT = 'Cmt Row'
@@ -167,6 +168,25 @@ test('the comment box says who is commenting by name', async ({ admin, createUse
   await openRow(priya, rowId)
   await waitFor(() => expect(input().placeholder).toBe('Comment as Priya Commenter… use @ to mention'))
   expect(input().placeholder).not.toContain('psn_')
+})
+
+test('for a person with no name the comment box asks for a comment without naming them, and their comment shows no initials made from an id', async ({ admin, createUser, db }) => {
+  const rowId = await seedRow(admin)
+  const nameless = await createUser({ email: 'nameless.cmt@example.com', roles: ['System Manager'] })
+  await (db as Sql)`update person set full_name = null, username = null, email = null where row_id = ${nameless.user}`
+  await openRow(nameless, rowId)
+  await waitFor(() => expect(input().placeholder).toBe('Write a comment… use @ to mention'))
+  await submit('From nobody in particular')
+  const timeline = screen.getByTestId('activity-timeline')
+  await waitFor(() => expect(timeline).toHaveTextContent('From nobody in particular'))
+  expect(within(timeline).getAllByTestId('comment-initials').at(-1)).toHaveTextContent('·')
+})
+
+test('Administrator, whose id is a name, comments under it', async ({ admin, db }) => {
+  const rowId = await seedRow(admin)
+  await (db as Sql)`update person set full_name = null where row_id = 'Administrator'`
+  await openRow(admin, rowId)
+  await waitFor(() => expect(input().placeholder).toBe('Comment as Administrator… use @ to mention'))
 })
 
 test('a mention by a name two people share warns that it will notify nobody', async ({ admin }) => {
