@@ -70,12 +70,14 @@ export default defineConfig({
       // Stage 3 (branches), first pass: 618 uncovered of 10,322, measured on
       // a fresh database, the four shards merged as CI does. All are reachable
       // and simply untested yet; the largest are ImportWizard, SalesTarget,
-      // ChecklistView and AccessTokens.
+      // ChecklistView and AccessTokens. The count moves by a few between runs
+      // (component tests take different render branches run to run): 618 on
+      // the PR, 620 on main for the same code. The cap leaves that margin.
       thresholds: {
         lines: 100,
         statements: -1,
         functions: 100,
-        branches: -618,
+        branches: -625,
       },
     },
   },
