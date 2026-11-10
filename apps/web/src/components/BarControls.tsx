@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter, useRouterState } from '@tanstack/react-router'
 import { api } from '../lib/api'
@@ -97,6 +97,10 @@ function useAddressValue(key: string): [string | null, (value: string) => void, 
 }
 
 const LABEL = 'text-sm text-ink-muted max-sm:sr-only'
+/** #1153: more options than this, and the open list starts with a filter box. */
+const FILTER_FROM = 10
+/** The shortest the list gets, even with little room below the picker. */
+const MIN_LIST_HEIGHT = 120
 
 function BarPicker({ control }: { control: BarControl }) {
   const { options } = control
@@ -125,6 +129,33 @@ function BarPicker({ control }: { control: BarControl }) {
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(currentIndex)
   const optionId = (index: number) => `${listId}-${index}`
+  // #1153: a long list gets a filter box, and never runs past the window's bottom edge.
+  const filterable = options.length > FILTER_FROM
+  const [query, setQuery] = useState('')
+  const [maxHeight, setMaxHeight] = useState<number | undefined>(undefined)
+  const box = useRef<HTMLDivElement>(null)
+  const trigger = useRef<HTMLButtonElement>(null)
+  const filter = useRef<HTMLInputElement>(null)
+  const needle = query.trim().toLowerCase()
+  // The options on show, by their index in `options`.
+  const shown = options.flatMap((option, index) => (!needle || option.label.toLowerCase().includes(needle) ? [index] : []))
+  // The room below the picker: the list starts 4px under it and stops 8px above the window's edge.
+  const fit = () => {
+    const bottom = trigger.current?.getBoundingClientRect().bottom ?? 0
+    setMaxHeight(Math.max(MIN_LIST_HEIGHT, window.innerHeight - bottom - 4 - 8))
+  }
+  useEffect(() => {
+    if (!open) return
+    window.addEventListener('resize', fit)
+    return () => window.removeEventListener('resize', fit)
+  })
+  useEffect(() => {
+    if (open && filterable) filter.current?.focus()
+  }, [open, filterable])
+  // The highlighted option stays in view as the keys move it.
+  useEffect(() => {
+    if (open) document.getElementById(optionId(active))?.scrollIntoView?.({ block: 'nearest' })
+  }, [open, active])
 
   if (options.length === 1)
     return (
@@ -140,15 +171,51 @@ function BarPicker({ control }: { control: BarControl }) {
 
   function show() {
     setActive(currentIndex)
+    setQuery('')
+    fit()
     setOpen(true)
   }
-  function choose(index: number) {
+  function close(refocus = false) {
     setOpen(false)
+    if (refocus) trigger.current?.focus()
+  }
+  function choose(index: number) {
+    close(filterable)
     const option = options[index]
     if (option && option.value !== value) setValue(option.value)
   }
+  /** Focus leaving the picker and its list closes the list; moving between them doesn't. */
+  function onBlur(event: FocusEvent) {
+    if (event.relatedTarget instanceof Node && box.current?.contains(event.relatedTarget)) return
+    setOpen(false)
+  }
+  /** The keys of an open list, over the options on show. True when the key was used. */
+  function moveOrChoose(event: KeyboardEvent<HTMLElement>): boolean {
+    const at = Math.max(0, shown.indexOf(active))
+    const last = shown.length - 1
+    const moves: Record<string, () => number> = {
+      ArrowDown: () => Math.min(last, at + 1),
+      ArrowUp: () => Math.max(0, at - 1),
+      PageDown: () => last,
+      PageUp: () => 0,
+      // In the filter box Home and End move the caret.
+      ...(filterable ? {} : { Home: () => 0, End: () => last }),
+    }
+    if (moves[event.key]) {
+      event.preventDefault()
+      if (shown.length) setActive(shown[moves[event.key]()])
+    } else if (event.key === 'Enter' || (event.key === ' ' && !filterable)) {
+      event.preventDefault()
+      if (shown.includes(active)) choose(active)
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      close(true)
+    } else if (event.key === 'Tab') {
+      setOpen(false)
+    } else return false
+    return true
+  }
   function onKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    const last = options.length - 1
     if (!open) {
       if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) {
         event.preventDefault()
@@ -156,44 +223,32 @@ function BarPicker({ control }: { control: BarControl }) {
       }
       return
     }
-    const moves: Record<string, () => number> = {
-      ArrowDown: () => Math.min(last, active + 1),
-      ArrowUp: () => Math.max(0, active - 1),
-      Home: () => 0,
-      End: () => last,
-      PageDown: () => last,
-      PageUp: () => 0,
-    }
-    if (moves[event.key]) {
-      event.preventDefault()
-      setActive(moves[event.key]())
-    } else if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault()
-      choose(active)
-    } else if (event.key === 'Escape') {
-      event.preventDefault()
-      setOpen(false)
-    } else if (event.key === 'Tab') {
-      setOpen(false)
-    }
+    moveOrChoose(event)
+  }
+  function onFilter(next: string) {
+    setQuery(next)
+    const needle = next.trim().toLowerCase()
+    const first = options.findIndex((option) => !needle || option.label.toLowerCase().includes(needle))
+    if (first >= 0) setActive(first)
   }
 
   return (
-    <div className="flex min-w-0 items-center gap-2 sm:relative" data-testid={`bar-control-${control.sets}`}>
+    <div ref={box} className="flex min-w-0 items-center gap-2 sm:relative" data-testid={`bar-control-${control.sets}`}>
       <span id={labelId} className={LABEL}>
         {control.picker}
       </span>
       <button
+        ref={trigger}
         type="button"
         role="combobox"
         aria-labelledby={labelId}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
-        aria-activedescendant={open ? optionId(active) : undefined}
+        aria-activedescendant={open && !filterable ? optionId(active) : undefined}
         onClick={() => (open ? setOpen(false) : show())}
         onKeyDown={onKeyDown}
-        onBlur={() => setOpen(false)}
+        onBlur={onBlur}
         data-testid={`bar-picker-${control.sets}`}
         className={cx(
           'inline-flex min-h-control min-w-0 max-w-64 items-center gap-2 rounded-control border border-border-control bg-surface px-3',
@@ -204,39 +259,67 @@ function BarPicker({ control }: { control: BarControl }) {
         <span className="truncate">{current.label}</span>
         <ChevronDown aria-hidden size={16} className="shrink-0 text-ink-muted" />
       </button>
-      <ul
-        id={listId}
-        role="listbox"
-        aria-labelledby={labelId}
+      <div
         hidden={!open}
-        // A press on an option must not take focus from the picker first.
-        onMouseDown={(event) => event.preventDefault()}
+        style={{ maxHeight }}
         // On a phone the list spans the bar (the header is its frame), so a long
         // option is never cut at either edge of the screen.
-        className="absolute top-full z-30 mt-1 overflow-y-auto rounded-card border border-border bg-surface p-1 shadow-lg max-sm:inset-x-2 sm:left-0 sm:min-w-60 sm:max-w-[calc(100vw-2rem)]"
-        data-testid={`bar-options-${control.sets}`}
+        className="absolute top-full z-30 mt-1 flex flex-col rounded-card border border-border bg-surface p-1 shadow-lg max-sm:inset-x-2 sm:left-0 sm:min-w-60 sm:max-w-[calc(100vw-2rem)]"
       >
-        {options.map((option, index) => (
-          <li
-            key={option.value}
-            id={optionId(index)}
-            role="option"
-            aria-selected={index === currentIndex}
-            onClick={() => choose(index)}
-            onMouseEnter={() => setActive(index)}
-            className={cx(
-              'flex min-h-control cursor-pointer items-center gap-2 rounded-control px-2 text-sm text-ink',
-              index === active && 'bg-action-tint',
-              index === currentIndex && 'font-semibold',
-            )}
-          >
-            <span className="flex w-4 shrink-0 justify-center text-action" aria-hidden>
-              {index === currentIndex && <Check size={14} />}
-            </span>
-            <span className="truncate">{option.label}</span>
-          </li>
-        ))}
-      </ul>
+        {filterable && (
+          <input
+            ref={filter}
+            type="search"
+            aria-label={`Find a ${control.picker.toLowerCase()}`}
+            placeholder={`Find a ${control.picker.toLowerCase()}`}
+            aria-controls={listId}
+            aria-activedescendant={open && shown.includes(active) ? optionId(active) : undefined}
+            value={query}
+            onChange={(event) => onFilter(event.target.value)}
+            onKeyDown={moveOrChoose}
+            onBlur={onBlur}
+            data-testid={`bar-filter-${control.sets}`}
+            className="mb-1 min-h-control shrink-0 rounded-control border border-border-control bg-surface px-2 text-sm text-ink focus-visible:outline-2 focus-visible:outline-focus"
+          />
+        )}
+        {filterable && shown.length === 0 && (
+          <p className="px-2 py-2 text-sm text-ink-muted" data-testid={`bar-no-match-${control.sets}`}>
+            No {control.picker.toLowerCase()} matches
+          </p>
+        )}
+        <ul
+          id={listId}
+          role="listbox"
+          aria-labelledby={labelId}
+          // A press on an option must not take focus from the picker first.
+          onMouseDown={(event) => event.preventDefault()}
+          className="min-h-0 flex-1 overflow-y-auto"
+          data-testid={`bar-options-${control.sets}`}
+        >
+          {shown.map((index) => {
+            const option = options[index]
+            return (
+            <li
+              key={option.value}
+              id={optionId(index)}
+              role="option"
+              aria-selected={index === currentIndex}
+              onClick={() => choose(index)}
+              onMouseEnter={() => setActive(index)}
+              className={cx(
+                'flex min-h-control cursor-pointer items-center gap-2 rounded-control px-2 text-sm text-ink',
+                index === active && 'bg-action-tint',
+                index === currentIndex && 'font-semibold',
+              )}
+            >
+              <span className="flex w-4 shrink-0 justify-center text-action" aria-hidden>
+                {index === currentIndex && <Check size={14} />}
+              </span>
+              <span className="truncate">{option.label}</span>
+            </li>
+          )})}
+        </ul>
+      </div>
     </div>
   )
 }
