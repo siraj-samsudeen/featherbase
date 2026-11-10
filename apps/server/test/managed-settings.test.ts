@@ -114,7 +114,7 @@ describe('Admin saves of a locked field are refused (D5)', () => {
     expect(err.message).toContain('so they cannot be changed here')
   })
 
-  // Defect found in coverage stage 3 (no issue yet): the pronoun that is the
+  // Defect pinned (#1115): the pronoun that is the
   // subject ("they cannot be changed") is reused as the object, so the
   // refusal reads "Change they in the file".
   test.fails('a refusal naming several locked fields says to change them in the file', async ({ admin }) => {

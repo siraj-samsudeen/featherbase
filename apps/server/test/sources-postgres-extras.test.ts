@@ -550,7 +550,7 @@ describe('Saving a Data Source', () => {
     expect(await sql`select name from table_def where name = 'No Such Relation'`).toEqual([])
   })
 
-  // Defect found in coverage stage 3 (no issue yet): the binding is checked
+  // Defect pinned (#1114): the binding is checked
   // against the source's default schema and saved with no schema, but a read
   // then quotes an empty schema name and every list fails with a 502.
   test.fails('a binding that names no schema reads the source default schema', async ({ admin }) => {
