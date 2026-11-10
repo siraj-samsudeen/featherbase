@@ -282,9 +282,10 @@ function CellValue({ col, row, settings, lead = false }: { col: ListColumn; row:
   const value = row[col.column_name]
   if (col.column_name === 'row_id') return <>{String(row.row_id)}</>
   if (isEmpty(value)) return lead ? <>{String(row.row_id)}</> : <span className="text-ink-subtle">—</span>
-  if (col.column_type === 'Reference' && col.reference_table) return <LinkName table={linkRowsTable(col) ?? col.reference_table} rowId={String(value)} />
+  if (col.column_type === 'Reference' && col.reference_table) return <LinkName table={linkRowsTable(col)!} rowId={String(value)} />
   if (col.column_type === 'Choice') return <>{choiceLabel(String(value), col.choice_labels, t)}</>
-  return <>{formatValue(col.column_type, value, settings) || String(value)}</>
+  // formatValue gives '' only for an empty value, handled above.
+  return <>{formatValue(col.column_type, value, settings)}</>
 }
 
 function LinkName({ table, rowId }: { table: string; rowId: string }) {
@@ -329,7 +330,7 @@ function PaneFields({ meta, row, onOpen }: { meta: TableMeta; row: Row; onOpen: 
 
 function FieldValue({ col, value, settings, onOpen }: { col: ColumnDef; value: unknown; settings: Settings; onOpen: (pane: NavPane) => void }) {
   const { t } = useI18n()
-  if (col.column_type === 'Reference' && col.reference_table) return <PaneLink table={linkRowsTable(col) ?? col.reference_table} rowId={String(value)} onOpen={onOpen} />
+  if (col.column_type === 'Reference' && col.reference_table) return <PaneLink table={linkRowsTable(col)!} rowId={String(value)} onOpen={onOpen} />
   if (col.column_type === 'Check') return <>{value ? 'Yes' : 'No'}</>
   if (col.column_type === 'Choice') return <>{choiceLabel(String(value), col.choice_labels, t)}</>
   if (col.column_type === 'JSON') return <code className="text-xs">{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</code>
