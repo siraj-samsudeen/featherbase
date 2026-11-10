@@ -140,7 +140,7 @@ async function resolveRoute(request: ApproverRequest, maker: string, entryTable:
 
 async function proposalsWhere(app: string, filter: ProposalFilter): Promise<ChangeProposal[]> {
   const rows = await sql`select row_id, app, target_table, target_row, maker, proposal_state as state, about, decided_by, decided_at,
-      decision_reason, result_row, created_at
+      decision_reason, result_row, ends_row, created_at
     from change_proposal where app = ${app}
       ${filter.ids ? sql`and row_id in ${sql(filter.ids.length ? filter.ids : [''])}` : sql``}
       ${filter.states ? sql`and proposal_state in ${sql(filter.states.length ? filter.states : [''])}` : sql``}
@@ -264,11 +264,14 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
     }),
 
     propose: (request: ProposalRequest) => guard.run(async () => {
-      const { table, row, changes, about, reviewed: mustStay = [] } = request ?? ({} as ProposalRequest)
+      const { table, row, changes, about, reviewed: mustStay = [], ends = false } = request ?? ({} as ProposalRequest)
       const target = row ?? null
       const { declared, meta } = await rule(table)
       const entries = Object.entries(changes ?? {})
-      if (!entries.length) reject('A proposal changes at least one column')
+      if (ends !== true && ends !== false) reject('Expected ends to be true or false')
+      // An ending changes nothing on the row it ends: there is no new row to describe.
+      if (ends && (target === null || entries.length)) reject('An ending names its row and changes no column')
+      if (!ends && !entries.length) reject('A proposal changes at least one column')
       for (const [column, value] of entries) {
         if (!declared.columns.includes(column) || !typeOf(meta, column)) reject(`The app has not declared column ${column} of Table ${table}`)
         if (value !== null && typeof value !== 'string') reject('Proposed values are text')
@@ -278,7 +281,8 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
       let current: ActionRow | null = null
       if (target !== null) current = await getDoc(table, String(target)) as ActionRow
       const before = (column: string) => current ? asText(current[column], typeOf(meta, column)) : null
-      if (current && entries.every(([column, value]) => before(column) === value)) reject('That is already the case')
+      if (current && !ends && entries.every(([column, value]) => before(column) === value)) reject('That is already the case')
+      if (ends && current && (asText(current[declared.endsOn], 'Date') ?? '9999') < '9999') reject('That already has an end')
       const route = await resolveRoute(checkedApprovers(request.approvers), user, entryTable)
       if (!route) reject('Nobody else can approve this, so it cannot be sent')
       const same = await proposalsWhere(app, { states: ['Pending'], makers: [user], limit: 500 })
@@ -286,8 +290,9 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
       const asked = key(entries.filter(([column, value]) => !current || before(column) !== value).map(([column_name, proposed_value]) => ({ column_name, proposed_value })))
       // Only what the proposal changes: the reviewed columns hold still.
       const askedOf = (p: ChangeProposal) => key(p.changes.filter(c => p.target_row === null || c.proposed_value !== c.review_base_value))
-      if (same.some(p => p.target_table === table && p.target_row === target && askedOf(p) === asked)) reject('You have already asked for this')
+      if (same.some(p => p.target_table === table && p.target_row === target && p.ends_row === ends && askedOf(p) === asked)) reject('You have already asked for this')
       const saved = await saveSystemRow('Change Proposal', { app, target_table: table, target_row: target, maker: user, proposal_state: 'Pending', about: (about ?? null) as never }, user)
+      if (ends) await sql`update change_proposal set ends_row = true where row_id = ${String(saved.row_id)}`
       const id = String(saved.row_id)
       // The end date and the app's reviewed columns are compared at approval, though never
       // proposed: a row that ended, or now holds something else, is not what was reviewed.
@@ -312,6 +317,13 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
       await writeRoute(proposal.row_id, route, user)
       const effective = decision.effectiveOn
       const proposed = Object.fromEntries(proposal.changes.filter(c => !proposal.target_row || c.proposed_value !== c.review_base_value).map(c => [c.column_name, c.proposed_value]))
+      // The approver may apply another value, but only for what the proposal changes.
+      const instead = Object.entries(decision.instead ?? {})
+      for (const [column, value] of instead) {
+        if (proposal.ends_row || !(column in proposed)) reject(`Column ${column} is not one this proposal changes`)
+        if (value !== null && typeof value !== 'string') reject('Proposed values are text')
+      }
+      if (decision.reason !== undefined && typeof decision.reason !== 'string') reject('A reason is text')
       let current: ActionRow | null = null
       if (proposal.target_row) {
         const [exists] = await sql`select 1 from ${sql(await tableRelation(meta.name))} where ${sql(meta.row_key)} = ${proposal.target_row}`
@@ -329,6 +341,15 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
           return oneProposal(app, id)
         }
       }
+      if (proposal.ends_row) {
+        await saveDoc(meta.name, { row_id: proposal.target_row, updated_at: current!.updated_at, [declared.endsOn]: dayBefore(effective) }, proposal.maker, 'upsert', { skipPermissions: true })
+        await note(proposal.row_id, meta.name, proposal.target_row!, proposal.maker)
+        await sql`update change_proposal set proposal_state = 'Needs fresh review', decision_reason = 'Another change to this was approved first.', updated_at = now(), updated_by = ${user}
+          where app = ${app} and target_table = ${meta.name} and target_row = ${proposal.target_row} and proposal_state = 'Pending' and row_id <> ${proposal.row_id}`
+        await close(proposal.row_id, 'Applied', { reason: decision.reason?.trim() || null })
+        return oneProposal(app, id)
+      }
+      Object.assign(proposed, Object.fromEntries(instead))
       const copied: ActionRow = {}
       if (current) for (const column of meta.columns) {
         if (['Sub-table', 'Section Break', 'Column Break'].includes(column.column_type) || column.column_name === meta.row_key) continue
@@ -347,7 +368,7 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
           where app = ${app} and target_table = ${meta.name} and target_row = ${proposal.target_row} and proposal_state = 'Pending' and row_id <> ${proposal.row_id}`
       }
       await note(proposal.row_id, meta.name, result, proposal.maker)
-      await close(proposal.row_id, 'Applied', { result })
+      await close(proposal.row_id, 'Applied', { result, reason: decision.reason?.trim() || null })
       return oneProposal(app, id)
     }),
 
@@ -357,6 +378,14 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
       const proposal = await lockPending(id)
       await writeRoute(proposal.row_id, await authorize(proposal, decision.approvers), user)
       await close(proposal.row_id, 'Rejected', { reason })
+      return oneProposal(app, id)
+    }),
+
+    // #1175: Undo. Only the maker, only while it waits; it needs nobody's approval.
+    withdraw: (id: string) => guard.run(async () => {
+      const proposal = await lockPending(id)
+      if (proposal.maker !== user) reject('Only the person who asked can withdraw this')
+      await close(proposal.row_id, 'Withdrawn', {})
       return oneProposal(app, id)
     }),
 
