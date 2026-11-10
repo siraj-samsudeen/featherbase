@@ -212,6 +212,14 @@ describe('on a dev instance (staging)', () => {
 })
 
 describe('on production', () => {
+  test('a server that does not follow app files names a changed file and how to ship it', async () => {
+    await pretendTo('production')
+    await deploy()
+    writeFileSync(join(app, 'NOTES.md'), 'a file changed\n')
+    await expect(assertInstalledAppsShipped({ followFiles: false }))
+      .rejects.toThrow(new RegExp(`App ${name} version ${version}: its files changed.*does not follow app files`))
+  })
+
   // #1178 (D3): production takes a code-only fix under the same version.
   scenario('Production takes a fixed screen under the same version', async (_ctx, step) => {
     await step('production runs version 1 of an app', async () => {
