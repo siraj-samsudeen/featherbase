@@ -15,7 +15,9 @@ const T = 'Ulc Stock'
 
 async function seed(admin: Admin, db: unknown) {
   await admin.post('/api/table_def', { name: 'Ulc Depot', id_pattern: 'prompt', columns: [{ column_name: 'depot_name', column_type: 'Data' }] })
-  await admin.post('/api/table_def', { name: 'Ulc Line', kind: 'sub_table', columns: [{ column_name: 'qty', column_type: 'Int' }] })
+  await admin.post('/api/table_def', { name: 'Ulc Line', kind: 'sub_table', columns: [
+    { column_name: 'qty', column_type: 'Int' }, { column_name: 'from_depot', column_type: 'Reference', reference_table: 'Ulc Depot' },
+  ] })
   await admin.post('/api/table_def', {
     name: T,
     id_pattern: 'prompt',
@@ -43,6 +45,36 @@ test("a list's filter boxes for columns stored with no label are named by their 
   expect(within(filters).getByTitle('depot')).toHaveTextContent('depot')
   expect(screen.getByTestId('std-filter-item')).toHaveAttribute('placeholder', 'Filter item…')
   expect(await screen.findByRole('button', { name: 'Clear the depot filter' })).toBeInTheDocument()
+})
+
+test('an expanded row names its unlabelled lines, their columns and their total by column name', async ({ admin, db }) => {
+  await admin.post('/api/table_def', { name: 'Ulc Line', kind: 'sub_table', columns: [{ column_name: 'qty', column_type: 'Int' }, { column_name: 'price', column_type: 'Currency' }] })
+  await admin.post('/api/table_def', { name: T, id_pattern: 'prompt', title_column: 'item', columns: [
+    { column_name: 'item', column_type: 'Data', in_list_view: true }, { column_name: 'lines', column_type: 'Sub-table', row_table: 'Ulc Line' },
+  ] })
+  await admin.post('/api/save_row', { table: T, row: { row_id: 'st-1', item: 'Bolt', lines: [{ qty: 3, price: 2 }] } })
+  await (db as Sql)`update column_def set label = null where parent in (${T}, 'Ulc Line')`
+  invalidateMeta()
+  const user = userEvent.setup()
+  await renderApp(tableHref(T), admin)
+  await user.click((await screen.findAllByTestId('row-expand'))[0])
+  const lines = await screen.findByTestId('inline-children-lines')
+  expect(lines).toHaveTextContent(/^lines \(1\)qtyprice3/)
+  expect(lines).toHaveTextContent(/Σ price: ₹\s?2\.00$/)
+})
+
+test("a row's form names unlabelled fields, its link's search box and its grid cells by column name", async ({ admin, db }) => {
+  await seed(admin, db)
+  const user = userEvent.setup()
+  await renderApp(`${tableHref(T)}/row/st-1`, admin)
+  const form = await screen.findByTestId('form-view')
+  await waitFor(() => expect(form.querySelector('[data-form-field="note"]')).toHaveAttribute('data-label', 'note'))
+  expect(within(form).getByText('note', { selector: 'span' })).toBeInTheDocument()
+  expect(within(await screen.findByTestId('table-lines')).getByRole('columnheader', { name: 'qty' })).toBeInTheDocument()
+  expect(screen.getByRole('textbox', { name: 'lines, qty, row 1' })).toHaveValue('3')
+  expect(screen.getByRole('combobox', { name: 'lines, from_depot, row 1' })).toBeInTheDocument()
+  await user.click(within(form.querySelector<HTMLElement>('[data-form-field="depot"]')!).getByRole('combobox'))
+  expect(await screen.findByRole('searchbox', { name: 'Search depot' })).toBeInTheDocument()
 })
 
 test('a Choice with no choices filters on All alone', async ({ admin, db }) => {
