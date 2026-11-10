@@ -331,6 +331,23 @@ describe('linked identity validation and lifecycle through the public APIs', () 
     expect(await candidate('psn_missing')).toBeNull()
   })
 
+  test('an outside link sent with no subject at all is refused naming the subject', async ({ admin }) => {
+    const person = await makePerson()
+    await expectApiError(admin.post(`/api/people/${person}/identities`, { method: 'google' }), {
+      status: 417, type: 'ValidationError', fields: { subject: 'required' },
+    })
+  })
+
+  test('a subject already held through a method with no label is named by the method\'s key', async ({ admin }) => {
+    const owner = await makePerson()
+    const other = await makePerson()
+    await admin.post(`/api/people/${owner}/identities`, { method: 'google', subject: 'held-subject' })
+    await sql`update sign_in_method set label = '' where row_id = 'google'`
+    await expectApiError(admin.post(`/api/people/${other}/identities`, { method: 'google', subject: 'held-subject' }), {
+      status: 409, type: 'ConflictError', message: `409 ConflictError: This google ID is already linked to ${owner}`,
+    })
+  })
+
   test('removing an unused Google method leaves no invitation mechanism', async ({ admin }) => {
     const person = await makePerson()
     await admin.delete('/api/table/Sign%20In%20Method/google')
