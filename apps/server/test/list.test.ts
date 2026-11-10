@@ -81,7 +81,7 @@ describe('DOC-010: get_list with filters, fields, order_by, pagination', () => {
 
   // Defect: SQL's `not in (null)` matches no row, so an empty exclusion list
   // hides every row. A connected Table's drivers exclude nothing for it
-  // (sources-postgres-extras, sources-mysql, sources-duckdb). Issue: to be filed.
+  // (sources-postgres-extras, sources-mysql, sources-duckdb). Issue #1137.
   test.fails('a "not in" filter with an empty list excludes nothing, as it does on a connected Table', async ({ admin }) => {
     await setup(admin)
     const result = await admin.get<{ total: number }>(listPath({ filters: JSON.stringify([['qty', 'not in', []]]) }))
