@@ -133,6 +133,27 @@ describe('WEB-002: web forms', () => {
 // parser tolerates malformed JSON, an already-parsed array, and an absent
 // column list.
 describe('web form: field whitelist parsing', () => {
+  test('a form stored with no success message says Submitted., on the form and after a submit', async ({ admin }) => {
+    await setup(admin)
+    await sql`update web_form set success_message = null where route = 'wf-srv'`
+    expect((await getWebFormConfig('wf-srv')).success_message).toBe('Submitted.')
+    expect((await submitWebForm('wf-srv', { full_name: 'Asha', message: 'hello' })).message).toBe('Submitted.')
+  })
+
+  test('a whitelisted column stored with no label is offered by its column name', async ({ admin }) => {
+    await setup(admin)
+    await sql`update column_def set label = null where parent = ${DT} and column_name = 'full_name'`
+    const { invalidateMeta } = await import('../src/meta')
+    invalidateMeta(DT)
+    expect((await getWebFormConfig('wf-srv')).columns.find((f) => f.column_name === 'full_name')?.label).toBe('full_name')
+  })
+
+  test('web_fields stored as JSON text that is not a list yields an empty field list', async ({ admin }) => {
+    await setup(admin)
+    await sql`update web_form set web_fields = to_jsonb('{"full_name": true}'::text) where route = 'wf-srv'`
+    expect((await getWebFormConfig('wf-srv')).columns).toEqual([])
+  })
+
   test('malformed web_fields yields an empty field list; an array passes through', async ({
     admin,
   }) => {
