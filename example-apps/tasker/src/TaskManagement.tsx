@@ -33,6 +33,7 @@ import {
 import { TASK_FIELDS, type Project, type Task } from './taskRows'
 import { hashSavedViewId, hashTaskId, sameDocumentHash, savedViewHash } from './taskHash'
 import { TaskerIcon, type TaskerIconName } from './TaskerIcon'
+import { Empty } from './Empty'
 
 type View = 'inbox' | 'work' | 'verify' | 'issues' | 'together' | 'stores' | 'projects' | 'personal' | 'views'
 type DetailMode = 'compact' | 'inspector' | 'focus'
@@ -1334,10 +1335,6 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
       </>}
     </>}
   </section>
-}
-
-function Empty({ text }: { text: string }) {
-  return <div className={cardClasses("border-dashed px-4 py-10 text-center text-sm text-[var(--color-ink-muted)]")}>{text}</div>
 }
 
 function TaskList({ tasks, openChildren, users, projects, focusSet, me, explanations, onPatch, onFocus, onMove, savedViewId }: {
