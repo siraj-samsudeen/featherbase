@@ -152,11 +152,16 @@ test('someone who can open only apps open to everyone is shown them, and asks fo
   try {
     await admin.post('/api/install_app', { name: 'other' })
     const anyone = await createUser({ email: 'open.apps.only@example.com', roles: [] })
+    // Any moment the no-access card is drawn counts, however briefly (the verifier saw a 50 ms flash).
+    let flashed = false
+    const watch = new MutationObserver(() => { flashed ||= !!document.querySelector('[data-testid=no-access]') })
+    watch.observe(document.body, { childList: true, subtree: true })
     await renderApp('/featherbase/admin', anyone)
     const list = await screen.findByTestId('app-list')
+    watch.disconnect()
     const links = [...list.querySelectorAll('a')].map((a) => [a.textContent, a.getAttribute('href')])
     const asked = await sql`select count(*)::int as n from access_request where person = ${anyone.user}`
-    expect([links, screen.queryByTestId('no-access'), asked[0].n]).toEqual([[['Other tasks', '/other/']], null, 0])
+    expect([links, flashed, asked[0].n]).toEqual([[['Other tasks', '/other/']], false, 0])
   } finally {
     await discoverPackages([])
   }
