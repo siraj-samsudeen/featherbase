@@ -14,14 +14,17 @@ export interface AccessAnswer {
 /**
  * #955: a page that finds the person has no access to `app` says so to the
  * server: opening it is the request, so there is no button. Asked once per
- * opening; `waiting` means an admin has been told.
+ * opening; `waiting` means an admin has been told. Undefined while the answer
+ * is on its way, so a page shows nothing it may have to take back; null when
+ * asking failed.
  */
-export function useAccessRequest(app: string, enabled = true): AccessAnswer | undefined {
-  return useQuery({
+export function useAccessRequest(app: string, enabled = true): AccessAnswer | null | undefined {
+  const asked = useQuery({
     queryKey: ['access-request', app],
     enabled,
     gcTime: 0,
     retry: false,
     queryFn: () => api.post<AccessAnswer>('/api/access_request', { app }),
-  }).data
+  })
+  return asked.isError ? null : asked.data
 }

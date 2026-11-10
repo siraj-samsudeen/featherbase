@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { Navigate } from '@tanstack/react-router'
 import { getSessionUser } from '../lib/api'
 import { TopBar } from '../components/TopBar'
-import { Card, EmptyState, Skeleton } from '@featherbase/shop-floor'
+import { Card, EmptyState, Skeleton, buttonClasses } from '@featherbase/shop-floor'
 import { useCapabilities } from '../lib/session'
 import { useAccessRequest } from '../lib/access-request'
 
@@ -55,6 +55,14 @@ export function NoAccessPage() {
   const name = personName()
   // #955: opening Featherbase with no access is the request for it, unless they belong in an app.
   const asked = useAccessRequest('featherbase')
+  // Nothing until the answer is in: they may belong in an app, and "no access" must never flash.
+  if (asked === undefined)
+    return (
+      <div className="flex min-h-screen flex-col bg-canvas">
+        <TopBar forPerson />
+        <Waiting />
+      </div>
+    )
   if (asked?.state === 'elsewhere' && asked.home) return <GoingToApp path={asked.home} />
   if (asked?.state === 'apps' && asked.apps?.length)
     return (
@@ -62,14 +70,19 @@ export function NoAccessPage() {
         <TopBar forPerson />
         <main className="flex flex-1 items-center justify-center p-4">
           <Card className="w-full max-w-sm" data-testid="app-list">
-            <EmptyState title="Your apps" body="Open one of these. For anything else, ask your administrator." />
-            <ul className="mt-2 flex flex-col gap-1">
-              {asked.apps.map((app) => (
-                <li key={app.name}>
-                  <a href={app.href} className="text-action underline">{app.title}</a>
-                </li>
-              ))}
-            </ul>
+            <EmptyState
+              title="Your apps"
+              body="Open one of these. For anything else, ask your administrator."
+              action={
+                <ul className="flex flex-col items-center gap-2">
+                  {asked.apps.map((app) => (
+                    <li key={app.name}>
+                      <a href={app.href} className={buttonClasses()}>{app.title}</a>
+                    </li>
+                  ))}
+                </ul>
+              }
+            />
           </Card>
         </main>
       </div>
