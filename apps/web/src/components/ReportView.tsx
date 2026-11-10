@@ -431,9 +431,11 @@ export function ReportView({
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold text-ink">{table} — Summary</h1>
-          <span className="text-xs text-ink-muted" data-testid="report-total">
-            {fmtCount(matching)} rows
-          </span>
+          {!rows.isError && (
+            <span className="text-xs text-ink-muted" data-testid="report-total">
+              {fmtCount(matching)} rows
+            </span>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -587,51 +589,56 @@ export function ReportView({
         </div>
       )}
 
-      <div className={cardClasses('overflow-x-auto')}>
-        <table className="w-full text-sm" data-testid="report-table">
-          <thead className="bg-subtle text-left text-xs text-ink-muted">
-            <tr>
-              <th className="px-3 py-2 font-medium">Name</th>
-              {columns.map((c) => (
-                <th key={c} className="px-3 py-2 font-medium" data-testid={`report-head-${c}`}>
-                  {label(c)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {!groupBy && data.map(bodyRow)}
-            {groupBy &&
-              shownGroups.map((g) => (
-                <ReportGroup
-                  key={g.key}
-                  group={g}
-                  label={displayChoice(g.key, groupBy)}
-                  columns={columns}
-                  numericCols={numericCols}
-                  fmt={fmt}
-                  bodyRow={bodyRow}
-                />
-              ))}
-            {data.length > 0 && numericCols.length > 0 && (
-              <tr
-                className="border-t-2 border-border-control bg-subtle font-medium"
-                data-testid="report-grand-total"
-              >
-                <td className="px-3 py-1.5">Total ({fmt(grand.count)})</td>
+      {/* #1133: a refused rows request is an error, not an empty Table. */}
+      {rows.isError ? (
+        <Notice tone="negative">This report could not be loaded: {rows.error.message}</Notice>
+      ) : (
+        <div className={cardClasses('overflow-x-auto')}>
+          <table className="w-full text-sm" data-testid="report-table">
+            <thead className="bg-subtle text-left text-xs text-ink-muted">
+              <tr>
+                <th className="px-3 py-2 font-medium">Name</th>
                 {columns.map((c) => (
-                  <td key={c} className="px-3 py-1.5" data-testid={`grand-sum-${c}`}>
-                    {numericCols.includes(c) ? fmt(grand.sums[c]) : ''}
-                  </td>
+                  <th key={c} className="px-3 py-2 font-medium" data-testid={`report-head-${c}`}>
+                    {label(c)}
+                  </th>
                 ))}
               </tr>
-            )}
-          </tbody>
-        </table>
-        {data.length === 0 && (
-          <p className="px-3 py-6 text-center text-sm text-ink-subtle">No rows</p>
-        )}
-      </div>
+            </thead>
+            <tbody>
+              {!groupBy && data.map(bodyRow)}
+              {groupBy &&
+                shownGroups.map((g) => (
+                  <ReportGroup
+                    key={g.key}
+                    group={g}
+                    label={displayChoice(g.key, groupBy)}
+                    columns={columns}
+                    numericCols={numericCols}
+                    fmt={fmt}
+                    bodyRow={bodyRow}
+                  />
+                ))}
+              {data.length > 0 && numericCols.length > 0 && (
+                <tr
+                  className="border-t-2 border-border-control bg-subtle font-medium"
+                  data-testid="report-grand-total"
+                >
+                  <td className="px-3 py-1.5">Total ({fmt(grand.count)})</td>
+                  {columns.map((c) => (
+                    <td key={c} className="px-3 py-1.5" data-testid={`grand-sum-${c}`}>
+                      {numericCols.includes(c) ? fmt(grand.sums[c]) : ''}
+                    </td>
+                  ))}
+                </tr>
+              )}
+            </tbody>
+          </table>
+          {data.length === 0 && (
+            <p className="px-3 py-6 text-center text-sm text-ink-subtle">No rows</p>
+          )}
+        </div>
+      )}
 
       {/* RPT-006: chart of the report data + pin to a dashboard */}
       <div className={cardClasses('mt-4 p-4')} data-testid="report-chart">
