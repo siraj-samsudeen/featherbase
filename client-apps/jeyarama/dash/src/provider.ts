@@ -24,7 +24,8 @@ export interface Place {
   reasons?: Reason[]
 }
 
-const T = { employee: 'Employee', job: 'Job Assignment', site: 'Site', plant: 'Plant', section: 'Section', placement: 'Section Subcategory' } as const
+const T = { employee: 'Employee', job: 'Job Assignment', site: 'Site', plant: 'Plant', section: 'Section', placement: 'Section Subcategory',
+  merchandise: 'Merchandise Assignment', subcategory: 'Subcategory' } as const
 
 /** Every Table the provider reads: featherbase.json's scopeProvider.tables. */
 export const PROVIDER_TABLES: string[] = Object.values(T)
@@ -33,10 +34,12 @@ export const PROVIDER_TABLES: string[] = Object.values(T)
 export const PROVIDER_FIELDS: Record<string, string[]> = {
   [T.employee]: ['person', EMPLOYEE_STATUS],
   [T.job]: ['employee', 'job', 'site', 'floor', 'section', 'acting', 'starts_on', 'ends_on'],
-  [T.site]: ['name', 'is_store', 'cluster'],
+  [T.site]: ['name', 'is_store', 'cluster', 'operating_region'],
   [T.plant]: ['site', 'plant_type'],
   [T.section]: ['name', 'site', 'floor'],
   [T.placement]: ['store', 'section', 'subcategory', 'starts_on', 'ends_on'],
+  [T.merchandise]: ['employee', 'responsibility', 'division', 'subdivision', 'category', 'subcategory', 'operating_region', 'starts_on', 'ends_on'],
+  [T.subcategory]: ['division', 'subdivision', 'category', 'subcategory_type'],
 }
 
 const PAGE = 500
@@ -60,8 +63,11 @@ function istToday(): string {
 /** The label of a section's place; the report reads a section's name back from it. */
 export const sectionLabel = (store: string, section: string) => `${store} / Section: ${section}`
 
+/** The label of a store's assigned subcategories: never a section's, so the page names no section for them. */
+export const assignedLabel = (store: string) => `${store} / Assigned subcategories`
+
 /** Why someone's job gives them no place: the page says so plainly. */
-export type NoReach = 'no_job' | 'no_section' | 'departments_not_filled' | 'head_office' | 'no_cluster' | 'nothing_placed'
+export type NoReach = 'no_job' | 'no_section' | 'departments_not_filled' | 'head_office' | 'no_cluster' | 'nothing_placed' | 'nothing_assigned'
 
 export interface Reach {
   places: Place[]
@@ -101,13 +107,17 @@ const basisOf = (job: Row) => `${checked(job.acting) ? 'acting_' : ''}${BASIS[ex
 const reasonOf = (job: Row): Reason => ({ text: `${checked(job.acting) ? 'Acting ' : ''}${exact(job.job)} job assignment`, since: day(job.starts_on),
   ...(day(job.ends_on) ? { until: day(job.ends_on) } : {}) })
 
+/** A Merchandise Assignment's level, most specific first: the deepest link filled decides what it covers. */
+const LEVELS = ['subcategory', 'category', 'subdivision', 'division'] as const
+
 /** What `person` reaches on `on`, by the who-sees-what table in #967. */
 export async function reachOf(documents: Documents, person: string, on: string): Promise<Reach> {
   const employees = (await all(documents, T.employee, [['person', '=', person]])).filter(row => text(row[EMPLOYEE_STATUS]) === 'Current')
-  const jobs = employees.length
-    ? (await all(documents, T.job, [['employee', 'in', employees.map(id)]])).filter(row => holdsOn(row, on))
-    : []
-  if (!jobs.length) return { places: [], problems: ['no_job'] }
+  const mine: Filter[] = [['employee', 'in', employees.map(id)]]
+  const jobs = employees.length ? (await all(documents, T.job, mine)).filter(row => holdsOn(row, on)) : []
+  // rama_dw #4588: buyers, category heads and the heads above them, from their Merchandise Assignments.
+  const assignments = employees.length ? (await all(documents, T.merchandise, mine)).filter(row => holdsOn(row, on)) : []
+  if (!jobs.length && !assignments.length) return { places: [], problems: ['no_job'] }
 
   const sites = await all(documents, T.site)
   const stores = sites.filter(site => checked(site.is_store))
@@ -149,6 +159,25 @@ export async function reachOf(documents: Documents, person: string, on: string):
       whole(stores)
     } else {
       problems.push('head_office')
+    }
+  }
+
+  if (assignments.length) {
+    // Buyers buy merchandise only: a consumable or service under the same category stays out.
+    const subcategories = await all(documents, T.subcategory, [['subcategory_type', '=', 'Merchandise']])
+    for (const assignment of assignments) {
+      const level = LEVELS.find(column => exact(assignment[column]))
+      const named = level && exact(assignment[level])
+      const codes = !named ? [] : level === 'subcategory'
+        ? subcategories.filter(row => id(row) === named).map(id)
+        : subcategories.filter(row => exact(row[level]) === named).map(id)
+      const region = exact(assignment.operating_region)
+      const covered = stores.filter(site => !region || exact(site.operating_region) === region)
+      const plants = covered.flatMap(site => plantsOf.get(id(site)) ?? [])
+      if (!codes.length || !plants.length) { problems.push('nothing_assigned'); continue }
+      const reason: Reason = { text: `${exact(assignment.responsibility)} merchandise assignment`, since: day(assignment.starts_on),
+        ...(day(assignment.ends_on) ? { until: day(assignment.ends_on) } : {}) }
+      for (const plant of plants) places.add(assignedLabel(plant), plant, codes, 'assignment', reason)
     }
   }
 
