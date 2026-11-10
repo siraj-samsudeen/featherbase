@@ -122,6 +122,41 @@ test('an unavailable installed app retains its catalog details', async ({ admin 
   }
 })
 
+// An installed app whose code is gone is offered from what its row stored.
+async function withUnavailableOther(admin: ReturnType<typeof makeClient>, check: () => Promise<void>) {
+  const root = await sourceRepository()
+  try {
+    await discoverAppLibrary([], root)
+    await admin.post('/api/apps/prepare-install', { name: 'other' })
+    await discoverAppLibrary([], null)
+    await loadInstalledApps()
+    await check()
+  } finally {
+    await discoverAppLibrary([], null)
+    await loadInstalledApps()
+    await rm(root, { recursive: true, force: true })
+  }
+}
+const catalogOf = async (admin: ReturnType<typeof makeClient>) =>
+  (await admin.get<{ catalog: { name: string; version: string }[] }>('/api/apps')).catalog
+
+test('an unavailable installed app with no stored version is offered at the version its manifest names', async ({ admin }) => {
+  await withUnavailableOther(admin, async () => {
+    await sql`update installed_app set package_version = null, manifest = manifest || '{"packageVersion": "0.0.9"}' where name = 'other'`
+    expect(await catalogOf(admin)).toContainEqual(expect.objectContaining({ name: 'other', version: '0.0.9' }))
+  })
+})
+
+test.for([
+  ['no stored manifest', () => sql`update installed_app set manifest = null where name = 'other'`],
+  ['a stored manifest that no longer reads', () => sql`update installed_app set manifest = '{"name": 7}' where name = 'other'`],
+] as const)('an unavailable installed app with %s is not offered', async ([, change], { admin }) => {
+  await withUnavailableOther(admin, async () => {
+    await change()
+    expect((await catalogOf(admin)).map(app => app.name)).not.toContain('other')
+  })
+})
+
 test('simultaneous prepare requests build the app only once', async ({ admin }) => {
   const root = await sourceRepository(`node -e "setTimeout(() => require('fs').copyFileSync('server.mjs','built.mjs'), 250)"`)
   try {

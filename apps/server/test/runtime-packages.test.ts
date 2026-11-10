@@ -686,6 +686,32 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     }
   })
 
+  test('an upgrade withdrawing a grant already removed by hand upgrades, and records no withdrawal', async ({ admin }) => {
+    const root = await mkdtemp(resolve('test/.tasker-withdraw-gone-'))
+    const installed = resolve(root, 'installed')
+    const next = resolve(root, 'next')
+    try {
+      for (const to of [installed, next])
+        await cp(currentTasker, to, { recursive: true, filter: file => !file.split('/').includes('node_modules') })
+      const { version: from } = JSON.parse(await readFile(resolve(installed, 'package.json'), 'utf8')) as { version: string }
+      const to = '99.0.0'
+      await editJson(resolve(installed, 'featherbase.json'), m => { m.permissions.push({ table: 'Person', role: 'All', operations: { read: '*' } }) })
+      await editJson(resolve(next, 'featherbase.json'), m => { m.migrations.push({ id: 'withdraw_person_read_probe', fromVersion: from, toVersion: to, operations: [] }) })
+      await editJson(resolve(next, 'package.json'), p => { p.version = to })
+      expect(await discoverPackages([installed])).toEqual([])
+      await admin.post('/api/install_app', { name: 'tasker' })
+      await sql`delete from permission where owner_app = 'tasker' and role = 'All' and ref_table = 'Person'`
+      expect(await discoverPackages([installed, next])).toEqual([])
+      await loadInstalledApps()
+      const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'tasker', version: to })
+      await admin.post('/api/upgrade_app', { name: 'tasker', version: to, planId: plan.planId })
+      expect(await sql`select package_version from installed_app where name = 'tasker'`).toEqual([{ package_version: to }])
+      expect(await sql`select 1 from activity_log where operation like 'app_grant_withdrawn tasker%'`).toEqual([])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   test('an upgrade will not withdraw a grant someone else\'s deeper grant depends on', async ({ admin }) => {
     const root = await mkdtemp(resolve('test/.tasker-withdraw-held-'))
     const installed = resolve(root, 'installed')

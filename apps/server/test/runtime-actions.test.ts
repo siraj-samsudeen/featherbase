@@ -206,6 +206,19 @@ describe('declared transactional runtime actions', () => {
     } finally { await rm(second, { recursive: true, force: true }) }
   })
 
+  test('a package still declaring version 1 actions is listed as needing an explicit action policy', async ({ admin }) => {
+    const copy = await mkdtemp(resolve('test/.runtime-actions-v1-'))
+    try {
+      await cp(directory, copy, { recursive: true })
+      const manifestPath = resolve(copy, 'featherbase.json')
+      const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+      await writeFile(manifestPath, JSON.stringify({ ...manifest, actions: { version: 1, names: ['transform', 'discard', 'probe'], tables: manifest.actions.tables } }))
+      expect(await discoverPackages([copy])).toEqual([])
+      const { actions } = await admin.get<{ actions: { app: string; diagnostic?: string }[] }>('/api/apps')
+      expect(actions.find(entry => entry.app === 'actionproof')).toMatchObject({ diagnostic: 'Explicit action policy upgrade required' })
+    } finally { await rm(copy, { recursive: true, force: true }) }
+  })
+
   test('finalized references, retained update counts, related queries and helper overlap cannot evade authority', async ({ admin, createUser }) => {
     await discoverPackages([directory]); await admin.post('/api/install_app', { name: 'actionproof' })
     const owner = await createUser({ email: 'reference-owner@example.com', roles: [] })
