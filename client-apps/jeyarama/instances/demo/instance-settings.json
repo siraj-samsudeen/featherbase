@@ -1,0 +1,42 @@
+{
+  "settings": {
+    "System Settings": {
+      "app_name": "Banyan Retail demo",
+      "time_zone": "Asia/Kolkata",
+      "privacy_notice": {
+        "file": "privacy-notice.md"
+      }
+    },
+    "Sign In Method": [
+      {
+        "row_id": "password",
+        "kind": "password",
+        "label": "Password",
+        "enabled": true,
+        "new_person": "refuse",
+        "self_link": true
+      }
+    ],
+    "Scheduled Job": [
+      { "row_id": "auto_email_reports", "enabled": false },
+      { "row_id": "check_instance_health", "enabled": true },
+      { "row_id": "check_sla", "enabled": true },
+      { "row_id": "disable_leavers", "enabled": false },
+      { "row_id": "refresh_datasets", "enabled": true }
+    ],
+    "Data Source": [
+      {
+        "row_id": "motherduck",
+        "engine": "duckdb",
+        "url_env": "DEMO_WAREHOUSE_DIR",
+        "access": "read_only",
+        "default_schema": "gold.main",
+        "databases": [{ "name": "gold" }, { "name": "marts" }]
+      }
+    ]
+  },
+  "environments": {
+    "local": { "settings": {} },
+    "dev": { "settings": {} }
+  }
+}
