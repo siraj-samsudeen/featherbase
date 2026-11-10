@@ -21,9 +21,14 @@ export function deliveredAppsRoot(): string | null {
   return storage ? join(storage, 'delivered-apps') : null
 }
 
+/** The app paths the image ships (FEATHERBASE_APP_PATHS). */
+export function configuredAppPaths(): string[] {
+  return JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[]
+}
+
 /** The app paths a server reads: the image's, then any delivered copies. */
 export function appPathsFromEnvironment(): string[] {
-  const configured = JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[]
+  const configured = configuredAppPaths()
   const root = deliveredAppsRoot()
   return root && existsSync(root) ? [...configured, `${root}/*`] : configured
 }
@@ -66,7 +71,7 @@ export async function deliverApp(body: unknown) {
   if (!root) throw new AppError('ValidationError', 'Delivery needs FILE_STORAGE_DIR, a volume that survives a restart')
   const files = (body as { files?: unknown })?.files
   if (!Array.isArray(files) || !files.length) throw new AppError('ValidationError', 'Expected { files: [{ path, data }] }, data in base64')
-  const decoded = (files as DeliveredFile[]).map(file => ({ path: safePath(file?.path), bytes: Buffer.from(String(file?.data ?? ''), 'base64') }))
+  const decoded = (files as DeliveredFile[]).map(file => ({ path: safePath(file?.path), bytes: Buffer.from(String(file?.data), 'base64') }))
   if (decoded.reduce((total, file) => total + file.bytes.length, 0) > MAX_BYTES) throw new AppError('ValidationError', 'A delivery is at most 50 MB')
   const { appOperation } = await import('./app-lifecycle')
   return appOperation(async () => {
@@ -88,17 +93,17 @@ export async function deliverApp(body: unknown) {
       if (!declaresAsInstalled(row, manifest, pkg))
         throw new AppError('ConflictError', `The delivered ${name} changes what the app declares. Use an ordinary deploy, which upgrades it.`)
       const { appLibraryPaths } = await import('./app-library')
-      const configured = JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[]
-      const over = await shippedDigest(await appLibraryPaths(configured), name, String(pkg.version))
+      const over = await shippedDigest(await appLibraryPaths(configuredAppPaths()), name, String(pkg.version))
       const target = join(root, name)
       const previous = join(root, `.previous-${name}-${randomBytes(4).toString('hex')}`)
-      const previousOver = existsSync(`${target}.over`) ? await readFile(`${target}.over`, 'utf8') : null
+      const previousOver = await readFile(`${target}.over`, 'utf8').catch(() => '')
       const hadPrevious = existsSync(target)
       try {
         if (hadPrevious) await rename(target, previous)
         await rename(incoming, target)
-        await writeFile(`${target}.over`, over ?? '')
-        const outcome = await follow(name)
+        await writeFile(`${target}.over`, over)
+        const { artifactDigest } = await import('./runtime-packages')
+        const outcome = await follow(name, await artifactDigest(target))
         await rm(previous, { recursive: true, force: true })
         return { name, version: pkg.version, outcome }
       } catch (error) {
@@ -106,9 +111,10 @@ export async function deliverApp(body: unknown) {
         await rm(`${target}.over`, { force: true })
         if (hadPrevious && existsSync(previous)) {
           await rename(previous, target)
-          if (previousOver !== null) await writeFile(`${target}.over`, previousOver)
+          await writeFile(`${target}.over`, previousOver)
         }
-        await follow(name).catch(() => {})
+        // The original refusal is what the caller needs; a failed re-discovery here is not.
+        await Promise.allSettled([follow(name, null)])
         throw error
       }
     } finally {
@@ -117,16 +123,21 @@ export async function deliverApp(body: unknown) {
   }, true)
 }
 
-async function follow(name: string): Promise<'same' | 'repinned'> {
+/** Discover, re-pin and serve; with `delivered`, refuse unless the installed
+ *  app now runs exactly those files (a copy that fails to load is skipped by
+ *  discovery, which would leave the image's copy serving). */
+async function follow(name: string, delivered: string | null): Promise<'same' | 'repinned'> {
   const { discoverAppLibrary } = await import('./app-library')
   const { repinToFolder } = await import('./runtime-packages')
   const { loadInstalledApps } = await import('./apps')
+  const { sql } = await import('./db')
   await discoverAppLibrary(appPathsFromEnvironment())
   const outcome = await repinToFolder(name, true)
-  if (outcome === 'different')
-    throw new AppError('ConflictError', `The delivered ${name} is not the installed version. Use an ordinary deploy.`)
   // Discovery selects only the copy the installed record names; after a re-pin, discover again.
   if (outcome === 'repinned') await discoverAppLibrary(appPathsFromEnvironment())
   await loadInstalledApps()
-  return outcome
+  const [row] = await sql`select artifact_digest from installed_app where name = ${name}`
+  if (delivered !== null && row?.artifact_digest !== delivered)
+    throw new AppError('ConflictError', `The delivered ${name} could not be loaded, so the instance keeps the copy it had. Check that it builds and starts, or use an ordinary deploy.`)
+  return outcome === 'repinned' ? 'repinned' : 'same'
 }

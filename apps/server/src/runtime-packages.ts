@@ -539,9 +539,9 @@ async function loadArtifacts(paths: string[]) {
 /** #642 (E7): the installed rows (`name`, `package_version`,
  *  `artifact_digest`, `manifest`) whose exact version and fingerprint no app on
  *  `paths` ships, as boot would take them. */
-/** #1178 (D8): the digest of `name@version` on `paths`, or null. */
-export async function shippedDigest(paths: string[], name: string, version: string): Promise<string | null> {
-  return (await loadArtifacts(paths)).loaded.get(`${name}@${version}`)?.digest ?? null
+/** #1178 (D8): the digest of `name@version` on `paths`, or '' when none ships. */
+export async function shippedDigest(paths: string[], name: string, version: string): Promise<string> {
+  return (await loadArtifacts(paths)).loaded.get(`${name}@${version}`)?.digest ?? ''
 }
 
 export async function unshippedApps<Row extends Record<string, unknown>>(installed: Row[], paths: string[]): Promise<Row[]> {
