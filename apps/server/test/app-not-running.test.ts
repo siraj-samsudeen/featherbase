@@ -3,7 +3,7 @@ import { describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { discoverPackages, installedPackageDifference, notRunningMessage, notRunningReason } from '../src/runtime-packages'
-import { activateInstalledApp, installApp, listInstalledApps, registerApp, setAppEnabled, suspendRuntimeApp, uninstallApp, whyAppNotRunning } from '../src/apps'
+import { activateInstalledApp, installApp, type AppManifest, listInstalledApps, registerApp, setAppEnabled, suspendRuntimeApp, uninstallApp, whyAppNotRunning } from '../src/apps'
 import { ownDisplayName } from '../src/people-directory'
 import { installedAppsAtStart } from '../src/release-preflight'
 
@@ -47,10 +47,10 @@ describe('an installed app that is not running here (#912)', () => {
 
   // An app registered in code, not from a package: its jobs are its own,
   // with no package claim to check.
-  test.for([
+  test.for<[string, Partial<AppManifest>]>([
     ['with no jobs', {}],
     ['with a job', { scheduler_events: [{ method: 'code_app_sweep', cadence: 'hourly', handler: async () => {} }] }],
-  ] as const)('an installed code app %s that this process has not wired is started by the app list', async ([, extra], { admin: _a }) => {
+  ])('an installed code app %s that this process has not wired is started by the app list', async ([, extra], { admin: _a }) => {
     const name = `codeapp-${Date.now()}`
     registerApp({ name, ...extra })
     try {
