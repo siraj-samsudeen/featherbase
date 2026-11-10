@@ -579,6 +579,13 @@ describe('#465: cli settings:export and settings:apply', () => {
     expect(f?.stderr).toContain('A sign-in method cannot change kind')
   }, 60_000)
 
+  it('a dry run names a row the file would add as a new row', async () => {
+    writeFileSync(join(dir, 'new-row.json'), JSON.stringify({ settings: { 'Sign In Method': [{ row_id: 'hr_cli_new', kind: 'delegated_password', label: 'HR', enabled: false }] } }))
+    const out = await cli(['settings:apply', '--file', join(dir, 'new-row.json'), '--dry-run'])
+    expect(out).toMatch(/Sign In Method hr_cli_new \w+: .* \(new row\)/)
+    expect(await sql`select 1 from sign_in_method where row_id = 'hr_cli_new'`).toEqual([])
+  }, 60_000)
+
   it('refuses a file reference outside the settings file\'s folder', async () => {
     writeFileSync(join(dir, 'escape.json'), JSON.stringify({ settings: { 'System Settings': { privacy_notice: { file: '../package.json' } } } }))
     const f = await failure(['settings:apply', '--file', join(dir, 'escape.json'), '--dry-run'])
@@ -597,6 +604,12 @@ describe('Running an Instance: rehearse an environment\'s start-up checks', () =
   })
 
   // #467: the rehearsal shows the same warning the release would.
+  test('a configuration with the connected-service test mode on says so', async () => {
+    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
+    expect(await cli(['boot-check'])).toMatch(/boot-check: environment test; test mode on; the server will start/)
+  })
+
   test('a set ADMIN_PASSWORD that is not the live password is warned of, and the server will still start', async () => {
     vi.stubEnv('ALLOW_MOCK_OAUTH', '')
     await setUserPassword('Administrator', 'the-live-password-467')
@@ -768,6 +781,11 @@ describe('the command line, command by command', () => {
     expect(await cli(['seed-pack', 'apply', 'jeyarama'])).toMatch(/^seed pack jeyarama: added .*; kept .*; sign-in methods linked .*; people_review \w+\n$/)
   })
 
+  test('a seed pack applied a second time adds nothing', async () => {
+    await cli(['seed-pack', 'apply', 'jeyarama'])
+    expect(await cli(['seed-pack', 'apply', 'jeyarama'])).toMatch(/^seed pack jeyarama: added none; kept /)
+  })
+
   test('leavers:check is a dry run unless --apply, and --accept takes a count', async () => {
     expect(await cli(['leavers:check'])).toMatch(/\nleaver check: dry run; nothing was changed\n$/)
     expect((await failure(['leavers:check', '--accept', '3']))?.stderr).toBe('error: --accept only means something with --apply\n')
@@ -782,6 +800,10 @@ describe('the command line, command by command', () => {
   test('console runs a piped script to the end, writing through the row API', async () => {
     expect(await cli(['console'], 'await saveDoc("Role", { row_id: "Cli Console Role" }, "Administrator", "insert")\n')).toBe('')
     expect(await sql`select row_id from role where row_id = 'Cli Console Role'`).toEqual([{ row_id: 'Cli Console Role' }])
+  })
+
+  test('a console script that throws something other than an error prints it and fails', async () => {
+    expect(await failure(['console'], 'throw "plain words"\n')).toMatchObject({ status: 1, stderr: 'error: plain words\n' })
   })
 
   test('console at a terminal opens a REPL with the row API in scope', async () => {
