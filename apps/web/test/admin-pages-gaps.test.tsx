@@ -1,10 +1,12 @@
 // Small Admin page paths the merged web coverage report (ADR 0012) showed red:
 // backing out of a column rename, the column editor and Explore for a Table
 // that is not there (or was deleted), Find a person by another identifier and
-// a value the server refuses. Each failure is the server's real answer.
+// a value the server refuses or a search the network drops. Each refusal is the
+// server's real answer.
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { applySeedPack } from 'server/src/seed-packs'
+import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 
 const enc = encodeURIComponent
@@ -47,4 +49,21 @@ test('Find a person by mobile phone: a value that is not a phone number is refus
   await userEvent.click(within(page).getByRole('button', { name: 'Find' }))
   expect(await within(page).findByTestId('find-person-error')).toHaveTextContent('An Indian mobile number has 10 digits starting 6–9')
   expect(within(page).queryByTestId('find-person-results')).not.toBeInTheDocument()
+})
+
+test('Find a person: a search the network drops says the search did not work', async ({ admin }) => {
+  await applySeedPack('jeyarama')
+  await renderApp('/featherbase/admin/find-person', admin)
+  const page = await screen.findByTestId('find-person', {}, { timeout: 8000 })
+  const select = within(page).getByLabelText('Identifier')
+  await waitFor(() => expect(within(select).getByRole('option', { name: 'Mobile phone' })).toBeInTheDocument())
+  await userEvent.selectOptions(select, 'phone')
+  await userEvent.type(within(page).getByLabelText('Value'), '9847012345')
+  const bridge = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+    String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).startsWith('/api/identifiers?')
+      ? Promise.reject(new TypeError('Failed to fetch'))
+      : bridge(input, init))
+  await userEvent.click(within(page).getByRole('button', { name: 'Find' }))
+  expect(await within(page).findByTestId('find-person-error')).toHaveTextContent('That search did not work')
 })

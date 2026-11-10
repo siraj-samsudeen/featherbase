@@ -279,7 +279,7 @@ function visitWeight(age: number): number {
   return 10
 }
 
-export function frecency(entry: RecentEntry, now = Date.now()): number {
+export function frecency(entry: RecentEntry, now: number): number {
   return entry.visits.reduce((sum, t) => sum + visitWeight(now - t), 0)
 }
 

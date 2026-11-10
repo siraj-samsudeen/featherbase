@@ -7,6 +7,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import * as XLSX from 'xlsx'
+import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 import { clearSession } from '../src/lib/import-session'
 
@@ -149,3 +150,58 @@ test('a merge group is one Table in the import, not one per sheet', async ({ adm
   expect(within(card).getByTestId(`ib-target-${ONE}`)).toHaveTextContent('Alpha, Beta, Gamma')
   clearSession()
 }, 60_000)
+
+// Batches made through the import API, as the wizard sends them.
+async function importInto(admin: Admin, table: string, rows: Record<string, unknown>[], batch: string, run: string, created = false) {
+  await admin.post(`/api/table/${encodeURIComponent(table)}:import`, {
+    rows,
+    context: { batch_id: batch, run_id: run, file_name: `${batch}.csv`, sheet_name: 'Sheet1', table_created: created },
+  })
+}
+
+test('Past imports with nothing imported says so and offers an import', async ({ admin }) => {
+  await renderApp('/featherbase/admin/imports', admin)
+  expect(await screen.findByTestId('ib-empty', {}, WAIT)).toHaveTextContent('Nothing imported yet.')
+})
+
+test('an import with refused rows counts them as failed, on the import and on its Table', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Bch Needs Note', columns: [{ column_name: 'note', column_type: 'Data', reqd: true }] })
+  await importInto(admin, 'Bch Needs Note', [{ note: 'kept' }, { note: '' }], 'bch-failed', 'bch-failed-run')
+  await renderApp('/featherbase/admin/imports', admin)
+  const batch = await screen.findByTestId('ib-batch-bch-failed', {}, WAIT)
+  expect(batch).toHaveTextContent('1 rows added · 1 failed')
+  expect(within(batch).getByTestId('ib-target-Bch Needs Note')).toHaveTextContent('1 added · 1 failed')
+})
+
+test('a run taken back is marked reverted on its Table', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Bch Taken Back', columns: [{ column_name: 'note', column_type: 'Data' }] })
+  await importInto(admin, 'Bch Taken Back', [{ note: 'one' }], 'bch-reverted', 'bch-reverted-run')
+  await admin.post(`/api/table/${encodeURIComponent('Bch Taken Back')}:import-revert`, { run_id: 'bch-reverted-run' })
+  await renderApp('/featherbase/admin/imports', admin)
+  const batch = await screen.findByTestId('ib-batch-bch-reverted', {}, WAIT)
+  expect(within(batch).getByTestId('ib-target-Bch Taken Back')).toHaveTextContent(/ · reverted$/)
+})
+
+test('Past imports the network drops says it could not load them', async ({ admin }) => {
+  const bridge = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+    String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).startsWith('/api/import/batches')
+      ? Promise.reject(new TypeError('Failed to fetch'))
+      : bridge(input, init))
+  await renderApp('/featherbase/admin/imports', admin)
+  expect(await screen.findByTestId('ib-error', {}, WAIT)).toHaveTextContent('Could not load imports')
+})
+
+test('deleting an import the network drops says it could not delete', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Bch Kept Anyway', columns: [{ column_name: 'note', column_type: 'Data' }] })
+  await importInto(admin, 'Bch Kept Anyway', [{ note: 'one' }], 'bch-lost', 'bch-lost-run', true)
+  await renderApp('/featherbase/admin/imports', admin)
+  await userEvent.click(await screen.findByTestId('ib-delete-bch-lost', {}, WAIT))
+  const bridge = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+    init?.method === 'DELETE' || String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).includes('batches/')
+      ? Promise.reject(new TypeError('Failed to fetch'))
+      : bridge(input, init))
+  await userEvent.click(screen.getByTestId('ib-confirm-go-bch-lost'))
+  expect(await screen.findByTestId('ib-error-bch-lost', {}, WAIT)).toHaveTextContent('Could not delete')
+})

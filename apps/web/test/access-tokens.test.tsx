@@ -206,3 +206,18 @@ test('Revoke on a token row marks it revoked', async ({ admin }) => {
   const { tokens } = await admin.get<{ tokens: { id: string; revoked_at: string | null }[] }>('/api/access_tokens')
   expect(tokens.find((t) => t.id === tok.id)?.revoked_at).toEqual(expect.any(String))
 })
+
+test('a token that has been used says when it was last used', async ({ admin }) => {
+  const svc = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-used' })
+  const tok = await admin.post<{ id: string }>('/api/access_tokens', { label: 'used once', owner: svc.row_id })
+  await sql`update access_token set last_used_at = '2026-03-04T05:30:00Z' where id = ${tok.id}`
+  await renderApp('/featherbase/admin/access-tokens', admin)
+  const row = await screen.findByTestId(`token-${tok.id}`, {}, { timeout: 10_000 })
+  expect(row).toHaveTextContent('04-Mar-2026 11:00 IST')
+})
+
+test("a System Manager's own token names them as its owner, marked as theirs", async ({ admin }) => {
+  const tok = await admin.post<{ id: string }>('/api/access_tokens', { label: 'my own' })
+  await renderApp('/featherbase/admin/access-tokens', admin)
+  expect(await screen.findByTestId(`token-owner-${tok.id}`, {}, { timeout: 10_000 })).toHaveTextContent(/ \(you\)$/)
+})

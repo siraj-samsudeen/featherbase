@@ -17,7 +17,7 @@ interface FileRow {
 // FILE-002: attachments panel — File rows linked to this row via
 // ref_table/ref_name. Upload goes through /api/upload_file; deleting the
 // File row also removes the storage object (server on_trash hook).
-export function Attachments({ table, name, readOnly = false, canUpload = true }: { table: string; name: string; readOnly?: boolean; canUpload?: boolean }) {
+export function Attachments({ table, name, readOnly, canUpload }: { table: string; name: string; readOnly: boolean; canUpload: boolean }) {
   const queryClient = useQueryClient()
   const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)

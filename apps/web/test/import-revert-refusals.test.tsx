@@ -1,9 +1,11 @@
 // Reverting an import run from the wizard's history strip: backing out of the
 // preview, a revert that cannot take back a row another Table now points at
-// (named with the reason), and a revert asked for after the Table went. Gaps
+// (named with the reason), a revert asked for after the Table went, and a
+// preview or revert the network drops. Gaps
 // the merged web coverage report (ADR 0012) showed; refusals are the server's.
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 import { clearSession } from '../src/lib/import-session'
 import { sql } from 'server/src/db'
@@ -72,5 +74,35 @@ test('a revert asked for after the Table was deleted is refused with the reason'
   await user.click(history.getByTestId('iw-revert-open-h0'))
   await waitFor(() => expect(history.getByTestId('iw-revert-h0')).toHaveTextContent(/Table Iwv Shelf was deleted by Administrator on /))
   expect(history.queryByTestId('iw-revert-preview-h0')).not.toBeInTheDocument()
+  clearSession()
+})
+
+test('a revert preview the network drops says the revert failed and shows no preview', async ({ admin }) => {
+  const user = userEvent.setup()
+  const history = await importedShelf(admin)
+  const bridge = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+    String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).includes(':import-revert')
+      ? Promise.reject(new TypeError('Failed to fetch'))
+      : bridge(input, init))
+  await user.click(history.getByTestId('iw-revert-open-h0'))
+  await waitFor(() => expect(history.getByTestId('iw-revert-h0')).toHaveTextContent('Revert failed'))
+  expect(history.queryByTestId('iw-revert-preview-h0')).not.toBeInTheDocument()
+  clearSession()
+})
+
+test('a revert the network drops after its preview says the revert failed', async ({ admin }) => {
+  const user = userEvent.setup()
+  const history = await importedShelf(admin)
+  await user.click(history.getByTestId('iw-revert-open-h0'))
+  await history.findByTestId('iw-revert-preview-h0')
+  const bridge = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+    String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).includes(':import-revert')
+      ? Promise.reject(new TypeError('Failed to fetch'))
+      : bridge(input, init))
+  await user.click(history.getByTestId('iw-revert-confirm-h0'))
+  await waitFor(() => expect(history.getByTestId('iw-revert-h0')).toHaveTextContent('Revert failed'))
+  expect(history.queryByTestId('iw-revert-result-h0')).not.toBeInTheDocument()
   clearSession()
 })

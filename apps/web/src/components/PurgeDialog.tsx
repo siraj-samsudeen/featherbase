@@ -52,7 +52,7 @@ function GroupLine({ g }: { g: PurgeGroup }) {
   return (
     <li data-testid="purge-group" data-action={g.action}>
       <div>
-        <span className="font-medium text-ink">{g.table}</span>{g.lines ? ` (lines in ${g.parent_table ?? 'documents'})` : ''}: {fmtCount(g.count)}{' '}
+        <span className="font-medium text-ink">{g.table}</span>{g.lines ? ` (lines in ${g.parent_table})` : ''}: {fmtCount(g.count)}{' '}
         <span className={g.action === 'blocked' ? 'text-negative' : 'text-ink-muted'} data-testid="purge-group-action">
           {g.action === 'delete' ? '— will be deleted' : g.action === 'clear' ? `— ${label} will be cleared` : `— cannot be deleted or unlinked here: ${g.why}`}
         </span>
@@ -80,7 +80,7 @@ export function PurgeDialog({ table, ids, runId, onClose, onDone }: {
   const [typed, setTyped] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const target = runId ? `run_id=${encodeURIComponent(runId)}` : `ids=${encodeURIComponent(JSON.stringify(ids ?? []))}`
+  const target = runId ? `run_id=${encodeURIComponent(runId)}` : `ids=${encodeURIComponent(JSON.stringify(ids))}`
   const plan = useQuery({
     queryKey: ['purge-preview', table, runId ?? ids, links],
     queryFn: () => api.get<PurgePlan>(`/api/table/${encodeURIComponent(table)}:purge_preview?${target}&links=${links}`),
@@ -97,8 +97,10 @@ export function PurgeDialog({ table, ids, runId, onClose, onDone }: {
         ...(runId ? { run_id: runId } : { ids }), links, reason: reason.trim(), confirm: true,
       })
       // #898: a deleted row's title goes, so recents stop offering it.
-      for (const r of plan.data?.rows ?? []) queryClient.setQueryData(['row-title', r.table, r.row_id], null)
-      const touched = new Set([table, ...(plan.data?.rows ?? []).map((r) => r.table), ...(plan.data?.groups ?? []).map((g) => g.table)])
+      // Confirm is enabled only once the plan has loaded (ready).
+      const planned = plan.data!
+      for (const r of planned.rows) queryClient.setQueryData(['row-title', r.table, r.row_id], null)
+      const touched = new Set([table, ...planned.rows.map((r) => r.table), ...planned.groups.map((g) => g.table)])
       await Promise.all([...touched].flatMap((t) => [
         queryClient.invalidateQueries({ queryKey: ['recent-strip-rows', t] }),
         queryClient.invalidateQueries({ queryKey: ['list', t] }),

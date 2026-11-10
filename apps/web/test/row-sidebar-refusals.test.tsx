@@ -1,4 +1,5 @@
 // The row sidebar's panels (assignments, tags, attachments, comments) when the
+// network drops, or when the
 // server refuses what the person asked for. Gaps the merged web coverage
 // report (ADR 0012) showed: no spec drives a refused sidebar action, so the
 // message each panel shows on a refusal was never seen. Every refusal here is
@@ -7,6 +8,7 @@
 import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 
 const DT = 'Rsr Ticket'
@@ -133,4 +135,65 @@ test('a workflow action someone else already took is refused with the reason', a
   await admin.post(`/api/table/${ENC}/rsr-1:apply_workflow_action`, { action: 'Approve' })
   await user.click(within(actions).getByRole('button', { name: 'Approve' }))
   expect(await screen.findByText('Action "Approve" is not allowed from state "Approved"')).toBeInTheDocument()
+})
+
+/** Requests to an address starting with `prefix` are lost, as offline. */
+function dropNetwork(prefix: string) {
+  const bridge = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+    String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).startsWith(prefix)
+      ? Promise.reject(new TypeError('Failed to fetch'))
+      : bridge(input, init))
+}
+
+test('an assignment the network drops says the assignment failed', async ({ admin }) => {
+  const user = userEvent.setup()
+  const rowId = await seedRow(admin, 'enable_assignments')
+  await openRow(admin, rowId)
+  const panel = await screen.findByTestId('assignments-panel')
+  await user.type(within(panel).getByTestId('assign-to'), 'Administrator')
+  dropNetwork('/api/assign')
+  await user.click(within(panel).getByTestId('assign-submit'))
+  expect(await within(panel).findByTestId('assign-error')).toHaveTextContent('Assign failed')
+})
+
+test('a tag the network drops says adding the tag failed', async ({ admin }) => {
+  const user = userEvent.setup()
+  const rowId = await seedRow(admin, 'enable_tags')
+  await openRow(admin, rowId)
+  const panel = await screen.findByTestId('tags-panel')
+  await waitFor(() => expect(panel).toHaveTextContent('No tags'))
+  dropNetwork('/api/tags')
+  await user.type(within(panel).getByTestId('tag-input'), 'urgent{Enter}')
+  expect(await within(panel).findByTestId('tag-error')).toHaveTextContent('Add tag failed')
+})
+
+test('a workflow action the network drops says the transition failed', async ({ admin }) => {
+  const user = userEvent.setup()
+  await admin.post('/api/table_def', {
+    name: DT,
+    id_pattern: 'prompt',
+    columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }],
+  })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Rsr Approver' } })
+  await admin.post('/api/save_row', {
+    table: 'Workflow',
+    row: {
+      row_id: 'Rsr Flow',
+      ref_table: DT,
+      is_active: true,
+      states: [
+        { state: 'Draft', target_status: 'draft' },
+        { state: 'Approved', target_status: 'submitted' },
+      ],
+      transitions: [{ state: 'Draft', action: 'Approve', next_state: 'Approved', allowed: 'Rsr Approver' }],
+    },
+  })
+  await admin.post(`/api/table/${ENC}`, { row_id: 'rsr-1', title: 'approve me' })
+  await openRow(admin, 'rsr-1', 'Form')
+  const actions = await screen.findByTestId('workflow-actions')
+  await within(actions).findByRole('button', { name: 'Approve' })
+  dropNetwork(`/api/table/${ENC}/rsr-1:apply_workflow_action`)
+  await user.click(within(actions).getByRole('button', { name: 'Approve' }))
+  expect(await screen.findByTestId('workflow-error')).toHaveTextContent('Transition failed')
 })

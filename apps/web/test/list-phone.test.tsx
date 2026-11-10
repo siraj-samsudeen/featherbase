@@ -183,3 +183,42 @@ test('In the wide table a row titled by a person is selected by their name', asy
   expect(await screen.findByRole('checkbox', { name: 'Select Meena Raman' })).toBeInTheDocument()
   expect(screen.queryByRole('checkbox', { name: /psn_/ })).toBeNull()
 })
+
+test('On a phone a sort set back to Default order drops its direction', async ({ admin }) => {
+  await seedTickets(admin, 'Lp Unsort', 2)
+  await openList(admin, 'Lp Unsort')
+  await waitFor(() => expect(cards()).toHaveLength(2))
+  fireEvent.change(screen.getByRole('combobox', { name: 'Sort by' }), { target: { value: 'rank' } })
+  expect(await screen.findByRole('button', { name: 'Sort order: ascending' })).toBeInTheDocument()
+  fireEvent.change(screen.getByRole('combobox', { name: 'Sort by' }), { target: { value: '' } })
+  await waitFor(() => expect(screen.queryByTestId('list-sort-dir')).not.toBeInTheDocument())
+  expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('')
+})
+
+test('On a phone a descending sort turns back to ascending', async ({ admin }) => {
+  await seedTickets(admin, 'Lp Resort', 3)
+  await openList(admin, 'Lp Resort')
+  await waitFor(() => expect(cards()).toHaveLength(3))
+  fireEvent.change(screen.getByRole('combobox', { name: 'Sort by' }), { target: { value: 'rank' } })
+  fireEvent.click(await screen.findByRole('button', { name: 'Sort order: ascending' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Sort order: descending' }))
+  await waitFor(() => expect(titles()).toEqual(['row-01', 'row-02', 'row-03']))
+})
+
+test('On a phone a Table with no title and no listed columns titles each card by its id', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Lp Bare', id_pattern: 'prompt', columns: [{ column_name: 'secret', column_type: 'Data', hidden: true }] })
+  await admin.post('/api/save_row', { table: 'Lp Bare', row: { row_id: 'B-1' } })
+  await openList(admin, 'Lp Bare')
+  await waitFor(() => expect(titles()).toEqual(['B-1']))
+})
+
+test('On a phone a list whose rows the network drops says it cannot load them', async ({ admin }) => {
+  await seedTickets(admin, 'Lp Lost', 2)
+  const bridge = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    const url = String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
+    return url.startsWith(`/api/table/${enc('Lp Lost')}?`) ? Promise.reject(new TypeError('Failed to fetch')) : bridge(input, init)
+  })
+  await openList(admin, 'Lp Lost')
+  expect(await screen.findByTestId('list-rows-error', {}, { timeout: 8000 })).toHaveTextContent('Cannot load rows for Lp Lost')
+})

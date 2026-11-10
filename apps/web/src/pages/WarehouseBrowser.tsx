@@ -68,13 +68,16 @@ export function WarehouseBrowser({ name, ...context }: { name: string } & Browse
   if ((!database || listing.isPending) && !listing.error) return (
     <div data-testid="browser-loading"><Skeleton label={`Opening ${database ?? name}. The first listing can take up to a minute; it is kept until you refresh.`} /></div>
   )
+  // The listing is enabled only with a database, so from here there is one,
+  // and the listing has settled: loaded or failed.
+  const open = database!
   return (
     <div data-testid="warehouse-browser" className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
       <Breadcrumbs items={[
         { label: 'Admin', href: '/featherbase/admin' },
         { label: 'Data Source', href: '/featherbase/admin/table/data-source' },
         { label: name, href: `/featherbase/admin/table/data-source/row/${encodeURIComponent(name)}` },
-        { label: database ?? 'Browse tables', href: tab === 'preview' ? browserHref(name, { ...context, tab: 'catalog' }) : undefined },
+        { label: open, href: tab === 'preview' ? browserHref(name, { ...context, tab: 'catalog' }) : undefined },
         ...(tab === 'preview' ? table
           ? [{ label: tableSchema ?? schema ?? '', href: browserHref(name, { ...context, tab: 'catalog' }) }, { label: table }]
           : [{ label: 'Preview' }] : []),
@@ -87,8 +90,8 @@ export function WarehouseBrowser({ name, ...context }: { name: string } & Browse
             <div className="flex flex-wrap items-end gap-4">
               <div className="w-72">
                 <SearchableList label="Databases" items={databases} query={databaseQuery} onQueryChange={(value) => go({ databaseQuery: value }, true)} getSearchText={(row) => `${row.name} ${row.owner}`}>
-                  {(matching) => <Select aria-label="Database" data-testid="browser-database" value={database ?? ''} onChange={(event) => go({ database: event.target.value, schema: undefined, table: undefined, tableSchema: undefined, tab: 'catalog' })}>
-                    {database && !matching.some((d) => d.name === database) && <option value={database}>{database} (selected)</option>}
+                  {(matching) => <Select aria-label="Database" data-testid="browser-database" value={open} onChange={(event) => go({ database: event.target.value, schema: undefined, table: undefined, tableSchema: undefined, tab: 'catalog' })}>
+                    {!matching.some((d) => d.name === open) && <option value={open}>{open} (selected)</option>}
                     {matching.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
                     {!matching.length && <option disabled>No matching databases</option>}
                   </Select>}
@@ -105,15 +108,14 @@ export function WarehouseBrowser({ name, ...context }: { name: string } & Browse
               {listing.data && <span className="text-sm text-ink-muted" data-testid="browser-listed-at">Listed {formatValue('Datetime', listing.data.listed_at, settings)}</span>}
               <Button onClick={refresh} loading={refreshing} disabled={!listing.data} data-testid="browser-refresh">Refresh</Button>
             </div>
-            {listing.isPending && database && <p data-testid="browser-loading">Opening {database}… The first time can take up to a minute; after that the list is kept until you refresh it.</p>}
             {listing.error && <Notice tone="negative">{listing.error instanceof ApiError ? listing.error.message : 'The table list could not be read'}</Notice>}
             {listing.data && <SearchableList label="Tables" items={catalog} query={query} onQueryChange={(value) => go({ query: value }, true)} getSearchText={(row) => `${database} ${row.schema} ${row.name}`}>
               {(matching) => <DataList caption="Warehouse tables" rows={matching} columns={columns} rowKey={(row) => `${row.schema}/${row.name}`} layout="table" empty={EMPTY} />}
             </SearchableList>}
           </div>
         ) },
-        { id: 'preview', label: table ? `Preview · ${table}` : 'Preview', content: table && database ? (
-          <Preview name={name} database={database} schema={tableSchema ?? schema ?? ''} table={table} context={context} columnQuery={columnQuery} onColumnQuery={(value) => go({ columnQuery: value }, true)} />
+        { id: 'preview', label: table ? `Preview · ${table}` : 'Preview', content: table ? (
+          <Preview name={name} database={open} schema={tableSchema ?? schema ?? ''} table={table} context={context} columnQuery={columnQuery} onColumnQuery={(value) => go({ columnQuery: value }, true)} />
         ) : <p className="text-sm text-ink-muted">Pick a table in the catalog to preview it.</p> },
       ]} />
     </div>

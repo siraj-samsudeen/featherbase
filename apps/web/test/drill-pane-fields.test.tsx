@@ -1,5 +1,6 @@
 // The drill pane (#910) on a Table whose form is laid out in sections and
-// whose values are not plain text: a tick, a choice, JSON and a file. Also
+// whose values are not plain text: a tick on or off, a choice, JSON (an object
+// or plain words) and a file. Also
 // how the rows of a group are opened, and what Filter keeps.
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, vi } from 'vitest'
@@ -155,4 +156,40 @@ test('Filter from the pane keeps the filters the list already had', async ({ adm
   await waitFor(() => expect(screen.getAllByTestId('filter-chip')).toHaveLength(2))
   await waitFor(() => expect(within(screen.getByTestId('list-rows')).getAllByTestId('row-check')).toHaveLength(1))
   expect(within(screen.getByTestId('list-rows')).getByRole('link', { name: 'Hinges' })).toBeInTheDocument()
+})
+
+test('a box left unticked reads No in the pane', async ({ admin }) => {
+  await seedBins(admin)
+  await admin.post('/api/save_row', { table: BIN, row: { row_id: 'B3', bin_name: 'East bay', sealed: false, spec: 'loose shelving' } })
+  await renderApp(tableHref(BIN), admin)
+  await select('East bay')
+  const bin = await pane(/^East bay/)
+  await within(bin).findByRole('heading', { name: 'Stock' }, T)
+  expect(field(bin, 'Sealed')).toHaveTextContent(/^No$/)
+})
+
+test('JSON holding plain words reads as those words in the pane', async ({ admin }) => {
+  await seedBins(admin)
+  await admin.post('/api/save_row', { table: BIN, row: { row_id: 'B3', bin_name: 'East bay', sealed: false, spec: 'loose shelving' } })
+  await renderApp(tableHref(BIN), admin)
+  await select('East bay')
+  const bin = await pane(/^East bay/)
+  await within(bin).findByRole('heading', { name: 'Stock' }, T)
+  expect(field(bin, 'Spec')!.querySelector('code')).toHaveTextContent(/^loose shelving$/)
+})
+
+test('on a wide screen the pane sits on the right by default', async ({ admin }) => {
+  const real = window.matchMedia
+  window.matchMedia = vi.fn((query: string) => ({
+    matches: query.startsWith('(min-width:'),
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  })) as unknown as typeof window.matchMedia
+  try {
+    const bin = await openNorthBay(admin)
+    expect(await within(bin).findByRole('button', { name: 'Auto (right)' }, T)).toHaveAttribute('aria-pressed', 'true')
+  } finally {
+    window.matchMedia = real
+  }
 })

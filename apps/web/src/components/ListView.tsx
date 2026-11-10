@@ -49,7 +49,6 @@ export function pageRange(start: number, pageSize: number, total: number): strin
   return `${fmtCount(total === 0 ? 0 : start + 1)}–${fmtCount(Math.min(start + pageSize, total))} of ${fmtCount(total)}`
 }
 
-const NO_FILTERS: Filter[] = []
 // A compact list: the row's name, then this many key values.
 const COMPACT_COLUMNS = 3
 
@@ -68,25 +67,18 @@ function linkPrefill(meta: import('../lib/meta').TableMeta, filters: Filter[]): 
 // UI-002/UI-003: ONE list component renders every Table from its metadata.
 export function ListView({
   table,
-  filters = [],
+  filters,
   onFiltersChange,
   breadcrumb,
-  newRowPrefill,
-  baseFilters = NO_FILTERS,
   title,
   defaultOrderBy,
   empty,
   subtitle,
 }: {
   table: string
-  filters?: Filter[]
+  filters: Filter[]
   onFiltersChange?: (filters: Filter[]) => void
   breadcrumb?: ReactNode
-  /** null disables direct creation for a via-sub-table relationship. */
-  newRowPrefill?: Record<string, unknown> | null
-  /** #835: filters that define the page itself (Waiting for access). Always
-   *  applied, never shown as chips or saved into a view. */
-  baseFilters?: Filter[]
   /** The page's heading in place of the Table's name. */
   title?: ReactNode
   /** The order before the person picks one, in place of the Table's. */
@@ -116,10 +108,10 @@ export function ListView({
   const isSystemManager = useIsSystemManager()
   const caps = useCapabilities()
   // #410: New is offered only to someone the server would let create a row here.
-  const canAddRows = newRowPrefill !== null && Boolean(caps?.manage || caps?.creatable.includes(table))
+  const canAddRows = Boolean(caps?.manage || caps?.creatable.includes(table))
   // #910: a list narrowed to the rows linking to one row (a drill pane group
   // opened as a list) starts its new rows linked to that row too.
-  if (newRowPrefill === undefined && meta.data) newRowPrefill = linkPrefill(meta.data, filters)
+  const newRowPrefill = meta.data ? linkPrefill(meta.data, filters) : undefined
   const queryClient = useQueryClient()
   // usable-on-any-device "Lists fit a phone": below 40rem the rows are cards.
   const narrow = useMediaQuery(NARROW_QUERY)
@@ -188,8 +180,7 @@ export function ListView({
     const opener = bulkDeleteButton.current
     return () => opener?.focus()
   }, [confirmingBulkDelete])
-  const queryFilters = baseFilters.length ? [...baseFilters, ...filters] : filters
-  const filterKey = JSON.stringify(queryFilters)
+  const filterKey = JSON.stringify(filters)
   useEffect(() => setStart(0), [filterKey])
   useEffect(() => setSelected(new Set()), [filterKey, start, table])
   // DEL-J1 (docs/specs/0003-table-deletion.md): deleting the whole Table.
@@ -328,7 +319,7 @@ export function ListView({
     placeholderData: keepPreviousData,
     queryFn: () =>
       listResource(table, {
-        filters: queryFilters,
+        filters,
         fields: retirable ? [...listFields(columns), 'retired_at'] : listFields(columns),
         with_retired: withRetired,
         order_by: orderBy,
@@ -340,7 +331,7 @@ export function ListView({
   useEffect(() => {
     if (!list.data || list.isError) return
     rememberListPlace(table, {
-      filters: queryFilters, orderBy, withRetired, start,
+      filters, orderBy, withRetired, start,
       ids: list.data.data.map((r) => String(r.row_id)),
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -913,8 +904,8 @@ export function ListView({
           </div>
         </div>
       )}
-      {onFiltersChange && !baseFilters.length && <SavedViewsBar table={table} filters={filters} onApply={onFiltersChange} />}
-      {onFiltersChange && !baseFilters.length && <RecentStrip table={table} meta={meta.data} withRetired={withRetired} onApply={onFiltersChange} />}
+      {onFiltersChange && <SavedViewsBar table={table} filters={filters} onApply={onFiltersChange} />}
+      {onFiltersChange && <RecentStrip table={table} meta={meta.data} withRetired={withRetired} onApply={onFiltersChange} />}
       {/* #1017: filters, Add filter and the list's layouts share a line, so the rows start high up. */}
       <div className="mb-2 flex flex-wrap items-end gap-2">
         {onFiltersChange && meta.data && (
@@ -1009,7 +1000,7 @@ export function ListView({
       )}
       {treeOn ? (
         <div className={cardClasses('p-3')}>
-          <TreeOfAll table={table} filters={queryFilters} expanded={treeExpanded}
+          <TreeOfAll table={table} filters={filters} expanded={treeExpanded}
             onExpandedChange={(next) => setTree(true, [...next])}
             onOpen={(pane) => openPane?.(pane)} />
         </div>

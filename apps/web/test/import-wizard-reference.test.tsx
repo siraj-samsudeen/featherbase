@@ -200,3 +200,53 @@ test('Check reads many long values in reads whose addresses stay under the serve
   for (const url of reads) expect(new TextEncoder().encode(url).length).toBeLessThan(16 * 1024)
   clearSession()
 })
+
+test('a link column whose display name was cleared is named by its column name', async ({ admin }) => {
+  await clusters(admin)
+  const row = await openNewTable(admin)
+  fireEvent.change(row.querySelector('[data-rowfield="label"]')!, { target: { value: '' } })
+  expect(within(row).getByRole('combobox', { name: 'Table cluster links to' })).toBeInTheDocument()
+  expect(screen.getByTestId('iw-links-unpicked')).toHaveTextContent('Choose the Table that cluster links to before importing.')
+  clearSession()
+})
+
+test('two link columns waiting for their Tables are named together', async ({ admin }) => {
+  await clusters(admin)
+  await openNewTable(admin, 'Iwl Store', 'store_name,cluster,zone\nEast,VLM,Z1\n')
+  const zone = [...document.querySelectorAll<HTMLElement>('[data-columnrow]')].find((r) => within(r).queryByText('zone'))!
+  setType(zone, 'Reference')
+  expect(screen.getByTestId('iw-links-unpicked')).toHaveTextContent('Choose the Table that Cluster, Zone link to before importing.')
+  clearSession()
+})
+
+test('a link set back to Choose a Table waits for its Table again', async ({ admin }) => {
+  await clusters(admin)
+  const row = await openNewTable(admin)
+  await waitFor(() => expect(within(picker(row)).getByRole('option', { name: 'Iwl Cluster' })).toBeInTheDocument())
+  fireEvent.change(picker(row), { target: { value: 'Iwl Cluster' } })
+  expect(screen.getByTestId('iw-import')).toBeEnabled()
+  fireEvent.change(picker(row), { target: { value: '' } })
+  expect(screen.getByTestId('iw-import')).toBeDisabled()
+  expect(screen.getByTestId('iw-links-unpicked')).toHaveTextContent('Choose the Table that Cluster links to')
+  clearSession()
+})
+
+test('Check with every row matched says they all link to a row in their Table', async ({ admin }) => {
+  await clusters(admin)
+  const row = await openNewTable(admin, 'Iwl Store', 'store_name,cluster\nEast,VLM\nWest,VLM\n')
+  await waitFor(() => expect(within(picker(row)).getByRole('option', { name: 'Iwl Cluster' })).toBeInTheDocument())
+  fireEvent.change(picker(row), { target: { value: 'Iwl Cluster' } })
+  fireEvent.click(screen.getByTestId('iw-check'))
+  expect(await screen.findByTestId('iw-check-0')).toHaveTextContent('✓ All 2 rows link to a row in their Table')
+  clearSession()
+})
+
+test('Check with a link column left blank in every row reads no Table and passes the rows', async ({ admin }) => {
+  await clusters(admin)
+  const row = await openNewTable(admin, 'Iwl Store', 'store_name,cluster\nEast,\nWest,\n')
+  await waitFor(() => expect(within(picker(row)).getByRole('option', { name: 'Iwl Cluster' })).toBeInTheDocument())
+  fireEvent.change(picker(row), { target: { value: 'Iwl Cluster' } })
+  fireEvent.click(screen.getByTestId('iw-check'))
+  expect(await screen.findByTestId('iw-check-0')).toHaveTextContent('✓ All 2 rows link to a row in their Table')
+  clearSession()
+})

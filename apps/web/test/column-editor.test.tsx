@@ -16,7 +16,9 @@
 import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { describe, vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
+import { ANY_TABLE_LINK } from '../src/pages/ColumnEditor'
 
 const DT = 'Ce Zones'
 
@@ -361,4 +363,113 @@ test("a title chosen here replaces the id in another Table's list already read",
 
   await router.navigate({ to: `/featherbase/admin/table/${tableSlug('Ce Title Store')}` })
   await waitFor(() => expect(screen.getByTestId('cell-zone')).toHaveTextContent('Vellayambalam'), { timeout: 8000 })
+})
+
+/** The network drops every request this says it should. */
+function dropNetwork(lost: (url: string, init?: RequestInit) => boolean) {
+  const bridge = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    const url = String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
+    return lost(url, init) ? Promise.reject(new TypeError('Failed to fetch')) : bridge(input, init)
+  })
+}
+const isPut = (url: string, init?: RequestInit) => init?.method === 'PUT' && url.includes('/api/table_def/')
+
+describe('adding a column, at its edges', () => {
+  test('a column named with no label is labelled by its name', async ({ admin }) => {
+    const user = userEvent.setup()
+    await seed(admin)
+    await openEditor(admin)
+    await user.type(await screen.findByTestId('ce-add-name'), 'bay')
+    await user.click(screen.getByTestId('ce-add-go'))
+    await waitFor(() => expect(screen.getByTestId('ce-saved')).toHaveTextContent('Added bay'))
+    expect((await meta(admin)).columns.find((c) => c.column_name === 'bay')?.label).toBe('bay')
+  })
+
+  test('a name typed first stays when the label is typed after it', async ({ admin }) => {
+    const user = userEvent.setup()
+    await seed(admin)
+    await openEditor(admin)
+    await user.type(await screen.findByTestId('ce-add-name'), 'bay_no')
+    await user.type(screen.getByTestId('ce-add-label'), 'Bay number')
+    expect(screen.getByTestId('ce-add-name')).toHaveValue('bay_no')
+  })
+
+  test('a link column asks for its target Table, then links to it', async ({ admin }) => {
+    const user = userEvent.setup()
+    await seed(admin)
+    await admin.post('/api/table_def', { name: 'Ce Aisle', columns: [{ column_name: 'code', column_type: 'Data' }] })
+    await openEditor(admin)
+    await user.type(await screen.findByTestId('ce-add-label'), 'Aisle')
+    await user.selectOptions(screen.getByTestId('ce-add-type'), 'Reference')
+    expect(screen.getByText('Target Table')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByTestId('ce-add-problem')).toHaveTextContent('A Reference column needs its target Table'))
+    await user.type(screen.getByTestId('ce-add-target'), 'Ce Aisle')
+    await user.click(screen.getByTestId('ce-add-go'))
+    await waitFor(() => expect(screen.getByTestId('ce-saved')).toHaveTextContent('Added aisle'))
+    const def = await admin.get<{ columns: { column_name: string; reference_table: string | null }[] }>(`/api/table/${encodeURIComponent(DT)}:meta`)
+    expect(def.columns.find((c) => c.column_name === 'aisle')?.reference_table).toBe('Ce Aisle')
+  })
+
+  test('a Sub-table column holds the rows of its target Table', async ({ admin }) => {
+    const user = userEvent.setup()
+    await seed(admin)
+    await admin.post('/api/table_def', { name: 'Ce Zone Line', kind: 'sub_table', columns: [{ column_name: 'item', column_type: 'Data' }] })
+    await openEditor(admin)
+    await user.type(await screen.findByTestId('ce-add-label'), 'Lines')
+    await user.selectOptions(screen.getByTestId('ce-add-type'), 'Sub-table')
+    await user.type(screen.getByTestId('ce-add-target'), 'Ce Zone Line')
+    await user.click(screen.getByTestId('ce-add-go'))
+    await waitFor(() => expect(screen.getByTestId('ce-saved')).toHaveTextContent('Added lines'))
+    const def = await admin.get<{ columns: { column_name: string; row_table: string | null }[] }>(`/api/table/${encodeURIComponent(DT)}:meta`)
+    expect(def.columns.find((c) => c.column_name === 'lines')?.row_table).toBe('Ce Zone Line')
+  })
+
+  test('a link to a row of any Table with no Tables named allows any Table', async ({ admin }) => {
+    const user = userEvent.setup()
+    await seed(admin)
+    await openEditor(admin)
+    await user.type(await screen.findByTestId('ce-add-label'), 'Subject')
+    await user.selectOptions(screen.getByTestId('ce-add-type'), ANY_TABLE_LINK)
+    await user.click(screen.getByTestId('ce-add-go'))
+    await waitFor(() => expect(screen.getByTestId('ce-saved')).toHaveTextContent('subject'))
+    const def = await admin.get<{ columns: { column_name: string; table_column?: string | null; choices: string | null }[] }>(`/api/table/${encodeURIComponent(DT)}:meta`)
+    expect(def.columns.find((c) => c.column_name === 'subject')).toMatchObject({ table_column: 'subject_table', choices: null })
+  })
+})
+
+describe('when the network drops', () => {
+  test('a rename says it could not rename', async ({ admin }) => {
+    const user = userEvent.setup()
+    await seed(admin)
+    await openEditor(admin)
+    await user.click(await screen.findByTestId('ce-rename-glor'))
+    await user.clear(screen.getByTestId('ce-rename-input-glor'))
+    await user.type(screen.getByTestId('ce-rename-input-glor'), 'floor')
+    dropNetwork((url) => url.includes('rename'))
+    await user.click(screen.getByTestId('ce-rename-go-glor'))
+    expect(await screen.findByTestId('ce-rename-error-glor')).toHaveTextContent('Could not rename')
+  })
+
+  test('a label change says it could not save', async ({ admin }) => {
+    const user = userEvent.setup()
+    await seed(admin)
+    await openEditor(admin)
+    const label = await screen.findByTestId('ce-label-glor')
+    await user.clear(label)
+    await user.type(label, 'Floor')
+    dropNetwork(isPut)
+    await user.click(screen.getByTestId('ce-label-save-glor'))
+    expect(await screen.findByTestId('ce-put-error')).toHaveTextContent('Could not save')
+  })
+
+  test('a title choice says it could not save the title', async ({ admin }) => {
+    await seed(admin, { title_column: 'glor' })
+    const user = userEvent.setup()
+    await openEditor(admin)
+    await screen.findByTestId('ce-row-glor', undefined, { timeout: 8000 })
+    dropNetwork(isPut)
+    await user.click(titleRadio('pop')!)
+    expect(await screen.findByTestId('ce-title-error')).toHaveTextContent('Could not save the title')
+  })
 })

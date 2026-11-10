@@ -1,9 +1,11 @@
 // List paths the merged web coverage report (ADR 0012) still showed red: a
 // bulk delete the server refuses part-way, backing out of the Delete Table
 // dialog by clicking outside or pressing Escape, and the filter-reuse counter
-// keeping itself small and surviving a corrupt entry. Refusals are the server's.
+// keeping itself small and surviving a corrupt entry; and the network dropping
+// a list's details, its rows or a bulk change. Refusals are the server's.
 import { tableSlug } from 'shared'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 
 type Admin = Parameters<typeof renderApp>[1]
@@ -84,4 +86,50 @@ test('a corrupt filter-reuse counter offers nothing and does not stop the list',
   const rows = await open(admin, 'Lrf Corrupt', OPEN)
   await waitFor(() => expect(within(rows).getAllByTestId('row-check')).toHaveLength(2))
   expect(screen.queryByTestId('filter-nudge')).not.toBeInTheDocument()
+})
+
+/** The network drops every request whose address matches. */
+function dropNetwork(lost: (url: string) => boolean) {
+  const bridge = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    const url = String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
+    return lost(url) ? Promise.reject(new TypeError('Failed to fetch')) : bridge(input, init)
+  })
+}
+
+test("a list whose Table's details the network drops says it cannot load the Table", async ({ admin }) => {
+  await seed(admin, 'Lrf Meta Lost')
+  dropNetwork((url) => url.includes(`/api/table/${enc('Lrf Meta Lost')}:meta`))
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug('Lrf Meta Lost'))}`, admin)
+  expect(await screen.findByTestId('list-error', {}, { timeout: 8000 })).toHaveTextContent('Cannot load Lrf Meta Lost')
+})
+
+test('a list whose rows the network drops says it cannot load them', async ({ admin }) => {
+  await seed(admin, 'Lrf Rows Lost')
+  dropNetwork((url) => url.startsWith(`/api/table/${enc('Lrf Rows Lost')}?`))
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug('Lrf Rows Lost'))}`, admin)
+  expect(await screen.findByText('Cannot load rows for Lrf Rows Lost', {}, { timeout: 8000 })).toBeInTheDocument()
+})
+
+test('a bulk delete the network drops says the bulk delete failed', async ({ admin }) => {
+  await seed(admin, 'Lrf Bulk Lost')
+  const rows = await open(admin, 'Lrf Bulk Lost')
+  await waitFor(() => expect(within(rows).getAllByTestId('row-check')).toHaveLength(3))
+  fireEvent.click(within(rows).getAllByTestId('row-check')[0])
+  dropNetwork((url) => url.includes(':bulk-delete'))
+  fireEvent.click(await screen.findByTestId('bulk-delete'))
+  fireEvent.click(screen.getByTestId('bulk-delete-confirm'))
+  expect(await screen.findByTestId('bulk-error')).toHaveTextContent('Bulk delete failed')
+})
+
+test('a bulk edit the network drops says the bulk edit failed', async ({ admin }) => {
+  await seed(admin, 'Lrf Edit Lost')
+  const rows = await open(admin, 'Lrf Edit Lost')
+  await waitFor(() => expect(within(rows).getAllByTestId('row-check')).toHaveLength(3))
+  fireEvent.click(within(rows).getAllByTestId('row-check')[0])
+  dropNetwork((url) => url.includes(':bulk-edit'))
+  fireEvent.change(await screen.findByTestId('bulk-edit-field'), { target: { value: 'stage' } })
+  fireEvent.change(await screen.findByTestId('bulk-edit-value'), { target: { value: 'Closed' } })
+  fireEvent.click(screen.getByTestId('bulk-edit-apply'))
+  expect(await screen.findByTestId('bulk-error')).toHaveTextContent('Bulk edit failed')
 })

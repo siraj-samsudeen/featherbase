@@ -53,7 +53,7 @@ export function ListRow({
   childFields,
   expanded,
   onToggleExpand,
-  inPane = false,
+  inPane,
   onOpenPane,
 }: {
   row: Record<string, unknown>
@@ -71,7 +71,7 @@ export function ListRow({
   expanded: boolean
   onToggleExpand: () => void
   /** #910: this row is the one in the drill pane. */
-  inPane?: boolean
+  inPane: boolean
   /** #910: shows a row in the drill pane; absent where there is no pane. */
   onOpenPane?: (pane: { table: string; row: string }) => void
 }) {
@@ -311,7 +311,7 @@ export function PhoneList({
   }))
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(key(r)))
   const titleValue = (row: Record<string, unknown>) =>
-    titleCol ? cell(row[titleCol.column_name], titleCol.column_type, settings) : key(row)
+    cell(row[titleCol.column_name], titleCol.column_type, settings)
   // A title that is a person's id reads as their name, as the card's link does.
   const shownTitle = usePrincipalLabels(rows.map(titleValue))
   const titleText = (row: Record<string, unknown>) => shownTitle(titleValue(row))

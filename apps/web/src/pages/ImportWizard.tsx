@@ -629,7 +629,7 @@ export function ImportWizard() {
     const sheet = sheets[i]
     if (value === '__new__') {
       const fallback =
-        (sheets.length === 1 ? tableNameFromFile(fileName ?? '') : tableNameFromFile(sheet.sheetName)) ||
+        (sheets.length === 1 ? tableNameFromFile(fileName!) : tableNameFromFile(sheet.sheetName)) ||
         'Imported Table'
       setPlan(i, {
         mode: 'new',
@@ -1020,7 +1020,7 @@ export function ImportWizard() {
             columnLabel: plan.mode === 'existing' ? headerLabel(memberSheet(plan, m), plan) : undefined,
             // IMP-011: recorded in the Import Log alongside the counts.
             context: (part, parts) => ({
-              file_name: fileName ?? undefined,
+              file_name: fileName!,
               sheet_name: sheet.sheetName,
               table_created: plan.mode === 'new' && !creationStamped && part === 1,
               part,
@@ -1146,13 +1146,13 @@ export function ImportWizard() {
   function targetLabel(i: number): string {
     const plan = plans[i]
     if (plan.members.length > 1) return plan.table || 'Merged Table'
-    return sheets[i]?.sheetName || plan.table
+    return sheets[i].sheetName
   }
 
   // Rows this one target will send, for its own Import button.
   function targetRows(i: number): number {
     const plan = plans[i]
-    return plan.members.reduce((n, m) => n + countDataRows(sheets[m]?.rows ?? []), 0)
+    return plan.members.reduce((n, m) => n + countDataRows(sheets[m].rows), 0)
   }
 
   // A failed row's number is only true against the sheet it came from, so a
@@ -1343,7 +1343,7 @@ export function ImportWizard() {
           to replace. */}
       {stage === 'overview' && sheets.length > 0 && (
         <ImportOverview
-          fileName={fileName ?? ''}
+          fileName={fileName!}
           sheets={sheets}
           selected={selected}
           onSelect={applySelection}
@@ -1715,11 +1715,11 @@ export function ImportWizard() {
                             <label className="cursor-pointer">
                               <input
                                 type="checkbox"
-                                checked={Boolean(combinePick[`${i}:${groupColumns[ci]?.key ?? ci}`])}
+                                checked={Boolean(combinePick[`${i}:${groupColumns[ci].key}`])}
                                 onChange={(e) =>
                                   setCombinePick((prev) => ({
                                     ...prev,
-                                    [`${i}:${groupColumns[ci]?.key ?? ci}`]: e.target.checked,
+                                    [`${i}:${groupColumns[ci].key}`]: e.target.checked,
                                   }))
                                 }
                                 data-testid={`iw-combine-pick-${i}-${ci}`}
@@ -1885,7 +1885,7 @@ export function ImportWizard() {
                                   setCombines(
                                     i,
                                     plan.combines.filter(
-                                      (x) => x.keys.join('+') !== (c.combinedKeys ?? []).join('+'),
+                                      (x) => x.keys.join('+') !== c.combinedKeys!.join('+'),
                                     ),
                                   )
                                 }
@@ -1903,7 +1903,7 @@ export function ImportWizard() {
                       (() => {
                         const overlap = combineOverlap(groupColumns, pickedKeys)
                         const names = pickedKeys.map(
-                          (k) => groupColumns.find((c) => c.key === k)?.label ?? k,
+                          (k) => groupColumns.find((c) => c.key === k)!.label,
                         )
                         return (
                           <div className="rounded border border-border-control bg-subtle p-2">
@@ -1913,20 +1913,17 @@ export function ImportWizard() {
                             {/* Sample values: the reason to believe, or not. */}
                             <div className="mb-2 text-xs text-ink-muted">
                               {pickedKeys.map((k) => {
-                                const col = groupColumns.find((c) => c.key === k)
-                                const from = col?.from.findIndex((x) => x !== -1) ?? -1
-                                const sample =
-                                  from >= 0 && col
-                                    ? sheets[plan.members[from]].rows
-                                        .map((r) => r[col.from[from]])
-                                        .filter((v) => v != null && String(v).trim() !== '')
-                                        .slice(0, 4)
-                                        .map((v) => String(v))
-                                        .join(' · ')
-                                    : ''
+                                const col = groupColumns.find((c) => c.key === k)!
+                                const from = col.from.findIndex((x) => x !== -1)
+                                const sample = sheets[plan.members[from]].rows
+                                  .map((r) => r[col.from[from]])
+                                  .filter((v) => v != null && String(v).trim() !== '')
+                                  .slice(0, 4)
+                                  .map((v) => String(v))
+                                  .join(' · ')
                                 return (
                                   <div key={k} data-testid={`iw-combine-sample-${i}-${k}`}>
-                                    <strong>{col?.label ?? k}</strong>: {sample || '(no values)'}
+                                    <strong>{col.label}</strong>: {sample || '(no values)'}
                                   </div>
                                 )
                               })}

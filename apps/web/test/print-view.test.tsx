@@ -172,3 +172,30 @@ test('PRN-001: print view shows labels, values, and child tables with no chrome'
   expect(lines).toHaveTextContent('Widget')
   expect(lines).toHaveTextContent('Gadget')
 })
+
+test('a letterhead chosen and then set back to automatic prints the default again', async ({ admin }) => {
+  await setup(admin)
+  const user = userEvent.setup()
+  await renderApp(printUrl(), admin)
+  await screen.findByTestId('letter-head-header')
+  await user.selectOptions(screen.getByTestId('letter-head-picker'), 'Pv Branch')
+  await waitFor(() => expect(screen.getByTestId('letter-head-header')).toHaveTextContent('BRANCH HEADER'))
+  await user.selectOptions(screen.getByTestId('letter-head-picker'), 'auto')
+  await waitFor(() => expect(screen.getByTestId('letter-head-header')).toHaveTextContent('MAIN HEADER'))
+})
+
+test('a choice prints as its label, and a Sub-table with no rows says so', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Pv Line', kind: 'sub_table', columns: [{ column_name: 'item', column_type: 'Data' }] })
+  await admin.post('/api/table_def', {
+    name: 'Pv Ticket',
+    id_pattern: 'prompt',
+    columns: [
+      { column_name: 'stage', column_type: 'Choice', label: 'Stage', choices: 'open\nshut', choice_labels: { shut: 'Closed' } },
+      { column_name: 'lines', column_type: 'Sub-table', label: 'Lines', row_table: 'Pv Line' },
+    ],
+  })
+  await admin.post('/api/save_row', { table: 'Pv Ticket', row: { row_id: 'pt-1', stage: 'shut' } })
+  await renderApp(`/featherbase/print/${encodeURIComponent(tableSlug('Pv Ticket'))}/pt-1`, admin)
+  expect(await screen.findByTestId('print-field-stage', {}, { timeout: 8000 })).toHaveTextContent(/Closed$/)
+  expect(screen.getByTestId('print-table-lines')).toHaveTextContent('No rows')
+})

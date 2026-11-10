@@ -2,7 +2,8 @@
 // other test makes. Gaps the merged web coverage report (ADR 0012) showed: a
 // run that cannot be opened, a note saved by leaving the box rather than
 // pressing Enter, the camera button opening the picker, and a photo the
-// server refuses. Each refusal is a real server answer.
+// server refuses; and a run or a note the network drops. Each refusal is a
+// real server answer.
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { File as NodeFile } from 'node:buffer'
@@ -217,3 +218,31 @@ test('a photo_proof item takes a camera upload and shows its thumbnail', async (
     await deleteStored(file.file_url)
   }
 }, 30_000)
+
+/** Requests whose address starts with `prefix` are lost, as offline. */
+function dropNetwork(prefix: string) {
+  const bridge = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+    String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).startsWith(prefix)
+      ? Promise.reject(new TypeError('Failed to fetch'))
+      : bridge(input, init))
+}
+
+test('a run the network drops says it could not be loaded', async ({ admin }) => {
+  const run = await seedRun(admin)
+  dropNetwork(`/api/table/Checklist%20Run/${encodeURIComponent(run)}`)
+  await renderApp(runPath(run), admin)
+  expect(await screen.findByText('Could not load this run.', {}, { timeout: 10_000 })).toBeInTheDocument()
+})
+
+test('a note the network drops says the save failed', async ({ admin }) => {
+  const user = userEvent.setup()
+  const run = await seedRun(admin)
+  await openRun(admin, run)
+  const item = () => screen.getAllByTestId('checklist-item')[3]
+  await user.click(within(item()).getByTestId('checklist-add-note'))
+  await user.type(within(item()).getByTestId('checklist-note-input'), 'Shutter stuck')
+  dropNetwork('/api/save_row')
+  fireEvent.blur(within(item()).getByTestId('checklist-note-input'))
+  expect(await screen.findByText('Save failed')).toBeInTheDocument()
+})

@@ -1,13 +1,14 @@
 // Report view paths the merged web coverage report (ADR 0012) showed red: the
 // default columns of a Table with none marked for the list, an ungrouped CSV
 // export (and one whose access-log entry the server refuses), choosing the
-// chart's value column, and saving or pinning refused by the server.
+// chart's value column, saving or pinning refused by the server or dropped by
+// the network, and rows with no value where the report groups or labels.
 // URL.createObjectURL is a browser API jsdom lacks; the spy hands back the
 // exported Blob so the test reads what the person would download.
 import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach } from 'vitest'
+import { afterEach, vi } from 'vitest'
 import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
 import { grantRole } from 'server/test/fixtures'
@@ -143,4 +144,55 @@ test('saving a report on a Table deleted meanwhile, and pinning to a dashboard d
   await admin.delete(`/api/table_def/${ENC}`)
   await user.click(screen.getByTestId('report-save-confirm'))
   expect(await within(screen.getByTestId('report-view')).findByTestId('report-save-error')).toHaveTextContent('Invalid links for Report')
+})
+
+/** The network drops every request this says it should. */
+function dropNetwork(lost: (url: string, init?: RequestInit) => boolean) {
+  const bridge = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+    lost(String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url), init)
+      ? Promise.reject(new TypeError('Failed to fetch'))
+      : bridge(input, init))
+}
+
+test('a row with no value in the grouped column is counted in a group of its own', async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/save_row', { table: T, row: { row_id: 's3', amount: 5, units: 1 } })
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(T))}/view/report`, admin)
+  await screen.findByTestId('report-view', {}, { timeout: 8000 })
+  await waitFor(() => expect(screen.getAllByTestId('report-row')).toHaveLength(3))
+  await userEvent.selectOptions(screen.getByTestId('report-groupby'), 'region')
+  await waitFor(() => expect(screen.getAllByTestId('group-header')).toHaveLength(3))
+})
+
+test('a chart bar for a row with no label is drawn unlabelled', async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/save_row', { table: T, row: { row_id: 's3', amount: 5, units: 1 } })
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(T))}/view/report`, admin)
+  await screen.findByTestId('report-view', {}, { timeout: 8000 })
+  await waitFor(() => expect(screen.getAllByTestId('report-row')).toHaveLength(3))
+  expect(within(screen.getByTestId('report-chart')).getByTestId('chart-bar-')).toHaveTextContent('5')
+})
+
+test('saving a report the network drops says the save failed', async ({ admin }) => {
+  const user = userEvent.setup()
+  await seed(admin)
+  await openReport(admin)
+  await user.click(screen.getByTestId('report-save'))
+  await user.type(screen.getByTestId('report-save-name'), 'Rex Lost')
+  dropNetwork((url) => url === '/api/save_row')
+  await user.click(screen.getByTestId('report-save-confirm'))
+  expect(await screen.findByTestId('report-save-error')).toHaveTextContent('Save failed')
+})
+
+test('pinning a chart the network drops says the pin failed', async ({ admin }) => {
+  const user = userEvent.setup()
+  await seed(admin)
+  await admin.post('/api/save_row', { table: 'Report', row: { row_id: 'Rex Report', ref_table: T, config: { columns: ['region', 'amount'] } } })
+  await admin.post('/api/save_row', { table: 'Dashboard', row: { row_id: 'Rex Board', label: 'Rex Board', config: { cards: [], charts: [] } } })
+  await openReport(admin, `?report=${encodeURIComponent('Rex Report')}`)
+  await user.selectOptions(screen.getByTestId('pin-dashboard'), 'Rex Board')
+  dropNetwork((url) => url.includes('pin_chart'))
+  await user.click(screen.getByTestId('pin-chart'))
+  expect(await screen.findByTestId('pin-msg')).toHaveTextContent('Pin failed')
 })

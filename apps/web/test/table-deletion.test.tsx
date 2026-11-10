@@ -8,6 +8,7 @@ import userEvent from '@testing-library/user-event'
 import { describe } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 import { expectApiError } from 'server/test/fixtures'
+import { holdResponses } from './held-requests'
 
 const DT = 'Td Unwanted Zones'
 const ENC = encodeURIComponent(DT)
@@ -109,3 +110,38 @@ async function confirm(dialog: HTMLElement) {
   await waitFor(() => expect(button).toBeEnabled())
   await userEvent.click(button)
 }
+
+describe('the delete dialog at its edges', () => {
+  test('a Table of one row says 1 row will be deleted', async ({ admin }) => {
+    await admin.post('/api/table_def', { name: 'Td Lone Zone', columns: [{ column_name: 'zone_name', column_type: 'Data' }] })
+    await admin.post('/api/save_row', { table: 'Td Lone Zone', row: { zone_name: 'A' } })
+    await openAdministration(admin, 'Td Lone Zone')
+    await userEvent.click(await screen.findByTestId('delete-table', undefined, { timeout: 10_000 }))
+    const dialog = await screen.findByTestId('delete-table-dialog')
+    await waitFor(() => expect(dialog).toHaveTextContent('1 row will be permanently deleted.'))
+  })
+
+  test("a view's dialog says its base's rows stay, and its button deletes the view", async ({ admin }) => {
+    await seed(admin)
+    await admin.post('/api/table_def', { name: 'Td Some Zones', kind: 'view', view_of: DT, view_filters: [['zone_name', '=', 'A']] })
+    await openAdministration(admin, 'Td Some Zones')
+    await userEvent.click(await screen.findByTestId('delete-table', undefined, { timeout: 10_000 }))
+    const dialog = await screen.findByTestId('delete-table-dialog')
+    expect(dialog).toHaveTextContent(`The view goes; the rows of ${DT} stay as they are.`)
+    expect(within(dialog).getByTestId('delete-table-confirm')).toHaveTextContent('Delete view')
+  })
+
+  test('the button says Deleting… while the deletion is out', async ({ admin }) => {
+    await seed(admin)
+    await openAdministration(admin, DT)
+    await userEvent.click(await screen.findByTestId('delete-table', undefined, { timeout: 10_000 }))
+    const dialog = await screen.findByTestId('delete-table-dialog')
+    const held = holdResponses(`/api/table_def/${ENC}`)
+    await confirm(dialog)
+    await held.asked
+    expect(within(dialog).getByTestId('delete-table-confirm')).toHaveTextContent('Deleting…')
+    expect(within(dialog).getByTestId('delete-table-cancel')).toBeDisabled()
+    held.release()
+    await waitFor(() => expect(screen.queryByTestId('delete-table-dialog')).not.toBeInTheDocument())
+  })
+})
