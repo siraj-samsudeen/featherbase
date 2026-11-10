@@ -90,7 +90,8 @@ async function candidateFor(
   // Warehouse tables (duckdb) declare no PK; fall back to the first column —
   // read-only browsing tolerates a non-unique row address (the form shows
   // the first match), and no write path exists to misfire.
-  const pk = t.pk ?? (cfg.engine === 'duckdb' || cfg.engine === 'motherduck' ? (t.columns[0]?.name ?? null) : null)
+  // The warehouse driver builds each table from its columns, so it has a first one.
+  const pk = t.pk ?? (cfg.engine === 'duckdb' || cfg.engine === 'motherduck' ? t.columns[0].name : null)
   const bindKey = `${t.schema}\u0000${t.table}`
   const base: Omit<ReflectionCandidate, 'bindable' | 'reason'> = {
     schema: t.schema,
@@ -131,12 +132,15 @@ export async function introspectSource(
   const cfg = await getSource(sourceName)
   const driver = getDriver(cfg)
   const introspected = await driver.introspect(cfg, schema)
-  const rows = await sql<{ name: string; external_schema: string | null; external_table: string | null; external_pk: string | null }[]>`
+  // A bound Table always names its relation (createTable requires
+  // external_table); only a CSV folder's, which has no foreign keys, stores
+  // no schema.
+  const rows = await sql<{ name: string; external_schema: string | null; external_table: string; external_pk: string | null }[]>`
     select name, external_schema, external_table, external_pk from table_def
     where data_source = ${sourceName}
     order by created_at asc, name asc`
   const reflected = new Map(
-    rows.map((r) => [`${r.external_schema ?? ''}\u0000${r.external_table ?? ''}`, r.name]),
+    rows.map((r) => [`${r.external_schema ?? ''}\u0000${r.external_table}`, r.name]),
   )
   const tables: ReflectionCandidate[] = []
   for (const t of introspected) {
@@ -146,7 +150,7 @@ export async function introspectSource(
     for (const column of candidate.columns) {
       const fk = column.references
       const target = fk && rows.find((r) =>
-        (r.external_schema ?? '') === fk.schema && r.external_table === fk.table,
+        r.external_schema === fk.schema && r.external_table === fk.table,
       )
       column.reference_table = column.name !== candidate.pk && target && target.external_pk === fk?.column
         ? target.name : null
@@ -244,11 +248,11 @@ export async function reflectTables(
     list.push(t)
     byBareName.set(t.table, list)
   }
-  const rows = await sql<{ name: string; external_schema: string | null; external_table: string | null }[]>`
+  const rows = await sql<{ name: string; external_schema: string | null; external_table: string }[]>`
     select name, external_schema, external_table from table_def
     where data_source = ${sourceName}`
   const reflected = new Map(
-    rows.map((r) => [`${r.external_schema ?? ''}\u0000${r.external_table ?? ''}`, r.name]),
+    rows.map((r) => [`${r.external_schema ?? ''}\u0000${r.external_table}`, r.name]),
   )
 
   const result: ReflectResult = { created: [], skipped: [] }
@@ -339,7 +343,7 @@ async function buildBoundTable(
   // Every FK edge is also recorded raw (source_fk_*) after creation, so the
   // other reflection order converges too — see linkReferencesTo.
   const bound = await sql<
-    { name: string; external_schema: string | null; external_table: string | null; external_pk: string | null }[]
+    { name: string; external_schema: string | null; external_table: string; external_pk: string | null }[]
   >`
     select name, external_schema, external_table, external_pk from table_def
     where data_source = ${cfg.name}
@@ -351,7 +355,7 @@ async function buildBoundTable(
   // already a Reference (so the first binding to arrive keeps its edges).
   const boundByRelation = new Map<string, (typeof bound)[number]>()
   for (const b of bound) {
-    const key = `${b.external_schema ?? ''}\u0000${b.external_table ?? ''}`
+    const key = `${b.external_schema ?? ''}\u0000${b.external_table}`
     if (!boundByRelation.has(key)) boundByRelation.set(key, b)
   }
   const defaults = connectDefaults(dataColumns.map((c) => c.name))
