@@ -152,9 +152,13 @@ function BarPicker({ control }: { control: BarControl }) {
   useEffect(() => {
     if (open && filterable) filter.current?.focus()
   }, [open, filterable])
-  // The highlighted option stays in view as the keys move it.
+  // The highlighted option stays in view as the keys move it. Looked up in the list itself: the
+  // bar is drawn in a shadow root, where `document.getElementById` finds nothing.
+  const list = useRef<HTMLUListElement>(null)
   useEffect(() => {
-    if (open) document.getElementById(optionId(active))?.scrollIntoView?.({ block: 'nearest' })
+    if (!open) return
+    const option = [...(list.current?.children ?? [])].find((item) => item.id === optionId(active))
+    option?.scrollIntoView?.({ block: 'nearest' })
   }, [open, active])
 
   if (options.length === 1)
@@ -288,6 +292,7 @@ function BarPicker({ control }: { control: BarControl }) {
           </p>
         )}
         <ul
+          ref={list}
           id={listId}
           role="listbox"
           aria-labelledby={labelId}
