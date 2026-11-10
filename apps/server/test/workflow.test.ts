@@ -3,7 +3,6 @@ import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
-import { initDocState } from '../src/workflow'
 import { expectApiError, expectRefused, expectStatus, grantRole } from './fixtures'
 
 // WF-001/002/003: workflow definition, execution, and server-side role
@@ -214,8 +213,7 @@ describe('WF-002/003: execution + server-side enforcement', () => {
   })
 })
 
-// Moved from coverage-gaps.test.ts (#221): workflow definition edges and the
-// initDocState backfill for pre-existing documents.
+// Moved from coverage-gaps.test.ts (#221): workflow definition edges.
 describe('workflow: definition validation edges', () => {
   test('a workflow with no states and a transition FROM an unknown state are rejected', async ({
     admin,
@@ -246,37 +244,6 @@ describe('workflow: definition validation edges', () => {
   })
 })
 
-describe('workflow: initDocState backfill', () => {
-  test('existing docs without a state are pointed at the initial state', async ({ admin }) => {
-    const DT = 'Cov Init Note'
-    await admin.post('/api/table_def', {
-      name: DT,
-      columns: [
-        { column_name: 'title', column_type: 'Data' },
-        { column_name: 'note_status', column_type: 'Choice', choices: 'Open\nDone', default_value: 'Open' },
-      ],
-    })
-    const doc = await saveDoc(DT, { title: 'pre-workflow' }, 'Administrator')
-    await sql`update featherbase.cov_init_note set note_status = null where row_id = ${String(doc.row_id)}`
-    await admin.post('/api/save_row', {
-      table: 'Workflow',
-      row: {
-        row_id: 'Cov Init Flow',
-        ref_table: DT,
-        is_active: true,
-        state_field: 'note_status',
-        states: [
-          { state: 'Open', target_status: 'draft' },
-          { state: 'Done', target_status: 'draft' },
-        ],
-        transitions: [{ state: 'Open', action: 'Finish', next_state: 'Done', allowed: 'System Manager' }],
-      },
-    })
-    await initDocState(DT)
-    const [row] = await sql`select note_status from featherbase.cov_init_note where row_id = ${String(doc.row_id)}`
-    expect(row.note_status).toBe('Open')
-  })
-})
 
 describe('Move a row forward with an allowed action', () => {
   const url = (suffix = '') => `/api/table/${encodeURIComponent(DT)}/wf-srv-1${suffix}`
@@ -381,12 +348,5 @@ describe('a workflow action that has nothing to act on', () => {
     await setup(admin)
     await makeFlow(admin)
     await expectRefused(admin.post(`/api/table/${encodeURIComponent(DT)}/no-such-row:apply_workflow_action`, { action: 'Submit' }), 404)
-  })
-
-  test('backfilling states on a Table with no workflow changes nothing', async ({ admin }) => {
-    await setup(admin)
-    await makeDoc(admin)
-    await initDocState(DT)
-    expect(await sql`select column_name from featherbase.column_def where parent = ${DT} order by column_name`).toEqual([{ column_name: 'title' }])
   })
 })
