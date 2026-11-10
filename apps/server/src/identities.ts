@@ -377,7 +377,8 @@ export async function linkIdentity(
   const method = await getSignInMethod(input.method)
   if (!method || method.kind === 'password')
     throw new AppError('ValidationError', `Unknown outside sign-in method "${input.method}"`)
-  const subject = String(input.subject ?? '').trim()
+  // Its one caller, the people route, sends '' for a missing subject.
+  const subject = String(input.subject).trim()
   if (!subject) throw new AppError('ValidationError', 'Expected { subject }', { subject: 'required' })
   const signInName = input.sign_in_name == null ? null : String(input.sign_in_name).trim() || null
   await assertHumanUser(user)
