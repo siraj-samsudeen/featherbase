@@ -367,15 +367,3 @@ async function notifyPendingApprovers(
     })
   }
 }
-
-// Ensure any existing row without a state starts at the first state.
-export async function initDocState(table: string): Promise<void> {
-  const wf = await getActiveWorkflow(table)
-  if (!wf || !wf.states.length) return
-  const field = stateField(wf)
-  await ensureStateField(table, sql, field)
-  await sql`
-    update ${sql(await tableRelation(table))}
-    set ${sql(field)} = ${wf.states[0].state}
-    where ${sql(field)} is null`
-}
