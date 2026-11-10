@@ -81,4 +81,16 @@ describe('PUT /api/table_def/:name', () => {
     await expectRefused(admin.put(url('Pu Plant'), { title_column: 'nope' }), 417)
     expect((await meta(admin, 'Pu Plant')).title_column).toBe('plant_name')
   })
+
+  test('another value column can become the title, but a layout column cannot', async ({ admin }) => {
+    await plant(admin)
+    const columns = [
+      { column_name: 'plant_name', column_type: 'Data' },
+      { column_name: 'note', column_type: 'Text' },
+      { column_name: 'details', column_type: 'Section Break' },
+    ]
+    await expectRefused(admin.put(url('Pu Plant'), { columns, title_column: 'details' }), 417, 'has no column details to name its rows')
+    await admin.put(url('Pu Plant'), { columns, title_column: 'note' })
+    expect((await meta(admin, 'Pu Plant')).title_column).toBe('note')
+  })
 })

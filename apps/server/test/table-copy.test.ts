@@ -638,6 +638,13 @@ describe('Copy a warehouse table into Featherbase', () => {
     expect(await admin.get('/api/table/Marker%20Copy/S002')).toMatchObject({ display_name: 'Hill Street', deleted_at_source: false })
   })
 
+  test('a Table that is not copied may rename a column of the marker\'s name', async ({ admin }) => {
+    await admin.post('/api/table_def', { name: 'Marker Plain', columns: [{ column_name: 'deleted_at_source', column_type: 'Check' }] })
+    await admin.post('/api/table_def/Marker%20Plain/rename_column', { from: 'deleted_at_source', to: 'gone' })
+    const meta = await admin.get<{ columns: { column_name: string }[] }>('/api/table/Marker%20Plain:meta')
+    expect(meta.columns.map(c => c.column_name)).toContain('gone')
+  })
+
   test('a table restriction on the source refuses preview, key checks, copying and Copy again of any other table', async ({ admin }) => {
     await changeStandin(dir, 'stock', [
       'create table fenced_items (sku varchar, title varchar)',

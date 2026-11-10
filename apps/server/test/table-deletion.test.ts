@@ -80,6 +80,14 @@ describe('DEL-R2: deletion removes what creation wrote', () => {
     expect(orphans.n).toBe(0)
   })
 
+  test('DEL-R2: a Table with a grid that holds no rows is deleted too', async ({ admin }) => {
+    await admin.post('/api/table_def', { name: 'Deletion Child', kind: 'sub_table', columns: [{ column_name: 'item', column_type: 'Data' }] })
+    await makeTable(admin, DT, [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Deletion Child' }])
+    await admin.delete(`/api/table_def/${ENC}`)
+    await expectRefused(admin.get(`/api/table/${ENC}:meta`), 404)
+    expect(await physicalExists(DT)).toBe(false)
+  })
+
   test('DEL-R2: a settings Table sheds metadata only; a nonexistent name 404s', async ({
     admin,
   }) => {
