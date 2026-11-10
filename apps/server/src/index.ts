@@ -529,17 +529,19 @@ app.post('/api/oauth/session', async (c) => {
 const HANDOFF_NONCE_COOKIE = 'handoff_nonce'
 
 /** How a handed-over session was opened: the source session's own facts. */
+// The source is always a browser session: Open Admin refuses an access token
+// (#1124), so a ticket never carries one, and a session always has sign-in claims.
 function sessionOptionsOf(user: SessionUser): SessionOptions {
-  const claims = user.sign_in
+  const claims = user.sign_in!
   return {
-    ...(claims?.method ? { method: claims.method } : {}),
-    ...(claims?.identity ? { identity: claims.identity } : {}),
-    ...(claims?.test_mode ? { testMode: true } : {}),
-    ...(claims?.preview ? { preview: true } : {}),
+    ...(claims.method ? { method: claims.method } : {}),
+    ...(claims.identity ? { identity: claims.identity } : {}),
+    ...(claims.test_mode ? { testMode: true } : {}),
+    ...(claims.preview ? { preview: true } : {}),
     // The source's sign-in time travels with it (Codex round 1 on #495).
-    ...(claims?.authenticated_at ? { authenticatedAt: claims.authenticated_at } : {}),
+    authenticatedAt: claims.authenticated_at,
     // ...and its expiry, verified on the source token (Codex round 2 on #495).
-    ...(claims?.expires_at ? { expiresAt: claims.expires_at } : {}),
+    expiresAt: claims.expires_at,
   }
 }
 
