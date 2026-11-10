@@ -111,7 +111,22 @@ test('rows the import refuses are named three at a time, and blank rows are coun
   const error = await screen.findByTestId('dt-error', {}, { timeout: 10_000 })
   expect(error).toHaveTextContent('Table created; 1 of 5 rows imported.')
   expect(error).toHaveTextContent(/ and 1 more/)
-  expect(error).toHaveTextContent('1 rows had no data in the imported columns and were skipped.')
+  expect(error).toHaveTextContent('1 row had no data in the imported columns and was skipped.')
+})
+
+test('more than one blank row is counted in the plural', async ({ admin }) => {
+  const user = userEvent.setup()
+  await openBuilder(admin)
+  await drop(csv('tbf_code,tbf_note,tbf_extra\nA,,\n,,left out\n,,also left out\n', 'codes.csv'))
+  const extra = rowFor('tbf_extra')
+  fireEvent.change(cell(extra, 'label'), { target: { value: '' } })
+  fireEvent.change(cell(extra, 'column_name'), { target: { value: '' } })
+  await user.clear(screen.getByTestId('dt-name'))
+  await user.type(screen.getByTestId('dt-name'), 'Tbf Blanks')
+  await user.click(cell(rowFor('tbf_note'), 'reqd'))
+  await user.click(screen.getByTestId('dt-create'))
+  const error = await screen.findByTestId('dt-error', {}, { timeout: 10_000 })
+  expect(error).toHaveTextContent('2 rows had no data in the imported columns and were skipped.')
 })
 
 test('a create the network drops says the create failed', async ({ admin }) => {
