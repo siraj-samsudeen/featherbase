@@ -143,6 +143,43 @@ describe('first-run setup (6.1)', () => {
     expect(n).toBe(1)
   })
 
+  test('an existing System Manager with that address and no name is left as is, shown by the name given', async ({ admin, createUser }) => {
+    await googleOn()
+    const keeper = await createUser({ email: 'keeper.sm@example.com', roles: ['System Manager'] })
+    await sql`update person set full_name = '' where row_id = ${keeper.user}`
+    const [before] = await sql`select updated_at from person where row_id = ${keeper.user}`
+    const res = await admin.post<{ people: Outcome[] }>(SETUP, { people: [{ full_name: 'Keeper', email: 'keeper.sm@example.com' }] })
+    expect(res.people[0]).toMatchObject({ person: keeper.user, full_name: 'Keeper', created: false })
+    const [after] = await sql`select updated_at from person where row_id = ${keeper.user}`
+    expect(after.updated_at).toEqual(before.updated_at)
+  })
+
+  test('a System Manager who signs in with that address but has no contact email is given the address alone', async ({ admin, createUser }) => {
+    await noManagerEmails()
+    await googleOn()
+    const holder = await createUser({ email: 'sm.contact@example.com', roles: ['System Manager'] })
+    await sql`update person set email = null where row_id = ${holder.user}`
+    await sql`insert into sign_in_identity (id, person_id, method, subject, email, linked_by)
+      values ('sid-setup-sm', ${holder.user}, 'google', 'g-subject-sm', 'sm.google@example.com', 'Administrator')`
+    const res = await admin.post<{ people: Outcome[] }>(SETUP, { people: [{ full_name: 'Sam', email: 'sm.google@example.com' }] })
+    expect(res.people[0]).toMatchObject({ person: holder.user, created: false })
+    expect(await rolesOf('sm.google@example.com')).toEqual(['System Manager'])
+  })
+
+  test('a production server with no address to put in a link says the invitation could not be made, under the Google label', async ({ admin }) => {
+    await noManagerEmails()
+    await googleOn()
+    await sql`update sign_in_method set label = '' where kind = 'google'`
+    const previous = config.environment
+    config.environment = 'production'
+    try {
+      const res = await admin.post<{ people: Outcome[] }>(SETUP, { people: [{ full_name: 'Asha', email: 'asha@example.com' }] })
+      expect(res.people[0].invitation).toMatchObject({ status: 'failed', link: null, method_label: 'Google', error: expect.any(String) })
+    } finally {
+      config.environment = previous
+    }
+  })
+
   test('without a Google sign-in method the people are still made System Managers, and the result says so', async ({ admin }) => {
     await noManagerEmails()
     await sql`update sign_in_method set enabled = false where kind = 'google'`
