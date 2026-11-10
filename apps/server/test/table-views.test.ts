@@ -6,7 +6,7 @@ import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { expectApiError, expectRefused, expectStatus, grantRole, makeTable, patchDoc, tableRef } from './fixtures'
-import { createTable, storedRelation } from '../src/table-engine'
+import { createTable, storedRelation, updateTable } from '../src/table-engine'
 import { sql } from '../src/db'
 import { getBacklinks, invalidateMeta } from '../src/meta'
 import { isInstalled, uninstallApp } from '../src/apps'
@@ -353,6 +353,17 @@ describe('#1021: a base keeps what its views stand on', () => {
     await expectApiError(admin.post(`${store.defUrl}/rename_column`, { from: 'region', to: 'zone' }), { status: 417, message: expect.stringContaining(`rename the column on ${SITE}`) })
     await expect(createTable({ name: 'Vw App View', kind: 'view', view_of: SITE, view_filters: [['region', '=', 'North']] }, 'someapp'))
       .rejects.toThrow('An app cannot define a view')
+  })
+
+  test('a view updated with no definition at all keeps the one it has', async ({ admin }) => {
+    await sites(admin)
+    const definition = async () => {
+      const { label, description, view_of, view_filters } = await admin.get<Record<string, unknown>>(store.metaUrl)
+      return { label, description, view_of, view_filters }
+    }
+    const before = await definition()
+    await updateTable(STORE, null)
+    expect(await definition()).toEqual(before)
   })
 
   test('a change only its base can take is refused, never silently dropped', async ({ admin }) => {
