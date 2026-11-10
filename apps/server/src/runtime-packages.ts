@@ -511,9 +511,10 @@ async function loadArtifacts(paths: string[]) {
         // version wins while the image's copy is still the one it replaced; a
         // deploy that brings other files wins over it. Delivered paths come last.
         const { deliveredOver } = await import('./app-delivery')
-        const over = await deliveredOver(pkg.root)
-        if (over !== null) {
-          if (over === duplicate.digest) loaded.set(key, pkg)
+        const [over, duplicateOver] = [await deliveredOver(pkg.root), await deliveredOver(duplicate.root)]
+        if ((over === null) !== (duplicateOver === null)) {
+          const [delivered, image] = over !== null ? [pkg, duplicate] : [duplicate, pkg]
+          loaded.set(key, (over ?? duplicateOver) === image.digest ? delivered : image)
           continue
         }
         loaded.delete(key)
