@@ -531,6 +531,24 @@ describe('a report on the rendered page', () => {
     await unmount()
   })
 
+  // #1172: someone with no report at all is told why at once; the page asks for no report or Dive
+  // it knows will be refused (each refusal was a console error).
+  it('asks for no report and no Dive when the reader has none, and says why', async () => {
+    reportsAnswer = []
+    problemsAnswer = { problems: ['head_office'] }
+    try {
+      const { container, unmount } = await open('?')
+      const { act } = await import('react')
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+      expect([asked('report'), asked('embed_session'), container.querySelector('[data-testid=reach-problem]')?.textContent])
+        .toEqual([[], [], 'Your job is in head office, so no store report is set against it. Ask the person who gives Dash reports in your company if you need one.'])
+      await unmount()
+    } finally {
+      reportsAnswer = [SALES, WHOLE]
+      problemsAnswer = { problems: [] }
+    }
+  })
+
   describe('for someone whose job reaches nothing', () => {
     const refusing = async (problems: string[]) => {
       reportsAnswer = []
