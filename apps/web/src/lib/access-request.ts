@@ -4,9 +4,11 @@ import { api } from './api'
 /** The server's answer: `waiting` once an admin has been told (#955); `elsewhere` when the person
  *  belongs in the app at `home`, and nobody was told. */
 export interface AccessAnswer {
-  state: 'open' | 'waiting' | 'elsewhere'
+  state: 'open' | 'waiting' | 'elsewhere' | 'apps'
   title: string
   home?: string
+  /** `apps`: the apps they can open, each open to everyone; nobody was told. */
+  apps?: { name: string; title: string; href: string }[]
 }
 
 /**

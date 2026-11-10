@@ -13,7 +13,7 @@ import { config } from './config'
 import { adminLinkOrigin } from './instance-addresses'
 import { canOpenApp, canUseAdmin, homeApp } from './landing'
 import { getRoles } from './permissions'
-import { accessApprovers, servedApp } from './runtime-packages'
+import { accessApprovers, appCatalog, servedApp } from './runtime-packages'
 import { isInstalled } from './apps'
 import { VIEWER_ROLE } from './sales-target'
 import { errorMessage } from './errors'
@@ -77,9 +77,11 @@ export async function countWaitingForAccess(): Promise<number> {
 export interface AccessAnswer {
   /** `open`: they can open it after all. `waiting`: an admin has been told.
    *  `elsewhere`: they belong in the app at `home`, and nobody was told. */
-  state: 'open' | 'waiting' | 'elsewhere'
+  state: 'open' | 'waiting' | 'elsewhere' | 'apps'
   title: string
   home?: string
+  /** `apps`: the apps they can open, each open to everyone (#659: none of them is theirs). */
+  apps?: { name: string; title: string; href: string }[]
 }
 
 /** `person` opened `app` without access, as far as the page knew: record
@@ -95,6 +97,9 @@ export async function requestAccess(person: string, app: string): Promise<Access
   if (target.name === 'featherbase') {
     const home = await homeApp(person)
     if (home) return { state: 'elsewhere', title: target.title, home }
+    // Only apps open to everyone: shown them, and nobody is told.
+    const apps = (await appCatalog(person)).map(({ name, title, href }) => ({ name, title, href }))
+    if (apps.length) return { state: 'apps', title: target.title, apps }
   }
   // A built-in account (Administrator, Guest) is nobody to give a role to:
   // it asks for nothing, and an app's address shows it as unavailable.

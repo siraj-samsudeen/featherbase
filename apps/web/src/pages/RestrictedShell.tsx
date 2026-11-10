@@ -42,7 +42,7 @@ export function ManageOnly({ children }: { children: React.ReactNode }) {
 }
 
 /** Found on staging (10-Nov-2026): someone who belongs in an app is sent there, never told "no access". */
-function GoingToApp({ path }: { path: string }) {
+export function GoingToApp({ path }: { path: string }) {
   useEffect(() => { window.location.assign(path) }, [path])
   return (
     <div className="flex min-h-screen flex-col bg-canvas" data-testid="going-to-app" data-path={path}>
@@ -56,6 +56,24 @@ export function NoAccessPage() {
   // #955: opening Featherbase with no access is the request for it, unless they belong in an app.
   const asked = useAccessRequest('featherbase')
   if (asked?.state === 'elsewhere' && asked.home) return <GoingToApp path={asked.home} />
+  if (asked?.state === 'apps' && asked.apps?.length)
+    return (
+      <div className="flex min-h-screen flex-col bg-canvas">
+        <TopBar forPerson />
+        <main className="flex flex-1 items-center justify-center p-4">
+          <Card className="w-full max-w-sm" data-testid="app-list">
+            <EmptyState title="Your apps" body="Open one of these. For anything else, ask your administrator." />
+            <ul className="mt-2 flex flex-col gap-1">
+              {asked.apps.map((app) => (
+                <li key={app.name}>
+                  <a href={app.href} className="text-action underline">{app.title}</a>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </main>
+      </div>
+    )
   return (
     <div className="flex min-h-screen flex-col bg-canvas">
       <TopBar forPerson />
