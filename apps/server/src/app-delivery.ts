@@ -58,8 +58,9 @@ function safePath(path: unknown): string {
 }
 
 /** Write the delivered files, re-pin the installed app to them and serve
- *  them. Refuses, changing nothing, unless it is a code change to the
- *  installed version. */
+ *  them. Refuses, changing nothing and loading nothing, unless it is a code
+ *  change to the installed version. One at a time, across processes: it holds
+ *  the exclusive app lifecycle lock, as a deploy does. */
 export async function deliverApp(body: unknown) {
   const root = deliveredAppsRoot()
   if (!root) throw new AppError('ValidationError', 'Delivery needs FILE_STORAGE_DIR, a volume that survives a restart')
@@ -67,60 +68,65 @@ export async function deliverApp(body: unknown) {
   if (!Array.isArray(files) || !files.length) throw new AppError('ValidationError', 'Expected { files: [{ path, data }] }, data in base64')
   const decoded = (files as DeliveredFile[]).map(file => ({ path: safePath(file?.path), bytes: Buffer.from(String(file?.data ?? ''), 'base64') }))
   if (decoded.reduce((total, file) => total + file.bytes.length, 0) > MAX_BYTES) throw new AppError('ValidationError', 'A delivery is at most 50 MB')
-  const incoming = join(root, `.incoming-${randomBytes(8).toString('hex')}`)
-  try {
-    for (const file of decoded) {
-      await mkdir(dirname(join(incoming, file.path)), { recursive: true })
-      await writeFile(join(incoming, file.path), file.bytes)
-    }
-    const pkg = JSON.parse(await readFile(join(incoming, 'package.json'), 'utf8').catch(() => '{}')) as { name?: string; version?: string }
-    const { readPackageDeclaration } = await import('./runtime-packages')
-    const { manifest } = await readPackageDeclaration(incoming).catch((error: Error) => {
-      throw new AppError('ValidationError', `The delivered files are not an app: ${error.message}`)
-    })
-    const { sql } = await import('./db')
-    const [row] = await sql`select package_version from installed_app where name = ${manifest.name} and runtime_package`
-    if (!row || row.package_version !== pkg.version)
-      throw new AppError('ConflictError', `Delivery takes a code change to the installed version of ${manifest.name}; ${pkg.version} is not it. Use an ordinary deploy.`)
-    const target = join(root, String(manifest.name))
-    const { appLibraryPaths } = await import('./app-library')
-    const { shippedDigest } = await import('./runtime-packages')
-    const configured = JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[]
-    const over = await shippedDigest(await appLibraryPaths(configured), String(manifest.name), String(pkg.version))
-    const previous = join(root, `.previous-${String(manifest.name)}-${randomBytes(4).toString('hex')}`)
-    const previousOver = existsSync(`${target}.over`) ? await readFile(`${target}.over`, 'utf8') : null
-    if (existsSync(target)) await rename(target, previous)
-    await rename(incoming, target)
-    await writeFile(`${target}.over`, over ?? '')
+  const { appOperation } = await import('./app-lifecycle')
+  return appOperation(async () => {
+    const incoming = join(root, `.incoming-${randomBytes(8).toString('hex')}`)
     try {
-      const outcome = await follow(String(manifest.name))
-      await rm(previous, { recursive: true, force: true })
-      return { name: manifest.name, version: pkg.version, outcome }
-    } catch (error) {
-      await rm(target, { recursive: true, force: true })
-      await rm(`${target}.over`, { force: true })
-      if (existsSync(previous)) {
-        await rename(previous, target)
-        if (previousOver !== null) await writeFile(`${target}.over`, previousOver)
+      for (const file of decoded) {
+        await mkdir(dirname(join(incoming, file.path)), { recursive: true })
+        await writeFile(join(incoming, file.path), file.bytes)
       }
-      await follow(String(manifest.name)).catch(() => {})
-      throw error
+      const { readPackageDeclaration, declaresAsInstalled, shippedDigest } = await import('./runtime-packages')
+      const { pkg, manifest } = await readPackageDeclaration(incoming).catch((error: Error) => {
+        throw new AppError('ValidationError', `The delivered files are not an app: ${error.message}`)
+      })
+      const name = String(manifest.name)
+      const { sql } = await import('./db')
+      const [row] = await sql`select package_version, manifest from installed_app where name = ${name} and runtime_package`
+      if (!row || row.package_version !== pkg.version)
+        throw new AppError('ConflictError', `Delivery takes a code change to the installed version of ${name}; ${String(pkg.version)} is not it. Use an ordinary deploy.`)
+      if (!declaresAsInstalled(row, manifest, pkg))
+        throw new AppError('ConflictError', `The delivered ${name} changes what the app declares. Use an ordinary deploy, which upgrades it.`)
+      const { appLibraryPaths } = await import('./app-library')
+      const configured = JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[]
+      const over = await shippedDigest(await appLibraryPaths(configured), name, String(pkg.version))
+      const target = join(root, name)
+      const previous = join(root, `.previous-${name}-${randomBytes(4).toString('hex')}`)
+      const previousOver = existsSync(`${target}.over`) ? await readFile(`${target}.over`, 'utf8') : null
+      const hadPrevious = existsSync(target)
+      try {
+        if (hadPrevious) await rename(target, previous)
+        await rename(incoming, target)
+        await writeFile(`${target}.over`, over ?? '')
+        const outcome = await follow(name)
+        await rm(previous, { recursive: true, force: true })
+        return { name, version: pkg.version, outcome }
+      } catch (error) {
+        await rm(target, { recursive: true, force: true })
+        await rm(`${target}.over`, { force: true })
+        if (hadPrevious && existsSync(previous)) {
+          await rename(previous, target)
+          if (previousOver !== null) await writeFile(`${target}.over`, previousOver)
+        }
+        await follow(name).catch(() => {})
+        throw error
+      }
+    } finally {
+      await rm(incoming, { recursive: true, force: true })
     }
-  } finally {
-    await rm(incoming, { recursive: true, force: true })
-  }
+  }, true)
 }
 
 async function follow(name: string): Promise<'same' | 'repinned'> {
   const { discoverAppLibrary } = await import('./app-library')
-  const { discoverPackages, repinToFolder } = await import('./runtime-packages')
-  const { appLibraryPaths } = await import('./app-library')
+  const { repinToFolder } = await import('./runtime-packages')
   const { loadInstalledApps } = await import('./apps')
   await discoverAppLibrary(appPathsFromEnvironment())
   const outcome = await repinToFolder(name, true)
   if (outcome === 'different')
-    throw new AppError('ConflictError', `The delivered ${name} changes what the app declares, or is not the installed version. Use an ordinary deploy, which upgrades it.`)
-  await discoverPackages(await appLibraryPaths(appPathsFromEnvironment()))
+    throw new AppError('ConflictError', `The delivered ${name} is not the installed version. Use an ordinary deploy.`)
+  // Discovery selects only the copy the installed record names; after a re-pin, discover again.
+  if (outcome === 'repinned') await discoverAppLibrary(appPathsFromEnvironment())
   await loadInstalledApps()
   return outcome
 }

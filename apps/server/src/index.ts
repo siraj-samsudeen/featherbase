@@ -610,6 +610,8 @@ app.get('/preview', async (c) => {
 // 404 when delivery is off or the key is wrong.
 app.post('/deliver/app', async (c) => {
   if (!deliveryKeyMatches(c.req.header('authorization'))) return c.notFound()
+  // 50 MB of files is about 67 MB as base64 JSON; refuse more before reading it.
+  if (Number(c.req.header('content-length') ?? 0) > 72 * 1024 * 1024) throw new AppError('ValidationError', 'A delivery is at most 50 MB')
   return c.json(await deliverApp(await c.req.json().catch(() => null)))
 })
 

@@ -312,7 +312,9 @@ APP_DELIVERY_TOKEN=… node tools/deliver-app.mjs client-apps/<client>/<app> htt
   `/deliver/app`, answers 404 without it. Whoever holds the key can run code on the server: treat
   it like the database password.
 - **Code only.** A delivery of another version, or with a changed `featherbase.json`, is refused
-  and changes nothing; push it and let the ordinary deploy upgrade it.
+  before anything of it is kept or loaded; push it and let the ordinary deploy upgrade it.
+- **One at a time.** A delivery holds the same app lifecycle lock as a deploy, so requests to apps
+  wait a moment while it swaps the files.
 - **Kept on the volume.** The delivered copy lives under `FILE_STORAGE_DIR/delivered-apps/`, so a
   restart serves it too. It wins over the image's copy of the same version until a deploy brings
   different files for it; that deploy re-pins to the image's files as usual.

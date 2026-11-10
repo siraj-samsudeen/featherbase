@@ -163,7 +163,7 @@ describe('trusted-runtime-packages', () => {
       await discoverPackages([])
       await loadInstalledApps()
     }
-    return { fixed, pageText, cleanup }
+    return { fixed, storage, pageText, cleanup }
   }
 
   scenario('A delivered fix is live at once', async ({ admin }, step) => {
@@ -238,6 +238,8 @@ describe('trusted-runtime-packages', () => {
         await expectStatus(res!, 409)
         expect(JSON.stringify(await res!.json())).toContain('ordinary deploy')
         expect(await run!.pageText()).toContain('<h1>Other tasks</h1>')
+        // Refused before anything of it was kept or loaded.
+        expect(await readdir(join(run!.storage, 'delivered-apps'))).toEqual([])
       })
     } finally { await run?.cleanup() }
   })

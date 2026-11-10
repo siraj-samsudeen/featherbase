@@ -274,6 +274,13 @@ function sameManifest(pkg: RuntimePackage, row: Record<string, unknown>) {
   return canonical(stored) === canonical(pkg.app.runtime_manifest)
 }
 
+/** #1178 (D8): whether a staged app folder declares exactly what the
+ *  installed record holds, checked before anything of it is loaded. */
+export function declaresAsInstalled(row: Record<string, unknown>, manifest: unknown, pkg: { name: string; version: string }) {
+  const stored = { ...(row.manifest as object), migrations: (row.manifest as { migrations?: unknown })?.migrations ?? [] }
+  return canonical(stored) === canonical({ ...(manifest as object), packageName: pkg.name, packageVersion: pkg.version })
+}
+
 function assertKnownAccent(pkg: RuntimePackage) {
   const { accent } = pkg.manifest
   if (accent !== undefined && !(APP_ACCENTS as readonly string[]).includes(accent))
