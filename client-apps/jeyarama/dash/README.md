@@ -149,8 +149,8 @@ at the repository root.
     (`this` or `last`, from the address, default `this`) and `app_origin`. It carries none of the
     one-store keys, because the Dive takes `reach` beside one of them as a scope error. The bar offers
     no Store or Month for that report, and the page opens at once on the address's store. It draws
-    no heading over the Dive, only over its cached view, which is for the address's store or the
-    reader's first store A–Z. Turn it on only once the row's Dive reads these keys.
+    no heading over the Dive, only over its cached view. That view is for the address's store, or
+    where the Dive opens with none named: the reader's first store A–Z with figures. Turn it on only once the row's Dive reads these keys.
 - **`baseTables.read`**: the core Tables Dash reads by the columns named there. An instance lists all
   eight in the `dash.linked_tables` setting. `baseTables.propose` is what Your sections may propose.
 - **The scope provider, `org_chart`.** It reads the six Tables in `scopeProvider.tables`, each of

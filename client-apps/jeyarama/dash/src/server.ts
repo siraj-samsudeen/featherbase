@@ -135,11 +135,21 @@ function storeInReach(ctx: ScopedContext): string | undefined {
   return typeof named === 'string' && storesReached(placesOf(ctx)).includes(named) ? named : undefined
 }
 
-/** The store a report's page reads: the chosen one; for a Dive with its own pickers, the address's or the reader's first A–Z. */
+/**
+ * The store a report's page reads: the chosen one. For a Dive with its own pickers, the address's;
+ * else where the Dive opens with none named (agreed with v16): the reader's first store A–Z that
+ * has figures in the cached copy, or their first A–Z when none has.
+ */
 async function storeOfPage(ctx: ScopedContext, report: ReportRecord): Promise<string | undefined> {
   if (!report.pickers_in_dive) return chosenStore(ctx, report)
+  const named = storeInReach(ctx)
+  if (named) return named
   const reached = storesReached(placesOf(ctx))
-  return storeInReach(ctx) ?? storeLabels(reached, await storeNames(ctx, reached))[0]?.value
+  const byName = storeLabels(reached, await storeNames(ctx, reached)).map(option => option.value)
+  // The platform limits the cached copy to the reader's places.
+  const cached = await ctx.datasets.active(DATASETS[chosenMonth(ctx)].sales).catch(() => null)
+  const withFigures = new Set(((cached?.rows ?? []) as SalesRow[]).map(row => String(row.store_code)))
+  return byName.find(store => withFigures.has(store)) ?? byName[0]
 }
 
 /** The month the read is for (#750): `this` (also when none is named) or `last`; anything else is refused. */

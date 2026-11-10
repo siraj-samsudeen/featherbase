@@ -284,6 +284,9 @@ describe('the report reads on the platform', () => {
       const called = await opening(admin)
       await leader.post('/api/app_reads/dash/embed_session', { payload: { report: 'picked', store: '9901', month: 'last' } })
       const bar = await leader.get<{ controls: { sets: string; options: unknown[] }[] }>('/api/app_bar/dash?report=picked')
+      // With no store named, the cached view opens on the reader's store that has figures.
+      const cached = await report(leader, { report: 'picked' }) as { store?: string; rows: { code: string }[]; pickers_in_dive?: boolean }
+      expect([cached.store, cached.rows.map(r => r.code), cached.pickers_in_dive]).toEqual(['9901', ['010101001'], true])
       expect([called, bar.controls.map(control => [control.sets, control.options.length])]).toEqual([
         [{ url: 'https://api.motherduck.com/v1/dives/made-up-picked-dive/embed-session',
           body: { username: 'svc-made-up', initial_state: { reach: { 9901: ['010101001'] }, store: '9901', month: 'last' } } }],
