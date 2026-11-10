@@ -167,6 +167,21 @@ test('someone who can open only apps open to everyone is shown them, and asks fo
   }
 })
 
+// When asking for access fails, the page doesn't wait forever: it says there's no access.
+test('the no-access page still says so when asking for access fails', async ({ createUser }) => {
+  const nobody = await createUser({ email: 'ask.fails@example.com', roles: [] })
+  const { api } = await import('../src/lib/api')
+  const post = api.post.bind(api)
+  const spy = vi.spyOn(api, 'post').mockImplementation(((path: string, body?: unknown) =>
+    path === '/api/access_request' ? Promise.reject(new Error('offline')) : post(path, body)) as typeof api.post)
+  try {
+    await renderApp('/featherbase/admin', nobody)
+    expect(await screen.findByText("You don't have access to anything here yet")).toBeInTheDocument()
+  } finally {
+    spy.mockRestore()
+  }
+})
+
 test('a failed refresh of whoami keeps the shell the person already has', () => {
   const caps = { manage: false, report: false, admin: true, own_grant: true, tables: ['Shelf Note'], creatable: [], archived: [] }
   expect(shellKindOf({ isError: true, data: { capabilities: caps } })).toBe('admin')

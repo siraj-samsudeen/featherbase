@@ -115,7 +115,8 @@ export function returnOrLanding(path: string, user: Pick<SessionUser, 'landing' 
   if (!landing) return path
   if (path.startsWith('/featherbase/admin')) return landing
   if (path.startsWith('/featherbase/')) return path
-  return apps && !apps.includes(path.split('/')[1] ?? '') ? landing : path
+  // A safe return path starts with '/', so its first segment is the app.
+  return apps && !apps.includes(path.split('/')[1]) ? landing : path
 }
 
 /** Go to where a signed-in person lands (#488): a Featherbase page inside the

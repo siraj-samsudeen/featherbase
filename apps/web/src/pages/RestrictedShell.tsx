@@ -63,8 +63,9 @@ export function NoAccessPage() {
         <Waiting />
       </div>
     )
-  if (asked?.state === 'elsewhere' && asked.home) return <GoingToApp path={asked.home} />
-  if (asked?.state === 'apps' && asked.apps?.length)
+  // The server names `home` with `elsewhere`, and `apps` with `apps`.
+  if (asked?.state === 'elsewhere') return <GoingToApp path={asked.home!} />
+  if (asked?.state === 'apps')
     return (
       <div className="flex min-h-screen flex-col bg-canvas">
         <TopBar forPerson />
@@ -75,7 +76,7 @@ export function NoAccessPage() {
               body="Open one of these. For anything else, ask your administrator."
               action={
                 <ul className="flex flex-col items-center gap-2">
-                  {asked.apps.map((app) => (
+                  {asked.apps!.map((app) => (
                     <li key={app.name}>
                       <a href={app.href} className={buttonClasses()}>{app.title}</a>
                     </li>
