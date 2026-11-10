@@ -77,6 +77,11 @@ describe('push', () => {
     expect(path.steps[0]).toEqual(listStep(3))
     expect(path.at).toBe(MAX_STEPS - 1)
   })
+
+  it('a filter on a value too long for the address is still a step', () => {
+    const long: NavStep = { screen: 'list', table: 'Site', filters: [['notes', '=', 'x'.repeat(201)]] }
+    expect(walk(sites, long).steps).toEqual([sites, long])
+  })
 })
 
 describe('go, back and forward', () => {
@@ -130,6 +135,16 @@ describe('encodePath / decodePath', () => {
       filters: [['row_id', 'related', { via: 'PO Line', column: 'item', table: 'Item', filters: [['row_id', '=', 'item-3']] }]],
     }
     const path = walk(sites, contains)
+    expect(decodePath(encodePath(path))).toEqual(path)
+  })
+
+  it('round-trips a filter on a number', () => {
+    const path = walk(sites, { screen: 'list', table: 'Site', filters: [['plants', '>', 3]] })
+    expect(decodePath(encodePath(path))).toEqual(path)
+  })
+
+  it('round-trips a relationship filter with no filters of its own', () => {
+    const path = walk(sites, { screen: 'list', table: 'Purchase Order', filters: [['row_id', 'related', { table: 'Item' }]] })
     expect(decodePath(encodePath(path))).toEqual(path)
   })
 
