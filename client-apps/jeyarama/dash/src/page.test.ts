@@ -78,6 +78,15 @@ describe("the Dive's frame", () => {
     expect(pageView({ embed: frame, report: ready, timedOut: true })).toEqual({ kind: 'quick' })
   })
 
+  // #1159: the cached copy's "month hasn't arrived" is about one store and month; a ready Dive,
+  // where the reader may choose another, wins over it.
+  it('says the month has not arrived until the Dive is ready, then shows the Dive', () => {
+    const notArrived = { ok: true as const, value: { state: 'no_data_yet' } }
+    expect([pageView({ embed: frame, report: notArrived }), pageView({ embed: frame, report: notArrived, timedOut: true }),
+      pageView({ embed: frame, report: notArrived, diveReady: true }), pageView({ embed: frame, report: notArrived, frameFailed: true, diveReady: true })])
+      .toEqual([{ kind: 'empty', why: 'no_data_yet' }, { kind: 'empty', why: 'no_data_yet' }, expect.objectContaining({ kind: 'dive' }), { kind: 'empty', why: 'no_data_yet' }])
+  })
+
   it('shows the Dive past the deadline once it has said it is ready', () => {
     expect(pageView({ embed: frame, report: ready, timedOut: true, diveReady: true })).toMatchObject({ kind: 'dive' })
   })
