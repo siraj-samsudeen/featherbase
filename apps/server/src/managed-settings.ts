@@ -118,10 +118,10 @@ function lockedError(meta: Pick<TableMeta, 'name' | 'columns'>, rowId: string, f
   const where = rowId === meta.name ? meta.name : `${meta.name} ${rowId}`
   const names = fields.map((f) => fieldLabel(meta, f))
   const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
-  const [verb, pronoun] = names.length === 1 ? ['is', 'it'] : ['are', 'they']
+  const [verb, subject, object] = names.length === 1 ? ['is', 'it', 'it'] : ['are', 'they', 'them']
   return new AppError(
     'PermissionError',
-    `${list} on ${where} ${verb} set in the instance settings file (${INSTANCE_SETTINGS_FILE}), so ${pronoun} cannot be changed here. Change ${pronoun} in the file, then apply the file.`,
+    `${list} on ${where} ${verb} set in the instance settings file (${INSTANCE_SETTINGS_FILE}), so ${subject} cannot be changed here. Change ${object} in the file, then apply the file.`,
     Object.fromEntries(fields.map((f) => [f, 'set in the instance settings file'])),
   )
 }

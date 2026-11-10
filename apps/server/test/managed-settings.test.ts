@@ -114,10 +114,7 @@ describe('Admin saves of a locked field are refused (D5)', () => {
     expect(err.message).toContain('so they cannot be changed here')
   })
 
-  // Defect pinned (#1115): the pronoun that is the
-  // subject ("they cannot be changed") is reused as the object, so the
-  // refusal reads "Change they in the file".
-  test.fails('a refusal naming several locked fields says to change them in the file', async ({ admin }) => {
+  test('a refusal naming several locked fields says to change them in the file', async ({ admin }) => {
     await apply({ settings: { 'System Settings': { app_name: 'Locked Name', session_hours: 24 } } })
     const err = await expectApiError(admin.post('/api/save_row', { table: 'System Settings', row: { app_name: 'Drifted', session_hours: 12 } }), { status: 403 })
     expect(err.message).toContain('Change them in the file, then apply the file.')

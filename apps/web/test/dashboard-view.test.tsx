@@ -65,10 +65,9 @@ function dropNetwork(lost: (url: string) => boolean) {
       : bridge(input, init))
 }
 
-// Defect pinned (#1118): the page reads the row's name from `name`, a
-// field the server no longer sends (rows carry `row_id`), so a dashboard with
-// no label has an empty heading.
-test.fails('a dashboard with no label is headed by its name', async ({ admin }) => {
+// #1118: rows carry their name as `row_id`; a dashboard with no label is
+// headed by it.
+test('a dashboard with no label is headed by its name', async ({ admin }) => {
   await admin.post('/api/save_row', { table: 'Dashboard', row: { row_id: 'Dv Bare' } })
   await renderApp(`/featherbase/admin/dashboard/${encodeURIComponent('Dv Bare')}`, admin)
   expect(await screen.findByTestId('dashboard-title', {}, { timeout: 8000 })).toHaveTextContent(/^Dv Bare$/)

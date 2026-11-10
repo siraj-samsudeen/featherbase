@@ -5,7 +5,7 @@ import { config } from '../src/config'
 import { parseInstanceAddresses } from '../src/instance-addresses'
 import { saveDoc } from '../src/document'
 import { sql } from '../src/db'
-import { expectStatus, makePerson } from './fixtures'
+import { expectRefused, expectStatus, makePerson } from './fixtures'
 import { configureGoogle } from './identity-fixtures'
 import { signInAddresses } from './sign-in-address-utils'
 
@@ -136,6 +136,20 @@ describe('POST /api/open_admin', () => {
 
   test('signed out, it is refused', async ({ api }) => {
     await expectStatus(await api.fetch(`${DASH}/api/open_admin`, { method: 'POST' }), 401)
+  })
+
+  // A token is for scripts (access-tokens spec): revoking it must stop it at
+  // once, so it can never become a browser session that outlives it.
+  test("a script's access token cannot be turned into a browser session on the admin address", async ({ api, admin }) => {
+    const both = await signedIn(api, admin, 'both.token', ['System Manager', 'Sales Target Viewer'], DASH)
+    const issued = await api.fetch(`${DASH}/api/access_tokens`, { method: 'POST', headers: { authorization: `Bearer ${both.token}` }, body: JSON.stringify({ label: 'script' }) })
+    const { token } = (await (await expectStatus(issued, 201)).json()) as { token: string }
+
+    const asked = await api.fetch(`${DASH}/api/open_admin`, { method: 'POST', headers: { authorization: `Bearer ${token}` } })
+    // Followed as far as it goes: the token's holder plays the browser, its
+    // own token as the sid cookie the bind step asks for.
+    const outcome = asked.ok ? await follow(api, ((await asked.json()) as Opened).handoff!, `sid=${token}`) : asked
+    await expectRefused(outcome ?? asked, 403)
   })
 })
 

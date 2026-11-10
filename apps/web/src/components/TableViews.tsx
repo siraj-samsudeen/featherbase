@@ -74,7 +74,7 @@ export function SaveAsView({ table, filters }: { table: string; filters: readonl
       void queryClient.invalidateQueries({ queryKey: ['command-destinations'] })
       await navigate({ to: '/featherbase/admin/table/$table', params: { table: meta.name }, search: { filters: undefined } })
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e))
+      setError(e instanceof ApiError ? e.message : 'Save failed')
       setBusy(false)
     }
   }

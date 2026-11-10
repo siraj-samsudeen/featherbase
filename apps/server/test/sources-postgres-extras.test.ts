@@ -550,10 +550,7 @@ describe('Saving a Data Source', () => {
     expect(await sql`select name from table_def where name = 'No Such Relation'`).toEqual([])
   })
 
-  // Defect pinned (#1114): the binding is checked
-  // against the source's default schema and saved with no schema, but a read
-  // then quotes an empty schema name and every list fails with a 502.
-  test.fails('a binding that names no schema reads the source default schema', async ({ admin }) => {
+  test('a binding that names no schema reads the source default schema', async ({ admin }) => {
     await makeSource(admin)
     await admin.post('/api/table_def', {
       name: 'Plain No Schema', data_source: 'ext-extra', external_table: 'plain', external_pk: 'id',

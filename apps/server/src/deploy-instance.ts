@@ -1,7 +1,7 @@
 // #703: what a client instance's pre-deploy does after the release (migrations):
-// install its apps or upgrade them, apply its settings, and, on a dev instance
-// only, re-pin an app whose files changed under the same version. Anything that
-// goes wrong throws, which fails the deploy, so the old deployment keeps serving.
+// on a dev instance only, re-pin an app whose files changed under the same
+// version; then install its apps or upgrade them, and apply its settings.
+// Anything that goes wrong throws, which fails the deploy, so the old deployment keeps serving.
 // `pnpm dev` is the same path on a developer's machine.
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -123,10 +123,12 @@ export async function deployInstance(instance: string, io: CommandIO, opts: { ro
     await sql`set local idle_in_transaction_session_timeout = '5min'`
     // Held to the end, so two overlapping deploys take turns.
     await sql`select pg_advisory_xact_lock(hashtext('featherbase-instance-deploy'))`
+    // On dev, re-pin first: an upgrade checks the installed version against
+    // the files the image holds for it, which may have moved under it.
+    if (followsAppFiles(currentEnvironment(), await storedEnvironment())) await repinChangedApps(io)
     await installOrUpgradeApps(io)
     const cli = await import('./cli')
     const code = await cli.main(['settings:apply', '--file', settingsFile, '--environment', section], io)
     if (code !== 0) throw new Error('the settings file was not applied; see above')
-    if (followsAppFiles(currentEnvironment(), await storedEnvironment())) await repinChangedApps(io)
   }), opts.lockWait ?? DEPLOY_LOCK_WAIT, (line) => io.out(line))
 }
