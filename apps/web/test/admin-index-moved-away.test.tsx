@@ -26,7 +26,7 @@ const pathOf = (r: { router: unknown }) => (r.router as { state: { location: { p
 test('an address that moved on while the Admin index waited for Home Pages stays where it went', async ({ admin }) => {
   await admin.post('/api/save_row', { table: 'Home Page', row: { row_id: 'aim-first', label: 'First' } })
   const r = await renderApp('/featherbase/admin', admin)
-  stage.router = r.router as typeof stage.router
+  stage.router = r.router as unknown as typeof stage.router
   await waitFor(() => expect(stage.moved).toBe(true), { timeout: 8000 })
   await waitFor(() => expect(pathOf(r)).toBe('/featherbase/admin/all-tables'))
   // Long enough for a stale redirect to the Home Page to have landed.
