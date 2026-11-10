@@ -45,7 +45,7 @@ export function ArchiveTable({ table }: { table: string }) {
       await refreshTable(queryClient, table)
       setOpen(false)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e))
+      setError(e instanceof ApiError ? e.message : 'Archive failed')
     } finally {
       setBusy(false)
     }
@@ -141,7 +141,7 @@ export function ArchivedBanner({ table, meta, canUnarchive }: { table: string; m
       await api.post(`/api/table_def/${encodeURIComponent(table)}/unarchive`, {})
       await refreshTable(queryClient, table)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e))
+      setError(e instanceof ApiError ? e.message : 'Un-archive failed')
     } finally {
       setBusy(false)
     }

@@ -206,7 +206,7 @@ export function ListView({
       await navigate({ to: '/featherbase/admin/all-tables' })
       void queryClient.invalidateQueries()
     } catch (e) {
-      setDeleteError(e instanceof ApiError ? e.message : String(e))
+      setDeleteError(e instanceof ApiError ? e.message : 'Delete failed')
       setDeleteBusy(false)
     }
   }

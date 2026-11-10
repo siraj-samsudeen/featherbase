@@ -2,7 +2,7 @@
 // un-archiving and deleting the Table, and saving a filtered list as a view.
 // Each says the raw "TypeError: Failed to fetch" a browser gives a lost
 // request, where the rest of the Admin says in words that the action failed.
-// Pinned as one defect (#1117); the Table is left as it was.
+// One defect (#1117); the Table is left as it was.
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { tableSlug } from 'shared'
@@ -33,7 +33,7 @@ function dropTableWrites() {
 
 const inWords = (el: HTMLElement) => expect(el.textContent).not.toMatch(/TypeError/)
 
-test.fails('a rename the network drops says in words that it failed', async ({ admin }) => {
+test('a rename the network drops says in words that it failed', async ({ admin }) => {
   await openAdministration(admin)
   await userEvent.click(await screen.findByTestId('rename-table', {}, T))
   const dialog = await screen.findByTestId('rename-table-dialog')
@@ -44,7 +44,7 @@ test.fails('a rename the network drops says in words that it failed', async ({ a
   inWords(await within(dialog).findByTestId('rename-table-error'))
 })
 
-test.fails('an archive the network drops says in words that it failed', async ({ admin }) => {
+test('an archive the network drops says in words that it failed', async ({ admin }) => {
   await openAdministration(admin)
   await userEvent.click(await screen.findByTestId('archive-table', {}, T))
   const dialog = await screen.findByTestId('archive-table-dialog')
@@ -54,7 +54,7 @@ test.fails('an archive the network drops says in words that it failed', async ({
   inWords(await within(dialog).findByTestId('archive-table-error'))
 })
 
-test.fails('an un-archive the network drops says in words that it failed', async ({ admin }) => {
+test('an un-archive the network drops says in words that it failed', async ({ admin }) => {
   await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'city', column_type: 'Data', label: 'City', in_list_view: true }] })
   await admin.post(`/api/table_def/${encodeURIComponent(DT)}/archive`, { note: 'old' })
   await renderApp(`/featherbase/admin/table/${tableSlug(DT)}`, admin)
@@ -64,7 +64,7 @@ test.fails('an un-archive the network drops says in words that it failed', async
   inWords(await within(banner).findByTestId('unarchive-table-error'))
 })
 
-test.fails('deleting the Table when the network drops says in words that it failed', async ({ admin }) => {
+test('deleting the Table when the network drops says in words that it failed', async ({ admin }) => {
   await openAdministration(admin)
   await userEvent.click(await screen.findByTestId('delete-table', {}, T))
   const dialog = await screen.findByTestId('delete-table-dialog')
@@ -75,7 +75,7 @@ test.fails('deleting the Table when the network drops says in words that it fail
   inWords(await within(dialog).findByTestId('delete-table-error'))
 })
 
-test.fails('a view the network drops says in words that it was not saved', async ({ admin }) => {
+test('a view the network drops says in words that it was not saved', async ({ admin }) => {
   const filters = encodeURIComponent(JSON.stringify([['city', '=', 'Chennai']]))
   await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'city', column_type: 'Data', label: 'City', in_list_view: true }] })
   await renderApp(`/featherbase/admin/table/${tableSlug(DT)}?filters=${filters}`, admin)
