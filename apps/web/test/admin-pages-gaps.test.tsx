@@ -58,7 +58,7 @@ test('Find a person: a search the network drops says the search did not work', a
   const select = within(page).getByLabelText('Identifier')
   await waitFor(() => expect(within(select).getByRole('option', { name: 'Mobile phone' })).toBeInTheDocument())
   await userEvent.selectOptions(select, 'phone')
-  await userEvent.type(within(page).getByLabelText('Value'), '9876543210')
+  await userEvent.type(within(page).getByLabelText('Value'), '9847012345')
   const bridge = globalThis.fetch
   vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
     String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).startsWith('/api/identifiers?')
