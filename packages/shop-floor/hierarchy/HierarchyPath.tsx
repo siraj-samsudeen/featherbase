@@ -59,7 +59,8 @@ export function HierarchyGroups<T>({ items, pathOf, children }: { items: T[]; pa
   const groups = groupByPath(items, pathOf)
   if (groups.length <= 1) return (
     <div className="flex flex-col gap-1" data-testid="hierarchy-groups">
-      {groups[0] && <HierarchyPath path={groups[0].path} />}
+      {/* The same heading as a group's, so a path reads the same with one group or many. */}
+      {groups[0] && <h3><HierarchyPath path={groups[0].path} className="font-semibold" /></h3>}
       {children(items)}
     </div>
   )

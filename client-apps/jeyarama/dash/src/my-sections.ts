@@ -274,7 +274,7 @@ export const reads = {
     return { state: 'ok' as const, name: text(employees[0].name), jobs: views, proposals: shown, waiting_for_me: (await waitingForMe(ctx)).length }
   },
 
-  /** Division, sub-division and category, for browsing; starting at the job's own division and sub-division. */
+  /** Division, sub-division and category, for browsing; starting where most of the job's own subcategories sit. */
   async subcategory_levels(ctx: ReadContext) {
     const { job: jobId } = (ctx.payload ?? {}) as { job?: unknown }
     if (!IS_SET_UP(ctx)) return { start: null, levels: [] }
@@ -289,11 +289,11 @@ export const reads = {
     const counts = new Map<string, number>()
     for (const row of own) {
       const path = pathOf(leafById.get(exact(row.subcategory)))
-      const key = JSON.stringify([path.division, path.subdivision])
+      const key = JSON.stringify([path.division, path.subdivision, path.category])
       counts.set(key, (counts.get(key) ?? 0) + 1)
     }
     const top = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]
-    const start = top ? (([division, subdivision]) => ({ division, subdivision }))(JSON.parse(top[0]) as string[]) : null
+    const start = top ? (([division, subdivision, category]) => ({ division, subdivision, category }))(JSON.parse(top[0]) as string[]) : null
     const order = (a: ReturnType<typeof pathOf>, b: ReturnType<typeof pathOf>) =>
       a.division.localeCompare(b.division) || a.subdivision.localeCompare(b.subdivision) || a.category.localeCompare(b.category)
     return { start, levels: [...levels.values()].sort(order) }

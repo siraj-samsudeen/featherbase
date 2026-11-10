@@ -203,7 +203,7 @@ describe('Your sections', () => {
 
   it('shows what was asked for and how it ended', async () => {
     answers.my_sections = { state: 'ok', name: 'Asha Maker', jobs: [job], proposals: [pending,
-      { ...pending, id: 'p2', state: 'Rejected', reason: 'Sarees stay here', decided_on: '2026-11-05' }, { ...pending, id: 'p3', state: 'Applied', decided_on: '2026-11-05' }] }
+      { ...pending, id: 'p2', state: 'Rejected', reason: 'Sarees stay here', decided_on: '2026-11-05' }, { ...pending, id: 'p3', state: 'Applied', decided_on: '2026-11-05' }, { ...pending, id: 'p4', state: 'Withdrawn', decided_on: '2026-11-06' }] }
     const page = await render('YourSections')
     const text = page.q('your-proposals')?.textContent
     expect(text).toContain('Move Sarees from Ladies Wear to Silk')
@@ -211,6 +211,7 @@ describe('Your sections', () => {
     expect(text).toContain('Sarees stay here')
     expect(text).toContain('05-Nov-2026')
     expect(text).toContain('Approved')
+    expect(text).toContain('Withdrawn on 06-Nov-2026')
     await page.done()
   })
 
@@ -272,7 +273,8 @@ describe('Waiting for your approval', () => {
     await page.click('Move it elsewhere…')
     const select = page.q('approval')!.querySelector('select')!
     // Not back where it is now.
-    expect([...select.options].map(o => o.textContent)).toEqual(['Choose a section', 'Ladies Wear', 'Linen'])
+    // Neither where it is now nor where it was asked for: that is Approve move.
+    expect([...select.options].map(o => o.textContent)).toEqual(['Choose a section', 'Linen'])
     await page.click('Move it there')
     expect(calls.filter(c => c.kind === 'actions')).toEqual([])
     await page.choose(select, 'linen-row')
@@ -286,7 +288,7 @@ describe('Waiting for your approval', () => {
     answers.approvals = { state: 'ok', proposals: [{ ...move, kind: 'removal', from: { section: 'Ladies Wear', holder: 'Asha Maker' }, to: null, sections: [] }] }
     const page = await render('Approvals')
     expect(page.q('approval-what')?.textContent).toBe('Take Sarees out of Ladies Wear')
-    expect(page.q('approval-removal')?.textContent).toContain('in no section at Lakeside')
+    expect(page.q('approval-removal')?.textContent).toBe('If you approve, it will be in no section at Lakeside until someone adds it. The master data team sees it on their list.')
     expect(page.button('Move it elsewhere…')).toBeUndefined()
     expect(page.button('Approve')).toBeTruthy()
     await page.done()

@@ -58,7 +58,7 @@ type Mine = { state: 'not_set_up' | 'unknown_person' } | { state: 'ok'; name: st
 type Waiting = { state: 'not_set_up' } | { state: 'ok'; proposals: Approval[] }
 type Holder = { kind: 'mine' } | { kind: 'none' } | { kind: 'other'; section: string; team_leader: string | null }
 interface Choice extends HierarchyLeaf { holder: Holder; asked: boolean }
-interface Levels { start: { division: string; subdivision: string } | null; levels: HierarchyNode[] }
+interface Levels { start: HierarchyNode | null; levels: HierarchyNode[] }
 type Unplaced = { state: 'not_set_up' | 'not_allowed' } | { state: 'ok'; rows: (Leveled & { store: string; was_in: string; since: string })[] }
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : 'That did not go through. Try again.')
@@ -415,7 +415,7 @@ function YourProposals({ proposals }: { proposals: Proposal[] }) {
                 <span className="min-w-0 break-words">{askedFor(proposal)}</span>
                 <StatusPill tone={tone} className="max-w-full whitespace-normal!">{label}</StatusPill>
               </div>
-              <p className="text-sm text-ink-muted">Asked on {fmtDate(proposal.asked_on)}{proposal.decided_on ? ` · Decided on ${fmtDate(proposal.decided_on)}` : ''}</p>
+              <p className="text-sm text-ink-muted">Asked on {fmtDate(proposal.asked_on)}{proposal.decided_on ? ` · ${proposal.state === 'Withdrawn' ? 'Withdrawn' : 'Decided'} on ${fmtDate(proposal.decided_on)}` : ''}</p>
               {proposal.reason && <p className="text-sm" data-testid="proposal-reason">{proposal.reason}</p>}
               {proposal.state === 'Needs fresh review' && <p className="text-sm text-ink-muted">Things changed after you asked, so nothing was done. If it is still wrong, ask again.</p>}
             </li>
@@ -510,7 +510,7 @@ function ApprovalCard({ proposal, onDone }: { proposal: Approval; onDone: (note:
             <PlaceLine label="To" place={proposal.to} />
           </div>
         )}
-        {proposal.kind === 'removal' && <p className="text-sm" data-testid="approval-removal">Approved, it will be in no section at {proposal.store} until someone adds it. The master data team sees it on their list.</p>}
+        {proposal.kind === 'removal' && <p className="text-sm" data-testid="approval-removal">If you approve, it will be in no section at {proposal.store} until someone adds it. The master data team sees it on their list.</p>}
         {mode === 'reject' && (
           <div className="flex flex-col gap-3">
             <Field label="Why are you rejecting this?" error={formError}>
@@ -527,7 +527,7 @@ function ApprovalCard({ proposal, onDone }: { proposal: Approval; onDone: (note:
             <Field label={`Which section should ${proposal.what} go to?`} error={formError}>
               <Select value={elsewhere} onChange={event => setElsewhere(event.target.value)}>
                 <option value="">Choose a section</option>
-                {proposal.sections.filter(section => section.name !== proposal.from?.section).map(section => <option key={section.id} value={section.id}>{section.name}</option>)}
+                {proposal.sections.filter(section => section.name !== proposal.from?.section && section.name !== proposal.to?.section).map(section => <option key={section.id} value={section.id}>{section.name}</option>)}
               </Select>
             </Field>
             <div className="flex flex-wrap gap-2">

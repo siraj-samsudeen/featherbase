@@ -125,7 +125,8 @@ describe('browsing to add', () => {
   test('the levels start at their own division and sub-division', async ({ admin, createUser }) => {
     const { maker } = await world(admin, createUser)
     expect(await read(maker, 'subcategory_levels', { job: 'JA-1' })).toEqual({
-      start: { division: 'Women', subdivision: 'Ethnic Wear' },
+      // One each in two categories: the first by name wins the tie.
+      start: { division: 'Women', subdivision: 'Ethnic Wear', category: 'Kurtis and Sets' },
       levels: [
         { division: 'Kids', subdivision: 'Girls Ethnic', category: 'Bottoms' },
         { division: 'Kids', subdivision: 'Girls Western', category: 'Bottoms' },
