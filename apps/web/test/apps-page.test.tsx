@@ -1,6 +1,7 @@
 import { tableSlug } from 'shared'
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { tmpdir } from 'node:os'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
@@ -11,7 +12,8 @@ import { overrideVariable, withNamedVariable } from 'server/src/env'
 import { setSession } from '../src/lib/api'
 import taskerManifest from '../../../example-apps/tasker/featherbase.json'
 import { Apps } from '../src/pages/Apps'
-import { test, expect, renderApp } from './pg-test'
+import { test, committedTest, expect, renderApp } from './pg-test'
+import { holdResponses } from './held-requests'
 
 function renderApps(admin: { token?: string | null; user?: string | null }) {
   setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
@@ -214,4 +216,116 @@ test('the page shows the build the instance runs and what changed in the selecte
     for (const name of Object.keys(host)) overrideVariable(name as keyof typeof host, undefined)
   }
 })
+
+test('a server started outside a checkout, with no commit named, says it was not told its commit', async ({ admin }) => {
+  const outside = await mkdtemp(resolve(tmpdir(), 'apps-page-no-git-'))
+  const here = process.cwd()
+  await discoverAppLibrary([])
+  process.chdir(outside)
+  try {
+    renderApps(admin)
+    const build = await screen.findByRole('region', { name: 'This build' })
+    expect(build).toHaveTextContent('Commit unknown: this server was not told which commit it was built from')
+  } finally {
+    process.chdir(here)
+    await rm(outside, { recursive: true, force: true })
+  }
+})
+
+test("an app's declarations read in words: a grant on chosen columns, a grant on basic columns, a scope provider's identifier systems, and its settings and secrets", async ({ admin }) => {
+  await withSource('true', async () => {
+    renderApps(admin)
+    const details = await screen.findByRole('region', { name: 'Other tasks details' })
+    const permissions = within(details).getByRole('region', { name: 'Permissions' })
+    expect(permissions).toHaveTextContent('read (quantity, validation_runs), edit')
+    expect(details).toHaveTextContent('other_scope · Requires identifier systems: other-badge')
+    expect(screen.getByText('other_region').closest('li')).toHaveTextContent('other_region · Required')
+    expect(screen.getByText('OTHER_OPTIONAL_KEY').closest('li')).toHaveTextContent('OTHER_OPTIONAL_KEY · Optional · Missing')
+  }, {
+    roles: ['Other Worker'],
+    permissions: [{ table: 'other.task', role: 'Other Worker', operations: { read: ['quantity', 'validation_runs'], update: '@basic' } }],
+    scopeProvider: { name: 'other_scope', tables: ['other.task'], identifiers: ['other-badge'] },
+    settings: [{ name: 'other_region', required: true }],
+    secrets: [{ name: 'OTHER_OPTIONAL_KEY', optional: true }],
+  })
+})
+
+// Defect: version 1 actions name their actions in `names` and carry no
+// `operations`, and the details panel reads Object.keys(actions.operations).
+test.fails('an app that declares its actions by name lists them', async ({ admin }) => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await withSource('true', async () => {
+    await renderApp('/featherbase/admin/apps', admin)
+    const details = await screen.findByRole('region', { name: 'Other tasks details' })
+    expect(within(details).getByRole('region', { name: 'What it adds' })).toHaveTextContent('Actionsclose_task')
+  }, { actions: { version: 1, names: ['close_task'], tables: ['other.task'] } })
+})
+
+test('an app that declares no Table permissions says so', async ({ admin }) => {
+  await withSource('true', async () => {
+    renderApps(admin)
+    const details = await screen.findByRole('region', { name: 'Other tasks details' })
+    expect(within(details).getByRole('region', { name: 'Permissions' })).toHaveTextContent('No Table permissions declared.')
+  }, { permissions: [] })
+})
+
+// A package built before discovery: the server needs no preparation to install it.
+async function withBuiltPackage(run: () => Promise<void>) {
+  const root = await mkdtemp(resolve('test/.apps-page-'))
+  try {
+    const source = resolve(root, 'other')
+    await cp(resolve('../..', 'test-apps/other'), source, { recursive: true })
+    await discoverAppLibrary([source], null)
+    await run()
+  } finally {
+    cleanup()
+    await discoverAppLibrary([])
+    await loadInstalledApps()
+    await rm(root, { recursive: true, force: true })
+  }
+}
+
+test('a package already built is ready to install, and installs without preparing', async ({ admin }) => {
+  await withBuiltPackage(async () => {
+    renderApps(admin)
+    const list = await screen.findByRole('navigation', { name: 'Available apps' })
+    expect(within(list).getByRole('button', { name: /Other tasks/ })).toHaveTextContent('Not installed · Ready to install')
+    const details = screen.getByRole('region', { name: 'Other tasks details' })
+    expect(details).toHaveTextContent('Ready to install. Nothing is installed until you choose to install it on this instance.')
+    const held = holdResponses('/api/install_app')
+    await userEvent.click(within(details).getByRole('button', { name: 'Install app' }))
+    await held.asked
+    expect(within(details).getByRole('button', { name: 'Installing…' })).toBeDisabled()
+    expect(within(details).getByText('Installing the app on this instance…')).toBeInTheDocument()
+    held.release()
+    expect(await within(details).findByText(/^Installed on this instance\./, {}, { timeout: 15000 })).toBeInTheDocument()
+  })
+}, 30000)
+
+test('an installed app whose package is gone says its runtime package is unavailable', async ({ admin }) => {
+  await withBuiltPackage(async () => {
+    await admin.post('/api/apps/prepare-install', { name: 'other' })
+    await discoverAppLibrary([], null)
+    await loadInstalledApps()
+    renderApps(admin)
+    const details = await screen.findByRole('region', { name: 'Other tasks details' })
+    expect(details).toHaveTextContent('Installed on this instance, but its runtime package is unavailable. Ask the operator to restore the installed package.')
+  })
+}, 30000)
+
+// Committed: the page must read the catalog while the preparing request is still out.
+committedTest('an app being prepared shows so in the list, and the page follows it until it is installed', async ({ admin }) => {
+  await withSource(`node -e "setTimeout(() => require('fs').copyFileSync('server.mjs', 'built.mjs'), 1500)"`, async () => {
+    const preparing = admin.post('/api/apps/prepare-install', { name: 'other' })
+    try {
+      await waitFor(async () => expect(await admin.get('/api/apps')).toMatchObject({ catalog: [expect.objectContaining({ preparation: { state: 'preparing' } })] }))
+      renderApps(admin)
+      const list = await screen.findByRole('navigation', { name: 'Available apps' })
+      expect(within(list).getByRole('button', { name: /Other tasks/ })).toHaveTextContent('Preparing and installing…')
+      expect(await screen.findByText(/^Installed on this instance\./, {}, { timeout: 15000 })).toBeInTheDocument()
+    } finally {
+      await preparing
+    }
+  })
+}, 30000)
 
