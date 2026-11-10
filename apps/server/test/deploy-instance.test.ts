@@ -274,7 +274,28 @@ describe('a newer version in the image', () => {
     expect(row).toMatchObject({ package_version: nextVersion, activation_pending: false })
 
     rmSync(next, { recursive: true })
-    await expect(assertInstalledAppsShipped({ followFiles: true })).rejects.toThrow(/does not ship it.*previousVersions/)
+    await expect(assertInstalledAppsShipped({ followFiles: true })).rejects.toThrow(/does not ship it/)
+  })
+
+  // #1178 (D4): the image ships only the new version; the upgrade moves from
+  // the installed record, so the old version's files are not needed.
+  test('an image holding only the newer version upgrades to it on production', async () => {
+    await pretendTo('production')
+    await deploy()
+    const next = join(apps, 'other-next')
+    cpSync(app, next, { recursive: true })
+    rmSync(app, { recursive: true })
+    const nextVersion = '99.0.0'
+    writeFileSync(join(next, 'package.json'), JSON.stringify({ ...readJson(join(next, 'package.json')), version: nextVersion }))
+    const manifest = readJson(join(next, 'featherbase.json'))
+    writeFileSync(join(next, 'featherbase.json'), JSON.stringify({
+      ...manifest,
+      migrations: [...(manifest.migrations ?? []), { id: 'to_next', fromVersion: version, toVersion: nextVersion, operations: [] }],
+    }))
+    expect(await assertInstalledAppsShipped({ followFiles: false })).toContain(`${name} ${version} is upgraded by this release`)
+    expect(await deploy()).toContain(`upgraded ${name} from ${version} to ${nextVersion}`)
+    const [row] = await sql`select package_version, activation_pending from installed_app where name = ${name}`
+    expect(row).toMatchObject({ package_version: nextVersion, activation_pending: false })
   })
 
   // Dev ran Tasker 3.0.2 built from main; #1047 then shipped 3.0.2 as the
