@@ -157,7 +157,7 @@ type LoginResponse = { token: string; user: SessionUser; landing?: string; hando
 
 /** Stores the session; returns the user, with the hand-off when there is one. */
 export function rememberLogin(res: LoginResponse): SignedIn {
-  const user = { ...res.user, ...(res.landing ? { landing: res.landing } : {}), ...(res.apps ? { apps: res.apps } : {}) }
+  const user = { ...res.user, ...(res.landing ? { landing: res.landing } : {}), apps: res.apps }
   setSession(res.token, user)
   return res.handoff ? { ...user, handoff: res.handoff } : user
 }
