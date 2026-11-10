@@ -163,8 +163,7 @@ originally declare.
 
 A new version MAY withdraw a rule its predecessor
 declared; applying it SHALL remove only the grant that app created, and
-record the withdrawal in the activity log. The image SHALL ship the installed
-predecessor beside the new version so the upgrade can find it.
+record the withdrawal in the activity log.
 
 #### Scenario: An old version can't gain a new rule for free
 
@@ -688,6 +687,20 @@ Then Tasker's selected view in the shared navigation is Featherbase's own blue
 Given an app names an accent that Featherbase does not provide
 When a System Manager installs that app
 Then the installation is refused and names the accents Featherbase provides
+```
+
+### Requirement: An upgrade needs only the new version
+
+An upgrade SHALL need only the new version's files. What the installed version declared is
+remembered when it is installed, so the server does not have to keep its files to move on from it.
+
+#### Scenario: An app upgrades once its old files are gone
+
+```gherkin
+Given the user installed version 1 of an app and added a row to it
+And the server now holds only version 2 of that app
+When the user previews and applies the upgrade to version 2
+Then the app is on version 2 and the row is still there
 ```
 
 ## Deferred

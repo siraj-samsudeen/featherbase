@@ -283,16 +283,8 @@ deploy, the release branch has already moved, so name the last commit that
 deployed: `pnpm check:app-digests --release <sha>`. `cli repin-apps` is the re-pin by hand. It refuses a production server or
 database.
 
-**Upgrading needs both versions in the image.** An upgrade replays the installed
-version's declaration, and that exact version must ship or the release refuses.
-So the release PR that bumps an app adds the version it replaces to `instance.json`,
-naming a source archive of the commit that released it; the build rebuilds it from
-there (`tools/build-instance-apps.mjs`):
-
-```json
-"previousVersions": [{ "path": "client-apps/<client>/<app>", "version": "1.0.0",
-                       "archive": "https://codeload.github.com/<owner>/<repo>/tar.gz/<commit>" }]
-```
+**An upgrade needs only the new version.** It moves from the installed version's
+record in the database, so the image holds only the current version of each app (#1178).
 
 **Watch paths**, so that a service rebuilds only for what is in its image. On
 Railway they are set per service, and `.railway/railway.ts` records them for

@@ -11,11 +11,11 @@
 // fails, so after a failed deploy name the last commit that deployed: --release <sha>.
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { buildUnpacked, previousVersions } from './build-instance-apps.mjs'
+import { buildUnpacked } from './build-instance-apps.mjs'
 import { resolveInstance } from './dev.mjs'
 
 /** The same fingerprint as `artifactDigest` in apps/server/src/runtime-packages.ts; a server test holds them together. */
@@ -34,17 +34,12 @@ export async function artifactDigest(root) {
 }
 
 /** What would stop a deploy from `released` to `head`. */
-export function digestProblems({ released, head, previous }) {
+export function digestProblems({ released, head }) {
   const problems = []
   for (const app of head) {
     const was = released.find((r) => r.path === app.path)
-    if (!was) continue
-    if (was.version === app.version) {
-      if (was.digest !== app.digest)
-        problems.push(`${app.path} ${app.version}: its built files differ from the release's under the same version. Bump the version, with a migration from ${app.version}, and list ${app.version} in the instance's previousVersions.`)
-    } else if (!previous.some((p) => p.path === app.path && p.version === was.version)) {
-      problems.push(`${app.path}: upgrading from ${was.version} needs ${was.version} in the instance's previousVersions.`)
-    }
+    if (was?.version === app.version && was.digest !== app.digest)
+      problems.push(`${app.path} ${app.version}: its built files differ from the release's under the same version. Bump the version, with a migration from ${app.version}.`)
   }
   return problems
 }
@@ -63,9 +58,7 @@ async function builtAt(commit, instanceName, cwd) {
       const { name, version, target } = buildUnpacked(app.root, source, output, process.env)
       apps.push({ path: relative(source, app.root), name, version, digest: await artifactDigest(target) })
     }
-    const [client, instance] = instanceName.split('/')
-    const file = join(source, 'client-apps', client, 'instances', instance, 'instance.json')
-    return { apps, previous: existsSync(file) ? previousVersions(file) : [] }
+    return { apps }
   } finally {
     rmSync(source, { recursive: true, force: true })
   }
@@ -87,7 +80,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     const moved = was && was.digest !== app.digest ? 'files moved' : 'same files'
     console.log(`${app.path}: ${was?.version ?? 'absent'} -> ${app.version}, ${moved}, digest ${app.digest.slice(0, 12)}`)
   }
-  const problems = digestProblems({ released: released.apps, head: head.apps, previous: head.previous })
+  const problems = digestProblems({ released: released.apps, head: head.apps })
   for (const problem of problems) console.error(`::error::${problem}`)
   if (problems.length) process.exit(1)
   console.log(`No app would stop a deploy from ${release} to ${headRef}.`)
