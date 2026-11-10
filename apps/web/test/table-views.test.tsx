@@ -115,6 +115,14 @@ test('a new row on a view is offered on its base instead', async ({ admin }) => 
   expect(within(notice).getByTestId('view-new-row-base')).toHaveAttribute('href', '/featherbase/admin/table/vwd-site/new')
 })
 
+test("a view's banner names a filter on the row's own id by its column name", async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/table_def', { name: 'Vwd One Site', kind: 'view', view_of: 'Vwd Site', view_filters: [['row_id', '=', 'S-1']] })
+  await renderApp(`/featherbase/admin/table/${tableSlug('Vwd One Site')}`, admin)
+  const banner = await screen.findByTestId('view-banner', {}, T)
+  expect(within(banner).getByTestId('view-banner-filter')).toHaveTextContent(/^row_id is S-1$/)
+})
+
 test("a view's banner reads No, empty and lists in plain words", async ({ admin }) => {
   await seed(admin)
   await admin.post('/api/table_def', {
