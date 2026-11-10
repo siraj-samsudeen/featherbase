@@ -3,7 +3,7 @@ import { describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { discoverPackages, installedPackageDifference, notRunningMessage, notRunningReason } from '../src/runtime-packages'
-import { activateInstalledApp, listInstalledApps, setAppEnabled, whyAppNotRunning } from '../src/apps'
+import { activateInstalledApp, installApp, type AppManifest, listInstalledApps, registerApp, setAppEnabled, suspendRuntimeApp, uninstallApp, whyAppNotRunning } from '../src/apps'
 import { ownDisplayName } from '../src/people-directory'
 import { installedAppsAtStart } from '../src/release-preflight'
 
@@ -43,6 +43,23 @@ describe('an installed app that is not running here (#912)', () => {
     await sql`update installed_app set enabled = true where name = 'tickets'`
     await discoverPackages([])
     expect(await activateInstalledApp('tickets')).toBe(false)
+  })
+
+  // An app registered in code, not from a package: its jobs are its own,
+  // with no package claim to check.
+  test.for<[string, Partial<AppManifest>]>([
+    ['with no jobs', {}],
+    ['with a job', { scheduler_events: [{ method: 'code_app_sweep', cadence: 'hourly', handler: async () => {} }] }],
+  ])('an installed code app %s that this process has not wired is started by the app list', async ([, extra], { admin: _a }) => {
+    const name = `codeapp-${Date.now()}`
+    registerApp({ name, ...extra })
+    try {
+      await installApp(name)
+      suspendRuntimeApp(name)
+      expect((await listInstalledApps()).find(app => app.name === name)).toMatchObject({ active: true, recovery: null })
+    } finally {
+      await uninstallApp(name).catch(() => {})
+    }
   })
 
   test('a development server warns with the reason when an installed app changed under its version', async ({ admin }) => {

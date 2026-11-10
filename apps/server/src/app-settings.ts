@@ -94,7 +94,8 @@ export async function appSetupState(): Promise<{ app: string; title: string; mis
   const gaps: { app: string; title: string; missing: string[]; optional: string[] }[] = []
   for (const row of rows) {
     const app = String(row.name)
-    const declared = (row.manifest ?? {}) as { title?: string; settings?: { name: string; required: boolean }[]; secrets?: unknown; datasets?: { source: string }[]
+    // The query above reads only rows whose manifest has one of those keys.
+    const declared = row.manifest as { title?: string; settings?: { name: string; required: boolean }[]; secrets?: unknown; datasets?: { source: string }[]
       scopeProvider?: { identifiers?: string[] }; reads?: { operations?: Record<string, { needs?: string[] }> }
       actions?: { operations?: Record<string, { needs?: string[] }> } }
     const unset = secretEntries(declared.secrets).filter(({ name }) => !present(readNamedVariable(name)))

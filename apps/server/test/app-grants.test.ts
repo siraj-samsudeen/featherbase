@@ -68,6 +68,28 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
     } finally { await unwire() }
   })
 
+  test('an app grid listed by its own name, with none of its Columns, grants none of them', async ({ createUser }) => {
+    registerApp(manifest({
+      tables: [
+        { name: 'Grant Note', kind: 'sub_table', columns: [{ column_name: 'text', column_type: 'Data' }] },
+        { name: DT, id_pattern: 'prompt', columns: [
+          { column_name: 'title', column_type: 'Data' },
+          { column_name: 'notes', column_type: 'Sub-table', row_table: 'Grant Note' },
+        ] },
+      ],
+      permissions: [{ table: DT, role: ROLE, operations: { read: ['title', 'notes'] } }],
+      fixtures: [{ table: DT, rows: [{ row_id: 'bare-grid', title: 'shown', notes: [{ text: 'not granted' }] }] }],
+    }))
+    try {
+      await installApp(APP)
+      const reader = await createUser({ roles: [ROLE] })
+      const row = await reader.get<{ title: string; notes: Record<string, unknown>[] }>(`/api/table/${encodeURIComponent(DT)}/bare-grid`)
+      expect(row.title).toBe('shown')
+      expect(row.notes).toHaveLength(1)
+      expect(row.notes[0]).not.toHaveProperty('text')
+    } finally { await unwire() }
+  })
+
   test('install creates the role and grant; a scoped user works inside them and nowhere else', async ({
     admin,
     createUser,

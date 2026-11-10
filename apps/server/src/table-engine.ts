@@ -642,7 +642,8 @@ export async function updateTable(
       ...(named.title_column !== undefined ? { title_column: def.title_column || null } : {}),
       // A title column removed with this update names nothing any more.
       ...(existing.title_column && opts.remove_columns?.includes(existing.title_column) ? { title_column: null } : {}),
-      ...(def.reading_presentation !== undefined ? { reading_presentation: def.reading_presentation } : {}),
+      // Always set: an update that leaves it out took the stored one above.
+      reading_presentation: def.reading_presentation,
       ...(named.description !== undefined ? { description: def.description || null } : {}),
       // Only when given: an update that leaves it out keeps the Table's choice.
       ...(def.decides_scope !== undefined ? { decides_scope: def.decides_scope } : {}),
@@ -859,7 +860,7 @@ export async function updateView(name: string, input: unknown, user = 'Administr
   if (Object.keys(body).some((key) => !['name', 'kind', 'view_of', 'label', 'description', 'view_filters'].includes(key)))
     throw baseOnlyChange(meta)
   const base = await viewBase(meta.view_of!)
-  const filters = body.view_filters === undefined ? meta.view_filters ?? [] : normaliseViewFilters(base, body.view_filters)
+  const filters = body.view_filters === undefined ? meta.view_filters! : normaliseViewFilters(base, body.view_filters)
   const text = (key: string) => body[key] === undefined ? (meta as unknown as Record<string, unknown>)[key] ?? null
     : typeof body[key] === 'string' && (body[key] as string).trim() ? (body[key] as string).trim() : null
   await sql`update table_def set ${sql({
@@ -1049,8 +1050,8 @@ export async function createTable(
     if (def.data_source) {
       tableRow.data_source = def.data_source
       tableRow.external_schema = externalSchema ?? null
-      tableRow.external_table = def.external_table ?? null
-      tableRow.external_pk = def.external_pk ?? null
+      tableRow.external_table = def.external_table!
+      tableRow.external_pk = def.external_pk!
       tableRow.external_modified = def.external_modified ?? null
     }
     await tx`insert into table_def ${tx(tableRow as Record<string, never>)}`

@@ -529,17 +529,19 @@ app.post('/api/oauth/session', async (c) => {
 const HANDOFF_NONCE_COOKIE = 'handoff_nonce'
 
 /** How a handed-over session was opened: the source session's own facts. */
+// The source is always a browser session: Open Admin refuses an access token
+// (#1124), so a ticket never carries one, and a session always has sign-in claims.
 function sessionOptionsOf(user: SessionUser): SessionOptions {
-  const claims = user.sign_in
+  const claims = user.sign_in!
   return {
-    ...(claims?.method ? { method: claims.method } : {}),
-    ...(claims?.identity ? { identity: claims.identity } : {}),
-    ...(claims?.test_mode ? { testMode: true } : {}),
-    ...(claims?.preview ? { preview: true } : {}),
+    ...(claims.method ? { method: claims.method } : {}),
+    ...(claims.identity ? { identity: claims.identity } : {}),
+    ...(claims.test_mode ? { testMode: true } : {}),
+    ...(claims.preview ? { preview: true } : {}),
     // The source's sign-in time travels with it (Codex round 1 on #495).
-    ...(claims?.authenticated_at ? { authenticatedAt: claims.authenticated_at } : {}),
+    authenticatedAt: claims.authenticated_at,
     // ...and its expiry, verified on the source token (Codex round 2 on #495).
-    ...(claims?.expires_at ? { expiresAt: claims.expires_at } : {}),
+    expiresAt: claims.expires_at,
   }
 }
 
@@ -564,7 +566,8 @@ app.get('/api/handoff/start', publicLimit('HANDOFF'), (c) => {
     maxAge: 120,
     secure: externalOrigin(c).protocol === 'https:',
   })
-  const back = new URLSearchParams({ ticket: id ?? '', nonce: nonceHash(nonce) })
+  // ticketForTarget refused a missing id above.
+  const back = new URLSearchParams({ ticket: id!, nonce: nonceHash(nonce) })
   return c.redirect(`${source.address}/api/handoff/bind?${back}`)
 })
 
@@ -794,8 +797,9 @@ app.get('/api/whoami', async (c) => {
 // session can never be the one handed over: the bind step requires this
 // browser's sid to BE that credential, and fails closed otherwise.
 app.post('/api/open_admin', async (c) => {
-  // Parsed exactly as resolveToken parsed it for the auth middleware above.
-  const token = authCredential(c)?.match(/^Bearer (.+)$/)?.[1] ?? ''
+  // Parsed exactly as resolveToken parsed it for the auth middleware above,
+  // which refused the request unless it held a Bearer credential.
+  const token = authCredential(c)!.match(/^Bearer (.+)$/)![1]
   // Only a browser session is handed over. An access token carries no sign-in:
   // handed over, it would become a session that outlives its revocation.
   if (!c.get('user').sign_in) throw new AppError('PermissionError', 'An access token cannot open the Admin screens')
@@ -895,8 +899,9 @@ app.get('/api/activity_feed', async (c) => {
       join (select run, count(*)::int as count from runs where run <= ${limit} group by run) n using (run)
       where r.starts = 1
       order by r.run`
-    const me = (await whoLabels([user])).get(user)
-    const whoName = me?.name ?? user
+    // whoLabels labels every id it is given.
+    const me = (await whoLabels([user])).get(user)!
+    const whoName = me.name
     const items = rows.map((r) => ({
       kind: r.kind as string,
       ref_key: (r.ref_key as string | null) ?? '',
@@ -912,7 +917,7 @@ app.get('/api/activity_feed', async (c) => {
     const titleOf = await feedRowTitles(user, items.map(rowRef))
     return c.json({
       items: items.map(({ ref_key, ...i }) => {
-        const base = { who_name: whoName, ...(me?.role ? { who_role: me.role } : {}), path: i.path, at: i.at, count: i.count }
+        const base = { who_name: whoName, ...(me.role ? { who_role: me.role } : {}), path: i.path, at: i.at, count: i.count }
         // #440: a fixed admin page is a page, titled — not a slug-named list.
         const pageTitle = adminPathTitle(i.path)
         if (pageTitle && (i.kind === 'list' || i.kind === 'page')) return { ...base, kind: 'page', label: pageTitle }
@@ -988,8 +993,8 @@ app.get('/api/activity_feed', async (c) => {
     items: items.map(({ who: id, ...i }) => {
       const title = i.kind === 'change' ? titleOf(i.sub, i.label) : undefined
       return {
-        who_name: names.get(id)?.name ?? id,
-        who_role: names.get(id)?.role,
+        who_name: names.get(id)!.name,
+        who_role: names.get(id)!.role,
         ...i,
         ...(title ? { title } : {}),
       }

@@ -242,16 +242,18 @@ export async function exchangeCode(
       throw new AppError('AuthenticationError', 'Mock OAuth provider is disabled')
     const obj = unpack(code)
     const email = String(obj.email ?? '').trim().toLowerCase()
+    // Only mockApproveRedirect signs a token with an email, and it always signs
+    // the name and subject with it (each a string, possibly empty).
     if (!email) throw new AppError('AuthenticationError', 'No email in code')
     const domain = email.split('@')[1] ?? ''
     // The mock plays a Workspace account unless told otherwise (hd '' = none).
     const hd = obj.hd === undefined ? (CONSUMER_DOMAINS.has(domain) ? null : domain) : String(obj.hd) || null
     return {
       status: 'verified',
-      subject: String(obj.subject ?? '').trim() || email,
+      subject: String(obj.subject).trim() || email,
       email,
       email_verified: true,
-      display_name: String(obj.name ?? '') || email,
+      display_name: String(obj.name) || email,
       hosted_domain: hd,
     }
   }

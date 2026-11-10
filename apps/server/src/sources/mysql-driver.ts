@@ -431,7 +431,7 @@ export const mysqlDriver: SourceDriver = {
         has_default: r.column_default != null || extra.includes('auto_increment'),
         is_pk: isPk,
         max_length: r.character_maximum_length == null ? null : Number(r.character_maximum_length),
-        column_type: mapMysqlType(String(r.data_type), String(r.column_type ?? '')),
+        column_type: mapMysqlType(String(r.data_type), String(r.column_type)),
         references:
           fks.get(fkKey(String(r.table_schema), String(r.table_name), String(r.column_name))) ??
           null,

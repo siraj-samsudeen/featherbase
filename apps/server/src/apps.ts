@@ -552,7 +552,7 @@ async function materialize(manifest: AppManifest, stored: unknown): Promise<Inst
   // — the loop bodies simply never run.) #700: its job names are claimed
   // first, so a refused one registers nothing.
   if (manifest.runtime_package)
-    for (const ev of manifest.scheduler_events ?? []) await assertJobClaimable(manifest.name, ev.method)
+    for (const ev of manifest.scheduler_events!) await assertJobClaimable(manifest.name, ev.method)
   wireHooks(manifest)
   let fixtures: FixtureRef[]
   try {
@@ -608,21 +608,21 @@ export async function installApp(name: string): Promise<InstallResult> {
     // install's wiring is never in reach of a rollback.
     if (await isInstalled(name)) throw new AppError('ConflictError', `App ${name} is already installed`)
     if (!manifest.runtime_package) return installAtomically(name, () => materialize(manifest, null))
+    // A selected runtime package's manifest comes from runtime-packages.ts,
+    // which always gives it its jobs, identity and runtime manifest.
     await (await import('./runtime-packages')).verifySelectedRuntimePackage(name)
     return installAtomically(name, async () => {
-      const result = await materialize(manifest, manifest.runtime_manifest ?? null)
+      const result = await materialize(manifest, manifest.runtime_manifest)
       await sql`update installed_app set runtime_package = true where name = ${name}`
-      if (manifest.runtime_identity) {
-        const { version, digest, ledger } = manifest.runtime_identity
-        await sql`update installed_app set package_version = ${version}, artifact_digest = ${digest},
-          migration_ledger = ${sql.json(ledger)} where name = ${name}`
-      }
+      const { version, digest, ledger } = manifest.runtime_identity!
+      await sql`update installed_app set package_version = ${version}, artifact_digest = ${digest},
+        migration_ledger = ${sql.json(ledger)} where name = ${name}`
       // #620 (D4): the app's role suggestions, written once, here.
-      const { roleDefaults } = (manifest.runtime_manifest ?? {}) as { roleDefaults?: Record<string, string[]> }
+      const { roleDefaults } = manifest.runtime_manifest as { roleDefaults?: Record<string, string[]> }
       await (await import('./app-role-bindings')).seedRoleBindings(name, roleDefaults, 'Administrator')
       // #629: the app's glossary terms, under the app.
       const glossaryModule = await import('./glossary')
-      const { glossary } = (manifest.runtime_manifest ?? {}) as { glossary?: Parameters<typeof glossaryModule.syncAppGlossary>[1] }
+      const { glossary } = manifest.runtime_manifest as { glossary?: Parameters<typeof glossaryModule.syncAppGlossary>[1] }
       await glossaryModule.syncAppGlossary(name, glossary, 'Administrator')
       return result
     })

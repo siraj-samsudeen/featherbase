@@ -110,6 +110,12 @@ describe('#246 the scope declaration lives with the Table definition', () => {
     expect(await stored()).toEqual({ scope_on: null, scope_required: false })
   })
 
+  test('an update naming scope_required as null keeps it, like leaving it out', async ({ admin, createUser }) => {
+    await setup(admin, createUser, { scope_on: ['store'], scope_required: true })
+    await admin.put(defUrl, { name: SECTION, columns, scope_required: null })
+    expect(await stored()).toEqual({ scope_on: ['store'], scope_required: true })
+  })
+
   test('renaming a scope column renames it in the declaration', async ({ admin, createUser }) => {
     await setup(admin, createUser, { scope_on: ['store', 'supplier_store'], scope_required: true })
     await admin.post(`${defUrl}/rename_column`, { from: 'store', to: 'home_store' })

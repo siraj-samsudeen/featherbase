@@ -88,8 +88,9 @@ export interface SignInClaims {
   /** Seconds since the epoch when the person last proved who they are. A
    *  session handed between addresses (#488, #489 Open Admin) keeps its
    *  source's time, so a hand-off never makes a sign-in younger. Freshness
-   *  and expiry read this, never `issued_at`. */
-  authenticated_at: number | null
+   *  and expiry read this, never `issued_at`. Always set: a session token
+   *  without `iat` is refused, and `at` defaults to it. */
+  authenticated_at: number
   /** This session's unique id (`jti`, #411): what sign-out revokes. */
   session_id: string
   /** Seconds since the epoch when this session's token expires. */

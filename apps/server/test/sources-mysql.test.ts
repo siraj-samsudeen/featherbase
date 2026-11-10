@@ -683,6 +683,24 @@ describe.skipIf(!MYSQL_URL)('mysql: column types and browsing', () => {
     })
   })
 
+  // information_schema declares EXTRA nullable; MySQL 8 fills it with ''.
+  // A server that leaves it unset describes no generated column.
+  test('a column the server describes with no extra details is not counted as generated', async () => {
+    const original = PromisePool.prototype.query
+    const spy = vi.spyOn(PromisePool.prototype, 'query').mockImplementation(async function (this: unknown, ...args: unknown[]) {
+      const result = await original.apply(this, args) as [Record<string, unknown>[], unknown]
+      if (!String(args[0]).includes('c.extra as extra')) return result
+      return [result[0].map((row) => ({ ...row, extra: null })), result[1]]
+    } as never)
+    try {
+      const tables = await mysqlDriver.introspect(bindFor('tenant', 'id').source, 'ext_mysql')
+      const tenant = tables.find((t) => t.table === 'tenant')!
+      expect(tenant.columns.find((c) => c.name === 'id')).toMatchObject({ is_pk: true, has_default: false })
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   test('an unqualified binding uses the URL database for generated-key writes', async () => {
     const bind = { ...bindFor('plain', 'id'), schema: '' }
     expect(await mysqlDriver.getDoc(bind, '1')).toMatchObject({ note: 'alpha', qty: 1 })
@@ -950,6 +968,13 @@ describe.skipIf(!MYSQL_URL)('mysql: writing rows in more shapes', () => {
     } finally {
       await cli.query(`delete from ext_mysql.nokey`)
     }
+  })
+
+  test('an insert that gives no key, bound to a key column the table no longer has, says the row cannot be addressed', async () => {
+    await expect(mysqlDriver.insert(bindFor('nokey', 'gone'), { label: 'orphan' }, null)).rejects.toMatchObject({
+      type: 'DataSourceError',
+      message: expect.stringContaining('cannot address it'),
+    })
   })
 
   test('a new row is never read back through an auto-numbered column that is not its key', async () => {
@@ -1351,6 +1376,86 @@ describe.skipIf(!MYSQL_URL)('mysql: refused saves (#154)', () => {
       await cli.query(`delete from ext_mysql.gauge`)
       await mysqlDriver.dispose('ext-mysql-direct')
     }
+  })
+})
+
+// The driver reads MySQL's own words to shape a refusal. When a server words
+// one differently (another version, a fork), the refusal still arrives with
+// its code, without the parts the words did not name. The database client is
+// the boundary these replace: each read below fails with the given error.
+describe.skipIf(!MYSQL_URL)('mysql: refusals worded unexpectedly', () => {
+  async function failedWith(error: unknown, source: Partial<Binding['source']> = {}) {
+    const bind = bindFor('plain', 'id')
+    bind.source = { ...bind.source, name: 'mysql-worded', ...source }
+    const spy = vi.spyOn(PromisePool.prototype, 'query').mockRejectedValueOnce(error)
+    try {
+      return await mysqlDriver.getDoc(bind, '1').catch((e) => e)
+    } finally {
+      spy.mockRestore()
+    }
+  }
+
+  afterAll(() => mysqlDriver.dispose('mysql-worded'))
+
+  test('a missing value that names no column is refused as required, on no field', async () => {
+    const refused = await failedWith({ errno: 1048, message: 'A value cannot be null' })
+    expect(refused).toMatchObject({ code: '23502', message: 'A value cannot be null' })
+    expect(refused).not.toHaveProperty('column_name')
+  })
+
+  test('a broken link that names no constraint or column is refused as a link, on no field', async () => {
+    const refused = await failedWith({ errno: 1452, message: 'Cannot add or update a child row' })
+    expect(refused).toMatchObject({ code: '23503' })
+    expect(refused).not.toHaveProperty('column_name')
+    expect(refused).not.toHaveProperty('constraint_name')
+  })
+
+  test('a row still pointed at, with no referenced column named, says so with a placeholder key', async () => {
+    const refused = await failedWith({ errno: 1451, message: 'Cannot delete or update a parent row' })
+    expect(refused).toMatchObject({ code: '23503', detail: 'Key (?) is still referenced from another table.' })
+  })
+
+  test('a broken rule that names no constraint is refused as a rule, naming none', async () => {
+    const refused = await failedWith({ errno: 3819, message: 'Check failed' })
+    expect(refused).toMatchObject({ code: '23514' })
+    expect(refused).not.toHaveProperty('constraint_name')
+  })
+
+  test('a refusal with no words at all says the data source refused the write', async () => {
+    const refused = await failedWith({ errno: 1406 })
+    expect(refused).toMatchObject({ code: '22001', message: 'the data source refused the write' })
+  })
+
+  test('a failure that is not an error object reports the source with what was thrown', async () => {
+    expect(await failedWith('socket hang up')).toMatchObject({
+      type: 'DataSourceError', message: 'Data source mysql-worded failed: socket hang up',
+    })
+  })
+
+  test('a failure with nothing thrown still reports the source', async () => {
+    expect(await failedWith(undefined)).toMatchObject({
+      type: 'DataSourceError', message: 'Data source mysql-worded failed: undefined',
+    })
+  })
+
+  // An open pool outlives its variable: the failure has nothing to hide then.
+  test('a failure on an open source whose variable has since been removed reports the words as they are', async () => {
+    process.env.EXT_MYSQL_REMOVED_URL = process.env[EXT_URL_ENV]
+    try {
+      await failedWith(new Error('opens the pool'), { url_env: 'EXT_MYSQL_REMOVED_URL' })
+    } finally {
+      delete process.env.EXT_MYSQL_REMOVED_URL
+    }
+    expect(await failedWith(new Error('Lost connection'), { url_env: 'EXT_MYSQL_REMOVED_URL' })).toMatchObject({
+      type: 'DataSourceError', message: 'Data source mysql-worded failed: Lost connection',
+    })
+  })
+
+  test('a failure on an open source that now names no variable reports the words as they are', async () => {
+    await failedWith(new Error('opens the pool'))
+    expect(await failedWith(new Error('Lost connection'), { url_env: null })).toMatchObject({
+      type: 'DataSourceError', message: 'Data source mysql-worded failed: Lost connection',
+    })
   })
 })
 
