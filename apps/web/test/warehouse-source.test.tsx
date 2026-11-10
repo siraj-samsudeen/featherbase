@@ -2,7 +2,7 @@
 // sidebar, and browse it schema → table → preview — against the local stand-in.
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterAll, beforeAll } from 'vitest'
+import { afterAll, beforeAll, vi } from 'vitest'
 import { rmSync } from 'node:fs'
 import { overrideVariable } from 'server/src/env'
 import { invalidateSources } from 'server/src/sources/registry'
@@ -165,6 +165,48 @@ test('the browser reopens on the schema this person last had open', async ({ adm
   await waitFor(() => expect(screen.getByRole('combobox', { name: 'Schema' })).toHaveValue('history'), WAIT)
   expect(screen.getByTestId('browser-database')).toHaveValue('sales')
   expect(screen.getByRole('table', { name: 'Warehouse tables' })).toHaveTextContent('closed_stores')
+})
+
+test('a key column whose values repeat says how many rows repeat one', async ({ admin }) => {
+  await connect(admin, 'web-wh-repeat')
+  const user = userEvent.setup()
+  await renderApp('/featherbase/admin/source/web-wh-repeat/copy?database=sales&schema=main&table=stores', admin)
+  await screen.findByTestId('copy-setup', {}, WAIT)
+  await user.selectOptions(screen.getByTestId('copy-key'), 'city')
+  await waitFor(() => expect(screen.getByTestId('copy-key-check')).toHaveTextContent(/^1 rows repeat a value$/), WAIT)
+})
+
+/** The network drops the requests whose address contains `part`. */
+function dropRequests(part: string) {
+  const real = globalThis.fetch
+  return vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+    String(input instanceof Request ? input.url : input).includes(part) ? Promise.reject(new TypeError('Failed to fetch')) : real(input, init))
+}
+
+test('a table the network drops while it is read for a copy says it could not be read', async ({ admin }) => {
+  await connect(admin, 'web-wh-unread')
+  const dropped = dropRequests(':preview?')
+  try {
+    await renderApp('/featherbase/admin/source/web-wh-unread/copy?database=sales&schema=main&table=stores', admin)
+    expect(await screen.findByText('The table could not be read', {}, WAIT)).toBeInTheDocument()
+  } finally {
+    dropped.mockRestore()
+  }
+})
+
+test('a copy the network drops says it could not be made', async ({ admin }) => {
+  await connect(admin, 'web-wh-unmade')
+  const user = userEvent.setup()
+  await renderApp('/featherbase/admin/source/web-wh-unmade/copy?database=sales&schema=main&table=stores', admin)
+  await screen.findByTestId('copy-setup', {}, WAIT)
+  await waitFor(() => expect(screen.getByTestId('copy-create')).toBeEnabled(), WAIT)
+  const dropped = dropRequests(':copy_create')
+  try {
+    await user.click(screen.getByTestId('copy-create'))
+    expect(await screen.findByText('The copy could not be made', {}, WAIT)).toBeInTheDocument()
+  } finally {
+    dropped.mockRestore()
+  }
 })
 
 test('mapping search finds every source column and preserves real input edits and keep choices', async ({ admin }) => {
