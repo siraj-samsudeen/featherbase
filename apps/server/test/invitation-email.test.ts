@@ -132,6 +132,33 @@ describe('the invitation email', () => {
     }
   })
 
+  test('an inviter with no name is named as an administrator, and Google with no label as Google', async ({ createUser }) => {
+    const admin = await createUser({ email: 'nameless.inviter@example.com', roles: ['System Manager'] })
+    await sql`update person set full_name = null where email = 'nameless.inviter@example.com'`
+    await sql`update sign_in_method set label = '' where row_id = 'google'`
+    const person = await makePerson({ full_name: 'Plain Person' })
+    await invite(admin, person, 'plain.person@example.com')
+    const [mail] = await mailsTo('plain.person@example.com')
+    expect(String(mail.body)).toContain('An administrator has invited you')
+    expect(String(mail.body)).toContain('Sign in with Google using this address')
+  })
+
+  test('a send refused with an SMTP reply code logs that code', async ({ createUser }) => {
+    _setInvitationDeliveryForTests(async () => {
+      throw Object.assign(new Error('refused'), { code: 'EENVELOPE', responseCode: 550 })
+    })
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const admin = await inviter(createUser)
+      await invite(admin, await makePerson({ full_name: 'Coded Person' }), 'coded.person@example.com')
+      const line = logged.mock.calls.map((c) => String(c[0])).find((l) => l.includes('mail_delivery_failed'))!
+      expect(JSON.parse(line)).toMatchObject({ code: 'EENVELOPE', smtp_response_code: 550 })
+    } finally {
+      logged.mockRestore()
+      _setInvitationDeliveryForTests(null)
+    }
+  })
+
   test('the first Google sign-in with the invited address still claims the invite', async ({ api, createUser }) => {
     await configureGoogle({ allowed_email_domains: '' })
     const admin = await inviter(createUser)
