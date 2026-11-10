@@ -55,11 +55,11 @@ describe('who sees what', () => {
     const reachOn = (job: Row) => reachOf(fake([job], { plants }), 'me', ON).then(answer => answer.places.map(place => place.filters))
 
     it('gives a Store Manager each Store and Shop-in-shop plant whole, and no warehouse or e-commerce plant', async () => {
-      expect(await reachOn({ job: 'Store Manager', site: 'AAA' })).toEqual([{ store: ['9901'] }, { store: ['9911'] }, { store: ['9291'] }])
+      expect(await reachOn({ job: 'Store Manager', site: 'AAA' })).toEqual([{ store: ['9291'] }, { store: ['9901'] }, { store: ['9911'] }])
     })
 
     it("gives a section's reader that section in each of them", async () => {
-      expect(await reachOn({ job: 'Team Leader', site: 'AAA', section: 'AAA-GF-Tops' })).toEqual(['9901', '9911', '9291']
+      expect(await reachOn({ job: 'Team Leader', site: 'AAA', section: 'AAA-GF-Tops' })).toEqual(['9291', '9901', '9911']
         .map(store => ({ store: [store], subcategory: ['000000001'] })))
     })
   })

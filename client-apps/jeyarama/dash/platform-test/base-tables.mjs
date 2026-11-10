@@ -10,7 +10,7 @@ export const JOBS = ['Staff', 'Team Leader', 'Department Manager', 'Floor Manage
 export const BASE_TABLES = [
   { name: 'Cluster', module: 'Organisation', id_pattern: 'field:code', title_column: 'name', columns: [data('code'), data('name')] },
   { name: 'Site', module: 'Organisation', id_pattern: 'field:code', title_column: 'name', columns: [data('code'), data('name'), check('is_store'), ref('cluster', 'Cluster')] },
-  { name: 'Plant', module: 'Organisation', id_pattern: 'field:plant_code', title_column: 'plant_code', columns: [data('plant_code'), choice('plant_type', 'Store', 'Warehouse', 'E-commerce'), ref('site', 'Site'), data('plant_name')] },
+  { name: 'Plant', module: 'Organisation', id_pattern: 'field:plant_code', title_column: 'plant_code', columns: [data('plant_code'), choice('plant_type', 'Store', 'Shop-in-shop', 'Warehouse', 'E-commerce'), ref('site', 'Site'), data('plant_name')] },
   { name: 'Subcategory', module: 'Merchandising', id_pattern: 'prompt', title_column: 'subcategory', columns: [data('subcategory'), choice('subcategory_type', 'Merchandise', 'Consumable', 'Service')] },
   { name: 'Employee', module: 'People', id_pattern: 'field:employee_code', title_column: 'name', columns: [data('employee_code'), data('name'), ref('person', 'Person'), choice('status', 'Current', 'Left', 'Test record')] },
   { name: 'Store Floor', module: 'Store Layout', id_pattern: 'prompt', title_column: 'name', columns: [data('name'), ref('site', 'Site')] },
