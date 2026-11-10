@@ -24,7 +24,11 @@
     }
   ],
   "secrets": [
-    "MOTHERDUCK_TOKEN"
+    "MOTHERDUCK_TOKEN",
+    {
+      "name": "MOTHERDUCK_EMBED_TOKEN",
+      "optional": true
+    }
   ],
   "frameOrigins": [
     "https://embed-motherduck.com"
@@ -674,7 +678,10 @@
         "authorization": {
           "kind": "generic"
         },
-        "outbound": true
+        "outbound": true,
+        "needs": [
+          "MOTHERDUCK_EMBED_TOKEN"
+        ]
       },
       "my_sections": {
         "policy": {
@@ -731,7 +738,10 @@
         "authorization": {
           "kind": "generic"
         },
-        "outbound": true
+        "outbound": true,
+        "needs": [
+          "MOTHERDUCK_EMBED_TOKEN"
+        ]
       },
       "can_open": {
         "policy": {
