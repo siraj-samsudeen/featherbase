@@ -135,8 +135,8 @@ export function Dash() {
       {view.kind === 'opening' && <p className="fd-opening">Opening your report…</p>}
       {/* #1143: one place for the frame, on show or out of sight behind the quick view, so the Dive
           that says it is ready after the deadline takes over in the same frame, never reloaded. */}
-      {/* Also behind "being prepared": the cached copy isn't built, but the Dive reads the warehouse itself. */}
-      {frameSrc && (view.kind === 'dive' || view.kind === 'quick' || view.kind === 'failed' || (view.kind === 'empty' && view.why === 'not_built')) && (
+      {/* Also behind "being prepared" and "not arrived yet": they speak for the cached copy, but the Dive reads the warehouse itself. */}
+      {frameSrc && (view.kind === 'dive' || view.kind === 'quick' || view.kind === 'failed' || (view.kind === 'empty' && view.why !== 'whole_stores_only')) && (
         <div className={view.kind === 'dive' ? 'fd-frame-box' : 'fd-frame-box fd-frame-behind'}
           aria-hidden={view.kind === 'dive' ? undefined : true} inert={view.kind !== 'dive'}>
           {view.kind === 'dive' && !shown.diveReady && <p className="fd-opening fd-opening-over">Opening your report…</p>}

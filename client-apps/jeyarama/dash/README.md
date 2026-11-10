@@ -26,7 +26,8 @@ without plant codes. The page opens each Dive's latest saved version: no version
 so saving a Dive on MotherDuck releases it (#937). A report with a quick view stands it in when its
 Dive can't load; any other says "This report couldn't open" with Try again. A Dive not up within
 15 s (`DIVE_READY_TIMEOUT_MS`) keeps loading out of sight behind that view, or behind "The figures are
-being prepared" while the cached copy isn't built. If it then says it is
+being prepared" while the cached copy isn't built, or behind "This month's figures haven't arrived
+yet": those speak for the cached copy, and the Dive reads the warehouse itself. If it then says it is
 ready, the page switches to it in the same frame. A frame that errors falls back for good (#1143).
 
 ## Layout
