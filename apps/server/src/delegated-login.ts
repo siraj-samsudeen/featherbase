@@ -115,8 +115,11 @@ export interface RosterLink {
 
 /** `linked_by` on a link a roster first sign-in made. */
 export const ROSTER_LINK = 'roster-first-sign-in'
-/** `linked_by` on a link the roster link made before anyone signed in (#1157). */
+/** `linked_by` on a link the roster link made before anyone signed in (#1157),
+ *  and the actor it writes as. Server-only: the shared package is bundled into
+ *  apps' clients, whose built files must not move for it. */
 export const ROSTER_LINK_RUN = 'roster-link'
+export const ROSTER_LINK_ACTOR = ROSTER_LINK_RUN
 /** Every link made from a roster row: a sign-in through one must have the
  *  service name the row's record. */
 export const ROSTER_LINKS = [ROSTER_LINK, ROSTER_LINK_RUN]

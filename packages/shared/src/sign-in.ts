@@ -16,13 +16,9 @@ export type NewPersonRule = (typeof NEW_PERSON_RULES)[number]
 // System Manager only inside that one save (apps/server/src/system-actor.ts).
 export const signInActor = (kind: SignInMethodKind): string => `${kind.replace(/_/g, '-')}-sign-in`
 
-/** #1157: the roster link makes people from a staff roster before they sign in. */
-export const ROSTER_LINK_ACTOR = 'roster-link'
-
 /** How such an actor reads wherever a person's name would show. */
 export const SYSTEM_ACTOR_LABELS: Readonly<Record<string, string>> = {
   [signInActor('google')]: 'Google sign-in',
   [signInActor('password')]: 'Password sign-in',
   [signInActor('delegated_password')]: 'Connected service sign-in',
-  [ROSTER_LINK_ACTOR]: 'Staff roster',
 }
