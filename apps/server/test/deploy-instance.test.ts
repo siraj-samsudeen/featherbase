@@ -276,6 +276,29 @@ describe('a newer version in the image', () => {
     rmSync(next, { recursive: true })
     await expect(assertInstalledAppsShipped({ followFiles: true })).rejects.toThrow(/does not ship it.*previousVersions/)
   })
+
+  // Dev ran Tasker 3.0.2 built from main; #1047 then shipped 3.0.2 as the
+  // release built it, beside 3.0.3. Upgrading first checked the installed 3.0.2
+  // against files it was not pinned to, and every dev deploy failed.
+  test('on dev, an installed version whose files changed is re-pinned before it is upgraded', async () => {
+    await pretendTo('staging')
+    await deploy()
+    writeFileSync(join(app, 'NOTES.md'), 'a file changed\n')
+    const next = join(apps, 'other-next')
+    cpSync(app, next, { recursive: true })
+    const nextVersion = '99.0.0'
+    writeFileSync(join(next, 'package.json'), JSON.stringify({ ...readJson(packageFile), version: nextVersion }))
+    const manifest = readJson(manifestFile)
+    writeFileSync(join(next, 'featherbase.json'), JSON.stringify({
+      ...manifest,
+      migrations: [...(manifest.migrations ?? []), { id: 'to_next', fromVersion: version, toVersion: nextVersion, operations: [] }],
+    }))
+    const said = await deploy()
+    expect(said).toContain(`${name} ${version}: its files changed; re-pinned to them`)
+    expect(said).toContain(`upgraded ${name} from ${version} to ${nextVersion}`)
+    const [row] = await sql`select package_version from installed_app where name = ${name}`
+    expect(row.package_version).toBe(nextVersion)
+  })
 })
 
 // #943: the staging switch hung for 17 minutes. The deploy's transaction had

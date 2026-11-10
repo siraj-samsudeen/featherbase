@@ -228,12 +228,14 @@ With `FEATHERBASE_INSTANCE` set, `pnpm --filter server pre-deploy` runs, in orde
 stopping at the first problem so that the old deployment keeps serving:
 
 1. the release (preflight, migrations);
-2. each app the image ships: install it if missing, upgrade and activate it if a
+2. on `staging` only, re-pin an app whose files changed (below). This comes before
+   any upgrade, which checks the installed version against the files the image
+   holds for it;
+3. each app the image ships: install it if missing, upgrade and activate it if a
    newer version ships;
-3. the settings file's section for this environment: `staging` applies `dev`,
+4. the settings file's section for this environment: `staging` applies `dev`,
    `production` applies `prod`. Any other environment refuses (`pnpm dev` is for a
-   developer's machine);
-4. on `staging` only, re-pin an app whose files changed (below).
+   developer's machine).
 
 Steps 2 to 4 are one transaction, and they hold the apps' lifecycle lock from
 start to end. While they run, the old deployment's API requests and jobs wait,
