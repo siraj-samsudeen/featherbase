@@ -92,7 +92,7 @@ describe('#1021: a view is metadata only', () => {
     expect(await rows([['row_id', 'in', ['S-1', 'W-1']]])).toEqual(['S-1', 'W-1'])
     expect(await rows([['row_id', 'not in', ['S-1']]])).toEqual(['S-2', 'W-1'])
     expect(await rows([['row_id', 'in', []]])).toEqual([])
-    expect(await rows([['row_id', 'not in', []]])).toEqual([])
+    expect(await rows([['row_id', 'not in', []]])).toEqual(['S-1', 'S-2', 'W-1'])
     expect(await rows([['site_name', 'like', '%nagar']])).toEqual(['S-1', 'S-2'])
     expect(await rows([['site_name', 'not like', '%nagar']])).toEqual(['W-1'])
     expect(await rows([['region', '=', null]])).toEqual([])
