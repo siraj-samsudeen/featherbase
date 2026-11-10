@@ -54,7 +54,7 @@ export function unshippedRefusal(name: string, version: string, reason: 'files' 
 export async function repinChangedApps(io: CommandIO): Promise<void> {
   const stamp = await storedEnvironment()
   const environment = currentEnvironment()
-  if (!['development', 'staging', 'production'].includes(stamp ?? '') || (environment === 'production') !== (stamp === 'production'))
+  if (stamp !== 'development' && !followsAppFiles(environment, stamp))
     throw new Error(`This is a "${environment}" server on a database labelled "${stamp ?? 'nothing'}". Re-pinning needs a server and database that agree on the environment.`)
   const { discoverPackages, repinToFolder, whyUnshipped } = await import('./runtime-packages')
   const { appLibraryPaths } = await import('./app-library')

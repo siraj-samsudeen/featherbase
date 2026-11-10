@@ -245,7 +245,9 @@ export async function installedAppsAtStart(environment = currentEnvironment()): 
     const name = String(row.name), version = String(row.package_version)
     lines.push(reason === 'absent'
       ? `WARNING: App ${name} version ${version} is installed and enabled, but this server does not have it, so it is unavailable. On a developer machine, add the folder holding ${name} ${version} to FEATHERBASE_APP_PATHS (init.sh sets it), or disable the app in Admin. A release refuses until it ships.`
-      : `WARNING: ${notRunningMessage(name, version, reason === 'upgraded' ? 'version' : reason)} Until then it is unavailable here; a release refuses until it ships.`)
+      : reason === 'upgraded'
+        ? `WARNING: App ${name} ${version} is installed, but this server has a newer version of ${name}. Upgrade it in Apps; until then it is unavailable here.`
+        : `WARNING: ${notRunningMessage(name, version, reason)} Until then it is unavailable here; a release refuses until it ships.`)
   }
   return lines
 }

@@ -270,15 +270,18 @@ export function notRunningMessage(name: string, version: string, reason: 'files'
 
 /** The manifest this artifact declares is the one the instance installed. */
 function sameManifest(pkg: RuntimePackage, row: Record<string, unknown>) {
+  return storedDeclarationIs(row, pkg.app.runtime_manifest)
+}
+
+function storedDeclarationIs(row: Record<string, unknown>, declaration: unknown) {
   const stored = { ...(row.manifest as object), migrations: (row.manifest as { migrations?: unknown })?.migrations ?? [] }
-  return canonical(stored) === canonical(pkg.app.runtime_manifest)
+  return canonical(stored) === canonical(declaration)
 }
 
 /** #1178 (D8): whether a staged app folder declares exactly what the
  *  installed record holds, checked before anything of it is loaded. */
 export function declaresAsInstalled(row: Record<string, unknown>, manifest: unknown, pkg: { name: string; version: string }) {
-  const stored = { ...(row.manifest as object), migrations: (row.manifest as { migrations?: unknown })?.migrations ?? [] }
-  return canonical(stored) === canonical({ ...(manifest as object), packageName: pkg.name, packageVersion: pkg.version })
+  return storedDeclarationIs(row, { ...(manifest as object), packageName: pkg.name, packageVersion: pkg.version })
 }
 
 function assertKnownAccent(pkg: RuntimePackage) {
@@ -617,10 +620,11 @@ export function declaredPackageActions() {
  *  name and fingerprint. The server needs only the new version's files. */
 function installedRecord(row: Record<string, unknown>) {
   const declared = row.manifest as (z.infer<typeof manifestSchema> & { packageName?: string; packageVersion?: string }) | null
-  if (!declared || !Array.isArray(declared.tables) || typeof declared.packageName !== 'string' || (declared.packageVersion ?? row.package_version) !== row.package_version)
+  if (typeof declared?.packageName !== 'string')
     refuse('The installed version has no complete record to upgrade from; reinstall it on a development database')
-  return { version: String(row.package_version), digest: String(row.artifact_digest ?? ''),
-    manifest: { ...declared, permissions: declared.permissions ?? [] }, app: { runtime_manifest: declared as unknown } }
+  // The stored declaration is the parsed manifest, so its defaults (permissions: []) are filled in.
+  return { version: String(row.package_version), digest: String(row.artifact_digest),
+    manifest: declared, app: { runtime_manifest: declared as unknown } }
 }
 
 async function upgradePlan(name: string, version: string, preview = true) {
