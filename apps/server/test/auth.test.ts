@@ -64,7 +64,7 @@ describe('API-004: authentication', () => {
       await expectStatus(res, 200)
       expectSessionCookie(res, hours, { before, after })
       const body = (await res.json()) as Record<string, unknown>
-      expect(Object.keys(body).filter((key) => !['token', 'user', 'landing'].includes(key))).toEqual([])
+      expect(Object.keys(body).filter((key) => !['token', 'user', 'landing', 'apps'].includes(key))).toEqual([])
     }
   })
 
