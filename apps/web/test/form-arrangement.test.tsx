@@ -243,7 +243,7 @@ test("a connected row whose source keeps its last change as words, not a time, s
 
 // A binding written by hand may store a column with no label, name a
 // bookkeeping column after a link, or read text as JSON.
-async function handBoundParcel(admin: { post: <T>(p: string, b: unknown) => Promise<T> }, columns: Record<string, unknown>[], before?: () => Promise<void>) {
+async function handBoundParcel(admin: Parameters<typeof renderApp>[1], columns: Record<string, unknown>[], before?: () => Promise<void>) {
   invalidateSources()
   await admin.post('/api/table/Data%20Source', { row_id: 'web-arrange-hand', engine: 'postgres', url_env: ENV, default_schema: 'web_arrange', access: 'read_only' })
   await admin.post('/api/table/Data%20Source/web-arrange-hand:reflect', { tables: ['web_arrange.rack'], names: { 'web_arrange.rack': 'Arrange Hand Rack' } })
