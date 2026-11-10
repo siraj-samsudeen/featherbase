@@ -30,8 +30,25 @@ export async function seedTasker({ baseUrl, password = 'admin', expectedEnvironm
       throw new Error(`${method} ${path} refused a redirect or cross-origin response`)
     }
     const result = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(`${method} ${path} failed (${response.status}): ${result.error?.message ?? JSON.stringify(result)}`)
+    if (!response.ok) {
+      const error = new Error(`${method} ${path} failed (${response.status}): ${result.error?.message ?? JSON.stringify(result)}`)
+      error.status = response.status
+      throw error
+    }
     return result
+  }
+  // A follow-up step saves against the row as it is now. Tasker's escalation
+  // job re-saves open issues every minute, so a save can still lose the race
+  // between reading updated_at and saving (#1120): read again and retry.
+  async function saveFollowUp(table, rowId, step) {
+    for (let attempt = 1; ; attempt++) {
+      const { updated_at } = await request(`/api/table/${table}/${encodeURIComponent(rowId)}`)
+      try {
+        return await request('/api/save_row', { method: 'POST', body: { table, row: { row_id: rowId, updated_at, ...step } } })
+      } catch (error) {
+        if (error.status !== 409 || attempt >= 3) throw error
+      }
+    }
   }
   const identity = await request('/api/ping')
   if (identity.message !== 'pong' || identity.environment !== expectedEnvironment) {
@@ -119,11 +136,7 @@ export async function seedTasker({ baseUrl, password = 'admin', expectedEnvironm
     let issue = await ensure('tasker.issue', 'row_id', scenario.row_id, {
       ...values, owner: personId(values.owner) ?? null, verifier: personId(values.verifier) ?? null,
     }, { issue_title: scenario.issue_title })
-    // Read the issue before each step: the escalation job re-saves open issues, so the previous save's updated_at can be stale.
-    if (!existed) for (const step of after) {
-      const { updated_at } = await request(`/api/table/tasker.issue/${encodeURIComponent(issue.row_id)}`)
-      issue = await request('/api/save_row', { method: 'POST', body: { table: 'tasker.issue', row: { row_id: issue.row_id, updated_at, ...step } } })
-    }
+    if (!existed) for (const step of after) issue = await saveFollowUp('tasker.issue', issue.row_id, step)
     issueCount++
   }
   log(`Tasker issues ready (${issueCount} issues)`)
