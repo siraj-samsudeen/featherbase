@@ -71,8 +71,8 @@ export default defineConfig({
       // the PR, 620 on main for the same code. The cap leaves that margin.
       // Second pass: 505 uncovered of 10,256. Third pass: 400 of 10,239,
       // measured the same way; the cap is that plus 5. Most of those left are
-      // reachable and untested: ImportWizard, ListRows, RowPane, AdminLayout,
-      // LinkControl and ListView lead. The spots not reached yet are written
+      // reachable and untested: ImportWizard, FormView, LinkControl, ListView,
+      // AdminLayout and ListRows lead. The spots not reached yet are written
       // up with what was tried and what might work (pass 3 report): PathBar's
       // measured widths and ResizeObserver absence, and LinkControl's choice
       // of opening above or below, need layout jsdom does not do, which a
