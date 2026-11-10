@@ -74,7 +74,7 @@ function callerPeople(user: string, app: string, settings: Readonly<Record<strin
       await settleAccessRequests()
       // Their name, so an approver who can't read people still sees who is waiting; a name that is still an address isn't shown.
       const rows = await sql`select r.person, r.created_at, p.full_name from access_request r left join person p on p.row_id = r.person
-        where r.app_name = ${app} order by r.created_at, r.person`
+        where r.app_name = ${app} and r.declined_at is null order by r.created_at, r.person`
       return Object.freeze(rows.map((r) => ({ person: String(r.person), name: r.full_name && !String(r.full_name).includes('@') ? String(r.full_name) : null,
         asked_at: new Date(r.created_at as string).toISOString() })))
     },
