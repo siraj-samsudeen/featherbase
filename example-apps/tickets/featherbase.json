@@ -119,7 +119,8 @@
     {"id": "assignees", "fromVersion": "0.2.2", "toVersion": "0.2.3", "operations": []},
     {"id": "assignment_email", "fromVersion": "0.2.3", "toVersion": "0.2.4", "operations": []},
     {"id": "assign_from_ticket", "fromVersion": "0.2.4", "toVersion": "0.2.5", "operations": []},
-    {"id": "row_readers", "fromVersion": "0.2.5", "toVersion": "0.2.6", "operations": []}
+    {"id": "row_readers", "fromVersion": "0.2.5", "toVersion": "0.2.6", "operations": []},
+    {"id": "split_screens", "fromVersion": "0.2.6", "toVersion": "0.2.7", "operations": []}
   ],
   "permissions": [
     {"table": "tickets.ticket", "role": "All", "can_read": true, "can_write": true, "can_create": true},

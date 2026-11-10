@@ -11,7 +11,7 @@ import { sql } from '../src/db'
 // which state, and what they must record. The rules run on synthetic rows.
 const directory = resolve('../..', 'example-apps/tickets')
 const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
-  ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': 'tickets@0.2.6' },
+  ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': 'tickets@0.2.7' },
 }) }, client.token, client.user)
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(pinned(admin)),
