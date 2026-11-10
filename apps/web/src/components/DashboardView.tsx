@@ -101,7 +101,7 @@ function BarChart({ chart }: { chart: ChartCfg }) {
 export function DashboardView({ name }: { name: string }) {
   const dash = useQuery({
     queryKey: ['dashboard', name],
-    queryFn: () => api.get<{ name: string; label?: string; config?: DashboardConfig | string }>(`/api/table/Dashboard/${encodeURIComponent(name)}`),
+    queryFn: () => api.get<{ row_id: string; label?: string; config?: DashboardConfig | string }>(`/api/table/Dashboard/${encodeURIComponent(name)}`),
   })
 
   if (dash.isError)
@@ -121,7 +121,7 @@ export function DashboardView({ name }: { name: string }) {
   return (
     <div data-testid="dashboard" className="space-y-6">
       <h1 className="text-lg font-semibold text-ink" data-testid="dashboard-title">
-        {dash.data.label || dash.data.name}
+        {dash.data.label || dash.data.row_id}
       </h1>
 
       {cards.length > 0 && (
