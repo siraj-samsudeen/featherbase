@@ -117,6 +117,19 @@ describe('opening something without access is the request', () => {
     expect((await list(admin)).rows).toMatchObject([{ person: priya.user, app: 'Dash' }])
   })
 
+  // Found on production staging (10-Nov-2026): a person who belongs in an app was sent to the Admin
+  // first, and its no-access page emailed every System Manager. Their app is where they go instead.
+  test("someone with an app of their own role isn't waiting for Featherbase: no request, no mail, and their app named", async ({ admin, createUser }) => {
+    await managers()
+    await installOther(admin)
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Other Reader' } })
+    await sql`insert into permission (row_id, ref_table, role, operation, created_by, updated_by)
+      values ('wfa-other-read', 'other.task', 'Other Reader', 'read', 'Administrator', 'Administrator')`
+    const reader = await createUser({ email: 'other.reader@example.com', roles: ['Other Reader'] })
+    expect(await (await ask(reader, 'featherbase')).json()).toEqual({ state: 'elsewhere', title: 'Featherbase', home: '/other/' })
+    expect([(await list(admin)).total, (await mailsTo('manager.one@example.com')).length]).toEqual([0, 0])
+  })
+
   test('something they can open is not a request', async ({ admin }) => {
     expect(await (await ask(admin, 'featherbase')).json()).toEqual({ state: 'open', title: 'Featherbase' })
     expect((await list(admin)).total).toBe(0)

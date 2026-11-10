@@ -126,9 +126,10 @@ test('a person with neither the viewer role nor a Table grant lands on a plain n
 })
 
 // (1) A failed background refetch must not unmount a shell that already has its answer.
-// #659: an installed app's own Tables do not open the Admin. A person who
-// reads only an app's Table is refused the Admin like anyone without access.
-test("a person whose only grant is on an installed app's Table gets the no-access page in the Admin", async ({ admin, createUser }) => {
+// #659: an installed app's own Tables do not open the Admin. A person who reads only an app's
+// Table is refused the Admin. Found on staging (10-Nov-2026): its no-access page then emailed
+// every System Manager for someone who belongs in their app; they are sent there instead.
+test("a person whose only grant is on an installed app's Table is sent from the Admin to that app, asking for nothing", async ({ admin, createUser }) => {
   expect(await discoverPackages([DASH_STAND_IN])).toEqual([])
   try {
     await admin.post('/api/install_app', { name: 'dash' })
@@ -136,7 +137,9 @@ test("a person whose only grant is on an installed app's Table gets the no-acces
     await grantRole(admin, { table: 'dash.note', role: 'Dash Reader', can_read: true })
     const reader = await createUser({ email: 'dash.reader.shell@example.com', roles: ['Dash Reader'] })
     await renderApp('/featherbase/admin', reader)
-    expect(await screen.findByTestId('no-access')).toBeInTheDocument()
+    const going = await screen.findByTestId('going-to-app')
+    const asked = await sql`select count(*)::int as n from access_request where person = ${reader.user}`
+    expect([going.getAttribute('data-path'), screen.queryByTestId('no-access'), asked[0].n]).toEqual(['/dash/', null, 0])
   } finally {
     await discoverPackages([])
   }

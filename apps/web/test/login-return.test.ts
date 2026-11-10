@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { openLanding, openReturnPath, safeLoginNext } from '../src/pages/Login'
+import { openLanding, openReturnPath, returnOrLanding, safeLoginNext } from '../src/pages/Login'
 
 describe('login return path', () => {
   test('accepts canonical and application paths, preserving explicit or inherited state', () => {
@@ -63,5 +63,21 @@ describe('opening the return path after sign-in', () => {
     const loaded: string[] = []
     openReturnPath('/tasker/?review=deep-link#task=TASK-00001', (p) => pushed.push(p), (p) => loaded.push(p))
     expect([pushed, loaded]).toEqual([[], ['/tasker/?review=deep-link#task=TASK-00001']])
+  })
+})
+
+// Found on staging (10-Nov-2026): a return path the person can't open must not send them to a
+// no-access page that emails the admins; they go to where they land instead.
+describe('a return path the person can open, else their landing', () => {
+  const dashOnly = { row_id: 'psn_1', landing: '/dash/', apps: ['dash'] }
+  test.each([
+    ['the Admin, for someone who lands in an app', '/featherbase/admin/table/User', dashOnly, '/dash/'],
+    ["an app they can't open", '/tasker/?view=work', dashOnly, '/dash/'],
+    ['an app they can open, kept as it is', '/dash/?store=9901', dashOnly, '/dash/?store=9901'],
+    ['a Featherbase page anyone signed in may open', '/featherbase/account/sign-in-methods', dashOnly, '/featherbase/account/sign-in-methods'],
+    ['the Admin, for someone who lands in the Admin', '/featherbase/admin/table/User', { row_id: 'psn_2', apps: [] }, '/featherbase/admin/table/User'],
+    ['anything, when the server named no apps', '/tasker/', { row_id: 'psn_3', landing: '/dash/' }, '/tasker/'],
+  ])('%s', (_what, next, user, expected) => {
+    expect(returnOrLanding(next, user)).toBe(expected)
   })
 })
