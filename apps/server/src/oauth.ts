@@ -64,7 +64,8 @@ function pack(obj: Record<string, unknown>): string {
  *  the Sign-in methods page). Every action still requires verifyState. */
 export function claimedPurpose(state: string | undefined): string | undefined {
   try {
-    const obj = JSON.parse(Buffer.from(String(state ?? '').split('.')[0] ?? '', 'base64url').toString()) as { purpose?: unknown }
+    // split always returns at least one part, so [0] is always there.
+    const obj = JSON.parse(Buffer.from(String(state ?? '').split('.')[0], 'base64url').toString()) as { purpose?: unknown }
     return typeof obj.purpose === 'string' ? obj.purpose : undefined
   } catch {
     return undefined
