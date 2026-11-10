@@ -6,7 +6,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe } from 'vitest'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, insideOf, screenSession } from '../pg-test'
+import { test, expect, screenSession } from '../pg-test'
 import { Assets, type Row, realTime } from './assets'
 
 const scenario = scenarioFor(test, 'asset-custody-and-transfers')
@@ -49,7 +49,7 @@ class Custody {
   async pressOnMine(person: string, assetName: string, button: string, expectedState: string) {
     await this.assets.open(person, 'custody')
     const item = `[aria-labelledby="your-assets"] li[aria-label=${JSON.stringify(assetName)}]`
-    await insideOf(screenSession(), item, (mine) => mine.clickButton(button))
+    await screenSession().within(item, (mine) => mine.clickButton(button))
       .within(`${item} > b`, (state) => state.assertExactText(expectedState))
   }
 
@@ -146,7 +146,7 @@ class Custody {
     await this.openTransfer(person)
     for (const [name, outcome] of Object.entries(outcomes)) {
       const item = `ul.transfer-receive li[aria-label=${JSON.stringify(name)}]`
-      await insideOf(screenSession(), item, (line) => line.selectOption(`Outcome for ${name}`, outcome))
+      await screenSession().within(item, (line) => line.selectOption(`Outcome for ${name}`, outcome))
       // Enabled once the outcome is chosen: the DSL has no verb for a button being enabled.
       await waitFor(() => expect(within(document.querySelector(item) as HTMLElement).getByRole('button', { name: 'Receive' })).toBeEnabled())
       await screenSession().within(item, (line) => line.clickButton('Receive'))

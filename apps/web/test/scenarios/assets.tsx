@@ -18,7 +18,7 @@ import { sql } from 'server/src/db'
 import { AssetsApp } from '../../../../client-apps/jeyarama/equipment/src/AssetsApp'
 import { version } from '../../../../client-apps/jeyarama/equipment/package.json'
 import { setSession } from '../../src/lib/api'
-import { expect, insideOf, screenSession } from '../pg-test'
+import { expect, screenSession } from '../pg-test'
 
 export type Row = { row_id: string; updated_at: string; [field: string]: unknown }
 type CreateUser = (options: { roles: string[]; fullName: string }) => Promise<TestClient>
@@ -374,7 +374,7 @@ export class AssetCounts {
   async counterPage(name: string, areaName: string) {
     const main = await this.assets.open(name, `count=${encodeURIComponent(this.count.row_id)}`)
     const areas = await this.chooseArea(areaName)
-    await insideOf(screenSession(), 'p.count-progress', (progress) => progress.assertText('You have recorded'))
+    await screenSession().within('p.count-progress', (progress) => progress.assertText('You have recorded'))
     return { areas, text: main.textContent! }
   }
 
