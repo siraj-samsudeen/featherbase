@@ -5,7 +5,7 @@
 // effect never draws the previous store's figures under the new one. Made-up stores and figures.
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 type Deferred = { resolve: (body: unknown) => void }
 const calls: { name: string; store?: string; payload: Record<string, unknown>; answer: Deferred }[] = []
@@ -383,6 +383,43 @@ describe('a report on the rendered page', () => {
     await answer('report', { state: 'whole_stores_only' })
     expect(container.querySelector('[data-testid=empty-whole_stores_only]')?.textContent).toBe("This report covers whole stores, so it isn't available for your job.")
     await unmount()
+  })
+
+  // #1143: the cached view stands in at the deadline, and the same frame, kept out of sight, takes
+  // over when the Dive says it is ready (MotherDuck's session start can take longer than the deadline).
+  it('keeps the Dive behind the cached view past the deadline, and shows that same frame once it is ready', async () => {
+    const { act } = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { Dash } = await import('./app')
+    const { DIVE_READY_TIMEOUT_MS } = await import('./page')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      history.replaceState(null, '', '?store=9901')
+      calls.length = 0
+      const container = document.createElement('div')
+      document.body.appendChild(container)
+      const root = createRoot(container)
+      await act(async () => { root.render(<Dash />) })
+      await act(async () => { await settle() })
+      for (const c of calls.filter(c => c.store === '9901'))
+        c.answer.resolve(c.name === 'report' ? report('9901', 'Silk')
+          : { frame: 'https://embed-motherduck.com/sandbox/#session=made-up', ready_signal: true })
+      await act(async () => { await settle() })
+      await act(async () => { vi.advanceTimersByTime(DIVE_READY_TIMEOUT_MS); await settle() })
+      const view = () => container.querySelector('[data-testid=dash]')?.getAttribute('data-view')
+      const frame = container.querySelector('[data-testid=report-frame]') as HTMLIFrameElement | null
+      const behind = [view(), frame?.closest('[aria-hidden=true]') !== null, container.textContent?.includes('Silk')]
+      await act(async () => {
+        window.dispatchEvent(new MessageEvent('message', { origin: 'https://embed-motherduck.com', source: frame!.contentWindow, data: { type: 'feather-dash:dive-ready' } }))
+        await settle()
+      })
+      const shown = container.querySelector('[data-testid=report-frame]')
+      expect([behind, [view(), shown === frame, shown?.closest('[aria-hidden=true]') ?? null]])
+        .toEqual([['quick', true, true], ['dive', true, null]])
+      await act(async () => root.unmount())
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("says this report couldn't open, with Try again, when it has no quick view and its Dive fails", async () => {
