@@ -531,24 +531,6 @@ describe('a report on the rendered page', () => {
     await unmount()
   })
 
-  // #1172: someone with no report at all is told why at once; the page asks for no report or Dive
-  // it knows will be refused (each refusal was a console error).
-  it('asks for no report and no Dive when the reader has none, and says why', async () => {
-    reportsAnswer = []
-    problemsAnswer = { problems: ['head_office'] }
-    try {
-      const { container, unmount } = await open('?')
-      const { act } = await import('react')
-      await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
-      expect([asked('report'), asked('embed_session'), container.querySelector('[data-testid=reach-problem]')?.textContent])
-        .toEqual([[], [], 'Your job is in head office, so no store report is set against it. Ask the person who gives Dash reports in your company if you need one.'])
-      await unmount()
-    } finally {
-      reportsAnswer = [SALES, WHOLE]
-      problemsAnswer = { problems: [] }
-    }
-  })
-
   describe('for someone whose job reaches nothing', () => {
     const refusing = async (problems: string[]) => {
       reportsAnswer = []
@@ -576,9 +558,11 @@ describe('a report on the rendered page', () => {
       await unmount()
     })
 
-    it('shows Head office staff the no-access page', async () => {
+    // #1172: Dash opens for Head office staff (a Dash role), and says why there is no store report.
+    it('tells Head office staff why there is no store report, instead of the generic no-access notice', async () => {
       const { container, unmount } = await refusing(['head_office'])
-      expect([container.querySelector('[data-testid=reach-problem]'), container.querySelector('[data-testid=no-access]') !== null]).toEqual([null, true])
+      expect([container.querySelector('[data-testid=reach-problem]')?.textContent?.startsWith('Your job is in head office'), container.querySelector('[data-testid=no-access]')])
+        .toEqual([true, null])
       await unmount()
     })
   })
