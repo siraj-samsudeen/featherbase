@@ -238,8 +238,10 @@ export async function scopedWhere(
       case '<=': return sql`${sql(field)} <= ${value as string}`
       case 'like': return sql`${sql(field)}::text ilike ${value as string}`
       case 'not like': return sql`${sql(field)}::text not ilike ${value as string}`
-      case 'in': return sql`${sql(field)} in ${sql((value as string[]).length ? (value as string[]) : [null as never])}`
-      default: return sql`${sql(field)} not in ${sql((value as string[]).length ? (value as string[]) : [null as never])}`
+      // An empty list: in nothing matches nothing, not in nothing excludes
+      // nothing (#1137), as on a connected Table's drivers.
+      case 'in': return (value as string[]).length ? sql`${sql(field)} in ${sql(value as string[])}` : sql`false`
+      default: return (value as string[]).length ? sql`${sql(field)} not in ${sql(value as string[])}` : sql`true`
     }
   }
 

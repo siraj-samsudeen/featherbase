@@ -81,9 +81,11 @@ export function viewCondition(relation: string, filters: readonly ViewFilter[]):
       case '<=': return sql`${col} <= ${value as string}`
       case 'like': return sql`${col}::text ilike ${value as string}`
       case 'not like': return sql`${col}::text not ilike ${value as string}`
-      case 'in': return sql`${col} in ${sql((value as string[]).length ? (value as string[]) : [null as never])}`
+      // An empty list: in nothing matches nothing, not in nothing excludes
+      // nothing (#1137).
+      case 'in': return (value as string[]).length ? sql`${col} in ${sql(value as string[])}` : sql`false`
       // normaliseViewFilters admits only VIEW_OPERATORS, so this is 'not in'.
-      default: return sql`${col} not in ${sql((value as string[]).length ? (value as string[]) : [null as never])}`
+      default: return (value as string[]).length ? sql`${col} not in ${sql(value as string[])}` : sql`true`
     }
   })
   return sql`(${conds.reduce((acc, c) => sql`${acc} and ${c}`, sql`true`)})`
