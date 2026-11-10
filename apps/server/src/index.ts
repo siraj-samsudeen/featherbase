@@ -796,6 +796,9 @@ app.get('/api/whoami', async (c) => {
 app.post('/api/open_admin', async (c) => {
   // Parsed exactly as resolveToken parsed it for the auth middleware above.
   const token = authCredential(c)?.match(/^Bearer (.+)$/)?.[1] ?? ''
+  // Only a browser session is handed over. An access token carries no sign-in:
+  // handed over, it would become a session that outlives its revocation.
+  if (!c.get('user').sign_in) throw new AppError('PermissionError', 'An access token cannot open the Admin screens')
   const opened = await openAdminFor({ token, user: c.get('user') }, requestHost(c.req.url))
   if (!opened) throw new AppError('PermissionError', 'You cannot use the Admin screens')
   return c.json(opened)
