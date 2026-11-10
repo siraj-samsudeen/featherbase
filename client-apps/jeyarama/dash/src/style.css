@@ -40,6 +40,9 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--color-focus); o
 
 .fd-opening { margin: 48px auto; color: var(--color-ink-muted); text-align: center; }
 .fd-frame-box { position: relative; flex: 1; display: flex; }
+/* #1143: past the deadline the Dive keeps loading out of sight behind the quick view: laid out at full
+   size (a frame not drawn at all may be throttled), invisible, and out of reach. */
+.fd-frame-behind { position: fixed; inset: 0; opacity: 0; pointer-events: none; z-index: -1; }
 .fd-opening-over { position: absolute; inset: 0; margin: 0; padding-top: 48px; background: var(--color-canvas); }
 .fd-frame { flex: 1; width: 100%; min-height: 70vh; border: 1px solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); }
 

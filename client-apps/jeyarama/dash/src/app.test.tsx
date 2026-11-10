@@ -410,7 +410,9 @@ describe('a report on the rendered page', () => {
       const frame = container.querySelector('[data-testid=report-frame]') as HTMLIFrameElement | null
       const behind = [view(), frame?.closest('[aria-hidden=true]') !== null, container.textContent?.includes('Silk')]
       await act(async () => {
-        window.dispatchEvent(new MessageEvent('message', { origin: 'https://embed-motherduck.com', source: frame!.contentWindow, data: { type: 'feather-dash:dive-ready' } }))
+        // jsdom's MessageEvent: Node has a global one of its own, which a jsdom window rejects as a source.
+        const JsdomMessageEvent = (window as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent
+        window.dispatchEvent(new JsdomMessageEvent('message', { origin: 'https://embed-motherduck.com', source: frame!.contentWindow, data: { type: 'feather-dash:dive-ready' } }))
         await settle()
       })
       const shown = container.querySelector('[data-testid=report-frame]')

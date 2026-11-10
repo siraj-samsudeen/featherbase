@@ -1830,6 +1830,12 @@
       "fromVersion": "0.12.2",
       "toVersion": "0.12.3",
       "operations": []
+    },
+    {
+      "id": "late_dive_ready",
+      "fromVersion": "0.12.3",
+      "toVersion": "0.12.4",
+      "operations": []
     }
   ],
   "baseTables": {

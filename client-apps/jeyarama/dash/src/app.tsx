@@ -1,7 +1,7 @@
 // Feather Dash's report page (rendered by main.tsx).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { accessFacts, read } from './api'
-import { REPORT_TIMEOUT_MS, reachMessage, MEASURE_LINE, TOTALS_NOTE, isMonthChoice, monthChooser, monthWords, notArrivedLine, type MonthChoice, noAccessHelp, type NoAccessHelp, headingParts, periodLine, sectionHeading, whyLine, storeChooser, totalCells, visibleState, blankNote, dataLine, firstStore, inr, pageView, percent, quickBody, reportLoader, signedInr, subcategoryLabel, subtotalLabel, type LoadState } from './page'
+import { REPORT_TIMEOUT_MS, reachMessage, MEASURE_LINE, TOTALS_NOTE, isMonthChoice, monthChooser, monthWords, notArrivedLine, type MonthChoice, noAccessHelp, type NoAccessHelp, headingParts, periodLine, sectionHeading, whyLine, storeChooser, totalCells, visibleState, blankNote, dataLine, firstStore, inr, liveFrame, pageView, percent, quickBody, reportLoader, signedInr, subcategoryLabel, subtotalLabel, type LoadState } from './page'
 import type { Heading, Report, ReportRow, Totals } from './report'
 import { DashSidebar, SECTIONS_ADDRESS, readReports, type ReportLink } from './sections-page'
 
@@ -69,7 +69,7 @@ export function Dash() {
   // The choosers read the store and month now chosen, not the render's.
   const chosen = useRef<{ store?: string; month: MonthChoice }>({ month })
   const [attempt, setAttempt] = useState(0)
-  const [state, setState] = useState<LoadState<Report>>({ embed: undefined, report: undefined, frameFailed: false, diveReady: false })
+  const [state, setState] = useState<LoadState<Report>>({ embed: undefined, report: undefined, frameFailed: false, timedOut: false, diveReady: false })
   const frame = useRef<HTMLIFrameElement>(null)
   // One deadline covers the session request and the frame (DIVE_READY_TIMEOUT_MS); past it, the
   // quick view. A late answer, or one for a store no longer on show, is ignored.
@@ -119,6 +119,7 @@ export function Dash() {
   const { report } = shown
   const view = checkFailed && !store ? { kind: 'failed' as const } : pageView(shown)
   const frameAttempt = loader.current()
+  const frameSrc = liveFrame(shown)
 
   return (
     <div className="fd-shell">
@@ -129,14 +130,17 @@ export function Dash() {
         <ReportHeading heading={report.value.heading} period={report.value} wide={view.kind === 'dive'} />
       )}
       {view.kind === 'opening' && <p className="fd-opening">Opening your report…</p>}
-      {view.kind === 'dive' && (
-        <div className="fd-frame-box">
-          {!shown.diveReady && <p className="fd-opening fd-opening-over">Opening your report…</p>}
+      {/* #1143: one place for the frame, on show or out of sight behind the quick view, so the Dive
+          that says it is ready after the deadline takes over in the same frame, never reloaded. */}
+      {frameSrc && (view.kind === 'dive' || view.kind === 'quick' || view.kind === 'failed') && (
+        <div className={view.kind === 'dive' ? 'fd-frame-box' : 'fd-frame-box fd-frame-behind'}
+          aria-hidden={view.kind === 'dive' ? undefined : true} inert={view.kind !== 'dive'}>
+          {view.kind === 'dive' && !shown.diveReady && <p className="fd-opening fd-opening-over">Opening your report…</p>}
           <iframe
             data-testid="report-frame"
             title={current?.name ?? 'Report'}
             sandbox="allow-scripts allow-same-origin"
-            src={view.src}
+            src={frameSrc}
             ref={frame}
             // The frame names the attempt it belongs to: a frame of an earlier store is ignored.
             onLoad={() => loader.frameLoaded(frameAttempt)}
