@@ -20,6 +20,8 @@ import { expectRefused, expectStatus } from '../fixtures'
 import { buildStandin, STANDIN_TOKENS } from '../motherduck-standin'
 import { EXPLORE_FLOOR, EXPLORE_STORE, dropExploreSource, exploreSource, manyStores } from '../explore-source'
 import { scenarioFor, type Example } from '../scenario'
+import { getSource } from '../../src/sources/registry'
+import { run } from '../../src/sources/duckdb-driver'
 
 const scenario = scenarioFor(test, 'external-data-sources')
 type Body = { error?: { type?: string; message?: string; fields?: Record<string, string> }; created?: { name: string; table: string }[]; skipped?: unknown[] }
@@ -142,6 +144,44 @@ afterAll(() => dropExploreSource(EXPLORE))
 const floors = (admin: TestClient, params: Record<string, string>) =>
   admin.get<{ data: Record<string, unknown>[]; total: number }>(`/api/table/${encodeURIComponent(EXPLORE_FLOOR)}?${new URLSearchParams(params)}`)
 
+// ---- A DuckDB warehouse folder of several databases (#1123).
+async function warehouseFolder(): Promise<string> {
+  const folder = await mkdtemp(path.join(tmpdir(), 'featherbase-duck-folder-'))
+  cleanups.push(() => rm(folder, { recursive: true, force: true }))
+  const { DuckDBInstance } = await import('@duckdb/node-api')
+  const write = async (name: string, statements: string[]) => {
+    const inst = await DuckDBInstance.create(path.join(folder, `${name}.duckdb`))
+    const conn = await inst.connect()
+    for (const statement of statements) await conn.run(statement)
+    conn.closeSync()
+    inst.closeSync()
+  }
+  await write('gold', [
+    'create schema masters',
+    'create table masters.store (code varchar primary key, name varchar)',
+    "insert into masters.store values ('S001', 'Harbour Road'), ('S002', 'Hill Street')",
+  ])
+  await write('marts', [
+    'create schema sales',
+    'create table sales.daily (store varchar, qty integer)',
+    "insert into sales.daily values ('S001', 10), ('S001', 5), ('S002', 7)",
+  ])
+  return folder
+}
+
+async function folderSource(admin: TestClient, folder: string, databases: string[]): Promise<string> {
+  const name = `duck-folder-${randomUUID().slice(0, 8)}`
+  const urlEnv = `SCENARIO_DUCK_FOLDER_${randomUUID().replaceAll('-', '_')}`
+  process.env[urlEnv] = folder
+  cleanups.push(async () => { delete process.env[urlEnv] })
+  invalidateSources()
+  await admin.post('/api/table/Data%20Source', {
+    row_id: name, engine: 'duckdb', url_env: urlEnv, access: 'read_only',
+    databases: databases.map((database) => ({ name: database })),
+  })
+  return name
+}
+
 describe('external-data-sources', () => {
   scenario('An incomplete restriction is refused before it is saved', async ({ admin }, step, example: Example) => {
     let source: Restrictions
@@ -246,6 +286,44 @@ describe('external-data-sources', () => {
       const preview = await admin.get<{ data?: { first_rows: Record<string, unknown>[] }; first_rows?: Record<string, unknown>[] }>(
         `/api/table/Data%20Source/${source}:preview?database=sales&schema=main&table=stores`)
       expect((preview.data ?? preview).first_rows!.find((row) => row.code === 'S001')!.name).toBe('Harbour Road')
+    })
+  })
+
+  scenario('Both databases answer one query', async ({ admin }, step) => {
+    let folder = ''
+    let source = ''
+    let rows: Record<string, unknown>[] = []
+    await step('a folder holding the warehouse files "gold" and "marts"', async () => { folder = await warehouseFolder() })
+    await step('a DuckDB warehouse source on that folder that reads the databases "gold" and "marts"', async () => {
+      source = await folderSource(admin, folder, ['gold', 'marts'])
+    })
+    await step('a query joins a table in "gold" to a table in "marts"', async () => {
+      rows = await run(await getSource(source), `select s.code, s.name, sum(d.qty)::int as qty
+        from "gold"."masters"."store" s join "marts"."sales"."daily" d on d.store = s.code
+        group by s.code, s.name order by s.code`, [])
+    })
+    await step('it answers with rows from both', () => {
+      expect(rows).toEqual([
+        { code: 'S001', name: 'Harbour Road', qty: 15 },
+        { code: 'S002', name: 'Hill Street', qty: 7 },
+      ])
+    })
+  })
+
+  scenario('A missing database file is named', async ({ admin }, step) => {
+    let source = ''
+    let result: { ok: boolean; error?: string } = { ok: true }
+    await step('a DuckDB warehouse source on that folder that reads the databases "gold" and "stock"', async () => {
+      source = await folderSource(admin, await warehouseFolder(), ['gold', 'stock'])
+    })
+    await step('the folder has no "stock" file')
+    await step('the user tests the connection', async () => {
+      result = await admin.post(`/api/table/Data%20Source/${source}:test_connection`, {})
+    })
+    await step('it fails and names "stock" as missing', () => {
+      expect(result.ok).toBe(false)
+      expect(result.error).toMatch(/stock/)
+      expect(result.error).toMatch(/missing|no file|not found|does not exist/i)
     })
   })
 })
