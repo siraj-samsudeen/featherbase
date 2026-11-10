@@ -1,6 +1,9 @@
 import { AppError, errorMessage } from '../errors'
 import { datasetQueryText } from './dataset-query'
 import { readNamedVariable } from '../env'
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+import { attachStatement } from '../motherduck-reader'
 import { instanceToken, openSourceSession } from './motherduck'
 import type {
   Binding,
@@ -15,7 +18,8 @@ import { orderClause } from './order'
 
 // M3: the duckdb/MotherDuck driver — strictly read-only (the warehouse
 // browser). A MotherDuck source uses the instance's MOTHERDUCK_TOKEN; a duckdb
-// source is a local .duckdb file, its path in the env var named by url_env.
+// source is a local .duckdb file, its path in the env var named by url_env
+// (or a folder of <name>.duckdb files when the source names databases, #1123).
 // @duckdb/node-api 1.5.6-r.2 (DuckDB 1.5.6) passed real MotherDuck connection,
 // introspection and read-only warehouse query checks on 1-Nov-2026 (#747).
 //
@@ -94,9 +98,42 @@ function motherDuckCredentials(cfg: SourceConfig): { token: string; key: string 
   return { token, key: `${token}|${JSON.stringify(cfg.databases.map((d) => d.name))}` }
 }
 
+// #1123: a duckdb source that names databases points url_env at a folder; each
+// database is the file <name>.duckdb there, attached read-only under its name in
+// an in-memory instance, so "gold"."masters"."store" and "marts"."sales"."daily"
+// meet in one query. The key carries the names, so a new list opens afresh.
+interface WarehouseFolder { folder: string; files: { name: string; file: string }[] }
+function warehouseFolder(cfg: SourceConfig, folder: string): WarehouseFolder | null {
+  if (cfg.engine !== 'duckdb' || !cfg.databases.length) return null
+  const files = cfg.databases.map(({ name }) => {
+    if (!/^[A-Za-z0-9_]+$/.test(name))
+      throw new AppError('ValidationError', `Data source ${cfg.name}: database name ${JSON.stringify(name)} must use only letters, digits and underscores`)
+    const file = path.join(folder, `${name}.duckdb`)
+    if (!existsSync(file))
+      throw new AppError('ValidationError', `Data source ${cfg.name}: database "${name}" has no file ${name}.duckdb in its folder`)
+    return { name, file }
+  })
+  return { folder, files }
+}
+
+async function openFolder({ DuckDBInstance }: DuckDBModule, { folder, files }: WarehouseFolder): Promise<InstanceEntry> {
+  const instance = await DuckDBInstance.create(':memory:')
+  try {
+    const conn = await instance.connect()
+    try { for (const { name, file } of files) await conn.run(attachStatement(file, name)) }
+    finally { conn.closeSync() }
+  } catch (err) {
+    instance.closeSync()
+    throw err
+  }
+  return { instance, secret: folder }
+}
+
 async function instanceFor(cfg: SourceConfig): Promise<InstanceEntry & { release(): void }> {
   const credentials = cfg.engine === 'motherduck' ? motherDuckCredentials(cfg) : null
-  const key = credentials?.key ?? localFile(cfg)
+  const file = credentials ? null : localFile(cfg)
+  const folder = file === null ? null : warehouseFolder(cfg, file)
+  const key = credentials?.key ?? (folder ? `${file}|${JSON.stringify(folder.files.map((f) => f.name))}` : file!)
   let cached = instances.get(cfg.name)
   // No await between observing the key and publishing the in-flight open.
   // Replaced sessions drain their readers instead of closing live connections.
@@ -104,7 +141,9 @@ async function instanceFor(cfg: SourceConfig): Promise<InstanceEntry & { release
     if (cached) retire(cached)
     const ready = credentials
       ? openSourceSession(credentials.token, cfg.databases).then(session => ({ instance: session.instance, secret: credentials.token, close: () => session.close() }))
-      : loadDuckdb().then(async ({ DuckDBInstance }) => ({ instance: await DuckDBInstance.create(key, { access_mode: 'READ_ONLY' }), secret: key }))
+      : folder
+        ? loadDuckdb().then(duckdb => openFolder(duckdb, folder))
+        : loadDuckdb().then(async ({ DuckDBInstance }) => ({ instance: await DuckDBInstance.create(key, { access_mode: 'READ_ONLY' }), secret: key }))
     cached = { key, ready, readers: 0, retired: false }
     instances.set(cfg.name, cached)
   }

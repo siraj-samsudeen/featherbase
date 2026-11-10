@@ -4,7 +4,7 @@
 // manually, not from the suite.
 import { afterAll, beforeAll, describe, expect, vi } from 'vitest'
 import { DuckDBInstance } from '@duckdb/node-api'
-import { copyFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from './pg-test'
@@ -239,6 +239,53 @@ describe('An app dataset query on a warehouse', () => {
     await expect(duckdbDriver.test({ ...cfg, name: 'duck-md', url_env: 'DUCK_MD_URL' })).rejects.toThrow(/holds a MotherDuck address/)
     await expect(duckdbDriver.query!({ ...cfg, name: 'duck-md', url_env: 'DUCK_MD_URL' }, 'select 1 as store', [{ name: 'store', type: 'integer' }]))
       .rejects.toThrow(/holds a MotherDuck address/)
+  })
+})
+
+// #1123: a duckdb source that names databases reads <name>.duckdb from a folder.
+describe('A warehouse folder of several databases', () => {
+  let folder: string
+  const URL_ENV = 'DUCK_FOLDER_URL'
+  const used: string[] = []
+  const source = (name: string, databases: string[]) => {
+    used.push(name)
+    return { name, engine: 'duckdb' as const, url_env: URL_ENV, root_path: null, default_schema: null,
+      access: 'read_only' as const, pool_max: 1, statement_timeout_ms: 10000, allowlist: null, databases: databases.map((d) => ({ name: d })) }
+  }
+
+  beforeAll(() => {
+    folder = mkdtempSync(path.join(tmpdir(), 'fb-duck-folder-'))
+    copyFileSync(path.join(dir, 'warehouse.duckdb'), path.join(folder, 'first.duckdb'))
+    copyFileSync(path.join(dir, 'warehouse.duckdb'), path.join(folder, 'second.duckdb'))
+    process.env[URL_ENV] = folder
+  })
+  afterAll(() => {
+    for (const name of used) duckdbDriver.dispose(name)
+    delete process.env[URL_ENV]
+    rmSync(folder, { recursive: true, force: true })
+  })
+
+  test.each(['gold"; drop', '../first', 'first.duckdb', ''])('a database name %j that is not a plain identifier is refused', async (bad) => {
+    await expect(duckdbDriver.test(source('duck-folder-bad-name', [bad])))
+      .rejects.toMatchObject({ type: 'ValidationError', message: expect.stringContaining('letters, digits and underscores') })
+  })
+
+  test('a dataset query that would change an attached database is refused', async () => {
+    await expect(duckdbDriver.query!(source('duck-folder-write', ['first']), `select nextval('"first"."main"."probe"') as store`, [{ name: 'store', type: 'integer' }]))
+      .rejects.toThrow(/read-only|read only/i)
+  })
+
+  test('naming another database opens it on the next read', async () => {
+    await run(source('duck-folder-grows', ['first']), 'select count(*) from "first"."main"."daily_sales"', [])
+    const [row] = await run(source('duck-folder-grows', ['first', 'second']), 'select count(*)::int as n from "second"."main"."daily_sales"', [])
+    expect(row.n).toBe(3)
+  })
+
+  test('a database file that cannot be opened is reported without the folder path', async () => {
+    writeFileSync(path.join(folder, 'broken.duckdb'), 'not a database')
+    const failure = await duckdbDriver.test(source('duck-folder-broken', ['broken'])).catch((err: Error) => err)
+    expect(failure).toMatchObject({ type: 'DataSourceError', message: expect.stringContaining(`$${URL_ENV}`) })
+    expect((failure as Error).message).not.toContain(folder)
   })
 })
 
