@@ -75,6 +75,8 @@ const BASIS: Record<string, string> = {
   'Director': 'director', 'Managing Director': 'managing_director',
 }
 const EVERY_STORE = new Set(['Director', 'Managing Director', 'Chief Operating Officer'])
+/** The plant types a store sells through, which a site's readers reach. */
+const SOLD_THROUGH = ['Store', 'Shop-in-shop', 'E-commerce fulfilment']
 
 class Places {
   private merged = new Map<string, { store: string; codes: Set<string> | null; basis: Set<string>; reasons: Map<string, Reason> }>()
@@ -110,8 +112,13 @@ export async function reachOf(documents: Documents, person: string, on: string):
   const sites = await all(documents, T.site)
   const stores = sites.filter(site => checked(site.is_store))
   const siteOf = new Map(sites.map(site => [id(site), site]))
-  // A store is sold through its one Store plant: a site's warehouse or e-commerce plant holds no store's sales.
-  const plantOf = new Map((await all(documents, T.plant, [['plant_type', '=', 'Store']])).map(plant => [exact(plant.site), id(plant)]))
+  // #1155 (owner, 10-Nov-2026): a site's readers reach every plant on it that sells: Store,
+  // Shop-in-shop (a Gold House inside it) and E-commerce fulfilment. A warehouse sells nothing. A
+  // retired plant the platform's reads leave out. Plant.is_active waits for every instance to have
+  // the column (#1161): a provider read that fails refuses every reader.
+  const plantsOf = new Map<string, string[]>()
+  for (const plant of await all(documents, T.plant, [['plant_type', 'in', SOLD_THROUGH]]))
+    plantsOf.set(exact(plant.site), [...(plantsOf.get(exact(plant.site)) ?? []), id(plant)])
 
   const places = new Places()
   const problems: NoReach[] = []
@@ -121,10 +128,8 @@ export async function reachOf(documents: Documents, person: string, on: string):
     const site = exact(job.site)
     const reason = reasonOf(job)
     const whole = (sitesCovered: Row[]) => {
-      for (const covered of sitesCovered) {
-        const plant = plantOf.get(id(covered))
-        if (plant) places.add(plant, plant, null, basisOf(job), reason)
-      }
+      for (const covered of sitesCovered)
+        for (const plant of plantsOf.get(id(covered)) ?? []) places.add(plant, plant, null, basisOf(job), reason)
     }
     if (name === 'Staff' || name === 'Team Leader') {
       if (!exact(job.section)) { problems.push('no_section'); continue }
@@ -152,12 +157,12 @@ export async function reachOf(documents: Documents, person: string, on: string):
     let reached = false
     for (const section of sections) {
       // A section on another site's job row reaches nothing: the store on the job decides.
-      const plant = plantOf.get(exact(section.site))
-      if (!plant || exact(section.site) !== exact(job.site)) continue
+      const plants = plantsOf.get(exact(section.site)) ?? []
+      if (!plants.length || exact(section.site) !== exact(job.site)) continue
       const codes = (await all(documents, T.placement, [['section', '=', id(section)]]))
         .filter(row => holdsOn(row, on) && exact(row.store) === exact(section.site)).map(row => exact(row.subcategory))
       if (!codes.length) continue
-      places.add(sectionLabel(plant, text(section.name)), plant, codes, basisOf(job), reason)
+      for (const plant of plants) places.add(sectionLabel(plant, text(section.name)), plant, codes, basisOf(job), reason)
       reached = true
     }
     if (!reached) problems.push('nothing_placed')

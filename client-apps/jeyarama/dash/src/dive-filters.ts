@@ -23,6 +23,8 @@ export interface ReportRecord {
   ready_signal: boolean
   /** Which built-in quick view stands in when the Dive can't load; empty for none. */
   quick_view: string | null
+  /** #1159: the Dive has its own Store and Month pickers: Dash sends the reader's reach and where to open. */
+  pickers_in_dive: boolean
 }
 
 export interface Opening {
@@ -31,6 +33,8 @@ export interface Opening {
   /** The last day of the chosen month; only a report with a month key reads it. */
   periodEnd: string
   appOrigin: string | null
+  /** #1159: the month to open on, for a Dive with its own pickers; this month when none. */
+  month?: 'this' | 'last'
 }
 
 export type Refusal = 'not_your_store' | 'whole_stores_only' | 'report_not_set_up'
@@ -53,9 +57,29 @@ function reachByStore(places: readonly Place[]): Map<string, Set<string> | null>
 
 const sorted = (values: Iterable<string>) => [...values].sort()
 
+/** Each store's reach as a Dive reads it: null for the whole store, else its subcategories, in order. */
+function reachState(reach: Map<string, Set<string> | null>) {
+  return Object.fromEntries(sorted(reach.keys()).map(store => {
+    const held = reach.get(store)!
+    return [store, held === null ? null : sorted(held)]
+  }))
+}
+
+/**
+ * #1159: a Dive with its own Store and Month pickers (v16, data-warehouse#4739) gets exactly the
+ * reader's reach, the store to open on when it is theirs, the month, and the origin. No key of the
+ * one-store contract: the Dive takes `reach` beside one of them as a scope error.
+ */
+function pickerFilters(report: ReportRecord, reach: Map<string, Set<string> | null>, opening: Opening): Filters {
+  if (!reach.size) return { refused: 'not_your_store' }
+  return { state: { reach: reachState(reach), ...(opening.store !== undefined && reach.has(opening.store) ? { store: opening.store } : {}),
+    month: opening.month ?? 'this', ...(report.ready_signal && opening.appOrigin ? { app_origin: opening.appOrigin } : {}) } }
+}
+
 export function diveFilters(report: ReportRecord, places: readonly Place[], opening: Opening): Filters {
   const state: Record<string, unknown> = {}
   const reach = reachByStore(places)
+  if (report.pickers_in_dive) return pickerFilters(report, reach, opening)
   switch (report.filter_shape) {
     case 'One store and subcategories': {
       if (!report.store_key || !report.subcategory_key || !report.whole_store_key) return { refused: 'report_not_set_up' }
@@ -75,10 +99,7 @@ export function diveFilters(report: ReportRecord, places: readonly Place[], open
     }
     case 'Stores and subcategories': {
       if (!report.store_key) return { refused: 'report_not_set_up' }
-      state[report.store_key] = Object.fromEntries(sorted(reach.keys()).map(store => {
-        const held = reach.get(store)!
-        return [store, held === null ? null : sorted(held)]
-      }))
+      state[report.store_key] = reachState(reach)
       break
     }
     case 'No filter':
@@ -91,7 +112,12 @@ export function diveFilters(report: ReportRecord, places: readonly Place[], open
   return { state }
 }
 
-/** The stores the bar offers on this report: the reader's, on a report taking one store; else none. */
+/** The stores the bar offers on this report: the reader's, on a report taking one store; else none (#1159: none when the Dive has its own pickers). */
 export function storesOfReport(report: ReportRecord, places: readonly Place[]): string[] {
-  return report.filter_shape === 'One store and subcategories' ? sorted(reachByStore(places).keys()) : []
+  return report.filter_shape === 'One store and subcategories' && !report.pickers_in_dive ? sorted(reachByStore(places).keys()) : []
+}
+
+/** Every store the reader reaches, whatever the report takes. */
+export function storesReached(places: readonly Place[]): string[] {
+  return sorted(reachByStore(places).keys())
 }

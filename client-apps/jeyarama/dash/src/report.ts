@@ -84,6 +84,8 @@ export const MONTH_CHOICES: readonly MonthChoice[] = ['this', 'last']
 
 export interface Report {
   state: ReportState
+  /** #1159: the Dive has its own Store and Month pickers, so the page draws no heading over it. */
+  pickers_in_dive?: boolean
   store: string
   /** Which month the report is of (#750). */
   month: MonthChoice
