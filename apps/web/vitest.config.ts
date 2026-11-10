@@ -73,11 +73,17 @@ export default defineConfig({
       // ChecklistView and AccessTokens. The count moves by a few between runs
       // (component tests take different render branches run to run): 618 on
       // the PR, 620 on main for the same code. The cap leaves that margin.
+      // Second pass: 505 uncovered of 10,256, measured the same way; the cap
+      // is that plus 5. Branches that need real layout, which jsdom does not
+      // do: PathBar's measured widths and its ResizeObserver absence, and
+      // LinkControl's choice of opening above or below. Most of the rest are
+      // reachable and untested: ImportWizard, FormArrangement,
+      // ListRows, RowPane, AdminLayout and FirstRunSetup lead.
       thresholds: {
         lines: 100,
         statements: -1,
         functions: 100,
-        branches: -625,
+        branches: -510,
       },
     },
   },
