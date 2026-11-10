@@ -169,7 +169,7 @@ async function logExecution(r: ExecutionRecord): Promise<void> {
         problem_alert_queued = case
           when last_outcome is distinct from ${r.outcome} or ${r.outcome} = 'success' then false
           else problem_alert_queued end,
-        last_result = ${r.outcome === 'error' ? (r.error ?? null) : (r.result ?? null)}, updated_at = now()
+        last_result = ${r.outcome === 'error' ? r.error! : (r.result ?? null)}, updated_at = now()
     where method = ${r.method}`
 }
 
