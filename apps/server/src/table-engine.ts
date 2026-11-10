@@ -378,7 +378,7 @@ export async function tableStorageIdentity(meta: TableMeta) {
   if (meta.data_source) {
     if (!meta.external_table) return null
     return { schema: meta.external_schema ?? '', relation: meta.external_table,
-      row_key: [meta.external_pk!], data_source: meta.data_source, discriminator: null }
+      row_key: [meta.external_pk || ROW_KEY], data_source: meta.data_source, discriminator: null }
   }
   if (meta.kind === 'settings') {
     return { schema: PLATFORM_SCHEMA, relation: 'single_value', row_key: ['table_name', 'field'],
@@ -546,8 +546,8 @@ export async function updateTable(
   // binding is what validateDef judges against (and what stays stored).
   if (existing.data_source) {
     def.data_source = existing.data_source
-    def.external_table = existing.external_table!
-    def.external_pk = existing.external_pk!
+    def.external_table = existing.external_table ?? undefined
+    def.external_pk = existing.external_pk ?? undefined
   } else if (def.data_source) {
     throw new AppError('ValidationError', 'An existing Table cannot be bound to a data source')
   }
