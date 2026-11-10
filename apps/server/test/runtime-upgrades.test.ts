@@ -437,6 +437,18 @@ describe('An upgrade never goes backward', () => {
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
+  test('an installed app with no record of what it declared cannot be upgraded from (#1178)', async ({ admin }) => {
+    const source = resolve('../..', 'test-apps/other')
+    const { directory } = await targetPackage()
+    try {
+      await discoverPackages([source])
+      await admin.post('/api/install_app', { name: 'other' })
+      await discoverPackages([source, directory])
+      await sql`update installed_app set manifest = null where name = 'other'`
+      await expectRefused(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' }), 417, 'no complete record')
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
   test('previewing an upgrade to the version already installed is refused and changes nothing', async ({ admin }) => {
     await discoverPackages([resolve('../..', 'test-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })

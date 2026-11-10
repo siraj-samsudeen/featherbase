@@ -71,6 +71,9 @@ describe('the deploy key', () => {
       const res = await app.request('/deliver/app', { method: 'POST', body: '{}',
         headers: { authorization: `Bearer ${KEY}`, 'content-type': 'application/json', 'content-length': String(100 * 1024 * 1024) } })
       await expectStatus(res, 417)
+      const notJson = await app.request('/deliver/app', { method: 'POST', body: 'not json',
+        headers: { authorization: `Bearer ${KEY}`, 'content-type': 'application/json' } })
+      await expectStatus(notJson, 417)
     } finally { vi.unstubAllEnvs() }
   })
 })
