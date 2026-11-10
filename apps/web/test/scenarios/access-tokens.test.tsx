@@ -6,7 +6,7 @@ import { screen } from '@testing-library/react'
 import { describe } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderSession, inside, type Session } from '../pg-test'
+import { test, expect, renderSession, byTestId, type Session } from '../pg-test'
 
 const scenario = scenarioFor(test, 'access-tokens')
 const WAIT = { timeout: 15_000 }
@@ -26,7 +26,7 @@ async function openTokens(admin: TestClient): Promise<{ session: Session }> {
 
 /** The service account's row on the Service accounts tab. */
 const accountRow = (session: Session, account: Account, fn: Parameters<Session['within']>[1]) =>
-  inside(session.clickButton('Service accounts'), `sa-${account.row_id}`, fn)
+  session.clickButton('Service accounts').within(byTestId(`sa-${account.row_id}`), fn)
 
 const prepareToken = (session: Session, account: Account) =>
   accountRow(session, account, (row) => row.clickButton('Issue token'))

@@ -10,7 +10,7 @@ import { rowHref, tableHref } from 'shared'
 import { deleteStored } from 'server/src/storage'
 import { grantRole, patchDoc } from 'server/test/fixtures'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp, onScreen, inside, byTestId } from '../pg-test'
+import { test, expect, renderApp, onScreen, byTestId } from '../pg-test'
 import { useNodeMultipart } from '../node-multipart'
 
 configure({ asyncUtilTimeout: 10_000 })
@@ -87,7 +87,7 @@ async function tagPlant(as: Client) {
   await area('Collaboration')
   await userEvent.type(await screen.findByTestId('tag-input'), 'priority')
   await onScreen().clickButton('Add')
-  await inside(onScreen(), 'tag-chip', (el) => el.assertText('priority'))
+  await onScreen().within(byTestId('tag-chip'), (el) => el.assertText('priority'))
   expect(screen.getByRole('button', { name: 'Remove priority' })).toBeVisible()
 }
 
@@ -105,7 +105,7 @@ describe('record-workspace', () => {
     await step('the unfinished name is still present and can be saved', async () => {
       await onScreen().within(byTestId('form-view'), (form) => form.assertValue('Plant name', 'Tenkasi distribution'))
       await user.click(screen.getByTestId('form-save'))
-      await inside(onScreen(), 'form-banner', (el) => el.assertText('Saved'))
+      await onScreen().within(byTestId('form-banner'), (el) => el.assertText('Saved'))
       expect((await admin.get<{ plant_name: string }>('/api/table/Plant/9154')).plant_name).toBe('Tenkasi distribution')
     })
     await step("the row's print and related navigation remain reachable", async () => {
@@ -132,10 +132,10 @@ describe('record-workspace', () => {
       await onScreen().check('Select Tenkasi')
     })
     await step('the selection offers deletion of rows separately from deletion of the Table', async () => {
-      await inside(onScreen(), 'bulk-delete', (el) => el.assertText('Delete rows'))
+      await onScreen().within(byTestId('bulk-delete'), (el) => el.assertText('Delete rows'))
       expect(screen.queryByTestId('delete-table')).not.toBeInTheDocument()
       await onScreen().clickButton('Table administration')
-      await inside(onScreen(), 'delete-table', (el) => el.assertText('Delete Table'))
+      await onScreen().within(byTestId('delete-table'), (el) => el.assertText('Delete Table'))
       await onScreen().pressKey('Escape')
     })
     await step('clearing the selection removes the row operations without changing Tenkasi', async () => {
@@ -208,18 +208,18 @@ describe('record-workspace', () => {
     await step('the existing collaboration is readable without collaboration mutation controls', async () => {
       await onScreen().clickButton('Collaboration')
       const me = await admin.get<{ full_name: string }>(`/api/table/Person/${encodeURIComponent(admin.user!)}`)
-      await inside(onScreen(), 'assignments-panel', (el) => el.assertText(me.full_name))
-      await inside(onScreen(), 'tags-panel', (el) => el.assertText('priority'))
-      await inside(onScreen(), 'attachments-panel', (el) => el.assertText('plant-note.txt'))
+      await onScreen().within(byTestId('assignments-panel'), (el) => el.assertText(me.full_name))
+      await onScreen().within(byTestId('tags-panel'), (el) => el.assertText('priority'))
+      await onScreen().within(byTestId('attachments-panel'), (el) => el.assertText('plant-note.txt'))
       for (const id of ['assign-submit', 'tag-add', 'attach-file', 'attachment-delete'])
         expect(screen.queryByTestId(id)).not.toBeInTheDocument()
       await onScreen().clickButton('Activity')
-      await inside(onScreen(), 'activity-timeline', (el) => el.assertText('Supplier called'))
+      await onScreen().within(byTestId('activity-timeline'), (el) => el.assertText('Supplier called'))
       expect(screen.queryByTestId('comment-input')).not.toBeInTheDocument()
     })
     await step('the user can still consult its audit history', async () => {
       await onScreen().clickButton('Activity')
-      await inside(onScreen(), 'activity-timeline', (el) => el.assertText('Tenkasi before review'))
+      await onScreen().within(byTestId('activity-timeline'), (el) => el.assertText('Tenkasi before review'))
     })
   })
 

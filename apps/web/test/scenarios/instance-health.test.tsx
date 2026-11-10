@@ -21,7 +21,7 @@ import { runMain } from 'server/test/command-io'
 import { scenarioFor } from 'server/test/scenario'
 import { admitTasker } from 'server/test/tasker-client'
 import { OFFER_SETUP_KEY } from '../../src/pages/FirstRunSetup'
-import { test, expect, renderApp, onScreen, screenSession, inside } from '../pg-test'
+import { test, expect, renderApp, onScreen, screenSession, byTestId } from '../pg-test'
 
 type Client = Parameters<typeof renderApp>[1]
 type Rendered = Awaited<ReturnType<typeof renderApp>>
@@ -312,7 +312,7 @@ describe('instance-health', () => {
     })
     await step('the user invites another System Manager during setup', async () => {
       await open(admin, `${SETUP}/people`)
-      await inside(screenSession(LONG), 'first-run-setup', (setup) => setup
+      await screenSession(LONG).within(byTestId('first-run-setup'), (setup) => setup
         .fillIn('Full name', 'Acceptance administrator')
         .fillIn('Email', 'base-install-admin@example.com')
         .clickButton('Invite'))
