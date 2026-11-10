@@ -66,11 +66,16 @@ export default defineConfig({
       // the Home Pages answer arriving while the index is still mounted
       // after the first-run setup offer navigated away; React runs the
       // index's effect before its parent's offer in one commit, and the next
-      // commit unmounts the index. Branches are a later stage.
+      // commit unmounts the index.
+      // Stage 3 (branches), first pass: 618 uncovered of 10,322, measured on
+      // a fresh database, the four shards merged as CI does. All are reachable
+      // and simply untested yet; the largest are ImportWizard, SalesTarget,
+      // ChecklistView and AccessTokens.
       thresholds: {
         lines: 100,
         statements: -1,
         functions: 100,
+        branches: -618,
       },
     },
   },
