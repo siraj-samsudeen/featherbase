@@ -1,4 +1,5 @@
 import { ApiError } from './api'
+import type { Task } from './taskRows'
 
 export type PersonOption = { row_id: string; full_name?: string | null }
 
@@ -17,3 +18,17 @@ export async function listVisiblePeople(
     throw err
   }
 }
+
+export function peopleWithTaskResponsibility(
+  listed: { row_id: string; full_name?: string | null }[],
+  tasks: Pick<Task, 'assigned_to'>[],
+  currentUser: string,
+) {
+  const people = [...listed]
+  for (const rowId of [currentUser, ...tasks.map((task) => task.assigned_to ?? '')]) {
+    if (rowId && !people.some((person) => person.row_id === rowId)) people.push({ row_id: rowId })
+  }
+  return people
+}
+
+export function personName(person?: PersonOption) { return person?.full_name || 'Former member' }
