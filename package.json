@@ -20,7 +20,7 @@
     "check:e2e-dsl": "node --test tools/check-e2e-dsl.test.mjs && node tools/check-e2e-dsl.mjs",
     "check:sensitive": "node --test tools/check-sensitive.test.mjs && node tools/check-sensitive.mjs",
     "check:coverage-ignores": "node --test tools/check-coverage-ignores.test.mjs && node tools/check-coverage-ignores.mjs",
-    "check:dev": "node --test tools/dev.test.mjs tools/build-instance-apps.test.mjs tools/featherbase.test.mjs",
+    "check:dev": "node --test tools/dev.test.mjs tools/build-instance-apps.test.mjs tools/deliver-changed-apps.test.mjs tools/featherbase.test.mjs",
     "check:ci-scope": "node --test tools/ci-scope.test.mjs",
     "check:app-versions": "node --test tools/check-app-versions.test.mjs && node tools/check-app-versions.mjs",
     "check:vocabulary": "node --test tools/check-vocabulary.test.mjs && node tools/check-vocabulary.mjs",
