@@ -1,5 +1,4 @@
 import type { TableController } from '../controllers'
-import { sql } from '../db'
 import { AppError } from '../errors'
 import { tableRelation } from '../table-engine'
 import { isPrivileged } from '../permissions'
@@ -13,7 +12,7 @@ const controller: TableController = {
   hooks: {
     validate: async ({ row, isNew, user, tx }) => {
       if (isNew) return
-      const db = (tx ?? sql) as typeof sql
+      const db = tx
       const owners = (await db`
         select distinct created_by from ${db(await tableRelation('Auto Email Report'))}
         where report = ${String(row.row_id)}`).map((r) => String(r.created_by))

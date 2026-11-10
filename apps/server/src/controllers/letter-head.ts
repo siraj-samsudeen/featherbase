@@ -1,5 +1,4 @@
 import type { TableController } from '../controllers'
-import { sql } from '../db'
 
 // PRN-004: at most one Letter Head is the default. When a letterhead is saved
 // with is_default set, clear the flag on every other one — the print pipeline
@@ -10,9 +9,9 @@ const controller: TableController = {
   hooks: {
     before_save: async ({ row, tx }) => {
       if (!row.is_default) return
-      const stx = (tx ?? sql) as typeof sql
-      const self = String(row.row_id ?? '')
-      await stx`
+      // The row's id is resolved before before_save runs, on insert as on update.
+      const self = String(row.row_id)
+      await tx`
         update letter_head set is_default = false
         where is_default = true and row_id <> ${self}`
     },
