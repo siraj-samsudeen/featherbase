@@ -215,6 +215,55 @@ describe('an empty or partial target mart', () => {
   })
 })
 
+describe('names the masters do not give', () => {
+  /** Live first (no snapshot yet), then the snapshot, both read from `c`. */
+  async function bothPathsOn(c: DuckDBConnection): Promise<[Report, Report]> {
+    readerOn(c)
+    const live = await reportFor(READER)
+    expect((await buildSnapshot(SALES_TARGET_DATASET)).status).toBe('activated')
+    const snap = await reportFor(READER)
+    expect([live.source, snap.source]).toEqual(['live', 'snapshot'])
+    return [live, snap]
+  }
+
+  test('a store the store master leaves unnamed has no name or short code', async () => {
+    const w = await warehouseWith('update gold.masters.store set store_name = null, short_code = null')
+    try {
+      for (const r of await bothPathsOn(w.c)) expect(r).toMatchObject({ store_name: null, short_code: null })
+    } finally {
+      w.close()
+    }
+  })
+
+  test('a subcategory the hierarchy leaves unnamed reads as not in the hierarchy', async () => {
+    const w = await warehouseWith(`update gold.masters.merchandise_hierarchy set subcategory = null where material_group_code = '010101002'`)
+    try {
+      for (const r of await bothPathsOn(w.c)) expect(byCode(r)['010101002']).toMatchObject({ subcategory: '(name not in hierarchy)', target: 100 })
+    } finally {
+      w.close()
+    }
+  })
+
+  test('a target row with no store or group code is kept, and is no store\'s', async () => {
+    const w = await warehouseWith(`insert into marts.sales.target_vs_actual_daily values
+      (null, 'material_group', null, '2026-09-01', 10, 5, '2026-09-02')`)
+    try {
+      readerOn(w.c)
+      const built = await buildSnapshot(SALES_TARGET_DATASET)
+      expect(built).toMatchObject({ status: 'activated', rowCount: 6 })
+      expect((await reportFor(READER)).total).toMatchObject({ target: 300, actual: 145.5 })
+    } finally {
+      w.close()
+    }
+  })
+
+  test('a store with no rows in the snapshot has no name or short code', async () => {
+    duckdb()
+    expect((await buildSnapshot(SALES_TARGET_DATASET)).status).toBe('activated')
+    expect(await reportFor({ ...READER, plant_code: '1599' })).toMatchObject({ source: 'snapshot', store_name: null, short_code: null })
+  })
+})
+
 test('the live read refuses a store or subcategory code that is not all digits', async () => {
   duckdb()
   await expect(reportFor({ ...READER, material_groups: ["01' or '1'='1"] })).rejects.toThrow('refusing a store or subcategory code that is not all digits')
