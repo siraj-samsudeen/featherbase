@@ -271,3 +271,52 @@ export const validators = {
     context.row.member_key = ticked(context.row.removed) ? null : `${exact(context.row.report_bundle)}/${exact(context.row.report)}`
   },
 }
+
+/**
+ * #1173: what the platform's Waiting for access drawer offers for one person: their current job,
+ * site and section, the people in the same job (for the platform's role hints), and every bundle
+ * and report, each marked when it already reaches them. Giving one is `give_report` with the
+ * choice's payload plus the person. Managers only, like the Report access page.
+ */
+export async function grantOptions(ctx: AccessContext, on: string) {
+  managerOnly(ctx)
+  const person = exact((ctx.payload as { person?: unknown } | undefined)?.person)
+  if (!person) ctx.reject!('Choose a person')
+  const base = ctx.baseTables!
+  const employees = (await all(base, 'Employee', [EMPLOYEE_STATUS], [['person', '=', person]])).filter(row => text(row[EMPLOYEE_STATUS]) === 'Current')
+  const held = employees.length
+    ? (await all(base, 'Job Assignment', ['job', 'site', 'section', 'starts_on', 'ends_on'], [['employee', 'in', employees.map(row => exact(row.row_id))]])).filter(row => holdsOn(row, on))
+    : []
+  const jobs = [...new Set(held.map(row => exact(row.job)).filter(Boolean))].sort()
+  const nameOf = async (table: string, ids: string[]) => {
+    const wanted = [...new Set(ids.filter(Boolean))]
+    if (!wanted.length) return []
+    const rows = await all(base, table, ['name'], [['row_id', 'in', wanted]])
+    return wanted.map(id => text(rows.find(row => exact(row.row_id) === id)?.name) || id)
+  }
+  const about = [
+    { label: 'Job', value: jobs.join(', ') },
+    { label: 'Site', value: (await nameOf('Site', held.map(row => exact(row.site)))).join(', ') },
+    { label: 'Section', value: (await nameOf('Section', held.map(row => exact(row.section)))).join(', ') },
+  ].filter(line => line.value)
+  // Everyone else holding one of those jobs today.
+  const peers = new Set<string>()
+  if (jobs.length) {
+    const same = (await all(base, 'Job Assignment', ['employee', 'starts_on', 'ends_on'], [['job', 'in', jobs]])).filter(row => holdsOn(row, on))
+    const ids = [...new Set(same.map(row => exact(row.employee)))]
+    if (ids.length)
+      for (const row of await all(base, 'Employee', ['person', EMPLOYEE_STATUS], [['row_id', 'in', ids]]))
+        if (text(row[EMPLOYEE_STATUS]) === 'Current' && exact(row.person) && exact(row.person) !== person) peers.add(exact(row.person))
+  }
+  const roles = (await ctx.people!.rolesOf?.(person)) ?? []
+  const reaching = await reportsGivenTo(base, person, roles, on)
+  const { rows } = await grants(base)
+  const bundleReaches = (bundle: string) => rows.some(row => row.report_bundle === bundle
+    && (row.person === person || (row.role !== null && roles.includes(row.role)) || (row.job !== null && jobs.includes(row.job))))
+  const named = await names(ctx)
+  const choices = [
+    ...[...named.bundles].sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) => ({ id: `bundle:${id}`, label: name, group: 'Bundle', given: bundleReaches(id), payload: { report_bundle: id } })),
+    ...[...named.reports].sort((a, b) => a[1].name.localeCompare(b[1].name)).map(([key, report]) => ({ id: `report:${key}`, label: report.name, group: 'Report', given: reaching.has(key), payload: { report: key } })),
+  ]
+  return { about, peers: [...peers].sort(), choices }
+}
