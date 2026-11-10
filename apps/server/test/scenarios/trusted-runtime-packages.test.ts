@@ -5,7 +5,7 @@
 // the active change feather-tickets-stage-one), step by step; what a person
 // sees in the shared bar is in apps/web/test/scenarios/.
 import { randomUUID } from 'node:crypto'
-import { cp, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { describe, expect } from 'vitest'
 import { makeClient, type CreateUserFn, type TestClient } from 'feather-testing-postgres'
@@ -22,6 +22,7 @@ const REPO = resolve(__dirname, '../../../..')
 const TASKER = join(REPO, 'example-apps/tasker')
 const TICKETS = join(REPO, 'example-apps/tickets')
 const PLUM = join(REPO, 'test-apps/fixtures/plum-accent')
+const OTHER = join(REPO, 'test-apps/other')
 const TICKETS_VERSION = (JSON.parse(await readFile(join(TICKETS, 'package.json'), 'utf8')) as { version: string }).version
 
 // Tickets records an upgrade step: its Tables and actions answer only a client
@@ -122,6 +123,50 @@ async function installTasker(admin: TestClient, directory = TASKER) {
 const page = (client: TestClient, path: string) => client.fetch(path, { headers: { accept: 'text/html' } })
 
 describe('trusted-runtime-packages', () => {
+  // ---- An upgrade needs only the new version ----
+
+  scenario('An app upgrades once its old files are gone', async ({ admin }, step) => {
+    const first = await mkdtemp(resolve('test/.upgrade-first-'))
+    const second = await mkdtemp(resolve('test/.upgrade-second-'))
+    try {
+      await step('the user installed version 1 of an app and added a row to it', async () => {
+        await cp(OTHER, first, { recursive: true })
+        expect(await discoverPackages([first])).toEqual([])
+        await admin.post('/api/install_app', { name: 'other' })
+        await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'kept', quantity: 7 } })
+      })
+      await step('the server now holds only version 2 of that app', async () => {
+        // Version 2 adds a Notes column, with the step that moves version 1 to it.
+        await cp(OTHER, second, { recursive: true })
+        const manifest = JSON.parse(await readFile(join(second, 'featherbase.json'), 'utf8'))
+        const pkg = JSON.parse(await readFile(join(second, 'package.json'), 'utf8'))
+        const column = { column_name: 'notes', label: 'Notes', column_type: 'Text' }
+        manifest.tables[0].columns.push(column)
+        manifest.migrations = [{ id: 'add_notes', fromVersion: pkg.version, toVersion: '2.0.0',
+          operations: [{ kind: 'addColumn', table: 'other.task', column }] }]
+        await writeFile(join(second, 'package.json'), JSON.stringify({ ...pkg, version: '2.0.0' }))
+        await writeFile(join(second, 'featherbase.json'), JSON.stringify(manifest))
+        await rm(first, { recursive: true, force: true })
+        expect(await discoverPackages([second])).toEqual([])
+      })
+      await step('the user previews and applies the upgrade to version 2', async () => {
+        const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
+        await admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: plan.planId })
+        await admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })
+      })
+      await step('the app is on version 2 and the row is still there', async () => {
+        expect(await sql`select package_version from installed_app where name = 'other'`).toEqual([{ package_version: '2.0.0' }])
+        expect(await admin.get<{ quantity: number; notes: string | null }>('/api/table/other.task/kept'))
+          .toMatchObject({ quantity: 7, notes: null })
+      })
+    } finally {
+      await rm(first, { recursive: true, force: true })
+      await rm(second, { recursive: true, force: true })
+      await discoverPackages([])
+      await loadInstalledApps()
+    }
+  })
+
   // ---- An app owns its screen under the shared top bar ----
 
   scenario('A missing piece stays missing', async ({ admin }, step) => {
