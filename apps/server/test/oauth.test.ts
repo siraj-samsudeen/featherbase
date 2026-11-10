@@ -115,7 +115,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
       const cookie = expectSessionCookie(res, hours, { before, after })
       const redeemed = await redeem(api, handoffCode(res), cookie)
       await expectStatus(redeemed, 200)
-      expect(Object.keys((await redeemed.json()) as object).sort()).toEqual(['token', 'user'])
+      expect(Object.keys((await redeemed.json()) as object).sort()).toEqual(['apps', 'token', 'user'])
     }
   })
 
