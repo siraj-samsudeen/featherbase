@@ -174,7 +174,7 @@ describe('what the step leaves alone or finishes', () => {
     const { main } = await import('../src/cli')
     const out = captureIO()
     expect(await main(['repin-apps'], out.io)).toBe(1)
-    expect(out.stderr()).toContain('production needs a new version')
+    expect(out.stderr()).toContain('Re-pinning needs a server and database that agree on the environment')
   })
 
   test('cli repin-apps re-pins on a dev database', async () => {
