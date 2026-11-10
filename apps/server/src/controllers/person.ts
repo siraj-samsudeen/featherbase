@@ -44,7 +44,8 @@ const controller: TableController = {
           throw new AppError('ValidationError', 'A username is 3–64 lowercase letters, digits, dots, dashes or underscores', { username: 'invalid' })
         row.username = username
       }
-      const self = String(row.row_id ?? old?.row_id ?? '')
+      // The row's id is resolved before any hook; an update's row is merged.
+      const self = String(row.row_id)
       const clash = async (value: string, field: string) => {
         const [hit] = await tx`
           select row_id from person

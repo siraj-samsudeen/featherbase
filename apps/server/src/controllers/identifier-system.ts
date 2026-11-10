@@ -31,10 +31,12 @@ const controller: TableController = {
   table: 'Identifier System',
   hooks: {
     before_validate: async ({ row, old, isNew, tx }) => {
-      const key = String(row.row_id ?? old?.row_id ?? '')
+      // The row's id is resolved before any hook, and kind is a required
+      // column; an update's row is already merged with the saved one.
+      const key = String(row.row_id)
       if (isNew && !IDENTIFIER_SYSTEM_KEY.test(key))
         throw new AppError('ValidationError', 'An identifier system key is a lowercase slug like "stylehr-employee-code"', { row_id: 'lowercase slug' })
-      const kind = oneOf(row.kind ?? old?.kind, IDENTIFIER_KINDS, 'kind') as IdentifierKind
+      const kind = oneOf(row.kind, IDENTIFIER_KINDS, 'kind') as IdentifierKind
       if (!isNew && old && row.kind !== undefined && row.kind !== old.kind) {
         const [used] = await tx`select 1 from person_identifier where system = ${key} limit 1`
         if (used) throw new AppError('ValidationError', 'The kind cannot change once values are recorded', { kind: 'fixed while values exist' })
