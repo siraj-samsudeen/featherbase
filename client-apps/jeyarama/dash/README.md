@@ -24,7 +24,9 @@ the period, why the reader sees that store, and what the figures measure. Reader
 codes: the quick view names subcategories without their codes, and the store picker names stores
 without plant codes. The page opens each Dive's latest saved version: no version is pinned anywhere,
 so saving a Dive on MotherDuck releases it (#937). A report with a quick view stands it in when its
-Dive can't load; any other says "This report couldn't open" with Try again.
+Dive can't load; any other says "This report couldn't open" with Try again. A Dive not up within
+15 s (`DIVE_READY_TIMEOUT_MS`) keeps loading out of sight behind that view. If it then says it is
+ready, the page switches to it in the same frame. A frame that errors falls back for good (#1143).
 
 ## Layout
 

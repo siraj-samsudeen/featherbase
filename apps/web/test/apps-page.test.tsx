@@ -250,14 +250,19 @@ test("an app's declarations read in words: a grant on chosen columns, a grant on
   })
 })
 
-// Defect pinned (#1132): version 1 actions name their actions in `names` and carry no
-// `operations`, and the details panel reads Object.keys(actions.operations).
-test.fails('an app that declares its actions by name lists them', async ({ admin }) => {
-  vi.spyOn(console, 'error').mockImplementation(() => {})
+test('an app that declares its actions by name lists them', async ({ admin }) => {
   await withSource('true', async () => {
     await renderApp('/featherbase/admin/apps', admin)
     const details = await screen.findByRole('region', { name: 'Other tasks details' })
     expect(within(details).getByRole('region', { name: 'What it adds' })).toHaveTextContent('Actionsclose_task')
+  }, { actions: { version: 1, names: ['close_task'], tables: ['other.task'] } })
+})
+
+test('an app that declares its actions by name lists the Tables they write', async ({ admin }) => {
+  await withSource('true', async () => {
+    await renderApp('/featherbase/admin/apps', admin)
+    const details = await screen.findByRole('region', { name: 'Other tasks details' })
+    expect(within(details).getByRole('region', { name: 'What it adds' })).toHaveTextContent('Action Tablesother.task')
   }, { actions: { version: 1, names: ['close_task'], tables: ['other.task'] } })
 })
 
