@@ -325,6 +325,40 @@ async function placeDrops(): Promise<HealthCheck[]> {
   })
 }
 
+/** rama_dw #4588: the one enabled scope provider reads its Tables on every
+ *  person_scope request, and a read of a Table or column the instance lacks
+ *  fails, which refuses everyone. This names what is missing first: each Table
+ *  the manifest's `scopeProvider.tables` lists, and each column it declares
+ *  reading from them under `baseTables.read`. Names only, never a row. */
+async function scopeProviderTables(): Promise<HealthCheck[]> {
+  const providers = await sql`select name, manifest from installed_app
+    where runtime_package and enabled and not activation_pending and manifest ? 'scopeProvider' order by name`
+  if (providers.length !== 1) return []
+  const [{ name, manifest }] = providers as unknown as { name: string; manifest: { title?: string; scopeProvider: { tables: string[] }; baseTables?: { read?: Record<string, string[]> } } }[]
+  const title = manifest.title ?? name
+  const tables = manifest.scopeProvider.tables
+  const read = manifest.baseTables?.read ?? {}
+  const have = new Set((await sql`select name from table_def where name in ${sql(tables)}`).map((r) => String(r.name)))
+  const wanted = tables.filter((t) => have.has(t)).flatMap((t) => (read[t] ?? []).map((column) => [t, column] as const))
+  const columns = wanted.length
+    ? new Set((await sql`select parent, column_name from column_def where parent in ${sql([...new Set(wanted.map(([t]) => t))])}`).map((r) => `${r.parent}.${r.column_name}`))
+    : new Set<string>()
+  const missing = [
+    ...tables.filter((t) => !have.has(t)).map((t) => `Table ${t}`),
+    ...wanted.filter(([t, c]) => !columns.has(`${t}.${c}`)).map(([t, c]) => `column ${t}.${c}`),
+  ]
+  const base = {
+    key: `scope-provider-tables:${name}`,
+    title: `Every Table ${title} reads for people's scope exists`,
+    severity: 'error' as const,
+    why: 'The scope provider reads these on every request for someone\'s scope; a Table or column the instance lacks makes that read fail, and then no one gets a scope.',
+  }
+  if (!missing.length) return [{ ...base, ok: true, message: `Every Table and column ${title} reads for people's scope exists.`, fix: null }]
+  return [{ ...base, ok: false,
+    message: `${title} reads for people's scope what this instance lacks: ${missing.join(', ')}. Until they exist, no one gets a scope from it.`,
+    fix: `Create the missing Tables and columns on this instance with the definitions the app expects (empty is enough), or run a version of ${title} that does not read them.` }]
+}
+
 /** Every check, in the page's order. */
 export async function runHealthChecks(opts: HealthCheckOptions = {}): Promise<HealthCheck[]> {
   const environment = opts.environment ?? config.environment
@@ -336,6 +370,7 @@ export async function runHealthChecks(opts: HealthCheckOptions = {}): Promise<He
     ...(await scheduledJobs(opts.now ?? new Date())),
     ...(await appsSetUp(environment)),
     ...(await placeDrops()),
+    ...(await scopeProviderTables()),
     await administratorPassword(environment),
   ]
   return checks.map((check) => ({ ...check, state: check.state ?? (
