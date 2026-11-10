@@ -60,13 +60,9 @@ export default defineConfig({
       // CI's unit-web job merges the four component shards' blobs and applies
       // these to the merge (tools/ci-shards.mjs runs each shard at 0).
       // Stage 2 (lines, statements, functions): measured on a fresh database,
-      // the whole jsdom suite. One statement is left: the Admin index's
-      // early return when another effect has already moved the address
-      // (router.tsx AdminIndexPage). It guards a race no test can hold open:
-      // the Home Pages answer arriving while the index is still mounted
-      // after the first-run setup offer navigated away; React runs the
-      // index's effect before its parent's offer in one commit, and the next
-      // commit unmounts the index.
+      // the whole jsdom suite; none is left uncovered. The Admin index's early
+      // return when the address has already moved on (router.tsx
+      // AdminIndexPage) is staged with a module mock in its own test file.
       // Stage 3 (branches), first pass: 618 uncovered of 10,322, measured on
       // a fresh database, the four shards merged as CI does. All are reachable
       // and simply untested yet; the largest are ImportWizard, SalesTarget,
@@ -81,7 +77,7 @@ export default defineConfig({
       // ListRows, RowPane, AdminLayout and FirstRunSetup lead.
       thresholds: {
         lines: 100,
-        statements: -1,
+        statements: 100,
         functions: 100,
         branches: -510,
       },
