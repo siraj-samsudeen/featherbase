@@ -60,7 +60,7 @@ function HiddenSteps({ label, items, onStep }: {
 /**
  * The path the user has walked: Back and Forward (disabled at the ends), every
  * step as a button (the current one aria-current="step"), Copy link with an
- * inline "Copied", and a slot for the Recent paths menu. Steps show whole or
+ * inline "Copied" once the copy succeeds (#1111: nothing when it is refused), and a slot for the Recent paths menu. Steps show whole or
  * not at all: those that do not fit around the current one sit behind a "…"
  * menu on their own side (earlier steps before, later steps after); a single step wider than the whole bar is shortened at a word, its
  * full name kept as its name and title. On a bar narrower than a wide window
@@ -72,7 +72,8 @@ export function PathBar({ steps, current, onStep, onBack, onForward, onCopyLink,
   onStep: (index: number) => void
   onBack: () => void
   onForward: () => void
-  onCopyLink: () => void
+  /** Copies the link; a rejected promise means it was not copied. */
+  onCopyLink: () => void | Promise<unknown>
   recent?: ReactNode
 }) {
   const [copied, setCopied] = useState(false)
@@ -114,6 +115,14 @@ export function PathBar({ steps, current, onStep, onBack, onForward, onCopyLink,
     const timer = setTimeout(() => setCopied(false), COPIED_MS)
     return () => clearTimeout(timer)
   }, [copied])
+
+  function copyLink() {
+    let copying: void | Promise<unknown>
+    try { copying = onCopyLink() } catch { return }
+    if (copying instanceof Promise) void copying.then(() => setCopied(true), () => {})
+    else setCopied(true)
+  }
+
   const from = Math.min(shown.from, steps.length - 1)
   const to = Math.min(shown.to, steps.length - 1)
   const indexed = steps.map((step, index) => ({ step, index }))
@@ -159,7 +168,7 @@ export function PathBar({ steps, current, onStep, onBack, onForward, onCopyLink,
         </nav>
       </div>
       {recent}
-      <Button onClick={() => { onCopyLink(); setCopied(true) }}>Copy link</Button>
+      <Button onClick={copyLink}>Copy link</Button>
       <span role="status" className="min-w-0 shrink-0 text-sm text-positive">{copied ? 'Copied' : ''}</span>
     </div>
   )

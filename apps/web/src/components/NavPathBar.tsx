@@ -40,7 +40,7 @@ export function NavPathBar() {
         onStep={nav.go}
         onBack={() => nav.go(path.at - 1)}
         onForward={() => nav.go(path.at + 1)}
-        onCopyLink={() => void navigator.clipboard?.writeText(new URL(nav.href(path), window.location.origin).href).catch(() => {})}
+        onCopyLink={() => navigator.clipboard.writeText(new URL(nav.href(path), window.location.origin).href)}
         recent={<RecentWalks paths={settings.recent} onPick={nav.open} />}
       />
     </div>
