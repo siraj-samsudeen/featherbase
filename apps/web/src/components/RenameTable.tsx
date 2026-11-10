@@ -35,7 +35,7 @@ export function RenameTable({ table, noun }: { table: string; noun: 'Table' | 'v
       await navigate({ to: '/featherbase/admin/table/$table', params: { table: meta.name }, search: { filters: undefined } })
       void queryClient.invalidateQueries()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e))
+      setError(e instanceof ApiError ? e.message : 'Rename failed')
       setBusy(false)
     }
   }
