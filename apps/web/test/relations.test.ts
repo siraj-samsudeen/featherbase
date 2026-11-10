@@ -37,6 +37,11 @@ describe('forwardLinks', () => {
     ])
   })
 
+  test('names a link column stored with no label by its column name', () => {
+    const bare = meta([column({ column_name: 'zone', column_type: 'Reference', reference_table: 'Zone' })])
+    expect(forwardLinks(bare, { zone: 'Z-1' })).toEqual([{ column: 'zone', label: 'zone', table: 'Zone', row_id: 'Z-1' }])
+  })
+
   test('leaves out a link column the caller may not see', () => {
     expect(forwardLinks(SITE, { secret_owner: 'psn_x' })).toEqual([])
   })
