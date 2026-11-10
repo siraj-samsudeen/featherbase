@@ -119,8 +119,11 @@ export async function seedTasker({ baseUrl, password = 'admin', expectedEnvironm
     let issue = await ensure('tasker.issue', 'row_id', scenario.row_id, {
       ...values, owner: personId(values.owner) ?? null, verifier: personId(values.verifier) ?? null,
     }, { issue_title: scenario.issue_title })
-    if (!existed) for (const step of after)
-      issue = await request('/api/save_row', { method: 'POST', body: { table: 'tasker.issue', row: { row_id: issue.row_id, updated_at: issue.updated_at, ...step } } })
+    // Read the issue before each step: the escalation job re-saves open issues, so the previous save's updated_at can be stale.
+    if (!existed) for (const step of after) {
+      const { updated_at } = await request(`/api/table/tasker.issue/${encodeURIComponent(issue.row_id)}`)
+      issue = await request('/api/save_row', { method: 'POST', body: { table: 'tasker.issue', row: { row_id: issue.row_id, updated_at, ...step } } })
+    }
     issueCount++
   }
   log(`Tasker issues ready (${issueCount} issues)`)
