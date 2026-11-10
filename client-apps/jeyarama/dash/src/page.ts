@@ -43,7 +43,10 @@ export function pageView({ embed, report, frameFailed = false, timedOut = false,
   const state = report?.ok ? report.value.state : undefined
   if (state === 'no_access') return { kind: 'no_access' }
   if (state === 'report_not_set_up') return { kind: 'failed' }
-  if (state === 'no_data_yet' || state === 'whole_stores_only') return { kind: 'empty', why: state }
+  if (state === 'whole_stores_only') return { kind: 'empty', why: state }
+  // #1159: the cached copy's month not arrived is about one store and month; a ready Dive wins.
+  if (state === 'no_data_yet') return embed?.ok && embed.value.frame && !frameFailed && diveReady
+    ? { kind: 'dive', src: embed.value.frame } : { kind: 'empty', why: state }
   if (embed?.ok && embed.value.frame && !frameFailed && (!timedOut || diveReady)) return { kind: 'dive', src: embed.value.frame }
   // Past the deadline the session request counts as failed, answered or not.
   if ((!embed && !frameFailed && !timedOut) || !report) return { kind: 'opening' }

@@ -274,6 +274,25 @@ describe('the report reads on the platform', () => {
       expect(called).toEqual([])
     })
 
+    // #1159: on the real platform, a report whose Dive has its own pickers.
+    test('opens a Dive with its own pickers with the reader\'s reach, and offers no picker in the bar', async ({ admin, createUser }) => {
+      const { leader } = await setup(admin, createUser)
+      await saveRow(admin, 'dash.report', { report_key: 'picked', report_name: 'Pickers in the Dive', dive_id: 'made-up-picked-dive',
+        filter_shape: 'One store and subcategories', store_key: 'plant_code', subcategory_key: 'material_groups', whole_store_key: 'whole_store',
+        month_key: 'period_end', quick_view: 'Sales target', pickers_in_dive: true })
+      await saveRow(admin, 'dash.report_access', { report: 'picked', role: 'Dash Reader' })
+      const called = await opening(admin)
+      await leader.post('/api/app_reads/dash/embed_session', { payload: { report: 'picked', store: '9901', month: 'last' } })
+      const bar = await leader.get<{ controls: { sets: string; options: unknown[] }[] }>('/api/app_bar/dash?report=picked')
+      // With no store named, the cached view opens on the reader's store that has figures.
+      const cached = await report(leader, { report: 'picked' }) as { store?: string; rows: { code: string }[]; pickers_in_dive?: boolean }
+      expect([cached.store, cached.rows.map(r => r.code), cached.pickers_in_dive]).toEqual(['9901', ['010101001'], true])
+      expect([called, bar.controls.map(control => [control.sets, control.options.length])]).toEqual([
+        [{ url: 'https://api.motherduck.com/v1/dives/made-up-picked-dive/embed-session',
+          body: { username: 'svc-made-up', initial_state: { reach: { 9901: ['010101001'] }, store: '9901', month: 'last' } } }],
+        [['store', 0], ['month', 0]]])
+    })
+
     test('never calls MotherDuck for a refused report', async ({ admin, createUser }) => {
       const { leader } = await setup(admin, createUser)
       const called = await opening(admin)
