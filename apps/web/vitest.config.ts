@@ -77,11 +77,14 @@ export default defineConfig({
       // measured widths and ResizeObserver absence, and LinkControl's choice
       // of opening above or below, need layout jsdom does not do, which a
       // stub of getBoundingClientRect may supply.
+      // The cap comes from CI's count, not a local one: CI's merged shards
+      // count about 6 more uncovered branches than a local run of the same
+      // commit (505 here was 511 there; 400 here was 406 there).
       thresholds: {
         lines: 100,
         statements: 100,
         functions: 100,
-        branches: -405,
+        branches: -411,
       },
     },
   },
