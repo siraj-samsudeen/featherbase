@@ -313,7 +313,7 @@ export function TableBuilder() {
                 .map((f) => `#${excelRow(f.sourceIndex, imported.headerExcelRow)} (${f.message})`)
                 .join('; ')}${failed.length > 3 ? ` and ${failed.length - 3} more` : ''}` +
               (skipped > 0
-                ? ` ${fmtCount(skipped)} rows had no data in the imported columns and were skipped.`
+                ? ` ${fmtCount(skipped)} ${skipped === 1 ? 'row' : 'rows'} had no data in the imported columns and ${skipped === 1 ? 'was' : 'were'} skipped.`
                 : ''),
           )
           await queryClient.invalidateQueries({ queryKey: ['tables'] })
