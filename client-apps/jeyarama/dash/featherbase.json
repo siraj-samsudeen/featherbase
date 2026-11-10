@@ -1865,6 +1865,12 @@
           }
         }
       ]
+    },
+    {
+      "id": "opens_for_dash_roles",
+      "fromVersion": "0.12.6",
+      "toVersion": "0.12.7",
+      "operations": []
     }
   ],
   "baseTables": {
