@@ -149,6 +149,39 @@ describe('EML-004 extended: on_create / on_save rules + templated recipient', ()
     expect((await queuedSave(SUBJ_RESOLVED)).length).toBe(1)
   })
 
+  test('a rule with no subject or message sends a subject naming the row and event, and an empty body', async ({ admin }) => {
+    await setupSaveRules(admin)
+    await sql`insert into email_rule ${sql({
+      row_id: 'EmlSave Bare', created_by: 'Administrator', updated_by: 'Administrator',
+      ref_table: SAVE_DT, event: 'on_create', recipient: 'bare@x.com', enabled: true,
+    })}`
+    const doc = await saveDoc(SAVE_DT, { title: 'bare' }, 'Administrator')
+    expect(await sql`select subject, body from email_queue where recipient = 'bare@x.com'`)
+      .toEqual([{ subject: `${SAVE_DT} ${doc.row_id} — on_create`, body: '' }])
+  })
+
+  test('a condition with no value matches a field left empty', async ({ admin }) => {
+    await setupSaveRules(admin)
+    await sql`insert into email_rule ${sql({
+      row_id: 'EmlSave Unraised', created_by: 'Administrator', updated_by: 'Administrator',
+      ref_table: SAVE_DT, event: 'on_create', condition_field: 'raised_by', recipient: 'unraised@x.com', subject: 'unraised', enabled: true,
+    })}`
+    await saveDoc(SAVE_DT, { title: 'nobody raised it' }, 'Administrator')
+    expect(await sql`select 1 from email_queue where recipient = 'unraised@x.com'`).toHaveLength(1)
+  })
+
+  test('a conditional rule fires when a field that was empty takes the matching value', async ({ admin }) => {
+    await setupSaveRules(admin)
+    await sql`insert into email_rule ${sql({
+      row_id: 'EmlSave Raised', created_by: 'Administrator', updated_by: 'Administrator',
+      ref_table: SAVE_DT, event: 'on_save', condition_field: 'raised_by', condition_value: 'boss@x.com',
+      recipient: 'raised@x.com', subject: 'raised', enabled: true,
+    })}`
+    const doc = await saveDoc(SAVE_DT, { title: 'later' }, 'Administrator')
+    await saveDoc(SAVE_DT, { row_id: doc.row_id, updated_at: (doc.updated_at as Date).toISOString(), raised_by: 'boss@x.com' }, 'Administrator')
+    expect(await sql`select 1 from email_queue where recipient = 'raised@x.com'`).toHaveLength(1)
+  })
+
   test('a rule whose templated recipient renders empty is skipped', async ({ admin }) => {
     await setupSaveRules(admin)
     const doc = await saveDoc(SAVE_DT, { title: 'no email' }, 'Administrator') // raised_by unset

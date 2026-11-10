@@ -107,3 +107,7 @@ test('a Table whose mandatory access admits none of the owner\'s roles is not re
   await admin.post(`/api/service_accounts/${account.row_id}/roles`, { roles: ['Vault Reader', 'Vault Member'] })
   expect(names((await admin.get<Reach>(reachOf(account.row_id))).read)).toContain('Reach Vault')
 })
+
+test('asking with no owner answers for the caller', async ({ admin }) => {
+  expect(await admin.get<Reach>('/api/access_tokens/reach')).toEqual(await admin.get<Reach>(reachOf('Administrator')))
+})

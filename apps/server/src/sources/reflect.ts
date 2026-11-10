@@ -1,7 +1,7 @@
 import { sanitizeHeaders, prettifyLabel, tableNameFromFile } from 'shared'
 import { assertNotPlatformRelation } from './platform-guard'
 import { sql } from '../db'
-import { AppError } from '../errors'
+import { AppError, errorMessage } from '../errors'
 import { createTable } from '../table-engine'
 import { ensureHomePageForTable } from '../home-pages'
 import { invalidateMeta } from '../meta'
@@ -300,7 +300,7 @@ export async function reflectTables(
     } catch (err) {
       result.skipped.push({
         table: tableName,
-        reason: err instanceof Error ? err.message : String(err),
+        reason: errorMessage(err),
       })
     }
   }

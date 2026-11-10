@@ -1,7 +1,8 @@
 // person-identities (D2, review M5): Sign In Method rows are configuration,
 // checked against what each kind can vouch for, and no change may lock an
 // Administrator or System Manager out.
-import { describe, expect } from 'vitest'
+import { describe, expect, vi } from 'vitest'
+import { getSignInMethod, methodUsable } from '../src/identities'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
@@ -66,5 +67,31 @@ describe('Sign In Method rows', () => {
     const res = await patchMethod(admin, 'password', { enabled: false })
     await expectStatus(res, 417)
     expect(((await res.json()) as { error: { message: string } }).error.message).toContain('Administrator')
+  })
+})
+
+describe('a sign-in method row with fields left empty', () => {
+  test('reads a missing label as blank', async () => {
+    await sql`update sign_in_method set label = null where row_id = 'google'`
+    expect((await getSignInMethod('google'))!.label).toBe('')
+  })
+
+  test('reads a missing new-person rule as refuse', async () => {
+    await sql`update sign_in_method set new_person = null where row_id = 'google'`
+    expect((await getSignInMethod('google'))!.new_person).toBe('refuse')
+  })
+
+  test('reads a blank new-person rule as refuse', async () => {
+    await sql`update sign_in_method set new_person = '' where row_id = 'google'`
+    expect((await getSignInMethod('google'))!.new_person).toBe('refuse')
+  })
+
+  test('Google with no client id at all is not usable without the mock provider', () => {
+    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    try {
+      expect(methodUsable({ kind: 'google', enabled: true })).toBe(false)
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })

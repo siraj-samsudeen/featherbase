@@ -152,6 +152,20 @@ describe('the checks (5.1)', () => {
     expect(applied.message).toContain('Administrator')
   })
 
+  test('an apply names its environment and revision, and an applier with no name', async () => {
+    await apply()
+    await sql`update instance_settings_apply set environment = 'production', revision = 'abc123', applied_by = 'svc_gone'`
+    const applied = byKey(await runHealthChecks(), 'settings-applied')
+    expect(applied.message).toMatch(/ by an unnamed principal for production from revision abc123\.$/)
+  })
+
+  test('settings match the file: a row field that drifted is named with its row', async () => {
+    await sql`delete from instance_settings_apply`
+    await apply({ settings: { 'Scheduled Job': [{ row_id: 'disable_leavers', enabled: false }] } })
+    await sql`update scheduled_job set enabled = true where row_id = 'disable_leavers'`
+    expect(byKey(await runHealthChecks(), 'settings-match-file').message).toContain('Scheduled Job disable_leavers enabled')
+  })
+
   test('settings match the file: nothing to compare before an apply; failing after a break-glass change, naming the field', async () => {
     await sql`delete from instance_settings_apply`
     expect(byKey(await runHealthChecks(), 'settings-match-file')).toMatchObject({ ok: true })
@@ -218,6 +232,12 @@ describe('the checks (5.1)', () => {
     const refused = byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers')
     expect(refused).toMatchObject({ ok: false, severity: 'error', message: 'The last run refused to act: disabled nobody: the feed is stale' })
     expect(refused.fix).toContain('Jobs')
+  })
+
+  test('scheduled jobs: a refusal that gave no reason fails the check all the same', async () => {
+    const now = new Date()
+    await sql`update scheduled_job set enabled = true, last_run_at = ${now}, last_outcome = 'refused', last_result = '  ' where method = 'disable_leavers'`
+    expect(byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers')).toMatchObject({ ok: false, message: 'The last run refused to act.' })
   })
 
   test('scheduled jobs: a switched-off job passes; an enabled one that stopped running fails', async () => {

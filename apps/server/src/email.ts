@@ -3,7 +3,7 @@ import { processEnvironment } from './env'
 import type { ConnectionOptions } from 'node:tls'
 import { createTransport } from 'nodemailer'
 import { sql } from './db'
-import { AppError } from './errors'
+import { AppError, errorMessage } from './errors'
 import { emailsAddress, parseInstanceAddresses } from './instance-addresses'
 import { FinalJobFailure, registerJob, enqueue } from './jobs'
 import { getDoc } from './document'
@@ -445,7 +445,7 @@ registerJob('send_email', async (payload, ctx) => {
       const [job] = await sql`select attempts, max_attempts from background_job where row_id = ${ctx.job.row_id}`
       if (job && Number(job.attempts) + 1 < Number(job.max_attempts)) status = 'queued'
     }
-    const message = err instanceof Error ? err.message : String(err)
+    const message = errorMessage(err)
     await sql`
       update email_queue set send_status = ${status}, error = ${message}, updated_at = now() where row_id = ${queueName}`
     // #334: a send that will not be retried fails its job now, with the

@@ -12,6 +12,7 @@ import { runMigrations } from './migrate'
 import { diagnoseAdminBootstrap } from './admin-bootstrap'
 import { preflightRelease } from './release-preflight'
 import { formatHealthReport, runHealthChecks } from './instance-health'
+import { errorMessage } from './errors'
 
 /** The release; resolves to the process's exit code (1 when it stopped). The
  *  caller owns the database connection: the entry point below ends it. */
@@ -33,7 +34,7 @@ export async function main(_argv: string[] = [], io: CommandIO = processIO, pref
         for (const line of formatHealthReport(await runHealthChecks()))
           (line.failing ? io.err : io.out)(line.text)
       } catch (err) {
-        io.err(`health: the checks could not run: ${err instanceof Error ? err.message : String(err)}`)
+        io.err(`health: the checks could not run: ${errorMessage(err)}`)
       }
     })
     return 0

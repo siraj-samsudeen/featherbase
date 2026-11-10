@@ -193,8 +193,9 @@ async function fromSnapshot(a: Assignment, snapshotId: string): Promise<Grouped[
     subcategory: r.subcategory == null ? null : String(r.subcategory),
     mtd_target: num(r.mtd_target),
     mtd_actual: num(r.mtd_actual),
-    days_with_actual: Number(r.days_with_actual ?? 0),
-    days: Number(r.days ?? 0),
+    // count() is never null, even over no rows.
+    days_with_actual: Number(r.days_with_actual),
+    days: Number(r.days),
   }))
 }
 

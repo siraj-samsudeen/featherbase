@@ -212,7 +212,7 @@ export async function listIdentifiers(person: string, viewer: string): Promise<P
     }
     out.push({
       id: String(r.id), system: String(r.system), system_label: String(r.system_label), kind: r.kind as IdentifierKind,
-      assigner: String(r.assigner ?? ''), value: shown.value, valid_from: r.valid_from as string | null,
+      assigner: String(r.assigner), value: shown.value, valid_from: r.valid_from as string | null,
       valid_to: r.valid_to as string | null, current: r.current === true, verified: r.verified === true,
       source: String(r.source), recorded_at: new Date(r.recorded_at as string | Date).toISOString(), note: (r.note as string | null) ?? null,
       worker_type: (r.worker_type as string | null) ?? null, editable, note_required: noteRequired,
@@ -304,7 +304,7 @@ export async function findByIdentifier(systemKey: string, raw: string, viewer: s
     resolved_to: String(r.resolved_to),
     replaced: r.replaced === true,
     current: r.current === true,
-    assigner: String(r.assigner ?? ''),
+    assigner: String(r.assigner),
     pending_invite: r.pending_invite === true,
   }))
 }

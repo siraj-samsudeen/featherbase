@@ -52,6 +52,9 @@ interface Found {
   linkedBy?: string
 }
 
+/** A person found through a live link, which always records who made it. */
+type Linked = Found & { linkedBy: string }
+
 export const NOT_PROVISIONED = 'Access not provisioned for this account. Contact IT.'
 export const ADDRESS_IN_USE = 'An account already uses this address. Contact your administrator.'
 const CONSUMER_DOMAINS = new Set(GOOGLE_CONSUMER_DOMAINS)
@@ -106,7 +109,8 @@ export async function assertEligible(method: SignInMethod, user: string): Promis
 function domainAdmitted(method: SignInMethod, v: VerifiedIdentity): { ok: boolean; reason: string } {
   if (!v.email_verified || !v.email) return { ok: false, reason: 'no verified email' }
   if (!domainAllowed(method, v.email)) return { ok: false, reason: 'domain not allowed' }
-  const domain = v.email.split('@')[1] ?? ''
+  // domainAllowed matched exactly one @ with a domain after it.
+  const domain = v.email.split('@')[1]
   if (CONSUMER_DOMAINS.has(domain) || parseDomainList(method.allowed_email_domains).includes('*'))
     return { ok: true, reason: 'allowed domain' }
   return v.hosted_domain === domain
@@ -127,10 +131,10 @@ function verifiedOf(method: SignInMethod, v: VerifiedIdentity): boolean | null {
   return KINDS[method.kind].verifiedEmail ? v.email_verified === true && Boolean(v.email) : null
 }
 
-async function linkedBySubject(method: SignInMethod, subject: string): Promise<Found | null> {
+async function linkedBySubject(method: SignInMethod, subject: string): Promise<Linked | null> {
   // person-resolution D5: an ended identity never opens an account.
   const [row] = await sql`select id, person_id, linked_by from sign_in_identity where method = ${method.key} and subject = ${subject} and ended_at is null`
-  return row ? { user: String(row.person_id), identity: String(row.id), linkedBy: String(row.linked_by ?? '') } : null
+  return row ? { user: String(row.person_id), identity: String(row.id), linkedBy: String(row.linked_by) } : null
 }
 
 /** #693: does the method's domain rule govern this link? Only while the
@@ -144,8 +148,8 @@ function domainRuled(method: SignInMethod): boolean {
  *  a person made themselves before #693 was never checked. Refused like an
  *  unknown address from a domain that is not allowed. An administrator's link
  *  or a claimed invite was that administrator's decision and is kept. */
-function assertLinkStillAdmitted(method: SignInMethod, v: VerifiedIdentity, found: Found): Found {
-  if (!domainRuled(method) || !(DOMAIN_RULED_LINKS as readonly string[]).includes(found.linkedBy ?? '')) return found
+function assertLinkStillAdmitted(method: SignInMethod, v: VerifiedIdentity, found: Linked): Found {
+  if (!domainRuled(method) || !(DOMAIN_RULED_LINKS as readonly string[]).includes(found.linkedBy)) return found
   const { ok, reason } = domainAdmitted(method, v)
   if (ok) return found
   console.warn(`[sign-in] ${method.key}: linked account refused (${reason}; hd ${v.hosted_domain ? 'present' : 'absent'})`)

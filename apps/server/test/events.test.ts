@@ -42,6 +42,21 @@ describe('#101: POST /api/events + GET /api/events/summary', () => {
     expect(a!.label).toBe('A latest')
   })
 
+  test('an event with no label or path is summarised with empty ones', async ({ admin }) => {
+    await admin.post('/api/events', { events: [{ kind: 'row', key: 'row:X/Bare' }] })
+    const summary = await admin.get<{ entries: Array<Record<string, unknown>> }>('/api/events/summary')
+    expect(summary.entries.find((e) => e.key === 'row:X/Bare')).toMatchObject({ label: '', path: '' })
+  })
+
+  test('a key visited more than ten times keeps its ten latest visits', async ({ admin }) => {
+    const now = Date.now()
+    await admin.post('/api/events', { events: Array.from({ length: 12 }, (_, i) => ({ kind: 'row', key: 'row:X/Often', at: now - i * 1000 })) })
+    const summary = await admin.get<{ entries: Array<Record<string, unknown>> }>('/api/events/summary')
+    const visits = summary.entries.find((e) => e.key === 'row:X/Often')!.visits as number[]
+    expect(visits).toHaveLength(10)
+    expect(Math.min(...visits)).toBeGreaterThanOrEqual(now - 9000)
+  })
+
   test('validation: unknown kind, empty batch, oversize batch are all 417', async ({ admin }) => {
     await expect(
       admin.post('/api/events', { events: [{ kind: 'hack', key: 'x' }] }),

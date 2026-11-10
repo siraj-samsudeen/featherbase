@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { sql } from './db'
 import { enqueue, type JobTrigger } from './jobs'
+import { errorMessage } from './errors'
 
 // Query-grained analytical dataset snapshots — the read side of
 // openspec/changes/query-grained-dataset-snapshots (data-warehouse), against the
@@ -218,7 +219,7 @@ export async function buildSnapshot(dataset: string, opts: BuildOpts = {}): Prom
       rowCount = await def.load(snapshotId, fetched.rows)
       loadMs = Date.now() - t1
     } catch (e) {
-      const reason = e instanceof Error ? e.message : String(e)
+      const reason = errorMessage(e)
       await sql`
         update dataset_snapshot
         set state = 'failed', error = ${reason}, fetch_ms = ${fetchMs}, load_ms = ${loadMs}, updated_at = now()

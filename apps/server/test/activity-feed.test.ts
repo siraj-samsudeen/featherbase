@@ -25,6 +25,12 @@ describe('#101: GET /api/activity_feed', () => {
     expect(feed.items[1]).toMatchObject({ kind: 'row', label: 'A' })
   })
 
+  test("a 'mine' item with no label or path is shown by its key, with no link", async ({ admin }) => {
+    await admin.post('/api/events', { events: [{ kind: 'search', key: 'search:unlabelled' }] })
+    const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine')
+    expect(feed.items[0]).toMatchObject({ kind: 'search', label: 'search:unlabelled', path: '' })
+  })
+
   test("another user's 'mine' feed never includes the caller's trail", async ({ admin, createUser }) => {
     await admin.post('/api/events', {
       events: [

@@ -3,7 +3,7 @@ import { COPY_CADENCES } from 'shared'
 import { sql } from './db'
 import { actionTransaction } from './action-transaction'
 import { appOperation } from './app-lifecycle'
-import { AppError } from './errors'
+import { AppError, errorMessage } from './errors'
 import { saveDoc } from './document'
 import { assertSystemManager } from './permissions'
 import type { SessionUser } from './auth'
@@ -125,7 +125,7 @@ registerJob(CONFLICT_NOTICE_JOB, async (payload, ctx) => {
     ctx.setResult(`Conflict notice for ${table} queued`)
   } catch (err) {
     if (tries >= NOTICE_TRIES)
-      throw new FinalJobFailure(`The conflict notice for ${table} could not be queued for a day: ${err instanceof Error ? err.message : String(err)}`)
+      throw new FinalJobFailure(`The conflict notice for ${table} could not be queued for a day: ${errorMessage(err)}`)
     await appOperation(() => retryConflictNotice(table, conflicts, tries + 1))
     ctx.setResult(`Conflict notice for ${table} could not be queued; trying again in ${NOTICE_RETRY_MINUTES} minutes`)
   }

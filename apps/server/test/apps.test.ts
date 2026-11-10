@@ -16,7 +16,7 @@ import { sql } from '../src/db'
 import type { TestClient } from 'feather-testing-postgres'
 import type { AppManifest } from '../src/apps'
 import { discoverPackages } from '../src/runtime-packages'
-import { expectRefused, expectStatus } from './fixtures'
+import { expectApiError, expectRefused, expectStatus } from './fixtures'
 
 // PLAT-001: an app installs its Tables + doc_events and uninstall tears the
 // Tables down. PLAT-002: an app's hook on a Table it does NOT own fires
@@ -194,6 +194,12 @@ async function makeSimpleTable(admin: TestClient, name: string) {
 }
 
 describe('app registry: install lifecycle', () => {
+  test('a manifest that is not an object is refused, naming the manifest', async ({ admin }) => {
+    const err = await expectApiError(admin.post('/api/install_app', { manifest: 42 }), { status: 417 })
+    expect(err.message).toContain('Invalid app manifest')
+    expect(Object.keys(err.fields ?? {})).toEqual(['manifest'])
+  })
+
   test('enable requests for unknown or declarative apps preserve real installed state', async ({ admin }) => {
     const declarative = 'enable-declarative'
     await admin.post('/api/install_app', { manifest: { name: declarative, tables: noteApp.tables } })

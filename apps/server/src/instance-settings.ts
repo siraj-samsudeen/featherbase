@@ -193,7 +193,8 @@ function fromFile(kind: ValueKind, v: unknown): unknown {
   }
 }
 
-/** A value from a variable, in the field's own type. Undefined when it isn't. */
+/** A value from a variable, in the field's own type. Undefined when it isn't.
+ *  The caller has already refused a variable that is unset or blank. */
 function fromVariable(kind: ValueKind, text: string): unknown {
   const v = text.trim()
   switch (kind) {
@@ -201,7 +202,7 @@ function fromVariable(kind: ValueKind, text: string): unknown {
       return v === 'true' ? true : v === 'false' ? false : undefined
     case 'int':
     case 'number': {
-      const n = v === '' ? Number.NaN : Number(v)
+      const n = Number(v)
       return Number.isFinite(n) && (kind === 'number' || Number.isInteger(n)) ? n : undefined
     }
     case 'json':

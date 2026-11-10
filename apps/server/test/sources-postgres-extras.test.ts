@@ -7,12 +7,12 @@ import { afterAll, beforeAll, describe, expect } from 'vitest'
 import postgres from 'postgres'
 import { test } from './pg-test'
 import { EXTERNAL_DATABASE_URL } from './external-database'
-import { invalidateSources, assertAllowed, resolveUrl } from '../src/sources/registry'
+import { allowlistQualificationGuidance, assertAllowed, getSource, invalidateSources, resolveUrl } from '../src/sources/registry'
 import { postgresDriver } from '../src/sources/postgres-driver'
 import { fkKey, singleColumnFks } from '../src/sources/fk'
 import { sql } from '../src/db'
 import type { Binding, SourceConfig } from '../src/sources/types'
-import { expectStatus } from './fixtures'
+import { expectRefused, expectStatus } from './fixtures'
 
 const URL_ENV = 'EXT_EXTRA_URL'
 process.env[URL_ENV] = EXTERNAL_DATABASE_URL
@@ -425,6 +425,22 @@ describe('Connection variables and the table allowlist', () => {
       'Table ext_extra.kitchen is not in the allowlist of data source probe',
     )
   })
+
+  test('an allowlist of only separators restricts nothing and needs no qualifying', () => {
+    expect(allowlistQualificationGuidance('postgres', ' ,\n, ')).toBeNull()
+  })
+
+  test('a source with no pool size or statement timeout set takes the defaults', async () => {
+    await sql`insert into data_source ${sql({ row_id: 'ext-defaults', engine: 'postgres', url_env: URL_ENV, pool_max: null, statement_timeout_ms: null })}`
+    invalidateSources()
+    expect(await getSource('ext-defaults')).toMatchObject({ pool_max: 5, statement_timeout_ms: 10000 })
+  })
+
+  test('a source whose pool size and statement timeout are zero takes the defaults', async () => {
+    await sql`insert into data_source ${sql({ row_id: 'ext-zeroes', engine: 'postgres', url_env: URL_ENV, pool_max: 0, statement_timeout_ms: 0 })}`
+    invalidateSources()
+    expect(await getSource('ext-zeroes')).toMatchObject({ pool_max: 5, statement_timeout_ms: 10000 })
+  })
 })
 
 describe('Foreign keys read from information_schema', () => {
@@ -523,6 +539,28 @@ describe('Saving a Data Source', () => {
     expect(await cli`select note, qty from ext_extra.plain order by qty`).toEqual([
       { note: 'alpha', qty: 1 }, { note: 'beta', qty: 2 }, { note: 'gamma', qty: 3 },
     ])
+  })
+
+  test('a binding that names no schema and a relation the source lacks names the relation alone', async ({ admin }) => {
+    await makeSource(admin)
+    await expectRefused(admin.post('/api/table_def', {
+      name: 'No Such Relation', data_source: 'ext-extra', external_table: 'nowhere', external_pk: 'id',
+      columns: [{ column_name: 'note', column_type: 'Data' }],
+    }), 417, 'Unknown source relation')
+    expect(await sql`select name from table_def where name = 'No Such Relation'`).toEqual([])
+  })
+
+  // Defect pinned (#1114): the binding is checked
+  // against the source's default schema and saved with no schema, but a read
+  // then quotes an empty schema name and every list fails with a 502.
+  test.fails('a binding that names no schema reads the source default schema', async ({ admin }) => {
+    await makeSource(admin)
+    await admin.post('/api/table_def', {
+      name: 'Plain No Schema', data_source: 'ext-extra', external_table: 'plain', external_pk: 'id',
+      columns: [{ column_name: 'note', column_type: 'Data' }],
+    })
+    const { data } = (await admin.get(`/api/table/Plain%20No%20Schema?fields=${encodeURIComponent('["note"]')}&order_by=note asc`)) as { data: { note: string }[] }
+    expect(data.map((r) => r.note)).toEqual(['alpha', 'beta', 'gamma'])
   })
 
   test('reflection without requested tables is rejected without creating bindings', async ({ admin }) => {

@@ -3,7 +3,7 @@ import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
-import { applyWorkflowAction, getActiveWorkflow, stateField } from '../src/workflow'
+import { applyWorkflowAction, currentState, getActiveWorkflow, stateField } from '../src/workflow'
 
 // Workflow state binding: a Workflow with `state_field` drives an EXISTING
 // column on the target Table (e.g. a `ticket_status` Choice) instead of adding the
@@ -108,5 +108,11 @@ describe('Workflow state_field binding', () => {
         },
       }),
     ).rejects.toMatchObject({ status: 417 })
+  })
+})
+
+describe('a row with no state yet', () => {
+  test('of a workflow with no states has none', () => {
+    expect(currentState({ row_id: 'Empty Flow', ref_table: DT, states: [], transitions: [] }, {})).toBe('')
   })
 })

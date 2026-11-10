@@ -105,12 +105,26 @@ describe('who counts as a leaver', () => {
   })
 })
 
+  test('a record with no code is still found by its number', async () => {
+    const plan = planLeavers([who('a', { record_ids: ['1'] })], [rec('1', '', { movement_active: false })], TODAY, TODAY)
+    expect(plan.to_disable.map((l) => l.person)).toEqual(['a'])
+  })
+
+  test('a code no record carries finds no record', async () => {
+    const plan = planLeavers([who('a', { codes: ['C-404'] })], [rec('1', 'C-1')], TODAY, TODAY)
+    expect(plan.not_found).toEqual(['a'])
+  })
+
 describe('a bad feed disables nobody', () => {
   test('refuses when the warehouse has no StyleHR day from yesterday or today', async () => {
     const plan = planLeavers([who('a', { record_ids: ['1'] })], [rec('1', 'C-1', { movement_active: false })], '2026-10-22', TODAY)
     expect(plan.refused).toMatch(/stale/)
     expect(plan.to_disable).toEqual([])
     expect(planLeavers([], [], '2026-10-23', TODAY).refused).toMatch(/no StyleHR employee records/)
+  })
+
+  test('refuses when the warehouse has no StyleHR day at all, saying none', async () => {
+    expect(planLeavers([], [rec('1', 'C-1')], null, TODAY).refused).toBe("the warehouse's StyleHR data is stale (latest day none, today 24-Oct-2026)")
   })
 
   test('refuses when more than 5% of linked people would go at once', async () => {
@@ -280,6 +294,10 @@ describe('the check on a live instance', () => {
     ])
   })
 
+  test('a run with nothing to report says no summary was sent', () => {
+    expect(formatSummaryDelivery({ plan: null, disabled: [], emailed: 0 })).toBe('leaver check: nothing to report; no summary sent')
+  })
+
   test('the scheduled job keeps where the summary went on its Job Execution row (#463)', async () => {
     await applySeedPack('jeyarama')
     await loadJobs()
@@ -373,6 +391,31 @@ describe('the check meets the world as it is', () => {
       : [['601', 'C-601', true, false, new Date('2024-01-01T00:00:00Z'), new Date('2026-10-20T00:00:00Z')]])
     const run = await runLeaverCheck({ today: TODAY })
     expect(run.disabled.map((l) => [l.person, l.reason])).toEqual([[p, 'exit date 20-Oct-2026 has passed']])
+  })
+
+  test('values the warehouse leaves empty, or hands back as text that is not a day, are read as unknown', async () => {
+    await applySeedPack('jeyarama')
+    const p = await makePerson({ full_name: 'Blank Record' })
+    await link(p, 'stylehr-employee-id', '611')
+    _setWarehouseReader(async (q) => q.includes('attendance')
+      ? [[TODAY]]
+      : [['611', null, null, 'false', 'not a day', null]])
+    const run = await runLeaverCheck({ today: TODAY })
+    expect(run.disabled.map((l) => [l.person, l.basis])).toEqual([[p, 'inactive']])
+  })
+
+  test('a warehouse with no attendance day refuses, even for an accepted count, and the summary says none', async ({ createUser }) => {
+    await applySeedPack('jeyarama')
+    await createUser({ email: 'mgr.noday@example.com', roles: ['System Manager'] })
+    const p = await makePerson({ full_name: 'Gone Person' })
+    await link(p, 'stylehr-employee-id', '621')
+    _setWarehouseReader(async (q) => q.includes('attendance') ? [] : [['621', 'C-621', true, false, '2024-01-01', null]])
+    const sent: MailMessage[] = []
+    _setLeaverSummarySender(async (m) => sent.push(m))
+    const run = await runLeaverCheck({ today: TODAY, acceptCount: 1 })
+    expect(run.plan?.refused).toMatch(/stale/)
+    expect(await enabled(p)).toBe(true)
+    expect(sent.find((m) => m.to === 'mgr.noday@example.com')?.body).toContain('(latest day none)')
   })
 
   test('a leaver disabled by someone else while the check runs is left as they are', async () => {

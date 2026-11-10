@@ -2,7 +2,7 @@ import { readOnce } from './permission-reads'
 import { randomBytes } from 'node:crypto'
 import { rowHref } from 'shared'
 import { sql, withTransaction } from './db'
-import { AppError } from './errors'
+import { AppError, errorMessage } from './errors'
 import { getMeta, invalidateMeta, physicalRowKey } from './meta'
 import { tableRelation, quoteRelation } from './table-engine'
 import { getRoles } from './permissions'
@@ -198,7 +198,7 @@ function conditionHolds(t: WorkflowTransition, row: Record<string, unknown>): bo
   try {
     return evalCondition(t.condition, row, `${t.state}→${t.action}`)
   } catch (err) {
-    console.warn(`[workflow] hiding "${t.action}": ${err instanceof Error ? err.message : String(err)}`)
+    console.warn(`[workflow] hiding "${t.action}": ${errorMessage(err)}`)
     return false
   }
 }

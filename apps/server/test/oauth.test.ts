@@ -5,7 +5,7 @@ import { parseInstanceAddresses } from '../src/instance-addresses'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { getBrowser } from '../src/print'
-import { expectStatus, makePerson } from './fixtures'
+import { expectRefused, expectStatus, makePerson } from './fixtures'
 import { _setGoogleFetch, assertSignInAvailable, exchangeCode, googleAuthorizeUrl, mintHandoffCode, mockApproveRedirect, mockConsentHtml, redeemHandoffCode, verifyState } from '../src/oauth'
 import type { TestClient } from 'feather-testing-postgres'
 import { expectSessionCookie, setSessionHours } from './session-cookie-test-utils'
@@ -609,6 +609,25 @@ describe('exchanging a code with Google itself', () => {
     expect(result).toEqual({ status: 'verified', subject: '9', email: null, email_verified: false, display_name: null, hosted_domain: null })
   })
 
+  test('an account Google sends with no address has none, unverified', async () => {
+    const { result } = await exchangeWith(json({ access_token: 'at' }), json({ sub: '10', email_verified: true }))
+    expect(result).toMatchObject({ subject: '10', email: null, email_verified: false })
+  })
+
+  test('an exchange with no PKCE verifier sends an empty one', async () => {
+    const bodies: string[] = []
+    _setGoogleFetch(async (input, init) => {
+      bodies.push(String(init?.body ?? ''))
+      return String(input).includes('oauth2.googleapis.com') ? json({ access_token: 'at' }) : json({ sub: '11' })
+    })
+    try {
+      await exchangeCode('the-code', '/api/oauth/google/callback', 'client-1', undefined)
+    } finally {
+      _setGoogleFetch(null)
+    }
+    expect(new URLSearchParams(bodies[0]).get('code_verifier')).toBe('')
+  })
+
   test('a refused token exchange, a reply with no access token, a refused userinfo and an account with no ID each fail as a Google error', async () => {
     const message = async (token: Response, userinfo?: Response) => ((await exchangeWith(token, userinfo)).result as Error).message
     expect(await message(json({}, 400))).toBe('Google token exchange failed')
@@ -653,6 +672,28 @@ describe('the OAuth steps refuse what they cannot use', () => {
     expect(Object.fromEntries(url.searchParams)).toEqual({ state: 'st', redirect_uri: '/api/oauth/google/callback', email: 'jo@example.com', name: 'Jo', subject: 'g-1', hd: '' })
   })
 
+  test('the mock consent page opened with no query carries a blank state and callback', async ({ api }) => {
+    const html = await (await expectStatus(await api.fetch('/api/oauth/mock/consent'), 200)).text()
+    expect(html).toContain('<input type="hidden" name="state" value="" />')
+    expect(html).toContain('<input type="hidden" name="redirect_uri" value="" />')
+  })
+
+  test('a mock approval with no state is refused', async ({ api }) => {
+    const { cookie } = await beginLogin(api)
+    await expectStatus(await api.fetch('/api/oauth/mock/approve', { headers: { cookie } }), 401)
+  })
+
+  test('a mock approval with no callback address is refused', async ({ api }) => {
+    const { state, cookie } = await beginLogin(api)
+    await expectStatus(await api.fetch(`/api/oauth/mock/approve?${new URLSearchParams({ state })}`, { headers: { cookie } }), 400)
+  })
+
+  test('a mock approval that names no email signs nobody in', async ({ api }) => {
+    const { state, cookie } = await beginLogin(api)
+    const approve = await expectStatus(await api.fetch(`/api/oauth/mock/approve?${new URLSearchParams({ state, redirect_uri: '/api/oauth/google/callback' })}`, { headers: { cookie } }), 302)
+    await expectRefused(api.fetch(approve.headers.get('location') as string, { headers: { cookie } }), 401, 'No email in code')
+  })
+
   test('a code exchange without a code is refused', async () => {
     await expect(exchangeCode(undefined, '/api/oauth/google/callback', '', undefined)).rejects.toThrow('Missing authorization code')
   })
@@ -660,6 +701,12 @@ describe('the OAuth steps refuse what they cannot use', () => {
   test('a mock code is not exchanged once the mock provider is off', async () => {
     vi.stubEnv('ALLOW_MOCK_OAUTH', '')
     await expect(exchangeCode('any', '/api/oauth/google/callback', '', undefined)).rejects.toThrow('Mock OAuth provider is disabled')
+  })
+
+  test('a mock code that names no one is named by its email', async () => {
+    const location = mockApproveRedirect('st', '/api/oauth/google/callback', 'jo@gmail.com', '')
+    const code = new URLSearchParams(location.split('?')[1]).get('code') as string
+    expect(await exchangeCode(code, '/api/oauth/google/callback', '', undefined)).toMatchObject({ subject: 'jo@gmail.com', display_name: 'jo@gmail.com' })
   })
 
   test('a mock code that names no email is refused', async () => {
@@ -675,6 +722,10 @@ describe('the OAuth steps refuse what they cannot use', () => {
     vi.advanceTimersByTime(61_000)
     mintHandoffCode({ ...session, token: 'tok-later' })
     expect(() => redeemHandoffCode(abandoned, 'tok-abandoned', 'localhost')).toThrow('Invalid or expired sign-in code')
+  })
+
+  test('a callback with no state is refused to the API caller', async ({ api }) => {
+    await expectRefused(api.fetch('/api/oauth/google/callback?code=c'), 401, 'Missing OAuth state')
   })
 
   test('a browser sign-in whose call to Google fails outright lands on the sign-in page, logged', async ({ api }) => {

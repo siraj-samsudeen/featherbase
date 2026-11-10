@@ -1682,10 +1682,11 @@ app.get('/api/navigable_tables', async (c) => {
 
 // RT-003: the caller's unread notification count.
 app.get('/api/unread_count', async (c) => {
+  // An aggregate with no group by always returns exactly one row.
   const [row] = await sql`
     select count(*)::int as c from notification_log
     where for_user = ${who(c)} and read = false`
-  return c.json({ count: (row?.c as number) ?? 0 })
+  return c.json({ count: row.c as number })
 })
 
 // API surface design (#61): one Table-scoped surface replaces the three

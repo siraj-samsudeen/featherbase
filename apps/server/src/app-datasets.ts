@@ -10,7 +10,7 @@ import { sql, type Sql } from './db'
 import { platformRelation } from './platform-schema'
 import type { PersonScope, ScopePlace } from 'shared'
 import { activeSnapshot, recordMiss, registerDataset, unregisterDataset } from './dataset-snapshot'
-import { AppError } from './errors'
+import { AppError, errorMessage } from './errors'
 import { logAccess } from './audit'
 import { getDriver, getSource } from './sources/registry'
 import { datasetSourceReadOnly } from './sources/read-only'
@@ -557,7 +557,7 @@ export async function recordPlaceDrops(drops: readonly PlaceDrop[], db: Sql = sq
       return written
     }) as number
   } catch (error) {
-    console.warn(`[apps] a dropped place could not be recorded for Instance health: ${error instanceof Error ? error.message : String(error)}`)
+    console.warn(`[apps] a dropped place could not be recorded for Instance health: ${errorMessage(error)}`)
     return 0
   }
 }

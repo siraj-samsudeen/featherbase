@@ -1,6 +1,6 @@
 import { ROW_KEY } from './meta'
 import { sql } from './db'
-import { AppError } from './errors'
+import { AppError, errorMessage } from './errors'
 import { getDoc } from './document'
 import { getList } from './query'
 import { queueEmail } from './email'
@@ -163,7 +163,7 @@ export async function runDueAutoEmailReports(now = new Date()): Promise<string[]
       await deliverAutoEmailReport(r.row_id as string)
       delivered.push(r.row_id as string)
     } catch (err) {
-      failed.push(`${r.row_id}: ${err instanceof Error ? err.message : String(err)}`)
+      failed.push(`${r.row_id}: ${errorMessage(err)}`)
     }
   }
   if (failed.length)

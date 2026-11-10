@@ -304,6 +304,22 @@ describe('email routes', () => {
     const clerk = await createUser({ roles: [] })
     await expectRefused(clerk.post('/api/queue_email', { to: 'x@x.com' }), 403)
   })
+
+  test('an email queued with no subject or body is stored blank', async ({ admin }) => {
+    const { name } = await admin.post<{ name: string }>('/api/queue_email', { to: 'routes.blank@x.com' })
+    expect(await sql`select subject, body from email_queue where row_id = ${name}`).toEqual([{ subject: '', body: '' }])
+  })
+})
+
+describe('the search box and the export record', () => {
+  test('a search with no query finds nothing', async ({ admin }) => {
+    expect(await admin.get('/api/search')).toEqual({ results: [] })
+  })
+
+  test('an export recorded with no method is recorded as a CSV export', async ({ admin }) => {
+    await admin.post('/api/access_log', { table: 'Person' })
+    expect(await sql`select method from access_log where operation = 'export' and ref_table = 'Person' order by created_at desc limit 1`).toEqual([{ method: 'csv' }])
+  })
 })
 
 describe('counting rows', () => {

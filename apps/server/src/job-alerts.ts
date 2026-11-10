@@ -12,6 +12,7 @@ import { sql, withTransaction } from './db'
 import { queueEmail, type MailMessage } from './email'
 import { adminLinkOrigin } from './instance-addresses'
 import { recordUndeliveredNotice, systemManagerEmails } from './system-notice'
+import { errorMessage } from './errors'
 
 export const JOB_ALERT_SUBJECT = {
   failed: 'Scheduled job failed',
@@ -93,7 +94,7 @@ export async function alertJobProblem(p: JobProblem): Promise<number | 'no recip
       return managers.length
     })
   } catch (err) {
-    console.warn(JSON.stringify({ event: 'job_alert_failed', method: p.method, error: err instanceof Error ? err.message : String(err) }))
+    console.warn(JSON.stringify({ event: 'job_alert_failed', method: p.method, error: errorMessage(err) }))
     return 0
   }
 }

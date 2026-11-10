@@ -240,6 +240,19 @@ describe('same-source PostgreSQL relationship membership', () => {
     },
   )
 
+  test('a relationship filter with no conditions matches every row linked to an existing one', async ({ admin }) => {
+    await connect(admin)
+    expect(await admin.get(`${path}:count?${query([['store', 'related', { table: STORE }]])}`)).toEqual({ count: 4 })
+  })
+
+  test('a bound Table with no sort set lists the highest key first', async ({ admin }) => {
+    await connect(admin)
+    await sql`update table_def set sort_column = '', sort_order = '' where name = ${FLOOR}`
+    invalidateMeta()
+    const { data } = (await admin.get(path)) as { data: { row_id: string }[] }
+    expect(data.map((r) => r.row_id)).toEqual(['601', '401', '307', '211', '103', '101'])
+  })
+
   test('retains request-wide hop budgets at both sides of the boundary', async ({ admin }) => {
     await connect(admin)
     expect(await admin.get(`${path}:count?${query(Array.from({ length: 16 }, () => related()[0]))}`)).toEqual({ count: 4 })

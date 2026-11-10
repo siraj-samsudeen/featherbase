@@ -520,6 +520,17 @@ describe('Filtering and ordering rows read from a CSV file', () => {
     return rows.map((r) => r.store_code)
   }
 
+  test('a pattern with no value matches only an empty field, and excludes none of the others', async () => {
+    expect(await codes([{ column: 'city', op: 'like', value: null }])).toEqual([])
+    expect(await codes([{ column: 'city', op: 'not like', value: null }])).toEqual(['CHN', 'KKL', 'TVM'])
+  })
+
+  test('a filter on a column the file lacks treats every row as empty there', async () => {
+    expect(await codes([{ column: 'region', op: 'like', value: '' }])).toEqual(['CHN', 'KKL', 'TVM'])
+    expect(await codes([{ column: 'region', op: 'not like', value: '%' }])).toEqual([])
+    expect(await codes([{ column: 'region', op: '=', value: null }])).toEqual(['CHN', 'KKL', 'TVM'])
+  })
+
   // HTTP dispatch refuses this internal shape before a non-Postgres driver;
   // the exported driver contract must also fail closed if passed it directly.
   test('refuses internal relationship filters without returning CSV rows', async () => {

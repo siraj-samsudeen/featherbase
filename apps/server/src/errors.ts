@@ -103,3 +103,8 @@ export function errorResponse(c: Context, err: unknown) {
   if (!(typeof err === 'object' && err !== null && alreadyLogged.has(err))) console.error(err)
   return c.json({ error: { type: 'InternalError', message: 'Internal server error' } }, 500)
 }
+
+/** What a caught value says: an Error's message, anything else as text. */
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}

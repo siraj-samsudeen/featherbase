@@ -704,6 +704,22 @@ describe('the command line, command by command', () => {
     expect(await cli(['list-tokens', svc.row_id])).toMatch(/ expired .* expires \d{4}-.*Z {2}\d{4}-.*Z\n$/)
   })
 
+  test('an unknown command lists the commands and fails', async () => {
+    const r = await runMain(main, ['no-such-command'])
+    expect(r.code).toBe(1)
+    expect(r.stdout).toMatch(/^usage: cli <migrate\|seed\|/)
+  })
+
+  test('a service account created with no roles is announced without any', async () => {
+    expect(await cli(['create-service-account', 'svc-cli-plain'])).toMatch(/^created service account svc_\S+ \("svc-cli-plain"\)\n$/)
+  })
+
+  test('a token issued with no expiry is listed as never expiring', async () => {
+    const svc = await createServiceAccount('svc-cli-forever', [], 'Administrator')
+    await cli(['issue-token', svc.row_id])
+    expect(await cli(['list-tokens', svc.row_id])).toMatch(/ active .* no expiry {2}never used\n$/)
+  })
+
   test('set-password refuses a password typed at a terminal', async () => {
     const c = captureIO('', { tty: true })
     expect(await main(['set-password', 'Administrator', '--stdin'], c.io)).toBe(1)
@@ -757,6 +773,10 @@ describe('the command line, command by command', () => {
     expect((await failure(['leavers:check', '--accept', '3']))?.stderr).toBe('error: --accept only means something with --apply\n')
     expect((await failure(['leavers:check', '--apply', '--accept']))?.stderr).toBe('error: --accept takes the number of people the dry run reported\n')
     expect(await cli(['leavers:check', '--apply', '--accept', '3'])).toMatch(/^leaver check: .*\nleaver check: .*\n$/)
+  })
+
+  test('leavers:check --apply with no --accept runs under the limit', async () => {
+    expect(await cli(['leavers:check', '--apply'])).toMatch(/^leaver check: .*\nleaver check: .*\n$/)
   })
 
   test('console runs a piped script to the end, writing through the row API', async () => {

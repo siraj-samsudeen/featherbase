@@ -8,7 +8,8 @@ import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { alertAccessRequest } from '../src/waiting-for-access'
 import { expectStatus, makePerson } from './fixtures'
-import { setPasswordFromShell } from '../src/auth'
+import { issueSession, resolveToken, setPasswordFromShell } from '../src/auth'
+import { mintHandoffTicket } from '../src/oauth'
 import { preAuthPolicy } from '../src/pre-auth-rate-limit'
 import { preflightRelease } from '../src/release-preflight'
 
@@ -460,6 +461,28 @@ describe('the hand-off between addresses', () => {
 
 // Codex round 2: a store's staff share one public IP. The hand-off has its own
 // budget, so the Google sign-ins that budget allows each finish their hand-off.
+describe('a handed-over session keeps how the source was opened', () => {
+  /** Hand `source` from the admin address to the app's, in one browser. */
+  async function handOver(api: TestClient, source: string) {
+    const ticket = mintHandoffTicket(source, new URL(ADMIN).host, new URL(DASH).host)
+    const { code, nonce } = await followHandoff(api, `${DASH}/api/handoff/start?ticket=${ticket}`, `sid=${source}`)
+    const res = await expectStatus(await redeemOn(api, DASH, code, nonce), 200)
+    return (await resolveToken(`Bearer ${((await res.json()) as SignedIn).token}`)).sign_in
+  }
+
+  test('a preview session stays a preview, opened by no method', async ({ api, admin }) => {
+    const viewer = await personWith(admin, 'viewer.preview.handed', ['Sales Target Viewer'])
+    const source = await issueSession(viewer.id, { preview: true })
+    expect(await handOver(api, source.token)).toMatchObject({ preview: true, method: null, test_mode: false })
+  })
+
+  test('a test-mode session stays in test mode', async ({ api, admin }) => {
+    const viewer = await personWith(admin, 'viewer.testmode.handed', ['Sales Target Viewer'])
+    const source = await issueSession(viewer.id, { method: 'password', testMode: true })
+    expect(await handOver(api, source.token)).toMatchObject({ test_mode: true, method: 'password', preview: false })
+  })
+})
+
 describe('the hand-off budget', () => {
   test('as many Google sign-ins as the OAuth budget allows, from one source, each finish a full hand-off', async ({ api }) => {
     await setGoogleOpen()

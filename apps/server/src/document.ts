@@ -504,7 +504,8 @@ async function assertAttachedTarget(
     if (await attachedToAttached(refTable, refName))
       throw new AppError('ValidationError', `A ${meta.name} cannot be attached to a ${refTable} that is itself attached to one`)
     // Whatever already hangs on this row would then sit two levels deep.
-    if (old && (await hasAttachments(meta.name, String(row[ROW_KEY] ?? old[ROW_KEY]))))
+    // An update's row is merged with the stored one, so it carries its id.
+    if (old && (await hasAttachments(meta.name, String(row[ROW_KEY]))))
       throw new AppError('ValidationError', `This ${meta.name} has comments, files or history of its own, so it cannot be attached to a ${refTable}`)
   }
   if (trusted) return
@@ -1968,7 +1969,7 @@ async function renameDocImpl(
   // person_id); change the name or username instead. A trigger backs this up.
   // person-rename R1: an opaque id (a person's, a service account's) is
   // permanent — never renamed.
-  if ((meta.id_pattern ?? '').startsWith('opaque:'))
+  if (meta.id_pattern.startsWith('opaque:'))
     throw new AppError('ValidationError', `A ${meta.name}'s id is permanent and cannot be renamed; change its name instead`)
   if (isBound(meta))
     throw new AppError(

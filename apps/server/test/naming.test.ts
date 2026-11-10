@@ -7,6 +7,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { readFileSync } from 'node:fs'
 import { sql } from '../src/db'
 import { deleteTable } from '../src/table-engine'
+import { invalidateMeta } from '../src/meta'
 
 const SERIES_DT = 'Nm Invoice'
 const FIELD_DT = 'Nm Country'
@@ -56,6 +57,11 @@ describe('META-006: naming rules', () => {
     const denied = await user.fetch('/api/table_def/Pattern%20Refusal/id_pattern', { method: 'PUT', body: JSON.stringify({ id_pattern: 'NO-.###' }) })
     await expectStatus(denied, 403)
     expect(await admin.get('/api/table/Pattern%20Refusal:meta')).toEqual(before)
+  })
+
+  test('a Table created with a blank id pattern numbers its rows', async ({ admin }) => {
+    await makeDT(admin, 'Pattern Blank', '')
+    expect((await save(admin, 'Pattern Blank', { title: 'first' })).row_id).toBe('1')
   })
 
   // Real root transactions, not a shared-session sandbox whose dispatcher
@@ -271,6 +277,22 @@ describe('#858: a fixed prefix plus a column', () => {
     expect(edited).toMatchObject({ row_id: 'PLANT-8151', plant_code: '8159' })
     await admin.post(`${at('PLANT-8151')}:rename`, { new_name: 'PLANT-8159' })
     expect(await admin.get(at('PLANT-8159'))).toMatchObject({ plant_code: '8159', title: 'Chennai' })
+  })
+
+  test('a rename that drops the prefix names the column when it has no label', async ({ admin }) => {
+    await plant(admin)
+    await save(admin, PLANT, { plant_code: '8151', title: 'Chennai' })
+    await sql`update column_def set label = null where parent = ${PLANT} and column_name = 'plant_code'`
+    invalidateMeta()
+    await expectRefused(admin.post(`${at('PLANT-8151')}:rename`, { new_name: '8159' }), 417, 'followed by its plant_code')
+  })
+
+  test('a rename onto a read-only naming column with no label names the column', async ({ admin }) => {
+    await plant(admin)
+    await save(admin, PLANT, { plant_code: '8151', title: 'Chennai' })
+    await sql`update column_def set label = null, read_only = true where parent = ${PLANT} and column_name = 'plant_code'`
+    invalidateMeta()
+    await expectRefused(admin.post(`${at('PLANT-8151')}:rename`, { new_name: 'PLANT-8159' }), 417, "plant_code names this row and is read-only")
   })
 
   test('an import check flags a code already naming a plant, repeated in the file, or missing', async ({ admin }) => {

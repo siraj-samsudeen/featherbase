@@ -70,7 +70,7 @@ export async function setUpSystemManagers(input: unknown, actor: string, request
   const seen = new Map<string, number>()
   for (const [i, p] of people.entries()) {
     if (!looksLikeEmail(p.email) || /\.invalid$/.test(p.email)) problems[`people.${i}.email`] = 'Enter an email address'
-    else if (seen.has(p.email)) problems[`people.${i}.email`] = `The same address as person ${(seen.get(p.email) ?? 0) + 1}`
+    else if (seen.has(p.email)) problems[`people.${i}.email`] = `The same address as person ${seen.get(p.email)! + 1}`
     else seen.set(p.email, i)
   }
   if (Object.keys(problems).length)
