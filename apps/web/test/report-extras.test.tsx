@@ -215,15 +215,22 @@ test('a saved report naming a column the Table no longer has heads it with its n
   expect(screen.queryByTestId('chart-value')).not.toBeInTheDocument()
 })
 
-// Defect pinned (#1133): the server refuses the rows request ("Unknown selected field"), and
-// the report has no error state for its rows, so it reads "0 rows" and
-// "No rows" over a Table that has two.
-test.fails('a saved report naming a column the Table no longer has does not claim the Table has no rows', async ({ admin }) => {
+async function openStaleReport(admin: Admin) {
   await seed(admin)
   await admin.post('/api/save_row', { table: 'Report', row: { row_id: 'Rex Stale', ref_table: T, config: { columns: ['region', 'retired'] } } })
   await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(T))}/view/report?report=${encodeURIComponent('Rex Stale')}`, admin)
-  await screen.findByTestId('report-head-retired', {}, { timeout: 8000 })
-  await waitFor(() => expect(screen.getByTestId('report-view')).not.toHaveTextContent('No rows'), { timeout: 3000 })
+  return screen.findByRole('alert', {}, { timeout: 8000 })
+}
+
+test('a saved report naming a column the Table no longer has does not claim the Table has no rows', async ({ admin }) => {
+  await openStaleReport(admin)
+  expect(screen.getByTestId('report-view')).not.toHaveTextContent('No rows')
+  expect(screen.queryByTestId('report-table')).not.toBeInTheDocument()
+})
+
+test('a saved report naming a column the Table no longer has says it could not be loaded, with the server\'s reason', async ({ admin }) => {
+  const alert = await openStaleReport(admin)
+  expect(alert).toHaveTextContent(/^This report could not be loaded: Unknown selected field/)
 })
 
 test('a total with a fraction shows two decimal places', async ({ admin }) => {
