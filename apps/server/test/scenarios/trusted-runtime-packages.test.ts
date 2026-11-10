@@ -156,8 +156,7 @@ describe('trusted-runtime-packages', () => {
       })
       await step('the app is on version 2 and the row is still there', async () => {
         expect(await sql`select package_version from installed_app where name = 'other'`).toEqual([{ package_version: '2.0.0' }])
-        expect(await admin.get<{ quantity: number; notes: string | null }>('/api/table/other.task/kept'))
-          .toMatchObject({ quantity: 7, notes: null })
+        expect(await sql`select quantity, notes from other.task where row_id = 'kept'`).toEqual([{ quantity: 7, notes: null }])
       })
     } finally {
       await rm(first, { recursive: true, force: true })

@@ -382,7 +382,7 @@ describe('runtime upgrades', () => {
     } finally { await rm(directory, { recursive: true, force: true }); await rm(duplicate, { recursive: true, force: true }) }
   })
 
-  test('disabled upgrade, checksum drift, downgrade, missing prior and code-only next version', async ({ admin }) => {
+  test('disabled upgrade, checksum drift, downgrade and code-only next version', async ({ admin }) => {
     const source = resolve('../..', 'test-apps/other')
     const { directory, manifest } = await targetPackage()
     const next = await mkdtemp(resolve('test/.upgrade-next-'))
@@ -390,8 +390,6 @@ describe('runtime upgrades', () => {
       await discoverPackages([source])
       await admin.post('/api/install_app', { name: 'other' })
       await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
-      await discoverPackages([directory])
-      await expectRefused(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' }), 417, 'unavailable')
       await discoverPackages([source, directory])
       const first = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
       await admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: first.planId })
@@ -416,7 +414,9 @@ describe('runtime upgrades', () => {
 })
 
 describe('An upgrade never goes backward', () => {
-  test('upgrade preview requires an installed app whose recorded artifact matches', async ({ admin }) => {
+  // #1178 (D4): an upgrade moves from the installed record, so the installed
+  // version's files need not be on the server; serving it still needs them.
+  test('upgrade preview requires an installed app, and serving it requires its exact files', async ({ admin }) => {
     const source = resolve('../..', 'test-apps/other')
     const { directory } = await targetPackage()
     try {
@@ -427,8 +427,6 @@ describe('An upgrade never goes backward', () => {
       await discoverPackages([source, directory])
       const [identity] = await sql`select artifact_digest from installed_app where name = 'other'`
       await sql`update installed_app set artifact_digest = 'mismatched' where name = 'other'`
-      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' }))
-        .rejects.toMatchObject({ status: 417, message: expect.stringContaining('recorded identity') })
       await expect(admin.post('/api/set_app_enabled', { name: 'other', enabled: true }))
         .rejects.toMatchObject({ status: 417, message: expect.stringContaining('exact installed artifact') })
       expect(await sql`select package_version, activation_pending from installed_app where name = 'other'`)

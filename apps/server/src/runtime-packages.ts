@@ -588,13 +588,23 @@ export function declaredPackageActions() {
     ...(pkg.manifest.actions?.version === 1 ? { diagnostic: 'Explicit action policy upgrade required' } : {}) }))
 }
 
+/** #1178 (D4): what an upgrade moves from is the installed record, written
+ *  when that version was installed or upgraded to: its declaration, package
+ *  name and fingerprint. The server needs only the new version's files. */
+function installedRecord(row: Record<string, unknown>) {
+  const declared = row.manifest as (z.infer<typeof manifestSchema> & { packageName?: string; packageVersion?: string }) | null
+  if (!declared || !Array.isArray(declared.tables) || typeof declared.packageName !== 'string' || (declared.packageVersion ?? row.package_version) !== row.package_version)
+    refuse('The installed version has no complete record to upgrade from; reinstall it on a development database')
+  return { version: String(row.package_version), digest: String(row.artifact_digest ?? ''),
+    manifest: { ...declared, permissions: declared.permissions ?? [] }, app: { runtime_manifest: declared as unknown } }
+}
+
 async function upgradePlan(name: string, version: string, preview = true) {
   const [row] = await sql`select * from installed_app where name = ${name} and runtime_package`
   if (!row) refuse('Upgrade requires an installed runtime application')
   const target = await verifyArtifact(artifacts.get(`${name}@${version}`))
   assertKnownAccent(target)
-  const prior = await verifyArtifact(artifacts.get(`${name}@${row.package_version}`))
-  if (!matchesInstalled(prior, row)) refuse('Installed artifact does not match its recorded identity')
+  const prior = installedRecord(row)
   if (row.activation_pending) throw new AppError('ConflictError', 'Activate the committed upgrade before previewing another version')
   if (compareVersions(version, prior.version) <= 0) refuse('Target must be newer than installed version; downgrades are unsupported')
   const history = target.manifest.migrations
