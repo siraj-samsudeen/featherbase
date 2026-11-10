@@ -18,7 +18,8 @@ interface CatalogApp {
     settings: { name: string; required: boolean }[]
     roleDefaults?: Record<string, string[]>
     datasets?: { name: string; source: string }[]
-    actions?: { operations: Record<string, unknown> }
+    // #1132: version 1 names its actions and the Tables they write; version 2 declares operations.
+    actions?: { version: 1; names: string[]; tables: string[] } | { version: 2; operations: Record<string, unknown> }
     reads?: { operations: Record<string, unknown> }
     jobs?: { name: string }[]
     scopeProvider?: { name: string; identifiers?: string[] }
@@ -161,7 +162,8 @@ function AppDetails({ app, repositoryUrl }: { app: CatalogApp; repositoryUrl: st
           {tables.map(table => <li key={table.name} className="rounded-control bg-subtle px-2 py-1">{table.label}</li>)}
         </ul>
         <dl className="mt-3 space-y-2 text-sm text-ink-muted">
-          {actions && <div><dt className="font-medium text-ink">Actions</dt><dd>{Object.keys(actions.operations).join(', ') || 'None'}</dd></div>}
+          {actions && <div><dt className="font-medium text-ink">Actions</dt><dd>{(actions.version === 1 ? actions.names : Object.keys(actions.operations)).join(', ') || 'None'}</dd></div>}
+          {actions?.version === 1 && <div><dt className="font-medium text-ink">Action Tables</dt><dd>{actions.tables.join(', ')}</dd></div>}
           {reads && <div><dt className="font-medium text-ink">Reads</dt><dd>{Object.keys(reads.operations).join(', ')}</dd></div>}
           {!!datasets?.length && <div><dt className="font-medium text-ink">Datasets and required data sources</dt><dd>{datasets.map(dataset => `${dataset.name} (source: ${dataset.source})`).join(', ')}</dd></div>}
           {!!jobs?.length && <div><dt className="font-medium text-ink">Scheduled jobs</dt><dd>{jobs.map(job => job.name).join(', ')}</dd></div>}
