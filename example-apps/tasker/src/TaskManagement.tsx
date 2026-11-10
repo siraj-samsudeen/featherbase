@@ -1,4 +1,4 @@
-import { TASK_STATES } from './task-states'
+import { STATES } from './task-states'
 import { Recurrence } from './RecurrenceControls'
 import { Subtasks } from './Subtasks'
 import { Attention } from './Attention'
@@ -52,7 +52,6 @@ interface TaskVersion {
   created_at: string
 }
 
-const STATES = TASK_STATES
 const FOCUS_SETTINGS = 'Task Management Focus'
 const PROJECT_SETTINGS = 'tasker.projects'
 const PREFERENCE_SETTINGS = 'tasker.preferences'
