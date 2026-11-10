@@ -109,7 +109,7 @@ interface Link {
   id: string
   person: string
   subject: string
-  sign_in_name: string | null
+  sign_in_name: string
   ended: boolean
   ended_reason: string | null
 }
@@ -128,9 +128,8 @@ const key = (system: string, value: string) => `${system}\u0000${value}`
 
 async function context(methodKey: string): Promise<Ctx | null> {
   const method = await getSignInMethod(methodKey)
-  if (!method) return null
-  const roster = await usableRoster(method)
-  if (!roster) return null
+  const roster = method ? await usableRoster(method) : null
+  if (!method || !roster) return null
   const ids = [roster.recordSystem, ...Object.keys(roster.link.identifiers)]
   const rows = await sql`select row_id, normalise, kind from identifier_system where row_id in ${sql(ids)}`
   const systems = new Map(rows.map((r) => [String(r.row_id), { normalise: r.normalise as NormaliseRule, kind: r.kind as IdentifierKind }]))
@@ -138,7 +137,7 @@ async function context(methodKey: string): Promise<Ctx | null> {
 }
 
 /** The row's values as the systems store them: the record number first.
- *  Null when one cannot be held. Empty identifier columns are skipped. */
+ *  Null when one cannot be held, an empty identifier column among them. */
 function valuesOf(ctx: Ctx, row: RosterRow): [string, string][] | null {
   const out: [string, string][] = []
   const add = (system: string, raw: string) => {
@@ -147,7 +146,7 @@ function valuesOf(ctx: Ctx, row: RosterRow): [string, string][] | null {
   }
   try {
     add(ctx.roster.recordSystem, row.record)
-    for (const [system, raw] of Object.entries(row.values)) if (system !== ctx.roster.recordSystem && raw) add(system, raw)
+    for (const [system, raw] of Object.entries(row.values)) add(system, raw)
   } catch {
     return null
   }
@@ -177,7 +176,7 @@ async function loadFacts(ctx: Ctx, rows: RosterRow[]): Promise<Facts> {
     select id, person_id, subject, sign_in_name, ended_at is not null as ended, ended_reason from sign_in_identity
     where method = ${ctx.method.key} and subject is not null
       and (subject = any(${records}) or (ended_at is null and lower(sign_in_name) = any(${names})))
-    order by ended_at desc nulls first`
+    order by ended_at nulls first`
   const facts: Facts = {
     duplicates: new Set(dup.map((r) => String(r.id))),
     liveBySubject: new Map(),
@@ -187,11 +186,11 @@ async function loadFacts(ctx: Ctx, rows: RosterRow[]): Promise<Facts> {
     people: new Map(),
   }
   for (const r of links) {
-    const l: Link = { id: String(r.id), person: String(r.person_id), subject: String(r.subject), sign_in_name: (r.sign_in_name as string | null) ?? null, ended: Boolean(r.ended), ended_reason: (r.ended_reason as string | null) ?? null }
+    const l: Link = { id: String(r.id), person: String(r.person_id), subject: String(r.subject), sign_in_name: String(r.sign_in_name), ended: Boolean(r.ended), ended_reason: r.ended_reason as string | null }
     if (!l.ended) {
       facts.liveBySubject.set(l.subject, l)
-      if (l.sign_in_name) facts.liveByName.set(l.sign_in_name.toLowerCase(), l)
-    } else if (!facts.endedBySubject.has(l.subject)) facts.endedBySubject.set(l.subject, l)
+      facts.liveByName.set(l.sign_in_name.toLowerCase(), l)
+    } else facts.endedBySubject.set(l.subject, l) // oldest first, so the latest end wins
   }
   const values = [...new Set(rows.flatMap((r) => (valuesOf(ctx, r) ?? []).map(([, v]) => v)))]
   const held = await sql`
@@ -245,7 +244,7 @@ function decide(ctx: Ctx, facts: Facts, row: RosterRow): Decision {
     if (!person || !holders.includes(person)) identifiers.push([system, value])
   }
   const needLink = !live
-  const renameLink = live && (live.sign_in_name ?? '').toLowerCase() !== row.sign_in_id.toLowerCase() ? live.id : null
+  const renameLink = live && live.sign_in_name.toLowerCase() !== row.sign_in_id.toLowerCase() ? live.id : null
   const needRowPerson = !person || row.person !== person
   if (person && !needLink && !renameLink && !needRowPerson && !identifiers.length) return { action: 'unchanged', person }
   return { action: !person ? 'create' : needLink ? 'link' : 'complete', person, needLink, renameLink, needRowPerson, identifiers }
@@ -304,16 +303,14 @@ async function hold(method: string, rowId: string, reason: HeldReason) {
 
 /** One row, under its lock, decided again: the plan may be stale. */
 async function linkRow(ctx: Ctx, rowId: string): Promise<Decision['action']> {
-  const { link: config, recordSystem } = ctx.roster
+  const { link: config } = ctx.roster
   return withTransaction(async () => {
     const [row] = await currentRows(ctx, rowId)
-    if (!row) return 'unchanged' // no longer current; the leaver pass sees it next run
+    // No longer current: the leaver pass sees it on the next run.
+    if (!row) return 'unchanged'
     const d = decide(ctx, await loadFacts(ctx, [row]), row)
-    if (d.action === 'held') {
-      await hold(ctx.method.key, row.row_id, d.reason)
-      return 'held'
-    }
-    if (d.action === 'unchanged') return 'unchanged'
+    if (d.action === 'held') await hold(ctx.method.key, row.row_id, d.reason)
+    if (d.action === 'held' || d.action === 'unchanged') return d.action
     let person = d.person
     if (!person) {
       const made = await runAsSystemActor(ACTOR, () => saveDoc('Person', { email: null, full_name: row.name, enabled: true, roles: [] }, ACTOR, 'insert'))
@@ -336,7 +333,7 @@ async function linkRow(ctx: Ctx, rowId: string): Promise<Decision['action']> {
     if (d.renameLink) await sql`update sign_in_identity set sign_in_name = ${row.sign_in_id} where id = ${d.renameLink}`
     const [{ today }] = await sql`select current_date::text as today`
     for (const [system, value] of d.identifiers)
-      if (system !== recordSystem) await addIdentifier(person, { system, value, valid_from: String(today) }, ACTOR, { internal: { source: SOURCE, verified: true }, db: sql })
+      await addIdentifier(person, { system, value, valid_from: String(today) }, ACTOR, { internal: { source: SOURCE, verified: true }, db: sql })
     if (d.needRowPerson) await runAsSystemActor(ACTOR, () => saveDoc(config.table, { row_id: row.row_id, updated_at: row.updated_at, [config.person_column]: person }, ACTOR))
     return d.action
   })
@@ -344,19 +341,17 @@ async function linkRow(ctx: Ctx, rowId: string): Promise<Decision['action']> {
 
 /** End one leaver's link, checked again under its lock. */
 async function endLink(ctx: Ctx, end: PlannedEnd): Promise<boolean> {
-  const { link, relation } = ctx.roster
+  const systems = Object.keys(ctx.roster.link.identifiers)
   return withTransaction(async () => {
     const [still] = await leavers(ctx, end.identity)
     if (!still) return false
     await endIdentityIdentifiers(end.identity)
-    // The values the roster wrote from this record's rows close with it.
-    const rows = (await sql`select * from ${sql(relation)} where trim(${sql(link.record_number_column)}::text) = ${end.record}`).map((r) => rowOf(r, link))
-    const values = rows.flatMap((r) => (valuesOf(ctx, r) ?? []).slice(1))
-    for (const [system, value] of values)
-      for (const r of await sql`
-        select id from person_identifier where person_id = ${end.person} and system = ${system} and value = ${value}
-          and upper_inf(valid) and source in ${sql(ROSTER_SOURCES)}`)
-        await closeRow(String(r.id))
+    // The codes a roster wrote close with it. A person still current on
+    // another row gets theirs back on the next run.
+    for (const r of await sql`
+      select id from person_identifier where person_id = ${end.person} and system in ${sql(systems)}
+        and upper_inf(valid) and source in ${sql(ROSTER_SOURCES)}`)
+      await closeRow(String(r.id))
     await sql`update sign_in_identity set ended_at = now(), ended_reason = 'left' where id = ${end.identity}`
     await auditIdentity(ACTOR, 'ended_left', end.person, ctx.method.key, end.identity)
     return true
@@ -365,37 +360,34 @@ async function endLink(ctx: Ctx, end: PlannedEnd): Promise<boolean> {
 
 /** Link every current row and end every leaver's link. One row's failure
  *  never stops the rest; the run throws afterwards, naming the rows. */
-export async function runRosterLink(methodKey: string): Promise<RosterLinkRun> {
+const COUNTED = { create: 'created', link: 'linked', complete: 'completed', unchanged: 'unchanged', held: 'held' } as const
+
+/** Run `fn`, keeping a failure on the run instead of stopping it. */
+async function attempt<T>(run: RosterLinkRun, id: string, fn: () => Promise<T>): Promise<T | null> {
+  try {
+    return await fn()
+  } catch (err) {
+    run.failed.push(`${id}: ${errorMessage(err)}`)
+    return null
+  }
+}
+
+/** Link every current row and end every leaver's link. `plan` applies a dry
+ *  run already made; every row is decided again under its lock either way.
+ *  One row's failure never stops the rest. */
+export async function runRosterLink(methodKey: string, opts: { plan?: RosterLinkPlan } = {}): Promise<RosterLinkRun> {
   const run: RosterLinkRun = { plan: null, created: 0, linked: 0, completed: 0, unchanged: 0, held: 0, ended: 0, refused: null, failed: [] }
   const ctx = await context(methodKey)
   if (!ctx) return run
-  const plan = await planWith(ctx)
+  const plan = opts.plan ?? (await planWith(ctx))
   run.plan = plan
   run.refused = plan.refused
   for (const row of plan.rows) {
-    if (row.action === 'unchanged') {
-      run.unchanged++
-      continue
-    }
-    try {
-      const done = await linkRow(ctx, row.row_id)
-      if (done === 'create') run.created++
-      else if (done === 'link') run.linked++
-      else if (done === 'complete') run.completed++
-      else if (done === 'held') run.held++
-      else run.unchanged++
-    } catch (err) {
-      run.failed.push(`${row.row_id}: ${errorMessage(err)}`)
-    }
+    const done = row.action === 'unchanged' ? 'unchanged' : await attempt(run, row.row_id, () => linkRow(ctx, row.row_id))
+    if (done) run[COUNTED[done]]++
   }
   if (plan.refused) await logActivity('system', `roster_link_refused ${methodKey}: ${plan.refused}`.slice(0, 140))
-  else
-    for (const end of plan.ends)
-      try {
-        if (await endLink(ctx, end)) run.ended++
-      } catch (err) {
-        run.failed.push(`${end.identity}: ${errorMessage(err)}`)
-      }
+  else for (const end of plan.ends) if (await attempt(run, end.identity, () => endLink(ctx, end))) run.ended++
   return run
 }
 

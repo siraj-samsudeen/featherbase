@@ -8,7 +8,7 @@ import { ROSTER_LINK_JOB, formatRosterLink, runAllRosterLinks } from '../roster-
 // links ends none: refused, alerted, and the schedule carries on.
 registerJob(ROSTER_LINK_JOB, async (_payload, ctx) => {
   const runs = await runAllRosterLinks()
-  const summary = runs.map((r) => formatRosterLink(r.plan, r)).join('\n') || 'roster link: no method has a usable roster'
+  const summary = runs.map((r) => formatRosterLink(r.plan, r)).join('\n')
   console.log(summary)
   const failed = runs.flatMap((r) => r.failed)
   // Row ids only: never a name or a value.

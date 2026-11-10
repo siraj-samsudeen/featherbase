@@ -662,7 +662,6 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       await assertDatabaseEnvironment()
       const run = await runRosterLink(method)
       io.out(formatRosterLink(run.plan, run))
-      if (run.failed.length) throw new Error(`roster link could not finish ${run.failed.length} rows: ${run.failed.slice(0, 10).join('; ')}`)
       break
     }
     case 'leavers:check': {
