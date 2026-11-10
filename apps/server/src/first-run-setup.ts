@@ -125,7 +125,8 @@ export async function setUpSystemManagers(input: unknown, actor: string, request
       if (found) {
         person = found
         const doc = await getDoc('Person', person, actor) as { roles?: { role: string }[]; updated_at?: unknown; full_name?: string; email?: string | null }
-        const roles = (doc.roles ?? []).map((r) => r.role)
+        // The Administrator reads every column, and a Sub-table always comes back as a list.
+        const roles = doc.roles!.map((r) => r.role)
         full_name = doc.full_name?.trim() || p.full_name
         // Notices go to a System Manager's contact email: a person found by
         // their sign-in alone gets the address they were named by (Codex bot).
