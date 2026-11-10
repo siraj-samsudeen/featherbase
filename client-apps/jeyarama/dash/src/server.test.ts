@@ -370,7 +370,7 @@ describe('a report whose Dive has its own pickers', () => {
   it('opens the Dive with the reach of every place, and the store and month from the address', async () => {
     const body = sent()
     const { ctx } = context({ places: TWO, reports: [PICKERS], payload: { store: '9901', month: 'last', app_origin: 'https://dash.example.test' } })
-    await reads.embed_session(ctx)
+    await embedSession(ctx)
     expect(body()).toEqual({ username: 'svc-made-up',
       initial_state: { reach: { 9901: ['010101001'], 9902: null }, store: '9901', month: 'last', app_origin: 'https://dash.example.test' } })
   })
@@ -378,7 +378,7 @@ describe('a report whose Dive has its own pickers', () => {
   it("leaves out a store from the address that isn't the reader's, rather than refusing", async () => {
     const body = sent()
     const { ctx } = context({ places: TWO, reports: [PICKERS], payload: { store: '9999' } })
-    await reads.embed_session(ctx)
+    await embedSession(ctx)
     expect(body().initial_state).toEqual({ reach: { 9901: ['010101001'], 9902: null }, month: 'this' })
   })
 

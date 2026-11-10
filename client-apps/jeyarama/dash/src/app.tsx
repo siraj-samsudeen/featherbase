@@ -91,6 +91,8 @@ export function Dash() {
   useEffect(() => {
     if (store || !reports) return
     // A report taking no store, or none of the reader's: open it now; the server judges it.
+    // #1159: a Dive with its own pickers opens at once on the address's store; the server checks it.
+    if (current?.pickers_in_dive) { setStore({ value: storeInAddress() }); return }
     if (!current?.takes_store) { setStore({ value: undefined }); return }
     setCheckFailed(false)
     return firstStore(storeInAddress(), listenForStore, value => {
@@ -126,7 +128,8 @@ export function Dash() {
     <DashSidebar current="report" />
     <main className="fd-page" data-testid="dash" data-view={view.kind}>
       {/* The header, in every state with a store on show (#4486): the Dive, the quick view, and each empty state. */}
-      {(view.kind === 'dive' || view.kind === 'quick' || view.kind === 'empty') && report?.ok && report.value.heading && (report.value.heading.name || report.value.heading.reasons.length > 0) && (
+      {/* #1159: over a Dive with its own pickers the Dive names the store itself; the heading stays for its cached view. */}
+      {(view.kind === 'dive' || view.kind === 'quick' || view.kind === 'empty') && !(view.kind === 'dive' && report?.ok && report.value.pickers_in_dive) && report?.ok && report.value.heading && (report.value.heading.name || report.value.heading.reasons.length > 0) && (
         <ReportHeading heading={report.value.heading} period={report.value} wide={view.kind === 'dive'} />
       )}
       {view.kind === 'opening' && <p className="fd-opening">Opening your report…</p>}

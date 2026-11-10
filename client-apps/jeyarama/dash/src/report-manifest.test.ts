@@ -173,7 +173,7 @@ describe('what Dash owns and what it reads', () => {
   // #1159: off by default, so every report keeps the bar until its Dive has its own pickers.
   it("marks a report whose Dive has its own Store and Month pickers, with a check that's off until set, added by a migration step", () => {
     const column = manifest.tables[0].columns.find(c => c.column_name === 'pickers_in_dive') as { column_type?: string; default?: unknown } | undefined
-    const added = manifest.migrations.flatMap(m => m.operations as { kind: string; table?: string; column?: { column_name: string } }[])
+    const added = manifest.migrations.flatMap(m => m.operations as unknown as { kind: string; table?: string; column?: { column_name: string } }[])
       .filter(o => o.kind === 'addColumn' && o.table === 'dash.report' && o.column?.column_name === 'pickers_in_dive')
     expect([column?.column_type, column?.default ?? null, added.length]).toEqual(['Check', null, 1])
   })
