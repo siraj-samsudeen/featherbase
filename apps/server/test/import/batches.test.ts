@@ -140,6 +140,16 @@ describe('#206: one file-import is one batch', () => {
     expect(found.created).toBe(0)
   })
 
+  test('a part logged with no count adds nothing', async ({ admin }) => {
+    const batch = newBatch()
+    await zoneTable(admin, 'Batch Gamma')
+    await importInto(admin, 'Batch Gamma', [{ zone: 'Z1', pop: 1 }], { batch_id: batch, file_name: 'zones.xlsx' })
+    const { sql } = await import('../../src/db')
+    await sql`update import_log set inserted = null where batch_id = ${batch}`
+    const found = (await batches(admin)).find((b) => b.batch_id === batch)!
+    expect(found).toMatchObject({ inserted: 0 })
+  })
+
   test('separate imports of the same file are separate batches', async ({ admin }) => {
     // file_name repeats every time; it was never an identity.
     await zoneTable(admin, 'Batch Repeat')

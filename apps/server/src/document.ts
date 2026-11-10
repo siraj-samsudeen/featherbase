@@ -612,7 +612,7 @@ async function assertAccessColumnsUnchanged(
     const key = (r: RowValues) => JSON.stringify(cols.map((f) => (own(r, f.column_name) == null ? '' : String(r[f.column_name]))))
     const current = await tx`
       select * from ${tx(await tableRelation(childMeta.name))}
-      where parent = ${String(existing[meta.row_key] ?? existing[ROW_KEY])} and parenttype = ${meta.name}
+      where parent = ${String(existing[meta.row_key])} and parenttype = ${meta.name}
         and parentfield = ${input.columnName}`
     // Judge the rows as saveChildren applies them: a payload row whose row_id
     // names a stored row updates that row, any other row is an insert, and a
@@ -805,6 +805,8 @@ function stripInternalColumns(meta: TableMeta, row: RowValues): RowValues {
   return out
 }
 
+// Every caller passes a row read from (or just written to) the Table's own
+// relation, which always holds its row key.
 // The whole row with its sub-table rows, every tier included. Only the
 // server's own consumers (hooks, assignment rules) take it as it is; anything
 // a person or another system sees passes through restrictRow first.
@@ -814,7 +816,7 @@ async function loadChildren(meta: TableMeta, row: RowValues): Promise<RowValues>
     const childMeta = await getMeta(f.row_table!)
     const rows = await sql`
       select * from ${sql(await tableRelation(f.row_table!))}
-      where parent = ${String(row[meta.row_key] ?? row[ROW_KEY])}
+      where parent = ${String(row[meta.row_key])}
         and parenttype = ${meta.name}
         and parentfield = ${f.column_name}
       order by position`

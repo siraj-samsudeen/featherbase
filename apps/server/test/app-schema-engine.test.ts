@@ -201,6 +201,22 @@ describe('Sub-table losses', () => {
     const losses = await countLosses('shop', [step([{ kind: 'dropTable', table: { ...supplier, columns: [...supplier.columns, lines] }, destructive: true }])])
     expect(losses.map(describeLoss)).toEqual(['prune #1 dropTable shop.supplier: 1 row and 1 Sub-table row'])
   })
+
+  shopTest('several Sub-table rows that go with a Table are counted in the plural', async () => {
+    await registered()
+    await sql`insert into shop.line (row_id, parent, parenttype, parentfield, qty) values ('l2', 's1', 'shop.supplier', 'lines', 3)`
+    const losses = await countLosses('shop', [step([{ kind: 'dropTable', table: { ...supplier, columns: [...supplier.columns, lines] }, destructive: true }])])
+    expect(losses.map(describeLoss)).toEqual(['prune #1 dropTable shop.supplier: 1 row and 2 Sub-table rows'])
+  })
+
+  shopTest('a Sub-table column whose line Table is not the app\'s own counts and removes no lines', async () => {
+    await registered()
+    await sql`update table_def set owner_app = 'elsewhere' where name = 'shop.line'`
+    const drop = step([{ kind: 'dropColumn', table: 'shop.supplier', column: lines, destructive: true }])
+    expect((await countLosses('shop', [drop])).map(describeLoss)).toEqual(['prune #1 dropColumn shop.supplier.lines: 0 values'])
+    await applyMigrations([drop], 'shop')
+    expect(await sql`select row_id from shop.line`).toEqual([{ row_id: 'l1' }])
+  })
 })
 
 describe('backfills keep the column\'s own rules', () => {
@@ -251,6 +267,29 @@ describe('a required column stays filled', () => {
     await run({ kind: 'addColumn', table: 'shop.supplier', column: choice('grade', { reqd: true }), backfill: 'C' })
     await expect(run({ kind: 'alterColumn', table: 'shop.supplier', column: 'grade', destructive: true, from: { choices: 'A\nB\nC' }, to: { choices: 'A\nB' } }))
       .rejects.toThrow(/1 row holds no value/)
+  })
+
+  shopTest('narrowing a Choice refuses while several values would be cleared, naming how many', async () => {
+    await registered()
+    await sql`insert into shop.supplier (row_id, code, rating) values ('s2', 'BETA', 2)`
+    await run({ kind: 'addColumn', table: 'shop.supplier', column: choice('grade'), backfill: 'C' })
+    await expect(run({ kind: 'alterColumn', table: 'shop.supplier', column: 'grade', from: { choices: 'A\nB\nC' }, to: { choices: 'A\nB' } }))
+      .rejects.toThrow(/would clear 2 values outside its new choices/)
+  })
+
+  shopTest('narrowing a required Choice is refused while several rows would be left empty', async () => {
+    await registered()
+    await sql`insert into shop.supplier (row_id, code, rating) values ('s2', 'BETA', 2)`
+    await run({ kind: 'addColumn', table: 'shop.supplier', column: choice('grade', { reqd: true }), backfill: 'C' })
+    await expect(run({ kind: 'alterColumn', table: 'shop.supplier', column: 'grade', destructive: true, from: { choices: 'A\nB\nC' }, to: { choices: 'A\nB' } }))
+      .rejects.toThrow(/2 rows hold no value/)
+  })
+
+  shopTest('a text column turned into a Choice with no choices is refused', async () => {
+    await registered()
+    await run({ kind: 'addColumn', table: 'shop.supplier', column: { column_name: 'note', label: 'Note', column_type: 'Data' }, backfill: 'free text' })
+    await expect(run({ kind: 'alterColumn', table: 'shop.supplier', column: 'note', destructive: true, from: { column_type: 'Data' }, to: { column_type: 'Choice' } }))
+      .rejects.toThrow('Invalid Table definition')
   })
 
   shopTest('an empty text counts as no value for a required column', async () => {

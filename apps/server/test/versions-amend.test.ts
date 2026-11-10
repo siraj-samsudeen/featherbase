@@ -2,7 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
-import { expectStatus } from './fixtures'
+import { createUserWithRole, expectRefused, expectStatus } from './fixtures'
 
 const DT = 'Va Invoice'
 const ROW = 'Va Line'
@@ -129,5 +129,25 @@ describe('DOC-008: amend cancelled documents', () => {
       `/api/table/${encodeURIComponent(DT)}/${doc.row_id}:amend`,
     )
     expect(second.row_id).toBe(`${doc.row_id}-2`)
+  })
+
+  // The copy would leave out lines the amender cannot see; it is refused instead.
+  test('amend by someone who cannot read the lines is refused, and makes no copy', async ({ admin, createUser }) => {
+    await admin.post('/api/table_def', { name: ROW, kind: 'sub_table', columns: [{ column_name: 'item', column_type: 'Data' }] })
+    await admin.post('/api/table_def', {
+      name: DT, is_submittable: true,
+      columns: [
+        { column_name: 'title', column_type: 'Data' },
+        { column_name: 'lines', column_type: 'Sub-table', row_table: ROW, tier: 'restricted' },
+      ],
+    })
+    const amender = await createUserWithRole(admin, createUser, {
+      role: 'Va Amender', table: DT, can_read: true, can_create: true, can_write: true, can_submit: true, can_cancel: true, can_amend: true,
+    })
+    const doc = await admin.post<Record<string, any>>('/api/save_row', { table: DT, row: { title: 'lined', lines: [{ item: 'x' }] } })
+    await admin.post(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}:submit`)
+    await admin.post(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}:cancel`)
+    await expectRefused(amender.post(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}:amend`), 403, 'No write permission on column lines')
+    expect(await sql`select row_id from featherbase.va_invoice where amended_from = ${String(doc.row_id)}`).toEqual([])
   })
 })

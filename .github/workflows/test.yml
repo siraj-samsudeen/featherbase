@@ -188,6 +188,11 @@ jobs:
       - name: Check for personal data in tracked files
         run: pnpm check:sensitive
 
+      # ADR 0023: a coverage ignore marks code no test can reach, and says why
+      # after `--`. Lists every ignore; fails on one with no reason.
+      - name: Every coverage ignore gives its reason
+        run: pnpm check:coverage-ignores
+
       # Retired product words (e.g. "Desk" for the Admin screen) must not creep
       # back into app sources, specs or docs. The list lives at the top of
       # tools/check-vocabulary.mjs.

@@ -90,7 +90,8 @@ async function candidateFor(
   // Warehouse tables (duckdb) declare no PK; fall back to the first column —
   // read-only browsing tolerates a non-unique row address (the form shows
   // the first match), and no write path exists to misfire.
-  const pk = t.pk ?? (cfg.engine === 'duckdb' || cfg.engine === 'motherduck' ? (t.columns[0]?.name ?? null) : null)
+  // The warehouse driver builds each table from its columns, so it has a first one.
+  const pk = t.pk ?? (cfg.engine === 'duckdb' || cfg.engine === 'motherduck' ? t.columns[0].name : null)
   const bindKey = `${t.schema}\u0000${t.table}`
   const base: Omit<ReflectionCandidate, 'bindable' | 'reason'> = {
     schema: t.schema,

@@ -294,6 +294,10 @@ describe('the check on a live instance', () => {
     ])
   })
 
+  test('a run whose summary was mailed says to how many System Managers', () => {
+    expect(formatSummaryDelivery({ plan: null, disabled: [], emailed: 2 })).toBe('leaver check: summary sent to 2 System Manager(s)')
+  })
+
   test('a run with nothing to report says no summary was sent', () => {
     expect(formatSummaryDelivery({ plan: null, disabled: [], emailed: 0 })).toBe('leaver check: nothing to report; no summary sent')
   })

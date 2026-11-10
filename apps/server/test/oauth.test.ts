@@ -614,6 +614,24 @@ describe('exchanging a code with Google itself', () => {
     expect(result).toMatchObject({ subject: '10', email: null, email_verified: false })
   })
 
+  // No seam injected: the exchange goes through the global fetch, stubbed here.
+  test('without an injected fetch, the exchange asks Google through the global fetch', async () => {
+    const urls: string[] = []
+    vi.stubGlobal('fetch', async (input: unknown) => {
+      const url = String(input)
+      urls.push(url)
+      if (url === 'https://oauth2.googleapis.com/token') return json({ access_token: 'at-global' })
+      if (url === 'https://openidconnect.googleapis.com/v1/userinfo') return json({ sub: '12', email: 'g@example.com', email_verified: true })
+      throw new Error(`unexpected request to ${url}`)
+    })
+    try {
+      expect(await exchangeCode('the-code', '/api/oauth/google/callback', 'client-1', 'v')).toMatchObject({ subject: '12', email: 'g@example.com' })
+    } finally {
+      vi.unstubAllGlobals()
+    }
+    expect(urls).toEqual(['https://oauth2.googleapis.com/token', 'https://openidconnect.googleapis.com/v1/userinfo'])
+  })
+
   test('an exchange with no PKCE verifier sends an empty one', async () => {
     const bodies: string[] = []
     _setGoogleFetch(async (input, init) => {

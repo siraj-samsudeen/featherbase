@@ -312,6 +312,9 @@ describe('app registry: legacy row tolerance', () => {
     expect(apps.find((a) => a.name === 'cov-legacy-str')?.tables).toEqual(['Legacy X'])
     expect(apps.find((a) => a.name === 'cov-legacy-bad')?.tables).toEqual([])
     expect(apps.find((a) => a.name === 'cov-legacy-obj')?.tables).toEqual([])
+    // A JSON string holding JSON that is not a list names no Tables either.
+    await sql`insert into installed_app (name, tables) values ('cov-legacy-str-obj', ${'"{\\"x\\": 1}"'}::jsonb)`
+    expect((await listInstalledApps()).find((a) => a.name === 'cov-legacy-str-obj')?.tables).toEqual([])
     // Neither name has a registered manifest — loadInstalledApps must skip them.
     await loadInstalledApps()
   })

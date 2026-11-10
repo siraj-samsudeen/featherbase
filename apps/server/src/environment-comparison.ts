@@ -95,7 +95,7 @@ export async function variableReport(key: unknown): Promise<VariableReport> {
   // the release warns while it is missing (release-preflight.ts).
   // It warns in every environment, so it is at least recommended, even when
   // the source names a declared variable.
-  for (const { name } of named ?? []) {
+  for (const { name } of named) {
     const declared = variables.find((v) => v.name === name)
     if (declared) {
       if (declared.presence === 'optional') declared.presence = 'recommended'

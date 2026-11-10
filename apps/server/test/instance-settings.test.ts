@@ -356,6 +356,12 @@ describe('export (D9)', () => {
     expect(result.changes).toEqual([])
   })
 
+  test('a whole-number setting stored as something other than a number is left out of the export', async () => {
+    await applyInstanceSettings({ settings: { 'System Settings': { session_hours: 9 } } }, { by: 'Administrator' })
+    await sql`update single_value set value = 'nine' where table_name = 'System Settings' and field = 'session_hours'`
+    expect((await exportInstanceSettings()).file.settings['System Settings']).not.toHaveProperty('session_hours')
+  })
+
   test('a JSON column holding a JSON string round-trips as that string (Codex P2)', async () => {
     await sql`insert into sign_in_method ${sql({
       row_id: 'stringy', created_by: 'Administrator', updated_by: 'Administrator', created_at: new Date(), updated_at: new Date(), submission_status: 'draft', position: 0,
@@ -728,6 +734,41 @@ describe('values from variables (#703)', () => {
       await saveDoc('System Settings', { app_name: 'Typed in Admin' }, 'Administrator')
       expect((await exported()).appName).toBe('Typed in Admin')
     })
+  })
+
+  describe('a value from a variable cleared by hand', () => {
+    const fromVariable = () => applyInstanceSettings(file('DIVE_ID'), { by: 'Administrator', env: { DIVE_ID: 'made-up-private-dive-7032' } })
+    const clearByHand = () => runAsSystemActor(BREAK_GLASS_ACTOR, () => saveDoc('System Settings', { app_name: null }, BREAK_GLASS_ACTOR))
+    const appName = async () => ((await exportInstanceSettings()).file.settings['System Settings'] as Record<string, unknown>).app_name
+
+    test('drifts by name while the file still names it', async () => {
+      await fromVariable()
+      await clearByHand()
+      expect(await settingsDrift()).toEqual([{ table: 'System Settings', row_id: 'System Settings', field: 'app_name', from_variable: 'DIVE_ID' }])
+    })
+
+    test('before the file stops naming it is left out of the export from then on', async () => {
+      await fromVariable()
+      await clearByHand()
+      await applyInstanceSettings({ settings: {} }, { by: 'Administrator' })
+      expect(await appName()).toBeUndefined()
+    })
+
+    test('after the file stopped naming it is left out of the export, not named by its variable', async () => {
+      await fromVariable()
+      await applyInstanceSettings({ settings: {} }, { by: 'Administrator' })
+      expect(await appName()).toEqual({ env: 'DIVE_ID' })
+      await clearByHand()
+      expect(await appName()).toBeUndefined()
+    })
+  })
+
+  test('a field the platform no longer has, recorded as from a variable, is read as text when the file stops naming it', async () => {
+    await applyInstanceSettings(file('DIVE_ID'), { by: 'Administrator', env: { DIVE_ID: 'made-up-private-dive-7033' } })
+    await sql`update instance_settings_apply set managed_values = ${sql.json([{ table: 'System Settings', row_id: 'System Settings', field: 'retired_field', value: 'x', from_variable: 'DIVE_ID' }])}`
+    await sql`insert into single_value (table_name, field, value) values ('System Settings', 'retired_field', 'x')`
+    expect((await applyInstanceSettings({ settings: {} }, { by: 'Administrator' })).changes).toEqual([])
+    expect(await settingsDrift()).toEqual([])
   })
 
   test('refuses a variable an installed app declares as a secret, even when this server has it unset', async () => {

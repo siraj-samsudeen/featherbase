@@ -129,6 +129,13 @@ describe('DOC: what a save refuses, and the field it names', () => {
     })
   })
 
+  test('a nested row sent as a bare value is refused, and nothing is saved', async ({ admin }) => {
+    await admin.post('/api/table_def', { name: 'Doc Line', kind: 'sub_table', columns: [{ column_name: 'item', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { name: 'Doc Order', columns: [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Doc Line' }] })
+    await expectApiError(admin.post('/api/save_row', { table: 'Doc Order', row: { lines: ['bolt'] } }), { status: 417 })
+    expect(await sql`select row_id from featherbase.doc_order`).toEqual([])
+  })
+
   test('a Currency outside its storage range refuses the whole save and preserves the loaded row', async ({ admin }) => {
     const dt = await makeTable(admin, { name: 'Doc Currency', columns: ['title', 'amount:Currency'] })
     const doc = await admin.post<Record<string, unknown>>(dt.url, { title: 'kept', amount: 12.5 })
