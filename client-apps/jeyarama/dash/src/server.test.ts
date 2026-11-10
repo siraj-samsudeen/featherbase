@@ -245,14 +245,23 @@ describe("the stores read (the bar's store picker)", () => {
   const TWO = [place('9902', '9902'), place('9901 / Section: Sarees', '9901', ['010101001'])]
   const SAME_NAME = { Plant: STORES.Plant, Site: STORES.Site.map(site => ({ ...site, name: 'Lakeside' })) }
 
-  it("offers each of the reader's stores from their places, named from the core Tables", async () => {
+  it("offers each of the reader's stores from their places, named from the core Tables, A–Z by name (#1153)", async () => {
     const { ctx } = context({ places: TWO })
-    expect(await reads.stores(ctx)).toEqual([{ value: '9901', label: 'Lakeside' }, { value: '9902', label: 'Hillview' }])
+    expect(await reads.stores(ctx)).toEqual([{ value: '9902', label: 'Hillview' }, { value: '9901', label: 'Lakeside' }])
+  })
+
+  // #1153: the picker shows no codes, so an order by code looked random.
+  it('orders the stores A–Z by name, whatever their codes', async () => {
+    const names = [['9901', 'Marthandam'], ['9902', 'kattakada'], ['9903', 'Attingal'], ['9904', 'Nagercoil']]
+    const core = { Plant: names.map(([code]) => ({ row_id: code, site: `S${code}`, plant_type: 'Store' })),
+      Site: names.map(([code, name]) => ({ row_id: `S${code}`, name, is_store: true, cluster: null })) }
+    const { ctx } = context({ places: names.map(([code]) => place(code, code)), core })
+    expect((await reads.stores(ctx)).map(option => option.label)).toEqual(['Attingal', 'kattakada', 'Marthandam', 'Nagercoil'])
   })
 
   it('never reads the cached figures, so a failing cache leaves the picker whole', async () => {
     const { ctx, asked } = context({ places: TWO, cacheThrows: true })
-    expect(await reads.stores(ctx)).toEqual([{ value: '9901', label: 'Lakeside' }, { value: '9902', label: 'Hillview' }])
+    expect(await reads.stores(ctx)).toEqual([{ value: '9902', label: 'Hillview' }, { value: '9901', label: 'Lakeside' }])
     expect(asked).toEqual([])
   })
 
