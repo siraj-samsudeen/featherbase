@@ -368,7 +368,7 @@ function Pane({
   const settings = useSettings()
   // #910: opening a row shows it in the drill pane beside Explore.
   const nav = useNavigation()
-  const openPane = nav ? (row: string) => nav.push({ ...nav.step, pane: { table, row } }) : undefined
+  const openPane = (row: string) => nav!.push({ ...nav!.step, pane: { table, row } })
   const columns = useMemo(() => (meta.data ? listColumns(meta.data) : []), [meta.data])
   // Headline: hash-named tables (sub-tables, mostly) lead with their first
   // real column instead of an opaque row id.
@@ -404,9 +404,7 @@ function Pane({
     enabled: columns.length > 0 && Boolean(numericCol),
     queryFn: () =>
       api.get<{ count: number; sum: string | null }>(
-        `/api/table/${encodeURIComponent(table)}:aggregate?filters=${encodeURIComponent(filterKey)}${
-          numericCol ? `&sum=${encodeURIComponent(numericCol.column_name)}` : ''
-        }`,
+        `/api/table/${encodeURIComponent(table)}:aggregate?filters=${encodeURIComponent(filterKey)}&sum=${encodeURIComponent(numericCol!.column_name)}`,
       ),
   })
   if (meta.isLoading || list.isLoading)
@@ -435,9 +433,9 @@ function Pane({
             selected={selected.has(String(r.row_id))}
             onToggle={() => {
               if (onToggle) onToggle(String(r.row_id))
-              else openPane?.(String(r.row_id))
+              else openPane(String(r.row_id))
             }}
-            onOpenPane={openPane ? () => openPane(String(r.row_id)) : undefined}
+            onOpenPane={() => openPane(String(r.row_id))}
           />
         ))}
         {!rows.length && (
@@ -482,7 +480,7 @@ function PaneRow({
   settings: Settings
   selected: boolean
   onToggle: () => void
-  onOpenPane?: () => void
+  onOpenPane: () => void
 }) {
   const [first, ...rest] = columns
   return (
@@ -507,18 +505,16 @@ function PaneRow({
         <span className="truncate text-sm font-medium text-ink">
           {cellText(first, row, settings) || String(row.row_id)}
         </span>
-        {onOpenPane && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onOpenPane()
-            }}
-            title="Show in the pane"
-            className="invisible text-ink-subtle hover:text-action group-hover:visible"
-          >
-            ◎
-          </button>
-        )}
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpenPane()
+          }}
+          title="Show in the pane"
+          className="invisible text-ink-subtle hover:text-action group-hover:visible"
+        >
+          ◎
+        </button>
       </div>
       {rest.length > 0 && (
         <div className="flex flex-wrap gap-x-3 text-xs text-ink-muted">

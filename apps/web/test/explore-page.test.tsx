@@ -1,6 +1,7 @@
 // Explore (spec: search-and-explore): chain tables, narrow by clicking with exact counts and
 // sums, and open a row in the drill pane without leaving Explore (#910).
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 
 configure({ asyncUtilTimeout: 10_000 })
@@ -94,4 +95,42 @@ test("Explore's drill pane offers no Filter, since no list sits under it", async
   const panel = await pane(/^po-/)
   expect(await within(panel).findByRole('button', { name: 'Go there' })).toBeInTheDocument()
   expect(within(panel).queryByRole('button', { name: 'Filter' })).not.toBeInTheDocument()
+})
+
+test('a supplier with no purchases leaves the purchases pane reading No rows', async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/save_row', { table: 'Ex Supplier', row: { row_id: 'sup-c', title: 'Calm Ltd' } })
+  await renderApp(`/featherbase/admin/explore?root=${enc('Ex Supplier')}&chain=${chain}`, admin)
+  fireEvent.click(within(await screen.findByTestId('explore-pane1')).getByText('Calm Ltd'))
+  await waitFor(() => expect(screen.getByTestId('explore-pane2')).toHaveTextContent('No rows'))
+})
+
+test('a purchase with no title reads by its id, and its empty amount as a dash', async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/save_row', { table: 'Ex Purchase', row: { row_id: 'po-blank', supplier: 'sup-b' } })
+  await renderApp(`/featherbase/admin/explore?root=${enc('Ex Purchase')}`, admin)
+  const pane1 = await screen.findByTestId('explore-pane1')
+  await waitFor(() => expect(within(pane1).getAllByTestId('explore-row')).toHaveLength(4))
+  const blank = within(pane1).getAllByTestId('explore-row').find((row) => row.textContent?.startsWith('po-blank'))!
+  await waitFor(() => expect(blank).toHaveTextContent(/^po-blank◎Bolt Co—$/))
+})
+
+test('a table with more rows than a pane holds says how many it shows', async ({ admin }) => {
+  await seed(admin)
+  for (let i = 0; i < 98; i++)
+    await admin.post('/api/save_row', { table: 'Ex Purchase', row: { row_id: `po-x${i}`, title: `po-x${i}`, supplier: 'sup-b', amount: 1 } })
+  await renderApp(`/featherbase/admin/explore?root=${enc('Ex Purchase')}`, admin)
+  const pane1 = await screen.findByTestId('explore-pane1')
+  await waitFor(() => expect(pane1).toHaveTextContent('101 rows · showing 100'))
+})
+
+test('a table whose rows the network drops says it cannot be loaded', async ({ admin }) => {
+  await seed(admin)
+  const bridge = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    return url.startsWith('/api/table/Ex%20Purchase?') ? Promise.reject(new TypeError('Failed to fetch')) : bridge(input, init)
+  })
+  await renderApp(`/featherbase/admin/explore?root=${enc('Ex Purchase')}`, admin)
+  expect(await screen.findByText('Cannot load Ex Purchase')).toBeInTheDocument()
 })

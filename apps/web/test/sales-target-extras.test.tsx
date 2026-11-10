@@ -160,3 +160,33 @@ test('a refusal followed by a session that ended is reported, not shown as no ac
   await waitFor(() => expect(card).toHaveAttribute('data-state', 'error'))
   expect(screen.queryByText("You don't have access to this report")).not.toBeInTheDocument()
 })
+
+test('a Section with a missing actual and an unmapped group with nothing traded say so in their subtotals', async ({ admin, api }) => {
+  await seedSalesTarget((path, init) => admin.fetch(path, init), { test_employee_1: 'pw-1', test_employee_2: 'pw-2', test_employee_3: 'pw-3', test_employee_4: 'pw-4' }, [
+    { username: 'test_employee_1', display_name: 'Employee 1', plant_code: '1501', store_label: 'ATK', material_groups: ['010101001', '010101002', '010101003', '010101004'] },
+  ])
+  delete process.env.DIVE_ID
+  await admin.fetch('/api/table_def', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Section Merchandise Map', module: 'Store Sections', columns: ['store_code', 'material_group', 'mch_subcategory', 'section_name'].map((c) => ({ column_name: c, column_type: 'Data' })) }),
+  })
+  for (const mg of ['010101001', '010101002'])
+    await admin.fetch('/api/save_row', { method: 'POST', body: JSON.stringify({ table: 'Section Merchandise Map', row: { store_code: '1501', material_group: mg, mch_subcategory: 'Boys Tops', section_name: 'Boys Tops' } }) })
+  _setSourceReader(async (text: string) => {
+    if (/with base as/.test(text)) return [
+      ['010101001', 'Store A', 'STA', 100, 200, 1, 1], // past the Section's whole target
+      ['010101002', 'Store A', 'STA', 50, null, 0, 1], // no actual yet
+      ['010101003', 'Store A', 'STA', 30, null, 0, 1], // unmapped, no actual yet
+      // 010101004: unmapped, nothing traded and no target
+    ]
+    if (/merchandise_hierarchy/.test(text)) return [['010101001', 'Shirts'], ['010101002', 'Trousers'], ['010101003', 'Belts'], ['010101004', 'Socks']]
+    return [['2026-09-17', 3]]
+  })
+  await open(api)
+  await waitFor(() => expect(screen.getAllByTestId('snapshot-section')).toHaveLength(2))
+  const [tops, unmapped] = screen.getAllByTestId('snapshot-section-total')
+  expect(tops).toHaveTextContent('Boys Tops · 2 subcategories · 1 without actuals')
+  expect(within(tops).getAllByRole('cell')[3]).not.toHaveClass('text-negative')
+  expect(unmapped).toHaveTextContent('Not mapped to a Section · 1 subcategory · 1 with no target or sales hidden · 1 without actuals')
+  expect(screen.getByTestId('snapshot-missing')).toHaveTextContent('2 subcategories have no actuals')
+})

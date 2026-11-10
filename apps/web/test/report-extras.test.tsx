@@ -9,7 +9,9 @@ import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, vi } from 'vitest'
+import type { Sql } from 'postgres'
 import { sql } from 'server/src/db'
+import { invalidateMeta } from 'server/src/meta'
 import { test, expect, renderApp } from './pg-test'
 import { grantRole } from 'server/test/fixtures'
 
@@ -195,4 +197,66 @@ test('pinning a chart the network drops says the pin failed', async ({ admin }) 
   dropNetwork((url) => url.includes('pin_chart'))
   await user.click(screen.getByTestId('pin-chart'))
   expect(await screen.findByTestId('pin-msg')).toHaveTextContent('Pin failed')
+})
+
+test('a saved report that names no columns keeps the default columns under its grouping', async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/save_row', { table: 'Report', row: { row_id: 'Rex Grouped', ref_table: T, config: { group_by: 'region' } } })
+  await openReport(admin, `?report=${encodeURIComponent('Rex Grouped')}`)
+  await waitFor(() => expect(screen.getAllByTestId('group-header')).toHaveLength(2))
+  for (const column of ['region', 'amount', 'units']) expect(screen.getByTestId(`report-head-${column}`)).toBeInTheDocument()
+})
+
+test('a saved report naming a column the Table no longer has heads it with its name, as text', async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/save_row', { table: 'Report', row: { row_id: 'Rex Stale', ref_table: T, config: { columns: ['region', 'retired'] } } })
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(T))}/view/report?report=${encodeURIComponent('Rex Stale')}`, admin)
+  await waitFor(() => expect(screen.getByTestId('report-head-retired')).toHaveTextContent('retired'), { timeout: 8000 })
+  expect(screen.queryByTestId('chart-value')).not.toBeInTheDocument()
+})
+
+// Defect pinned (#1133): the server refuses the rows request ("Unknown selected field"), and
+// the report has no error state for its rows, so it reads "0 rows" and
+// "No rows" over a Table that has two.
+test.fails('a saved report naming a column the Table no longer has does not claim the Table has no rows', async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/save_row', { table: 'Report', row: { row_id: 'Rex Stale', ref_table: T, config: { columns: ['region', 'retired'] } } })
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(T))}/view/report?report=${encodeURIComponent('Rex Stale')}`, admin)
+  await screen.findByTestId('report-head-retired', {}, { timeout: 8000 })
+  await waitFor(() => expect(screen.getByTestId('report-view')).not.toHaveTextContent('No rows'), { timeout: 3000 })
+})
+
+test('a total with a fraction shows two decimal places', async ({ admin }) => {
+  await admin.post('/api/table_def', {
+    name: T,
+    id_pattern: 'prompt',
+    columns: [
+      { column_name: 'region', column_type: 'Data', label: 'Region', in_list_view: true },
+      { column_name: 'weight', column_type: 'Float', label: 'Weight', in_list_view: true },
+    ],
+  })
+  await admin.post('/api/save_row', { table: T, row: { row_id: 's1', region: 'North', weight: 1.25 } })
+  await admin.post('/api/save_row', { table: T, row: { row_id: 's2', region: 'South', weight: 2 } })
+  await openReport(admin)
+  await waitFor(() => expect(screen.getByTestId('grand-sum-weight')).toHaveTextContent('3.25'))
+})
+
+test('choosing Saved reports… again leaves the saved report', async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/save_row', { table: 'Report', row: { row_id: 'Rex Report', ref_table: T, config: { columns: ['region', 'amount'] } } })
+  const { router } = await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(T))}/view/report?report=${encodeURIComponent('Rex Report')}`, admin)
+  const picker = await screen.findByTestId('saved-report-picker', {}, { timeout: 8000 })
+  await waitFor(() => expect(picker).toHaveValue('Rex Report'))
+  await userEvent.selectOptions(picker, '')
+  await waitFor(() => expect((router as { state: { location: { search: Record<string, unknown> } } }).state.location.search.report).toBeUndefined())
+})
+
+test('columns stored with no label are offered under their column names', async ({ admin, db }) => {
+  await seed(admin)
+  await (db as Sql)`update column_def set label = null where parent = ${T}`
+  invalidateMeta()
+  await openReport(admin)
+  await userEvent.click(screen.getByTestId('report-columns'))
+  expect(screen.getByRole('checkbox', { name: 'note' })).toBeInTheDocument()
+  expect(within(screen.getByTestId('report-groupby')).getByRole('option', { name: 'region' })).toBeInTheDocument()
 })

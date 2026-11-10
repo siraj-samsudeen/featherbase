@@ -595,7 +595,7 @@ export function AccessTokens() {
             className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault()
-              if (accountName.trim() && roleList.isSuccess && !create.isPending) create.mutate()
+              create.mutate()
             }}
           >
             <fieldset disabled={create.isPending} className="space-y-4">
@@ -620,7 +620,7 @@ export function AccessTokens() {
                   </Notice>
                 ) : (
                   <div className="flex flex-wrap gap-x-4 gap-y-2">
-                    {(roleList.data?.data ?? [])
+                    {roleList.data.data
                       .filter((r) => r.row_id !== 'All')
                       .map((r) => (
                         <label key={r.row_id} className="flex items-center gap-2 text-sm text-ink">
@@ -675,7 +675,7 @@ export function AccessTokens() {
             className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault()
-              if (name.trim() && !rename.isPending) rename.mutate()
+              rename.mutate()
             }}
           >
             <Field
@@ -782,9 +782,9 @@ function CredentialDialog({
     const previous = document.activeElement as HTMLElement | null
     const controls = () =>
       [
-        ...(panel.current?.querySelectorAll<HTMLElement>(
+        ...panel.current!.querySelectorAll<HTMLElement>(
           'input:not(:disabled), select:not(:disabled), button:not(:disabled)',
-        ) ?? []),
+        ),
       ].filter((el) => !el.closest('fieldset:disabled'))
     controls()[0]?.focus()
     const keydown = (e: KeyboardEvent) => {

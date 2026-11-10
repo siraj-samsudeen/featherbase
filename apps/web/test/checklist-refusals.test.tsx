@@ -129,6 +129,15 @@ test('the camera button opens the picker; a photo the server refuses offers a re
   expect(stored.n).toBe(0)
 })
 
+test('a photo picker closed without a photo uploads nothing', async ({ admin }) => {
+  const run = await seedRun(admin)
+  await openRun(admin, run)
+  const input = screen.getAllByTestId('checklist-photo-input')[0]
+  fireEvent.change(input, { target: { files: [] } })
+  expect(screen.getAllByTestId('checklist-photo-add')[0]).toHaveTextContent('📷 Take photo')
+  expect(screen.queryByTestId('checklist-photo-thumb')).not.toBeInTheDocument()
+})
+
 test('multiple photos remain attached to their own checklist item', async ({ admin }) => {
   const run = await seedRun(admin)
   const doc = await admin.get<{ items: { row_id: string; photo_proof: boolean }[] }>(

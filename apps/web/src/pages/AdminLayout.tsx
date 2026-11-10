@@ -81,7 +81,7 @@ connectEventSink({
 // home page sidebar. All Tables render inside <Outlet/>.
 // #410: pick the layout from the server-computed capabilities BEFORE mounting
 // the Admin shell, so a person who cannot use it never fires its API calls.
-export function AdminLayout({ wide = false, fullWidth = false }: { wide?: boolean; fullWidth?: boolean } = {}) {
+export function AdminLayout({ wide, fullWidth = false }: { wide: boolean; fullWidth?: boolean }) {
   // #489: the signed-in person's theme choice outlives every toggle on the page.
   return (
     <ThemeChoiceProvider>

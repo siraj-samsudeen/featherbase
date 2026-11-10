@@ -17,6 +17,9 @@ const live = () => JSON.parse(document.documentElement.dataset.realtimeChannels 
 
 let bridge: ReturnType<typeof bridgeRealtime> | undefined
 afterEach(() => {
+  // Signed out first: a socket closed while a token is stored schedules a
+  // reconnect a second later, after jsdom is gone (#1135).
+  localStorage.clear()
   bridge?.()
   bridge = undefined
   vi.unstubAllGlobals()

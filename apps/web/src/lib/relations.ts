@@ -78,7 +78,7 @@ export function backlinkGroups(
   for (const c of connections) perTable.set(c.table, (perTable.get(c.table) ?? 0) + 1)
   return connections.map((c) => ({
     key: groupKey(c),
-    label: (perTable.get(c.table) ?? 0) > 1 ? `${c.table} · ${labelOf(c)}` : c.table,
+    label: perTable.get(c.table)! > 1 ? `${c.table} · ${labelOf(c)}` : c.table,
     count: c.count,
     connection: c,
   }))
@@ -91,24 +91,24 @@ export const TREE_PAGE = 20
 export const ALL_ROWS = 500
 
 /** A group's rows: the connected Table's list, narrowed by the connection's
- *  filters, `limit` at a time (undefined: as many as one read returns). */
-export function useGroupRows(connection: Pick<Connection, 'table' | 'filters'> | undefined, opts: { fields?: string[]; limit?: number; enabled?: boolean; orderBy?: string } = {}) {
+ *  filters, `limit` at a time. */
+export function useGroupRows(connection: Pick<Connection, 'table' | 'filters'>, opts: { fields: string[]; limit: number; enabled?: boolean; orderBy?: string }) {
   return useQuery({
-    ...groupRowsQuery(connection ?? { table: '', filters: [] }, opts),
-    enabled: Boolean(connection) && opts.enabled !== false,
+    ...groupRowsQuery(connection, opts),
+    enabled: opts.enabled !== false,
   })
 }
 
 /** The one query for a group's rows (or, with no filters, a page of a Table's rows). */
-export function groupRowsQuery(connection: Pick<Connection, 'table' | 'filters'>, opts: { fields?: string[]; limit?: number; start?: number; orderBy?: string } = {}) {
+export function groupRowsQuery(connection: Pick<Connection, 'table' | 'filters'>, opts: { fields: string[]; limit: number; start?: number; orderBy?: string }) {
   return {
-    queryKey: ['group-rows', connection.table, JSON.stringify(connection.filters), opts.fields ?? null, opts.limit ?? null, opts.start ?? 0, opts.orderBy ?? null],
+    queryKey: ['group-rows', connection.table, JSON.stringify(connection.filters), opts.fields, opts.limit, opts.start ?? 0, opts.orderBy ?? null],
     queryFn: () => listResource(connection.table, {
       filters: connection.filters,
       fields: opts.fields,
       order_by: opts.orderBy,
       limit_start: opts.start || undefined,
-      limit_page_length: opts.limit ?? ALL_ROWS,
+      limit_page_length: opts.limit,
     }),
   }
 }
