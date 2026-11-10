@@ -24,7 +24,7 @@ describe('an installed app that is not running here (#912)', () => {
     await discoverPackages([tickets])
     expect(installedPackageDifference({ name: 'nothing_here', package_version: '1.0.0' })).toBe('absent')
     expect(installedPackageDifference({ name: 'tickets', package_version: '9.9.9' })).toBe('version')
-    expect(notRunningReason({ name: 'tickets' })).toMatch(/this server has tickets 0\.2\.6/)
+    expect(notRunningReason({ name: 'tickets' })).toMatch(/this server has tickets 0\.2\.7/)
     await admin.post('/api/install_app', { name: 'tickets' })
     const [row] = await sql`select * from installed_app where name = 'tickets'`
     expect(installedPackageDifference(row)).toBeNull()
@@ -68,7 +68,7 @@ describe('an installed app that is not running here (#912)', () => {
     await sql`update installed_app set artifact_digest = 'an-earlier-build' where name = 'tickets'`
     vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify([tickets]))
     try {
-      expect(await installedAppsAtStart('development')).toEqual([expect.stringMatching(/^WARNING: App tickets 0\.2\.6 is installed, but its files changed/)])
+      expect(await installedAppsAtStart('development')).toEqual([expect.stringMatching(/^WARNING: App tickets 0\.2\.7 is installed, but its files changed/)])
     } finally { vi.unstubAllEnvs() }
   })
 

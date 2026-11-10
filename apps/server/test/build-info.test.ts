@@ -78,8 +78,8 @@ test('each app shows what changed in its current version, newest first', async (
   const { catalog } = await admin.get<Apps>('/api/apps')
   const tasker = catalog.find(app => app.name === 'tasker')!
   expect(tasker.releaseNotes?.[0]?.version).toBe(tasker.version)
-  expect(tasker.releaseNotes?.map(note => note.version)).toEqual(['3.3.1', '3.3.0', '3.2.0', '3.1.0', '3.0.3', '3.0.2', '3.0.1', '3.0.0'])
-  expect(tasker.releaseNotes?.[6]?.changes.join(' ')).toContain('#563')
+  expect(tasker.releaseNotes?.map(note => note.version)).toEqual(['3.3.2', '3.3.1', '3.3.0', '3.2.0', '3.1.0', '3.0.3', '3.0.2', '3.0.1', '3.0.0'])
+  expect(tasker.releaseNotes?.[7]?.changes.join(' ')).toContain('#563')
 })
 
 test('only a System Manager sees what the instance is running', async ({ createUser }) => {

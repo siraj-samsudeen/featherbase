@@ -1068,9 +1068,21 @@
       "fromVersion": "3.3.0",
       "toVersion": "3.3.1",
       "operations": []
+    },
+    {
+      "id": "split_screens",
+      "fromVersion": "3.3.1",
+      "toVersion": "3.3.2",
+      "operations": []
     }
   ],
   "releaseNotes": [
+    {
+      "version": "3.3.2",
+      "changes": [
+        "Tasker's screens are rebuilt from smaller source files; nothing you see or do changes"
+      ]
+    },
     {
       "version": "3.3.1",
       "changes": [
