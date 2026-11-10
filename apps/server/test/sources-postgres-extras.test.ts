@@ -13,6 +13,7 @@ import { fkKey, singleColumnFks } from '../src/sources/fk'
 import { sql } from '../src/db'
 import type { Binding, SourceConfig } from '../src/sources/types'
 import { expectRefused, expectStatus } from './fixtures'
+import { registerController, unregisterController } from '../src/controllers'
 
 const URL_ENV = 'EXT_EXTRA_URL'
 process.env[URL_ENV] = EXTERNAL_DATABASE_URL
@@ -288,6 +289,36 @@ describe('Writing to a Postgres table that has only defaults', () => {
     expect(await saved.json()).toMatchObject({ row_id: String(first.id), note: 'alpha' })
     const missing = await admin.fetch(`/api/table/${enc}/999999`, { method: 'PATCH', body: JSON.stringify({}) })
     await expectStatus(missing, 404)
+  })
+
+  test('a save that leaves a timestamp out does not rewrite it', async ({ admin }) => {
+    await makeSource(admin)
+    const name = await reflect(admin, 'kitchen')
+    const [row] = await cli`insert into ext_extra.kitchen (code, local_time) values ('k-time', '2026-01-02 03:04:05') returning id`
+    try {
+      const saved = await admin.fetch(`/api/table/${encodeURIComponent(name)}/${row.id}`, { method: 'PATCH', body: JSON.stringify({ code: 'k-time-2' }) })
+      await expectStatus(saved, 200)
+      const [after] = await cli`select code, local_time::text as local_time from ext_extra.kitchen where id = ${row.id}`
+      expect(after).toEqual({ code: 'k-time-2', local_time: '2026-01-02 03:04:05' })
+    } finally {
+      await cli`delete from ext_extra.kitchen where id = ${row.id}`
+    }
+  })
+
+  test('a value a hook drops from the row is still written as sent', async ({ admin }) => {
+    await makeSource(admin)
+    const name = await reflect(admin, 'plain')
+    const controller = { table: name, hooks: { before_save: ({ row }: { row: Record<string, unknown> }) => { delete row.note } } }
+    registerController(controller)
+    const [first] = await cli`select id from ext_extra.plain where note = 'beta'`
+    try {
+      const saved = await admin.fetch(`/api/table/${encodeURIComponent(name)}/${first.id}`, { method: 'PATCH', body: JSON.stringify({ note: 'beta-2' }) })
+      await expectStatus(saved, 200)
+      expect((await cli`select note from ext_extra.plain where id = ${first.id}`)[0].note).toBe('beta-2')
+    } finally {
+      unregisterController(controller)
+      await cli`update ext_extra.plain set note = 'beta' where id = ${first.id}`
+    }
   })
 
   test('group counts retain the rows whose grouping value is NULL', async () => {
