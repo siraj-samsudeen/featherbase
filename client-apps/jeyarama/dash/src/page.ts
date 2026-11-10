@@ -551,7 +551,7 @@ export function reportAddress(key: string, search: string): string {
 }
 
 /** What the page says for a job that reaches nothing; null: the no-access page says it. */
-export type ReachProblem = 'no_job' | 'no_section' | 'departments_not_filled' | 'head_office' | 'no_cluster' | 'nothing_placed'
+export type ReachProblem = 'no_job' | 'no_section' | 'departments_not_filled' | 'head_office' | 'no_cluster' | 'nothing_placed' | 'nothing_assigned'
 export function reachMessage(problems: readonly string[]): { text: string; sectionsLink: boolean } | null {
   if (problems.includes('no_section') || problems.includes('nothing_placed'))
     return { text: "You aren't set against a section yet, so there is no report to show.", sectionsLink: true }

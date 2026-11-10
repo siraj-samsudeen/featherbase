@@ -6,7 +6,7 @@ import { resolve } from 'node:path'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { expectStatus, makePerson } from './fixtures'
+import { expectStatus, grantRole, makePerson } from './fixtures'
 import { configureGoogle } from './identity-fixtures'
 import { completeSignIn } from '../src/sign-in'
 import { methodOfKind } from '../src/identities'
@@ -115,6 +115,31 @@ describe('opening something without access is the request', () => {
     const priya = await createUser({ email: 'priya.dash@example.com', roles: [] })
     expect(await (await ask(priya, 'dash')).json()).toEqual({ state: 'waiting', title: 'Dash' })
     expect((await list(admin)).rows).toMatchObject([{ person: priya.user, app: 'Dash' }])
+  })
+
+  // Found on production staging (10-Nov-2026): a person who belongs in an app was sent to the Admin
+  // first, and its no-access page emailed every System Manager. Their app is where they go instead.
+  test("someone with an app of their own role isn't waiting for Featherbase: no request, no mail, and their app named", async ({ admin, createUser }) => {
+    await managers()
+    await installOther(admin)
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Other Reader' } })
+    await grantRole(admin, { table: 'other.task', role: 'Other Reader', can_read: true })
+    const reader = await createUser({ email: 'other.reader@example.com', roles: ['Other Reader'] })
+    expect(await (await ask(reader, 'featherbase')).json()).toEqual({ state: 'elsewhere', title: 'Featherbase', home: '/other/' })
+    expect([(await list(admin)).total, (await mailsTo('manager.one@example.com')).length]).toEqual([0, 0])
+  })
+
+  // Someone whose only apps are open to everyone (#659: none of them is theirs) isn't waiting for
+  // Featherbase either: they are shown those apps, and nobody is told.
+  test('someone who can open only apps open to everyone gets those apps listed, and no request', async ({ admin, createUser }) => {
+    await managers()
+    const { discoverPackages } = await import('../src/runtime-packages')
+    await discoverPackages([resolve('../..', 'test-apps/other')])
+    await admin.post('/api/install_app', { name: 'other' })
+    const anyone = await createUser({ email: 'anyone@example.com', roles: [] })
+    expect(await (await ask(anyone, 'featherbase')).json())
+      .toEqual({ state: 'apps', title: 'Featherbase', apps: [{ name: 'other', title: 'Other tasks', href: '/other/' }] })
+    expect([(await list(admin)).total, (await mailsTo('manager.one@example.com')).length]).toEqual([0, 0])
   })
 
   test('something they can open is not a request', async ({ admin }) => {

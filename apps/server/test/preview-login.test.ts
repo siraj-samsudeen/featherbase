@@ -104,7 +104,7 @@ describe('the /preview route', () => {
         body: JSON.stringify({ code }),
       })
       await expectStatus(redeemed, 200)
-      expect(Object.keys((await redeemed.json()) as object).sort()).toEqual(['token', 'user'])
+      expect(Object.keys((await redeemed.json()) as object).sort()).toEqual(['apps', 'token', 'user'])
     }
   })
 

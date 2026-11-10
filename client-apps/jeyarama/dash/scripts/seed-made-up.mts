@@ -57,12 +57,19 @@ if (!installed) await post('/api/install_app', { name: 'dash' })
 
 // The core Tables, which the warehouse loads on a real instance; the six the provider reads are
 // marked as deciding scope, and all are listed for the app to read.
-for (const table of BASE_TABLES as { name: string }[]) {
-  const exists = await call(`/api/table/${encodeURIComponent(table.name)}:meta`).then(() => true, () => false)
-  if (!exists) await post('/api/table_def', table)
+// A database seeded before a Table or column was added gets it now: the provider refuses every
+// reader while any Table or column it reads is missing (rama_dw #4588).
+type Column = { column_name: string }
+for (const table of BASE_TABLES as { name: string; columns: Column[] }[]) {
+  const meta = await call<{ columns: Column[] } & Record<string, unknown>>(`/api/table/${encodeURIComponent(table.name)}:meta`).catch(() => null)
+  if (!meta) { await post('/api/table_def', table); continue }
+  const missing = table.columns.filter(column => !meta.columns.some(have => have.column_name === column.column_name))
+  if (missing.length) await call(`/api/table_def/${encodeURIComponent(table.name)}`, { method: 'PUT', body: JSON.stringify({ ...meta, columns: [...meta.columns, ...missing] }) })
 }
-const linked = await call<{ data: { updated_at: string }[] }>(`/api/table/App%20Setting?filters=${encodeURIComponent(JSON.stringify([['row_id', '=', 'dash.linked_tables']]))}&fields=${encodeURIComponent('["updated_at"]')}`)
-if (!linked.data.length) await save('App Setting', { row_id: 'dash.linked_tables', value: JSON.stringify(LINKED_TABLES) })
+const linked = await call<{ data: { updated_at: string; value: string }[] }>(`/api/table/App%20Setting?filters=${encodeURIComponent(JSON.stringify([['row_id', '=', 'dash.linked_tables']]))}&fields=${encodeURIComponent('["updated_at","value"]')}`)
+const [listed] = linked.data
+if (!listed || listed.value !== JSON.stringify(LINKED_TABLES))
+  await save('App Setting', { row_id: 'dash.linked_tables', value: JSON.stringify(LINKED_TABLES), ...(listed ? { updated_at: listed.updated_at } : {}) })
 
 // The instance's MotherDuck source, played by a local DuckDB path that nothing opens: the
 // platform serves the cached copy below without querying it.
@@ -81,12 +88,23 @@ for (const row of REPORT_ROWS as { report_key: string }[])
 await save('dash.report_access', { report_bundle: bundle, role: 'Dash Reader' }).catch(() => {})
 
 for (const [code, name] of org.clusters) await keep('Cluster', code, { code, name })
-for (const [code, name, is_store, cluster] of org.sites) await keep('Site', code, { code, name, is_store, cluster })
+for (const region of org.regions) await keep('Operating Region', region, { region })
+for (const [code, name, is_store, cluster, operating_region] of org.sites) await keep('Site', code, { code, name, is_store, cluster, operating_region })
 for (const [plant_code, plant_type, site] of org.plants) await keep('Plant', plant_code, { plant_code, plant_type, site })
 for (const [row_id, name, site] of org.floors) await keep('Store Floor', row_id, { row_id, name, site })
 for (const [row_id, name, site, floor, status] of org.sections) await keep('Section', row_id, { row_id, name, site, floor, status })
-// #1175: each with its division, sub-division and category, for Your sections' paths and browser.
-for (const [row_id, subcategory, subcategory_type, division, subdivision, category] of org.subcategories) await keep('Subcategory', row_id, { row_id, subcategory, subcategory_type, division, subdivision, category })
+const tree = org.merchandise
+for (const division of tree.divisions) await keep('Division', division, { division })
+for (const [subdivision, division] of tree.subdivisions) await keep('Subdivision', subdivision, { subdivision, division })
+for (const [category, subdivision] of tree.categories) await keep('Category', category, { category, subdivision })
+const categoryOf = new Map<string, string>(tree.placed)
+const lineage = (code: string) => {
+  const category = categoryOf.get(code)
+  if (!category) return {}
+  const subdivision = tree.categories.find(([name]: string[]) => name === category)[1]
+  return { category, subdivision, division: tree.subdivisions.find(([name]: string[]) => name === subdivision)[1] }
+}
+for (const [row_id, subcategory, subcategory_type] of org.subcategories) await keep('Subcategory', row_id, { row_id, subcategory, subcategory_type, ...lineage(row_id) })
 const placement = (store: string, subcategory: string, section: string) => {
   const section_subcategory_id = `${store}-${subcategory}-2026-01-01`
   return keep('Section Subcategory', section_subcategory_id, { section_subcategory_id, store, subcategory, section, starts_on: '2026-01-01', source_key: 'Made-up' })
@@ -120,6 +138,16 @@ for (const reader of org.readers as { key: string; name: string; jobs: [string, 
   for (const [i, [job, site, where]] of reader.jobs.entries()) {
     const assignment_id = `JA-${employee}-${i + 1}`
     await keep('Job Assignment', assignment_id, { assignment_id, employee, job, site, ...where, starts_on: '2026-01-01', source_key: 'Made-up' })
+  }
+}
+
+// rama_dw #4588: a made-up buyer, whose reach is a category across the stores of a region.
+for (const buyer of tree.buyers as { key: string; name: string; code: string; assignments: [string, string, string][] }[]) {
+  const id = await person(`reader-${buyer.key}@example.test`, buyer.name)
+  await keep('Employee', buyer.code, { employee_code: buyer.code, name: buyer.name, person: id, status: 'Current' })
+  for (const [i, [responsibility, category, operating_region]] of buyer.assignments.entries()) {
+    const assignment_id = `MA-${buyer.code}-${i + 1}`
+    await keep('Merchandise Assignment', assignment_id, { assignment_id, employee: buyer.code, responsibility, category, operating_region, starts_on: '2026-01-01', source_key: 'Made-up' })
   }
 }
 

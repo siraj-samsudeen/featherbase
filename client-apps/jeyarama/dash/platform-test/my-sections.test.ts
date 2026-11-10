@@ -43,6 +43,10 @@ async function world(admin: TestClient, createUser: CreateUserFn) {
   await save('Section', { row_id: 'LKS-S2', name: 'Silk', site: 'LKS', floor: 'LKS-F2', status: 'Active' })
   await save('Section', { row_id: 'LKS-S3', name: 'Closed Corner', site: 'LKS', floor: 'LKS-F2', status: 'Inactive' })
   await save('Section', { row_id: 'HIL-S1', name: 'Hillview Silk', site: 'HIL', status: 'Active' })
+  // The tree first: a subcategory's levels are references to it.
+  for (const division of new Set(LEAVES.map(leaf => leaf[2]))) await save('Division', { division })
+  for (const [subdivision, division] of new Map(LEAVES.map(leaf => [leaf[3], leaf[2]]))) await save('Subdivision', { subdivision, division })
+  for (const [category, subdivision] of new Map(LEAVES.map(leaf => [leaf[4], leaf[3]]))) await save('Category', { category, subdivision })
   for (const [code, name, division, subdivision, category] of LEAVES)
     await save('Subcategory', { row_id: code, subcategory: name, division, subdivision, category, subcategory_type: 'Merchandise' })
   await save('Subcategory', { row_id: '990101001', subcategory: 'Sari Hangers', subcategory_type: 'Consumable' })
@@ -67,8 +71,8 @@ const LEAVES = [
   ['010101002', 'Kurtis', 'Women', 'Ethnic Wear', 'Kurtis and Sets'],
   ['010101003', 'Silk Sarees', 'Women', 'Ethnic Wear', 'Sarees and Blouses'],
   ['010101004', 'Sari Blouses', 'Women', 'Ethnic Wear', 'Sarees and Blouses'],
-  ['020101001', 'Girls Leggings', 'Kids', 'Girls Western', 'Bottoms'],
-  ['020102001', 'Girls Leggings', 'Kids', 'Girls Ethnic', 'Bottoms'],
+  ['020101001', 'Girls Leggings', 'Kids', 'Girls Western', 'Western Bottoms'],
+  ['020102001', 'Girls Leggings', 'Kids', 'Girls Ethnic', 'Ethnic Bottoms'],
 ]
 const removal = (over: object = {}) => ({ job: 'JA-1', placement: 'LKS-1', ...over })
 const adds = (...subcategories: string[]) => ({ job: 'JA-1', subcategories })
@@ -128,8 +132,8 @@ describe('browsing to add', () => {
       // One each in two categories: the first by name wins the tie.
       start: { division: 'Women', subdivision: 'Ethnic Wear', category: 'Kurtis and Sets' },
       levels: [
-        { division: 'Kids', subdivision: 'Girls Ethnic', category: 'Bottoms' },
-        { division: 'Kids', subdivision: 'Girls Western', category: 'Bottoms' },
+        { division: 'Kids', subdivision: 'Girls Ethnic', category: 'Ethnic Bottoms' },
+        { division: 'Kids', subdivision: 'Girls Western', category: 'Western Bottoms' },
         { division: 'Women', subdivision: 'Ethnic Wear', category: 'Kurtis and Sets' },
         { division: 'Women', subdivision: 'Ethnic Wear', category: 'Sarees and Blouses' },
       ] })
