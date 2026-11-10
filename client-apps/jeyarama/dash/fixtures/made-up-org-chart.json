@@ -196,87 +196,154 @@
   [
    "010101001",
    "Silk sarees",
-   "Merchandise"
+   "Merchandise",
+   "Women",
+   "Ethnic Wear",
+   "Sarees"
   ],
   [
    "010101002",
    "Cotton sarees",
-   "Merchandise"
+   "Merchandise",
+   "Women",
+   "Ethnic Wear",
+   "Sarees"
   ],
   [
    "010101003",
    "Salwar sets",
-   "Merchandise"
+   "Merchandise",
+   "Women",
+   "Ethnic Wear",
+   "Salwar and Kurtis"
   ],
   [
    "010202001",
    "Boys shirts",
-   "Merchandise"
+   "Merchandise",
+   "Kids",
+   "Boys Western",
+   "Tops"
   ],
   [
    "010202002",
    "Girls frocks",
-   "Merchandise"
+   "Merchandise",
+   "Kids",
+   "Girls Western",
+   "Dresses"
   ],
   [
    "010303001",
    "Saree blouses",
-   "Merchandise"
+   "Merchandise",
+   "Women",
+   "Ethnic Wear",
+   "Sarees"
   ],
   [
    "010404001",
    "Belts",
-   "Merchandise"
+   "Merchandise",
+   "Accessories",
+   "Fashion Accessories",
+   "Belts"
   ],
   [
    "010505001",
    "Handbags",
-   "Merchandise"
+   "Merchandise",
+   "Accessories",
+   "Bags",
+   "Handbags"
   ],
   [
    "010606001",
    "Clutches",
-   "Merchandise"
+   "Merchandise",
+   "Accessories",
+   "Bags",
+   "Clutches"
   ],
   [
    "010707001",
    "Sandals",
-   "Merchandise"
+   "Merchandise",
+   "Footwear",
+   "Women's Footwear",
+   "Sandals"
   ],
   [
    "010808001",
    "Wrist watches",
-   "Merchandise"
+   "Merchandise",
+   "Accessories",
+   "Watches",
+   "Wrist Watches"
   ],
   [
    "010909001",
    "Gift wrap",
-   "Consumable"
+   "Consumable",
+   "Consumables",
+   "Packing",
+   "Gift Wrap"
   ],
   [
    "011010001",
    "Track pants",
-   "Merchandise"
+   "Merchandise",
+   "Men",
+   "Sportswear",
+   "Bottoms"
   ],
   [
    "011111001",
    "Soft toys",
-   "Merchandise"
+   "Merchandise",
+   "Kids",
+   "Toys",
+   "Soft Toys"
   ],
   [
    "011212001",
    "Formal shirts",
-   "Merchandise"
+   "Merchandise",
+   "Men",
+   "Formal Wear",
+   "Shirts"
   ],
   [
    "011313001",
    "Formal trousers",
-   "Merchandise"
+   "Merchandise",
+   "Men",
+   "Formal Wear",
+   "Trousers"
   ],
   [
    "990101001",
    "Saree hangers",
-   "Consumable"
+   "Consumable",
+   "Consumables",
+   "Store Supplies",
+   "Hangers"
+  ],
+  [
+   "010202003",
+   "Girls leggings",
+   "Merchandise",
+   "Kids",
+   "Girls Western",
+   "Bottoms"
+  ],
+  [
+   "010202004",
+   "Girls leggings",
+   "Merchandise",
+   "Kids",
+   "Girls Ethnic",
+   "Bottoms"
   ]
  ],
  "placements": [
@@ -344,6 +411,16 @@
    "NGT",
    "011111001",
    "NGT-S1"
+  ],
+  [
+   "LKS",
+   "010202003",
+   "LKS-S3"
+  ],
+  [
+   "LKS",
+   "010202004",
+   "LKS-S3"
   ]
  ],
  "readers": [
@@ -742,6 +819,22 @@
     ]
    ],
    "says": "holds Master Data Editor"
+  },
+  {
+   "key": "silkleader",
+   "name": "Bala Silk-Leader",
+   "code": "2009",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2009-LKS-S2",
+     "Team Leader",
+     "LKS",
+     "LKS-S2",
+     "2008"
+    ]
+   ],
+   "says": "Team Leader of Silk at Lakeside; asks Selvi Other-Manager, so a move from Silk waits for Mani or Selvi"
   },
   {
    "key": "manager2",

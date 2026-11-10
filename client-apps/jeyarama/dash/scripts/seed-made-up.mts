@@ -85,7 +85,8 @@ for (const [code, name, is_store, cluster] of org.sites) await keep('Site', code
 for (const [plant_code, plant_type, site] of org.plants) await keep('Plant', plant_code, { plant_code, plant_type, site })
 for (const [row_id, name, site] of org.floors) await keep('Store Floor', row_id, { row_id, name, site })
 for (const [row_id, name, site, floor, status] of org.sections) await keep('Section', row_id, { row_id, name, site, floor, status })
-for (const [row_id, subcategory, subcategory_type] of org.subcategories) await keep('Subcategory', row_id, { row_id, subcategory, subcategory_type })
+// #1175: each with its division, sub-division and category, for Your sections' paths and browser.
+for (const [row_id, subcategory, subcategory_type, division, subdivision, category] of org.subcategories) await keep('Subcategory', row_id, { row_id, subcategory, subcategory_type, division, subdivision, category })
 const placement = (store: string, subcategory: string, section: string) => {
   const section_subcategory_id = `${store}-${subcategory}-2026-01-01`
   return keep('Section Subcategory', section_subcategory_id, { section_subcategory_id, store, subcategory, section, starts_on: '2026-01-01', source_key: 'Made-up' })
