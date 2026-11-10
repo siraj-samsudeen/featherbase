@@ -44,7 +44,8 @@ const GROUP_CHARS = 33
 const GAP = 16
 const W = 900
 
-const groupId = (g: GroupNode) => (g.cnx ? groupKey(g.cnx) : `child|${g.field?.column_name ?? ''}`)
+// A group without a connection is a sub-table's, built with its column.
+const groupId = (g: GroupNode) => (g.cnx ? groupKey(g.cnx) : `child|${g.field!.column_name}`)
 
 export function RowMap({ table, name }: { table: string; name: string }) {
   const meta = useMeta(table)
