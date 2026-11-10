@@ -164,4 +164,12 @@ describe('labelling who did something', () => {
   test('nobody to label is an empty answer', async () => {
     expect(await whoLabels([])).toEqual(new Map())
   })
+
+  test('a person on record with no name, email or username reads as Unnamed person; a readable id as itself', async ({ createUser }) => {
+    const nameless = await createUser({ email: 'nameless.label@example.com' })
+    await sql`update person set full_name = null, email = null, username = null where row_id in ${sql([nameless.user!, 'Administrator'])}`
+    const labels = await whoLabels([nameless.user!, 'Administrator'])
+    expect(labels.get(nameless.user!)?.name).toBe('Unnamed person')
+    expect(labels.get('Administrator')?.name).toBe('Administrator')
+  })
 })

@@ -9,7 +9,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { discoverPackages, packageFailures } from '../src/runtime-packages'
-import { uninstallApp } from '../src/apps'
+import { installApp, registerApp, uninstallApp } from '../src/apps'
 import { glossaryDeclaration, readGlossary, syncAppGlossary, takeAppWording, validateGlossary } from '../src/glossary'
 import { expectApiError, expectRefused, expectStatus, grantRole } from './fixtures'
 import { sql } from '../src/db'
@@ -282,6 +282,18 @@ describe('taking an app\'s wording', () => {
   test('of an instance term, which has none, is refused', async ({ admin }) => {
     const term = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Glossary Term', row: { term: 'Plant', definition: 'A store.' } })
     await expect(takeAppWording(term.row_id, 'Administrator')).rejects.toMatchObject({ type: 'ValidationError', message: 'This term belongs to the instance; it has no app wording to take' })
+  })
+
+  // A code-registered app keeps no manifest on its installed row.
+  test('an installed app with no stored manifest adds nothing, and the instance terms still show', async ({ admin }) => {
+    registerApp({ name: 'glossary-code-app' })
+    try {
+      await installApp('glossary-code-app')
+      await admin.post('/api/save_row', { table: 'Glossary Term', row: { term: 'Plant', definition: 'A store.' } })
+      expect(JSON.stringify(await readGlossary('Administrator'))).toContain('A store.')
+    } finally {
+      await uninstallApp('glossary-code-app').catch(() => {})
+    }
   })
 
   test('reading the glossary without the grant to read terms is refused', async () => {
