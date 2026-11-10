@@ -31,6 +31,17 @@ describe('#101: GET /api/activity_feed', () => {
     expect(feed.items[0]).toMatchObject({ kind: 'search', label: 'search:unlabelled', path: '' })
   })
 
+  // The trail's key and label columns may be empty (only the events route
+  // fills them, and always with a key); such a row reads as blank, not broken.
+  test("a 'mine' item recorded with no key or label is shown with an empty label", async ({ admin }) => {
+    await sql`insert into user_event ${sql({
+      row_id: 'feed-keyless', created_by: 'Administrator', updated_by: 'Administrator', created_at: new Date(), updated_at: new Date(),
+      submission_status: 'draft', kind: 'search', ref_key: null, label: null, occurred_at: new Date(Date.now() + 60_000),
+    })}`
+    const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine')
+    expect(feed.items[0]).toMatchObject({ kind: 'search', label: '', path: '' })
+  })
+
   test("another user's 'mine' feed never includes the caller's trail", async ({ admin, createUser }) => {
     await admin.post('/api/events', {
       events: [
@@ -80,6 +91,20 @@ describe('#101: GET /api/activity_feed', () => {
     expect(feed.items.every((i) => !['row', 'list', 'page', 'search'].includes(i.kind as string))).toBe(
       true,
     )
+  })
+
+  test("a 'team' change recorded with no row named has no link", async ({ admin }) => {
+    const [{ latest }] = await sql`select greatest(
+      (select max(created_at) from version),
+      (select max(created_at) from activity_log)
+    ) as latest`
+    const at = new Date(new Date(latest ?? Date.now()).getTime() + 1000)
+    await sql`insert into version ${sql({
+      row_id: 'feed-rowless', created_by: 'Administrator', updated_by: 'Administrator', created_at: at, updated_at: at,
+      submission_status: 'draft', ref_table: 'Feed Rowless DT', ref_name: null, data: '{}',
+    })}`
+    const team = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=team&limit=1')
+    expect(team.items).toEqual([expect.objectContaining({ kind: 'change', sub: 'Feed Rowless DT', label: '', path: '' })])
   })
 
   test("'team' is refused without System Manager", async ({ admin, api }) => {
