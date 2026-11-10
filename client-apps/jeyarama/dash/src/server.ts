@@ -146,9 +146,13 @@ async function storeOfPage(ctx: ScopedContext, report: ReportRecord): Promise<st
   if (named) return named
   const reached = storesReached(placesOf(ctx))
   const byName = storeLabels(reached, await storeNames(ctx, reached)).map(option => option.value)
-  // The platform limits the cached copy to the reader's places.
-  const cached = await ctx.datasets.active(DATASETS[chosenMonth(ctx)].sales).catch(() => null)
-  const withFigures = new Set(((cached?.rows ?? []) as SalesRow[]).map(row => String(row.store_code)))
+  // The platform limits the cached copy to the reader's places. Figures are rows of the month on
+  // show with a day of actuals, as the quick view counts them; an earlier month's rows are none.
+  const month = chosenMonth(ctx)
+  const { period_start: start } = periodOf(istToday(), month)
+  const cached = await ctx.datasets.active(DATASETS[month].sales).catch(() => null)
+  const withFigures = new Set(((cached?.rows ?? []) as SalesRow[])
+    .filter(row => row.period_start === start && !!row.data_through && row.data_through >= start).map(row => String(row.store_code)))
   return byName.find(store => withFigures.has(store)) ?? byName[0]
 }
 
