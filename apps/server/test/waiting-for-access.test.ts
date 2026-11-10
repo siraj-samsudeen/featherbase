@@ -129,6 +129,19 @@ describe('opening something without access is the request', () => {
     expect([(await list(admin)).total, (await mailsTo('manager.one@example.com')).length]).toEqual([0, 0])
   })
 
+  // Someone whose only apps are open to everyone (#659: none of them is theirs) isn't waiting for
+  // Featherbase either: they are shown those apps, and nobody is told.
+  test('someone who can open only apps open to everyone gets those apps listed, and no request', async ({ admin, createUser }) => {
+    await managers()
+    const { discoverPackages } = await import('../src/runtime-packages')
+    await discoverPackages([resolve('../..', 'test-apps/other')])
+    await admin.post('/api/install_app', { name: 'other' })
+    const anyone = await createUser({ email: 'anyone@example.com', roles: [] })
+    expect(await (await ask(anyone, 'featherbase')).json())
+      .toEqual({ state: 'apps', title: 'Featherbase', apps: [{ name: 'other', title: 'Other tasks', href: '/other/' }] })
+    expect([(await list(admin)).total, (await mailsTo('manager.one@example.com')).length]).toEqual([0, 0])
+  })
+
   test('something they can open is not a request', async ({ admin }) => {
     expect(await (await ask(admin, 'featherbase')).json()).toEqual({ state: 'open', title: 'Featherbase' })
     expect((await list(admin)).total).toBe(0)

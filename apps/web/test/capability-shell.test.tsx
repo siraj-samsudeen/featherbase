@@ -145,6 +145,23 @@ test("a person whose only grant is on an installed app's Table is sent from the 
   }
 })
 
+// Someone whose only apps are open to everyone is shown those apps on the Admin's page instead of
+// "no access", and nobody is asked for anything.
+test('someone who can open only apps open to everyone is shown them, and asks for nothing', async ({ admin, createUser }) => {
+  expect(await discoverPackages([resolve('../..', 'test-apps/other')])).toEqual([])
+  try {
+    await admin.post('/api/install_app', { name: 'other' })
+    const anyone = await createUser({ email: 'open.apps.only@example.com', roles: [] })
+    await renderApp('/featherbase/admin', anyone)
+    const list = await screen.findByTestId('app-list')
+    const links = [...list.querySelectorAll('a')].map((a) => [a.textContent, a.getAttribute('href')])
+    const asked = await sql`select count(*)::int as n from access_request where person = ${anyone.user}`
+    expect([links, screen.queryByTestId('no-access'), asked[0].n]).toEqual([[['Other tasks', '/other/']], null, 0])
+  } finally {
+    await discoverPackages([])
+  }
+})
+
 test('a failed refresh of whoami keeps the shell the person already has', () => {
   const caps = { manage: false, report: false, admin: true, own_grant: true, tables: ['Shelf Note'], creatable: [], archived: [] }
   expect(shellKindOf({ isError: true, data: { capabilities: caps } })).toBe('admin')
