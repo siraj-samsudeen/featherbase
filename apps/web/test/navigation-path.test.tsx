@@ -169,6 +169,16 @@ test('Copy link the browser refuses to copy does not say Copied', async ({ admin
   expect(within(screen.getByRole('button', { name: 'Copy link' }).parentElement!).getByRole('status')).not.toHaveTextContent('Copied')
 })
 
+test('Copy link in a browser with no clipboard does not say Copied', async ({ admin }) => {
+  await seedSites(admin)
+  Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+  await renderApp(tableHref(SITE), admin)
+  await addRegionFilter()
+  fireEvent.click(await screen.findByRole('button', { name: 'Copy link' }))
+  await new Promise((r) => setTimeout(r, 50))
+  expect(within(screen.getByRole('button', { name: 'Copy link' }).parentElement!).getByRole('status')).not.toHaveTextContent('Copied')
+})
+
 test('a walk is listed under Recent paths by its names after signing in again', async ({ admin }) => {
   await seedSites(admin)
   const first = await renderApp(tableHref(SITE), admin)
