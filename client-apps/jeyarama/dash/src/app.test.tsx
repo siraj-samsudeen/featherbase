@@ -451,6 +451,42 @@ describe('a report on the rendered page', () => {
     }
   })
 
+  // #1143, found on production: past the deadline with the cached copy not built yet, the page says
+  // the figures are being prepared; a Dive that is ready later must still take over, in the same frame.
+  it('keeps the Dive behind "being prepared" past the deadline, and shows that same frame once it is ready', async () => {
+    const { act } = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { Dash } = await import('./app')
+    const { DIVE_READY_TIMEOUT_MS } = await import('./page')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      history.replaceState(null, '', '?store=9901')
+      calls.length = 0
+      const container = document.createElement('div')
+      document.body.appendChild(container)
+      const root = createRoot(container)
+      await act(async () => { root.render(<Dash />) })
+      await act(async () => { await settle() })
+      for (const c of calls.filter(c => c.store === '9901'))
+        c.answer.resolve(c.name === 'report' ? { ...report('9901', 'Silk'), state: 'not_built', rows: [] }
+          : { frame: 'https://embed-motherduck.com/sandbox/#session=made-up', ready_signal: true })
+      await act(async () => { await settle() })
+      await act(async () => { vi.advanceTimersByTime(DIVE_READY_TIMEOUT_MS); await settle() })
+      const view = () => container.querySelector('[data-testid=dash]')?.getAttribute('data-view')
+      const frame = container.querySelector('[data-testid=report-frame]') as HTMLIFrameElement | null
+      const behind = [view(), container.querySelector('[data-testid=empty-not_built]') !== null, !!frame && frame.closest('[aria-hidden=true]') !== null]
+      await act(async () => {
+        const JsdomMessageEvent = (window as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent
+        window.dispatchEvent(new JsdomMessageEvent('message', { origin: 'https://embed-motherduck.com', source: frame?.contentWindow ?? null, data: { type: 'dash:dive-ready' } }))
+        await settle()
+      })
+      expect([behind, [view(), container.querySelector('[data-testid=report-frame]') === frame]]).toEqual([['empty', true, true], ['dive', true]])
+      await act(async () => root.unmount())
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("says this report couldn't open, with Try again, when it has no quick view and its Dive fails", async () => {
     const { answer, container, unmount } = await open('?report=whole')
     await answer('report', plain)
