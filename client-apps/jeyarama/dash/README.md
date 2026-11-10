@@ -25,7 +25,9 @@ codes: the quick view names subcategories without their codes, and the store pic
 without plant codes. The page opens each Dive's latest saved version: no version is pinned anywhere,
 so saving a Dive on MotherDuck releases it (#937). A report with a quick view stands it in when its
 Dive can't load; any other says "This report couldn't open" with Try again. A Dive not up within
-15 s (`DIVE_READY_TIMEOUT_MS`) keeps loading out of sight behind that view. If it then says it is
+15 s (`DIVE_READY_TIMEOUT_MS`) keeps loading out of sight behind that view, or behind "The figures are
+being prepared" while the cached copy isn't built, or behind "This month's figures haven't arrived
+yet": those speak for the cached copy, and the Dive reads the warehouse itself. If it then says it is
 ready, the page switches to it in the same frame. A frame that errors falls back for good (#1143).
 
 ## Layout
@@ -142,6 +144,15 @@ at the repository root.
   stores`, `Stores and subcategories` or `No filter`), the Dive's own state keys, whether the Dive
   says when it has drawn (`ready_signal`), and its optional `quick_view`. No business data. Every
   app role reads it, because the platform opens an app only for people who can read its entry Table.
+  - **`pickers_in_dive`** (#1159, off by default): the Dive has its own Store and Month pickers
+    (v16 of the sales Dive, data-warehouse#4739). With it on, the embed session's `initial_state` is
+    exactly `reach` (`{ "<plant>": null | ["<subcategory>", ...] }` for every place the reader has,
+    `null` for the whole store), `store` (only when the address names one of the reader's), `month`
+    (`this` or `last`, from the address, default `this`) and `app_origin`. It carries none of the
+    one-store keys, because the Dive takes `reach` beside one of them as a scope error. The bar offers
+    no Store or Month for that report, and the page opens at once on the address's store. It draws
+    no heading over the Dive, only over its cached view. That view is for the address's store, or
+    where the Dive opens with none named: the reader's first store A–Z with figures. Turn it on only once the row's Dive reads these keys.
 - **`baseTables.read`**: the core Tables Dash reads by the columns named there. An instance lists all
   eight in the `dash.linked_tables` setting. `baseTables.propose` is what Your sections may propose.
 - **The scope provider, `org_chart`.** It reads the six Tables in `scopeProvider.tables`, each of

@@ -3,7 +3,7 @@
 // featherbase.json under "reads". A report is a row of `dash.report`; nothing here knows one Dive.
 import { checked } from './values.ts'
 import { orgChartProvider, reachOf, type Documents, type Place } from './provider.ts'
-import { diveFilters, storesOfReport, type ReportRecord } from './dive-filters.ts'
+import { diveFilters, storesOfReport, storesReached, type ReportRecord } from './dive-filters.ts'
 import { MONTH_CHOICES, buildReport, monthLabel, headingOf, istToday, periodOf, storeLabels, storeShortName, type CachedAnswer, type Heading, type Month, type MonthChoice, type SalesRow } from './report.ts'
 import { actions as sectionActions, reads as sectionReads } from './my-sections.ts'
 import { accessPage, addToBundle, giveReport, makeBundle, managesAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
@@ -69,7 +69,7 @@ export function setEmbedFetch(f: typeof fetch | null) {
 
 const placesOf = (ctx: ScopedContext) => ctx.authorization.places ?? []
 
-const REPORT_FIELDS = ['report_key', 'report_name', 'dive_id', 'filter_shape', 'store_key', 'subcategory_key', 'whole_store_key', 'month_key', 'ready_signal', 'quick_view']
+const REPORT_FIELDS = ['report_key', 'report_name', 'dive_id', 'filter_shape', 'store_key', 'subcategory_key', 'whole_store_key', 'month_key', 'ready_signal', 'quick_view', 'pickers_in_dive']
 
 /**
  * The one place that decides which reports this person may open: the reports given to them by
@@ -82,7 +82,7 @@ export async function reportsFor(ctx: ScopedContext): Promise<ReportRecord[]> {
   try { given = new Set((await reportsGivenTo(ctx.baseTables, ctx.user, ctx.roles ?? [], istToday())).keys()) } catch { return [] }
   if (!given.size) return []
   const rows = await ctx.documents.list('dash.report', { fields: REPORT_FIELDS, order_by: 'report_name asc', limit_page_length: 200 })
-  const reports = rows.map(row => ({ ...row, ready_signal: checked(row.ready_signal) }) as unknown as ReportRecord).filter(report => given.has(report.report_key))
+  const reports = rows.map(row => ({ ...row, ready_signal: checked(row.ready_signal), pickers_in_dive: checked(row.pickers_in_dive) }) as unknown as ReportRecord).filter(report => given.has(report.report_key))
   return (await reachesSomething(ctx)) ? reports : reports.filter(report => report.filter_shape === 'No filter')
 }
 
@@ -124,6 +124,36 @@ function chosenStore(ctx: ScopedContext, report: ReportRecord): string | undefin
   if (named === undefined || named === null || named === '') return stores[0]
   if (typeof named !== 'string' || !stores.includes(named)) ctx.reject('That store is not one of your stores')
   return named
+}
+
+/**
+ * #1159: for a Dive with its own pickers, the store the address names when it is the reader's, else
+ * none: the Dive opens on its first store, and the address never refuses the page.
+ */
+function storeInReach(ctx: ScopedContext): string | undefined {
+  const named = (ctx.payload as { store?: unknown } | undefined)?.store
+  return typeof named === 'string' && storesReached(placesOf(ctx)).includes(named) ? named : undefined
+}
+
+/**
+ * The store a report's page reads: the chosen one. For a Dive with its own pickers, the address's;
+ * else where the Dive opens with none named (agreed with v16): the reader's first store A–Z that
+ * has figures in the cached copy, or their first A–Z when none has.
+ */
+async function storeOfPage(ctx: ScopedContext, report: ReportRecord): Promise<string | undefined> {
+  if (!report.pickers_in_dive) return chosenStore(ctx, report)
+  const named = storeInReach(ctx)
+  if (named) return named
+  const reached = storesReached(placesOf(ctx))
+  const byName = storeLabels(reached, await storeNames(ctx, reached)).map(option => option.value)
+  // The platform limits the cached copy to the reader's places. Figures are rows of the month on
+  // show with a day of actuals, as the quick view counts them; an earlier month's rows are none.
+  const month = chosenMonth(ctx)
+  const { period_start: start } = periodOf(istToday(), month)
+  const cached = await ctx.datasets.active(DATASETS[month].sales).catch(() => null)
+  const withFigures = new Set(((cached?.rows ?? []) as SalesRow[])
+    .filter(row => row.period_start === start && !!row.data_through && row.data_through >= start).map(row => String(row.store_code)))
+  return byName.find(store => withFigures.has(store)) ?? byName[0]
 }
 
 /** The month the read is for (#750): `this` (also when none is named) or `last`; anything else is refused. */
@@ -212,10 +242,11 @@ async function openDive(ctx: ScopedContext, report: ReportRecord | null) {
   // can't create embed sessions; the platform hands this one only to the two reads opening a Dive.
   const token = ctx.secrets.MOTHERDUCK_EMBED_TOKEN
   if (!report.dive_id || !account || !token) return { not_set_up: true }
-  const store = chosenStore(ctx, report)
-  const period = periodOf(istToday(), chosenMonth(ctx))
+  const store = report.pickers_in_dive ? storeInReach(ctx) : chosenStore(ctx, report)
+  const month = chosenMonth(ctx)
+  const period = periodOf(istToday(), month)
   const origin = appOrigin((ctx.payload as { app_origin?: unknown } | undefined)?.app_origin)
-  const filters = diveFilters(report, placesOf(ctx), { store, periodEnd: period.period_end, appOrigin: origin })
+  const filters = diveFilters(report, placesOf(ctx), { store, month, periodEnd: period.period_end, appOrigin: origin })
   if ('refused' in filters) return { refused: filters.refused }
   const body = JSON.stringify({ username: account, initial_state: filters.state })
   let failure: string
@@ -287,7 +318,9 @@ export const reads = {
   /** The reports this person may open, for the sidebar. */
   async reports(context: ReadContext) {
     return (await offeredReports(context as ScopedContext)).map(report => ({ key: report.report_key, name: report.report_name,
-      takes_store: report.filter_shape === 'One store and subcategories', takes_month: !!report.month_key, no_filter: report.filter_shape === 'No filter' }))
+      // #1159: a Dive with its own pickers takes neither from the bar.
+      takes_store: report.filter_shape === 'One store and subcategories' && !report.pickers_in_dive, takes_month: !!report.month_key && !report.pickers_in_dive,
+      no_filter: report.filter_shape === 'No filter', ...(report.pickers_in_dive ? { pickers_in_dive: true } : {}) }))
   },
 
   /** Why this person's job reaches nothing, for the page's message. */
@@ -311,7 +344,7 @@ export const reads = {
    */
   async months(context: ReadContext) {
     const report = await chosenReport(context as ScopedContext)
-    if (!report?.month_key) return []
+    if (!report?.month_key || report.pickers_in_dive) return []
     const today = istToday()
     return MONTH_CHOICES.map(choice => ({ value: choice,
       label: `${choice === 'this' ? 'This month' : 'Last month'} · ${monthLabel(periodOf(today, choice).period_start)}` }))
@@ -322,19 +355,22 @@ export const reads = {
     const ctx = context as ScopedContext
     const report = await chosenReport(ctx)
     if (!report) return { state: 'no_access' }
-    const store = chosenStore(ctx, report)
-    const period = periodOf(istToday(), chosenMonth(ctx))
-    const filters = diveFilters(report, placesOf(ctx), { store, periodEnd: period.period_end, appOrigin: null })
+    const store = await storeOfPage(ctx, report)
+    const month = chosenMonth(ctx)
+    const period = periodOf(istToday(), month)
+    const filters = diveFilters(report, placesOf(ctx), { store, month, periodEnd: period.period_end, appOrigin: null })
     if ('refused' in filters) return { state: filters.refused === 'not_your_store' ? 'no_access' : filters.refused }
+    // #1159: the page draws no heading over a Dive with its own pickers, only over its cached view.
+    const marked = report.pickers_in_dive ? { pickers_in_dive: true } : {}
     if (report.quick_view && store) {
       const figures = await salesReport(ctx, store)
       await ctx.recordView({ dataset: DATASETS[figures.month].sales })
-      return figures
+      return { ...figures, ...marked }
     }
     const names = await storeNames(ctx, store ? [store] : [])
     const plain: Plain = { state: 'ready', no_quick_view: true, heading: store ? headingOf(placesOf(ctx), store, names.get(store) ?? null) : { name: null, sections: [], reasons: [] },
       ...(report.month_key ? { period_start: period.period_start, period_end: period.period_end } : {}) }
-    return plain
+    return { ...plain, ...marked }
   },
 
   /**
