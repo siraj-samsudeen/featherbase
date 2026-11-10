@@ -108,13 +108,14 @@ export default defineConfig({
       // them. An additional uncovered item fails even if % rounds up.
       // Stage 1 (lines, statements, functions): measured on a fresh database,
       // the full suite on PostgreSQL 18 with MySQL enabled, as CI merges it.
-      // Three statements are left. Two run only when another transaction
-      // commits in a window no test can hold open: a row deleted between its
-      // read and rowCapabilities' re-read (document.ts), and the scope
-      // provider turned off between authorizing a read and recording its
-      // drops (runtime-actions.ts dropVersions). The third needs a key column
-      // the caller reads on the Table but not on one matched row, which no
-      // grant set tried so far produces (collection-import.ts key analysis).
+      // One statement is left (collection-import.ts key analysis, `if
+      // (hidden) continue`): a key column the caller reads on the whole Table
+      // but not on one matched row. A row's readable columns only add to the
+      // Table-wide set (a creator-scoped grant adds columns on the caller's
+      // own rows; a share shows every column), so no grant set produces it.
+      // A row deleted between rowCapabilities' two reads, and a scope
+      // provider turned off before a read records its drops, are held open
+      // with module mocks in their own test files.
       // Stage 3 (branches), measured the same way: 332 uncovered in pass 2,
       // capped with a margin of 5 because the count moves a little run to
       // run. Of those left, no test can take these:
@@ -128,7 +129,7 @@ export default defineConfig({
       // The rest are reachable and still to be tested.
       thresholds: {
         lines: 100,
-        statements: -3,
+        statements: -1,
         functions: 100,
         branches: -337,
       },
