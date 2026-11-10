@@ -6,6 +6,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, beforeAll, vi } from 'vitest'
+import type { Sql } from 'postgres'
 import { rmSync } from 'node:fs'
 import { overrideVariable } from 'server/src/env'
 import { invalidateSources } from 'server/src/sources/registry'
@@ -103,4 +104,38 @@ test('a table list the network drops says it could not be read', async ({ admin 
   dropNetwork((url) => url.includes('tables'))
   await open(admin, 'database=sales')
   await waitFor(() => expect(screen.getByTestId('warehouse-browser')).toHaveTextContent('The table list could not be read'), WAIT)
+})
+
+test('a browser opened on no database opens the first one the source reads', async ({ admin }) => {
+  await open(admin, '')
+  await waitFor(() => expect(screen.getByTestId('browser-database')).toHaveValue('sales'), WAIT)
+  expect(screen.getByRole('combobox', { name: 'Schema' })).toHaveValue('')
+})
+
+test('a remembered database the source no longer reads opens the first one it does, on every schema', async ({ admin }) => {
+  localStorage.setItem(`fb-warehouse-place:${admin.user}:${SOURCE}`, JSON.stringify({ database: 'archive', schema: 'history' }))
+  await open(admin, '')
+  await waitFor(() => expect(screen.getByTestId('browser-database')).toHaveValue('sales'), WAIT)
+  expect(screen.getByRole('combobox', { name: 'Schema' })).toHaveValue('')
+})
+
+test('a browser opened on no database reopens the database and schema this person last had open', async ({ admin }) => {
+  localStorage.setItem(`fb-warehouse-place:${admin.user}:${SOURCE}`, JSON.stringify({ database: 'stock', schema: 'main' }))
+  await open(admin, '')
+  await waitFor(() => expect(screen.getByTestId('browser-database')).toHaveValue('stock'), WAIT)
+  expect(screen.getByRole('combobox', { name: 'Schema' })).toHaveValue('main')
+})
+
+test('a database the source does not read says what the server refused', async ({ admin }) => {
+  await open(admin, 'database=archive')
+  await waitFor(() => expect(screen.getByTestId('warehouse-browser')).toHaveTextContent(`Data source ${SOURCE} does not read the database archive`), WAIT)
+})
+
+test('a refresh after the source stopped reading the database says what the server refused', async ({ admin, db }) => {
+  await open(admin, 'database=sales')
+  await waitFor(() => expect(screen.getByTestId('browser-refresh')).toBeEnabled(), WAIT)
+  await (db as Sql)`update data_source set databases = '[]'::jsonb where row_id = ${SOURCE}`
+  invalidateSources()
+  await userEvent.click(screen.getByTestId('browser-refresh'))
+  expect(await screen.findByText(`Data source ${SOURCE} does not read the database sales`, {}, WAIT)).toBeInTheDocument()
 })

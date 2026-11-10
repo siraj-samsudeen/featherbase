@@ -26,3 +26,33 @@ describe('a relationship filter', () => {
     expect(filterText('Nv Visit', visitMeta, throughLines, () => 'Enchakkal · ENK')).toBe('Nv Site: Enchakkal · ENK')
   })
 })
+
+const siteMeta = {
+  columns: [
+    { column_name: 'region', column_type: 'Data', label: 'Region' },
+    { column_name: 'parent', column_type: 'Reference', reference_table: 'Nv Site', label: 'Parent' },
+  ],
+} as unknown as TableMeta
+
+describe('a filter step', () => {
+  test('a relationship filter with no rows of its own reads as the related table alone', () => {
+    expect(filterText('Nv Visit', visitMeta, ['row_id', 'related', { table: 'Nv Site' }], () => 'never')).toBe('Nv Site')
+  })
+
+  test('a negated relationship filter reads as not the related rows', () => {
+    expect(filterText('Nv Visit', visitMeta, ['row_id', 'not related', { table: 'Nv Site', filters: [['row_id', '=', 'ENK']] }], () => 'Enchakkal · ENK'))
+      .toBe('not Nv Site: Enchakkal · ENK')
+  })
+
+  test('a row id given as a number is still looked up by name', () => {
+    expect(filterRefs('Nv Site', siteMeta, ['row_id', '=', 7])).toEqual([{ table: 'Nv Site', row_id: '7' }])
+  })
+
+  test('a comparison on a link column names no row and reads as written', () => {
+    expect(filterText('Nv Site', siteMeta, ['parent', '>', 'ENK'], () => 'never')).toBe('Parent > ENK')
+  })
+
+  test('a list of plain values reads as the list', () => {
+    expect(filterText('Nv Site', siteMeta, ['region', 'in', ['Kerala', 'Goa']], () => 'never')).toBe('Region in Kerala, Goa')
+  })
+})

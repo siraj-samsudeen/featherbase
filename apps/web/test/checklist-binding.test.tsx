@@ -101,6 +101,36 @@ test('discovery reaches a checklist in the third Sub-table, past two near-misses
   expect(screen.queryByText('not a checklist item')).not.toBeInTheDocument()
 }, 20_000) // #619: creates four tables and traverses two screens on busy CI runners.
 
+async function bareChecklist(admin: Parameters<typeof renderApp>[1], title?: string) {
+  await admin.post('/api/table_def', subTable('Bare Step', [dataCol('item_label'), checkCol('done')]))
+  await admin.post('/api/table_def', {
+    name: 'Bare Run',
+    module: 'Custom',
+    ...(title ? { title_column: title } : {}),
+    columns: [dataCol('run_title'), { column_name: 'steps', label: 'Steps', column_type: 'Sub-table', row_table: 'Bare Step' }],
+  })
+  return admin.post<{ row_id: string }>('/api/save_row', { table: 'Bare Run', row: { steps: [{ done: false }] } })
+}
+
+test('the runs of a checklist with no title column are listed by their ids', async ({ admin }) => {
+  const run = await bareChecklist(admin)
+  await renderApp('/featherbase/admin/table/bare-run/view/checklist', admin)
+  expect(await screen.findByTestId('checklist-run-card', {}, { timeout: 5_000 })).toHaveTextContent(run.row_id)
+})
+
+test('a run with no title is listed by its id', async ({ admin }) => {
+  const run = await bareChecklist(admin, 'run_title')
+  await renderApp('/featherbase/admin/table/bare-run/view/checklist', admin)
+  expect(await screen.findByTestId('checklist-run-card', {}, { timeout: 5_000 })).toHaveTextContent(run.row_id)
+})
+
+test('an item with no wording is listed blank', async ({ admin }) => {
+  const run = await bareChecklist(admin, 'run_title')
+  await renderApp(`/featherbase/admin/table/bare-run/view/checklist?run=${encodeURIComponent(run.row_id)}`, admin)
+  const item = await screen.findByTestId('checklist-item', {}, { timeout: 5_000 })
+  expect(within(item).getByRole('checkbox')).toHaveTextContent(/^✓$/)
+})
+
 // Checklist Template Item carries must_do and photo_proof but no `done`: it
 // describes the standard rather than executing it. Binding "the first Check"
 // turned the shipped template into a tappable checklist whose ticks silently

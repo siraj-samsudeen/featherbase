@@ -89,6 +89,18 @@ test('the user combines them, and every row lands in one column', async ({ admin
   clearSession()
 })
 
+test('a column with no values in its sheet says so in the combine sample', async ({ admin }) => {
+  const user = await openMergedGroup(admin, {
+    'By Code': APART['By Code'],
+    'By Name': [['Cmb Store Name', 'Cmb Zone'], [null, 'Frozen']],
+  }, 'combine blank.xlsx')
+  await waitFor(() => expect(grid()).toHaveLength(3))
+  await user.click(screen.getByTestId('iw-combine-pick-0-0'))
+  await user.click(screen.getByTestId('iw-combine-pick-0-2'))
+  expect(await screen.findByTestId('iw-combine-sample-0-cmb_store_name')).toHaveTextContent('(no values)')
+  clearSession()
+})
+
 test('a combine can be undone, and the columns come back', async ({ admin }) => {
   const user = await openMergedGroup(admin, APART, 'combine fixture.xlsx')
   await user.click(screen.getByTestId('iw-combine-pick-0-0'))

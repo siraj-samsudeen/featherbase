@@ -272,3 +272,19 @@ describe('trying again after the connection dropped once the Table was made', ()
     clearSession()
   }, 30000)
 })
+
+test('a one-sheet import with several rows refused counts them', async ({ admin }) => {
+  const user = await singleSheet('Iwc Several', [['Zone', 'Code'], [1, 'x'], ['text', 'y'], ['more text', 'z']], admin)
+  await user.selectOptions(typeOf('Zone'), 'Int')
+  await user.click(screen.getByTestId('iw-import'))
+  await waitFor(() => expect(screen.getByTestId('iw-done')).toHaveTextContent('2 rows were refused. See above.'), { timeout: 10000 })
+  clearSession()
+}, 30000)
+
+test('when the one row of a sheet is refused it says that row was refused', async ({ admin }) => {
+  const user = await singleSheet('Iwc Lone', [['Zone', 'Code'], ['text', 'c']], admin)
+  await user.selectOptions(typeOf('Zone'), 'Int')
+  await user.click(screen.getByTestId('iw-import'))
+  expect(await screen.findByTestId('iw-failure-0', {}, { timeout: 10000 })).toHaveTextContent('Iwc Lone failed — the 1 row was refused (first: row 2:')
+  clearSession()
+}, 30000)

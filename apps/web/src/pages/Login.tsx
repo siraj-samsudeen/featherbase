@@ -219,8 +219,8 @@ export function LoginPage() {
     // Read from the form, not from React state, so values the browser's
     // autofill wrote into the boxes are what is sent.
     const form = new FormData(e.currentTarget)
-    const usr = String(form.get('email') ?? '').trim()
-    const pwd = String(form.get('password') ?? '')
+    const usr = String(form.get('email')).trim()
+    const pwd = String(form.get('password'))
     const blank = 'Enter your email or username and your password.'
     if (!usr || !pwd) {
       setError(blank)
@@ -232,8 +232,8 @@ export function LoginPage() {
   async function onDelegatedSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const form = new FormData(e.currentTarget)
-    const id = String(form.get('delegated_id') ?? '').trim()
-    const password = String(form.get('delegated_password') ?? '')
+    const id = String(form.get('delegated_id')).trim()
+    const password = String(form.get('delegated_password'))
     // Nothing typed is the person's slip, not an API validation failure (#406).
     // Test mode asks the same: the page never advertises it.
     const blank = `Enter your ${delegatedLabel} ID and password.`

@@ -204,7 +204,7 @@ function RunList({
       binding.dateCol
         ? String(b[binding.dateCol] ?? '').localeCompare(String(a[binding.dateCol] ?? ''))
         : 0
-    return day !== 0 ? day : String(b.updated_at ?? '').localeCompare(String(a.updated_at ?? ''))
+    return day !== 0 ? day : String(b.updated_at).localeCompare(String(a.updated_at))
   })
   const groups = new Map<string, Row[]>()
   for (const row of data) {

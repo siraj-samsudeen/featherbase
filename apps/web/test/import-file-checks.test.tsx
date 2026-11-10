@@ -55,3 +55,21 @@ test('a file that is not a CSV or spreadsheet is refused with a message, and not
   expect(screen.queryByTestId('iw-target-0')).toBeNull()
   clearSession()
 })
+
+test('several rows with nothing to import are counted together', async ({ admin }) => {
+  clearSession()
+  await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'sku', column_type: 'Data' }] })
+  await renderApp(`/featherbase/admin/import?table=${encodeURIComponent(DT)}`, admin)
+  const csv = 'sku,note\nA-1,first\n,a note\n,another note\n'
+  const bytes = new TextEncoder().encode(csv).buffer
+  const file = new File([bytes], 'stock.csv', { type: 'text/csv' })
+  Object.defineProperty(file, 'arrayBuffer', { value: async () => bytes })
+  fireEvent.change(await screen.findByTestId('iw-file-input'), { target: { files: [file] } })
+  await screen.findByTestId('iw-target-0', undefined, { timeout: 8000 })
+  const user = userEvent.setup()
+  await user.click(await screen.findByTestId('iw-check'))
+  await waitFor(() => expect(screen.getByTestId('iw-check-skipped-0')).toHaveTextContent('2 rows have no data in the imported columns and will be skipped'))
+  await user.click(screen.getByTestId('iw-import'))
+  await waitFor(() => expect(screen.getByTestId('iw-result-0')).toHaveTextContent('2 rows had no data in the imported columns and were skipped'), { timeout: 8000 })
+  clearSession()
+})
