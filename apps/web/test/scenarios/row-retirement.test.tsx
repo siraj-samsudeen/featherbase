@@ -8,7 +8,7 @@ import { tableSlug } from 'shared'
 import { describe } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderSession, byTestId, inside, type Session } from '../pg-test'
+import { test, expect, renderSession, byTestId, type Session } from '../pg-test'
 
 const scenario = scenarioFor(test, 'row-retirement')
 const PLANTS = 'Retirement Plant'
@@ -72,7 +72,7 @@ describe('row-retirement', () => {
     })
     await step('"Sample plant" shows it is retired because "Not a real location"', async () => {
       const { session } = await openForm(admin, 'Sample plant')
-      await inside(session, 'retired-badge', (badge) => badge.assertText('Retired'))
+      await session.within(byTestId('retired-badge'), (badge) => badge.assertText('Retired'))
         .within(byTestId('retired-reason'), (reason) => reason.assertExactText('Not a real location'))
     })
   }, 40_000)
@@ -105,7 +105,7 @@ describe('row-retirement', () => {
     await step('"Sample plant" is retired because "Not a real location"', () => retire(admin, 'Sample plant', 'Not a real location'))
     await step('the user reactivates "Sample plant"', async () => {
       const { session } = await openForm(admin, 'Sample plant')
-      await inside(session, 'retired-notice', (notice) => notice.assertText('Not a real location'))
+      await session.within(byTestId('retired-notice'), (notice) => notice.assertText('Not a real location'))
         .clickButton('Record actions')
         .clickButton('Reactivate')
         .until('the retired notice is gone', () => !screen.queryByTestId('retired-notice'))

@@ -4,7 +4,7 @@
 import { describe } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderSession, inside, type Session } from '../pg-test'
+import { test, expect, renderSession, byTestId, type Session } from '../pg-test'
 
 const scenario = scenarioFor(test, 'permissions-and-roles')
 
@@ -43,7 +43,7 @@ describe('permissions-and-roles', () => {
         .clickButton('Save')
     })
     await step('the save is refused', () =>
-      inside(session, 'form-banner', (banner) => banner.assertText('permission').refuteText('Saved')))
+      session.within(byTestId('form-banner'), (banner) => banner.assertText('permission').refuteText('Saved')))
     await step('the quote "Q-1" keeps its old title and unit cost', async () => {
       const stored = await admin.get<{ quote_title: string; unit_cost: number }>(`/api/table/${encodeURIComponent(QUOTES)}/Q-1`)
       expect(stored.quote_title).toBe(QUOTE.quote_title)

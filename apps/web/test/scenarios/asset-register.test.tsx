@@ -5,7 +5,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe } from 'vitest'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, insideOf, onScreen } from '../pg-test'
+import { test, expect, onScreen } from '../pg-test'
 import { Assets, istLabel, realTime } from './assets'
 
 const scenario = scenarioFor(test, 'asset-register')
@@ -110,7 +110,7 @@ describe('asset-register', () => {
     })
     await step('a member opens it in Assets', () => openAsset(assets, 'a member', assetId))
     await step('the page shows those numbers as coming from SAP, with when they were refreshed', async () => {
-      await insideOf(onScreen(), SAP, (section) => section
+      await onScreen().within(SAP, (section) => section
         .assertText(`${sap.assetNo} / ${sap.sub}`)
         .assertText(sap.equipment)
         .assertText(`Refreshed ${istLabel(SAP_REFRESHED)}`))

@@ -9,7 +9,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe } from 'vitest'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, insideOf } from '../pg-test'
+import { test, expect } from '../pg-test'
 import { TaskerWorld, type TaskerPage, realTime } from './tasker'
 
 const scenario = scenarioFor(test, 'tasker-verified-closure')
@@ -130,7 +130,7 @@ describe('tasker-verified-closure', () => {
     await step('the task shows "Not acknowledged by Ravi"', () => rowShows(tasker, 'Not acknowledged by Ravi'))
     await step('Ravi acknowledges it', async () => {
       const { page, detail } = await openedBy(tasker, 'Ravi')
-      await insideOf(page.session, VERIFICATION, (section) => section.clickButton('Acknowledge'))
+      await page.session.within(VERIFICATION, (section) => section.clickButton('Acknowledge'))
       await waitFor(() => expect(within(verification(detail)).queryByRole('button', { name: 'Acknowledge' })).not.toBeInTheDocument())
     })
     await step('the task no longer shows it is not acknowledged', async () => {
@@ -178,7 +178,7 @@ describe('tasker-verified-closure', () => {
     await step('Meena accepts it', async () => {
       const page = await tasker.as('Meena')
       await page.sidebarView(/^To verify/)
-      await insideOf(page.session, '[aria-labelledby="verify-heading"]', (list) => list.clickLink(TITLE))
+      await page.session.within('[aria-labelledby="verify-heading"]', (list) => list.clickLink(TITLE))
       const detail = await screen.findByRole('region', { name: 'Task detail content' })
       await within(detail).findByRole('heading', { name: TITLE })
       await within(detail).findByRole('region', { name: 'Verification' })
@@ -217,7 +217,7 @@ describe('tasker-verified-closure', () => {
     await step('Meena returns it with the reason "Left counter still flickers"', async () => {
       const page = await tasker.as('Meena')
       await page.sidebarView(/^To verify/)
-      await insideOf(page.session, '[aria-labelledby="verify-heading"]', (list) => list.clickLink(TITLE))
+      await page.session.within('[aria-labelledby="verify-heading"]', (list) => list.clickLink(TITLE))
       const detail = await screen.findByRole('region', { name: 'Task detail content' })
       await within(detail).findByRole('heading', { name: TITLE })
       await within(detail).findByRole('region', { name: 'Verification' })

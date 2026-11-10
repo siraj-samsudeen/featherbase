@@ -10,7 +10,7 @@ import { describe, vi } from 'vitest'
 import { rowHref } from 'shared'
 import { scenarioFor } from 'server/test/scenario'
 import { googleSignIn, redeemSession } from 'server/test/google-mock'
-import { test, expect, renderSession, byTestId, inside, type Session } from '../pg-test'
+import { test, expect, renderSession, byTestId, type Session } from '../pg-test'
 
 const scenario = scenarioFor(test, 'sign-in-and-accounts')
 const ACCOUNT_NUMBER = '104116711844961612173'
@@ -35,7 +35,7 @@ describe('sign-in-and-accounts', () => {
     })
     await step("a System Manager opens the person's sign-in methods", async () => {
       ;({ session } = await renderSession(rowHref('Person', person), admin))
-      await inside(session, row, (google) => google.assertText('Google'))
+      await session.within(byTestId(row), (google) => google.assertText('Google'))
     })
     await step("the Google sign-in leads with the person's address", () =>
       session.within(`${byTestId(row)} ${byTestId('identity-head')}`, (head) => head.assertExactText(`Google · ${address}`)))

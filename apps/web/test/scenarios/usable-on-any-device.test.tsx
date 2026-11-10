@@ -13,10 +13,10 @@ import { describe, onTestFinished, vi } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { installApp, isInstalled, uninstallApp } from 'server/src/apps'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, renderApp, onScreen, inside } from '../pg-test'
+import { test, expect, renderApp, onScreen, byTestId } from '../pg-test'
 
 /** The element with this data-testid reads exactly this. */
-const reads = (testId: string, text: string) => inside(onScreen(), testId, (el) => el.assertExactText(text))
+const reads = (testId: string, text: string) => onScreen().within(byTestId(testId), (el) => el.assertExactText(text))
 
 const scenario = scenarioFor(test, 'usable-on-any-device')
 const PAGE_SIZE = 20
@@ -209,7 +209,7 @@ describe('usable-on-any-device', () => {
       // Only when ascending: the DSL has no verb that branches on what the page shows.
       const toggle = await screen.findByTestId('list-sort-dir')
       if (!(toggle.getAttribute('aria-label') ?? '').includes('descending')) await user.click(toggle)
-      await inside(onScreen(), 'list-sort-dir', (order) => order.assertAttribute('aria-label', 'Sort order: descending'))
+      await onScreen().within(byTestId('list-sort-dir'), (order) => order.assertAttribute('aria-label', 'Sort order: descending'))
       await waitFor(() => expect(readCard(0).title).toBe(last), { timeout: 8000 })
 
       await user.click(within(cardEls()[0]!).getByTestId('row-expand'))

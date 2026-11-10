@@ -8,7 +8,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe } from 'vitest'
 import { scenarioFor } from 'server/test/scenario'
-import { test, expect, insideOf } from '../pg-test'
+import { test, expect } from '../pg-test'
 import { TaskerWorld, type TaskerPage, dayFrom, realTime } from './tasker'
 
 const scenario = scenarioFor(test, 'tasker-issues')
@@ -56,7 +56,7 @@ const issueItem = (title: string, closed = false) =>
   `[aria-label="${closed ? 'All issues' : 'Open issues'}"] li[aria-label=${JSON.stringify(title)}]`
 
 async function openIssue(page: TaskerPage, title: string, closed = false) {
-  await insideOf(page.session, issueItem(title, closed), (row) => row.clickLink(title))
+  await page.session.within(issueItem(title, closed), (row) => row.clickLink(title))
   const detail = await screen.findByRole('region', { name: 'Issue detail' })
   await within(detail).findByRole('heading', { name: title })
   return detail
@@ -92,7 +92,7 @@ describe('tasker-issues', () => {
       await tasker.store('ATK Avadi')
       const page = await tasker.as('Meena')
       await openIssues(page)
-      await insideOf(page.session.clickButton('Raise an issue'), 'form[aria-label="Raise an issue"]', (raise) => raise
+      await page.session.clickButton('Raise an issue').within('form[aria-label="Raise an issue"]', (raise) => raise
         .fillIn('What happened', title)
         .selectOption('Category', 'Equipment failure')
         .selectOption('Severity', 'High')
@@ -222,7 +222,7 @@ describe('tasker-issues', () => {
     await step('it is closed and still shows it breached', async () => {
       const page = await tasker.as('Meena')
       await openIssues(page)
-      await insideOf(page.session.check('Show closed'), `${issueItem(CHILLER, true)} .tasker-issue-clock-chip`,
+      await page.session.check('Show closed').within(`${issueItem(CHILLER, true)} .tasker-issue-clock-chip`,
         (chip) => chip.assertExactText('Closed · fix time was breached'))
       const detail = await openIssue(page, CHILLER, true)
       expect(detail.textContent).toMatch(/Fix time breached \d{2}-[A-Z][a-z]{2}-\d{4}/)
