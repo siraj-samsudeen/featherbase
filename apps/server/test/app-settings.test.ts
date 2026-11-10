@@ -14,7 +14,8 @@ import { withNamedVariable } from '../src/env'
 import { sql } from '../src/db'
 import { expectApiError, expectStatus } from './fixtures'
 import { applyInstanceSettings, exportInstanceSettings } from '../src/instance-settings'
-import { WITHHELD_ANSWER, WITHHELD_MESSAGE, holdsSecret, keptSecrets, withSecretsKept } from '../src/app-settings'
+import { WITHHELD_ANSWER, WITHHELD_MESSAGE, appSetupState, holdsSecret, keptSecrets, withSecretsKept } from '../src/app-settings'
+import { AppError } from '../src/errors'
 
 const fixture = resolve('../..', 'test-apps/fixtures/setup-proof-v1')
 const read = '/api/app_reads/setupproof/'
@@ -114,6 +115,20 @@ describe('an app that is not set up yet', () => {
       reader.post('/api/app_actions/setupproof/record', { idempotencyKey: 'first', payload: {} }), { status: 409, type: 'NotSetUpError' }))
     expect(app.calls.handler).toBe(0)
     expect(await sql`select 1 from runtime_action_result where app = 'setupproof'`).toHaveLength(0)
+  })
+})
+
+describe('what an installed app still needs', () => {
+  test('a dataset on a source that cannot run one read-only is named; so is an optional secret nothing uses; an unreadable secret entry is skipped', async ({ admin }) => {
+    await admin.post('/api/table/Data%20Source', { row_id: 'setup-rw-source', engine: 'csv-folder', root_path: 'setup-folder' })
+    await sql`insert into installed_app (name, tables, roles, perms, fixtures, sources, manifest) values (
+      'setupgaps', ${sql.json([])}, ${sql.json([])}, ${sql.json([])}, ${sql.json([])}, ${sql.json([])},
+      ${sql.json({ name: 'setupgaps', secrets: [{ name: 'SETUP_GAPS_SPARE', optional: true }, 42], datasets: [{ source: 'setup-rw-source' }] })})`
+    expect((await appSetupState()).find(({ app }) => app === 'setupgaps')).toEqual({
+      app: 'setupgaps', title: 'setupgaps',
+      missing: ['read-only data source setup-rw-source'],
+      optional: ['optional secret SETUP_GAPS_SPARE (needed by no read or action)'],
+    })
   })
 })
 
@@ -291,6 +306,19 @@ describe('an app secret', () => {
     await expect(withSecretsKept(kept, async () => { throw failure })).rejects.toMatchObject({
       message: 'Upstream temporarily unavailable', code: 'EUPSTREAM',
     })
+  })
+
+  test('a failure of the app\'s own kind passes on as that kind, with its fields', async () => {
+    const kept = keptSecrets({ TOKEN: PLAIN })
+    await expect(withSecretsKept(kept, async () => { throw new SyntaxError('Unexpected token') }))
+      .rejects.toSatisfy((e: unknown) => e instanceof SyntaxError && e.message === 'Unexpected token')
+    await expect(withSecretsKept(kept, async () => { throw new AppError('ValidationError', 'Check the form', { qty: 'too many' }) }))
+      .rejects.toMatchObject({ type: 'ValidationError', message: 'Check the form', fields: { qty: 'too many' } })
+  })
+
+  test('a thrown object with no message or stack passes on as an empty error', async () => {
+    await expect(withSecretsKept(keptSecrets({ TOKEN: PLAIN }), async () => { throw {} }))
+      .rejects.toSatisfy((e: unknown) => e instanceof Error && e.message === '' && e.stack === '')
   })
 
   test('outside an app handler the console is left alone', async () => {
