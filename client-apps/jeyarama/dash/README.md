@@ -222,8 +222,9 @@ at the repository root.
   "not set up" while it is missing); `frameOrigins: ["https://embed-motherduck.com"]`.
 - **Embed sessions use their own token** (#1139, [ADR 0022](../../../adr/0022-dive-embed-sessions-have-their-own-token.md)).
   The optional secret `MOTHERDUCK_EMBED_TOKEN` is handed only to `embed_session` and `embed_open`,
-  and it is the only token the embed-session call sends. It must belong to a MotherDuck account
-  allowed to create Dive embed sessions (the Admin preset role has that permission). The service
+  and it is the only token the embed-session call sends. It holds the token of
+  `motherduck_dive_service_account`, the MotherDuck account that reads and writes Dives and may
+  create Dive embed sessions (the Admin preset role has that permission). The service
   account in `embed_service_account` needs only access to the Dive and its data. `MOTHERDUCK_TOKEN`
   stays the warehouse's read-only token: the quick view and every other read use it, and it can't
   create embed sessions. While `MOTHERDUCK_EMBED_TOKEN` is unset, the two embed reads answer "not set
