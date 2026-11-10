@@ -32,6 +32,7 @@ import { assertPermission, assertSystemManager, getRoles, includesColumn, permis
 import { getVisibleHomePages } from './home-pages'
 import { EMBED_ORIGIN, VIEWER_ROLE, salesTargetRoutes } from './sales-target'
 import { landingAfterSignIn, openAdminFor } from './landing'
+import { signedInWith } from './signed-in-with'
 import { saveUpload, signFileUrl } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
 import { globalSearch } from './search'
@@ -777,6 +778,8 @@ app.get('/api/whoami', async (c) => {
     ...user,
     roles,
     capabilities: { manage, report: roles.includes(VIEWER_ROLE), admin: access.admin, own_grant: access.ownGrant, tables: access.readable, creatable: access.creatable, archived },
+    // #1176: the sign-in this session was made with, for the account menu; null when unknown.
+    signed_in_with: await signedInWith(user.sign_in, user.row_id),
     // #671: the installed apps this person can open, so the shared top bar can
     // lead to and name them without asking an Admin endpoint.
     apps: (await appCatalog(user.row_id)).map(({ name, title }) => ({ name, title })),
