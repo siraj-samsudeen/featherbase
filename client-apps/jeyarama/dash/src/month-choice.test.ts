@@ -45,7 +45,7 @@ describe('choosing a month', () => {
 })
 
 describe('what is drawn for the month chosen', () => {
-  const state = { store: '9901', month: 'this', embed: { ok: true }, report: { ok: true }, frameFailed: false, diveReady: true }
+  const state = { store: '9901', month: 'this', embed: { ok: true }, report: { ok: true }, frameFailed: false, timedOut: false, diveReady: true }
 
   it("draws nothing of this month's state once last month is chosen", () => {
     expect(visibleState(state, '9901', 'last')).toEqual({ ...state, month: 'last', embed: undefined, report: undefined, diveReady: false })

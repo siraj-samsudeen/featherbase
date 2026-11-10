@@ -72,6 +72,15 @@ describe("the Dive's frame", () => {
   it('shows the quick view, labelled cached, once the frame has failed', () => {
     expect(pageView({ embed: frame, report: ready, frameFailed: true })).toEqual({ kind: 'quick' })
   })
+
+  // #1143: past the deadline the cached view stands in, until the Dive says it is ready.
+  it('shows the quick view past the deadline while the Dive has not said it is ready', () => {
+    expect(pageView({ embed: frame, report: ready, timedOut: true })).toEqual({ kind: 'quick' })
+  })
+
+  it('shows the Dive past the deadline once it has said it is ready', () => {
+    expect(pageView({ embed: frame, report: ready, timedOut: true, diveReady: true })).toMatchObject({ kind: 'dive' })
+  })
 })
 
 describe('opening the report (the deadline covers the session request and the frame)', () => {
@@ -235,6 +244,29 @@ describe("the Dive's ready signal (required only when the instance's `dive_ready
     const { loader, view } = await opened()
     loader.message({ origin: 'https://embed-motherduck.com', source: {}, data: { type: 'dash:dive-ready' } }, frameWindow)
     await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS)
+    expect(view()).toEqual({ kind: 'quick' })
+  })
+
+  // #1143: a Dive can take longer than the deadline to say it is ready (MotherDuck's session start).
+  it('switches to the Dive when its ready message arrives after the deadline', async () => {
+    const { loader, view } = await opened()
+    await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS)
+    const atDeadline = view()
+    loader.message({ origin: 'https://embed-motherduck.com', source: frameWindow, data: { type: 'feather-dash:dive-ready' } }, frameWindow)
+    expect([atDeadline, view()]).toEqual([{ kind: 'quick' }, expect.objectContaining({ kind: 'dive' })])
+  })
+
+  it('keeps the cached view when no ready message ever arrives', async () => {
+    const { view } = await opened()
+    await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS * 4)
+    expect(view()).toEqual({ kind: 'quick' })
+  })
+
+  it('keeps the cached view for good once the frame errors, even if a ready message follows', async () => {
+    const { loader, view } = await opened()
+    await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS)
+    loader.frameFailed()
+    loader.message({ origin: 'https://embed-motherduck.com', source: frameWindow, data: { type: 'dash:dive-ready' } }, frameWindow)
     expect(view()).toEqual({ kind: 'quick' })
   })
 

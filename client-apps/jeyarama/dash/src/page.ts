@@ -28,11 +28,15 @@ const refusedBy = (answer: Answer<unknown> | undefined, status: number) => answe
  * quick view stands in only when the Dive can't load, and the plain message only
  * when the quick view can't load either.
  */
-export function pageView({ embed, report, frameFailed = false }: {
+export function pageView({ embed, report, frameFailed = false, timedOut = false, diveReady = false }: {
   embed: Answer<Embed> | undefined
   report: Answer<ReportState> | undefined
-  /** The Dive's frame errored, or didn't load within DIVE_READY_TIMEOUT_MS. */
+  /** The Dive's frame errored: the quick view stands in for good. */
   frameFailed?: boolean
+  /** DIVE_READY_TIMEOUT_MS has passed without the Dive being up (#1143). */
+  timedOut?: boolean
+  /** The Dive is up; past the deadline, it takes over from the quick view. */
+  diveReady?: boolean
 }): View {
   if (refusedBy(embed, 401) || refusedBy(report, 401)) return { kind: 'signed_out' }
   if (refusedBy(embed, 403) || refusedBy(report, 403)) return { kind: 'no_access' }
@@ -40,9 +44,9 @@ export function pageView({ embed, report, frameFailed = false }: {
   if (state === 'no_access') return { kind: 'no_access' }
   if (state === 'report_not_set_up') return { kind: 'failed' }
   if (state === 'no_data_yet' || state === 'whole_stores_only') return { kind: 'empty', why: state }
-  if (embed?.ok && embed.value.frame && !frameFailed) return { kind: 'dive', src: embed.value.frame }
+  if (embed?.ok && embed.value.frame && !frameFailed && (!timedOut || diveReady)) return { kind: 'dive', src: embed.value.frame }
   // Past the deadline the session request counts as failed, answered or not.
-  if ((!embed && !frameFailed) || !report) return { kind: 'opening' }
+  if ((!embed && !frameFailed && !timedOut) || !report) return { kind: 'opening' }
   if (!report.ok) return { kind: 'failed' }
   if (state === 'not_built' || state === 'unconfirmed') return { kind: 'empty', why: 'not_built' }
   // A report with no quick view has nothing to stand in for its Dive.
@@ -226,10 +230,10 @@ export function notArrivedLine(month: MonthChoice | undefined): string {
  * What may be drawn for the store now chosen: a state published for any other store draws
  * nothing (defence in depth behind `select`, round 8).
  */
-export function visibleState<S extends { store?: string; month?: string; embed: unknown; report: unknown; frameFailed: boolean; diveReady: boolean }>(state: S, store: string | undefined,
+export function visibleState<S extends { store?: string; month?: string; embed: unknown; report: unknown; frameFailed: boolean; timedOut: boolean; diveReady: boolean }>(state: S, store: string | undefined,
   month?: string): S {
   return state.store === store && state.month === month ? state
-    : { ...state, store, month, embed: undefined, report: undefined, frameFailed: false, diveReady: false }
+    : { ...state, store, month, embed: undefined, report: undefined, frameFailed: false, timedOut: false, diveReady: false }
 }
 
 /**
@@ -325,9 +329,22 @@ export interface LoadState<R = unknown, E = Embed> {
   month?: string
   embed: Answer<E> | undefined
   report: Answer<R> | undefined
+  /** The Dive's frame errored: the quick view for good. */
   frameFailed: boolean
+  /** The deadline passed with the Dive not up: the quick view, while its frame stays behind it (#1143). */
+  timedOut: boolean
   /** The Dive is up: its frame loaded (no ready signal) or it said it is ready. */
   diveReady: boolean
+}
+
+/**
+ * The Dive's frame address while it may still be shown (#1143): on show, or kept out of sight
+ * behind the quick view past the deadline, so a Dive that says it is ready late still takes over.
+ * None once the frame errored.
+ */
+export function liveFrame(state: Pick<LoadState, 'embed' | 'frameFailed'>): string | null {
+  const embed = state.embed
+  return embed?.ok && !state.frameFailed ? (embed.value as Embed).frame ?? null : null
 }
 
 function answered<T>(promise: Promise<T>): Promise<Answer<T>> {
@@ -341,13 +358,14 @@ function answered<T>(promise: Promise<T>): Promise<Answer<T>> {
  * Opens the report for a store: the cached report and the Dive's session are asked for
  * together, and one deadline (DIVE_READY_TIMEOUT_MS) covers the session request and the
  * frame loading. Past it, the page shows the quick view, and a session that answers late is
- * ignored. Opening another store ignores everything the previous one still has in flight.
+ * ignored; a frame already given keeps loading out of sight, and takes over if the Dive says it
+ * is ready (#1143). Opening another store ignores everything the previous one still has in flight.
  */
 export function reportLoader<R = unknown>(read: (name: string, payload: Record<string, unknown>) => Promise<unknown>,
   publish: (state: LoadState<R>) => void, timeoutMs = DIVE_READY_TIMEOUT_MS, reportTimeoutMs = REPORT_TIMEOUT_MS) {
   const guard = generations()
   let token = 0
-  let state: LoadState<R> = { embed: undefined, report: undefined, frameFailed: false, diveReady: false }
+  let state: LoadState<R> = { embed: undefined, report: undefined, frameFailed: false, timedOut: false, diveReady: false }
   let deadline: ReturnType<typeof setTimeout> | undefined
   const update = (opened: number, patch: Partial<LoadState<R>>) => {
     if (!guard.alive(opened)) return
@@ -361,16 +379,16 @@ export function reportLoader<R = unknown>(read: (name: string, payload: Record<s
      */
     select(store: string, month?: string) {
       token = guard.bump()
-      state = { store, month, embed: undefined, report: undefined, frameFailed: false, diveReady: false }
+      state = { store, month, embed: undefined, report: undefined, frameFailed: false, timedOut: false, diveReady: false }
       publish(state)
     },
     /** Opens `store` for the month chosen (#750; none: the server's default, this month). */
     open(store?: string, month?: string) {
       const opened = token = guard.bump()
-      state = { store, month, embed: undefined, report: undefined, frameFailed: false, diveReady: false }
+      state = { store, month, embed: undefined, report: undefined, frameFailed: false, timedOut: false, diveReady: false }
       publish(state)
       const payload = { ...(store ? { store } : {}), ...(month ? { month } : {}) }
-      deadline = guard.after(opened, timeoutMs, () => update(opened, { frameFailed: true }))
+      deadline = guard.after(opened, timeoutMs, () => update(opened, { timedOut: true }))
       // The cached report gets its own deadline: past it, it counts as failed (the page then shows
       // the Dive if it works, or "couldn't load" with Try again), and a late answer is ignored.
       const reportDeadline = guard.after(opened, reportTimeoutMs, () => { if (!state.report) update(opened, { report: { ok: false } }) })
@@ -380,7 +398,7 @@ export function reportLoader<R = unknown>(read: (name: string, payload: Record<s
         update(opened, { report })
       })
       guard.settle(opened, answered(read('embed_session', payload) as Promise<Embed>), embed => {
-        if (!state.frameFailed) update(opened, { embed })
+        if (!state.frameFailed && !state.timedOut) update(opened, { embed })
       })
     },
     /** The attempt now on show, for a frame to name when it reports back. */

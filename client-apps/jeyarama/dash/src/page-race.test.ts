@@ -91,7 +91,7 @@ describe("an earlier store's frame", () => {
   it("can't vouch for the Dive of the store now on show", async () => {
     vi.useFakeTimers()
     const pending: Record<string, ((v: unknown) => void)[]> = { report: [], embed_session: [] }
-    let state: LoadState = { embed: undefined, report: undefined, frameFailed: false, diveReady: false }
+    let state: LoadState = { embed: undefined, report: undefined, frameFailed: false, timedOut: false, diveReady: false }
     const loader = reportLoader(name => new Promise(resolve => pending[name].push(resolve)), s => { state = s })
     loader.open('9901')
     const earlier = loader.current()
@@ -100,7 +100,7 @@ describe("an earlier store's frame", () => {
     await vi.advanceTimersByTimeAsync(0)
     loader.frameLoaded(earlier)
     await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS)
-    expect([state.diveReady, state.frameFailed]).toEqual([false, true])
+    expect([state.diveReady, state.timedOut]).toEqual([false, true])
   })
 })
 
@@ -120,7 +120,7 @@ describe('the store on show, repeated (Codex round 9)', () => {
 describe('choosing a store (Codex round 8)', () => {
   it('drops an earlier store\'s answer that arrives after the choice but before the new store opens', async () => {
     const pending: Record<string, ((v: unknown) => void)[]> = { report: [], embed_session: [] }
-    let state: LoadState<{ state: string; store: string }> = { embed: undefined, report: undefined, frameFailed: false, diveReady: false }
+    let state: LoadState<{ state: string; store: string }> = { embed: undefined, report: undefined, frameFailed: false, timedOut: false, diveReady: false }
     const loader = reportLoader<{ state: string; store: string }>(name => new Promise(resolve => pending[name].push(resolve)), s => { state = s })
     loader.open('9901')
     loader.select('9902')
@@ -132,12 +132,12 @@ describe('choosing a store (Codex round 8)', () => {
 
   it('shows nothing of a state published for another store than the one chosen', () => {
     const other = { store: '9901', embed: { ok: true as const, value: { not_set_up: true } }, report: { ok: true as const, value: { state: 'ready' } },
-      frameFailed: false, diveReady: false }
-    expect(visibleState(other, '9902')).toEqual({ store: '9902', embed: undefined, report: undefined, frameFailed: false, diveReady: false })
+      frameFailed: false, timedOut: false, diveReady: false }
+    expect(visibleState(other, '9902')).toEqual({ store: '9902', embed: undefined, report: undefined, frameFailed: false, timedOut: false, diveReady: false })
   })
 
   it('shows a state published for the store chosen', () => {
-    const mine = { store: '9902', embed: undefined, report: { ok: true as const, value: { state: 'ready' } }, frameFailed: false, diveReady: false }
+    const mine = { store: '9902', embed: undefined, report: { ok: true as const, value: { state: 'ready' } }, frameFailed: false, timedOut: false, diveReady: false }
     expect(visibleState(mine, '9902')).toBe(mine)
   })
 })
@@ -156,7 +156,7 @@ describe('random interleavings of checks, reads, picks, Try again and timeouts',
       const random = rng(seed)
       const pick = <T,>(xs: T[]) => xs[Math.floor(random() * xs.length)]
       let address: string | undefined = '9902'
-      let state: LoadState<{ state: string; store: string }> = { embed: undefined, report: undefined, frameFailed: false, diveReady: false }
+      let state: LoadState<{ state: string; store: string }> = { embed: undefined, report: undefined, frameFailed: false, timedOut: false, diveReady: false }
       const pending: { name: string; store: string; d: ReturnType<typeof deferred<unknown>> }[] = []
       const read = (name: string, payload: Record<string, unknown>) => {
         const d = deferred<unknown>()
