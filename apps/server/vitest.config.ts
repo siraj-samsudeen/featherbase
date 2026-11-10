@@ -109,29 +109,25 @@ export default defineConfig({
       // Stage 1 (lines, statements, functions): measured on a fresh database,
       // the full suite on PostgreSQL 18 with MySQL enabled, as CI merges it.
       // One statement is left (collection-import.ts key analysis, `if
-      // (hidden) continue`): a key column the caller reads on the whole Table
-      // but not on one matched row. A row's readable columns only add to the
-      // Table-wide set (a creator-scoped grant adds columns on the caller's
-      // own rows; a share shows every column), so no grant set produces it.
-      // A row deleted between rowCapabilities' two reads, and a scope
-      // provider turned off before a read records its drops, are held open
-      // with module mocks in their own test files.
-      // Stage 3 (branches), measured the same way: 332 uncovered in pass 2,
-      // capped with a margin of 5 because the count moves a little run to
-      // run. Of those left, no test can take these:
-      // - index.ts webDist's '' arm, taken only when the web suite loads this
-      //   module under jsdom;
-      // - meta.ts caching a slug map or a view's definition after an
-      //   invalidation landed while it loaded: no test can hold that window;
-      // - apps.ts wireHooks skipping a runtime app's job another owner
-      //   registered: every caller has already refused that claim
-      //   (jobClaimRefusal) under the app lifecycle lock.
-      // The rest are reachable and still to be tested.
+      // (hidden) continue`), capped as a count until it is reached or, after
+      // research, marked inline (ADR 0023).
+      // Stage 3 (branches), measured the same way: 258 uncovered of 14,657 in
+      // pass 3 (332 in pass 2), capped with a margin of 5 because the count
+      // moves a little run to run. Most are reachable and still untested.
+      // The spots tried and not reached yet, each with what was tried and what
+      // might work, are written up for the owner (pass 3 report); among them
+      // index.ts webDist's '' arm (taken only when the web suite loads this
+      // module under jsdom) and apps.ts wireHooks skipping a job another owner
+      // registered (every caller refuses that claim first, under the app
+      // lifecycle lock). Windows once named here as unreachable (a row deleted
+      // between rowCapabilities' reads, a scope provider turned off mid-read,
+      // metadata invalidated while it loads) are held open with module mocks,
+      // each in its own test file.
       thresholds: {
         lines: 100,
         statements: -1,
         functions: 100,
-        branches: -337,
+        branches: -263,
       },
     },
   },
