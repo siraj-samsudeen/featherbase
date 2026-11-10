@@ -77,6 +77,12 @@ test("a row's form names unlabelled fields, its link's search box and its grid c
   expect(await screen.findByRole('searchbox', { name: 'Search depot' })).toBeInTheDocument()
 })
 
+test('a list opened on an empty link filter shows an empty filter box', async ({ admin, db }) => {
+  await seed(admin, db)
+  await renderApp(`${tableHref(T)}?filters=${encodeURIComponent(JSON.stringify([['depot', '=', null]]))}`, admin)
+  expect(await screen.findByTestId('std-filter-depot')).toHaveValue('')
+})
+
 test('a Choice with no choices filters on All alone', async ({ admin, db }) => {
   await seed(admin, db)
   await (db as Sql)`update column_def set choices = null where parent = ${T} and column_name = 'grade'`
