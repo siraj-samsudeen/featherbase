@@ -194,6 +194,30 @@ describe('EML-007: Auto Email Report', () => {
     expect(queued).toHaveLength(0)
   })
 
+  test('a report with no rows is a CSV of its header alone', () => {
+    expect(toCsv(['title', 'qty'], [])).toBe('title,qty')
+  })
+
+  test('a schedule whose recipients were never set is refused', async ({ admin }) => {
+    await setup(admin)
+    await sql`update auto_email_report set recipients = null where row_id = ${AER}`
+    await expect(deliverAutoEmailReport(AER)).rejects.toThrow('has no recipients')
+  })
+
+  test('a schedule with no file format sends a CSV file', async ({ admin }) => {
+    await setup(admin)
+    await sql`update auto_email_report set file_format = null where row_id = ${AER}`
+    await deliverAutoEmailReport(AER)
+    const [q] = await sql`select attachments from email_queue where ref_table = 'Report' and reference_name = ${REPORT}`
+    expect((q.attachments as { files: { filename: string }[] }).files[0].filename).toBe(`${REPORT}.csv`)
+  })
+
+  test('a report that names no columns lists only the row id', async ({ admin }) => {
+    await setup(admin)
+    await sql`update report set config = ${sql.json({ filters: [] })} where row_id = ${REPORT}`
+    expect((await runReportRows(REPORT, 'Administrator')).columns).toEqual(['row_id'])
+  })
+
   test('the attachment can be a web page table instead of a CSV file', async ({ admin }) => {
     await setup(admin)
     const row = await admin.get<{ updated_at: string }>(`/api/table/${encodeURIComponent(DT)}/aer-2`)
