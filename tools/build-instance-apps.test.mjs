@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { copyShipped, workspaceDependencies } from './build-instance-apps.mjs'
+import { copyShipped } from './build-instance-apps.mjs'
 
 function scratch(t) {
   const dir = mkdtempSync(join(tmpdir(), 'instance-apps-'))
@@ -28,16 +28,3 @@ test('an image holds only what an app ships, in a folder per version', (t) => {
   assert.ok(!existsSync(join(target, 'src')))
 })
 
-test('an app built from an archive names the workspace packages it takes by path', (t) => {
-  const dir = scratch(t)
-  const app = join(dir, 'example-apps/board')
-  mkdirSync(app, { recursive: true })
-  mkdirSync(join(dir, 'packages/kit'), { recursive: true })
-  writeFileSync(join(dir, 'packages/kit/package.json'), JSON.stringify({ name: '@x/kit' }))
-  writeFileSync(join(app, 'package.json'), JSON.stringify({ dependencies: { react: '^19.0.0', '@x/kit': 'file:../../packages/kit' } }))
-  assert.deepEqual(workspaceDependencies(app, dir), ['@x/kit'])
-  writeFileSync(join(app, 'package.json'), JSON.stringify({ dependencies: { react: '^19.0.0' } }))
-  assert.deepEqual(workspaceDependencies(app, dir), [])
-  writeFileSync(join(app, 'package.json'), JSON.stringify({ dependencies: { kit: 'file:../../../elsewhere' } }))
-  assert.throws(() => workspaceDependencies(app, dir), /outside the archive/)
-})

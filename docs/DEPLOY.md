@@ -270,18 +270,13 @@ deploy.
 | | Dev (`staging`) | Prod (`production`) |
 | --- | --- | --- |
 | Branch the service builds | `main` | `release/<client>-<instance>-prod` |
-| An app's files changed, same version and manifest | re-pinned automatically | **the deploy fails**: bump the version |
+| An app's files changed, same version and manifest | re-pinned automatically | re-pinned automatically (#1178) |
 | An app's manifest changed, same version | the deploy fails, naming the app: bump the version | the same |
 | A newer app version | upgraded | upgraded |
 
-So moving prod is merging into its release branch, whose history is the deploy
-log. An app's built files include the shared packages it uses, so a change to
-`packages/` can stop prod's deploy with nothing changed in the app's own folder.
-`pnpm check:app-digests` builds each app at the release branch and at head and
-names any that would stop it; the `app-digests` workflow runs it. After a failed
-deploy, the release branch has already moved, so name the last commit that
-deployed: `pnpm check:app-digests --release <sha>`. `cli repin-apps` is the re-pin by hand. It refuses a production server or
-database.
+A code-only fix needs no new version anywhere; a version changes only when the
+app's declaration does. `cli repin-apps` is the re-pin by hand; it needs a
+server and database that agree on the environment.
 
 **An upgrade needs only the new version.** It moves from the installed version's
 record in the database, so the image holds only the current version of each app (#1178).
