@@ -155,9 +155,9 @@ test('Copy link copies the address of this step', async ({ admin }) => {
   expect(copied.searchParams.get('path')).toBe(pathParam(router))
 })
 
-// Defect pinned (#1111): the path bar says Copied even when the
-// browser refused to copy, so the person believes a link is on their clipboard.
-test.fails('Copy link the browser refuses to copy does not say Copied', async ({ admin }) => {
+// #1111: the path bar says Copied only once the browser has copied, so the
+// person never believes a link is on their clipboard when it is not.
+test('Copy link the browser refuses to copy does not say Copied', async ({ admin }) => {
   await seedSites(admin)
   const writeText = vi.fn().mockRejectedValue(new DOMException('Write permission denied.', 'NotAllowedError'))
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
@@ -165,6 +165,16 @@ test.fails('Copy link the browser refuses to copy does not say Copied', async ({
   await addRegionFilter()
   fireEvent.click(await screen.findByRole('button', { name: 'Copy link' }))
   await waitFor(() => expect(writeText).toHaveBeenCalledOnce())
+  await new Promise((r) => setTimeout(r, 50))
+  expect(within(screen.getByRole('button', { name: 'Copy link' }).parentElement!).getByRole('status')).not.toHaveTextContent('Copied')
+})
+
+test('Copy link in a browser with no clipboard does not say Copied', async ({ admin }) => {
+  await seedSites(admin)
+  Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+  await renderApp(tableHref(SITE), admin)
+  await addRegionFilter()
+  fireEvent.click(await screen.findByRole('button', { name: 'Copy link' }))
   await new Promise((r) => setTimeout(r, 50))
   expect(within(screen.getByRole('button', { name: 'Copy link' }).parentElement!).getByRole('status')).not.toHaveTextContent('Copied')
 })
