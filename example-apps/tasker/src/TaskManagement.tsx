@@ -9,7 +9,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { rowHref } from '../../../packages/shared/src/app-routes'
 import { fmtDate, fmtDateTime } from '@featherbase/shop-floor'
 import { ApiError, api, getSessionUser, listAllResources } from './api'
-import { listVisiblePeople, PEOPLE_LIMITED_NOTICE, type PersonOption } from './people'
+import { listVisiblePeople, peopleWithTaskResponsibility, personName, PEOPLE_LIMITED_NOTICE, type PersonOption } from './people'
 import { Markdown } from './Markdown'
 import { describeHistoryValue } from './history'
 import { ProjectDescription } from './ProjectDescription'
@@ -91,20 +91,6 @@ function TaskerIcon({ name }: { name: TaskerIconName }) {
   }
   return <svg className="tasker-nav-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>
 }
-
-export function peopleWithTaskResponsibility(
-  listed: { row_id: string; full_name?: string | null }[],
-  tasks: Pick<Task, 'assigned_to'>[],
-  currentUser: string,
-) {
-  const people = [...listed]
-  for (const rowId of [currentUser, ...tasks.map((task) => task.assigned_to ?? '')]) {
-    if (rowId && !people.some((person) => person.row_id === rowId)) people.push({ row_id: rowId })
-  }
-  return people
-}
-
-function personName(person?: PersonOption) { return person?.full_name || 'Former member' }
 
 export function TaskManagementPage() {
   const queryClient = useQueryClient()
