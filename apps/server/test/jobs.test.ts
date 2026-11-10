@@ -56,6 +56,34 @@ describe('JOB-001: enqueue + worker + drain', () => {
   })
 })
 
+describe('a queued row written with no payload or trigger', () => {
+  // The columns are nullable; enqueue always fills them, a direct write may not.
+  test('runs with an empty payload, as a one-off on demand', async () => {
+    await setup()
+    const seen: unknown[] = []
+    registerJob('job_bare_row', (payload, ctx) => { seen.push(payload, ctx.job.trigger) })
+    await sql`insert into background_job ${sql({
+      row_id: 'job-bare-row', created_by: 'Administrator', updated_by: 'Administrator',
+      method: 'job_bare_row', job_status: 'queued', attempts: 0, max_attempts: 1, payload: null, trigger: null,
+    })}`
+    await drainJobs()
+    expect(seen).toEqual([{}, 'demand'])
+  })
+
+  test('a row with no Scheduled Job that repeats every 0 seconds runs once', async () => {
+    await setup()
+    let runs = 0
+    registerJob('job_zero_repeat', () => { runs++ })
+    await sql`insert into background_job ${sql({
+      row_id: 'job-zero-repeat', created_by: 'Administrator', updated_by: 'Administrator',
+      method: 'job_zero_repeat', job_status: 'queued', attempts: 0, max_attempts: 1, payload: {}, repeat_every: 0, trigger: 'schedule',
+    })}`
+    await drainJobs()
+    expect(runs).toBe(1)
+    expect(await sql`select 1 from background_job where method = 'job_zero_repeat' and job_status = 'queued'`).toHaveLength(0)
+  })
+})
+
 describe('Long work runs in the background', () => {
   test('stopping a repeatedly started worker leaves queued work for a later start', async () => {
     await setup()

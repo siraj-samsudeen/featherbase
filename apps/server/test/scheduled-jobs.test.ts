@@ -73,6 +73,16 @@ describe('Scheduled Job: the queue is derived from the rows', () => {
     expect((await liveEntries('check_sla')).map((r) => r.row_id)).toEqual([kept.row_id])
   })
 
+  test('a sync leaves a running entry behind the kept one alone', async () => {
+    await setup()
+    await syncScheduledJobs('check_sla')
+    const [kept] = await liveEntries('check_sla')
+    const running = await enqueue('check_sla', {}, { repeatEvery: CADENCE_SECONDS['every minute'], trigger: 'schedule', runAt: new Date(Date.now() + 3_600_000) })
+    await sql`update background_job set job_status = 'running' where row_id = ${running}`
+    await syncScheduledJobs('check_sla')
+    expect((await liveEntries('check_sla')).map((r) => r.row_id)).toEqual([kept.row_id, running])
+  })
+
   test('saving a row through the API re-times its queue entry; disabling withdraws it', async ({ admin }) => {
     await setup()
     registerJob(METHOD, async () => {})

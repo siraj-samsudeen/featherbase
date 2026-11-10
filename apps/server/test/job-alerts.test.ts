@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { drainJobs, enqueue, loadJobs, registerJob, retryJob, syncScheduledJobs } from '../src/jobs'
+import { FinalJobFailure, drainJobs, enqueue, loadJobs, registerJob, retryJob, syncScheduledJobs } from '../src/jobs'
 import { _setJobAlertSender, JOB_ALERT_SUBJECT } from '../src/job-alerts'
 import { queueEmail, type MailMessage } from '../src/email'
 import { expectRefused } from './fixtures'
@@ -281,6 +281,33 @@ describe('a run that refuses to act is treated like a failure', () => {
     expect(mine[0].subject).toBe(`${JOB_ALERT_SUBJECT.refused}: Alert probe`)
     expect(mine[0].body).toContain('The scheduled job "Alert probe" refused to act')
     expect(mine[0].body).toContain('Why: the feed is 3 days old')
+  })
+})
+
+describe('odd ends of a scheduled run', () => {
+  // An app's handler is plain JavaScript; nothing stops it refusing without words.
+  test('a refusal that gives no reason is emailed as giving none', async ({ createUser }) => {
+    await setup()
+    await createUser({ email: 'boss.noreason@example.com', roles: ['System Manager'] })
+    registerJob(METHOD, async (_p, ctx) => {
+      ctx.refuse(undefined as unknown as string)
+    })
+    await syncScheduledJobs(METHOD)
+    await runDue()
+    const mine = sent.filter((m) => m.to === 'boss.noreason@example.com')
+    expect(mine).toHaveLength(1)
+    expect(mine[0].body).toContain('Why: no reason given')
+  })
+
+  test('a scheduled run that fails for good after its job was switched off queues no next run', async () => {
+    await setup()
+    registerJob(METHOD, async () => {
+      await sql`update scheduled_job set enabled = false where method = ${METHOD}`
+      throw new FinalJobFailure('gave up')
+    })
+    await syncScheduledJobs(METHOD)
+    await runDue(1)
+    expect(await sql`select 1 from background_job where method = ${METHOD} and job_status = 'queued'`).toHaveLength(0)
   })
 })
 
