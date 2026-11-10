@@ -98,7 +98,7 @@ interface Report {
   no_data_yet?: boolean
   targets_unavailable?: boolean
   rows: ReportRow[]
-  sections?: (Totals & { section: string | null })[]
+  sections: (Totals & { section: string | null })[]
   total: Totals
 }
 interface Totals {
@@ -107,7 +107,7 @@ interface Totals {
   gap: number | null
   achievement: number | null
   missing: number
-  no_target_no_sale?: number
+  no_target_no_sale: number
   n: number
 }
 type Pre =
@@ -127,7 +127,7 @@ function fmtDate(iso: string): string {
 // The server orders rows Section by Section and computes each Section's subtotal;
 // the page only slices. Titles appear once any row carries a Section.
 function sectionGroups(report: Report): { section: string | null; titled: boolean; total: Totals; rows: ReportRow[] }[] {
-  const subtotals = report.sections ?? []
+  const subtotals = report.sections
   const titled = report.rows.some((r) => r.section != null)
   if (!titled || !subtotals.length) return [{ section: null, titled: false, total: report.total, rows: report.rows }]
   return subtotals.map(({ section, ...total }) => ({
@@ -142,7 +142,7 @@ function sectionGroups(report: Report): { section: string | null; titled: boolea
 // while a store trades a few. Groups with ₹0 target and ₹0 sales are hidden by default; they add
 // ₹0, so every subtotal reads the same either way. Only the count of rows shown changes.
 function shownCount(t: Totals, showAll: boolean): number {
-  return showAll ? t.n : t.n - (t.no_target_no_sale ?? 0)
+  return showAll ? t.n : t.n - t.no_target_no_sale
 }
 
 function QuickTable({ collapsed, refreshedAt, children }: {
@@ -501,7 +501,7 @@ function SalesTargetReport() {
                 </span>
               </p>
             </div>
-            {(pre.report.total.no_target_no_sale ?? 0) > 0 && (
+            {pre.report.total.no_target_no_sale > 0 && (
               <label className="flex items-center gap-2 border-b border-border px-4 py-2 text-xs text-ink-muted">
                 <input
                   type="checkbox"
@@ -543,7 +543,7 @@ function SalesTargetReport() {
                     <tr className="border-t-2 border-border bg-canvas font-semibold" data-testid="snapshot-section-total">
                       <td className="px-4 py-2 text-ink" colSpan={2}>
                         {g.section ?? 'Not mapped to a Section'} · {shownCount(g.total, showNoTargetNoSale)} subcategor{shownCount(g.total, showNoTargetNoSale) === 1 ? 'y' : 'ies'}
-                        {!showNoTargetNoSale && (g.total.no_target_no_sale ?? 0) > 0 && (
+                        {!showNoTargetNoSale && g.total.no_target_no_sale > 0 && (
                           <span className="font-normal text-ink-muted" data-testid="snapshot-section-hidden">
                             {' '}· {g.total.no_target_no_sale} with no target or sales hidden
                           </span>
