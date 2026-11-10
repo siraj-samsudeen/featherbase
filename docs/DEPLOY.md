@@ -83,6 +83,7 @@ only a source using `MOTHERDUCK_URL` or marked as holding a read-scaling token.
 | `ADMIN_PASSWORD` | no | yes |  | provisions a null Administrator password hash; missing or blank leaves production password login locked. Never rotates an existing hash (see [Rotating credentials](#rotating-credentials)) |
 | `GOOGLE_CLIENT_SECRET` | **yes**, while a Google sign-in method is enabled with a client id | yes |  | the Google OAuth client secret; the client id and allowed domains live on the Google sign-in method (must match across environments) |
 | `FILE_STORAGE_DIR` | recommended (warns when missing outside development and test) | no | `apps/server/storage` | uploaded-file directory; it must persist across deploys (on Railway, a Volume) |
+| `APP_DELIVERY_TOKEN` | no | yes |  | turns on `/deliver/app`: the deploy pipeline, holding this key, delivers an app's code fix to the running instance. At least 32 characters; unset keeps the route off. See [Delivering an app fix](#delivering-an-app-fix) |
 | `CHROMIUM_PATH` | no | no |  | Chromium binary for PDF printing; unset, Playwright resolves its own. Never hardcoded |
 | `PLAYWRIGHT_BROWSERS_PATH` | no | no | `/opt/pw-browsers` | where PDF printing also looks for a Playwright-installed Chromium |
 | `SMTP_HOST` | no | no |  | turns real delivery on (`smtp-relay.gmail.com`); unset or blank keeps the Email Sink. See [Email](#email) |
@@ -295,6 +296,28 @@ tools/build-instance-apps.mjs
 client-apps/<client>/instances/<instance>/**
 <each app path in its instance.json>/**
 ```
+
+### Delivering an app fix
+
+A code fix to one app can go live in seconds, without a rebuild or a restart (#1178). The deploy
+pipeline builds that app and sends its files to the running instance, which re-pins the installed
+version to them and serves them at once:
+
+```sh
+APP_DELIVERY_TOKEN=… node tools/deliver-app.mjs client-apps/<client>/<app> https://<instance address>
+```
+
+- **Off until the instance has a key.** Set `APP_DELIVERY_TOKEN` on the service to a long random
+  value (at least 32 characters), and give the same value only to the pipeline. The route,
+  `/deliver/app`, answers 404 without it. Whoever holds the key can run code on the server: treat
+  it like the database password.
+- **Code only.** A delivery of another version, or with a changed `featherbase.json`, is refused
+  and changes nothing; push it and let the ordinary deploy upgrade it.
+- **Kept on the volume.** The delivered copy lives under `FILE_STORAGE_DIR/delivered-apps/`, so a
+  restart serves it too. It wins over the image's copy of the same version until a deploy brings
+  different files for it; that deploy re-pins to the image's files as usual.
+- **Push it too.** A delivery is not a commit. Push the same change, so the next deploy builds the
+  same files.
 
 ### Building your own client image
 

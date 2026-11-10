@@ -13,7 +13,9 @@ import { APP_ACCENTS } from 'shared'
 import { loadInstalledApps, setAppEnabled } from '../../src/apps'
 import { sql } from '../../src/db'
 import { app as server } from '../../src/index'
-import { discoverPackages } from '../../src/runtime-packages'
+import { artifactDigest, discoverPackages, repinToFolder, shippedDigest } from '../../src/runtime-packages'
+import { appLibraryPaths } from '../../src/app-library'
+import { appPathsFromEnvironment } from '../../src/app-delivery'
 import { expectRefused, expectStatus, grantRole, makeTable } from '../fixtures'
 import { test as pgTest } from '../pg-test'
 import { scenarioFor } from '../scenario'
@@ -181,6 +183,28 @@ describe('trusted-runtime-packages', () => {
         expect(await sql`select package_version from installed_app where name = 'other'`).toEqual([{ package_version: '0.0.1' }])
       })
     } finally { await run?.cleanup() }
+  })
+
+  // #1178 (D8): a restart serves the delivered copy; an image that brings
+  // other files for the same version wins over it.
+  test('a delivered copy survives a restart, and a deploy with other files replaces it', async ({ admin }) => {
+    const run = await runningVersionOne(admin)
+    try {
+      await expectStatus(await deliver(run.fixed), 200)
+      await discoverPackages(await appLibraryPaths(appPathsFromEnvironment()))
+      await loadInstalledApps()
+      expect(await run.pageText()).toContain('<h1>Other tasks, fixed</h1>')
+      const installed = (JSON.parse(process.env.FEATHERBASE_APP_PATHS!) as string[])[0]
+      const html = await readFile(join(installed, 'client/index.html'), 'utf8')
+      await writeFile(join(installed, 'client/index.html'), html.replace('<h1>Other tasks</h1>', '<h1>Other tasks, next deploy</h1>'))
+      expect(await shippedDigest([installed], 'other', '0.0.1')).toBe(await artifactDigest(installed))
+      // The deploy re-pins to the image's files, then the new server boots with the delivered copy still on the volume.
+      await discoverPackages([installed])
+      expect(await repinToFolder('other', true)).toBe('repinned')
+      await discoverPackages(await appLibraryPaths(appPathsFromEnvironment()))
+      await loadInstalledApps()
+      expect(await run.pageText()).toContain('<h1>Other tasks, next deploy</h1>')
+    } finally { await run.cleanup() }
   })
 
   scenario('A delivery without the deploy key is refused', async ({ admin }, step) => {

@@ -493,7 +493,8 @@ async function loadArtifacts(paths: string[]) {
     const folder = path.slice(0, -2)
     try {
       const entries = await readdir(folder, { withFileTypes: true })
-      directories.push(...entries.filter(e => e.isDirectory()).map(e => resolve(folder, e.name)).sort())
+      // A dot-folder is never an app: delivery (#1178) stages its work in them.
+      directories.push(...entries.filter(e => e.isDirectory() && !e.name.startsWith('.')).map(e => resolve(folder, e.name)).sort())
     } catch (error) {
       failures.push({ path, error: errorMessage(error) })
     }
@@ -506,6 +507,15 @@ async function loadArtifacts(paths: string[]) {
       const duplicate = loaded.get(key)
       if (duplicate) {
         if (duplicate.digest === pkg.digest) continue
+        // #1178 (D8): a delivered copy beside the image's copy of the same
+        // version wins while the image's copy is still the one it replaced; a
+        // deploy that brings other files wins over it. Delivered paths come last.
+        const { deliveredOver } = await import('./app-delivery')
+        const over = await deliveredOver(pkg.root)
+        if (over !== null) {
+          if (over === duplicate.digest) loaded.set(key, pkg)
+          continue
+        }
         loaded.delete(key)
         duplicates.add(key)
         refuse('Duplicate different artifacts for one package version')
@@ -521,6 +531,11 @@ async function loadArtifacts(paths: string[]) {
 /** #642 (E7): the installed rows (`name`, `package_version`,
  *  `artifact_digest`, `manifest`) whose exact version and fingerprint no app on
  *  `paths` ships, as boot would take them. */
+/** #1178 (D8): the digest of `name@version` on `paths`, or null. */
+export async function shippedDigest(paths: string[], name: string, version: string): Promise<string | null> {
+  return (await loadArtifacts(paths)).loaded.get(`${name}@${version}`)?.digest ?? null
+}
+
 export async function unshippedApps<Row extends Record<string, unknown>>(installed: Row[], paths: string[]): Promise<Row[]> {
   const shipped = [...(await loadArtifacts(paths)).loaded.values()]
   return installed.filter(row => !shipped.some(pkg => pkg.name === row.name && matchesInstalled(pkg, row)))

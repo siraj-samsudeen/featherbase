@@ -257,7 +257,8 @@ async function installedNotShipped() {
   const rows = await sql`select name, package_version, artifact_digest, manifest from installed_app
     where runtime_package and enabled and package_version is not null order by name`
   const named = (row: Record<string, unknown>) => ({ name: String(row.name), version: String(row.package_version) })
-  const paths = await appLibraryPaths(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
+  const { appPathsFromEnvironment } = await import('./app-delivery')
+  const paths = await appLibraryPaths(appPathsFromEnvironment())
   const missing = await unshippedApps(rows, paths)
   return { installed: rows.map(named), missing: missing.map(named), missingRows: missing, paths }
 }
