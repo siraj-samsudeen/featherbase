@@ -27,7 +27,7 @@ export const scopeProviders = {
       return [{ label: row.place, filters: { store: [row.store] } }]
     }
     const rows = await documents.list('placeroster.position', {
-      filters: [['person', '=', person.id]], fields: ['place', 'store', 'section', 'basis', 'assumed', 'reason', 'since', 'until'], order_by: 'place asc',
+      filters: [['person', '=', person.id]], fields: ['place', 'store', 'section', 'basis', 'assumed', 'reason', 'since', 'until'], order_by: 'place asc', limit_page_length: 500,
     })
     // Rows with one place label make one place covering all their values.
     const places = new Map()
