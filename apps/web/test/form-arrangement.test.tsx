@@ -1,7 +1,8 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, beforeAll, describe } from 'vitest'
-import postgres from 'postgres'
+import postgres, { type Sql } from 'postgres'
+import { invalidateMeta } from 'server/src/meta'
 import { invalidateSources } from 'server/src/sources/registry'
 import { EXTERNAL_DATABASE_URL } from 'server/test/external-database'
 import { arrangeFields } from '../src/components/FormArrangement'
@@ -238,4 +239,41 @@ test("a connected row whose source keeps its last change as words, not a time, s
   await waitFor(() => expect(labels()).toEqual(['Label']), { timeout: 8000 })
   expect(screen.queryByText(/^Updated/)).not.toBeInTheDocument()
   expect(document.body).not.toHaveTextContent('Keep upright')
+})
+
+// A binding written by hand may store a column with no label, name a
+// bookkeeping column after a link, or read text as JSON.
+async function handBoundParcel(admin: { post: <T>(p: string, b: unknown) => Promise<T> }, columns: Record<string, unknown>[], before?: () => Promise<void>) {
+  invalidateSources()
+  await admin.post('/api/table/Data%20Source', { row_id: 'web-arrange-hand', engine: 'postgres', url_env: ENV, default_schema: 'web_arrange', access: 'read_only' })
+  await admin.post('/api/table/Data%20Source/web-arrange-hand:reflect', { tables: ['web_arrange.rack'], names: { 'web_arrange.rack': 'Arrange Hand Rack' } })
+  await admin.post('/api/table_def', {
+    name: 'Arrange Hand Parcel', data_source: 'web-arrange-hand', external_schema: 'web_arrange', external_table: 'parcel',
+    external_pk: 'id', columns: [{ column_name: 'label', column_type: 'Data', label: 'Label' }, ...columns],
+  })
+  await before?.()
+  await renderApp('/featherbase/admin/table/arrange-hand-parcel/row/7', admin)
+}
+
+test('a connected column stored with no label is named by its column name, in the form and on the bookkeeping line', async ({ admin, db }) => {
+  await handBoundParcel(admin, [
+    { column_name: 'sender', label: 'Sender', column_type: 'Data' },
+    { column_name: 'modified_by', label: 'Modified By', source_column: 'updated_by', column_type: 'Data' },
+  ], async () => {
+    await (db as Sql)`update column_def set label = null where parent = 'Arrange Hand Parcel' and column_name in ('sender', 'modified_by')`
+    invalidateMeta()
+  })
+  await waitFor(() => expect(labels()).toEqual(['Label', 'sender']), { timeout: 8000 })
+  expect(screen.getByLabelText('sender')).toHaveTextContent('Front desk')
+  expect(screen.getByTestId('bookkeeping-line')).toHaveTextContent(/^modified_by kiosk$/)
+})
+
+test('a bookkeeping column that links to another Table shows the linked row by its title', async ({ admin }) => {
+  await handBoundParcel(admin, [{ column_name: 'modified_by', label: 'Modified By', source_column: 'rack_id', column_type: 'Reference', reference_table: 'Arrange Hand Rack' }])
+  await waitFor(() => expect(screen.getByTestId('bookkeeping-line')).toHaveTextContent(/^Modified By Top$/), { timeout: 8000 })
+})
+
+test('a JSON column holding text shows that text as it is', async ({ admin }) => {
+  await handBoundParcel(admin, [{ column_name: 'steps', label: 'Steps', source_column: 'instructions', column_type: 'JSON' }])
+  await waitFor(() => expect(screen.getByLabelText('Steps')).toHaveTextContent(/^Keep upright$/), { timeout: 8000 })
 })
