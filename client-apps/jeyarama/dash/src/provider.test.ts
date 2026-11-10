@@ -47,18 +47,20 @@ const reach = (...jobs: Row[]) => reachOf(fake(jobs), 'me', ON)
 const stores = async (...jobs: Row[]) => (await reach(...jobs)).places.map(place => place.filters)
 
 describe('who sees what', () => {
-  // #1155: a site may hold two Store plants; its readers reach both. Other plant types stay out.
-  describe('a site with two Store plants', () => {
-    const plants = [...PLANTS, { row_id: '9911', site: 'AAA', plant_type: 'Store' }, { row_id: '9291', site: 'AAA', plant_type: 'Shop-in-shop' }]
+  // #1155: a site's readers reach every one of its Store plants, not the last one read, and (owner,
+  // 10-Nov-2026) its Shop-in-shop plants too. A warehouse or an e-commerce fulfilment plant stays out.
+  describe('a site with more than one plant', () => {
+    const plants = [...PLANTS, { row_id: '9911', site: 'AAA', plant_type: 'Store' }, { row_id: '9291', site: 'AAA', plant_type: 'Shop-in-shop' },
+      { row_id: '8191', site: 'AAA', plant_type: 'E-commerce fulfilment' }]
     const reachOn = (job: Row) => reachOf(fake([job], { plants }), 'me', ON).then(answer => answer.places.map(place => place.filters))
 
-    it('gives a Store Manager both of them whole, and not the shop-in-shop', async () => {
-      expect(await reachOn({ job: 'Store Manager', site: 'AAA' })).toEqual([{ store: ['9901'] }, { store: ['9911'] }])
+    it('gives a Store Manager each Store and Shop-in-shop plant whole, and no warehouse or e-commerce plant', async () => {
+      expect(await reachOn({ job: 'Store Manager', site: 'AAA' })).toEqual([{ store: ['9901'] }, { store: ['9911'] }, { store: ['9291'] }])
     })
 
-    it("gives a section's reader that section in both", async () => {
-      expect(await reachOn({ job: 'Team Leader', site: 'AAA', section: 'AAA-GF-Tops' }))
-        .toEqual([{ store: ['9901'], subcategory: ['000000001'] }, { store: ['9911'], subcategory: ['000000001'] }])
+    it("gives a section's reader that section in each of them", async () => {
+      expect(await reachOn({ job: 'Team Leader', site: 'AAA', section: 'AAA-GF-Tops' })).toEqual(['9901', '9911', '9291']
+        .map(store => ({ store: [store], subcategory: ['000000001'] })))
     })
   })
 
