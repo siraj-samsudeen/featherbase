@@ -8,6 +8,7 @@
 @source './';
 @source '../index.html';
 @source '../../../../packages/shop-floor/src';
+@source '../../../../packages/shop-floor/hierarchy';
 @source not '../../../../packages/shop-floor/src/**/*.stories.tsx';
 
 /* The shared top bar sits in the flow above #root, so #root is as tall as its content, not the
