@@ -47,14 +47,14 @@ export function ChildGrid({
   field,
   rows,
   onChange,
-  errors = {},
+  errors,
 }: {
   id: string
   labelledBy: string
   field: ColumnDef
   rows: Row[]
   onChange: (rows: Row[]) => void
-  errors?: Record<string, string>
+  errors: Record<string, string>
 }) {
   const childMeta = useMeta(field.row_table ?? '')
   const { t } = useI18n()

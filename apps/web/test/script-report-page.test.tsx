@@ -4,6 +4,7 @@
 // no e2e spec opens this page.
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { vi } from 'vitest'
 import { AppError } from 'server/src/errors'
 import { registerScriptReport } from 'server/src/script-report'
 import { test, expect, renderApp } from './pg-test'
@@ -83,6 +84,56 @@ test('a run with no rows says so, and a run the report refuses shows why', async
   await user.click(screen.getByTestId('script-report-run'))
   expect(await screen.findByTestId('script-report-run-error')).toHaveTextContent('the report refused this note')
   expect(screen.queryByTestId('script-report-rows')).not.toBeInTheDocument()
+})
+
+test('a run the network drops says the report failed to run', async ({ admin }) => {
+  const user = userEvent.setup()
+  await seed(admin)
+  await renderApp(`/featherbase/admin/script-report/${encodeURIComponent(REPORT)}`, admin)
+  await screen.findByTestId('script-report-rows')
+  const real = globalThis.fetch
+  const dropped = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+    String(input).includes('/api/run_script_report') ? Promise.reject(new TypeError('Failed to fetch')) : real(input, init))
+  try {
+    await user.click(screen.getByTestId('script-report-run'))
+    expect(await screen.findByTestId('script-report-run-error')).toHaveTextContent('Failed to run report')
+  } finally {
+    dropped.mockRestore()
+  }
+})
+
+// A report declaring a choice with no choices, whose answer has no columns.
+registerScriptReport({
+  name: 'Web SR Bare Script',
+  filters: [{ column_name: 'pick', label: 'Pick', column_type: 'Choice' }],
+  execute: async () => ({ columns: [], rows: [] }),
+})
+
+async function seedBare(admin: { post: (p: string, b: unknown) => Promise<unknown> }) {
+  await admin.post('/api/save_row', {
+    table: 'Report',
+    row: { row_id: 'Web SR Bare', ref_table: 'Person', report_type: 'Script Report', report_script: 'Web SR Bare Script' },
+  })
+}
+
+test('a choice filter declared with no choices offers only (any), and an answer with no columns says No rows', async ({ admin }) => {
+  await seedBare(admin)
+  await renderApp(`/featherbase/admin/script-report/${encodeURIComponent('Web SR Bare')}`, admin)
+  expect(await screen.findByTestId('script-report-empty')).toHaveTextContent('No rows')
+  expect(within(screen.getByTestId('sr-filter-pick')).getAllByRole('option').map((o) => o.textContent)).toEqual(['(any)'])
+})
+
+test("a report whose definition the network drops says it was not found", async ({ admin }) => {
+  await seedBare(admin)
+  const real = globalThis.fetch
+  const dropped = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+    String(input).includes('/api/script_report/') ? Promise.reject(new TypeError('Failed to fetch')) : real(input, init))
+  try {
+    await renderApp(`/featherbase/admin/script-report/${encodeURIComponent('Web SR Bare')}`, admin)
+    expect(await screen.findByTestId('script-report-error', {}, { timeout: 10_000 })).toHaveTextContent(/^Report not found$/)
+  } finally {
+    dropped.mockRestore()
+  }
 })
 
 test('a report that does not exist says so instead of loading forever', async ({ admin }) => {

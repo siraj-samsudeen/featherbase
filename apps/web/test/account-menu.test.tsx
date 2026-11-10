@@ -7,6 +7,7 @@
 
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { Sql } from 'postgres'
 import { ACCOUNT_SIGN_IN_METHODS_PATH } from 'shared'
 import { test, expect, renderApp } from './pg-test'
 
@@ -65,6 +66,17 @@ test('Change password submits to /api/set_password and the new password logs in'
   await waitFor(() =>
     expect(screen.queryByTestId('change-password-modal')).not.toBeInTheDocument(),
   )
+})
+
+test('the sign-in methods page shows an invitation not yet taken up, and a link used once with nothing to name it by', async ({ admin, db }) => {
+  await (db as Sql)`insert into sign_in_identity (id, person_id, method, subject, linked_by, last_used_at)
+    values ('uid_acct_used', ${admin.user!}, 'google', 'g-acct-1', 'test', now())`
+  await (db as Sql)`insert into sign_in_identity (id, person_id, method, subject, pending_email, linked_by)
+    values ('uid_acct_invited', ${admin.user!}, 'google', null, 'invited@example.com', 'test')`
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
+  const used = await screen.findByTestId('method-uid_acct_used', {}, { timeout: 8000 })
+  expect(used).toHaveTextContent(/^Google.*— · last used \d/)
+  expect(screen.getByTestId('method-uid_acct_invited')).toHaveTextContent('(invited — links at first sign-in)')
 })
 
 test('a mismatched confirmation blocks the submit', async ({ admin }) => {

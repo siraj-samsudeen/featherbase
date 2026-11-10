@@ -19,6 +19,8 @@ import userEvent from '@testing-library/user-event'
 import { describe, vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 import { ANY_TABLE_LINK } from '../src/pages/ColumnEditor'
+import type { Sql } from 'postgres'
+import { invalidateMeta } from 'server/src/meta'
 
 const DT = 'Ce Zones'
 
@@ -363,6 +365,19 @@ test("a title chosen here replaces the id in another Table's list already read",
 
   await router.navigate({ to: `/featherbase/admin/table/${tableSlug('Ce Title Store')}` })
   await waitFor(() => expect(screen.getByTestId('cell-zone')).toHaveTextContent('Vellayambalam'), { timeout: 8000 })
+})
+
+test('the column editor names columns stored with no label by their column names, and offers to save a label typed for one', async ({ admin, db }) => {
+  await seed(admin)
+  await (db as Sql)`update column_def set label = null where parent = ${DT}`
+  invalidateMeta()
+  const user = userEvent.setup()
+  await openEditor(admin)
+  expect(screen.getByRole('checkbox', { name: 'In list: glor' })).toBeInTheDocument()
+  expect(screen.getByTestId('ce-label-glor')).toHaveValue('glor')
+  await user.clear(screen.getByTestId('ce-label-glor'))
+  await user.type(screen.getByTestId('ce-label-glor'), 'Floor')
+  expect(screen.getByTestId('ce-label-save-glor')).toBeInTheDocument()
 })
 
 /** The network drops every request this says it should. */

@@ -36,7 +36,7 @@ export function FieldControl({
   error?: string
   /** Every field's error, keyed as the server names them; a grid of nested
    *  rows shows its cells' (`lines.0.customer`) in place (#832). */
-  errors?: Record<string, string>
+  errors: Record<string, string>
   onChange: (value: unknown) => void
   meta: TableMeta
   values: Row

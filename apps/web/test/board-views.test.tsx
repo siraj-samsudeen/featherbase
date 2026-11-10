@@ -2,7 +2,7 @@
 // gestures run here with the pointer's landing place stubbed (jsdom has no layout), so what
 // is under test is what the page writes back to the server and what it shows afterwards.
 import { tableSlug } from 'shared'
-import { afterEach } from 'vitest'
+import { afterEach, vi } from 'vitest'
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { test, expect, renderApp } from './pg-test'
 
@@ -24,6 +24,7 @@ const pointer = (el: Element, type: string, clientX = 0) =>
   fireEvent(el, new MouseEvent(type, { bubbles: true, cancelable: true, clientX, clientY: 0 }))
 
 afterEach(() => {
+  vi.restoreAllMocks()
   // @ts-expect-error jsdom has no elementFromPoint; the tests that need one install it
   delete document.elementFromPoint
 })
@@ -240,6 +241,48 @@ test('Timeline: dragging a bar\'s end three days later moves the row\'s second d
   pointer(screen.getByTestId('gantt-view'), 'pointermove', 500 - 20 * 40)
   pointer(screen.getByTestId('gantt-view'), 'pointerup')
   await waitFor(async () => expect(String((await rowOf(admin, SCHED, 't1')).end_date).slice(0, 10)).toBe('2026-03-02'))
+})
+
+/** The network drops every save from here on; reads still answer. */
+function dropSaves() {
+  const real = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+    init?.method === 'PATCH' ? Promise.reject(new TypeError('Failed to fetch')) : real(input, init))
+}
+
+test('Board: a move the network drops says the move failed', async ({ admin }) => {
+  await seedBoard(admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(BOARD)}/view/kanban`, admin)
+  await waitFor(() => expect(screen.getAllByTestId('kanban-card')).toHaveLength(3))
+  dropSaves()
+  fireEvent.pointerDown(document.querySelector('[data-card="d1"]') as HTMLElement)
+  landOn('kanban-column-Won')
+  fireEvent.pointerUp(screen.getByTestId('kanban-view'))
+  expect(await screen.findByText('Move failed')).toBeInTheDocument()
+})
+
+test('Calendar: a move the network drops says the move failed', async ({ admin }) => {
+  await seedSchedule(admin)
+  await admin.post('/api/save_row', { table: SCHED, row: { row_id: 's1', title: 'Kickoff', start_date: thisMonth(3) } })
+  await renderApp(`/featherbase/admin/table/${tableSlug(SCHED)}/view/calendar`, admin)
+  await waitFor(() => expect(within(screen.getByTestId(`cal-cell-${thisMonth(3)}`)).getByText('Kickoff')).toBeInTheDocument())
+  dropSaves()
+  fireEvent.pointerDown(document.querySelector('[data-event="s1"]') as HTMLElement)
+  landOn(`cal-cell-${thisMonth(5)}`)
+  fireEvent.pointerUp(screen.getByTestId('calendar-view'))
+  expect(await screen.findByText('Move failed')).toBeInTheDocument()
+})
+
+test('Timeline: a resize the network drops says the resize failed', async ({ admin }) => {
+  await seedSchedule(admin)
+  await admin.post('/api/save_row', { table: SCHED, row: { row_id: 't1', title: 'Design', start_date: '2026-03-02', end_date: '2026-03-05' } })
+  await renderApp(`/featherbase/admin/table/${tableSlug(SCHED)}/view/gantt`, admin)
+  const handle = await screen.findByTestId('gantt-resize-t1')
+  dropSaves()
+  pointer(handle, 'pointerdown', 100)
+  pointer(screen.getByTestId('gantt-view'), 'pointermove', 100 + 3 * 40)
+  pointer(screen.getByTestId('gantt-view'), 'pointerup')
+  expect(await screen.findByText('Resize failed')).toBeInTheDocument()
 })
 
 test('Timeline: a table without two date columns says so', async ({ admin }) => {
