@@ -21,9 +21,8 @@ async function waitingPerson(name: string, email: string, roles: string[] = []) 
 async function openDrawer(name: string) {
   const page = await screen.findByTestId('waiting-for-access')
   await waitFor(() => expect(page).toHaveTextContent(name))
-  // A click on the line, not the name's link, opens the drawer.
-  const row = within(page).getByRole('link', { name }).closest('tr')!
-  await userEvent.click(row.querySelector('td:last-child')!)
+  // The name opens the drawer, in place of the row's own page.
+  await userEvent.click(within(page).getByRole('link', { name }))
   const drawer = await screen.findByTestId('access-request-drawer')
   await waitFor(() => expect(within(drawer).getByTestId('request-roles')).toBeInTheDocument())
   return drawer
@@ -44,6 +43,21 @@ test('a click on a line opens the drawer with who it is, what they asked for and
   expect(screen.getByTestId('list-view')).toBeInTheDocument()
   await userEvent.click(within(drawer).getByRole('button', { name: 'Close' }))
   await waitFor(() => expect(screen.queryByTestId('access-request-drawer')).not.toBeInTheDocument())
+})
+
+test('a click on the line beside the name opens the drawer too, and a role everyone has reads so', async ({ admin }) => {
+  await sql`insert into role (row_id, created_by, updated_by) values ('Dash Reader', 'Administrator', 'Administrator') on conflict do nothing`
+  await admin.post('/api/save_row', { table: 'System Settings', row: { everyone_roles: 'Dash Reader' } })
+  await waitingPerson('Nila Made-up', 'nila.made-up@staff.example.com')
+  await renderApp('/featherbase/admin/waiting-for-access', admin)
+  const page = await screen.findByTestId('waiting-for-access')
+  await waitFor(() => expect(page).toHaveTextContent('Nila Made-up'))
+  await userEvent.click(within(page).getByText('nila.made-up@staff.example.com'))
+  const drawer = await screen.findByTestId('access-request-drawer')
+  const reader = await within(drawer).findByRole('checkbox', { name: /Dash Reader/ })
+  expect(reader).toBeChecked()
+  expect(reader).toBeDisabled()
+  expect(reader.closest('label')).toHaveTextContent('Everyone has it')
 })
 
 test('approving with System Manager warns, asks to confirm, then gives it and the request leaves the list', async ({ admin }) => {
@@ -98,6 +112,8 @@ test('dismissing removes the request', async ({ admin }) => {
   await renderApp('/featherbase/admin/waiting-for-access', admin)
   const drawer = await openDrawer('Leela Made-up')
   await userEvent.click(within(drawer).getByTestId('request-dismiss'))
+  expect(await sql`select 1 from access_request where person = ${id}`).toHaveLength(1)
+  await userEvent.click(within(drawer).getByTestId('dismiss-confirm'))
   expect(await screen.findByTestId('waiting-done')).toHaveTextContent("Dismissed Leela Made-up's request")
   expect(await screen.findByTestId('waiting-empty')).toBeInTheDocument()
   expect(await sql`select 1 from access_request where person = ${id}`).toHaveLength(0)

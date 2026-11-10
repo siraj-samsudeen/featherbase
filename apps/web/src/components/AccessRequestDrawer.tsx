@@ -19,6 +19,8 @@ export interface RequestDetails {
   person: { id: string; full_name: string | null; email: string | null }
   sign_ins: { method: string; sign_in_name: string }[]
   roles_held: string[]
+  /** Roles System Settings gives everyone who signs in. */
+  roles_for_everyone?: string[]
   role_choices: string[]
   role_hints: Record<string, number>
   apps: AppSection[]
@@ -47,6 +49,7 @@ export function AccessRequestDrawer({ id, onClose, onDone }: {
   const [grants, setGrants] = useState<string[]>([])
   const [confirming, setConfirming] = useState(false)
   const [declining, setDeclining] = useState(false)
+  const [dismissing, setDismissing] = useState(false)
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
@@ -126,7 +129,8 @@ export function AccessRequestDrawer({ id, onClose, onDone }: {
             <PaneSection title="Roles">
               <ul className="flex flex-col gap-1.5" data-testid="request-roles">
                 {data.role_choices.map((role) => {
-                  const held = data.roles_held.includes(role)
+                  const everyone = (data.roles_for_everyone ?? []).includes(role)
+                  const held = everyone || data.roles_held.includes(role)
                   const hint = data.role_hints[role]
                   return (
                     <li key={role} className="text-sm">
@@ -134,7 +138,7 @@ export function AccessRequestDrawer({ id, onClose, onDone }: {
                         <input type="checkbox" checked={held || roles.includes(role)} disabled={held || busy}
                           onChange={() => { toggle(roles, setRoles, role); setConfirming(false) }} />
                         {role}
-                        {held && <span className="text-xs text-ink-subtle">Has it</span>}
+                        {held && <span className="text-xs text-ink-subtle">{everyone ? 'Everyone has it' : 'Has it'}</span>}
                         {role === FULL_ADMIN && !held && roles.includes(role) && <span className="text-xs font-semibold text-negative" data-testid="full-admin-warning">Gives full admin access</span>}
                       </label>
                       {hint ? <p className="ml-6 text-xs text-ink-subtle" data-testid="role-hint">{hint === 1 ? '1 other' : `${hint} others`} in this job {hint === 1 ? 'holds' : 'hold'} it</p> : null}
@@ -178,27 +182,35 @@ export function AccessRequestDrawer({ id, onClose, onDone }: {
             {confirming && <Notice tone="caution"><span data-testid="full-admin-confirm">System Manager gives full admin access to everything in Featherbase. Approve again to confirm.</span></Notice>}
             {problem && <Notice tone="negative"><span data-testid="request-problem">{problem}</span></Notice>}
 
+            <div className="sticky bottom-0 -mx-4 border-t border-border bg-surface px-4 py-3">
             {declining ? (
               <div className="flex flex-col gap-2" data-testid="decline-form">
                 <label className="flex flex-col gap-1 text-sm font-semibold">
                   Why is it declined?
                   <textarea className={inputClasses()} rows={2} value={reason} onChange={(e) => setReason(e.target.value)} data-testid="decline-reason"
-                    placeholder="Only admins see this. They are told only that it was declined." />
+                    placeholder="Only admins see the reason" />
                 </label>
                 <div className="flex gap-2">
                   <Button variant="danger" onClick={decline} disabled={!reason.trim()} loading={busy} data-testid="decline-confirm">Decline</Button>
                   <Button variant="quiet" onClick={() => { setDeclining(false); setReason('') }}>Cancel</Button>
                 </div>
               </div>
+            ) : dismissing ? (
+              <div className="flex flex-wrap items-center gap-2" data-testid="dismiss-confirm-row">
+                <span className="text-sm">Dismiss this request? It is deleted; if they open {data.app} again, it comes back.</span>
+                <Button variant="danger" onClick={dismiss} loading={busy} data-testid="dismiss-confirm">Dismiss</Button>
+                <Button variant="quiet" onClick={() => setDismissing(false)}>Cancel</Button>
+              </div>
             ) : (
-              <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+              <div className="flex flex-wrap gap-2">
                 <Button variant="primary" onClick={approve} disabled={!roles.length && !grants.length} loading={busy} data-testid="request-approve">
                   {confirming ? 'Confirm and approve' : 'Approve'}
                 </Button>
                 {!data.declined && <Button onClick={() => setDeclining(true)} disabled={busy} data-testid="request-decline">Decline…</Button>}
-                <Button variant="quiet" onClick={dismiss} disabled={busy} data-testid="request-dismiss">Dismiss</Button>
+                <Button variant="quiet" onClick={() => setDismissing(true)} disabled={busy} data-testid="request-dismiss">Dismiss…</Button>
               </div>
             )}
+            </div>
           </div>
         )}
       </DrillPane>

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { Notice, Segmented, SplitWithPane } from '@featherbase/shop-floor'
+import { Segmented, SplitWithPane } from '@featherbase/shop-floor'
 import { AccessRequestDrawer } from '../components/AccessRequestDrawer'
 import { api } from '../lib/api'
 import { Link } from '@tanstack/react-router'
@@ -61,13 +61,7 @@ export function WaitingForAccess({ filters, onFiltersChange, view = 'waiting', o
         <AccessRequestDrawer key={open} id={open} onClose={() => setOpen(null)}
           onDone={(message) => { setOpen(null); setDone(message) }} />
       ) : null}>
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <Segmented label="Which requests" value={view} onChange={(next) => { setOpen(null); setDone(null); onViewChange?.(next) }}
-              options={[{ value: 'waiting', label: 'Waiting' }, { value: 'declined', label: 'Declined' }]} />
-            {done && <Notice tone="positive"><span data-testid="waiting-done">{done}</span></Notice>}
-          </div>
-          <ListView
+        <ListView
             table="Access Request"
             filters={filters}
             onFiltersChange={onFiltersChange}
@@ -76,21 +70,29 @@ export function WaitingForAccess({ filters, onFiltersChange, view = 'waiting', o
             openRow={open ?? undefined}
             extraColumns={declined ? DECLINED_COLUMNS : undefined}
             defaultOrderBy={declined ? 'declined_at desc' : 'created_at desc'}
-            title={adminPageTitle('waiting-for-access')}
+            title={declined ? 'Declined access requests' : adminPageTitle('waiting-for-access')}
             breadcrumb={
               <div className="text-xs text-ink-subtle">
                 <Link to="/featherbase/admin" className="hover:text-ink">Home</Link>
                 {' / People and access'}
               </div>
             }
-            subtitle={declined
-              ? 'Requests a System Manager declined, newest first. A request goes once its person can open that app.'
-              : 'Each row is someone who opened an app without access to it, newest first. Click a row to approve, decline or dismiss it. Once they can open that app, the row goes.'}
+            subtitle={
+              <span className="flex flex-col gap-2">
+                <span>{declined
+                  ? 'Requests a System Manager declined, newest first. A request goes once its person can open that app.'
+                  : 'Each row is someone who opened an app without access to it, newest first. Click a row to approve, decline or dismiss it. Once they can open that app, the row goes.'}</span>
+                <span className="flex flex-wrap items-center gap-3">
+                  <Segmented label="Which requests" value={view} onChange={(next) => { setOpen(null); setDone(null); onViewChange?.(next) }}
+                    options={[{ value: 'waiting', label: 'Waiting' }, { value: 'declined', label: 'Declined' }]} />
+                  {done && <span role="status" className="font-semibold text-positive" data-testid="waiting-done">✓ {done}</span>}
+                </span>
+              </span>
+            }
             empty={declined
               ? <span data-testid="declined-empty">Nothing declined.</span>
               : <span data-testid="waiting-empty">Nobody is waiting. Someone who opens an app they have no access to shows up here.</span>}
           />
-        </div>
       </SplitWithPane>
     </div>
   )

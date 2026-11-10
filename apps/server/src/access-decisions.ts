@@ -47,6 +47,15 @@ async function heldRoles(person: string): Promise<string[]> {
   return (await sql`select role from has_role where parent = ${person} and parenttype = 'Person' order by role`).map((r) => String(r.role))
 }
 
+/** #923: the roles System Settings gives everyone who signs in: held by
+ *  everyone, so never given here. */
+async function rolesForEveryone(): Promise<string[]> {
+  return (await sql`select distinct ro.row_id from single_value s, regexp_split_to_table(s.value, E'\n') r
+    join role ro on ro.row_id = btrim(r)
+    where s.table_name = 'System Settings' and s.field = 'everyone_roles' and ro.row_id not in ${sql([...NOT_GIVEN, FULL_ADMIN])}
+    order by 1`).map((r) => String(r.row_id))
+}
+
 async function roleChoices(): Promise<string[]> {
   return (await sql`select row_id from role where row_id not in ${sql([...NOT_GIVEN])}
     and not coalesce(disabled, false) and retired_at is null order by row_id`).map((r) => String(r.row_id))
@@ -101,6 +110,7 @@ export async function accessRequestDetails(id: string, user: string) {
     person: { id: person, full_name: p?.full_name ?? null, email: p?.email ?? null },
     sign_ins: signIns.map((s) => ({ method: String(s.method), sign_in_name: String(s.sign_in_name ?? '') })),
     roles_held: await heldRoles(person),
+    roles_for_everyone: await rolesForEveryone(),
     role_choices: await roleChoices(),
     role_hints: hints,
     apps,
@@ -123,7 +133,7 @@ export async function approveAccessRequest(id: string, user: string, body: unkno
   const { roles = [], grants = [], confirm_full_admin: confirmed } = parsed.data!
   const row = await requestRow(id)
   const person = String(row.person)
-  const held = await heldRoles(person)
+  const held = [...await heldRoles(person), ...await rolesForEveryone()]
   const offered = await roleChoices()
   const unknown = roles.filter((role) => !offered.includes(role))
   if (unknown.length) reject(`These roles can't be given: ${unknown.join(', ')}`)

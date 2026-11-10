@@ -62,6 +62,17 @@ describe('what the drawer shows', () => {
     expect(body.apps).toEqual([])
   })
 
+  test('a role System Settings gives everyone shows as held by everyone, and cannot be given again', async ({ admin, createUser }) => {
+    quiet()
+    await role('Dash Reader')
+    await admin.post('/api/save_row', { table: 'System Settings', row: { everyone_roles: 'Dash Reader' } })
+    const nila = await createUser({ email: 'nila.made-up@example.com', roles: [] })
+    const id = await waiting(nila.user!)
+    const body = await (await details(admin, id)).json()
+    expect(body).toMatchObject({ roles_held: [], roles_for_everyone: ['Dash Reader'] })
+    expect((await decide(admin, id, 'approve', { roles: ['Dash Reader'] })).status).toBe(417)
+  })
+
   test('only a System Manager may see it', async ({ createUser }) => {
     quiet()
     const asha = await createUser({ email: 'asha.two@example.com', roles: [] })

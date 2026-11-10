@@ -299,6 +299,8 @@ export async function grantOptions(ctx: AccessContext, on: string) {
     { label: 'Site', value: (await nameOf('Site', held.map(row => exact(row.site)))).join(', ') },
     { label: 'Section', value: (await nameOf('Section', held.map(row => exact(row.section)))).join(', ') },
   ].filter(line => line.value)
+  // Store reports reach people through their job: say plainly when there is none to go by.
+  if (!employees.length) about.push({ label: 'Staff list', value: 'Not a current employee, so store reports won’t open' })
   // Everyone else holding one of those jobs today.
   const peers = new Set<string>()
   if (jobs.length) {

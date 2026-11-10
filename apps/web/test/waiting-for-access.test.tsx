@@ -38,11 +38,11 @@ test('a System Manager sees the count and the list, with the App, and opens a re
   expect(page.textContent).not.toMatch(/psn_[a-z2-7]{20}/)
   // A list's own tools: filters and column choice.
   expect(within(page).getByTestId('list-columns')).toBeInTheDocument()
+  // #1173: the name opens the request in a drawer beside the list.
   await userEvent.click(await within(page).findByRole('link', { name: 'Waiting Person' }))
-  // The request, read only, naming the person and the app.
-  const form = await screen.findByTestId('form-view', {}, { timeout: 5000 })
-  expect(form).toHaveTextContent('Featherbase')
-  expect(screen.queryByTestId('waiting-for-access')).not.toBeInTheDocument()
+  const drawer = await screen.findByTestId('access-request-drawer', {}, { timeout: 5000 })
+  await waitFor(() => expect(drawer).toHaveTextContent('Asked for Featherbase'))
+  expect(screen.getByTestId('waiting-for-access')).toBeInTheDocument()
 })
 
 test('Tree of all on Waiting for access lists each request as a line', async ({ admin }) => {

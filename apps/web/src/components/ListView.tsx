@@ -1110,6 +1110,7 @@ export function ListView({
                 onToggleExpand={() => toggleExpand(String(row.row_id))}
                 inPane={paneRow === String(row.row_id)}
                 onOpenPane={openPane}
+                titleOpensPane={Boolean(onRowOpen)}
               />
             ))}
             {!rows.length && (

@@ -279,6 +279,11 @@ describe('the Waiting for access drawer', () => {
     expect(dash.title).toBe('Dash reports')
     expect(dash.about).toEqual([{ label: 'Job', value: 'Head office staff' }, { label: 'Site', value: 'Head Office' }])
     expect(details.role_hints['Master Data Editor']).toBe(1)
+    // Someone with no current Employee row is told why store reports won't open.
+    await giver.fetch('/api/access_request', { method: 'POST', body: JSON.stringify({ app: 'featherbase' }) })
+    const [giverRequest] = await sql`select row_id from access_request where person = ${giver.user!}`
+    const giverDetails = await sysman.get<Details>(`/api/access_request/${giverRequest.row_id}`)
+    expect(giverDetails.apps[0].about).toEqual([{ label: 'Staff list', value: 'Not a current employee, so store reports won’t open' }])
     expect(dash.choices).toEqual(expect.arrayContaining([
       { id: `bundle:${bundle}`, label: 'All reports', group: 'Bundle', given: false, payload: { report_bundle: bundle } },
       expect.objectContaining({ id: 'report:sales', group: 'Report', given: false }),
