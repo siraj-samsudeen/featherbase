@@ -382,13 +382,15 @@ describe('a report whose Dive has its own pickers', () => {
     expect(body().initial_state).toEqual({ reach: { 9901: ['010101001'], 9902: null }, month: 'this' })
   })
 
-  it("shows the cached view for the address's store, or the reader's first store A–Z, naming it", async () => {
-    const named = async (payload: Record<string, unknown>) => {
-      const answer = await reads.report(context({ places: TWO, reports: [PICKERS], payload }).ctx) as { heading: { name: string }; pickers_in_dive?: boolean }
+  // As the Dive opens with no store named: the first store A–Z that has figures (agreed with v16).
+  it("shows the cached view for the address's store, else the first store A–Z with figures, naming it", async () => {
+    const named = async (payload: Record<string, unknown>, rows: ReturnType<typeof row>[] | null = [row('9901', '010101001')]) => {
+      const answer = await reads.report(context({ places: TWO, reports: [PICKERS], payload, rows }).ctx) as { heading: { name: string }; pickers_in_dive?: boolean }
       return [answer.heading.name, answer.pickers_in_dive]
     }
-    expect([await named({ store: '9901' }), await named({}), await named({ store: '9999' })])
-      .toEqual([['Lakeside', true], ['Hillview', true], ['Hillview', true]])
+    expect([await named({ store: '9902' }), await named({}), await named({ store: '9999' }),
+      await named({}, [row('9901', '010101001'), row('9902', '010101001', 'Hillview')]), await named({}, null)])
+      .toEqual([['Hillview', true], ['Lakeside', true], ['Lakeside', true], ['Hillview', true], ['Hillview', true]])
   })
 })
 
