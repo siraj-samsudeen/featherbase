@@ -135,10 +135,9 @@ registerDataset({
     const read = _liveReader()
     const asOfRows = await read(AS_OF_SQL)
     const raw = asOfRows[0]?.[0] ?? null
-    // DuckDB hands a DATE back as a Date or as its own value object; the
-    // snapshot stores the ISO day, which is what the surface formats per ADR 844.
-    const sourceAsOf =
-      raw == null ? null : raw instanceof Date ? raw.toISOString().slice(0, 10) : String(raw).slice(0, 10)
+    // DuckDB's rows hand a DATE back as its own value object, which prints as
+    // the ISO day; the snapshot stores that day, which the surface formats per ADR 844.
+    const sourceAsOf = raw == null ? null : String(raw).slice(0, 10)
     const period = currentPeriod()
     // Between IST midnight on the 1st and the morning build, the warehouse still ends on the
     // last day of the previous month, so this month has nothing to cache yet. Say that, rather
@@ -161,14 +160,15 @@ registerDataset({
         store_name: r[1] == null ? null : String(r[1]),
         short_code: r[2] == null ? null : String(r[2]),
         hierarchy_code: r[3] == null ? '' : String(r[3]),
-        business_date: r[4] instanceof Date ? r[4].toISOString().slice(0, 10) : String(r[4]).slice(0, 10),
+        business_date: String(r[4]).slice(0, 10),
         target_before_tax: r[5] == null ? null : Number(r[5]),
         actual_before_tax: r[6] == null ? null : Number(r[6]),
       }))
       await sql`insert into sales_target_snapshot_row ${sql(batch)}`
     }
     const byCode = new Map<string, string | null>()
-    for (const r of names) if (r[0] != null) byCode.set(String(r[0]), r[1] == null ? null : String(r[1]))
+    // namesSql reads only rows with a code.
+    for (const r of names) byCode.set(String(r[0]), r[1] == null ? null : String(r[1]))
     const nameRows = [...byCode].map(([hierarchy_code, subcategory]) => ({ snapshot_id: snapshotId, hierarchy_code, subcategory }))
     for (let i = 0; i < nameRows.length; i += CHUNK)
       await sql`insert into sales_target_snapshot_name ${sql(nameRows.slice(i, i + CHUNK))}`

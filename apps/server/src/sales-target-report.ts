@@ -163,9 +163,6 @@ function totalOf(rows: ReportRow[]): Totals {
 
 const num = (v: unknown): number | null => (v == null ? null : Number(v))
 
-/** pg hands timestamptz back as a Date; the wire carries an ISO instant. */
-const iso = (v: unknown): string | null =>
-  v == null ? null : v instanceof Date ? v.toISOString() : String(v)
 
 async function fromSnapshot(a: Assignment, snapshotId: string): Promise<Grouped[]> {
   // `unnest` + LEFT JOIN, exactly as the Dive does it: a selected code with no
@@ -252,7 +249,8 @@ async function fromLive(a: Assignment, period: Period): Promise<{ grouped: Group
     from "marts"."sales"."target_vs_actual_daily"`)
   const raw = asOfRows[0]?.[0] ?? null
   const targetRows = Number(asOfRows[0]?.[1] ?? 0) || 0
-  const asOf = raw == null ? null : raw instanceof Date ? raw.toISOString().slice(0, 10) : String(raw).slice(0, 10)
+  // A DuckDB DATE prints as its ISO day.
+  const asOf = raw == null ? null : String(raw).slice(0, 10)
 
   // The live path returns only codes that HAVE rows; the reader's full selection
   // is authoritative, so absent codes are added back as empty — same list either way.
@@ -305,7 +303,7 @@ export async function reportFor(a: Assignment, period: Period = currentPeriod())
       cutoff_early: dataThrough < period.period_end,
       no_data_yet: dataThrough < period.period_start,
       targets_unavailable: live.targetRows === 0,
-      ...shape(live.grouped, a.section_by_material_group ?? {}, {
+      ...shape(live.grouped, a.section_by_material_group, {
         noDataYet: dataThrough < period.period_start,
         targetsUnavailable: live.targetRows === 0,
       }),
@@ -319,7 +317,8 @@ export async function reportFor(a: Assignment, period: Period = currentPeriod())
   return {
     source: 'snapshot',
     source_as_of: asOf,
-    generated_at: iso(snap.activated_at ?? snap.built_at),
+    // Activation is the one way a snapshot becomes active, and it stamps the time.
+    generated_at: new Date(snap.activated_at!).toISOString(),
     snapshot_id: snap.row_id,
     ...store,
     period_start: period.period_start,
@@ -328,6 +327,6 @@ export async function reportFor(a: Assignment, period: Period = currentPeriod())
     cutoff_early: dataThrough < period.period_end,
     no_data_yet: dataThrough < period.period_start,
     targets_unavailable: false, // `validate` refuses a candidate with no target rows
-    ...shape(grouped, a.section_by_material_group ?? {}, { noDataYet: dataThrough < period.period_start, targetsUnavailable: false }),
+    ...shape(grouped, a.section_by_material_group, { noDataYet: dataThrough < period.period_start, targetsUnavailable: false }),
   }
 }
