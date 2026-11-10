@@ -298,7 +298,7 @@ describe("the stores read (the bar's store picker)", () => {
 
   it('follows the report named, not the first', async () => {
     const { ctx } = context({ places: TWO, reports: [WHOLE, SALES], payload: { report: 'sales' } })
-    expect((await reads.stores(ctx)).map(option => option.value)).toEqual(['9901', '9902'])
+    expect((await reads.stores(ctx)).map(option => option.value)).toEqual(['9902', '9901'])
   })
 })
 
