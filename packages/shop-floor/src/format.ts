@@ -158,7 +158,7 @@ const localIsoDay = (d: Date) =>
 
 /** A day heading for a timeline: "Today", "Yesterday", else "Tue, 13-Oct-2026"
  *  (ADR 844's day form with the weekday), on the reader's own calendar. */
-export function fmtTimelineDay(d: Date, now: Date): string {
+export function fmtTimelineDay(d: Date, now: Date = new Date()): string {
   const day = localIsoDay(d)
   if (day === localIsoDay(now)) return 'Today'
   const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)

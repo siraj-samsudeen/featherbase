@@ -21,6 +21,8 @@ test('day headings: Today, Yesterday, then weekday and DD-Mon-YYYY', () => {
   expect(fmtTimelineDay(new Date(2026, 9, 26, 0, 5), now)).toBe('Today')
   expect(fmtTimelineDay(new Date(2026, 9, 25, 23, 59), now)).toBe('Yesterday')
   expect(fmtTimelineDay(new Date(2026, 9, 13, 9, 0), now)).toBe('Tue, 13-Oct-2026')
+  // Without a time to compare against, the heading is read against the clock.
+  expect(fmtTimelineDay(new Date())).toBe('Today')
   const at = (d: number, h: number) => new Date(2026, 9, d, h).toISOString()
   const groups = groupByDay([{ at: at(26, 9) }, { at: at(26, 8) }, { at: at(13, 9) }], now)
   expect(groups.map((g) => [g.heading, g.items.length])).toEqual([['Today', 2], ['Tue, 13-Oct-2026', 1]])
