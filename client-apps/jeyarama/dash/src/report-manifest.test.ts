@@ -4,7 +4,7 @@
 // will need (an upgrade can never add one: featherbase #617).
 import { describe, expect, it } from 'vitest'
 import manifest from '../featherbase.json' with { type: 'json' }
-import { EMBED_ORIGIN, LAST_MONTH_DATASET, LAST_SALES_DATASET, MONTH_DATASET, SALES_DATASET, reads } from './server.ts'
+import { DASH_ROLES, EMBED_ORIGIN, LAST_MONTH_DATASET, LAST_SALES_DATASET, MONTH_DATASET, SALES_DATASET, reads } from './server.ts'
 import type { SalesRow } from './report.ts'
 import { PROVIDER_FIELDS, PROVIDER_TABLES } from './provider.ts'
 import { BASE_TABLES } from './my-sections.ts'
@@ -88,6 +88,10 @@ describe('the report in the manifest', () => {
 
   it("lets anyone who can open the app read the month picker's options: they hold no figure", () => {
     expect(operations.months.policy).toEqual(operations.me.policy)
+  })
+
+  it("opens Dash for exactly the app's own roles (#1172)", () => {
+    expect([...DASH_ROLES].sort()).toEqual([...manifest.roles].sort())
   })
 
   it("frames only MotherDuck's embed site", () => {
