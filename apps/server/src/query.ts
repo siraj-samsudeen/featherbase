@@ -283,7 +283,7 @@ export async function scopedWhere(
       if (!viaCol)
         throw new AppError(
           'ValidationError',
-          `${spec.via}.${spec.column ?? '?'} is not a Reference to ${spec.table}`,
+          `${spec.via}.${spec.column} is not a Reference to ${spec.table}`,
         )
       if (spec.parentfield !== undefined) {
         const owner = meta.columns.some(
