@@ -985,9 +985,10 @@ export async function createTable(
   // carry every mapped column — instead of persisting a Table that only
   // fails later at query time. Imported lazily: reflect.ts imports this
   // module for createTable.
+  let externalSchema = def.external_schema
   if (def.data_source) {
     const { assertBindingIsValid } = await import('./sources/reflect')
-    await assertBindingIsValid({
+    const validatedSchema = await assertBindingIsValid({
       name: def.name,
       data_source: def.data_source,
       external_schema: def.external_schema,
@@ -999,6 +1000,7 @@ export async function createTable(
         source_column: c.source_column,
       })),
     })
+    externalSchema ||= validatedSchema || undefined
   }
 
   await assertLinkTargetsExist(def, def.columns, opts.alongside)
@@ -1046,7 +1048,7 @@ export async function createTable(
     }
     if (def.data_source) {
       tableRow.data_source = def.data_source
-      tableRow.external_schema = def.external_schema ?? null
+      tableRow.external_schema = externalSchema ?? null
       tableRow.external_table = def.external_table ?? null
       tableRow.external_pk = def.external_pk ?? null
       tableRow.external_modified = def.external_modified ?? null
