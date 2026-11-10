@@ -8,6 +8,10 @@ import { PLATFORM_SCHEMA } from './platform-schema'
 import { anyTableLinkCount } from './any-table-link'
 import { displayName } from './people-directory'
 import { SYSTEM_ACTOR_LABELS } from 'shared'
+import { ROSTER_LINK_ACTOR } from './roster-link-actor'
+
+/** The shared labels, plus the server-only roster link (#1157). */
+const ACTOR_LABELS: Readonly<Record<string, string>> = { ...SYSTEM_ACTOR_LABELS, [ROSTER_LINK_ACTOR]: 'Staff roster' }
 
 // Platform records that name one row by its id in plain text, beside a column
 // naming its Table: its timeline, attachments, shares, assignments, tags,
@@ -131,7 +135,7 @@ export async function documentActivity(table: string, name: string, user: string
   const names = new Map(actors.map(actor => [String(actor.row_id), displayName(actor)]))
   const withAuthor = (entry: Record<string, unknown>) => ({
     ...entry,
-    author_name: names.get(String(entry.created_by)) ?? SYSTEM_ACTOR_LABELS[String(entry.created_by)] ?? 'Unknown person',
+    author_name: names.get(String(entry.created_by)) ?? ACTOR_LABELS[String(entry.created_by)] ?? 'Unknown person',
   })
   const visibleVersions = versions.map((version) => {
     const data = version.data as { changed?: [string, unknown, unknown][]; created?: boolean; import_run?: string; resolution?: { field: string; decision: string; incoming: unknown }; retirement?: { action: string; reason?: string }; agent?: { token_id: string; token_label: string } } | null

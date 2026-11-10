@@ -6,7 +6,7 @@ import type { Place } from './provider'
 
 const report = (over: Partial<ReportRecord>): ReportRecord => ({
   report_key: 'r', report_name: 'R', dive_id: 'd', filter_shape: 'No filter',
-  store_key: null, subcategory_key: null, whole_store_key: null, month_key: null, ready_signal: false, quick_view: null, ...over })
+  store_key: null, subcategory_key: null, whole_store_key: null, month_key: null, ready_signal: false, quick_view: null, pickers_in_dive: false, ...over })
 const oneStore = report({ filter_shape: 'One store and subcategories', store_key: 'plant_code', subcategory_key: 'material_groups', whole_store_key: 'whole_store', month_key: 'period_end' })
 const wholeStores = report({ filter_shape: 'Whole stores', store_key: 'store_codes' })
 const perStore = report({ filter_shape: 'Stores and subcategories', store_key: 'reach' })
@@ -105,5 +105,30 @@ describe('what a place without a store, or an opening without one, gives', () =>
     const noStore: Place = { label: 'Head office', filters: {} }
     expect(diveFilters(oneStore, [noStore, wholeStore('9901')], { ...period, store: undefined })).toEqual({ refused: 'not_your_store' })
     expect(diveFilters(wholeStores, [noStore, wholeStore('9901')], period)).toEqual({ state: { store_codes: ['9901'] } })
+  })
+})
+
+// #1159: the Dive has its own Store and Month pickers (v16, data-warehouse#4739). Dash passes the
+// reader's whole reach and where to open, and no key of the old one-store contract.
+describe('a report whose Dive has its own pickers', () => {
+  const pickers = { ...oneStore, pickers_in_dive: true, ready_signal: true }
+  const places = [section('9901', 'Tops', '000000002', '000000001'), wholeStore('9902')]
+
+  it('sends the reach of every place, the store and month to open on, and the origin, and no other key', () => {
+    expect(diveFilters(pickers, places, { store: '9902', month: 'last', periodEnd: '2026-10-31', appOrigin: 'https://dash.example.test' }))
+      .toEqual({ state: { reach: { 9901: ['000000001', '000000002'], 9902: null }, store: '9902', month: 'last', app_origin: 'https://dash.example.test' } })
+  })
+
+  it('leaves out a store outside the reach, and opens on this month when none is named', () => {
+    expect(diveFilters({ ...pickers, ready_signal: false }, places, { store: '9999', periodEnd: '2026-11-07', appOrigin: null }))
+      .toEqual({ state: { reach: { 9901: ['000000001', '000000002'], 9902: null }, month: 'this' } })
+  })
+
+  it('refuses a reader who reaches no store, so the Dive is never asked', () => {
+    expect(diveFilters(pickers, [], { periodEnd: '2026-11-07', appOrigin: null })).toEqual({ refused: 'not_your_store' })
+  })
+
+  it('offers the bar no store', () => {
+    expect(storesOfReport(pickers, places)).toEqual([])
   })
 })

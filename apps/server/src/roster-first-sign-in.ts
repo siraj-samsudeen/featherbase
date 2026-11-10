@@ -15,7 +15,7 @@ import { getMeta } from './meta'
 import { tableRelation } from './table-engine'
 import { runAsSystemActor } from './system-actor'
 import { signInActor } from 'shared'
-import { ROSTER_LINK, checkWithProvider, rosterFrom, type DelegatedLoginConfig, type RosterLink } from './delegated-login'
+import { ROSTER_LINK, ROSTER_LINKS, checkWithProvider, rosterFrom, type DelegatedLoginConfig, type RosterLink } from './delegated-login'
 import { auditIdentity, newIdentityId, type SignInMethod } from './identities'
 import { addIdentifier, writeThroughIdentity } from './person-identifiers'
 import { normaliseValue, type IdentifierKind, type NormaliseRule } from './identifiers'
@@ -23,13 +23,13 @@ import { completeSignIn } from './sign-in'
 
 type HeldReason = 'duplicate_id' | 'row_has_person' | 'no_record_number' | 'already_linked' | 'service_named_another_record' | 'link_failed'
 
-interface Roster {
+export interface Roster {
   link: RosterLink
   relation: string
   recordSystem: string
 }
 
-interface RosterRow {
+export interface RosterRow {
   row_id: string
   updated_at: unknown
   sign_in_id: string
@@ -57,7 +57,7 @@ function misconfigured(method: string, what: string): null {
 
 /** The method's roster when its rule is on and everything it names exists;
  *  null otherwise, and the sign-in is then refused like any unknown ID. */
-async function usableRoster(method: SignInMethod): Promise<Roster | null> {
+export async function usableRoster(method: SignInMethod): Promise<Roster | null> {
   if (method.new_person !== 'create_if_on_roster') return null
   let link: RosterLink | null
   try {
@@ -87,7 +87,7 @@ async function usableRoster(method: SignInMethod): Promise<Roster | null> {
   return { link, recordSystem, relation: await tableRelation(link.table) }
 }
 
-function rowOf(r: Record<string, unknown>, link: RosterLink): RosterRow {
+export function rowOf(r: Record<string, unknown>, link: RosterLink): RosterRow {
   const text = (column: string) => String(r[column] ?? '').trim()
   return {
     row_id: String(r.row_id),
@@ -167,11 +167,12 @@ interface Linked {
   identity: string
 }
 
-/** The live link a concurrent first sign-in just made for this very record. */
+/** The live link a concurrent first sign-in, or the roster link (#1157), just
+ *  made for this very record. */
 async function winner(method: SignInMethod, row: { record: string; person: string | null }): Promise<Linked | null> {
   const [won] = await sql`
     select id, person_id from sign_in_identity
-    where method = ${method.key} and subject = ${row.record} and ended_at is null and linked_by = ${ROSTER_LINK}`
+    where method = ${method.key} and subject = ${row.record} and ended_at is null and linked_by in ${sql(ROSTER_LINKS)}`
   if (!won || String(won.person_id) !== row.person) return null
   return { user: String(won.person_id), identity: String(won.id) }
 }

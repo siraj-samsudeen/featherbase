@@ -30,10 +30,10 @@ const PLACEMENTS: Row[] = [
   { row_id: 'p5', store: 'BBB', section: 'BBB-GF-Tops', subcategory: '000000005', starts_on: '2026-01-01', ends_on: null },
 ]
 
-function fake(jobs: Row[], { employee = { row_id: 'E1', person: 'me', status: 'Current' } as Row } = {}): Documents {
+function fake(jobs: Row[], { employee = { row_id: 'E1', person: 'me', status: 'Current' } as Row, plants = PLANTS } = {}): Documents {
   const tables: Record<string, Row[]> = {
     Employee: [employee], 'Job Assignment': jobs.map((job, i) => ({ row_id: `J${i}`, employee: 'E1', starts_on: '2026-01-01', ends_on: null, ...job })),
-    Site: SITES, Plant: PLANTS, Section: SECTIONS, 'Section Subcategory': PLACEMENTS,
+    Site: SITES, Plant: plants, Section: SECTIONS, 'Section Subcategory': PLACEMENTS,
   }
   return {
     async list(table, { filters = [], limit_start = 0, limit_page_length = 500 }) {
@@ -47,6 +47,25 @@ const reach = (...jobs: Row[]) => reachOf(fake(jobs), 'me', ON)
 const stores = async (...jobs: Row[]) => (await reach(...jobs)).places.map(place => place.filters)
 
 describe('who sees what', () => {
+  // #1155 (owner, 10-Nov-2026): a site's readers reach every plant on it that sells: Store,
+  // Shop-in-shop and E-commerce fulfilment, not only the last one read. A warehouse stays out; a
+  // retired plant the platform leaves out. Plant.is_active waits for #1161.
+  describe('a site with more than one plant', () => {
+    const plants = [...PLANTS, { row_id: '9911', site: 'AAA', plant_type: 'Store' },
+      { row_id: '9291', site: 'AAA', plant_type: 'Shop-in-shop' },
+      { row_id: '8191', site: 'AAA', plant_type: 'E-commerce fulfilment' }]
+    const reachOn = (job: Row) => reachOf(fake([job], { plants }), 'me', ON).then(answer => answer.places.map(place => place.filters))
+
+    it('gives a Store Manager each Store, Shop-in-shop and E-commerce plant whole, and no warehouse', async () => {
+      expect(await reachOn({ job: 'Store Manager', site: 'AAA' })).toEqual(['8191', '9291', '9901', '9911'].map(store => ({ store: [store] })))
+    })
+
+    it("gives a section's reader that section in each of them", async () => {
+      expect(await reachOn({ job: 'Team Leader', site: 'AAA', section: 'AAA-GF-Tops' })).toEqual(['8191', '9291', '9901', '9911']
+        .map(store => ({ store: [store], subcategory: ['000000001'] })))
+    })
+  })
+
   it('Staff and a Team Leader see their section\'s current subcategories', async () => {
     for (const job of ['Staff', 'Team Leader'])
       expect(await stores({ job, site: 'AAA', section: 'AAA-GF-Tops' })).toEqual([{ store: ['9901'], subcategory: ['000000001'] }])

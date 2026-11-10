@@ -25,7 +25,6 @@ import {
   renderApp as baseRenderApp,
   renderSession as baseRenderSession,
   type RenderAppOptions,
-  type Session,
   type SessionOptions,
 } from 'feather-testing-postgres/react'
 import { routeTree } from '../src/router'
@@ -128,19 +127,6 @@ export const SESSION_TIMEOUT = 8000
 
 /** The selector `session.within(...)` takes for an element's data-testid. */
 export const byTestId = (id: string) => `[data-testid="${id}"]`
-
-/** `session.within(...)` once the element with this data-testid is on screen:
- *  `within` alone looks for its element once, without waiting. */
-export function inside<S extends Session>(session: S, testId: string, fn: Parameters<S['within']>[1]): S {
-  return insideOf(session, byTestId(testId), fn)
-}
-
-/** `inside`, for an element named by a CSS selector (`[aria-label="Verification"]`). */
-export function insideOf<S extends Session>(session: S, selector: string, fn: Parameters<S['within']>[1]): S {
-  return session
-    .until(`${selector} is on screen`, () => document.querySelector(selector))
-    .within(selector, fn)
-}
 
 /** A Session over whatever is on screen: for pages a test mounts itself (an
  *  app's own page) rather than through renderSession. */
