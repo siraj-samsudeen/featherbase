@@ -194,6 +194,10 @@ describe('trusted-runtime-packages', () => {
       await discoverPackages(await appLibraryPaths(appPathsFromEnvironment()))
       await loadInstalledApps()
       expect(await run.pageText()).toContain('<h1>Other tasks, fixed</h1>')
+      // A development server lists the app's source folder after the delivered copies; order doesn't matter.
+      await discoverPackages([...appPathsFromEnvironment()].reverse())
+      await loadInstalledApps()
+      expect(await run.pageText()).toContain('<h1>Other tasks, fixed</h1>')
       const installed = (JSON.parse(process.env.FEATHERBASE_APP_PATHS!) as string[])[0]
       const html = await readFile(join(installed, 'client/index.html'), 'utf8')
       await writeFile(join(installed, 'client/index.html'), html.replace('<h1>Other tasks</h1>', '<h1>Other tasks, next deploy</h1>'))
