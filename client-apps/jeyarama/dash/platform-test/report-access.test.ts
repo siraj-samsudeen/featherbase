@@ -13,6 +13,7 @@ const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   createUser: async ({ createUser }, use) => use(async options => pinned(await createUser(options))),
 })
 process.env.MOTHERDUCK_TOKEN = 'made-up-token'
+process.env.MOTHERDUCK_EMBED_TOKEN = 'made-up-embed-token'
 void APP_DIR
 
 afterEach(() => { vi.unstubAllGlobals(); _setAlertSender(null) })
