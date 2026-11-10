@@ -8,7 +8,10 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { _setDelegatedFetch } from '../src/delegated-login'
-import { planRosterLink, runRosterLink, formatRosterLink } from '../src/roster-link'
+import { planRosterLink, runRosterLink, formatRosterLink, ROSTER_LINK_JOB } from '../src/roster-link'
+import { enqueue, loadJobs, runOneJob } from '../src/jobs'
+import { main } from '../src/cli'
+import { runMain } from './command-io'
 import { expectStatus, makeTable } from './fixtures'
 import { configureDelegated, giveEmployeeCode } from './identity-fixtures'
 
@@ -61,6 +64,10 @@ const liveLinks = (person: string) =>
   sql`select subject, sign_in_name, linked_by from sign_in_identity where person_id = ${person} and ended_at is null`
 const currentIds = (person: string) =>
   sql`select system, value from person_identifier where person_id = ${person} and upper_inf(valid) order by system`
+const makePerson = async (full_name: string) => String((await saveDoc('Person', { full_name, enabled: true, roles: [] }, 'Administrator', 'insert')).row_id)
+const giveRecord = (person: string, value: string) =>
+  sql`insert into person_identifier (id, person_id, system, assigner, value, verified, one_holder, source, recorded_by)
+    values (${'pid_' + person.slice(-8) + value}, ${person}, 'stylehr-employee-id', '', ${value}, true, false, 'test', 'test')`
 const held = async () => (await sql`select operation from activity_log where operation like 'roster_link_held %' order by operation`).map((r) => String(r.operation))
 
 function provider(record: string) {
@@ -134,7 +141,10 @@ describe('a current roster row is linked before anyone signs in', () => {
   test('a dry run names the email rules and webhooks its saves would set off', async ({ admin }) => {
     await setUp(admin)
     await sql`insert into email_rule (row_id, ref_table, event, enabled, recipient, subject) values ('Made up welcome', 'Person', 'on_create', true, 'someone@example.test', 'Hello')`
-    expect((await planRosterLink('stylehr'))?.side_effects).toEqual(['email rule Made up welcome (Person, on_create)'])
+    await sql`insert into webhook (row_id, webhook_table, webhook_event, enabled, request_url) values ('Made up hook', ${TABLE}, 'on_save', true, 'https://hooks.example.test/x')`
+    const plan = await planRosterLink('stylehr')
+    expect(plan?.side_effects).toEqual(['email rule Made up welcome (Person, on_create)', `webhook Made up hook (${TABLE}, on_save)`])
+    expect(formatRosterLink(plan)).toContain('its saves set off email rule Made up welcome')
   })
 
   test('someone who signed in first is matched, never duplicated', async ({ api, admin }) => {
@@ -181,6 +191,48 @@ describe('what the roster link holds back', () => {
     await runRosterLink('stylehr')
     expect(await sql`select login from featherbase.crew_list where login is not null`).toEqual([])
     expect((await held()).filter((h) => h.endsWith('duplicate_id'))).toHaveLength(2)
+    expect(formatRosterLink(await planRosterLink('stylehr'))).toContain('held 2 (duplicate_id 2)')
+  })
+
+  test('a row without a sign-in ID or a record number is held', async ({ admin }) => {
+    await setUp(admin, [crewRow(1, { crew_no: '' }), crewRow(2, { hr_record: '' })])
+    expect((await planRosterLink('stylehr'))?.rows.map((r) => r.reason).sort()).toEqual(['no_record_number', 'no_sign_in_id'])
+  })
+
+  test('a record number its identifier system cannot hold is held', async ({ admin }) => {
+    await setUp(admin, [crewRow(1, { hr_record: '70X1' })])
+    await sql`update identifier_system set normalise = 'digits' where row_id = 'stylehr-employee-id'`
+    await runRosterLink('stylehr')
+    expect(await held()).toEqual([expect.stringMatching(/ value_unusable$/)])
+  })
+
+  test('a sign-in ID another record’s link carries is held', async ({ admin }) => {
+    await setUp(admin)
+    const other = await makePerson('Someone Else')
+    await sql`insert into sign_in_identity ${sql({ id: 'uid_othername', person_id: other, method: 'stylehr', subject: '9999', sign_in_name: 'TT-1001', linked_by: 'test' })}`
+    await runRosterLink('stylehr')
+    expect(await held()).toEqual([expect.stringMatching(/ sign_in_id_linked_elsewhere$/)])
+  })
+
+  test('a row naming one person while another holds its record is held', async ({ admin }) => {
+    await setUp(admin)
+    const named = await makePerson('Named On The Row')
+    await giveRecord(await makePerson('Holds The Record'), '7001')
+    const row = await crew('TT-1001')
+    await saveDoc(TABLE, { row_id: row.row_id, updated_at: row.updated_at, login: named }, 'Administrator')
+    await runRosterLink('stylehr')
+    expect(await held()).toEqual([expect.stringMatching(/ held_by_another_person$/)])
+  })
+
+  test('a person merged into another is not linked', async ({ admin }) => {
+    await setUp(admin)
+    const survivor = await makePerson('Survivor')
+    const merged = await makePerson('Merged Away')
+    const row = await crew('TT-1001')
+    await saveDoc(TABLE, { row_id: row.row_id, updated_at: row.updated_at, login: merged }, 'Administrator')
+    await sql`update person set replaced_by = ${survivor}, enabled = false where row_id = ${merged}`
+    await runRosterLink('stylehr')
+    expect(await held()).toEqual([expect.stringMatching(/ person_unusable$/)])
   })
 
   test('an employee code current on another person is not linked', async ({ admin }) => {
@@ -222,6 +274,96 @@ describe('what the roster link holds back', () => {
     expect(run.linked).toBe(0)
     expect(await liveLinks(row.login)).toEqual([])
     expect(await held()).toEqual([expect.stringMatching(/ link_ended$/)])
+  })
+})
+
+describe('the roster moves on', () => {
+  test('a changed sign-in ID moves the link to it', async ({ admin }) => {
+    await setUp(admin)
+    await runRosterLink('stylehr')
+    const row = await crew('TT-1001')
+    await saveDoc(TABLE, { row_id: row.row_id, updated_at: row.updated_at, crew_no: 'TT-2001' }, 'Administrator')
+    expect((await runRosterLink('stylehr')).completed).toBe(1)
+    expect(await liveLinks(row.login)).toEqual([{ subject: '7001', sign_in_name: 'TT-2001', linked_by: 'roster-link' }])
+  })
+
+  test('a plan applied later is decided again, row by row', async ({ api, admin }) => {
+    await setUp(admin, [crewRow(1), crewRow(2), crewRow(3)])
+    await runRosterLink('stylehr')
+    await setState('TT-1003', 'Left')
+    await saveDoc(TABLE, crewRow(4), 'Administrator', 'insert')
+    await saveDoc(TABLE, crewRow(5), 'Administrator', 'insert')
+    const plan = (await planRosterLink('stylehr'))!
+    expect(plan.ends).toHaveLength(1)
+    // Since the plan: one leaver came back, one new row left, one signed in first.
+    await setState('TT-1003', 'Working')
+    await setState('TT-1004', 'Left')
+    provider('7005')
+    await expectStatus(await signIn(api, 'TT-1005'), 200)
+    const people = await count('person')
+
+    const run = await runRosterLink('stylehr', { plan })
+
+    expect(run).toMatchObject({ created: 0, ended: 0, unchanged: 4 })
+    expect(await count('person')).toBe(people)
+  })
+})
+
+describe('the scheduled job', () => {
+  const runJob = async () => {
+    await loadJobs()
+    await sql`delete from background_job`
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const job = await enqueue(ROSTER_LINK_JOB, {})
+    await sql`update background_job set run_at = now() where row_id = ${job}`
+    await runOneJob()
+    const [exec] = await sql`select outcome, result from job_execution where job = ${job} order by created_at desc limit 1`
+    return exec as { outcome: string; result: string | null }
+  }
+
+  test('a run says what it did', async ({ admin }) => {
+    await setUp(admin)
+    const exec = await runJob()
+    expect(exec.outcome).toBe('success')
+    expect(exec.result).toContain('created 1, linked 0')
+  })
+
+  test('a row that cannot be saved is reported, and the rest still link', async ({ admin }) => {
+    await setUp(admin, [crewRow(1), crewRow(2)])
+    // The database refuses this one row's save.
+    await sql`alter table featherbase.crew_list add constraint made_up_refusal check (login is null or crew_no <> 'TT-1002')`
+    const people = await count('person')
+    const exec = await runJob()
+    expect(exec.outcome).not.toBe('success')
+    expect(await count('person')).toBe(people + 1)
+    expect((await crew('TT-1002')).login).toBeNull()
+  })
+
+  test('a run that would end too many links is refused', async ({ admin }) => {
+    await setUp(admin, Array.from({ length: 11 }, (_, i) => crewRow(i + 1)))
+    await runRosterLink('stylehr')
+    await sql`update featherbase.crew_list set crew_state = 'Left'`
+    const exec = await runJob()
+    expect(exec.outcome).toBe('refused')
+    expect(exec.result).toMatch(/^ended no links: it would end 11 of 11/)
+  })
+})
+
+describe('the command line', () => {
+  test('a dry run by default, --apply to act, and a method to name', async ({ admin }) => {
+    await setUp(admin)
+    expect((await runMain(main, ['roster:link'])).code).toBe(1)
+    expect((await runMain(main, ['roster:link', 'nobody'])).stdout).toContain('roster link: no usable roster; nothing to do')
+    expect((await runMain(main, ['roster:link', 'stylehr'])).stdout).toContain('roster link: dry run; nothing was changed')
+    expect(await count('sign_in_identity')).toBe(0)
+    expect((await runMain(main, ['roster:link', 'stylehr', '--apply'])).stdout).toContain('created 1')
+    expect((await crew('TT-1001')).login).toBeTruthy()
+  })
+
+  test('a method without a roster rule links nobody', async ({ admin }) => {
+    await setUp(admin)
+    await sql`update sign_in_method set new_person = 'refuse' where row_id = 'stylehr'`
+    expect(await runRosterLink('stylehr')).toMatchObject({ plan: null, created: 0 })
   })
 })
 
@@ -284,6 +426,7 @@ describe('a leaver’s link ends', () => {
     const run = await runRosterLink('stylehr')
 
     expect(run.refused).toMatch(/would end 12/)
+    expect(formatRosterLink(run.plan, run)).toContain('ENDED NONE')
     expect(run.ended).toBe(0)
     expect(run.created).toBe(1)
     expect(Number((await sql`select count(*)::int as n from sign_in_identity where ended_at is null`)[0].n)).toBe(13)
