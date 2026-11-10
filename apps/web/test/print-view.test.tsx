@@ -2,6 +2,8 @@ import { tableSlug } from 'shared'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { TestClient } from 'feather-testing-postgres'
+import type { Sql } from 'postgres'
+import { invalidateMeta } from 'server/src/meta'
 import { test, expect, renderApp } from './pg-test'
 
 // Printing — what the print page itself shows: the plain page, a format's
@@ -198,4 +200,43 @@ test('a choice prints as its label, and a Sub-table with no rows says so', async
   await renderApp(`/featherbase/print/${encodeURIComponent(tableSlug('Pv Ticket'))}/pt-1`, admin)
   expect(await screen.findByTestId('print-field-stage', {}, { timeout: 8000 })).toHaveTextContent(/Closed$/)
   expect(screen.getByTestId('print-table-lines')).toHaveTextContent('No rows')
+})
+
+test('a row that does not exist says it cannot be loaded', async ({ admin }) => {
+  await setup(admin)
+  await renderApp(`/featherbase/print/${encodeURIComponent(tableSlug(DT))}/pv-gone`, admin)
+  expect(await screen.findByText(`Cannot load ${DT} pv-gone`, {}, { timeout: 8000 })).toBeInTheDocument()
+})
+
+test('a format named in the address that the Table does not have prints the layout made from the Table', async ({ admin }) => {
+  await formats(admin)
+  await renderApp(`${printUrl()}?format=${encodeURIComponent('Pv Gone')}`, admin)
+  expect(await screen.findByTestId('print-auto-layout', {}, { timeout: 8000 })).toHaveTextContent('Stark Industries')
+  expect(screen.getByTestId('print-format-picker')).toHaveValue('standard')
+})
+
+test('a format with no wording prints an empty page body', async ({ admin }) => {
+  await setup(admin)
+  await admin.post('/api/save_row', { table: 'Print Format', row: { row_id: 'Pv Blank', ref_table: DT, is_default: true } })
+  await renderApp(printUrl(), admin)
+  expect(await screen.findByTestId('print-format-body', {}, { timeout: 8000 })).toBeEmptyDOMElement()
+})
+
+test('columns and a Sub-table stored with no label print under their column names', async ({ admin, db }) => {
+  await admin.post('/api/table_def', { name: 'Pv Bare Line', kind: 'sub_table', columns: [{ column_name: 'item', column_type: 'Data' }] })
+  await admin.post('/api/table_def', {
+    name: 'Pv Bare',
+    id_pattern: 'prompt',
+    columns: [
+      { column_name: 'customer', column_type: 'Data' },
+      { column_name: 'lines', column_type: 'Sub-table', row_table: 'Pv Bare Line' },
+    ],
+  })
+  await admin.post('/api/save_row', { table: 'Pv Bare', row: { row_id: 'pb-1', customer: 'Acme' } })
+  // A label the database holds empty; the Table builder always writes one.
+  await (db as Sql)`update column_def set label = null where parent = 'Pv Bare'`
+  invalidateMeta()
+  await renderApp(`/featherbase/print/${encodeURIComponent(tableSlug('Pv Bare'))}/pb-1`, admin)
+  expect(await screen.findByTestId('print-field-customer', {}, { timeout: 8000 })).toHaveTextContent('customerAcme')
+  expect(screen.getByTestId('print-table-lines')).toHaveTextContent(/^lines/)
 })
