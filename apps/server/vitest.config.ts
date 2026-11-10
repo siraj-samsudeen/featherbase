@@ -115,12 +115,15 @@ export default defineConfig({
       // drops (runtime-actions.ts dropVersions). The third needs a key column
       // the caller reads on the Table but not on one matched row, which no
       // grant set tried so far produces (collection-import.ts key analysis).
-      // Branches are a later stage.
+      // Stage 3 (branches), measured the same way. Two of those left no
+      // test can take: the real fetch behind the Google seam (oauth.ts
+      // exchangeCode, token and userinfo), which would call Google itself.
+      // The rest are reachable and still to be tested.
       thresholds: {
         lines: 100,
         statements: -3,
         functions: 100,
-        branches: -870,
+        branches: -437,
       },
     },
   },
