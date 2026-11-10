@@ -6,7 +6,7 @@ import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { getBrowser } from '../src/print'
 import { expectRefused, expectStatus, makePerson } from './fixtures'
-import { _setGoogleFetch, assertSignInAvailable, exchangeCode, googleAuthorizeUrl, mintHandoffCode, mockApproveRedirect, mockConsentHtml, redeemHandoffCode, verifyState } from '../src/oauth'
+import { _setGoogleFetch, assertSignInAvailable, exchangeCode, googleAuthorizeUrl, mintHandoffCode, mockApproveRedirect, mockConsentHtml, newLoginChallenge, redeemHandoffCode, verifyState } from '../src/oauth'
 import type { TestClient } from 'feather-testing-postgres'
 import { expectSessionCookie, setSessionHours } from './session-cookie-test-utils'
 import { configureGoogle, inviteGoogleRaw } from './identity-fixtures'
@@ -701,6 +701,18 @@ describe('the OAuth steps refuse what they cannot use', () => {
   test('a mock code is not exchanged once the mock provider is off', async () => {
     vi.stubEnv('ALLOW_MOCK_OAUTH', '')
     await expect(exchangeCode('any', '/api/oauth/google/callback', '', undefined)).rejects.toThrow('Mock OAuth provider is disabled')
+  })
+
+  // The state is signed with the same key as a mock code; it names no one.
+  test('a sign-in state handed back as a mock code is refused for naming no email', async () => {
+    const { state } = newLoginChallenge('localhost')
+    await expect(exchangeCode(state, '/api/oauth/google/callback', '', undefined)).rejects.toThrow('No email in code')
+  })
+
+  test('with the Google sign-in method deleted, the mock provider still offers its consent page', async ({ admin, api }) => {
+    const [google] = await sql`select row_id from sign_in_method where kind = 'google'`
+    await admin.delete(`/api/table/Sign%20In%20Method/${encodeURIComponent(String(google.row_id))}`)
+    await expectStatus(await api.fetch('/api/oauth/mock/consent?state=st&redirect_uri=%2Fapi%2Foauth%2Fgoogle%2Fcallback'), 200)
   })
 
   test('a mock code that names no one is named by its email', async () => {
