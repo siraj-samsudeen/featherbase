@@ -54,8 +54,11 @@ Source needs the variable its `url_env` names, and every MotherDuck source needs
 `MOTHERDUCK_TOKEN`: without it the release and the start only warn, and every
 query against that source refuses, naming the variable.
 
-**One MotherDuck token.** `MOTHERDUCK_TOKEN` is the only MotherDuck setting: app
-datasets, the Dive embed, connected tables and copied tables all use it. A
+**One MotherDuck token for reading.** `MOTHERDUCK_TOKEN` is the only MotherDuck setting
+for reading: app datasets, connected tables and copied tables all use it. Dash's Dive
+embed is the exception: it creates embed sessions with its own declared secret,
+`MOTHERDUCK_EMBED_TOKEN`, the token of an account allowed to create them, so the
+warehouse token can stay read-only (ADR 0022). A
 MotherDuck source names the databases it reads, and that token must be able to
 read them; a share created hidden is not listed, so it cannot be named. Featherbase
 only reads the warehouse, even when the token has write rights: every session
