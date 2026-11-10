@@ -24,11 +24,14 @@ The base applies everywhere. `local`, `dev` and `prod` hold what differs:
 - **The Dive.** `SERVICE_ACCOUNT` is read when dev or prod settings are applied and saved into the
   App Settings; local boots without it. Each Dive's id is on its `dash.report` row. No version is
   pinned: a report opens its Dive's latest saved version, so saving a Dive releases it (#937).
+  Opening a Dive needs the `MOTHERDUCK_EMBED_TOKEN` deployment variable on dev and prod: the token
+  of a MotherDuck account allowed to create Dive embed sessions (the Admin preset role), never the
+  warehouse token. Without it the page shows the quick view (#1139).
 - **Refreshing the cached figures.** Off locally: there is no warehouse to
   refresh from, and a refresh would only fail.
 - **The warehouse.** The `motherduck` Data Source names the databases it reads.
   Its token is the `MOTHERDUCK_TOKEN` deployment variable, the one token all of
-  Featherbase uses. Featherbase only reads the warehouse, whatever rights that
+  Featherbase reads the warehouse with. Featherbase only reads the warehouse, whatever rights that
   token has. The token must be able to read those databases.
 
 Apply from the repository root. `--dry-run` writes nothing, and an app's settings

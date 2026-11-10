@@ -32,7 +32,7 @@ export default defineConfig({
     fsModuleCachePath: resolve(app, 'node_modules/.dash-frontend-module-cache'),
     fileParallelism: false,
     testTimeout: 15000,
-    env: { MOTHERDUCK_TOKEN: 'made-up-local-ui-test-token' },
+    env: { MOTHERDUCK_TOKEN: 'made-up-local-ui-test-token', MOTHERDUCK_EMBED_TOKEN: 'made-up-local-ui-embed-token' },
     globalSetup: [resolve(repo, 'apps/server/test/global-setup.ts')],
     server: { deps: { inline: ['feather-testing-postgres'] } },
     reporters: ['default', {
