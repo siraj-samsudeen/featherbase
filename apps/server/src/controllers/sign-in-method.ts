@@ -35,8 +35,10 @@ const controller: TableController = {
       // Already held from before_lock; taken again (re-entrant) in case a
       // write path reaches the hooks without it.
       await lockWaysIn(tx)
-      const kind = String(row.kind ?? old?.kind ?? '') as MethodKind
-      // kind is a Choice of SIGN_IN_METHOD_KINDS: the save refuses any other before this hook.
+      // kind is a required Choice of SIGN_IN_METHOD_KINDS: the save refuses a
+      // missing or other one before this hook, and an update's row is already
+      // merged with the saved one.
+      const kind = String(row.kind) as MethodKind
       const caps = KINDS[kind]
       if (!isNew && old && row.kind !== undefined && row.kind !== old.kind)
         throw new AppError('ValidationError', 'A sign-in method cannot change kind', { kind: 'fixed once created' })
