@@ -107,6 +107,19 @@ test("a view's row opens as its base's row", async ({ admin }) => {
   expect(await screen.findByTestId('form-view', {}, T)).toBeInTheDocument()
 })
 
+test('a link to a row that has left its view says so, and keeps the link', async ({ admin }) => {
+  const id = await seedStores(admin)
+  await admin.post('/api/table_def', { name: 'Vwd Sale', columns: [
+    { column_name: 'amount', column_type: 'Int', label: 'Amount' },
+    { column_name: 'store', column_type: 'Reference', reference_table: 'Vwd Store', label: 'Store' },
+  ] })
+  const sale = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Vwd Sale', row: { amount: 5, store: id } })
+  const site = await admin.get<{ updated_at: string }>(`/api/table/Vwd%20Site/${id}`)
+  await admin.post('/api/save_row', { table: 'Vwd Site', row: { row_id: id, updated_at: site.updated_at, is_store: false } })
+  await renderApp(`/featherbase/admin/table/vwd-sale/row/${sale.row_id}`, admin)
+  expect(await screen.findByTestId('outside-view-store', {}, T)).toHaveTextContent('No longer in the Vwd Store view. The link stays as it is')
+})
+
 test('a new row on a view is offered on its base instead', async ({ admin }) => {
   await seedStores(admin)
   await renderApp('/featherbase/admin/table/vwd-store/new', admin)
