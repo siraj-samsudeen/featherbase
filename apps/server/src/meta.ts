@@ -422,7 +422,7 @@ export async function getMeta(name: string): Promise<TableMeta> {
     meta.source_engine = (src?.engine as string | undefined) ?? null
     meta.source_writable =
       meta.source_access === 'read_write' &&
-      (ENGINE_WRITABLE[meta.source_engine as SourceEngine] ?? false)
+      ENGINE_WRITABLE[meta.source_engine as SourceEngine]
   }
 
   // CUST-002: overlay Metadata Overrides onto the effective meta. The base
