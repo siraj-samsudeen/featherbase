@@ -259,6 +259,50 @@ describe("the stores read (the bar's store picker)", () => {
     expect((await reads.stores(ctx)).map(option => option.label)).toEqual(['Attingal', 'kattakada', 'Marthandam', 'Nagercoil'])
   })
 
+  // #1153, the owner's naming rule (10-Nov-2026): a store goes by its Site's name, unless more than one
+  // plant shares that site; then each of them goes by its Plant name.
+  describe('stores sharing a site', () => {
+    const SHARED = {
+      Plant: [{ row_id: '9901', site: 'LKS', plant_type: 'Store', plant_name: 'Lakeside Store' },
+        { row_id: '9903', site: 'LKS', plant_type: 'Store', plant_name: 'Lakeside Gold House' },
+        { row_id: '9902', site: 'HLV', plant_type: 'Store', plant_name: 'Hillview Store' }],
+      Site: STORES.Site,
+    }
+    const THREE = [place('9901', '9901'), place('9902', '9902'), place('9903', '9903')]
+
+    it('names each plant on a shared site by its Plant name, and a plant alone on its site by the Site name', async () => {
+      const { ctx } = context({ places: THREE, core: SHARED })
+      expect(await reads.stores(ctx)).toEqual([{ value: '9902', label: 'Hillview' }, { value: '9903', label: 'Lakeside Gold House' },
+        { value: '9901', label: 'Lakeside Store' }])
+    })
+
+    it("counts a plant on the same site that the reader doesn't cover", async () => {
+      const { ctx } = context({ places: [place('9901', '9901')], core: SHARED })
+      expect(await reads.stores(ctx)).toEqual([{ value: '9901', label: 'Lakeside Store' }])
+    })
+
+    it('names the store in the heading the same way', async () => {
+      const { ctx } = context({ places: [place('9901', '9901')], core: SHARED, payload: { store: '9901' } })
+      expect(((await reads.report(ctx)) as { heading: { name: string } }).heading.name).toBe('Lakeside Store')
+    })
+
+    it('keeps the Site name for a plant on a shared site with no Plant name, numbering the twins', async () => {
+      const core = { ...SHARED, Plant: SHARED.Plant.map(plant => ({ ...plant, plant_name: null })) }
+      const { ctx } = context({ places: THREE, core })
+      expect((await reads.stores(ctx)).map(option => option.label)).toEqual(['Hillview', 'Lakeside (1)', 'Lakeside (2)'])
+    })
+
+    it("keeps the Site names on an instance whose Plant Table has no Plant name, rather than failing", async () => {
+      const { ctx } = context({ places: THREE, core: SHARED })
+      const list = ctx.baseTables.list
+      ctx.baseTables.list = async (table: string, args: { fields?: string[] } & Record<string, unknown>) => {
+        if (table === 'Plant' && args.fields?.includes('plant_name')) throw new Error('Unknown column plant_name')
+        return list(table, args as Parameters<typeof list>[1])
+      }
+      expect((await reads.stores(ctx)).map(option => option.label)).toEqual(['Hillview', 'Lakeside (1)', 'Lakeside (2)'])
+    })
+  })
+
   it('never reads the cached figures, so a failing cache leaves the picker whole', async () => {
     const { ctx, asked } = context({ places: TWO, cacheThrows: true })
     expect(await reads.stores(ctx)).toEqual([{ value: '9902', label: 'Hillview' }, { value: '9901', label: 'Lakeside' }])
