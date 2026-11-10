@@ -123,3 +123,28 @@ test('a password the account no longer has is refused on the sign-in form', asyn
   await userEvent.click(screen.getByTestId('login-submit'))
   expect(await screen.findByTestId('login-error')).toHaveTextContent('Invalid login credentials')
 })
+
+// #1176: under the name, the sign-in THIS session was made with (made-up method, person and ID).
+test('the account menu says which sign-in this session used: the method and the ID typed', async ({ createUser }) => {
+  const { sql } = await import('server/src/db')
+  const { issueSession } = await import('server/src/auth')
+  await sql`insert into sign_in_method (row_id, kind, label, enabled, new_person) values ('stylehr', 'delegated_password', 'StyleHR', true, 'refuse')
+    on conflict (row_id) do update set label = excluded.label`
+  const reader = await createUser({ email: 'menu.reader.with.a.rather.long.address@example.com', roles: [] })
+  await sql`insert into sign_in_identity (id, person_id, method, subject, sign_in_name, linked_by)
+    values ('uid_menu', ${reader.user!}, 'stylehr', 'KL-RR-9004', 'RR-9004', 'test')`
+  const issued = await issueSession(reader.user!, { method: 'stylehr', identity: 'uid_menu' })
+  await renderApp('/featherbase/account/sign-in-methods', { ...reader, token: issued.token } as never)
+  await userEvent.click(await screen.findByTestId('session-user'))
+  const how = await screen.findByTestId('account-signed-in-with')
+  const value = screen.getByTestId('account-signed-in-value')
+  expect([how.textContent, value.textContent, value.getAttribute('title'), value.className.includes('truncate'), screen.getByTestId('account-identity').textContent?.includes('KL-RR')])
+    .toEqual(['Signed in with StyleHR', 'RR-9004', 'RR-9004', true, false])
+})
+
+test('a session with no recorded sign-in shows the name only, never a guessed label', async ({ admin }) => {
+  await renderApp('/featherbase/admin', admin)
+  await userEvent.click(await screen.findByTestId('session-user'))
+  await screen.findByTestId('account-menu')
+  expect(screen.queryByTestId('account-signed-in-with')).toBeNull()
+})
