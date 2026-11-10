@@ -237,7 +237,9 @@ at the repository root.
 Save the new version on MotherDuck; the next reader sees it. Nothing here names a version. Before
 saving, check the version still applies the filters its `dash.report` row sends and offers no picker
 beyond them, then check the real embed on dev, and whether the ready message arrives; only then set
-`ready_signal` on the row.
+`ready_signal` on the row. The ready message is `{ type: "dash:dive-ready" }`, posted to the parent
+window. Dash also accepts the legacy `{ type: "feather-dash:dive-ready" }` that Dives published before
+#966 still post (#1141). Either counts only from `https://embed-motherduck.com` and the Dive's own frame.
 
 **Known interim on an app address.** Until featherbase's cut-over retires
 today's Sales Target page (design D8, B9), the platform routes an address that
