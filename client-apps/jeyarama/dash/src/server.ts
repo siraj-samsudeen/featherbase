@@ -172,15 +172,30 @@ async function salesReport(ctx: ScopedContext, store: string) {
   return { ...report, heading: headingOf(placesOf(ctx), store, storeShortName(report, month, named)) }
 }
 
-/** A store's name from the core Tables, for the page's header and the bar. */
+/**
+ * A store's name from the core Tables, for the page's header and the bar. The owner's rule
+ * (#1153, 10-Nov-2026): a store goes by its Site's name, unless more than one plant shares that
+ * site; then each of them goes by its Plant name. Every plant on the site counts, whoever reads,
+ * except a retired one, which the platform's reads leave out. An instance whose Plant Table has no
+ * Plant name keeps the Site names.
+ */
 async function storeNames(ctx: ScopedContext, stores: readonly string[]): Promise<Map<string, string>> {
   const names = new Map<string, string>()
   if (!stores.length) return names
-  const plants = await ctx.baseTables.list('Plant', { fields: ['row_id', 'site'], filters: [['row_id', 'in', [...stores]]], limit_page_length: 500 })
-  const sites = await ctx.baseTables.list('Site', { fields: ['row_id', 'name'], filters: [['row_id', 'in', plants.map(plant => String(plant.site))]], limit_page_length: 500 })
+  const plantsOf = (fields: string[], filters: [string, string, unknown][]) =>
+    ctx.baseTables.list('Plant', { fields, filters, limit_page_length: 500 })
+  const withNames = await plantsOf(['row_id', 'site', 'plant_name'], [['row_id', 'in', [...stores]]]).catch(() => null)
+  const plants = withNames ?? await plantsOf(['row_id', 'site'], [['row_id', 'in', [...stores]]])
+  const siteIds = [...new Set(plants.map(plant => String(plant.site)))]
+  const sites = await ctx.baseTables.list('Site', { fields: ['row_id', 'name'], filters: [['row_id', 'in', siteIds]], limit_page_length: 500 })
   const siteName = new Map(sites.map(site => [String(site.row_id), String(site.name)]))
+  // How many plants each site holds, the reader's or not: only a shared site's plants need it.
+  const onSite = new Map<string, number>()
+  if (withNames && siteIds.length)
+    for (const plant of await plantsOf(['row_id', 'site'], [['site', 'in', siteIds]])) onSite.set(String(plant.site), (onSite.get(String(plant.site)) ?? 0) + 1)
   for (const plant of plants) {
-    const name = siteName.get(String(plant.site))
+    const plantName = typeof plant.plant_name === 'string' ? plant.plant_name.trim() : ''
+    const name = (onSite.get(String(plant.site)) ?? 0) > 1 && plantName ? plantName : siteName.get(String(plant.site))
     if (name) names.set(String(plant.row_id), name)
   }
   return names

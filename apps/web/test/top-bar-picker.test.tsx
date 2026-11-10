@@ -10,7 +10,7 @@ import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach } from 'vitest'
+import { afterEach, vi } from 'vitest'
 import { ACCOUNT_SIGN_IN_METHODS_PATH } from 'shared'
 import { config } from 'server/src/config'
 import { parseInstanceAddresses } from 'server/src/instance-addresses'
@@ -280,4 +280,88 @@ test('two declared controls missing from the address both get their first option
   } finally {
     await rm(copy, { recursive: true, force: true })
   }
+})
+
+// #1153: a long list. 24 made-up stores, listed by name, as the roster's read answers them.
+const MANY: [string, string][] = ['Alder', 'Birch', 'Cedar', 'Cypress', 'Elm', 'Fir', 'Hazel', 'Holly', 'Juniper', 'Larch', 'Laurel', 'Linden',
+  'Maple', 'Myrtle', 'Oak', 'Olive', 'Palm', 'Pine', 'Poplar', 'Rowan', 'Spruce', 'Teak', 'Walnut', 'Willow']
+  .map((name, index) => [`${name} Market`, `S${String(201 + index)}`])
+const filterBox = () => screen.findByRole('searchbox', { name: 'Find a store' })
+const shown = () => within(screen.getByRole('listbox', { name: 'Store' })).queryAllByRole('option').map((o) => o.textContent)
+
+test('the open list is capped to the room below the picker, and scrolls inside it', async ({ admin, createUser }) => {
+  const reader = await readerOf(admin, createUser, MANY)
+  onAddressThatOpens('barproof')
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
+  const store = await picker()
+  // jsdom lays nothing out: the picker's bottom edge as a 56px bar would put it.
+  vi.spyOn(store, 'getBoundingClientRect').mockReturnValue({ bottom: 56, top: 12, left: 0, right: 200, width: 200, height: 44, x: 0, y: 12, toJSON: () => ({}) })
+  await userEvent.click(store)
+  const popup = (await screen.findByRole('listbox', { name: 'Store' })).parentElement!
+  // The list starts 4px under the picker and stops 8px above the window's bottom edge.
+  expect([popup.style.maxHeight, screen.getByRole('listbox', { name: 'Store' }).className.includes('overflow-y-auto')])
+    .toEqual([`${window.innerHeight - 56 - 4 - 8}px`, true])
+})
+
+test('with more than 10 options the open list starts with a filter box, which has focus', async ({ admin, createUser }) => {
+  const reader = await readerOf(admin, createUser, MANY)
+  onAddressThatOpens('barproof')
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
+  await userEvent.click(await picker())
+  expect(await filterBox()).toHaveFocus()
+  expect(shown()).toHaveLength(24)
+})
+
+test('typing narrows the list to the names containing the text, in any case, and says when none match', async ({ admin, createUser }) => {
+  const reader = await readerOf(admin, createUser, MANY)
+  onAddressThatOpens('barproof')
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
+  await userEvent.click(await picker())
+  await userEvent.type(await filterBox(), 'PL')
+  const narrowed = shown()
+  await userEvent.type(await filterBox(), 'zz')
+  expect([narrowed, shown(), screen.getByTestId('bar-no-match-store').textContent])
+    .toEqual([['Maple Market', 'Poplar Market'], [], 'No store matches'])
+})
+
+test('in the filter box the arrows move through the options shown, in view, and Enter chooses', async ({ admin, createUser }) => {
+  const scrolled: string[] = []
+  const scrollIntoView = vi.fn(function (this: Element) { scrolled.push(this.textContent ?? '') })
+  Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, value: scrollIntoView })
+  try {
+    const reader = await readerOf(admin, createUser, MANY)
+    onAddressThatOpens('barproof')
+    const { router } = await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
+    await userEvent.click(await picker())
+    const box = await filterBox()
+    await userEvent.type(box, 'market')
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowUp}{ArrowDown}')
+    const active = document.getElementById(box.getAttribute('aria-activedescendant') ?? '')?.textContent
+    await userEvent.keyboard('{Enter}')
+    await waitFor(() => expect(locationOf(router)).toBe(`${ACCOUNT_SIGN_IN_METHODS_PATH}?store=S203`))
+    expect([active, scrolled.at(-1), screen.queryByRole('listbox')]).toEqual(['Cedar Market', 'Cedar Market', null])
+  } finally {
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
+  }
+})
+
+test('Escape in the filter box closes the list and leaves focus on the picker, choosing nothing', async ({ admin, createUser }) => {
+  const reader = await readerOf(admin, createUser, MANY)
+  onAddressThatOpens('barproof')
+  const { router } = await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
+  const store = await picker()
+  await userEvent.click(store)
+  await userEvent.type(await filterBox(), 'oak')
+  const before = locationOf(router)
+  await userEvent.keyboard('{Escape}')
+  expect([screen.queryByRole('listbox'), store === document.activeElement, locationOf(router)]).toEqual([null, true, before])
+})
+
+test('with 10 options or fewer there is no filter box', async ({ admin, createUser }) => {
+  const reader = await readerOf(admin, createUser, STORES)
+  onAddressThatOpens('barproof')
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
+  await userEvent.click(await picker())
+  await screen.findByRole('listbox', { name: 'Store' })
+  expect(screen.queryByRole('searchbox')).toBeNull()
 })
