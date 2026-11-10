@@ -83,3 +83,13 @@ test('retargeting to an occupied setting refuses the move', async ({ admin }) =>
   })).rejects.toMatchObject({ status: 417, message: expect.stringContaining('Edit the existing adjustment') })
   expect(await admin.get(`/api/table/Metadata%20Override/${row.row_id}`)).toMatchObject({ table_name: 'Editor Original' })
 })
+
+test('an adjustment to a Column the Table no longer has changes nothing', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Editor Dropped', columns: [
+    { column_name: 'title', column_type: 'Data', label: 'Title' }, { column_name: 'gone', column_type: 'Data', label: 'Gone' },
+  ] })
+  await admin.post('/api/table/Metadata%20Override', { table_name: 'Editor Dropped', column_name: 'gone', property: 'label', value: 'Was here' })
+  await admin.put('/api/table_def/Editor%20Dropped', { columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }], remove_columns: ['gone'] })
+  type Meta = { columns: { column_name: string; label: string }[] }
+  expect((await admin.get<Meta>('/api/table/Editor%20Dropped:meta')).columns.map(c => [c.column_name, c.label])).toEqual([['title', 'Title']])
+})
