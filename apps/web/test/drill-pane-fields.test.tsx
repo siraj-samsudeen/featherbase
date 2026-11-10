@@ -4,7 +4,9 @@
 // how the rows of a group are opened, and what Filter keeps.
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, vi } from 'vitest'
+import type { Sql } from 'postgres'
 import { tableHref } from 'shared'
+import { invalidateMeta } from 'server/src/meta'
 import { deleteStored } from 'server/src/storage'
 import { test, expect, renderApp } from './pg-test'
 import { pickedFile, useNodeMultipart } from './node-multipart'
@@ -66,6 +68,17 @@ test("the pane keeps the form's sections, each under its heading", async ({ admi
   const bin = await openNorthBay(admin)
   expect(await within(bin).findByRole('heading', { name: 'Stock' }, T)).toBeInTheDocument()
   expect(within(bin).getByRole('heading', { name: 'Stock' }).parentElement).toHaveTextContent('Sealed')
+})
+
+test('the pane names fields stored with no label by their column names, under a section with no heading', async ({ admin, db }) => {
+  await seedBins(admin)
+  await (db as Sql)`update column_def set label = null where parent = ${BIN} and column_name in ('stock_section', 'sealed')`
+  invalidateMeta()
+  await renderApp(tableHref(BIN), admin)
+  await select('North bay')
+  const bin = await pane(/^North bay/)
+  await waitFor(() => expect(field(bin, 'sealed')).toHaveTextContent(/^Yes$/), T)
+  expect(within(bin).queryByRole('heading', { name: 'Stock' })).not.toBeInTheDocument()
 })
 
 test('a ticked box reads Yes in the pane', async ({ admin }) => {
