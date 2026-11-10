@@ -70,7 +70,7 @@ const helpdesk: AppManifest = {
   fixtures: [
     {
       // Bound to the real `ticket_status` field (state_field) — no synthetic
-      // workflow_state column, so no initDocState backfill is needed.
+      // workflow_state column.
       table: 'Workflow',
       rows: [
         {

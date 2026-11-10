@@ -270,15 +270,20 @@ export function buildReport({ store, places, answer, month = null, today, choice
     sections: names.map(section => ({ section, ...totalOf(shaped.filter(r => r.section === section)) })), total: totalOf(shaped) }
 }
 
+const BY_NAME = new Intl.Collator('en', { sensitivity: 'base', numeric: true })
+
 /**
- * The bar's store picker labels: each store by its name alone, never its plant code. A store with
- * no name known goes by "Your store" (the reader's only store) or "Store 1", "Store 2". Stores
+ * The bar's store picker labels: each store by its name alone, never its plant code, A–Z by name
+ * (#1153: no code is shown, so an order by code looked random). A store with no name known goes by
+ * "Your store" (the reader's only store) or "Store 1", "Store 2", after the named ones. Stores
  * sharing a name are numbered ("Lakeside (1)").
  */
 export function storeLabels(stores: readonly string[], names: ReadonlyMap<string, string>) {
   const base = stores.map((store, i) => names.get(store) ?? (stores.length === 1 ? 'Your store' : `Store ${i + 1}`))
-  return stores.map((store, i) => {
+  const labelled = stores.map((store, i) => {
     const twins = stores.filter((_, j) => base[j] === base[i])
-    return { value: store, label: twins.length > 1 ? `${base[i]} (${twins.indexOf(store) + 1})` : base[i] }
+    return { value: store, label: twins.length > 1 ? `${base[i]} (${twins.indexOf(store) + 1})` : base[i], named: names.has(store) }
   })
+  return labelled.sort((a, b) => Number(b.named) - Number(a.named) || (a.named ? BY_NAME.compare(a.label, b.label) : 0))
+    .map(({ value, label }) => ({ value, label }))
 }

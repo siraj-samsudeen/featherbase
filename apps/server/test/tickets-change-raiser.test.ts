@@ -267,7 +267,7 @@ describe('Tickets: changing who raised a ticket (#963)', () => {
   test('Tickets upgrades from the version before this one with no schema or grant change', async ({ admin }) => {
     const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
     const step = manifest.migrations.find((m: any) => m.toVersion === version)
-    expect(step).toMatchObject({ id: 'row_readers', operations: [] })
+    expect(step).toMatchObject({ id: 'split_screens', operations: [] })
     const prior = await mkdtemp(resolve('test/.upgrade-tickets-'))
     try {
       await cp(directory, prior, { recursive: true, filter: source => !source.includes('node_modules') })

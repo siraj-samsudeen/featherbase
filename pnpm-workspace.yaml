@@ -26,4 +26,4 @@ overrides:
   minimatch@<11.0.1: ^11.0.1
 
 patchedDependencies:
-  '@fission-ai/openspec@1.16.0': patches/@fission-ai__openspec@1.16.0.patch
+  '@fission-ai/openspec@1.16.1': patches/@fission-ai__openspec@1.16.1.patch

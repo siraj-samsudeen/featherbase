@@ -10,7 +10,7 @@ import { sql } from '../src/db'
 
 const directory = resolve('../..', 'example-apps/tickets')
 const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
-  ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': 'tickets@0.2.6' },
+  ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': 'tickets@0.2.7' },
 }) }, client.token, client.user)
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(pinned(admin)),
@@ -69,7 +69,7 @@ describe('Tickets independently installed product contract (#810)', () => {
     const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
     const pkg = JSON.parse(await readFile(resolve(directory, 'package.json'), 'utf8'))
     expect(manifest).toMatchObject({ name: 'tickets', entryTable: 'tickets.ticket' })
-    expect(pkg.version).toBe('0.2.6')
+    expect(pkg.version).toBe('0.2.7')
   })
 
   test('app-free discovery has no tickets; explicit install has no samples or fake integrations', async ({ admin, createUser }) => {
@@ -216,7 +216,7 @@ describe('Tickets independently installed product contract (#810)', () => {
     try { await create(owner, 'generic', {}) } catch (error) { failure = error }
     expect(failure?.status).toBe(403)
     expect(failure.message).not.toContain('Application access refused')
-    expect(failure.message).toMatch(/tickets 0\.2\.6.*files changed.*same version/i)
+    expect(failure.message).toMatch(/tickets 0\.2\.7.*files changed.*same version/i)
     expect(failure.message).toMatch(/new version|install-app tickets/)
     const listed = (await listInstalledApps()).find(app => app.name === 'tickets')
     expect(listed).toMatchObject({ active: false })

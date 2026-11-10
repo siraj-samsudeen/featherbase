@@ -201,8 +201,11 @@ at the repository root.
     job reaches nothing. Until report bundles (#1046), anyone with reach may open every report;
   - `reach_problem` → `{ problems }`, why a job reaches nothing;
   - `stores` `{ report }` → the bar's store picker: the reader's stores on a report taking one store,
-    each by its name from Site, never its plant code (#4531), else `[]`. Two stores of one name are
-    numbered ("Lakeside (1)"); a store with no name known goes by "Your store" or "Store 1";
+    each by its name from Site, never its plant code (#4531), else `[]`, A–Z by name (#1153). Where
+    more than one plant shares a site, each goes by its Plant name (`plant_name`) instead; every plant
+    on the site counts except a retired one. The page's heading names a store the same way. Two
+    stores of one name are numbered ("Lakeside (1)"); a store with no name known goes by "Your store"
+    or "Store 1";
   - `months` `{ report }` → this month and last, `[]` on a report taking no month;
   - `report` `{ report, store, month }` → whether the report can open. `{ state: "no_access" }` for a
     report that doesn't exist or a store that isn't the reader's, `whole_stores_only`, or
