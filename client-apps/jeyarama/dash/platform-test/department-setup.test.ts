@@ -157,3 +157,45 @@ describe('a Department Manager sets up their department, applied at once (#1191)
     expect(third).toMatch(/You already have a department here/)
   })
 })
+
+// #1205 on #1191's platform: the load pre-fills through the set-up path, applied at once.
+describe('pre-filled from reporting lines (#1205)', () => {
+  const applyNow = (admin: TestClient) => admin.post('/api/save_row', { table: 'Approval Type', row: { row_id: 'dash.department_setup', mode: 'Apply now, review after' } })
+  const live = async (table: string) => (await rows(table)).filter(r => !r.retired_at)
+  const load = (admin: TestClient) => act(admin, 'prefill_departments', { store: 'LKS', managers: [{ employee: '1001', sections: ['Sarees', 'Silk'], flagged: ['Silk'] }] })
+
+  test('opens the report at once, reaches the reviewer, and a rerun changes nothing', async ({ admin, createUser }) => {
+    const { deepa, mani } = await world(admin, createUser)
+    await applyNow(admin)
+    expect(await load(admin)).toEqual({ store: 'Lakeside', results: [{ employee: '1001', name: 'Deepa', outcome: 'pre-filled', department: 'First floor', sections: ['Sarees', 'Silk'], notes: [] }] })
+    expect(sections(await resolvePersonScope(deepa.user!, await binding()))).toEqual([['9901 / Section: Sarees', ['010101001']], ['9901 / Section: Silk', ['010101002']]])
+    expect(await read(deepa, 'department_setup')).toMatchObject({ current: { state: 'set_up', prefilled: { flagged: ['Silk'] } } })
+    expect(await read(mani, 'department_approvals')).toMatchObject([{ who: 'Deepa', prefilled: true, applied: true, flagged: ['Silk'] }])
+    expect(await read(deepa, 'department_approvals')).toEqual([])
+    expect((await load(admin)).results).toMatchObject([{ outcome: 'skipped', notes: ['already has a department'] }])
+    expect((await live('Department')).length).toBe(1)
+  })
+
+  test('Yes, that is right makes it theirs: the pre-fill is undone and their own set-up waits for review', async ({ admin, createUser }) => {
+    const { deepa, mani } = await world(admin, createUser)
+    await applyNow(admin)
+    await load(admin)
+    const { prefilled } = (await read(deepa, 'department_setup')).current
+    expect(await act(deepa, 'set_up_department', { job: 'JA-1', name: 'Ladies Ethnic', sections: prefilled.sections.map((s: { id: string }) => s.id), replaces: prefilled.bundle }))
+      .toMatchObject({ state: 'set_up', name: 'Ladies Ethnic' })
+    expect((await live('Department')).map(r => r.name)).toEqual(['Ladies Ethnic'])
+    expect(await read(mani, 'department_approvals')).toMatchObject([{ who: 'Deepa', prefilled: false, name: 'Ladies Ethnic' }])
+    expect(sections(await resolvePersonScope(deepa.user!, await binding())).map(s => s[0])).toEqual(['9901 / Section: Sarees', '9901 / Section: Silk'])
+  })
+
+  test('the reviewer undoes it; a rerun never brings it back', async ({ admin, createUser }) => {
+    const { deepa, mani } = await world(admin, createUser)
+    await applyNow(admin)
+    await load(admin)
+    const [setUp] = await read(mani, 'department_approvals')
+    expect(await act(mani, 'decide_department', { bundle: setUp.bundle, decision: 'reject', reason: 'Not his sections' })).toMatchObject({ state: 'Undone' })
+    await expect(resolvePersonScope(deepa.user!, await binding())).rejects.toMatchObject(new NoPersonScope('scope'))
+    expect((await load(admin)).results).toMatchObject([{ outcome: 'skipped', notes: ['pre-filled before'] }])
+    expect(await live('Department')).toEqual([])
+  })
+})

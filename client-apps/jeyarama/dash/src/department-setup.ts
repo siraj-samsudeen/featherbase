@@ -11,10 +11,10 @@ import {
 import { istToday } from './report.ts'
 import { exact, text } from './values.ts'
 
-const D = { department: 'Department', link: 'Department Section' } as const
+export const D = { department: 'Department', link: 'Department Section' } as const
 /** The two Tables a set-up writes, which an administrator lists in `linked_tables` beside Your sections' own. */
 export const DEPARTMENT_TABLES: readonly string[] = Object.values(D)
-const DEPARTMENT_FIELDS = ['department_id', 'store', 'name', 'manager', 'starts_on', 'ends_on']
+export const DEPARTMENT_FIELDS = ['department_id', 'store', 'name', 'manager', 'starts_on', 'ends_on']
 const LINK_FIELDS = ['department_section_id', 'store', 'department', 'section', 'starts_on', 'ends_on']
 const JOB = 'Department Manager'
 /** How far up a Team Leader's reporting line a Department Manager may sit for their section to be suggested. */
@@ -29,7 +29,7 @@ const NAMES_SHOWN = 12
  */
 export const DEPARTMENT_TYPE = 'department_setup'
 /** A set-up still open to its reviewer: asked for and waiting, or applied and not yet reviewed (#1191). */
-const OPEN = ['Pending', 'Not yet reviewed']
+export const OPEN = ['Pending', 'Not yet reviewed']
 const APPLIED_UNREVIEWED = 'Not yet reviewed'
 
 /** Takes a bundle back: withdrawn while it waits; undone, links first, once it applied (#1191). */
@@ -54,11 +54,15 @@ interface About {
   maker_name: string
   manager_name: string | null
   section?: string
+  /** #1205: set up from reporting lines by the load, for this Department Manager's person. */
+  prefilled?: boolean
+  flagged?: string[]
+  for_person?: string | null
 }
-const about = (proposal: ChangeProposal) => (proposal.about ?? {}) as unknown as About
+export const about = (proposal: ChangeProposal) => (proposal.about ?? {}) as unknown as About
 const isDepartmentKind = (proposal: ChangeProposal) => ['department', 'department_section'].includes(String(about(proposal).kind))
 
-const isSetUp = (ctx: Ctx) => {
+export const isSetUp = (ctx: Ctx) => {
   try {
     const listed: unknown = JSON.parse(ctx.settings.linked_tables ?? '[]')
     return Array.isArray(listed) && [...BASE_TABLES, ...DEPARTMENT_TABLES].every(table => listed.includes(table))
@@ -77,7 +81,7 @@ async function myDepartmentJob(ctx: Ctx, named: unknown, today: string) {
 }
 
 /** Everything about one store that a set-up reads, on the day. */
-async function storeOf(ctx: Ctx, site: string, today: string) {
+export async function storeOf(ctx: Ctx, site: string, today: string) {
   const [siteRow] = await list(ctx, T.site, ['name'], [['row_id', '=', site]])
   const sections = (await all(ctx, T.section, SECTION_FIELDS, [['site', '=', site]])).filter(isActive)
   const departments = (await all(ctx, D.department, DEPARTMENT_FIELDS, [['store', '=', site]])).filter(row => inForce(row, today))
@@ -216,7 +220,8 @@ export const departmentReads = {
     const heads: ChangeProposal[] = []
     for (let start = 0; ; start += 500) {
       const page = await ctx.changeProposals.list({ states: OPEN, limit: 500, start })
-      heads.push(...page.filter(p => about(p).kind === 'department' && p.maker !== ctx.user))
+      // #1205: a Department Manager never reviews a pre-fill of their own department.
+      heads.push(...page.filter(p => about(p).kind === 'department' && p.maker !== ctx.user && about(p).for_person !== ctx.user))
       if (page.length < 500) break
     }
     const jobs = heads.length ? byId(await list(ctx, T.job, JOB_FIELDS, [['row_id', 'in', unique(heads.map(p => about(p).job_assignment))]])) : new Map<string, Row>()
@@ -228,6 +233,7 @@ export const departmentReads = {
       const a = about(head)
       const { leaders } = await teamLeadersOf(ctx, a.site, today)
       answers.push({ bundle: a.bundle, who: a.maker_name, job: JOB, store: a.store, name: a.name, asked_on: istDay(head.created_at), applied: head.state === APPLIED_UNREVIEWED,
+        prefilled: a.prefilled === true, flagged: a.sections.filter(id => (a.flagged ?? []).includes(id)).map(id => a.section_names[a.sections.indexOf(id)]),
         sections: a.sections.map((id, i) => ({ id, name: a.section_names[i], team_leaders: leaders.get(id) ?? [] })) })
     }
     return answers
@@ -238,6 +244,15 @@ export const departmentReads = {
 async function currentOf(ctx: Ctx, job: Row, shop: Awaited<ReturnType<typeof storeOf>>, me: Set<string>) {
   const [latest] = await myBundles(ctx, exact(job.row_id))
   const own = shop.departments.find(d => me.has(exact(d.manager)))
+  // #1205: a pre-fill of this job, open, from the load.
+  const prefill = (await allSetUps(ctx)).find(p => OPEN.includes(p.state) && about(p).prefilled && about(p).job_assignment === exact(job.row_id))
+  if (own && prefill) {
+    const a = about(prefill)
+    const named = a.sections.map((id, i) => ({ id, name: a.section_names[i] }))
+    return { state: 'set_up' as const, name: text(own.name), sections: [...a.section_names].sort((x, y) => x.localeCompare(y)),
+      reviewing: { bundle: a.bundle, waiting_for: await waitingName(ctx, prefill.route.people.filter(p => p !== ctx.user)) },
+      prefilled: { bundle: a.bundle, sections: named, flagged: named.filter(s => (a.flagged ?? []).includes(s.id)).map(s => s.name) } }
+  }
   if (own) {
     const ids = new Set(shop.links.filter(l => exact(l.department) === exact(own.row_id)).map(l => exact(l.section)))
     // #1191: applied at once, the report is open while the reviewer has yet to look.
@@ -255,6 +270,35 @@ async function currentOf(ctx: Ctx, job: Row, shop: Awaited<ReturnType<typeof sto
   return null
 }
 
+/** Every department proposal not made by the caller, any state: who has what in hand (#1205). */
+export async function allSetUps(ctx: Ctx): Promise<ChangeProposal[]> {
+  const found: ChangeProposal[] = []
+  for (let start = 0; ; start += 500) {
+    const page = await ctx.changeProposals.list({ limit: 500, start })
+    found.push(...page.filter(p => about(p).kind === 'department'))
+    if (page.length < 500) break
+  }
+  return found
+}
+
+/** Sends one department: the Department, then a link per section, as one bundle (#1195, #1205). */
+export async function proposeDepartment(ctx: ActionContext, { site, sections, approvers, shared, manager, today }:
+  { site: string; sections: { id: string; name: string }[]; approvers: ApproverRequest; shared: Omit<About, 'kind' | 'sections' | 'section_names' | 'site'>; manager: string; today: string }) {
+  const all = { ...shared, site, sections: sections.map(s => s.id), section_names: sections.map(s => s.name) }
+  // #1191: every proposal names its type and carries its own id; the instance's mode decides whether it applies now.
+  const applied = async (table: string, base: string, column: string) =>
+    ({ type: DEPARTMENT_TYPE, apply: { effectiveOn: today, newRow: { [column]: await freeId(ctx, table, base), source_key: `Dash, set up ${today}` } } })
+  const head = await ctx.changeProposals.propose({ ...await applied(D.department, `${site}-${shared.name}-${today}`, 'department_id'), table: D.department, row: null,
+    changes: { store: site, name: shared.name, manager }, approvers, about: { ...all, kind: 'department' } as unknown as Record<string, unknown> })
+  // Under "apply now, review after" (#1191) the Department exists at once, so each link names it;
+  // reviewed first, the link names it when the Department is applied (decide_department).
+  const department = head.result_row ? String(head.result_row) : null
+  for (const { id } of sections)
+    await ctx.changeProposals.propose({ ...await applied(D.link, `${site}-${id}-${today}`, 'department_section_id'), table: D.link, row: null, changes: { store: site, section: id, department },
+      approvers, about: { ...all, kind: 'department_section', section: id } as unknown as Record<string, unknown> })
+  return head
+}
+
 export const departmentActions = {
   /** Sends a set-up: the department, then one link per ticked section. */
   async set_up_department(ctx: ActionContext) {
@@ -266,9 +310,15 @@ export const departmentActions = {
     // One set-up at a time per store: two people can't both claim a section.
     await ctx.changeProposals.serialize(`department:${site}`)
     const { approvers, manager } = await approversOf(ctx, job!)
-    // "Change it" sends the new one in place of the open one, in this one action.
-    const replaced = await pendingBundle(ctx, payload.replaces, [ctx.user])
-    await takeBack(ctx, replaced, approvers)
+    // "Change it" sends the new one in place of the open one, in this one action. A pre-fill of their own
+    // department (#1205) is taken over: undone by the Department Manager, then theirs.
+    const open = await pendingBundle(ctx, payload.replaces)
+    const own = open.filter(p => p.maker === ctx.user)
+    const prefill = open.filter(p => p.maker !== ctx.user && about(p).prefilled && about(p).job_assignment === exact(job!.row_id))
+    await takeBack(ctx, own, approvers)
+    const me0 = employees.find(e => exact(e.row_id) === exact(job!.employee))!
+    await takeBack(ctx, prefill, { people: [ctx.user], fallbackRoles: [] }, `Taken over by ${text(me0.name)}`)
+    const replaced = [...own, ...prefill]
     const shop = await storeOf(ctx, site, today)
     const me = new Set(employees.map(e => exact(e.row_id)))
     if (shop.departments.some(d => me.has(exact(d.manager)))) ctx.reject('You already have a department here')
@@ -292,19 +342,9 @@ export const departmentActions = {
     const ids = unique(picked as string[]).sort((a, b) => text(allHere.get(a)!.name).localeCompare(text(allHere.get(b)!.name)) || a.localeCompare(b))
     const names = ids.map(id => text(allHere.get(id)!.name))
     const employee = employees.find(e => exact(e.row_id) === exact(job!.employee))!
-    const shared: Omit<About, 'kind'> = { bundle: `${exact(job!.row_id)}:${globalThis.crypto.randomUUID()}`, job_assignment: exact(job!.row_id), site, store: shop.store,
-      name, sections: ids, section_names: names, maker_name: text(employee.name), manager_name: manager }
-    // #1191: every proposal names its type and carries its own id; the instance's mode decides whether it applies now.
-    const applied = async (table: string, base: string, column: string) =>
-      ({ type: DEPARTMENT_TYPE, apply: { effectiveOn: today, newRow: { [column]: await freeId(ctx, table, base), source_key: `Dash, set up ${today}` } } })
-    const head = await ctx.changeProposals.propose({ ...await applied(D.department, `${site}-${name}-${today}`, 'department_id'), table: D.department, row: null, changes: { store: site, name, manager: exact(employee.row_id) },
-      approvers, about: { ...shared, kind: 'department' } as unknown as Record<string, unknown> })
-    // Under "apply now, review after" (#1191) the Department exists at once, so each link names it;
-    // reviewed first, the link names it when the Department is applied (decide_department).
-    const department = head.result_row ? String(head.result_row) : null
-    for (const id of ids)
-      await ctx.changeProposals.propose({ ...await applied(D.link, `${site}-${id}-${today}`, 'department_section_id'), table: D.link, row: null, changes: { store: site, section: id, department },
-        approvers, about: { ...shared, kind: 'department_section', section: id } as unknown as Record<string, unknown> })
+    const shared = { bundle: `${exact(job!.row_id)}:${globalThis.crypto.randomUUID()}`, job_assignment: exact(job!.row_id), store: shop.store,
+      name, maker_name: text(employee.name), manager_name: manager }
+    const head = await proposeDepartment(ctx, { site, sections: ids.map((id, i) => ({ id, name: names[i] })), approvers, shared, manager: exact(employee.row_id), today })
     return { state: head.state === APPLIED_UNREVIEWED ? 'set_up' as const : 'waiting' as const, bundle: shared.bundle, name, sections: names, waiting_for: await waitingName(ctx, head.route.people), asked_on: today }
   },
 
@@ -325,6 +365,7 @@ export const departmentActions = {
     if (!head) ctx.reject('That set-up is no longer waiting')
     if (payload.decision !== 'approve' && payload.decision !== 'reject') ctx.reject('Keep it or turn it down')
     const a = about(head!)
+    if (a.prefilled && a.for_person === ctx.user) ctx.reject('This is your own department: say whether it is right on Your department')
     const today = istToday()
     await ctx.changeProposals.serialize(`department:${a.site}`)
     const [job] = await list(ctx, T.job, JOB_FIELDS, [['row_id', '=', a.job_assignment]])

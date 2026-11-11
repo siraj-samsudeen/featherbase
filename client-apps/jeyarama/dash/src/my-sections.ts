@@ -218,7 +218,9 @@ async function waitingForMe(ctx: ReadContext, setUps = false): Promise<ChangePro
   for (let start = 0; ; start += 500) {
     const pending = await ctx.changeProposals.list({ states: OPEN, limit: 500, start })
     // One entry per set-up: its department proposal stands for the bundle.
-    const others = pending.filter(proposal => proposal.maker !== ctx.user && (setUps ? about(proposal).kind as string === 'department' : !isSetUp(proposal)))
+    // A Department Manager's own pre-fill (#1205) is theirs to answer on Your department, not to review.
+    const others = pending.filter(proposal => proposal.maker !== ctx.user && (setUps ? about(proposal).kind as string === 'department'
+      && (proposal.about as Record<string, unknown>).for_person !== ctx.user : !isSetUp(proposal)))
     const jobs = others.length ? byId(await list(ctx, T.job, JOB_FIELDS, [['row_id', 'in', unique(others.map(p => about(p).job_assignment))]])) : new Map<string, Row>()
     for (const proposal of others) {
       const a = about(proposal)

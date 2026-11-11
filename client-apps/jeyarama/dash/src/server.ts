@@ -7,6 +7,7 @@ import { diveFilters, storesOfReport, storesReached, type ReportRecord } from '.
 import { MONTH_CHOICES, buildReport, monthLabel, headingOf, istToday, periodOf, storeLabels, storeShortName, type CachedAnswer, type Heading, type Month, type MonthChoice, type SalesRow } from './report.ts'
 import { actions as sectionActions, reads as sectionReads } from './my-sections.ts'
 import { departmentActions, departmentReads } from './department-setup.ts'
+import { prefillActions } from './department-prefill.ts'
 import { accessPage, addToBundle, giveReport, makeBundle, managesAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
 
 /** The save rules of Dash's own Tables. */
@@ -284,6 +285,7 @@ async function openDive(ctx: ScopedContext, report: ReportRecord | null) {
 export const actions = {
   ...sectionActions,
   ...departmentActions,
+  ...prefillActions,
   give_report: (context: AccessContext) => giveReport(context),
   remove_report_access: (context: AccessContext) => removeAccess(context),
   make_bundle: (context: AccessContext) => makeBundle(context),

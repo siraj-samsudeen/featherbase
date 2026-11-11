@@ -329,3 +329,13 @@ describe("a Department Manager's set-up, beside Your sections (#1195)", () => {
     expect(await reads.approvals(context(world(), { user: 'mani', proposals: waiting }).ctx)).toEqual({ state: 'ok', proposals: [] })
   })
 })
+
+describe("a Department Manager's own pre-fill (#1205)", () => {
+  it('is not counted as waiting for them, though it is for their manager', async () => {
+    const prefill = proposal({ kind: 'department', bundle: 'B1', job_assignment: 'J1', site: 'LKS', store: 'Lakeside', name: 'Womenswear', sections: ['S1'], section_names: ['Ladies'],
+      maker_name: 'Asha', manager_name: 'Mani', prefilled: true, for_person: 'asha' }, { row_id: 'PD', maker: 'loader' })
+    expect(await reads.my_sections(context(world(), { user: 'asha', proposals: [prefill] }).ctx)).toMatchObject({ waiting_for_me: 0 })
+    expect(await reads.my_sections(context(world(), { user: 'mani', proposals: [prefill] }).ctx)).toMatchObject({ waiting_for_me: 1 })
+  })
+})
+

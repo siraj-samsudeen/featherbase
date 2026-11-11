@@ -2220,6 +2220,14 @@
         "authorization": {
           "kind": "generic"
         }
+      },
+      "prefill_departments": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
       }
     }
   }

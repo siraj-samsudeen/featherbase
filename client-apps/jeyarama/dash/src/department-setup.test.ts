@@ -3,6 +3,7 @@
 // platform-test/department-setup.test.ts.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { DEPARTMENT_TABLES, DEPARTMENT_TYPE, departmentActions, departmentReads } from './department-setup.ts'
+import { departmentName, prefillActions } from './department-prefill.ts'
 import { BASE_TABLES, type ActionContext, type ReadContext } from './my-sections.ts'
 import { istToday } from './report.ts'
 
@@ -55,9 +56,11 @@ function world(over: Partial<Record<string, Row[]>> = {}) {
       .concat([{ row_id: 'P-C9', store: 'LKS', subcategory: 'C9', section: 'S1', starts_on: '2026-01-01', ends_on: '2026-02-01' },
         { row_id: 'P-C5', store: 'LKS', subcategory: 'C5', section: 'S2', starts_on: '2026-01-01', ends_on: null }]),
     Subcategory: [
-      { row_id: 'C1', subcategory: 'Silk sarees', subcategory_type: 'Merchandise' }, { row_id: 'C2', subcategory: 'Cotton sarees', subcategory_type: 'Merchandise' },
-      { row_id: 'C3', subcategory: 'Kanchi sarees', subcategory_type: 'Merchandise' }, { row_id: 'C4', subcategory: 'Banarasi sarees', subcategory_type: 'Merchandise' },
-      { row_id: 'C5', subcategory: 'Salwar sets', subcategory_type: 'Merchandise' },
+      ...['C1', 'C2', 'C3', 'C4'].map((row_id, i) => ({ row_id, subcategory: ['Silk sarees', 'Cotton sarees', 'Kanchi sarees', 'Banarasi sarees'][i], subcategory_type: 'Merchandise', subdivision: 'Womenswear', division: 'Fashion' })),
+      { row_id: 'C5', subcategory: 'Salwar sets', subcategory_type: 'Merchandise', subdivision: 'Womenswear', division: 'Fashion' },
+      { row_id: 'C6', subcategory: 'Clutches', subcategory_type: 'Merchandise', subdivision: 'Accessories', division: 'Fashion' },
+      { row_id: 'C7', subcategory: 'Sandals', subcategory_type: 'Merchandise', subdivision: 'Footwear', division: 'Fashion' },
+      { row_id: 'C8', subcategory: 'Rice', subcategory_type: 'Merchandise', subdivision: 'Staples', division: 'Grocery' },
     ],
     Site: [{ row_id: 'LKS', name: 'Lakeside', is_store: true }, { row_id: 'HIL', name: 'Hillview', is_store: true }, { row_id: 'RIV', name: 'Riverside', is_store: true }],
     Department: [
@@ -82,7 +85,7 @@ function world(over: Partial<Record<string, Row[]>> = {}) {
 /** The instance's mode for the department type, as its Approval Type row sets it (#1191). */
 let MODE = 'Approve first'
 const DECIDED: Record<string, string> = { approve: 'Applied', reject: 'Rejected', withdraw: 'Withdrawn', confirm: 'Confirmed', undo: 'Undone' }
-function context(tables: Record<string, Row[]>, { user = 'deepa', payload, settings = { linked_tables: LISTED }, proposals = [] as Row[], route = 'people', decides = true }: { user?: string; payload?: unknown; settings?: Record<string, string>; proposals?: Row[]; route?: string; decides?: boolean } = {}) {
+function context(tables: Record<string, Row[]>, { user = 'deepa', payload, settings = { linked_tables: LISTED }, proposals = [] as Row[], route = 'people', decides = true, roles = [] as string[] }: { user?: string; payload?: unknown; settings?: Record<string, string>; proposals?: Row[]; route?: string; decides?: boolean; roles?: string[] } = {}) {
   const sent: { call: string; first: unknown; second?: unknown }[] = []
   let made = 0
   const answer = (call: string) => async (first: unknown, second?: unknown) => {
@@ -96,7 +99,7 @@ function context(tables: Record<string, Row[]>, { user = 'deepa', payload, setti
       changes: [], created_at: `${today}T00:00:00Z`, decided_at: null, route: { people: route === 'people' ? ['mani'] : [], roles: [] } }
   }
   const ctx = {
-    user, payload, settings, roles: [],
+    user, payload, settings, roles,
     reject(message: string): never { throw new Error(message) },
     baseTables: {
       async list(table: string, args: { filters?: [string, string, unknown][]; limit_start?: number; limit_page_length?: number }) {
@@ -343,9 +346,9 @@ describe('what waits for a reviewer', () => {
   it('lists each waiting bundle once, with its sections and their Team Leaders', async () => {
     const { ctx } = context(world(), { user: 'mani', proposals: [...bundle(), ...bundle({ bundle: 'B2', job_assignment: 'J6', maker_name: 'Arun' }).map(p => ({ ...p, row_id: `${p.row_id}-2`, maker: 'arun' }))] })
     expect(await departmentReads.department_approvals(ctx)).toEqual([
-      { bundle: 'B1', who: 'Deepa', job: 'Department Manager', store: 'Lakeside', name: 'Ladies Ethnic', asked_on: today, applied: false,
+      { bundle: 'B1', who: 'Deepa', job: 'Department Manager', store: 'Lakeside', name: 'Ladies Ethnic', asked_on: today, applied: false, prefilled: false, flagged: [],
         sections: [{ id: 'S1', name: 'Sarees', team_leaders: ['Asha'] }, { id: 'S2', name: 'Silk', team_leaders: ['Bala'] }] },
-      { bundle: 'B2', who: 'Arun', job: 'Department Manager', store: 'Lakeside', name: 'Ladies Ethnic', asked_on: today, applied: false,
+      { bundle: 'B2', who: 'Arun', job: 'Department Manager', store: 'Lakeside', name: 'Ladies Ethnic', asked_on: today, applied: false, prefilled: false, flagged: [],
         sections: [{ id: 'S1', name: 'Sarees', team_leaders: ['Asha'] }, { id: 'S2', name: 'Silk', team_leaders: ['Bala'] }] },
     ])
   })
@@ -466,6 +469,139 @@ describe('apply now, review after (#1191)', () => {
   })
   it('shows the reviewer which set-ups are already in use', async () => {
     expect(await departmentReads.department_approvals(context(world(), { user: 'mani', proposals: applied() }).ctx)).toMatchObject([{ bundle: 'B1', applied: true }])
+  })
+})
+
+// #1205: pre-filling departments from reporting lines, by a service account, through the set-up path.
+describe('pre-fill from reporting lines (#1205)', () => {
+  beforeEach(() => { MODE = 'Apply now, review after' })
+  afterEach(() => { MODE = 'Approve first' })
+  const LOADER = { user: 'loader', roles: ['System Manager'] }
+  const prefill = (managers: Row[], tables = world(), options: Parameters<typeof context>[1] = {}) => {
+    const { ctx, sent } = context(tables, { ...LOADER, payload: { store: 'LKS', managers }, ...options })
+    return { run: () => prefillActions.prefill_departments(ctx), sent }
+  }
+  const deepa = { employee: 'E1', sections: ['Sarees', 'Silk'], flagged: ['Silk'] }
+
+  it('pre-fills a manager through the set-up path: applied, for review, the Department Manager among those who may decide', async () => {
+    const { run, sent } = prefill([deepa])
+    expect(await run()).toEqual({ store: 'Lakeside', results: [{ employee: 'E1', name: 'Deepa', outcome: 'pre-filled', department: 'Womenswear', sections: ['Sarees', 'Silk'], notes: [] }] })
+    const [department, ...links] = sent.map(s => s.first as Row & { about: Row; approvers: Row; changes: Row })
+    expect(department).toMatchObject({ type: 'department_setup', table: 'Department', changes: { store: 'LKS', name: 'Womenswear', manager: 'E1' },
+      approvers: { people: ['mani', 'deepa'], fallbackRoles: ['Master Data Editor'] },
+      about: { kind: 'department', prefilled: true, flagged: ['S2'], for_person: 'deepa', maker_name: 'Deepa', sections: ['S1', 'S2'] } })
+    expect(links.map(l => l.changes)).toEqual([{ store: 'LKS', section: 'S1', department: 'ROW-PR1' }, { store: 'LKS', section: 'S2', department: 'ROW-PR1' }])
+  })
+  it('refuses anyone who is not a System Manager or Master Data Editor', async () => {
+    await expect(prefill([deepa], world(), { roles: [] }).run()).rejects.toThrow('Only a System Manager or Master Data Editor can pre-fill departments')
+    expect(await prefill([deepa], world(), { roles: ['Master Data Editor'] }).run()).toMatchObject({ results: [{ outcome: 'pre-filled' }] })
+  })
+  it('skips a manager with a department, a set-up open, or any earlier pre-fill, even one undone', async () => {
+    const withDepartment = world()
+    withDepartment.Department.push({ row_id: 'D9', store: 'LKS', name: 'Ladies', manager: 'E1', starts_on: '2026-01-01', ends_on: null })
+    expect((await prefill([deepa], withDepartment).run()).results).toMatchObject([{ outcome: 'skipped', notes: ['already has a department'] }])
+    expect((await prefill([deepa], world(), { proposals: bundle() }).run()).results).toMatchObject([{ outcome: 'skipped', notes: ['has a set-up open'] }])
+    const undone = bundle({ prefilled: true }, 'Undone').map(p => ({ ...p, maker: 'loader' }))
+    const again = prefill([deepa], world(), { proposals: undone })
+    expect((await again.run()).results).toMatchObject([{ outcome: 'skipped', notes: ['pre-filled before'] }])
+    expect(again.sent).toEqual([])
+  })
+  it('refuses a manager it cannot place, and leaves out sections it cannot use, saying why', async () => {
+    const tables = world()
+    tables['Job Assignment'].push(job('J20', 'E8', 'Staff', 'LKS', null, 'E1'))
+    const { run } = prefill([
+      { employee: 'E404', sections: ['Sarees'] },
+      { employee: 'E8', sections: ['Sarees'] },
+      { employee: 'E1', sections: ['Sarees', 'Nowhere', 'Closed Corner', 'Kids Wear', 'Tops'] },
+      { employee: 'E6', sections: ['Kids Wear'] },
+    ], tables)
+    expect((await run()).results).toEqual([
+      { employee: 'E404', name: '', outcome: 'refused', notes: ['not on the staff list'] },
+      { employee: 'E8', name: 'Siva', outcome: 'refused', notes: ['no Department Manager job at Lakeside'] },
+      { employee: 'E1', name: 'Deepa', outcome: 'pre-filled', department: 'Womenswear', sections: ['Sarees'],
+        notes: ['no section Nowhere at Lakeside', 'Closed Corner is closed', 'Kids Wear is already in Kids', 'no section Tops at Lakeside'] },
+      { employee: 'E6', name: 'Arun', outcome: 'skipped', notes: ['already has a department'] },
+    ])
+  })
+  it('refuses a manager left with no section', async () => {
+    expect((await prefill([{ employee: 'E1', sections: ['Kids Wear'] }]).run()).results).toEqual([
+      { employee: 'E1', name: 'Deepa', outcome: 'refused', notes: ['Kids Wear is already in Kids', 'no section left to pre-fill'] }])
+  })
+  it('refuses a bad payload', async () => {
+    await expect(prefill([deepa], world(), { payload: { store: 'XXX', managers: [] } }).run()).rejects.toThrow('No store XXX')
+    await expect(prefill([deepa], world(), { payload: { store: 'LKS', managers: 'E1' } }).run()).rejects.toThrow('Send the managers to pre-fill')
+    await expect(prefill([deepa], world(), { settings: {} }).run()).rejects.toThrow('Dash is not set up for departments here')
+  })
+
+  it('takes loose input: no roles, no payload, a store that is not text, managers missing fields', async () => {
+    const bare = context(world(), { ...LOADER })
+    delete (bare.ctx as { roles?: string[] }).roles
+    await expect(prefillActions.prefill_departments(bare.ctx)).rejects.toThrow('Only a System Manager')
+    await expect(prefillActions.prefill_departments(context(world(), { ...LOADER }).ctx)).rejects.toThrow('No store undefined')
+    await expect(prefill([], world(), { payload: { store: 7, managers: [] } }).run()).rejects.toThrow('No store 7')
+    expect((await prefill([{}, { employee: 'E1', sections: 'Sarees' }]).run()).results).toEqual([
+      { employee: '', name: '', outcome: 'refused', notes: ['not on the staff list'] },
+      { employee: 'E1', name: 'Deepa', outcome: 'refused', notes: ['no section left to pre-fill'] }])
+  })
+  it('names a department on no floor, in a store with nothing placed, by "No floor"', async () => {
+    const { results } = await prefill([{ employee: 'E1', sections: ['Loose'] }], world({ 'Section Subcategory': [] })).run()
+    expect(results).toMatchObject([{ outcome: 'pre-filled', department: 'No floor' }])
+  })
+  it('finds earlier pre-fills beyond the first page, and shows a pre-fill with nothing flagged', async () => {
+    const filler = Array.from({ length: 500 }, (_, i) => ({ row_id: `F${String(i).padStart(3, '0')}`, maker: 'x', state: 'Applied', about: null, created_at: `${today}T00:00:00Z`, route: { people: [], roles: [] } }))
+    const undone = bundle({ prefilled: true }, 'Undone').map(p => ({ ...p, maker: 'loader' }))
+    expect((await prefill([deepa], world(), { proposals: [...filler, ...undone] }).run()).results).toMatchObject([{ outcome: 'skipped', notes: ['pre-filled before'] }])
+    const tables = world()
+    tables.Department.push({ row_id: 'D9', store: 'LKS', name: 'Womenswear', manager: 'E1', starts_on: '2026-01-01', ends_on: null })
+    const open = bundle({ prefilled: true, for_person: 'deepa' }, 'Not yet reviewed').map(p => ({ ...p, maker: 'loader' }))
+    expect(await read(tables, { proposals: open })).toMatchObject({ current: { prefilled: { flagged: [] } } })
+  })
+  describe('departmentName', () => {
+    const name = (sections: string[][], taken: string[] = [], floor = 'First floor') => departmentName(sections.map(codes => codes.map(code => world().Subcategory.find(s => s.row_id === code)!)), floor, taken)
+    it('takes the subdivision most sections share', () => expect(name([['C1', 'C2'], ['C5'], ['C6']])).toBe('Womenswear'))
+    it('else the division most sections share', () => expect(name([['C1'], ['C6'], ['C7']])).toBe('Fashion'))
+    it('else the floor', () => expect(name([['C1'], ['C8']])).toBe('First floor'))
+    it('and a section with nothing placed votes for nothing', () => expect(name([[], []])).toBe('First floor'))
+    it('adds the floor when the store already has the name', () => expect(name([['C1']], ['womenswear'])).toBe('Womenswear, First floor'))
+  })
+  it('gives each of two departments that would share a name its floor', async () => {
+    const tables = world()
+    tables['Section Subcategory'].push({ row_id: 'P-C5b', store: 'LKS', subcategory: 'C5', section: 'S6', starts_on: '2026-01-01', ends_on: null })
+    tables['Department Section'] = tables['Department Section'].filter(r => r.section !== 'S6')
+    tables.Department = tables.Department.filter(r => r.row_id !== 'D6')
+    tables['Job Assignment'].push(job('J21', 'E12', 'Department Manager', 'LKS', null, 'E2'))
+    const { results } = await prefill([deepa, { employee: 'E12', sections: ['Footwear'] }], tables).run()
+    expect(results.map(r => r.department)).toEqual(['Womenswear, First floor', 'Womenswear, Second floor'])
+  })
+
+  it('shows the Department Manager their pre-fill, with what is flagged', async () => {
+    const tables = world()
+    tables.Department.push({ row_id: 'D9', store: 'LKS', name: 'Womenswear', manager: 'E1', starts_on: '2026-01-01', ends_on: null })
+    tables['Department Section'].push({ row_id: 'DS9', store: 'LKS', department: 'D9', section: 'S1', starts_on: '2026-01-01', ends_on: null })
+    const proposals = bundle({ prefilled: true, flagged: ['S2'], for_person: 'deepa' }, 'Not yet reviewed').map(p => ({ ...p, maker: 'loader' }))
+    expect(await read(tables, { proposals })).toMatchObject({ current: { state: 'set_up', name: 'Womenswear',
+      prefilled: { bundle: 'B1', sections: [{ id: 'S1', name: 'Sarees' }, { id: 'S2', name: 'Silk' }], flagged: ['Silk'] } } })
+  })
+  it('the reviewer sees it as set up from reporting lines; the Department Manager never reviews their own', async () => {
+    const proposals = bundle({ prefilled: true, flagged: ['S2'], for_person: 'deepa' }, 'Not yet reviewed').map(p => ({ ...p, maker: 'loader' }))
+    expect(await departmentReads.department_approvals(context(world(), { user: 'mani', proposals }).ctx)).toMatchObject([{ bundle: 'B1', prefilled: true, flagged: ['Silk'] }])
+    expect(await departmentReads.department_approvals(context(world(), { user: 'deepa', proposals }).ctx)).toEqual([])
+    await expect(departmentActions.decide_department(context(world(), { user: 'deepa', payload: { bundle: 'B1', decision: 'approve' }, proposals }).ctx))
+      .rejects.toThrow('This is your own department: say whether it is right on Your department')
+  })
+  it('Yes or Change it takes the pre-fill over: undone as the Department Manager, then theirs', async () => {
+    const proposals = bundle({ prefilled: true, for_person: 'deepa' }, 'Not yet reviewed').map(p => ({ ...p, maker: 'loader' }))
+    const { ctx, sent } = context(world(), { payload: { job: 'J1', name: 'Womenswear', sections: ['S1', 'S2'], replaces: 'B1' }, proposals })
+    expect(await departmentActions.set_up_department(ctx)).toMatchObject({ state: 'set_up', name: 'Womenswear' })
+    expect(sent.slice(0, 3).map(s => [s.call, s.first, s.second])).toEqual(['PL2', 'PL1', 'PD'].map(id =>
+      ['undo', id, { approvers: { people: ['deepa'], fallbackRoles: [] }, reason: 'Taken over by Deepa' }]))
+    expect(sent.slice(3).map(s => s.call)).toEqual(['propose', 'propose', 'propose'])
+  })
+  it("never takes over another Department Manager's pre-fill", async () => {
+    const proposals = bundle({ prefilled: true, job_assignment: 'J6', for_person: 'arun' }, 'Not yet reviewed').map(p => ({ ...p, maker: 'loader' }))
+    const { ctx, sent } = context(world(), { payload: { job: 'J1', name: 'Womenswear', sections: ['S1'], replaces: 'B1' }, proposals })
+    await departmentActions.set_up_department(ctx)
+    expect(sent.map(s => s.call)).toEqual(['propose', 'propose'])
   })
 })
 
