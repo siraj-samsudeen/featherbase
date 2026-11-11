@@ -64,7 +64,9 @@ Then the differing setting is reported with the action needed to reconcile it
 Instance health SHALL check, for the one enabled app that provides people's
 scope, that every Table it reads for scope and every column it declares reading
 from them exists on the instance. While any is missing the check SHALL fail as
-an operational fault naming each missing Table and column, and nothing else.
+an operational fault naming each missing Table and column, and nothing else. On
+a developer's own machine, which runs apps before any client's core Tables are
+loaded, the check SHALL name what is missing without counting it as a fault.
 
 #### Scenario: An instance lacks a Table the scope provider reads
 

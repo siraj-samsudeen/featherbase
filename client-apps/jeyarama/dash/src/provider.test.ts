@@ -207,6 +207,16 @@ describe('merchandise assignments', () => {
     expect(await assigned({ responsibility: 'Buyer', category: 'Nowhere', operating_region: 'East' })).toEqual({ places: [], problems: ['nothing_assigned'] })
   })
 
+  it('an assignment naming no level, or a region with no store, reaches nothing, and says so', async () => {
+    expect(await assigned({ responsibility: 'Buyer', operating_region: 'East' })).toEqual({ places: [], problems: ['nothing_assigned'] })
+    expect(await assigned({ responsibility: 'Buyer', subcategory: '000000004', operating_region: 'North-east' })).toEqual({ places: [], problems: ['nothing_assigned'] })
+  })
+
+  it('an assignment that ends says until when', async () => {
+    const [place] = (await assigned({ responsibility: 'Buyer', subcategory: '000000004', operating_region: 'East', ends_on: '2026-12-31' })).places
+    expect(place.reasons).toEqual([{ text: 'Buyer merchandise assignment', since: '2026-01-01', until: '2026-12-31' }])
+  })
+
   it('adds up with a job: head office staff who buy see their subcategories, a store manager who buys keeps the whole store', async () => {
     const both = await reachOf(fake([{ job: 'Head office staff', site: 'HOF' }, { job: 'Store Manager', site: 'CCC' }],
       { assignments: [{ responsibility: 'Buyer', subcategory: '000000004', operating_region: 'West' }] }), 'me', ON)

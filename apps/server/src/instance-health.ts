@@ -330,7 +330,7 @@ async function placeDrops(): Promise<HealthCheck[]> {
  *  fails, which refuses everyone. This names what is missing first: each Table
  *  the manifest's `scopeProvider.tables` lists, and each column it declares
  *  reading from them under `baseTables.read`. Names only, never a row. */
-async function scopeProviderTables(): Promise<HealthCheck[]> {
+async function scopeProviderTables(environment: string): Promise<HealthCheck[]> {
   const providers = await sql`select name, manifest from installed_app
     where runtime_package and enabled and not activation_pending and manifest ? 'scopeProvider' order by name`
   if (providers.length !== 1) return []
@@ -354,6 +354,9 @@ async function scopeProviderTables(): Promise<HealthCheck[]> {
     why: 'The scope provider reads these on every request for someone\'s scope; a Table or column the instance lacks makes that read fail, and then no one gets a scope.',
   }
   if (!missing.length) return [{ ...base, ok: true, message: `Every Table and column ${title} reads for people's scope exists.`, fix: null }]
+  // A developer's machine runs the app before any of a client's core Tables are loaded: named, not a fault.
+  if (environment === LOCAL) return [{ ...base, ok: true, missing, fix: null,
+    message: `${title} reads for people's scope what this development instance lacks: ${missing.join(', ')}. No one gets a scope from it here until they exist.` }]
   return [{ ...base, ok: false,
     message: `${title} reads for people's scope what this instance lacks: ${missing.join(', ')}. Until they exist, no one gets a scope from it.`,
     fix: `Create the missing Tables and columns on this instance with the definitions the app expects (empty is enough), or run a version of ${title} that does not read them.` }]
@@ -370,7 +373,7 @@ export async function runHealthChecks(opts: HealthCheckOptions = {}): Promise<He
     ...(await scheduledJobs(opts.now ?? new Date())),
     ...(await appsSetUp(environment)),
     ...(await placeDrops()),
-    ...(await scopeProviderTables()),
+    ...(await scopeProviderTables(environment)),
     await administratorPassword(environment),
   ]
   return checks.map((check) => ({ ...check, state: check.state ?? (

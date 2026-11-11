@@ -108,7 +108,7 @@
     {
       "path": "client-apps/jeyarama/dash",
       "version": "0.12.6",
-      "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/8e6287885ee4340b8b2c4797b6be9acf3516da7b"
+      "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/2d66308d52f12efba7044dc1df370f4685eab4b8"
     }
   ],
   "madeUpData": "client-apps/jeyarama/dash/scripts/seed-made-up.mts"
