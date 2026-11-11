@@ -236,12 +236,11 @@ describe('external-data-sources', () => {
       const [bound] = await sql`select name from table_def where data_source = ${source}`
       connected = String(bound!.name)
     })
+    let res!: Response
     await step('the user tries to change a row of that table', async () => {
-      const res = await admin.fetch(`/api/table/${encodeURIComponent(connected)}/S001`, { method: 'PATCH', body: JSON.stringify({ name: 'Changed' }) })
-      // The call itself says the change is refused: anything but a refusal fails it.
-      await expectRefused(res, 403)
+      res = await admin.fetch(`/api/table/${encodeURIComponent(connected)}/S001`, { method: 'PATCH', body: JSON.stringify({ name: 'Changed' }) })
     })
-    await step('the change is refused')
+    await step('the change is refused', () => expectRefused(res, 403))
     await step('the row in the warehouse is unchanged', async () => {
       const preview = await admin.get<{ data?: { first_rows: Record<string, unknown>[] }; first_rows?: Record<string, unknown>[] }>(
         `/api/table/Data%20Source/${source}:preview?database=sales&schema=main&table=stores`)
