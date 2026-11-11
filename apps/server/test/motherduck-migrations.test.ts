@@ -36,14 +36,18 @@ const laterMain = ['0012_table_settings_storage_identity.sql', '0013_reading_pre
   '0144_access_request.sql', '0145_archived_tables.sql', '0146_one_motherduck_token.sql',
   '0147_row_retirement.ts', '0148_deletion_record.sql', '0149_roster_first_sign_in.sql',
   '0150_operation_permissions.ts', '0151_change_proposal.sql', '0152_submission_status.ts',
-  '0153_table_views.sql', '0154_table_scope.sql', '0155_glossary_picture.sql', '0156_permission_not_retired.sql', '0157_link_roster_job.sql', '0158_job_hand_back.sql']
+  '0153_table_views.sql', '0154_table_scope.sql', '0155_glossary_picture.sql', '0156_permission_not_retired.sql', '0157_link_roster_job.sql', '0158_job_hand_back.sql',
+  '0161_data_source_without_mysql.sql']
 const pendingAfterLabels = [...additions, '0010_copy_refresh_schedule.sql', ...laterMain]
 const allMigrations = [...Object.keys(mainHistory), ...pendingAfterLabels]
 const oldLabels = { postgres: 'PostgreSQL', mysql: 'MySQL', duckdb: 'DuckDB', 'csv-folder': 'CSV folder' }
 const engineLabels = {
   ...oldLabels, motherduck: 'MotherDuck',
 }
-const choices = 'postgres\nmysql\nduckdb\nmotherduck\ncsv-folder'
+// #1199: after every migration, MySQL is gone from the choices, and from the
+// platform's own label map (an authored map keeps whatever it says).
+const { mysql: _mysql, ...finalLabels } = engineLabels
+const choices = 'postgres\nduckdb\nmotherduck\ncsv-folder'
 
 function historicalSql(file: string, hash: string, fixture = false): string {
   const body = readFileSync(new URL(fixture ? `./migration-fixtures/issue-772/${file}` : `../migrations/${file}`, import.meta.url), 'utf8')
@@ -65,7 +69,7 @@ const ledger = async (s: Scratch) => (await s.db`select name from featherbase.mi
 const engine = (s: Scratch) => s.db`select choices, choice_labels from featherbase.column_def where parent = 'Data Source' and column_name = 'engine'`
 
 async function expectCurrent(scratch: Scratch) {
-  expect(await engine(scratch)).toEqual([{ choices, choice_labels: engineLabels }])
+  expect(await engine(scratch)).toEqual([{ choices, choice_labels: finalLabels }])
   expect(await scratch.db`select conname, confupdtype, confdeltype, convalidated from pg_constraint
     where conrelid = 'featherbase.table_copy'::regclass and contype = 'f' order by conname`).toEqual([
     { conname: 'table_copy_data_source_fkey', confupdtype: 'c', confdeltype: 'c', convalidated: true },
@@ -112,8 +116,8 @@ it.each([
   { name: 'custom platform-looking map', labels: oldLabels, custom: true },
   { name: 'null custom map', labels: null, custom: true },
   { name: 'null authored map', labels: null, custom: false },
-  { name: 'existing MotherDuck map', labels: engineLabels, custom: false },
-])('preserves the $name during the engine upgrade', async ({ labels, custom }) => {
+  { name: 'existing MotherDuck map', labels: engineLabels, custom: false, after: finalLabels },
+])('preserves the $name during the engine upgrade', async ({ labels, custom, after }) => {
   const scratch = await scratchDatabase()
   try {
     await installMainHistory(scratch)
@@ -122,7 +126,7 @@ it.each([
       where parent = 'Data Source' and column_name = 'engine'`
     expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0, stderr: '' })
     expect(await scratch.db`select label, choice_labels from featherbase.column_def
-      where parent = 'Data Source' and column_name = 'engine'`).toEqual([{ label: 'Our engine caption', choice_labels: labels }])
+      where parent = 'Data Source' and column_name = 'engine'`).toEqual([{ label: 'Our engine caption', choice_labels: after ?? labels }])
   } finally {
     await scratch.close()
   }
