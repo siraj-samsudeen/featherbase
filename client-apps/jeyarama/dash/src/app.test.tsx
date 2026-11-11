@@ -7,6 +7,11 @@ import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
+// Shop Floor's icons come with the workspace's copy of React; the real page bundles one. An icon
+// says nothing these tests read, so here each draws nothing (#1205's banner is a Shop Floor Notice).
+vi.mock('../../../../packages/shop-floor/node_modules/lucide-react', async importOriginal =>
+  Object.fromEntries(Object.keys(await importOriginal<object>()).map(name => [name, () => null])))
+
 type Deferred = { resolve: (body: unknown) => void }
 const calls: { name: string; store?: string; payload: Record<string, unknown>; answer: Deferred }[] = []
 let teardown: () => void = () => {}
@@ -15,6 +20,7 @@ const WHOLE = { key: 'whole', name: 'Store target month to date', takes_store: f
 let reportsAnswer: unknown = [SALES, WHOLE]
 let problemsAnswer: unknown = { problems: [] }
 let setupAnswer: unknown = { state: 'ok', reviewer: 'Mani', current: null }
+let holdsAnswer = false
 
 beforeAll(() => {
   // This repository's root (client-apps/jeyarama/dash/src → four levels up), with `pnpm install` run.
@@ -42,6 +48,7 @@ beforeAll(() => {
       if (name === 'reports') answer.resolve(reportsAnswer)
       if (name === 'reach_problem') answer.resolve(problemsAnswer)
       if (name === 'department_setup') answer.resolve(setupAnswer)
+      if (name === 'holds_department_job') answer.resolve(holdsAnswer)
     })
   }
   teardown = () => { for (const key of added) delete (globalThis as Record<string, unknown>)[key]; dom.window.close() }
@@ -607,3 +614,60 @@ describe('a report on the rendered page', () => {
     })
   })
 })
+
+// #1205: a pre-filled Department Manager's report opens with the question above it.
+describe('a pre-filled department on the report page (#1205)', () => {
+  const PREFILLED = { state: 'ok', job: { id: 'J1', store: 'Lakeside' }, reviewer: 'Mani', current: { state: 'set_up', name: 'Womenswear', sections: ['Sarees'],
+    reviewing: { bundle: 'B1', waiting_for: 'Mani' }, prefilled: { bundle: 'B1', sections: [{ id: 'S1', name: 'Sarees' }], flagged: [] } } }
+  afterEach(() => { holdsAnswer = false; setupAnswer = { state: 'ok', reviewer: 'Mani', current: null } })
+  async function show() {
+    const { act } = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { Dash } = await import('./app')
+    history.replaceState(null, '', '?store=9901')
+    calls.length = 0
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => { root.render(<Dash />) })
+    await act(async () => { await settle() })
+    return { container, act, unmount: () => act(async () => root.unmount()) }
+  }
+
+  it('asks a pre-filled Department Manager whether it is right; Yes makes it theirs and says who reviews it', async () => {
+    holdsAnswer = true
+    setupAnswer = PREFILLED
+    const { container, act, unmount } = await show()
+    expect(container.querySelector('[data-testid=prefill-banner]')?.textContent).toContain('Your report shows Sarees: the sections your Team Leaders run. Is this right?')
+    expect(container.querySelector('[data-testid=prefill-banner] a')?.getAttribute('href')).toBe('?view=department')
+    const yes = [...container.querySelectorAll('button')].find(b => b.textContent === "Yes, that's right")!
+    await act(async () => { yes.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); await settle() })
+    const sent = calls.find(c => c.name === 'set_up_department')!
+    expect(sent.payload).toEqual({ job: 'J1', name: 'Womenswear', sections: ['S1'], replaces: 'B1' })
+    await act(async () => { sent.answer.resolve({ state: 'set_up' }); await settle() })
+    expect(container.querySelector('[data-testid=prefill-banner]')).toBeNull()
+    expect(container.querySelector('[data-testid=prefill-done]')?.textContent).toBe('Thank you. It is your department now; Mani reviews it.')
+    await unmount()
+  })
+  it('as one line, Change it still leads to Your department', async () => {
+    holdsAnswer = true
+    setupAnswer = PREFILLED
+    window.localStorage.setItem('dash.prefill-banner', 'line')
+    const { container, unmount } = await show()
+    expect(container.querySelector('[data-testid=prefill-line] a')?.getAttribute('href')).toBe('?view=department')
+    window.localStorage.clear()
+    await unmount()
+  })
+  it('asks nothing of anyone else, nor of a Department Manager whose department is their own', async () => {
+    const other = await show()
+    expect(other.container.querySelector('[data-testid=prefill-banner]')).toBeNull()
+    expect(calls.some(c => c.name === 'department_setup')).toBe(false)
+    await other.unmount()
+    holdsAnswer = true
+    setupAnswer = { ...PREFILLED, current: { ...PREFILLED.current, prefilled: undefined } }
+    const own = await show()
+    expect(own.container.querySelector('[data-testid=prefill-banner]')).toBeNull()
+    await own.unmount()
+  })
+})
+

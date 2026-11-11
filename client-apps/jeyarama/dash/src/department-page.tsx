@@ -8,7 +8,7 @@ import { LoadFailed, Loading, NotSetUp, Shell, useAnswer } from './sections-page
 
 interface Section { id: string; name: string; floor: string; sells: string[]; more: number; team_leaders: string[]; suggested: boolean; held_by: string | null }
 type Current =
-  | { state: 'set_up'; name: string; sections: string[]; reviewing?: { bundle: string; waiting_for: string } | null }
+  | { state: 'set_up'; name: string; sections: string[]; reviewing?: { bundle: string; waiting_for: string } | null; prefilled?: Prefilled }
   | { state: 'waiting'; bundle: string; name: string; sections: string[]; waiting_for: string; asked_on: string }
   | { state: 'turned_down'; name: string; sections: string[]; reason: string }
 export type Setup =
@@ -17,6 +17,9 @@ export type Setup =
   | { state: 'ok'; name: string; job: { id: string; store: string }; reviewer: string; reviewer_is_team: boolean; floors: { id: string; name: string }[]; start_floors: string[]
       sections: Section[]; names: string[]; current: Current | null }
 type Ok = Extract<Setup, { state: 'ok' }>
+
+/** #1205: a department set up from reporting lines, for the Department Manager to answer. */
+export interface Prefilled { bundle: string; sections: { id: string; name: string }[]; flagged: string[] }
 
 export type Layout = 'steps' | 'list' | 'wizard'
 const LAYOUTS: { value: Layout; label: string }[] = [{ value: 'steps', label: 'Steps' }, { value: 'list', label: 'One list' }, { value: 'wizard', label: 'Step by step' }]
@@ -89,10 +92,21 @@ function Ready({ setup, onChanged }: { setup: Ok; onChanged: () => Promise<unkno
   /** Change it edits in place: the waiting one stays until the new one is sent in its place. */
   const startEditing = () => { setNote(null); setEditing(true) }
   const intro = <p className="fd-muted" data-testid="intro">{setup.name} · Department Manager at {setup.job.store}.</p>
+  if (current?.state === 'set_up' && current.prefilled && editing)
+    return (
+      <>
+        {intro}
+        <SetupForm setup={setup} before={{ name: current.name, sections: current.prefilled.sections.map(s => s.name) }} replaces={current.prefilled.bundle}
+          onTouched={() => setNote(null)} onCancel={() => setEditing(false)} onSent={async () => { setEditing(false); await onChanged() }} />
+      </>
+    )
   if (current?.state === 'set_up')
     return (
       <>
         {intro}
+        {/* A pre-fill is always open for review, so it names its reviewer. */}
+        {current.prefilled && <PrefillBanner jobId={setup.job.id} name={current.name} prefilled={current.prefilled} reviewer={current.reviewing!.waiting_for}
+          onAnswered={onChanged} onChange={startEditing} />}
         <Card title={`${current.name} · ${setup.job.store}`} data-testid="set-up"
           actions={current.reviewing ? <StatusPill tone="caution">In use, {current.reviewing.waiting_for} to review</StatusPill> : <StatusPill tone="positive">Kept</StatusPill>}>
           <div className="flex flex-col gap-2 p-4">
@@ -279,8 +293,70 @@ function SetupForm({ setup, before, replaces, onCancel, onTouched, onSent }: { s
   )
 }
 
+type BannerStyle = 'card' | 'line'
+const BANNER_KEY = 'dash.prefill-banner'
+/** How the pre-fill banner shows: the address's `banner`, else the one chosen last, else the full card. */
+export function prefillStyle(search = window.location.search): BannerStyle {
+  let kept: string | null = null
+  try { kept = window.localStorage.getItem(BANNER_KEY) } catch { /* private window: no memory */ }
+  const asked = new URLSearchParams(search).get('banner')
+  const value = asked === 'line' || asked === 'card' ? asked : kept
+  return value === 'line' ? 'line' : 'card'
+}
+
+/**
+ * #1205: "Set up from your team. Is this right?" Yes and Change it both make the department the
+ * Department Manager's own set-up, which their manager reviews. Change it is `onChange`, or a link
+ * to Your department where there is no form on the page.
+ */
+export function PrefillBanner({ jobId, name, prefilled, reviewer, onAnswered, onChange }:
+  { jobId: string; name: string; prefilled: Prefilled; reviewer: string; onAnswered: () => Promise<unknown>; onChange?: () => void }) {
+  const [style, setStyle] = useState<BannerStyle>(prefillStyle)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const choose = (next: BannerStyle) => { setStyle(next); try { window.localStorage.setItem(BANNER_KEY, next) } catch { /* nothing to keep it in */ } }
+  const sections = listed(prefilled.sections.map(s => s.name))
+  async function yes() {
+    setBusy(true)
+    setError(null)
+    try { await act('set_up_department', { job: jobId, name, sections: prefilled.sections.map(s => s.id), replaces: prefilled.bundle }); await onAnswered() }
+    catch (failure) { setError(messageOf(failure)) }
+    finally { setBusy(false) }
+  }
+  const change = onChange
+    ? <Button variant={style === 'line' ? 'quiet' : 'secondary'} disabled={busy} onClick={onChange}>Change it</Button>
+    : <a className={style === 'line' ? 'fd-link font-semibold' : 'fd-link font-semibold self-center'} href="?view=department">Change it</a>
+  const refused = error && <Notice tone="negative"><span data-testid="prefill-refused">{error}</span></Notice>
+  if (style === 'line')
+    return (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-control border border-border bg-surface px-3 py-2 text-sm" data-testid="prefill-line">
+        <span>Set up from your team: {sections}. Is this right?</span>
+        <Button variant="quiet" disabled={busy} onClick={yes}>Yes</Button>
+        {change}
+        <button type="button" className="fd-link text-sm" onClick={() => choose('card')}>Show more</button>
+        {refused}
+      </div>
+    )
+  return (
+    <Notice tone="info">
+      <div className="flex flex-col gap-2" data-testid="prefill-banner">
+        <p className="font-semibold">Set up from your team</p>
+        <p>Your report shows {sections}: the sections your Team Leaders run. Is this right?</p>
+        {prefilled.flagged.length > 0 && <p className="text-sm" data-testid="prefill-flagged">{listed(prefilled.flagged)} {prefilled.flagged.length === 1 ? 'is' : 'are'} shared with another department's team.</p>}
+        <p className="fd-muted text-sm" data-testid="prefill-reviewer">{capital(reviewer)} reviews it.</p>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="primary" disabled={busy} onClick={yes}>Yes, that's right</Button>
+          {change}
+          <button type="button" className="fd-link text-sm self-center" onClick={() => choose('line')}>Show as one line</button>
+        </div>
+        {refused}
+      </div>
+    </Notice>
+  )
+}
+
 /** Set-ups waiting for this reviewer, on Waiting for your approval. */
-export interface WaitingSetup { bundle: string; who: string; job: string; store: string; name: string; asked_on: string; applied?: boolean; sections: { id: string; name: string; team_leaders: string[] }[] }
+export interface WaitingSetup { bundle: string; who: string; job: string; store: string; name: string; asked_on: string; applied?: boolean; prefilled?: boolean; flagged?: string[]; sections: { id: string; name: string; team_leaders: string[] }[] }
 
 export function DepartmentApprovals({ setups, onDecided }: { setups: WaitingSetup[]; onDecided: (said: string) => Promise<unknown> }) {
   return <>{setups.map(setup => <SetupCard key={setup.bundle} setup={setup} onDecided={onDecided} />)}</>
@@ -304,9 +380,9 @@ function SetupCard({ setup, onDecided }: { setup: WaitingSetup; onDecided: (said
     finally { setBusy(false) }
   }
   return (
-    <Card title={`${setup.who} · ${setup.job}`} data-testid="setup-card" actions={<StatusPill tone="caution">New department</StatusPill>}>
+    <Card title={`${setup.who} · ${setup.job}`} data-testid="setup-card" actions={<StatusPill tone="caution">{setup.prefilled ? 'Set up from reporting lines' : 'New department'}</StatusPill>}>
       <div className="flex flex-col gap-3 p-4">
-        <p className="font-semibold" data-testid="setup-ask">Set up “{setup.name}” at {setup.store}</p>
+        <p className="font-semibold" data-testid="setup-ask">{setup.prefilled ? `“${setup.name}” at ${setup.store}, set up from the reporting lines to ${setup.who}` : `Set up “${setup.name}” at ${setup.store}`}</p>
         {setup.applied && <p className="text-sm" data-testid="setup-applied">Already in use: {setup.who}'s report shows these sections. Keep it, or undo it.</p>}
         {mode === 'change' ? (
           <>
@@ -322,7 +398,7 @@ function SetupCard({ setup, onDecided }: { setup: WaitingSetup; onDecided: (said
           </>
         ) : (
           <ul className="flex flex-col gap-1" data-testid="setup-sections">
-            {setup.sections.map(s => <li key={s.id}>{s.name} <span className="fd-muted">· {s.team_leaders.length ? `Team Leader ${listed(s.team_leaders)}` : 'no Team Leader'}</span></li>)}
+            {setup.sections.map(s => <li key={s.id}>{s.name} <span className="fd-muted">· {s.team_leaders.length ? `Team Leader ${listed(s.team_leaders)}` : 'no Team Leader'}{setup.flagged?.includes(s.name) ? ' · shared with another team' : ''}</span></li>)}
           </ul>
         )}
         {mode === 'reject' && (

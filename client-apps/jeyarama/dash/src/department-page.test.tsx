@@ -416,3 +416,89 @@ describe('apply now, review after (#1191), when it is switched on', () => {
   })
 })
 
+
+// #1205: a department pre-filled from reporting lines, and the Department Manager's answer to it.
+describe('a pre-filled department (#1205)', () => {
+  const PREFILLED = { ...SETUP, current: { state: 'set_up', name: 'Womenswear', sections: ['Sarees', 'Silk'], reviewing: { bundle: 'B1', waiting_for: 'Mani' },
+    prefilled: { bundle: 'B1', sections: [{ id: 'S1', name: 'Sarees' }, { id: 'S2', name: 'Silk' }], flagged: ['Silk'] } } }
+  beforeEach(() => window.localStorage.clear())
+
+  it('asks whether it is right, says what is shared, and Yes makes it theirs', async () => {
+    answers.department_setup = PREFILLED
+    answers.set_up_department = { state: 'set_up' }
+    const page = await render('YourDepartment')
+    expect(page.q('prefill-banner')?.textContent).toContain('Set up from your team')
+    expect(page.q('prefill-banner')?.textContent).toContain('Your report shows Sarees and Silk: the sections your Team Leaders run. Is this right?')
+    expect(page.q('prefill-flagged')?.textContent).toBe("Silk is shared with another department's team.")
+    expect(page.q('prefill-reviewer')?.textContent).toBe('Mani reviews it.')
+    answers.department_setup = { ...SETUP, current: { state: 'set_up', name: 'Womenswear', sections: ['Sarees', 'Silk'], reviewing: { bundle: 'B2', waiting_for: 'Mani' } } }
+    await page.click("Yes, that's right")
+    expect(sentCalls('set_up_department')).toEqual([{ job: 'J1', name: 'Womenswear', sections: ['S1', 'S2'], replaces: 'B1' }])
+    expect(page.q('prefill-banner')).toBeNull()
+    expect(page.q('reviewing')).toBeTruthy()
+    await page.done()
+  })
+  it('Change it opens the form with the pre-fill in it, sent in its place; Cancel goes back', async () => {
+    answers.department_setup = PREFILLED
+    answers.set_up_department = { state: 'set_up' }
+    const page = await render('YourDepartment')
+    await page.click('Change it')
+    expect((page.q('name-input') as HTMLInputElement).value).toBe('Womenswear')
+    expect(rows(page.container).filter(r => r.startsWith('[x]')).map(r => r.slice(4, 10))).toEqual(['Sarees', 'Silk ·'])
+    await page.click('Cancel')
+    expect(page.q('prefill-banner')).toBeTruthy()
+    await page.click('Change it')
+    await page.choose(page.q('name-input') as HTMLInputElement, 'Ladies Ethnic')
+    await page.click('Send to Mani')
+    expect(sentCalls('set_up_department')).toEqual([{ job: 'J1', name: 'Ladies Ethnic', sections: ['S1', 'S2'], replaces: 'B1' }])
+    await page.done()
+  })
+  it('says that two shared sections are shared', async () => {
+    answers.department_setup = { ...PREFILLED, current: { ...PREFILLED.current, prefilled: { ...PREFILLED.current.prefilled, flagged: ['Sarees', 'Silk'] } } }
+    const page = await render('YourDepartment')
+    expect(page.q('prefill-flagged')?.textContent).toBe("Sarees and Silk are shared with another department's team.")
+    await page.done()
+  })
+  it('says why Yes failed', async () => {
+    answers.department_setup = PREFILLED
+    answers.set_up_department = new Error('That set-up is no longer waiting')
+    const page = await render('YourDepartment')
+    await page.click("Yes, that's right")
+    expect(page.q('prefill-refused')?.textContent).toBe('That set-up is no longer waiting')
+    await page.done()
+  })
+  it('shows as one line instead, remembers it, and goes back', async () => {
+    answers.department_setup = { ...PREFILLED, current: { ...PREFILLED.current, prefilled: { ...PREFILLED.current.prefilled, flagged: [] } } }
+    const page = await render('YourDepartment')
+    expect(page.q('prefill-flagged')).toBeNull()
+    await page.click('Show as one line')
+    expect(window.localStorage.getItem('dash.prefill-banner')).toBe('line')
+    expect(page.q('prefill-line')?.textContent).toContain('Set up from your team: Sarees and Silk. Is this right?')
+    await page.click('Show more')
+    expect(page.q('prefill-banner')).toBeTruthy()
+    await page.done()
+  })
+  it('reads its style from the address, else the one chosen last, else the full banner', async () => {
+    const { prefillStyle } = await import('./department-page')
+    expect(prefillStyle('')).toBe('card')
+    expect(prefillStyle('?banner=line')).toBe('line')
+    window.localStorage.setItem('dash.prefill-banner', 'line')
+    expect(prefillStyle('?banner=nonsense')).toBe('line')
+    const spy = vi.spyOn(window.localStorage.__proto__, 'getItem').mockImplementation(() => { throw new Error('private window') })
+    expect(prefillStyle('')).toBe('card')
+    spy.mockRestore()
+  })
+})
+
+describe("the reviewer's view of a pre-fill (#1205)", () => {
+  it('says it was set up from reporting lines, and marks the shared sections', async () => {
+    answers.approvals = { state: 'ok', proposals: [] }
+    answers.department_approvals = [{ bundle: 'B1', who: 'Deepa', job: 'Department Manager', store: 'Lakeside', name: 'Womenswear', asked_on: '2026-11-11', applied: true,
+      prefilled: true, flagged: ['Silk'], sections: [{ id: 'S1', name: 'Sarees', team_leaders: ['Asha'] }, { id: 'S2', name: 'Silk', team_leaders: [] }] }]
+    const page = await render('Approvals')
+    expect(page.q('setup-card')?.textContent).toContain('Set up from reporting lines')
+    expect(page.q('setup-ask')?.textContent).toBe('“Womenswear” at Lakeside, set up from the reporting lines to Deepa')
+    expect(page.q('setup-sections')?.textContent).toBe('Sarees · Team Leader AshaSilk · no Team Leader · shared with another team')
+    await page.done()
+  })
+})

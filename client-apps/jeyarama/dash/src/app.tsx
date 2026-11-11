@@ -4,7 +4,7 @@ import { accessFacts, read } from './api'
 import { REPORT_TIMEOUT_MS, reachMessage, type ReachMessage, MEASURE_LINE, TOTALS_NOTE, isMonthChoice, monthChooser, monthWords, notArrivedLine, type MonthChoice, noAccessHelp, type NoAccessHelp, headingParts, periodLine, sectionHeading, whyLine, storeChooser, totalCells, visibleState, blankNote, dataLine, firstStore, inr, liveFrame, pageView, percent, quickBody, reportLoader, signedInr, subcategoryLabel, subtotalLabel, type LoadState } from './page'
 import type { Heading, Report, ReportRow, Totals } from './report'
 import { DashSidebar, DEPARTMENT_ADDRESS, SECTIONS_ADDRESS, readReports, type ReportLink } from './sections-page'
-import { awayLine, capital, sentence, type Setup } from './department-page'
+import { PrefillBanner, awayLine, capital, sentence, type Setup } from './department-page'
 import { buttonClasses, fmtDate } from '@featherbase/shop-floor'
 
 /** The store the bar's picker keeps in the address (`?store=`). */
@@ -129,6 +129,7 @@ export function Dash() {
     <div className="fd-shell">
     <DashSidebar current="report" />
     <main className="fd-page" data-testid="dash" data-view={view.kind}>
+      <ReportPrefill />
       {/* The header, in every state with a store on show (#4486): the Dive, the quick view, and each empty state. */}
       {/* #1159: over a Dive with its own pickers the Dive names the store itself; the heading stays for its cached view. */}
       {(view.kind === 'dive' || view.kind === 'quick' || view.kind === 'empty') && !(view.kind === 'dive' && report?.ok && report.value.pickers_in_dive) && report?.ok && report.value.heading && (report.value.heading.name || report.value.heading.reasons.length > 0) && (
@@ -401,3 +402,28 @@ function DepartmentCall({ message }: { message: ReachMessage }) {
     </div>
   )
 }
+
+/** #1205: above a pre-filled Department Manager's report, "Set up from your team. Is this right?" */
+function ReportPrefill() {
+  const [setup, setSetup] = useState<Setup | null>(null)
+  const [done, setDone] = useState<string | null>(null)
+  useEffect(() => {
+    let live = true
+    read<boolean>('holds_department_job').then(async holds => {
+      if (live && holds === true) { const answer = await read<Setup>('department_setup'); if (live) setSetup(answer) }
+    }, () => {})
+    return () => { live = false }
+  }, [])
+  if (done) return <p className="fd-muted text-sm" data-testid="prefill-done">{done}</p>
+  const current = setup?.state === 'ok' ? setup.current : null
+  if (!current || current.state !== 'set_up' || !current.prefilled || setup?.state !== 'ok') return null
+  // A pre-fill is always open for review, so it names its reviewer.
+  const reviewer = current.reviewing!.waiting_for
+  return (
+    <div className="mb-3">
+      <PrefillBanner jobId={setup.job.id} name={current.name} prefilled={current.prefilled} reviewer={reviewer}
+        onAnswered={async () => setDone(`Thank you. It is your department now; ${reviewer} reviews it.`)} />
+    </div>
+  )
+}
+
