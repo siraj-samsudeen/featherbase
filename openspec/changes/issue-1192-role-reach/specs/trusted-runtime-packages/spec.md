@@ -38,9 +38,10 @@ had SHALL never widen through an upgrade for anyone who already holds a role.
 
 ### Requirement: An upgrade can add a role new to the instance
 An upgrade SHALL create each role its new version declares and its installed version did not, with the access the
-version declares for it, on any of the app's tables, and the preview SHALL list the roles it creates. Only a role the
-instance does not have yet SHALL be added this way: it starts with nobody holding it, so the upgrade itself gives no one
-anything. When a role of that name already exists, the upgrade SHALL be refused, naming it, and change nothing.
+version declares for it, and the preview SHALL list the roles it creates. On a table the app already had, that access
+SHALL be reading only: an upgrade never brings write access there. Only a role the instance does not have yet SHALL be
+added this way, never a platform role: it starts with nobody holding it, so the upgrade itself gives no one anything.
+When a role of that name already exists, the upgrade SHALL be refused, naming it, and change nothing.
 
 #### Scenario: A new reader role arrives with its access
 
@@ -53,3 +54,8 @@ anything. When a role of that name already exists, the upgrade SHALL be refused,
 - **WHEN** an upgrade's version declares a new Auditor role and the instance already has a role called Auditor
 - **THEN** the preview and the upgrade are refused, naming the role
 - **AND** the installed version and its access are unchanged
+
+#### Scenario: A new role can't bring write access to an existing table
+
+- **WHEN** an upgrade's version declares a new Auditor role that may edit the app's existing Tasks table
+- **THEN** the preview is refused, and no Auditor role is created
