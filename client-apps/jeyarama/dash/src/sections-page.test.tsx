@@ -97,6 +97,7 @@ describe('wording', () => {
     expect(holderLine({ asked: false, holder: { kind: 'none' } })).toBe('Not in any section')
     expect(holderLine({ asked: false, holder: { kind: 'mine' } })).toBe('Already yours')
     expect(holderLine({ asked: true, holder: { kind: 'none' } })).toBe('Already asked for')
+    expect(holderLine({ asked: false, taken_out: true, holder: { kind: 'none' } })).toBe('You took this out · use Undo to put it back')
     expect(askedFor({ kind: 'section', what: 'Team Leader at Lakeside', from: 'Silk', to: 'Linen' })).toBe('Change section from Silk to Linen')
     expect(askedFor({ kind: 'section', what: 'Team Leader at Lakeside', from: 'No section', to: 'Linen' })).toBe('Set your section to Linen')
   })

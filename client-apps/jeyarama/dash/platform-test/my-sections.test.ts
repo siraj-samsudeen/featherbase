@@ -144,9 +144,9 @@ describe('browsing to add', () => {
     const { maker } = await world(admin, createUser)
     const category = { job: 'JA-1', division: 'Women', subdivision: 'Ethnic Wear', category: 'Sarees and Blouses' }
     expect(await read(maker, 'category_subcategories', category)).toEqual([
-      { code: '010101001', name: 'Sarees', holder: { kind: 'mine' }, asked: false },
-      { code: '010101004', name: 'Sari Blouses', holder: { kind: 'none' }, asked: false },
-      { code: '010101003', name: 'Silk Sarees', holder: { kind: 'other', section: 'Silk', team_leader: 'Bala Holder' }, asked: false },
+      { code: '010101001', name: 'Sarees', holder: { kind: 'mine' }, asked: false, taken_out: false },
+      { code: '010101004', name: 'Sari Blouses', holder: { kind: 'none' }, asked: false, taken_out: false },
+      { code: '010101003', name: 'Silk Sarees', holder: { kind: 'other', section: 'Silk', team_leader: 'Bala Holder' }, asked: false, taken_out: false },
     ])
     await act(maker, 'propose_adds', adds('010101004'))
     expect((await read(maker, 'category_subcategories', category))[1]).toMatchObject({ code: '010101004', asked: true })
@@ -570,6 +570,8 @@ describe('apply now, review after (#1191)', () => {
     await applyNow(admin)
     const out = await act(maker, 'propose_removal', removal())
     await expect(act(maker, 'propose_adds', adds('010101001'))).rejects.toMatchObject({ status: 417, message: expect.stringContaining('Undo') })
+    expect((await read(maker, 'category_subcategories', { job: 'JA-1', division: 'Women', subdivision: 'Ethnic Wear', category: 'Sarees and Blouses' }))
+      .find((s: any) => s.code === '010101001')).toMatchObject({ holder: { kind: 'none' }, taken_out: true })
     await act(maker, 'withdraw', { proposal: out.id })
     expect((await read(maker, 'my_sections')).proposals[0]).toMatchObject({ id: out.id, state: 'Undone', taken_back: true })
   })

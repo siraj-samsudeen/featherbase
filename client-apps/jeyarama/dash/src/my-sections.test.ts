@@ -133,7 +133,7 @@ describe('browsing', () => {
   it('a section with no Team Leader is named without one', async () => {
     const tables = world({ Subcategory: [{ row_id: 'C2', subcategory: 'Silk Sarees', subcategory_type: 'Merchandise' }],
       'Section Subcategory': [{ row_id: 'P2', store: 'LKS', subcategory: 'C2', section: 'S2', starts_on: '2026-01-01', ends_on: null }] })
-    expect(await reads.category_subcategories(context(tables, { payload: { job: 'J1' } }).ctx)).toEqual([{ code: 'C2', name: 'Silk Sarees', holder: { kind: 'other', section: 'Silk', team_leader: null }, asked: false }])
+    expect(await reads.category_subcategories(context(tables, { payload: { job: 'J1' } }).ctx)).toEqual([{ code: 'C2', name: 'Silk Sarees', holder: { kind: 'other', section: 'Silk', team_leader: null }, asked: false, taken_out: false }])
   })
 })
 
@@ -255,8 +255,8 @@ describe('the edges of the new reads (#1175)', () => {
   it('a category nobody holds anything of lists each as in no section, two of one name by code', async () => {
     const tables = world({ Subcategory: [{ row_id: 'Z2', subcategory: 'Leggings', subcategory_type: 'Merchandise' }, { row_id: 'Z1', subcategory: 'Leggings', subcategory_type: 'Merchandise' }], 'Section Subcategory': [] })
     expect(await reads.category_subcategories(context(tables, { payload: { job: 'J1' } }).ctx)).toEqual([
-      { code: 'Z1', name: 'Leggings', holder: { kind: 'none' }, asked: false },
-      { code: 'Z2', name: 'Leggings', holder: { kind: 'none' }, asked: false },
+      { code: 'Z1', name: 'Leggings', holder: { kind: 'none' }, asked: false, taken_out: false },
+      { code: 'Z2', name: 'Leggings', holder: { kind: 'none' }, asked: false, taken_out: false },
     ])
   })
 
