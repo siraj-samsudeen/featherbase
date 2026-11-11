@@ -247,7 +247,7 @@ describe('sending a department', () => {
       const made = await propose(request)
       if (!first) return made
       first = false
-      return { ...made, state: 'Applied', result_row: 'D-NEW' }
+      return { ...made, state: 'Not yet reviewed', result_row: 'D-NEW' }
     }) as typeof propose
     await departmentActions.set_up_department(ctx)
     expect((sent[1].first as { changes: Row }).changes).toEqual({ store: 'LKS', section: 'S1', department: 'D-NEW' })

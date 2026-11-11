@@ -266,7 +266,7 @@ export const departmentActions = {
       approvers, about: { ...shared, kind: 'department' } as unknown as Record<string, unknown> })
     // Under "apply now, review after" (#1191) the Department exists at once, so each link names it;
     // reviewed first, the link names it when the Department is applied (decide_department).
-    const department = head.state === 'Applied' ? String(head.result_row) : null
+    const department = head.result_row ? String(head.result_row) : null
     for (const id of ids)
       await ctx.changeProposals.propose({ table: D.link, row: null, changes: { store: site, section: id, department },
         approvers, about: { ...shared, kind: 'department_section', section: id } as unknown as Record<string, unknown> })
