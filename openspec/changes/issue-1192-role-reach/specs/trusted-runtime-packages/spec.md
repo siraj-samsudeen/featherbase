@@ -38,10 +38,9 @@ had SHALL never widen through an upgrade for anyone who already holds a role.
 
 ### Requirement: An upgrade can add a role new to the instance
 An upgrade SHALL create each role its new version declares and its installed version did not, with the access the
-version declares for it, and the preview SHALL list the roles it creates. On a table the app already had, that access
-SHALL be reading only: an upgrade never brings write access there. Only a role the instance does not have yet SHALL be
-added this way, never a platform role: it starts with nobody holding it, so the upgrade itself gives no one anything.
-When a role of that name already exists, the upgrade SHALL be refused, naming it, and change nothing.
+version declares for it, reading only on a table the app already had, and the preview SHALL list it. Only a role new
+to the instance qualifies, never a platform role, so the upgrade gives no one anything. When a role of that name
+already exists, the upgrade SHALL be refused, naming it, and change nothing.
 
 #### Scenario: A new reader role arrives with its access
 
