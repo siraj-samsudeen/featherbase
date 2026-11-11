@@ -46,16 +46,16 @@ describe('tickets-data-quality-rules', () => {
     await step('the rule has 1 of 3 rows left', () => left(x, 1))
   })
 
-  scenario('A reader who cannot read the Table sees no count', async ({ admin, createUser }, step) => {
+  scenario('Colleague reads when the rule was raised, not what is left', async ({ admin, createUser }, step) => {
     const x = new TicketRules(new Tickets(admin, createUser))
     await step(WITH_RULE, () => x.withRule())
     let seen: Awaited<ReturnType<TicketRules['rules']>> = []
     await step('Colleague, who may not read "Buyer Assignment", opens the ticket', async () => { seen = await x.rules('Colleague') })
-    await step('Colleague sees the rule without a count', () => {
+    await step('Colleague sees the rule was raised with 3 rows', () => {
       expect(seen).toHaveLength(1)
-      // No count at all: neither the rows left nor how many matched when it was raised.
-      expect(seen[0]).toMatchObject({ title: 'Buyer is blank', rows_left: null, rows_when_raised: null })
+      expect(seen[0]).toMatchObject({ title: 'Buyer is blank', rows_when_raised: 3 })
     })
+    await step('Colleague sees no count of the rows left', () => expect(seen[0].rows_left).toBeNull())
   })
 
   scenario('A rule on a Table that is not linked is refused', async ({ admin, createUser }, step) => {

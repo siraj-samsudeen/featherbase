@@ -14,7 +14,7 @@ export type Rule = {
   severity: string
   owner?: string | null
   how_to_fix?: string | null
-  rows_when_raised: number | null
+  rows_when_raised: number
   rows_left: number | null
 }
 type Mutate = (name: string, payload: RecordData) => Promise<boolean>
@@ -49,9 +49,9 @@ function Severity({ value }: { value: string }) {
   return <span className={`pill severity ${SEVERITY_TONE[value] ?? 'tone-neutral'}`}>{value}</span>
 }
 function Left({ rule }: { rule: Rule }) {
-  if (rule.rows_left === null) return <span className="rule-left muted" title="You can't read this Table's rows, so they aren't counted for you">No access</span>
-  if (rule.rows_left === 0) return <span className="rule-left tone-text-positive">All clear (was {count(rule.rows_when_raised!)})</span>
-  return <span className="rule-left"><b>{count(rule.rows_left)}</b> of {count(rule.rows_when_raised!)} left</span>
+  if (rule.rows_left === null) return <span className="rule-left muted" title="You can't read this Table's rows, so they aren't counted for you">No access (raised with {count(rule.rows_when_raised)})</span>
+  if (rule.rows_left === 0) return <span className="rule-left tone-text-positive">All clear (was {count(rule.rows_when_raised)})</span>
+  return <span className="rule-left"><b>{count(rule.rows_left)}</b> of {count(rule.rows_when_raised)} left</span>
 }
 function Open({ rule }: { rule: Rule }) {
   return rule.rows_left ? <a className="rule-open" href={rowsHref(rule)} target="_blank" rel="noreferrer">Open these rows →</a> : null
@@ -106,7 +106,7 @@ function TableLayout({ rules, edit }: { rules: Rule[]; edit?: (rule: Rule) => Re
             <td>{rule.owner ? person(rule.owner) : '—'}</td>
             <td className="num">{rule.rows_left === null ? <span className="muted" title="You can't read this Table's rows, so they aren't counted for you">No access</span>
               : rule.rows_left === 0 ? <span className="tone-text-positive">All clear</span> : count(rule.rows_left)}</td>
-            <td className="num">{rule.rows_when_raised === null ? '—' : count(rule.rows_when_raised)}</td>
+            <td className="num">{count(rule.rows_when_raised)}</td>
             <td className="rule-links"><Open rule={rule} />{edit?.(rule)}</td>
           </tr>
         ))}
@@ -118,9 +118,8 @@ function TilesLayout({ rules, edit }: { rules: Rule[]; edit?: (rule: Rule) => Re
   return (
     <div className="rule-tiles">
       {rules.map((rule) => {
-        const raised = rule.rows_when_raised ?? 0
-        const fixed = rule.rows_left === null ? 0 : raised - rule.rows_left
-        const done = raised ? Math.max(0, Math.min(100, Math.round((fixed / raised) * 100))) : 0
+        const fixed = rule.rows_left === null ? 0 : rule.rows_when_raised - rule.rows_left
+        const done = Math.max(0, Math.min(100, Math.round((fixed / rule.rows_when_raised) * 100)))
         return (
           <article key={rule.row_id} className="rule-tile" aria-label={rule.title}>
             <div className="rule-tile-top"><Severity value={rule.severity} /><span className="muted">{rule.table}</span></div>

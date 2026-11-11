@@ -6,8 +6,7 @@
 A ticket SHALL carry data quality rules. A rule names one Table, its filter conditions, a severity (High,
 Medium or Low), an owner and how to fix it. Tickets SHALL keep how many rows matched when the rule was added,
 and SHALL count the rows that match now each time the ticket is read, as the reader. A rule that matches
-no rows SHALL read as all clear, and SHALL count again if rows match later. A reader who may not read the
-rule's Table SHALL see no count for it.
+no rows SHALL read as all clear, and SHALL count again if rows match later.
 
 #### Scenario: A rule counts the rows it describes
 
@@ -35,12 +34,18 @@ When a new buyer row is added with no person
 Then the rule has 1 of 3 rows left
 ```
 
-#### Scenario: A reader who cannot read the Table sees no count
+### Requirement: Only the live count follows the Table's read permission
+How many rows a rule matched when it was raised SHALL be part of the ticket's record, readable by everyone who
+reads the rule, like the ticket's own words. How many rows match now SHALL be counted only for a reader who may
+read the rule's Table; anyone else SHALL see no live count.
+
+#### Scenario: Colleague reads when the rule was raised, not what is left
 
 ```gherkin
 Given a ticket with the rule "Buyer is blank" and 3 of 3 rows left
 When Colleague, who may not read "Buyer Assignment", opens the ticket
-Then Colleague sees the rule without a count
+Then Colleague sees the rule was raised with 3 rows
+And Colleague sees no count of the rows left
 ```
 
 ### Requirement: A rule is checked when it is added
