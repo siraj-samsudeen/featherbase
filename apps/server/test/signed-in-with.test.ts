@@ -58,6 +58,19 @@ describe('the sign-in this session was made with', () => {
     ])).toEqual([null, null, null, null, null, null])
   })
 
+  test('nothing is said when the method is known but the session names no identity, or the identity has no value', async () => {
+    await methods()
+    const [password] = await sql`select row_id from sign_in_method where kind = 'password' limit 1`
+    const noEmail = await makePerson({ full_name: 'Made-up No Email' })
+    await sql`insert into sign_in_identity (id, person_id, method, subject, linked_by)
+      values ('uid_noemail_g', ${noEmail}, 'google', 'g-no-email', 'test')`
+    expect(await Promise.all([
+      signedInWith(claims({ method: 'stylehr' }), noEmail),
+      signedInWith(claims({ method: String(password.row_id) }), noEmail),
+      signedInWith(claims({ method: 'google', identity: 'uid_noemail_g' }), noEmail),
+    ])).toEqual([null, null, null])
+  })
+
   test('whoami carries it for the session', async ({ createUser }) => {
     await methods()
     const reader = await createUser({ email: 'whoami.signed.in@example.com', roles: [] })
