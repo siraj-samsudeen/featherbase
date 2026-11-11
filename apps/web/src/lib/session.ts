@@ -35,6 +35,8 @@ interface WhoAmI {
   // True on a dev-preview deployment. The shell says so out loud: anyone
   // handed the link should know the data is disposable.
   preview?: boolean
+  /** #1176: the sign-in this session was made with; null when it can't be said for certain. */
+  signed_in_with?: { method: string; value: string } | null
 }
 
 /** whoami, as every reader asks for it — the hook below and a write that

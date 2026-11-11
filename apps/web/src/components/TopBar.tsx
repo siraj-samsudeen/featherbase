@@ -391,6 +391,8 @@ const MENU_ITEM = 'flex min-h-control w-full items-center px-3 text-left text-sm
  *  methods, Log out. On a phone it also carries Open Admin and the theme. */
 function AccountMenu({ inMenu }: { inMenu?: { offerAdmin: boolean } }) {
   const user = getSessionUser()
+  // #1176: which sign-in this session was made with, as the server read it from the session.
+  const signedIn = useWhoAmI().data?.signed_in_with
   const { t } = useI18n()
   const signOutNow = useSignOut()
   const [open, setOpen] = useState(false)
@@ -449,7 +451,12 @@ function AccountMenu({ inMenu }: { inMenu?: { offerAdmin: boolean } }) {
         <div id={menuId} className={cardClasses('absolute right-0 top-full z-30 mt-1 w-64 overflow-hidden py-1')} data-testid="account-menu" role="menu" aria-label={t('Account')}>
           <div className="border-b border-border px-3 py-2" data-testid="account-identity">
             <p className="truncate text-sm font-medium text-ink">{user?.full_name || user?.email || user?.row_id}</p>
-            {user?.email && user.full_name && <p className="truncate text-xs text-ink-subtle">{user.email}</p>}
+            {signedIn && (
+              <>
+                <p className="text-xs text-ink-muted" data-testid="account-signed-in-with">{t('Signed in with')} {signedIn.method}</p>
+                <p className="truncate text-xs text-ink-subtle" title={signedIn.value} data-testid="account-signed-in-value">{signedIn.value}</p>
+              </>
+            )}
           </div>
           {inMenu && (
             <>
