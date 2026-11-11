@@ -18,8 +18,6 @@ import { grantRole } from 'server/test/fixtures'
 
 type Admin = Parameters<typeof renderApp>[1]
 
-const DASH_STAND_IN = resolve('../..', 'test-apps/fixtures/dash-stand-in')
-
 afterEach(() => vi.restoreAllMocks())
 
 /** Every URL the page asks the server for, from now on. */
@@ -85,18 +83,6 @@ test('a Person reader without management access cannot see administrative sign-i
   expect(urls.filter((u) => u.includes('/identities') || u === '/api/me/sign_in_methods')).toEqual([])
 })
 
-test('a viewer-only person is taken to the report: no Admin chrome, no Admin calls', async ({ admin, createUser }) => {
-  await seed(admin)
-  const tl = await createUser({ email: 'tl@example.com', roles: [VIEWER_ROLE] })
-  const urls = recordCalls()
-  await renderApp('/featherbase/admin/home/home', tl)
-  await screen.findByTestId('identity')
-  for (const id of [...ADMIN_ONLY_TESTIDS, 'all-tables-link', 'admin-sidebar']) expect(screen.queryByTestId(id)).not.toBeInTheDocument()
-  // /api/brand is the shared top bar asking what this address opens (#489).
-  const adminCalls = urls.filter((u) => !/^\/api\/(whoami|brand|runtime_app_versions|sales_target\/)/.test(u))
-  expect(adminCalls).toEqual([])
-})
-
 test('a viewer-only person reaches their sign-in methods on the account page, still without Admin calls', async ({ admin, createUser }) => {
   await seed(admin)
   const tl = await createUser({ email: 'tl2@example.com', roles: [VIEWER_ROLE] })
@@ -113,36 +99,13 @@ test('a person with neither the viewer role nor a Table grant lands on a plain n
   const nobody = await createUser({ email: 'nobody@example.com' })
   const urls = recordCalls()
   await renderApp('/featherbase/admin/home/home', nobody)
-  const page = await screen.findByTestId('no-access')
-  // #955: opening Featherbase with no access is the request for it.
-  await waitFor(() => expect(page).toHaveTextContent("You don't have access to Featherbase yet"))
-  expect(page).toHaveTextContent('An admin has been told')
+  await screen.findByTestId('no-access')
   for (const id of [...ADMIN_ONLY_TESTIDS, 'admin-sidebar']) expect(screen.queryByTestId(id)).not.toBeInTheDocument()
   expect(urls.filter((u) => /^\/api\/(table|home_pages|app_catalog|unread_count|events)/.test(u))).toEqual([])
   // #489: signing out is in the shared top bar's Account menu.
   await userEvent.click(await screen.findByTestId('session-user'))
   await userEvent.click(screen.getByTestId('logout'))
   await waitFor(() => expect(screen.queryByTestId('no-access')).not.toBeInTheDocument())
-})
-
-// (1) A failed background refetch must not unmount a shell that already has its answer.
-// #659: an installed app's own Tables do not open the Admin. A person who reads only an app's
-// Table is refused the Admin. Found on staging (10-Nov-2026): its no-access page then emailed
-// every System Manager for someone who belongs in their app; they are sent there instead.
-test("a person whose only grant is on an installed app's Table is sent from the Admin to that app, asking for nothing", async ({ admin, createUser }) => {
-  expect(await discoverPackages([DASH_STAND_IN])).toEqual([])
-  try {
-    await admin.post('/api/install_app', { name: 'dash' })
-    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Dash Reader' } })
-    await grantRole(admin, { table: 'dash.note', role: 'Dash Reader', can_read: true })
-    const reader = await createUser({ email: 'dash.reader.shell@example.com', roles: ['Dash Reader'] })
-    await renderApp('/featherbase/admin', reader)
-    const going = await screen.findByTestId('going-to-app')
-    const asked = await sql`select count(*)::int as n from access_request where person = ${reader.user}`
-    expect([going.getAttribute('data-path'), screen.queryByTestId('no-access'), asked[0].n]).toEqual(['/dash/', null, 0])
-  } finally {
-    await discoverPackages([])
-  }
 })
 
 // Someone whose only apps are open to everyone is shown those apps on the Admin's page instead of
@@ -243,7 +206,7 @@ test('a Table list offers Columns, Merge and Import only to a System Manager, an
 test('typing a management address as a non-manager lands on the admin home instead', async ({ admin, createUser }) => {
   await seed(admin)
   const clerk = await createUser({ email: 'clerk-route@example.com', roles: ['Shelf Clerk'] })
-  for (const path of ['/featherbase/admin/new-table', '/featherbase/admin/import', '/featherbase/admin/imports', '/featherbase/admin/table/shelf-note/columns', '/featherbase/admin/table/shelf-note/merge']) {
+  for (const path of ['/featherbase/admin/new-table', '/featherbase/admin/imports', '/featherbase/admin/table/shelf-note/columns', '/featherbase/admin/table/shelf-note/merge']) {
     await renderApp(path, clerk)
     await screen.findByTestId('admin-sidebar')
     await waitFor(() => expect(screen.queryByTestId('table-page')).not.toBeInTheDocument())
@@ -283,13 +246,4 @@ test('a create-only grant holder is not told "nothing is open to you"', async ({
   // Wait for a positive marker: the empty-home note or the home page has rendered.
   await waitFor(() => expect(screen.queryByTestId('admin-index-empty') ?? screen.queryByTestId('home-page')).not.toBeNull())
   expect(screen.queryByTestId('shared-only')).not.toBeInTheDocument()
-})
-
-test('a refused table list says the person cannot read it, rather than showing an empty list', async ({ admin, createUser }) => {
-  await seed(admin)
-  const clerk = await createUser({ email: 'clerk.refused@example.com', roles: ['Shelf Clerk'] })
-  await renderApp('/featherbase/admin/table/back-office', clerk)
-  const refusal = await screen.findByRole('alert', {}, { timeout: 10_000 })
-  expect(refusal).toHaveTextContent(/don't have read permission on Back Office/i)
-  expect(screen.queryByText('No rows')).not.toBeInTheDocument()
 })

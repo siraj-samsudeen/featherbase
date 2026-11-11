@@ -34,6 +34,15 @@ export type Example = Record<string, string>
 
 type Ctx = { annotate?: (message: string, type?: string) => Promise<unknown> }
 
+/** Whether step i is an outcome: a Then, or an And or But continuing one. Such a step must assert something. */
+export function isThenStep(steps: readonly { keyword: string }[], i: number): boolean {
+  for (let k = i; k >= 0; k--) {
+    const keyword = steps[k]!.keyword
+    if (keyword !== 'And' && keyword !== 'But' && keyword !== '*') return keyword === 'Then'
+  }
+  return false
+}
+
 const fill = (text: string, example: Example) => text.replace(/<([^>]+)>/g, (whole, key: string) => example[key] ?? whole)
 
 /**
@@ -56,6 +65,8 @@ export function scenarioFor<C extends object>(test: TestAPI<C>, capability: stri
             const line = fill(want.text, example)
             const matches = typeof text === 'string' ? line === text || want.text === text : text.test(line)
             if (!matches) throw new Error(`Step ${next + 1} of "${name}" is "${want.keyword} ${line}", not ${String(text)}`)
+            if (!run && isThenStep(scenario.steps, next))
+              throw new Error(`Step ${next + 1} of "${name}" is "${want.keyword} ${line}", an outcome: give it a callback that asserts it`)
             next++
             await (ctx as Ctx).annotate?.(`${want.keyword} ${line}`, 'step')
             if (run) await run()
