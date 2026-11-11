@@ -12,6 +12,10 @@ export interface ActionListArgs {
 /** #975: who may approve. The people who can sign in, else the holders of the roles; never the maker. */
 export interface ApproverRequest { people: string[]; fallbackRoles: string[] }
 export type ChangeProposalState = 'Pending' | 'Applied' | 'Rejected' | 'Needs fresh review' | 'Withdrawn'
+  /** #1191: applied when asked for, waiting for a reviewer; then confirmed, or undone. */
+  | 'Not yet reviewed' | 'Confirmed' | 'Undone'
+/** #1191: how an approval type works, set per type in the Approval Type Table. */
+export type ApprovalMode = 'Approve first' | 'Apply now, review after'
 export interface ProposalRequest {
   table: string
   /** The row to end and replace; null for a new row. */
@@ -23,6 +27,10 @@ export interface ProposalRequest {
   about?: Record<string, unknown>
   /** #1175: approving ends the row and adds nothing in its place; `changes` is then empty. */
   ends?: boolean
+  /** #1191: one of the app's declared approval types; its mode decides whether this applies at once. */
+  type?: string
+  /** #1191: what applying needs, used only when the type applies at once: as an approval's. */
+  apply?: Pick<DecisionApproval, 'effectiveOn' | 'newRow'>
 }
 export interface ProposalFilter { ids?: string[]; states?: ChangeProposalState[]; makers?: string[]; limit?: number; start?: number }
 export interface ChangeProposal {
@@ -39,12 +47,19 @@ export interface ChangeProposal {
   result_row: string | null
   /** #1175: approving ends the row and adds nothing. */
   ends_row: boolean
+  /** #1191: the declared type it was made as, and the mode it was made under. */
+  approval_type: string | null
+  approval_mode: ApprovalMode
   created_at: string
   changes: { column_name: string; original_value: string | null; proposed_value: string | null; review_base_value: string | null }[]
   /** Who it waits for: named people, or else roles. */
   route: { people: string[]; roles: string[] }
 }
 export interface DecisionNote { approvers: ApproverRequest; reason: string }
+/** #1191: a reviewer's confirmation of an applied change, with an optional note. */
+export interface ReviewConfirmation { approvers: ApproverRequest; note?: string }
+/** #1191: an undo. A reviewer gives a reason; the maker undoing their own needs none. */
+export interface ReviewUndo { approvers: ApproverRequest; reason?: string }
 export interface DecisionApproval {
   approvers: ApproverRequest
   /** The day the new row starts; the old row ends the day before. */
@@ -78,6 +93,10 @@ export interface ChangeProposalsHelper extends ChangeProposalsReader {
   needsFreshReview(id: string, decision: DecisionNote): Promise<ChangeProposal>
   /** #1175: the maker takes back their own pending proposal. */
   withdraw(id: string): Promise<ChangeProposal>
+  /** #1191: a reviewer confirms a change that applied at once. */
+  confirm(id: string, decision: ReviewConfirmation): Promise<ChangeProposal>
+  /** #1191: a reviewer, or the maker, puts the rows back as they were before it applied. */
+  undo(id: string, decision: ReviewUndo): Promise<ChangeProposal>
 }
 
 // Structural package API: no core exception, SQL handle or identity override.
