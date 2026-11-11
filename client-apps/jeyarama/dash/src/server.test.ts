@@ -149,6 +149,12 @@ describe('a report taking no filter', () => {
         .toEqual([true, true, false, false])
     })
 
+    it('stays shut for someone the platform hands no roles at all', async () => {
+      const ctx = withRoles([])
+      delete (ctx as { roles?: string[] }).roles
+      expect(await reads.can_open(ctx)).toBe(false)
+    })
+
     it('gives them no report, no store, no rows and no Dive', async () => {
       const ctx = withRoles(['Dash Reader'])
       const prepared = await reads.embed_session.prepare({ ...ctx, payload: { report: 'sales' } })
