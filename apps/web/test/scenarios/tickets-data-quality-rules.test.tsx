@@ -13,11 +13,12 @@ const scenario = scenarioFor(test, 'tickets-data-quality-rules')
 const WITH_RULE = 'a ticket with the rule "Buyer is blank" and 3 of 3 rows left'
 const card = () => screen.getByRole('region', { name: 'Rules' })
 
-async function openAs(x: TicketRules, name: string): Promise<Session> {
+// In an object: a Session is thenable, so an async function returning it bare would run it.
+async function openAs(x: TicketRules, name: string): Promise<{ session: Session }> {
   const { session } = await openTickets(x.t.people[name]!)
   await ticketOpens(selectTicket(session, x.t.ticket.row_id))
   await session.until('the Rules card shows', () => screen.queryByRole('region', { name: 'Rules' }))
-  return session
+  return { session }
 }
 
 describe('tickets-data-quality-rules', () => {
@@ -37,7 +38,10 @@ describe('tickets-data-quality-rules', () => {
       expect(items[1]).toContain('Store is blank')
       expect(items[1]).toContain('All clear (was 1)')
     })
-    await step('it reads "3 rows still to fix"', () => expect(card()).toHaveTextContent('Rules · 2 3 rows still to fix'))
+    await step('it reads "3 rows still to fix"', () => {
+      expect(within(card()).getByRole('heading', { name: 'Rules · 2' })).toBeInTheDocument()
+      expect(within(card()).getByText('3 rows still to fix')).toBeInTheDocument()
+    })
   })
 
   scenario('A rule links to its matching rows', async ({ admin, createUser }, step) => {
@@ -62,15 +66,15 @@ describe('tickets-data-quality-rules', () => {
     await step('Anjali raised a Data Quality Issue for SAP, assigned to Bala', () => x.transitions.raise())
     await step('the linked Table "Buying Desk" has 3 buyer rows whose person is blank', () => x.desk())
     await step('Bala picks "Buying Desk", role is "Buyer" and person is blank on the ticket page', async () => {
-      session = await openAs(x, 'Bala')
+      ({ session } = await openAs(x, 'Bala'))
       await session
         .within('.rules', (rules) => rules.clickButton('Add a rule'))
         .selectOption('Table', 'Buying Desk')
-        .until('the Table\'s columns are offered', () => screen.queryByRole('option', { name: 'person' }))
-        .selectOption('Column 1', 'role')
+        .until('the Table\'s columns are offered', () => screen.queryByRole('option', { name: 'Person' }))
+        .selectOption('Column 1', 'Role')
         .fillIn('Value 1', 'Buyer')
         .clickButton('Add a condition')
-        .selectOption('Column 2', 'person')
+        .selectOption('Column 2', 'Person')
         .selectOption('Operator 2', 'is blank')
     })
     await step('the page says it matches 3 rows', () => session.within('.rules', (rules) => rules.assertText('Matches 3 rows')))
@@ -89,8 +93,8 @@ describe('tickets-data-quality-rules', () => {
     let session!: Session
     await step(WITH_RULE, () => x.withRule())
     await step('Bala switches the Rules card to "Tiles"', async () => {
-      localStorage.removeItem('tickets.rules.layout')
-      session = await openAs(x, 'Bala')
+      localStorage.removeItem('tickets.rules.layout');
+      ({ session } = await openAs(x, 'Bala'))
       expect(within(card()).getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'true')
       await session.within('.rules', (rules) => rules.clickButton('Table'))
       expect(within(card()).getByRole('table')).toHaveTextContent('Buyer is blank')
@@ -111,7 +115,7 @@ describe('tickets-data-quality-rules', () => {
     const x = new TicketRules(new Tickets(admin, createUser))
     let session!: Session
     await step(WITH_RULE, () => x.withRule())
-    await step('Bala opens the ticket', async () => { session = await openAs(x, 'Bala') })
+    await step('Bala opens the ticket', async () => { ({ session } = await openAs(x, 'Bala')) })
     await step('the next step says "1 rule still has rows to fix"', async () => {
       await session.clickButton('Workflow').within('.ticket-actions', (next) => next.assertText('1 rule still has rows to fix'))
       // A warning, never a block: the move is still offered.
