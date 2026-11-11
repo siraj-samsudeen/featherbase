@@ -25,7 +25,7 @@ export interface Place {
 }
 
 const T = { employee: 'Employee', job: 'Job Assignment', site: 'Site', plant: 'Plant', section: 'Section', placement: 'Section Subcategory',
-  merchandise: 'Merchandise Assignment', subcategory: 'Subcategory' } as const
+  merchandise: 'Merchandise Assignment', subcategory: 'Subcategory', department: 'Department', departmentSection: 'Department Section' } as const
 
 /** Every Table the provider reads: featherbase.json's scopeProvider.tables. */
 export const PROVIDER_TABLES: string[] = Object.values(T)
@@ -40,6 +40,8 @@ export const PROVIDER_FIELDS: Record<string, string[]> = {
   [T.placement]: ['store', 'section', 'subcategory', 'starts_on', 'ends_on'],
   [T.merchandise]: ['employee', 'responsibility', 'division', 'subdivision', 'category', 'subcategory', 'operating_region', 'starts_on', 'ends_on'],
   [T.subcategory]: ['division', 'subdivision', 'category', 'subcategory_type'],
+  [T.department]: ['store', 'manager', 'starts_on', 'ends_on'],
+  [T.departmentSection]: ['store', 'department', 'section', 'starts_on', 'ends_on'],
 }
 
 const PAGE = 500
@@ -67,7 +69,7 @@ export const sectionLabel = (store: string, section: string) => `${store} / Sect
 export const assignedLabel = (store: string) => `${store} / Assigned subcategories`
 
 /** Why someone's job gives them no place: the page says so plainly. */
-export type NoReach = 'no_job' | 'no_section' | 'departments_not_filled' | 'head_office' | 'no_cluster' | 'nothing_placed' | 'nothing_assigned'
+export type NoReach = 'no_job' | 'no_section' | 'departments_not_filled' | 'store_sections_not_set_up' | 'head_office' | 'no_cluster' | 'nothing_placed' | 'nothing_assigned'
 
 export interface Reach {
   places: Place[]
@@ -148,7 +150,17 @@ export async function reachOf(documents: Documents, person: string, on: string):
       if (!exact(job.floor)) { problems.push('no_section'); continue }
       sectionJobs.push({ job, sections: await all(documents, T.section, [['floor', '=', exact(job.floor)]]) })
     } else if (name === 'Department Manager') {
-      problems.push('departments_not_filled')
+      // #1195: the sections of the department they manage at this job's store, on the day.
+      const departments = (await all(documents, T.department, [['manager', 'in', employees.map(id)], ['store', '=', site]])).filter(row => holdsOn(row, on))
+      const links = departments.length
+        ? (await all(documents, T.departmentSection, [['department', 'in', departments.map(id)], ['store', '=', site]])).filter(row => holdsOn(row, on))
+        : []
+      if (!links.length) {
+        const storeHasSections = (await all(documents, T.section, [['site', '=', site]])).length > 0
+        problems.push(storeHasSections ? 'departments_not_filled' : 'store_sections_not_set_up')
+        continue
+      }
+      sectionJobs.push({ job, sections: await all(documents, T.section, [['row_id', 'in', links.map(row => exact(row.section))]]) })
     } else if (name === 'Store Manager') {
       whole(sites.filter(row => id(row) === site))
     } else if (name === 'Cluster Manager') {

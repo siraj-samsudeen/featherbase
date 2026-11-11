@@ -233,11 +233,16 @@ describe('the reach_problem read', () => {
   it.each([
     [{ job: 'Head office staff' }, ['head_office']],
     [{ job: 'Staff' }, ['no_section']],
-    [{ job: 'Department Manager' }, ['departments_not_filled']],
+    [{ job: 'Department Manager' }, ['store_sections_not_set_up']],
     [{ job: 'Store Manager' }, []],
   ])('says why a job reaches nothing: %j', async (job, problems) => {
     const { ctx } = context({ core: jobOf(job) })
     expect(await reads.reach_problem(ctx)).toEqual({ problems })
+  })
+
+  it("says a Department Manager's department isn't set up when their store has sections (#1195)", async () => {
+    const { ctx } = context({ core: { ...jobOf({ job: 'Department Manager' }), Section: [{ row_id: 'LKS-S1', name: 'Sarees', site: 'LKS', floor: null }] } })
+    expect(await reads.reach_problem(ctx)).toEqual({ problems: ['departments_not_filled'] })
   })
 })
 

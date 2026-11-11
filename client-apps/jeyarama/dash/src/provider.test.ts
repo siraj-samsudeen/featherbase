@@ -38,12 +38,14 @@ const SUBCATEGORIES: Row[] = [
   { row_id: '000000009', category: 'Tops', subdivision: 'Womenswear', division: 'Fashion', subcategory_type: 'Consumable' },
 ]
 
-function fake(jobs: Row[], { employee = { row_id: 'E1', person: 'me', status: 'Current' } as Row, plants = PLANTS, assignments = [] as Row[] } = {}): Documents {
+function fake(jobs: Row[], { employee = { row_id: 'E1', person: 'me', status: 'Current' } as Row, plants = PLANTS, assignments = [] as Row[], departments = [] as Row[], departmentSections = [] as Row[] } = {}): Documents {
   const tables: Record<string, Row[]> = {
     Employee: [employee], 'Job Assignment': jobs.map((job, i) => ({ row_id: `J${i}`, employee: 'E1', starts_on: '2026-01-01', ends_on: null, ...job })),
     'Merchandise Assignment': assignments.map((row, i) => ({ row_id: `M${i}`, employee: 'E1', division: null, subdivision: null, category: null, subcategory: null,
       operating_region: null, starts_on: '2026-01-01', ends_on: null, ...row })),
     Site: SITES, Plant: plants, Section: SECTIONS, 'Section Subcategory': PLACEMENTS, Subcategory: SUBCATEGORIES,
+    Department: departments.map((row, i) => ({ row_id: `D${i}`, store: 'AAA', manager: 'E1', starts_on: '2026-01-01', ends_on: null, ...row })),
+    'Department Section': departmentSections.map((row, i) => ({ row_id: `DS${i}`, store: 'AAA', starts_on: '2026-01-01', ends_on: null, ...row })),
   }
   return {
     async list(table, { filters = [], limit_start = 0, limit_page_length = 500 }) {
@@ -95,7 +97,7 @@ describe('who sees what', () => {
       ['9901 / Section: Sarees', ['000000003']], ['9901 / Section: Tops', ['000000001']]])
   })
 
-  it('a Department Manager has a clear reason until departments are filled', async () => {
+  it('a Department Manager has a clear reason until their department is set up', async () => {
     expect(await reach({ job: 'Department Manager', site: 'AAA' })).toEqual({ places: [], problems: ['departments_not_filled'] })
   })
 
@@ -232,6 +234,50 @@ describe('the provider', () => {
   })
 
   it('reads only the Tables it declares', () => {
-    expect(PROVIDER_TABLES).toEqual(['Employee', 'Job Assignment', 'Site', 'Plant', 'Section', 'Section Subcategory', 'Merchandise Assignment', 'Subcategory'])
+    expect(PROVIDER_TABLES).toEqual(['Employee', 'Job Assignment', 'Site', 'Plant', 'Section', 'Section Subcategory', 'Merchandise Assignment', 'Subcategory', 'Department', 'Department Section'])
+  })
+
+  // #1195: a Department Manager reaches the sections of the department they manage at their job's store.
+  describe('Department Manager (#1195)', () => {
+    const dm = { job: 'Department Manager', site: 'AAA' }
+    const ladies = { row_id: 'D-L', name: 'Ladies' }
+    const linked = [{ department: 'D-L', section: 'AAA-GF-Tops' }, { department: 'D-L', section: 'AAA-GF-Sarees' }]
+    const dmReach = (departments: Row[], departmentSections: Row[], job: Row = dm) => reachOf(fake([job], { departments, departmentSections }), 'me', ON)
+
+    it("reaches each of their department's sections, by section", async () => {
+      const { places, problems } = await dmReach([ladies], linked)
+      expect(problems).toEqual([])
+      expect(places.map(p => [p.label, p.filters, p.basis])).toEqual([
+        ['9901 / Section: Sarees', { store: ['9901'], subcategory: ['000000003'] }, 'department_manager'],
+        ['9901 / Section: Tops', { store: ['9901'], subcategory: ['000000001'] }, 'department_manager'],
+      ])
+      expect(places[0].reasons).toEqual([{ text: 'Department Manager job assignment', since: '2026-01-01' }])
+    })
+    it('an acting Department Manager reaches them too, as acting', async () => {
+      const { places } = await dmReach([ladies], linked, { ...dm, acting: true })
+      expect(places.map(p => p.basis)).toEqual(['acting_department_manager', 'acting_department_manager'])
+    })
+    it("someone else's department, or one at another store, reaches nothing", async () => {
+      expect((await dmReach([{ ...ladies, manager: 'E2' }], linked)).problems).toEqual(['departments_not_filled'])
+      expect((await dmReach([{ ...ladies, store: 'BBB' }], linked)).problems).toEqual(['departments_not_filled'])
+    })
+    it('a department that has ended, or not begun, reaches nothing', async () => {
+      expect((await dmReach([{ ...ladies, ends_on: '2026-11-06' }], linked)).problems).toEqual(['departments_not_filled'])
+      expect((await dmReach([{ ...ladies, starts_on: '2026-11-08' }], linked)).problems).toEqual(['departments_not_filled'])
+    })
+    it('a link that has ended, or names a section of another store, adds nothing', async () => {
+      const { places } = await dmReach([ladies], [{ department: 'D-L', section: 'AAA-GF-Tops', ends_on: '2026-11-06' },
+        { department: 'D-L', section: 'BBB-GF-Tops', store: 'BBB' }, { department: 'D-L', section: 'AAA-GF-Sarees' }])
+      expect(places.map(p => p.label)).toEqual(['9901 / Section: Sarees'])
+    })
+    it('a department whose sections hold no subcategories says nothing is placed', async () => {
+      expect((await dmReach([ladies], [{ department: 'D-L', section: 'AAA-FF-Empty' }])).problems).toEqual(['nothing_placed'])
+    })
+    it('a department with no sections yet still asks for its sections', async () => {
+      expect((await dmReach([ladies], [])).problems).toEqual(['departments_not_filled'])
+    })
+    it("a store with no sections at all says the store's sections aren't set up", async () => {
+      expect(await reachOf(fake([{ job: 'Department Manager', site: 'CCC' }]), 'me', ON)).toEqual({ places: [], problems: ['store_sections_not_set_up'] })
+    })
   })
 })

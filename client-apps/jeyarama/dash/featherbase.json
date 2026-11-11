@@ -560,7 +560,9 @@
       "Section",
       "Section Subcategory",
       "Merchandise Assignment",
-      "Subcategory"
+      "Subcategory",
+      "Department",
+      "Department Section"
     ],
     "unmarkedTables": [
       "Employee",
@@ -570,7 +572,9 @@
       "Section",
       "Section Subcategory",
       "Merchandise Assignment",
-      "Subcategory"
+      "Subcategory",
+      "Department",
+      "Department Section"
     ]
   },
   "permissions": [
@@ -1905,6 +1909,12 @@
       "fromVersion": "0.12.9",
       "toVersion": "0.13.0",
       "operations": []
+    },
+    {
+      "id": "department_self_setup",
+      "fromVersion": "0.13.0",
+      "toVersion": "0.13.1",
+      "operations": []
     }
   ],
   "baseTables": {
@@ -1992,6 +2002,22 @@
         "report",
         "updated_at",
         "removed"
+      ],
+      "Department": [
+        "department_id",
+        "store",
+        "name",
+        "manager",
+        "starts_on",
+        "ends_on"
+      ],
+      "Department Section": [
+        "department_section_id",
+        "store",
+        "department",
+        "section",
+        "starts_on",
+        "ends_on"
       ]
     },
     "propose": {
@@ -2018,6 +2044,32 @@
         ],
         "stamp": [
           "assignment_id",
+          "source_key"
+        ],
+        "startsOn": "starts_on",
+        "endsOn": "ends_on"
+      },
+      "Department": {
+        "columns": [
+          "store",
+          "name",
+          "manager"
+        ],
+        "stamp": [
+          "department_id",
+          "source_key"
+        ],
+        "startsOn": "starts_on",
+        "endsOn": "ends_on"
+      },
+      "Department Section": {
+        "columns": [
+          "store",
+          "department",
+          "section"
+        ],
+        "stamp": [
+          "department_section_id",
           "source_key"
         ],
         "startsOn": "starts_on",
