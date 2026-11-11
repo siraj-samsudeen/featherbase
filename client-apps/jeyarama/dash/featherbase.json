@@ -1875,6 +1875,12 @@
       "fromVersion": "0.12.6",
       "toVersion": "0.12.9",
       "operations": []
+    },
+    {
+      "id": "opens_for_dash_roles",
+      "fromVersion": "0.12.9",
+      "toVersion": "0.12.10",
+      "operations": []
     }
   ],
   "baseTables": {

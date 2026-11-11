@@ -134,6 +134,36 @@ describe('a report taking no filter', () => {
   })
   afterEach(() => setEmbedFetch(null))
 
+  // #1172 (owner, 10-Nov-2026, "Open for any Dash role"): Dash opens for anyone holding a Dash role,
+  // so someone whose job reaches nothing sees Dash's reason; its data stays shut for them.
+  describe('Dash opening for anyone holding a Dash role', () => {
+    const withRoles = (roles: string[]) => { const made = nobody({ reports: [SALES, WHOLE, VENDORS] }); made.ctx.roles = roles; return made.ctx }
+
+    it('opens for a Dash Reader whose job reaches nothing and who has no report', async () => {
+      expect(await reads.can_open(withRoles(['Dash Reader']))).toBe(true)
+    })
+
+    it('opens for each Dash role, and stays shut for someone holding none', async () => {
+      const opens = async (roles: string[]) => reads.can_open(withRoles(roles))
+      expect([await opens(['Dash Section Editor']), await opens(['Dash Section Reviewer']), await opens(['Master Data Editor']), await opens([])])
+        .toEqual([true, true, false, false])
+    })
+
+    it('stays shut for someone the platform hands no roles at all', async () => {
+      const ctx = withRoles([])
+      delete (ctx as { roles?: string[] }).roles
+      expect(await reads.can_open(ctx)).toBe(false)
+    })
+
+    it('gives them no report, no store, no rows and no Dive', async () => {
+      const ctx = withRoles(['Dash Reader'])
+      const prepared = await reads.embed_session.prepare({ ...ctx, payload: { report: 'sales' } })
+      expect([await reads.reports(ctx), await reads.stores(ctx), await reads.report({ ...ctx, payload: { report: 'sales' } }),
+        await reads.embed_session({ ...ctx, payload: { report: 'sales' }, prepared }), posted])
+        .toEqual([[], [], { state: 'no_access' }, { refused: 'no_access' }, []])
+    })
+  })
+
   it('is the only report offered to someone whose job reaches nothing', async () => {
     const answer = await reads.reports(nobody({}).ctx) as { key: string; no_filter: boolean }[]
     expect(answer.map(r => [r.key, r.no_filter])).toEqual([['open', true]])
