@@ -22,11 +22,11 @@ function renderApps(admin: { token?: string | null; user?: string | null }) {
   return client
 }
 
-test('the real catalog offers example and client apps, keeps the list alongside selected declarations, and excludes fixtures', async ({ admin }) => {
+test('the real catalog offers the example apps, keeps the list alongside selected declarations, and excludes fixtures', async ({ admin }) => {
   await discoverAppLibrary([])
   renderApps(admin)
   const list = await screen.findByRole('navigation', { name: 'Available apps' })
-  expect(within(list).getAllByRole('button').map(button => button.textContent)).toEqual([expect.stringMatching(/Assets/), expect.stringMatching(/Dash/), expect.stringMatching(/Tasker/), expect.stringMatching(/Tickets/)])
+  expect(within(list).getAllByRole('button').map(button => button.textContent)).toEqual([expect.stringMatching(/Tasker/), expect.stringMatching(/Tickets/)])
   await userEvent.click(within(list).getByRole('button', { name: /Tickets/ }))
   const tickets = screen.getByRole('region', { name: 'Tickets details' })
   expect(tickets).toHaveTextContent('tickets.ticket')
@@ -43,21 +43,24 @@ test('the real catalog offers example and client apps, keeps the list alongside 
   expect(within(details).getByRole('button', { name: 'Prepare and install' })).toBeEnabled()
   expect(within(details).queryByRole('textbox')).not.toBeInTheDocument()
   expect(within(details).queryByRole('link', { name: 'Configure settings' })).not.toBeInTheDocument()
-  await userEvent.click(within(list).getByRole('button', { name: /Dash/ }))
-  expect(screen.getByRole('region', { name: 'Dash details' })).toHaveTextContent('embed_service_account')
   expect(list).toBeInTheDocument()
   expect(await admin.get('/api/apps')).toMatchObject({ installed: [] })
 })
 
-test('secret requirements show names and presence, never the host value', async ({ admin }) => {
-  await discoverAppLibrary([])
-  await withNamedVariable('MOTHERDUCK_TOKEN', undefined, async () => {
+// Warehouse: a test app standing in for a client's app, with settings and a required secret.
+const WAREHOUSE = resolve('../..', 'test-apps/fixtures/warehouse')
+
+test("an app's settings and secret requirements show names and presence, never the host value", async ({ admin }) => {
+  await discoverAppLibrary([WAREHOUSE])
+  onTestFinished(() => discoverAppLibrary([]))
+  await withNamedVariable('WAREHOUSE_TOKEN', undefined, async () => {
     const client = renderApps(admin)
-    await userEvent.click(await screen.findByRole('button', { name: /Dash/ }))
-    const secret = () => screen.getByText('MOTHERDUCK_TOKEN').closest('li')!
+    await userEvent.click(await screen.findByRole('button', { name: /Warehouse/ }))
+    expect(screen.getByRole('region', { name: 'Warehouse details' })).toHaveTextContent('report_account')
+    const secret = () => screen.getByText('WAREHOUSE_TOKEN').closest('li')!
     expect(secret()).toHaveTextContent('Required · Missing')
-    expect(screen.getByRole('region', { name: 'Dash details' })).toHaveTextContent('host environment')
-    await withNamedVariable('MOTHERDUCK_TOKEN', 'apps-page-private-test-value', async () => {
+    expect(screen.getByRole('region', { name: 'Warehouse details' })).toHaveTextContent('host environment')
+    await withNamedVariable('WAREHOUSE_TOKEN', 'apps-page-private-test-value', async () => {
       await client.invalidateQueries({ queryKey: ['apps'] })
       await waitFor(() => expect(secret()).toHaveTextContent('Required · Present'))
       expect(document.body).not.toHaveTextContent('apps-page-private-test-value')

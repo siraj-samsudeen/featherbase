@@ -28,7 +28,6 @@ async function sourceRepository(build = `node -e "require('fs').copyFileSync('se
 test('the manager catalog offers repository apps without registering their code', async ({ admin }) => {
   const result = await admin.get<{ available: string[]; catalog: { name: string; title: string; preparation: { state: string }; installed: boolean }[] }>('/api/apps')
   expect(result.catalog).toContainEqual(expect.objectContaining({ name: 'tasker', title: 'Tasker', installed: false, preparation: { state: 'needed' } }))
-  expect(result.catalog).toContainEqual(expect.objectContaining({ name: 'dash', title: 'Dash', installed: false }))
   expect(result.catalog.map(app => app.name)).not.toContain('other')
   expect(result.available).not.toContain('tasker')
 })
