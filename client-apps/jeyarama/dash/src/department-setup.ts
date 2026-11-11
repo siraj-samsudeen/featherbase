@@ -23,13 +23,11 @@ const NAME_LIMIT = 60
 const SELLS_SHOWN = 3
 const NAMES_SHOWN = 12
 /**
- * How a set-up is approved. Not an access grant (manager, for the owner, 11-Nov-2026): it reaches only
- * sections of the person's own store, and can be undone. Approve first until #1191 lands; then this one
- * line becomes `{ type: 'department_setup' }` (manifest approvalTypes: grantsAccess false; the instance's
- * Approval Type row `dash.department_setup` set to "Apply now, review after"). Every path below already
- * handles a set-up that applied at once: it is kept with confirm, or taken back with undo, links first.
+ * The approval type every set-up names (#1191). Not an access grant (manager, for the owner, 11-Nov-2026):
+ * it reaches only sections of the person's own store, and can be undone. The instance's Approval Type row
+ * `dash.department_setup` decides whether it applies at once and is reviewed after, or waits for approval.
  */
-export const APPROVAL: { type?: string } = {}
+export const DEPARTMENT_TYPE = 'department_setup'
 /** A set-up still open to its reviewer: asked for and waiting, or applied and not yet reviewed (#1191). */
 const OPEN = ['Pending', 'Not yet reviewed']
 const APPLIED_UNREVIEWED = 'Not yet reviewed'
@@ -296,9 +294,9 @@ export const departmentActions = {
     const employee = employees.find(e => exact(e.row_id) === exact(job!.employee))!
     const shared: Omit<About, 'kind'> = { bundle: `${exact(job!.row_id)}:${globalThis.crypto.randomUUID()}`, job_assignment: exact(job!.row_id), site, store: shop.store,
       name, sections: ids, section_names: names, maker_name: text(employee.name), manager_name: manager }
-    // #1191: applied at once, each row carries its own id, as an approval would stamp it.
-    const applied = async (table: string, base: string, column: string) => (APPROVAL.type
-      ? { type: APPROVAL.type, apply: { effectiveOn: today, newRow: { [column]: await freeId(ctx, table, base), source_key: `Dash, set up ${today}` } } } : {})
+    // #1191: every proposal names its type and carries its own id; the instance's mode decides whether it applies now.
+    const applied = async (table: string, base: string, column: string) =>
+      ({ type: DEPARTMENT_TYPE, apply: { effectiveOn: today, newRow: { [column]: await freeId(ctx, table, base), source_key: `Dash, set up ${today}` } } })
     const head = await ctx.changeProposals.propose({ ...await applied(D.department, `${site}-${name}-${today}`, 'department_id'), table: D.department, row: null, changes: { store: site, name, manager: exact(employee.row_id) },
       approvers, about: { ...shared, kind: 'department' } as unknown as Record<string, unknown> })
     // Under "apply now, review after" (#1191) the Department exists at once, so each link names it;

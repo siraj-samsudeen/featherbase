@@ -111,3 +111,49 @@ describe('a Department Manager sets up their department (#1195)', () => {
     await expect(act(deepa, 'set_up_department', { job: 'JA-1', name: 'Ladies', sections: ['LKS-S1'] })).rejects.toThrow('Pick sections in Riverside')
   })
 })
+
+// #1191 on its real platform: Department set-up set to "Apply now, review after" on this instance.
+describe('a Department Manager sets up their department, applied at once (#1191)', () => {
+  const applyNow = (admin: TestClient) => admin.post('/api/save_row', { table: 'Approval Type', row: { row_id: 'dash.department_setup', mode: 'Apply now, review after' } })
+  const live = async (table: string) => (await rows(table)).filter(r => !r.retired_at)
+
+  test('the report opens at once; the reviewer keeps it with confirm', async ({ admin, createUser }) => {
+    const { deepa, mani } = await world(admin, createUser)
+    await applyNow(admin)
+    const sent = await act(deepa, 'set_up_department', { job: 'JA-1', name: 'Ladies Ethnic', sections: ['LKS-S1', 'LKS-S2'] })
+    expect(sent).toMatchObject({ state: 'set_up' })
+    const [department] = await live('Department')
+    expect((await live('Department Section')).map(r => [r.section, r.department])).toEqual([['LKS-S1', department.row_id], ['LKS-S2', department.row_id]])
+    expect(sections(await resolvePersonScope(deepa.user!, await binding()))).toEqual([['9901 / Section: Sarees', ['010101001']], ['9901 / Section: Silk', ['010101002']]])
+    expect(await read(deepa, 'department_setup')).toMatchObject({ current: { state: 'set_up', reviewing: { waiting_for: 'Mani' } } })
+    expect(await read(mani, 'department_approvals')).toMatchObject([{ bundle: sent.bundle, applied: true }])
+
+    expect(await act(mani, 'decide_department', { bundle: sent.bundle, decision: 'approve' })).toMatchObject({ state: 'Confirmed', department: department.row_id })
+    expect(await read(mani, 'department_approvals')).toEqual([])
+    expect(await read(deepa, 'department_setup')).toMatchObject({ current: { state: 'set_up', reviewing: null } })
+  })
+
+  test('the reviewer undoes it, links first, and the report closes again', async ({ admin, createUser }) => {
+    const { deepa, mani } = await world(admin, createUser)
+    await applyNow(admin)
+    const sent = await act(deepa, 'set_up_department', { job: 'JA-1', name: 'Ladies Ethnic', sections: ['LKS-S1'] })
+    expect(await act(mani, 'decide_department', { bundle: sent.bundle, decision: 'reject', reason: 'Sarees is in Ethnic' })).toMatchObject({ state: 'Undone' })
+    expect([await live('Department'), await live('Department Section')]).toEqual([[], []])
+    await expect(resolvePersonScope(deepa.user!, await binding())).rejects.toMatchObject(new NoPersonScope('scope'))
+    expect(await read(deepa, 'reach_problem')).toEqual({ problems: ['departments_not_filled'] })
+    expect(await read(deepa, 'department_setup')).toMatchObject({ current: { state: 'turned_down', reason: 'Sarees is in Ethnic' } })
+  })
+
+  test('the maker takes it back, or changes it, with no reason; leaving a section out undoes only that one', async ({ admin, createUser }) => {
+    const { deepa, mani } = await world(admin, createUser)
+    await applyNow(admin)
+    const first = await act(deepa, 'set_up_department', { job: 'JA-1', name: 'Ladies', sections: ['LKS-S1', 'LKS-S2'] })
+    const second = await act(deepa, 'set_up_department', { job: 'JA-1', name: 'Ladies Ethnic', sections: ['LKS-S1', 'LKS-S3'], replaces: first.bundle })
+    expect((await live('Department')).map(r => r.name)).toEqual(['Ladies Ethnic'])
+    expect((await live('Department Section')).map(r => r.section).sort()).toEqual(['LKS-S1', 'LKS-S3'])
+    await act(mani, 'decide_department', { bundle: second.bundle, decision: 'approve', sections: ['LKS-S1'] })
+    expect((await live('Department Section')).map(r => r.section)).toEqual(['LKS-S1'])
+    const third = await act(deepa, 'set_up_department', { job: 'JA-1', name: 'x', sections: ['LKS-S2'] }).catch((e: Error) => e.message)
+    expect(third).toMatch(/You already have a department here/)
+  })
+})

@@ -2,7 +2,7 @@
 // helpers. Made-up stores and people. The main path also runs on the real platform in
 // platform-test/department-setup.test.ts.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { APPROVAL, DEPARTMENT_TABLES, departmentActions, departmentReads } from './department-setup.ts'
+import { DEPARTMENT_TABLES, DEPARTMENT_TYPE, departmentActions, departmentReads } from './department-setup.ts'
 import { BASE_TABLES, type ActionContext, type ReadContext } from './my-sections.ts'
 import { istToday } from './report.ts'
 
@@ -79,6 +79,8 @@ function world(over: Partial<Record<string, Row[]>> = {}) {
   } as Record<string, Row[]>
 }
 
+/** The instance's mode for the department type, as its Approval Type row sets it (#1191). */
+let MODE = 'Approve first'
 const DECIDED: Record<string, string> = { approve: 'Applied', reject: 'Rejected', withdraw: 'Withdrawn', confirm: 'Confirmed', undo: 'Undone' }
 function context(tables: Record<string, Row[]>, { user = 'deepa', payload, settings = { linked_tables: LISTED }, proposals = [] as Row[], route = 'people', decides = true }: { user?: string; payload?: unknown; settings?: Record<string, string>; proposals?: Row[]; route?: string; decides?: boolean } = {}) {
   const sent: { call: string; first: unknown; second?: unknown }[] = []
@@ -88,7 +90,7 @@ function context(tables: Record<string, Row[]>, { user = 'deepa', payload, setti
     const id = call === 'propose' ? `PR${++made}` : String(first)
     const known = proposals.find(p => p.row_id === id)
     // #1191: a proposal of an apply-now type applies at once and is not yet reviewed.
-    const appliedNow = call === 'propose' && 'type' in (first as Row)
+    const appliedNow = call === 'propose' && (first as Row).type === DEPARTMENT_TYPE && MODE === 'Apply now, review after'
     return { row_id: id, maker: 'deepa', state: appliedNow ? 'Not yet reviewed' : DECIDED[call] ?? 'Pending', about: call === 'propose' ? (first as Row).about : known?.about ?? null,
       decision_reason: (second as { reason?: string } | undefined)?.reason ?? null, result_row: call === 'approve' || appliedNow ? `ROW-${id}` : null,
       changes: [], created_at: `${today}T00:00:00Z`, decided_at: null, route: { people: route === 'people' ? ['mani'] : [], roles: [] } }
@@ -255,12 +257,11 @@ describe('sending a department', () => {
     await departmentActions.set_up_department(ctx)
     expect((sent[1].first as { changes: Row }).changes).toEqual({ store: 'LKS', section: 'S1', department: 'D-NEW' })
   })
-  it('is approved first for now: no approval type is sent until #1191 lands', async () => {
-    const { APPROVAL } = await import('./department-setup.ts')
-    expect(APPROVAL).toEqual({})
+  it('names its type on every proposal, with its own id; approve first leaves it waiting', async () => {
     const { run, sent } = send({ name: 'Ladies', sections: ['S1'] })
-    await run()
-    expect(sent.every(s => !('type' in (s.first as Row)))).toBe(true)
+    expect(await run()).toMatchObject({ state: 'waiting' })
+    expect(sent.map(s => [(s.first as Row).type, Object.keys(((s.first as Row).apply as { newRow: Row }).newRow)])).toEqual([
+      ['department_setup', ['department_id', 'source_key']], ['department_setup', ['department_section_id', 'source_key']]])
   })
   it('orders two sections of one name by their ids', async () => {
     const tables = world()
@@ -408,10 +409,10 @@ describe('holds_department_job (#1195)', () => {
   })
 })
 
-// #1191, dormant until it lands: the one APPROVAL line switched on, against stand-in confirm and undo.
+// #1191: the instance sets the department type to apply now, review after.
 describe('apply now, review after (#1191)', () => {
-  beforeEach(() => { APPROVAL.type = 'department_setup' })
-  afterEach(() => { delete APPROVAL.type })
+  beforeEach(() => { MODE = 'Apply now, review after' })
+  afterEach(() => { MODE = 'Approve first' })
   const applied = (over: Row = {}) => bundle(over, 'Not yet reviewed').map(p => (p.row_id === 'PD' ? { ...p, result_row: 'D-APPLIED' } : p))
 
   it('applies the department at once, and links each section to it, every row with its own id', async () => {

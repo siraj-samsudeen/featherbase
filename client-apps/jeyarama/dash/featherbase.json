@@ -33,6 +33,11 @@
     {
       "name": "job_section",
       "title": "My section is wrong: change my job's section"
+    },
+    {
+      "name": "department_setup",
+      "title": "Set up my department: its sections and its name",
+      "grantsAccess": false
     }
   ],
   "secrets": [
