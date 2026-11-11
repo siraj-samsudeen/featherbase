@@ -599,6 +599,18 @@ describe('an upgrade that declares a new role', () => {
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
+  // The upgrade audience contract (runtime-privacy-contract.test.ts) still holds: an upgrade never
+  // brings write access to a Table the app already had, not even to a role it creates.
+  test("a new role's write on a Table the app already had is refused", async ({ admin }) => {
+    const { directory } = await upgradeTo(admin, manifest => ({ ...manifest, roles: ['Task Auditor'],
+      permissions: [...(manifest.permissions as unknown[]), { table: 'other.task', role: 'Task Auditor', operations: { read: '*', update: '*' } }] }))
+    try {
+      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417,
+        message: expect.stringContaining('Permission or package identity changes are unsupported') })
+      expect(await sql`select 1 from role where row_id = 'Task Auditor'`).toEqual([])
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
   test('a new grant to a role the installed version already declared is still refused', async ({ admin }) => {
     const source = resolve('../..', 'test-apps/other')
     const installed = await mkdtemp(resolve('test/.upgrade-installed-'))
