@@ -1,0 +1,23 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "warehouse",
+  "title": "Warehouse",
+  "entryTable": "warehouse.note",
+  "server": "server.mjs",
+  "tables": [
+    {
+      "name": "warehouse.note",
+      "label": "note",
+      "id_pattern": "prompt",
+      "columns": [{ "column_name": "body", "column_type": "Data" }]
+    }
+  ],
+  "roles": ["Warehouse Reader"],
+  "permissions": [{ "table": "warehouse.note", "role": "Warehouse Reader", "can_read": true }],
+  "settings": [
+    { "name": "report_account", "required": false },
+    { "name": "linked_tables", "required": false }
+  ],
+  "secrets": ["WAREHOUSE_TOKEN"]
+}

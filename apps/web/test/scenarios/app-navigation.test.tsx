@@ -4,18 +4,17 @@
 //
 // An app's page is drawn as the served document draws it: the platform's bar
 // (src/bar, mounted into its <featherbase-bar> host) above the app's own React
-// page, Tasker's and Dash's real source, with their shared sidebar element.
+// page (Tasker's real source, and Store Reports' page from test-apps), with
+// their shared sidebar element.
 // Leaving for another document (the switcher, a plain link) renders that
 // document; jsdom cannot navigate. The redirects between the served documents
 // themselves are the server's (runtime-shell tests) and a real browser's.
-import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, describe } from 'vitest'
-import type { SeedFn, TestClient } from 'feather-testing-postgres'
-import { makeClient } from 'feather-testing-postgres'
+import type { TestClient } from 'feather-testing-postgres'
 import { createSession } from 'feather-testing-postgres/session'
 import { discoverPackages } from 'server/src/runtime-packages'
 import { installApp, isInstalled, uninstallApp } from 'server/src/apps'
@@ -25,56 +24,24 @@ import { setSession } from '../../src/lib/api'
 import { mountBar } from '../../src/bar/mount'
 import { FeatherbaseSidebar } from '../../src/bar/sidebar'
 import { TaskManagementPage } from '../../../../example-apps/tasker/src/TaskManagement'
-import { Dash } from '../../../../client-apps/jeyarama/dash/src/app'
-// @ts-expect-error a plain .mjs module of Dash's own platform tests
-import { ACCESS_ROWS, BASE_TABLES, LINKED_TABLES, REPORT_ROWS } from '../../../../client-apps/jeyarama/dash/platform-test/base-tables.mjs'
+import { drawPage } from '../../../../test-apps/fixtures/store-reports/client/page.mjs'
 import { test, expect, renderApp } from '../pg-test'
 
 const scenario = scenarioFor(test, 'app-navigation')
 const WAIT = { timeout: 15_000 }
 const TASKER_DIR = resolve('../..', 'example-apps/tasker')
-const DASH_DIR = resolve('../..', 'client-apps/jeyarama/dash')
-const DASH_VERSION: string = JSON.parse(readFileSync(resolve(DASH_DIR, 'package.json'), 'utf8')).version
+const STORE_REPORTS_DIR = resolve('../..', 'test-apps/fixtures/store-reports')
 if (!customElements.get('featherbase-sidebar')) customElements.define('featherbase-sidebar', FeatherbaseSidebar)
 
-const dashClient = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
-  ...init, headers: { 'X-Featherbase-App-Version': `dash@${DASH_VERSION}`, ...init?.headers },
-}) }, client.token, client.user)
-
-/** Tasker and Dash installed. */
-async function install(admin: TestClient) {
-  expect(await discoverPackages([TASKER_DIR, DASH_DIR])).toEqual([])
-  for (const name of ['tasker', 'dash']) {
+/** Tasker and Store Reports installed. */
+async function install() {
+  expect(await discoverPackages([TASKER_DIR, STORE_REPORTS_DIR])).toEqual([])
+  for (const name of ['tasker', 'storereports']) {
     if (await isInstalled(name)) await uninstallApp(name)
     await installApp(name)
   }
-  // Satisfy Dash's declared host secret without a real warehouse token.
-  process.env.MOTHERDUCK_TOKEN = 'scenario-unused-warehouse-token'
 }
-const hostToken = process.env.MOTHERDUCK_TOKEN
-afterEach(async () => {
-  if (hostToken === undefined) delete process.env.MOTHERDUCK_TOKEN
-  else process.env.MOTHERDUCK_TOKEN = hostToken
-  await discoverPackages([])
-})
-
-/** #1046: Dash opens only for someone with a report they can open; Dash reads a reader's reach from the core Tables. */
-async function storesFor(admin: TestClient, seed: SeedFn, reader: TestClient) {
-  for (const table of BASE_TABLES) await admin.post('/api/table_def', table)
-  await seed('App Setting', { row_id: 'dash.linked_tables', value: JSON.stringify(LINKED_TABLES) })
-  // Dash's own Tables answer only a client that names Dash's version, which seed's admin does not.
-  const dash = dashClient(admin)
-  for (const [plant_code, code, name] of [['9901', 'HIL', 'Hill Road'], ['9902', 'LKS', 'Lakeside']]) {
-    await seed('Site', { code, name, is_store: true })
-    await seed('Plant', { plant_code, plant_type: 'Store', site: code })
-  }
-  for (const row of REPORT_ROWS) await dash.post('/api/save_row', { table: 'dash.report', row })
-  for (const row of ACCESS_ROWS) await dash.post('/api/save_row', { table: 'dash.report_access', row })
-  const employee = `E-${reader.user}`
-  await seed('Employee', { employee_code: employee, name: 'Made-up Manager', person: reader.user, status: 'Current' })
-  for (const code of ['HIL', 'LKS'])
-    await seed('Job Assignment', { assignment_id: `JA-${employee}-${code}`, employee, job: 'Store Manager', site: code, starts_on: '2026-01-01' })
-}
+afterEach(async () => { await discoverPackages([]) })
 
 // ---- An app's page: the bar and the app, in one document.
 let bar: { unmount: () => void; host: HTMLElement } | null = null
@@ -114,7 +81,7 @@ function followDocumentLinks(event: MouseEvent) {
 document.addEventListener('click', followDocumentLinks)
 
 /** An installed app's page at `path`, signed in as `as`: the bar the served document mounts, then the app. */
-async function openAppPage(as: TestClient, app: 'tasker' | 'dash', path: string) {
+async function openAppPage(as: TestClient, app: 'tasker' | 'storereports', path: string) {
   closePage()
   window.history.replaceState(null, '', path)
   setSession(as.token!, { row_id: as.user!, email: null, full_name: null })
@@ -123,16 +90,20 @@ async function openAppPage(as: TestClient, app: 'tasker' | 'dash', path: string)
   localStorage.setItem('fc_user', JSON.stringify({ row_id: as.user }))
   const host = document.createElement('featherbase-bar')
   host.dataset.app = app
-  host.dataset.title = app === 'tasker' ? 'Tasker' : 'Dash'
+  host.dataset.title = app === 'tasker' ? 'Tasker' : 'Store Reports'
   document.body.prepend(host)
   left = []
   sendSessionCookie(as.token!)
   const mounted = mountBar(host, { leave: (href) => { left.push(href) } })
   bar = { ...mounted, host }
   await act(async () => {
-    appPage = render(app === 'tasker'
-      ? <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TaskManagementPage /></QueryClientProvider>
-      : <Dash />)
+    if (app === 'tasker')
+      appPage = render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TaskManagementPage /></QueryClientProvider>)
+    else {
+      const root = document.body.appendChild(document.createElement('div'))
+      const undraw = drawPage(root)
+      appPage = { unmount: () => { undraw(); root.remove() } }
+    }
   })
   reopen = async (href) => { await openAppPage(as, app, href) }
   return within(host.shadowRoot as unknown as HTMLElement)
@@ -144,20 +115,18 @@ const sidebar = () => document.querySelector('featherbase-sidebar') as HTMLEleme
 const page = () => createSession({ timeout: WAIT.timeout })
 const switcher = (barView: ReturnType<typeof within>) => barView.findByRole('combobox', { name: 'Switch application' }, WAIT)
 
-/** The person who may open Tasker and Dash but not Featherbase. */
-async function tlWithoutFeatherbase(admin: TestClient, seed: SeedFn, createUser: (o: { email?: string; roles: string[] }) => Promise<TestClient>) {
-  await install(admin)
+/** The person who may open Tasker and Store Reports but not Featherbase. */
+async function tlWithoutFeatherbase(admin: TestClient, createUser: (o: { email?: string; roles: string[] }) => Promise<TestClient>) {
+  await install()
   await admitTasker(admin)
-  const reader = await createUser({ email: 'nav.reader@example.test', roles: ['Dash Reader', 'Tasker Member'] })
-  await storesFor(admin, seed, reader)
-  return reader
+  return createUser({ email: 'nav.reader@example.test', roles: ['Store Reports Reader', 'Tasker Member'] })
 }
 
 describe('app-navigation', () => {
   scenario('Featherbase is a destination alongside the applications', async ({ admin }, step) => {
     let barView: ReturnType<typeof within>
-    await step('the user can open Featherbase, Tasker and Dash', async () => {
-      await install(admin)
+    await step('the user can open Featherbase, Tasker and Store Reports', async () => {
+      await install()
       await admitTasker(admin)
     })
     await step("the user chooses Featherbase from Tasker's application name", async () => {
@@ -182,19 +151,19 @@ describe('app-navigation', () => {
     })
   })
 
-  scenario('A reader sees only accessible destinations', async ({ admin, createUser, seed }, step) => {
+  scenario('A reader sees only accessible destinations', async ({ admin, createUser }, step) => {
     let reader: TestClient
     let barView: ReturnType<typeof within>
-    await step('the user can open Tasker and Dash but cannot open Featherbase', async () => { reader = await tlWithoutFeatherbase(admin, seed, createUser) })
-    await step('the user opens the application choices in Dash', async () => {
-      barView = await openAppPage(reader, 'dash', '/dash/')
+    await step('the user can open Tasker and Store Reports but cannot open Featherbase', async () => { reader = await tlWithoutFeatherbase(admin, createUser) })
+    await step('the user opens the application choices in Store Reports', async () => {
+      barView = await openAppPage(reader, 'storereports', '/storereports/')
     })
-    await step('Tasker and Dash are offered', async () => {
+    await step('Tasker and Store Reports are offered', async () => {
       expect(await barView.findByTestId('session-user', {}, WAIT)).toBeInTheDocument()
       const choices = (await switcher(barView)) as HTMLSelectElement
       // The switcher holds only the current app until the catalog answers.
       await waitFor(() => expect([...choices.options].some((o) => o.textContent === 'Tasker')).toBe(true), WAIT)
-      expect([...choices.options].map((o) => o.textContent).sort()).toEqual(['Dash', 'Tasker'])
+      expect([...choices.options].map((o) => o.textContent).sort()).toEqual(['Store Reports', 'Tasker'])
     })
     await step('Featherbase is not offered', async () => {
       const choices = (await switcher(barView)) as HTMLSelectElement
@@ -202,9 +171,9 @@ describe('app-navigation', () => {
     })
   })
 
-  scenario('Tasker keeps its project work', async ({ admin, createUser, seed }, step) => {
+  scenario('Tasker keeps its project work', async ({ admin, createUser }, step) => {
     let reader: TestClient
-    await step('the user can open Tasker and Dash but cannot open Featherbase', async () => { reader = await tlWithoutFeatherbase(admin, seed, createUser) })
+    await step('the user can open Tasker and Store Reports but cannot open Featherbase', async () => { reader = await tlWithoutFeatherbase(admin, createUser) })
     await step('Tasker has a project named September stock review with two tasks', async () => {
       const tasker = taskerClient(admin)
       const { row_id } = await tasker.post<{ row_id: string }>('/api/save_row', { table: 'tasker.project', row: { project_name: 'September stock review' } })
@@ -224,21 +193,19 @@ describe('app-navigation', () => {
       page().within('featherbase-sidebar button[aria-label="September stock review"]', (project) => project.assertAttribute('aria-current', 'page')))
   })
 
-  scenario('Dash keeps the selected store', async ({ admin, createUser, seed }, step) => {
+  scenario('The selected store is kept', async ({ admin, createUser }, step) => {
     let reader: TestClient
     let barView: ReturnType<typeof within>
     const storePicker = () => barView.findByRole('combobox', { name: 'Store' }, WAIT)
-    await step('the user can open Tasker and Dash but cannot open Featherbase', async () => { reader = await tlWithoutFeatherbase(admin, seed, createUser) })
-    await step('the user has selected Lakeside in Dash', async () => {
-      barView = await openAppPage(reader, 'dash', '/dash/?store=9902')
-      const answer = await reader.get<{ controls: { options: { label: string; value: string }[] }[] }>('/api/app_bar/dash')
+    await step('the user can open Tasker and Store Reports but cannot open Featherbase', async () => { reader = await tlWithoutFeatherbase(admin, createUser) })
+    await step('the user has selected Lakeside in Store Reports', async () => {
+      barView = await openAppPage(reader, 'storereports', '/storereports/?store=9902')
+      const answer = await reader.get<{ controls: { options: { label: string; value: string }[] }[] }>('/api/app_bar/storereports')
       expect(answer.controls[0]?.options).toEqual([{ label: 'Hill Road', value: '9901' }, { label: 'Lakeside', value: '9902' }])
       await waitFor(async () => expect(await storePicker()).toHaveTextContent('Lakeside'), WAIT)
     })
-    await step('the user opens the report through the shared navigation', async () => {
-      await page()
-        .until('the shared navigation lists the report', () => within(sidebar()).queryByRole('link', { name: 'Sales versus target' }))
-        .within('featherbase-sidebar', (nav) => nav.clickLink('Sales versus target'))
+    await step('the user opens the store report through the shared navigation', async () => {
+      await page().within('featherbase-sidebar', (nav) => nav.clickLink('Store report'))
       await loading
       barView = within(bar!.host.shadowRoot as unknown as HTMLElement)
     })
@@ -246,12 +213,10 @@ describe('app-navigation', () => {
       await waitFor(async () => expect(await storePicker()).toHaveTextContent('Lakeside'), WAIT)
       expect(new URLSearchParams(window.location.search).get('store')).toBe('9902')
     })
-    await step('Dash shows the report state for Lakeside', async () => {
-      // Any view but these: assertAttribute checks one value, refuteAttribute only absence.
-      await waitFor(() => expect(screen.getByTestId('dash').getAttribute('data-view')).not.toBe('opening'), WAIT)
-      expect(screen.getByTestId('dash').getAttribute('data-view')).not.toBe('no_access')
-      await waitFor(async () => expect(await storePicker()).toHaveTextContent('Lakeside'), WAIT)
-      expect(new URLSearchParams(window.location.search).get('store')).toBe('9902')
+    await step('Store Reports shows the report for Lakeside', async () => {
+      const report = screen.getByTestId('store-reports')
+      expect(report.dataset.view).toBe('report')
+      expect(report.dataset.store).toBe('9902')
     })
   })
 })

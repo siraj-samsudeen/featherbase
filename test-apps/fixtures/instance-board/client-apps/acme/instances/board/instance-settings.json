@@ -1,0 +1,43 @@
+{
+  "settings": {
+    "Sign In Method": [
+      {
+        "row_id": "stylehr",
+        "kind": "delegated_password",
+        "label": "StyleHR",
+        "enabled": true,
+        "service_url": "https://hr.example.test/api/login/",
+        "new_person": "create_if_on_roster",
+        "self_link": false,
+        "settings": {
+          "provider_record_key": "employee_id",
+          "roster": {
+            "table": "Employee",
+            "sign_in_id_column": "employee_code_stylehr",
+            "record_number_column": "employee_id_stylehr",
+            "person_column": "person",
+            "name_column": "name",
+            "status_column": "status",
+            "current_status": "Current",
+            "provider_record_key": "employee_id",
+            "identifiers": {
+              "stylehr-employee-code": "employee_code_stylehr"
+            }
+          }
+        }
+      }
+    ],
+    "Data Source": [
+      {
+        "row_id": "motherduck",
+        "engine": "motherduck",
+        "default_schema": "gold.main",
+        "databases": [{ "name": "gold" }, { "name": "marts" }]
+      }
+    ]
+  },
+  "environments": {
+    "dev": { "settings": {} },
+    "prod": { "settings": {} }
+  }
+}

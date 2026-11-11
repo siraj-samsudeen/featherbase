@@ -1,5 +1,5 @@
 // #307: the deploy's one pre-deploy command (`pnpm --filter server
-// pre-deploy`, .railway/railway.ts): the release, then the preview seed. A host may
+// pre-deploy`, named by the host's deploy config): the release, then the preview seed. A host may
 // run each pre-deploy entry as argv rather than through a shell, so the two
 // steps are chained here, not with `&&` in the deploy config — where the
 // second was observed never to run while the deploy still went green.
@@ -16,14 +16,15 @@ import { readVariable } from './env'
 import { deployInstance, instanceFolder, settingsSection } from './deploy-instance'
 
 /** The release, then the preview seed; resolves to the process's exit code,
- *  1 when either stopped. The caller owns the database connection. */
-export async function main(argv: string[] = [], io: CommandIO = processIO): Promise<number> {
+ *  1 when either stopped. The caller owns the database connection. `root` is
+ *  the folder holding client-apps/, the image's own by default. */
+export async function main(argv: string[] = [], io: CommandIO = processIO, opts: { root?: string } = {}): Promise<number> {
   const instance = readVariable('FEATHERBASE_INSTANCE')?.trim()
   if (instance) {
     // Refused before the release has changed anything.
     try {
       settingsSection()
-      instanceFolder(instance)
+      instanceFolder(instance, opts.root)
     } catch (err) {
       io.err(format('deploy failed:', err instanceof Error ? err.message : err))
       return 1
@@ -33,7 +34,7 @@ export async function main(argv: string[] = [], io: CommandIO = processIO): Prom
   if (code !== 0) return code
   if (instance) {
     try {
-      await deployInstance(instance, io)
+      await deployInstance(instance, io, { root: opts.root })
     } catch (err) {
       io.err(format('deploy failed:', err instanceof Error ? err.message : err))
       return 1

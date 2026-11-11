@@ -1,0 +1,27 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "storereports",
+  "title": "Store Reports",
+  "entryTable": "storereports.note",
+  "server": "server.mjs",
+  "client": "client",
+  "tables": [
+    {
+      "name": "storereports.note",
+      "label": "note",
+      "id_pattern": "prompt",
+      "columns": [{ "column_name": "body", "column_type": "Data" }]
+    }
+  ],
+  "roles": ["Store Reports Reader"],
+  "permissions": [{ "table": "storereports.note", "role": "Store Reports Reader", "can_read": true }],
+  "reads": {
+    "version": 1,
+    "tables": ["storereports.note"],
+    "operations": {
+      "stores": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } }
+    }
+  },
+  "bar": [{ "picker": "Store", "options": "stores", "sets": "store" }]
+}

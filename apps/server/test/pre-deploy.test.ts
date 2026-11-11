@@ -15,6 +15,8 @@ import { test } from './pg-test'
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
 const PREVIEW_USER = 'pre-deploy-preview@example.com'
+// A checkout holding one client instance, acme/board, and no apps.
+const INSTANCE_ROOT = join(repo, 'test-apps', 'fixtures', 'instance-board')
 
 afterEach(() => {
   vi.unstubAllEnvs()
@@ -26,16 +28,8 @@ function configurePreview(user = PREVIEW_USER) {
 }
 
 describe('the deploy config runs one pre-deploy command', () => {
-  it('.railway/railway.ts names the pre-deploy command alone in every environment, with nothing a shell would have to read', async () => {
-    const { createRailwayContext, project } = await import('railway/iac')
-    const { default: program } = await import('../../../client-apps/jeyarama/railway/railway')
-    // The host may run each entry as argv, not through a shell: an `&&` there
-    // is an argument, and whatever follows it silently never runs.
-    for (const environment of ['production', 'staging']) {
-      const { resources = [] } = await program(createRailwayContext({ environment }), project)
-      const server = resources.flat().find(resource => resource.type === 'service')
-      expect(server?.type === 'service' && server.deploy?.preDeployCommand, environment).toEqual(['pnpm --filter server pre-deploy'])
-    }
+  // The host's deploy config (in the client's repository) names this script.
+  it("the server's pre-deploy script runs the pre-deploy entry point", () => {
     const server = JSON.parse(readFileSync(join(repo, 'apps', 'server', 'package.json'), 'utf8'))
     expect(server.scripts['pre-deploy']).toBe('tsx src/pre-deploy.ts')
   })
@@ -56,9 +50,9 @@ describe('the deploy config runs one pre-deploy command', () => {
 
 describe('pre-deploy for a client instance', () => {
   it('refuses a development server before the release changes anything', async () => {
-    vi.stubEnv('FEATHERBASE_INSTANCE', 'jeyarama/dash')
+    vi.stubEnv('FEATHERBASE_INSTANCE', 'acme/board')
     vi.stubEnv('FEATHERBASE_ENV', 'development')
-    const r = await runMain(main, [])
+    const r = await runMain((argv, io) => main(argv, io, { root: INSTANCE_ROOT }), [])
     expect(r.code).toBe(1)
     expect(r.stderr).toContain('use pnpm dev')
     expect(r.stdout).not.toContain('preflight:')
@@ -76,10 +70,10 @@ describe('pre-deploy for a client instance', () => {
 
 describe('pre-deploy for a client instance, past the release', () => {
   it('a problem in the instance step fails the deploy', async () => {
-    vi.stubEnv('FEATHERBASE_INSTANCE', 'jeyarama/dash')
+    vi.stubEnv('FEATHERBASE_INSTANCE', 'acme/board')
     vi.stubEnv('FEATHERBASE_ENV', 'staging')
     vi.stubEnv('FEATHERBASE_APP_PATHS', '[]')
-    const r = await runMain(main, [])
+    const r = await runMain((argv, io) => main(argv, io, { root: INSTANCE_ROOT }), [])
     expect(r.code).toBe(1)
     expect(r.stdout).toContain('preflight:')
     expect(r.stderr).toContain('deploy failed: This image ships no app')

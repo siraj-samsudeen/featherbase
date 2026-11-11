@@ -15,7 +15,7 @@ import { setUserPassword } from 'server/src/auth'
 import { main } from 'server/src/cli'
 import { config } from 'server/src/config'
 import { sql } from 'server/src/db'
-import { overrideVariable } from 'server/src/env'
+import { overrideVariable, withNamedVariable } from 'server/src/env'
 import { drainJobs, loadJobs } from 'server/src/jobs'
 import { runMain } from 'server/test/command-io'
 import { scenarioFor } from 'server/test/scenario'
@@ -76,8 +76,9 @@ async function health(admin: Client) {
   return r
 }
 
-async function install(admin: Client, name: 'tasker' | 'dash') {
-  await discoverAppLibrary([resolve(REPO, name === 'tasker' ? 'example-apps/tasker' : 'client-apps/jeyarama/dash')])
+/** Tasker, or Secret proof: a test app that needs one secret from the host. */
+async function install(admin: Client, name: 'tasker' | 'secretproof') {
+  await discoverAppLibrary([resolve(REPO, name === 'tasker' ? 'example-apps/tasker' : 'test-apps/fixtures/missing-secret-proof')])
   await admin.post('/api/install_app', { name })
   // Installing grants nobody access to private work: the scenario's System Manager is admitted.
   if (name === 'tasker') await admitTasker(admin)
@@ -131,7 +132,7 @@ async function signIn(next?: string) {
 async function noInstalledApps(admin: Client) {
   expect((await admin.get<{ installed: unknown[] }>('/api/apps')).installed).toEqual([])
   expect(await sql`select table_name from information_schema.tables where table_schema = 'featherbase'
-    and (table_name like 'tasker.%' or table_name like 'dash.%')`).toHaveLength(0)
+    and (table_name like 'tasker.%' or table_name like 'secretproof.%')`).toHaveLength(0)
 }
 
 async function configurationFinding(r: Report, key: string) {
@@ -163,19 +164,21 @@ describe('instance-health', () => {
 
   scenario("A developer's own machine", async ({ admin }, step) => {
     let r!: Report
-    await step('the user has a local development instance without email or a warehouse', async () => {
-      await fresh()
-      overrideVariable('MOTHERDUCK_TOKEN', '')
-      await install(admin, 'dash')
-    })
-    await step('the user checks its health', async () => { r = await health(admin) })
-    await step('absent optional services are explained without being counted as operational faults', async () => {
-      expect(r.failing).toBe(0)
-      await textContains('development')
-    })
-    await step('any installed app still identifies the setup it needs', async () => {
-      expect(check(r, 'app-setup:dash').missing).toContain('secret MOTHERDUCK_TOKEN')
-      await textContains('MOTHERDUCK_TOKEN')
+    await withNamedVariable('SECRETPROOF_TOKEN', undefined, async () => {
+      await step('the user has a local development instance without email or a warehouse', async () => {
+        await fresh()
+        overrideVariable('MOTHERDUCK_TOKEN', '')
+        await install(admin, 'secretproof')
+      })
+      await step('the user checks its health', async () => { r = await health(admin) })
+      await step('absent optional services are explained without being counted as operational faults', async () => {
+        expect(r.failing).toBe(0)
+        await textContains('development')
+      })
+      await step('any installed app still identifies the setup it needs', async () => {
+        expect(check(r, 'app-setup:secretproof').missing).toContain('secret SECRETPROOF_TOKEN')
+        await textContains('SECRETPROOF_TOKEN')
+      })
     })
   }, 30_000)
 

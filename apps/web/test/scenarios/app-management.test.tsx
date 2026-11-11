@@ -3,8 +3,9 @@
 // library. Each test is one fenced scenario of
 // openspec/specs/app-management/spec.md, step by step.
 //
-// An unbuilt package is a disposable checkout holding copies of Tasker and
-// Dash without their built files; preparing it runs Tasker's real build.
+// An unbuilt package is a disposable checkout holding copies of Tasker and of
+// Warehouse (a test app standing in for a client's app) without their built
+// files; preparing it runs Tasker's real build.
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { cp, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
@@ -25,7 +26,7 @@ type App = { name: string; title: string; version: string; platformVersion: stri
 const scenario = scenarioFor(test, 'app-management')
 const REPO = resolve('../..')
 const TASKER = join(REPO, 'example-apps/tasker')
-const DASH = join(REPO, 'client-apps/jeyarama/dash')
+const WAREHOUSE = join(REPO, 'test-apps/fixtures/warehouse')
 const APPS = '/featherbase/admin/apps'
 const LONG = { timeout: 15_000 }
 const pathOf = (r: Rendered) => (r.router as unknown as { state: { location: { pathname: string; href: string } } }).state.location
@@ -44,13 +45,13 @@ async function library(paths: string[] = [], repository?: string | null) {
 }
 
 let scratch: string | null = null
-/** A checkout with Tasker and Dash as source only; `broken` damages Tasker's compiler configuration. */
+/** A checkout with Tasker and the client app Warehouse as source only; `broken` damages Tasker's compiler configuration. */
 async function sourceCheckout(broken = false) {
   // Inside the test folder: the server imports the built package from it, and
   // the test runner loads modules only from inside the checkout.
   scratch = await mkdtemp(resolve('test/.app-management-'))
   await mkdir(join(scratch, '.git'))
-  for (const [from, to] of [[TASKER, 'example-apps/tasker'], [DASH, 'client-apps/jeyarama/dash']] as const)
+  for (const [from, to] of [[TASKER, 'example-apps/tasker'], [WAREHOUSE, 'client-apps/acme/warehouse']] as const)
     await cp(from, join(scratch, to), { recursive: true, preserveTimestamps: true,
       filter: (f) => !['node_modules', 'dist', 'coverage'].includes(basename(f)) })
   // The workspace packages Tasker reads, beside it as in the checkout (only read).
@@ -85,9 +86,9 @@ async function openApps(admin: Client) {
   return view
 }
 
-async function inspect(admin: Client, name: 'tasker' | 'dash' = 'tasker') {
+async function inspect(admin: Client, name: 'tasker' | 'warehouse' = 'tasker') {
   if (!screen.queryByRole('navigation', { name: 'Available apps' })) await openApps(admin)
-  await userEvent.click(within(nav()).getByRole('button', { name: name === 'tasker' ? /Tasker/ : /Dash/ }))
+  await userEvent.click(within(nav()).getByRole('button', { name: name === 'tasker' ? /Tasker/ : /Warehouse/ }))
 }
 
 /** Click the install button and keep the server's answer to it. */
@@ -130,13 +131,13 @@ async function openSettings(admin: Client, title: string) {
 async function noInstalledApps(admin: Client) {
   expect((await admin.get<{ installed: unknown[] }>('/api/apps')).installed).toEqual([])
   const tables = await sql`select table_name from information_schema.tables
-    where table_schema = 'featherbase' and (table_name like 'tasker.%' or table_name like 'dash.%')`
+    where table_schema = 'featherbase' and (table_name like 'tasker.%' or table_name like 'warehouse.%')`
   expect(tables).toHaveLength(0)
 }
 
-async function installDash(admin: Client) {
-  await library([DASH])
-  if (!(await app(admin, 'dash')).installed) await admin.post('/api/install_app', { name: 'dash' })
+async function installWarehouse(admin: Client) {
+  await library([WAREHOUSE])
+  if (!(await app(admin, 'warehouse')).installed) await admin.post('/api/install_app', { name: 'warehouse' })
 }
 
 describe('app-management', () => {
@@ -165,17 +166,17 @@ describe('app-management', () => {
         await library()
         await noInstalledApps(admin)
       })
-      await step('the checkout includes unbuilt Tasker and client app Dash packages', () => sourceCheckout())
+      await step('the checkout includes unbuilt Tasker and client app Warehouse packages', () => sourceCheckout())
       await step('the user inspects the available apps', () => openApps(admin))
-      await step('both Tasker and Dash can be inspected', async () => {
+      await step('both Tasker and Warehouse can be inspected', async () => {
         await inspect(admin)
         await detailsContain('Tasker')
-        await inspect(admin, 'dash')
-        await detailsContain('Dash', 'Dash')
+        await inspect(admin, 'warehouse')
+        await detailsContain('Warehouse', 'Warehouse')
       })
       await step('the user can tell that each package needs preparation before installation', async () => {
-        for (const name of [/Tasker/, /Dash/]) expect(within(nav()).getByRole('button', { name })).toHaveTextContent(/Needs preparation/)
-        for (const a of await catalog(admin)) if (['tasker', 'dash'].includes(a.name)) expect(a.preparation.state).toBe('needed')
+        for (const name of [/Tasker/, /Warehouse/]) expect(within(nav()).getByRole('button', { name })).toHaveTextContent(/Needs preparation/)
+        for (const a of await catalog(admin)) if (['tasker', 'warehouse'].includes(a.name)) expect(a.preparation.state).toBe('needed')
       })
       await step('neither app is installed automatically', () => noInstalledApps(admin))
       await step('test fixtures are not offered as user apps', async () => {
@@ -306,29 +307,29 @@ describe('app-management', () => {
 
   scenario('A setting managed by the instance file remains locked', async ({ admin }, step) => {
     try {
-      await step('the user is a System Manager with Dash installed', () => installDash(admin))
+      await step('the user is a System Manager with Warehouse installed', () => installWarehouse(admin))
       await step('its linked tables setting is file-managed while its report account is editable', async () => {
-        await admin.post('/api/instance-settings/apply', { file: { settings: { 'App Setting': [{ row_id: 'dash.linked_tables', value: '[]' }] } } })
-        await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'dash.embed_service_account', value: 'initial-account' } })
+        await admin.post('/api/instance-settings/apply', { file: { settings: { 'App Setting': [{ row_id: 'warehouse.linked_tables', value: '[]' }] } } })
+        await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'warehouse.report_account', value: 'initial-account' } })
       })
-      await step('the user configures Dash', async () => {
+      await step('the user configures Warehouse', async () => {
         await openApps(admin)
-        await inspect(admin, 'dash')
-        await openSettings(admin, 'Dash')
+        await inspect(admin, 'warehouse')
+        await openSettings(admin, 'Warehouse')
       })
       await step('the user can change the report account', async () => {
         cleanup()
-        await renderApp('/featherbase/admin/table/app-setting/row/dash.embed_service_account', admin)
+        await renderApp('/featherbase/admin/table/app-setting/row/warehouse.report_account', admin)
         await screenSession(LONG).assertValue('Value', 'initial-account')
         // Editable: the DSL has no verb for a field being enabled.
         expect(screen.getByLabelText('Value')).toBeEnabled()
         await onScreen().fillIn('Value', 'acceptance-account').clickButton('Save')
         await waitFor(async () =>
-          expect((await admin.get<{ value: string }>('/api/table/App Setting/dash.embed_service_account')).value).toBe('acceptance-account'), LONG)
+          expect((await admin.get<{ value: string }>('/api/table/App Setting/warehouse.report_account')).value).toBe('acceptance-account'), LONG)
       })
       await step('the linked tables setting is locked with an explanation', async () => {
         cleanup()
-        await renderApp('/featherbase/admin/table/app-setting/row/dash.linked_tables', admin)
+        await renderApp('/featherbase/admin/table/app-setting/row/warehouse.linked_tables', admin)
         const value = await screen.findByLabelText('Value', {}, LONG) as HTMLInputElement
         await waitFor(() => expect(value.disabled || value.readOnly).toBe(true))
         expect(await screen.findAllByText(/settings file/)).not.toHaveLength(0)
@@ -336,28 +337,28 @@ describe('app-management', () => {
       await step("the app's packaged declaration is not editable", async () => {
         cleanup()
         await openApps(admin)
-        await inspect(admin, 'dash')
-        await detailsContain('packaged declarations are read-only', 'Dash')
-        expect(details('Dash').querySelectorAll('input,textarea')).toHaveLength(0)
+        await inspect(admin, 'warehouse')
+        await detailsContain('packaged declarations are read-only', 'Warehouse')
+        expect(details('Warehouse').querySelectorAll('input,textarea')).toHaveLength(0)
       })
     } finally { await resetLibrary() }
   }, 60_000)
 
   scenario('A required secret has not been supplied', async ({ admin }, step) => {
     try {
-      await withNamedVariable('MOTHERDUCK_TOKEN', undefined, async () => {
-        await step('the user is a System Manager with Dash installed', () => installDash(admin))
+      await withNamedVariable('WAREHOUSE_TOKEN', undefined, async () => {
+        await step('the user is a System Manager with Warehouse installed', () => installWarehouse(admin))
         await step('its required warehouse secret has not been supplied by the operator', async () => {
-          expect((await app(admin, 'dash')).secrets.find((s) => s.name === 'MOTHERDUCK_TOKEN')?.present).toBe(false)
+          expect((await app(admin, 'warehouse')).secrets.find((s) => s.name === 'WAREHOUSE_TOKEN')?.present).toBe(false)
         })
-        await step("the user inspects Dash's setup", () => inspect(admin, 'dash'))
+        await step("the user inspects Warehouse's setup", () => inspect(admin, 'warehouse'))
         await step("the user sees the secret's name and that it is missing", async () => {
-          expect((await app(admin, 'dash')).secrets.find((s) => s.name === 'MOTHERDUCK_TOKEN'))
-            .toEqual({ name: 'MOTHERDUCK_TOKEN', optional: false, present: false })
-          await detailsContain('MOTHERDUCK_TOKEN', 'Dash')
-          await detailsContain('Missing', 'Dash')
+          expect((await app(admin, 'warehouse')).secrets.find((s) => s.name === 'WAREHOUSE_TOKEN'))
+            .toEqual({ name: 'WAREHOUSE_TOKEN', optional: false, present: false })
+          await detailsContain('WAREHOUSE_TOKEN', 'Warehouse')
+          await detailsContain('Missing', 'Warehouse')
         })
-        await step('the user is directed to supply it through the host environment', () => detailsContain('host environment', 'Dash'))
+        await step('the user is directed to supply it through the host environment', () => detailsContain('host environment', 'Warehouse'))
         await step('no secret value is returned to the browser', async () => {
           for (const a of await catalog(admin))
             for (const secret of a.secrets) expect(Object.keys(secret).sort()).toEqual(['name', 'optional', 'present'])

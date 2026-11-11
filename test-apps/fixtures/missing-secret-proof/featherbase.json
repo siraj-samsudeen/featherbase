@@ -1,0 +1,17 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "secretproof",
+  "title": "Secret proof",
+  "entryTable": "secretproof.note",
+  "server": "server.mjs",
+  "tables": [
+    {
+      "name": "secretproof.note",
+      "label": "note",
+      "id_pattern": "prompt",
+      "columns": [{ "column_name": "body", "column_type": "Data" }]
+    }
+  ],
+  "secrets": ["SECRETPROOF_TOKEN"]
+}

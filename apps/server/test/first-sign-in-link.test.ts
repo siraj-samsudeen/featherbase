@@ -623,18 +623,13 @@ describe('the rule is configuration', () => {
     await expectStatus(await patchMethod(admin, 'stylehr', { settings: JSON.stringify({}) }), 417)
   })
 
-  // #1061: the owner turned StyleHR sign-in on in the instance file.
-  test('the instance file ships the method on, needing no variable', async () => {
-    const file = JSON.parse(readFileSync(new URL('../../../client-apps/jeyarama/instances/dash/instance-settings.json', import.meta.url), 'utf8')) as {
+  // #1061: an instance file can ship a roster method on, needing no variable.
+  test('an instance file ships the method on, needing no variable', async () => {
+    const file = JSON.parse(readFileSync(new URL('../../../test-apps/fixtures/instance-board/client-apps/acme/instances/board/instance-settings.json', import.meta.url), 'utf8')) as {
       settings: { 'Sign In Method': { row_id: string }[] }
-      environments: Record<string, { settings: { 'Sign In Method'?: { row_id: string }[] } }>
     }
     const stylehr = file.settings['Sign In Method'].find((m) => m.row_id === 'stylehr')
     expect(stylehr).toMatchObject({ kind: 'delegated_password', enabled: true, new_person: 'create_if_on_roster', settings: { provider_record_key: 'employee_id' } })
-    // #1104: staff type StyleHR's own code; employee_code carries a region prefix.
-    expect(stylehr).toMatchObject({ settings: { roster: { sign_in_id_column: 'employee_code_stylehr', identifiers: { 'stylehr-employee-code': 'employee_code_stylehr' } } } })
-    for (const section of Object.values(file.environments))
-      expect((section.settings['Sign In Method'] ?? []).some((m) => m.row_id === 'stylehr')).toBe(false)
     await applyInstanceSettings({ settings: { 'Sign In Method': [stylehr!] } }, { by: 'Administrator' })
     const [row] = await sql`select enabled, new_person from sign_in_method where row_id = 'stylehr'`
     expect(row).toEqual({ enabled: true, new_person: 'create_if_on_roster' })

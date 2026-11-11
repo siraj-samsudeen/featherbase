@@ -907,8 +907,8 @@ describe('Data Source rows (#703)', () => {
     expect((await sql`select engine, url_env, databases from data_source where row_id = 'own-variable'`)[0]).toEqual({ engine: 'motherduck', url_env: null, databases })
   })
 
-  test('the Feather Dash file applies: its warehouse reads gold and marts with the one token', async () => {
-    const file = JSON.parse(readFileSync(new URL('../../../client-apps/jeyarama/instances/dash/instance-settings.json', import.meta.url), 'utf8'))
+  test("an instance file's warehouse applies: it reads two databases with the one token", async () => {
+    const file = JSON.parse(readFileSync(new URL('../../../test-apps/fixtures/instance-board/client-apps/acme/instances/board/instance-settings.json', import.meta.url), 'utf8'))
     const [warehouse] = file.settings['Data Source']
     expect(warehouse).toEqual({ row_id: 'motherduck', engine: 'motherduck', default_schema: 'gold.main', databases: [{ name: 'gold' }, { name: 'marts' }] })
     await applyInstanceSettings({ settings: { 'Data Source': [warehouse] } }, { by: 'Administrator' })
