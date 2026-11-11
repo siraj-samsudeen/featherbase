@@ -171,7 +171,7 @@ at the repository root.
 
   A store is sold through its one Store plant, so a place is a plant code. A whole-store place names
   no section. `reach_problem` says why a job reaches nothing, for the page's message.
-- **Roles:** Dash Reader and Report Access Manager. `roleDefaults` is empty; part 4 adds the stand-in binding.
+- **Roles:** Dash Reader, Dash All-Stores Reader (reaches every store, as a Director's job does; for head-office staff, #1192) and Report Access Manager. `roleDefaults` is empty; part 4 adds the stand-in binding.
 - **The cached dataset, `sales_to_date`**, on the instance's `motherduck` Data
   Source (which must be marked "Read-scaling token"): one row per store and
   subcategory, month to date in India Standard Time, with target, sales, the
