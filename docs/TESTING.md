@@ -392,15 +392,22 @@ prints in every report, and CI keeps the merged numbers as artifacts
 reachable and untested; the goal stays 100%.
 
 CI merges the PostgreSQL 18 release-preflight coverage with the server's
-three shards before enforcing the server gate. `src/sources/mysql-driver.ts`
-is measured only when `MYSQL_TEST_URL` is set (CI sets it for both the shards
-and the merge). A local run without MySQL is not an all-driver coverage
-claim. A coverage ignore is allowed only as ADR 0012 lists, with its reason
+three shards before enforcing the server gate. A coverage ignore is allowed only as ADR 0012 lists, with its reason
 in the comment. Read the generated report and exclusions, not an old
 percentage in documentation, to assess the current code.
 
 A `packages/shared` module driven only from the server and web suites reads as
 uncovered in shared's own report.
+
+To see the numbers CI will report, run `pnpm coverage:ci`
+(`tools/ci-coverage.mjs`, #1201). It shards and merges both core suites as CI
+does, each run on a fresh local database whose address carries a password,
+then prints each suite's uncovered counts and drops the databases. Logs land
+in `.coverage-ci/`; `--only=server|web` runs one suite, `--jobs=N` sets how
+many runs go side by side (default 3). It uses the local Postgres only, so
+anything CI measures through another service (MySQL, until #1199) is outside
+its numbers. A plain `vitest run --coverage` counts differently: it is one
+run, not merged shards.
 
 ### Merged web coverage
 
