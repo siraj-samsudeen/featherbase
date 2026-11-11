@@ -552,12 +552,18 @@ export function reportAddress(key: string, search: string): string {
 
 /** What the page says for a job that reaches nothing; null: the no-access page says it. */
 export type ReachProblem = 'no_job' | 'no_section' | 'departments_not_filled' | 'head_office' | 'no_cluster' | 'nothing_placed'
-export function reachMessage(problems: readonly string[]): { text: string; sectionsLink: boolean } | null {
+export function reachMessage(problems: readonly string[]): { text: string; sectionsLink: boolean; readerOnly?: true } | null {
   if (problems.includes('no_section') || problems.includes('nothing_placed'))
     return { text: "You aren't set against a section yet, so there is no report to show.", sectionsLink: true }
   if (problems.includes('departments_not_filled'))
     return { text: "Your store's departments aren't filled in yet. Your report will open once they are.", sectionsLink: false }
   if (problems.includes('no_cluster'))
     return { text: "Your store isn't in a cluster yet, so there is no report to show.", sectionsLink: false }
+  // #1172: Dash opens for any Dash role, so a reader is told these too. Someone who manages the
+  // instance keeps its setup guidance instead (`readerOnly`).
+  if (problems.includes('head_office'))
+    return { text: 'Your job is in head office, so no store report is set against it. Ask the person who gives Dash reports in your company if you need one.', sectionsLink: false, readerOnly: true }
+  if (problems.includes('no_job'))
+    return { text: "You aren't on the staff list yet, so there is no report to show. Ask HR to add you.", sectionsLink: false, readerOnly: true }
   return null
 }
