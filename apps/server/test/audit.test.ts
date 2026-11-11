@@ -42,26 +42,6 @@ describe('PLAT-007: audit logs', () => {
     expect(new Date(row.created_at as string).getTime()).toBeGreaterThanOrEqual(before.getTime() - 1000)
   })
 
-  test('records an export via /api/access_log (read permission required)', async ({ admin, api }) => {
-    await setup(admin)
-    const login = await api.fetch('/api/login', {
-      method: 'POST',
-      body: JSON.stringify({ usr: USER, pwd: 'auditpw12345' }),
-    })
-    const token = ((await login.json()) as { token: string }).token
-    const res = await api.fetch('/api/access_log', {
-      method: 'POST',
-      headers: { authorization: `Bearer ${token}` },
-      body: JSON.stringify({ table: 'Person', method: 'csv' }),
-    })
-    await expectStatus(res, 200)
-    // A System Manager sees afterwards who exported people, and in which format.
-    const seen = await admin.get<{ data: { user: string; operation: string; ref_table: string; method: string }[] }>(
-      `/api/table/${encodeURIComponent('Access Log')}?fields=${encodeURIComponent(JSON.stringify(['user', 'operation', 'ref_table', 'method']))}`,
-    )
-    expect(seen.data).toContainEqual(expect.objectContaining({ user: ID, operation: 'export', ref_table: 'Person', method: 'csv' }))
-  })
-
   test('rejects logging an export of a Table the caller cannot read', async ({ admin, api }) => {
     await setup(admin)
     // A fresh table with no grants: the audit user (System Manager) CAN read

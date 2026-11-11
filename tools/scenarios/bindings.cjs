@@ -50,4 +50,14 @@ function scenarioBindings() {
   return { bindings, problems };
 }
 
-module.exports = { scenarioBindings };
+/** The files under apps/<app> that bind a scenario, relative to that app, for `pnpm scenarios:report`. */
+function boundFiles(bindings, app) {
+  const prefix = `apps/${app}/`;
+  const files = new Set(bindings.filter((b) => b.file.startsWith(prefix)).map((b) => b.file.slice(prefix.length)));
+  return [...files].sort();
+}
+
+module.exports = { scenarioBindings, boundFiles };
+
+// `node tools/scenarios/bindings.cjs server` prints them, one per line.
+if (require.main === module) console.log(boundFiles(scenarioBindings().bindings, process.argv[2]).join('\n'));

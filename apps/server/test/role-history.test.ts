@@ -82,13 +82,8 @@ test('#830: re-saving the same roles, or editing only other fields, records no r
 // #897: the creation entry alone does not keep a Person from being deleted (a
 // delete grant removes a person with their roles); it goes with them. A later
 // change is history like any other and still refuses the delete (#321).
-test('#897: a Person whose only history is their creation roles can still be deleted, and leaves no history behind', async ({ admin }) => {
-  await roles(['Rh Clerk'])
-  const p = await person(admin, { email: 'rh.leaving@example.com', full_name: 'Rh Leaving', roles: [{ role: 'Rh Clerk' }] })
-  await admin.delete(`/api/table/Person/${encodeURIComponent(p.row_id)}`)
-  expect(await sql`select 1 from person where row_id = ${p.row_id}`).toHaveLength(0)
-  expect(await history(p.row_id)).toEqual([])
-})
+// (That deletion is the scenario "A person with only their creation entry can still
+// be deleted" in permissions-and-roles.)
 
 test('#897: a Person changed after creation keeps their history and is not deleted', async ({ admin }) => {
   await roles(['Rh Clerk', 'Rh Auditor'])
