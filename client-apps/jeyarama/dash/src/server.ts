@@ -70,7 +70,7 @@ export function setEmbedFetch(f: typeof fetch | null) {
 const placesOf = (ctx: ScopedContext) => ctx.authorization.places ?? []
 
 /** Dash's own roles (featherbase.json's `roles`): holding any of them opens Dash (#1172). */
-export const DASH_ROLES = new Set(['Dash Reader', 'Dash Section Editor', 'Dash Section Reviewer', 'Report Access Manager'])
+export const DASH_ROLES = new Set(['Dash Reader', 'Report Access Manager'])
 
 const REPORT_FIELDS = ['report_key', 'report_name', 'dive_id', 'filter_shape', 'store_key', 'subcategory_key', 'whole_store_key', 'month_key', 'ready_signal', 'quick_view', 'pickers_in_dive']
 
