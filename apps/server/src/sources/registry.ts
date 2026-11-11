@@ -23,6 +23,9 @@ const DRIVERS: Record<SourceEngine, SourceDriver> = {
   'csv-folder': csvFolderDriver,
 }
 
+/** Engines Featherbase once supported; a source saved on one is refused by name (ADR 0025). */
+const RETIRED_ENGINES: Record<string, string> = { mysql: 'MySQL' }
+
 export function invalidateSources(name?: string) {
   const names = name ? [name] : [...cache.keys()]
   for (const n of names) {
@@ -64,6 +67,8 @@ export async function getSource(name: string): Promise<SourceConfig> {
   const [row] = await sql`select * from data_source where row_id = ${name}`
   if (!row) throw new AppError('NotFoundError', `Data Source ${name} not found`)
   const engine = String(row.engine) as SourceEngine
+  const retired = RETIRED_ENGINES[engine]
+  if (retired) throw new AppError('ValidationError', `${retired} is no longer a supported data source: delete ${name}`)
   if (!(engine in DRIVERS))
     throw new AppError('ValidationError', `Unknown data source engine ${engine}`)
   const cfg: SourceConfig = {

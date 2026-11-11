@@ -259,9 +259,8 @@ describe('external-data-sources', () => {
       answer = await admin.fetch('/api/table/Data%20Source/legacy-shop:test_connection', { method: 'POST', body: '{}' })
     })
     await step('the test is refused, saying MySQL is no longer a supported data source and to delete "legacy-shop"', async () => {
-      await expectRefused(answer, 417)
-      const body = await answer.clone().json() as { message: string }
-      expect(body.message).toBe('MySQL is no longer a supported data source: delete legacy-shop')
+      const refused = await expectRefused(answer, 417, 'MySQL is no longer a supported data source: delete legacy-shop')
+      expect(refused.type).toBe('ValidationError')
     })
   })
 })
