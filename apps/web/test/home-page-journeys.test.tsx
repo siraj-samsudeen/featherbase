@@ -3,6 +3,7 @@
 // All tables, rendered on the real router against the in-process server.
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { Sql } from 'postgres'
 import { tableHref, tableSlug } from 'shared'
 import { test, expect, renderApp } from './pg-test'
 
@@ -29,6 +30,15 @@ async function seed(admin: Admin) {
     },
   })
 }
+
+test('the sidebar shows a Home Page with its icon, and one stored with no label by its id', async ({ admin, db }) => {
+  await admin.post('/api/save_row', { table: 'Home Page', row: { row_id: 'hpj-iconed', label: 'Stores', icon: '🏬' } })
+  await admin.post('/api/save_row', { table: 'Home Page', row: { row_id: 'hpj-unnamed', label: 'Unnamed' } })
+  await (db as Sql)`update home_page set label = '' where row_id = 'hpj-unnamed'`
+  await renderApp('/featherbase/admin', admin)
+  expect(await screen.findByTestId('home-page-link-hpj-iconed', {}, WAIT)).toHaveTextContent(/^🏬 Stores$/)
+  expect(screen.getByTestId('home-page-link-hpj-unnamed')).toHaveTextContent(/^hpj-unnamed$/)
+})
 
 test('UI-027: the sidebar opens a Home Page, with its title and shortcuts', async ({ admin }) => {
   await seed(admin)

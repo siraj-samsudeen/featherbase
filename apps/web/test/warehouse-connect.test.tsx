@@ -3,6 +3,7 @@
 // database, a name already taken, searching the database and schema lists,
 // a refresh the network drops, and a source of another kind keeping the
 // native form. Against the local stand-in.
+import type { Sql } from 'postgres'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, beforeAll, vi } from 'vitest'
@@ -140,6 +141,23 @@ test('a source of another kind opens on the native Data Source form', async ({ a
   await renderApp('/featherbase/admin/table/data-source/row/web-pg-native', admin)
   expect(await screen.findByTestId('form-view', {}, WAIT)).toBeInTheDocument()
   expect(screen.queryByTestId('warehouse-databases')).not.toBeInTheDocument()
+})
+
+test.for([
+  ['what it said', 'error', 'the warehouse did not answer', /^Last run: error · the warehouse did not answer$/],
+  ['nothing more when it said nothing', 'success', null, /^Last run: success$/],
+] as const)("a copied table's schedule shows its last run with %s", async ([, outcome, result, shown], { admin, db }) => {
+  await connect(admin, `web-wh-last-${outcome}`)
+  await admin.post(`/api/table/Data%20Source/web-wh-last-${outcome}:copy_create`, {
+    database: 'sales', schema: 'main', table: 'stores', name: 'Last Run Store', key: 'code',
+    columns: ['name', 'code'].map((source) => ({ source, column_name: source })),
+  })
+  await admin.post('/api/table/Last%20Run%20Store:set_copy_schedule', { cadence: 'hourly', enabled: true })
+  await (db as Sql)`update scheduled_job set last_outcome = ${outcome}, last_result = ${result}
+    where row_id = (select scheduled_job from featherbase.copy_refresh_schedule where target_table = 'Last Run Store')`
+  await renderApp('/featherbase/admin/table/last-run-store', admin)
+  const schedule = await screen.findByTestId('copy-schedule', {}, WAIT)
+  expect(await within(schedule).findByText(shown, {}, WAIT)).toBeInTheDocument()
 })
 
 test("a copied table's refresh schedule the network drops says it could not be saved", async ({ admin }) => {

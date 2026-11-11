@@ -14,6 +14,15 @@ describe('describeFieldErrors', () => {
       parts: ['Column “Empty”: Choice column needs at least one choice'],
     })
   })
+  it('names a setting with no word of its own by its field name', () => {
+    expect(describeFieldErrors({ title_column: 'not a column' }, kept).parts).toEqual(['title_column: not a column'])
+  })
+  it('says a problem on a path that names no column or setting without a name', () => {
+    expect(describeFieldErrors({ 'views.0.filter': 'unknown filter' }, kept).parts).toEqual(['unknown filter'])
+  })
+  it('marks a column with two problems with both', () => {
+    expect(describeFieldErrors({ 'columns.0.column_name': 'taken', 'columns.0.label': 'blank' }, kept).rows).toEqual({ 0: 'taken; blank' })
+  })
   it('still names a setting that is not a column by its control', () => {
     expect(describeFieldErrors({ name: 'invalid Table name' }, kept).parts).toEqual(['Table name: invalid Table name'])
   })

@@ -32,8 +32,9 @@ async function setup(admin: TestClient, createUser: (o: { email: string }) => Pr
   await createCoreTables(admin)
   const save = (table: string, row: Record<string, unknown>) => saveRow(admin, table, row)
   for (const [code, name] of [['NORTH', 'North'], ['SOUTH', 'South']]) await save('Cluster', { code, name })
-  for (const [code, name, cluster] of [['LKS', 'Lakeside', 'NORTH'], ['HIL', 'Hillview', 'NORTH'], ['RIV', 'Riverside', 'SOUTH']])
-    await save('Site', { code, name, is_store: true, cluster })
+  for (const region of ['East', 'West']) await save('Operating Region', { region })
+  for (const [code, name, cluster, operating_region] of [['LKS', 'Lakeside', 'NORTH', 'East'], ['HIL', 'Hillview', 'NORTH', 'East'], ['RIV', 'Riverside', 'SOUTH', 'West']])
+    await save('Site', { code, name, is_store: true, cluster, operating_region })
   await save('Site', { code: 'WHS', name: 'Warehouse', is_store: false, cluster: 'NORTH' })
   await save('Site', { code: 'HOF', name: 'Head Office', is_store: false })
   for (const [plant_code, plant_type, site] of [['9901', 'Store', 'LKS'], ['9981', 'Warehouse', 'LKS'], ['9902', 'Store', 'HIL'], ['9903', 'Store', 'RIV'], ['9980', 'Warehouse', 'WHS']])
@@ -41,7 +42,11 @@ async function setup(admin: TestClient, createUser: (o: { email: string }) => Pr
   for (const [row_id, name] of [['LKS-F1', 'Ground'], ['LKS-F2', 'First']]) await save('Store Floor', { row_id, name, site: 'LKS' })
   for (const [row_id, name, site, floor] of [['LKS-S1', 'Sarees', 'LKS', 'LKS-F1'], ['LKS-S2', 'Lehenga', 'LKS', 'LKS-F1'], ['LKS-S3', 'Belts', 'LKS', 'LKS-F2'], ['HIL-S1', 'Hillview Belts', 'HIL', null]])
     await save('Section', { row_id, name, site, floor, status: 'Active' })
-  for (const code of [...SARI, ...LEHENGA, ...BELTS, '010909001']) await save('Subcategory', { row_id: code, subcategory: `Made-up ${code}`, subcategory_type: 'Merchandise' })
+  await save('Division', { division: 'Fashion' })
+  await save('Subdivision', { subdivision: 'Womenswear', division: 'Fashion' })
+  for (const category of ['Sarees', 'Accessories']) await save('Category', { category, subdivision: 'Womenswear' })
+  const tree = (code: string) => ({ category: BELTS.includes(code) ? 'Accessories' : 'Sarees', subdivision: 'Womenswear', division: 'Fashion' })
+  for (const code of [...SARI, ...LEHENGA, ...BELTS, '010909001']) await save('Subcategory', { row_id: code, subcategory: `Made-up ${code}`, subcategory_type: 'Merchandise', ...tree(code) })
   const place = (id: string, store: string, subcategory: string, section: string, over: object = {}) =>
     save('Section Subcategory', { section_subcategory_id: id, store, subcategory, section, starts_on: '2026-01-01', ...over })
   await place('P1', 'LKS', SARI[0], 'LKS-S1')
@@ -62,7 +67,15 @@ async function setup(admin: TestClient, createUser: (o: { email: string }) => Pr
       await save('Job Assignment', { assignment_id: `JA-${number}-${i}`, employee: String(number), site: 'LKS', starts_on: '2026-01-01', ...job })
     return person.user!
   }
-  return { reader, save, place }
+  /** Someone on the staff list with these Merchandise Assignments and no job. */
+  const buyer = async (assignments: Record<string, unknown>[]) => {
+    const person = await createUser({ email: `p-${++number}@example.test` })
+    await save('Employee', { employee_code: String(number), name: `Made-up ${number}`, person: person.user, status: 'Current' })
+    for (const [i, row] of assignments.entries())
+      await save('Merchandise Assignment', { assignment_id: `MA-${number}-${i}`, employee: String(number), starts_on: '2026-01-01', ...row })
+    return person.user!
+  }
+  return { reader, buyer, save, place }
 }
 const stores = (scope: { filters: Record<string, string[]> }[]) => scope.map(place => place.filters.store[0])
 const sections = (scope: { label: string; filters: Record<string, string[]> }[]) => scope.map(place => [place.label, place.filters.subcategory])
@@ -143,6 +156,24 @@ describe('the org_chart scope provider on the platform, per job (#967)', () => {
   })
 })
 
+// rama_dw #4588: buyers and category heads, from Merchandise Assignment and Subcategory's tree.
+describe('the org_chart scope provider on the platform, per merchandise assignment', () => {
+  test('a buyer gets their subcategory in every store of their region', async ({ admin, createUser }) => {
+    const { buyer } = await setup(admin, createUser)
+    const person = await buyer([{ responsibility: 'Buyer', division: 'Fashion', subdivision: 'Womenswear', category: 'Accessories', subcategory: BELTS[0], operating_region: 'East' }])
+    expect(await resolvePersonScope(person, await binding())).toEqual(['9901', '9902'].map(store => ({
+      label: `${store} / Assigned subcategories`, filters: { store: [store], subcategory: BELTS },
+      basis: 'assignment', reasons: [{ text: 'Buyer merchandise assignment', since: '2026-01-01' }],
+    })))
+  })
+
+  test('a category head with no region gets the whole category in every store', async ({ admin, createUser }) => {
+    const { buyer } = await setup(admin, createUser)
+    const scope = await resolvePersonScope(await buyer([{ responsibility: 'Category head', division: 'Fashion', subdivision: 'Womenswear', category: 'Sarees' }]), await binding())
+    expect(scope.map(place => [place.filters.store[0], place.filters.subcategory])).toEqual(['9901', '9902', '9903'].map(store => [store, ['010101001', '010101002', '010101003', '010909001']]))
+  })
+})
+
 describe('what never widens a scope', () => {
   test("a job on a section of another site, or a placement into another store's section", async ({ admin, createUser }) => {
     const { reader, place } = await setup(admin, createUser)
@@ -165,8 +196,8 @@ describe('what never widens a scope', () => {
   })
 })
 
-describe('the six core Tables stay ordinary Tables', () => {
-  const SCOPE_TABLES = ['Employee', 'Job Assignment', 'Site', 'Plant', 'Section', 'Section Subcategory']
+describe('the core Tables the provider reads stay ordinary Tables', () => {
+  const SCOPE_TABLES = ['Employee', 'Job Assignment', 'Site', 'Plant', 'Section', 'Section Subcategory', 'Merchandise Assignment', 'Subcategory']
 
   test('the provider reads them with none of them marked', async ({ admin, createUser }) => {
     const { reader } = await setup(admin, createUser)
@@ -175,7 +206,7 @@ describe('the six core Tables stay ordinary Tables', () => {
     for (const table of SCOPE_TABLES) expect((await admin.get<{ decides_scope?: boolean }>(`/api/table/${encodeURIComponent(table)}:meta`)).decides_scope ?? false).toBe(false)
   })
 
-  test('the manifest names all six as read unmarked', async ({ admin, createUser }) => {
+  test('the manifest names all of them as read unmarked', async ({ admin, createUser }) => {
     await setup(admin, createUser)
     const bound = await binding()
     expect(bound.tables).toEqual(SCOPE_TABLES)

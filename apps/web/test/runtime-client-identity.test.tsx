@@ -29,7 +29,8 @@ test('public credential exchanges and logout do not bootstrap with an expired sa
   const requests = vi.spyOn(globalThis, 'fetch').mockImplementation((path, init) =>
     bridge(path, { ...init, headers: { ...init?.headers, cookie: `sid=${admin.token}` } }))
   localStorage.setItem('fc_token', 'expired-bearer')
-  expect(await api.post('/api/oauth/session', { code })).toEqual(session)
+  // The sign-in answer also lists the apps the person can open (#1164): none here.
+  expect(await api.post('/api/oauth/session', { code })).toEqual({ ...session, apps: [] })
   expect(await api.post('/api/reset_password_request', { usr: 'unknown-account@example.com' })).toEqual({ ok: true })
   expect(await api.post('/api/reset_password', { key, new_password: 'new-local-proof-password' })).toEqual({ ok: true })
   expect(await api.post('/api/logout')).toEqual({ ok: true })

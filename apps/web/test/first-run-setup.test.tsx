@@ -176,6 +176,73 @@ test('a slow health answer never pulls the Administrator off a page they moved o
   expect(screen.queryByTestId('first-run-setup')).not.toBeInTheDocument()
 })
 
+const urlOf = (input: unknown) => typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url
+
+/** The setup answer for one person, as the server would give it. */
+function answerSetup(invitation: Record<string, unknown>) {
+  const real = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    if (urlOf(input).includes('/api/setup/system-managers'))
+      return Promise.resolve(new Response(JSON.stringify({ people: [{ person: 'psn_asha', full_name: 'Asha Keeper', email: 'asha@example.com', created: true, invitation }] }),
+        { status: 200, headers: { 'content-type': 'application/json' } }))
+    return real(input, init)
+  })
+}
+
+async function inviteAsha(admin: Parameters<typeof renderApp>[1]) {
+  await renderApp('/featherbase/admin/setup/person', admin)
+  const setup = await screen.findByTestId('first-run-setup')
+  await userEvent.type(within(setup).getByLabelText('Full name'), 'Asha Keeper')
+  await userEvent.type(within(setup).getByLabelText('Email'), 'asha@example.com')
+  await userEvent.click(within(setup).getByRole('button', { name: 'Invite' }))
+  return setup
+}
+
+test.for([
+  ['sent', { status: 'sent' }, 'The invitation email was sent to asha@example.com.', false],
+  ['failed with a link to copy', { status: 'failed', error: 'The mail server refused it', link: 'https://example.test/featherbase/login', method_label: 'Google' },
+    'The mail server refused it. Copy this invitation and send it to them yourself.', true],
+  ['failed with nothing to copy', { status: 'failed', error: 'The mail server refused it', link: null, method_label: 'Google' }, 'The mail server refused it.', false],
+  ['not possible by any sign-in method', { status: 'no_method' }, 'No sign-in method can invite them yet.', false],
+] as const)('an invitation %s says so', async ([, invitation, words, copy], { admin }) => {
+  await noManagerEmails()
+  answerSetup(invitation)
+  await inviteAsha(admin)
+  const result = await screen.findByTestId('setup-result')
+  expect(result).toHaveTextContent(words)
+  expect(within(result).queryByRole('button', { name: 'Copy' }) !== null).toBe(copy)
+})
+
+test.for([
+  ['a dropped connection', new TypeError('Failed to fetch'), 'Failed to fetch'],
+  ['something other than an error', 'offline', 'The people could not be set up'],
+] as const)('an invite cut off by %s says what went wrong', async ([, failure, words], { admin }) => {
+  await noManagerEmails()
+  const real = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+    urlOf(input).includes('/api/setup/system-managers') ? Promise.reject(failure) : real(input, init))
+  const setup = await inviteAsha(admin)
+  expect(await within(setup).findByText(words)).toBeInTheDocument()
+})
+
+test('a finished setup run from a settings file reads Ready at each step', async ({ admin }) => {
+  const real = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const res = await real(input, init)
+    if (!urlOf(input).includes('/api/instance-health')) return res
+    const health = await res.json() as { setup_needed: boolean; setup: Record<string, unknown> }
+    return new Response(JSON.stringify({ ...health, setup_needed: false,
+      setup: { ...health.setup, administrator_ready: true, environment: 'production', configuration: 'file' } }),
+    { status: 200, headers: { 'content-type': 'application/json' } })
+  })
+  await renderApp('/featherbase/admin/setup', admin)
+  const setup = await screen.findByTestId('welcome-setup')
+  const step = (heading: string) => within(setup).getByRole('heading', { name: heading }).closest('section')!
+  await within(setup).findByRole('heading', { name: '1. Set up your administrators' })
+  expect(step('1. Set up your administrators')).toHaveTextContent('Ready')
+  expect(step('3. Prepare for shared use')).toHaveTextContent(/ReadyReview sign-in.*Your instance uses a managed settings file\./)
+})
+
 test('setup progress the network could not load says so, and Try again loads it', async ({ admin }) => {
   let down = true
   const real = globalThis.fetch

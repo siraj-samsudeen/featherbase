@@ -211,6 +211,22 @@ async function claimAndRun(): Promise<boolean | (() => Promise<boolean>)> {
   if (!claimed) return false
   return ownLifecycleLock.has(claimed.method as string) ? () => runClaimed(claimed) : runClaimed(claimed)
 }
+/** How long a run may wait for a server with its handler, and how often it looks again. */
+const HAND_BACK_MINUTES = 30
+const HAND_BACK_SECONDS = 60
+
+/** Put the run back on the queue for another server, unless it has waited long enough. */
+async function handBack(job: string, method: string): Promise<boolean> {
+  const [back] = await sql`
+    update background_job set job_status = 'queued', updated_at = now(),
+      run_at = clock_timestamp() + ${HAND_BACK_SECONDS} * interval '1 second',
+      handed_back_at = coalesce(handed_back_at, clock_timestamp()),
+      error = ${`Waiting for a server that has a handler for "${method}"`}
+    where row_id = ${job} and (handed_back_at is null or handed_back_at > clock_timestamp() - ${HAND_BACK_MINUTES} * interval '1 minute')
+    returning 1`
+  return Boolean(back)
+}
+
 async function runClaimed(claimed: postgres.Row): Promise<boolean> {
   const method = claimed.method as string
   const attempt = Number(claimed.attempts) + 1
@@ -220,6 +236,11 @@ async function runClaimed(claimed: postgres.Row): Promise<boolean> {
   // Remember administration before the handler runs: removal while it is
   // running must not turn its old interval into a standalone recurrence.
   const wasAdministered = await scheduledJob(method)
+  // During a deploy the previous release keeps polling the queue while the new
+  // one switches a job on. A server with no handler for an enabled scheduled
+  // job hands the run back for one that has it, using up no attempt, for up to
+  // HAND_BACK_MINUTES; after that it fails like any unknown job.
+  if (!handler && wasAdministered?.enabled && (await handBack(claimed.row_id as string, method))) return true
 
   // JOB-005: progress reports go to the job owner's realtime channel.
   //

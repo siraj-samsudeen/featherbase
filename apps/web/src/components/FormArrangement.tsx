@@ -260,7 +260,8 @@ export function ValueField({ field, value, meta, settings, columns }: {
   let shown: ReactNode
   if (isEmpty(value)) shown = <span className="text-ink-subtle">—</span>
   else if (kind === 'link' && field.reference_table) {
-    const target = linkRowsTable(field) ?? field.reference_table
+    // A link that names its Table always has one to read rows from.
+    const target = linkRowsTable(field)!
     // #910: the linked row opens in the drill pane.
     const open = (e: MouseEvent) => {
       if (!nav || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
@@ -270,11 +271,12 @@ export function ValueField({ field, value, meta, settings, columns }: {
     shown = <RowLink table={target} rowId={String(value)} onClick={open} withCode={false} />
   } else if (kind === 'yesno')
     shown = <span className={pillClasses(value ? 'bg-positive-tint text-positive' : 'bg-subtle text-ink-muted')}>{value ? 'Yes' : 'No'}</span>
-  else if (kind === 'number') shown = formatValue(field.column_type, value, settings) || String(value)
+  else if (kind === 'number') shown = formatValue(field.column_type, value, settings)
   else if (kind === 'file')
     shown = <span className="rounded bg-subtle px-2 py-0.5 text-xs text-ink-muted" title={String(value)}>{String(value).split('/').pop()}</span>
   else if (kind === 'json') shown = <code className="text-xs">{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</code>
-  else shown = formatValue(field.column_type, value, settings) || String(value)
+  // formatValue gives '' only for an empty value, handled above.
+  else shown = formatValue(field.column_type, value, settings)
   const valueClasses = [
     'min-w-0 flex-1 text-sm text-ink',
     kind === 'number' ? 'font-mono tabular-nums' : '',
@@ -340,8 +342,8 @@ export function BookkeepingLine({ fields, values, settings }: { fields: ColumnDe
           {t(f.label ?? f.column_name)}{' '}
           <span className="text-ink-muted">
             {f.column_type === 'Reference' && f.reference_table
-              ? <RowTitle table={linkRowsTable(f) ?? f.reference_table} rowId={String(values[f.column_name])} />
-              : formatValue(f.column_type, values[f.column_name], settings) || String(values[f.column_name])}
+              ? <RowTitle table={linkRowsTable(f)!} rowId={String(values[f.column_name])} />
+              : formatValue(f.column_type, values[f.column_name], settings)}
           </span>
         </span>
       ))}

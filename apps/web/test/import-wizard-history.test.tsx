@@ -2,6 +2,7 @@
 // (#859), and its matching-column check when the network drops.
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { Sql } from 'postgres'
 import { afterEach, vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 import { clearSession } from '../src/lib/import-session'
@@ -25,6 +26,19 @@ async function importedShelves(admin: Admin) {
   await renderApp('/featherbase/admin/import?table=Iwh%20Shelf', admin)
   return within(await screen.findByTestId('iw-run-history', {}, T))
 }
+
+test('a reverted run, logged with no counts, says it was reverted and counts nothing', async ({ admin, db }) => {
+  clearSession()
+  await admin.post('/api/table_def', { name: 'Iwh Shelf', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table/Iwh%20Shelf:import', {
+    rows: [{ row_id: 'shelf-1', title: 'top' }], context: { run_id: 'iwh-reverted', file_name: 'shelves.csv' },
+  })
+  await (db as Sql)`update import_log set inserted = null, updated = null, failed = null, reverted_at = now() where run_id = 'iwh-reverted'`
+  await renderApp('/featherbase/admin/import?table=Iwh%20Shelf', admin)
+  const history = await screen.findByTestId('iw-run-history', {}, T)
+  await waitFor(() => expect(history).toHaveTextContent('shelves.csv — 0 processed matches · 0 added · 0 failed'), T)
+  expect(within(history).getByText('reverted')).toBeInTheDocument()
+})
 
 test("Cancel on deleting a run's rows permanently keeps them", async ({ admin }) => {
   const history = await importedShelves(admin)

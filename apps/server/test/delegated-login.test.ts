@@ -56,7 +56,7 @@ describe('delegated password sign-in', () => {
     const body = (await res.json()) as { token: string; user: { row_id: string } }
     expect(body.user.row_id).toBe(tl.user)
     expect(body.token.split('.')).toHaveLength(3)
-    expect(Object.keys(body).filter((k) => !['token', 'user', 'landing'].includes(k))).toEqual([])
+    expect(Object.keys(body).filter((k) => !['token', 'user', 'landing', 'apps'].includes(k))).toEqual([])
     expect(sidCookie(res)).toMatch(/HttpOnly/i)
 
     // The provider got exactly the StyleHR contract: JSON {email, password},

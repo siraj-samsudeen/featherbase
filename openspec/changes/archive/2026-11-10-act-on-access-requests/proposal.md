@@ -17,6 +17,6 @@ The Waiting for access page only listed requests. To give access, a System Manag
 
 ## Impact
 
-- `apps/server/src/access-decisions.ts`, `waiting-for-access.ts`, migration 0158, and the manifest's `access.grant`.
+- `apps/server/src/access-decisions.ts`, `waiting-for-access.ts`, migration 0159, and the manifest's `access.grant`.
 - `apps/web`: `AccessRequestDrawer` and the Waiting for access page; ListView gains page filters, a row panel and extra columns.
-- Dash 0.12.7: the `grant_options` read.
+- Dash 0.12.10: the `grant_options` read.

@@ -5,7 +5,9 @@
 // re-centres it. The separate map page is gone.
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { vi } from 'vitest'
+import type { Sql } from 'postgres'
 import { tableHref } from 'shared'
+import { invalidateMeta } from 'server/src/meta'
 import { createUserWithRole } from 'server/test/fixtures'
 import { test, expect, renderApp } from './pg-test'
 
@@ -173,6 +175,22 @@ test('a sub-table shows as a collection of its rows, and a row of it points back
   invoice.unmount()
   await openMap(admin, 'Rm Line', saved.lines[0].row_id)
   await waitFor(() => expect(screen.getByTestId('map-forward-Rm Invoice')).toHaveTextContent('March invoice'))
+})
+
+test('a sub-table stored with no label is named on the map by its column name', async ({ admin, db }) => {
+  await admin.post('/api/table_def', { name: 'Rm Bare Line', kind: 'sub_table', columns: [{ column_name: 'item', column_type: 'Data', label: 'Item' }] })
+  await admin.post('/api/table_def', {
+    name: 'Rm Bare Invoice', id_pattern: 'prompt', title_column: 'title',
+    columns: [
+      { column_name: 'title', column_type: 'Data', in_list_view: true },
+      { column_name: 'bare_lines', column_type: 'Sub-table', row_table: 'Rm Bare Line', label: 'Lines' },
+    ],
+  })
+  await admin.post('/api/save_row', { table: 'Rm Bare Invoice', row: { row_id: 'binv-1', title: 'April invoice', bare_lines: [{ item: 'Saree' }] } })
+  await (db as Sql)`update column_def set label = null where parent = 'Rm Bare Invoice' and column_name = 'bare_lines'`
+  invalidateMeta()
+  await openMap(admin, 'Rm Bare Invoice', 'binv-1')
+  expect(await screen.findByTestId('map-group-Rm Bare Line')).toHaveTextContent('bare_lines')
 })
 
 test('the separate map page is gone', async ({ admin }) => {
