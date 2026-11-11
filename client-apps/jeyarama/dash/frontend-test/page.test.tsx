@@ -189,7 +189,7 @@ describe('Dash against the real platform', () => {
     await waitForText("You don't have a report to open yet.")
     expect(document.querySelector('[data-testid=dash] a[href*=instance-health]')).toBeNull()
     expect([...new Set(requests.map(r => r.path))].sort()).toEqual([
-      '/api/app_reads/dash/approvals', '/api/app_reads/dash/embed_session', '/api/app_reads/dash/manages_access', '/api/app_reads/dash/reach_problem', '/api/app_reads/dash/report', '/api/app_reads/dash/reports', '/api/whoami',
+      '/api/app_reads/dash/approvals', '/api/app_reads/dash/embed_session', '/api/app_reads/dash/holds_master_data', '/api/app_reads/dash/manages_access', '/api/app_reads/dash/reach_problem', '/api/app_reads/dash/report', '/api/app_reads/dash/reports', '/api/whoami',
     ])
   })
 
