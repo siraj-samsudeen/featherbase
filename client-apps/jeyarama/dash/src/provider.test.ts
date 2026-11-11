@@ -38,12 +38,15 @@ const SUBCATEGORIES: Row[] = [
   { row_id: '000000009', category: 'Tops', subdivision: 'Womenswear', division: 'Fashion', subcategory_type: 'Consumable' },
 ]
 
-function fake(jobs: Row[], { employee = { row_id: 'E1', person: 'me', status: 'Current' } as Row, plants = PLANTS, assignments = [] as Row[] } = {}): Documents {
+function fake(jobs: Row[], { employee = { row_id: 'E1', person: 'me', status: 'Current' } as Row, plants = PLANTS, assignments = [] as Row[],
+  clusterHeads = {} as Record<string, string>, regionHeads = {} as Record<string, string> } = {}): Documents {
   const tables: Record<string, Row[]> = {
     Employee: [employee], 'Job Assignment': jobs.map((job, i) => ({ row_id: `J${i}`, employee: 'E1', starts_on: '2026-01-01', ends_on: null, ...job })),
     'Merchandise Assignment': assignments.map((row, i) => ({ row_id: `M${i}`, employee: 'E1', division: null, subdivision: null, category: null, subcategory: null,
       operating_region: null, starts_on: '2026-01-01', ends_on: null, ...row })),
     Site: SITES, Plant: plants, Section: SECTIONS, 'Section Subcategory': PLACEMENTS, Subcategory: SUBCATEGORIES,
+    Cluster: ['North', 'South'].map(row_id => ({ row_id, cluster_manager: clusterHeads[row_id] ?? null })),
+    'Operating Region': ['East', 'West'].map(row_id => ({ row_id, region_head: regionHeads[row_id] ?? null })),
   }
   return {
     async list(table, { filters = [], limit_start = 0, limit_page_length = 500 }) {
@@ -230,6 +233,45 @@ describe('merchandise assignments', () => {
   })
 })
 
+// Who heads a cluster or a region (rama_dw #4588, a proposal for Siraj): the Cluster or Operating
+// Region row names its head, who reaches every store in it, whole.
+describe('heads named on a cluster or a region', () => {
+  const headOf = (options: { clusterHeads?: Record<string, string>; regionHeads?: Record<string, string> }, jobs: Row[] = []) =>
+    reachOf(fake(jobs, options), 'me', ON)
+
+  it('gives the head a cluster names every store in it, whole, and says why', async () => {
+    const { places, problems } = await headOf({ clusterHeads: { North: 'E1' } })
+    expect(places.map(place => place.filters)).toEqual([{ store: ['9901'] }, { store: ['9902'] }])
+    expect(places[0]).toMatchObject({ basis: 'cluster_manager', reasons: [{ text: 'Named head of cluster North' }] })
+    expect(problems).toEqual([])
+  })
+
+  it('gives the head a region names every store in it, whole, and says why', async () => {
+    const { places } = await headOf({ regionHeads: { West: 'E1' } })
+    expect(places.map(place => place.filters)).toEqual([{ store: ['9903'] }, { store: ['9904'] }])
+    expect(places[0]).toMatchObject({ basis: 'region_head', reasons: [{ text: 'Named head of region West' }] })
+  })
+
+  it('a Cluster Manager on a head-office site reaches the cluster that names them, with no problem', async () => {
+    const { places, problems } = await headOf({ clusterHeads: { South: 'E1' } }, [{ job: 'Cluster Manager', site: 'HOF' }])
+    expect(places.map(place => place.filters.store[0])).toEqual(['9903'])
+    expect(problems).toEqual([])
+  })
+
+  it("still gives a Cluster Manager their job site's cluster when no cluster names them", async () => {
+    expect(await stores({ job: 'Cluster Manager', site: 'AAA' })).toEqual([{ store: ['9901'] }, { store: ['9902'] }])
+  })
+
+  it('a head who has left reaches nothing', async () => {
+    const left = fake([], { employee: { row_id: 'E1', person: 'me', status: 'Left' }, regionHeads: { East: 'E1' } })
+    expect(await reachOf(left, 'me', ON)).toEqual({ places: [], problems: ['no_job'] })
+  })
+
+  it('someone else named head gives this person nothing', async () => {
+    expect(await headOf({ clusterHeads: { North: 'E9' }, regionHeads: { East: 'E9' } })).toEqual({ places: [], problems: ['no_job'] })
+  })
+})
+
 describe('the provider', () => {
   it('answers the person\'s places on today\'s date', async () => {
     const provide = orgChartProvider({ today: () => ON })
@@ -238,6 +280,6 @@ describe('the provider', () => {
   })
 
   it('reads only the Tables it declares', () => {
-    expect(PROVIDER_TABLES).toEqual(['Employee', 'Job Assignment', 'Site', 'Plant', 'Section', 'Section Subcategory', 'Merchandise Assignment', 'Subcategory'])
+    expect(PROVIDER_TABLES).toEqual(['Employee', 'Job Assignment', 'Site', 'Plant', 'Section', 'Section Subcategory', 'Merchandise Assignment', 'Subcategory', 'Cluster', 'Operating Region'])
   })
 })

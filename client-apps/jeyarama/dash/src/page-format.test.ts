@@ -140,6 +140,9 @@ describe('the sentence that says why the reader sees the store', () => {
     it('says the reader works in the sections for section staff', () => {
       expect(at([{ basis: 'section_staff', sections: ['Alpha', 'Beta'] }])).toBe('You see Alpha and Beta at LKS because you work in them.')
     })
+    it("names the store for a region head (rama_dw #4588)", () => {
+      expect(at([{ basis: 'region_head', sections: [] }])).toBe('You see LKS because you are its Region Head.')
+    })
     it('says the subcategories are assigned to the reader, naming no section', () => {
       expect(at([{ basis: 'assignment', sections: ['Alpha'] }])).toBe('You see these subcategories at LKS because they are assigned to you.')
     })
