@@ -638,7 +638,7 @@ describe('a pre-filled department on the report page (#1205)', () => {
     holdsAnswer = true
     setupAnswer = PREFILLED
     const { container, act, unmount } = await show()
-    expect(container.querySelector('[data-testid=prefill-banner]')?.textContent).toContain('Your report shows Sarees: the sections your Team Leaders run. Is this right?')
+    expect(container.querySelector('[data-testid=prefill-banner]')?.textContent).toContain('Your report shows Sarees: the sections your team works in. Is this right?')
     expect(container.querySelector('[data-testid=prefill-banner] a')?.getAttribute('href')).toBe('?view=department')
     const yes = [...container.querySelectorAll('button')].find(b => b.textContent === "Yes, that's right")!
     await act(async () => { yes.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); await settle() })

@@ -2,48 +2,45 @@
 // reviewed list: the owner's choice of 11-Nov-2026. Each pre-fill goes through the set-up path
 // (department-setup.ts) as the loader, so it applies and reaches the reviewer like any set-up. A
 // manager with a department, a set-up open, or any earlier pre-fill is skipped: reruns are safe, and
-// never bring back a pre-fill someone took back.
-import { FALLBACK_ROLE, JOB_FIELDS, PLACEMENT_FIELDS, SECTION_FIELDS, T, all, approversOf, byId, inForce, list, unique, type ActionContext, type Row } from './my-sections.ts'
-import { OPEN, about, allSetUps, isSetUp, proposeDepartment, storeOf } from './department-setup.ts'
+// never bring back a pre-fill someone took back. A dry run says what would happen and sends nothing;
+// a real run says what it created, and undo_prefill takes those back.
+import { FALLBACK_ROLE, JOB_FIELDS, SECTION_FIELDS, T, all, approversOf, byId, inForce, list, unique, type ActionContext, type Row } from './my-sections.ts'
+import { OPEN, about, allSetUps, isSetUp, pendingBundle, proposeDepartment, storeOf, takeBack } from './department-setup.ts'
 import { istToday } from './report.ts'
 import { EMPLOYEE_STATUS, exact, text } from './values.ts'
 
 const LOADERS = ['System Manager', FALLBACK_ROLE]
 const fold = (name: string) => name.trim().toLowerCase()
-
-/** The name most of `votes` share, when more than half do. */
-function majority(votes: string[], of: number): string | null {
-  const counts = new Map<string, number>()
-  for (const vote of votes) if (vote) counts.set(vote, (counts.get(vote) ?? 0) + 1)
-  const [top] = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-  return top && top[1] * 2 > of ? top[0] : null
-}
+const NAME_LIMIT = 40
 
 /**
- * A department's default name, as a store manager knows their stock: each section votes for the
- * subdivision most of its subcategories sit in; more than half agreeing names it, else the division
- * the same way, else its floor. A name the store already uses gets the floor added.
+ * A pre-filled department's name: its sections, in name order, joined with ", " and " & " (the
+ * owner, 11-Nov-2026). Past 40 characters, the first two and how many more; the page lists them all.
  */
-export function departmentName(sections: Row[][], floor: string, taken: string[]): string {
-  const vote = (level: string) => sections.map(subs => majority(subs.map(s => text(s[level])), subs.length) ?? '')
-  const name = majority(vote('subdivision'), sections.length) ?? majority(vote('division'), sections.length) ?? floor
-  return taken.includes(fold(name)) && name !== floor ? `${name}, ${floor}` : name
+export function sectionsName(sections: string[]): string {
+  const joined = sections.length < 2 ? sections.join('') : `${sections.slice(0, -1).join(', ')} & ${sections.at(-1)}`
+  return joined.length <= NAME_LIMIT || sections.length < 3 ? joined : `${sections[0]}, ${sections[1]} & ${sections.length - 2} more`
 }
 
+const mayLoad = (ctx: ActionContext) => (ctx.roles ?? []).some(role => LOADERS.includes(role))
+
 interface Manager { employee: string; sections: string[]; flagged: string[] }
-type Result = { employee: string; name: string; outcome: 'pre-filled' | 'skipped' | 'refused'; notes: string[]; department?: string; sections?: string[] }
+type Outcome = 'pre-filled' | 'would pre-fill' | 'skipped' | 'refused'
+type Result = { employee: string; name: string; outcome: Outcome; notes: string[]; department?: string; sections?: string[]
+  bundle?: string; created?: { department: string | null; links: (string | null)[]; proposals: string[] } }
 
 export const prefillActions = {
-  /** Pre-fills one store's Department Managers from the reviewed list. */
+  /** Pre-fills one store's Department Managers from the reviewed list; `dry_run` sends nothing. */
   async prefill_departments(ctx: ActionContext) {
     if (!isSetUp(ctx)) ctx.reject('Dash is not set up for departments here')
-    if (!(ctx.roles ?? []).some(role => LOADERS.includes(role))) ctx.reject('Only a System Manager or Master Data Editor can pre-fill departments')
-    const payload = (ctx.payload ?? {}) as { store?: unknown; managers?: unknown }
+    if (!mayLoad(ctx)) ctx.reject('Only a System Manager or Master Data Editor can pre-fill departments')
+    const payload = (ctx.payload ?? {}) as { store?: unknown; managers?: unknown; dry_run?: unknown }
     const site = typeof payload.store === 'string' ? payload.store : ''
     const [siteRow] = site ? await list(ctx, T.site, ['name'], [['row_id', '=', site]]) : []
     if (!siteRow) ctx.reject(`No store ${String(payload.store)}`)
     if (!Array.isArray(payload.managers)) ctx.reject('Send the managers to pre-fill')
-    const managers = (payload.managers as Partial<Manager>[]).map(m => ({ employee: String(m.employee ?? ''),
+    const dryRun = payload.dry_run === true
+    const managers: Manager[] = (payload.managers as Partial<Manager>[]).map(m => ({ employee: String(m.employee ?? ''),
       sections: Array.isArray(m.sections) ? m.sections.map(String) : [], flagged: Array.isArray(m.flagged) ? m.flagged.map(String) : [] }))
     const today = istToday()
     // One store's set-ups at a time, as a Department Manager's own would be.
@@ -52,9 +49,6 @@ export const prefillActions = {
     const shop = await storeOf(ctx, site, today)
     const sections = await all(ctx, T.section, SECTION_FIELDS, [['site', '=', site]])
     const floors = byId(await all(ctx, T.floor, ['name', 'site'], [['site', '=', site]]))
-    const placements = (await all(ctx, T.placement, PLACEMENT_FIELDS, [['store', '=', site]])).filter(row => inForce(row, today))
-    const codes = unique(placements.map(p => exact(p.subcategory)))
-    const leaves = codes.length ? byId(await all(ctx, T.subcategory, ['subdivision', 'division'], [['row_id', 'in', codes]])) : new Map<string, Row>()
     const jobs = (await all(ctx, T.job, JOB_FIELDS, [['site', '=', site]])).filter(row => inForce(row, today) && text(row.job) === 'Department Manager')
     const setUps = await allSetUps(ctx)
     const people = byId(await list(ctx, T.employee, ['name', EMPLOYEE_STATUS, 'person'], [['row_id', 'in', unique(managers.map(m => m.employee))]]))
@@ -84,30 +78,50 @@ export const prefillActions = {
       }
       if (!picked.length) { result.notes.push('no section left to pre-fill'); continue }
       picked.sort((a, b) => text(a.name).localeCompare(text(b.name)))
-      // The floor most of its sections are on names it, or tells two of a name apart.
-      const floorId = majority(picked.map(s => exact(s.floor)), 0) ?? ''
+      // The floor most of its sections are on tells two of a name apart.
+      const counts = new Map<string, number>()
+      for (const s of picked) counts.set(exact(s.floor), (counts.get(exact(s.floor)) ?? 0) + 1)
+      const [floorId] = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]
       const floor = text(floors.get(floorId)?.name) || 'No floor'
-      const votes = picked.map(s => placements.filter(p => exact(p.section) === exact(s.row_id)).map(p => leaves.get(exact(p.subcategory))).filter((l): l is Row => !!l))
-      plans.push({ result, job, person: exact(employee.person), picked, flagged: manager.flagged.map(fold), base: departmentName(votes, floor, []), floor })
+      plans.push({ result, job, person: exact(employee.person), picked, flagged: manager.flagged.map(fold), base: sectionsName(picked.map(s => text(s.name))), floor })
     }
-    // Two of one name in this store, or one the store already has: each gets its floor.
+    // Unique in the store by construction (no two managers share a section); a name already in use gets the floor.
     const used = shop.departments.map(d => fold(text(d.name)))
     for (const plan of plans) {
       const clash = used.includes(fold(plan.base)) || plans.filter(p => fold(p.base) === fold(plan.base)).length > 1
-      const name = clash && plan.base !== plan.floor ? `${plan.base}, ${plan.floor}` : plan.base
+      const name = clash ? `${plan.base}, ${plan.floor}` : plan.base
+      const named = plan.picked.map(s => ({ id: exact(s.row_id), name: text(s.name) }))
+      Object.assign(plan.result, { outcome: dryRun ? 'would pre-fill' : 'pre-filled', department: name, sections: named.map(s => s.name) })
+      if (dryRun) continue
       const { approvers, manager } = await approversOf(ctx, plan.job)
-      await proposeDepartment(ctx, {
-        site, today, manager: plan.result.employee,
-        sections: plan.picked.map(s => ({ id: exact(s.row_id), name: text(s.name) })),
+      const bundle = `${exact(plan.job.row_id)}:${globalThis.crypto.randomUUID()}`
+      const { head, links } = await proposeDepartment(ctx, {
+        site, today, manager: plan.result.employee, sections: named,
         // The Department Manager may answer their own pre-fill, through Yes or Change it only.
         approvers: { people: unique([...approvers.people, plan.person]), fallbackRoles: approvers.fallbackRoles },
-        shared: { bundle: `${exact(plan.job.row_id)}:${globalThis.crypto.randomUUID()}`, job_assignment: exact(plan.job.row_id), store, name,
+        shared: { bundle, job_assignment: exact(plan.job.row_id), store, name,
           maker_name: plan.result.name, manager_name: manager, prefilled: true, for_person: plan.person || null,
           flagged: plan.picked.filter(s => plan.flagged.includes(fold(text(s.name)))).map(s => exact(s.row_id)) },
       })
-      Object.assign(plan.result, { outcome: 'pre-filled', department: name, sections: plan.picked.map(s => text(s.name)) })
+      Object.assign(plan.result, { bundle, created: { department: head.result_row ?? null, links: links.map(l => l.result_row ?? null),
+        proposals: [head.row_id, ...links.map(l => l.row_id)] } })
     }
-    return { store, results: results.map(({ employee, name, outcome, department, sections: named, notes }) =>
-      (outcome === 'pre-filled' ? { employee, name, outcome, department, sections: named, notes } : { employee, name, outcome, notes })) }
+    return { store, results: results.map(({ notes, ...rest }) => ({ ...rest, notes })) }
+  },
+
+  /** Takes back pre-fills the caller made, links first: the load's undo. */
+  async undo_prefill(ctx: ActionContext) {
+    if (!mayLoad(ctx)) ctx.reject('Only a System Manager or Master Data Editor can take pre-fills back')
+    const bundles = ((ctx.payload ?? {}) as { bundles?: unknown }).bundles
+    if (!Array.isArray(bundles)) ctx.reject('Send the pre-fills to take back')
+    const results = []
+    for (const bundle of bundles as unknown[]) {
+      const parts = (await pendingBundle(ctx, bundle, [ctx.user])).filter(p => about(p).prefilled)
+      if (!parts.length) { results.push({ bundle, outcome: 'not open' }); continue }
+      const [job] = await list(ctx, T.job, JOB_FIELDS, [['row_id', '=', about(parts[0]).job_assignment]])
+      await takeBack(ctx, parts, (await approversOf(ctx, job)).approvers)
+      results.push({ bundle, outcome: 'undone', parts: parts.length })
+    }
+    return { results }
   },
 }

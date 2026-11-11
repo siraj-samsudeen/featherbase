@@ -3,7 +3,7 @@
 // platform-test/department-setup.test.ts.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { DEPARTMENT_TABLES, DEPARTMENT_TYPE, departmentActions, departmentReads } from './department-setup.ts'
-import { departmentName, prefillActions } from './department-prefill.ts'
+import { prefillActions, sectionsName } from './department-prefill.ts'
 import { BASE_TABLES, type ActionContext, type ReadContext } from './my-sections.ts'
 import { istToday } from './report.ts'
 
@@ -485,11 +485,11 @@ describe('pre-fill from reporting lines (#1205)', () => {
 
   it('pre-fills a manager through the set-up path: applied, for review, the Department Manager among those who may decide', async () => {
     const { run, sent } = prefill([deepa])
-    expect(await run()).toEqual({ store: 'Lakeside', results: [{ employee: 'E1', name: 'Deepa', outcome: 'pre-filled', department: 'Womenswear', sections: ['Sarees', 'Silk'], notes: [] }] })
+    expect(await run()).toMatchObject({ store: 'Lakeside', results: [{ employee: 'E1', name: 'Deepa', outcome: 'pre-filled', department: 'Sarees & Silk', sections: ['Sarees', 'Silk'], notes: [] }] })
     const [department, ...links] = sent.map(s => s.first as Row & { about: Row; approvers: Row; changes: Row })
-    expect(department).toMatchObject({ type: 'department_setup', table: 'Department', changes: { store: 'LKS', name: 'Womenswear', manager: 'E1' },
+    expect(department).toMatchObject({ type: 'department_setup', table: 'Department', changes: { store: 'LKS', name: 'Sarees & Silk', manager: 'E1' },
       approvers: { people: ['mani', 'deepa'], fallbackRoles: ['Master Data Editor'] },
-      about: { kind: 'department', prefilled: true, flagged: ['S2'], for_person: 'deepa', maker_name: 'Deepa', sections: ['S1', 'S2'] } })
+      about: { kind: 'department', prefilled: true, flagged: ['S2'], for_person: 'deepa', maker_name: 'Deepa', sections: ['S1', 'S2'], name: 'Sarees & Silk' } })
     expect(links.map(l => l.changes)).toEqual([{ store: 'LKS', section: 'S1', department: 'ROW-PR1' }, { store: 'LKS', section: 'S2', department: 'ROW-PR1' }])
   })
   it('refuses anyone who is not a System Manager or Master Data Editor', async () => {
@@ -518,7 +518,7 @@ describe('pre-fill from reporting lines (#1205)', () => {
     expect((await run()).results).toEqual([
       { employee: 'E404', name: '', outcome: 'refused', notes: ['not on the staff list'] },
       { employee: 'E8', name: 'Siva', outcome: 'refused', notes: ['no Department Manager job at Lakeside'] },
-      { employee: 'E1', name: 'Deepa', outcome: 'pre-filled', department: 'Womenswear', sections: ['Sarees'],
+      { employee: 'E1', name: 'Deepa', outcome: 'pre-filled', department: 'Sarees', sections: ['Sarees'], bundle: expect.any(String), created: expect.any(Object),
         notes: ['no section Nowhere at Lakeside', 'Closed Corner is closed', 'Kids Wear is already in Kids', 'no section Tops at Lakeside'] },
       { employee: 'E6', name: 'Arun', outcome: 'skipped', notes: ['already has a department'] },
     ])
@@ -543,9 +543,9 @@ describe('pre-fill from reporting lines (#1205)', () => {
       { employee: '', name: '', outcome: 'refused', notes: ['not on the staff list'] },
       { employee: 'E1', name: 'Deepa', outcome: 'refused', notes: ['no section left to pre-fill'] }])
   })
-  it('names a department on no floor, in a store with nothing placed, by "No floor"', async () => {
+  it('names a department on no floor, in a store with nothing placed, by its section', async () => {
     const { results } = await prefill([{ employee: 'E1', sections: ['Loose'] }], world({ 'Section Subcategory': [] })).run()
-    expect(results).toMatchObject([{ outcome: 'pre-filled', department: 'No floor' }])
+    expect(results).toMatchObject([{ outcome: 'pre-filled', department: 'Loose' }])
   })
   it('finds earlier pre-fills beyond the first page, and shows a pre-fill with nothing flagged', async () => {
     const filler = Array.from({ length: 500 }, (_, i) => ({ row_id: `F${String(i).padStart(3, '0')}`, maker: 'x', state: 'Applied', about: null, created_at: `${today}T00:00:00Z`, route: { people: [], roles: [] } }))
@@ -556,24 +556,73 @@ describe('pre-fill from reporting lines (#1205)', () => {
     const open = bundle({ prefilled: true, for_person: 'deepa' }, 'Not yet reviewed').map(p => ({ ...p, maker: 'loader' }))
     expect(await read(tables, { proposals: open })).toMatchObject({ current: { prefilled: { flagged: [] } } })
   })
-  describe('departmentName', () => {
-    const name = (sections: string[][], taken: string[] = [], floor = 'First floor') => departmentName(sections.map(codes => codes.map(code => world().Subcategory.find(s => s.row_id === code)!)), floor, taken)
-    it('takes the subdivision most sections share', () => expect(name([['C1', 'C2'], ['C5'], ['C6']])).toBe('Womenswear'))
-    it('else the division most sections share', () => expect(name([['C1'], ['C6'], ['C7']])).toBe('Fashion'))
-    it('else the floor', () => expect(name([['C1'], ['C8']])).toBe('First floor'))
-    it('and a section with nothing placed votes for nothing', () => expect(name([[], []])).toBe('First floor'))
-    it('adds the floor when the store already has the name', () => expect(name([['C1']], ['womenswear'])).toBe('Womenswear, First floor'))
+  describe('sectionsName (the owner, 11-Nov-2026)', () => {
+    it('joins the sections with commas and an ampersand', () => {
+      expect(sectionsName(['Sarees'])).toBe('Sarees')
+      expect(sectionsName(['Sarees', 'Silk'])).toBe('Sarees & Silk')
+      expect(sectionsName(['Kurti', 'Women Bottoms', 'Women Ethnic Sets'])).toBe('Kurti, Women Bottoms & Women Ethnic Sets')
+    })
+    it('past 40 characters, the first two and how many more', () => {
+      expect(sectionsName(['Cotton, Syn Saree', 'Fancy Saree', 'Lehenga & Gown', 'Nerial & Chudi Material'])).toBe('Cotton, Syn Saree, Fancy Saree & 2 more')
+      expect(sectionsName(['Men Dhothy & Lungi', "Men's Fabric", "Men's Inner & Underwear"])).toBe("Men Dhothy & Lungi, Men's Fabric & 1 more")
+    })
   })
-  it('gives each of two departments that would share a name its floor', async () => {
+  it('names each department after its sections, unique in the store; a name already taken gets the floor', async () => {
+    const two = await prefill([deepa, { employee: 'E6', sections: ['Footwear'] }], world({ Department: [], 'Department Section': [] })).run()
+    expect(two.results.map(r => r.department)).toEqual(['Sarees & Silk', 'Footwear'])
     const tables = world()
-    tables['Section Subcategory'].push({ row_id: 'P-C5b', store: 'LKS', subcategory: 'C5', section: 'S6', starts_on: '2026-01-01', ends_on: null })
-    tables['Department Section'] = tables['Department Section'].filter(r => r.section !== 'S6')
-    tables.Department = tables.Department.filter(r => r.row_id !== 'D6')
-    tables['Job Assignment'].push(job('J21', 'E12', 'Department Manager', 'LKS', null, 'E2'))
-    const { results } = await prefill([deepa, { employee: 'E12', sections: ['Footwear'] }], tables).run()
-    expect(results.map(r => r.department)).toEqual(['Womenswear, First floor', 'Womenswear, Second floor'])
+    tables.Department.push({ row_id: 'D8', store: 'LKS', name: 'Sarees & Silk', manager: 'E99', starts_on: '2026-01-01', ends_on: null })
+    expect((await prefill([deepa], tables).run()).results).toMatchObject([{ department: 'Sarees & Silk, First floor' }])
   })
-
+  it('the edges: a department on two floors, a manager with no sign-in, approve first, an undo with nothing sent', async () => {
+    const tables = world()
+    tables.Department = tables.Department.filter(r => r.row_id !== 'D6')
+    tables['Department Section'] = tables['Department Section'].filter(r => r.row_id !== 'DS6')
+    tables.Department.push({ row_id: 'D8', store: 'LKS', name: 'Footwear, Sarees & Silk', manager: 'E99', starts_on: '2026-01-01', ends_on: null })
+    expect((await prefill([{ employee: 'E1', sections: ['Footwear', 'Sarees', 'Silk'] }], tables).run()).results).toMatchObject([{ department: 'Footwear, Sarees & Silk, First floor' }])
+    const noSignIn = world()
+    noSignIn['Job Assignment'].push(job('J30', 'E5', 'Department Manager', 'LKS', null, 'E2'))
+    const loose = prefill([{ employee: 'E5', sections: ['Bags'] }], noSignIn)
+    await loose.run()
+    expect((loose.sent[0].first as { about: Row }).about.for_person).toBeNull()
+    // Two floors with as many sections each: the first floor by its id names it.
+    tables.Department.push({ row_id: 'D7b', store: 'LKS', name: 'Footwear & Sarees', manager: 'E99', starts_on: '2026-01-01', ends_on: null })
+    expect((await prefill([{ employee: 'E1', sections: ['Footwear', 'Sarees'] }], tables).run()).results).toMatchObject([{ department: 'Footwear & Sarees, First floor' }])
+    MODE = 'Approve first'
+    expect((await prefill([deepa]).run()).results).toMatchObject([{ outcome: 'pre-filled', created: { department: null, links: [null, null] } }])
+    await expect(prefillActions.undo_prefill(context(world(), { ...LOADER }).ctx)).rejects.toThrow('Send the pre-fills to take back')
+  })
+  it('a dry run says what it would do, and sends nothing', async () => {
+    const { run, sent } = prefill([deepa, { employee: 'E6', sections: ['Kids Wear'] }], world(), { payload: { store: 'LKS', managers: [deepa, { employee: 'E6', sections: ['Kids Wear'] }], dry_run: true } })
+    expect((await run()).results).toEqual([
+      { employee: 'E1', name: 'Deepa', outcome: 'would pre-fill', department: 'Sarees & Silk', sections: ['Sarees', 'Silk'], notes: [] },
+      { employee: 'E6', name: 'Arun', outcome: 'skipped', notes: ['already has a department'] },
+    ])
+    expect(sent).toEqual([])
+  })
+  it('records what each pre-fill created, so it can be undone', async () => {
+    const { results } = await prefill([deepa]).run()
+    expect(results[0]).toMatchObject({ bundle: expect.stringMatching(/^J1:/), created: { department: 'ROW-PR1', links: ['ROW-PR2', 'ROW-PR3'], proposals: ['PR1', 'PR2', 'PR3'] } })
+  })
+  describe('undo_prefill', () => {
+    const made = bundle({ prefilled: true }, 'Not yet reviewed').map(p => ({ ...p, maker: 'loader' }))
+    const undo = (bundles: unknown, proposals = made, options: Parameters<typeof context>[1] = {}) =>
+      context(world(), { ...LOADER, payload: { bundles }, proposals, ...options })
+    it('takes back what the loader pre-filled, links first, with no reason', async () => {
+      const { ctx, sent } = undo(['B1', 'B9'])
+      expect(await prefillActions.undo_prefill(ctx)).toEqual({ results: [{ bundle: 'B1', outcome: 'undone', parts: 3 }, { bundle: 'B9', outcome: 'not open' }] })
+      expect(sent.map(s => [s.call, s.first])).toEqual([['undo', 'PL2'], ['undo', 'PL1'], ['undo', 'PD']])
+    })
+    it('never takes back what someone else made, nor a self set-up', async () => {
+      const theirs = bundle({ prefilled: true }, 'Not yet reviewed').map(p => ({ ...p, maker: 'someone-else' }))
+      expect((await prefillActions.undo_prefill(undo(['B1'], theirs).ctx)).results).toEqual([{ bundle: 'B1', outcome: 'not open' }])
+      expect((await prefillActions.undo_prefill(undo(['B1'], bundle({}, 'Not yet reviewed').map(p => ({ ...p, maker: 'loader' }))).ctx)).results).toEqual([{ bundle: 'B1', outcome: 'not open' }])
+    })
+    it('refuses anyone but a System Manager or Master Data Editor, and a list that is not one', async () => {
+      await expect(prefillActions.undo_prefill(undo(['B1'], made, { roles: [] }).ctx)).rejects.toThrow('Only a System Manager or Master Data Editor can take pre-fills back')
+      await expect(prefillActions.undo_prefill(undo('B1').ctx)).rejects.toThrow('Send the pre-fills to take back')
+    })
+  })
   it('shows the Department Manager their pre-fill, with what is flagged', async () => {
     const tables = world()
     tables.Department.push({ row_id: 'D9', store: 'LKS', name: 'Womenswear', manager: 'E1', starts_on: '2026-01-01', ends_on: null })
@@ -596,6 +645,12 @@ describe('pre-fill from reporting lines (#1205)', () => {
     expect(sent.slice(0, 3).map(s => [s.call, s.first, s.second])).toEqual(['PL2', 'PL1', 'PD'].map(id =>
       ['undo', id, { approvers: { people: ['deepa'], fallbackRoles: [] }, reason: 'Taken over by Deepa' }]))
     expect(sent.slice(3).map(s => s.call)).toEqual(['propose', 'propose', 'propose'])
+  })
+  it("a reviewer's undo of the pre-fill reads as turned down, with the reason; taken over or the loader's own undo does not", async () => {
+    const undone = (by: string) => bundle({ prefilled: true, for_person: 'deepa' }, 'Undone', 'Not her sections').map(p => ({ ...p, maker: 'loader', decided_by: by }))
+    expect(await read(world(), { proposals: undone('mani') })).toMatchObject({ current: { state: 'turned_down', reason: 'Not her sections' } })
+    expect(await read(world(), { proposals: undone('deepa') })).toMatchObject({ current: null })
+    expect(await read(world(), { proposals: undone('loader') })).toMatchObject({ current: null })
   })
   it("never takes over another Department Manager's pre-fill", async () => {
     const proposals = bundle({ prefilled: true, job_assignment: 'J6', for_person: 'arun' }, 'Not yet reviewed').map(p => ({ ...p, maker: 'loader' }))

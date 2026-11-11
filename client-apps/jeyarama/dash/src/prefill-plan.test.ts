@@ -44,10 +44,47 @@ describe('runPrefill', () => {
     const { runPrefill } = await import('./prefill-plan.ts')
     const report = await runPrefill(planFromCsv(CSV).stores, post)
     expect(sent).toEqual([{ store: 'LKS', managers: planFromCsv(CSV).stores[0].managers }, { store: 'HIL', managers: planFromCsv(CSV).stores[1].managers }])
-    expect(report.totals).toEqual({ 'pre-filled': 1, skipped: 1, refused: 0, failed_stores: 1 })
+    expect(report.totals).toEqual({ 'pre-filled': 1, 'would pre-fill': 0, skipped: 1, refused: 0, failed_stores: 1 })
     expect(report.stores).toEqual([
       { store: 'LKS', results: [{ employee: 'E1', name: 'One', outcome: 'pre-filled', department: 'Womenswear', sections: ['Sarees'], notes: [] }, { employee: 'E9', name: 'Nine', outcome: 'skipped', notes: ['pre-filled before'] }] },
       { store: 'HIL', error: 'No store HIL' },
     ])
+  })
+})
+
+describe('the load around the action (#1205)', () => {
+  const report = {
+    totals: { 'pre-filled': 1, 'would pre-fill': 0, skipped: 1, refused: 1, failed_stores: 1 },
+    stores: [
+      { store: 'LKS', results: [
+        { employee: 'E1', name: 'One', outcome: 'pre-filled' as const, department: 'Sarees', sections: ['Sarees'], notes: [], bundle: 'J1:a', created: { department: 'D1', links: ['L1'], proposals: ['P1', 'P2'] } },
+        { employee: 'E2', name: 'Two', outcome: 'skipped' as const, notes: ['pre-filled before'] },
+        { employee: 'E3', name: 'Three', outcome: 'refused' as const, notes: ['not on the staff list'] }] },
+      { store: 'HIL', error: 'No store HIL' },
+    ],
+  }
+  it('asks the server for a dry run when told to', async () => {
+    const { runPrefill } = await import('./prefill-plan.ts')
+    const sent: unknown[] = []
+    const dry = await runPrefill(planFromCsv(CSV).stores.slice(0, 1), async payload => { sent.push(payload); return { results: [{ employee: 'E1', name: 'One', outcome: 'would pre-fill' as const, notes: [] }] } }, true)
+    expect(sent).toMatchObject([{ store: 'LKS', dry_run: true }])
+    expect(dry.totals['would pre-fill']).toBe(1)
+  })
+  it('counts each store on its own', async () => {
+    const { perStore } = await import('./prefill-plan.ts')
+    expect(perStore(report)).toEqual([
+      { store: 'LKS', 'pre-filled': 1, 'would pre-fill': 0, skipped: 1, refused: 1 },
+      { store: 'HIL', error: 'No store HIL' },
+    ])
+  })
+  it('records what was created, so the whole load can be taken back', async () => {
+    const { createdRecord, runUndo } = await import('./prefill-plan.ts')
+    const record = createdRecord(report)
+    expect(record).toEqual({ bundles: ['J1:a'], rows: [{ store: 'LKS', employee: 'E1', name: 'One', department: 'Sarees', bundle: 'J1:a', created: { department: 'D1', links: ['L1'], proposals: ['P1', 'P2'] } }] })
+    const sent: unknown[] = []
+    const many = { bundles: Array.from({ length: 120 }, (_, i) => `B${i}`), rows: [] }
+    const undone = await runUndo(many, async payload => { sent.push(payload); return { results: payload.bundles.map(bundle => ({ bundle, outcome: bundle === 'B0' ? 'not open' : 'undone' })) } })
+    expect(sent.map(s => (s as { bundles: string[] }).bundles.length)).toEqual([50, 50, 20])
+    expect(undone).toEqual({ undone: 119, not_open: 1 })
   })
 })

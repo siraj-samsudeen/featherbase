@@ -2228,6 +2228,14 @@
         "authorization": {
           "kind": "generic"
         }
+      },
+      "undo_prefill": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
       }
     }
   }

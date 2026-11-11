@@ -96,7 +96,7 @@ function Ready({ setup, onChanged }: { setup: Ok; onChanged: () => Promise<unkno
     return (
       <>
         {intro}
-        <SetupForm setup={setup} before={{ name: current.name, sections: current.prefilled.sections.map(s => s.name) }} replaces={current.prefilled.bundle}
+        <SetupForm setup={setup} before={{ name: current.name, sections: current.prefilled.sections.map(s => s.name) }} replaces={current.prefilled.bundle} inUse
           onTouched={() => setNote(null)} onCancel={() => setEditing(false)} onSent={async () => { setEditing(false); await onChanged() }} />
       </>
     )
@@ -105,8 +105,10 @@ function Ready({ setup, onChanged }: { setup: Ok; onChanged: () => Promise<unkno
       <>
         {intro}
         {/* A pre-fill is always open for review, so it names its reviewer. */}
+        {note && <Notice tone={note.tone}><span data-testid="note">{note.text}</span></Notice>}
         {current.prefilled && <PrefillBanner jobId={setup.job.id} name={current.name} prefilled={current.prefilled} reviewer={current.reviewing!.waiting_for}
-          onAnswered={onChanged} onChange={startEditing} />}
+          onAnswered={async () => { const reviewer = current.reviewing!.waiting_for; await onChanged(); setNote({ tone: 'positive', text: `Thank you. It is your department now; ${reviewer} reviews it.` }) }}
+          onChange={startEditing} />}
         <Card title={`${current.name} · ${setup.job.store}`} data-testid="set-up"
           actions={current.reviewing ? <StatusPill tone="caution">In use, {current.reviewing.waiting_for} to review</StatusPill> : <StatusPill tone="positive">Kept</StatusPill>}>
           <div className="flex flex-col gap-2 p-4">
@@ -153,7 +155,7 @@ function Ready({ setup, onChanged }: { setup: Ok; onChanged: () => Promise<unkno
   )
 }
 
-function SetupForm({ setup, before, replaces, onCancel, onTouched, onSent }: { setup: Ok; before: { name: string; sections: string[] } | null; replaces?: string; onCancel?: () => void; onTouched: () => void; onSent: () => Promise<unknown> }) {
+function SetupForm({ setup, before, replaces, inUse = false, onCancel, onTouched, onSent }: { setup: Ok; before: { name: string; sections: string[] } | null; replaces?: string; inUse?: boolean; onCancel?: () => void; onTouched: () => void; onSent: () => Promise<unknown> }) {
   const [layout, setLayout] = useState<Layout>(startLayout)
   const fromBefore = before ? setup.sections.filter(s => before.sections.includes(s.name) && !s.held_by).map(s => s.id) : null
   const [floors, setFloorsNow] = useState<string[]>(() => {
@@ -237,7 +239,7 @@ function SetupForm({ setup, before, replaces, onCancel, onTouched, onSent }: { s
       </div>
     </div>
   )
-  const lead = <p className="fd-muted" data-testid="lead">Say which sections are yours and give the department a name. {capital(setup.reviewer)} reviews it, and your report opens once it is kept.{replaces ? ' What you send replaces the one waiting.' : ''}</p>
+  const lead = <p className="fd-muted" data-testid="lead">Say which sections are yours and give the department a name. {capital(setup.reviewer)} reviews it{inUse ? '. What you send replaces the one in use; your report keeps working meanwhile.' : `, and your report opens once it is kept.${replaces ? ' What you send replaces the one waiting.' : ''}`}</p>
   const toggleBar = <Segmented label="Layout" options={LAYOUTS} value={layout} onChange={value => { setLayout(value); setStep(1) }} className="self-end" />
 
   if (layout === 'list')
@@ -341,7 +343,7 @@ export function PrefillBanner({ jobId, name, prefilled, reviewer, onAnswered, on
     <Notice tone="info">
       <div className="flex flex-col gap-2" data-testid="prefill-banner">
         <p className="font-semibold">Set up from your team</p>
-        <p>Your report shows {sections}: the sections your Team Leaders run. Is this right?</p>
+        <p>Your report shows {sections}: the sections your team works in. Is this right?</p>
         {prefilled.flagged.length > 0 && <p className="text-sm" data-testid="prefill-flagged">{listed(prefilled.flagged)} {prefilled.flagged.length === 1 ? 'is' : 'are'} shared with another department's team.</p>}
         <p className="fd-muted text-sm" data-testid="prefill-reviewer">{capital(reviewer)} reviews it.</p>
         <div className="flex flex-wrap gap-2">
@@ -374,7 +376,8 @@ function SetupCard({ setup, onDecided }: { setup: WaitingSetup; onDecided: (said
     setError(null)
     try {
       await act('decide_department', { bundle: setup.bundle, ...payload })
-      await onDecided(payload.decision === 'reject' ? `Turned down. ${setup.who} sees your reason.` : `Kept. ${setup.who}'s report now shows these sections.`)
+      await onDecided(payload.decision !== 'reject' ? `Kept. ${setup.who}'s report now shows these sections.`
+        : setup.applied ? `Undone. ${setup.who}'s report no longer shows these sections; ${setup.who} sees your reason.` : `Turned down. ${setup.who} sees your reason.`)
     }
     catch (failure) { setError(messageOf(failure)) }
     finally { setBusy(false) }
@@ -401,10 +404,11 @@ function SetupCard({ setup, onDecided }: { setup: WaitingSetup; onDecided: (said
             {setup.sections.map(s => <li key={s.id}>{s.name} <span className="fd-muted">· {s.team_leaders.length ? `Team Leader ${listed(s.team_leaders)}` : 'no Team Leader'}{setup.flagged?.includes(s.name) ? ' · shared with another team' : ''}</span></li>)}
           </ul>
         )}
+        {mode === 'reject' && setup.applied && <p className="text-sm">Why undo it? {setup.who}'s report stops showing these sections, and {setup.who} sees your reason.</p>}
         {mode === 'reject' && (
-          <Field label="Why not?"><TextInput value={reason} onChange={event => setReason(event.target.value)} data-testid="reject-reason" /></Field>
+          <Field label={setup.applied ? 'Reason' : 'Why not?'}><TextInput value={reason} onChange={event => setReason(event.target.value)} data-testid="reject-reason" /></Field>
         )}
-        <p className="fd-muted text-sm">Asked on {fmtDate(setup.asked_on)}. {setup.applied ? `Undoing it takes these sections off ${setup.who}'s report.` : `Keeping it opens ${setup.who}'s report for these sections.`}</p>
+        <p className="fd-muted text-sm">{setup.applied ? `Undoing it takes these sections off ${setup.who}'s report.` : `Asked on ${fmtDate(setup.asked_on)}. Keeping it opens ${setup.who}'s report for these sections.`}</p>
         {error && <Notice tone="negative"><span data-testid="decide-refused">{error}</span></Notice>}
         <div className="flex flex-wrap gap-2">
           {mode === 'view' && <>

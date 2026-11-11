@@ -33,7 +33,7 @@ export const OPEN = ['Pending', 'Not yet reviewed']
 const APPLIED_UNREVIEWED = 'Not yet reviewed'
 
 /** Takes a bundle back: withdrawn while it waits; undone, links first, once it applied (#1191). */
-async function takeBack(ctx: ActionContext, parts: ChangeProposal[], approvers: ApproverRequest, reason?: string) {
+export async function takeBack(ctx: ActionContext, parts: ChangeProposal[], approvers: ApproverRequest, reason?: string) {
   for (const part of [...parts].reverse()) {
     if (part.state === APPLIED_UNREVIEWED) await ctx.changeProposals.undo!(part.row_id, { approvers, ...(reason ? { reason } : {}) })
     else if (reason) await ctx.changeProposals.reject(part.row_id, { approvers, reason })
@@ -117,7 +117,7 @@ async function myBundles(ctx: Ctx, jobId: string): Promise<ChangeProposal[]> {
 }
 
 /** The pending parts of one bundle, the department first. */
-async function pendingBundle(ctx: Ctx, bundle: unknown, makers?: string[]): Promise<ChangeProposal[]> {
+export async function pendingBundle(ctx: Ctx, bundle: unknown, makers?: string[]): Promise<ChangeProposal[]> {
   if (typeof bundle !== 'string' || !bundle) return []
   const parts: ChangeProposal[] = []
   for (let start = 0; ; start += 500) {
@@ -242,10 +242,11 @@ export const departmentReads = {
 
 /** Their department now, else a set-up that waits, else why the last one was turned down. */
 async function currentOf(ctx: Ctx, job: Row, shop: Awaited<ReturnType<typeof storeOf>>, me: Set<string>) {
-  const [latest] = await myBundles(ctx, exact(job.row_id))
+  // #1205: the load's pre-fills of this job count as theirs too, so an undone one says why.
+  const prefills = (await allSetUps(ctx)).filter(p => about(p).prefilled && about(p).job_assignment === exact(job.row_id))
+  const [latest] = [...await myBundles(ctx, exact(job.row_id)), ...prefills].sort((a, b) => b.created_at.localeCompare(a.created_at))
   const own = shop.departments.find(d => me.has(exact(d.manager)))
-  // #1205: a pre-fill of this job, open, from the load.
-  const prefill = (await allSetUps(ctx)).find(p => OPEN.includes(p.state) && about(p).prefilled && about(p).job_assignment === exact(job.row_id))
+  const prefill = prefills.find(p => OPEN.includes(p.state))
   if (own && prefill) {
     const a = about(prefill)
     const named = a.sections.map((id, i) => ({ id, name: a.section_names[i] }))
@@ -264,7 +265,7 @@ async function currentOf(ctx: Ctx, job: Row, shop: Awaited<ReturnType<typeof sto
   if (latest.state === 'Pending')
     return { state: 'waiting' as const, bundle: a.bundle, name: a.name, sections: a.section_names, waiting_for: await waitingName(ctx, latest.route.people), asked_on: istDay(latest.created_at) }
   // #1191: a reviewer's undo is a turn-down, with their reason; the maker's own undo is a take-back.
-  const undoneByReviewer = latest.state === 'Undone' && latest.decided_by !== latest.maker
+  const undoneByReviewer = latest.state === 'Undone' && latest.decided_by !== latest.maker && latest.decided_by !== ctx.user
   if (latest.state === 'Rejected' || latest.state === 'Needs fresh review' || undoneByReviewer)
     return { state: 'turned_down' as const, name: a.name, sections: a.section_names, reason: latest.decision_reason ?? '' }
   return null
@@ -293,10 +294,11 @@ export async function proposeDepartment(ctx: ActionContext, { site, sections, ap
   // Under "apply now, review after" (#1191) the Department exists at once, so each link names it;
   // reviewed first, the link names it when the Department is applied (decide_department).
   const department = head.result_row ? String(head.result_row) : null
+  const links: ChangeProposal[] = []
   for (const { id } of sections)
-    await ctx.changeProposals.propose({ ...await applied(D.link, `${site}-${id}-${today}`, 'department_section_id'), table: D.link, row: null, changes: { store: site, section: id, department },
-      approvers, about: { ...all, kind: 'department_section', section: id } as unknown as Record<string, unknown> })
-  return head
+    links.push(await ctx.changeProposals.propose({ ...await applied(D.link, `${site}-${id}-${today}`, 'department_section_id'), table: D.link, row: null, changes: { store: site, section: id, department },
+      approvers, about: { ...all, kind: 'department_section', section: id } as unknown as Record<string, unknown> }))
+  return { head, links }
 }
 
 export const departmentActions = {
@@ -344,7 +346,7 @@ export const departmentActions = {
     const employee = employees.find(e => exact(e.row_id) === exact(job!.employee))!
     const shared = { bundle: `${exact(job!.row_id)}:${globalThis.crypto.randomUUID()}`, job_assignment: exact(job!.row_id), store: shop.store,
       name, maker_name: text(employee.name), manager_name: manager }
-    const head = await proposeDepartment(ctx, { site, sections: ids.map((id, i) => ({ id, name: names[i] })), approvers, shared, manager: exact(employee.row_id), today })
+    const { head } = await proposeDepartment(ctx, { site, sections: ids.map((id, i) => ({ id, name: names[i] })), approvers, shared, manager: exact(employee.row_id), today })
     return { state: head.state === APPLIED_UNREVIEWED ? 'set_up' as const : 'waiting' as const, bundle: shared.bundle, name, sections: names, waiting_for: await waitingName(ctx, head.route.people), asked_on: today }
   },
 
