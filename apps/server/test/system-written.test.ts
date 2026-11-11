@@ -376,6 +376,7 @@ describe('#432: every write entry point is covered', () => {
     'POST /api/app_actions/:app/:action': 'app actions refuse system tables',
     'POST /api/app_reads/:app/:read': 'read',
     'POST /api/preview_app_upgrade': 'app lifecycle',
+    'POST /deliver/app': 'app lifecycle: a code fix to the installed version, by the deploy key (#1178)',
     'POST /api/upgrade_app': 'app lifecycle',
     'POST /api/activate_app_upgrade': 'app lifecycle',
     'POST /api/set_app_enabled': 'app lifecycle',
