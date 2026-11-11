@@ -53,7 +53,6 @@ function validate(table: string, ctx: Validation) {
   const allowed = writes.getStore()
   if (!allowed || allowed.user !== ctx.user) ctx.reject('Use an authorized Tickets action')
   if ((table === 'event' || table === 'open_event' || table === 'progress') && !ctx.isNew) ctx.reject('History is append-only')
-  if (table === 'data_quality_rule' && !ctx.isNew) ctx.reject('A rule is changed by removing it and adding a new one')
   // Each person writes only their own name, which the platform supplies.
   // #963: changing the raiser also records the new raiser's name, for those who may not read Person.
   if (table === 'member' && ctx.row.row_id !== ctx.user && !(allowed?.operation === 'change_raiser' && ctx.isNew)) ctx.reject('A person may record only their own name')
@@ -417,9 +416,8 @@ function ruleFilters(ctx: ReadContext, value: unknown): Filter[] {
     return [item[0], String(item[1]), String(item[1]).includes('blank') ? null : item[2]] as Filter
   })
 }
-function storedFilters(value: unknown): Filter[] {
-  try { const list = JSON.parse(String(value)); return Array.isArray(list) ? list : [] } catch { return [] }
-}
+// Only add_rule writes a rule (every other write is refused), always as checked JSON.
+const storedFilters = (value: unknown) => JSON.parse(String(value)) as Filter[]
 /** Its raiser, its assignee or Tickets support: those a ticket's "any" action lets act. */
 function involved(ctx: ReadContext, ticket: Row) {
   return ticket.owner === ctx.user || (!!ticket.assigned_to && ticket.assigned_to === ctx.user) || capabilities(ctx).support
@@ -438,7 +436,7 @@ async function rulesOf(ctx: ReadContext, ticketId: string) {
     const filters = storedFilters(row.filters)
     const table = String(row.checked_table)
     rules.push({ row_id: row.row_id, title: row.title, table, filters, severity: row.severity, owner: row.owner ?? null, how_to_fix: row.how_to_fix ?? null,
-      rows_when_raised: Number(row.rows_when_raised ?? 0), rows_left: linked(ctx, table) ? await ctx.documents.count(table, filters) : null })
+      rows_when_raised: Number(row.rows_when_raised), rows_left: linked(ctx, table) ? await ctx.documents.count(table, filters) : null })
   }
   return rules.sort((a, b) => ruleOrder(a) - ruleOrder(b) || SEVERITIES.indexOf(String(a.severity)) - SEVERITIES.indexOf(String(b.severity))
     || String(a.title).localeCompare(String(b.title)))

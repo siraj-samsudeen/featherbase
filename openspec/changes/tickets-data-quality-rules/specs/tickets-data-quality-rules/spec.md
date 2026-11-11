@@ -13,8 +13,8 @@ rule's Table SHALL see no count for it.
 
 ```gherkin
 Given Anjali raised a Data Quality Issue for SAP, assigned to Bala
-And the linked Table "Buying Desk" has 3 buyer rows whose person is blank
-When Bala adds the rule "Buyer is blank" on "Buying Desk" where role is "Buyer" and person is blank
+And the linked Table "Buyer Assignment" has 3 buyer rows whose person is blank
+When Bala adds the rule "Buyer is blank" on "Buyer Assignment" where role is "Buyer" and person is blank
 Then the ticket shows "Buyer is blank" with 3 of 3 rows left
 ```
 
@@ -39,7 +39,7 @@ Then the rule has 1 of 3 rows left
 
 ```gherkin
 Given a ticket with the rule "Buyer is blank" and 3 of 3 rows left
-When Colleague, who may not read "Buying Desk", opens the ticket
+When Colleague, who may not read "Buyer Assignment", opens the ticket
 Then Colleague sees the rule without a count
 ```
 
@@ -60,7 +60,7 @@ Then the rule is refused as not on a linked Table
 
 ```gherkin
 Given Anjali raised a Data Quality Issue for SAP, assigned to Bala
-And the linked Table "Buying Desk" has 3 buyer rows whose person is blank
+And the linked Table "Buyer Assignment" has 3 buyer rows whose person is blank
 When Bala adds a rule where role is "Category head" and person is blank
 Then the rule is refused as matching no rows
 ```
@@ -69,7 +69,7 @@ Then the rule is refused as matching no rows
 
 ```gherkin
 Given Anjali raised a Data Quality Issue for SAP, assigned to Bala
-When Bala adds a rule on "Buying Desk" where "shoe size" is blank
+When Bala adds a rule on "Buyer Assignment" where "shoe size" is blank
 Then the rule is refused, naming "shoe size"
 ```
 
@@ -115,15 +115,15 @@ And it reads "3 rows still to fix"
 ```gherkin
 Given a ticket with the rule "Buyer is blank" and 3 of 3 rows left
 When Bala opens the ticket
-Then "Open these rows" points to the "Buying Desk" list filtered to role "Buyer" and person blank
+Then "Open these rows" points to the "Buyer Assignment" list filtered to role "Buyer" and person blank
 ```
 
 #### Scenario: Bala adds a rule from the ticket page
 
 ```gherkin
 Given Anjali raised a Data Quality Issue for SAP, assigned to Bala
-And the linked Table "Buying Desk" has 3 buyer rows whose person is blank
-When Bala picks "Buying Desk", role is "Buyer" and person is blank on the ticket page
+And the linked Table "Buyer Assignment" has 3 buyer rows whose person is blank
+When Bala picks "Buyer Assignment", role is "Buyer" and person is blank on the ticket page
 Then the page says it matches 3 rows
 And when Bala saves it as "Buyer is blank", the Rules card shows it
 ```

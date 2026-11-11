@@ -48,10 +48,10 @@ describe('tickets-data-quality-rules', () => {
     const x = new TicketRules(new Tickets(admin, createUser))
     await step(WITH_RULE, () => x.withRule())
     await step('Bala opens the ticket', () => openAs(x, 'Bala'))
-    await step('"Open these rows" points to the "Buying Desk" list filtered to role "Buyer" and person blank', async () => {
+    await step('"Open these rows" points to the "Buyer Assignment" list filtered to role "Buyer" and person blank', async () => {
       const link = within(card()).getByRole('link', { name: 'Open these rows →' })
       const href = new URL(link.getAttribute('href')!, 'http://featherbase.test')
-      expect(href.pathname).toBe('/featherbase/admin/table/buying-desk')
+      expect(href.pathname).toBe('/featherbase/admin/table/buyer-assignment')
       const filters = JSON.parse(href.searchParams.get('filters')!)
       expect(filters).toEqual(BUYER_BLANK.filters)
       // The list that address opens: exactly the three blank buyers.
@@ -64,12 +64,12 @@ describe('tickets-data-quality-rules', () => {
     const x = new TicketRules(new Tickets(admin, createUser))
     let session!: Session
     await step('Anjali raised a Data Quality Issue for SAP, assigned to Bala', () => x.transitions.raise())
-    await step('the linked Table "Buying Desk" has 3 buyer rows whose person is blank', () => x.desk())
-    await step('Bala picks "Buying Desk", role is "Buyer" and person is blank on the ticket page', async () => {
+    await step('the linked Table "Buyer Assignment" has 3 buyer rows whose person is blank', () => x.desk())
+    await step('Bala picks "Buyer Assignment", role is "Buyer" and person is blank on the ticket page', async () => {
       ({ session } = await openAs(x, 'Bala'))
       await session
         .within('.rules', (rules) => rules.clickButton('Add a rule'))
-        .selectOption('Table', 'Buying Desk')
+        .selectOption('Table', 'Buyer Assignment')
         .until('the Table\'s columns are offered', () => screen.queryByRole('option', { name: 'Person' }))
         .selectOption('Column 1', 'Role')
         .fillIn('Value 1', 'Buyer')

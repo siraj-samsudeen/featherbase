@@ -11,13 +11,13 @@ const scenario = scenarioFor(test, 'transactional-runtime-actions')
 describe('transactional-runtime-actions', () => {
   scenario('An app counts only what its caller reads', async ({ admin, createUser }, step) => {
     const x = new TicketRules(new Tickets(admin, createUser))
-    await step('a linked Table "Buying Desk" with 3 rows, and a person who may not read it', () => x.desk())
+    await step('a linked Table "Buyer Assignment" with 3 rows, and a person who may not read it', () => x.desk())
     let answer: { count: number | null } = { count: -1 }
-    await step('the app counts the rows of "Buying Desk" for that person', async () => {
-      answer = await x.preview('Buying Desk', [['role', '=', 'Buyer'], ['person', 'is blank', null]], 'Colleague')
+    await step('the app counts the rows of "Buyer Assignment" for that person', async () => {
+      answer = await x.preview('Buyer Assignment', [['role', '=', 'Buyer'], ['person', 'is blank', null]], 'Colleague')
     })
     await step('there is no count', () => expect(answer.count).toBeNull())
     await step('for a person who reads it, the count is 3', async () =>
-      expect((await x.preview('Buying Desk', [['role', '=', 'Buyer'], ['person', 'is blank', null]], 'Bala')).count).toBe(3))
+      expect((await x.preview('Buyer Assignment', [['role', '=', 'Buyer'], ['person', 'is blank', null]], 'Bala')).count).toBe(3))
   })
 })

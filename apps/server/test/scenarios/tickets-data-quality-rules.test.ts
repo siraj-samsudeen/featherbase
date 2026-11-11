@@ -9,7 +9,7 @@ import { BUYER_BLANK, pinning, TicketRules, Tickets } from '../tickets-world'
 const test = pgTest.extend(pinning)
 const scenario = scenarioFor(test, 'tickets-data-quality-rules')
 const RAISED = 'Anjali raised a Data Quality Issue for SAP, assigned to Bala'
-const DESK = 'the linked Table "Buying Desk" has 3 buyer rows whose person is blank'
+const DESK = 'the linked Table "Buyer Assignment" has 3 buyer rows whose person is blank'
 const WITH_RULE = 'a ticket with the rule "Buyer is blank" and 3 of 3 rows left'
 
 async function left(x: TicketRules, expected: number | null, raised = 3) {
@@ -23,10 +23,10 @@ describe('tickets-data-quality-rules', () => {
     const x = new TicketRules(new Tickets(admin, createUser))
     await step(RAISED, () => x.transitions.raise())
     await step(DESK, () => x.desk())
-    await step('Bala adds the rule "Buyer is blank" on "Buying Desk" where role is "Buyer" and person is blank', () => x.add())
+    await step('Bala adds the rule "Buyer is blank" on "Buyer Assignment" where role is "Buyer" and person is blank', () => x.add())
     await step('the ticket shows "Buyer is blank" with 3 of 3 rows left', async () => {
       await left(x, 3)
-      expect(await x.ruleNamed('Buyer is blank')).toMatchObject({ table: 'Buying Desk', severity: 'Medium',
+      expect(await x.ruleNamed('Buyer is blank')).toMatchObject({ table: 'Buyer Assignment', severity: 'Medium',
         filters: BUYER_BLANK.filters, how_to_fix: BUYER_BLANK.how_to_fix, owner: x.t.ids.Bala })
     })
   })
@@ -50,7 +50,7 @@ describe('tickets-data-quality-rules', () => {
     const x = new TicketRules(new Tickets(admin, createUser))
     await step(WITH_RULE, () => x.withRule())
     let seen: Awaited<ReturnType<TicketRules['rules']>> = []
-    await step('Colleague, who may not read "Buying Desk", opens the ticket', async () => { seen = await x.rules('Colleague') })
+    await step('Colleague, who may not read "Buyer Assignment", opens the ticket', async () => { seen = await x.rules('Colleague') })
     await step('Colleague sees the rule without a count', () => {
       expect(seen).toHaveLength(1)
       expect(seen[0]).toMatchObject({ title: 'Buyer is blank', rows_left: null })
@@ -82,7 +82,7 @@ describe('tickets-data-quality-rules', () => {
   scenario('A rule on a column the Table lacks is refused', async ({ admin, createUser }, step) => {
     const x = new TicketRules(new Tickets(admin, createUser))
     await step(RAISED, () => x.raised())
-    await step('Bala adds a rule on "Buying Desk" where "shoe size" is blank', () =>
+    await step('Bala adds a rule on "Buyer Assignment" where "shoe size" is blank', () =>
       x.add({ ...BUYER_BLANK, filters: [['shoe size', 'is blank', null]] }, 'Bala', true))
     await step('the rule is refused, naming "shoe size"', () => x.refusedWith(/shoe size/))
   })

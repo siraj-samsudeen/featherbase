@@ -334,14 +334,14 @@ export class TicketsAssignmentEmail {
 
 export type Rule = { row_id: string; title: string; table: string; filters: [string, string, unknown][]; severity: string
   owner?: string | null; how_to_fix?: string | null; rows_when_raised: number; rows_left: number | null }
-export const BUYER_BLANK = { title: 'Buyer is blank', table: 'Buying Desk', severity: 'Medium',
+export const BUYER_BLANK = { title: 'Buyer is blank', table: 'Buyer Assignment', severity: 'Medium',
   filters: [['role', '=', 'Buyer'], ['person', 'is blank', null]] as [string, string, unknown][],
   how_to_fix: 'Pick the buyer from the category\'s purchasing group' }
 
-/** A Data Quality Issue raised to Bala, and a linked Table "Buying Desk" whose rows a rule counts. */
+/** A Data Quality Issue raised to Bala, and a linked Table "Buyer Assignment" whose rows a rule counts. */
 export class TicketRules {
   readonly transitions: TicketTransitions
-  readonly table = 'Buying Desk'
+  readonly table = 'Buyer Assignment'
   rows: { row_id: string; updated_at: string }[] = []
   rule?: Rule
   constructor(readonly t: Tickets) { this.transitions = new TicketTransitions(t) }

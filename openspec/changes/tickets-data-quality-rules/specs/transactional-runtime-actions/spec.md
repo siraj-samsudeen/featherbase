@@ -10,8 +10,8 @@ longer fit the filter, SHALL give no count rather than zero or a failure.
 #### Scenario: An app counts only what its caller reads
 
 ```gherkin
-Given a linked Table "Buying Desk" with 3 rows, and a person who may not read it
-When the app counts the rows of "Buying Desk" for that person
+Given a linked Table "Buyer Assignment" with 3 rows, and a person who may not read it
+When the app counts the rows of "Buyer Assignment" for that person
 Then there is no count
 And for a person who reads it, the count is 3
 ```
