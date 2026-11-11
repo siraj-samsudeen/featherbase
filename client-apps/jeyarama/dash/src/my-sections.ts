@@ -10,7 +10,8 @@ type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
 interface ApproverRequest { people: string[]; fallbackRoles: string[] }
 interface ChangeProposal {
-  row_id: string; maker: string; state: string; about: unknown; decision_reason: string | null; ends_row?: boolean
+  row_id: string; maker: string; state: string; about: unknown; decision_reason: string | null; ends_row?: boolean; decided_by?: string | null
+  target_row?: string | null; result_row?: string | null
   changes: { column_name: string; proposed_value: string | null; review_base_value: string | null }[]
   created_at: string; decided_at: string | null; route: { people: string[]; roles: string[] }
 }
@@ -20,20 +21,31 @@ interface ChangeProposalsReader {
   list(filter?: ProposalList): Promise<ChangeProposal[]>
   mayDecide(maker: string, approvers: ApproverRequest): Promise<boolean>
   routeFor(maker: string, approvers: ApproverRequest): Promise<{ people: string[]; roles: string[] } | null>
+  modeOf(type: string): Promise<string>
 }
 interface ChangeProposalsHelper extends ChangeProposalsReader {
   lockRow(table: string, rowId: string): Promise<void>
   serialize(key: string): Promise<void>
-  propose(request: { table: string; row: string | null; changes: Record<string, string | null>; reviewed?: string[]; ends?: boolean; approvers: ApproverRequest; about: Record<string, unknown> }): Promise<ChangeProposal>
+  propose(request: { table: string; row: string | null; changes: Record<string, string | null>; reviewed?: string[]; ends?: boolean; approvers: ApproverRequest; about: Record<string, unknown>
+    type: string; apply: { effectiveOn: string; newRow?: Record<string, string | null> } }): Promise<ChangeProposal>
   approve(id: string, decision: { approvers: ApproverRequest; effectiveOn: string; newRow?: Record<string, string | null>; instead?: Record<string, string | null>; reason?: string }): Promise<ChangeProposal>
   withdraw(id: string): Promise<ChangeProposal>
   reject(id: string, decision: { approvers: ApproverRequest; reason: string }): Promise<ChangeProposal>
   needsFreshReview(id: string, decision: { approvers: ApproverRequest; reason: string }): Promise<ChangeProposal>
+  confirm(id: string, decision: { approvers: ApproverRequest; note?: string }): Promise<ChangeProposal>
+  undo(id: string, decision: { approvers: ApproverRequest; reason?: string }): Promise<ChangeProposal>
 }
 
 const T = { employee: 'Employee', job: 'Job Assignment', section: 'Section', floor: 'Store Floor', placement: 'Section Subcategory', subcategory: 'Subcategory', site: 'Site' } as const
 /** Every base Table an administrator must list in the `linked_tables` setting. */
 export const BASE_TABLES: readonly string[] = Object.values(T)
+
+/** #1191: Dash's kinds of approval, as the manifest declares them. Each one's mode is the instance's Approval Type row. */
+export const APPROVAL_TYPE = { add: 'subcategory_add', removal: 'subcategory_removal', section: 'job_section' } as const
+const APPLY_NOW = 'Apply now, review after'
+/** Applied when asked for, waiting for a reviewer: shown with the waiting ones. */
+const OPEN = ['Pending', 'Not yet reviewed']
+const isApplied = (proposal: ChangeProposal) => proposal.state === 'Not yet reviewed'
 
 /** Who approves when a person has no manager who can sign in. */
 export const FALLBACK_ROLE = 'Master Data Editor'
@@ -183,7 +195,8 @@ const dayAfter = (value: string) => new Date(Date.parse(`${value}T00:00:00Z`) + 
 /** A proposal as a person reads it: names only. */
 function view(proposal: ChangeProposal, waitingFor?: string) {
   const a = about(proposal)
-  return { id: proposal.row_id, kind: a.kind, what: a.what, from: a.from, to: a.to, store: a.store, state: proposal.state,
+  return { id: proposal.row_id, kind: a.kind, what: a.what, from: a.from, to: a.to, store: a.store, state: proposal.state, applied: isApplied(proposal),
+    taken_back: proposal.state === 'Undone' && proposal.decided_by === proposal.maker,
     waiting_for: waitingFor ?? (proposal.route.people.length ? a.manager_name : null) ?? MASTER_DATA_TEAM,
     reason: proposal.decision_reason, asked_on: istDay(proposal.created_at), decided_on: istDay(proposal.decided_at) }
 }
@@ -194,7 +207,7 @@ async function waitingForMe(ctx: ReadContext): Promise<ChangeProposal[]> {
   const mine: ChangeProposal[] = []
   const today = istToday()
   for (let start = 0; ; start += 500) {
-    const pending = await ctx.changeProposals.list({ states: ['Pending'], limit: 500, start })
+    const pending = await ctx.changeProposals.list({ states: OPEN, limit: 500, start })
     const others = pending.filter(proposal => proposal.maker !== ctx.user)
     const jobs = others.length ? byId(await list(ctx, T.job, JOB_FIELDS, [['row_id', 'in', unique(others.map(p => about(p).job_assignment))]])) : new Map<string, Row>()
     for (const proposal of others) {
@@ -231,7 +244,8 @@ export const reads = {
     const floors = sites.length ? byId(await all(ctx, T.floor, ['name', 'site'], [['site', 'in', sites]])) : new Map<string, Row>()
     const placements = held.length ? (await all(ctx, T.placement, PLACEMENT_FIELDS, [['section', 'in', held]])).filter(row => inForce(row, today)) : []
     const mine = await ctx.changeProposals.list({ makers: [ctx.user], limit: VIEW_LIMIT })
-    const pending = mine.filter(p => p.state === 'Pending')
+    // Waiting for approval, or applied and waiting for review (#1191).
+    const pending = mine.filter(p => OPEN.includes(p.state))
     const codes = unique([...placements.map(p => exact(p.subcategory)), ...pending.map(p => exact(about(p).subcategory))])
     const leaves = codes.length ? byId(await all(ctx, T.subcategory, SUB_FIELDS, [['row_id', 'in', codes]])) : new Map<string, Row>()
     const floorName = (section: Row | undefined) => text(floors.get(exact(section?.floor))?.name) || null
@@ -246,30 +260,44 @@ export const reads = {
       const section = sectionsById.get(exact(job.section))
       const { reportsTo } = await approversOf(ctx, job)
       const ours = pending.filter(p => about(p).job_assignment === exact(job.row_id))
-      const outOf = (code: string) => ours.find(p => ['removal', 'move'].includes(about(p).kind) && about(p).subcategory === code)
+      const outOf = (code: string) => ours.find(p => !isApplied(p) && ['removal', 'move'].includes(about(p).kind) && about(p).subcategory === code)
+      // #1191: an applied addition shows as an addition, not twice; an applied removal stays in the list, struck through.
+      const addedRows = new Set(ours.filter(p => isApplied(p) && about(p).kind === 'add').map(p => exact(p.result_row)))
+      const takenOut = ours.filter(p => isApplied(p) && about(p).kind === 'removal' && about(p).from_section === exact(section?.row_id))
+      const removedRows = takenOut.length ? byId(await list(ctx, T.placement, PLACEMENT_FIELDS, [['row_id', 'in', takenOut.map(p => exact(p.target_row))]])) : new Map<string, Row>()
+      const applied = (p: ChangeProposal) => ({ id: p.row_id, waiting_for: waiting.get(p.row_id)! })
+      const sectionChange = pending.find(p => isApplied(p) && about(p).kind === 'section' && exact(p.result_row) === exact(job.row_id))
       views.push({
         id: exact(job.row_id), job: text(job.job), store: text(siteRows.get(site)?.name), is_store: siteRows.get(site)?.is_store === true,
         reports_to: reportsTo,
         waiting_for: await waitingOnNow(ctx, job, ctx.user),
         section: section ? { id: exact(section.row_id), name: text(section.name), floor: floorName(section) } : null,
-        subcategories: section ? placements.filter(p => exact(p.section) === exact(section.row_id))
+        section_change: sectionChange ? { ...applied(sectionChange), from: about(sectionChange).from } : null,
+        subcategories: section ? [...placements.filter(p => exact(p.section) === exact(section.row_id) && !addedRows.has(exact(p.row_id)))
           .map(p => {
             const code = exact(p.subcategory)
             const asked = outOf(code)
             return { id: exact(p.row_id), code, name: text(leaves.get(code)?.subcategory) || 'Unnamed subcategory', ...pathOf(leaves.get(code)),
-              pending: asked ? { id: asked.row_id, kind: about(asked).kind, to: about(asked).kind === 'move' ? about(asked).to : null, waiting_for: waiting.get(asked.row_id)! } : null }
-          })
+              pending: asked ? { id: asked.row_id, kind: about(asked).kind, to: about(asked).kind === 'move' ? about(asked).to : null, waiting_for: waiting.get(asked.row_id)!, applied: false } : null }
+          }), ...takenOut.filter(p => removedRows.has(exact(p.target_row))).map(p => {
+            const code = exact(about(p).subcategory)
+            return { id: exact(p.target_row), code, name: about(p).what, ...pathOf(leaves.get(code)),
+              pending: { ...applied(p), kind: 'removal' as const, to: null, applied: true } }
+          })]
           .sort((a, b) => a.name.localeCompare(b.name)) : [],
         additions: section ? ours.filter(p => about(p).kind === 'add' && about(p).to_section === exact(section.row_id))
           .map(p => ({ id: p.row_id, code: exact(about(p).subcategory), name: text(leaves.get(exact(about(p).subcategory))?.subcategory) || about(p).what,
-            ...pathOf(leaves.get(exact(about(p).subcategory))), waiting_for: waiting.get(p.row_id)! }))
+            ...pathOf(leaves.get(exact(about(p).subcategory))), waiting_for: waiting.get(p.row_id)!, applied: isApplied(p) }))
           .sort((a, b) => a.name.localeCompare(b.name)) : [],
         other_sections: sections.filter(s => exact(s.site) === site && isActive(s) && exact(s.row_id) !== exact(job.section))
           .map(s => ({ id: exact(s.row_id), name: text(s.name), floor: floorName(s) }))
           .sort((a, b) => a.name.localeCompare(b.name)),
       })
     }
-    return { state: 'ok' as const, name: text(employees[0].name), jobs: views, proposals: shown, waiting_for_me: (await waitingForMe(ctx)).length }
+    // #1191: whether each kind changes at once here, so the page says what will happen before anyone asks.
+    const atOnce = async (type: string) => (await ctx.changeProposals.modeOf(type)) === APPLY_NOW
+    const applies_at_once = { add: await atOnce(APPROVAL_TYPE.add), removal: await atOnce(APPROVAL_TYPE.removal), section: await atOnce(APPROVAL_TYPE.section) }
+    return { state: 'ok' as const, name: text(employees[0].name), jobs: views, proposals: shown, waiting_for_me: (await waitingForMe(ctx)).length, applies_at_once }
   },
 
   /** Division, sub-division and category, for browsing; starting where most of the job's own subcategories sit. */
@@ -417,6 +445,10 @@ async function proposeAdd(ctx: ActionContext, job: Row, employee: Row, section: 
   const site = exact(job.site)
   const name = text(subcategory.subcategory)
   if (await scheduledLater(ctx, site, code, today)) ctx.reject(`${SCHEDULED} (${name})`)
+  // #1191: taken out by them and not yet reviewed: Undo puts it back, and leaves one record, not two that cancel out.
+  const takenOut = (await ctx.changeProposals.list({ makers: [ctx.user], states: ['Not yet reviewed'], limit: 500 }))
+    .some(p => about(p).kind === 'removal' && about(p).site === site && about(p).subcategory === code)
+  if (takenOut) ctx.reject(`You took ${name} out and it isn't reviewed yet. Use Undo on it to put it back`)
   const seen = (await list(ctx, T.placement, PLACEMENT_FIELDS, [['store', '=', site], ['subcategory', '=', code]])).filter(row => inForce(row, today))
   // What is checked below is what the proposal records.
   for (const row of seen) await ctx.changeProposals.lockRow(T.placement, exact(row.row_id))
@@ -427,9 +459,12 @@ async function proposeAdd(ctx: ActionContext, job: Row, employee: Row, section: 
   const [other] = elsewhere ? await list(ctx, T.section, SECTION_FIELDS, [['row_id', '=', exact(elsewhere.section)]]) : []
   const base = await aboutTheJob(ctx, job, employee)
   const a = { ...base, kind: 'add' as const, what: name, from: elsewhere ? text(other?.name) : 'No section', to: text(section.name), subcategory: code, from_section: exact(elsewhere?.section), to_section: exact(section.row_id) }
+  // A subcategory in no section has no row to queue at: two adds of it queue on what they share.
+  if (!elsewhere) await ctx.changeProposals.serialize(`${site}:${code}`)
   const proposal = await ctx.changeProposals.propose({ table: T.placement, row: elsewhere ? exact(elsewhere.row_id) : null,
     changes: elsewhere ? { section: exact(section.row_id) } : { store: site, subcategory: code, section: exact(section.row_id) },
-    reviewed: elsewhere ? ['store', 'subcategory'] : [], approvers: await approversFor(ctx, a, job, today), about: a })
+    reviewed: elsewhere ? ['store', 'subcategory'] : [], approvers: await approversFor(ctx, a, job, today), about: a,
+    type: APPROVAL_TYPE.add, apply: { effectiveOn: today, newRow: await placementStamp(ctx, site, code, today) } })
   return sentView(ctx, proposal)
 }
 
@@ -450,6 +485,7 @@ export const actions = {
     const [name] = await list(ctx, T.subcategory, ['subcategory'], [['row_id', '=', exact(placement.subcategory)]])
     const base = await aboutTheJob(ctx, job, employee)
     const proposal = await ctx.changeProposals.propose({ table: T.placement, row: exact(placement.row_id), changes: {}, ends: true, reviewed: ['store', 'subcategory', 'section'],
+      type: APPROVAL_TYPE.removal, apply: { effectiveOn: today },
       approvers: (await approversOf(ctx, job)).approvers,
       about: { ...base, kind: 'removal', what: text(name?.subcategory), from: text(from.name), to: '', subcategory: exact(placement.subcategory), from_section: exact(from.row_id), to_section: '' } })
     return sentView(ctx, proposal)
@@ -475,7 +511,8 @@ export const actions = {
   async propose_section(ctx: ActionContext) {
     const payload = payloadOf(ctx)
     if (typeof payload.job === 'string' && payload.job) await ctx.changeProposals.lockRow(T.job, payload.job)
-    const { job, employee } = await myJob(ctx, payload.job, istToday())
+    const today = istToday()
+    const { job, employee } = await myJob(ctx, payload.job, today)
     const to = await sectionInStore(ctx, payload.to_section, exact(job.site))
     if (exact(to.row_id) === exact(job.section)) ctx.reject('That is already your section')
     const [from] = exact(job.section) ? await list(ctx, T.section, SECTION_FIELDS, [['row_id', '=', exact(job.section)]]) : []
@@ -484,17 +521,22 @@ export const actions = {
     const changes: Record<string, string | null> = { section: exact(to.row_id) }
     if (exact(job.floor)) changes.floor = exact(to.floor) || null
     const proposal = await ctx.changeProposals.propose({ table: T.job, row: exact(job.row_id), changes, reviewed: ['employee', 'site', 'job', ...(changes.floor === undefined ? ['floor'] : [])],
+      type: APPROVAL_TYPE.section, apply: { effectiveOn: today, newRow: await jobStamp(ctx, job, exact(to.row_id), today) },
       approvers: (await approversOf(ctx, job)).approvers,
       about: { ...base, kind: 'section', what: `${text(job.job)} at ${base.store}`, from: from ? text(from.name) : 'No section', to: text(to.name), from_section: exact(job.section), to_section: exact(to.row_id) } })
     return sentView(ctx, proposal)
   },
 
-  /** Undo: the maker takes back a pending proposal. The platform refuses anyone else, and a decided one. */
+  /** Undo: the maker takes back a pending proposal, or one applied at once and not yet reviewed (#1191).
+   *  The platform refuses anyone else, and a decided or reviewed one. */
   async withdraw(ctx: ActionContext) {
     const payload = payloadOf(ctx)
     const [proposal] = typeof payload.proposal === 'string' && payload.proposal ? await ctx.changeProposals.list({ ids: [payload.proposal] }) : []
     if (!proposal) ctx.reject('That proposal no longer exists')
-    return view(await ctx.changeProposals.withdraw(proposal.row_id))
+    if (!isApplied(proposal)) return view(await ctx.changeProposals.withdraw(proposal.row_id))
+    if (proposal.maker !== ctx.user) ctx.reject('Only the person who asked can undo this')
+    await refuseUndoIfMovedOn(ctx, proposal)
+    return view(await ctx.changeProposals.undo(proposal.row_id, { approvers: { people: [], fallbackRoles: [] } }))
   },
 
   /** The approver's decision. The platform refuses the maker and anyone but the approver. */
@@ -515,6 +557,15 @@ export const actions = {
     // In id order, as with the people: two moves between the same two sections can't cross.
     for (const section of unique([a.to_section, a.kind === 'move' || a.kind === 'removal' ? exact(a.from_section) : '', instead]).sort()) await ctx.changeProposals.lockRow(T.section, section)
     const approvers = await approversFor(ctx, a, job, today)
+    // #1191: a change that applied at once is confirmed or undone; one waiting is approved or rejected.
+    if (isApplied(proposal)) {
+      if (payload.decision === 'confirm') return view(await ctx.changeProposals.confirm(proposal.row_id, { approvers }))
+      if (payload.decision !== 'undo') ctx.reject('This has already been done: confirm it or undo it')
+      await refuseUndoIfMovedOn(ctx, proposal)
+      // The platform refuses a reason that is not text, and a missing one from a reviewer.
+      return view(await ctx.changeProposals.undo(proposal.row_id, { approvers, reason: payload.reason as string | undefined }))
+    }
+    if (payload.decision === 'confirm' || payload.decision === 'undo') ctx.reject('This is waiting for approval: approve it or reject it')
     if (payload.decision === 'reject')
       return view(await ctx.changeProposals.reject(proposal.row_id, { approvers, reason: typeof payload.reason === 'string' ? payload.reason : '' }))
     if (payload.decision !== 'approve') ctx.reject('Approve or reject')
@@ -531,9 +582,7 @@ export const actions = {
     const stale = await whyStale(ctx, proposal, a, job, today, elsewhere ? exact(elsewhere.row_id) : a.to_section)
     if (stale) return view(await ctx.changeProposals.needsFreshReview(proposal.row_id, { approvers, reason: stale }))
     if (a.kind === 'removal') return view(await ctx.changeProposals.approve(proposal.row_id, { approvers, effectiveOn: today }))
-    const newRow: Record<string, string> = a.kind === 'section'
-      ? { assignment_id: await freeId(ctx, T.job, `JA-${exact(job.employee)}-${a.site}-${a.to_section.split('-').at(-1)}-${today}`), source_key: `Dash, approved ${today}` }
-      : { section_subcategory_id: await freeId(ctx, T.placement, `${a.site}-${a.subcategory}-${today}`), source_key: `Dash, approved ${today}` }
+    const newRow = a.kind === 'section' ? await jobStamp(ctx, job!, a.to_section, today, 'approved') : await placementStamp(ctx, a.site, exact(a.subcategory), today, 'approved')
     const decided = await ctx.changeProposals.approve(proposal.row_id, { approvers, effectiveOn: today, newRow,
       ...(elsewhere ? { instead: { section: exact(elsewhere.row_id) }, reason: `Put in ${text(elsewhere.name)} instead.` } : {}) })
     // StyleHR: once the vendor's API is ready, an approved `section` proposal is posted to it here. Not built (#975).
@@ -541,9 +590,28 @@ export const actions = {
   },
 }
 
-/** A row id free on this Table: an end-and-add can land on the same day twice. */
+/** The identifier and source of a new row: how it came, and on which day. */
+const placementStamp = async (ctx: ActionContext, site: string, code: string, today: string, how = 'applied') =>
+  ({ section_subcategory_id: await freeId(ctx, T.placement, `${site}-${code}-${today}`), source_key: `Dash, ${how} ${today}` })
+const jobStamp = async (ctx: ActionContext, job: Row, toSection: string, today: string, how = 'applied') =>
+  ({ assignment_id: await freeId(ctx, T.job, `JA-${exact(job.employee)}-${exact(job.site)}-${toSection.split('-').at(-1)}-${today}`), source_key: `Dash, ${how} ${today}` })
+
+/** An undone removal puts the subcategory back in the section it left: not if it has since gone to another.
+ *  The platform sees only the rows the change touched; this rule is Dash's own. */
+async function refuseUndoIfMovedOn(ctx: ActionContext, proposal: ChangeProposal) {
+  const a = about(proposal)
+  if (a.kind !== 'removal') return
+  await ctx.changeProposals.serialize(`${a.site}:${a.subcategory}`)
+  const placed = (await list(ctx, T.placement, PLACEMENT_FIELDS, [['store', '=', a.site], ['subcategory', '=', exact(a.subcategory)]])).filter(row => notOver(row, istToday()))
+  if (!placed.length) return
+  const [section] = await list(ctx, T.section, SECTION_FIELDS, [['row_id', '=', exact(placed[0].section)]])
+  ctx.reject(`${a.what} has since been put in ${text(section?.name)}, so it can't be undone. Ask the master data team if that is wrong`)
+}
+
+/** A row id free on this Table: an end-and-add can land on the same day twice, and an undone row keeps its id (#1191). */
 async function freeId(ctx: ActionContext, table: string, base: string): Promise<string> {
-  const taken = new Set((await list(ctx, table, [], [['row_id', 'like', `${base}%`]])).map(row => exact(row.row_id)))
+  const like: Filter = ['row_id', 'like', `${base}%`]
+  const taken = new Set([...await list(ctx, table, [], [like]), ...await list(ctx, table, [], [like, ['retired_at', '!=', null]])].map(row => exact(row.row_id)))
   if (!taken.has(base)) return base
   for (let n = 2; ; n++) if (!taken.has(`${base}-${n}`)) return `${base}-${n}`
 }

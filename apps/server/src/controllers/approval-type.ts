@@ -11,7 +11,7 @@ const controller: TableController = {
   table: 'Approval Type',
   hooks: {
     before_validate: async ({ row, old, isNew, tx }) => {
-      const match = ROW_ID.exec(String((isNew ? row.row_id : old?.row_id) ?? ''))
+      const match = ROW_ID.exec(String(isNew ? row.row_id : old!.row_id))
       if (!match)
         throw new AppError('ValidationError', 'An approval type is named <app>.<type>, like dash.subcategory_add', { row_id: 'app.type' })
       const [, app, type] = match
