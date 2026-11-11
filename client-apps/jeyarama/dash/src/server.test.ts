@@ -145,8 +145,8 @@ describe('a report taking no filter', () => {
 
     it('opens for each Dash role, and stays shut for someone holding none', async () => {
       const opens = async (roles: string[]) => reads.can_open(withRoles(roles))
-      expect([await opens(['Dash Section Editor']), await opens(['Dash Section Reviewer']), await opens(['Master Data Editor']), await opens([])])
-        .toEqual([true, true, false, false])
+      expect([await opens(['Report Access Manager']), await opens(['Dash Section Editor']), await opens(['Master Data Editor']), await opens([])])
+        .toEqual([true, false, false, false])
     })
 
     it('stays shut for someone the platform hands no roles at all', async () => {

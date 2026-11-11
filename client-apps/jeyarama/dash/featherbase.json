@@ -8,8 +8,6 @@
   "entryTable": "dash.report",
   "roles": [
     "Dash Reader",
-    "Dash Section Editor",
-    "Dash Section Reviewer",
     "Report Access Manager"
   ],
   "roleDefaults": {},
@@ -577,16 +575,6 @@
     },
     {
       "table": "dash.report",
-      "role": "Dash Section Editor",
-      "can_read": true
-    },
-    {
-      "table": "dash.report",
-      "role": "Dash Section Reviewer",
-      "can_read": true
-    },
-    {
-      "table": "dash.report",
       "role": "Report Access Manager",
       "can_read": true
     },
@@ -639,9 +627,7 @@
         "policy": {
           "kind": "person_scope",
           "readRoles": [
-            "Dash Reader",
-            "Dash Section Editor",
-            "Dash Section Reviewer"
+            "Dash Reader"
           ],
           "actionRoles": []
         },
@@ -661,9 +647,7 @@
         "policy": {
           "kind": "person_scope",
           "readRoles": [
-            "Dash Reader",
-            "Dash Section Editor",
-            "Dash Section Reviewer"
+            "Dash Reader"
           ],
           "actionRoles": []
         },
@@ -675,9 +659,7 @@
         "policy": {
           "kind": "person_scope",
           "readRoles": [
-            "Dash Reader",
-            "Dash Section Editor",
-            "Dash Section Reviewer"
+            "Dash Reader"
           ],
           "actionRoles": []
         },
