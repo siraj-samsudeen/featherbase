@@ -10,6 +10,7 @@ import { assertSignInAvailable, exchangeCode, googleAuthorizeUrl, mintHandoffCod
 import type { TestClient } from 'feather-testing-postgres'
 import { expectSessionCookie, setSessionHours } from './session-cookie-test-utils'
 import { configureGoogle, inviteGoogleRaw } from './identity-fixtures'
+import { withTime } from './clock'
 import { googleSignIn, mockApproveUrl, mockOAuth, withGoogleFetch } from './google-mock'
 import { CLIENT, FROM_CLIENT, signInAddresses } from './sign-in-address-utils'
 
@@ -68,7 +69,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     await setClientId('')
     await setAllowedDomains('*')
     const started = Math.floor(Date.now() / 1000) * 1000
-    try {
+    await withTime(started, async () => {
       for (const seconds of [599, 601]) {
         vi.setSystemTime(started)
         const email = `elapsed-${seconds}@example.test`
@@ -90,9 +91,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
           expect(await sql`select row_id from person where email = ${email}`).toEqual([])
         }
       }
-    } finally {
-      vi.useRealTimers()
-    }
+    })
   })
 
   test('Google sign-in gives the sid cookie the configured session lifetime', async ({ api }) => {

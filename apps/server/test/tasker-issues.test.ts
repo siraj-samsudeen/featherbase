@@ -1,5 +1,6 @@
 import { resolve } from 'node:path'
-import { expect, vi } from 'vitest'
+import { expect } from 'vitest'
+import { withTime } from './clock'
 import { test } from './pg-test'
 import { installApp } from '../src/apps'
 import { discoverPackages } from '../src/runtime-packages'
@@ -32,11 +33,6 @@ async function escalate() {
   await drainJobs()
   const [run] = await sql`select job_status, error from background_job where row_id = ${job}`
   expect(run).toMatchObject({ job_status: 'done', error: null })
-}
-
-async function withTime<T>(when: Date, fn: () => Promise<T>): Promise<T> {
-  vi.useFakeTimers({ toFake: ['Date'] })
-  try { vi.setSystemTime(when); return await fn() } finally { vi.useRealTimers() }
 }
 
 async function setup(createUser: (options: { roles: string[]; fullName?: string }) => Promise<Parameters<typeof taskerClient>[0]>, { manager = true, head = true } = {}) {

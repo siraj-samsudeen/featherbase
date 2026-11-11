@@ -4,6 +4,7 @@ import { config } from '../src/config'
 import { parseInstanceAddresses } from '../src/instance-addresses'
 import { configureGoogle, inviteGoogleRaw } from './identity-fixtures'
 import { beginMockApproval, mockOAuth } from './google-mock'
+import { withTimeFromNow } from './clock'
 import { saveDoc } from '../src/document'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
@@ -424,13 +425,9 @@ describe('the hand-off between addresses', () => {
     const viewer = await personWith(admin, 'viewer.late', ['Sales Target Viewer'])
     const { body, sid } = await signIn(api, ADMIN, viewer.usr)
     const { code, nonce } = await followHandoff(api, body.handoff!, sid)
-    const now = Date.now()
-    const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 61_000)
-    try {
+    await withTimeFromNow(61_000, async () => {
       await expectStatus(await redeemOn(api, DASH, code, nonce), 401)
-    } finally {
-      clock.mockRestore()
-    }
+    })
   })
 
   test('a code is refused once the source session has signed out', async ({ api, admin }) => {

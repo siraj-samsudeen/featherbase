@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, vi } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
+import { withTimeFromNow } from './clock'
 import { config } from '../src/config'
 import { parseInstanceAddresses } from '../src/instance-addresses'
 import { saveDoc } from '../src/document'
@@ -66,14 +67,8 @@ async function signedIn(api: TestClient, admin: TestClient, name: string, roles:
   const id = await makePerson({ email: `${name}@example.com`, full_name: name, roles: roles.map((role) => ({ role })) })
   await admin.post('/api/set_password', { user: id, password: 'top-bar-pw-1' })
   // The sign-in alone happens `minutesAgo`: its session carries that time.
-  const now = Date.now()
-  const clock = minutesAgo ? vi.spyOn(Date, 'now').mockReturnValue(now - minutesAgo * 60_000) : null
-  let res: Response
-  try {
-    res = await api.fetch(`${origin}/api/login`, { method: 'POST', body: JSON.stringify({ usr: `${name}@example.com`, pwd: 'top-bar-pw-1' }) })
-  } finally {
-    clock?.mockRestore()
-  }
+  const login = () => api.fetch(`${origin}/api/login`, { method: 'POST', body: JSON.stringify({ usr: `${name}@example.com`, pwd: 'top-bar-pw-1' }) })
+  const res = await (minutesAgo ? withTimeFromNow(-minutesAgo * 60_000, login) : login())
   const { token } = (await res.json()) as { token: string }
   const sid = cookieOf(res, 'sid')
   return {
