@@ -17,3 +17,11 @@ test('Data Source columns are labelled in sentence case', async ({ admin }) => {
     last_error: 'Last error',
   })
 })
+
+// #1199: MySQL is no longer offered as a data source engine.
+test('a Data Source offers PostgreSQL, DuckDB, MotherDuck and CSV folders, and not MySQL', async ({ admin }) => {
+  const meta = await admin.get<{ columns: { column_name: string; choices: string; choice_labels: Record<string, string> }[] }>('/api/table/Data%20Source:meta')
+  const engine = meta.columns.find(c => c.column_name === 'engine')!
+  expect(engine.choices.split('\n')).toEqual(['postgres', 'duckdb', 'motherduck', 'csv-folder'])
+  expect(engine.choice_labels).toEqual({ postgres: 'PostgreSQL', duckdb: 'DuckDB', motherduck: 'MotherDuck', 'csv-folder': 'CSV folder' })
+})

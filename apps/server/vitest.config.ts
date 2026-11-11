@@ -87,15 +87,10 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
-      // The MySQL driver is exercised only where a MySQL server is reachable
-      // (CI sets MYSQL_TEST_URL; a laptop usually does not). Measuring it
-      // without one would report a permanent gap that says nothing about the
-      // code, so it is counted exactly when its tests can run.
       exclude: [
         // ADR 0012: this boundary needs the hosted MotherDuck service and a
         // live token. Token validation and query construction remain covered.
         'src/motherduck-hosted.ts',
-        ...(process.env.MYSQL_TEST_URL ? [] : ['src/sources/mysql-driver.ts']),
       ],
       reporter: ['text', 'json-summary'],
       // Without this a single failing test suppresses the report entirely
@@ -107,7 +102,7 @@ export default defineConfig({
       // Tighten these caps as coverage improves; never exclude code to meet
       // them. An additional uncovered item fails even if % rounds up.
       // Stage 1 (lines, statements, functions): measured on a fresh database,
-      // the full suite on PostgreSQL 18 with MySQL enabled, as CI merges it.
+      // the full suite on PostgreSQL 18, as CI merges it.
       // One statement is left (collection-import.ts key analysis, `if
       // (hidden) continue`), capped as a count until it is reached or, after
       // research, marked inline (ADR 0023).
