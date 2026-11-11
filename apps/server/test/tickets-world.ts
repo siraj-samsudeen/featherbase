@@ -329,3 +329,62 @@ export class TicketsAssignmentEmail {
     this.t.ticket = raised
   }
 }
+
+// ---- data quality rules (#1196) ----
+
+export type Rule = { row_id: string; title: string; table: string; filters: [string, string, unknown][]; severity: string
+  owner?: string | null; how_to_fix?: string | null; rows_when_raised: number; rows_left: number | null }
+export const BUYER_BLANK = { title: 'Buyer is blank', table: 'Buying Desk', severity: 'Medium',
+  filters: [['role', '=', 'Buyer'], ['person', 'is blank', null]] as [string, string, unknown][],
+  how_to_fix: 'Pick the buyer from the category\'s purchasing group' }
+
+/** A Data Quality Issue raised to Bala, and a linked Table "Buying Desk" whose rows a rule counts. */
+export class TicketRules {
+  readonly transitions: TicketTransitions
+  readonly table = 'Buying Desk'
+  rows: { row_id: string; updated_at: string }[] = []
+  rule?: Rule
+  constructor(readonly t: Tickets) { this.transitions = new TicketTransitions(t) }
+
+  private save(table: string, row: object) { return this.t.admin.post<any>('/api/save_row', { table, row }) }
+
+  /** The linked Table, read by Tickets support only; Colleague may not read it. */
+  async desk() {
+    await this.transitions.configure()
+    if (this.rows.length) return
+    await makeTable(this.t.admin, { name: this.table, columns: ['role', 'person', 'store'] })
+    await grantRole(this.t.admin, { role: 'Tickets Support', table: this.table, can_read: true })
+    await this.t.configure({ linked_tables: [this.transitions.types.systemsTable, this.transitions.types.ownersTable, this.table] })
+    for (const store of ['North', 'South', 'East']) this.rows.push(await this.save(this.table, { role: 'Buyer', store }))
+    await this.save(this.table, { role: 'Buyer', store: 'West', person: 'Asha' })
+    await this.save(this.table, { role: 'Category head', store: 'West', person: 'Ravi' })
+  }
+  async raised() { await this.desk(); await this.transitions.raise() }
+
+  add(rule: Record<string, unknown> = BUYER_BLANK, actor = 'Bala', attempt = false) {
+    return this.t.action('add_rule', { ...rule }, actor, attempt)
+  }
+  /** A ticket with the rule "Buyer is blank" and 3 of 3 rows left. */
+  async withRule() {
+    await this.raised()
+    await this.add()
+    this.rule = (await this.rules())[0]
+  }
+  async rules(actor = 'Bala'): Promise<Rule[]> { return (await this.t.open(actor)).rules ?? [] }
+  async ruleNamed(title: string, actor = 'Bala') { const rule = (await this.rules(actor)).find(r => r.title === title); expect(rule, `rule ${title}`).toBeDefined(); return rule! }
+
+  /** Fills in a person on that many of the blank buyer rows. */
+  async fill(count: number) {
+    for (const row of this.rows.splice(0, count)) {
+      const current = await this.t.admin.get<{ updated_at: string }>(`/api/table/${encodeURIComponent(this.table)}/${row.row_id}`)
+      await this.save(this.table, { row_id: row.row_id, updated_at: current.updated_at, person: 'Filled In' })
+    }
+  }
+  async newBlankBuyer() { this.rows.push(await this.save(this.table, { role: 'Buyer', store: 'Central' })) }
+  remove(reason: string, actor = 'Bala', attempt = false) { return this.t.action('remove_rule', { rule: this.rule!.row_id, reason }, actor, attempt) }
+  preview(table: string, filters: unknown, actor = 'Bala') { return this.t.read('rule_preview', { table, filters }, actor) }
+  refusedWith(pattern: RegExp) {
+    expect(this.t.last.status, JSON.stringify(this.t.last.body)).not.toBe(200)
+    expect(JSON.stringify(this.t.last.body)).toMatch(pattern)
+  }
+}
