@@ -100,13 +100,15 @@ async function activityCount(): Promise<number> {
 describe('#432: every privileged principal is refused on an audit table', () => {
   for (const who of PRINCIPALS) {
     describe(who, () => {
-      test('insert, through the row API and save_row', async ({ admin, api, createUser }) => {
-        const client = await as(who, { admin, api, createUser })
-        const before = await activityCount()
-        await expectApiError(client.post(`/api/table/${ENC}`, { user: 'Administrator', operation: 'forged login' }), REFUSED)
-        await expectApiError(client.post('/api/save_row', { table: AL, row: { user: 'Administrator', operation: 'forged' } }), REFUSED)
-        expect(await activityCount()).toBe(before)
-      })
+      // A System Manager's insert is the scenario "An administrator tries to add a sign-in".
+      if (who !== 'System Manager')
+        test('insert, through the row API and save_row', async ({ admin, api, createUser }) => {
+          const client = await as(who, { admin, api, createUser })
+          const before = await activityCount()
+          await expectApiError(client.post(`/api/table/${ENC}`, { user: 'Administrator', operation: 'forged login' }), REFUSED)
+          await expectApiError(client.post('/api/save_row', { table: AL, row: { user: 'Administrator', operation: 'forged' } }), REFUSED)
+          expect(await activityCount()).toBe(before)
+        })
 
       test('update', async ({ admin, api, createUser }) => {
         const id = await seedActivity()
@@ -613,9 +615,9 @@ describe('#432: storage decides, not the name', () => {
     const CLASH = { status: 409, type: 'ConflictError' }
     for (const [name, kind] of [
       ['activity log', 'settings'],
-      ['ACTIVITY  LOG', 'settings'],
       ['activity log', 'table'],
       ['Activity log', 'sub_table'],
+      ['ACTIVITY  LOG', 'settings'],
     ] as const)
       await expectApiError(admin.post('/api/table_def', { name, kind, columns: [{ column_name: 'note', column_type: 'Data' }] }), CLASH)
     // An ordinary Table's storage is owned just the same, even by a Settings Table.
