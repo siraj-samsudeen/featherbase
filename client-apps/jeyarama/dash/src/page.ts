@@ -514,6 +514,8 @@ function knownReasons(reasons: readonly { basis: string; sections: readonly stri
  * (three by name, from four on by count); assigned subcategories name none.
  */
 export function whyLine({ name, reasons }: { name: string | null; reasons: readonly { basis: string; sections: readonly string[] }[] }): string | null {
+  // #1192: the role reaches every store, whatever job sits beside it here.
+  if (reasons.some(r => r.basis === 'all_stores_reader')) return 'You see every store because you hold Dash All-Stores Reader.'
   const known = knownReasons(reasons)
   if (!known.length) return null
   const store = name ?? 'your store'
@@ -551,7 +553,7 @@ export function reportAddress(key: string, search: string): string {
 }
 
 /** What the page says for a job that reaches nothing; null: the no-access page says it. */
-export type ReachProblem = 'no_job' | 'no_section' | 'departments_not_filled' | 'head_office' | 'no_cluster' | 'nothing_placed'
+export type ReachProblem = 'no_job' | 'no_section' | 'departments_not_filled' | 'head_office' | 'no_cluster' | 'nothing_placed' | 'nothing_assigned'
 export function reachMessage(problems: readonly string[]): { text: string; sectionsLink: boolean; readerOnly?: true } | null {
   if (problems.includes('no_section') || problems.includes('nothing_placed'))
     return { text: "You aren't set against a section yet, so there is no report to show.", sectionsLink: true }

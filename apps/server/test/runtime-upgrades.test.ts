@@ -11,6 +11,7 @@ import { saveDoc } from '../src/document'
 import { invalidateMeta } from '../src/meta'
 import { makeTaskerV2 } from '../../../tools/tasker-upgrade-fixture.mjs'
 import { expectRefused, expectStatus } from './fixtures'
+import type { TestClient } from 'feather-testing-postgres'
 
 async function targetPackage() {
   const directory = await mkdtemp(resolve('test/.upgrade-'))
@@ -382,7 +383,7 @@ describe('runtime upgrades', () => {
     } finally { await rm(directory, { recursive: true, force: true }); await rm(duplicate, { recursive: true, force: true }) }
   })
 
-  test('disabled upgrade, checksum drift, downgrade, missing prior and code-only next version', async ({ admin }) => {
+  test('disabled upgrade, checksum drift, downgrade and code-only next version', async ({ admin }) => {
     const source = resolve('../..', 'test-apps/other')
     const { directory, manifest } = await targetPackage()
     const next = await mkdtemp(resolve('test/.upgrade-next-'))
@@ -390,8 +391,6 @@ describe('runtime upgrades', () => {
       await discoverPackages([source])
       await admin.post('/api/install_app', { name: 'other' })
       await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
-      await discoverPackages([directory])
-      await expectRefused(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' }), 417, 'unavailable')
       await discoverPackages([source, directory])
       const first = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
       await admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: first.planId })
@@ -416,7 +415,9 @@ describe('runtime upgrades', () => {
 })
 
 describe('An upgrade never goes backward', () => {
-  test('upgrade preview requires an installed app whose recorded artifact matches', async ({ admin }) => {
+  // #1178 (D4): an upgrade moves from the installed record, so the installed
+  // version's files need not be on the server; serving it still needs them.
+  test('upgrade preview requires an installed app, and serving it requires its exact files', async ({ admin }) => {
     const source = resolve('../..', 'test-apps/other')
     const { directory } = await targetPackage()
     try {
@@ -427,8 +428,6 @@ describe('An upgrade never goes backward', () => {
       await discoverPackages([source, directory])
       const [identity] = await sql`select artifact_digest from installed_app where name = 'other'`
       await sql`update installed_app set artifact_digest = 'mismatched' where name = 'other'`
-      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' }))
-        .rejects.toMatchObject({ status: 417, message: expect.stringContaining('recorded identity') })
       await expect(admin.post('/api/set_app_enabled', { name: 'other', enabled: true }))
         .rejects.toMatchObject({ status: 417, message: expect.stringContaining('exact installed artifact') })
       expect(await sql`select package_version, activation_pending from installed_app where name = 'other'`)
@@ -436,6 +435,18 @@ describe('An upgrade never goes backward', () => {
       await sql`update installed_app set artifact_digest = ${identity.artifact_digest} where name = 'other'`
       expect(await admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' }))
         .toMatchObject({ currentVersion: '0.0.1', targetVersion: '2.0.0' })
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test('an installed app with no record of what it declared cannot be upgraded from (#1178)', async ({ admin }) => {
+    const source = resolve('../..', 'test-apps/other')
+    const { directory } = await targetPackage()
+    try {
+      await discoverPackages([source])
+      await admin.post('/api/install_app', { name: 'other' })
+      await discoverPackages([source, directory])
+      await sql`update installed_app set manifest = null where name = 'other'`
+      await expectRefused(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' }), 417, 'no complete record')
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
@@ -508,5 +519,117 @@ describe('activating an upgrade', () => {
       const refused = plan instanceof Error ? plan : await admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: plan.planId }).catch((error: Error) => error)
       expect(String(refused)).toContain('The Table already has mandatory access')
     } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+})
+
+// #1192: an upgrade creates the roles its version newly declares, and may give
+// such a role its declared grants on a Table the app already had. The role is
+// new to the instance, so the upgrade itself widens nobody's access.
+describe('an upgrade that declares a new role', () => {
+  const auditor = { table: 'other.task', role: 'Task Auditor', operations: { read: '*' } }
+  async function upgradeTo(admin: TestClient, edit: (manifest: Record<string, unknown>) => Record<string, unknown>,
+    before: () => Promise<void> = async () => {}) {
+    const source = resolve('../..', 'test-apps/other')
+    const { directory, manifest } = await targetPackage()
+    await writeFile(resolve(directory, 'featherbase.json'), JSON.stringify(edit(manifest)))
+    await discoverPackages([source])
+    await admin.post('/api/install_app', { name: 'other' })
+    await before()
+    await discoverPackages([source, directory])
+    await loadInstalledApps()
+    return { directory, source }
+  }
+
+  test('creates the role and its grant on a Table the app already had, listed in the preview', async ({ admin, createUser }) => {
+    const { directory, source } = await upgradeTo(admin, manifest => ({ ...manifest, roles: ['Task Auditor'],
+      permissions: [...(manifest.permissions as unknown[]), auditor] }))
+    try {
+      const plan = await admin.post<{ planId: string; roles: unknown; permissions: unknown }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
+      expect([plan.roles, plan.permissions]).toEqual([[{ create: 'Task Auditor' }], [{ grant: auditor }]])
+      expect(await sql`select 1 from role where row_id = 'Task Auditor'`).toEqual([])
+      await admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: plan.planId })
+      await discoverPackages([source, directory])
+      await loadInstalledApps()
+      await admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })
+      const [app] = await sql`select roles from installed_app where name = 'other'`
+      expect(app.roles).toEqual(['Task Auditor'])
+      expect(await sql`select role, operation, owner_app from permission where role = 'Task Auditor'`)
+        .toEqual([{ role: 'Task Auditor', operation: 'read', owner_app: 'other' }])
+      expect((await sql`select operation from activity_log where operation like 'app_role_added%'`).map(row => row.operation))
+        .toEqual(['app_role_added other@2.0.0: Task Auditor'])
+      const holder = await createUser({ email: 'auditor@example.test', roles: ['Task Auditor'] })
+      expect(await sql`select role from has_role where parent = ${holder.user!}`).toEqual([{ role: 'Task Auditor' }])
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test('creates a new role that has no grant', async ({ admin }) => {
+    const { directory, source } = await upgradeTo(admin, manifest => ({ ...manifest, roles: ['Task Watcher'] }))
+    try {
+      const plan = await admin.post<{ planId: string; roles: unknown; permissions: unknown }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
+      expect([plan.roles, plan.permissions]).toEqual([[{ create: 'Task Watcher' }], []])
+      await admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: plan.planId })
+      await discoverPackages([source, directory])
+      expect(await sql`select row_id from role where row_id = 'Task Watcher'`).toEqual([{ row_id: 'Task Watcher' }])
+      expect((await sql`select roles from installed_app where name = 'other'`)[0].roles).toEqual(['Task Watcher'])
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test('is refused, changing nothing, when a role of that name already exists on the instance', async ({ admin }) => {
+    const { directory } = await upgradeTo(admin, manifest => ({ ...manifest, roles: ['Task Auditor'],
+      permissions: [...(manifest.permissions as unknown[]), auditor] }),
+    async () => { await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Task Auditor' } }) })
+    try {
+      const before = await sql`select package_version, roles, perms from installed_app where name = 'other'`
+      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417,
+        message: expect.stringContaining('The role Task Auditor already exists on this instance') })
+      expect(await sql`select package_version, roles, perms from installed_app where name = 'other'`).toEqual(before)
+      expect(await sql`select 1 from permission where role = 'Task Auditor'`).toEqual([])
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test('a role created between the preview and the upgrade refuses the upgrade', async ({ admin }) => {
+    const { directory } = await upgradeTo(admin, manifest => ({ ...manifest, roles: ['Task Auditor'],
+      permissions: [...(manifest.permissions as unknown[]), auditor] }))
+    try {
+      const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
+      await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Task Auditor' } })
+      await expectRefused(admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: plan.planId }), 417)
+      expect((await sql`select package_version from installed_app where name = 'other'`)[0].package_version).toBe('0.0.1')
+      expect(await sql`select 1 from permission where role = 'Task Auditor'`).toEqual([])
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  // The upgrade audience contract (runtime-privacy-contract.test.ts) still holds: an upgrade never
+  // brings write access to a Table the app already had, not even to a role it creates.
+  test("a new role's write on a Table the app already had is refused", async ({ admin }) => {
+    const { directory } = await upgradeTo(admin, manifest => ({ ...manifest, roles: ['Task Auditor'],
+      permissions: [...(manifest.permissions as unknown[]), { table: 'other.task', role: 'Task Auditor', operations: { read: '*', update: '*' } }] }))
+    try {
+      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417,
+        message: expect.stringContaining('Permission or package identity changes are unsupported') })
+      expect(await sql`select 1 from role where row_id = 'Task Auditor'`).toEqual([])
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test('a new grant to a role the installed version already declared is still refused', async ({ admin }) => {
+    const source = resolve('../..', 'test-apps/other')
+    const installed = await mkdtemp(resolve('test/.upgrade-installed-'))
+    await cp(source, installed, { recursive: true })
+    const old = JSON.parse(await readFile(resolve(installed, 'featherbase.json'), 'utf8'))
+    await writeFile(resolve(installed, 'featherbase.json'), JSON.stringify({ ...old, roles: ['Task Auditor'] }))
+    const { directory, manifest } = await targetPackage()
+    await writeFile(resolve(directory, 'featherbase.json'), JSON.stringify({ ...manifest, roles: ['Task Auditor'],
+      permissions: [...manifest.permissions, auditor] }))
+    try {
+      await discoverPackages([installed])
+      await admin.post('/api/install_app', { name: 'other' })
+      await discoverPackages([installed, directory])
+      await loadInstalledApps()
+      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417,
+        message: expect.stringContaining('Permission or package identity changes are unsupported') })
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+      await rm(installed, { recursive: true, force: true })
+    }
   })
 })

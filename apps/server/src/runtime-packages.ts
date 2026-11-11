@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { appPermissionSchema, registerApp, forgetRuntimePackages, listInstalledApps, suspendRuntimeApp, loadInstalledApps, provisionGrants, syncAppJobs, type AppManifest } from './apps'
 import { applyJobPlan, bindAppJobs, jobsDeclaration, planJobChanges, validateAppJobs } from './app-jobs'
 import { tableDefSchema } from './table-engine'
-import { hasPermission } from './permissions'
+import { PLATFORM_ROLES, hasPermission } from './permissions'
 import { tableAccessPolicy } from './mandatory-access'
 import { AppError, errorMessage } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
@@ -270,8 +270,18 @@ export function notRunningMessage(name: string, version: string, reason: 'files'
 
 /** The manifest this artifact declares is the one the instance installed. */
 function sameManifest(pkg: RuntimePackage, row: Record<string, unknown>) {
+  return storedDeclarationIs(row, pkg.app.runtime_manifest)
+}
+
+function storedDeclarationIs(row: Record<string, unknown>, declaration: unknown) {
   const stored = { ...(row.manifest as object), migrations: (row.manifest as { migrations?: unknown })?.migrations ?? [] }
-  return canonical(stored) === canonical(pkg.app.runtime_manifest)
+  return canonical(stored) === canonical(declaration)
+}
+
+/** #1178 (D8): whether a staged app folder declares exactly what the
+ *  installed record holds, checked before anything of it is loaded. */
+export function declaresAsInstalled(row: Record<string, unknown>, manifest: unknown, pkg: { name: string; version: string }) {
+  return storedDeclarationIs(row, { ...(manifest as object), packageName: pkg.name, packageVersion: pkg.version })
 }
 
 function assertKnownAccent(pkg: RuntimePackage) {
@@ -493,7 +503,8 @@ async function loadArtifacts(paths: string[]) {
     const folder = path.slice(0, -2)
     try {
       const entries = await readdir(folder, { withFileTypes: true })
-      directories.push(...entries.filter(e => e.isDirectory()).map(e => resolve(folder, e.name)).sort())
+      // A dot-folder is never an app: delivery (#1178) stages its work in them.
+      directories.push(...entries.filter(e => e.isDirectory() && !e.name.startsWith('.')).map(e => resolve(folder, e.name)).sort())
     } catch (error) {
       failures.push({ path, error: errorMessage(error) })
     }
@@ -506,6 +517,16 @@ async function loadArtifacts(paths: string[]) {
       const duplicate = loaded.get(key)
       if (duplicate) {
         if (duplicate.digest === pkg.digest) continue
+        // #1178 (D8): a delivered copy beside the image's copy of the same
+        // version wins while the image's copy is still the one it replaced; a
+        // deploy that brings other files wins over it. Delivered paths come last.
+        const { deliveredOver } = await import('./app-delivery')
+        const [over, duplicateOver] = [await deliveredOver(pkg.root), await deliveredOver(duplicate.root)]
+        if ((over === null) !== (duplicateOver === null)) {
+          const [delivered, image] = over !== null ? [pkg, duplicate] : [duplicate, pkg]
+          loaded.set(key, (over ?? duplicateOver) === image.digest ? delivered : image)
+          continue
+        }
         loaded.delete(key)
         duplicates.add(key)
         refuse('Duplicate different artifacts for one package version')
@@ -521,6 +542,11 @@ async function loadArtifacts(paths: string[]) {
 /** #642 (E7): the installed rows (`name`, `package_version`,
  *  `artifact_digest`, `manifest`) whose exact version and fingerprint no app on
  *  `paths` ships, as boot would take them. */
+/** #1178 (D8): the digest of `name@version` on `paths`, or '' when none ships. */
+export async function shippedDigest(paths: string[], name: string, version: string): Promise<string> {
+  return (await loadArtifacts(paths)).loaded.get(`${name}@${version}`)?.digest ?? ''
+}
+
 export async function unshippedApps<Row extends Record<string, unknown>>(installed: Row[], paths: string[]): Promise<Row[]> {
   const shipped = [...(await loadArtifacts(paths)).loaded.values()]
   return installed.filter(row => !shipped.some(pkg => pkg.name === row.name && matchesInstalled(pkg, row)))
@@ -529,10 +555,11 @@ export async function unshippedApps<Row extends Record<string, unknown>>(install
 /** #703: why an installed row is not on `paths`: its files changed under the
  *  same version and manifest, its manifest changed under the same version, or
  *  that version is not there at all. */
-export async function whyUnshipped(row: Record<string, unknown>, paths: string[]): Promise<'files' | 'manifest' | 'absent'> {
+export async function whyUnshipped(row: Record<string, unknown>, paths: string[]): Promise<'files' | 'manifest' | 'upgraded' | 'absent'> {
   const shipped = [...(await loadArtifacts(paths)).loaded.values()]
   const pkg = shipped.find(p => p.name === row.name && p.version === row.package_version)
-  if (!pkg) return 'absent'
+  // #1178 (D4): a newer version replaces it; the deploy upgrades from the installed record.
+  if (!pkg) return shipped.some(p => p.name === row.name && compareVersions(p.version, String(row.package_version)) > 0) ? 'upgraded' : 'absent'
   return sameManifest(pkg, row) ? 'files' : 'manifest'
 }
 
@@ -588,13 +615,24 @@ export function declaredPackageActions() {
     ...(pkg.manifest.actions?.version === 1 ? { diagnostic: 'Explicit action policy upgrade required' } : {}) }))
 }
 
+/** #1178 (D4): what an upgrade moves from is the installed record, written
+ *  when that version was installed or upgraded to: its declaration, package
+ *  name and fingerprint. The server needs only the new version's files. */
+function installedRecord(row: Record<string, unknown>) {
+  const declared = row.manifest as (z.infer<typeof manifestSchema> & { packageName?: string; packageVersion?: string }) | null
+  if (typeof declared?.packageName !== 'string')
+    refuse('The installed version has no complete record to upgrade from; reinstall it on a development database')
+  // The stored declaration is the parsed manifest, so its defaults (permissions: []) are filled in.
+  return { version: String(row.package_version), digest: String(row.artifact_digest),
+    manifest: declared, app: { runtime_manifest: declared as unknown } }
+}
+
 async function upgradePlan(name: string, version: string, preview = true) {
   const [row] = await sql`select * from installed_app where name = ${name} and runtime_package`
   if (!row) refuse('Upgrade requires an installed runtime application')
   const target = await verifyArtifact(artifacts.get(`${name}@${version}`))
   assertKnownAccent(target)
-  const prior = await verifyArtifact(artifacts.get(`${name}@${row.package_version}`))
-  if (!matchesInstalled(prior, row)) refuse('Installed artifact does not match its recorded identity')
+  const prior = installedRecord(row)
   if (row.activation_pending) throw new AppError('ConflictError', 'Activate the committed upgrade before previewing another version')
   if (compareVersions(version, prior.version) <= 0) refuse('Target must be newer than installed version; downgrades are unsupported')
   const history = target.manifest.migrations
@@ -630,12 +668,26 @@ async function upgradePlan(name: string, version: string, preview = true) {
       return canonical(scope) === canonical(priorScope)
     })
   }
-  if (!target.manifest.permissions.every((p) => added.has(p.table) || held.has(canonical(p)) || narrowsAudience(p)) || prior.app.runtime_manifest == null ||
+  // #1192: a role this version declares and the installed one did not is
+  // created by the upgrade, with its declared grants: any on a Table the
+  // upgrade adds, reads only on one the app already had (an upgrade never
+  // brings writes there). Only a role the instance does not have yet: it
+  // starts with no holders, so the upgrade widens nobody's access. A
+  // same-named role already there is refused rather than merged, and checked
+  // again when the upgrade is applied. A platform role is never new.
+  const priorRoles = new Set(prior.manifest.roles ?? [])
+  const newRoles = (target.manifest.roles ?? []).filter(role => !priorRoles.has(role) && !PLATFORM_ROLES.includes(role))
+  const taken = newRoles.length ? await sql`select row_id from role where row_id in ${sql(newRoles)} order by row_id` : []
+  if (taken.length)
+    refuse(`The role ${taken.map(row => String(row.row_id)).join(', ')} already exists on this instance; this version declares it as new. Rename or remove that role, then upgrade`)
+  const forNewRole = (permission: typeof target.manifest.permissions[number]) =>
+    newRoles.includes(permission.role) && Object.keys(permission.operations).every(operation => operation === 'read')
+  if (!target.manifest.permissions.every((p) => added.has(p.table) || held.has(canonical(p)) || narrowsAudience(p) || forNewRole(p)) || prior.app.runtime_manifest == null ||
       (prior.app.runtime_manifest as { packageName: string }).packageName !== (target.app.runtime_manifest as { packageName: string }).packageName)
     refuse('Permission or package identity changes are unsupported')
   const kept = new Set(target.manifest.permissions.map(canonical))
   const withdrawn = priorGrants.filter(g => !g.now || !kept.has(canonical(g.now))).map(g => g.prior)
-  const granted = target.manifest.permissions.filter(p => added.has(p.table) || (!held.has(canonical(p)) && narrowsAudience(p)))
+  const granted = target.manifest.permissions.filter(p => added.has(p.table) || forNewRole(p) || (!held.has(canonical(p)) && narrowsAudience(p)))
   const destructive = operations.some(op => 'destructive' in op && op.destructive === true)
   // #700: what the upgrade does to the app's scheduled jobs.
   const jobs = planJobChanges(name, prior.manifest.jobs ?? [], target.manifest.jobs ?? [])
@@ -643,6 +695,7 @@ async function upgradePlan(name: string, version: string, preview = true) {
     currentArtifact: prior.digest, targetArtifact: target.digest, enabled: row.enabled,
     migrations: pending.map(m => ({ id: m.id, checksum: checksum(m), operations: m.operations })),
     tables: [...new Set(operations.flatMap(op => op.kind === 'renameTable' ? [op.from, op.to] : [typeof op.table === 'string' ? op.table : op.table.name]))],
+    roles: newRoles.map(role => ({ create: role })),
     permissions: [...withdrawn.map((p) => ({ withdraw: p })), ...granted.map((p) => ({ grant: p }))], jobs, indexes: [], destructive,
     dataEffects: destructive ? 'Destructive: the steps under losses remove data; every other row is unchanged' : 'Existing rows unchanged; added columns are NULL unless backfilled',
     codeOnly: operations.length === 0 }
@@ -653,7 +706,7 @@ async function upgradePlan(name: string, version: string, preview = true) {
   // apply must not make the review stale. Applying runs the steps for real
   // in its own transaction, so it does not count them first.
   const losses = preview ? await countLosses(name, pending, { ownsClient: typeof target.manifest.client === 'string' }) : []
-  return { row, target, prior, pending, ledger, withdrawn, granted, jobs,
+  return { row, target, prior, pending, ledger, withdrawn, granted, newRoles, jobs,
     plan: { ...plan, planId: checksum(plan), losses: losses.map(describeLoss) } }
 }
 
@@ -730,9 +783,11 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
         // Counts only, never values: what each destructive step removed.
         for (const loss of losses)
           await logActivity(actor, `app_data_removed ${name}@${version}: ${describeLoss(loss)}`.slice(0, 140))
-        if (prepared.granted.length) {
+        if (prepared.granted.length || prepared.newRoles.length) {
           const created = await provisionGrants({ name, roles: prepared.target.manifest.roles, runtime_package: true }, prepared.granted)
           await sql`update installed_app set roles = roles || ${sql.json(created.roles)}, perms = perms || ${sql.json(created.perms)} where name = ${name}`
+          for (const role of created.roles)
+            await logActivity(actor, `app_role_added ${name}@${version}: ${role}`.slice(0, 140))
           for (const p of prepared.granted)
             await logActivity(actor, `app_grant_added ${name}@${version}: ${p.role} on ${p.table}`.slice(0, 140))
         }

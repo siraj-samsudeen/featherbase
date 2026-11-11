@@ -171,15 +171,15 @@ function closedBecause(report: { noFilter: boolean; wholeStores: boolean } | und
   return null
 }
 
-/** What one person sees, and why. `reaches` says what their job reaches today. */
-export async function personLookup(ctx: AccessContext, on: string, reaches: (person: string) => Promise<Reach>) {
+/** What one person sees, and why. `reaches` says what they reach today, by their jobs and the roles they hold. */
+export async function personLookup(ctx: AccessContext, on: string, reaches: (person: string, roles: readonly string[]) => Promise<Reach>) {
   managerOnly(ctx)
   const person = exact((ctx.payload as { person?: unknown } | undefined)?.person)
   if (!person) ctx.reject!('Choose a person')
   const named = await names(ctx)
   const roles = (await ctx.people!.rolesOf?.(person)) ?? []
   const given = await reportsGivenTo(ctx.baseTables!, person, roles, on)
-  const reach = await reaches(person)
+  const reach = await reaches(person, roles)
   const name = (await personNames(ctx, [person])).get(person) ?? 'This person'
   const reports = [...given].map(([key, because]) => {
     const report = named.reports.get(key)

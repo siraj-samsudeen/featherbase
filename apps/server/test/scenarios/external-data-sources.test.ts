@@ -236,16 +236,31 @@ describe('external-data-sources', () => {
       const [bound] = await sql`select name from table_def where data_source = ${source}`
       connected = String(bound!.name)
     })
+    let res!: Response
     await step('the user tries to change a row of that table', async () => {
-      const res = await admin.fetch(`/api/table/${encodeURIComponent(connected)}/S001`, { method: 'PATCH', body: JSON.stringify({ name: 'Changed' }) })
-      // The call itself says the change is refused: anything but a refusal fails it.
-      await expectRefused(res, 403)
+      res = await admin.fetch(`/api/table/${encodeURIComponent(connected)}/S001`, { method: 'PATCH', body: JSON.stringify({ name: 'Changed' }) })
     })
-    await step('the change is refused')
+    await step('the change is refused', () => expectRefused(res, 403))
     await step('the row in the warehouse is unchanged', async () => {
       const preview = await admin.get<{ data?: { first_rows: Record<string, unknown>[] }; first_rows?: Record<string, unknown>[] }>(
         `/api/table/Data%20Source/${source}:preview?database=sales&schema=main&table=stores`)
       expect((preview.data ?? preview).first_rows!.find((row) => row.code === 'S001')!.name).toBe('Harbour Road')
+    })
+  })
+
+  scenario('A MySQL source saved before support ended', async ({ admin }, step) => {
+    let answer!: Response
+    await step('a data source "legacy-shop" was saved with the engine "mysql"', async () => {
+      // Only a row written before MySQL support ended can hold this engine.
+      await sql`insert into data_source (row_id, engine, url_env) values ('legacy-shop', 'mysql', 'LEGACY_SHOP_URL')`
+      invalidateSources('legacy-shop')
+    })
+    await step('the user tests "legacy-shop"', async () => {
+      answer = await admin.fetch('/api/table/Data%20Source/legacy-shop:test_connection', { method: 'POST', body: '{}' })
+    })
+    await step('the test is refused, saying MySQL is no longer a supported data source and to delete "legacy-shop"', async () => {
+      const refused = await expectRefused(answer, 417, 'MySQL is no longer a supported data source: delete legacy-shop')
+      expect(refused.type).toBe('ValidationError')
     })
   })
 })

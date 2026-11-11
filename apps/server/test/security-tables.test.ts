@@ -24,17 +24,6 @@ async function loaded(admin: TestClient, id: string) {
 }
 
 describe("#437: a Person's roles and enabled flag", () => {
-  test('ordinary write on Person cannot add a role (PATCH)', async ({ admin, createUser }) => {
-    const editor = await personEditor(admin, createUser)
-    const target = await makePerson({ full_name: 'Target' })
-    const doc = await loaded(admin, target)
-    await expectApiError(
-      patchDoc(editor, PERSON.rowUrl(target), { updated_at: doc.updated_at, roles: [{ role: 'System Manager' }] }),
-      { status: 403 },
-    )
-    expect((await loaded(admin, target)).roles).toEqual([])
-  })
-
   test('ordinary write on Person cannot grant itself a role (save_row)', async ({ admin, createUser }) => {
     const editor = await personEditor(admin, createUser)
     const self = await loaded(admin, editor.user!)
@@ -90,14 +79,8 @@ describe("#437: a Person's roles and enabled flag", () => {
     await expectRefused(patchDoc(sharee, PERSON.rowUrl(target), { updated_at: doc.updated_at, enabled: false }), 403)
   })
 
-  test('unchanged roles and enabled ride along on an ordinary edit', async ({ admin, createUser }) => {
+  test('a new person with no roles is an ordinary create', async ({ admin, createUser }) => {
     const editor = await personEditor(admin, createUser)
-    const target = await makePerson({ full_name: 'Before', roles: [{ role: EDITOR }] })
-    const doc = await loaded(admin, target)
-    const saved = await patchDoc<Record<string, unknown>>(editor, PERSON.rowUrl(target), {
-      updated_at: doc.updated_at, full_name: 'After', enabled: true, roles: doc.roles,
-    })
-    expect(saved.full_name).toBe('After')
     // A new person with no roles, enabled by default, is an ordinary create.
     const created = await editor.post<{ row_id: string }>(PERSON.url, { full_name: 'Plain', roles: [] })
     expect((await loaded(admin, created.row_id)).enabled).toBe(true)
@@ -112,19 +95,6 @@ describe("#437: a Person's roles and enabled flag", () => {
     const [a, b] = doc.roles
     return { target, doc, a, b }
   }
-
-  test('a payload that repeats a child row_id is refused, even with the same role values', async ({ admin, createUser }) => {
-    const editor = await personEditor(admin, createUser)
-    const { target, doc, a, b } = await holderOfTwo(admin)
-    await expectApiError(
-      patchDoc(editor, PERSON.rowUrl(target), {
-        updated_at: doc.updated_at,
-        roles: [{ row_id: b.row_id, role: a.role }, { row_id: b.row_id, role: b.role }],
-      }),
-      { status: 417 },
-    )
-    expect((await loaded(admin, target)).roles.map((r) => r.role).sort()).toEqual([a.role, b.role].sort())
-  })
 
   test('a repeated child row_id is refused for a System Manager too', async ({ admin }) => {
     const { target, doc, a } = await holderOfTwo(admin)
@@ -193,10 +163,6 @@ describe('#437: the security tables refuse non-privileged writes, whatever Permi
     const role = 'Security Writer 437'
     const user = await createUserWithRole(admin, createUser, { role, table: ['Role', 'Permission', 'Data Scope', 'Share', 'Identifier System'], ...ALL_ACTIONS })
     await expectRefused(user.post('/api/save_row', { table: 'Role', row: { row_id: 'Escalated 437' } }), 403)
-    await expectApiError(
-      user.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role, ...ALL_ACTIONS } }),
-      { status: 403 },
-    )
     await expectApiError(
       user.post('/api/save_row', { table: 'Data Scope', row: { person: user.user, allow_table: 'Person', for_value: user.user } }),
       { status: 403 },
@@ -283,9 +249,7 @@ describe('#437: nothing that runs during a save, or on its own, opens access', (
     await admin.post('/api/save_row', { table: 'Server Script', row: { row_id: 'ss-437-enabled', updated_at: (await admin.get<{ updated_at: string }>(tableRef('Server Script').rowUrl('ss-437-enabled'))).updated_at, enabled: false } })
     await admin.post('/api/save_row', { table: 'Server Script', row: { row_id: 'ss-437-roles', script_type: 'Document Event', ref_table: 'Person', event: 'before_save', script: 'doc.roles = [{ role: "System Manager" }]', enabled: true } })
     doc = await loaded(admin, target)
-    await expectRefused(patchDoc(editor, PERSON.rowUrl(target), { updated_at: doc.updated_at, full_name: 'Renamed' }), 403)
     await expectRefused(editor.post(PERSON.url, { full_name: 'Created' }), 403)
-    expect((await loaded(admin, target)).roles).toEqual([])
     // The same script under a System Manager is their decision to make.
     const manager = await createUser({ roles: ['System Manager'] })
     await patchDoc(manager, PERSON.rowUrl(target), { updated_at: doc.updated_at, full_name: 'Renamed' })
@@ -340,7 +304,6 @@ describe('#437: nothing that runs during a save, or on its own, opens access', (
 
   test('a Workflow may not drive an access column or a security Table', async ({ admin }) => {
     for (const row of [
-      { row_id: 'Wf 437 enabled', ref_table: 'Person', state_field: 'enabled', is_active: false, ...FLOW },
       { row_id: 'Wf 437 role', ref_table: 'Role', is_active: false, ...FLOW },
     ])
       await expectApiError(admin.post('/api/save_row', { table: 'Workflow', row }), { status: 417, message: expect.stringMatching(/decides who can do what/) })

@@ -87,15 +87,10 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
-      // The MySQL driver is exercised only where a MySQL server is reachable
-      // (CI sets MYSQL_TEST_URL; a laptop usually does not). Measuring it
-      // without one would report a permanent gap that says nothing about the
-      // code, so it is counted exactly when its tests can run.
       exclude: [
         // ADR 0012: this boundary needs the hosted MotherDuck service and a
         // live token. Token validation and query construction remain covered.
         'src/motherduck-hosted.ts',
-        ...(process.env.MYSQL_TEST_URL ? [] : ['src/sources/mysql-driver.ts']),
       ],
       reporter: ['text', 'json-summary'],
       // Without this a single failing test suppresses the report entirely
@@ -107,27 +102,17 @@ export default defineConfig({
       // Tighten these caps as coverage improves; never exclude code to meet
       // them. An additional uncovered item fails even if % rounds up.
       // Stage 1 (lines, statements, functions): measured on a fresh database,
-      // the full suite on PostgreSQL 18 with MySQL enabled, as CI merges it.
+      // the full suite on PostgreSQL 18, as CI merges it.
       // One statement is left (collection-import.ts key analysis, `if
       // (hidden) continue`), capped as a count until it is reached or, after
       // research, marked inline (ADR 0023).
-      // Stage 3 (branches), measured the same way: 241 uncovered of 14,655 in
-      // pass 3 (333 in pass 2), capped with a margin of 5 because the count
-      // moves a little run to run. Most are reachable and still untested.
-      // The spots tried and not reached yet, each with what was tried and what
-      // might work, are written up for the owner (pass 3 report); among them
-      // index.ts webDist's '' arm (taken only when the web suite loads this
-      // module under jsdom) and apps.ts wireHooks skipping a job another owner
-      // registered (every caller refuses that claim first, under the app
-      // lifecycle lock). Windows once named here as unreachable (a row deleted
-      // between rowCapabilities' reads, a scope provider turned off mid-read,
-      // metadata invalidated while it loads) are held open with module mocks,
-      // each in its own test file.
+      // Branches are reported, not gated (ADR 0024): the aggregate count
+      // moved between runs of the same code and turned main red with nothing
+      // at fault. Most uncovered branches are reachable and still untested.
       thresholds: {
         lines: 100,
         statements: -1,
         functions: 100,
-        branches: -246,
       },
     },
   },

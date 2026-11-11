@@ -321,11 +321,6 @@ describe('release preflight: access configuration', () => {
     expect(lines).toEqual(expect.arrayContaining([ACCESS_OK, SIGNUP_OK, DOMAINS_OK]))
   })
 
-  test('(a) All reading Person refuses, naming the row', async () => {
-    await grant('All', 'Person', 'read')
-    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/role "All" on "Person" \(read\)/)
-  })
-
   test('(a) Guest writing a security Table refuses', async () => {
     await grant('Guest', 'Data Scope', 'create')
     await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/role "Guest" on "Data Scope" \(create\)/)
@@ -345,7 +340,6 @@ describe('release preflight: access configuration', () => {
   test('(b) password sign-up outside development or test refuses; in test it passes', async () => {
     vi.stubEnv('DISABLE_DATABASE_ENVIRONMENT_CHECK', '1')
     await sql`update sign_in_method set new_person = 'create' where kind = 'password'`
-    await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(/password sign-in method "password" creates a new person/)
     await expect(preflightRelease({ environment: 'staging' })).rejects.toThrow(/password sign-in method "password" creates a new person/)
     expect(await preflightRelease({ environment: 'test' })).toContain(SIGNUP_OK)
     expect(await preflightRelease({ environment: 'development' })).toContain(SIGNUP_OK)

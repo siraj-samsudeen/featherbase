@@ -6,6 +6,7 @@ import { getDoc } from './document'
 import { getList } from './query'
 import { withAppIdentity } from './app-lifecycle'
 import { AppError } from './errors'
+import { getRoles } from './permissions'
 
 /** The instance's one scope-providing app, bound by runtime-packages. */
 export interface ScopeProviderBinding {
@@ -51,8 +52,11 @@ export async function resolvePersonScope(user: string, binding: ScopeProviderBin
   let answer: unknown
   try {
     const identifiers = await currentIdentifiers(user, binding.identifiers)
+    // #1192: the roles the platform enforces for this person, as an app read's
+    // `roles` gets them: read now, never kept for another request.
+    const roles = Object.freeze([...new Set(await getRoles(user))].sort())
     answer = await withAppIdentity(binding.app, binding.version, () => withScopeReads(binding, async documents =>
-      binding.provide(Object.freeze({ person: Object.freeze({ id: user, email: (person?.email as string | null) ?? null, identifiers }), documents }))))
+      binding.provide(Object.freeze({ person: Object.freeze({ id: user, email: (person?.email as string | null) ?? null, identifiers, roles }), documents }))))
   } catch { throw new NoPersonScope('provider') }
   const parsed = personScopeSchema.safeParse(answer)
   if (!parsed.success) throw new NoPersonScope('provider')
