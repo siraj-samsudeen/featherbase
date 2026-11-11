@@ -55,7 +55,7 @@ export async function declaredApprovalTypes(app: string, tx: typeof sql = sql): 
 
 /** The mode a proposal of this type is made under, and keeps. */
 async function modeOf(app: string, type: unknown): Promise<ApprovalMode> {
-  if (type === undefined || type === null) return APPROVE_FIRST
+  if (type === undefined) return APPROVE_FIRST
   const found = typeof type === 'string' ? (await declaredApprovalTypes(app))?.find(entry => entry.name === type) : undefined
   if (!found) reject(`The app has not declared the approval type ${String(type)}`)
   if (found!.grantsAccess) return APPROVE_FIRST
@@ -124,7 +124,9 @@ export function baseTablesReader(app: string, declaration: BaseTablesDeclaration
       // A filter or a sort on a column reveals it as surely as selecting it.
       const named = [...(args.filters ?? []).map(([column]) => column),
         ...String(args.order_by ?? '').split(',').map(part => part.trim().split(/\s+/)[0]).filter(Boolean)]
-      const hidden = named.find(column => column !== 'row_id' && !columns!.includes(String(column)))
+      // #1191: retired_at is the platform's, and says only that a row is out of use: an app may ask
+      // for retired rows, to find the identifiers they still hold.
+      const hidden = named.find(column => column !== 'row_id' && column !== 'retired_at' && !columns!.includes(String(column)))
       if (hidden !== undefined) reject(`The app has not declared column ${String(hidden)} of Table ${table}`)
       return (await getList(table, args)).data as ActionRow[]
     }),
@@ -225,6 +227,7 @@ export function proposalsReader(app: string, user: string, entryTable: string) {
     list: (filter: ProposalFilter = {}) => guard.run(() => proposalsWhere(app, filter)),
     mayDecide: (maker: string, approvers: ApproverRequest) => guard.run(() => mayDecide(user, maker, approvers, entryTable)),
     routeFor: (maker: string, approvers: ApproverRequest) => guard.run(() => resolveRoute(checkedApprovers(approvers), maker, entryTable)),
+    modeOf: (type: string) => guard.run(() => modeOf(app, type)),
   })
   return { helper, close: guard.close }
 }
@@ -367,6 +370,7 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
     list: (filter: ProposalFilter = {}) => guard.run(() => proposalsWhere(app, filter)),
     mayDecide: (maker: string, approvers: ApproverRequest) => guard.run(() => mayDecide(user, maker, approvers, entryTable)),
     routeFor: (maker: string, approvers: ApproverRequest) => guard.run(() => resolveRoute(checkedApprovers(approvers), maker, entryTable)),
+    modeOf: (type: string) => guard.run(() => modeOf(app, type)),
 
     // Who may decide comes from rows the app reads first. These hold still what it read until
     // the decision commits, so authority can't change while the decision waits for a lock.
@@ -430,9 +434,11 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
           parenttype: 'Change Proposal', parentfield: 'changes', column_name, original_value: original, proposed_value: proposed, review_base_value: original } as unknown as Record<string, never>)}`
       await writeRoute(id, route!, user)
       if (application) {
-        // Nothing can have moved since the read above: the row is locked, so this is never stale.
-        const done = await applyChange(await oneProposal(app, id), declared, meta, application.effective, application.stamp, [], null) as { result: string | null; applied: AppliedRows }
-        await sql`update change_proposal set proposal_state = 'Not yet reviewed', result_row = ${done.result}, applied_rows = ${sql.json(done.applied as never)},
+        // The row is locked since the read above, but it may not fit the day named: starting later, or ended by then.
+        const done = await applyChange(await oneProposal(app, id), declared, meta, application.effective, application.stamp, [], null)
+        if ('stale' in done) reject(done.stale)
+        const { result, applied } = done as { result: string | null; applied: AppliedRows }
+        await sql`update change_proposal set proposal_state = 'Not yet reviewed', result_row = ${result}, applied_rows = ${sql.json(applied as never)},
           updated_at = now() where row_id = ${id}`
       }
       return oneProposal(app, id)
@@ -514,8 +520,13 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
       }
       if (applied.result && await liveLinksTo(meta.name, applied.result.row))
         reject('Other rows still link to what this added, so it can\'t be undone yet. Undo those first.')
-      if (applied.result)
+      if (applied.result) {
+        // Never in force, so whatever reads by date drops it (scope providers see retired rows,
+        // ADR 0019); then out of every list, its history kept.
+        const [added] = await sql`select updated_at, ${sql(declared.startsOn)} as starts from ${sql(await tableRelation(meta.name))} where ${sql(meta.row_key)} = ${applied.result.row}`
+        await saveDoc(meta.name, { row_id: applied.result.row, updated_at: added.updated_at, [declared.endsOn]: dayBefore(asText(added.starts, 'Date')!) }, user, 'upsert', { skipPermissions: true })
         await retireDoc(meta.name, applied.result.row, `Undone: ${reason || 'taken back by the person who made it'}`, user, { skipPermissions: true })
+      }
       if (applied.target) {
         const original = proposal.changes.find(change => change.column_name === declared.endsOn)?.original_value ?? null
         const [row] = await sql`select updated_at from ${sql(await tableRelation(meta.name))} where ${sql(meta.row_key)} = ${applied.target.row}`

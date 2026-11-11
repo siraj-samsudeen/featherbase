@@ -81,6 +81,8 @@ export interface ChangeProposalsReader {
   mayDecide(maker: string, approvers: ApproverRequest): Promise<boolean>
   /** Who these approvers come to now for this maker; null when nobody can act. */
   routeFor(maker: string, approvers: ApproverRequest): Promise<{ people: string[]; roles: string[] } | null>
+  /** #1191: how one of the app's declared approval types works on this instance now. */
+  modeOf(type: string): Promise<ApprovalMode>
 }
 export interface ChangeProposalsHelper extends ChangeProposalsReader {
   /** Holds a declared base row until the action commits. */
