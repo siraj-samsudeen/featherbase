@@ -12,7 +12,7 @@ import { tableRelation } from './table-engine'
 import { assertUserPermissions, deleteDoc, getDoc, saveDoc } from './document'
 import { holdBeforeRowLock } from './row-lock-order'
 import { documentActivity, retainedDocumentCounts } from './document-activity'
-import { getList } from './query'
+import { countDocs, getList } from './query'
 import { logActivity } from './audit'
 import { assertNoSecret, readyAppSetup, withSecretsKept, type AppSetup, type ReadySetup } from './app-settings'
 import { callerMail, readsRow } from './runtime-mail'
@@ -165,6 +165,16 @@ export function callerDocuments(app: string, allowed: string[], user: string, li
         error instanceof AppError && error.type === 'PermissionError' ? [] : Promise.reject(error))
       return (await getList(table, args, user)).data
     }),
+    // #1196: a count as the caller, scoped as list is. A linked Table the
+    // caller may not read, or whose columns no longer fit the filter, gives no
+    // count rather than a misleading zero or a failed read.
+    count: (table, filters = []) => operation(async () => {
+      await metaFor(table)
+      if (filters.some(([, operator]) => operator === 'related' || operator === 'not related')) reject('Action counts do not support cross-table related filters')
+      if (readOnly(table)) return countDocs(table, filters, user).catch((error: unknown) =>
+        error instanceof AppError && (error.type === 'PermissionError' || error.type === 'ValidationError') ? null : Promise.reject(error))
+      return countDocs(table, filters, user)
+    }),
     create: (table, values) => operation(() => save(table, values, true)),
     update: (table, values) => operation(() => save(table, values, false)),
     activity: (table, id) => operation(async () => { await (readOnly(table) ? metaFor(table).then(() => getDoc(table, id, user)) : locked(table, id)); return documentActivity(table, id, user) }),
@@ -299,11 +309,11 @@ export async function executeRuntimeRead(app: string, name: string, input: unkno
       // lifecycle connection while it calls out.
       const inTransaction = async (step: RuntimeReadHandler) => {
         const context = callerDocuments(app, contribution.tables, user, linkedTables(setup.settings))
-        const { get, list, activity, isReader } = context.documents
+        const { get, list, count, activity, isReader } = context.documents
         const base = baseTablesReader(app, contribution.baseTables, linkedTables(setup.settings))
         const proposals = proposalsReader(app, user, contribution.entryTable)
         return runRead(app, name, user, step, contribution, { authorization, payload, setup, provenance },
-          Object.freeze({ get, list, activity, isReader }), async () => { await context.close(); await base.close(); await proposals.close() }, undefined, base.helper, proposals.helper)
+          Object.freeze({ get, list, count, activity, isReader }), async () => { await context.close(); await base.close(); await proposals.close() }, undefined, base.helper, proposals.helper)
       }
       if (outbound) {
         // #967: the one chance to read documents before the transaction closes.
@@ -345,7 +355,7 @@ interface Outbound {
 function closedDocuments(): never {
   throw new AppError('ValidationError', 'This read is outbound and its transaction has closed: read documents in a read that is not outbound')
 }
-const CLOSED_DOCUMENTS: RuntimeReadContext['documents'] = Object.freeze({ get: closedDocuments, list: closedDocuments, activity: closedDocuments, isReader: closedDocuments })
+const CLOSED_DOCUMENTS: RuntimeReadContext['documents'] = Object.freeze({ get: closedDocuments, list: closedDocuments, count: closedDocuments, activity: closedDocuments, isReader: closedDocuments })
 const CLOSED_BASE_TABLES: RuntimeReadContext['baseTables'] = Object.freeze({ list: closedDocuments })
 const CLOSED_PROPOSALS: RuntimeReadContext['changeProposals'] = Object.freeze({ list: closedDocuments, mayDecide: closedDocuments, routeFor: closedDocuments })
 

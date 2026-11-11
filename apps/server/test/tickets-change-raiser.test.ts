@@ -264,10 +264,11 @@ describe('Tickets: changing who raised a ticket (#963)', () => {
       .toThrow('Use an authorized Tickets action')
   })
 
-  test('Tickets upgrades from the version before this one with no schema or grant change', async ({ admin }) => {
+  // #1196: 0.2.8 adds the data quality rule Table, with exactly its own grant.
+  test('Tickets upgrades from the version before this one, adding only the data quality rule Table and its grant', async ({ admin }) => {
     const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
     const step = manifest.migrations.find((m: any) => m.toVersion === version)
-    expect(step).toMatchObject({ id: 'split_screens', operations: [] })
+    expect(step).toMatchObject({ id: 'data_quality_rules', operations: [{ kind: 'addTable', table: { name: 'tickets.data_quality_rule' } }] })
     const prior = await mkdtemp(resolve('test/.upgrade-tickets-'))
     try {
       await cp(directory, prior, { recursive: true, filter: source => !source.includes('node_modules') })
@@ -279,7 +280,9 @@ describe('Tickets: changing who raised a ticket (#963)', () => {
       await discoverPackages([prior, directory])
       await loadInstalledApps()
       const plan = await admin.post<any>('/api/preview_app_upgrade', { name: 'tickets', version })
-      expect(plan).toMatchObject({ currentVersion: step.fromVersion, targetVersion: version, codeOnly: true, permissions: [] })
+      expect(plan).toMatchObject({ currentVersion: step.fromVersion, targetVersion: version, codeOnly: false, destructive: false,
+        tables: ['tickets.data_quality_rule'],
+        permissions: [{ grant: { table: 'tickets.data_quality_rule', role: 'All', can_read: true, can_create: true, can_delete: true } }] })
       await admin.post('/api/upgrade_app', { name: 'tickets', version, planId: plan.planId })
       await admin.post('/api/activate_app_upgrade', { name: 'tickets', version })
       const [installed] = await sql`select package_version, activation_pending from installed_app where name = 'tickets'`

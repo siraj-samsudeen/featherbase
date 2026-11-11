@@ -22,6 +22,8 @@ interface ReadContext {
   documents: {
     get(table: string, id: string): Promise<Row>
     list(table: string, args?: ListArgs): Promise<Row[]>
+    /** #1196: matching rows, as the caller; null when they cannot be counted for them. */
+    count(table: string, filters?: ListArgs['filters']): Promise<number | null>
     isReader(table: string, id: string): Promise<boolean>
   }
 }
@@ -35,6 +37,7 @@ interface Context extends ReadContext {
     update(table: string, row: Row): Promise<Row>
     handOver(table: string, id: string, person: string): Promise<void>
     setReaders(table: string, id: string, people: string[]): Promise<void>
+    delete(table: string, id: string, updatedAt: string): Promise<void>
   }
 }
 interface Validation {
@@ -50,6 +53,7 @@ function validate(table: string, ctx: Validation) {
   const allowed = writes.getStore()
   if (!allowed || allowed.user !== ctx.user) ctx.reject('Use an authorized Tickets action')
   if ((table === 'event' || table === 'open_event' || table === 'progress') && !ctx.isNew) ctx.reject('History is append-only')
+  if (table === 'data_quality_rule' && !ctx.isNew) ctx.reject('A rule is changed by removing it and adding a new one')
   // Each person writes only their own name, which the platform supplies.
   // #963: changing the raiser also records the new raiser's name, for those who may not read Person.
   if (table === 'member' && ctx.row.row_id !== ctx.user && !(allowed?.operation === 'change_raiser' && ctx.isNew)) ctx.reject('A person may record only their own name')
@@ -130,7 +134,7 @@ function validateField(ctx: Validation) {
   if (ctx.row.field_type === 'link' && !String(ctx.row.link_table ?? '').trim()) ctx.reject('A link field names the Table it links to')
 }
 export const validators = {
-  ...Object.fromEntries(['ticket', 'request', 'event', 'progress', 'member', 'open_request', 'open_event'].map(table =>
+  ...Object.fromEntries(['ticket', 'request', 'event', 'progress', 'member', 'open_request', 'open_event', 'data_quality_rule'].map(table =>
     [`tickets.${table}`, (ctx: Validation) => validate(table, ctx)])),
   'tickets.ticket_type': validateType,
   'tickets.type_field': validateField,
@@ -140,6 +144,11 @@ export const destructiveGuards = {
     [`tickets.${table}`, (ctx: Validation) => ctx.reject('Tickets references and history cannot be renamed or deleted')])),
   // A field can be removed; a type is switched off, so its tickets keep their meaning.
   'tickets.ticket_type': (ctx: Validation) => ctx.reject('Switch a ticket type off (enabled) instead of renaming or deleting it'),
+  // #1196: a rule leaves its ticket only through remove_rule, which records why.
+  'tickets.data_quality_rule': (ctx: Validation) => {
+    const allowed = writes.getStore()
+    if (allowed?.operation !== 'remove_rule' || allowed.user !== ctx.user) ctx.reject('Remove a rule from its ticket, with a reason')
+  },
 }
 const ticketFields = ['row_id', 'title', 'kind', 'ticket_state', 'assigned_to', 'public_update', 'updated_at', 'owner']
 const eventFields = ['row_id', 'ticket', 'operation', 'text', 'by', 'at']
@@ -183,6 +192,12 @@ function capabilitiesOf(ctx: ReadContext, person: string) {
   }
 }
 const capabilities = (ctx: ReadContext) => capabilitiesOf(ctx, ctx.user)
+/** The people configured for Tickets: who may be assigned, and own a rule.
+ *  #964: `assignees` lists people who may be assigned without support rights. */
+function staffOf(ctx: ReadContext) {
+  return new Set([...['support_users', 'verification_admins', 'fulfillment_admins', 'assignees'].flatMap(key => members(configured(ctx, key))),
+    ...Object.values(routes(ctx)).flat()])
+}
 async function all(ctx: ReadContext, table: string, fields: string[], filters: ListArgs['filters'] = []) {
   const rows: Row[] = []
   for (let offset = 0; ; offset += 500) {
@@ -381,6 +396,52 @@ async function tellAssignee(ctx: Context, ticket: Row, assignee: string, descrip
     body: `${ctx.userName} assigned this ticket to you.\n\nTicket: ${String(ticket.title)}\n\n${visible ? `Description:\n${String(description)}` : 'Its description is private, so it is left out of this email.'}`,
     path: `?ticket=${encodeURIComponent(id)}`, ref_table: 'tickets.ticket', reference_name: id,
   })
+}
+// ---- #1196: data quality rules: a gap that one filter describes, counted live ----
+type Filter = [string, string, unknown]
+const SEVERITIES = ['High', 'Medium', 'Low']
+const MAX_RULES = 25
+const RULE_OPERATORS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in', 'is blank', 'is not blank']
+const RULE_TABLE = 'tickets.data_quality_rule'
+const ruleFields = ['row_id', 'ticket', 'title', 'checked_table', 'filters', 'severity', 'owner', 'how_to_fix', 'rows_when_raised']
+function ruleTable(ctx: ReadContext, value: unknown) {
+  const table = text(ctx, value, 'Table')
+  if (!linked(ctx, table)) ctx.reject(`${table} is not one of Tickets' linked Tables; an administrator lists it in linked_tables`)
+  return table
+}
+function ruleFilters(ctx: ReadContext, value: unknown): Filter[] {
+  if (!Array.isArray(value) || !value.length || value.length > 10) ctx.reject('A rule has 1 to 10 conditions, each [column, operator, value]')
+  return (value as unknown[]).map(item => {
+    if (!Array.isArray(item) || item.length !== 3 || typeof item[0] !== 'string' || !item[0]) return ctx.reject('Each condition is [column, operator, value]')
+    if (!RULE_OPERATORS.includes(String(item[1]))) ctx.reject(`A condition's operator is one of: ${RULE_OPERATORS.join(', ')}`)
+    return [item[0], String(item[1]), String(item[1]).includes('blank') ? null : item[2]] as Filter
+  })
+}
+function storedFilters(value: unknown): Filter[] {
+  try { const list = JSON.parse(String(value)); return Array.isArray(list) ? list : [] } catch { return [] }
+}
+/** Its raiser, its assignee or Tickets support: those a ticket's "any" action lets act. */
+function involved(ctx: ReadContext, ticket: Row) {
+  return ticket.owner === ctx.user || (!!ticket.assigned_to && ticket.assigned_to === ctx.user) || capabilities(ctx).support
+}
+async function revised(ctx: Context, p: Row) {
+  const ticket = await ctx.documents.get('tickets.ticket', text(ctx, p.row_id, 'Ticket'))
+  if (String(ticket.updated_at) !== text(ctx, p.updated_at, 'Revision')) ctx.reject('This ticket changed; reload before trying again')
+  return ticket
+}
+// Open rules first (uncounted ones after counted), then High → Low, then by title.
+const ruleOrder = (rule: Row) => rule.rows_left === 0 ? 2 : rule.rows_left === null ? 1 : 0
+/** A ticket's rules, each counted now as the reader; uncountable reads as null. */
+async function rulesOf(ctx: ReadContext, ticketId: string) {
+  const rules: Row[] = []
+  for (const row of await all(ctx, RULE_TABLE, ruleFields, [['ticket', '=', ticketId]])) {
+    const filters = storedFilters(row.filters)
+    const table = String(row.checked_table)
+    rules.push({ row_id: row.row_id, title: row.title, table, filters, severity: row.severity, owner: row.owner ?? null, how_to_fix: row.how_to_fix ?? null,
+      rows_when_raised: Number(row.rows_when_raised ?? 0), rows_left: linked(ctx, table) ? await ctx.documents.count(table, filters) : null })
+  }
+  return rules.sort((a, b) => ruleOrder(a) - ruleOrder(b) || SEVERITIES.indexOf(String(a.severity)) - SEVERITIES.indexOf(String(b.severity))
+    || String(a.title).localeCompare(String(b.title)))
 }
 const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
   async create(ctx) {
@@ -635,6 +696,41 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     if (kept) await keepReaders(ctx, saved, parse((await ctx.documents.get(PRIVATE.request, String(ticket.row_id))).details_json), (await configuredTypes(ctx)).get(String(ticket.kind)))
     return { ticket: saved }
   },
+  async add_rule(ctx) {
+    const p = input(ctx, ['row_id', 'updated_at', 'title', 'table', 'filters', 'severity', 'owner', 'how_to_fix'])
+    const ticket = await revised(ctx, p)
+    if (!involved(ctx, ticket)) ctx.reject('Only the ticket\'s raiser, its assignee or Tickets support may add a rule')
+    const title = text(ctx, p.title, 'Title')
+    const table = ruleTable(ctx, p.table)
+    const filters = ruleFilters(ctx, p.filters)
+    if (!SEVERITIES.includes(String(p.severity))) ctx.reject(`Severity is one of: ${SEVERITIES.join(', ')}`)
+    // The owner is someone Tickets assigns work to, or the ticket's own raiser or assignee.
+    const owner = p.owner === undefined || p.owner === null || p.owner === '' ? (ticket.assigned_to ?? null) : text(ctx, p.owner, 'Owner')
+    if (owner && ![...staffOf(ctx), ticket.owner, ticket.assigned_to].includes(owner)) ctx.reject('The owner is one of the people Tickets assigns work to')
+    const how = p.how_to_fix === undefined || p.how_to_fix === null || p.how_to_fix === '' ? null : text(ctx, p.how_to_fix, 'How to fix')
+    if ((await ctx.documents.list(RULE_TABLE, { fields: ['row_id'], filters: [['ticket', '=', ticket.row_id]], limit_page_length: MAX_RULES })).length >= MAX_RULES)
+      ctx.reject(`A ticket holds at most ${MAX_RULES} rules`)
+    // A list names a column the Table lacks in its refusal; the count below never fails.
+    await ctx.documents.list(table, { fields: ['row_id'], filters, limit_page_length: 1 })
+    const rows = await ctx.documents.count(table, filters)
+    if (rows === null) ctx.reject(`You may not read ${table}`)
+    if (rows === 0) ctx.reject('This rule matches no rows, so there is nothing to fix')
+    const rule = await ctx.documents.create(RULE_TABLE, { ticket: ticket.row_id, title, checked_table: table, filters: JSON.stringify(filters),
+      severity: p.severity, owner, how_to_fix: how, rows_when_raised: rows })
+    await event(ctx, ticket, 'add_rule', { rule: rule.row_id, title, table, filters, severity: p.severity, rows })
+    return { ticket: await bump(ctx, ticket), rule }
+  },
+  async remove_rule(ctx) {
+    const p = input(ctx, ['row_id', 'updated_at', 'rule', 'reason'])
+    const ticket = await revised(ctx, p)
+    if (!involved(ctx, ticket)) ctx.reject('Only the ticket\'s raiser, its assignee or Tickets support may remove a rule')
+    const reason = text(ctx, p.reason, 'Reason')
+    const rule = await ctx.documents.get(RULE_TABLE, text(ctx, p.rule, 'Rule'))
+    if (rule.ticket !== ticket.row_id) ctx.reject('That rule is not on this ticket')
+    await ctx.documents.delete(RULE_TABLE, String(rule.row_id), String(rule.updated_at))
+    await event(ctx, ticket, 'remove_rule', { rule: rule.row_id, title: rule.title, table: rule.checked_table, filters: storedFilters(rule.filters), reason })
+    return { ticket: await bump(ctx, ticket) }
+  },
   async reopen(ctx) {
     const p = input(ctx, ['row_id', 'updated_at', 'reason'])
     const { ticket, request } = await current(ctx, p)
@@ -661,10 +757,7 @@ export const reads = {
     } }
     if (can.support) {
       // The people configured for Tickets whose names are known, for assignment.
-      // #964: `assignees` lists people who may be assigned without support rights.
-      const staff = new Set([...['support_users', 'verification_admins', 'fulfillment_admins', 'assignees'].flatMap(key => members(configured(ctx, key))),
-        ...Object.values(routes(ctx)).flat()])
-      const known = await names(ctx, [...staff])
+      const known = await names(ctx, [...staffOf(ctx)])
       answer.people = Object.entries(known).map(([row_id, full_name]) => ({ row_id, full_name }))
         .sort((a, b) => a.full_name.localeCompare(b.full_name))
     }
@@ -701,6 +794,11 @@ export const reads = {
     }
     return { answer: { tickets, count: tickets.length, hasMore: false,
       names: await names(ctx, tickets.map(ticket => ({ owner: ticket.owner, assigned_to: ticket.assigned_to }))) } }
+  },
+  // #1196: how many rows a rule being written would match, as the caller.
+  async rule_preview(ctx: ReadContext) {
+    const p = input(ctx, ['table', 'filters'])
+    return { answer: { count: await ctx.documents.count(ruleTable(ctx, p.table), ruleFilters(ctx, p.filters)) } }
   },
   async detail(ctx: ReadContext) {
     const p = input(ctx, ['row_id'])
@@ -752,7 +850,10 @@ export const reads = {
       }
       answer.actions = actions
     }
-    answer.names = await names(ctx, { owner: ticket.owner, assigned_to: ticket.assigned_to }, answer.events, answer.privateEvents ?? [],
+    answer.rules = await rulesOf(ctx, id)
+    // #1196: who may add a rule here, and the Tables a rule may check.
+    if (involved(ctx, ticket)) answer.ruleTables = members(configured(ctx, 'linked_tables'))
+    answer.names = await names(ctx, { owner: ticket.owner, assigned_to: ticket.assigned_to }, answer.events, answer.privateEvents ?? [], answer.rules,
       answer.verification ?? {}, answer.approval ?? {}, answer.originalHistory ?? [], personValues)
     return { answer }
   },
