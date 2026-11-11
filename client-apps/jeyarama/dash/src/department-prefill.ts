@@ -19,7 +19,9 @@ const NAME_LIMIT = 40
  */
 export function sectionsName(sections: string[]): string {
   const joined = sections.length < 2 ? sections.join('') : `${sections.slice(0, -1).join(', ')} & ${sections.at(-1)}`
-  return joined.length <= NAME_LIMIT || sections.length < 3 ? joined : `${sections[0]}, ${sections[1]} & ${sections.length - 2} more`
+  if (joined.length <= NAME_LIMIT || sections.length < 3) return joined
+  const two = `${sections[0]}, ${sections[1]} & ${sections.length - 2} more`
+  return two.length <= NAME_LIMIT ? two : `${sections[0]} & ${sections.length - 1} more`
 }
 
 const mayLoad = (ctx: ActionContext) => (ctx.roles ?? []).some(role => LOADERS.includes(role))

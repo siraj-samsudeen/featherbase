@@ -564,7 +564,10 @@ describe('pre-fill from reporting lines (#1205)', () => {
     })
     it('past 40 characters, the first two and how many more', () => {
       expect(sectionsName(['Cotton, Syn Saree', 'Fancy Saree', 'Lehenga & Gown', 'Nerial & Chudi Material'])).toBe('Cotton, Syn Saree, Fancy Saree & 2 more')
-      expect(sectionsName(['Men Dhothy & Lungi', "Men's Fabric", "Men's Inner & Underwear"])).toBe("Men Dhothy & Lungi, Men's Fabric & 1 more")
+      expect(sectionsName(['Men Dhothy & Lungi', "Men's Fabric", "Men's Inner & Underwear"])).toBe('Men Dhothy & Lungi & 2 more')
+    })
+    it('when the first two are still too long, the first and how many more', () => {
+      expect(sectionsName(['Shared Services - Back End', 'Processed Food & Beverages', 'Staples', 'Health N Beauty'])).toBe('Shared Services - Back End & 3 more')
     })
   })
   it('names each department after its sections, unique in the store; a name already taken gets the floor', async () => {
