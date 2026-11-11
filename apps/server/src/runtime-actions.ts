@@ -168,12 +168,13 @@ export function callerDocuments(app: string, allowed: string[], user: string, li
     // #1196: a count as the caller, scoped as list is. A linked Table the
     // caller may not read, or whose columns no longer fit the filter, gives no
     // count rather than a misleading zero or a failed read.
+    // A linked Table that was deleted or renamed since counts as nothing to show, too.
     count: (table, filters = []) => operation(async () => {
-      await metaFor(table)
       if (filters.some(([, operator]) => operator === 'related' || operator === 'not related')) reject('Action counts do not support cross-table related filters')
-      if (readOnly(table)) return countDocs(table, filters, user).catch((error: unknown) =>
-        error instanceof AppError && (error.type === 'PermissionError' || error.type === 'ValidationError') ? null : Promise.reject(error))
-      return countDocs(table, filters, user)
+      if (!readOnly(table)) { await metaFor(table); return countDocs(table, filters, user) }
+      const uncountable = (error: unknown) =>
+        error instanceof AppError && ['PermissionError', 'ValidationError', 'NotFoundError'].includes(error.type) ? null : Promise.reject(error)
+      return metaFor(table).then(() => countDocs(table, filters, user)).catch(uncountable)
     }),
     create: (table, values) => operation(() => save(table, values, true)),
     update: (table, values) => operation(() => save(table, values, false)),

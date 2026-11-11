@@ -104,6 +104,16 @@ describe('the ticket lists its rules open first, then by severity and title (#11
   })
 })
 
+describe('a rule whose Table is gone (#1196, Codex round 2)', () => {
+  test('the ticket still opens, and that rule reads as uncounted', async ({ admin, createUser }) => {
+    const x = await world(admin, createUser)
+    await x.add()
+    // Renamed by an administrator; linked_tables still names the old Table.
+    await admin.post(`/api/table_def/${encodeURIComponent(x.table)}/rename`, { to: 'Buyer Assignment Old' })
+    expect(await x.rules()).toMatchObject([{ title: 'Buyer is blank', rows_when_raised: 3, rows_left: null }])
+  })
+})
+
 describe('documents.count (#1196)', () => {
   test('counts the app\'s own Tables, refuses related filters, and lets a real failure through', async ({ admin, createUser }) => {
     const x = await world(admin, createUser)
