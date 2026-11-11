@@ -100,12 +100,13 @@ describe('grants outside installed apps count as before', () => {
     expect((await capsOf(clerk)).admin).toBe(true)
   })
 
-  test("a person with both grants uses Admin, listing the app's Table too", async ({ admin, createUser }) => {
+  // The Admin opening and listing the app's Tables beside the instance's is the
+  // scenario "A manager who also reads an instance table" (permissions-and-roles).
+  test('a person with both grants has a grant of their own', async ({ admin, createUser }) => {
     await installAppWithReaderRole(admin)
     await instanceTableWithRole(admin, 'Office Clerk')
     const both = await createUser({ email: 'both.grants@example.com', roles: [ROLE, 'Office Clerk'] })
-    // Glossary Term: everyone signed in reads the glossary (#629).
-    expect(await capsOf(both)).toMatchObject({ admin: true, own_grant: true, tables: ['Back Office', 'Glossary Term', APP_TABLE] })
+    expect(await capsOf(both)).toMatchObject({ own_grant: true, tables: ['Back Office', 'Glossary Term', APP_TABLE] })
   })
 
   test("an app's Table grant is not a grant of their own beside a shared instance row", async ({ admin, createUser }) => {
@@ -206,27 +207,8 @@ describe('signing in, a person who cannot use Admin lands in an app they can ope
 // Codex round 1 on #675 (decision, 28-Oct-2026, provisional): only an app that
 // opens at its own root (the app catalog's test) takes its Tables out of the
 // Admin. An app without pages of its own is used through the Admin's generated
-// lists and forms, so its readers keep the Admin.
-describe('an app without pages of its own', () => {
-  const EVOLVE = resolve('../..', 'test-apps/fixtures/evolve-v1')
-
-  async function evolveClerk(admin: TestClient, createUser: CreateUserFn) {
-    expect(await discoverPackages([EVOLVE])).toEqual([])
-    await admin.post('/api/install_app', { name: 'evolve' })
-    return createUser({ email: 'evolve.clerk.659@example.com', roles: ['Evolve Clerk'] })
-  }
-
-  test("its reader can still use Admin", async ({ admin, createUser }) => {
-    const clerk = await evolveClerk(admin, createUser)
-    expect((await capsOf(clerk)).admin).toBe(true)
-  })
-
-  test("its reader can still add a row through the Admin's generated form", async ({ admin, createUser }) => {
-    const clerk = await evolveClerk(admin, createUser)
-    const saved = await clerk.post<{ row_id: string }>('/api/save_row', { table: 'evolve.item', row: { row_id: 'it-1', title: 'Shelf' } })
-    expect(saved.row_id).toBe('it-1')
-  })
-})
+// lists and forms, so its readers keep the Admin. The scenario "A clerk of an
+// app without pages of its own" (permissions-and-roles) proves it.
 
 // Codex round 1 on #675: the installed-app ledger may hold its Tables as a
 // JSON string of an array (installed-app-ledger.ts reads both shapes).

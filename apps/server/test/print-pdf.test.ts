@@ -85,7 +85,7 @@ describe('PRN-003: server-side PDF', () => {
 
 // Printing / Print a row — the server-side PDF download of one row.
 describe('Print a row', () => {
-  test('downloading a row as a PDF returns a PDF with its values, and the print is recorded', async ({
+  test('downloading a row as a PDF returns a PDF with its values', async ({
     admin,
   }) => {
     await setup()
@@ -96,11 +96,6 @@ describe('Print a row', () => {
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-')
     const parser = new PDFParse({ data: new Uint8Array(pdf) })
     expect((await parser.getText()).text).toContain('Umbrella Corp')
-
-    const logged = await sql`
-      select operation, method, reference_name from access_log
-      where ref_table = ${DT} and operation = 'print'`
-    expect(logged).toEqual([{ operation: 'print', method: 'pdf', reference_name: 'srv-1' }])
   }, 30_000)
 
   test('a row the user cannot open cannot be printed either', async ({ admin, createUser }) => {

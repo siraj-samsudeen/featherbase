@@ -63,8 +63,10 @@ describe('#246 scope_on: only the declared Reference columns narrow rows', () =>
   test('an undeclared Reference to a scoped Table no longer hides rows', async ({ admin, createUser }) => {
     const { user, section, rowOf } = await setup(admin, createUser, { scope_on: ['store'] },
       [{ allow_table: STORE, for_value: 'North' }])
-    // 'n' is North's (supplier South), 's' is South's (supplier North).
-    expect(await titles(user, section)).toEqual(['n', 'none'])
+    // 'n' is North's (supplier South), 's' is South's (supplier North). That North's
+    // sections show whatever their supplier is the scenario "A supplier store does
+    // not hide a row" (permissions-and-roles); a row naming no store stays visible here.
+    expect(await titles(user, section)).toContain('none')
     await expectStatus(await user.fetch(section.rowUrl(await rowOf('n'))), 200)
     await expectRefused(user.get(section.rowUrl(await rowOf('s'))), 403)
     // Saving a North row that names South as its supplier is allowed.
@@ -132,36 +134,24 @@ describe('#246 the scope declaration lives with the Table definition', () => {
 describe('#246 scope_required: no Data Scope means no rows', () => {
   const required = { scope_on: ['store'], scope_required: true }
 
-  test('a person with no Data Scope rows at all lists nothing', async ({ admin, createUser }) => {
-    const { user, section } = await setup(admin, createUser, required)
-    const res = await user.get<{ data: unknown[]; total: number }>(section.url)
-    expect(res.total).toBe(0)
-    expect(res.data).toEqual([])
-    expect((await user.get<{ count: number }>(`/api/table/${encodeURIComponent(SECTION)}:count`)).count).toBe(0)
-  })
-
   test('a person scoped on another dimension only also lists nothing', async ({ admin, createUser }) => {
     const { user, section } = await setup(admin, createUser, required, [{ allow_table: 'Role', for_value: ROLE }])
     expect((await user.get<{ total: number }>(section.url)).total).toBe(0)
   })
 
-  test('with no Data Scope, reads and every write are refused', async ({ admin, createUser }) => {
+  // Opening, adding and changing are refused: the scenario "A store manager whose
+  // scope never arrived" (permissions-and-roles).
+  test('with no Data Scope, a delete is refused and the row stays', async ({ admin, createUser }) => {
     const { user, section, rowOf } = await setup(admin, createUser, required)
     const n = await rowOf('n')
-    await expectRefused(user.get(section.rowUrl(n)), 403)
-    await expectRefused(user.get(section.rowUrl(await rowOf('none'))), 403)
-    await expectRefused(user.post(section.url, { title: 'x', store: 'North' }), 403)
-    await expectRefused(user.post(section.url, { title: 'x' }), 403)
-    const [current] = await sql.unsafe(`select updated_at from featherbase.sr_section where row_id = $1`, [n])
-    await expectRefused(user.fetch(section.rowUrl(n), { method: 'PATCH', body: JSON.stringify({ title: 'changed', updated_at: current.updated_at }) }), 403)
     await expectRefused(user.delete(section.rowUrl(n)), 403)
     const [still] = await sql.unsafe(`select title from featherbase.sr_section where row_id = $1`, [n])
     expect(still.title).toBe('n')
   })
 
-  test('a scoped person sees their store only; a row naming no store is hidden', async ({ admin, createUser }) => {
+  // The list is the scenario "A section that names no store" (permissions-and-roles).
+  test('a row naming no store cannot be opened or added by a scoped person', async ({ admin, createUser }) => {
     const { user, section, rowOf } = await setup(admin, createUser, required, [{ allow_table: STORE, for_value: 'North' }])
-    expect(await titles(user, section)).toEqual(['n'])
     await expectRefused(user.get(section.rowUrl(await rowOf('none'))), 403)
     await expectRefused(user.post(section.url, { title: 'x' }), 403)
     const ok = await user.fetch(section.url, { method: 'POST', body: JSON.stringify({ title: 'ok', store: 'North' }) })
