@@ -9,4 +9,4 @@
 - [x] 2.1 Dash's three approval types, applied at once and shown not yet reviewed; Undo; the reviewer's Confirm and Undo; a removal not undone once put elsewhere. Verify `client-apps/jeyarama/dash/platform-test/my-sections.test.ts`, `src/sections-page.test.tsx`.
 - [x] 2.2 Reach follows at once; an undone addition reaches no more. Verify `platform-test/provider.test.ts`.
 - [x] 2.3 The client instance sets the three types to Apply now. Verify `client-apps/jeyarama/instances/dash/instance-settings.json`.
-- [ ] 2.4 Independent verifier against #1191's checklist, with screenshots.
+- [x] 2.4 Independent verifier against #1191's checklist, with screenshots.
