@@ -42,7 +42,7 @@ export const BASE_TABLES: readonly string[] = Object.values(T)
 
 /** #1191: Dash's kinds of approval, as the manifest declares them. Each one's mode is the instance's Approval Type row. */
 export const APPROVAL_TYPE = { add: 'subcategory_add', removal: 'subcategory_removal', section: 'job_section' } as const
-const APPLY_NOW = 'Apply now, review after'
+export const APPLY_NOW = 'Apply now, review after'
 /** Applied when asked for, waiting for a reviewer: shown with the waiting ones. */
 const OPEN = ['Pending', 'Not yet reviewed']
 const isApplied = (proposal: ChangeProposal) => proposal.state === 'Not yet reviewed'

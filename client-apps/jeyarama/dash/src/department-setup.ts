@@ -4,7 +4,7 @@
 // manager (else a Master Data Editor) decides the bundle as one. The rules are here; the platform
 // still checks who may decide.
 import {
-  BASE_TABLES, JOB_FIELDS, MASTER_DATA_TEAM, PLACEMENT_FIELDS, SECTION_FIELDS, T,
+  APPLY_NOW, BASE_TABLES, JOB_FIELDS, MASTER_DATA_TEAM, PLACEMENT_FIELDS, SECTION_FIELDS, T,
   all, approversOf, byId, employeeNames, freeId, inForce, isActive, istDay, list, myEmployees, myJobs, unique, waitingName,
   type ActionContext, type ChangeProposal, type ReadContext, type Row, type ApproverRequest,
 } from './my-sections.ts'
@@ -204,7 +204,9 @@ export const departmentReads = {
     const names = [...counts].filter(([name]) => name && !shop.departments.some(d => sameName(text(d.name), name)))
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, NAMES_SHOWN).map(([name]) => name)
 
-    return { state: 'ok' as const, name: text(employees[0].name), job: jobView, reviewer, reviewer_is_team: isTeam(reviewer), floors, start_floors, sections, names,
+    // #1191: whether a set-up applies at once here, so the form says what will happen.
+    const applies_at_once = (await ctx.changeProposals.modeOf(DEPARTMENT_TYPE)) === APPLY_NOW
+    return { state: 'ok' as const, name: text(employees[0].name), job: jobView, reviewer, reviewer_is_team: isTeam(reviewer), applies_at_once, floors, start_floors, sections, names,
       current: await currentOf(ctx, job, shop, me) }
   },
 

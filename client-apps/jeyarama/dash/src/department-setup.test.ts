@@ -116,6 +116,7 @@ function context(tables: Record<string, Row[]>, { user = 'deepa', payload, setti
         return rows.slice(start, start + (filter.limit ?? 200))
       },
       mayDecide: async () => decides,
+      modeOf: async () => MODE,
       routeFor: async (_maker: string, approvers: { people: string[] }) => (route === 'none' ? null : { people: route === 'people' ? approvers.people : [], roles: [] }),
       lockRow: async () => {},
       serialize: async () => {},
@@ -145,6 +146,9 @@ describe('the department set-up read', () => {
   it('says so for someone not on the staff list, or with no Department Manager job', async () => {
     expect(await read(world(), { user: 'stranger' })).toEqual({ state: 'unknown_person' })
     expect(await read(world(), { user: 'mani', payload: {} })).toEqual({ state: 'no_job' })
+  })
+  it('tells the page a set-up waits for approval when the instance says so', async () => {
+    expect(await read()).toMatchObject({ applies_at_once: false })
   })
   it('takes their first Department Manager job when none is named', async () => {
     expect(await read(world(), { payload: {} })).toMatchObject({ state: 'ok', job: { id: 'J1', store: 'Lakeside' } })
@@ -466,6 +470,9 @@ describe('apply now, review after (#1191)', () => {
     const undone = (by: string) => bundle({}, 'Undone', 'Sarees is in Ethnic').map(p => ({ ...p, decided_by: by }))
     expect(await read(world(), { proposals: undone('mani') })).toMatchObject({ current: { state: 'turned_down', reason: 'Sarees is in Ethnic' } })
     expect(await read(world(), { proposals: undone('deepa') })).toMatchObject({ current: null })
+  })
+  it('tells the page that a set-up applies at once', async () => {
+    expect(await read()).toMatchObject({ applies_at_once: true })
   })
   it('shows the reviewer which set-ups are already in use', async () => {
     expect(await departmentReads.department_approvals(context(world(), { user: 'mani', proposals: applied() }).ctx)).toMatchObject([{ bundle: 'B1', applied: true }])

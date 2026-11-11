@@ -514,3 +514,19 @@ describe("the reviewer's view of a pre-fill (#1205)", () => {
     await page.done()
   })
 })
+
+describe('apply now, review after, on the set-up form (#1191, #1205)', () => {
+  it('says it applies at once and is reviewed after, and sends with Set it up', async () => {
+    answers.department_setup = { ...SETUP, applies_at_once: true }
+    answers.set_up_department = { state: 'set_up' }
+    const page = await render('YourDepartment')
+    expect(page.q('lead')?.textContent).toContain('Your report opens on them at once; Mani reviews it afterwards.')
+    expect(page.q('summary')?.textContent).toBe('2 sections. It applies at once; Mani reviews it afterwards.')
+    await page.choose(page.q('name-input') as HTMLInputElement, 'Ladies')
+    expect(page.q('send')?.textContent).toBe('Set it up')
+    await page.click('Set it up')
+    expect(sentCalls('set_up_department')).toEqual([{ job: 'J1', name: 'Ladies', sections: ['S1', 'S2'] }])
+    await page.done()
+  })
+})
+

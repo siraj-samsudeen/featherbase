@@ -14,7 +14,7 @@ type Current =
 export type Setup =
   | { state: 'not_set_up' | 'unknown_person' | 'no_job' }
   | { state: 'no_sections'; job: { id: string; store: string }; reviewer: string; reviewer_is_team: boolean }
-  | { state: 'ok'; name: string; job: { id: string; store: string }; reviewer: string; reviewer_is_team: boolean; floors: { id: string; name: string }[]; start_floors: string[]
+  | { state: 'ok'; name: string; job: { id: string; store: string }; reviewer: string; reviewer_is_team: boolean; applies_at_once?: boolean; floors: { id: string; name: string }[]; start_floors: string[]
       sections: Section[]; names: string[]; current: Current | null }
 type Ok = Extract<Setup, { state: 'ok' }>
 
@@ -227,19 +227,20 @@ function SetupForm({ setup, before, replaces, inUse = false, onCancel, onTouched
       </Field>
     </div>
   )
-  const summary = `${chosen.length} ${chosen.length === 1 ? 'section' : 'sections'}${trimmed ? ` · ${trimmed}` : ''}. Nothing changes until ${setup.reviewer} keeps it.`
+  const atOnce = setup.applies_at_once === true
+  const summary = `${chosen.length} ${chosen.length === 1 ? 'section' : 'sections'}${trimmed ? ` · ${trimmed}` : ''}. ${atOnce ? `It applies at once; ${setup.reviewer} reviews it afterwards.` : `Nothing changes until ${setup.reviewer} keeps it.`}`
   const cancel = onCancel && <Button variant="quiet" disabled={busy} onClick={onCancel} data-testid="cancel-change">Cancel</Button>
   const sendBar = (
     <div className="flex flex-col gap-2">
       {error && <Notice tone="negative"><span data-testid="refused">{error}</span></Notice>}
       <div className="flex flex-wrap items-center gap-3">
-        <Button variant="primary" disabled={busy || !chosen.length || !trimmed} onClick={send} data-testid="send">Send to {setup.reviewer}</Button>
+        <Button variant="primary" disabled={busy || !chosen.length || !trimmed} onClick={send} data-testid="send">{atOnce ? 'Set it up' : `Send to ${setup.reviewer}`}</Button>
         {cancel}
         <span className="fd-muted text-sm" data-testid="summary">{summary}</span>
       </div>
     </div>
   )
-  const lead = <p className="fd-muted" data-testid="lead">Say which sections are yours and give the department a name. {capital(setup.reviewer)} reviews it{inUse ? '. What you send replaces the one in use; your report keeps working meanwhile.' : `, and your report opens once it is kept.${replaces ? ' What you send replaces the one waiting.' : ''}`}</p>
+  const lead = <p className="fd-muted" data-testid="lead">Say which sections are yours and give the department a name. {atOnce && !inUse ? `Your report opens on them at once; ${setup.reviewer} reviews it afterwards.` : <>{capital(setup.reviewer)} reviews it{inUse ? '. What you send replaces the one in use; your report keeps working meanwhile.' : `, and your report opens once it is kept.${replaces ? ' What you send replaces the one waiting.' : ''}`}</>}</p>
   const toggleBar = <Segmented label="Layout" options={LAYOUTS} value={layout} onChange={value => { setLayout(value); setStep(1) }} className="self-end" />
 
   if (layout === 'list')
