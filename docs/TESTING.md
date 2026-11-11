@@ -377,13 +377,19 @@ zeroed and the `unit` job enforces the floor on the merged shard reports, only
 when the server suite ran; locally each suite runs whole against its floor.
 
 [ADR 0017](../adr/0017-backend-coverage-non-regression-baselines.md) supersedes
-ADR 0016's immediate 100% gates with owner-approved maximum uncovered counts:
-core 232 statements, 870 branch arms, 22 functions and 25 lines; Dash 2
-statements, 17 branch arms, 2 functions and 0 lines. Tasker remains at 100%.
-These are exact counts, not rounded percentage floors; one additional uncovered
-item fails. Tighten the caps as coverage improves. Keep every measured source
-and existing exclusion unchanged. The goal remains 100%, not a claim that it
-has been achieved. Frontend coverage policy is unchanged.
+ADR 0016's immediate 100% gates with owner-approved maximum uncovered counts.
+Core now covers every line and function, and web every statement; the server
+caps its statements at 1 uncovered (ADR 0023). Dash and Tasker keep their own
+gates under ADR 0017. Caps are exact counts, not rounded percentage floors; one
+additional uncovered item fails. Tighten them as coverage improves and keep
+every measured source and existing exclusion unchanged.
+
+Core branches are reported, not gated
+([ADR 0024](../adr/0024-core-branch-coverage-is-reported-not-gated.md)): the
+aggregate count drifts between runs of the same code. The branch column still
+prints in every report, and CI keeps the merged numbers as artifacts
+(`server-coverage`, `merged-source-coverage`). Most uncovered branches are
+reachable and untested; the goal stays 100%.
 
 CI merges the PostgreSQL 18 release-preflight coverage with the server's
 three shards before enforcing the server gate. `src/sources/mysql-driver.ts`
