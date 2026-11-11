@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Button, DrillPane, Notice, PaneSection, cx, inputClasses } from '@featherbase/shop-floor'
+import { Button, DrillPane, Notice, PaneSection, cx, fmtInstantIST, inputClasses } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
 
 // #1173: one waiting request in a drawer beside the Waiting for access list:
@@ -29,11 +29,8 @@ interface Approved { given: string[]; failed: { label: string; problem: string }
 
 export const FULL_ADMIN = 'System Manager'
 
-/** 10-Nov-2026: the day only; the time is noise here. */
-function day(iso: string): string {
-  const d = new Date(iso)
-  return `${String(d.getDate()).padStart(2, '0')}-${d.toLocaleString('en-GB', { month: 'short' })}-${d.getFullYear()}`
-}
+/** When it happened, as the platform shows a moment: DD-Mon-YYYY HH:MM IST. */
+const day = (iso: string) => fmtInstantIST(new Date(iso))
 
 const choiceKey = (app: string, choice: string) => `${app}\u0000${choice}`
 
