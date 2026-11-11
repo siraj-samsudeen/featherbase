@@ -28,7 +28,7 @@ function configurePreview(user = PREVIEW_USER) {
 describe('the deploy config runs one pre-deploy command', () => {
   it('.railway/railway.ts names the pre-deploy command alone in every environment, with nothing a shell would have to read', async () => {
     const { createRailwayContext, project } = await import('railway/iac')
-    const { default: program } = await import('../../../.railway/railway')
+    const { default: program } = await import('../../../client-apps/jeyarama/railway/railway')
     // The host may run each entry as argv, not through a shell: an `&&` there
     // is an argument, and whatever follows it silently never runs.
     for (const environment of ['production', 'staging']) {
