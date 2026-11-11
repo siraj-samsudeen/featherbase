@@ -14,7 +14,7 @@ type Dataset = { name: string; source: string; query: string; columns: { name: s
 const datasets = (manifest as unknown as { datasets: Dataset[] }).datasets
 const sales = () => datasets.find(d => d.name === SALES_DATASET)!
 const operations = manifest.reads.operations as Record<string, { policy: { kind: string; readRoles?: string[] }; outbound?: boolean; needs?: string[] }>
-const ROLES = ['Dash Reader', 'Dash Section Editor', 'Dash Section Reviewer', 'Report Access Manager']
+const ROLES = ['Dash Reader', 'Report Access Manager']
 
 describe("the app's name in the manifest", () => {
   it('is Dash everywhere: title, identifier, roles and Table group', () => {
@@ -199,8 +199,9 @@ describe('the read grants, declared before the first install', () => {
     expect(granted('Dash Reader')).toEqual(['dash.report'])
   })
 
-  it.each(['Dash Section Editor', 'Dash Section Reviewer'])('give %s nothing else: Your sections reads the core Tables as declared base Tables', role => {
-    expect(granted(role)).toEqual(['dash.report'])
+  // Siraj, 11-Nov-2026 ("Drop whatever is not implemented"): no section editor or reviewer role.
+  it('declares only the roles Dash uses', () => {
+    expect(manifest.roles).toEqual(['Dash Reader', 'Report Access Manager'])
   })
 
   it('give no app role the people Tables: who reads contacts and stints is the scopes\' to decide (#683)', () => {
