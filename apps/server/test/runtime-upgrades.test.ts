@@ -11,6 +11,7 @@ import { saveDoc } from '../src/document'
 import { invalidateMeta } from '../src/meta'
 import { makeTaskerV2 } from '../../../tools/tasker-upgrade-fixture.mjs'
 import { expectRefused, expectStatus } from './fixtures'
+import type { TestClient } from 'feather-testing-postgres'
 
 async function targetPackage() {
   const directory = await mkdtemp(resolve('test/.upgrade-'))
@@ -518,5 +519,105 @@ describe('activating an upgrade', () => {
       const refused = plan instanceof Error ? plan : await admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: plan.planId }).catch((error: Error) => error)
       expect(String(refused)).toContain('The Table already has mandatory access')
     } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+})
+
+// #1192: an upgrade creates the roles its version newly declares, and may give
+// such a role its declared grants on a Table the app already had. The role is
+// new to the instance, so the upgrade itself widens nobody's access.
+describe('an upgrade that declares a new role', () => {
+  const auditor = { table: 'other.task', role: 'Task Auditor', operations: { read: '*' } }
+  async function upgradeTo(admin: TestClient, edit: (manifest: Record<string, unknown>) => Record<string, unknown>,
+    before: () => Promise<void> = async () => {}) {
+    const source = resolve('../..', 'test-apps/other')
+    const { directory, manifest } = await targetPackage()
+    await writeFile(resolve(directory, 'featherbase.json'), JSON.stringify(edit(manifest)))
+    await discoverPackages([source])
+    await admin.post('/api/install_app', { name: 'other' })
+    await before()
+    await discoverPackages([source, directory])
+    await loadInstalledApps()
+    return { directory, source }
+  }
+
+  test('creates the role and its grant on a Table the app already had, listed in the preview', async ({ admin, createUser }) => {
+    const { directory, source } = await upgradeTo(admin, manifest => ({ ...manifest, roles: ['Task Auditor'],
+      permissions: [...(manifest.permissions as unknown[]), auditor] }))
+    try {
+      const plan = await admin.post<{ planId: string; roles: unknown; permissions: unknown }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
+      expect([plan.roles, plan.permissions]).toEqual([[{ create: 'Task Auditor' }], [{ grant: auditor }]])
+      expect(await sql`select 1 from role where row_id = 'Task Auditor'`).toEqual([])
+      await admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: plan.planId })
+      await discoverPackages([source, directory])
+      await loadInstalledApps()
+      await admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })
+      const [app] = await sql`select roles from installed_app where name = 'other'`
+      expect(app.roles).toEqual(['Task Auditor'])
+      expect(await sql`select role, operation, owner_app from permission where role = 'Task Auditor'`)
+        .toEqual([{ role: 'Task Auditor', operation: 'read', owner_app: 'other' }])
+      expect((await sql`select operation from activity_log where operation like 'app_role_added%'`).map(row => row.operation))
+        .toEqual(['app_role_added other@2.0.0: Task Auditor'])
+      const holder = await createUser({ email: 'auditor@example.test', roles: ['Task Auditor'] })
+      expect(await sql`select role from has_role where parent = ${holder.user!}`).toEqual([{ role: 'Task Auditor' }])
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test('creates a new role that has no grant', async ({ admin }) => {
+    const { directory, source } = await upgradeTo(admin, manifest => ({ ...manifest, roles: ['Task Watcher'] }))
+    try {
+      const plan = await admin.post<{ planId: string; roles: unknown; permissions: unknown }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
+      expect([plan.roles, plan.permissions]).toEqual([[{ create: 'Task Watcher' }], []])
+      await admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: plan.planId })
+      await discoverPackages([source, directory])
+      expect(await sql`select row_id from role where row_id = 'Task Watcher'`).toEqual([{ row_id: 'Task Watcher' }])
+      expect((await sql`select roles from installed_app where name = 'other'`)[0].roles).toEqual(['Task Watcher'])
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test('is refused, changing nothing, when a role of that name already exists on the instance', async ({ admin }) => {
+    const { directory } = await upgradeTo(admin, manifest => ({ ...manifest, roles: ['Task Auditor'],
+      permissions: [...(manifest.permissions as unknown[]), auditor] }),
+    async () => { await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Task Auditor' } }) })
+    try {
+      const before = await sql`select package_version, roles, perms from installed_app where name = 'other'`
+      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417,
+        message: expect.stringContaining('The role Task Auditor already exists on this instance') })
+      expect(await sql`select package_version, roles, perms from installed_app where name = 'other'`).toEqual(before)
+      expect(await sql`select 1 from permission where role = 'Task Auditor'`).toEqual([])
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test('a role created between the preview and the upgrade refuses the upgrade', async ({ admin }) => {
+    const { directory } = await upgradeTo(admin, manifest => ({ ...manifest, roles: ['Task Auditor'],
+      permissions: [...(manifest.permissions as unknown[]), auditor] }))
+    try {
+      const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
+      await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Task Auditor' } })
+      await expectRefused(admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: plan.planId }), 417)
+      expect((await sql`select package_version from installed_app where name = 'other'`)[0].package_version).toBe('0.0.1')
+      expect(await sql`select 1 from permission where role = 'Task Auditor'`).toEqual([])
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test('a new grant to a role the installed version already declared is still refused', async ({ admin }) => {
+    const source = resolve('../..', 'test-apps/other')
+    const installed = await mkdtemp(resolve('test/.upgrade-installed-'))
+    await cp(source, installed, { recursive: true })
+    const old = JSON.parse(await readFile(resolve(installed, 'featherbase.json'), 'utf8'))
+    await writeFile(resolve(installed, 'featherbase.json'), JSON.stringify({ ...old, roles: ['Task Auditor'] }))
+    const { directory, manifest } = await targetPackage()
+    await writeFile(resolve(directory, 'featherbase.json'), JSON.stringify({ ...manifest, roles: ['Task Auditor'],
+      permissions: [...manifest.permissions, auditor] }))
+    try {
+      await discoverPackages([installed])
+      await admin.post('/api/install_app', { name: 'other' })
+      await discoverPackages([installed, directory])
+      await loadInstalledApps()
+      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417,
+        message: expect.stringContaining('Permission or package identity changes are unsupported') })
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+      await rm(installed, { recursive: true, force: true })
+    }
   })
 })
