@@ -40,3 +40,6 @@ apps/server/test/.*/
 apps/web/tours-report/
 # pnpm check:scenarios: which runner proves each spec scenario
 scenarios-report/
+# A client's apps and instances live in the client's own repository, checked
+# out into client-apps/<client>/ (#1197).
+/client-apps/*/
