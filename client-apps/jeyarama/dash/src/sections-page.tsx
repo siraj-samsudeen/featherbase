@@ -53,7 +53,7 @@ interface Proposal {
 }
 /** Where a subcategory is and who holds it there, as the approver reads it. */
 interface Place { section: string; holder: string | null }
-interface Approval extends Omit<Proposal, 'from' | 'to'> { who: string; from: Place | null; to: Place | null; path: HierarchyNode | null; sections: Named[] }
+interface Approval extends Omit<Proposal, 'from' | 'to'> { who: string; from: Place | null; to: Place | null; path: HierarchyNode | null; sections: SectionChoice[] }
 type Mine = { state: 'not_set_up' | 'unknown_person' } | { state: 'ok'; name: string; jobs: Job[]; proposals: Proposal[]; waiting_for_me: number }
 type Waiting = { state: 'not_set_up' } | { state: 'ok'; proposals: Approval[] }
 type Holder = { kind: 'mine' } | { kind: 'none' } | { kind: 'other'; section: string; team_leader: string | null }
@@ -269,7 +269,7 @@ function JobCard({ job, onSent }: { job: Job; onSent: () => Promise<unknown> }) 
                           onNotMine={() => run(row.placed.id, 'propose_removal', { job: job.id, placement: row.placed.id }, `Asked to take ${row.placed.name} out of your section. It waits for ${job.waiting_for}.`)}
                           onUndo={id => run(id, 'withdraw', { proposal: id }, `Undone: ${row.placed.name} stays in your section.`)} />
                       : <AddedRow key={row.added.id} added={row.added} busy={busy}
-                          onUndo={id => run(id, 'withdraw', { proposal: id }, `Undone: ${row.added.name} is not asked for.`)} />)}
+                          onUndo={id => run(id, 'withdraw', { proposal: id }, `Undone: you are no longer asking to add ${row.added.name}.`)} />)}
                   </ul>
                 )}
               </HierarchyGroups>
@@ -527,7 +527,7 @@ function ApprovalCard({ proposal, onDone }: { proposal: Approval; onDone: (note:
             <Field label={`Which section should ${proposal.what} go to?`} error={formError}>
               <Select value={elsewhere} onChange={event => setElsewhere(event.target.value)}>
                 <option value="">Choose a section</option>
-                {proposal.sections.filter(section => section.name !== proposal.from?.section && section.name !== proposal.to?.section).map(section => <option key={section.id} value={section.id}>{section.name}</option>)}
+                {proposal.sections.filter(section => section.name !== proposal.from?.section && section.name !== proposal.to?.section).map(section => <option key={section.id} value={section.id}>{sectionLabel(section)}</option>)}
               </Select>
             </Field>
             <div className="flex flex-wrap gap-2">
