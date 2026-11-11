@@ -1,4 +1,0 @@
-{
-  "extends": "./tsconfig.json",
-  "include": ["frontend-test/**/*.tsx", "vitest.frontend.config.ts"]
-}
