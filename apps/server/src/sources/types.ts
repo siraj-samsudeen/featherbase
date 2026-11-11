@@ -4,7 +4,7 @@
 // instead of the control database. Drivers receive source-column names only;
 // the column_name<->source_column mapping is the dispatcher's job.
 
-export type SourceEngine = 'postgres' | 'mysql' | 'duckdb' | 'motherduck' | 'csv-folder'
+export type SourceEngine = 'postgres' | 'duckdb' | 'motherduck' | 'csv-folder'
 export type SourceAccess = 'read_only' | 'read_write'
 
 // Hard per-engine write capability (mirrors each driver's `writable` flag,
@@ -13,7 +13,6 @@ export type SourceAccess = 'read_only' | 'read_write'
 // engine can write AND access is read_write.
 export const ENGINE_WRITABLE: Record<SourceEngine, boolean> = {
   postgres: true,
-  mysql: true,
   duckdb: false,
   motherduck: false,
   'csv-folder': true,
@@ -40,7 +39,7 @@ export interface SourceConfig {
 // EDS-6: the shape of a write the data source refused for a constraint
 // reason. The codes are Postgres SQLSTATEs: the postgres driver passes its
 // own errors through as they are, and every other driver translates its
-// dialect into them (mysql: errno -> code). `column_name` is the SOURCE
+// dialect into them. `column_name` is the SOURCE
 // column when the source names one; the dispatcher translates it to the
 // field (explainRefusal in dispatch.ts). `message` is the driver's raw text,
 // for the server log only.
@@ -58,8 +57,7 @@ export interface SourceRefusal extends Error {
   code: (typeof REFUSAL_CODE)[keyof typeof REFUSAL_CODE]
   column_name?: string
   constraint_name?: string
-  // Postgres's detail line, "Key (col, ...)=(value, ...) ..."; the mysql
-  // driver writes one for a unique refusal.
+  // Postgres's detail line, "Key (col, ...)=(value, ...) ...".
   detail?: string
 }
 

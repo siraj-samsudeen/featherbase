@@ -32,7 +32,6 @@
     "@modelcontextprotocol/sdk": "1.32.2",
     "hono": "^4.13.16",
     "markdown-it": "15.0.3",
-    "mysql2": "^3.24.6",
     "nodemailer": "10.3.1",
     "playwright": "^1.64.1",
     "postgres": "^4.0.0",
