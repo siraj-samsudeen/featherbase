@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect } from 'vitest'
 import { makeClient, type TestClient, type CreateUserFn } from 'feather-testing-postgres'
@@ -24,6 +25,7 @@ const probe = async (client: TestClient, payload: object) =>
   (await client.post<any>('/api/app_actions/proposalproof/probe', { idempotencyKey: randomUUID(), payload })).result
 
 const APPLY_NOW = 'Apply now, review after'
+const ACTION_PROOF = JSON.parse(readFileSync(resolve('../..', 'test-apps/action-proof/featherbase.json'), 'utf8')).name as string
 const APPROVE_FIRST = 'Approve first'
 
 async function setUp(admin: TestClient, createUser: CreateUserFn) {
@@ -82,6 +84,15 @@ describe('the setting: one Approval Type row per declared type', () => {
     // The app's declaration fills the rest; the mode is the one thing an administrator sets.
     expect(await setMode(admin, 'label_change', APPLY_NOW)).toMatchObject({ app: 'proposalproof', approval_type: 'label_change', title: 'Change a label', grants_access: false, mode: APPLY_NOW })
     await expectRefused(setMode(admin, 'label_change', 'Whenever'), 417)
+    // Editing the row later changes the mode alone; the app's declaration still names it.
+    const [saved] = await sql`select updated_at from approval_type where row_id = 'proposalproof.label_change'`
+    expect(await admin.post<any>('/api/save_row', { table: 'Approval Type', row: { row_id: 'proposalproof.label_change', updated_at: saved.updated_at, mode: APPROVE_FIRST, title: 'Renamed' } }))
+      .toMatchObject({ mode: APPROVE_FIRST, title: 'Change a label' })
+    // An installed app that declares no approval types has none to set.
+    expect(await discoverPackages([resolve('../..', 'test-apps/action-proof')])).toEqual([])
+    await admin.post('/api/install_app', { name: ACTION_PROOF })
+    await expect(admin.post('/api/save_row', { table: 'Approval Type', row: { row_id: `${ACTION_PROOF}.anything`, mode: APPLY_NOW } }))
+      .rejects.toMatchObject({ status: 417, message: expect.stringContaining('does not declare the approval type anything') })
   })
 
   test('a type that grants access is approve first, always', async ({ admin, createUser }) => {
@@ -109,6 +120,8 @@ describe('the setting: one Approval Type row per declared type', () => {
     expect(await modeOf('label_change')).toBe(APPROVE_FIRST)
     await setMode(admin, 'label_change', APPLY_NOW)
     expect(await modeOf('label_change')).toBe(APPLY_NOW)
+    // An action asks the same way.
+    expect(await probe(maker, { op: 'mode_of', type: 'label_change' })).toBe(APPLY_NOW)
     await sql`insert into approval_type (row_id, mode) values ('proposalproof.role_grant', ${APPLY_NOW})`
     expect(await modeOf('role_grant')).toBe(APPROVE_FIRST)
     await expectRefused(maker.post('/api/app_reads/proposalproof/look', { payload: { modeOf: 'not_declared' } }), 417)
@@ -312,4 +325,40 @@ describe('undo puts the rows back as they were', () => {
     await admin.post(`/api/table/Placement%20Note/${encodeURIComponent(note.row_id)}:retire`, { reason: 'Gone' })
     expect((await probe(manager, { op: 'undo', id: proposal.row_id, decision })).state).toBe('Undone')
   })
+
+  test('the edges: a type that is not text, a note or reason that is not text, no note, a row already out of use, an editor with no person', async ({ admin, createUser }) => {
+    const { maker, manager } = await setUp(admin, createUser)
+    await expectRefused(probe(maker, ask(manager.user, { type: 7 })), 417)
+    await setMode(admin, 'label_change', APPLY_NOW)
+    const decision = { approvers: approvers(manager.user) }
+    const confirmed = await probe(maker, ask(manager.user))
+    await expectRefused(probe(manager, { op: 'confirm', id: confirmed.row_id, decision: { ...decision, note: 7 } }), 417)
+    await expectRefused(probe(manager, { op: 'undo', id: confirmed.row_id, decision: { ...decision, reason: 7 } }), 417)
+    expect(await probe(manager, { op: 'confirm', id: confirmed.row_id, decision })).toMatchObject({ state: 'Confirmed', decision_reason: null })
+    // The added row already retired by hand: nothing to put back.
+    const retired = await probe(maker, ask(manager.user, { row: null, changes: { label: 'Linen' }, apply: apply('P-R') }))
+    await admin.post('/api/table/Placement/P-R:retire', { reason: 'Gone' })
+    await expect(probe(manager, { op: 'undo', id: retired.row_id, decision: { ...decision, reason: 'Wrong' } }))
+      .rejects.toMatchObject({ status: 417, message: expect.stringContaining('no longer in use') })
+    // Changed by the platform itself, which has no person row: named as it is recorded.
+    const system = await probe(maker, ask(manager.user, { row: null, changes: { label: 'Wool' }, apply: apply('P-S') }))
+    await sql`update ${sql(await tableRelation('Placement'))} set label = 'Wool blend', updated_by = 'made-up-system', updated_at = now() + interval '1 second' where row_id = 'P-S'`
+    await expect(probe(manager, { op: 'undo', id: system.row_id, decision: { ...decision, reason: 'Wrong' } }))
+      .rejects.toMatchObject({ status: 417, message: expect.stringContaining('made-up-system changed it on') })
+  })
+
+  test('links that count: a child line holds the added row; a settings Table, which has no rows to hold it, does not', async ({ admin, createUser }) => {
+    const { maker, manager } = await setUp(admin, createUser)
+    await admin.post('/api/table_def', { name: 'Placement Defaults', kind: 'settings', columns: [{ column_name: 'placement', column_type: 'Reference', reference_table: 'Placement' }] })
+    await admin.post('/api/table_def', { name: 'Placement Line', kind: 'sub_table', columns: [{ column_name: 'placement', column_type: 'Reference', reference_table: 'Placement' }] })
+    await admin.post('/api/table_def', { name: 'Placement Sheet', columns: [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Placement Line' }] })
+    await setMode(admin, 'label_change', APPLY_NOW)
+    const proposal = await probe(maker, ask(manager.user))
+    const sheet = await admin.post<any>('/api/save_row', { table: 'Placement Sheet', row: { lines: [{ placement: 'P-2' }] } })
+    const decision = { approvers: approvers(manager.user), reason: 'Wrong' }
+    await expectRefused(probe(manager, { op: 'undo', id: proposal.row_id, decision }), 417)
+    await admin.post('/api/save_row', { table: 'Placement Sheet', row: { row_id: sheet.row_id, updated_at: sheet.updated_at, lines: [] } })
+    expect((await probe(manager, { op: 'undo', id: proposal.row_id, decision })).state).toBe('Undone')
+  })
 })
+

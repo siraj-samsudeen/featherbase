@@ -17,6 +17,7 @@ export const actions = {
       if (placed.length) return changeProposals.needsFreshReview(payload.id, { approvers: payload.decision.approvers, reason: 'Already placed' })
       return changeProposals.approve(payload.id, payload.decision)
     }
+    if (payload.op === 'mode_of') return changeProposals.modeOf(payload.type)
     if (payload.op === 'propose') return changeProposals.propose(payload.request)
     if (payload.op === 'approve') return changeProposals.approve(payload.id, payload.decision)
     if (payload.op === 'reject') return changeProposals.reject(payload.id, payload.decision)

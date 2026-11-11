@@ -62,10 +62,11 @@ function context(tables: Record<string, Row[]>, { user = 'asha', payload, settin
         return rows.slice(start, start + (filter.limit ?? 200))
       },
       mayDecide: async () => true,
+      modeOf: async () => 'Approve first',
       routeFor: async (_maker: string, approvers: { people: string[] }) => (route === 'none' ? null : { people: route === 'ghost' ? ['nobody-on-staff'] : approvers.people, roles: [] }),
       lockRow: async () => {},
       serialize: async () => {},
-      propose: answer('propose'), approve: answer('approve'), reject: answer('reject'), needsFreshReview: answer('needsFreshReview'), withdraw: answer('withdraw'),
+      propose: answer('propose'), approve: answer('approve'), reject: answer('reject'), needsFreshReview: answer('needsFreshReview'), withdraw: answer('withdraw'), confirm: answer('confirm'), undo: answer('undo'),
     },
   }
   return { ctx: ctx as unknown as ActionContext & ReadContext, sent }
