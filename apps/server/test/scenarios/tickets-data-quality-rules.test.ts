@@ -53,7 +53,8 @@ describe('tickets-data-quality-rules', () => {
     await step('Colleague, who may not read "Buyer Assignment", opens the ticket', async () => { seen = await x.rules('Colleague') })
     await step('Colleague sees the rule without a count', () => {
       expect(seen).toHaveLength(1)
-      expect(seen[0]).toMatchObject({ title: 'Buyer is blank', rows_left: null })
+      // No count at all: neither the rows left nor how many matched when it was raised.
+      expect(seen[0]).toMatchObject({ title: 'Buyer is blank', rows_left: null, rows_when_raised: null })
     })
   })
 

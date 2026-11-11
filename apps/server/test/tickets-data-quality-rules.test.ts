@@ -8,7 +8,7 @@ import { discoverPackages } from '../src/runtime-packages'
 import { BUYER_BLANK, pinning, TicketRules, Tickets } from './tickets-world'
 
 const test = pgTest.extend(pinning)
-const world = async (admin: Parameters<typeof Tickets>[0], createUser: Parameters<typeof Tickets>[1]) => {
+const world = async (admin: ConstructorParameters<typeof Tickets>[0], createUser: ConstructorParameters<typeof Tickets>[1]) => {
   const x = new TicketRules(new Tickets(admin, createUser))
   await x.raised()
   return x

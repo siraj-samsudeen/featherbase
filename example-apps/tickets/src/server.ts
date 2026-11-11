@@ -435,8 +435,10 @@ async function rulesOf(ctx: ReadContext, ticketId: string) {
   for (const row of await all(ctx, RULE_TABLE, ruleFields, [['ticket', '=', ticketId]])) {
     const filters = storedFilters(row.filters)
     const table = String(row.checked_table)
+    const left = linked(ctx, table) ? await ctx.documents.count(table, filters) : null
+    // A reader who cannot count the Table sees no count at all: neither now nor when raised.
     rules.push({ row_id: row.row_id, title: row.title, table, filters, severity: row.severity, owner: row.owner ?? null, how_to_fix: row.how_to_fix ?? null,
-      rows_when_raised: Number(row.rows_when_raised), rows_left: linked(ctx, table) ? await ctx.documents.count(table, filters) : null })
+      rows_when_raised: left === null ? null : Number(row.rows_when_raised), rows_left: left })
   }
   return rules.sort((a, b) => ruleOrder(a) - ruleOrder(b) || SEVERITIES.indexOf(String(a.severity)) - SEVERITIES.indexOf(String(b.severity))
     || String(a.title).localeCompare(String(b.title)))
