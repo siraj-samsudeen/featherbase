@@ -7,6 +7,7 @@
   "client": "dist/client",
   "entryTable": "dash.report",
   "roles": [
+    "Dash All-Stores Reader",
     "Dash Reader",
     "Report Access Manager"
   ],
@@ -597,6 +598,11 @@
   "permissions": [
     {
       "table": "dash.report",
+      "role": "Dash All-Stores Reader",
+      "can_read": true
+    },
+    {
+      "table": "dash.report",
       "role": "Dash Reader",
       "can_read": true
     },
@@ -654,6 +660,7 @@
         "policy": {
           "kind": "person_scope",
           "readRoles": [
+            "Dash All-Stores Reader",
             "Dash Reader"
           ],
           "actionRoles": []
@@ -674,6 +681,7 @@
         "policy": {
           "kind": "person_scope",
           "readRoles": [
+            "Dash All-Stores Reader",
             "Dash Reader"
           ],
           "actionRoles": []
@@ -686,6 +694,7 @@
         "policy": {
           "kind": "person_scope",
           "readRoles": [
+            "Dash All-Stores Reader",
             "Dash Reader"
           ],
           "actionRoles": []
@@ -1936,8 +1945,14 @@
       "operations": []
     },
     {
-      "id": "sections_not_mine",
+      "id": "all_stores_reader",
       "fromVersion": "0.12.10",
+      "toVersion": "0.12.11",
+      "operations": []
+    },
+    {
+      "id": "sections_not_mine",
+      "fromVersion": "0.12.11",
       "toVersion": "0.13.0",
       "operations": []
     },

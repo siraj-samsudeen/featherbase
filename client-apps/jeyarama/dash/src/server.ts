@@ -2,7 +2,7 @@
 // is structural: this module imports nothing from the platform. Reads are declared in
 // featherbase.json under "reads". A report is a row of `dash.report`; nothing here knows one Dive.
 import { checked } from './values.ts'
-import { orgChartProvider, reachOf, type Documents, type Place } from './provider.ts'
+import { ALL_STORES_ROLE, orgChartProvider, reachOf, type Documents, type Place } from './provider.ts'
 import { diveFilters, storesOfReport, storesReached, type ReportRecord } from './dive-filters.ts'
 import { MONTH_CHOICES, buildReport, monthLabel, headingOf, istToday, periodOf, storeLabels, storeShortName, type CachedAnswer, type Heading, type Month, type MonthChoice, type SalesRow } from './report.ts'
 import { actions as sectionActions, reads as sectionReads } from './my-sections.ts'
@@ -72,7 +72,7 @@ export function setEmbedFetch(f: typeof fetch | null) {
 const placesOf = (ctx: ScopedContext) => ctx.authorization.places ?? []
 
 /** Dash's own roles (featherbase.json's `roles`): holding any of them opens Dash (#1172). */
-export const DASH_ROLES = new Set(['Dash Reader', 'Report Access Manager'])
+export const DASH_ROLES = new Set([ALL_STORES_ROLE, 'Dash Reader', 'Report Access Manager'])
 
 const REPORT_FIELDS = ['report_key', 'report_name', 'dive_id', 'filter_shape', 'store_key', 'subcategory_key', 'whole_store_key', 'month_key', 'ready_signal', 'quick_view', 'pickers_in_dive']
 
@@ -106,13 +106,13 @@ async function offeredReports(ctx: ScopedContext): Promise<ReportRecord[]> {
 /** The reader's places: a person_scope read's, else worked out from the core Tables. Unreadable means none. */
 async function placesHeld(ctx: ScopedContext): Promise<readonly Place[]> {
   if (ctx.authorization?.places?.length) return ctx.authorization.places
-  try { return (await reachOf(ctx.baseTables, ctx.user, istToday())).places } catch { return [] }
+  try { return (await reachOf(ctx.baseTables, ctx.user, istToday(), ctx.roles)).places } catch { return [] }
 }
 
 /** A person_scope read already holds the reader's places; any other read works them out. Unreadable means nothing. */
 async function reachesSomething(ctx: ScopedContext): Promise<boolean> {
   if (ctx.authorization?.places?.length) return true
-  try { return (await reachOf(ctx.baseTables, ctx.user, istToday())).places.length > 0 } catch { return false }
+  try { return (await reachOf(ctx.baseTables, ctx.user, istToday(), ctx.roles)).places.length > 0 } catch { return false }
 }
 
 /** The report the read is for: the one the payload names, or the reader's first. Undefined when it isn't one of theirs. */
@@ -320,9 +320,9 @@ export const reads = {
   /** The Report access page (#1046). Managers only. */
   access_page: (context: ReadContext) => accessPage(context as AccessContext),
   person_search: (context: ReadContext) => personSearch(context as AccessContext),
-  person_lookup: (context: ReadContext) => personLookup(context as AccessContext, istToday(), async person => {
+  person_lookup: (context: ReadContext) => personLookup(context as AccessContext, istToday(), async (person, roles) => {
     try {
-      const { places } = await reachOf((context as ScopedContext).baseTables, person, istToday())
+      const { places } = await reachOf((context as ScopedContext).baseTables, person, istToday(), roles)
       return { any: places.length > 0, wholeStore: places.some(place => !place.filters.subcategory) }
     } catch { return { any: false, wholeStore: false } }
   }),
@@ -338,7 +338,7 @@ export const reads = {
   /** Why this person's job reaches nothing, for the page's message. */
   async reach_problem(context: ReadContext) {
     const ctx = context as ScopedContext
-    return { problems: (await reachOf(ctx.baseTables, ctx.user, istToday())).problems }
+    return { problems: (await reachOf(ctx.baseTables, ctx.user, istToday(), ctx.roles)).problems }
   },
 
   /** The bar's store picker on the chosen report: the reader's stores by name, none on a report taking no store. */
