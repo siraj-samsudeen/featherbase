@@ -5,12 +5,12 @@
 import { istToday } from './report.ts'
 import { EMPLOYEE_STATUS, SECTION_STATUS, day, exact, text } from './values.ts'
 
-type Row = Record<string, unknown>
+export type Row = Record<string, unknown>
 // The platform's helpers, structurally: this module imports nothing from the platform.
 type Filter = [string, string, unknown]
 interface ApproverRequest { people: string[]; fallbackRoles: string[] }
-interface ChangeProposal {
-  row_id: string; maker: string; state: string; about: unknown; decision_reason: string | null; ends_row?: boolean
+export interface ChangeProposal {
+  row_id: string; maker: string; state: string; about: unknown; decision_reason: string | null; ends_row?: boolean; result_row?: string | null
   changes: { column_name: string; proposed_value: string | null; review_base_value: string | null }[]
   created_at: string; decided_at: string | null; route: { people: string[]; roles: string[] }
 }
@@ -31,13 +31,13 @@ interface ChangeProposalsHelper extends ChangeProposalsReader {
   needsFreshReview(id: string, decision: { approvers: ApproverRequest; reason: string }): Promise<ChangeProposal>
 }
 
-const T = { employee: 'Employee', job: 'Job Assignment', section: 'Section', floor: 'Store Floor', placement: 'Section Subcategory', subcategory: 'Subcategory', site: 'Site' } as const
+export const T = { employee: 'Employee', job: 'Job Assignment', section: 'Section', floor: 'Store Floor', placement: 'Section Subcategory', subcategory: 'Subcategory', site: 'Site' } as const
 /** Every base Table an administrator must list in the `linked_tables` setting. */
 export const BASE_TABLES: readonly string[] = Object.values(T)
 
 /** Who approves when a person has no manager who can sign in. */
 export const FALLBACK_ROLE = 'Master Data Editor'
-const MASTER_DATA_TEAM = 'the master data team'
+export const MASTER_DATA_TEAM = 'the master data team'
 
 /** `move` is the old "pick where it goes" proposal: none are made now, but production holds some. */
 export type ProposalKind = 'removal' | 'add' | 'move' | 'section'
@@ -76,11 +76,11 @@ const IS_SET_UP = (ctx: BaseContext) => {
   } catch { return false }
 }
 
-const list = (ctx: BaseContext, table: string, fields: string[], filters: Filter[], limit = 500) =>
+export const list = (ctx: BaseContext, table: string, fields: string[], filters: Filter[], limit = 500) =>
   ctx.baseTables.list(table, { fields: ['row_id', ...fields], filters, limit_page_length: limit })
 
 /** Every matching row, however many pages: a large store has over a thousand placements. */
-async function all(ctx: BaseContext, table: string, fields: string[], filters: Filter[]): Promise<Row[]> {
+export async function all(ctx: BaseContext, table: string, fields: string[], filters: Filter[]): Promise<Row[]> {
   const rows: Row[] = []
   for (let start = 0; ; start += 500) {
     const page = await ctx.baseTables.list(table, { fields: ['row_id', ...fields], filters, limit_start: start, limit_page_length: 500, order_by: 'row_id asc' })
@@ -89,24 +89,24 @@ async function all(ctx: BaseContext, table: string, fields: string[], filters: F
   }
 }
 
-const inForce = (row: Row, today: string) => {
+export const inForce = (row: Row, today: string) => {
   const starts = day(row.starts_on)
   const ends = day(row.ends_on)
   return (!starts || starts <= today) && (!ends || ends >= today)
 }
 /** Not over yet: in force today, or set to start later. */
 const notOver = (row: Row, today: string) => !day(row.ends_on) || day(row.ends_on) >= today
-const JOB_FIELDS = ['employee', 'job', 'site', 'floor', 'section', 'reports_to', 'starts_on', 'ends_on']
-const PLACEMENT_FIELDS = ['section_subcategory_id', 'store', 'subcategory', 'section', 'starts_on', 'ends_on']
-const SECTION_FIELDS = ['name', 'site', 'floor', SECTION_STATUS]
-const isActive = (section: Row | undefined) => exact(section?.[SECTION_STATUS]) === 'Active'
-const byId = (rows: Row[]) => new Map(rows.map(row => [exact(row.row_id), row]))
-const unique = (values: string[]) => [...new Set(values.filter(Boolean))]
+export const JOB_FIELDS = ['employee', 'job', 'site', 'floor', 'section', 'reports_to', 'starts_on', 'ends_on']
+export const PLACEMENT_FIELDS = ['section_subcategory_id', 'store', 'subcategory', 'section', 'starts_on', 'ends_on']
+export const SECTION_FIELDS = ['name', 'site', 'floor', SECTION_STATUS]
+export const isActive = (section: Row | undefined) => exact(section?.[SECTION_STATUS]) === 'Active'
+export const byId = (rows: Row[]) => new Map(rows.map(row => [exact(row.row_id), row]))
+export const unique = (values: string[]) => [...new Set(values.filter(Boolean))]
 
 /** The caller's current staff rows. A leaver or a test record is nobody on this screen. */
-const myEmployees = (ctx: BaseContext) => list(ctx, T.employee, ['name', EMPLOYEE_STATUS, 'person'], [['person', '=', ctx.user], [EMPLOYEE_STATUS, '=', 'Current']])
+export const myEmployees = (ctx: BaseContext) => list(ctx, T.employee, ['name', EMPLOYEE_STATUS, 'person'], [['person', '=', ctx.user], [EMPLOYEE_STATUS, '=', 'Current']])
 
-async function myJobs(ctx: BaseContext, employees: Row[], today: string): Promise<Row[]> {
+export async function myJobs(ctx: BaseContext, employees: Row[], today: string): Promise<Row[]> {
   if (!employees.length) return []
   return (await list(ctx, T.job, JOB_FIELDS, [['employee', 'in', employees.map(e => exact(e.row_id))]])).filter(job => inForce(job, today))
 }
@@ -120,7 +120,7 @@ async function myJob(ctx: ActionContext, id: unknown, today: string) {
 }
 
 /** The approver of a job: its manager, while they are on the staff and have a sign-in; else the role. */
-async function approversOf(ctx: BaseContext, job: Row | undefined): Promise<{ approvers: ApproverRequest; manager: string | null; reportsTo: string | null }> {
+export async function approversOf(ctx: BaseContext, job: Row | undefined): Promise<{ approvers: ApproverRequest; manager: string | null; reportsTo: string | null }> {
   const managerId = exact(job?.reports_to)
   const [manager] = managerId ? await list(ctx, T.employee, ['name', EMPLOYEE_STATUS, 'person'], [['row_id', '=', managerId]]) : []
   const person = exact(manager?.[EMPLOYEE_STATUS]) === 'Current' ? exact(manager?.person) : ''
@@ -135,6 +135,8 @@ async function scheduledLater(ctx: BaseContext, site: string, subcategory: strin
 const SCHEDULED = 'A change to that subcategory is already planned here. Ask the master data team to look at it'
 
 const about = (proposal: ChangeProposal) => (proposal.about ?? {}) as unknown as About
+/** A Department Manager's set-up (#1195): department-setup.ts shows and decides those. */
+const isSetUp = (proposal: ChangeProposal) => ['department', 'department_section'].includes(String((proposal.about as Record<string, unknown> | null)?.kind))
 const VIEW_LIMIT = 50
 const SUB_FIELDS = ['subcategory', 'division', 'subdivision', 'category', 'subcategory_type']
 /** A subcategory's place in the merchandise hierarchy, as its row holds it. */
@@ -146,12 +148,12 @@ async function holdersOf(ctx: BaseContext, sections: string[], today: string): P
   if (!sections.length) return []
   return (await list(ctx, T.job, JOB_FIELDS, [['section', 'in', sections]])).filter(job => inForce(job, today) && text(job.job) === 'Team Leader')
 }
-async function employeeNames(ctx: BaseContext, ids: string[]): Promise<Map<string, string>> {
+export async function employeeNames(ctx: BaseContext, ids: string[]): Promise<Map<string, string>> {
   const wanted = unique(ids)
   return wanted.length ? new Map((await list(ctx, T.employee, ['name'], [['row_id', 'in', wanted]])).map(e => [exact(e.row_id), text(e.name)])) : new Map()
 }
 /** The names of the people a proposal waits for, in their order. */
-async function waitingName(ctx: BaseContext, people: string[]): Promise<string> {
+export async function waitingName(ctx: BaseContext, people: string[]): Promise<string> {
   if (!people.length) return MASTER_DATA_TEAM
   const staff = (await list(ctx, T.employee, ['name', EMPLOYEE_STATUS, 'person'], [['person', 'in', people]])).filter(e => exact(e[EMPLOYEE_STATUS]) === 'Current')
   const names = unique(people.map(person => text(staff.find(e => exact(e.person) === person)?.name)))
@@ -177,7 +179,7 @@ async function waitingOnNow(ctx: ReadContext, job: Row | undefined, maker: strin
 }
 
 /** The day in India of a timestamp, or '' for none. */
-const istDay = (at: string | null) => (at ? istToday(Date.parse(at)) : '')
+export const istDay = (at: string | null) => (at ? istToday(Date.parse(at)) : '')
 const dayAfter = (value: string) => new Date(Date.parse(`${value}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10)
 
 /** A proposal as a person reads it: names only. */
@@ -189,17 +191,19 @@ function view(proposal: ChangeProposal, waitingFor?: string) {
 }
 const sentView = async (ctx: BaseContext, proposal: ChangeProposal) => view(proposal, await waitingName(ctx, proposal.route.people))
 
-/** The pending proposals this caller may decide now. */
-async function waitingForMe(ctx: ReadContext): Promise<ChangeProposal[]> {
+/** The pending proposals this caller may decide now; with `setUps`, the Department Managers' set-ups instead. */
+async function waitingForMe(ctx: ReadContext, setUps = false): Promise<ChangeProposal[]> {
   const mine: ChangeProposal[] = []
   const today = istToday()
   for (let start = 0; ; start += 500) {
     const pending = await ctx.changeProposals.list({ states: ['Pending'], limit: 500, start })
-    const others = pending.filter(proposal => proposal.maker !== ctx.user)
+    // One entry per set-up: its department proposal stands for the bundle.
+    const others = pending.filter(proposal => proposal.maker !== ctx.user && (setUps ? about(proposal).kind as string === 'department' : !isSetUp(proposal)))
     const jobs = others.length ? byId(await list(ctx, T.job, JOB_FIELDS, [['row_id', 'in', unique(others.map(p => about(p).job_assignment))]])) : new Map<string, Row>()
     for (const proposal of others) {
       const a = about(proposal)
-      if (await ctx.changeProposals.mayDecide(proposal.maker, await approversFor(ctx, a, jobs.get(a.job_assignment), today))) mine.push(proposal)
+      const approvers = setUps ? (await approversOf(ctx, jobs.get(a.job_assignment))).approvers : await approversFor(ctx, a, jobs.get(a.job_assignment), today)
+      if (await ctx.changeProposals.mayDecide(proposal.maker, approvers)) mine.push(proposal)
     }
     if (pending.length < 500) return mine
   }
@@ -230,7 +234,7 @@ export const reads = {
     const sectionsById = byId(sections)
     const floors = sites.length ? byId(await all(ctx, T.floor, ['name', 'site'], [['site', 'in', sites]])) : new Map<string, Row>()
     const placements = held.length ? (await all(ctx, T.placement, PLACEMENT_FIELDS, [['section', 'in', held]])).filter(row => inForce(row, today)) : []
-    const mine = await ctx.changeProposals.list({ makers: [ctx.user], limit: VIEW_LIMIT })
+    const mine = (await ctx.changeProposals.list({ makers: [ctx.user], limit: VIEW_LIMIT })).filter(p => !isSetUp(p))
     const pending = mine.filter(p => p.state === 'Pending')
     const codes = unique([...placements.map(p => exact(p.subcategory)), ...pending.map(p => exact(about(p).subcategory))])
     const leaves = codes.length ? byId(await all(ctx, T.subcategory, SUB_FIELDS, [['row_id', 'in', codes]])) : new Map<string, Row>()
@@ -269,7 +273,7 @@ export const reads = {
           .sort((a, b) => a.name.localeCompare(b.name)),
       })
     }
-    return { state: 'ok' as const, name: text(employees[0].name), jobs: views, proposals: shown, waiting_for_me: (await waitingForMe(ctx)).length }
+    return { state: 'ok' as const, name: text(employees[0].name), jobs: views, proposals: shown, waiting_for_me: (await waitingForMe(ctx)).length + (await waitingForMe(ctx, true)).length }
   },
 
   /** Division, sub-division and category, for browsing; starting where most of the job's own subcategories sit. */
@@ -542,7 +546,7 @@ export const actions = {
 }
 
 /** A row id free on this Table: an end-and-add can land on the same day twice. */
-async function freeId(ctx: ActionContext, table: string, base: string): Promise<string> {
+export async function freeId(ctx: ActionContext, table: string, base: string): Promise<string> {
   const taken = new Set((await list(ctx, table, [], [['row_id', 'like', `${base}%`]])).map(row => exact(row.row_id)))
   if (!taken.has(base)) return base
   for (let n = 2; ; n++) if (!taken.has(`${base}-${n}`)) return `${base}-${n}`

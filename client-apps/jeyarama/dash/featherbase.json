@@ -820,6 +820,22 @@
         "authorization": {
           "kind": "generic"
         }
+      },
+      "department_setup": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "department_approvals": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
       }
     }
   },
@@ -2159,6 +2175,30 @@
         }
       },
       "remove_from_bundle": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "set_up_department": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "withdraw_department": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "decide_department": {
         "policy": {
           "kind": "table"
         },

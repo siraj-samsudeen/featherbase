@@ -306,3 +306,16 @@ describe('the queue', () => {
     expect(answer.proposals).toHaveLength(501)
   })
 })
+
+describe("a Department Manager's set-up, beside Your sections (#1195)", () => {
+  const set = (row_id: string, kind: string, bundle = 'B1') => proposal({ kind, bundle, job_assignment: 'J1', site: 'LKS', store: 'Lakeside', name: 'Ladies', sections: ['S1'], section_names: ['Ladies'], maker_name: 'Asha', manager_name: 'Mani' }, { row_id })
+  const sets = [set('PD', 'department'), set('PL', 'department_section'), set('PD2', 'department', 'B2'), set('PL2', 'department_section', 'B2')]
+  it("isn't listed as a section proposal, for the person who sent it", async () => {
+    expect(await reads.my_sections(context(world(), { proposals: sets }).ctx)).toMatchObject({ state: 'ok', proposals: [] })
+  })
+  it('counts once per set-up for the reviewer, and stays off their section approvals', async () => {
+    const waiting = sets.map(p => ({ ...p, maker: 'asha' }))
+    expect(await reads.my_sections(context(world(), { user: 'mani', proposals: waiting }).ctx)).toMatchObject({ waiting_for_me: 2 })
+    expect(await reads.approvals(context(world(), { user: 'mani', proposals: waiting }).ctx)).toEqual({ state: 'ok', proposals: [] })
+  })
+})
