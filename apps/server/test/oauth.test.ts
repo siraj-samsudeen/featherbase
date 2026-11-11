@@ -11,7 +11,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { expectSessionCookie, setSessionHours } from './session-cookie-test-utils'
 import { configureGoogle, inviteGoogleRaw } from './identity-fixtures'
 import { withTime } from './clock'
-import { googleSignIn, mockApproveUrl, mockOAuth, withGoogleFetch } from './google-mock'
+import { beginMockApproval, mockApproveUrl, mockOAuth, withGoogleFetch } from './google-mock'
 import { CLIENT, FROM_CLIENT, signInAddresses } from './sign-in-address-utils'
 
 // PLAT-006: Google OAuth server-side flow, driven through the dev mock
@@ -41,7 +41,11 @@ async function beginLogin(api: TestClient): Promise<{ state: string; cookie: str
 }
 
 async function mockSignIn(api: TestClient, email: string, name = 'Test User', extra: { subject?: string; hd?: string } = {}) {
-  return googleSignIn(api, email, { ...extra, name })
+  // The login start must redirect to the provider; a refusal there is not the
+  // sign-in outcome these tests examine.
+  const { start, approve, callback, cookie } = await beginMockApproval(api, email, { ...extra, name })
+  expect(start.status, 'the login start redirects to the provider').toBe(302)
+  return callback === null ? approve : api.fetch(callback, { headers: { cookie } })
 }
 
 // #150: what the callback hands the SPA is a one-time handoff code, not the
