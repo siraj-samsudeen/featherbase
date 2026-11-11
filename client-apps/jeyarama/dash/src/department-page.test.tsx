@@ -530,3 +530,47 @@ describe('apply now, review after, on the set-up form (#1191, #1205)', () => {
   })
 })
 
+
+describe('a set-up in use, before its review (#1191, #1205)', () => {
+  const IN_USE = { ...SETUP, applies_at_once: true, current: { state: 'set_up', name: 'Ladies', sections: ['Sarees', 'Silk'], reviewing: { bundle: 'B7', waiting_for: 'Mani' } } }
+  it('can be changed: the form comes filled in, says it replaces the one in use, and sends in its place', async () => {
+    answers.department_setup = IN_USE
+    answers.set_up_department = { state: 'set_up' }
+    const page = await render('YourDepartment')
+    await page.click('Change it')
+    expect(page.q('lead')?.textContent).toContain('What you send replaces the one in use; your report keeps working meanwhile.')
+    expect((page.q('name-input') as HTMLInputElement).value).toBe('Ladies')
+    await page.click('Cancel')
+    expect(page.q('set-up')).toBeTruthy()
+    await page.click('Change it')
+    await page.click('Set it up')
+    expect(sentCalls('set_up_department')).toEqual([{ job: 'J1', name: 'Ladies', sections: ['S1', 'S2'], replaces: 'B7' }])
+    await page.done()
+  })
+  it('can be undone, which closes the report for those sections', async () => {
+    answers.department_setup = IN_USE
+    answers.withdraw_department = { withdrawn: 3 }
+    const page = await render('YourDepartment')
+    expect(page.q('set-up')?.textContent).toContain('Undo')
+    answers.department_setup = { ...SETUP, applies_at_once: true }
+    await page.click('Undo')
+    expect(sentCalls('withdraw_department')).toEqual([{ bundle: 'B7' }])
+    expect(page.q('note')?.textContent).toBe('Undone. Your report no longer shows those sections.')
+    await page.done()
+  })
+  it('says why an undo failed', async () => {
+    answers.department_setup = IN_USE
+    answers.withdraw_department = new Error('That set-up is no longer waiting')
+    const page = await render('YourDepartment')
+    await page.click('Undo')
+    expect(page.q('note')?.textContent).toBe('That set-up is no longer waiting')
+    await page.done()
+  })
+  it('a kept department offers neither', async () => {
+    answers.department_setup = { ...IN_USE, current: { ...IN_USE.current, reviewing: null } }
+    const page = await render('YourDepartment')
+    expect(page.button('Change it')).toBeUndefined()
+    expect(page.button('Undo')).toBeUndefined()
+    await page.done()
+  })
+})

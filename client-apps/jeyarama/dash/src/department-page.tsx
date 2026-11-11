@@ -89,14 +89,26 @@ function Ready({ setup, onChanged }: { setup: Ok; onChanged: () => Promise<unkno
     } catch (failure) { setNote({ tone: 'negative', text: messageOf(failure) }) }
     finally { setBusy(false) }
   }
+  async function undoInUse(bundle: string) {
+    setBusy(true)
+    setNote(null)
+    try {
+      await act('withdraw_department', { bundle })
+      await onChanged()
+      setNote({ tone: 'positive', text: 'Undone. Your report no longer shows those sections.' })
+    } catch (failure) { setNote({ tone: 'negative', text: messageOf(failure) }) }
+    finally { setBusy(false) }
+  }
   /** Change it edits in place: the waiting one stays until the new one is sent in its place. */
   const startEditing = () => { setNote(null); setEditing(true) }
   const intro = <p className="fd-muted" data-testid="intro">{setup.name} · Department Manager at {setup.job.store}.</p>
-  if (current?.state === 'set_up' && current.prefilled && editing)
+  // In use and not yet reviewed (#1191): a pre-fill, or their own set-up, is changed in place.
+  const inUseBundle = current?.state === 'set_up' ? current.prefilled?.bundle ?? current.reviewing?.bundle : undefined
+  if (current?.state === 'set_up' && inUseBundle && editing)
     return (
       <>
         {intro}
-        <SetupForm setup={setup} before={{ name: current.name, sections: current.prefilled.sections.map(s => s.name) }} replaces={current.prefilled.bundle} inUse
+        <SetupForm setup={setup} before={{ name: current.name, sections: current.prefilled ? current.prefilled.sections.map(s => s.name) : current.sections }} replaces={inUseBundle} inUse
           onTouched={() => setNote(null)} onCancel={() => setEditing(false)} onSent={async () => { setEditing(false); await onChanged() }} />
       </>
     )
@@ -116,6 +128,12 @@ function Ready({ setup, onChanged }: { setup: Ok; onChanged: () => Promise<unkno
             {current.reviewing
               ? <p className="fd-muted text-sm" data-testid="reviewing">Your report shows these sections now. {capital(current.reviewing.waiting_for)} will look at it, and can undo it.</p>
               : <p className="fd-muted text-sm">Your report shows these sections. To change them, ask {setup.reviewer}.</p>}
+            {current.reviewing && !current.prefilled && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button variant="quiet" className="-mx-3 max-sm:-mx-4" disabled={busy} onClick={startEditing}>Change it</Button>
+                <Button variant="quiet" disabled={busy} onClick={() => undoInUse(current.reviewing!.bundle)}>Undo</Button>
+              </div>
+            )}
             <a className="fd-link font-semibold" href="?" data-testid="open-report">Open your report</a>
           </div>
         </Card>
