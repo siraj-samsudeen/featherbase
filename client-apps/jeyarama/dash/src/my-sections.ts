@@ -164,10 +164,8 @@ async function approversFor(ctx: BaseContext, a: Pick<About, 'kind' | 'from_sect
   const { approvers } = await approversOf(ctx, job)
   if (a.kind !== 'add' || !a.from_section) return approvers
   const people = [...approvers.people]
-  for (const holder of await holdersOf(ctx, [a.from_section], today)) {
-    if (exact(holder.row_id) === a.job_assignment) continue
-    people.push(...(await approversOf(ctx, holder)).approvers.people)
-  }
+  // The asker's own job holds the section it goes to, never the one it leaves.
+  for (const holder of await holdersOf(ctx, [a.from_section], today)) people.push(...(await approversOf(ctx, holder)).approvers.people)
   return { people: unique(people), fallbackRoles: approvers.fallbackRoles }
 }
 
@@ -525,8 +523,7 @@ export const actions = {
     if (instead) {
       if (a.kind !== 'add' && a.kind !== 'move') ctx.reject('Only a subcategory going to a section can be put elsewhere')
       elsewhere = await sectionInStore(ctx, instead, a.site)
-      const now = a.kind === 'move' ? a.from_section : a.from_section
-      if (exact(elsewhere.row_id) === exact(now)) ctx.reject('It is already in that section')
+      if (exact(elsewhere.row_id) === exact(a.from_section)) ctx.reject('It is already in that section')
     }
     // A subcategory in no section yet has no row to queue at, so two adds queue on what they share.
     if (a.kind === 'add' && !a.from_section) await ctx.changeProposals.serialize(`${a.site}:${a.subcategory}`)
