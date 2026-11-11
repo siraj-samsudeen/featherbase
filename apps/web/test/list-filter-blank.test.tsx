@@ -27,3 +27,12 @@ test('a list opened with is not blank shows it as a chip', async ({ admin }) => 
   expect(chip.textContent).toMatch(/is not blank×$/)
   expect(chip.textContent).not.toContain('null')
 })
+
+test('the breadcrumb and recents label is blank without a value', async () => {
+  const { filterText } = await import('../src/lib/step-labels')
+  const { describeFilters } = await import('../src/lib/recents')
+  const meta = { columns: [{ column_name: 'person', label: 'Person', column_type: 'Data' }] } as never
+  expect(filterText('T', meta, ['person', 'is blank', null], () => '')).toBe('Person is blank')
+  expect(describeFilters(JSON.stringify([['person', 'is not blank', null]]), [{ column_name: 'person', label: 'Person', column_type: 'Data' }] as never, (s: string) => s))
+    .toBe('Person is not blank')
+})

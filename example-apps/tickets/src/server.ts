@@ -416,6 +416,10 @@ function ruleFilters(ctx: ReadContext, value: unknown): Filter[] {
     return [item[0], String(item[1]), String(item[1]).includes('blank') ? null : item[2]] as Filter
   })
 }
+const OPERATOR_WORDS: Record<string, string> = { '=': 'is', '!=': 'is not', 'like': 'is like', 'not like': 'is not like', 'in': 'is one of', 'not in': 'is none of' }
+/** A rule's conditions as a person reads them in its history: role is "Buyer" and person is blank. */
+const conditionsText = (filters: Filter[]) => filters.map(([column, op, value]) =>
+  `${column} ${OPERATOR_WORDS[op] ?? op}${op.includes('blank') ? '' : ` "${Array.isArray(value) ? value.join(', ') : String(value)}"`}`).join(' and ')
 // Only add_rule writes a rule (every other write is refused), always as checked JSON.
 const storedFilters = (value: unknown) => JSON.parse(String(value)) as Filter[]
 /** Its raiser, its assignee or Tickets support: those a ticket's "any" action lets act. */
@@ -717,7 +721,7 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     if (rows === 0) ctx.reject('This rule matches no rows, so there is nothing to fix')
     const rule = await ctx.documents.create(RULE_TABLE, { ticket: ticket.row_id, title, checked_table: table, filters: JSON.stringify(filters),
       severity: p.severity, owner, how_to_fix: how, rows_when_raised: rows })
-    await event(ctx, ticket, 'add_rule', { rule: rule.row_id, title, table, filters, severity: p.severity, rows })
+    await event(ctx, ticket, 'add_rule', { rule: rule.row_id, title, table, conditions: conditionsText(filters), severity: p.severity, rows })
     return { ticket: await bump(ctx, ticket), rule }
   },
   async remove_rule(ctx) {
@@ -728,7 +732,7 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     const rule = await ctx.documents.get(RULE_TABLE, text(ctx, p.rule, 'Rule'))
     if (rule.ticket !== ticket.row_id) ctx.reject('That rule is not on this ticket')
     await ctx.documents.delete(RULE_TABLE, String(rule.row_id), String(rule.updated_at))
-    await event(ctx, ticket, 'remove_rule', { rule: rule.row_id, title: rule.title, table: rule.checked_table, filters: storedFilters(rule.filters), reason })
+    await event(ctx, ticket, 'remove_rule', { rule: rule.row_id, title: rule.title, table: rule.checked_table, conditions: conditionsText(storedFilters(rule.filters)), reason })
     return { ticket: await bump(ctx, ticket) }
   },
   async reopen(ctx) {

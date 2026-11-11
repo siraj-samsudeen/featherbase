@@ -158,7 +158,7 @@ input[type='search']::-webkit-search-cancel-button { filter: grayscale(1); }
 .rule-links { display: inline-flex; gap: 12px; align-items: center; justify-content: flex-end; white-space: nowrap; font-size: 13px; }
 .severity { justify-content: center; min-width: 56px; }
 .rule-table { width: 100%; margin-bottom: 12px; border-collapse: collapse; font-size: 13px; }
-.rule-table th { padding: 6px 8px; border-bottom: 1px solid var(--color-border); color: var(--color-ink-subtle); font-size: 12px; font-weight: 600; text-align: left; }
+.rule-table th { white-space: nowrap; padding: 6px 8px; border-bottom: 1px solid var(--color-border); color: var(--color-ink-subtle); font-size: 12px; font-weight: 600; text-align: left; }
 .rule-table td { padding: 8px; border-bottom: 1px solid var(--color-border); vertical-align: top; }
 .rule-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 .rule-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 12px; }
@@ -179,3 +179,11 @@ input[type='search']::-webkit-search-cancel-button { filter: grayscale(1); }
 .rule-preview { margin: 4px 0 12px; padding: 8px 12px; border-radius: var(--radius-control); background: var(--color-action-tint); color: var(--color-ink); font-size: 13px; font-weight: 600; }
 .rule-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
 .rules-warning { margin: 0 0 10px; padding: 8px 12px; border-radius: var(--radius-control); background: var(--color-caution-tint); color: var(--color-caution); font-size: 13px; font-weight: 600; }
+/* #1196 verifier fixes: names and counts never break mid-word; a remove form takes the whole row. */
+.rule-table-name, .nowrap { white-space: nowrap; }
+.rule-table .rule-links { display: flex; justify-content: flex-end; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.rule-list li:has(.rule-remove) .rule-links { grid-column: 1 / -1; display: block; }
+.rule-tile { align-content: start; }
+.condition select, .condition input { width: 100%; }
+.condition { grid-template-columns: minmax(0, 1fr) 140px minmax(0, 1fr) 64px; }

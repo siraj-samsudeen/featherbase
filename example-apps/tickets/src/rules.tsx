@@ -46,7 +46,7 @@ function keep(layout: Layout) {
 }
 
 function Severity({ value }: { value: string }) {
-  return <span className={`pill severity ${SEVERITY_TONE[value] ?? 'tone-neutral'}`}>{value}</span>
+  return <span className={`pill severity ${SEVERITY_TONE[value]}`}>{value}</span>
 }
 function Left({ rule }: { rule: Rule }) {
   if (rule.rows_left === null) return <span className="rule-left muted" title="You can't read this Table's rows, so they aren't counted for you">No access (raised with {count(rule.rows_when_raised)})</span>
@@ -83,7 +83,7 @@ function ListLayout({ rules, edit }: { rules: Rule[]; edit?: (rule: Rule) => Rea
         <li key={rule.row_id} className={rule.rows_left === 0 ? 'clear' : ''}>
           <Severity value={rule.severity} />
           <div className="rule-what">
-            <b>{rule.title}</b> <span className="muted">· {rule.table}</span>
+            <b>{rule.title}</b> <span className="muted rule-table-name">· {rule.table}</span>
             {rule.how_to_fix && <small>{rule.how_to_fix}</small>}
           </div>
           <Left rule={rule} />
@@ -96,18 +96,16 @@ function ListLayout({ rules, edit }: { rules: Rule[]; edit?: (rule: Rule) => Rea
 function TableLayout({ rules, edit }: { rules: Rule[]; edit?: (rule: Rule) => ReactNode }) {
   return (
     <table className="rule-table">
-      <thead><tr><th>Severity</th><th>Rule</th><th>Table</th><th>Owner</th><th className="num">Left</th><th className="num">Raised</th><th /></tr></thead>
+      <thead><tr><th>Severity</th><th>Rule</th><th>Table</th><th>Owner</th><th>Rows</th><th><span className="sr-only">Actions</span></th></tr></thead>
       <tbody>
         {rules.map((rule) => (
           <tr key={rule.row_id}>
             <td><Severity value={rule.severity} /></td>
-            <td><b>{rule.title}</b><small>{describeFilters(rule.filters)}</small></td>
-            <td>{rule.table}</td>
-            <td>{rule.owner ? person(rule.owner) : '—'}</td>
-            <td className="num">{rule.rows_left === null ? <span className="muted" title="You can't read this Table's rows, so they aren't counted for you">No access</span>
-              : rule.rows_left === 0 ? <span className="tone-text-positive">All clear</span> : count(rule.rows_left)}</td>
-            <td className="num">{count(rule.rows_when_raised)}</td>
-            <td className="rule-links"><Open rule={rule} />{edit?.(rule)}</td>
+            <td><b>{rule.title}</b><small>Where {describeFilters(rule.filters)}</small>{rule.how_to_fix && <small>{rule.how_to_fix}</small>}</td>
+            <td className="nowrap">{rule.table}</td>
+            <td className="nowrap">{rule.owner ? person(rule.owner) : '—'}</td>
+            <td className="nowrap"><Left rule={rule} /></td>
+            <td><span className="rule-links"><Open rule={rule} />{edit?.(rule)}</span></td>
           </tr>
         ))}
       </tbody>
@@ -140,11 +138,10 @@ function TilesLayout({ rules, edit }: { rules: Rule[]; edit?: (rule: Rule) => Re
 }
 
 /** The rules on a ticket; `tables` is given to those who may add and remove them. */
-export function RulesCard({ rules, tables, owners, defaultOwner, mutate, busy }: {
+export function RulesCard({ rules, tables, owners, mutate, busy }: {
   rules: Rule[]
   tables?: string[]
   owners: { row_id: string; full_name: string }[]
-  defaultOwner?: string
   mutate: Mutate
   busy: boolean
 }) {
@@ -153,6 +150,8 @@ export function RulesCard({ rules, tables, owners, defaultOwner, mutate, busy }:
   const editable = Array.isArray(tables)
   if (!rules.length && !editable) return null
   const left = rules.reduce((sum, rule) => sum + (rule.rows_left ?? 0), 0)
+  // All clear only when every rule was counted: an uncounted one may still have rows.
+  const summary = left ? `${rows(left)} still to fix` : rules.every((rule) => rule.rows_left === 0) ? 'All clear' : null
   const choose = (next: Layout) => { setLayout(next); keep(next) }
   const edit = editable ? (rule: Rule) => <Remove rule={rule} mutate={mutate} busy={busy} /> : undefined
   const Shown = layout === 'Table' ? TableLayout : layout === 'Tiles' ? TilesLayout : ListLayout
@@ -160,7 +159,7 @@ export function RulesCard({ rules, tables, owners, defaultOwner, mutate, busy }:
     <section className="card rules" aria-label="Rules">
       <div className="rules-heading">
         <h3>Rules · {rules.length}</h3>
-        {rules.length > 0 && <span className={left ? 'rules-left' : 'rules-left tone-text-positive'}>{left ? `${rows(left)} still to fix` : 'All clear'}</span>}
+        {rules.length > 0 && summary && <span className={left ? 'rules-left' : 'rules-left tone-text-positive'}>{summary}</span>}
         {rules.length > 0 && (
           <div className="segmented" role="group" aria-label="Rules layout">
             {LAYOUTS.map((name) => (
@@ -171,7 +170,7 @@ export function RulesCard({ rules, tables, owners, defaultOwner, mutate, busy }:
       </div>
       {rules.length > 0 ? <Shown rules={rules} edit={edit} /> : <p className="fine">No rules yet. A rule counts the rows one filter describes, such as every buyer whose person is blank.</p>}
       {editable && (adding
-        ? <AddRule tables={tables} owners={owners} defaultOwner={defaultOwner} mutate={mutate} busy={busy} close={() => setAdding(false)} />
+        ? <AddRule tables={tables} owners={owners} mutate={mutate} busy={busy} close={() => setAdding(false)} />
         : <button type="button" className="secondary" disabled={busy} onClick={() => setAdding(true)}>Add a rule</button>)}
     </section>
   )
@@ -184,15 +183,14 @@ async function columnsOf(table: string): Promise<Column[]> {
     credentials: 'same-origin', headers: token ? { Authorization: `Bearer ${token}` } : {},
   })
   if (!response.ok) return []
-  const meta = (await response.json()) as { columns?: Column[] }
-  return (meta.columns ?? []).filter((c) => !c.hidden && c.column_type !== 'Sub-table')
+  const meta = (await response.json()) as { columns: Column[] }
+  return meta.columns.filter((c) => !c.hidden && c.column_type !== 'Sub-table')
 }
 type Preview = { state: 'idle' } | { state: 'counting' } | { state: 'counted'; count: number | null }
 
-export function AddRule({ tables, owners, defaultOwner, mutate, busy, close }: {
+export function AddRule({ tables, owners, mutate, busy, close }: {
   tables: string[]
   owners: { row_id: string; full_name: string }[]
-  defaultOwner?: string
   mutate: Mutate
   busy: boolean
   close: () => void
@@ -249,7 +247,7 @@ export function AddRule({ tables, owners, defaultOwner, mutate, busy, close }: {
                   {OPERATORS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                 </select>
                 {valueless(op) ? <span /> : <input aria-label={`Value ${i + 1}`} value={String(value ?? '')} onChange={(e) => change(i, 2, e.target.value)} />}
-                {conditions.length > 1 && <button type="button" className="link-button" onClick={() => setConditions((list) => list.filter((_, k) => k !== i))}>Remove condition</button>}
+                {conditions.length > 1 && <button type="button" className="link-button" aria-label={`Remove condition ${i + 1}`} onClick={() => setConditions((list) => list.filter((_, k) => k !== i))}>Remove</button>}
               </div>
             ))}
             {conditions.length < 10 && <button type="button" className="link-button" onClick={() => setConditions((list) => [...list, ['', '=', '']])}>Add a condition</button>}
@@ -261,15 +259,14 @@ export function AddRule({ tables, owners, defaultOwner, mutate, busy, close }: {
             : matches === 0 ? 'Matches no rows, so there is nothing to fix.'
             : matches !== undefined ? `Matches ${rows(matches)}` : 'Choose a Table and conditions to see how many rows match.'}
         </p>
-        <Label title="Title"><input name="title" required placeholder="Buyer is blank" /></Label>
+        <Label title="Title"><input name="title" required placeholder="For example: Buyer is blank" /></Label>
         <div className="rule-row">
           <Label title="Severity">
             <select name="severity" defaultValue="Medium">{['High', 'Medium', 'Low'].map((s) => <option key={s}>{s}</option>)}</select>
           </Label>
           <Label title="Owner">
-            <select name="owner" defaultValue={defaultOwner ?? ''}>
+            <select name="owner" defaultValue="">
               <option value="">The ticket's assignee</option>
-              {defaultOwner && !owners.some((p) => p.row_id === defaultOwner) && <option value={defaultOwner}>{person(defaultOwner)}</option>}
               {owners.map((p) => <option key={p.row_id} value={p.row_id}>{p.full_name}</option>)}
             </select>
           </Label>

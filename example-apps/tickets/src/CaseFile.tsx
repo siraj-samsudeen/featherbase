@@ -240,10 +240,10 @@ function TicketActions({
 }
 // #918: the actions this ticket's type lets the viewer take now. The server
 // decides which; each asks for its own fields before it is taken.
-function TypeActions({ actions, state, mutate, busy, open, setOpen, openRules = 0 }: {
+function TypeActions({ actions, state, mutate, busy, open, setOpen, openRules }: {
   actions: TicketAction[]; state: string; mutate: Mutate; busy: boolean
   // #1196: rules that still have rows to fix: a warning, never a block.
-  openRules?: number
+  openRules: number
   // #941: which move's form is open, held by the ticket so its header can open one.
   open: string; setOpen: (action: string) => void
 }) {
@@ -356,7 +356,7 @@ export function CaseFile({
     me = typeof session.user === 'string' ? session.user : session.user.row_id
   const [picked, setPicked] = useState(current)
   useEffect(() => setPicked(current), [current, ticket.updated_at, ticket.row_id])
-  const rules = (detail.rules as Rule[] | undefined) ?? []
+  const rules = detail.rules as Rule[]
   const actions = availableActions({
     support,
     rewordable: canReword,
@@ -483,8 +483,9 @@ export function CaseFile({
               <h3>Public progress</h3>
               <p>{ticket.public_update || 'No public update yet.'}</p>
             </section>
-            <RulesCard rules={rules} tables={detail.ruleTables as string[] | undefined} owners={people}
-              defaultOwner={ticket.assigned_to} mutate={mutate} busy={busy} />
+            {/* Rules are added on configured types (such as a data quality issue), not on built-in requests. */}
+            <RulesCard rules={rules} tables={configured ? (detail.ruleTables as string[] | undefined) : undefined} owners={people}
+              mutate={mutate} busy={busy} />
             {detail.details ? (
               <>
                 <div className="section-label">
