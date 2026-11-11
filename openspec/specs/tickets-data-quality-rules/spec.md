@@ -1,7 +1,9 @@
-# tickets-data-quality-rules Specification
+# Tickets data quality rules
 
 ## Purpose
-TBD - created by archiving change tickets-data-quality-rules. Update Purpose after archive.
+A master-data gap that one filter describes, such as every buyer whose person is blank, is one rule on its ticket
+with a live count of the rows still to fix, instead of one row per blank. The ticket shows how far the fix has
+got, links to exactly the rows left, and reads all clear when none are.
 
 ## Requirements
 
