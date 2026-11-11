@@ -45,7 +45,7 @@ pnpm check:e2e-dsl                               # e2e specs use the DSL fixture
 
 Run `pnpm apps:prepare` after installing dependencies and before the server
 and web suites: it builds the app packages the suites install
-(`example-apps/tasker`, `test-apps/scope-proof`, `client-apps/jeyarama/dash`;
+(`example-apps/tasker`, `example-apps/tickets`, `test-apps/scope-proof`;
 the apps have their own npm lockfiles and are not pnpm workspace members). CI
 and `./init.sh` do this for you. It installs and builds; it does not run the
 apps' tests. Those are each app's `npm test`, and CI's.
@@ -67,9 +67,8 @@ On a pull request `tools/ci-scope.mjs` picks the suites from the changed paths:
 |---|---|
 | `*.md`, `docs/**`, `openspec/**`, agent files | the fast checks: specs, sensitive data, vocabulary, the other guards |
 | `openspec/**/spec.md` | fast checks, typechecks, server and web suites (where its scenarios run), merged coverage |
-| `client-apps/**` | fast checks, the app's `npm test` and platform tests |
 | `example-apps/**` | fast checks, Tasker's unit tests, the server and web tests that name an example app, its runtime components and packaged journeys |
-| `apps/server/**`, `docs/DEPLOY.md` | fast checks, typechecks, server suite, release preflight, client platform tests |
+| `apps/server/**`, `docs/DEPLOY.md` | fast checks, typechecks, server suite, release preflight |
 | `apps/web/**` | fast checks, typechecks, web suite, e2e, merged coverage |
 | anything else (`packages/**`, lockfile, `package.json`, `tools/**`, workflows) | everything |
 
@@ -379,8 +378,8 @@ when the server suite ran; locally each suite runs whole against its floor.
 [ADR 0017](../adr/0017-backend-coverage-non-regression-baselines.md) supersedes
 ADR 0016's immediate 100% gates with owner-approved maximum uncovered counts.
 Core now covers every line and function, and web every statement; the server
-caps its statements at 1 uncovered (ADR 0023). Dash and Tasker keep their own
-gates under ADR 0017. Caps are exact counts, not rounded percentage floors; one
+caps its statements at 1 uncovered (ADR 0023). Tasker keeps its own gates
+under ADR 0017, and a client's apps keep theirs in the client's repository. Caps are exact counts, not rounded percentage floors; one
 additional uncovered item fails. Tighten them as coverage improves and keep
 every measured source and existing exclusion unchanged.
 
@@ -485,52 +484,6 @@ to be covered; missing source coverage fails rather than shrinking that scope.
 This does not gate frontend branches or count platform backend code as Tasker.
 Each collector clears only its own previous output before a run; fresh browser
 collection preserves the independent component report.
-
-### Dash frontend coverage
-
-Dash's frontend profile is separate from its backend collector. It derives
-the executable source inventory from the browser entry's esbuild import
-closure and rejects missing or extra files. An unexecuted entry remains in
-the denominator. The profile includes public formatting contracts and page
-tests that use the real platform server and SQLSandbox; the older tests
-that inject API responses are not inputs to this report.
-
-After `pnpm apps:prepare`, use the explicitly named disposable local database:
-
-```bash
-DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/featherbase_dash_frontend_test \
-  npm run test:coverage:frontend --prefix client-apps/jeyarama/dash
-npm run typecheck:frontend --prefix client-apps/jeyarama/dash
-```
-
-The report is `coverage/dash-frontend/coverage-final.json` with a summary and
-HTML beside it. This is frontend coverage only, not backend coverage or
-evidence of hosted warehouse or embedded-frame integration. There is no
-100% frontend gate yet: add it only when the actual report reaches 100%,
-without excluding executable source or weakening existing gates.
-
-### Dash backend coverage
-
-Both backend profiles use the same per-source Istanbul instrumentation.
-The platform profile instruments the original modules before bundling only
-the disposable copied app; the packageable app artifact stays unchanged.
-The denominator is the actual `src/server.ts` esbuild import closure, not
-the platform server's source or Dash's frontend.
-
-```bash
-npm run test:coverage:backend --prefix client-apps/jeyarama/dash
-DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/featherbase_dash_backend_test \
-  npm run test:coverage:backend:platform --prefix client-apps/jeyarama/dash
-npm run coverage:backend:merged --prefix client-apps/jeyarama/dash
-```
-
-The merger requires both complete source inventories and identical statement,
-function and branch maps before adding counters. It writes exact covered/total
-counts under `coverage/dash-backend/merged/` and fails if any uncovered count
-exceeds its ADR 0017 baseline, or any metric is empty.
-These commands do not prove hosted MotherDuck behavior. Old V8 profiles have
-incompatible remapping: regenerate both profiles rather than mixing them with
-these reports. A valid merge is not a claim that its coverage gate passes.
 
 ### Mutation testing
 

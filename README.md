@@ -198,8 +198,8 @@ Health can inspect the environment selected by the operator without mutating it.
 ### Reset only the selected local instance
 
 `featherbase reset [<client>/<instance>] [--yes]` uses the same database selection
-as start: no name defaults to `featherbase`; `jeyarama/dash` defaults to
-`fb_jeyarama_dash`. An explicit `DATABASE_URL` overrides either default.
+as start: no name defaults to `featherbase`; `acme/shop` defaults to
+`fb_acme_shop`. An explicit `DATABASE_URL` overrides either default.
 Without `--yes`, reset prints the database, absolute storage path and file count,
 changes nothing and exits `1`. Confirmation removes that database and isolated
 uploads only, then says `Next: featherbase setup`; setup is never automatic.
@@ -248,13 +248,15 @@ The development shortcut `pnpm dev` also starts only Featherbase. To build,
 install and configure the apps of a named instance, name it explicitly:
 
 ```bash
-featherbase start jeyarama/dash
-# Or, to see Dash using made-up data instead of a real warehouse:
-featherbase start jeyarama/dash --made-up-data
+featherbase start <client>/<instance>
+# Or, with the made-up data the instance declares instead of a real warehouse:
+featherbase start <client>/<instance> --made-up-data
 ```
 
-The existing `pnpm dev jeyarama/dash --made-up-data` shortcut remains available.
-Named instances live at `client-apps/<client>/instances/<instance>/instance.json`.
+The `pnpm dev <client>/<instance> --made-up-data` shortcut does the same.
+A client's apps and instances live in the client's own repository, checked out
+into `client-apps/<client>/` (this repository ignores that folder). Named
+instances live at `client-apps/<client>/instances/<instance>/instance.json`.
 They default to database `fb_<client>_<instance>`, unless `DATABASE_URL` overrides
 it. Their declared apps are built/installed and their settings file is applied.
 `--environment dev` selects a different settings section; `--made-up-data` is

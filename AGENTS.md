@@ -70,7 +70,7 @@ rewrites a live instance's data is rehearsed on a restored snapshot first
 
 | What | Where |
 |---|---|
-| Setup, commands, source map | `README.md` (one instance: `pnpm dev jeyarama/dash`; boot and smoke-test: `./init.sh`) |
+| Setup, commands, source map | `README.md` (one instance: `pnpm dev <client>/<instance>`; boot and smoke-test: `./init.sh`) |
 | Behaviour: what the system promises | `openspec/specs/`, the sole authority |
 | Decisions and why | `adr/`. An accepted ADR is never edited; a changed decision is a new ADR that supersedes it ([ADR 0015](adr/0015-adrs-are-never-edited.md)) |
 | Words and the words they retire | `CONTEXT.md` |
@@ -78,7 +78,7 @@ rewrites a live instance's data is rehearsed on a restored snapshot first
 | Deploying and environment variables | `docs/DEPLOY.md`, `docs/PREVIEW.md` |
 | Issues, ratings and labels | the `issue-workflow` skill; `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md` |
 | Apps shipped with the platform (Tasker); packages the tests install | `example-apps/`; `test-apps/` (never imported by platform source: `pnpm check:platform-imports`) |
-| Apps built for one client (`jeyarama/dash` is Dash) | `client-apps/<client>/<app>/`, run with `pnpm dev <client>/<instance>`; the client's conventions in `client-apps/<client>/CLAUDE.md` |
+| Apps built for one client | the client's own repository, checked out into `client-apps/<client>/` (ignored here); run with `pnpm dev <client>/<instance>`; the client's conventions in `client-apps/<client>/CLAUDE.md` |
 
 Don't add a document when a spec, test, ADR or PR body can carry it. A claim
 about the code that no check can verify drifts; don't write it down as fact.

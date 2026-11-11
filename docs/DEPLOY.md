@@ -283,9 +283,9 @@ server and database that agree on the environment.
 record in the database, so the image holds only the current version of each app (#1178).
 
 **Watch paths**, so that a service rebuilds only for what is in its image. On
-Railway they are set per service, and `.railway/railway.ts` records them for
-the environments it manages. `.railway/**` is not one of them: Railway doesn't
-read it during a deploy.
+Railway they are set per service, and the client's repository records them in
+its `railway/railway.ts` for the environments it manages. That file is not one
+of them: Railway doesn't read it during a deploy.
 
 ```text
 apps/**
@@ -415,14 +415,15 @@ and crashes. Each service needs:
 | Restart policy | `ON_FAILURE` (Railway's default), 5 retries |
 | Volume | mounted at `/data` |
 
-`.railway/railway.ts` (Railway's Infrastructure as Code, which replaced
-`railway.json`) holds them for each environment, beside what differs between
-environments: the service's name, its volume and its watch paths. To bring an
-environment into line, or to check it, run from the repo root with the
+The client's repository holds them in `railway/railway.ts` (Railway's
+Infrastructure as Code, which replaced `railway.json`) for each environment,
+beside what differs between environments: the service's name, its volume and
+its watch paths. To bring an environment into line, or to check it, run from
+that repository's root with the
 [Railway CLI](https://docs.railway.com/cli) (5.49.1 or newer) signed in:
 
 ```sh
-railway link --project jeyarama-featherbase --environment <environment>
+railway link --project <project> --environment <environment>
 railway config plan     # reads only; lists what an apply would change
 railway config apply    # asks for confirmation of that same list
 ```

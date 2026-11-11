@@ -23,7 +23,7 @@ Dash is moving to opening any Dive, so someone has to decide who sees which repo
 
 ## Impact
 
-- New files in `client-apps/jeyarama/dash`, plus wiring in its manifest, server and app, on top of #967's rewrite. A new Dash version.
+- New files in Dash (now in the client's repository), plus wiring in its manifest, server and app, on top of #967's rewrite. A new Dash version.
 - The Tables, the role and its grants ship in Dash's manifest and version step.
 - The first bundles and assignments go to the owner as a CSV before they are loaded, and load in the same release as the check.
 - Platform: an app can add its own check to its gate, and the Access Request alert and waiting list reach an app's approver role.
