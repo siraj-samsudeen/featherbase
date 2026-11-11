@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // `pnpm apps:prepare`: install and build the apps this repo ships that are their
-// own npm projects (Tasker, Tickets and the client app Feather Dash, each with its
-// package-lock.json), and build the scope-proof fixture. It does not test them:
+// own npm projects (Tasker and Tickets, each with its package-lock.json), and
+// build the scope-proof fixture. A client's apps are prepared in its own
+// repository. It does not test them:
 // that is each app's `npm test`, and CI's app-tests and unit-web jobs.
 //
 // They are run with npm, as their lockfiles say, but in npm's own environment.
@@ -24,10 +25,6 @@ const steps = [
   ['ci', '--prefix', 'example-apps/tickets', '--ignore-scripts'],
   ['run', 'build', '--prefix', 'example-apps/tickets'],
   ['run', 'build', '--prefix', 'test-apps/scope-proof'],
-  ['ci', '--prefix', 'client-apps/jeyarama/dash', '--ignore-scripts'],
-  ['run', 'build', '--prefix', 'client-apps/jeyarama/dash'],
-  ['ci', '--prefix', 'client-apps/jeyarama/equipment', '--ignore-scripts'],
-  ['run', 'build', '--prefix', 'client-apps/jeyarama/equipment'],
 ]
 for (const args of steps) {
   // npm is a .cmd file on Windows, which Node runs only through a shell. These

@@ -30,13 +30,8 @@ test('supervised startup restores only declared runtime selections from a privat
     await sql`create schema featherbase`
     await sql`create table featherbase.data_source (url_env text)`
     await sql`create table featherbase.installed_app (manifest jsonb)`
-    // The actual instance and app declare these names; they are not in VARIABLES.
-    const settings = JSON.parse(readFileSync('client-apps/jeyarama/instances/dash/instance-settings.json', 'utf8'))
-    const manifest = JSON.parse(readFileSync('client-apps/jeyarama/dash/featherbase.json', 'utf8'))
-    // #969: Feather Dash's warehouse names no variable: it reads the one MotherDuck token.
-    assert.equal(settings.settings['Data Source'][0].engine, 'motherduck')
-    assert.equal(settings.settings['Data Source'][0].url_env, undefined)
-    assert.ok(manifest.secrets.includes('MOTHERDUCK_TOKEN'))
+    // An installed app and a data source declare these names; they are not in VARIABLES.
+    const manifest = { secrets: ['MOTHERDUCK_TOKEN', { name: 'MOTHERDUCK_EMBED_TOKEN', optional: true }] }
     await sql`insert into featherbase.data_source (url_env) values ('ORB_WAREHOUSE_URL'), ('UNSET_SOURCE_URL')`
     await sql`insert into featherbase.installed_app (manifest) values (${sql.json(manifest)}),
       (${sql.json({ secrets: [{ name: 'OPTIONAL_APP_TOKEN', optional: true }, { name: 'UNSET_APP_TOKEN', optional: true }] })})`

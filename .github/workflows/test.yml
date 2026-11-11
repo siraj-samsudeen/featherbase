@@ -20,9 +20,8 @@
 #   checks + unit suites + app-tests + coverage gates -> unit
 #
 #   docs and prose      checks' fast half only
-#   client-apps/**      app-tests: the app's tests and platform tests
 #   example-apps/**     app-tests: Tasker's own layers
-#   apps/server/**      platform checks, server suite, preflight, client platform tests
+#   apps/server/**      platform checks, server suite, preflight
 #   apps/web/**         platform checks, web suite, e2e, merged coverage
 #   openspec/**/spec.md platform checks, server and web suites, merged coverage
 #   anything else       everything
@@ -110,7 +109,6 @@ jobs:
       server: ${{ steps.decide.outputs.server }}
       web: ${{ steps.decide.outputs.web }}
       e2e: ${{ steps.decide.outputs.e2e }}
-      client_apps: ${{ steps.decide.outputs.client_apps }}
       tasker_tests: ${{ steps.decide.outputs.tasker_tests }}
       coverage_merged: ${{ steps.decide.outputs.coverage_merged }}
       shards: ${{ steps.decide.outputs.shards }}
@@ -547,7 +545,7 @@ jobs:
           UNIT_SERVER: ${{ needs.unit-server.result }}/${{ needs.changes.outputs.server }}
           PREFLIGHT: ${{ needs.release-preflight-pg18.result }}/${{ needs.changes.outputs.server }}
           UNIT_WEB: ${{ needs.unit-web.result }}/${{ needs.changes.outputs.web }}
-          APP_TESTS: ${{ needs.app-tests.result }}/${{ needs.changes.outputs.client_apps == 'false' && needs.changes.outputs.tasker_tests == 'false' && 'false' || 'true' }}
+          APP_TESTS: ${{ needs.app-tests.result }}/${{ needs.changes.outputs.tasker_tests }}
           COVERAGE_SERVER: ${{ needs.coverage-server.result }}/${{ needs.changes.outputs.server }}
           COVERAGE_MERGED: ${{ needs.coverage-merged.result }}/${{ needs.changes.outputs.coverage_merged }}
         run: |
@@ -676,13 +674,13 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # The apps' own tests, apart from the platform's suites. Client apps: their
-  # tests and platform tests, on the PostgreSQL production runs. Tasker: its unit
+  # The example apps' own tests, apart from the platform's suites: Tasker's unit
   # tests, the server and web tests that name it, its runtime components and its
   # packaged journeys; on main and on web PRs the full suites run those instead.
+  # A client's apps are tested in the client's own repository.
   app-tests:
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.client_apps != 'false' || needs.changes.outputs.tasker_tests == 'true') }}
+    if: ${{ !cancelled() && needs.changes.outputs.tasker_tests != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -720,22 +718,10 @@ jobs:
           NODE_ENV: test
         run: pnpm --filter server migrate
 
-      - name: Run Feather Dash's tests with backend coverage
-        if: ${{ needs.changes.outputs.client_apps != 'false' }}
-        run: npm run test:coverage:backend --prefix client-apps/jeyarama/dash
-
-      - name: Run Feather Dash's platform tests with backend coverage
-        if: ${{ needs.changes.outputs.client_apps != 'false' }}
-        env:
-          NODE_ENV: test
-        run: npm run test:coverage:backend:platform --prefix client-apps/jeyarama/dash
-
       - name: Run Tasker's unit tests with coverage
-        if: ${{ needs.changes.outputs.tasker_tests == 'true' }}
         run: npm run test:coverage --prefix example-apps/tasker
 
       - name: Run the server and web tests that name an example app
-        if: ${{ needs.changes.outputs.tasker_tests == 'true' }}
         env:
           NODE_ENV: test
         run: |
@@ -743,25 +729,21 @@ jobs:
           (cd apps/web && pnpm exec vitest run $(git grep -lE 'example-apps' -- 'test/*.test.ts' 'test/*.test.tsx'))
 
       - name: Run Tasker's runtime components against the real server
-        if: ${{ needs.changes.outputs.tasker_tests == 'true' }}
         env:
           NODE_ENV: test
         run: pnpm --filter web exec vitest run --config ../../tools/vitest.runtime-components.config.ts
 
       # Its collector refuses a build without coverage; apps:prove below rebuilds.
       - name: Run Tasker's HTTP tests
-        if: ${{ needs.changes.outputs.tasker_tests == 'true' }}
         run: |
           VITE_COVERAGE=true npm run build --prefix example-apps/tasker
           pnpm --filter server exec vitest run --config ../../example-apps/tasker/vitest.integration.config.ts
 
       - name: Install Playwright Chromium
-        if: ${{ needs.changes.outputs.tasker_tests == 'true' }}
         run: pnpm --filter web exec playwright install --with-deps chromium
 
       # As in e2e: the development seed needs a truly loopback PostgreSQL.
       - name: Start loopback PostgreSQL for the packaged seed proof
-        if: ${{ needs.changes.outputs.tasker_tests == 'true' }}
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y postgresql
@@ -770,22 +752,9 @@ jobs:
           "$PG_BIN/pg_ctl" -D "$RUNNER_TEMP/runtime-proof-pg" -l "$RUNNER_TEMP/runtime-proof-pg.log" -o "-h 127.0.0.1 -p 5433 -k $RUNNER_TEMP" -w start
 
       - name: Prove packaged runtime journeys
-        if: ${{ needs.changes.outputs.tasker_tests == 'true' }}
         env:
           RUNTIME_PROOF_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5433/featherbase_runtime_proof_e2e
         run: pnpm apps:prove
-
-      - name: Merge and enforce Dash backend coverage
-        if: ${{ needs.changes.outputs.client_apps != 'false' }}
-        run: npm run coverage:backend:merged --prefix client-apps/jeyarama/dash
-
-      - name: Upload Dash backend coverage
-        if: ${{ always() && needs.changes.outputs.client_apps != 'false' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: dash-backend-coverage
-          path: coverage/dash-backend/
-          if-no-files-found: error
 
   # The browser suite is the smoke test alone (#1080): behaviour is proved by
   # the server and component suites, layout by Storybook, demos by the tours.

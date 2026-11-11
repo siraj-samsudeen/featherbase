@@ -7,7 +7,6 @@
   "scripts": {
     "featherbase": "node tools/featherbase.mjs",
     "dev": "node tools/dev.mjs",
-    "dev:jeyarama": "node tools/dev.mjs jeyarama/dash",
     "apps:prepare": "node tools/prepare-apps.mjs",
     "apps:prove": "node tools/prove-runtime-packages.mjs",
     "seed:tasker": "node tools/seed-tasker-development.mjs",

@@ -4,11 +4,11 @@ import { decide, suitesFor } from './ci-scope.mjs'
 
 const pr = (...files) => decide({ event: 'pull_request', files })
 const on = (decision) => Object.keys(decision).filter(key => decision[key]).sort()
-const ALL = ['client_apps', 'coverage_merged', 'e2e', 'platform_checks', 'server', 'web']
+const ALL = ['coverage_merged', 'e2e', 'platform_checks', 'server', 'web']
 
 test('prose runs only the fast checks', () => {
   assert.deepEqual(on(pr('README.md', 'adr/0014-x.md', 'openspec/changes/a/design.md', '.github/PULL_REQUEST_TEMPLATE.md',
-    'apps/web/README.md', 'client-apps/c/a/README.md', '.claude/settings.json', 'docs/images/a.png', 'LICENSE')), [])
+    'apps/web/README.md', 'test-apps/other/README.md', '.claude/settings.json', 'docs/images/a.png', 'LICENSE')), [])
 })
 
 test("the process template's files run only the fast checks", () => {
@@ -17,21 +17,16 @@ test("the process template's files run only the fast checks", () => {
 })
 
 test('a markdown file something reads is not prose', () => {
-  assert.deepEqual(on(pr('docs/DEPLOY.md')), ['client_apps', 'platform_checks', 'server'])
+  assert.deepEqual(on(pr('docs/DEPLOY.md')), ['platform_checks', 'server'])
   assert.deepEqual(on(pr('apps/web/e2e/fixtures/example.md')), ['coverage_merged', 'e2e', 'platform_checks', 'web'])
-  assert.deepEqual(on(pr('client-apps/c/instances/a/privacy-notice.md')), ['client_apps'])
-})
-
-test('a client app runs its own tests and platform tests', () => {
-  assert.deepEqual(on(pr('client-apps/c/a/src/x.ts', 'client-apps/c/a/package.json')), ['client_apps'])
 })
 
 test('an example app runs its own layers', () => {
   assert.deepEqual(on(pr('example-apps/tasker/src/x.ts')), ['tasker_tests'])
 })
 
-test('the server runs its suite and the client platform tests, not web or e2e', () => {
-  assert.deepEqual(on(pr('apps/server/src/x.ts')), ['client_apps', 'platform_checks', 'server'])
+test('the server runs its suite, not web or e2e', () => {
+  assert.deepEqual(on(pr('apps/server/src/x.ts')), ['platform_checks', 'server'])
 })
 
 test('web runs web and e2e, and so the merged coverage, not the server suite', () => {
@@ -40,14 +35,14 @@ test('web runs web and e2e, and so the merged coverage, not the server suite', (
 
 test('a change that can reach anything runs everything', () => {
   for (const file of ['packages/shared/src/x.ts', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', '.github/workflows/test.yml',
-    '.github/labeler.yml', 'tools/prepare-apps.mjs', 'test-apps/other/package.json', 'init.sh', '.railway/railway.ts', 'apps/new/x.ts', 'something-new', '"docs/\\303\\251.txt"'])
+    '.github/labeler.yml', 'tools/prepare-apps.mjs', 'test-apps/other/package.json', 'init.sh', 'apps/new/x.ts', 'something-new', '"docs/\\303\\251.txt"'])
     assert.deepEqual(on(pr(file)), ALL, file)
 })
 
 test('mixed changes take the union', () => {
-  assert.deepEqual(on(pr('README.md', 'client-apps/c/a/x.ts')), ['client_apps'])
+  assert.deepEqual(on(pr('README.md', 'example-apps/t/x.ts')), ['tasker_tests'])
   assert.deepEqual(on(pr('apps/server/x.ts', 'apps/web/x.ts')), ALL)
-  assert.deepEqual(on(pr('apps/server/x.ts', 'example-apps/t/x.ts')), ['client_apps', 'platform_checks', 'server', 'tasker_tests'])
+  assert.deepEqual(on(pr('apps/server/x.ts', 'example-apps/t/x.ts')), ['platform_checks', 'server', 'tasker_tests'])
   assert.deepEqual(on(pr('docs/a.md', 'pnpm-lock.yaml')), ALL)
 })
 
@@ -70,11 +65,11 @@ test('an empty diff tells us nothing, so everything runs', () => {
 test('labels ask for more', () => {
   assert.deepEqual(on(decide({ event: 'pull_request', labels: ['run-all'], files: ['README.md'] })), ALL)
   // No merged coverage: the web suite it also needs did not run.
-  assert.deepEqual(on(decide({ event: 'pull_request', labels: ['run-e2e'], files: ['apps/server/x.ts'] })), ['client_apps', 'e2e', 'platform_checks', 'server'])
+  assert.deepEqual(on(decide({ event: 'pull_request', labels: ['run-e2e'], files: ['apps/server/x.ts'] })), ['e2e', 'platform_checks', 'server'])
 })
 
 test('merged coverage is wanted exactly when the web suite, its input, runs', () => {
-  for (const files of [['README.md'], ['client-apps/c/a/x'], ['example-apps/t/x'], ['apps/server/x'], ['apps/web/x'], ['tools/x'], ['openspec/specs/x/spec.md']]) {
+  for (const files of [['README.md'], ['example-apps/t/x'], ['apps/server/x'], ['apps/web/x'], ['tools/x'], ['openspec/specs/x/spec.md']]) {
     const d = pr(...files)
     assert.equal(d.coverage_merged, d.web, files[0])
   }

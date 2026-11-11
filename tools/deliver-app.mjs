@@ -3,7 +3,7 @@
 // which serves it at once (docs/DEPLOY.md, "Delivering an app fix").
 //
 //   APP_DELIVERY_TOKEN=… node tools/deliver-app.mjs <app folder> <instance address>
-//   e.g. node tools/deliver-app.mjs client-apps/jeyarama/dash https://dash.example.com
+//   e.g. node tools/deliver-app.mjs client-apps/acme/board https://board.example.com
 //
 // Only a code change to the installed version is taken; the instance refuses a
 // changed featherbase.json, which needs an ordinary deploy.

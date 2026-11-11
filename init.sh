@@ -16,7 +16,8 @@ command -v pnpm >/dev/null || npm install -g pnpm
 # is cheaper than the debugging it saves.
 pnpm install
 # Apps are opt-in. Test suites prepare their fixtures explicitly with apps:prepare.
-# Client apps are opt-in (ADR 0014): FEATHERBASE_CLIENT_APPS="jeyarama/dash"
+# Client apps are opt-in (ADR 0014): with a client's repository checked out
+# into client-apps/<client>, FEATHERBASE_CLIENT_APPS="<client>/<app>"
 # (space-separated) adds already-built client-apps/<each> to the app path.
 client_app_paths=()
 for client_app in ${FEATHERBASE_CLIENT_APPS:-}; do

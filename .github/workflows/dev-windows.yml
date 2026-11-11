@@ -1,7 +1,8 @@
-# Proves base startup and explicit named-instance development on Windows:
-# Node LTS, pnpm through Corepack, and the optional named instance's made-up
-# data whose figures a reader can read. It runs only when something the path depends on
-# changes, and is not part of the `unit` verdict until it has proved stable.
+# Proves base startup on Windows: Node LTS, pnpm through Corepack, and
+# Featherbase alone from nothing. A named client instance and its made-up data
+# are proved in the client's own repository, which holds the instance. It runs
+# only when something the path depends on changes, and is not part of the
+# `unit` verdict until it has proved stable.
 name: dev-windows
 
 on:
@@ -13,13 +14,9 @@ on:
       - tools/reset.test.mjs
       - tools/reset-fixture.mjs
       - tools/prepare-apps.mjs
-      - client-apps/*/*/scripts/seed-made-up.mts
       - package.json
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
-      - client-apps/*/instances/**
-      - client-apps/*/*/package.json
-      - client-apps/*/*/featherbase.json
       - example-apps/*/package.json
       - apps/server/package.json
       - apps/web/package.json
@@ -73,20 +70,6 @@ jobs:
           pnpm check:dev
           node --test tools/reset.test.mjs
 
-      - name: From nothing to a ready server with its apps installed
-        run: pnpm dev jeyarama/dash --check
-
-      - name: Running it again is safe
-        run: pnpm dev jeyarama/dash --check
-
-      # What the README's last step runs. The script reads a figure back as a
-      # made-up reader, and a second run proves it is safe to repeat.
-      - name: Made-up data, and a reader sees figures
-        run: pnpm dev jeyarama/dash --check --made-up-data
-
-      - name: Made-up data again is safe
-        run: pnpm dev jeyarama/dash --check --made-up-data
-
       - name: With no instance named, only Featherbase starts
         shell: pwsh
         run: |
@@ -97,12 +80,20 @@ jobs:
           if ($out -match 'Installing checkout dependencies|npm ci|Installing apps') { throw "base startup prepared apps: $out" }
           exit 0
 
-      - name: An unknown instance names those that exist
+      - name: Running it again is safe
+        shell: pwsh
+        run: |
+          $env:DATABASE_URL = 'postgres://postgres:root@127.0.0.1:5432/fb_windows_base_check'
+          $out = node tools/dev.mjs --check 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "base startup failed again: $out" }
+          exit 0
+
+      - name: An unknown instance is refused
         shell: pwsh
         run: |
           $out = node tools/dev.mjs no/such 2>&1 | Out-String
           if ($LASTEXITCODE -eq 0) { throw 'an unknown instance should fail' }
-          if ($out -notmatch 'jeyarama/dash') { throw "the failure did not name the instances: $out" }
+          if ($out -notmatch 'No instance "no/such"') { throw "the failure did not name the instance: $out" }
           exit 0
 
       - name: Nothing is left listening

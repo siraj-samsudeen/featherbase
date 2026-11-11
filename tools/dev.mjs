@@ -3,7 +3,7 @@
 // explicitly builds/installs its apps. Needs Node, pnpm and local Postgres;
 // safe to repeat. ./init.sh remains the separate boot-and-smoke path.
 //
-//   pnpm dev jeyarama/dash [--made-up-data] [--check] [--environment <section>]
+//   pnpm dev <client>/<instance> [--made-up-data] [--check] [--environment <section>]
 //
 // --made-up-data fills the local instance with the made-up data its instance.json
 // declares ("madeUpData": a script), and gives each app a made-up value for every

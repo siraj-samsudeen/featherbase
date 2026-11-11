@@ -33,5 +33,5 @@ jobs:
           TITLE: ${{ github.event.pull_request.title }}
         run: |
           if ! printf '%s' "$TITLE" | grep -qE '^(\[#[0-9]+\]|[a-z0-9-]+(/[a-z0-9-]+)*:)'; then
-            echo '::warning title=PR title::Start the title with [#N] or a scope such as platform: or jeyarama/dash: (ADR 0014 section 6).'
+            echo '::warning title=PR title::Start the title with [#N] or a scope such as platform: or tasker: (ADR 0014 section 6).'
           fi

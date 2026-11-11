@@ -6,7 +6,3 @@ area:platform:
 area:example-apps:
   - changed-files:
       - any-glob-to-any-file: ['example-apps/**']
-
-client:jeyarama:
-  - changed-files:
-      - any-glob-to-any-file: ['client-apps/jeyarama/**']

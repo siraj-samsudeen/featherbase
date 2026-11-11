@@ -11,8 +11,10 @@
 #     against a throwaway Postgres;
 #   - a throwaway client image FROM it, adding the `other` fixture app with
 #     FEATHERBASE_APP_PATHS, discovers `other`;
-#   - the image for a client instance holds its apps and folder, and its
-#     pre-deploy installs them and applies the settings, twice over.
+#   - the image for a client instance (a made-up one, acme/board, running
+#     Tasker and Tickets) holds its apps and folder, and its pre-deploy
+#     installs them and applies the settings, twice over. A client's real
+#     instances are checked in the client's own repository.
 #
 # Scope is limited by `paths:` to the build inputs: the Dockerfile, the
 # lockfiles and manifests, the image workflows and this check's own files.
@@ -33,11 +35,6 @@ on:
       - tools/build-instance-apps.mjs
       - tools/dev.mjs
       - test-apps/other/**
-      # A client app's own manifest is not a build input here, but an
-      # instance's folder is. A later pattern overrides an earlier one, so the
-      # instance folders come after the exclusion, or it would drop them too.
-      - '!client-apps/**'
-      - client-apps/*/instances/**
 
 permissions:
   contents: read
@@ -147,16 +144,20 @@ jobs:
 
       - name: The image for a client instance deploys its apps and settings
         run: |
-          docker buildx build --builder default --load -f apps/server/Dockerfile --build-arg FEATHERBASE_INSTANCE=jeyarama/dash -t featherbase-instance:ci .
-          docker run --rm featherbase-instance:ci sh -c 'test -e /app/client-apps/jeyarama/instances/dash/instance-settings.json && ls -d /app/instance-apps/dash-* /app/instance-apps/tasker-* /app/instance-apps/tickets-*'
+          # A made-up client instance, laid out as a client's checkout would be.
+          board=client-apps/acme/instances/board
+          mkdir -p "$board"
+          echo '{"apps":["example-apps/tasker","example-apps/tickets"]}' > "$board/instance.json"
+          echo '{"settings":{"System Settings":{"app_name":"Board"}},"environments":{"dev":{"settings":{}},"prod":{"settings":{}}}}' > "$board/instance-settings.json"
+          docker buildx build --builder default --load -f apps/server/Dockerfile --build-arg FEATHERBASE_INSTANCE=acme/board -t featherbase-instance:ci .
+          docker run --rm featherbase-instance:ci sh -c 'test -e /app/client-apps/acme/instances/board/instance-settings.json && ls -d /app/instance-apps/tasker-* /app/instance-apps/tickets-*'
           psql_new() { docker run --rm --network host postgres:18.6 psql "postgres://postgres:postgres@127.0.0.1:5432/postgres" -c "create database instance_check"; }
           psql_new
           # Made-up values for a database created and destroyed with this job.
           run() { docker run --rm --network host -e FEATHERBASE_ENV -e JWT_SECRET -e INSTANCE_ADDRESSES \
             -e DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/instance_check \
-            -e GOOGLE_CLIENT_SECRET=made-up -e DIVE_ID=made-up -e SERVICE_ACCOUNT=made-up \
             featherbase-instance:ci pnpm --filter server pre-deploy; }
           run | tee first.log
-          for app in dash tasker tickets; do grep -q "installed $app" first.log || { echo "the first deploy did not install $app"; exit 1; }; done
+          for app in tasker tickets; do grep -q "installed $app" first.log || { echo "the first deploy did not install $app"; exit 1; }; done
           run | tee second.log
           grep -q 'settings:apply: nothing changed' second.log
