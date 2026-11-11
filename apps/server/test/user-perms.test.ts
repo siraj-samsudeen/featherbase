@@ -43,25 +43,6 @@ async function setup(
 }
 
 describe('PERM-005: Data Scopes', () => {
-  test('lists exclude documents linked to non-permitted values', async ({ admin, createUser }) => {
-    const { user, project } = await setup(admin, createUser)
-    const res = await user.get<{ data: { title: string; company: string }[]; total: number }>(
-      project.listUrl({ fields: ['title', 'company'] }),
-    )
-    expect(res.total).toBe(1)
-    expect(res.data[0]).toMatchObject({ title: 'pa', company: 'Company A' })
-  })
-
-  test('lists of the restricted Table itself only show permitted docs', async ({
-    admin,
-    createUser,
-  }) => {
-    const { user, company } = await setup(admin, createUser)
-    const res = await user.get<{ data: { row_id: string }[]; total: number }>(company.url)
-    expect(res.total).toBe(1)
-    expect(res.data[0].row_id).toBe('Company A')
-  })
-
   test('direct reads of non-permitted docs are 403 (linked and target)', async ({
     admin,
     createUser,

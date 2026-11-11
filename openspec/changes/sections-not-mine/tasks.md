@@ -1,6 +1,6 @@
 ## 1. Platform
 
-- [x] 1.1 The maker withdraws a pending proposal (state Withdrawn, migration 0159). Verify `apps/server/test/change-proposals.test.ts`.
+- [x] 1.1 The maker withdraws a pending proposal (state Withdrawn, migration 0160). Verify `apps/server/test/change-proposals.test.ts`.
 - [x] 1.2 A proposal ends a row with nothing in its place. Verify `apps/server/test/change-proposals.test.ts`.
 - [x] 1.3 An approver applies another value for a proposed column. Verify `apps/server/test/change-proposals.test.ts`.
 

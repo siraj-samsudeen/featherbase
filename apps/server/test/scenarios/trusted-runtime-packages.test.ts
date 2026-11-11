@@ -5,14 +5,17 @@
 // the active change feather-tickets-stage-one), step by step; what a person
 // sees in the shared bar is in apps/web/test/scenarios/.
 import { randomUUID } from 'node:crypto'
-import { cp, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { cp, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { describe, expect } from 'vitest'
+import { describe, expect, vi } from 'vitest'
 import { makeClient, type CreateUserFn, type TestClient } from 'feather-testing-postgres'
 import { APP_ACCENTS } from 'shared'
 import { loadInstalledApps, setAppEnabled } from '../../src/apps'
 import { sql } from '../../src/db'
-import { discoverPackages } from '../../src/runtime-packages'
+import { app as server } from '../../src/index'
+import { artifactDigest, discoverPackages, repinToFolder, shippedDigest } from '../../src/runtime-packages'
+import { appLibraryPaths } from '../../src/app-library'
+import { appPathsFromEnvironment } from '../../src/app-delivery'
 import { expectRefused, expectStatus, grantRole, makeTable } from '../fixtures'
 import { test as pgTest } from '../pg-test'
 import { scenarioFor } from '../scenario'
@@ -22,6 +25,7 @@ const REPO = resolve(__dirname, '../../../..')
 const TASKER = join(REPO, 'example-apps/tasker')
 const TICKETS = join(REPO, 'example-apps/tickets')
 const PLUM = join(REPO, 'test-apps/fixtures/plum-accent')
+const OTHER = join(REPO, 'test-apps/other')
 const TICKETS_VERSION = (JSON.parse(await readFile(join(TICKETS, 'package.json'), 'utf8')) as { version: string }).version
 
 // Tickets records an upgrade step: its Tables and actions answer only a client
@@ -121,7 +125,168 @@ async function installTasker(admin: TestClient, directory = TASKER) {
 }
 const page = (client: TestClient, path: string) => client.fetch(path, { headers: { accept: 'text/html' } })
 
+// #1178 (D8): what the deploy pipeline sends, every file of a built app folder.
+async function filesOf(folder: string, under = ''): Promise<{ path: string; data: string }[]> {
+  const out: { path: string; data: string }[] = []
+  for (const entry of await readdir(join(folder, under), { withFileTypes: true })) {
+    const path = under ? `${under}/${entry.name}` : entry.name
+    if (entry.isDirectory()) out.push(...await filesOf(folder, path))
+    else out.push({ path, data: (await readFile(join(folder, path))).toString('base64') })
+  }
+  return out
+}
+const DELIVERY_KEY = 'a-long-random-deploy-key-for-tests-only-0123456789'
+const deliver = async (folder: string, key = DELIVERY_KEY) => server.request('/deliver/app', {
+  method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+  body: JSON.stringify({ files: await filesOf(folder) }) })
+
 describe('trusted-runtime-packages', () => {
+  // ---- An app's code fix can be delivered to a running instance ----
+
+  async function runningVersionOne(admin: TestClient) {
+    const installed = await mkdtemp(resolve('test/.delivery-installed-'))
+    const storage = await mkdtemp(resolve('test/.delivery-storage-'))
+    await cp(OTHER, installed, { recursive: true })
+    vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify([installed]))
+    vi.stubEnv('FILE_STORAGE_DIR', storage)
+    vi.stubEnv('APP_DELIVERY_TOKEN', DELIVERY_KEY)
+    expect(await discoverPackages([installed])).toEqual([])
+    await admin.post('/api/install_app', { name: 'other' })
+    const fixed = await mkdtemp(resolve('test/.delivery-fixed-'))
+    await cp(installed, fixed, { recursive: true })
+    const html = await readFile(join(fixed, 'client/index.html'), 'utf8')
+    await writeFile(join(fixed, 'client/index.html'), html.replace('<h1>Other tasks</h1>', '<h1>Other tasks, fixed</h1>'))
+    const pageText = async () => (await page(admin, '/other/')).text()
+    const cleanup = async () => {
+      vi.unstubAllEnvs()
+      for (const folder of [installed, storage, fixed]) await rm(folder, { recursive: true, force: true })
+      await discoverPackages([])
+      await loadInstalledApps()
+    }
+    return { fixed, storage, pageText, cleanup }
+  }
+
+  scenario('A delivered fix is live at once', async ({ admin }, step) => {
+    let run: Awaited<ReturnType<typeof runningVersionOne>> | undefined
+    try {
+      await step('version 1 of an app is installed and running', async () => {
+        run = await runningVersionOne(admin)
+        expect(await run.pageText()).toContain('<h1>Other tasks</h1>')
+      })
+      await step('the deploy pipeline delivers version 1 with its page changed', async () => {
+        const res = await deliver(run!.fixed)
+        await expectStatus(res, 200)
+        expect(await res.json()).toMatchObject({ name: 'other', version: '0.0.1', outcome: 'repinned' })
+      })
+      await step("the app's page shows the change at once, still as version 1", async () => {
+        expect(await run!.pageText()).toContain('<h1>Other tasks, fixed</h1>')
+        expect(await sql`select package_version from installed_app where name = 'other'`).toEqual([{ package_version: '0.0.1' }])
+      })
+    } finally { await run?.cleanup() }
+  })
+
+  // #1178 (D8): a restart serves the delivered copy; an image that brings
+  // other files for the same version wins over it.
+  test('a delivered copy survives a restart, and a deploy with other files replaces it', async ({ admin }) => {
+    const run = await runningVersionOne(admin)
+    try {
+      await expectStatus(await deliver(run.fixed), 200)
+      await discoverPackages(await appLibraryPaths(appPathsFromEnvironment()))
+      await loadInstalledApps()
+      expect(await run.pageText()).toContain('<h1>Other tasks, fixed</h1>')
+      // A development server lists the app's source folder after the delivered copies; order doesn't matter.
+      await discoverPackages([...appPathsFromEnvironment()].reverse())
+      await loadInstalledApps()
+      expect(await run.pageText()).toContain('<h1>Other tasks, fixed</h1>')
+      const installed = (JSON.parse(process.env.FEATHERBASE_APP_PATHS!) as string[])[0]
+      const html = await readFile(join(installed, 'client/index.html'), 'utf8')
+      await writeFile(join(installed, 'client/index.html'), html.replace('<h1>Other tasks</h1>', '<h1>Other tasks, next deploy</h1>'))
+      expect(await shippedDigest([installed], 'other', '0.0.1')).toBe(await artifactDigest(installed))
+      // The deploy re-pins to the image's files, then the new server boots with the delivered copy still on the volume.
+      await discoverPackages([installed])
+      expect(await repinToFolder('other', true)).toBe('repinned')
+      await discoverPackages(await appLibraryPaths(appPathsFromEnvironment()))
+      await loadInstalledApps()
+      expect(await run.pageText()).toContain('<h1>Other tasks, next deploy</h1>')
+    } finally { await run.cleanup() }
+  })
+
+  scenario('A delivery without the deploy key is refused', async ({ admin }, step) => {
+    let run: Awaited<ReturnType<typeof runningVersionOne>> | undefined
+    try {
+      await step('version 1 of an app is installed and running', async () => { run = await runningVersionOne(admin) })
+      await step('someone delivers version 1 with its page changed but without the deploy key', async () => {
+        await expectStatus(await deliver(run!.fixed, 'a-wrong-key-of-the-same-sort-0123456789abcdefghij'), 404)
+      })
+      await step("the delivery is refused and the app's page is unchanged", async () => {
+        expect(await run!.pageText()).toContain('<h1>Other tasks</h1>')
+      })
+    } finally { await run?.cleanup() }
+  })
+
+  scenario('A delivery that changes what the app declares is refused', async ({ admin }, step) => {
+    let run: Awaited<ReturnType<typeof runningVersionOne>> | undefined
+    let res: Response | undefined
+    try {
+      await step('version 1 of an app is installed and running', async () => { run = await runningVersionOne(admin) })
+      await step('the deploy pipeline delivers version 1 with a changed declaration', async () => {
+        const manifest = JSON.parse(await readFile(join(run!.fixed, 'featherbase.json'), 'utf8'))
+        await writeFile(join(run!.fixed, 'featherbase.json'), JSON.stringify({ ...manifest, title: 'Renamed tasks' }))
+        res = await deliver(run!.fixed)
+      })
+      await step("the delivery is refused, asks for an ordinary deploy, and the app's page is unchanged", async () => {
+        await expectStatus(res!, 409)
+        expect(JSON.stringify(await res!.json())).toContain('ordinary deploy')
+        expect(await run!.pageText()).toContain('<h1>Other tasks</h1>')
+        // Refused before anything of it was kept or loaded.
+        expect(await readdir(join(run!.storage, 'delivered-apps'))).toEqual([])
+      })
+    } finally { await run?.cleanup() }
+  })
+
+  // ---- An upgrade needs only the new version ----
+
+  scenario('An app upgrades once its old files are gone', async ({ admin }, step) => {
+    const first = await mkdtemp(resolve('test/.upgrade-first-'))
+    const second = await mkdtemp(resolve('test/.upgrade-second-'))
+    try {
+      await step('the user installed version 1 of an app and added a row to it', async () => {
+        await cp(OTHER, first, { recursive: true })
+        expect(await discoverPackages([first])).toEqual([])
+        await admin.post('/api/install_app', { name: 'other' })
+        await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'kept', quantity: 7 } })
+      })
+      await step('the server now holds only version 2 of that app', async () => {
+        // Version 2 adds a Notes column, with the step that moves version 1 to it.
+        await cp(OTHER, second, { recursive: true })
+        const manifest = JSON.parse(await readFile(join(second, 'featherbase.json'), 'utf8'))
+        const pkg = JSON.parse(await readFile(join(second, 'package.json'), 'utf8'))
+        const column = { column_name: 'notes', label: 'Notes', column_type: 'Text' }
+        manifest.tables[0].columns.push(column)
+        manifest.migrations = [{ id: 'add_notes', fromVersion: pkg.version, toVersion: '2.0.0',
+          operations: [{ kind: 'addColumn', table: 'other.task', column }] }]
+        await writeFile(join(second, 'package.json'), JSON.stringify({ ...pkg, version: '2.0.0' }))
+        await writeFile(join(second, 'featherbase.json'), JSON.stringify(manifest))
+        await rm(first, { recursive: true, force: true })
+        expect(await discoverPackages([second])).toEqual([])
+      })
+      await step('the user previews and applies the upgrade to version 2', async () => {
+        const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
+        await admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: plan.planId })
+        await admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })
+      })
+      await step('the app is on version 2 and the row is still there', async () => {
+        expect(await sql`select package_version from installed_app where name = 'other'`).toEqual([{ package_version: '2.0.0' }])
+        expect(await sql`select quantity, notes from other.task where row_id = 'kept'`).toEqual([{ quantity: 7, notes: null }])
+      })
+    } finally {
+      await rm(first, { recursive: true, force: true })
+      await rm(second, { recursive: true, force: true })
+      await discoverPackages([])
+      await loadInstalledApps()
+    }
+  })
+
   // ---- An app owns its screen under the shared top bar ----
 
   scenario('A missing piece stays missing', async ({ admin }, step) => {

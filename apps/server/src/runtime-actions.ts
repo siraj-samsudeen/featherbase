@@ -355,6 +355,7 @@ interface Frozen { authorization: AppAuthorizationContext; payload: unknown; set
 // are while the read is authorized. No provider means no drop to name.
 async function dropVersions(app: string, scopeProvider: (() => Promise<{ app: string; version: string } | undefined>) | undefined): Promise<DropVersions | undefined> {
   const provider = await scopeProvider?.()
+  /* v8 ignore next -- the read holds the shared lifecycle lock from deciding its places to this call, and setAppEnabled takes the exclusive one, so a provider that answered then cannot be gone now (#1190) */
   if (!provider) return undefined
   const [installed] = await sql`select package_version from installed_app where name = ${app}`
   return { app: String(installed?.package_version ?? ''), provider: { app: provider.app, version: provider.version } }

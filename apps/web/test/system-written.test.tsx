@@ -50,15 +50,13 @@ test('an ordinary platform list keeps its New', async ({ admin }) => {
   expect(await screen.findByTestId('list-new')).toBeInTheDocument()
 })
 
-test('an Activity Log row opens read-only, with no Save, Delete or Rename', async ({ admin }) => {
+// The Save, Delete and Rename controls are proven by permissions-and-roles' "Signing in is still recorded".
+test('an Activity Log row opens read-only, showing its values rather than boxes', async ({ admin }) => {
   const id = await seedActivity()
   await renderApp(`/featherbase/admin/table/activity-log/row/${id}`, admin)
   // #795: a read-only row shows its values, not disabled boxes.
   await screen.findByText('seeded for the read-only form')
   expect(within(screen.getByTestId('form-arranged')).queryAllByRole('textbox')).toHaveLength(0)
-  await userEvent.click(screen.getByRole('button', { name: 'Record actions' }))
-  for (const control of ['form-save', 'form-delete', 'form-rename'])
-    expect(screen.queryByTestId(control), control).toBeNull()
 })
 
 test('a new Activity Log form reached by URL cannot be saved', async ({ admin }) => {
