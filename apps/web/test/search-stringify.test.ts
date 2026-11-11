@@ -44,6 +44,11 @@ describe('filterValueLabel', () => {
     expect(filterValueLabel('related', { table: 'Item', via: 'PO Line' })).toBe('Item via PO Line')
   })
 
+  test('a related spec naming no target reads as blank, through its via when it has one', () => {
+    expect(filterValueLabel('not related', {})).toBe('')
+    expect(filterValueLabel('related', { via: 'PO Line' })).toBe(' via PO Line')
+  })
+
   test('long in-lists truncate, short ones render fully', () => {
     expect(filterValueLabel('in', ['a', 'b'])).toBe('a, b')
     expect(filterValueLabel('in', ['a', 'b', 'c', 'd', 'e'])).toBe('a, b, c +2')

@@ -15,6 +15,7 @@ import {
   recentActions,
   recentSearches,
   recordAction,
+  renameTableInRecents,
 } from '../src/lib/recents'
 
 // #101 Phase 1: the client-side recents buffer behind the command bar.
@@ -89,6 +90,24 @@ describe('recordAction / recentActions', () => {
     expect(recents).toHaveLength(80)
     expect(recents[0].label).toBe('CUST-89')
     expect(recents.some((r) => r.label === 'CUST-0')).toBe(false)
+  })
+})
+
+describe('a Table renamed for one person', () => {
+  it("leaves another person's events waiting to be sent as they were", () => {
+    const sent: unknown[] = []
+    connectEventSink({ currentUser: () => 'rename-other', post: (events) => { sent.push(...events) }, beacon: () => {} })
+    recordAction('rename-other', row('C-1'), NOW)
+    renameTableInRecents('rename-nobody', 'Customer', 'Client', '/featherbase/admin/table/customer', '/featherbase/admin/table/client')
+    flushPendingEvents()
+    expect(sent).toEqual([expect.objectContaining({ key: 'row:Customer/C-1' })])
+  })
+})
+
+describe('a server entry with no label', () => {
+  it('is named by its key', () => {
+    replaceServerEntries('history-unlabelled', [{ ...row('Q-1'), label: '', visits: [NOW] }])
+    expect(recentActions('history-unlabelled', 10).map((e) => e.label)).toEqual(['row:Customer/Q-1'])
   })
 })
 
@@ -416,6 +435,9 @@ describe('displayEntry', () => {
     expect(displayEntry(row('1517|040802006'))).toEqual({
       kind: 'row', label: '1517|040802006', sub: 'Customer', row: { table: 'Customer', rowId: '1517|040802006' },
     })
+  })
+  it('reads a target with neither a kind nor a kind in its key as a list', () => {
+    expect(displayEntry({ key: '', label: 'Bins', path: '/featherbase/admin/table/bin' })).toEqual({ kind: 'list', label: 'Bins' })
   })
   it('takes the kind from the key when a pinned target carries none', () => {
     expect(displayEntry({ key: 'page:explore', label: 'explore', path: '/featherbase/admin/explore' }).label).toBe('Explore')

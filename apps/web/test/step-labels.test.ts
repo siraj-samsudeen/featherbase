@@ -34,6 +34,16 @@ const siteMeta = {
   ],
 } as unknown as TableMeta
 
+describe('a filter on an object value', () => {
+  test('reads as the Table the object names', () => {
+    expect(filterText('Nv Site', siteMeta, ['region', '!=', { table: 'Nv Zone' }], () => 'never')).toBe('Region != Nv Zone')
+  })
+
+  test('reads as nothing when the object names no Table', () => {
+    expect(filterText('Nv Site', siteMeta, ['region', '!=', {}], () => 'never')).toBe('Region != ')
+  })
+})
+
 describe('a filter step', () => {
   test('a relationship filter with no rows of its own reads as the related table alone', () => {
     expect(filterText('Nv Visit', visitMeta, ['row_id', 'related', { table: 'Nv Site' }], () => 'never')).toBe('Nv Site')

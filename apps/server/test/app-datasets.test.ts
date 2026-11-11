@@ -1188,6 +1188,13 @@ describe('a place a dataset cannot apply', () => {
     await withPlaces(FLOOR_PLACES, () => expectApiError(scopeOf(admin, person ?? reader.user!, app), { status: 404 }))
   })
 
+  test('explaining the scope for an app that declares no datasets lists none', async ({ admin, createUser }) => {
+    const { reader } = await setup(admin, createUser)
+    const explained = await withPlaces(FLOOR_PLACES, () => scopeOf(admin, reader.user!, 'placeroster'))
+    expect(explained.datasets).toEqual([])
+    expect(explained.provider).toMatchObject({ app: 'placeroster' })
+  })
+
   test('a provider that is not set up yet answers so, rather than a reason', async ({ admin, createUser }) => {
     const copy = await mkdtemp(resolve('test/.place-roster-'))
     try {

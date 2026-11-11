@@ -194,6 +194,73 @@ describe('JOB-002: retries and failure state', () => {
   })
 })
 
+// A deploy switches on a new scheduled job while the previous deployment, whose
+// code has no handler for it, is still polling the queue. That worker hands the
+// run back instead of failing it, so the new deployment runs it.
+describe('a scheduled job this server has no handler for yet', () => {
+  const schedule = (method: string) =>
+    sql`insert into scheduled_job (row_id, method, cadence, enabled, description, problem_alert_queued)
+        values (${method}, ${method}, 'hourly', true, 'made up', false)`
+
+  test('is handed back about a minute later, using up no attempt', async () => {
+    await setup()
+    await schedule('made_up_new_job')
+    const id = await enqueue('made_up_new_job', {}, { trigger: 'schedule', repeatEvery: 3600 })
+    await nudgeDueJobs()
+
+    expect(await runOneJob()).toBe(true)
+
+    const [job] = await sql`
+      select job_status, attempts, error, handed_back_at is not null as handed_back,
+             extract(epoch from run_at - clock_timestamp()) as wait from background_job where row_id = ${id}`
+    expect(job).toMatchObject({ job_status: 'queued', attempts: 0, handed_back: true })
+    expect(Number(job.wait)).toBeGreaterThan(50)
+    expect(job.error).toBe('Waiting for a server that has a handler for "made_up_new_job"')
+    expect(await sql`select 1 from job_execution where job = ${id}`).toEqual([])
+  })
+
+  test('runs once a server that has the handler takes it', async () => {
+    await setup()
+    await schedule('made_up_arriving_job')
+    const id = await enqueue('made_up_arriving_job', {}, { trigger: 'schedule', repeatEvery: 3600 })
+    await nudgeDueJobs()
+    await runOneJob()
+    registerJob('made_up_arriving_job', () => {})
+    await sql`update background_job set run_at = now() - interval '1 second' where row_id = ${id}`
+
+    expect(await runOneJob()).toBe(true)
+
+    const [job] = await sql`select job_status, attempts, error from background_job where row_id = ${id}`
+    expect(job).toMatchObject({ job_status: 'done', attempts: 1, error: null })
+  })
+
+  test('fails as an unknown job once it has waited 30 minutes', async () => {
+    await setup()
+    await schedule('made_up_missing_job')
+    const id = await enqueue('made_up_missing_job', {}, { trigger: 'schedule', repeatEvery: 3600, maxAttempts: 1 })
+    await nudgeDueJobs()
+    await sql`update background_job set handed_back_at = now() - interval '31 minutes' where row_id = ${id}`
+
+    await runOneJob()
+
+    const [job] = await sql`select job_status, error from background_job where row_id = ${id}`
+    expect(job.job_status).toBe('failed')
+    expect(job.error).toContain('No job handler')
+  })
+
+  test('a switched-off schedule does not hold its run back', async () => {
+    await setup()
+    await schedule('made_up_off_job')
+    await sql`update scheduled_job set enabled = false where row_id = 'made_up_off_job'`
+    const id = await enqueue('made_up_off_job', {}, { maxAttempts: 1 })
+    await nudgeDueJobs()
+    await runOneJob()
+    const [job] = await sql`select job_status, error from background_job where row_id = ${id}`
+    expect(job).toMatchObject({ job_status: 'failed' })
+    expect(job.error).toContain('No job handler')
+  })
+})
+
 describe('See every job\'s status in one place', () => {
   test('an admin\'s list of background jobs shows status, attempts and the error', async ({ admin, createUser }) => {
     await setup()

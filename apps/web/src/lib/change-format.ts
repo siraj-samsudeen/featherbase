@@ -25,7 +25,8 @@ export function useChangeFormat(table: string, empty: string) {
   const value = (name: string, v: unknown) => {
     if (v == null || v === '') return empty
     const t = type(name)
-    return formatValue(t, asStored(t, v), settings) || String(v)
+    // Non-empty here, so formatValue never gives ''.
+    return formatValue(t, asStored(t, v), settings)
   }
   return { label, type, value }
 }

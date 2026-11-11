@@ -45,10 +45,8 @@ interface ImportBatch {
   created: number
 }
 
-const count = (v: unknown): number => {
-  const n = Number(v ?? 0)
-  return Number.isFinite(n) ? n : 0
-}
+// The counts are bigint columns: a number, a digit string past 2^53, or null.
+const count = (v: unknown): number => Number(v ?? 0)
 
 interface LogRow {
   batch_id: string

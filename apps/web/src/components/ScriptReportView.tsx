@@ -40,7 +40,7 @@ function FilterControl({
   if (def.column_type === 'Choice') {
     const opts = (def.choices ?? '').split('\n')
     return (
-      <select className={inputClasses()} data-testid={testid} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
+      <select className={inputClasses()} data-testid={testid} value={String(value)} onChange={(e) => onChange(e.target.value)}>
         {opts.map((o) => (
           <option key={o} value={o}>
             {o ? choiceLabel(o, def.choice_labels, t) : '(any)'}
@@ -66,7 +66,7 @@ function FilterControl({
       className={inputClasses()}
       type={type}
       data-testid={testid}
-      value={String(value ?? '')}
+      value={String(value)}
       onChange={(e) => onChange(e.target.value)}
     />
   )
@@ -88,6 +88,8 @@ export function ScriptReportView({ name }: { name: string }) {
 }
 
 function ScriptReportForm({ meta }: { meta: ScriptReportMeta }) {
+  // Every filter starts with a value (its default, else '') and changes only
+  // to the text its control gives, so none is ever null or missing.
   const [values, setValues] = useState<Record<string, unknown>>(() =>
     Object.fromEntries(meta.filters.map((f) => [f.column_name, f.default ?? ''])),
   )
@@ -132,7 +134,7 @@ function ScriptReportForm({ meta }: { meta: ScriptReportMeta }) {
               <label className={labelClasses()}>{f.label}</label>
               <FilterControl
                 def={f}
-                value={values[f.column_name] ?? ''}
+                value={values[f.column_name]}
                 onChange={(v) => setValues((s) => ({ ...s, [f.column_name]: v }))}
               />
             </div>

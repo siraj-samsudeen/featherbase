@@ -96,6 +96,19 @@ test('Plain arrow keys choose typed results in displayed order', async ({ admin 
   expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument()
 })
 
+test('ArrowUp with no result chosen chooses the last one', async ({ admin }) => {
+  await seed(admin)
+  const { bar } = await openBar(admin)
+  fireEvent.focus(bar)
+  fireEvent.change(bar, { target: { value: 'Sb Gadget' } })
+  await screen.findByTestId('awesomebar-doc')
+  const create = await screen.findByTestId('awesomebar-new')
+  fireEvent.keyDown(bar, { key: 'ArrowUp' })
+  const choices = Array.from(screen.getByTestId('awesomebar-results').querySelectorAll('a, button'))
+  expect(choices.at(-1)).toHaveAttribute('aria-selected', 'true')
+  expect(create).toBeInTheDocument()
+})
+
 test('Replacing a query cannot activate its previous record during debounce', async ({ admin }) => {
   await seed(admin)
   const { app, bar } = await openBar(admin)

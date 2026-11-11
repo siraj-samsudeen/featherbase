@@ -558,7 +558,9 @@
       "Site",
       "Plant",
       "Section",
-      "Section Subcategory"
+      "Section Subcategory",
+      "Merchandise Assignment",
+      "Subcategory"
     ],
     "unmarkedTables": [
       "Employee",
@@ -566,7 +568,9 @@
       "Site",
       "Plant",
       "Section",
-      "Section Subcategory"
+      "Section Subcategory",
+      "Merchandise Assignment",
+      "Subcategory"
     ]
   },
   "permissions": [
@@ -1867,9 +1871,15 @@
       ]
     },
     {
-      "id": "opens_for_dash_roles",
+      "id": "merchandise_reach",
       "fromVersion": "0.12.6",
-      "toVersion": "0.12.7",
+      "toVersion": "0.12.9",
+      "operations": []
+    },
+    {
+      "id": "opens_for_dash_roles",
+      "fromVersion": "0.12.9",
+      "toVersion": "0.12.10",
       "operations": []
     }
   ],
@@ -1888,6 +1898,17 @@
         "section",
         "reports_to",
         "acting",
+        "starts_on",
+        "ends_on"
+      ],
+      "Merchandise Assignment": [
+        "employee",
+        "responsibility",
+        "division",
+        "subdivision",
+        "category",
+        "subcategory",
+        "operating_region",
         "starts_on",
         "ends_on"
       ],
@@ -1911,12 +1932,16 @@
       ],
       "Subcategory": [
         "subcategory",
-        "subcategory_type"
+        "subcategory_type",
+        "division",
+        "subdivision",
+        "category"
       ],
       "Site": [
         "name",
         "is_store",
-        "cluster"
+        "cluster",
+        "operating_region"
       ],
       "Plant": [
         "site",

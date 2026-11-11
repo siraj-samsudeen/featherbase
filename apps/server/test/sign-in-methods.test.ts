@@ -50,6 +50,12 @@ describe('Sign In Method rows', () => {
     expect(await sql`select 1 from sign_in_method where row_id = 'stylehr'`).toHaveLength(1)
   })
 
+  test('with the Google method deleted, a Google method can be added again', async ({ admin }) => {
+    await expectStatus(await admin.fetch(`/api/table/${encodeURIComponent('Sign In Method')}/google`, { method: 'DELETE' }), 200)
+    await expectStatus(await save(admin, { row_id: 'google_again', kind: 'google', label: 'Google' }), 201)
+    expect(await sql`select row_id from sign_in_method where kind = 'google'`).toEqual([{ row_id: 'google_again' }])
+  })
+
   test('turning a method off is refused while it is an administrator\'s only way in', async ({ admin }) => {
     const smg = await makePerson({ username: 'sm.google', roles: [{ role: 'System Manager' }] })
     await sql`insert into sign_in_identity (id, person_id, method, subject, linked_by) values ('uid_smg', ${smg}, 'google', 'g-sm', 'test')`
@@ -84,6 +90,23 @@ describe('a sign-in method row with fields left empty', () => {
   test('reads a blank new-person rule as refuse', async () => {
     await sql`update sign_in_method set new_person = '' where row_id = 'google'`
     expect((await getSignInMethod('google'))!.new_person).toBe('refuse')
+  })
+
+  test('a new-person rule cleared by an edit is read as refuse', async ({ admin }) => {
+    await expectStatus(await patchMethod(admin, 'google', { new_person: null }), 200)
+    expect((await getSignInMethod('google'))!.new_person).toBe('refuse')
+  })
+
+  test('a method stored with no new-person rule can still be edited', async ({ admin }) => {
+    await sql`update sign_in_method set new_person = null where row_id = 'google'`
+    await expectStatus(await patchMethod(admin, 'google', { label: 'Google Workspace' }), 200)
+    expect((await getSignInMethod('google'))!.label).toBe('Google Workspace')
+  })
+
+  test('a connected service with no address is refused while it is on', async ({ admin }) => {
+    const res = await save(admin, { row_id: 'hr_bare', kind: 'delegated_password', label: 'HR' })
+    await expectStatus(res, 417)
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain('needs an https address')
   })
 
   test('Google with no client id at all is not usable without the mock provider', () => {

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { FinalJobFailure, drainJobs, enqueue, loadJobs, registerJob, retryJob, syncScheduledJobs } from '../src/jobs'
-import { _setJobAlertSender, JOB_ALERT_SUBJECT } from '../src/job-alerts'
+import { _setJobAlertSender, alertJobProblem, JOB_ALERT_SUBJECT } from '../src/job-alerts'
 import { queueEmail, type MailMessage } from '../src/email'
 import { expectRefused } from './fixtures'
 
@@ -323,5 +323,23 @@ describe('the run outcomes are data the Admin can read', () => {
       ['Scheduled Job', 'last_outcome', 'success\nerror\nrefused', true],
       ['Scheduled Job', 'last_result', null, true],
     ])
+  })
+})
+
+describe('what a job alert says failed', () => {
+  async function bodyFor(message: string, createUser: (o: { email: string; roles: string[] }) => Promise<unknown>) {
+    await setup()
+    await createUser({ email: 'boss.words@example.com', roles: ['System Manager'] })
+    await sql`update scheduled_job set last_outcome = 'error' where method = ${METHOD}`
+    await alertJobProblem({ job: 'q-1', method: METHOD, outcome: 'failed', message, attempts: 1, at: new Date() })
+    return sent.find((m) => m.to === 'boss.words@example.com')!.body
+  }
+
+  test('a long message is cut to 300 characters', async ({ createUser }) => {
+    expect(await bodyFor('x'.repeat(400), createUser)).toContain(`What failed: ${'x'.repeat(299)}…\n`)
+  })
+
+  test('a message of blank lines names nothing', async ({ createUser }) => {
+    expect(await bodyFor('  \n  ', createUser)).toContain('What failed: \n')
   })
 })

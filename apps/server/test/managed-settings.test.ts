@@ -246,6 +246,14 @@ describe('how a locked value is compared (D5)', () => {
     expect(Number(row.value)).toBe(24)
   })
 
+  test('a locked number stored as words is unchanged by a save that leaves it alone', async ({ admin }) => {
+    await apply({ settings: { 'System Settings': { session_hours: 24 } } })
+    await sql`update single_value set value = 'a full day' where table_name = 'System Settings' and field = 'session_hours'`
+    await save(admin, { app_name: 'Words Kept' })
+    const [row] = await sql`select value from single_value where table_name = 'System Settings' and field = 'app_name'`
+    expect(row.value).toBe('Words Kept')
+  })
+
   test('a locked JSON setting kept as text compares by content, not by spacing or key order; text that is not JSON is a change', async ({ admin }) => {
     await apply({ settings: { 'System Settings': { people_review: { b: 2, a: 1 } } } })
     await save(admin, { people_review: '{ "a": 1,   "b": 2 }' })

@@ -15,37 +15,43 @@
    "LKS",
    "Lakeside",
    true,
-   "NORTH"
+   "NORTH",
+   "East"
   ],
   [
    "HIL",
    "Hillview",
    true,
-   "NORTH"
+   "NORTH",
+   "East"
   ],
   [
    "RIV",
    "Riverside",
    true,
-   "SOUTH"
+   "SOUTH",
+   "West"
   ],
   [
    "NGT",
    "Northgate",
    true,
-   "SOUTH"
+   "SOUTH",
+   "West"
   ],
   [
    "BAY",
    "Bayside",
    true,
-   "SOUTH"
+   "SOUTH",
+   "West"
   ],
   [
    "HOF",
    "Head Office",
    false,
-   null
+   null,
+   "East"
   ]
  ],
  "plants": [
@@ -765,5 +771,56 @@
    "2007",
    "Lata No-Sign-In"
   ]
- ]
+ ],
+ "regions": [
+  "East",
+  "West"
+ ],
+ "merchandise": {
+  "_about": "The tree above three made-up saree subcategories, and the made-up buyers who hold parts of it.",
+  "divisions": [
+   "Fashion"
+  ],
+  "subdivisions": [
+   [
+    "Womenswear",
+    "Fashion"
+   ]
+  ],
+  "categories": [
+   [
+    "Sarees",
+    "Womenswear"
+   ]
+  ],
+  "placed": [
+   [
+    "010101001",
+    "Sarees"
+   ],
+   [
+    "010101002",
+    "Sarees"
+   ],
+   [
+    "010303001",
+    "Sarees"
+   ]
+  ],
+  "buyers": [
+   {
+    "key": "buyer",
+    "name": "Bina Buyer",
+    "code": "3901",
+    "says": "Category head of Sarees in the East: Lakeside and Hillview, three subcategories each",
+    "assignments": [
+     [
+      "Category head",
+      "Sarees",
+      "East"
+     ]
+    ]
+   }
+  ]
+ }
 }

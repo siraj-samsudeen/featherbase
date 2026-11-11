@@ -342,7 +342,9 @@ async function cmdSettingsSet(io: CommandIO, positional: string[], flags: Record
       await saveDoc(table, { row_id: row, [field]: value, updated_at: current.updated_at }, BREAK_GLASS_ACTOR)
     }
   })
-  const where = row === undefined ? (table === 'System Settings' ? '' : `${table} `) : `${table} ${row} `
+  // Of the settings file's Tables only System Settings has one row (the
+  // checks above refuse --row on it and require one elsewhere).
+  const where = row === undefined ? '' : `${table} ${row} `
   await logActivity(BREAK_GLASS_ACTOR, `settings_set ${where}${field}`)
   io.out(`${row === undefined ? table : `${table} ${row}`} ${field} set (${typeof value === 'boolean' ? value : `${value.length} characters`})`)
 }

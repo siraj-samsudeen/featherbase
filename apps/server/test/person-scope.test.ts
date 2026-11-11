@@ -110,6 +110,13 @@ describe('a person_scope operation', () => {
     expect(await refusals(user)).toEqual(['scopeproof.places:configuration'])
   })
 
+  test('a provider installed at another version than the one loaded provides no scope', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    expect(await findScopeProvider()).toBeDefined()
+    await sql`update installed_app set package_version = '0.0.1' where name = 'placeroster'`
+    expect(await findScopeProvider()).toBeUndefined()
+  })
+
   test('a provider that throws refuses the request', async ({ admin, createUser }) => {
     const { user, roster, app } = await setup(admin, createUser)
     await position(admin, user.user!, 'North / Kids', 'N1', 'kids')

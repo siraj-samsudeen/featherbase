@@ -161,7 +161,8 @@ export function describeViewFilters(meta: Pick<TableMeta, 'columns' | 'view_filt
   const shown = (v: unknown) => v === true ? 'Yes' : v === false ? 'No' : v === null ? 'empty' : Array.isArray(v) ? v.map(String).join(', ') : String(v)
   return (meta.view_filters ?? []).map(([column, op, value]) => {
     const col = meta.columns.find((c) => c.column_name === column)
-    return `${col?.label ?? column} ${words[op] ?? op} ${shown(value)}`
+    // The server keeps only VIEW_OPERATORS (views.ts), each worded above.
+    return `${col?.label ?? column} ${words[op]} ${shown(value)}`
   }).join(', ')
 }
 
