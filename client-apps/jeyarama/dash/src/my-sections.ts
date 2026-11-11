@@ -10,7 +10,7 @@ export type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
 export interface ApproverRequest { people: string[]; fallbackRoles: string[] }
 export interface ChangeProposal {
-  row_id: string; maker: string; state: string; about: unknown; decision_reason: string | null; ends_row?: boolean; result_row?: string | null
+  row_id: string; maker: string; state: string; about: unknown; decision_reason: string | null; ends_row?: boolean; result_row?: string | null; decided_by?: string | null
   changes: { column_name: string; proposed_value: string | null; review_base_value: string | null }[]
   created_at: string; decided_at: string | null; route: { people: string[]; roles: string[] }
 }

@@ -458,6 +458,11 @@ describe('apply now, review after (#1191)', () => {
     await expect(decide({ name: 'Ethnic Wear' })).rejects.toThrow('A department in use keeps its name')
     await expect(decide({ sections: [] })).rejects.toThrow('Keep at least one section')
   })
+  it("reads a reviewer's undo as turned down, with the reason, and the maker's own undo as nothing", async () => {
+    const undone = (by: string) => bundle({}, 'Undone', 'Sarees is in Ethnic').map(p => ({ ...p, decided_by: by }))
+    expect(await read(world(), { proposals: undone('mani') })).toMatchObject({ current: { state: 'turned_down', reason: 'Sarees is in Ethnic' } })
+    expect(await read(world(), { proposals: undone('deepa') })).toMatchObject({ current: null })
+  })
   it('shows the reviewer which set-ups are already in use', async () => {
     expect(await departmentReads.department_approvals(context(world(), { user: 'mani', proposals: applied() }).ctx)).toMatchObject([{ bundle: 'B1', applied: true }])
   })

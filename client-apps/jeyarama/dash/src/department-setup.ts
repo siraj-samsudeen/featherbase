@@ -250,7 +250,9 @@ async function currentOf(ctx: Ctx, job: Row, shop: Awaited<ReturnType<typeof sto
   const a = about(latest)
   if (latest.state === 'Pending')
     return { state: 'waiting' as const, bundle: a.bundle, name: a.name, sections: a.section_names, waiting_for: await waitingName(ctx, latest.route.people), asked_on: istDay(latest.created_at) }
-  if (latest.state === 'Rejected' || latest.state === 'Needs fresh review')
+  // #1191: a reviewer's undo is a turn-down, with their reason; the maker's own undo is a take-back.
+  const undoneByReviewer = latest.state === 'Undone' && latest.decided_by !== latest.maker
+  if (latest.state === 'Rejected' || latest.state === 'Needs fresh review' || undoneByReviewer)
     return { state: 'turned_down' as const, name: a.name, sections: a.section_names, reason: latest.decision_reason ?? '' }
   return null
 }
