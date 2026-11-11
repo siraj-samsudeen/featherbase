@@ -167,7 +167,8 @@ describe('pre-filled from reporting lines (#1205)', () => {
   test('opens the report at once, reaches the reviewer, and a rerun changes nothing', async ({ admin, createUser }) => {
     const { deepa, mani } = await world(admin, createUser)
     await applyNow(admin)
-    expect(await load(admin)).toEqual({ store: 'Lakeside', results: [{ employee: '1001', name: 'Deepa', outcome: 'pre-filled', department: 'First floor', sections: ['Sarees', 'Silk'], notes: [] }] })
+    expect(await load(admin)).toMatchObject({ store: 'Lakeside', results: [{ employee: '1001', name: 'Deepa', outcome: 'pre-filled', department: 'Sarees & Silk', sections: ['Sarees', 'Silk'], notes: [],
+      created: { department: expect.any(String), links: [expect.any(String), expect.any(String)] } }] })
     expect(sections(await resolvePersonScope(deepa.user!, await binding()))).toEqual([['9901 / Section: Sarees', ['010101001']], ['9901 / Section: Silk', ['010101002']]])
     expect(await read(deepa, 'department_setup')).toMatchObject({ current: { state: 'set_up', prefilled: { flagged: ['Silk'] } } })
     expect(await read(mani, 'department_approvals')).toMatchObject([{ who: 'Deepa', prefilled: true, applied: true, flagged: ['Silk'] }])
@@ -186,6 +187,18 @@ describe('pre-filled from reporting lines (#1205)', () => {
     expect((await live('Department')).map(r => r.name)).toEqual(['Ladies Ethnic'])
     expect(await read(mani, 'department_approvals')).toMatchObject([{ who: 'Deepa', prefilled: false, name: 'Ladies Ethnic' }])
     expect(sections(await resolvePersonScope(deepa.user!, await binding())).map(s => s[0])).toEqual(['9901 / Section: Sarees', '9901 / Section: Silk'])
+  })
+
+  test('a dry run writes nothing; undo_prefill takes the whole load back, links first', async ({ admin, createUser }) => {
+    const { deepa } = await world(admin, createUser)
+    await applyNow(admin)
+    const dry = await act(admin, 'prefill_departments', { store: 'LKS', managers: [{ employee: '1001', sections: ['Sarees', 'Silk'] }], dry_run: true })
+    expect(dry.results).toMatchObject([{ outcome: 'would pre-fill', department: 'Sarees & Silk' }])
+    expect(await live('Department')).toEqual([])
+    const [done] = (await load(admin)).results
+    expect(await act(admin, 'undo_prefill', { bundles: [done.bundle] })).toEqual({ results: [{ bundle: done.bundle, outcome: 'undone', parts: 3 }] })
+    expect([await live('Department'), await live('Department Section')]).toEqual([[], []])
+    await expect(resolvePersonScope(deepa.user!, await binding())).rejects.toMatchObject(new NoPersonScope('scope'))
   })
 
   test('the reviewer undoes it; a rerun never brings it back', async ({ admin, createUser }) => {
