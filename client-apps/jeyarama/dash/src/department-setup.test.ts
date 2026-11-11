@@ -143,7 +143,7 @@ describe('the department set-up read', () => {
   })
   it("says a store with no sections can't be set up yet, and who sets up its sections", async () => {
     const tables = world({ 'Job Assignment': [job('J1', 'E1', 'Department Manager', 'RIV', null, 'E2')] })
-    expect(await read(tables)).toEqual({ state: 'no_sections', job: { id: 'J1', store: 'Riverside' }, reviewer: 'Mani' })
+    expect(await read(tables)).toEqual({ state: 'no_sections', job: { id: 'J1', store: 'Riverside' }, reviewer: 'Mani', reviewer_is_team: false })
   })
 
   it('lists the floors, the sections with what they sell and who leads them, and what is suggested', async () => {
@@ -182,7 +182,7 @@ describe('the department set-up read', () => {
     expect(answer.state === 'ok' && answer.sections.filter(s => s.suggested).map(s => s.id)).toEqual([])
   })
   it("names the master data team when their manager can't sign in", async () => {
-    expect(await read(world(), { route: 'roles' })).toMatchObject({ reviewer: 'the master data team' })
+    expect(await read(world(), { route: 'roles' })).toMatchObject({ reviewer: 'the master data team', reviewer_is_team: true })
   })
 
   it('shows the department they manage now', async () => {
@@ -257,6 +257,12 @@ describe('sending a department', () => {
     tables.Section.push({ row_id: 'S0', name: 'Bags', site: 'LKS', floor: 'F2', status: 'Active' })
     const { run } = send({ name: 'Ladies Ethnic', sections: ['S5', 'S0'] }, tables)
     expect(await run()).toMatchObject({ sections: ['Bags', 'Bags'] })
+  })
+  it('sends a changed one in place of the one waiting, withdrawing it first (#1195 verifier A)', async () => {
+    const { run, sent } = send({ name: 'Ladies', sections: ['S5'], replaces: 'B1' }, world(), bundle())
+    expect(await run()).toMatchObject({ state: 'waiting', name: 'Ladies' })
+    expect(sent.map(s => [s.call, s.call === 'withdraw' ? s.first : (s.first as { table: string }).table])).toEqual([
+      ['withdraw', 'PD'], ['withdraw', 'PL1'], ['withdraw', 'PL2'], ['propose', 'Department'], ['propose', 'Department Section']])
   })
   it('refuses a second while one waits, and when they already have a department', async () => {
     await expect(send({ name: 'Other', sections: ['S5'] }, world(), bundle()).run()).rejects.toThrow('You already sent one. Change or withdraw it first')
@@ -383,3 +389,10 @@ describe('the edges (#1195)', () => {
   })
 })
 
+describe('holds_department_job (#1195)', () => {
+  it('says whether the signed-in person is a Department Manager now', async () => {
+    expect(await departmentReads.holds_department_job(context(world()).ctx)).toBe(true)
+    expect(await departmentReads.holds_department_job(context(world(), { user: 'mani' }).ctx)).toBe(false)
+    expect(await departmentReads.holds_department_job(context(world(), { settings: {} }).ctx)).toBe(false)
+  })
+})

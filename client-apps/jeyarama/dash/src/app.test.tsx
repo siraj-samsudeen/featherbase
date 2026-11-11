@@ -556,7 +556,7 @@ describe('a report on the rendered page', () => {
     it("asks a Department Manager to set up their department, naming who reviews it (#1195)", async () => {
       const { container, unmount } = await refusing(['departments_not_filled'])
       expect(container.querySelector('[data-testid=reach-title]')?.textContent).toBe('Set up your department to open your report')
-      expect(container.querySelector('[data-testid=department-reviewer]')?.textContent).toBe('Mani reviews it. If they are away, a Master Data Editor can.')
+      expect(container.querySelector('[data-testid=department-reviewer]')?.textContent).toBe('Mani reviews it. If Mani is away, a Master Data Editor can keep it.')
       expect(container.querySelector('[data-testid=department-link]')?.textContent).toBe('Set up my department')
       expect(container.querySelector('[data-testid=department-link]')?.getAttribute('href')).toBe('?view=department')
       expect(container.querySelector('[data-testid=fix-link]')).toBeNull()
@@ -566,10 +566,29 @@ describe('a report on the rendered page', () => {
     it('says a set-up already waits, and for whom (#1195)', async () => {
       setupAnswer = { state: 'ok', reviewer: 'Mani', current: { state: 'waiting', name: 'Ladies Ethnic', asked_on: '2026-11-11', waiting_for: 'Mani' } }
       const { container, unmount } = await refusing(['departments_not_filled'])
-      expect(container.querySelector('[data-testid=department-waiting]')?.textContent).toBe('You sent “Ladies Ethnic” on 11-Nov-2026. It is waiting for Mani.')
+      expect(container.querySelector('[data-testid=reach-title]')?.textContent).toBe('Your department is waiting for review')
+      expect(container.querySelector('[data-testid=department-waiting]')?.textContent).toBe('You sent “Ladies Ethnic” on 11-Nov-2026. It is waiting for Mani. Your report opens once it is kept.')
       expect(container.querySelector('[data-testid=department-link]')?.textContent).toBe('Open your department')
       setupAnswer = { state: 'ok', reviewer: 'Mani', current: null }
       await unmount()
+    })
+
+    it('says why a set-up was turned down, and offers to send it again (#1195)', async () => {
+      setupAnswer = { state: 'ok', reviewer: 'the master data team', reviewer_is_team: true, current: { state: 'turned_down', name: 'Ladies', reason: 'Bags is in Kids.' } }
+      const { container, unmount } = await refusing(['departments_not_filled'])
+      expect(container.querySelector('[data-testid=reach-title]')?.textContent).toBe("Your department wasn't kept")
+      expect(container.querySelector('[data-testid=department-turned-down]')?.textContent).toBe("The master data team didn't keep “Ladies”: Bags is in Kids. Change it and send it again.")
+      expect(container.querySelector('[data-testid=department-link]')?.textContent).toBe('Change and send again')
+      setupAnswer = { state: 'ok', reviewer: 'the master data team', reviewer_is_team: true, current: { state: 'turned_down', name: 'Ladies', reason: '' } }
+      await unmount()
+      const again = await refusing(['departments_not_filled'])
+      expect(again.container.querySelector('[data-testid=department-turned-down]')?.textContent).toBe("The master data team didn't keep “Ladies”. Change it and send it again.")
+      setupAnswer = { state: 'ok', reviewer: 'the master data team', reviewer_is_team: true, current: null }
+      await again.unmount()
+      const team = await refusing(['departments_not_filled'])
+      expect(team.container.querySelector('[data-testid=department-reviewer]')?.textContent).toBe('The master data team reviews it.')
+      setupAnswer = { state: 'ok', reviewer: 'Mani', current: null }
+      await team.unmount()
     })
 
     it("says a store with no sections waits for the master data team, with no button (#1195)", async () => {

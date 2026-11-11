@@ -1,10 +1,10 @@
 // Feather Dash's report page (rendered by main.tsx).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { accessFacts, read } from './api'
-import { REPORT_TIMEOUT_MS, reachMessage, MEASURE_LINE, TOTALS_NOTE, isMonthChoice, monthChooser, monthWords, notArrivedLine, type MonthChoice, noAccessHelp, type NoAccessHelp, headingParts, periodLine, sectionHeading, whyLine, storeChooser, totalCells, visibleState, blankNote, dataLine, firstStore, inr, liveFrame, pageView, percent, quickBody, reportLoader, signedInr, subcategoryLabel, subtotalLabel, type LoadState } from './page'
+import { REPORT_TIMEOUT_MS, reachMessage, type ReachMessage, MEASURE_LINE, TOTALS_NOTE, isMonthChoice, monthChooser, monthWords, notArrivedLine, type MonthChoice, noAccessHelp, type NoAccessHelp, headingParts, periodLine, sectionHeading, whyLine, storeChooser, totalCells, visibleState, blankNote, dataLine, firstStore, inr, liveFrame, pageView, percent, quickBody, reportLoader, signedInr, subcategoryLabel, subtotalLabel, type LoadState } from './page'
 import type { Heading, Report, ReportRow, Totals } from './report'
 import { DashSidebar, DEPARTMENT_ADDRESS, SECTIONS_ADDRESS, readReports, type ReportLink } from './sections-page'
-import type { Setup } from './department-page'
+import { awayLine, capital, sentence, type Setup } from './department-page'
 import { buttonClasses, fmtDate } from '@featherbase/shop-floor'
 
 /** The store the bar's picker keeps in the address (`?store=`). */
@@ -221,10 +221,11 @@ function NoAccess({ otherReports }: { otherReports: boolean }) {
   if (message)
     return (
       <Notice testid="reach-problem">
-        {message.title && <h2 className="text-lg font-semibold" data-testid="reach-title">{message.title}</h2>}
-        <span>{message.text}</span>
-        {message.sectionsLink && <a href={SECTIONS_ADDRESS} data-testid="fix-link">Open Your sections to see what is set against you, and correct it</a>}
-        {message.departmentLink && <DepartmentCall />}
+        {message.departmentLink ? <DepartmentCall message={message} /> : <>
+          {message.title && <h2 className="text-lg font-semibold" data-testid="reach-title">{message.title}</h2>}
+          <span>{message.text}</span>
+          {message.sectionsLink && <a href={SECTIONS_ADDRESS} data-testid="fix-link">Open Your sections to see what is set against you, and correct it</a>}
+        </>}
       </Notice>
     )
   if (help.kind === 'reader') return <AskForAccess />
@@ -375,18 +376,28 @@ function QuickView({ report }: { report: Report }) {
   )
 }
 
-/** #1195: who reviews a Department Manager's set-up, or that one already waits, and the way in. */
-function DepartmentCall() {
+/** #1195: where a Department Manager's set-up stands (none, waiting, turned down), who reviews it, and the way in. */
+function DepartmentCall({ message }: { message: ReachMessage }) {
   const [setup, setSetup] = useState<Setup | null>(null)
   useEffect(() => { let live = true; read<Setup>('department_setup').then(answer => { if (live) setSetup(answer) }, () => {}); return () => { live = false } }, [])
   const ok = setup?.state === 'ok' ? setup : null
-  const waiting = ok?.current?.state === 'waiting' ? ok.current : null
+  const current = ok?.current
+  const title = current?.state === 'waiting' ? 'Your department is waiting for review'
+    : current?.state === 'turned_down' ? "Your department wasn't kept" : message.title
   return (
-    <div className="mt-3 flex flex-col gap-3">
-      {waiting
-        ? <p data-testid="department-waiting">You sent “{waiting.name}” on {fmtDate(waiting.asked_on)}. It is waiting for {waiting.waiting_for}.</p>
-        : ok && <p className="fd-muted text-sm" data-testid="department-reviewer">{ok.reviewer} reviews it. If they are away, a Master Data Editor can.</p>}
-      <div><a href={DEPARTMENT_ADDRESS} className={buttonClasses({ variant: 'primary', className: '!text-action-ink !no-underline' })} data-testid="department-link">{waiting ? 'Open your department' : 'Set up my department'}</a></div>
+    <div className="flex flex-col gap-3">
+      <h2 className="text-lg font-semibold" data-testid="reach-title">{title}</h2>
+      {current?.state === 'waiting' ? (
+        <p data-testid="department-waiting">You sent “{current.name}” on {fmtDate(current.asked_on)}. It is waiting for {current.waiting_for}. Your report opens once it is kept.</p>
+      ) : current?.state === 'turned_down' ? (
+        <p data-testid="department-turned-down">{capital(ok!.reviewer)} didn't keep “{current.name}”{current.reason ? `: ${sentence(current.reason)}` : '.'} Change it and send it again.</p>
+      ) : (
+        <>
+          <span>{message.text}</span>
+          {ok && <p className="fd-muted text-sm" data-testid="department-reviewer">{capital(ok.reviewer)} reviews it.{awayLine(ok.reviewer, ok.reviewer_is_team)}</p>}
+        </>
+      )}
+      <div><a href={DEPARTMENT_ADDRESS} className={buttonClasses({ variant: 'primary', className: '!text-action-ink !no-underline' })} data-testid="department-link">{current?.state === 'waiting' ? 'Open your department' : current?.state === 'turned_down' ? 'Change and send again' : 'Set up my department'}</a></div>
     </div>
   )
 }

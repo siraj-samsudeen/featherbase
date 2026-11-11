@@ -13,8 +13,8 @@ type Current =
   | { state: 'turned_down'; name: string; sections: string[]; reason: string }
 export type Setup =
   | { state: 'not_set_up' | 'unknown_person' | 'no_job' }
-  | { state: 'no_sections'; job: { id: string; store: string }; reviewer: string }
-  | { state: 'ok'; name: string; job: { id: string; store: string }; reviewer: string; floors: { id: string; name: string }[]; start_floors: string[]
+  | { state: 'no_sections'; job: { id: string; store: string }; reviewer: string; reviewer_is_team: boolean }
+  | { state: 'ok'; name: string; job: { id: string; store: string }; reviewer: string; reviewer_is_team: boolean; floors: { id: string; name: string }[]; start_floors: string[]
       sections: Section[]; names: string[]; current: Current | null }
 type Ok = Extract<Setup, { state: 'ok' }>
 
@@ -34,6 +34,12 @@ const keepLayout = (layout: Layout) => { try { window.localStorage.setItem(LAYOU
 const messageOf = (error: unknown) => (error as Error).message
 const listed = (names: string[]) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`)
 const toggle = <T,>(list: T[], value: T) => (list.includes(value) ? list.filter(v => v !== value) : [...list, value])
+/** "the master data team" at the start of a sentence. */
+export const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
+/** A reason as the end of a sentence: one full stop, never two. */
+export const sentence = (text: string) => `${text.trim().replace(/[.!?]+$/, '')}.`
+/** Who can keep it when the reviewer is away: only said of a person, never of the master data team. */
+export const awayLine = (reviewer: string, isTeam: boolean) => (isTeam ? '' : ` If ${reviewer} is away, a Master Data Editor can keep it.`)
 
 /** What a section sells, in a line: three names, then how many more. */
 export function sellsLine(section: Pick<Section, 'sells' | 'more'>): string {
@@ -57,7 +63,7 @@ export function YourDepartment() {
       {answer?.state === 'no_sections' && (
         <Card data-testid="no-sections">
           <EmptyState title={`${answer.job.store}'s sections aren't set up yet`}
-            body={`A department is a group of your store's sections, and Dash has none for ${answer.job.store} yet. The master data team sets them up; then you can choose yours here. ${answer.reviewer} will review it.`} />
+            body={`A department is a group of your store's sections, and Dash has none for ${answer.job.store} yet. The master data team sets them up; then you can choose yours here. ${capital(answer.reviewer)} will review it.`} />
         </Card>
       )}
       {answer?.state === 'ok' && <Ready setup={answer} onChanged={load} />}
@@ -70,23 +76,24 @@ function Ready({ setup, onChanged }: { setup: Ok; onChanged: () => Promise<unkno
   const [editing, setEditing] = useState(false)
   const [note, setNote] = useState<{ tone: 'positive' | 'negative'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
-  async function withdraw(bundle: string, thenEdit: boolean) {
+  async function withdraw(bundle: string) {
     setBusy(true)
     setNote(null)
     try {
       await act('withdraw_department', { bundle })
-      setEditing(thenEdit)
-      if (!thenEdit) setNote({ tone: 'positive', text: 'Withdrawn. Nothing was changed.' })
+      setNote({ tone: 'positive', text: 'Withdrawn. Nothing was changed.' })
       await onChanged()
     } catch (failure) { setNote({ tone: 'negative', text: messageOf(failure) }) }
     finally { setBusy(false) }
   }
+  /** Change it edits in place: the waiting one stays until the new one is sent in its place. */
+  const startEditing = () => { setNote(null); setEditing(true) }
   const intro = <p className="fd-muted" data-testid="intro">{setup.name} · Department Manager at {setup.job.store}.</p>
   if (current?.state === 'set_up')
     return (
       <>
         {intro}
-        <Card title={`${current.name} · ${setup.job.store}`} data-testid="set-up" actions={<StatusPill tone="positive">Set up</StatusPill>}>
+        <Card title={`${current.name} · ${setup.job.store}`} data-testid="set-up" actions={<StatusPill tone="positive">Kept</StatusPill>}>
           <div className="flex flex-col gap-2 p-4">
             <p>{listed(current.sections)}</p>
             <p className="fd-muted text-sm">Your report shows these sections. To change them, ask {setup.reviewer}.</p>
@@ -105,10 +112,10 @@ function Ready({ setup, onChanged }: { setup: Ok; onChanged: () => Promise<unkno
           <div className="flex flex-col gap-2 p-4">
             <p className="font-semibold" data-testid="waiting-name">{current.name}</p>
             <p>{listed(current.sections)}</p>
-            <p className="fd-muted text-sm">Sent on {fmtDate(current.asked_on)}. If {current.waiting_for} is away, a Master Data Editor can keep it.</p>
+            <p className="fd-muted text-sm">Sent on {fmtDate(current.asked_on)}.{awayLine(current.waiting_for, setup.reviewer_is_team)}</p>
             <div className="flex flex-wrap gap-2 pt-1">
-              <Button variant="quiet" className="-mx-3 max-sm:-mx-4" disabled={busy} onClick={() => withdraw(current.bundle, true)}>Change it</Button>
-              <Button variant="quiet" disabled={busy} onClick={() => withdraw(current.bundle, false)}>Withdraw</Button>
+              <Button variant="quiet" className="-mx-3 max-sm:-mx-4" disabled={busy} onClick={startEditing}>Change it</Button>
+              <Button variant="quiet" disabled={busy} onClick={() => withdraw(current.bundle)}>Withdraw</Button>
             </div>
           </div>
         </Card>
@@ -120,25 +127,31 @@ function Ready({ setup, onChanged }: { setup: Ok; onChanged: () => Promise<unkno
       {intro}
       {note && <Notice tone={note.tone}><span data-testid="note">{note.text}</span></Notice>}
       {current?.state === 'turned_down' && (
-        <Notice tone="caution"><span data-testid="turned-down">{setup.reviewer} didn't keep “{current.name}”{current.reason ? `: ${current.reason}` : ''}. Change it and send it again.</span></Notice>
+        <Notice tone="caution"><span data-testid="turned-down">{capital(setup.reviewer)} didn't keep “{current.name}”{current.reason ? `: ${sentence(current.reason)}` : '.'} Change it and send it again.</span></Notice>
       )}
-      <SetupForm setup={setup} before={before} onSent={async () => { setEditing(false); await onChanged() }} />
+      <SetupForm setup={setup} before={before} replaces={current?.state === 'waiting' ? current.bundle : undefined}
+        onCancel={current?.state === 'waiting' ? () => setEditing(false) : undefined}
+        onSent={async () => { setNote(null); setEditing(false); await onChanged() }} />
     </>
   )
 }
 
-function SetupForm({ setup, before, onSent }: { setup: Ok; before: { name: string; sections: string[] } | null; onSent: () => Promise<unknown> }) {
+function SetupForm({ setup, before, replaces, onCancel, onSent }: { setup: Ok; before: { name: string; sections: string[] } | null; replaces?: string; onCancel?: () => void; onSent: () => Promise<unknown> }) {
   const [layout, setLayout] = useState<Layout>(startLayout)
   const fromBefore = before ? setup.sections.filter(s => before.sections.includes(s.name) && !s.held_by).map(s => s.id) : null
-  const [floors, setFloors] = useState<string[]>(() => {
+  const [floors, setFloorsNow] = useState<string[]>(() => {
     if (!fromBefore) return setup.start_floors
     const wanted = new Set(setup.sections.filter(s => fromBefore.includes(s.id)).map(s => s.floor))
     return setup.floors.map(f => f.id).filter(id => wanted.has(id))
   })
-  const [ticked, setTicked] = useState<string[]>(fromBefore ?? setup.sections.filter(s => s.suggested && !s.held_by).map(s => s.id))
-  const [name, setName] = useState(before?.name ?? '')
+  const [ticked, setTickedNow] = useState<string[]>(fromBefore ?? setup.sections.filter(s => s.suggested && !s.held_by).map(s => s.id))
+  const [name, setNameNow] = useState(before?.name ?? '')
   const [step, setStep] = useState(1)
   const [error, setError] = useState<string | null>(null)
+  // A refusal is about what was sent: any change clears it.
+  const setFloors = (next: string[]) => { setError(null); setFloorsNow(next) }
+  const setTicked = (next: string[]) => { setError(null); setTickedNow(next) }
+  const setName = (next: string) => { setError(null); setNameNow(next) }
   const [busy, setBusy] = useState(false)
   useEffect(() => keepLayout(layout), [layout])
   const chosen = setup.sections.filter(s => ticked.includes(s.id))
@@ -146,7 +159,7 @@ function SetupForm({ setup, before, onSent }: { setup: Ok; before: { name: strin
   async function send() {
     setBusy(true)
     setError(null)
-    try { await act('set_up_department', { job: setup.job.id, name: trimmed, sections: chosen.map(s => s.id) }); await onSent() }
+    try { await act('set_up_department', { job: setup.job.id, name: trimmed, sections: chosen.map(s => s.id), ...(replaces ? { replaces } : {}) }); await onSent() }
     catch (failure) { setError(messageOf(failure)) }
     finally { setBusy(false) }
   }
@@ -200,11 +213,12 @@ function SetupForm({ setup, before, onSent }: { setup: Ok; before: { name: strin
       {error && <Notice tone="negative"><span data-testid="refused">{error}</span></Notice>}
       <div className="flex flex-wrap items-center gap-3">
         <Button variant="primary" disabled={busy || !chosen.length || !trimmed} onClick={send} data-testid="send">Send to {setup.reviewer}</Button>
+        {onCancel && <Button variant="quiet" disabled={busy} onClick={onCancel} data-testid="cancel-change">Cancel</Button>}
         <span className="fd-muted text-sm" data-testid="summary">{summary}</span>
       </div>
     </div>
   )
-  const lead = <p className="fd-muted" data-testid="lead">Say which sections are yours and give the department a name. {setup.reviewer} reviews it, and your report opens once it is kept.</p>
+  const lead = <p className="fd-muted" data-testid="lead">Say which sections are yours and give the department a name. {capital(setup.reviewer)} reviews it, and your report opens once it is kept.{replaces ? ' What you send replaces the one waiting.' : ''}</p>
   const toggleBar = <Segmented label="Layout" options={LAYOUTS} value={layout} onChange={value => { setLayout(value); setStep(1) }} className="self-end" />
 
   if (layout === 'list')
@@ -213,7 +227,7 @@ function SetupForm({ setup, before, onSent }: { setup: Ok; before: { name: strin
         {toggleBar}
         {lead}
         <Card title="Your department" data-testid="layout-list">
-          <div className="flex flex-col gap-4 border-b border-border p-4">{namePicker}{floorPicker}</div>
+          <div className="border-b border-border p-4">{floorPicker}</div>
           {/* The read lists only floors that have a section. */}
           {setup.floors.filter(f => floors.includes(f.id)).map(f => (
             <div key={f.id || 'none'}>
@@ -222,6 +236,7 @@ function SetupForm({ setup, before, onSent }: { setup: Ok; before: { name: strin
             </div>
           ))}
           {!shownSections.length && sectionList}
+          <div className="border-t border-border p-4">{namePicker}</div>
         </Card>
         {sendBar}
       </>
@@ -261,11 +276,11 @@ function SetupForm({ setup, before, onSent }: { setup: Ok; before: { name: strin
 /** Set-ups waiting for this reviewer, on Waiting for your approval. */
 export interface WaitingSetup { bundle: string; who: string; job: string; store: string; name: string; asked_on: string; sections: { id: string; name: string; team_leaders: string[] }[] }
 
-export function DepartmentApprovals({ setups, onDecided }: { setups: WaitingSetup[]; onDecided: () => Promise<unknown> }) {
+export function DepartmentApprovals({ setups, onDecided }: { setups: WaitingSetup[]; onDecided: (said: string) => Promise<unknown> }) {
   return <>{setups.map(setup => <SetupCard key={setup.bundle} setup={setup} onDecided={onDecided} />)}</>
 }
 
-function SetupCard({ setup, onDecided }: { setup: WaitingSetup; onDecided: () => Promise<unknown> }) {
+function SetupCard({ setup, onDecided }: { setup: WaitingSetup; onDecided: (said: string) => Promise<unknown> }) {
   const [mode, setMode] = useState<'view' | 'change' | 'reject'>('view')
   const [name, setName] = useState(setup.name)
   const [keep, setKeep] = useState(setup.sections.map(s => s.id))
@@ -275,7 +290,10 @@ function SetupCard({ setup, onDecided }: { setup: WaitingSetup; onDecided: () =>
   async function decide(payload: Record<string, unknown>) {
     setBusy(true)
     setError(null)
-    try { await act('decide_department', { bundle: setup.bundle, ...payload }); await onDecided() }
+    try {
+      await act('decide_department', { bundle: setup.bundle, ...payload })
+      await onDecided(payload.decision === 'reject' ? `Turned down. ${setup.who} sees your reason.` : `Kept. ${setup.who}'s report now shows these sections.`)
+    }
     catch (failure) { setError(messageOf(failure)) }
     finally { setBusy(false) }
   }
@@ -290,7 +308,7 @@ function SetupCard({ setup, onDecided }: { setup: WaitingSetup; onDecided: () =>
               {setup.sections.map(s => (
                 <label key={s.id} className="flex items-center gap-3 py-1">
                   <input type="checkbox" className="size-5" checked={keep.includes(s.id)} onChange={() => setKeep(toggle(keep, s.id))} aria-label={s.name} />
-                  <span>{s.name}</span>
+                  <span>{s.name} <span className="fd-muted">· {s.team_leaders.length ? `Team Leader ${listed(s.team_leaders)}` : 'no Team Leader'}</span></span>
                 </label>
               ))}
             </div>

@@ -836,6 +836,14 @@
         "authorization": {
           "kind": "generic"
         }
+      },
+      "holds_department_job": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
       }
     }
   },

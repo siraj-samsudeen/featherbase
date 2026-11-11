@@ -122,6 +122,9 @@ export function DashSidebar({ current, count }: { current: DashView; count?: num
   // #1175: the master data team's list, to whoever holds Master Data Editor.
   const [masterData, setMasterData] = useState(false)
   useEffect(() => { let live = true; read<boolean>('holds_master_data').then(answer => { if (live) setMasterData(answer === true) }, () => {}); return () => { live = false } }, [])
+  // #1195: Your department, to whoever holds a Department Manager job.
+  const [departmentJob, setDepartmentJob] = useState(false)
+  useEffect(() => { let live = true; read<boolean>('holds_department_job').then(answer => { if (live) setDepartmentJob(answer === true) }, () => {}); return () => { live = false } }, [])
   const here = (view: DashView) => (current === view ? { 'aria-current': 'page' as const } : {})
   return createElement('featherbase-sidebar', { 'aria-label': 'Dash navigation' },
     reports.length > 0 && <span className="fd-sidebar-group" data-testid="reports-group">Reports</span>,
@@ -142,8 +145,8 @@ export function DashSidebar({ current, count }: { current: DashView; count?: num
         <span className="sm:hidden">Approve{waiting > 0 ? ` (${waiting})` : ''}</span>
       </a>
     ),
-    current === 'department' && (
-      <a href={DEPARTMENT_ADDRESS} aria-current="page" data-testid="department-link">
+    (departmentJob || current === 'department') && (
+      <a href={DEPARTMENT_ADDRESS} {...here('department')} data-testid="department-link">
         <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6" /></svg>
         <span>Your department</span>
       </a>
@@ -219,7 +222,14 @@ export function YourSections() {
           {answer.jobs.length === 0 && (
             <Card data-testid="no-job"><EmptyState title="You have no current job on the staff list" body="Ask your manager to check it with HR." /></Card>
           )}
-          {answer.jobs.map(job => <JobCard key={job.id} job={job} onSent={load} />)}
+          {answer.jobs.map(job => job.job === 'Department Manager' ? (
+            <Card key={job.id} data-testid="department-job" title={`${job.job} · ${job.store}`}>
+              <div className="flex flex-col gap-2 p-4">
+                <p>Your sections come from your department. Say which they are on Your department.</p>
+                <a className="fd-link font-semibold" href={DEPARTMENT_ADDRESS}>Open Your department</a>
+              </div>
+            </Card>
+          ) : <JobCard key={job.id} job={job} onSent={load} />)}
           {answer.proposals.length > 0 && <YourProposals proposals={answer.proposals} />}
         </>
       )}
@@ -451,10 +461,10 @@ export function Approvals() {
       {!answer && !failed && <Loading />}
       {failed && <LoadFailed onRetry={load} />}
       {answer?.state === 'not_set_up' && <NotSetUp />}
-      {answer?.state === 'ok' && <DepartmentApprovals setups={waitingSetups} onDecided={() => after({ tone: 'positive', text: 'Done. The Department Manager sees it now.' })} />}
+      {answer?.state === 'ok' && <DepartmentApprovals setups={waitingSetups} onDecided={text => after({ tone: 'positive', text })} />}
       {answer?.state === 'ok' && answer.proposals.length === 0 && waitingSetups.length === 0 && (
         <Card data-testid="nothing-waiting">
-          <EmptyState title="Nothing is waiting for you" body="When someone asks to correct their sections and it needs you, it shows here." />
+          <EmptyState title="Nothing is waiting for you" body="When someone asks to correct their sections, or sets up their department, and it needs you, it shows here." />
         </Card>
       )}
       {answer?.state === 'ok' && answer.proposals.map(proposal => <ApprovalCard key={proposal.id} proposal={proposal} onDone={after} />)}

@@ -191,6 +191,30 @@ describe('Your department', () => {
     await page.done()
   })
 
+  it('clears a refusal as soon as they change anything', async () => {
+    answers.department_setup = SETUP
+    answers.set_up_department = new Error('Lakeside already has a department called Kids')
+    const page = await render('YourDepartment')
+    await page.choose(page.q('name-input') as HTMLInputElement, 'Kids')
+    await page.click('Send to Mani')
+    await page.click('Menswear')
+    expect(page.q('refused')).toBeNull()
+    await page.click('Send to Mani')
+    await page.press([...page.container.querySelectorAll('input[type=checkbox]')].find(b => b.getAttribute('aria-label') === 'Bags')!)
+    expect(page.q('refused')).toBeNull()
+    await page.click('Send to Mani')
+    await page.click('Second floor')
+    expect(page.q('refused')).toBeNull()
+    await page.done()
+  })
+  it('words a master data team reviewer as a sentence, with no one to be away', async () => {
+    answers.department_setup = { ...SETUP, reviewer: 'the master data team', reviewer_is_team: true, current: { state: 'waiting', bundle: 'B1', name: 'Ladies', sections: ['Sarees'], waiting_for: 'the master data team', asked_on: '2026-11-11' } }
+    const page = await render('YourDepartment')
+    expect(page.q('waiting')?.textContent).toContain('Sent on 11-Nov-2026.Change it')
+    await page.click('Change it')
+    expect(page.q('lead')?.textContent).toContain('The master data team reviews it')
+    await page.done()
+  })
   it('shows a refusal and keeps what they chose', async () => {
     answers.department_setup = SETUP
     answers.set_up_department = new Error('Lakeside already has a department called Kids')
@@ -202,15 +226,23 @@ describe('Your department', () => {
     await page.done()
   })
 
-  it('withdraws a waiting set-up, or opens it again to change', async () => {
+  it('withdraws a waiting set-up, or changes it in place, keeping it until the new one is sent', async () => {
     const waiting = { ...SETUP, current: { state: 'waiting', bundle: 'B1', name: 'Ladies Ethnic', sections: ['Sarees'], waiting_for: 'Mani', asked_on: '2026-11-11' } }
     answers.department_setup = waiting
     answers.withdraw_department = { withdrawn: 2 }
     const page = await render('YourDepartment')
     await page.click('Change it')
-    expect(sentCalls('withdraw_department')).toEqual([{ bundle: 'B1' }])
+    expect(sentCalls('withdraw_department')).toEqual([])
+    expect(page.q('lead')?.textContent).toContain('What you send replaces the one waiting.')
+    await page.click('Cancel')
+    expect(page.q('waiting')).toBeTruthy()
+    await page.click('Change it')
     expect((page.q('name-input') as HTMLInputElement).value).toBe('Ladies Ethnic')
     expect(rows(page.container).filter(r => r.startsWith('[x]'))).toEqual(['[x] Sarees · First floorSells Banarasi sarees, Cotton sarees, Kanchi sarees and 1 moreTeam Leader: AshaYour Team Leader runs it'])
+    answers.set_up_department = { state: 'waiting' }
+    await page.click('Send to Mani')
+    expect(sentCalls('set_up_department')).toEqual([{ job: 'J1', name: 'Ladies Ethnic', sections: ['S1'], replaces: 'B1' }])
+    expect(page.q('waiting')).toBeTruthy()
     await page.done()
 
     answers.department_setup = waiting
@@ -230,7 +262,7 @@ describe('Your department', () => {
   })
 
   it('says why the last one was turned down, with it filled in to send again', async () => {
-    answers.department_setup = { ...SETUP, start_floors: ['F1', 'F2'], current: { state: 'turned_down', name: 'Ladies', sections: ['Silk'], reason: 'Sarees is in Ethnic' } }
+    answers.department_setup = { ...SETUP, start_floors: ['F1', 'F2'], current: { state: 'turned_down', name: 'Ladies', sections: ['Silk'], reason: 'Sarees is in Ethnic.' } }
     const page = await render('YourDepartment')
     expect(page.q('turned-down')?.textContent).toBe("Mani didn't keep “Ladies”: Sarees is in Ethnic. Change it and send it again.")
     expect(page.q('summary')?.textContent).toBe('1 section · Ladies. Nothing changes until Mani keeps it.')
@@ -244,10 +276,10 @@ describe('Your department', () => {
     await page.done()
   })
 
-  it('shows the department they have, and the way to their report', async () => {
+  it('shows the department they have as kept, and the way to their report', async () => {
     answers.department_setup = { ...SETUP, current: { state: 'set_up', name: 'Ladies Ethnic', sections: ['Sarees', 'Silk'] } }
     const page = await render('YourDepartment')
-    expect(page.q('set-up')?.textContent).toContain('Ladies Ethnic · Lakeside')
+    expect(page.q('set-up')?.textContent).toContain('Ladies Ethnic · LakesideKept')
     expect(page.q('set-up')?.textContent).toContain('Sarees and Silk')
     expect(page.q('open-report')?.getAttribute('href')).toBe('?')
     await page.done()
@@ -305,7 +337,7 @@ describe('Waiting for your approval: set-ups', () => {
     answers.department_approvals = []
     await page.click('Keep it')
     expect(sentCalls('decide_department')).toEqual([{ bundle: 'B1', decision: 'approve' }])
-    expect(page.q('decision-note')?.textContent).toBe('Done. The Department Manager sees it now.')
+    expect(page.q('decision-note')?.textContent).toBe("Kept. Deepa's report now shows these sections.")
     expect(page.q('nothing-waiting')).toBeTruthy()
     await page.done()
   })
@@ -324,6 +356,17 @@ describe('Waiting for your approval: set-ups', () => {
     await page.done()
   })
 
+  it('says the maker sees the reason once it is turned down', async () => {
+    answers.department_approvals = [SETUP_WAITING]
+    answers.decide_department = { state: 'Rejected' }
+    const page = await render('Approvals')
+    await page.click('Turn down')
+    await page.choose(page.q('reject-reason') as HTMLInputElement, 'Bags is in Kids')
+    answers.department_approvals = []
+    await page.click('Turn it down')
+    expect(page.q('decision-note')?.textContent).toBe('Turned down. Deepa sees your reason.')
+    await page.done()
+  })
   it('turns it down only with a reason, and shows a refusal', async () => {
     answers.department_approvals = [SETUP_WAITING]
     answers.decide_department = new Error('That set-up is no longer waiting')
@@ -335,6 +378,7 @@ describe('Waiting for your approval: set-ups', () => {
     await page.choose(page.q('reject-reason') as HTMLInputElement, ' Bags is in Kids ')
     await page.click('Turn it down')
     expect(sentCalls('decide_department')).toEqual([{ bundle: 'B1', decision: 'reject', reason: 'Bags is in Kids' }])
+    expect(page.q('decision-note')).toBeNull()
     expect(page.q('decide-refused')?.textContent).toBe('That set-up is no longer waiting')
     await page.done()
   })

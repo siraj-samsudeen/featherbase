@@ -422,3 +422,23 @@ describe("Dash's sidebar", () => {
     expect(document.querySelector('[data-testid=reports-group]')).toBeNull()
   })
 })
+
+describe('a Department Manager on Your sections (#1195)', () => {
+  it('sees their job point to Your department, and the sidebar offers it', async () => {
+    answers.my_sections = { state: 'ok', name: 'Devi', jobs: [{ ...job, id: 'dm-job', job: 'Department Manager', section: null, subcategories: [] }], proposals: [], waiting_for_me: 0 }
+    answers.holds_department_job = true
+    const page = await render('YourSections')
+    expect(page.q('department-job')?.textContent).toContain('Your sections come from your department.')
+    expect(page.q('department-job')?.querySelector('a')?.getAttribute('href')).toBe('?view=department')
+    expect(page.q('department-link')?.getAttribute('href')).toBe('?view=department')
+    expect(page.q('department-link')?.getAttribute('aria-current')).toBeNull()
+    await page.done()
+  })
+  it('offers no Your department to anyone else', async () => {
+    answers.my_sections = { state: 'ok', name: 'Asha', jobs: [job], proposals: [], waiting_for_me: 0 }
+    answers.holds_department_job = false
+    const page = await render('YourSections')
+    expect(page.q('department-link')).toBeNull()
+    await page.done()
+  })
+})

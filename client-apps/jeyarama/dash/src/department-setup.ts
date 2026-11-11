@@ -4,7 +4,7 @@
 // manager (else a Master Data Editor) decides the bundle as one. The rules are here; the platform
 // still checks who may decide.
 import {
-  BASE_TABLES, JOB_FIELDS, PLACEMENT_FIELDS, SECTION_FIELDS, T,
+  BASE_TABLES, JOB_FIELDS, MASTER_DATA_TEAM, PLACEMENT_FIELDS, SECTION_FIELDS, T,
   all, approversOf, byId, employeeNames, freeId, inForce, isActive, istDay, list, myEmployees, myJobs, unique, waitingName,
   type ActionContext, type ChangeProposal, type ReadContext, type Row,
 } from './my-sections.ts'
@@ -79,6 +79,8 @@ async function reviewerOf(ctx: Ctx, job: Row): Promise<string> {
   const route = await ctx.changeProposals.routeFor(ctx.user, (await approversOf(ctx, job)).approvers)
   return waitingName(ctx, route?.people ?? [])
 }
+/** Whether the reviewer is the master data team rather than one person, which the page words differently. */
+const isTeam = (reviewer: string) => reviewer === MASTER_DATA_TEAM
 
 /** A name already in force at the store, compared without case or spaces at the ends. */
 function nameTaken(ctx: Ctx, departments: Row[], name: string, store: string): void {
@@ -129,7 +131,7 @@ export const departmentReads = {
     const shop = await storeOf(ctx, site, today)
     const reviewer = await reviewerOf(ctx, job)
     const jobView = { id: exact(job.row_id), store: shop.store }
-    if (!shop.sections.length) return { state: 'no_sections' as const, job: jobView, reviewer }
+    if (!shop.sections.length) return { state: 'no_sections' as const, job: jobView, reviewer, reviewer_is_team: isTeam(reviewer) }
 
     const me = new Set(employees.map(e => exact(e.row_id)))
     const { jobs, leaders } = await teamLeadersOf(ctx, site, today)
@@ -180,8 +182,13 @@ export const departmentReads = {
     const names = [...counts].filter(([name]) => name && !shop.departments.some(d => sameName(text(d.name), name)))
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, NAMES_SHOWN).map(([name]) => name)
 
-    return { state: 'ok' as const, name: text(employees[0].name), job: jobView, reviewer, floors, start_floors, sections, names,
+    return { state: 'ok' as const, name: text(employees[0].name), job: jobView, reviewer, reviewer_is_team: isTeam(reviewer), floors, start_floors, sections, names,
       current: await currentOf(ctx, job, shop, me) }
+  },
+
+  /** Whether the signed-in person holds a Department Manager job now: the sidebar offers Your department. */
+  async holds_department_job(ctx: ReadContext) {
+    return isSetUp(ctx) && (await myDepartmentJob(ctx, undefined, istToday())).job !== null
   },
 
   /** The set-ups waiting for this person's decision, one entry per bundle. */
@@ -239,7 +246,10 @@ export const departmentActions = {
     const shop = await storeOf(ctx, site, today)
     const me = new Set(employees.map(e => exact(e.row_id)))
     if (shop.departments.some(d => me.has(exact(d.manager)))) ctx.reject('You already have a department here')
-    if ((await myBundles(ctx, exact(job!.row_id))).some(p => p.state === 'Pending')) ctx.reject('You already sent one. Change or withdraw it first')
+    // "Change it" sends the new one in place of the one waiting, in this one action.
+    const replaced = await pendingBundle(ctx, payload.replaces, [ctx.user])
+    for (const part of replaced) await ctx.changeProposals.withdraw(part.row_id)
+    if ((await myBundles(ctx, exact(job!.row_id))).some(p => p.state === 'Pending' && !replaced.some(r => r.row_id === p.row_id))) ctx.reject('You already sent one. Change or withdraw it first')
     const picked = payload.sections
     if (!Array.isArray(picked) || !picked.length || picked.some(id => typeof id !== 'string')) ctx.reject('Tick at least one section')
     const name = typeof payload.name === 'string' ? payload.name.trim() : ''
