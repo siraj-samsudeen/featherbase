@@ -132,7 +132,8 @@ describe('approve', () => {
     await role('Tasker Member')
     const asha = await createUser({ email: 'asha.six@example.com', roles: ['Tasker Member'] })
     const id = await waiting(asha.user!)
-    for (const body of [{}, { roles: [] }, { roles: ['Tasker Member'] }, { roles: ['No Such Role'] }, { roles: ['Administrator'] }, { roles: ['All'] }, { roles: 'x' }])
+    for (const body of [{}, { roles: [] }, { roles: ['Tasker Member'] }, { roles: ['No Such Role'] }, { roles: ['Administrator'] }, { roles: ['All'] }, { roles: 'x' },
+      { grants: [{ app: 'featherbase', choice: 'anything' }] }, { grants: [{ app: 'no_such_app', choice: 'x' }] }])
       expect((await decide(admin, id, 'approve', body)).status).toBe(417)
     expect(await rolesOf(asha.user!)).toEqual(['Tasker Member'])
   })
@@ -155,6 +156,7 @@ describe('decline', () => {
     const id = await waiting(asha.user!)
     expect((await decide(admin, id, 'decline', {})).status).toBe(417)
     expect((await decide(admin, id, 'decline', { reason: '   ' })).status).toBe(417)
+    expect((await decide(admin, id, 'decline', { reason: 'x'.repeat(501) })).status).toBe(417)
     await expectStatus(await decide(admin, id, 'decline', { reason: 'Not in head office' }), 200)
     const [row] = await sql`select declined_at, declined_by, declined_reason from access_request where row_id = ${id}`
     expect(row).toMatchObject({ declined_by: admin.user ?? 'Administrator', declined_reason: 'Not in head office' })
