@@ -399,6 +399,16 @@ percentage in documentation, to assess the current code.
 A `packages/shared` module driven only from the server and web suites reads as
 uncovered in shared's own report.
 
+To see the numbers CI will report, run `pnpm coverage:ci`
+(`tools/ci-coverage.mjs`, #1201). It shards and merges both core suites as CI
+does, each run on a fresh local database whose address carries a password,
+then prints each suite's uncovered counts and drops the databases. Logs land
+in `.coverage-ci/`; `--only=server|web` runs one suite, `--jobs=N` sets how
+many runs go side by side (default 3). It uses the local Postgres only, so
+anything CI measures through another service (MySQL, until #1199) is outside
+its numbers. A plain `vitest run --coverage` counts differently: it is one
+run, not merged shards.
+
 ### Merged web coverage
 
 The web number that decides which component tests to write is ONE report over
