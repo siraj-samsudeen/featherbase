@@ -258,6 +258,7 @@ export function AddRule({ tables, owners, mutate, busy, close }: {
             {conditions.length < 10 && <button type="button" className="link-button" onClick={() => setConditions((list) => [...list, ['', '=', '']])}>Add a condition</button>}
           </div>
         )}
+        {columns !== null && (<>
         <p className="rule-preview" aria-live="polite">
           {preview.state === 'counting' ? 'Counting…'
             : matches === null ? 'You may not read this Table, so it cannot be counted for you.'
@@ -277,9 +278,10 @@ export function AddRule({ tables, owners, mutate, busy, close }: {
           </Label>
         </div>
         <Label title="How to fix (optional)"><textarea name="how_to_fix" rows={2} /></Label>
+        </>)}
         <div className="actions">
           <button type="button" onClick={close}>Cancel</button>
-          <button className="primary" disabled={!matches}>Save rule</button>
+          {columns !== null && <button className="primary" disabled={!matches}>Save rule</button>}
         </div>
       </fieldset>
     </form>

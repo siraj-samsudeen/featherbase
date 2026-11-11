@@ -65,6 +65,9 @@ describe('the Rules card (#1196)', () => {
       // Anjali may not read the Table: she is told so, and offered no conditions to build.
       .within('.rules', (rules) => rules.assertText("You may not read Buyer Assignment, so its columns can't be offered"))
     expect(screen.queryByRole('combobox', { name: 'Column 1' })).toBeNull()
+    // Nothing else to fill in or save: only the reason and Cancel.
+    expect(screen.queryByLabelText('Title')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Save rule' })).toBeNull()
     await anjali.clickButton('Cancel').until('the form has closed', () => !screen.queryByRole('combobox', { name: 'Table' }))
 
     const bala = (await openAs(x, 'Bala')).session
