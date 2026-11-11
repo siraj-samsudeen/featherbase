@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { appPermissionSchema, registerApp, forgetRuntimePackages, listInstalledApps, suspendRuntimeApp, loadInstalledApps, provisionGrants, syncAppJobs, type AppManifest } from './apps'
 import { applyJobPlan, bindAppJobs, jobsDeclaration, planJobChanges, validateAppJobs } from './app-jobs'
 import { tableDefSchema } from './table-engine'
-import { hasPermission } from './permissions'
+import { PLATFORM_ROLES, hasPermission } from './permissions'
 import { tableAccessPolicy } from './mandatory-access'
 import { AppError, errorMessage } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
@@ -669,16 +669,19 @@ async function upgradePlan(name: string, version: string, preview = true) {
     })
   }
   // #1192: a role this version declares and the installed one did not is
-  // created by the upgrade, with its declared grants on any Table. Only a role
-  // the instance does not have yet: it starts with no holders, so the upgrade
-  // widens nobody's access. A same-named role already there is refused rather
-  // than merged, and checked again when the upgrade is applied.
+  // created by the upgrade, with its declared grants: any on a Table the
+  // upgrade adds, reads only on one the app already had (an upgrade never
+  // brings writes there). Only a role the instance does not have yet: it
+  // starts with no holders, so the upgrade widens nobody's access. A
+  // same-named role already there is refused rather than merged, and checked
+  // again when the upgrade is applied. A platform role is never new.
   const priorRoles = new Set(prior.manifest.roles ?? [])
-  const newRoles = (target.manifest.roles ?? []).filter(role => !priorRoles.has(role))
+  const newRoles = (target.manifest.roles ?? []).filter(role => !priorRoles.has(role) && !PLATFORM_ROLES.includes(role))
   const taken = newRoles.length ? await sql`select row_id from role where row_id in ${sql(newRoles)} order by row_id` : []
   if (taken.length)
     refuse(`The role ${taken.map(row => String(row.row_id)).join(', ')} already exists on this instance; this version declares it as new. Rename or remove that role, then upgrade`)
-  const forNewRole = (permission: typeof target.manifest.permissions[number]) => newRoles.includes(permission.role)
+  const forNewRole = (permission: typeof target.manifest.permissions[number]) =>
+    newRoles.includes(permission.role) && Object.keys(permission.operations).every(operation => operation === 'read')
   if (!target.manifest.permissions.every((p) => added.has(p.table) || held.has(canonical(p)) || narrowsAudience(p) || forNewRole(p)) || prior.app.runtime_manifest == null ||
       (prior.app.runtime_manifest as { packageName: string }).packageName !== (target.app.runtime_manifest as { packageName: string }).packageName)
     refuse('Permission or package identity changes are unsupported')
