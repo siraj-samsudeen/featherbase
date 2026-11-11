@@ -69,6 +69,7 @@ A person SHALL see their jobs' sections and subcategories, and SHALL be able to
 propose, within their own store, a subcategory's move out of their section, a missing
 subcategory joining it, or a different section for their job. A proposal outside
 their own job and store SHALL be refused, and SHALL change nothing until approved.
+Until it is decided, the person who asked SHALL be able to withdraw it (Undo).
 
 (11-Nov-2026: trimmed to what is built (owner). No Section Editor or Reviewer role,
 no reviewer page.)
@@ -79,6 +80,11 @@ no reviewer page.)
   another section of their store
 - **THEN** the proposal waits for their manager and the placement is unchanged
   meanwhile
+
+#### Scenario: Undo withdraws a pending proposal
+
+- **WHEN** the Team Leader withdraws their pending proposal before it is decided
+- **THEN** it changes nothing and no longer waits for their manager
 
 #### Scenario: Another store's section is out of reach
 
