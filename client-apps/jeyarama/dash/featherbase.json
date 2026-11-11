@@ -560,7 +560,9 @@
       "Section",
       "Section Subcategory",
       "Merchandise Assignment",
-      "Subcategory"
+      "Subcategory",
+      "Cluster",
+      "Operating Region"
     ],
     "unmarkedTables": [
       "Employee",
@@ -570,7 +572,9 @@
       "Section",
       "Section Subcategory",
       "Merchandise Assignment",
-      "Subcategory"
+      "Subcategory",
+      "Cluster",
+      "Operating Region"
     ]
   },
   "permissions": [
@@ -1962,6 +1966,12 @@
         "report",
         "updated_at",
         "removed"
+      ],
+      "Cluster": [
+        "cluster_manager"
+      ],
+      "Operating Region": [
+        "region_head"
       ]
     },
     "propose": {

@@ -25,7 +25,7 @@ export interface Place {
 }
 
 const T = { employee: 'Employee', job: 'Job Assignment', site: 'Site', plant: 'Plant', section: 'Section', placement: 'Section Subcategory',
-  merchandise: 'Merchandise Assignment', subcategory: 'Subcategory' } as const
+  merchandise: 'Merchandise Assignment', subcategory: 'Subcategory', cluster: 'Cluster', region: 'Operating Region' } as const
 
 /** Every Table the provider reads: featherbase.json's scopeProvider.tables. */
 export const PROVIDER_TABLES: string[] = Object.values(T)
@@ -40,6 +40,8 @@ export const PROVIDER_FIELDS: Record<string, string[]> = {
   [T.placement]: ['store', 'section', 'subcategory', 'starts_on', 'ends_on'],
   [T.merchandise]: ['employee', 'responsibility', 'division', 'subdivision', 'category', 'subcategory', 'operating_region', 'starts_on', 'ends_on'],
   [T.subcategory]: ['division', 'subdivision', 'category', 'subcategory_type'],
+  [T.cluster]: ['cluster_manager'],
+  [T.region]: ['region_head'],
 }
 
 const PAGE = 500
@@ -117,7 +119,12 @@ export async function reachOf(documents: Documents, person: string, on: string):
   const jobs = employees.length ? (await all(documents, T.job, mine)).filter(row => holdsOn(row, on)) : []
   // rama_dw #4588: buyers, category heads and the heads above them, from their Merchandise Assignments.
   const assignments = employees.length ? (await all(documents, T.merchandise, mine)).filter(row => holdsOn(row, on)) : []
-  if (!jobs.length && !assignments.length) return { places: [], problems: ['no_job'] }
+  // rama_dw #4588, proposal A: a Cluster or Operating Region row names its head.
+  const ids = employees.map(id)
+  const headed = async (table: string, column: string) => employees.length ? (await all(documents, table, [[column, 'in', ids]])).map(id) : []
+  const clustersHeaded = await headed(T.cluster, 'cluster_manager')
+  const regionsHeaded = await headed(T.region, 'region_head')
+  if (!jobs.length && !assignments.length && !clustersHeaded.length && !regionsHeaded.length) return { places: [], problems: ['no_job'] }
 
   const sites = await all(documents, T.site)
   const stores = sites.filter(site => checked(site.is_store))
@@ -130,8 +137,15 @@ export async function reachOf(documents: Documents, person: string, on: string):
   for (const plant of await all(documents, T.plant, [['plant_type', 'in', SOLD_THROUGH]]))
     plantsOf.set(exact(plant.site), [...(plantsOf.get(exact(plant.site)) ?? []), id(plant)])
 
+  /** A site's selling plants; none for a site that sells through none. */
+  const sellingPlants = (site: Row) => plantsOf.get(id(site)) ?? []
   const places = new Places()
   const problems: NoReach[] = []
+  const head = (covered: Row[], basis: string, text: string) => {
+    for (const store of covered) for (const plant of sellingPlants(store)) places.add(plant, plant, null, basis, { text })
+  }
+  for (const cluster of clustersHeaded) head(stores.filter(row => exact(row.cluster) === cluster), 'cluster_manager', `Named head of cluster ${cluster}`)
+  for (const region of regionsHeaded) head(stores.filter(row => exact(row.operating_region) === region), 'region_head', `Named head of region ${region}`)
   const sectionJobs: { job: Row; sections: Row[] }[] = []
   for (const job of jobs) {
     const name = exact(job.job)
@@ -139,7 +153,7 @@ export async function reachOf(documents: Documents, person: string, on: string):
     const reason = reasonOf(job)
     const whole = (sitesCovered: Row[]) => {
       for (const covered of sitesCovered)
-        for (const plant of plantsOf.get(id(covered)) ?? []) places.add(plant, plant, null, basisOf(job), reason)
+        for (const plant of sellingPlants(covered)) places.add(plant, plant, null, basisOf(job), reason)
     }
     if (name === 'Staff' || name === 'Team Leader') {
       if (!exact(job.section)) { problems.push('no_section'); continue }
@@ -153,7 +167,8 @@ export async function reachOf(documents: Documents, person: string, on: string):
       whole(sites.filter(row => id(row) === site))
     } else if (name === 'Cluster Manager') {
       const cluster = exact(siteOf.get(site)?.cluster)
-      if (!cluster) { problems.push('no_cluster'); continue }
+      // A Cluster Manager on a head-office site reaches the cluster that names them instead.
+      if (!cluster) { if (!clustersHeaded.length) problems.push('no_cluster'); continue }
       whole(stores.filter(row => exact(row.cluster) === cluster))
     } else if (EVERY_STORE.has(name)) {
       whole(stores)
@@ -173,7 +188,7 @@ export async function reachOf(documents: Documents, person: string, on: string):
         : subcategories.filter(row => exact(row[level]) === named).map(id)
       const region = exact(assignment.operating_region)
       const covered = stores.filter(site => !region || exact(site.operating_region) === region)
-      const plants = covered.flatMap(site => plantsOf.get(id(site)) ?? [])
+      const plants = covered.flatMap(site => sellingPlants(site))
       if (!codes.length || !plants.length) { problems.push('nothing_assigned'); continue }
       const reason: Reason = { text: `${exact(assignment.responsibility)} merchandise assignment`, since: day(assignment.starts_on),
         ...(day(assignment.ends_on) ? { until: day(assignment.ends_on) } : {}) }
