@@ -414,6 +414,7 @@ describe('apply now, review after (#1191), when it is switched on', () => {
     await page.click('Cancel')
     await page.click('Undo it')
     expect(page.q('setup-card')?.textContent).toContain("Why undo it? Deepa's report stops showing these sections, and Deepa sees your reason.")
+    expect(page.q('setup-card')?.textContent).not.toContain('Undoing it takes these sections off')
     await page.choose(page.q('reject-reason') as HTMLInputElement, 'Wrong store')
     expect(page.q('confirm-reject')?.textContent).toBe('Undo it')
     answers.decide_department = { state: 'Undone' }
