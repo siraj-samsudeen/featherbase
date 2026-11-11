@@ -65,7 +65,7 @@ type Mine = { state: 'not_set_up' | 'unknown_person' } | { state: 'ok'; name: st
 const NOT_AT_ONCE: AtOnce = { add: false, removal: false, section: false }
 type Waiting = { state: 'not_set_up' } | { state: 'ok'; proposals: Approval[] }
 type Holder = { kind: 'mine' } | { kind: 'none' } | { kind: 'other'; section: string; team_leader: string | null }
-interface Choice extends HierarchyLeaf { holder: Holder; asked: boolean }
+interface Choice extends HierarchyLeaf { holder: Holder; asked: boolean; taken_out?: boolean }
 interface Levels { start: HierarchyNode | null; levels: HierarchyNode[] }
 type Unplaced = { state: 'not_set_up' | 'not_allowed' } | { state: 'ok'; rows: (Leveled & { store: string; was_in: string; since: string })[] }
 
@@ -386,8 +386,9 @@ function PickSection({ job, atOnce, action, label, payload, onCancel, onSent, on
 }
 
 /** Where a subcategory is now, in a few words. */
-export function holderLine(choice: Pick<Choice, 'holder' | 'asked'>): string {
+export function holderLine(choice: Pick<Choice, 'holder' | 'asked' | 'taken_out'>): string {
   if (choice.asked) return 'Already asked for'
+  if (choice.taken_out) return 'You took this out · use Undo to put it back'
   if (choice.holder.kind === 'mine') return 'Already yours'
   if (choice.holder.kind === 'none') return 'Not in any section'
   return `Now in ${choice.holder.section}${choice.holder.team_leader ? ` · ${choice.holder.team_leader}` : ''}`
@@ -405,7 +406,7 @@ function AddSubcategories({ job, atOnce, onCancel, onSent, onRefused }: { job: J
     return () => { live = false }
   }, [job.id])
   const loadLeaves = useCallback((node: HierarchyNode) => read<Omit<Choice, 'disabled'>[]>('category_subcategories', { job: job.id, ...node })
-    .then(rows => rows.map(row => ({ ...row, disabled: row.asked || row.holder.kind === 'mine' }))), [job.id])
+    .then(rows => rows.map(row => ({ ...row, disabled: row.asked || row.taken_out === true || row.holder.kind === 'mine' }))), [job.id])
   async function send() {
     setBusy(true)
     setError(null)

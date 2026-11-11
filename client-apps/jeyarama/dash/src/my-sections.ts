@@ -341,8 +341,10 @@ export const reads = {
     const sections = sectionIds.length ? byId(await list(ctx, T.section, SECTION_FIELDS, [['row_id', 'in', sectionIds]])) : new Map<string, Row>()
     const holders = await holdersOf(ctx, sectionIds, today)
     const names = await employeeNames(ctx, holders.map(h => exact(h.employee)))
-    const asked = new Set((await ctx.changeProposals.list({ makers: [ctx.user], states: ['Pending'], limit: 500 }))
-      .filter(p => about(p).kind === 'add').map(p => about(p).subcategory))
+    const open = await ctx.changeProposals.list({ makers: [ctx.user], states: OPEN, limit: 500 })
+    const asked = new Set(open.filter(p => !isApplied(p) && about(p).kind === 'add').map(p => about(p).subcategory))
+    // #1191: taken out by them and not yet reviewed: Undo puts it back, not another add.
+    const takenOut = new Set(open.filter(p => isApplied(p) && about(p).kind === 'removal' && about(p).site === exact(job.site)).map(p => about(p).subcategory))
     return rows.map(row => {
       const code = exact(row.row_id)
       const section = where.get(code)
@@ -350,7 +352,7 @@ export const reads = {
       const holder = !section ? { kind: 'none' as const }
         : section === exact(job.section) ? { kind: 'mine' as const }
         : { kind: 'other' as const, section: text(sections.get(section)?.name), team_leader: leaders.length ? leaders.join(' and ') : null }
-      return { code, name: text(row.subcategory), holder, asked: asked.has(code) }
+      return { code, name: text(row.subcategory), holder, asked: asked.has(code), taken_out: takenOut.has(code) }
     }).sort((a, b) => a.name.localeCompare(b.name) || a.code.localeCompare(b.code))
   },
 
