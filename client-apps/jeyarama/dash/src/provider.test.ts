@@ -212,6 +212,12 @@ describe('merchandise assignments', () => {
     expect(await assigned({ responsibility: 'Buyer', subcategory: '000000004', operating_region: 'North-east' })).toEqual({ places: [], problems: ['nothing_assigned'] })
   })
 
+  it('a store of the region that sells through no plant adds nothing', async () => {
+    const plants = PLANTS.filter(plant => plant.row_id !== '9902')
+    const { places } = await reachOf(fake([], { plants, assignments: [{ responsibility: 'Buyer', subcategory: '000000004', operating_region: 'East' }] }), 'me', ON)
+    expect(places.map(place => place.filters.store[0])).toEqual(['9901'])
+  })
+
   it('an assignment that ends says until when', async () => {
     const [place] = (await assigned({ responsibility: 'Buyer', subcategory: '000000004', operating_region: 'East', ends_on: '2026-12-31' })).places
     expect(place.reasons).toEqual([{ text: 'Buyer merchandise assignment', since: '2026-01-01', until: '2026-12-31' }])
