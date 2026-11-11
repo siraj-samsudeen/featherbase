@@ -34,18 +34,19 @@ export function instanceFolder(instance: string, root = REPO_ROOT) {
   return { folder, settingsFile }
 }
 
-/** A dev instance follows its apps' files; production never does: there a code
- *  change needs a new version. Both the server and the database must say so. */
+/** A hosted instance follows its apps' files under the same version and
+ *  declaration (#1178, D3): a code-only fix needs no new version. Both the
+ *  server and the database must say which environment it is. */
 export function followsAppFiles(environment: string, stamp: string | null): boolean {
-  return environment === 'staging' && stamp === 'staging'
+  return (environment === 'staging' || environment === 'production') && stamp === environment
 }
 
-export function unshippedRefusal(name: string, version: string, reason: 'files' | 'manifest' | 'absent'): string {
+export function unshippedRefusal(name: string, version: string, reason: 'files' | 'manifest' | 'upgraded' | 'absent'): string {
   if (reason === 'manifest')
     return `App ${name} version ${version}: its manifest (featherbase.json) changed, but its version did not. Bump the version, with a migration from ${version}, and deploy again.`
   if (reason === 'files')
-    return `App ${name} version ${version}: its files changed, but its version did not, and production never re-pins. Bump the version, with a migration from ${version}, and deploy again.`
-  return `App ${name} version ${version} is installed and enabled, but this release does not ship it. To upgrade from it, list it under previousVersions in the instance's instance.json so that the image holds both; or disable the app before releasing.`
+    return `App ${name} version ${version}: its files changed, but its version did not, and this server does not follow app files. Deploy it as staging or production, or bump the version.`
+  return `App ${name} version ${version} is installed and enabled, but this release does not ship it or a newer version. Add the app to the instance's instance.json, or disable it before releasing.`
 }
 
 /** Re-pin every installed, enabled app whose files changed under the same
@@ -53,8 +54,8 @@ export function unshippedRefusal(name: string, version: string, reason: 'files' 
 export async function repinChangedApps(io: CommandIO): Promise<void> {
   const stamp = await storedEnvironment()
   const environment = currentEnvironment()
-  if (environment === 'production' || (stamp !== 'development' && stamp !== 'staging'))
-    throw new Error(`This is a "${environment}" server on a database labelled "${stamp ?? 'nothing'}". Re-pinning is for a development or dev (staging) database; production needs a new version.`)
+  if (stamp !== 'development' && !followsAppFiles(environment, stamp))
+    throw new Error(`This is a "${environment}" server on a database labelled "${stamp ?? 'nothing'}". Re-pinning needs a server and database that agree on the environment.`)
   const { discoverPackages, repinToFolder, whyUnshipped } = await import('./runtime-packages')
   const { appLibraryPaths } = await import('./app-library')
   const paths = await appLibraryPaths(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
@@ -64,7 +65,11 @@ export async function repinChangedApps(io: CommandIO): Promise<void> {
   for (const row of rows) {
     const name = String(row.name)
     const outcome = await repinToFolder(name, true)
-    if (outcome === 'different') throw new Error(unshippedRefusal(name, String(row.package_version), await whyUnshipped(row, paths)))
+    if (outcome === 'different') {
+      const reason = await whyUnshipped(row, paths)
+      // #1178 (D4): a newer version replaces it; the upgrade step moves it on.
+      if (reason !== 'upgraded') throw new Error(unshippedRefusal(name, String(row.package_version), reason))
+    }
     if (outcome === 'repinned') io.out(`${name} ${String(row.package_version)}: its files changed; re-pinned to them`)
   }
 }
@@ -123,7 +128,7 @@ export async function deployInstance(instance: string, io: CommandIO, opts: { ro
     await sql`set local idle_in_transaction_session_timeout = '5min'`
     // Held to the end, so two overlapping deploys take turns.
     await sql`select pg_advisory_xact_lock(hashtext('featherbase-instance-deploy'))`
-    // On dev, re-pin first: an upgrade checks the installed version against
+    // Re-pin first (dev and production): an upgrade checks the installed version against
     // the files the image holds for it, which may have moved under it.
     if (followsAppFiles(currentEnvironment(), await storedEnvironment())) await repinChangedApps(io)
     await installOrUpgradeApps(io)

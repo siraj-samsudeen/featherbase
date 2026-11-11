@@ -72,6 +72,17 @@ describe('an installed app that is not running here (#912)', () => {
     } finally { vi.unstubAllEnvs() }
   })
 
+  // #1178 (D4): an installed version older than the one on disk is an upgrade waiting to happen.
+  test('a development server says which version it has when only a newer one is on disk', async ({ admin }) => {
+    await discoverPackages([tickets])
+    await admin.post('/api/install_app', { name: 'tickets' })
+    await sql`update installed_app set package_version = '0.0.1' where name = 'tickets'`
+    vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify([tickets]))
+    try {
+      expect(await installedAppsAtStart('development')).toEqual([expect.stringMatching(/^WARNING: App tickets 0\.0\.1 is installed, but this server has a newer version of tickets\. Upgrade it in Apps/)])
+    } finally { vi.unstubAllEnvs() }
+  })
+
   test("an app's context names its own caller: a person, a service account, or nobody", async ({ admin }) => {
     expect(await ownDisplayName(String(admin.user))).toEqual(expect.any(String))
     await sql`insert into service_account (row_id, label) values ('svc_bbbbbbbbbbbbbbbbbbbb', 'Nightly loader')`
