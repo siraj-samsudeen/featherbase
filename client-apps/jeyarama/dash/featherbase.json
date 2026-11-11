@@ -58,7 +58,12 @@
     "approvers": [
       "Report Access Manager"
     ],
-    "page": "?view=access"
+    "page": "?view=access",
+    "grant": {
+      "title": "Dash reports",
+      "read": "grant_options",
+      "action": "give_report"
+    }
   },
   "datasets": [
     {
@@ -762,6 +767,14 @@
         }
       },
       "access_page": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "grant_options": {
         "policy": {
           "kind": "table"
         },
@@ -1874,6 +1887,12 @@
       "id": "merchandise_reach",
       "fromVersion": "0.12.6",
       "toVersion": "0.12.9",
+      "operations": []
+    },
+    {
+      "id": "waiting_for_access_grant",
+      "fromVersion": "0.12.9",
+      "toVersion": "0.12.10",
       "operations": []
     }
   ],

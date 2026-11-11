@@ -98,6 +98,15 @@ const accessDeclaration = z.object({
   approvers: z.array(z.string().min(1)).optional(),
   /** Where on the app's own pages approvers see who is waiting: a query string, like ?view=access. */
   page: z.string().regex(/^\?[a-z0-9_=&-]{1,100}$/).optional(),
+  /** #1173: how a System Manager gives this app's own access from the Waiting
+   *  for access page. `read` lists what can be given to one person (payload
+   *  { person }); `action` gives one of them, with the choice's payload plus
+   *  { person }, under the app's own rules. `title` names the section. */
+  grant: z.object({
+    title: z.string().min(1).max(60),
+    read: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/),
+    action: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/),
+  }).strict().optional(),
 }).strict()
 
 const manifestSchema = z.object({
@@ -883,6 +892,24 @@ async function passesGate(pkg: RuntimePackage, user: string): Promise<boolean> {
 export function accessApprovers(name: string): { roles: readonly string[]; page?: string } {
   const access = packages.get(name)?.manifest.access
   return { roles: access?.approvers ?? [], ...(access?.page ? { page: `${appHref(name)}${access.page}` } : {}) }
+}
+
+/** #1173: the apps loaded here that say how their own access is given. */
+export function accessGrantApps(): { app: string; title: string; read: string; action: string }[] {
+  return [...packages.values()].flatMap((pkg) => {
+    const grant = pkg.manifest.access?.grant
+    return grant ? [{ app: pkg.name, ...grant }] : []
+  })
+}
+
+/** #1173: run an app's declared grant read or action as `user`, as the app's
+ *  loaded version, and return its result. */
+export async function runGrant(app: string, kind: 'read' | 'action', name: string, input: unknown, user: string): Promise<unknown> {
+  const pkg = packages.get(app)
+  if (!pkg) throw new AppError('NotFoundError', 'App is unavailable')
+  const answer = await withAppIdentity(pkg.name, pkg.version, () =>
+    kind === 'read' ? runPackageRead(app, name, input, user) : runPackageAction(app, name, input, user)) as { result?: unknown }
+  return answer.result
 }
 
 /** #1008: the installed apps this person can't open, and the roles that would

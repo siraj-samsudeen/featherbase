@@ -6,7 +6,7 @@ import { orgChartProvider, reachOf, type Documents, type Place } from './provide
 import { diveFilters, storesOfReport, storesReached, type ReportRecord } from './dive-filters.ts'
 import { MONTH_CHOICES, buildReport, monthLabel, headingOf, istToday, periodOf, storeLabels, storeShortName, type CachedAnswer, type Heading, type Month, type MonthChoice, type SalesRow } from './report.ts'
 import { actions as sectionActions, reads as sectionReads } from './my-sections.ts'
-import { accessPage, addToBundle, giveReport, makeBundle, managesAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
+import { accessPage, addToBundle, giveReport, grantOptions, makeBundle, managesAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
 
 /** The save rules of Dash's own Tables. */
 export const validators = accessValidators
@@ -307,6 +307,8 @@ export const reads = {
 
   /** The Report access page (#1046). Managers only. */
   access_page: (context: ReadContext) => accessPage(context as AccessContext),
+  /** #1173: what the platform's Waiting for access drawer can give one person. Managers only. */
+  grant_options: (context: ReadContext) => grantOptions(context as AccessContext, istToday()),
   person_search: (context: ReadContext) => personSearch(context as AccessContext),
   person_lookup: (context: ReadContext) => personLookup(context as AccessContext, istToday(), async person => {
     try {

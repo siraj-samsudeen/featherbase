@@ -717,8 +717,8 @@ app.get('*', async (c, next) => {
       if (!navigation || path.extname(asset)) throw error
       // #955: a served app this person cannot open: opening it is the request.
       const asked = user && (await requestAccess(user.row_id, name))
-      if (asked && asked.state === 'waiting')
-        return c.html(noAccessYetPage(asked.title), 403)
+      if (asked && asked.state !== 'open')
+        return c.html(noAccessYetPage(asked.title, asked.state === 'declined'), 403)
       return c.html(
         `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Application unavailable</title></head>
       <body style="font:16px system-ui;background:#f4f5f6;color:#1c2126;margin:0;padding:8vw"><main style="max-width:36rem;margin:auto;background:white;border:1px solid #ebeef0;border-radius:8px;padding:2rem">
@@ -1150,6 +1150,24 @@ app.post('/api/access_request', async (c) => {
   const answer = typeof body.app === 'string' ? await requestAccess(who(c), body.app) : null
   if (!answer) throw new AppError('ValidationError', 'No such app to ask for')
   return c.json(answer)
+})
+
+// #1173: a System Manager acts on one request from the Waiting for access
+// page's drawer: what it shows, then approve, decline or dismiss.
+app.get('/api/access_request/:id', async (c) => {
+  const { accessRequestDetails } = await import('./access-decisions')
+  return c.json(await accessRequestDetails(c.req.param('id'), who(c)))
+})
+app.post('/api/access_request/:id/:decision', async (c) => {
+  const decisions = await import('./access-decisions')
+  const body = await c.req.json().catch(() => ({}))
+  const id = c.req.param('id')
+  switch (c.req.param('decision')) {
+    case 'approve': return c.json(await decisions.approveAccessRequest(id, who(c), body))
+    case 'decline': return c.json(await decisions.declineAccessRequest(id, who(c), body))
+    case 'dismiss': return c.json(await decisions.dismissAccessRequest(id, who(c)))
+    default: throw new AppError('NotFoundError', 'No such decision')
+  }
 })
 
 app.route('/', peopleRoutes)
