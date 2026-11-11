@@ -4,7 +4,7 @@
 
 ### Requirement: Connect a database by typing its details
 
-A builder SHALL be able to connect a Postgres or MySQL database by typing its
+A builder SHALL be able to connect a Postgres database by typing its
 host, database name, user and password directly, without first setting
 anything up on the server. Typing a full connection address SHALL fill in
 the same fields, and the fields SHALL always show a password as hidden
@@ -13,7 +13,7 @@ page SHALL say that a saved data source is readable by every System Manager.
 
 #### Scenario: Paste a connection address
 
-- **WHEN** a builder pastes a full MySQL connection address into the console
+- **WHEN** a builder pastes a full Postgres connection address into the console
 - **THEN** the host, database, user and password fields fill in from it, and
   the password shows as hidden characters
 
@@ -36,7 +36,7 @@ succeeded or failed.
 
 ### Requirement: A saved data source keeps its health visible
 
-Once a Postgres or MySQL data source is saved, a builder SHALL be able to see whether it's
+Once a Postgres data source is saved, a builder SHALL be able to see whether it's
 currently healthy, when it last succeeded, and — if it's failing — which
 step is failing and how many connected tables are affected, and retest or
 update its password from the same place at any time.
@@ -50,7 +50,7 @@ update its password from the same place at any time.
 
 ### Requirement: A successful test also reports what the account can do
 
-A fully successful test of a Postgres or MySQL data source SHALL also report
+A fully successful test of a Postgres data source SHALL also report
 whether the database account behind it can only read, or can also write; if it can write while the data source is
 marked read-only in Featherbase, the builder SHALL be told plainly that
 Featherbase's read-only setting doesn't change what the account itself is
