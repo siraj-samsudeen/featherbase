@@ -24,7 +24,7 @@ interface ChangeProposalsReader {
 interface ChangeProposalsHelper extends ChangeProposalsReader {
   lockRow(table: string, rowId: string): Promise<void>
   serialize(key: string): Promise<void>
-  propose(request: { table: string; row: string | null; changes: Record<string, string | null>; reviewed?: string[]; ends?: boolean; approvers: ApproverRequest; about: Record<string, unknown> }): Promise<ChangeProposal>
+  propose(request: { type?: string; table: string; row: string | null; changes: Record<string, string | null>; reviewed?: string[]; ends?: boolean; approvers: ApproverRequest; about: Record<string, unknown> }): Promise<ChangeProposal>
   approve(id: string, decision: { approvers: ApproverRequest; effectiveOn: string; newRow?: Record<string, string | null>; instead?: Record<string, string | null>; reason?: string }): Promise<ChangeProposal>
   withdraw(id: string): Promise<ChangeProposal>
   reject(id: string, decision: { approvers: ApproverRequest; reason: string }): Promise<ChangeProposal>

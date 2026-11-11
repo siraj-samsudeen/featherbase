@@ -22,6 +22,13 @@ const STEPS = 5
 const NAME_LIMIT = 60
 const SELLS_SHOWN = 3
 const NAMES_SHOWN = 12
+/**
+ * How a set-up is approved. Not an access grant (manager, for the owner, 11-Nov-2026): it reaches only
+ * sections of the person's own store, and can be undone. Approve first until #1191 lands; then this one
+ * line becomes `{ type: 'dash.department_setup' }`, declared in the manifest's approvalTypes with
+ * grantsAccess false, and runs "apply now, review after". The links already name an applied Department.
+ */
+export const APPROVAL: { type?: string } = {}
 
 type Ctx = ReadContext | ActionContext
 interface About {
@@ -272,13 +279,13 @@ export const departmentActions = {
     const employee = employees.find(e => exact(e.row_id) === exact(job!.employee))!
     const shared: Omit<About, 'kind'> = { bundle: `${exact(job!.row_id)}:${globalThis.crypto.randomUUID()}`, job_assignment: exact(job!.row_id), site, store: shop.store,
       name, sections: ids, section_names: names, maker_name: text(employee.name), manager_name: manager }
-    const head = await ctx.changeProposals.propose({ table: D.department, row: null, changes: { store: site, name, manager: exact(employee.row_id) },
+    const head = await ctx.changeProposals.propose({ ...APPROVAL, table: D.department, row: null, changes: { store: site, name, manager: exact(employee.row_id) },
       approvers, about: { ...shared, kind: 'department' } as unknown as Record<string, unknown> })
     // Under "apply now, review after" (#1191) the Department exists at once, so each link names it;
     // reviewed first, the link names it when the Department is applied (decide_department).
     const department = head.result_row ? String(head.result_row) : null
     for (const id of ids)
-      await ctx.changeProposals.propose({ table: D.link, row: null, changes: { store: site, section: id, department },
+      await ctx.changeProposals.propose({ ...APPROVAL, table: D.link, row: null, changes: { store: site, section: id, department },
         approvers, about: { ...shared, kind: 'department_section', section: id } as unknown as Record<string, unknown> })
     return { state: 'waiting' as const, bundle: shared.bundle, name, sections: names, waiting_for: await waitingName(ctx, head.route.people), asked_on: today }
   },

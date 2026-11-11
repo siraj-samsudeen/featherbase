@@ -270,6 +270,16 @@ describe('the provider', () => {
         { department: 'D-L', section: 'BBB-GF-Tops', store: 'BBB' }, { department: 'D-L', section: 'AAA-GF-Sarees' }])
       expect(places.map(p => p.label)).toEqual(['9901 / Section: Sarees'])
     })
+    // Manager's decision, 11-Nov-2026: a department reaches only sections of the person's own store.
+    it("never reaches outside the job's store, whatever a link or a department says", async () => {
+      // A link filed under this store that names another store's section.
+      expect((await dmReach([ladies], [{ department: 'D-L', section: 'BBB-GF-Tops' }])).problems).toEqual(['nothing_placed'])
+      // Their department at another store, linked to that store's section: not this job's store.
+      expect((await dmReach([{ ...ladies, store: 'BBB' }], [{ department: 'D-L', section: 'BBB-GF-Tops', store: 'BBB' }])).places).toEqual([])
+      // Another store's sections never join this store's.
+      const { places } = await dmReach([ladies], [...linked, { department: 'D-L', section: 'BBB-GF-Tops' }])
+      expect(places.flatMap(p => p.filters.store)).toEqual(['9901', '9901'])
+    })
     it('a department whose sections hold no subcategories says nothing is placed', async () => {
       expect((await dmReach([ladies], [{ department: 'D-L', section: 'AAA-FF-Empty' }])).problems).toEqual(['nothing_placed'])
     })

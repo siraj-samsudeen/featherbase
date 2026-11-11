@@ -252,6 +252,13 @@ describe('sending a department', () => {
     await departmentActions.set_up_department(ctx)
     expect((sent[1].first as { changes: Row }).changes).toEqual({ store: 'LKS', section: 'S1', department: 'D-NEW' })
   })
+  it('is approved first for now: no approval type is sent until #1191 lands', async () => {
+    const { APPROVAL } = await import('./department-setup.ts')
+    expect(APPROVAL).toEqual({})
+    const { run, sent } = send({ name: 'Ladies', sections: ['S1'] })
+    await run()
+    expect(sent.every(s => !('type' in (s.first as Row)))).toBe(true)
+  })
   it('orders two sections of one name by their ids', async () => {
     const tables = world()
     tables.Section.push({ row_id: 'S0', name: 'Bags', site: 'LKS', floor: 'F2', status: 'Active' })
