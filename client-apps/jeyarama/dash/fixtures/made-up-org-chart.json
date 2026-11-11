@@ -644,6 +644,21 @@
    ]
   },
   {
+   "key": "allstores",
+   "name": "Hema All-Stores",
+   "says": "Head office staff holding Dash All-Stores Reader: every store, as a Director",
+   "jobs": [
+    [
+     "Head office staff",
+     "HOF",
+     {}
+    ]
+   ],
+   "roles": [
+    "Dash All-Stores Reader"
+   ]
+  },
+  {
    "key": "none",
    "name": "Nisha No-Job",
    "says": "on no staff list: the no-access page",
