@@ -431,6 +431,18 @@ describe('the maker withdraws, a proposal ends a row, an approver applies anothe
     expect(events.map(e => e.data)).toContainEqual(expect.objectContaining({ change_proposal: proposal.row_id, approved_by: manager.user }))
   })
 
+  test('refused: an ending flag that is not true or false, ending a row that already ends, and non-text values or reasons', async ({ admin, createUser }) => {
+    const { maker, manager } = await setUp(admin, createUser)
+    const request = (row: string, ends: unknown) => ({ op: 'propose', request: { table: 'Placement', row, changes: {}, ends, approvers: { people: [manager.user], fallbackRoles: [] }, about: { kind: 'removal' } } })
+    await expectRefused(probe(maker, request('P-1', 'yes')), 417, 'Expected ends to be true or false')
+    await admin.post('/api/save_row', { table: 'Placement', row: { placement_id: 'P-ENDING', label: 'Linen', starts_on: '2026-10-01', ends_on: '2026-12-31' } })
+    await expectRefused(probe(maker, request('P-ENDING', true)), 417, 'That already has an end')
+    const proposal = await probe(maker, ask(manager.user))
+    await expectRefused(probe(manager, { op: 'approve', id: proposal.row_id, decision: { ...approval(manager.user), instead: { label: 7 } } }), 417, 'Proposed values are text')
+    await expectRefused(probe(manager, { op: 'approve', id: proposal.row_id, decision: { ...approval(manager.user), reason: 7 } }), 417, 'A reason is text')
+    expect((await probe(maker, { op: 'proposals', filter: { ids: [proposal.row_id] } }))[0].state).toBe('Pending')
+  })
+
   test('an approver applies another value for a column the proposal changes, and says so', async ({ admin, createUser }) => {
     const { maker, manager } = await setUp(admin, createUser)
     const proposal = await probe(maker, ask(manager.user))
