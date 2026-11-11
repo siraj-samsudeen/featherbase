@@ -800,6 +800,54 @@
    "roles": [],
    "jobs": [],
    "says": "not on the staff list"
+  },
+  {
+   "key": "department",
+   "name": "Devi Department-Manager",
+   "code": "2010",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2010-LKS",
+     "Department Manager",
+     "LKS",
+     null,
+     "2002"
+    ]
+   ],
+   "says": "Department Manager at Lakeside, reporting to Mani Manager: sets up their department on Your department (#1195)"
+  },
+  {
+   "key": "bagsleader",
+   "name": "Kavya Bags-Leader",
+   "code": "2011",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2011-LKS-S5",
+     "Team Leader",
+     "LKS",
+     "LKS-S5",
+     "2010"
+    ]
+   ],
+   "says": "Team Leader of Bags, reporting to Devi: Bags is suggested for Devi's department"
+  },
+  {
+   "key": "kidsmanager",
+   "name": "Arun Kids-Manager",
+   "code": "2012",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2012-LKS",
+     "Department Manager",
+     "LKS",
+     null,
+     "2002"
+    ]
+   ],
+   "says": "Department Manager of Kids at Lakeside, which holds Kids Wear"
   }
  ],
  "noSignIn": [
@@ -1039,5 +1087,30 @@
     ]
    }
   ]
- }
+ },
+ "departments": [
+  [
+   "LKS-Kids",
+   "LKS",
+   "Kids",
+   "2012",
+   [
+    "LKS-S3"
+   ]
+  ],
+  [
+   "HIL-Menswear",
+   "HIL",
+   "Menswear",
+   "2008",
+   []
+  ],
+  [
+   "BAY-Footwear",
+   "BAY",
+   "Footwear and Bags",
+   "2008",
+   []
+  ]
+ ]
 }

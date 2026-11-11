@@ -566,13 +566,14 @@ describe('Dash against the real platform', () => {
     expect(document.querySelector('[data-testid=fix-link]')?.getAttribute('href')).toBe('?view=sections')
   })
 
-  installed("tells a Department Manager their report waits for the store's departments", async ({ dash, createUser }) => {
+  installed('asks a Department Manager to set up their department (#1195)', async ({ dash, createUser }) => {
     const person = await createUser({ email: 'dash-department@example.test', roles: ['Dash Reader'] })
     await dash.job(person.user!, 'Department Manager')
     token = person.token
     history.replaceState(null, '', '/dash/')
     await open()
-    await waitForText("Your store's departments aren't filled in yet")
+    await waitForText('Set up your department to open your report')
+    expect(document.querySelector('[data-testid=department-link]')?.getAttribute('href')).toBe('?view=department')
   })
 
   installed('gives Head office staff the no-access page', async ({ dash, createUser }) => {

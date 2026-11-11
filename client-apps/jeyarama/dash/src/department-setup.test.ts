@@ -234,6 +234,17 @@ describe('sending a department', () => {
   ])('refuses %j', async (over, message) => {
     await expect(send({ name: 'Ladies Ethnic', sections: ['S1'], ...over }).run()).rejects.toThrow(message)
   })
+  it('keeps the sections in name order, whatever their ids', async () => {
+    const { run, sent } = send({ name: 'Ladies Ethnic', sections: ['S5', 'S1'] })
+    expect(await run()).toMatchObject({ sections: ['Bags', 'Sarees'] })
+    expect((sent[0].first as { about: Row }).about).toMatchObject({ sections: ['S5', 'S1'], section_names: ['Bags', 'Sarees'] })
+  })
+  it('orders two sections of one name by their ids', async () => {
+    const tables = world()
+    tables.Section.push({ row_id: 'S0', name: 'Bags', site: 'LKS', floor: 'F2', status: 'Active' })
+    const { run } = send({ name: 'Ladies Ethnic', sections: ['S5', 'S0'] }, tables)
+    expect(await run()).toMatchObject({ sections: ['Bags', 'Bags'] })
+  })
   it('refuses a second while one waits, and when they already have a department', async () => {
     await expect(send({ name: 'Other', sections: ['S5'] }, world(), bundle()).run()).rejects.toThrow('You already sent one. Change or withdraw it first')
     const tables = world()

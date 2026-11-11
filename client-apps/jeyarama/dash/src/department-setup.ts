@@ -248,14 +248,15 @@ export const departmentActions = {
     nameTaken(ctx, shop.departments, name, shop.store)
     const reviewer = await reviewerOf(ctx, job!)
     const allHere = byId(await all(ctx, T.section, SECTION_FIELDS, [['site', '=', site]]))
-    const ids = unique(picked as string[]).sort()
-    for (const id of ids) {
+    for (const id of unique(picked as string[])) {
       const section = allHere.get(id)
       if (!section) ctx.reject(`Pick sections in ${shop.store}`)
       if (!isActive(section)) ctx.reject(`${text(section!.name)} is no longer open`)
       const holder = shop.holding.get(id)
       if (holder) ctx.reject(`${text(section!.name)} is already in ${text(holder.name)}. Ask ${reviewer} to move it`)
     }
+    // In name order, as every list on the page reads.
+    const ids = unique(picked as string[]).sort((a, b) => text(allHere.get(a)!.name).localeCompare(text(allHere.get(b)!.name)) || a.localeCompare(b))
     const names = ids.map(id => text(allHere.get(id)!.name))
     const { approvers, manager } = await approversOf(ctx, job!)
     const employee = employees.find(e => exact(e.row_id) === exact(job!.employee))!

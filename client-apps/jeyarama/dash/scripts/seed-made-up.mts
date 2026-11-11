@@ -233,6 +233,13 @@ for (const staff of org.sectionPeople as { code: string | null; jobs: [string, s
   for (const [assignment_id, job, site, section, reports_to] of staff.jobs)
     await keep('Job Assignment', assignment_id, { assignment_id, employee: staff.code, job, site, section, reports_to, starts_on: '2026-10-01', source_key: 'Made-up' })
 
+// #1195: departments already set up, which the made-up Department Manager meets on Your department.
+for (const [department_id, store, name, manager, sections] of org.departments as [string, string, string, string, string[]][]) {
+  await keep('Department', department_id, { department_id, store, name, manager, starts_on: '2026-10-01', source_key: 'Made-up' })
+  for (const section of sections)
+    await keep('Department Section', `${department_id}-${section}`, { department_section_id: `${department_id}-${section}`, store, department: department_id, section, starts_on: '2026-10-01', source_key: 'Made-up' })
+}
+
 // The proof it worked: a made-up Store Manager opens Lakeside's report and gets figures.
 const signIn = await fetch(`${api}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ usr: 'reader-sm@example.test', pwd: PASSWORD }) })
