@@ -480,6 +480,7 @@ export function headingParts({ name, sections }: { name: string | null; sections
 const REASONS = [
   { basis: 'store_manager', job: 'Store Manager', covers: 'store' },
   { basis: 'cluster_manager', job: 'Cluster Manager', covers: 'store' },
+  { basis: 'region_head', job: 'Region Head', covers: 'store' },
   { basis: 'floor_manager', job: 'Floor Manager', covers: 'section' },
   { basis: 'department_manager', job: 'Department Manager', covers: 'section' },
   { basis: 'team_leader', job: 'Team Leader', covers: 'section' },
