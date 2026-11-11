@@ -266,6 +266,11 @@ describe('the Dash All-Stores Reader role', () => {
       [{ text: 'Dash All-Stores Reader role' }, { text: 'Store Manager job assignment', since: '2026-01-01' }]])
   })
 
+  it('adds nothing for a store that sells through no plant', async () => {
+    const onlyWarehouse = PLANTS.filter(plant => plant.site !== 'DDD').concat({ row_id: '9154', site: 'DDD', plant_type: 'Warehouse' })
+    expect((await reachOf(fake([], { plants: onlyWarehouse }), 'me', ON, ROLE)).places.map(place => place.label)).toEqual(['9901', '9902', '9903'])
+  })
+
   it('gives nothing to someone holding only other roles', async () => {
     expect(await reachOf(fake([{ job: 'Head office staff', site: 'HOF' }]), 'me', ON, ['All', 'Dash Reader', 'Report Access Manager']))
       .toEqual({ places: [], problems: ['head_office'] })
