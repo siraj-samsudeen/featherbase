@@ -11,9 +11,9 @@ import { queueEmail, type MailMessage } from './email'
 import { recordUndeliveredNotice, systemManagerEmails } from './system-notice'
 import { config } from './config'
 import { adminLinkOrigin } from './instance-addresses'
-import { canOpenApp, canUseAdmin } from './landing'
+import { canOpenApp, canUseAdmin, homeApp } from './landing'
 import { getRoles } from './permissions'
-import { accessApprovers, servedApp } from './runtime-packages'
+import { accessApprovers, appCatalog, servedApp } from './runtime-packages'
 import { isInstalled } from './apps'
 import { VIEWER_ROLE } from './sales-target'
 import { errorMessage } from './errors'
@@ -75,9 +75,13 @@ export async function countWaitingForAccess(): Promise<number> {
 }
 
 export interface AccessAnswer {
-  /** `open`: they can open it after all. `waiting`: an admin has been told. */
-  state: 'open' | 'waiting'
+  /** `open`: they can open it after all. `waiting`: an admin has been told.
+   *  `elsewhere`: they belong in the app at `home`, and nobody was told. */
+  state: 'open' | 'waiting' | 'elsewhere' | 'apps'
   title: string
+  home?: string
+  /** `apps`: the apps they can open, each open to everyone (#659: none of them is theirs). */
+  apps?: { name: string; title: string; href: string }[]
 }
 
 /** `person` opened `app` without access, as far as the page knew: record
@@ -88,6 +92,15 @@ export async function requestAccess(person: string, app: string): Promise<Access
   const target = await accessTarget(app)
   if (!target) return null
   if (await canOpen(person, target.name)) return { state: 'open', title: target.title }
+  // Found on staging (10-Nov-2026): someone who belongs in an app, sent to the Admin, isn't waiting
+  // for it. Their app is named so the page sends them there; nothing is recorded or mailed.
+  if (target.name === 'featherbase') {
+    const home = await homeApp(person)
+    if (home) return { state: 'elsewhere', title: target.title, home }
+    // Only apps open to everyone: shown them, and nobody is told.
+    const apps = (await appCatalog(person)).map(({ name, title, href }) => ({ name, title, href }))
+    if (apps.length) return { state: 'apps', title: target.title, apps }
+  }
   // A built-in account (Administrator, Guest) is nobody to give a role to:
   // it asks for nothing, and an app's address shows it as unavailable.
   const [{ built_in: builtIn }] = await sql`select coalesce(built_in, false) as built_in from person where row_id = ${person}`

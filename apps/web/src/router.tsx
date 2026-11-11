@@ -17,7 +17,7 @@ import { WebFormPage } from './pages/WebForm'
 import { PortalListPage, PortalRowPage } from './pages/Portal'
 import { OAuthCallbackPage } from './pages/OAuthCallback'
 import { AdminLayout } from './pages/AdminLayout'
-import { ManageOnly } from './pages/RestrictedShell'
+import { GoingToApp, ManageOnly } from './pages/RestrictedShell'
 import { EmptyState, Notice, buttonClasses, fmtDate } from '@featherbase/shop-floor'
 import { useCapabilities } from './lib/session'
 import { ApiError, api, getToken, landingPath, loginHref } from './lib/api'
@@ -160,20 +160,27 @@ function TableAddressError({ error }: { error: unknown }) {
   return <p role="alert" className="p-4 text-negative">{error instanceof Error ? error.message : 'Could not open this Table'}</p>
 }
 
+/** Where the root sends someone: sign in, or their landing. Found on staging and production
+ *  (10-Nov-2026): an app's root is served by the server, so it opens by a full page load; a router
+ *  redirect to it trimmed its slash and found nothing among these pages. */
+function sendFromRoot() {
+  const to = getToken() ? landingPath() : '/featherbase/login'
+  if (to.startsWith('/featherbase/')) throw redirect({ to })
+}
+const RootToApp = () => <GoingToApp path={landingPath()} />
+
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  beforeLoad: () => {
-    throw redirect({ to: getToken() ? landingPath() : '/featherbase/login' })
-  },
+  beforeLoad: sendFromRoot,
+  component: RootToApp,
 })
 
 const featherbaseIndexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/featherbase',
-  beforeLoad: () => {
-    throw redirect({ to: getToken() ? landingPath() : '/featherbase/login' })
-  },
+  beforeLoad: sendFromRoot,
+  component: RootToApp,
 })
 
 const loginRoute = createRoute({

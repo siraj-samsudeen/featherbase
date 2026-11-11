@@ -336,6 +336,15 @@ describe('the checks (5.1)', () => {
     }
   })
 
+  // A developer's machine runs the app with none of a client's core Tables: named there, not a fault.
+  test("a scope provider's missing Tables on a developer's machine: named as missing, not a fault", async () => {
+    const manifest = { name: 'healthscopelocal', title: 'Health scope local', scopeProvider: { name: 'org', tables: ['Health Local Site'] } }
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('healthscopelocal', ${sql.json(manifest)}, true, true)`
+    expect(byKey(await runHealthChecks({ environment: 'development' }), 'scope-provider-tables:healthscopelocal')).toMatchObject({
+      ok: true, state: 'optional', fix: null, missing: ['Table Health Local Site'] })
+    expect(byKey(await runHealthChecks({ environment: 'production' }), 'scope-provider-tables:healthscopelocal')).toMatchObject({ ok: false, state: 'fault' })
+  })
+
   test('every check names why it matters, and a failing one says how to fix it', async () => {
     await sql`delete from instance_settings_apply`
     for (const check of await runHealthChecks()) {

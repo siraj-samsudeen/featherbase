@@ -212,7 +212,9 @@ app.get('/api/brand', async (c) => {
 // #488: every sign-in answers with the session plus where to go next — a path
 // on this address, or a hand-off URL to another (landing.ts).
 async function withLanding(c: Context, session: { token: string; user: SessionUser }, opts?: { handOff?: boolean }) {
-  return { ...session, ...(await landingAfterSignIn(session, requestHost(c.req.url), opts)) }
+  // The apps they can open, so the sign-in page sends a return path they can't open to the landing.
+  const apps = (await appCatalog(session.user.row_id)).map(({ name }) => name)
+  return { ...session, ...(await landingAfterSignIn(session, requestHost(c.req.url), opts)), apps }
 }
 
 app.post('/api/login', publicLimit('LOGIN'), async (c) => {

@@ -22,6 +22,17 @@ test('/featherbase sends a signed-out visitor to sign in, and a signed-in one to
   await waitFor(() => expect((signedIn.router as Router).state.location.pathname).toMatch(/^\/featherbase\/admin/))
 })
 
+// Found on staging and production (10-Nov-2026): the root sent someone who lands in an app to
+// "/dash" inside the Admin's pages, which is Not Found there. An app's root is served by the server.
+test('the root and /featherbase send someone who lands in an app there by a full page load, its trailing slash kept', async ({ createUser }) => {
+  const reader = await createUser({ email: 'root.reader@example.test', roles: [] })
+  for (const path of ['/', '/featherbase']) {
+    const r = await renderApp(path, reader, { user: { row_id: reader.user, landing: '/dash/' } } as never)
+    expect((await screen.findByTestId('going-to-app')).getAttribute('data-path')).toBe('/dash/')
+    r.unmount()
+  }
+})
+
 for (const path of [
   '/featherbase/portal/orders',
   '/featherbase/portal/orders/one',

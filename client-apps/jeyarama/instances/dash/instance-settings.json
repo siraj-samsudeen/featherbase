@@ -128,7 +128,7 @@
           },
           {
             "row_id": "dash.linked_tables",
-            "value": "[\"Employee\", \"Job Assignment\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Site\", \"Plant\"]"
+            "value": "[\"Employee\", \"Job Assignment\", \"Merchandise Assignment\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Site\", \"Plant\"]"
           }
         ]
       }
@@ -150,7 +150,7 @@
           },
           {
             "row_id": "dash.linked_tables",
-            "value": "[\"Employee\", \"Job Assignment\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Site\", \"Plant\"]"
+            "value": "[\"Employee\", \"Job Assignment\", \"Merchandise Assignment\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Site\", \"Plant\"]"
           }
         ]
       }
