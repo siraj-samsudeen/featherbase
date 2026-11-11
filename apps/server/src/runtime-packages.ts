@@ -13,7 +13,7 @@ import { AppError, errorMessage } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
 import { APP_ACCENTS, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
 import { callerDocuments, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
-import { baseTablesDeclaration } from './change-proposals'
+import { approvalTypesDeclaration, baseTablesDeclaration } from './change-proposals'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import type { ScopeProviderBinding } from './person-scope'
 import { loadAppSetup, secretEntries, secretsDeclaration, settingsDeclaration } from './app-settings'
@@ -117,6 +117,8 @@ const manifestSchema = z.object({
   scopeProvider: scopeProviderDeclaration.optional(),
   // #975: the instance Tables the app reads and proposes changes on.
   baseTables: baseTablesDeclaration.optional(),
+  // #1191: the kinds of approval its proposals come as; an Approval Type row sets each one's mode.
+  approvalTypes: approvalTypesDeclaration.optional(),
   // #620 (E2): what the app reads per instance, and the deployment variables
   // it reads. D4: which of the instance's roles should carry each app role,
   // written as App Role Binding rows once, at install.

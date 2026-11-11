@@ -24,9 +24,11 @@ export const DEPARTMENT_ADDRESS = '?view=department'
 interface Named { id: string; name: string }
 interface Leveled extends HierarchyNode { code: string; name: string }
 /** A subcategory in their section; `pending` when they asked for it to go. */
-interface Placed extends Leveled { id: string; pending: { id: string; kind: 'removal' | 'move'; to: string | null; waiting_for: string } | null }
-/** A subcategory they asked to add, waiting for approval. */
-interface Addition extends Leveled { id: string; waiting_for: string }
+interface Placed extends Leveled { id: string; pending: { id: string; kind: 'removal' | 'move'; to: string | null; waiting_for: string; applied?: boolean } | null }
+/** A subcategory they asked to add, waiting for approval; or added at once, waiting for review (#1191). */
+interface Addition extends Leveled { id: string; waiting_for: string; applied?: boolean }
+/** #1191: whether each kind of change happens at once on this instance. */
+interface AtOnce { add: boolean; removal: boolean; section: boolean }
 interface SectionChoice extends Named { floor: string | null }
 interface Job {
   id: string
@@ -36,6 +38,8 @@ interface Job {
   reports_to: string | null
   waiting_for: string
   section: SectionChoice | null
+  /** #1191: a section change made at once, until it is reviewed. */
+  section_change?: { id: string; from: string; waiting_for: string } | null
   subcategories: Placed[]
   additions: Addition[]
   other_sections: SectionChoice[]
@@ -47,7 +51,10 @@ interface Proposal {
   from: string
   to: string
   store: string
-  state: 'Pending' | 'Applied' | 'Rejected' | 'Needs fresh review' | 'Withdrawn'
+  state: 'Pending' | 'Applied' | 'Rejected' | 'Needs fresh review' | 'Withdrawn' | 'Not yet reviewed' | 'Confirmed' | 'Undone'
+  applied?: boolean
+  /** #1191: undone by the person who made it, not by a reviewer. */
+  taken_back?: boolean
   waiting_for: string
   reason: string | null
   asked_on: string
@@ -57,10 +64,11 @@ interface Proposal {
 /** Where a subcategory is and who holds it there, as the approver reads it. */
 interface Place { section: string; holder: string | null }
 interface Approval extends Omit<Proposal, 'from' | 'to'> { who: string; from: Place | null; to: Place | null; path: HierarchyNode | null; sections: SectionChoice[] }
-type Mine = { state: 'not_set_up' | 'unknown_person' } | { state: 'ok'; name: string; jobs: Job[]; proposals: Proposal[]; waiting_for_me: number }
+type Mine = { state: 'not_set_up' | 'unknown_person' } | { state: 'ok'; name: string; jobs: Job[]; proposals: Proposal[]; waiting_for_me: number; applies_at_once?: AtOnce }
+const NOT_AT_ONCE: AtOnce = { add: false, removal: false, section: false }
 type Waiting = { state: 'not_set_up' } | { state: 'ok'; proposals: Approval[] }
 type Holder = { kind: 'mine' } | { kind: 'none' } | { kind: 'other'; section: string; team_leader: string | null }
-interface Choice extends HierarchyLeaf { holder: Holder; asked: boolean }
+interface Choice extends HierarchyLeaf { holder: Holder; asked: boolean; taken_out?: boolean }
 interface Levels { start: HierarchyNode | null; levels: HierarchyNode[] }
 type Unplaced = { state: 'not_set_up' | 'not_allowed' } | { state: 'ok'; rows: (Leveled & { store: string; was_in: string; since: string })[] }
 
@@ -89,6 +97,9 @@ export function outcome(proposal: Pick<Proposal, 'state' | 'waiting_for'>): { to
   if (proposal.state === 'Rejected') return { tone: 'negative', label: 'Rejected' }
   if (proposal.state === 'Needs fresh review') return { tone: 'missing', label: 'Needs asking again' }
   if (proposal.state === 'Withdrawn') return { tone: 'missing', label: 'Withdrawn' }
+  if (proposal.state === 'Not yet reviewed') return { tone: 'positive', label: `Done · ${proposal.waiting_for} will review it` }
+  if (proposal.state === 'Confirmed') return { tone: 'positive', label: 'Done · confirmed' }
+  if (proposal.state === 'Undone') return { tone: 'negative', label: 'Undone' }
   return { tone: 'caution', label: `Waiting for ${proposal.waiting_for}` }
 }
 
@@ -141,8 +152,8 @@ export function DashSidebar({ current, count }: { current: DashView; count?: num
     (waiting > 0 || current === 'approvals') && (
       <a href={APPROVALS_ADDRESS} {...here('approvals')} data-testid="approvals-link">
         <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6 9 17l-5-5" /></svg>
-        <span className="max-sm:hidden">Waiting for your approval{waiting > 0 ? ` (${waiting})` : ''}</span>
-        <span className="sm:hidden">Approve{waiting > 0 ? ` (${waiting})` : ''}</span>
+        <span className="max-sm:hidden">Waiting for you{waiting > 0 ? ` (${waiting})` : ''}</span>
+        <span className="sm:hidden">To do{waiting > 0 ? ` (${waiting})` : ''}</span>
       </a>
     ),
     (departmentJob || current === 'department') && (
@@ -215,21 +226,24 @@ export function YourSections() {
       )}
       {answer?.state === 'ok' && (
         <>
-          <p className="fd-muted" data-testid="person-name">{answer.name}. If something here is wrong, say so. Nothing changes until it is approved.</p>
+          <p className="fd-muted" data-testid="person-name">{answer.name}. {Object.values(answer.applies_at_once ?? NOT_AT_ONCE).every(Boolean)
+            ? 'If something here is wrong, change it. It changes at once, and your manager reviews it afterwards.'
+            : 'If something here is wrong, say so. Nothing changes until it is approved.'}</p>
           {answer.waiting_for_me > 0 && (
             <Notice tone="caution"><a href={APPROVALS_ADDRESS} className={touchLinkClasses('pointer-coarse:-my-3')} data-testid="approvals-notice">{approvalsLabel(answer.waiting_for_me)}</a></Notice>
           )}
           {answer.jobs.length === 0 && (
             <Card data-testid="no-job"><EmptyState title="You have no current job on the staff list" body="Ask your manager to check it with HR." /></Card>
           )}
-          {answer.jobs.map(job => job.job === 'Department Manager' ? (
+          {/* Keyed by the job, not its row: a section change replaces the row, and the card keeps its note. */}
+          {answer.jobs.map((job, index) => job.job === 'Department Manager' ? (
             <Card key={job.id} data-testid="department-job" title={`${job.job} · ${job.store}`}>
               <div className="flex flex-col gap-2 p-4">
                 <p>A Department Manager's report shows their department's sections. See your department, or set it up, on Your department.</p>
                 <a className="fd-link font-semibold" href={DEPARTMENT_ADDRESS}>Open Your department</a>
               </div>
             </Card>
-          ) : <JobCard key={job.id} job={job} onSent={load} />)}
+          ) : <JobCard key={`${job.job}|${job.store}|${index}`} job={job} atOnce={answer.applies_at_once ?? NOT_AT_ONCE} onSent={load} />)}
           {answer.proposals.length > 0 && <YourProposals proposals={answer.proposals} />}
         </>
       )}
@@ -237,7 +251,7 @@ export function YourSections() {
   )
 }
 
-function JobCard({ job, onSent }: { job: Job; onSent: () => Promise<unknown> }) {
+function JobCard({ job, atOnce, onSent }: { job: Job; atOnce: AtOnce; onSent: () => Promise<unknown> }) {
   // One form open at a time on a job, so a phone never holds two.
   const [open, setOpen] = useState<'section' | 'add' | null>(null)
   const [note, setNote] = useState<{ tone: 'positive' | 'negative'; text: string } | null>(null)
@@ -276,7 +290,18 @@ function JobCard({ job, onSent }: { job: Job; onSent: () => Promise<unknown> }) 
               : `This store has no sections set up yet. Tell ${job.reports_to ? 'your manager' : 'the master data team'}, so they can be set up.`}
           </p>
         )}
-        {open === 'section' && <PickSection job={job} action="propose_section" label="Your correct section" payload={{}} onCancel={close} onSent={() => sent()} onRefused={onSent} />}
+        {job.section_change && (
+          <div className="flex flex-wrap items-center justify-between gap-2" data-testid="section-change">
+            <span className="text-sm text-ink-muted">Changed from {job.section_change.from} · {job.section_change.waiting_for} will review it</span>
+            <span className="flex flex-wrap items-center gap-2">
+              <StatusPill tone="neutral" className="max-w-full whitespace-normal!">Changed · not yet reviewed</StatusPill>
+              <Button variant="quiet" className="-mx-3 max-sm:-mx-4" loading={busy === job.section_change.id} disabled={busy !== null}
+                onClick={() => run(job.section_change!.id, 'withdraw', { proposal: job.section_change!.id }, `Undone: your section is ${job.section_change!.from} again.`)}>Undo</Button>
+            </span>
+          </div>
+        )}
+        {open === 'section' && <PickSection job={job} atOnce={atOnce.section} action="propose_section" label="Your correct section" payload={{}} onCancel={close}
+          onSent={() => sent(atOnce.section ? `Done: your section is changed. ${job.waiting_for} will review it.` : undefined)} onRefused={onSent} />}
         {job.section && (
           <>
             {rows.length === 0 && <p className="fd-muted" data-testid="no-subcategories">No subcategories are set against this section yet.</p>}
@@ -286,16 +311,20 @@ function JobCard({ job, onSent }: { job: Job; onSent: () => Promise<unknown> }) 
                   <ul className="flex flex-col divide-y divide-border" data-testid="subcategories">
                     {group.map(row => 'placed' in row
                       ? <PlacedRow key={row.placed.id} placed={row.placed} busy={busy}
-                          onNotMine={() => run(row.placed.id, 'propose_removal', { job: job.id, placement: row.placed.id }, `Asked to take ${row.placed.name} out of your section. It waits for ${job.waiting_for}.`)}
-                          onUndo={id => run(id, 'withdraw', { proposal: id }, `Undone: ${row.placed.name} stays in your section.`)} />
+                          onNotMine={() => run(row.placed.id, 'propose_removal', { job: job.id, placement: row.placed.id }, atOnce.removal
+                            ? `Done: ${row.placed.name} is out of your section. ${job.waiting_for} will review it.`
+                            : `Asked to take ${row.placed.name} out of your section. It waits for ${job.waiting_for}.`)}
+                          onUndo={id => run(id, 'withdraw', { proposal: id }, row.placed.pending?.applied ? `Undone: ${row.placed.name} is back in your section.` : `Undone: ${row.placed.name} stays in your section.`)} />
                       : <AddedRow key={row.added.id} added={row.added} busy={busy}
-                          onUndo={id => run(id, 'withdraw', { proposal: id }, `Undone: you are no longer asking to add ${row.added.name}.`)} />)}
+                          onUndo={id => run(id, 'withdraw', { proposal: id }, row.added.applied ? `Undone: ${row.added.name} is out of your section again.` : `Undone: you are no longer asking to add ${row.added.name}.`)} />)}
                   </ul>
                 )}
               </HierarchyGroups>
             )}
             <div><Button onClick={() => start('add')}>Add subcategories</Button></div>
-            {open === 'add' && <AddSubcategories job={job} onCancel={close} onSent={count => sent(`Asked to add ${count === 1 ? '1 subcategory' : `${count} subcategories`}. Nothing changes until it is approved.`)} onRefused={onSent} />}
+            {open === 'add' && <AddSubcategories job={job} atOnce={atOnce.add} onCancel={close} onRefused={onSent}
+              onSent={count => sent(atOnce.add ? `Added ${count === 1 ? '1 subcategory' : `${count} subcategories`}. ${job.waiting_for} will review ${count === 1 ? 'it' : 'them'}.`
+                : `Asked to add ${count === 1 ? '1 subcategory' : `${count} subcategories`}. Nothing changes until it is approved.`)} />}
           </>
         )}
       </div>
@@ -311,11 +340,12 @@ function PlacedRow({ placed, busy, onNotMine, onUndo }: { placed: Placed; busy: 
     <li className="flex min-h-control flex-wrap items-center justify-between gap-2 py-1" data-testid="subcategory">
       <span className="min-w-0 break-words">
         <span className={asked ? 'text-ink-muted line-through' : undefined} data-testid="subcategory-name">{placed.name}</span>
-        {asked && waitingLine(asked.waiting_for)}
+        {asked && (asked.applied ? <span className="block text-sm text-ink-muted">Taken out of your section · {asked.waiting_for} will review it</span> : waitingLine(asked.waiting_for))}
       </span>
       {asked ? (
         <span className="flex flex-wrap items-center gap-2">
-          <StatusPill tone="caution" className="max-w-full whitespace-normal!">{asked.kind === 'move' && asked.to ? `Move to ${asked.to} waiting for approval` : 'Removal waiting for approval'}</StatusPill>
+          <StatusPill tone={asked.applied ? 'neutral' : 'caution'} className="max-w-full whitespace-normal!">{asked.applied ? 'Taken out · not yet reviewed'
+            : asked.kind === 'move' && asked.to ? `Move to ${asked.to} waiting for approval` : 'Removal waiting for approval'}</StatusPill>
           <Button variant="quiet" className="-mx-3 max-sm:-mx-4" loading={busy === asked.id} disabled={busy !== null} onClick={() => onUndo(asked.id)}>Undo</Button>
         </span>
       ) : <Button variant="quiet" className="-mx-3 max-sm:-mx-4" loading={busy === placed.id} disabled={busy !== null} onClick={onNotMine}>Not mine</Button>}
@@ -328,10 +358,10 @@ function AddedRow({ added, busy, onUndo }: { added: Addition; busy: string | nul
     <li className="flex min-h-control flex-wrap items-center justify-between gap-2 py-1" data-testid="addition">
       <span className="min-w-0 break-words">
         <span data-testid="subcategory-name"><span aria-hidden="true">+ </span>{added.name}</span>
-        {waitingLine(added.waiting_for)}
+        {added.applied ? <span className="block text-sm text-ink-muted">Added to your section · {added.waiting_for} will review it</span> : waitingLine(added.waiting_for)}
       </span>
       <span className="flex flex-wrap items-center gap-2">
-        <StatusPill tone="caution" className="max-w-full whitespace-normal!">Addition waiting for approval</StatusPill>
+        <StatusPill tone={added.applied ? 'neutral' : 'caution'} className="max-w-full whitespace-normal!">{added.applied ? 'Added · not yet reviewed' : 'Addition waiting for approval'}</StatusPill>
         <Button variant="quiet" className="-mx-3 max-sm:-mx-4" loading={busy === added.id} disabled={busy !== null} onClick={() => onUndo(added.id)}>Undo</Button>
       </span>
     </li>
@@ -339,8 +369,8 @@ function AddedRow({ added, busy, onUndo }: { added: Addition; busy: string | nul
 }
 
 /** Picks another section in the same store, and sends the proposal. */
-function PickSection({ job, action, label, payload, onCancel, onSent, onRefused }: {
-  job: Job; action: string; label: string; payload: Record<string, unknown>; onCancel: () => void; onSent: () => Promise<void>; onRefused: () => Promise<unknown>
+function PickSection({ job, atOnce, action, label, payload, onCancel, onSent, onRefused }: {
+  job: Job; atOnce: boolean; action: string; label: string; payload: Record<string, unknown>; onCancel: () => void; onSent: () => Promise<void>; onRefused: () => Promise<unknown>
 }) {
   const [section, setSection] = useState('')
   const [busy, setBusy] = useState(false)
@@ -361,14 +391,14 @@ function PickSection({ job, action, label, payload, onCancel, onSent, onRefused 
   }
   return (
     <div className="mt-2 flex flex-col gap-3 rounded-control border border-border bg-subtle p-3" data-testid="pick-section">
-      <Field label={label} error={error} hint={`This goes to ${job.waiting_for} to approve.`}>
+      <Field label={label} error={error} hint={atOnce ? `This changes at once. ${job.waiting_for} reviews it afterwards.` : `This goes to ${job.waiting_for} to approve.`}>
         <Select value={section} onChange={event => setSection(event.target.value)}>
           <option value="">Choose a section</option>
           {job.other_sections.map(choice => <option key={choice.id} value={choice.id}>{sectionLabel(choice)}</option>)}
         </Select>
       </Field>
       <div className="flex flex-wrap gap-2">
-        <Button variant="primary" loading={busy} onClick={send}>Send for approval</Button>
+        <Button variant="primary" loading={busy} onClick={send}>{atOnce ? 'Change it' : 'Send for approval'}</Button>
         <Button onClick={onCancel} disabled={busy}>Cancel</Button>
       </div>
     </div>
@@ -376,15 +406,16 @@ function PickSection({ job, action, label, payload, onCancel, onSent, onRefused 
 }
 
 /** Where a subcategory is now, in a few words. */
-export function holderLine(choice: Pick<Choice, 'holder' | 'asked'>): string {
+export function holderLine(choice: Pick<Choice, 'holder' | 'asked' | 'taken_out'>): string {
   if (choice.asked) return 'Already asked for'
+  if (choice.taken_out) return 'You took this out · use Undo to put it back'
   if (choice.holder.kind === 'mine') return 'Already yours'
   if (choice.holder.kind === 'none') return 'Not in any section'
   return `Now in ${choice.holder.section}${choice.holder.team_leader ? ` · ${choice.holder.team_leader}` : ''}`
 }
 
 /** Browses the hierarchy from their own division, and asks to add what they tick. */
-function AddSubcategories({ job, onCancel, onSent, onRefused }: { job: Job; onCancel: () => void; onSent: (count: number) => Promise<void>; onRefused: () => Promise<unknown> }) {
+function AddSubcategories({ job, atOnce, onCancel, onSent, onRefused }: { job: Job; atOnce: boolean; onCancel: () => void; onSent: (count: number) => Promise<void>; onRefused: () => Promise<unknown> }) {
   const [levels, setLevels] = useState<Levels | null>(null)
   const [chosen, setChosen] = useState<Choice[]>([])
   const [busy, setBusy] = useState(false)
@@ -395,7 +426,7 @@ function AddSubcategories({ job, onCancel, onSent, onRefused }: { job: Job; onCa
     return () => { live = false }
   }, [job.id])
   const loadLeaves = useCallback((node: HierarchyNode) => read<Omit<Choice, 'disabled'>[]>('category_subcategories', { job: job.id, ...node })
-    .then(rows => rows.map(row => ({ ...row, disabled: row.asked || row.holder.kind === 'mine' }))), [job.id])
+    .then(rows => rows.map(row => ({ ...row, disabled: row.asked || row.taken_out === true || row.holder.kind === 'mine' }))), [job.id])
   async function send() {
     setBusy(true)
     setError(null)
@@ -410,13 +441,14 @@ function AddSubcategories({ job, onCancel, onSent, onRefused }: { job: Job; onCa
   }
   return (
     <div className="flex flex-col gap-3 rounded-control border border-border bg-subtle p-3" data-testid="add-subcategories">
-      <p className="text-sm text-ink-muted">Tick the subcategories that belong in {job.section?.name ?? 'your section'}. Adding goes to {job.waiting_for} to approve.</p>
+      <p className="text-sm text-ink-muted">Tick the subcategories that belong in {job.section?.name ?? 'your section'}. {atOnce
+        ? `Ticked subcategories are added at once. ${job.waiting_for} reviews them afterwards.` : `Adding goes to ${job.waiting_for} to approve.`}</p>
       {error && <Notice tone="negative"><span data-testid="add-error">{error}</span></Notice>}
       {!levels && !error && <Skeleton label="Opening the subcategories" lines={3} />}
       {levels && <HierarchyPicker label="Subcategories to add" levels={levels.levels} start={levels.start} loadLeaves={loadLeaves}
         selected={chosen} onChange={setChosen} annotate={holderLine} />}
       <div className="flex flex-wrap gap-2">
-        <Button variant="primary" loading={busy} disabled={!chosen.length} onClick={send}>{chosen.length ? `Ask to add ${chosen.length}` : 'Ask to add'}</Button>
+        <Button variant="primary" loading={busy} disabled={!chosen.length} onClick={send}>{atOnce ? (chosen.length ? `Add ${chosen.length}` : 'Add') : chosen.length ? `Ask to add ${chosen.length}` : 'Ask to add'}</Button>
         <Button onClick={onCancel} disabled={busy}>Cancel</Button>
       </div>
     </div>
@@ -435,7 +467,7 @@ function YourProposals({ proposals }: { proposals: Proposal[] }) {
                 <span className="min-w-0 break-words">{askedFor(proposal)}</span>
                 <StatusPill tone={tone} className="max-w-full whitespace-normal!">{label}</StatusPill>
               </div>
-              <p className="text-sm text-ink-muted">Asked on {fmtDate(proposal.asked_on)}{proposal.decided_on ? ` · ${proposal.state === 'Withdrawn' ? 'Withdrawn' : 'Decided'} on ${fmtDate(proposal.decided_on)}` : ''}</p>
+              <p className="text-sm text-ink-muted">Asked on {fmtDate(proposal.asked_on)}{proposal.decided_on ? ` · ${proposal.state === 'Withdrawn' ? 'Withdrawn' : proposal.taken_back ? 'Taken back' : proposal.state === 'Confirmed' || proposal.state === 'Undone' ? 'Reviewed' : 'Decided'} on ${fmtDate(proposal.decided_on)}` : ''}</p>
               {proposal.reason && <p className="text-sm" data-testid="proposal-reason">{proposal.reason}</p>}
               {proposal.state === 'Needs fresh review' && <p className="text-sm text-ink-muted">Things changed after you asked, so nothing was done. If it is still wrong, ask again.</p>}
             </li>
@@ -456,7 +488,7 @@ export function Approvals() {
   const [note, setNote] = useState<{ tone: 'positive' | 'negative' | 'caution'; text: string } | null>(null)
   const after = (next: NonNullable<typeof note>) => { setNote(next); return reload() }
   return (
-    <Shell current="approvals" count={answer?.state === 'ok' ? answer.proposals.length + waitingSetups.length : undefined} title="Waiting for your approval" testid="approvals">
+    <Shell current="approvals" count={answer?.state === 'ok' ? answer.proposals.length + waitingSetups.length : undefined} title="Waiting for you" testid="approvals">
       {note && <Notice tone={note.tone}><span data-testid="decision-note">{note.text}</span></Notice>}
       {!answer && !failed && <Loading />}
       {failed && <LoadFailed onRetry={load} />}
@@ -464,11 +496,25 @@ export function Approvals() {
       {answer?.state === 'ok' && <DepartmentApprovals setups={waitingSetups} onDecided={text => after({ tone: 'positive', text })} />}
       {answer?.state === 'ok' && answer.proposals.length === 0 && waitingSetups.length === 0 && (
         <Card data-testid="nothing-waiting">
-          <EmptyState title="Nothing is waiting for you" body="When someone asks to correct their sections, or sets up their department, and it needs you, it shows here." />
+          <EmptyState title="Nothing is waiting for you" body="When someone changes their sections, or asks to, or sets up their department, and it needs you, it shows here." />
         </Card>
       )}
-      {answer?.state === 'ok' && answer.proposals.map(proposal => <ApprovalCard key={proposal.id} proposal={proposal} onDone={after} />)}
+      {answer?.state === 'ok' && <ApprovalGroups proposals={answer.proposals} onDone={after} />}
     </Shell>
+  )
+}
+
+/** #1191: what is already done, to confirm or undo, apart from what waits for approval. */
+function ApprovalGroups({ proposals, onDone }: { proposals: Approval[]; onDone: (note: { tone: 'positive' | 'negative' | 'caution'; text: string }) => Promise<unknown> }) {
+  const done = proposals.filter(proposal => proposal.applied)
+  const waiting = proposals.filter(proposal => !proposal.applied)
+  return (
+    <>
+      {done.length > 0 && <h2 className="font-semibold" data-testid="to-review-heading">Already done · check and confirm, or undo</h2>}
+      {done.map(proposal => <ApprovalCard key={proposal.id} proposal={proposal} onDone={onDone} />)}
+      {done.length > 0 && waiting.length > 0 && <h2 className="font-semibold" data-testid="to-approve-heading">Waiting for your approval · nothing changes until you approve</h2>}
+      {waiting.map(proposal => <ApprovalCard key={proposal.id} proposal={proposal} onDone={onDone} />)}
+    </>
   )
 }
 
@@ -496,19 +542,24 @@ function ApprovalCard({ proposal, onDone }: { proposal: Approval; onDone: (note:
   const [reason, setReason] = useState('')
   const [elsewhere, setElsewhere] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
-  const [busy, setBusy] = useState<'approve' | 'reject' | 'elsewhere' | null>(null)
+  const [busy, setBusy] = useState<'approve' | 'reject' | 'elsewhere' | 'confirm' | null>(null)
+  const applied = proposal.applied === true
   const isMove = proposal.kind === 'move'
   const title = approvalTitle(proposal)
-  async function decide(decision: 'approve' | 'reject' | 'elsewhere') {
+  async function decide(decision: 'approve' | 'reject' | 'elsewhere' | 'confirm') {
     if (decision === 'reject' && !reason.trim()) return setFormError('Say why, so they know what to do next')
     if (decision === 'elsewhere' && !elsewhere) return setFormError('Pick a section')
     setBusy(decision)
     setFormError(null)
     const to = proposal.sections.find(section => section.id === elsewhere)?.name
     try {
-      const after = await act<Proposal>('decide', { proposal: proposal.id, decision: decision === 'reject' ? 'reject' : 'approve',
+      // An applied change is confirmed or undone; Reject's form is Undo's for it.
+      const sent = applied ? (decision === 'reject' ? 'undo' : 'confirm') : decision === 'reject' ? 'reject' : 'approve'
+      const after = await act<Proposal>('decide', { proposal: proposal.id, decision: sent,
         ...(decision === 'reject' ? { reason: reason.trim() } : {}), ...(decision === 'elsewhere' ? { to_section: elsewhere } : {}) })
-      await onDone(after.state === 'Needs fresh review'
+      await onDone(after.state === 'Confirmed' ? { tone: 'positive', text: `Confirmed: ${title}.` }
+        : after.state === 'Undone' ? { tone: 'positive', text: `Undone: ${title}. ${proposal.who} can see your reason.` }
+        : after.state === 'Needs fresh review'
         ? { tone: 'caution', text: `Things changed after ${proposal.who} asked, so nothing was done. They can ask again.` }
         : after.state === 'Rejected' ? { tone: 'positive', text: `Rejected. ${proposal.who} can see your reason.` }
         : decision === 'elsewhere' ? { tone: 'positive', text: `Approved: ${proposal.what} is now in ${to}.` }
@@ -516,6 +567,8 @@ function ApprovalCard({ proposal, onDone }: { proposal: Approval; onDone: (note:
     } catch (failure) {
       // Decided elsewhere, or no longer theirs: the list as it is now, with the reason.
       await onDone({ tone: 'caution', text: `${proposal.who}: ${title}. ${messageOf(failure).replace(/\.?$/, '.')}` })
+      // Still listed when the refusal left it waiting, as an undo that can't go back: free to try again.
+      setBusy(null)
     }
   }
   const cancel = () => { setMode('decide'); setFormError(null) }
@@ -526,7 +579,7 @@ function ApprovalCard({ proposal, onDone }: { proposal: Approval; onDone: (note:
           <p className="font-semibold" data-testid="approval-who">{proposal.who} · {proposal.store}</p>
           <p data-testid="approval-what">{title}</p>
           {proposal.path && <HierarchyPath path={proposal.path} />}
-          <p className="text-sm text-ink-muted">Asked on {fmtDate(proposal.asked_on)}</p>
+          <p className="text-sm text-ink-muted">{applied ? `Done on ${fmtDate(proposal.asked_on)} · not yet reviewed` : `Asked on ${fmtDate(proposal.asked_on)}`}</p>
         </div>
         {isMove && proposal.from && proposal.to && (
           <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-control border border-border bg-subtle p-3" data-testid="approval-move">
@@ -535,14 +588,17 @@ function ApprovalCard({ proposal, onDone }: { proposal: Approval; onDone: (note:
             <PlaceLine label="To" place={proposal.to} />
           </div>
         )}
-        {proposal.kind === 'removal' && <p className="text-sm" data-testid="approval-removal">If you approve, it will be in no section at {proposal.store} until someone adds it. The master data team sees it on their list.</p>}
+        {proposal.kind === 'removal' && <p className="text-sm" data-testid="approval-removal">{applied
+          ? `It is in no section at ${proposal.store} now. If you undo it, it goes back to ${proposal.from?.section}.`
+          : `If you approve, it will be in no section at ${proposal.store} until someone adds it. The master data team sees it on their list.`}</p>}
         {mode === 'reject' && (
           <div className="flex flex-col gap-3">
-            <Field label="Why are you rejecting this?" error={formError}>
+            <Field label={applied ? 'Why are you undoing this?' : 'Why are you rejecting this?'} error={formError}
+              hint={applied ? `It goes back to how it was before ${proposal.who} changed it. ${proposal.who} sees your reason.` : undefined}>
               <TextInput value={reason} onChange={event => setReason(event.target.value)} />
             </Field>
             <div className="flex flex-wrap gap-2">
-              <Button variant="danger" loading={busy === 'reject'} onClick={() => decide('reject')}>Reject</Button>
+              <Button variant="danger" loading={busy === 'reject'} onClick={() => decide('reject')}>{applied ? 'Undo it' : 'Reject'}</Button>
               <Button disabled={busy !== null} onClick={cancel}>Cancel</Button>
             </div>
           </div>
@@ -561,7 +617,13 @@ function ApprovalCard({ proposal, onDone }: { proposal: Approval; onDone: (note:
             </div>
           </div>
         )}
-        {mode === 'decide' && (
+        {mode === 'decide' && applied && (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="primary" loading={busy === 'confirm'} onClick={() => decide('confirm')}>Confirm</Button>
+            <Button variant="danger" disabled={busy !== null} onClick={() => setMode('reject')}>Undo…</Button>
+          </div>
+        )}
+        {mode === 'decide' && !applied && (
           <div className="flex flex-wrap gap-2">
             <Button variant="primary" loading={busy === 'approve'} onClick={() => decide('approve')}>{isMove ? 'Approve move' : 'Approve'}</Button>
             {isMove && <Button disabled={busy !== null} onClick={() => setMode('elsewhere')}>Move it elsewhere…</Button>}

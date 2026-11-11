@@ -21,6 +21,20 @@
       "required": false
     }
   ],
+  "approvalTypes": [
+    {
+      "name": "subcategory_add",
+      "title": "Add a subcategory to my section"
+    },
+    {
+      "name": "subcategory_removal",
+      "title": "Not mine: take a subcategory out of my section"
+    },
+    {
+      "name": "job_section",
+      "title": "My section is wrong: change my job's section"
+    }
+  ],
   "secrets": [
     "MOTHERDUCK_TOKEN",
     {

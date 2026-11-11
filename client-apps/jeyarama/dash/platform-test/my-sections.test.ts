@@ -144,9 +144,9 @@ describe('browsing to add', () => {
     const { maker } = await world(admin, createUser)
     const category = { job: 'JA-1', division: 'Women', subdivision: 'Ethnic Wear', category: 'Sarees and Blouses' }
     expect(await read(maker, 'category_subcategories', category)).toEqual([
-      { code: '010101001', name: 'Sarees', holder: { kind: 'mine' }, asked: false },
-      { code: '010101004', name: 'Sari Blouses', holder: { kind: 'none' }, asked: false },
-      { code: '010101003', name: 'Silk Sarees', holder: { kind: 'other', section: 'Silk', team_leader: 'Bala Holder' }, asked: false },
+      { code: '010101001', name: 'Sarees', holder: { kind: 'mine' }, asked: false, taken_out: false },
+      { code: '010101004', name: 'Sari Blouses', holder: { kind: 'none' }, asked: false, taken_out: false },
+      { code: '010101003', name: 'Silk Sarees', holder: { kind: 'other', section: 'Silk', team_leader: 'Bala Holder' }, asked: false, taken_out: false },
     ])
     await act(maker, 'propose_adds', adds('010101004'))
     expect((await read(maker, 'category_subcategories', category))[1]).toMatchObject({ code: '010101004', asked: true })
@@ -161,7 +161,7 @@ describe('what a person may propose', () => {
     expect(await row('Section Subcategory', 'LKS-1')).toMatchObject({ section: 'LKS-S1', ends_on: null })
     const seen = await read(maker, 'my_sections')
     expect(seen.proposals).toEqual([expect.objectContaining({ id: proposal.id, state: 'Pending' })])
-    expect(seen.jobs[0].subcategories.find((s: any) => s.name === 'Sarees').pending).toEqual({ id: proposal.id, kind: 'removal', to: null, waiting_for: 'Mani Manager' })
+    expect(seen.jobs[0].subcategories.find((s: any) => s.name === 'Sarees').pending).toEqual({ id: proposal.id, kind: 'removal', to: null, waiting_for: 'Mani Manager', applied: false })
     await expect(act(maker, 'propose_removal', removal())).rejects.toMatchObject({ status: 417 })
     expect((await read(manager, 'approvals')).proposals).toEqual([expect.objectContaining({ id: proposal.id, kind: 'removal', who: 'Asha Maker',
       path: { division: 'Women', subdivision: 'Ethnic Wear', category: 'Sarees and Blouses' }, from: { section: 'Ladies Wear', holder: 'Asha Maker' }, to: null })])
@@ -186,6 +186,7 @@ describe('what a person may propose', () => {
     await expect(act(maker, 'propose_removal', removal({ placement: 'LKS-3' }))).rejects.toMatchObject({ status: 417 })
     await expect(act(maker, 'propose_section', { job: 'JA-1', to_section: 'HIL-S1' })).rejects.toMatchObject({ status: 417 })
     await expect(act(maker, 'propose_section', { job: 'JA-1', to_section: 'LKS-S3' })).rejects.toMatchObject({ status: 417 })
+    await expect(act(maker, 'propose_section', { job: 'JA-1' })).rejects.toMatchObject({ status: 417, message: expect.stringContaining('Pick a section in this store') })
     await expect(act(otherStaff, 'propose_removal', removal())).rejects.toMatchObject({ status: 417 })
     await expect(act(otherStaff, 'propose_section', { job: 'JA-1', to_section: 'LKS-S2' })).rejects.toMatchObject({ status: 417 })
     await expect(act(stranger, 'propose_section', { job: 'JA-1', to_section: 'LKS-S2' })).rejects.toMatchObject({ status: 417 })
@@ -205,8 +206,8 @@ describe('what a person may propose', () => {
     ])
     const { jobs } = await read(maker, 'my_sections')
     expect(jobs[0].additions).toEqual([
-      { id: sent[0].id, code: '010101004', name: 'Sari Blouses', division: 'Women', subdivision: 'Ethnic Wear', category: 'Sarees and Blouses', waiting_for: 'Mani Manager' },
-      { id: sent[1].id, code: '010101003', name: 'Silk Sarees', division: 'Women', subdivision: 'Ethnic Wear', category: 'Sarees and Blouses', waiting_for: 'Mani Manager or Nila Other Manager' },
+      { id: sent[0].id, code: '010101004', name: 'Sari Blouses', division: 'Women', subdivision: 'Ethnic Wear', category: 'Sarees and Blouses', waiting_for: 'Mani Manager', applied: false },
+      { id: sent[1].id, code: '010101003', name: 'Silk Sarees', division: 'Women', subdivision: 'Ethnic Wear', category: 'Sarees and Blouses', waiting_for: 'Mani Manager or Nila Other Manager', applied: false },
     ])
     await expect(act(maker, 'propose_adds', adds('010101004'))).rejects.toMatchObject({ status: 417 })
   })
@@ -296,7 +297,7 @@ describe('what an approver decides', () => {
     expect((await read(manager, 'approvals')).proposals).toEqual([expect.objectContaining({ id, kind: 'move', what: 'Sarees',
       from: { section: 'Ladies Wear', holder: 'Asha Maker' }, to: { section: 'Silk', holder: 'Bala Holder' } })])
     const mine = await read(maker, 'my_sections')
-    expect(mine.jobs[0].subcategories.find((s: any) => s.name === 'Sarees').pending).toEqual({ id, kind: 'move', to: 'Silk', waiting_for: 'Mani Manager' })
+    expect(mine.jobs[0].subcategories.find((s: any) => s.name === 'Sarees').pending).toEqual({ id, kind: 'move', to: 'Silk', waiting_for: 'Mani Manager', applied: false })
     expect(await act(manager, 'decide', { proposal: id, decision: 'approve' })).toMatchObject({ state: 'Applied' })
     expect(await row('Section Subcategory', `LKS-010101001-${today}`)).toMatchObject({ section: 'LKS-S2' })
   })
@@ -441,3 +442,138 @@ describe('what an approver decides', () => {
     expect(jobs.map((j: any) => j.section.name)).toEqual(['Silk'])
   })
 })
+
+// #1191: on an instance that sets Your sections to "Apply now, review after", a change happens
+// when it is asked for; the reviewer confirms it or undoes it.
+const applyNow = async (admin: TestClient) => {
+  for (const type of ['subcategory_add', 'subcategory_removal', 'job_section'])
+    await admin.post('/api/save_row', { table: 'Approval Type', row: { row_id: `dash.${type}`, mode: 'Apply now, review after' } })
+}
+const inForce = async (subcategory: string) => (await sql`select row_id, section from ${sql(await tableRelation('Section Subcategory'))}
+  where store = 'LKS' and subcategory = ${subcategory} and retired_at is null and (ends_on is null or ends_on >= ${today}) order by row_id`).map(r => ({ row_id: r.row_id, section: r.section }))
+
+describe('apply now, review after (#1191)', () => {
+  test('the page says whether changes happen at once', async ({ admin, createUser }) => {
+    const { maker } = await world(admin, createUser)
+    expect((await read(maker, 'my_sections')).applies_at_once).toEqual({ add: false, removal: false, section: false })
+    await applyNow(admin)
+    expect((await read(maker, 'my_sections')).applies_at_once).toEqual({ add: true, removal: true, section: true })
+  })
+
+  test('Not mine takes it out at once; it shows struck through, waiting for review, and the reviewer sees it', async ({ admin, createUser }) => {
+    const { maker, manager } = await world(admin, createUser)
+    await applyNow(admin)
+    const proposal = await act(maker, 'propose_removal', removal())
+    expect(proposal).toMatchObject({ kind: 'removal', state: 'Not yet reviewed', applied: true, waiting_for: 'Mani Manager' })
+    expect(await inForce('010101001')).toEqual([])
+    const seen = await read(maker, 'my_sections')
+    expect(seen.jobs[0].subcategories.find((s: any) => s.name === 'Sarees').pending).toEqual({ id: proposal.id, kind: 'removal', to: null, waiting_for: 'Mani Manager', applied: true })
+    expect(seen.proposals[0]).toMatchObject({ id: proposal.id, state: 'Not yet reviewed', applied: true })
+    const waiting = await read(manager, 'approvals')
+    expect(waiting.proposals).toEqual([expect.objectContaining({ id: proposal.id, kind: 'removal', applied: true, who: 'Asha Maker' })])
+    expect((await read(manager, 'my_sections')).waiting_for_me).toBe(1)
+  })
+
+  test('adding puts it in their section at once, from nowhere or from another team leader, who both managers can review', async ({ admin, createUser }) => {
+    const { maker, holderManager } = await world(admin, createUser)
+    await applyNow(admin)
+    const sent = await act(maker, 'propose_adds', adds('010101004', '010101003'))
+    expect(sent.map((p: any) => p.state)).toEqual(['Not yet reviewed', 'Not yet reviewed'])
+    expect(await inForce('010101004')).toEqual([{ row_id: `LKS-010101004-${today}`, section: 'LKS-S1' }])
+    expect(await inForce('010101003')).toEqual([{ row_id: `LKS-010101003-${today}`, section: 'LKS-S1' }])
+    expect((await row('Section Subcategory', `LKS-010101004-${today}`)).source_key).toBe(`Dash, applied ${today}`)
+    const { jobs } = await read(maker, 'my_sections')
+    // Shown once, as an addition, not also as a plain subcategory.
+    expect(jobs[0].subcategories.map((s: any) => s.name)).toEqual(['Kurtis', 'Sarees'])
+    expect(jobs[0].additions).toEqual([
+      expect.objectContaining({ id: sent[0].id, name: 'Sari Blouses', applied: true, waiting_for: 'Mani Manager' }),
+      expect.objectContaining({ id: sent[1].id, name: 'Silk Sarees', applied: true, waiting_for: 'Mani Manager or Nila Other Manager' }),
+    ])
+    expect((await read(holderManager, 'approvals')).proposals).toEqual([expect.objectContaining({ id: sent[1].id, kind: 'move', applied: true })])
+  })
+
+  test('a section change takes effect at once, and the job says what it changed from', async ({ admin, createUser }) => {
+    const { maker } = await world(admin, createUser)
+    await applyNow(admin)
+    const proposal = await act(maker, 'propose_section', { job: 'JA-1', to_section: 'LKS-S2' })
+    expect(proposal).toMatchObject({ kind: 'section', state: 'Not yet reviewed' })
+    const { jobs } = await read(maker, 'my_sections')
+    expect(jobs[0]).toMatchObject({ section: { name: 'Silk' }, section_change: { id: proposal.id, from: 'Ladies Wear', waiting_for: 'Mani Manager' } })
+  })
+
+  test('the reviewer confirms it: it stays, and the person reads that it was confirmed', async ({ admin, createUser }) => {
+    const { maker, manager } = await world(admin, createUser)
+    await applyNow(admin)
+    const [added] = await act(maker, 'propose_adds', adds('010101004'))
+    await expect(act(manager, 'decide', { proposal: added.id, decision: 'approve' })).rejects.toMatchObject({ status: 417 })
+    expect(await act(manager, 'decide', { proposal: added.id, decision: 'confirm' })).toMatchObject({ state: 'Confirmed' })
+    expect(await inForce('010101004')).toHaveLength(1)
+    expect((await read(maker, 'my_sections')).proposals[0]).toMatchObject({ state: 'Confirmed', decided_on: today })
+    expect((await read(manager, 'approvals')).proposals).toEqual([])
+    // A proposal still waiting is approved or rejected, never confirmed.
+    await sql`delete from approval_type`
+    const waiting = await act(maker, 'propose_removal', removal())
+    await expect(act(manager, 'decide', { proposal: waiting.id, decision: 'confirm' })).rejects.toMatchObject({ status: 417 })
+  })
+
+  test('the reviewer undoes it with a reason: everything is as it was, and the person reads why', async ({ admin, createUser }) => {
+    const { maker, manager } = await world(admin, createUser)
+    await applyNow(admin)
+    const proposal = await act(maker, 'propose_removal', removal())
+    await expect(act(manager, 'decide', { proposal: proposal.id, decision: 'undo', reason: ' ' })).rejects.toMatchObject({ status: 417 })
+    expect(await act(manager, 'decide', { proposal: proposal.id, decision: 'undo', reason: 'Sarees stay with you' })).toMatchObject({ state: 'Undone' })
+    expect(await inForce('010101001')).toEqual([{ row_id: 'LKS-1', section: 'LKS-S1' }])
+    const seen = await read(maker, 'my_sections')
+    expect(seen.jobs[0].subcategories.find((s: any) => s.name === 'Sarees').pending).toBeNull()
+    expect(seen.proposals[0]).toMatchObject({ state: 'Undone', reason: 'Sarees stay with you' })
+    await expect(act(maker, 'withdraw', { proposal: proposal.id })).rejects.toMatchObject({ status: 417 })
+  })
+
+  test('the person takes back their own with Undo, and can add it again the same day', async ({ admin, createUser }) => {
+    const { maker, otherStaff } = await world(admin, createUser)
+    await applyNow(admin)
+    const [added] = await act(maker, 'propose_adds', adds('010101004'))
+    await expect(act(otherStaff, 'withdraw', { proposal: added.id })).rejects.toMatchObject({ status: 417 })
+    expect(await act(maker, 'withdraw', { proposal: added.id })).toMatchObject({ state: 'Undone' })
+    expect(await inForce('010101004')).toEqual([])
+    // The undone row keeps its identifier, retired: a new one is found beside it.
+    const [again] = await act(maker, 'propose_adds', adds('010101004'))
+    expect(again.state).toBe('Not yet reviewed')
+    expect(await inForce('010101004')).toEqual([{ row_id: `LKS-010101004-${today}-2`, section: 'LKS-S1' }])
+  })
+
+  test('an undo that would put a subcategory back where someone has since put it elsewhere is refused', async ({ admin, createUser }) => {
+    const { maker, manager, holder } = await world(admin, createUser)
+    await applyNow(admin)
+    const proposal = await act(maker, 'propose_removal', removal())
+    // Silk's Team Leader adds it from nowhere.
+    await act(holder, 'propose_adds', { job: 'JA-6', subcategories: ['010101001'] })
+    await expect(act(manager, 'decide', { proposal: proposal.id, decision: 'undo', reason: 'Wrong' }))
+      .rejects.toMatchObject({ status: 417, message: expect.stringContaining('has since been put in Silk') })
+    await expect(act(maker, 'withdraw', { proposal: proposal.id })).rejects.toMatchObject({ status: 417 })
+    const [still] = await sql`select proposal_state from change_proposal where row_id = ${proposal.id}`
+    expect(still.proposal_state).toBe('Not yet reviewed')
+  })
+
+  test('changed by someone else since: undo refuses and says who', async ({ admin, createUser }) => {
+    const { maker, manager } = await world(admin, createUser)
+    await applyNow(admin)
+    const [added] = await act(maker, 'propose_adds', adds('010101004'))
+    const placed = await row('Section Subcategory', `LKS-010101004-${today}`)
+    await admin.post('/api/save_row', { table: 'Section Subcategory', row: { row_id: placed.row_id, updated_at: placed.updated_at.toISOString(), section: 'LKS-S2' } })
+    await expect(act(manager, 'decide', { proposal: added.id, decision: 'undo', reason: 'Wrong' }))
+      .rejects.toMatchObject({ status: 417, message: expect.stringContaining("so it can't be undone") })
+  })
+
+  test('taken out and not yet reviewed: adding it back is refused, pointing to Undo; their own undo reads as taken back', async ({ admin, createUser }) => {
+    const { maker } = await world(admin, createUser)
+    await applyNow(admin)
+    const out = await act(maker, 'propose_removal', removal())
+    await expect(act(maker, 'propose_adds', adds('010101001'))).rejects.toMatchObject({ status: 417, message: expect.stringContaining('Undo') })
+    expect((await read(maker, 'category_subcategories', { job: 'JA-1', division: 'Women', subdivision: 'Ethnic Wear', category: 'Sarees and Blouses' }))
+      .find((s: any) => s.code === '010101001')).toMatchObject({ holder: { kind: 'none' }, taken_out: true })
+    await act(maker, 'withdraw', { proposal: out.id })
+    expect((await read(maker, 'my_sections')).proposals[0]).toMatchObject({ id: out.id, state: 'Undone', taken_back: true })
+  })
+})
+

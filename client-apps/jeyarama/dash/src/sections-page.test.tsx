@@ -97,6 +97,7 @@ describe('wording', () => {
     expect(holderLine({ asked: false, holder: { kind: 'none' } })).toBe('Not in any section')
     expect(holderLine({ asked: false, holder: { kind: 'mine' } })).toBe('Already yours')
     expect(holderLine({ asked: true, holder: { kind: 'none' } })).toBe('Already asked for')
+    expect(holderLine({ asked: false, taken_out: true, holder: { kind: 'none' } })).toBe('You took this out · use Undo to put it back')
     expect(askedFor({ kind: 'section', what: 'Team Leader at Lakeside', from: 'Silk', to: 'Linen' })).toBe('Change section from Silk to Linen')
     expect(askedFor({ kind: 'section', what: 'Team Leader at Lakeside', from: 'No section', to: 'Linen' })).toBe('Set your section to Linen')
   })
@@ -249,7 +250,7 @@ describe('Your sections', () => {
     await page.done()
     answers.my_sections = { state: 'ok', name: 'Asha', jobs: [], proposals: [], waiting_for_me: 1 }
     page = await render('YourSections')
-    expect(page.q('approvals-link')?.textContent).toContain('Waiting for your approval (1)')
+    expect(page.q('approvals-link')?.textContent).toContain('Waiting for you (1)')
     expect(page.q('approvals-notice')?.textContent).toBe('1 change is waiting for your approval')
     await page.done()
   })
@@ -442,6 +443,178 @@ describe('a Department Manager on Your sections (#1195)', () => {
     answers.holds_department_job = false
     const page = await render('YourSections')
     expect(page.q('department-link')).toBeNull()
+    await page.done()
+  })
+})
+
+// #1191: an instance where Your sections changes happen at once, and a reviewer confirms or undoes them.
+const AT_ONCE = { add: true, removal: true, section: true }
+const applied = { ...pending, state: 'Not yet reviewed', applied: true }
+
+describe('apply now, review after (#1191)', () => {
+  it('says changes happen at once only when every kind does', async () => {
+    answers.my_sections = { state: 'ok', name: 'Asha Maker', jobs: [job], proposals: [], applies_at_once: AT_ONCE }
+    let page = await render('YourSections')
+    expect(page.q('person-name')?.textContent).toBe('Asha Maker. If something here is wrong, change it. It changes at once, and your manager reviews it afterwards.')
+    await page.done()
+    answers.my_sections = { state: 'ok', name: 'Asha Maker', jobs: [job], proposals: [], applies_at_once: { ...AT_ONCE, section: false } }
+    page = await render('YourSections')
+    expect(page.q('person-name')?.textContent).toBe('Asha Maker. If something here is wrong, say so. Nothing changes until it is approved.')
+    await page.done()
+  })
+
+  it('Not mine is done at once: the row stays struck through, waiting for review, with Undo', async () => {
+    const out = { ...job, subcategories: [{ ...job.subcategories[0], pending: { id: 'p-out', kind: 'removal', to: null, waiting_for: 'Mani Manager', applied: true } }] }
+    answers.my_sections = { state: 'ok', name: 'Asha Maker', jobs: [out], proposals: [], applies_at_once: AT_ONCE }
+    answers.withdraw = { ...applied, kind: 'removal', state: 'Undone' }
+    const page = await render('YourSections')
+    const row = page.q('subcategory')!
+    expect(row.querySelector('.line-through')?.textContent).toBe('Sarees')
+    expect(row.textContent).toContain('Taken out of your section · Mani Manager will review it')
+    expect(row.textContent).toContain('Taken out · not yet reviewed')
+    await page.press(row.querySelector('button')!)
+    expect(calls.find(c => c.kind === 'actions')).toEqual({ kind: 'actions', name: 'withdraw', payload: { proposal: 'p-out' } })
+    expect(page.q('sent-note')?.textContent).toBe('Undone: Sarees is back in your section.')
+    await page.done()
+  })
+
+  it('Not mine says it is done, not asked for', async () => {
+    answers.my_sections = { state: 'ok', name: 'Asha Maker', jobs: [job], proposals: [], applies_at_once: AT_ONCE }
+    answers.propose_removal = { ...applied, kind: 'removal' }
+    const page = await render('YourSections')
+    await page.click('Not mine')
+    expect(page.q('sent-note')?.textContent).toBe('Done: Sarees is out of your section. Mani Manager will review it.')
+    await page.done()
+  })
+
+  it('an applied addition shows with a +, waiting for review, and Undo takes it out again', async () => {
+    const added = { ...job, additions: [{ id: 'p-in', code: '010101004', name: 'Sari Blouses', ...ETHNIC, waiting_for: 'Mani Manager', applied: true }] }
+    answers.my_sections = { state: 'ok', name: 'Asha Maker', jobs: [added], proposals: [], applies_at_once: AT_ONCE }
+    answers.withdraw = { ...applied, kind: 'add', state: 'Undone' }
+    const page = await render('YourSections')
+    expect(page.q('addition')?.textContent).toContain('+ Sari Blouses')
+    expect(page.q('addition')?.textContent).toContain('Added to your section · Mani Manager will review it')
+    expect(page.q('addition')?.textContent).toContain('Added · not yet reviewed')
+    await page.press(page.q('addition')!.querySelector('button')!)
+    expect(page.q('sent-note')?.textContent).toBe('Undone: Sari Blouses is out of your section again.')
+    await page.done()
+  })
+
+  it('a section change done at once says what it was, with Undo; the form says it happens at once', async () => {
+    const moved = { ...job, section_change: { id: 'p-sec', from: 'Silk', waiting_for: 'Mani Manager' } }
+    answers.my_sections = { state: 'ok', name: 'Asha Maker', jobs: [moved], proposals: [], applies_at_once: AT_ONCE }
+    answers.withdraw = { ...applied, kind: 'section', state: 'Undone' }
+    const page = await render('YourSections')
+    expect(page.q('section-change')?.textContent).toContain('Changed from Silk · Mani Manager will review it')
+    await page.click('My section is wrong')
+    expect(page.q('pick-section')?.textContent).toContain('This changes at once. Mani Manager reviews it afterwards.')
+    expect(page.button('Change it')).toBeTruthy()
+    await page.press(page.q('section-change')!.querySelector('button')!)
+    expect(calls.find(c => c.kind === 'actions')).toEqual({ kind: 'actions', name: 'withdraw', payload: { proposal: 'p-sec' } })
+    expect(page.q('sent-note')?.textContent).toBe('Undone: your section is Silk again.')
+    await page.done()
+  })
+
+  it('adding says it happens at once', async () => {
+    answers.my_sections = { state: 'ok', name: 'Asha Maker', jobs: [job], proposals: [], applies_at_once: AT_ONCE }
+    answers.subcategory_levels = { start: null, levels: [] }
+    const page = await render('YourSections')
+    await page.click('Add subcategories')
+    expect(page.q('add-subcategories')?.textContent).toContain('Ticked subcategories are added at once. Mani Manager reviews them afterwards.')
+    expect(page.button('Add')).toBeTruthy()
+    await page.done()
+  })
+
+  it('what you have asked for says done, confirmed or undone, with the reason', () => {
+    expect(outcome({ state: 'Not yet reviewed', waiting_for: 'Mani Manager' })).toEqual({ tone: 'positive', label: 'Done · Mani Manager will review it' })
+    expect(outcome({ state: 'Confirmed', waiting_for: '' })).toEqual({ tone: 'positive', label: 'Done · confirmed' })
+    expect(outcome({ state: 'Undone', waiting_for: '' })).toEqual({ tone: 'negative', label: 'Undone' })
+  })
+
+  it('the reviewer sees what is already done apart from what waits, and confirms', async () => {
+    answers.approvals = { state: 'ok', proposals: [{ ...move, ...applied }, move] }
+    answers.decide = { ...applied, state: 'Confirmed' }
+    const page = await render('Approvals')
+    expect(page.container.querySelector('h1')?.textContent).toBe('Waiting for you')
+    expect(page.q('approvals-link')?.textContent).toContain('Waiting for you (2)')
+    expect(page.q('to-review-heading')?.textContent).toBe('Already done · check and confirm, or undo')
+    expect(page.q('to-approve-heading')?.textContent).toBe('Waiting for your approval · nothing changes until you approve')
+    const [done] = page.container.querySelectorAll('[data-testid="approval"]')
+    expect(done.textContent).toContain('Done on 05-Nov-2026 · not yet reviewed')
+    expect(done.textContent).not.toContain('Move it elsewhere')
+    await page.press([...done.querySelectorAll('button')].find(b => b.textContent === 'Confirm')!)
+    expect(calls.find(c => c.kind === 'actions')).toEqual({ kind: 'actions', name: 'decide', payload: { proposal: 'p1', decision: 'confirm' } })
+    expect(page.q('decision-note')?.textContent).toBe('Confirmed: Move Sarees.')
+    await page.done()
+  })
+
+  it('Undo needs a reason, says what it does, and a refusal is said and the list refreshed', async () => {
+    answers.approvals = { state: 'ok', proposals: [{ ...move, ...applied }] }
+    answers.decide = { ...applied, state: 'Undone' }
+    let page = await render('Approvals')
+    await page.click('Undo…')
+    expect(page.q('approval')?.textContent).toContain('Why are you undoing this?')
+    expect(page.q('approval')?.textContent).toContain('It goes back to how it was before Asha Maker changed it. Asha Maker sees your reason.')
+    await page.click('Undo it')
+    expect(calls.filter(c => c.kind === 'actions')).toEqual([])
+    await page.choose(page.q('approval')!.querySelector('input')!, 'Sarees stay in Silk')
+    await page.click('Undo it')
+    expect(calls.find(c => c.kind === 'actions')?.payload).toEqual({ proposal: 'p1', decision: 'undo', reason: 'Sarees stay in Silk' })
+    expect(page.q('decision-note')?.textContent).toBe('Undone: Move Sarees. Asha Maker can see your reason.')
+    await page.done()
+    calls.length = 0
+    answers.decide = new Error("Bala Holder changed it on 12-Nov-2026, after this applied, so it can't be undone. Put it right by hand instead.")
+    page = await render('Approvals')
+    await page.click('Undo…')
+    await page.choose(page.q('approval')!.querySelector('input')!, 'Wrong')
+    await page.click('Undo it')
+    expect(page.q('decision-note')?.textContent).toBe("Asha Maker: Move Sarees. Bala Holder changed it on 12-Nov-2026, after this applied, so it can't be undone. Put it right by hand instead.")
+    expect(calls.filter(c => c.name === 'approvals').length).toBeGreaterThan(1)
+    await page.done()
+  })
+
+  it('an applied removal says where the subcategory is now', async () => {
+    answers.approvals = { state: 'ok', proposals: [{ ...move, ...applied, kind: 'removal', from: { section: 'Ladies Wear', holder: 'Asha Maker' }, to: null, sections: [] }] }
+    const page = await render('Approvals')
+    expect(page.q('approval-removal')?.textContent).toBe('It is in no section at Lakeside now. If you undo it, it goes back to Ladies Wear.')
+    await page.done()
+  })
+
+  it('a section change keeps its note though the job row changes underneath', async () => {
+    answers.my_sections = { state: 'ok', name: 'Asha Maker', jobs: [job], proposals: [], applies_at_once: AT_ONCE }
+    answers.propose_section = { ...applied, kind: 'section' }
+    const page = await render('YourSections')
+    // The read after the change answers with the job's new row.
+    answers.my_sections = { state: 'ok', name: 'Asha Maker', jobs: [{ ...job, id: 'new-job-row', section: { id: 'silk-row', name: 'Silk', floor: null },
+      section_change: { id: 'p-sec', from: 'Ladies Wear', waiting_for: 'Mani Manager' } }], proposals: [], applies_at_once: AT_ONCE }
+    await page.click('My section is wrong')
+    await page.choose(page.q('pick-section')!.querySelector('select')!, 'silk-row')
+    await page.click('Change it')
+    expect(page.q('sent-note')?.textContent).toBe('Done: your section is changed. Mani Manager will review it.')
+    await page.done()
+  })
+
+  it('a refused undo frees the card to try again', async () => {
+    answers.approvals = { state: 'ok', proposals: [{ ...move, ...applied }] }
+    answers.decide = new Error('It has since been put in Silk')
+    const page = await render('Approvals')
+    await page.click('Undo…')
+    await page.choose(page.q('approval')!.querySelector('input')!, 'Wrong')
+    await page.click('Undo it')
+    expect(page.button('Undo it')?.disabled ?? false).toBe(false)
+    expect(page.button('Undo it')?.getAttribute('aria-busy') ?? 'false').not.toBe('true')
+    await page.done()
+  })
+
+  it('their own undo reads as taken back, not reviewed', async () => {
+    answers.my_sections = { state: 'ok', name: 'Asha Maker', jobs: [job], applies_at_once: AT_ONCE, proposals: [
+      { ...applied, state: 'Undone', taken_back: true, decided_on: '2026-11-06' },
+      { ...applied, id: 'p2', state: 'Undone', taken_back: false, reason: 'Stays in Silk', decided_on: '2026-11-06' }] }
+    const page = await render('YourSections')
+    const [own, theirs] = page.container.querySelectorAll('[data-testid="your-proposal"]')
+    expect(own.textContent).toContain('Taken back on 06-Nov-2026')
+    expect(own.textContent).not.toContain('Reviewed')
+    expect(theirs.textContent).toContain('Reviewed on 06-Nov-2026')
     await page.done()
   })
 })

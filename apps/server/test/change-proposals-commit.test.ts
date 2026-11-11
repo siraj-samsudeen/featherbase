@@ -63,6 +63,28 @@ prove('real commits: two approvers approving at once apply it once', async () =>
     await Promise.all(adds.map(({ result }, index) =>
       act(people[index + 1], { op: 'add_once', key: 'only-one', label: 'Only one', id: result.row_id, decision: { approvers, effectiveOn: '2026-11-05', newRow: { placement_id: `O-${index}` } } })))
     expect((await sql`select count(*)::int as n from ${sql(await tableRelation(TABLE))} where label = 'Only one'`)[0].n).toBe(1)
+
+    // #1191: a change that applied at once, undone by two reviewers at once, or undone and
+    // confirmed at once: exactly one of them wins, and the rows are what that one left.
+    await saveDoc('Approval Type', { row_id: 'proposalproof.label_change', mode: 'Apply now, review after' }, 'Administrator', 'insert')
+    const applyNow = async (row: string, stamp: string) => (await act(people[0], { op: 'propose', request: { table: TABLE, row, changes: { label: `Applied ${stamp}` }, approvers,
+      type: 'label_change', apply: { effectiveOn: '2026-11-05', newRow: { placement_id: stamp } } } })).result
+    await saveDoc(TABLE, { placement_id: 'U-1', label: 'Cotton', site: 'South', starts_on: '2026-10-01' }, 'Administrator', 'insert')
+    const twice = await applyNow('U-1', 'U-2')
+    const undos = await Promise.allSettled(people.slice(1).map(person =>
+      act(person, { op: 'undo', id: twice.row_id, decision: { approvers, reason: 'Wrong' } })))
+    expect(undos.map(o => o.status).sort()).toEqual(['fulfilled', 'rejected'])
+    expect((await sql`select proposal_state from change_proposal where row_id = ${twice.row_id}`)[0].proposal_state).toBe('Undone')
+    expect((await sql`select ends_on from ${sql(await tableRelation(TABLE))} where row_id = 'U-1'`)[0].ends_on).toBeNull()
+
+    await saveDoc(TABLE, { placement_id: 'V-1', label: 'Cotton', site: 'South', starts_on: '2026-10-01' }, 'Administrator', 'insert')
+    const raced = await applyNow('V-1', 'V-2')
+    const mixed = await Promise.allSettled([act(people[1], { op: 'undo', id: raced.row_id, decision: { approvers, reason: 'Wrong' } }),
+      act(people[2], { op: 'confirm', id: raced.row_id, decision: { approvers } })])
+    expect(mixed.map(o => o.status).sort()).toEqual(['fulfilled', 'rejected'])
+    const [after] = await sql`select proposal_state from change_proposal where row_id = ${raced.row_id}`
+    const [added] = await sql`select retired_at from ${sql(await tableRelation(TABLE))} where row_id = 'V-2'`
+    expect(after.proposal_state === 'Undone' ? added.retired_at !== null : after.proposal_state === 'Confirmed' && added.retired_at === null).toBe(true)
   } finally {
     // A disposable database: nothing here is cleaned up but the app's hold on it.
     await uninstallApp('proposalproof').catch(() => {})

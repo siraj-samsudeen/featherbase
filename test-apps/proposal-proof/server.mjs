@@ -17,16 +17,20 @@ export const actions = {
       if (placed.length) return changeProposals.needsFreshReview(payload.id, { approvers: payload.decision.approvers, reason: 'Already placed' })
       return changeProposals.approve(payload.id, payload.decision)
     }
+    if (payload.op === 'mode_of') return changeProposals.modeOf(payload.type)
     if (payload.op === 'propose') return changeProposals.propose(payload.request)
     if (payload.op === 'approve') return changeProposals.approve(payload.id, payload.decision)
     if (payload.op === 'reject') return changeProposals.reject(payload.id, payload.decision)
     if (payload.op === 'withdraw') return changeProposals.withdraw(payload.id)
+    if (payload.op === 'confirm') return changeProposals.confirm(payload.id, payload.decision)
+    if (payload.op === 'undo') return changeProposals.undo(payload.id, payload.decision)
     if (payload.op === 'needs_fresh_review') return changeProposals.needsFreshReview(payload.id, payload.decision)
     throw new Error('Unknown probe')
   },
 }
 export const reads = {
   async look({ payload, baseTables, changeProposals }) {
+    if (payload.modeOf) return changeProposals.modeOf(payload.modeOf)
     if (payload.authority) return { may: await changeProposals.mayDecide(payload.authority.maker, payload.authority.approvers), route: await changeProposals.routeFor(payload.authority.maker, payload.authority.approvers) }
     return { canPropose: typeof changeProposals.propose === 'function', canDecide: typeof changeProposals.approve === 'function',
       rows: await baseTables.list(payload.table, payload.args), proposals: await changeProposals.list({}) }
