@@ -83,7 +83,8 @@ function ListLayout({ rules, edit }: { rules: Rule[]; edit?: (rule: Rule) => Rea
         <li key={rule.row_id} className={rule.rows_left === 0 ? 'clear' : ''}>
           <Severity value={rule.severity} />
           <div className="rule-what">
-            <b>{rule.title}</b> <span className="muted rule-table-name">· {rule.table}</span>
+            <b>{rule.title}</b>
+            <small className="rule-table-name">{rule.table}</small>
             {rule.how_to_fix && <small>{rule.how_to_fix}</small>}
           </div>
           <Left rule={rule} />
@@ -96,16 +97,18 @@ function ListLayout({ rules, edit }: { rules: Rule[]; edit?: (rule: Rule) => Rea
 function TableLayout({ rules, edit }: { rules: Rule[]; edit?: (rule: Rule) => ReactNode }) {
   return (
     <table className="rule-table">
-      <thead><tr><th>Severity</th><th>Rule</th><th>Table</th><th>Owner</th><th>Rows</th><th><span className="sr-only">Actions</span></th></tr></thead>
+      <colgroup><col className="col-severity" /><col /><col className="col-rows" /><col className="col-actions" /></colgroup>
+      <thead><tr><th>Severity</th><th>Rule</th><th>Rows</th><th><span className="sr-only">Actions</span></th></tr></thead>
       <tbody>
         {rules.map((rule) => (
           <tr key={rule.row_id}>
             <td><Severity value={rule.severity} /></td>
-            <td><b>{rule.title}</b><small>Where {describeFilters(rule.filters)}</small>{rule.how_to_fix && <small>{rule.how_to_fix}</small>}</td>
-            <td className="nowrap">{rule.table}</td>
-            <td className="nowrap">{rule.owner ? person(rule.owner) : '—'}</td>
-            <td className="nowrap"><Left rule={rule} /></td>
-            <td><span className="rule-links"><Open rule={rule} />{edit?.(rule)}</span></td>
+            <td><b>{rule.title}</b>
+              <small>{rule.table}{rule.owner ? ` · owner ${person(rule.owner)}` : ''}</small>
+              <small>Where {describeFilters(rule.filters)}</small>
+              {rule.how_to_fix && <small>{rule.how_to_fix}</small>}</td>
+            <td><Left rule={rule} /></td>
+            <td><span className="rule-links stacked"><Open rule={rule} />{edit?.(rule)}</span></td>
           </tr>
         ))}
       </tbody>
@@ -177,12 +180,12 @@ export function RulesCard({ rules, tables, owners, mutate, busy }: {
 }
 
 type Column = { column_name: string; label?: string; column_type?: string; hidden?: boolean | number }
-async function columnsOf(table: string): Promise<Column[]> {
+async function columnsOf(table: string): Promise<Column[] | null> {
   const token = localStorage.getItem('fc_token')
   const response = await fetch(`/api/table/${encodeURIComponent(table)}:meta`, {
     credentials: 'same-origin', headers: token ? { Authorization: `Bearer ${token}` } : {},
   })
-  if (!response.ok) return []
+  if (!response.ok) return null
   const meta = (await response.json()) as { columns: Column[] }
   return meta.columns.filter((c) => !c.hidden && c.column_type !== 'Sub-table')
 }
@@ -196,7 +199,8 @@ export function AddRule({ tables, owners, mutate, busy, close }: {
   close: () => void
 }) {
   const [table, setTable] = useState('')
-  const [columns, setColumns] = useState<Column[]>([])
+  // null: this person may not read the Table's columns.
+  const [columns, setColumns] = useState<Column[] | null>([])
   const [conditions, setConditions] = useState<Filter[]>([['', '=', '']])
   const [preview, setPreview] = useState<Preview>({ state: 'idle' })
   useEffect(() => {
@@ -235,7 +239,8 @@ export function AddRule({ tables, owners, mutate, busy, close }: {
             {tables.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
         </Label>
-        {table && (
+        {table && columns === null && <p className="rule-preview">You may not read {table}, so its columns can't be offered and no rule can be counted on it.</p>}
+        {table && columns !== null && (
           <div className="conditions" role="group" aria-label="Conditions">
             {conditions.map(([column, op, value], i) => (
               <div className="condition" key={i}>

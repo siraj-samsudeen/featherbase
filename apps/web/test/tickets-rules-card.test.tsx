@@ -62,9 +62,9 @@ describe('the Rules card (#1196)', () => {
     await anjali
       .within('.rules', (rules) => rules.clickButton('Add a rule'))
       .selectOption('Table', 'Buyer Assignment')
-      .selectOption('Operator 1', 'is blank')
-    // Anjali may not read the Table: no columns are offered and nothing is counted.
-    expect(within(screen.getByRole('combobox', { name: 'Column 1' })).getAllByRole('option')).toHaveLength(1)
+      // Anjali may not read the Table: she is told so, and offered no conditions to build.
+      .within('.rules', (rules) => rules.assertText("You may not read Buyer Assignment, so its columns can't be offered"))
+    expect(screen.queryByRole('combobox', { name: 'Column 1' })).toBeNull()
     await anjali.clickButton('Cancel').until('the form has closed', () => !screen.queryByRole('combobox', { name: 'Table' }))
 
     const bala = (await openAs(x, 'Bala')).session
