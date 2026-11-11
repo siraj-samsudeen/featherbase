@@ -38,7 +38,7 @@ function world(over: Partial<Record<string, Row[]>> = {}) {
   } as Record<string, Row[]>
 }
 
-function context(tables: Record<string, Row[]>, { user = 'asha', payload, settings = { linked_tables: LISTED }, proposals = [] as Row[], route = 'people' }: { user?: string; payload?: unknown; settings?: Record<string, string>; proposals?: Row[]; route?: string } = {}) {
+function context(tables: Record<string, Row[]>, { user = 'asha', payload, settings = { linked_tables: LISTED }, proposals = [] as Row[], route = 'people', roles = [] as string[] }: { user?: string; payload?: unknown; settings?: Record<string, string>; proposals?: Row[]; route?: string; roles?: string[] } = {}) {
   const sent: { call: string; request: unknown }[] = []
   const answer = (call: string) => async (first: unknown, second?: unknown) => {
     sent.push({ call, request: second ?? first })
@@ -46,7 +46,7 @@ function context(tables: Record<string, Row[]>, { user = 'asha', payload, settin
       about: null, decision_reason: null, changes: [], created_at: `${today}T00:00:00Z`, decided_at: null, route: { people: [], roles: [] } }
   }
   const ctx = {
-    user, payload, settings,
+    user, payload, settings, roles,
     reject(message: string): never { throw new Error(message) },
     baseTables: {
       async list(table: string, args: { filters?: [string, string, unknown][]; limit_start?: number; limit_page_length?: number }) {
@@ -62,7 +62,7 @@ function context(tables: Record<string, Row[]>, { user = 'asha', payload, settin
         return rows.slice(start, start + (filter.limit ?? 200))
       },
       mayDecide: async () => true,
-      routeFor: async (_maker: string, approvers: { people: string[] }) => (route === 'none' ? null : { people: approvers.people, roles: [] }),
+      routeFor: async (_maker: string, approvers: { people: string[] }) => (route === 'none' ? null : { people: route === 'ghost' ? ['nobody-on-staff'] : approvers.people, roles: [] }),
       lockRow: async () => {},
       serialize: async () => {},
       propose: answer('propose'), approve: answer('approve'), reject: answer('reject'), needsFreshReview: answer('needsFreshReview'), withdraw: answer('withdraw'),
@@ -236,6 +236,56 @@ describe('approval goes ahead when', () => {
     const { ctx, sent } = context(world({ 'Section Subcategory': over }), { user: 'mani', proposals: [proposal(add)], payload: { proposal: 'PR', decision: 'approve' } })
     await actions.decide(ctx)
     expect(sent[0].call).toBe('approve')
+  })
+})
+
+describe('the edges of the new reads (#1175)', () => {
+  it('a pending addition whose subcategory has gone keeps its asked-for name; a route to nobody on the staff is the team', async () => {
+    const asked = { ...add, subcategory: 'GONE', what: 'Old line', to_section: 'S1' }
+    const answer = await reads.my_sections(context(world(), { proposals: [proposal(asked)], route: 'ghost' }).ctx) as { jobs: { additions: { name: string; waiting_for: string }[] }[] }
+    expect(answer.jobs[0].additions).toEqual([expect.objectContaining({ name: 'Old line', waiting_for: 'the master data team', division: '' })])
+  })
+
+  it('browsing with nothing sent names no job of theirs', async () => {
+    await expect(reads.subcategory_levels(context(world()).ctx)).rejects.toThrow('not a job of yours')
+    await expect(reads.category_subcategories(context(world()).ctx)).rejects.toThrow('not a job of yours')
+  })
+
+  it('a category nobody holds anything of lists each as in no section, two of one name by code', async () => {
+    const tables = world({ Subcategory: [{ row_id: 'Z2', subcategory: 'Leggings', subcategory_type: 'Merchandise' }, { row_id: 'Z1', subcategory: 'Leggings', subcategory_type: 'Merchandise' }], 'Section Subcategory': [] })
+    expect(await reads.category_subcategories(context(tables, { payload: { job: 'J1' } }).ctx)).toEqual([
+      { code: 'Z1', name: 'Leggings', holder: { kind: 'none' }, asked: false },
+      { code: 'Z2', name: 'Leggings', holder: { kind: 'none' }, asked: false },
+    ])
+  })
+
+  it('the master data team: nothing ended is an empty list; of several ended rows the latest says where it was', async () => {
+    const editor = { roles: ['Master Data Editor'] }
+    expect(await reads.unplaced(context(world(), editor).ctx)).toEqual({ state: 'ok', rows: [] })
+    expect(await reads.unplaced(context(world()).ctx)).toEqual({ state: 'not_allowed' })
+    const ended = (row_id: string, store: string, subcategory: string, section: string, ends_on: string) => ({ row_id, store, subcategory, section, starts_on: '2020-01-01', ends_on })
+    const tables = world({
+      Site: [{ row_id: 'LKS', name: 'Lakeside', is_store: true }, { row_id: 'HIL', name: 'Hillview', is_store: true }],
+      Subcategory: [{ row_id: 'C1', subcategory: 'Sarees', subcategory_type: 'Merchandise' }, { row_id: 'C2', subcategory: 'Belts', subcategory_type: 'Merchandise' }, { row_id: 'C9', subcategory: 'Hangers', subcategory_type: 'Consumable' }],
+      'Section Subcategory': [ended('E1', 'LKS', 'C1', 'S2', '2026-01-10'), ended('E2', 'LKS', 'C1', 'S1', '2026-02-10'), ended('E0', 'LKS', 'C1', 'S2', '2026-01-01'),
+        ended('E3', 'LKS', 'C2', 'S2', '2026-03-01'), ended('E4', 'HIL', 'C1', 'S2', '2026-03-01'), ended('E5', 'LKS', 'C9', 'S2', '2026-03-01')],
+    })
+    const { rows } = await reads.unplaced(context(tables, editor).ctx) as { rows: { store: string; name: string; was_in: string; since: string }[] }
+    expect(rows.map(r => [r.store, r.name, r.was_in, r.since])).toEqual([
+      ['Hillview', 'Sarees', 'Silk', '2026-03-02'], ['Lakeside', 'Belts', 'Silk', '2026-03-02'], ['Lakeside', 'Sarees', 'Ladies', '2026-02-11']])
+  })
+
+  it('an addition from no section shows no From, and nothing to put elsewhere', async () => {
+    const answer = await reads.approvals(context(world(), { user: 'mani', proposals: [proposal(add)] }).ctx) as { proposals: { kind: string; from: unknown; to: unknown; sections: unknown[] }[] }
+    expect(answer.proposals[0]).toMatchObject({ kind: 'add', from: null, to: { section: 'Ladies', holder: 'Asha' }, sections: [] })
+  })
+
+  it('an old-style move out of a section since closed needs asking again', async () => {
+    const closed = world()
+    closed.Section[0].status = 'Inactive'
+    const { ctx, sent } = context(closed, { user: 'mani', proposals: [proposal(move)], payload: { proposal: 'PR', decision: 'approve' } })
+    await actions.decide(ctx)
+    expect(sent[0]).toMatchObject({ call: 'needsFreshReview', request: { reason: 'The section it would leave is no longer open.' } })
   })
 })
 
