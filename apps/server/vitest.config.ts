@@ -102,7 +102,7 @@ export default defineConfig({
       // Tighten these caps as coverage improves; never exclude code to meet
       // them. An additional uncovered item fails even if % rounds up.
       // Stage 1 (lines, statements, functions): measured on a fresh database,
-      // the full suite on PostgreSQL 18 with MySQL enabled, as CI merges it.
+      // the full suite on PostgreSQL 18, as CI merges it.
       // One statement is left (collection-import.ts key analysis, `if
       // (hidden) continue`), capped as a count until it is reached or, after
       // research, marked inline (ADR 0023).
