@@ -6,11 +6,12 @@ import { describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { makeTable } from './fixtures'
 
-const stage = vi.hoisted(() => ({ when: null as null | ((text: string) => boolean), invalidate: () => {} }))
+const stage = vi.hoisted(() => ({ when: null as null | ((text: string) => boolean), invalidate: () => {}, slugReads: 0 }))
 
 vi.mock('../src/db', async (original) => {
   const db = await original<typeof import('../src/db')>()
   return { ...db, sql: new Proxy(db.sql, { apply(target, self, args) {
+    if (Array.isArray(args[0]) && 'raw' in args[0] && (args[0] as string[]).join('?').trim() === 'select name from table_def') stage.slugReads++
     if (stage.when && Array.isArray(args[0]) && 'raw' in args[0] && stage.when((args[0] as string[]).join('?'))) {
       stage.when = null
       stage.invalidate()
@@ -53,7 +54,10 @@ describe('read while the metadata changes', () => {
     invalidateMeta()
     stage.when = (text) => text.trim() === 'select name from table_def'
     expect(await resolveTableName('race-probe-dt')).toBe(DT)
-    await makeTable(admin, { name: 'Race Probe Later', columns: ['title'] })
-    expect(await resolveTableName('race-probe-later')).toBe('Race Probe Later')
+    // Nothing invalidates the metadata between the two lookups, so only a map
+    // left uncached makes the second one read the slugs again.
+    const readsBefore = stage.slugReads
+    expect(await resolveTableName('race-probe-dt')).toBe(DT)
+    expect(stage.slugReads).toBe(readsBefore + 1)
   })
 })
