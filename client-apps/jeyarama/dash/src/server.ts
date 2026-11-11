@@ -70,6 +70,9 @@ export function setEmbedFetch(f: typeof fetch | null) {
 
 const placesOf = (ctx: ScopedContext) => ctx.authorization.places ?? []
 
+/** Dash's own roles (featherbase.json's `roles`): holding any of them opens Dash (#1172). */
+export const DASH_ROLES = new Set(['Dash Reader', 'Report Access Manager'])
+
 const REPORT_FIELDS = ['report_key', 'report_name', 'dive_id', 'filter_shape', 'store_key', 'subcategory_key', 'whole_store_key', 'month_key', 'ready_signal', 'quick_view', 'pickers_in_dive']
 
 /**
@@ -297,10 +300,14 @@ export const reads = {
     return { user }
   },
 
-  /** The app's gate (#1046): Dash opens for someone with a report, or who manages report access. */
+  /**
+   * The app's gate. #1172 (owner, 10-Nov-2026, "Open for any Dash role"), refining #1046: Dash opens
+   * for anyone holding one of its roles, so someone whose job reaches no store sees Dash's reason.
+   * It opens no data: reports, rows and the Dive still need reach, or a report taking no filter.
+   */
   async can_open(context: ReadContext) {
     const ctx = context as ScopedContext
-    return managesAccess(ctx) || (await offeredReports(ctx)).length > 0
+    return managesAccess(ctx) || (ctx.roles ?? []).some(role => DASH_ROLES.has(role)) || (await offeredReports(ctx)).length > 0
   },
 
   /** Whether this person manages report access, for the sidebar's link. */

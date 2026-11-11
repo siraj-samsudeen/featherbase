@@ -502,8 +502,17 @@ describe('what a job that reaches nothing is told', () => {
     expect(reachMessage(['no_cluster'])).toEqual({ text: "Your store isn't in a cluster yet, so there is no report to show.", sectionsLink: false })
   })
 
-  it.each([[['head_office']], [['no_job']], [[]]])('%j: nothing of its own, so the no-access page says it', problems => {
-    expect(reachMessage(problems)).toBeNull()
+  // #1172: Dash now opens for them (any Dash role), so each says why there is no report.
+  it('head_office: no store report is set against a head-office job, with no link', () => {
+    expect(reachMessage(['head_office'])).toEqual({ text: 'Your job is in head office, so no store report is set against it. Ask the person who gives Dash reports in your company if you need one.', sectionsLink: false, readerOnly: true })
+  })
+
+  it('no_job: not on the staff list, with no link', () => {
+    expect(reachMessage(['no_job'])).toEqual({ text: "You aren't on the staff list yet, so there is no report to show. Ask HR to add you.", sectionsLink: false, readerOnly: true })
+  })
+
+  it('no problem at all: nothing of its own, so the no-access page says it', () => {
+    expect(reachMessage([])).toBeNull()
   })
 
   it('a section to fix comes before the rest', () => {

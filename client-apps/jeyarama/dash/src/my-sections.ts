@@ -144,6 +144,13 @@ const pathOf = (row: Row | undefined) => ({ division: text(row?.division), subdi
 const isMerchandise = (row: Row | undefined) => row?.subcategory_type === 'Merchandise'
 
 /** The Team Leaders holding these sections now. */
+/** Who holds a section, in a few words: one or two names, else the first and how many others. */
+export function fewNames(names: (string | undefined)[]): string | null {
+  const known = names.filter((name): name is string => !!name).sort((a, b) => a.localeCompare(b))
+  if (known.length > 2) return `${known[0]} and ${known.length - 1} others`
+  return known.length ? known.join(' and ') : null
+}
+
 async function holdersOf(ctx: BaseContext, sections: string[], today: string): Promise<Row[]> {
   if (!sections.length) return []
   return (await list(ctx, T.job, JOB_FIELDS, [['section', 'in', sections]])).filter(job => inForce(job, today) && text(job.job) === 'Team Leader')
@@ -322,10 +329,10 @@ export const reads = {
     return rows.map(row => {
       const code = exact(row.row_id)
       const section = where.get(code)
-      const leaders = holders.filter(h => exact(h.section) === section).map(h => names.get(exact(h.employee))).filter(Boolean)
+      const leaders = holders.filter(h => exact(h.section) === section).map(h => names.get(exact(h.employee)))
       const holder = !section ? { kind: 'none' as const }
         : section === exact(job.section) ? { kind: 'mine' as const }
-        : { kind: 'other' as const, section: text(sections.get(section)?.name), team_leader: leaders.length ? leaders.join(' and ') : null }
+        : { kind: 'other' as const, section: text(sections.get(section)?.name), team_leader: fewNames(leaders) }
       return { code, name: text(row.subcategory), holder, asked: asked.has(code) }
     }).sort((a, b) => a.name.localeCompare(b.name) || a.code.localeCompare(b.code))
   },
@@ -371,11 +378,11 @@ export const reads = {
     const leaves = codes.length ? byId(await all(ctx, T.subcategory, SUB_FIELDS, [['row_id', 'in', codes]])) : new Map<string, Row>()
     const sites = unique(as.map(a => a.site))
     const sections = sites.length ? (await all(ctx, T.section, SECTION_FIELDS, [['site', 'in', sites]])).filter(isActive) : []
+    const floors = sections.length ? byId(await all(ctx, T.floor, ['name', 'site'], [['site', 'in', sites]])) : new Map<string, Row>()
     const holders = await holdersOf(ctx, unique(as.flatMap(a => [exact(a.from_section), a.to_section])), today)
     const names = await employeeNames(ctx, holders.map(h => exact(h.employee)))
     const holderOf = (section: string | undefined, except: string) => {
-      const found = holders.filter(h => exact(h.section) === exact(section) && exact(h.row_id) !== except).map(h => names.get(exact(h.employee))).filter(Boolean)
-      return found.length ? found.join(' and ') : null
+      return fewNames(holders.filter(h => exact(h.section) === exact(section) && exact(h.row_id) !== except).map(h => names.get(exact(h.employee))))
     }
     return { state: 'ok' as const, proposals: waiting.map((proposal, index) => {
       const a = as[index]
@@ -388,7 +395,8 @@ export const reads = {
         : a.kind === 'move' ? { section: a.to, holder: holderOf(a.to_section, a.job_assignment) } : { section: a.to, holder: null }
       return { ...view(proposal), kind: isMove ? 'move' as const : a.kind, who: a.maker_name, from, to,
         path: a.subcategory ? pathOf(leaves.get(exact(a.subcategory))) : null,
-        sections: isMove ? sections.filter(s => exact(s.site) === a.site).map(s => ({ id: exact(s.row_id), name: text(s.name) })).sort((x, y) => x.name.localeCompare(y.name)) : [] }
+        sections: isMove ? sections.filter(s => exact(s.site) === a.site).map(s => ({ id: exact(s.row_id), name: text(s.name), floor: text(floors.get(exact(s.floor))?.name) || null }))
+          .sort((x, y) => x.name.localeCompare(y.name)) : [] }
     }) }
   },
 }

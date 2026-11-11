@@ -54,7 +54,7 @@ const job = {
 const pending = { id: 'p1', kind: 'move', what: 'Sarees', from: 'Ladies Wear', to: 'Silk', store: 'Lakeside', state: 'Pending', waiting_for: 'Mani Manager', reason: null, asked_on: '2026-11-05', decided_on: '', who: 'Asha Maker' }
 /** As the approvals read answers it: a move with both ends and the store's open sections. */
 const move = { ...pending, from: { section: 'Silk', holder: 'Bala Holder' }, to: { section: 'Ladies Wear', holder: 'Asha Maker' }, path: ETHNIC,
-  sections: [{ id: 'ladies-row', name: 'Ladies Wear' }, { id: 'silk-row', name: 'Silk' }, { id: 'linen-row', name: 'Linen' }] }
+  sections: [{ id: 'ladies-row', name: 'Ladies Wear', floor: 'First floor' }, { id: 'silk-row', name: 'Silk', floor: 'Second floor' }, { id: 'linen-row', name: 'Linen', floor: null }, { id: 'bags-row', name: 'Bags', floor: 'First floor' }] }
 
 async function render(page: 'YourSections' | 'Approvals' | 'Unplaced') {
   const { act } = await import('react')
@@ -150,7 +150,10 @@ describe('Your sections', () => {
     expect(page.q('addition')?.textContent).toContain('Waiting for Mani Manager or Nila Other Manager')
     await page.press(removed.querySelector('button')!)
     expect(calls.find(c => c.kind === 'actions')).toEqual({ kind: 'actions', name: 'withdraw', payload: { proposal: 'p-out' } })
-    expect(page.q('sent-note')?.textContent).toContain('Undone')
+    expect(page.q('sent-note')?.textContent).toContain('Undone: Sarees stays in your section.')
+    await page.press(page.q('addition')!.querySelector('button')!)
+    expect(calls.filter(c => c.kind === 'actions').at(-1)?.payload).toEqual({ proposal: 'p-in' })
+    expect(page.q('sent-note')?.textContent).toContain('Undone: you are no longer asking to add Sari Blouses.')
     await page.done()
   })
 
@@ -274,7 +277,7 @@ describe('Waiting for your approval', () => {
     const select = page.q('approval')!.querySelector('select')!
     // Not back where it is now.
     // Neither where it is now nor where it was asked for: that is Approve move.
-    expect([...select.options].map(o => o.textContent)).toEqual(['Choose a section', 'Linen'])
+    expect([...select.options].map(o => o.textContent)).toEqual(['Choose a section', 'Linen', 'Bags · First floor'])
     await page.click('Move it there')
     expect(calls.filter(c => c.kind === 'actions')).toEqual([])
     await page.choose(select, 'linen-row')

@@ -402,8 +402,8 @@ describe('the maker withdraws, a proposal ends a row, an approver applies anothe
     await expectRefused(probe(other, { op: 'withdraw', id: proposal.row_id }), 417)
     await expectRefused(probe(manager, { op: 'withdraw', id: proposal.row_id }), 417)
     expect(await probe(maker, { op: 'withdraw', id: proposal.row_id })).toMatchObject({ state: 'Withdrawn', decided_by: maker.user })
-    await expectRefused(probe(maker, { op: 'withdraw', id: proposal.row_id }), 417, 'This has already been decided')
-    await expectRefused(probe(manager, { op: 'approve', id: proposal.row_id, decision: approval(manager.user) }), 417)
+    await expectRefused(probe(maker, { op: 'withdraw', id: proposal.row_id }), 417, 'The person who asked has withdrawn this')
+    await expectRefused(probe(manager, { op: 'approve', id: proposal.row_id, decision: approval(manager.user) }), 417, 'The person who asked has withdrawn this')
     expect(await placement('P-1')).toMatchObject({ label: 'Sarees', ends_on: null })
     // Asking again after withdrawing is a new proposal, not a repeat.
     const again = await probe(maker, ask(manager.user))

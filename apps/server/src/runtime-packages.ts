@@ -270,8 +270,18 @@ export function notRunningMessage(name: string, version: string, reason: 'files'
 
 /** The manifest this artifact declares is the one the instance installed. */
 function sameManifest(pkg: RuntimePackage, row: Record<string, unknown>) {
+  return storedDeclarationIs(row, pkg.app.runtime_manifest)
+}
+
+function storedDeclarationIs(row: Record<string, unknown>, declaration: unknown) {
   const stored = { ...(row.manifest as object), migrations: (row.manifest as { migrations?: unknown })?.migrations ?? [] }
-  return canonical(stored) === canonical(pkg.app.runtime_manifest)
+  return canonical(stored) === canonical(declaration)
+}
+
+/** #1178 (D8): whether a staged app folder declares exactly what the
+ *  installed record holds, checked before anything of it is loaded. */
+export function declaresAsInstalled(row: Record<string, unknown>, manifest: unknown, pkg: { name: string; version: string }) {
+  return storedDeclarationIs(row, { ...(manifest as object), packageName: pkg.name, packageVersion: pkg.version })
 }
 
 function assertKnownAccent(pkg: RuntimePackage) {
@@ -493,7 +503,8 @@ async function loadArtifacts(paths: string[]) {
     const folder = path.slice(0, -2)
     try {
       const entries = await readdir(folder, { withFileTypes: true })
-      directories.push(...entries.filter(e => e.isDirectory()).map(e => resolve(folder, e.name)).sort())
+      // A dot-folder is never an app: delivery (#1178) stages its work in them.
+      directories.push(...entries.filter(e => e.isDirectory() && !e.name.startsWith('.')).map(e => resolve(folder, e.name)).sort())
     } catch (error) {
       failures.push({ path, error: errorMessage(error) })
     }
@@ -506,6 +517,16 @@ async function loadArtifacts(paths: string[]) {
       const duplicate = loaded.get(key)
       if (duplicate) {
         if (duplicate.digest === pkg.digest) continue
+        // #1178 (D8): a delivered copy beside the image's copy of the same
+        // version wins while the image's copy is still the one it replaced; a
+        // deploy that brings other files wins over it. Delivered paths come last.
+        const { deliveredOver } = await import('./app-delivery')
+        const [over, duplicateOver] = [await deliveredOver(pkg.root), await deliveredOver(duplicate.root)]
+        if ((over === null) !== (duplicateOver === null)) {
+          const [delivered, image] = over !== null ? [pkg, duplicate] : [duplicate, pkg]
+          loaded.set(key, (over ?? duplicateOver) === image.digest ? delivered : image)
+          continue
+        }
         loaded.delete(key)
         duplicates.add(key)
         refuse('Duplicate different artifacts for one package version')
@@ -521,6 +542,11 @@ async function loadArtifacts(paths: string[]) {
 /** #642 (E7): the installed rows (`name`, `package_version`,
  *  `artifact_digest`, `manifest`) whose exact version and fingerprint no app on
  *  `paths` ships, as boot would take them. */
+/** #1178 (D8): the digest of `name@version` on `paths`, or '' when none ships. */
+export async function shippedDigest(paths: string[], name: string, version: string): Promise<string> {
+  return (await loadArtifacts(paths)).loaded.get(`${name}@${version}`)?.digest ?? ''
+}
+
 export async function unshippedApps<Row extends Record<string, unknown>>(installed: Row[], paths: string[]): Promise<Row[]> {
   const shipped = [...(await loadArtifacts(paths)).loaded.values()]
   return installed.filter(row => !shipped.some(pkg => pkg.name === row.name && matchesInstalled(pkg, row)))
@@ -529,10 +555,11 @@ export async function unshippedApps<Row extends Record<string, unknown>>(install
 /** #703: why an installed row is not on `paths`: its files changed under the
  *  same version and manifest, its manifest changed under the same version, or
  *  that version is not there at all. */
-export async function whyUnshipped(row: Record<string, unknown>, paths: string[]): Promise<'files' | 'manifest' | 'absent'> {
+export async function whyUnshipped(row: Record<string, unknown>, paths: string[]): Promise<'files' | 'manifest' | 'upgraded' | 'absent'> {
   const shipped = [...(await loadArtifacts(paths)).loaded.values()]
   const pkg = shipped.find(p => p.name === row.name && p.version === row.package_version)
-  if (!pkg) return 'absent'
+  // #1178 (D4): a newer version replaces it; the deploy upgrades from the installed record.
+  if (!pkg) return shipped.some(p => p.name === row.name && compareVersions(p.version, String(row.package_version)) > 0) ? 'upgraded' : 'absent'
   return sameManifest(pkg, row) ? 'files' : 'manifest'
 }
 
@@ -588,13 +615,24 @@ export function declaredPackageActions() {
     ...(pkg.manifest.actions?.version === 1 ? { diagnostic: 'Explicit action policy upgrade required' } : {}) }))
 }
 
+/** #1178 (D4): what an upgrade moves from is the installed record, written
+ *  when that version was installed or upgraded to: its declaration, package
+ *  name and fingerprint. The server needs only the new version's files. */
+function installedRecord(row: Record<string, unknown>) {
+  const declared = row.manifest as (z.infer<typeof manifestSchema> & { packageName?: string; packageVersion?: string }) | null
+  if (typeof declared?.packageName !== 'string')
+    refuse('The installed version has no complete record to upgrade from; reinstall it on a development database')
+  // The stored declaration is the parsed manifest, so its defaults (permissions: []) are filled in.
+  return { version: String(row.package_version), digest: String(row.artifact_digest),
+    manifest: declared, app: { runtime_manifest: declared as unknown } }
+}
+
 async function upgradePlan(name: string, version: string, preview = true) {
   const [row] = await sql`select * from installed_app where name = ${name} and runtime_package`
   if (!row) refuse('Upgrade requires an installed runtime application')
   const target = await verifyArtifact(artifacts.get(`${name}@${version}`))
   assertKnownAccent(target)
-  const prior = await verifyArtifact(artifacts.get(`${name}@${row.package_version}`))
-  if (!matchesInstalled(prior, row)) refuse('Installed artifact does not match its recorded identity')
+  const prior = installedRecord(row)
   if (row.activation_pending) throw new AppError('ConflictError', 'Activate the committed upgrade before previewing another version')
   if (compareVersions(version, prior.version) <= 0) refuse('Target must be newer than installed version; downgrades are unsupported')
   const history = target.manifest.migrations

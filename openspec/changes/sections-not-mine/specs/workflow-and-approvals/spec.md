@@ -14,6 +14,11 @@ The person who made a proposal SHALL be able to withdraw it while it waits, and 
 - **WHEN** the maker withdraws a proposal that was already decided, or someone else tries to withdraw it
 - **THEN** it is refused and nothing changes
 
+#### Scenario: An approver decides a request just withdrawn
+
+- **WHEN** an approver decides a proposal the maker has already withdrawn
+- **THEN** it is refused with the reason that the person who asked has withdrawn it, and nothing changes
+
 ### Requirement: A proposal can end a row
 
 An app SHALL be able to propose ending a row with nothing in its place. Approving SHALL end the row the day before the change takes effect, keeping history, under the same checks as any other change.

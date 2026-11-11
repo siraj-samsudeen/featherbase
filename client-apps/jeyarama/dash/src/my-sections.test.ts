@@ -2,7 +2,7 @@
 // paths run on the real platform in platform-test/my-sections.test.ts; these are what that
 // suite has no cheap way to reach. Made-up stores and people.
 import { describe, expect, it } from 'vitest'
-import { actions, BASE_TABLES, reads, type ActionContext, type ReadContext } from './my-sections.ts'
+import { actions, BASE_TABLES, fewNames, reads, type ActionContext, type ReadContext } from './my-sections.ts'
 import { istToday } from './report.ts'
 
 type Row = Record<string, unknown>
@@ -286,6 +286,15 @@ describe('the edges of the new reads (#1175)', () => {
     const { ctx, sent } = context(closed, { user: 'mani', proposals: [proposal(move)], payload: { proposal: 'PR', decision: 'approve' } })
     await actions.decide(ctx)
     expect(sent[0]).toMatchObject({ call: 'needsFreshReview', request: { reason: 'The section it would leave is no longer open.' } })
+  })
+})
+
+describe('who holds a section, in a few words', () => {
+  it('names one or two, then the first and how many others', () => {
+    expect(fewNames([])).toBeNull()
+    expect(fewNames(['Bala'])).toBe('Bala')
+    expect(fewNames(['Vani', 'Asha'])).toBe('Asha and Vani')
+    expect(fewNames(['Vani', 'Asha', 'Tara', 'Ravi'])).toBe('Asha and 3 others')
   })
 })
 

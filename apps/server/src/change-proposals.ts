@@ -232,6 +232,7 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
     }
     await sql`select 1 from change_proposal where row_id = ${id as string} and app = ${app} for update`
     const proposal = await oneProposal(app, id)
+    if (proposal.state === 'Withdrawn') reject('The person who asked has withdrawn this')
     if (proposal.state !== 'Pending') reject('This has already been decided')
     return proposal
   }

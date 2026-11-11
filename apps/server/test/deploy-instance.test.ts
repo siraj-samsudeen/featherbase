@@ -12,9 +12,11 @@ import { deployInstance, followsAppFiles, instanceFolder, repinChangedApps, sett
 import { assertInstalledAppsShipped } from '../src/release-preflight'
 import { discoverPackages } from '../src/runtime-packages'
 import { captureIO } from './command-io'
+import { scenarioFor } from './scenario'
 import '../src/index'
 
 const test = it
+const scenario = scenarioFor(test, 'running-an-instance')
 
 // Under test/ (gitignored scratch), since the loader's import resolves there.
 const root = mkdtempSync(join(import.meta.dirname, '.deploy-instance-'))
@@ -99,9 +101,9 @@ describe('which instance and which section', () => {
     expect(() => instanceFolder('../../etc', root)).toThrow(/holds no instance/)
   })
 
-  it('only a staging server on a staging database follows files', () => {
+  it('a staging or production server on its own database follows files', () => {
     expect(followsAppFiles('staging', 'staging')).toBe(true)
-    expect(followsAppFiles('production', 'production')).toBe(false)
+    expect(followsAppFiles('production', 'production')).toBe(true)
     expect(followsAppFiles('production', 'staging')).toBe(false)
     expect(followsAppFiles('staging', 'production')).toBe(false)
     expect(followsAppFiles('development', 'development')).toBe(false)
@@ -172,7 +174,7 @@ describe('what the step leaves alone or finishes', () => {
     const { main } = await import('../src/cli')
     const out = captureIO()
     expect(await main(['repin-apps'], out.io)).toBe(1)
-    expect(out.stderr()).toContain('production needs a new version')
+    expect(out.stderr()).toContain('Re-pinning needs a server and database that agree on the environment')
   })
 
   test('cli repin-apps re-pins on a dev database', async () => {
@@ -210,18 +212,47 @@ describe('on a dev instance (staging)', () => {
 })
 
 describe('on production', () => {
-  test('never re-pins: a code change needs a version bump', async () => {
+  test('a server that does not follow app files names a changed file and how to ship it', async () => {
     await pretendTo('production')
     await deploy()
-    const before = await digest()
     writeFileSync(join(app, 'NOTES.md'), 'a file changed\n')
-    await expect(assertInstalledAppsShipped({ followFiles: followsAppFiles('production', 'production') }))
-      .rejects.toThrow(new RegExp(`App ${name} version ${version}: its files changed.*production never re-pins.*Bump the version`))
-    const out = captureIO()
-    await expect(repinChangedApps(out.io)).rejects.toThrow(/production needs a new version/)
-    // Past the preflight, the step still leaves the install alone.
-    await deploy()
-    expect(await digest()).toBe(before)
+    await expect(assertInstalledAppsShipped({ followFiles: false }))
+      .rejects.toThrow(new RegExp(`App ${name} version ${version}: its files changed.*does not follow app files`))
+  })
+
+  // #1178 (D3): production takes a code-only fix under the same version.
+  scenario('Production takes a fixed screen under the same version', async (_ctx, step) => {
+    await step('production runs version 1 of an app', async () => {
+      await pretendTo('production')
+      await deploy()
+    })
+    const before = await digest()
+    let said = ''
+    await step('a deploy ships version 1 with one of its files changed', async () => {
+      writeFileSync(join(app, 'NOTES.md'), 'a file changed\n')
+      said = await deploy()
+    })
+    await step('production runs the changed files, still as version 1', async () => {
+      expect(said).toContain(`${name} ${version}: its files changed; re-pinned to them`)
+      expect(await digest()).not.toBe(before)
+      const [row] = await sql`select package_version from installed_app where name = ${name}`
+      expect(row.package_version).toBe(version)
+    })
+  })
+
+  scenario('Production still refuses a changed declaration under the same version', async (_ctx, step) => {
+    await step('production runs version 1 of an app', async () => {
+      await pretendTo('production')
+      await deploy()
+    })
+    const before = await digest()
+    await step('a deploy ships version 1 with a changed declaration', () => {
+      writeFileSync(manifestFile, JSON.stringify({ ...readJson(manifestFile), title: 'Changed title' }))
+    })
+    await step('the deploy is refused and asks for a new version', async () => {
+      await expect(deploy()).rejects.toThrow(/Bump the version/)
+      expect(await digest()).toBe(before)
+    })
   })
 
   test('applies the prod section', async () => {
@@ -274,7 +305,28 @@ describe('a newer version in the image', () => {
     expect(row).toMatchObject({ package_version: nextVersion, activation_pending: false })
 
     rmSync(next, { recursive: true })
-    await expect(assertInstalledAppsShipped({ followFiles: true })).rejects.toThrow(/does not ship it.*previousVersions/)
+    await expect(assertInstalledAppsShipped({ followFiles: true })).rejects.toThrow(/does not ship it/)
+  })
+
+  // #1178 (D4): the image ships only the new version; the upgrade moves from
+  // the installed record, so the old version's files are not needed.
+  test('an image holding only the newer version upgrades to it on production', async () => {
+    await pretendTo('production')
+    await deploy()
+    const next = join(apps, 'other-next')
+    cpSync(app, next, { recursive: true })
+    rmSync(app, { recursive: true })
+    const nextVersion = '99.0.0'
+    writeFileSync(join(next, 'package.json'), JSON.stringify({ ...readJson(join(next, 'package.json')), version: nextVersion }))
+    const manifest = readJson(join(next, 'featherbase.json'))
+    writeFileSync(join(next, 'featherbase.json'), JSON.stringify({
+      ...manifest,
+      migrations: [...(manifest.migrations ?? []), { id: 'to_next', fromVersion: version, toVersion: nextVersion, operations: [] }],
+    }))
+    expect(await assertInstalledAppsShipped({ followFiles: false })).toContain(`${name} ${version} is upgraded by this release`)
+    expect(await deploy()).toContain(`upgraded ${name} from ${version} to ${nextVersion}`)
+    const [row] = await sql`select package_version, activation_pending from installed_app where name = ${name}`
+    expect(row).toMatchObject({ package_version: nextVersion, activation_pending: false })
   })
 
   // Dev ran Tasker 3.0.2 built from main; #1047 then shipped 3.0.2 as the

@@ -4,7 +4,7 @@
 // will need (an upgrade can never add one: featherbase #617).
 import { describe, expect, it } from 'vitest'
 import manifest from '../featherbase.json' with { type: 'json' }
-import { EMBED_ORIGIN, LAST_MONTH_DATASET, LAST_SALES_DATASET, MONTH_DATASET, SALES_DATASET, reads } from './server.ts'
+import { DASH_ROLES, EMBED_ORIGIN, LAST_MONTH_DATASET, LAST_SALES_DATASET, MONTH_DATASET, SALES_DATASET, reads } from './server.ts'
 import type { SalesRow } from './report.ts'
 import { PROVIDER_FIELDS, PROVIDER_TABLES } from './provider.ts'
 import { BASE_TABLES } from './my-sections.ts'
@@ -14,7 +14,7 @@ type Dataset = { name: string; source: string; query: string; columns: { name: s
 const datasets = (manifest as unknown as { datasets: Dataset[] }).datasets
 const sales = () => datasets.find(d => d.name === SALES_DATASET)!
 const operations = manifest.reads.operations as Record<string, { policy: { kind: string; readRoles?: string[] }; outbound?: boolean; needs?: string[] }>
-const ROLES = ['Dash Reader', 'Dash Section Editor', 'Dash Section Reviewer', 'Report Access Manager']
+const ROLES = ['Dash Reader', 'Report Access Manager']
 
 describe("the app's name in the manifest", () => {
   it('is Dash everywhere: title, identifier, roles and Table group', () => {
@@ -88,6 +88,10 @@ describe('the report in the manifest', () => {
 
   it("lets anyone who can open the app read the month picker's options: they hold no figure", () => {
     expect(operations.months.policy).toEqual(operations.me.policy)
+  })
+
+  it("opens Dash for exactly the app's own roles (#1172)", () => {
+    expect([...DASH_ROLES].sort()).toEqual([...manifest.roles].sort())
   })
 
   it("frames only MotherDuck's embed site", () => {
@@ -195,8 +199,9 @@ describe('the read grants, declared before the first install', () => {
     expect(granted('Dash Reader')).toEqual(['dash.report'])
   })
 
-  it.each(['Dash Section Editor', 'Dash Section Reviewer'])('give %s nothing else: Your sections reads the core Tables as declared base Tables', role => {
-    expect(granted(role)).toEqual(['dash.report'])
+  // Siraj, 11-Nov-2026 ("Drop whatever is not implemented"): no section editor or reviewer role.
+  it('declares only the roles Dash uses', () => {
+    expect(manifest.roles).toEqual(['Dash Reader', 'Report Access Manager'])
   })
 
   it('give no app role the people Tables: who reads contacts and stints is the scopes\' to decide (#683)', () => {

@@ -595,12 +595,23 @@ jobs:
       # Fails below the server's coverage.thresholds, exactly as the
       # unsharded `test:coverage` did.
       - name: Merge server shards and enforce coverage thresholds
+        id: merge
         env:
           # Keep the driver in the denominator. Merging never connects.
           MYSQL_TEST_URL: mysql://root@127.0.0.1:3306
         run: |
           for report in blob-1 blob-2 blob-3 release-pg18; do test -s "apps/server/.vitest-reports/$report.json"; done
           pnpm --filter server exec vitest run --merge-reports=.vitest-reports --coverage
+
+      # Branches are reported, not gated (ADR 0024); keep the merged numbers.
+      - name: Upload merged server coverage summary
+        if: ${{ !cancelled() && steps.merge.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-coverage
+          path: apps/server/coverage/coverage-summary.json
+          if-no-files-found: error
+          retention-days: 7
 
   # Production runs PostgreSQL 18.6, where the release preflight has checks
   # that only exist there (publish_generated_columns, #399). The full suite

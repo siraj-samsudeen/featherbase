@@ -72,6 +72,14 @@ describe('who sees what', () => {
       expect(await reachOn({ job: 'Store Manager', site: 'AAA' })).toEqual(['8191', '9291', '9901', '9911'].map(store => ({ store: [store] })))
     })
 
+    // A store site whose plants are all gone (or only a warehouse) has nothing to reach.
+    it('reaches nothing on a store site with no selling plant, whole or by section', async () => {
+      const onlyWarehouse = PLANTS.filter(plant => plant.site !== 'AAA').concat({ row_id: '9151', site: 'AAA', plant_type: 'Warehouse' })
+      const whole = await reachOf(fake([{ job: 'Store Manager', site: 'AAA' }], { plants: onlyWarehouse }), 'me', ON)
+      const bySection = await reachOf(fake([{ job: 'Team Leader', site: 'AAA', section: 'AAA-GF-Tops' }], { plants: onlyWarehouse }), 'me', ON)
+      expect([whole.places, bySection]).toEqual([[], { places: [], problems: ['nothing_placed'] }])
+    })
+
     it("gives a section's reader that section in each of them", async () => {
       expect(await reachOn({ job: 'Team Leader', site: 'AAA', section: 'AAA-GF-Tops' })).toEqual(['8191', '9291', '9901', '9911']
         .map(store => ({ store: [store], subcategory: ['000000001'] })))
@@ -212,6 +220,12 @@ describe('merchandise assignments', () => {
   it('an assignment naming no level, or a region with no store, reaches nothing, and says so', async () => {
     expect(await assigned({ responsibility: 'Buyer', operating_region: 'East' })).toEqual({ places: [], problems: ['nothing_assigned'] })
     expect(await assigned({ responsibility: 'Buyer', subcategory: '000000004', operating_region: 'North-east' })).toEqual({ places: [], problems: ['nothing_assigned'] })
+  })
+
+  it('a store of the region that sells through no plant adds nothing', async () => {
+    const plants = PLANTS.filter(plant => plant.row_id !== '9902')
+    const { places } = await reachOf(fake([], { plants, assignments: [{ responsibility: 'Buyer', subcategory: '000000004', operating_region: 'East' }] }), 'me', ON)
+    expect(places.map(place => place.filters.store[0])).toEqual(['9901'])
   })
 
   it('an assignment that ends says until when', async () => {

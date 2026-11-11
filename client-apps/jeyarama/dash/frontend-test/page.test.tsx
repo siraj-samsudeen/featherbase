@@ -577,14 +577,15 @@ describe('Dash against the real platform', () => {
     expect(document.querySelector('[data-testid=department-link]')?.getAttribute('href')).toBe('?view=department')
   })
 
-  installed('gives Head office staff the no-access page', async ({ dash, createUser }) => {
+  // #1172: Dash opens for Head office staff (a Dash role) and says why there is no store report.
+  installed('tells Head office staff why there is no store report', async ({ dash, createUser }) => {
     const person = await createUser({ email: 'dash-head-office@example.test', roles: ['Dash Reader'] })
     await dash.save('Site', { code: 'HOF', name: 'Head Office', is_store: false })
     await dash.job(person.user!, 'Head office staff', { site: 'HOF' })
     token = person.token
     history.replaceState(null, '', '/dash/')
     await open()
-    await waitForText("You don't have a report to open yet.")
-    expect(document.querySelector('[data-testid=reach-problem]')).toBeNull()
+    await waitForText('Your job is in head office, so no store report is set against it.')
+    expect(document.querySelector('[data-testid=no-access]')).toBeNull()
   })
 })
