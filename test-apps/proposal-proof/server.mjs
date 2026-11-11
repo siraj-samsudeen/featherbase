@@ -29,6 +29,7 @@ export const actions = {
 }
 export const reads = {
   async look({ payload, baseTables, changeProposals }) {
+    if (payload.modeOf) return changeProposals.modeOf(payload.modeOf)
     if (payload.authority) return { may: await changeProposals.mayDecide(payload.authority.maker, payload.authority.approvers), route: await changeProposals.routeFor(payload.authority.maker, payload.authority.approvers) }
     return { canPropose: typeof changeProposals.propose === 'function', canDecide: typeof changeProposals.approve === 'function',
       rows: await baseTables.list(payload.table, payload.args), proposals: await changeProposals.list({}) }

@@ -103,6 +103,17 @@ describe('the setting: one Approval Type row per declared type', () => {
     await expect(applyInstanceSettings(file('role_grant'), { by: 'Administrator' })).rejects.toThrow('always approved first')
   })
 
+  test('a read can ask how a type works, to say so before anyone asks', async ({ admin, createUser }) => {
+    const { maker } = await setUp(admin, createUser)
+    const modeOf = async (type: string) => (await maker.post<any>('/api/app_reads/proposalproof/look', { payload: { modeOf: type } })).result
+    expect(await modeOf('label_change')).toBe(APPROVE_FIRST)
+    await setMode(admin, 'label_change', APPLY_NOW)
+    expect(await modeOf('label_change')).toBe(APPLY_NOW)
+    await sql`insert into approval_type (row_id, mode) values ('proposalproof.role_grant', ${APPLY_NOW})`
+    expect(await modeOf('role_grant')).toBe(APPROVE_FIRST)
+    await expectRefused(maker.post('/api/app_reads/proposalproof/look', { payload: { modeOf: 'not_declared' } }), 417)
+  })
+
   test('only a System Manager changes it', async ({ admin, createUser }) => {
     const { maker } = await setUp(admin, createUser)
     await expectRefused(maker.post('/api/save_row', { table: 'Approval Type', row: { row_id: 'proposalproof.label_change', mode: APPLY_NOW } }), 403)
@@ -143,6 +154,15 @@ describe('apply now: the change is made when it is asked for', () => {
     await expectRefused(probe(maker, ask(manager.user, { apply: { effectiveOn: '2026-11-05', newRow: { label: 'x' } } })), 417)
     expect((await sql`select count(*)::int as n from change_proposal`)[0].n).toBe(0)
     expect(await placement('P-1')).toMatchObject({ ends_on: null })
+  })
+
+  test('a row that does not fit the day it would apply on is refused, saying why, with nothing written', async ({ admin, createUser }) => {
+    const { maker, manager } = await setUp(admin, createUser)
+    await admin.post('/api/save_row', { table: 'Placement', row: { placement_id: 'P-LATER', label: 'Cotton', starts_on: '2026-12-01' } })
+    await setMode(admin, 'label_change', APPLY_NOW)
+    await expect(probe(maker, ask(manager.user, { row: 'P-LATER' }))).rejects.toMatchObject({ status: 417, message: expect.stringContaining('It changed after this was asked for') })
+    expect((await sql`select count(*)::int as n from change_proposal`)[0].n).toBe(0)
+    expect(await placement('P-2')).toBeUndefined()
   })
 
   test('nobody else to review it: refused, as an approval would be', async ({ admin, createUser }) => {
@@ -213,9 +233,13 @@ describe('undo puts the rows back as they were', () => {
     expect(await placement('P-1')).toMatchObject({ label: 'Sarees', ends_on: null })
     const retired = await placement('P-2')
     expect(retired.retired_at).not.toBeNull()
+    // Never in force either: whatever reads by date, such as who may see what, drops it too.
+    expect(asDay(retired.ends_on)).toBe('2026-11-04')
     expect(retired).toMatchObject({ retired_by: manager.user, retired_reason: 'Undone: It belongs with Silk' })
     // Out of every read: the app sees only the row as it was.
     expect(await probe(maker, { op: 'list', table: 'Placement', args: { fields: ['label', 'ends_on'] } })).toEqual([{ label: 'Sarees', ends_on: null }])
+    // Unless the app asks for retired rows, to find the identifiers they still hold.
+    expect(await probe(maker, { op: 'list', table: 'Placement', args: { fields: ['row_id'], filters: [['retired_at', '!=', null]] } })).toEqual([{ row_id: 'P-2' }])
     const events = (await sql`select data from version where ref_table = 'Placement' and ref_name = 'P-1'`).map(e => e.data)
     expect(events).toContainEqual(expect.objectContaining({ change_proposal: proposal.row_id, undone_by: manager.user }))
   })
@@ -244,6 +268,7 @@ describe('undo puts the rows back as they were', () => {
     expect(asDay((await placement('P-END')).ends_on)).toBe('2027-03-31')
     await probe(manager, { op: 'undo', id: added.row_id, decision })
     expect((await placement('P-NEW')).retired_at).not.toBeNull()
+    expect(asDay((await placement('P-NEW')).ends_on)).toBe('2026-11-04')
   })
 
   test('refused, with nothing changed, when either row has changed since', async ({ admin, createUser }) => {
