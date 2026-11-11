@@ -558,9 +558,11 @@ describe('a report on the rendered page', () => {
       await unmount()
     })
 
-    it('shows Head office staff the no-access page', async () => {
+    // #1172: Dash opens for Head office staff (a Dash role), and says why there is no store report.
+    it('tells Head office staff why there is no store report, instead of the generic no-access notice', async () => {
       const { container, unmount } = await refusing(['head_office'])
-      expect([container.querySelector('[data-testid=reach-problem]'), container.querySelector('[data-testid=no-access]') !== null]).toEqual([null, true])
+      expect([container.querySelector('[data-testid=reach-problem]')?.textContent?.startsWith('Your job is in head office'), container.querySelector('[data-testid=no-access]')])
+        .toEqual([true, null])
       await unmount()
     })
   })

@@ -7,9 +7,8 @@
   "client": "dist/client",
   "entryTable": "dash.report",
   "roles": [
+    "Dash All-Stores Reader",
     "Dash Reader",
-    "Dash Section Editor",
-    "Dash Section Reviewer",
     "Report Access Manager"
   ],
   "roleDefaults": {},
@@ -576,17 +575,12 @@
   "permissions": [
     {
       "table": "dash.report",
+      "role": "Dash All-Stores Reader",
+      "can_read": true
+    },
+    {
+      "table": "dash.report",
       "role": "Dash Reader",
-      "can_read": true
-    },
-    {
-      "table": "dash.report",
-      "role": "Dash Section Editor",
-      "can_read": true
-    },
-    {
-      "table": "dash.report",
-      "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
@@ -643,9 +637,8 @@
         "policy": {
           "kind": "person_scope",
           "readRoles": [
-            "Dash Reader",
-            "Dash Section Editor",
-            "Dash Section Reviewer"
+            "Dash All-Stores Reader",
+            "Dash Reader"
           ],
           "actionRoles": []
         },
@@ -665,9 +658,8 @@
         "policy": {
           "kind": "person_scope",
           "readRoles": [
-            "Dash Reader",
-            "Dash Section Editor",
-            "Dash Section Reviewer"
+            "Dash All-Stores Reader",
+            "Dash Reader"
           ],
           "actionRoles": []
         },
@@ -679,9 +671,8 @@
         "policy": {
           "kind": "person_scope",
           "readRoles": [
-            "Dash Reader",
-            "Dash Section Editor",
-            "Dash Section Reviewer"
+            "Dash All-Stores Reader",
+            "Dash Reader"
           ],
           "actionRoles": []
         },
@@ -1874,6 +1865,18 @@
       "id": "merchandise_reach",
       "fromVersion": "0.12.6",
       "toVersion": "0.12.9",
+      "operations": []
+    },
+    {
+      "id": "opens_for_dash_roles",
+      "fromVersion": "0.12.9",
+      "toVersion": "0.12.10",
+      "operations": []
+    },
+    {
+      "id": "all_stores_reader",
+      "fromVersion": "0.12.10",
+      "toVersion": "0.12.11",
       "operations": []
     }
   ],

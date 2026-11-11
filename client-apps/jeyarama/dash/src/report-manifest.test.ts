@@ -1,10 +1,11 @@
 // What featherbase.json declares for the report: the cached dataset,
 // the reads and their policies, the bar's store picker, the Dive's outside
 // site, its settings and secret, and every read grant the report and stage D
-// will need (an upgrade can never add one: featherbase #617).
+// will need (an upgrade adds a grant only for a role it newly declares: featherbase #617, #1192).
 import { describe, expect, it } from 'vitest'
 import manifest from '../featherbase.json' with { type: 'json' }
-import { EMBED_ORIGIN, LAST_MONTH_DATASET, LAST_SALES_DATASET, MONTH_DATASET, SALES_DATASET, reads } from './server.ts'
+import pkg from '../package.json' with { type: 'json' }
+import { DASH_ROLES, EMBED_ORIGIN, LAST_MONTH_DATASET, LAST_SALES_DATASET, MONTH_DATASET, SALES_DATASET, reads } from './server.ts'
 import type { SalesRow } from './report.ts'
 import { PROVIDER_FIELDS, PROVIDER_TABLES } from './provider.ts'
 import { BASE_TABLES } from './my-sections.ts'
@@ -14,7 +15,7 @@ type Dataset = { name: string; source: string; query: string; columns: { name: s
 const datasets = (manifest as unknown as { datasets: Dataset[] }).datasets
 const sales = () => datasets.find(d => d.name === SALES_DATASET)!
 const operations = manifest.reads.operations as Record<string, { policy: { kind: string; readRoles?: string[] }; outbound?: boolean; needs?: string[] }>
-const ROLES = ['Dash Reader', 'Dash Section Editor', 'Dash Section Reviewer', 'Report Access Manager']
+const ROLES = ['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager']
 
 describe("the app's name in the manifest", () => {
   it('is Dash everywhere: title, identifier, roles and Table group', () => {
@@ -88,6 +89,10 @@ describe('the report in the manifest', () => {
 
   it("lets anyone who can open the app read the month picker's options: they hold no figure", () => {
     expect(operations.months.policy).toEqual(operations.me.policy)
+  })
+
+  it("opens Dash for exactly the app's own roles (#1172)", () => {
+    expect([...DASH_ROLES].sort()).toEqual([...manifest.roles].sort())
   })
 
   it("frames only MotherDuck's embed site", () => {
@@ -195,8 +200,17 @@ describe('the read grants, declared before the first install', () => {
     expect(granted('Dash Reader')).toEqual(['dash.report'])
   })
 
-  it.each(['Dash Section Editor', 'Dash Section Reviewer'])('give %s nothing else: Your sections reads the core Tables as declared base Tables', role => {
-    expect(granted(role)).toEqual(['dash.report'])
+  // Siraj, 11-Nov-2026 ("Drop whatever is not implemented"): no section editor or reviewer role.
+  // #1192 (same day): Dash All-Stores Reader reaches every store.
+  it('declares only the roles Dash uses', () => {
+    expect(manifest.roles).toEqual(['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager'])
+  })
+
+  it('give the All-Stores Reader only the read of the entry Table, and every read the Reader has', () => {
+    expect(granted('Dash All-Stores Reader')).toEqual(['dash.report'])
+    const scoped = Object.entries(operations).filter(([, op]) => op.policy.readRoles?.includes('Dash Reader')).map(([name]) => name)
+    expect(scoped.length).toBeGreaterThan(0)
+    expect(scoped.filter(name => !operations[name].policy.readRoles!.includes('Dash All-Stores Reader'))).toEqual([])
   })
 
   it('give no app role the people Tables: who reads contacts and stints is the scopes\' to decide (#683)', () => {
@@ -207,5 +221,15 @@ describe('the read grants, declared before the first install', () => {
     const writes = manifest.permissions.filter(p => Object.keys(p).sort().join() !== 'can_read,role,table' || (p as { can_read?: boolean }).can_read !== true)
     expect(writes.map(p => [p.role, p.table])).toEqual([
       ['Report Access Manager', 'dash.report_bundle'], ['Report Access Manager', 'dash.report_bundle_member'], ['Report Access Manager', 'dash.report_access']])
+  })
+})
+
+// #1192: production runs 0.12.10; this version's ledger extends it with one step that changes no Table.
+describe('the version step for Dash All-Stores Reader', () => {
+  it('follows production\'s 0.12.10 history exactly, then adds the role with no Table change', () => {
+    const tail = manifest.migrations.slice(-4).map(m => [m.id, m.fromVersion, m.toVersion, m.operations.length])
+    expect(tail).toEqual([['pickers_in_dive', '0.12.5', '0.12.6', tail[0][3]], ['merchandise_reach', '0.12.6', '0.12.9', 0],
+      ['opens_for_dash_roles', '0.12.9', '0.12.10', 0], ['all_stores_reader', '0.12.10', '0.12.11', 0]])
+    expect(pkg.version).toBe('0.12.11')
   })
 })

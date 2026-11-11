@@ -216,7 +216,7 @@ function NoAccess({ otherReports }: { otherReports: boolean }) {
         <span>You can't open this report. Choose one of your reports from the list.</span>
       </Notice>
     )
-  if (message)
+  if (message && (!message.readerOnly || help.kind === 'reader'))
     return (
       <Notice testid="reach-problem">
         <span>{message.text}</span>

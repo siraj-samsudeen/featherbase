@@ -43,7 +43,8 @@ it. Feather Dash is the first app designed against it.
   - (A) addresses and the shared bar around today's page;
   - (B) the platform extensions here, and the client app in the client's repository;
   - (C) adopt the roster redesign (#449);
-  - (D) section editing, after #462.
+  - (D) section editing: Your sections proposals, decided by the job's manager or a
+    Master Data Editor (11-Nov-2026: trimmed to what is built (owner); no #462 role).
 - **BREAKING:**
   - `SITE_URL` is removed (stage A);
   - the core route `/featherbase/sales-target`, the `/api/sales_target/*` endpoints
@@ -58,7 +59,9 @@ it. Feather Dash is the first app designed against it.
 - `front-doors`: addresses that each open one thing, a hand-off to the right
   address, and one top bar everywhere.
 - `feather-dash`: the Feather Dash app. Managers open their own sales-target report
-  and raise changes to their own section data; a reviewer applies them.
+  and propose changes to their own section data; the job's manager, or else a
+  Master Data Editor, approves or rejects them (11-Nov-2026: trimmed to what is
+  built (owner)).
   As a client app (ADR 0013), its spec moves to the client's repository with the
   app in B6′; this change keeps only the platform's capabilities.
 
@@ -89,5 +92,5 @@ it. Feather Dash is the first app designed against it.
 - **Client repository:** gains the Feather Dash app (with today's query and roster
   derivation), its client image, the Dive's few lines for cached rows, and the job
   bindings.
-- **Depends on** #449 and #392 (stage C), #462 (stage D), #487 (before stage A
+- **Depends on** #449 and #392 (stage C), #487 (before stage A
   reaches prod). #310 must drop its Feather Dash fixtures.
