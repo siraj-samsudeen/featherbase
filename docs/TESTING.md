@@ -392,10 +392,7 @@ prints in every report, and CI keeps the merged numbers as artifacts
 reachable and untested; the goal stays 100%.
 
 CI merges the PostgreSQL 18 release-preflight coverage with the server's
-three shards before enforcing the server gate. `src/sources/mysql-driver.ts`
-is measured only when `MYSQL_TEST_URL` is set (CI sets it for both the shards
-and the merge). A local run without MySQL is not an all-driver coverage
-claim. A coverage ignore is allowed only as ADR 0012 lists, with its reason
+three shards before enforcing the server gate. A coverage ignore is allowed only as ADR 0012 lists, with its reason
 in the comment. Read the generated report and exclusions, not an old
 percentage in documentation, to assess the current code.
 
