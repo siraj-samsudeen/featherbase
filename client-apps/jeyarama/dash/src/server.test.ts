@@ -149,6 +149,11 @@ describe('a report taking no filter', () => {
         .toEqual([true, false, false, false])
     })
 
+    // #1192: holding Dash All-Stores Reader alone opens Dash.
+    it('opens for a holder of Dash All-Stores Reader alone', async () => {
+      expect(await reads.can_open(withRoles(['All', 'Dash All-Stores Reader']))).toBe(true)
+    })
+
     it('stays shut for someone the platform hands no roles at all', async () => {
       const ctx = withRoles([])
       delete (ctx as { roles?: string[] }).roles
@@ -268,6 +273,33 @@ describe('the reach_problem read', () => {
   ])('says why a job reaches nothing: %j', async (job, problems) => {
     const { ctx } = context({ core: jobOf(job) })
     expect(await reads.reach_problem(ctx)).toEqual({ problems })
+  })
+})
+
+// #1192: the role's reach counts wherever Dash works reach out, not only in the platform's scope.
+describe('a holder of Dash All-Stores Reader', () => {
+  const holder = (over: Options = {}) => {
+    const made = context({ core: jobOf({ job: 'Head office staff' }), reports: [SALES, WHOLE], ...over })
+    ;(made.ctx.authorization as { places?: unknown }).places = undefined
+    made.ctx.roles = ['All', 'Dash All-Stores Reader']
+    return made.ctx
+  }
+
+  it('is told of no problem, though their job is in head office', async () => {
+    expect(await reads.reach_problem(holder())).toEqual({ problems: [] })
+  })
+
+  it('is offered the whole-stores report and both stores', async () => {
+    expect((await reads.reports(holder())).map(report => report.key)).toEqual(['sales', 'whole'])
+    expect((await reads.stores(holder())).map(store => store.name)).toEqual(['Hillview', 'Lakeside'])
+  })
+
+  it('reads as reaching every store on the Report access page, by the roles the platform says they hold', async () => {
+    const { ctx } = context({ core: jobOf({ job: 'Head office staff' }), reports: [WHOLE], payload: { person: 'psn_104' }, places: [] })
+    const lookup = (roles: string[]) => reads.person_lookup({ ...ctx, roles: ['Report Access Manager'],
+      people: { async names() { return {} }, async rolesOf(person: string) { return person === 'psn_104' ? roles : [] } } })
+    expect((await lookup(['Dash Reader', 'Dash All-Stores Reader'])).reports.map(r => [r.key, r.closed])).toEqual([['whole', null]])
+    expect((await lookup(['Dash Reader'])).reports.map(r => [r.key, r.closed])).toEqual([['whole', 'Given, but their job reaches no store']])
   })
 })
 
