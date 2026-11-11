@@ -151,6 +151,19 @@ for (const buyer of tree.buyers as { key: string; name: string; code: string; as
   }
 }
 
+// rama_dw #4588, proposal A: a Cluster or Operating Region row names its head. A rerun sets the head
+// on a row seeded before the column existed.
+async function setHead(table: string, id: string, column: string, employee: string) {
+  const row = await call<Record<string, unknown>>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(id)}`)
+  if (row[column] !== employee) await save(table, { row_id: id, updated_at: row.updated_at, [column]: employee })
+}
+for (const head of org.heads.people as { key: string; name: string; code: string; cluster?: string; region?: string }[]) {
+  const id = await person(`reader-${head.key}@example.test`, head.name)
+  await keep('Employee', head.code, { employee_code: head.code, name: head.name, person: id, status: 'Current' })
+  if (head.cluster) await setHead('Cluster', head.cluster, 'cluster_manager', head.code)
+  if (head.region) await setHead('Operating Region', head.region, 'region_head', head.code)
+}
+
 // Both copies describe the same made-up month to date, including today. Hillview
 // deliberately retains last month's figures to demonstrate the no-data-yet state.
 const { refreshedAt, dataThrough, periodStart, lastMonth, lastMonthEnd } = madeUpReportDates(Date.now())
@@ -251,6 +264,7 @@ console.log(`To see figures, sign in at /featherbase/login with:
   password: ${PASSWORD}
 Other made-up people, same password. Each shows one state of the page:
 ${says(org.readers, 'reader')}
+${says([...tree.buyers, ...org.heads.people], 'reader')}
 Your sections (/dash/?view=sections), same password:
 ${says(org.sectionPeople, 'sections')}
 Report access (/dash/?view=access), same password:

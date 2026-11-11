@@ -75,7 +75,19 @@ async function setup(admin: TestClient, createUser: (o: { email: string }) => Pr
       await save('Merchandise Assignment', { assignment_id: `MA-${number}-${i}`, employee: String(number), starts_on: '2026-01-01', ...row })
     return person.user!
   }
-  return { reader, buyer, save, place }
+  /** Someone on the staff list with no job, named head of these clusters and regions. */
+  const head = async ({ clusters = [] as string[], regions = [] as string[] }) => {
+    const person = await createUser({ email: `p-${++number}@example.test` })
+    await save('Employee', { employee_code: String(number), name: `Made-up ${number}`, person: person.user, status: 'Current' })
+    for (const code of clusters) await saveRow(admin, 'Cluster', { row_id: code, cluster_manager: String(number), updated_at: await updatedAt(admin, 'Cluster', code) })
+    for (const region of regions) await saveRow(admin, 'Operating Region', { row_id: region, region_head: String(number), updated_at: await updatedAt(admin, 'Operating Region', region) })
+    return person.user!
+  }
+  return { reader, buyer, head, save, place }
+}
+async function updatedAt(admin: TestClient, table: string, id: string) {
+  const { data: [row] } = await admin.get<{ data: { updated_at: string }[] }>(`/api/table/${encodeURIComponent(table)}?filters=${encodeURIComponent(JSON.stringify([['row_id', '=', id]]))}&fields=${encodeURIComponent(JSON.stringify(['updated_at']))}`)
+  return row.updated_at
 }
 const stores = (scope: { filters: Record<string, string[]> }[]) => scope.map(place => place.filters.store[0])
 const sections = (scope: { label: string; filters: Record<string, string[]> }[]) => scope.map(place => [place.label, place.filters.subcategory])
@@ -174,6 +186,16 @@ describe('the org_chart scope provider on the platform, per merchandise assignme
   })
 })
 
+// rama_dw #4588, proposal A: the Cluster or Operating Region row names its head.
+describe('the org_chart scope provider on the platform, per named head', () => {
+  test('the head a cluster names gets its stores whole; a region head gets the region\'s', async ({ admin, createUser }) => {
+    const { head } = await setup(admin, createUser)
+    expect(stores(await resolvePersonScope(await head({ clusters: ['NORTH'] }), await binding()))).toEqual(['9901', '9902'])
+    const region = await resolvePersonScope(await head({ regions: ['West'] }), await binding())
+    expect(region).toEqual([{ label: '9903', filters: { store: ['9903'] }, basis: 'region_head', reasons: [{ text: 'Named head of region West' }] }])
+  })
+})
+
 describe('what never widens a scope', () => {
   test("a job on a section of another site, or a placement into another store's section", async ({ admin, createUser }) => {
     const { reader, place } = await setup(admin, createUser)
@@ -197,7 +219,7 @@ describe('what never widens a scope', () => {
 })
 
 describe('the core Tables the provider reads stay ordinary Tables', () => {
-  const SCOPE_TABLES = ['Employee', 'Job Assignment', 'Site', 'Plant', 'Section', 'Section Subcategory', 'Merchandise Assignment', 'Subcategory']
+  const SCOPE_TABLES = ['Employee', 'Job Assignment', 'Site', 'Plant', 'Section', 'Section Subcategory', 'Merchandise Assignment', 'Subcategory', 'Cluster', 'Operating Region']
 
   test('the provider reads them with none of them marked', async ({ admin, createUser }) => {
     const { reader } = await setup(admin, createUser)

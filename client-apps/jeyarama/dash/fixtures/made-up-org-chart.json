@@ -822,5 +822,24 @@
     ]
    }
   ]
+ },
+ "heads": {
+  "_about": "Made-up heads a Cluster or Operating Region row names (rama_dw #4588, proposal A): each reaches every store in it, whole.",
+  "people": [
+   {
+    "key": "clusterhead",
+    "name": "Kiran Cluster-Head",
+    "code": "3911",
+    "cluster": "NORTH",
+    "says": "named head of cluster North: Lakeside and Hillview, whole"
+   },
+   {
+    "key": "regionhead",
+    "name": "Rani Region-Head",
+    "code": "3912",
+    "region": "West",
+    "says": "named head of region West: Riverside, Northgate and Bayside, whole"
+   }
+  ]
  }
 }
