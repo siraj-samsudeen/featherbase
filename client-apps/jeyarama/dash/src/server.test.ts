@@ -289,9 +289,12 @@ describe('a holder of Dash All-Stores Reader', () => {
     expect(await reads.reach_problem(holder())).toEqual({ problems: [] })
   })
 
-  it('is offered the whole-stores report and both stores', async () => {
-    expect((await reads.reports(holder())).map(report => report.key)).toEqual(['sales', 'whole'])
-    expect((await reads.stores(holder())).map(store => store.name)).toEqual(['Hillview', 'Lakeside'])
+  // The role decides reach only; which reports a person has is still given on the Report access page (#1046).
+  // Its stores come from the platform's scope; the Dash platform test reads them on a real database.
+  it('is offered the whole-stores report once the reports are given to them', async () => {
+    const given = holder()
+    given.roles = ['All', 'Dash All-Stores Reader', 'Dash Reader']
+    expect([(await reads.reports(holder())).length, (await reads.reports(given)).map(report => report.key)]).toEqual([0, ['sales', 'whole']])
   })
 
   it('reads as reaching every store on the Report access page, by the roles the platform says they hold', async () => {
