@@ -8,7 +8,7 @@ import { LoadFailed, Loading, NotSetUp, Shell, useAnswer } from './sections-page
 
 interface Section { id: string; name: string; floor: string; sells: string[]; more: number; team_leaders: string[]; suggested: boolean; held_by: string | null }
 type Current =
-  | { state: 'set_up'; name: string; sections: string[] }
+  | { state: 'set_up'; name: string; sections: string[]; reviewing?: { bundle: string; waiting_for: string } | null }
   | { state: 'waiting'; bundle: string; name: string; sections: string[]; waiting_for: string; asked_on: string }
   | { state: 'turned_down'; name: string; sections: string[]; reason: string }
 export type Setup =
@@ -93,10 +93,13 @@ function Ready({ setup, onChanged }: { setup: Ok; onChanged: () => Promise<unkno
     return (
       <>
         {intro}
-        <Card title={`${current.name} · ${setup.job.store}`} data-testid="set-up" actions={<StatusPill tone="positive">Kept</StatusPill>}>
+        <Card title={`${current.name} · ${setup.job.store}`} data-testid="set-up"
+          actions={current.reviewing ? <StatusPill tone="caution">In use, {current.reviewing.waiting_for} to review</StatusPill> : <StatusPill tone="positive">Kept</StatusPill>}>
           <div className="flex flex-col gap-2 p-4">
             <p>{listed(current.sections)}</p>
-            <p className="fd-muted text-sm">Your report shows these sections. To change them, ask {setup.reviewer}.</p>
+            {current.reviewing
+              ? <p className="fd-muted text-sm" data-testid="reviewing">Your report shows these sections now. {capital(current.reviewing.waiting_for)} will look at it, and can undo it.</p>
+              : <p className="fd-muted text-sm">Your report shows these sections. To change them, ask {setup.reviewer}.</p>}
             <a className="fd-link font-semibold" href="?" data-testid="open-report">Open your report</a>
           </div>
         </Card>
@@ -277,7 +280,7 @@ function SetupForm({ setup, before, replaces, onCancel, onTouched, onSent }: { s
 }
 
 /** Set-ups waiting for this reviewer, on Waiting for your approval. */
-export interface WaitingSetup { bundle: string; who: string; job: string; store: string; name: string; asked_on: string; sections: { id: string; name: string; team_leaders: string[] }[] }
+export interface WaitingSetup { bundle: string; who: string; job: string; store: string; name: string; asked_on: string; applied?: boolean; sections: { id: string; name: string; team_leaders: string[] }[] }
 
 export function DepartmentApprovals({ setups, onDecided }: { setups: WaitingSetup[]; onDecided: (said: string) => Promise<unknown> }) {
   return <>{setups.map(setup => <SetupCard key={setup.bundle} setup={setup} onDecided={onDecided} />)}</>
@@ -304,9 +307,10 @@ function SetupCard({ setup, onDecided }: { setup: WaitingSetup; onDecided: (said
     <Card title={`${setup.who} · ${setup.job}`} data-testid="setup-card" actions={<StatusPill tone="caution">New department</StatusPill>}>
       <div className="flex flex-col gap-3 p-4">
         <p className="font-semibold" data-testid="setup-ask">Set up “{setup.name}” at {setup.store}</p>
+        {setup.applied && <p className="text-sm" data-testid="setup-applied">Already in use: {setup.who}'s report shows these sections. Keep it, or undo it.</p>}
         {mode === 'change' ? (
           <>
-            <Field label="Department name"><TextInput value={name} maxLength={60} onChange={event => setName(event.target.value)} data-testid="change-name" /></Field>
+            {!setup.applied && <Field label="Department name"><TextInput value={name} maxLength={60} onChange={event => setName(event.target.value)} data-testid="change-name" /></Field>}
             <div className="flex flex-col gap-1">
               {setup.sections.map(s => (
                 <label key={s.id} className="flex items-center gap-3 py-1">
@@ -330,14 +334,14 @@ function SetupCard({ setup, onDecided }: { setup: WaitingSetup; onDecided: (said
           {mode === 'view' && <>
             <Button variant="primary" disabled={busy} onClick={() => decide({ decision: 'approve' })} data-testid="keep">Keep it</Button>
             <Button disabled={busy} onClick={() => setMode('change')}>Change, then keep</Button>
-            <Button variant="quiet" disabled={busy} onClick={() => setMode('reject')}>Turn down</Button>
+            <Button variant="quiet" disabled={busy} onClick={() => setMode('reject')}>{setup.applied ? 'Undo it' : 'Turn down'}</Button>
           </>}
           {mode === 'change' && <>
             <Button variant="primary" disabled={busy || !keep.length || !name.trim()} onClick={() => decide({ decision: 'approve', name: name.trim(), sections: keep })} data-testid="keep-changed">Keep with changes</Button>
             <Button variant="quiet" disabled={busy} onClick={() => setMode('view')}>Cancel</Button>
           </>}
           {mode === 'reject' && <>
-            <Button variant="danger" disabled={busy || !reason.trim()} onClick={() => decide({ decision: 'reject', reason: reason.trim() })} data-testid="confirm-reject">Turn it down</Button>
+            <Button variant="danger" disabled={busy || !reason.trim()} onClick={() => decide({ decision: 'reject', reason: reason.trim() })} data-testid="confirm-reject">{setup.applied ? 'Undo it' : 'Turn it down'}</Button>
             <Button variant="quiet" disabled={busy} onClick={() => setMode('view')}>Cancel</Button>
           </>}
         </div>

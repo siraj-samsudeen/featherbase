@@ -8,7 +8,7 @@ import { EMPLOYEE_STATUS, SECTION_STATUS, day, exact, text } from './values.ts'
 export type Row = Record<string, unknown>
 // The platform's helpers, structurally: this module imports nothing from the platform.
 type Filter = [string, string, unknown]
-interface ApproverRequest { people: string[]; fallbackRoles: string[] }
+export interface ApproverRequest { people: string[]; fallbackRoles: string[] }
 export interface ChangeProposal {
   row_id: string; maker: string; state: string; about: unknown; decision_reason: string | null; ends_row?: boolean; result_row?: string | null
   changes: { column_name: string; proposed_value: string | null; review_base_value: string | null }[]
@@ -24,7 +24,11 @@ interface ChangeProposalsReader {
 interface ChangeProposalsHelper extends ChangeProposalsReader {
   lockRow(table: string, rowId: string): Promise<void>
   serialize(key: string): Promise<void>
-  propose(request: { type?: string; table: string; row: string | null; changes: Record<string, string | null>; reviewed?: string[]; ends?: boolean; approvers: ApproverRequest; about: Record<string, unknown> }): Promise<ChangeProposal>
+  propose(request: { type?: string; apply?: { effectiveOn: string; newRow?: Record<string, string | null> }; table: string; row: string | null; changes: Record<string, string | null>; reviewed?: string[]; ends?: boolean; approvers: ApproverRequest; about: Record<string, unknown> }): Promise<ChangeProposal>
+  /** #1191, where the platform has it: a reviewer confirms a change that applied at once. */
+  confirm?(id: string, decision: { approvers: ApproverRequest; note?: string }): Promise<ChangeProposal>
+  /** #1191: undoes a change that applied at once; a reviewer gives a reason, the maker needs none. */
+  undo?(id: string, decision: { approvers: ApproverRequest; reason?: string }): Promise<ChangeProposal>
   approve(id: string, decision: { approvers: ApproverRequest; effectiveOn: string; newRow?: Record<string, string | null>; instead?: Record<string, string | null>; reason?: string }): Promise<ChangeProposal>
   withdraw(id: string): Promise<ChangeProposal>
   reject(id: string, decision: { approvers: ApproverRequest; reason: string }): Promise<ChangeProposal>

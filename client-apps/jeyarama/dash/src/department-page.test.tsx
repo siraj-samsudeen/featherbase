@@ -391,3 +391,28 @@ describe('Waiting for your approval: set-ups', () => {
     await page.done()
   })
 })
+
+describe('apply now, review after (#1191), when it is switched on', () => {
+  it('says the department is in use and who has yet to review it', async () => {
+    answers.department_setup = { ...SETUP, current: { state: 'set_up', name: 'Ladies Ethnic', sections: ['Sarees'], reviewing: { bundle: 'B1', waiting_for: 'the master data team' } } }
+    const page = await render('YourDepartment')
+    expect(page.q('set-up')?.textContent).toContain('In use, the master data team to review')
+    expect(page.q('reviewing')?.textContent).toBe('Your report shows these sections now. The master data team will look at it, and can undo it.')
+    await page.done()
+  })
+  it('lets the reviewer keep it or undo it, with no new name for a department in use', async () => {
+    answers.approvals = { state: 'ok', proposals: [] }
+    answers.department_approvals = [{ bundle: 'B1', who: 'Deepa', job: 'Department Manager', store: 'Lakeside', name: 'Ladies Ethnic', asked_on: '2026-11-11', applied: true,
+      sections: [{ id: 'S1', name: 'Sarees', team_leaders: ['Asha'] }] }]
+    const page = await render('Approvals')
+    expect(page.q('setup-applied')?.textContent).toBe("Already in use: Deepa's report shows these sections. Keep it, or undo it.")
+    await page.click('Change, then keep')
+    expect(page.q('change-name')).toBeNull()
+    await page.click('Cancel')
+    await page.click('Undo it')
+    await page.choose(page.q('reject-reason') as HTMLInputElement, 'Wrong store')
+    expect(page.q('confirm-reject')?.textContent).toBe('Undo it')
+    await page.done()
+  })
+})
+

@@ -6,7 +6,7 @@
 import {
   BASE_TABLES, JOB_FIELDS, MASTER_DATA_TEAM, PLACEMENT_FIELDS, SECTION_FIELDS, T,
   all, approversOf, byId, employeeNames, freeId, inForce, isActive, istDay, list, myEmployees, myJobs, unique, waitingName,
-  type ActionContext, type ChangeProposal, type ReadContext, type Row,
+  type ActionContext, type ChangeProposal, type ReadContext, type Row, type ApproverRequest,
 } from './my-sections.ts'
 import { istToday } from './report.ts'
 import { exact, text } from './values.ts'
@@ -25,10 +25,23 @@ const NAMES_SHOWN = 12
 /**
  * How a set-up is approved. Not an access grant (manager, for the owner, 11-Nov-2026): it reaches only
  * sections of the person's own store, and can be undone. Approve first until #1191 lands; then this one
- * line becomes `{ type: 'dash.department_setup' }`, declared in the manifest's approvalTypes with
- * grantsAccess false, and runs "apply now, review after". The links already name an applied Department.
+ * line becomes `{ type: 'department_setup' }` (manifest approvalTypes: grantsAccess false; the instance's
+ * Approval Type row `dash.department_setup` set to "Apply now, review after"). Every path below already
+ * handles a set-up that applied at once: it is kept with confirm, or taken back with undo, links first.
  */
 export const APPROVAL: { type?: string } = {}
+/** A set-up still open to its reviewer: asked for and waiting, or applied and not yet reviewed (#1191). */
+const OPEN = ['Pending', 'Not yet reviewed']
+const APPLIED_UNREVIEWED = 'Not yet reviewed'
+
+/** Takes a bundle back: withdrawn while it waits; undone, links first, once it applied (#1191). */
+async function takeBack(ctx: ActionContext, parts: ChangeProposal[], approvers: ApproverRequest, reason?: string) {
+  for (const part of [...parts].reverse()) {
+    if (part.state === APPLIED_UNREVIEWED) await ctx.changeProposals.undo!(part.row_id, { approvers, ...(reason ? { reason } : {}) })
+    else if (reason) await ctx.changeProposals.reject(part.row_id, { approvers, reason })
+    else await ctx.changeProposals.withdraw(part.row_id)
+  }
+}
 
 type Ctx = ReadContext | ActionContext
 interface About {
@@ -106,7 +119,7 @@ async function pendingBundle(ctx: Ctx, bundle: unknown, makers?: string[]): Prom
   if (typeof bundle !== 'string' || !bundle) return []
   const parts: ChangeProposal[] = []
   for (let start = 0; ; start += 500) {
-    const page = await ctx.changeProposals.list({ states: ['Pending'], limit: 500, start, ...(makers ? { makers } : {}) })
+    const page = await ctx.changeProposals.list({ states: OPEN, limit: 500, start, ...(makers ? { makers } : {}) })
     parts.push(...page.filter(p => isDepartmentKind(p) && about(p).bundle === bundle))
     if (page.length < 500) break
   }
@@ -204,7 +217,7 @@ export const departmentReads = {
     const today = istToday()
     const heads: ChangeProposal[] = []
     for (let start = 0; ; start += 500) {
-      const page = await ctx.changeProposals.list({ states: ['Pending'], limit: 500, start })
+      const page = await ctx.changeProposals.list({ states: OPEN, limit: 500, start })
       heads.push(...page.filter(p => about(p).kind === 'department' && p.maker !== ctx.user))
       if (page.length < 500) break
     }
@@ -216,7 +229,7 @@ export const departmentReads = {
     for (const head of mine.sort((a, b) => a.created_at.localeCompare(b.created_at))) {
       const a = about(head)
       const { leaders } = await teamLeadersOf(ctx, a.site, today)
-      answers.push({ bundle: a.bundle, who: a.maker_name, job: JOB, store: a.store, name: a.name, asked_on: istDay(head.created_at),
+      answers.push({ bundle: a.bundle, who: a.maker_name, job: JOB, store: a.store, name: a.name, asked_on: istDay(head.created_at), applied: head.state === APPLIED_UNREVIEWED,
         sections: a.sections.map((id, i) => ({ id, name: a.section_names[i], team_leaders: leaders.get(id) ?? [] })) })
     }
     return answers
@@ -225,12 +238,14 @@ export const departmentReads = {
 
 /** Their department now, else a set-up that waits, else why the last one was turned down. */
 async function currentOf(ctx: Ctx, job: Row, shop: Awaited<ReturnType<typeof storeOf>>, me: Set<string>) {
+  const [latest] = await myBundles(ctx, exact(job.row_id))
   const own = shop.departments.find(d => me.has(exact(d.manager)))
   if (own) {
     const ids = new Set(shop.links.filter(l => exact(l.department) === exact(own.row_id)).map(l => exact(l.section)))
-    return { state: 'set_up' as const, name: text(own.name), sections: shop.sections.filter(s => ids.has(exact(s.row_id))).map(s => text(s.name)).sort((a, b) => a.localeCompare(b)) }
+    // #1191: applied at once, the report is open while the reviewer has yet to look.
+    const reviewing = latest?.state === APPLIED_UNREVIEWED ? { bundle: about(latest).bundle, waiting_for: await waitingName(ctx, latest.route.people) } : null
+    return { state: 'set_up' as const, name: text(own.name), sections: shop.sections.filter(s => ids.has(exact(s.row_id))).map(s => text(s.name)).sort((a, b) => a.localeCompare(b)), reviewing }
   }
-  const [latest] = await myBundles(ctx, exact(job.row_id))
   if (!latest) return null
   const a = about(latest)
   if (latest.state === 'Pending')
@@ -250,13 +265,14 @@ export const departmentActions = {
     const site = exact(job!.site)
     // One set-up at a time per store: two people can't both claim a section.
     await ctx.changeProposals.serialize(`department:${site}`)
+    const { approvers, manager } = await approversOf(ctx, job!)
+    // "Change it" sends the new one in place of the open one, in this one action.
+    const replaced = await pendingBundle(ctx, payload.replaces, [ctx.user])
+    await takeBack(ctx, replaced, approvers)
     const shop = await storeOf(ctx, site, today)
     const me = new Set(employees.map(e => exact(e.row_id)))
     if (shop.departments.some(d => me.has(exact(d.manager)))) ctx.reject('You already have a department here')
-    // "Change it" sends the new one in place of the one waiting, in this one action.
-    const replaced = await pendingBundle(ctx, payload.replaces, [ctx.user])
-    for (const part of replaced) await ctx.changeProposals.withdraw(part.row_id)
-    if ((await myBundles(ctx, exact(job!.row_id))).some(p => p.state === 'Pending' && !replaced.some(r => r.row_id === p.row_id))) ctx.reject('You already sent one. Change or withdraw it first')
+    if ((await myBundles(ctx, exact(job!.row_id))).some(p => OPEN.includes(p.state) && !replaced.some(r => r.row_id === p.row_id))) ctx.reject('You already sent one. Change or withdraw it first')
     const picked = payload.sections
     if (!Array.isArray(picked) || !picked.length || picked.some(id => typeof id !== 'string')) ctx.reject('Tick at least one section')
     const name = typeof payload.name === 'string' ? payload.name.trim() : ''
@@ -275,26 +291,29 @@ export const departmentActions = {
     // In name order, as every list on the page reads.
     const ids = unique(picked as string[]).sort((a, b) => text(allHere.get(a)!.name).localeCompare(text(allHere.get(b)!.name)) || a.localeCompare(b))
     const names = ids.map(id => text(allHere.get(id)!.name))
-    const { approvers, manager } = await approversOf(ctx, job!)
     const employee = employees.find(e => exact(e.row_id) === exact(job!.employee))!
     const shared: Omit<About, 'kind'> = { bundle: `${exact(job!.row_id)}:${globalThis.crypto.randomUUID()}`, job_assignment: exact(job!.row_id), site, store: shop.store,
       name, sections: ids, section_names: names, maker_name: text(employee.name), manager_name: manager }
-    const head = await ctx.changeProposals.propose({ ...APPROVAL, table: D.department, row: null, changes: { store: site, name, manager: exact(employee.row_id) },
+    // #1191: applied at once, each row carries its own id, as an approval would stamp it.
+    const applied = async (table: string, base: string, column: string) => (APPROVAL.type
+      ? { type: APPROVAL.type, apply: { effectiveOn: today, newRow: { [column]: await freeId(ctx, table, base), source_key: `Dash, set up ${today}` } } } : {})
+    const head = await ctx.changeProposals.propose({ ...await applied(D.department, `${site}-${name}-${today}`, 'department_id'), table: D.department, row: null, changes: { store: site, name, manager: exact(employee.row_id) },
       approvers, about: { ...shared, kind: 'department' } as unknown as Record<string, unknown> })
     // Under "apply now, review after" (#1191) the Department exists at once, so each link names it;
     // reviewed first, the link names it when the Department is applied (decide_department).
     const department = head.result_row ? String(head.result_row) : null
     for (const id of ids)
-      await ctx.changeProposals.propose({ ...APPROVAL, table: D.link, row: null, changes: { store: site, section: id, department },
+      await ctx.changeProposals.propose({ ...await applied(D.link, `${site}-${id}-${today}`, 'department_section_id'), table: D.link, row: null, changes: { store: site, section: id, department },
         approvers, about: { ...shared, kind: 'department_section', section: id } as unknown as Record<string, unknown> })
-    return { state: 'waiting' as const, bundle: shared.bundle, name, sections: names, waiting_for: await waitingName(ctx, head.route.people), asked_on: today }
+    return { state: head.state === APPLIED_UNREVIEWED ? 'set_up' as const : 'waiting' as const, bundle: shared.bundle, name, sections: names, waiting_for: await waitingName(ctx, head.route.people), asked_on: today }
   },
 
   /** Takes back the caller's own set-up while it waits. */
   async withdraw_department(ctx: ActionContext) {
     const parts = await pendingBundle(ctx, payloadOf(ctx).bundle, [ctx.user])
     if (!parts.length) ctx.reject('That set-up is no longer waiting')
-    for (const part of parts) await ctx.changeProposals.withdraw(part.row_id)
+    const [job] = await list(ctx, T.job, JOB_FIELDS, [['row_id', '=', about(parts[0]).job_assignment]])
+    await takeBack(ctx, parts, (await approversOf(ctx, job)).approvers)
     return { withdrawn: parts.length }
   },
 
@@ -314,8 +333,21 @@ export const departmentActions = {
     if (payload.decision === 'reject') {
       const reason = typeof payload.reason === 'string' ? payload.reason.trim() : ''
       if (!reason) ctx.reject('Say why it is turned down')
-      for (const part of parts) await ctx.changeProposals.reject(part.row_id, { approvers, reason })
-      return { state: 'Rejected', department: null }
+      await takeBack(ctx, parts, approvers, reason)
+      return { state: head!.state === APPLIED_UNREVIEWED ? 'Undone' : 'Rejected', department: null }
+    }
+    // #1191: applied at once, keeping it confirms it; unticked sections are undone, and its name stays.
+    if (head!.state === APPLIED_UNREVIEWED) {
+      if (typeof payload.name === 'string' && payload.name.trim() && payload.name.trim() !== a.name) ctx.reject('A department in use keeps its name. Keep it, then ask the master data team to rename it')
+      const keepIds = Array.isArray(payload.sections) ? new Set(payload.sections.filter((id): id is string => typeof id === 'string')) : new Set(a.sections)
+      if (!keepIds.size) ctx.reject('Keep at least one section')
+      for (const link of links) {
+        if (keepIds.has(String(about(link).section))) await ctx.changeProposals.confirm!(link.row_id, { approvers })
+        else await ctx.changeProposals.undo!(link.row_id, { approvers, reason: 'Left out by the reviewer.' })
+      }
+      const kept = await ctx.changeProposals.confirm!(head!.row_id, { approvers })
+      // Applied at once, the department row exists: it is the proposal's result.
+      return { state: kept.state, department: String(head!.result_row) }
     }
     const shop = await storeOf(ctx, a.site, today)
     const name = typeof payload.name === 'string' && payload.name.trim() ? payload.name.trim() : a.name

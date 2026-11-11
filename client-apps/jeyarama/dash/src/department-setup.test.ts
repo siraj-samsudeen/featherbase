@@ -1,8 +1,8 @@
 // A Department Manager sets up their own department (#1195), on a stand-in for the platform's
 // helpers. Made-up stores and people. The main path also runs on the real platform in
 // platform-test/department-setup.test.ts.
-import { describe, expect, it } from 'vitest'
-import { DEPARTMENT_TABLES, departmentActions, departmentReads } from './department-setup.ts'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { APPROVAL, DEPARTMENT_TABLES, departmentActions, departmentReads } from './department-setup.ts'
 import { BASE_TABLES, type ActionContext, type ReadContext } from './my-sections.ts'
 import { istToday } from './report.ts'
 
@@ -79,7 +79,7 @@ function world(over: Partial<Record<string, Row[]>> = {}) {
   } as Record<string, Row[]>
 }
 
-const DECIDED: Record<string, string> = { approve: 'Applied', reject: 'Rejected', withdraw: 'Withdrawn' }
+const DECIDED: Record<string, string> = { approve: 'Applied', reject: 'Rejected', withdraw: 'Withdrawn', confirm: 'Confirmed', undo: 'Undone' }
 function context(tables: Record<string, Row[]>, { user = 'deepa', payload, settings = { linked_tables: LISTED }, proposals = [] as Row[], route = 'people', decides = true }: { user?: string; payload?: unknown; settings?: Record<string, string>; proposals?: Row[]; route?: string; decides?: boolean } = {}) {
   const sent: { call: string; first: unknown; second?: unknown }[] = []
   let made = 0
@@ -87,8 +87,10 @@ function context(tables: Record<string, Row[]>, { user = 'deepa', payload, setti
     sent.push({ call, first, second })
     const id = call === 'propose' ? `PR${++made}` : String(first)
     const known = proposals.find(p => p.row_id === id)
-    return { row_id: id, maker: 'deepa', state: DECIDED[call] ?? 'Pending', about: call === 'propose' ? (first as Row).about : known?.about ?? null,
-      decision_reason: (second as { reason?: string } | undefined)?.reason ?? null, result_row: call === 'approve' ? `ROW-${id}` : null,
+    // #1191: a proposal of an apply-now type applies at once and is not yet reviewed.
+    const appliedNow = call === 'propose' && 'type' in (first as Row)
+    return { row_id: id, maker: 'deepa', state: appliedNow ? 'Not yet reviewed' : DECIDED[call] ?? 'Pending', about: call === 'propose' ? (first as Row).about : known?.about ?? null,
+      decision_reason: (second as { reason?: string } | undefined)?.reason ?? null, result_row: call === 'approve' || appliedNow ? `ROW-${id}` : null,
       changes: [], created_at: `${today}T00:00:00Z`, decided_at: null, route: { people: route === 'people' ? ['mani'] : [], roles: [] } }
   }
   const ctx = {
@@ -113,6 +115,7 @@ function context(tables: Record<string, Row[]>, { user = 'deepa', payload, setti
       lockRow: async () => {},
       serialize: async () => {},
       propose: answer('propose'), approve: answer('approve'), reject: answer('reject'), needsFreshReview: answer('needsFreshReview'), withdraw: answer('withdraw'),
+      confirm: answer('confirm'), undo: answer('undo'),
     },
   }
   return { ctx: ctx as unknown as ActionContext & ReadContext, sent }
@@ -269,7 +272,7 @@ describe('sending a department', () => {
     const { run, sent } = send({ name: 'Ladies', sections: ['S5'], replaces: 'B1' }, world(), bundle())
     expect(await run()).toMatchObject({ state: 'waiting', name: 'Ladies' })
     expect(sent.map(s => [s.call, s.call === 'withdraw' ? s.first : (s.first as { table: string }).table])).toEqual([
-      ['withdraw', 'PD'], ['withdraw', 'PL1'], ['withdraw', 'PL2'], ['propose', 'Department'], ['propose', 'Department Section']])
+      ['withdraw', 'PL2'], ['withdraw', 'PL1'], ['withdraw', 'PD'], ['propose', 'Department'], ['propose', 'Department Section']])
   })
   it('refuses a second while one waits, and when they already have a department', async () => {
     await expect(send({ name: 'Other', sections: ['S5'] }, world(), bundle()).run()).rejects.toThrow('You already sent one. Change or withdraw it first')
@@ -283,7 +286,8 @@ describe('withdrawing a department', () => {
   it('withdraws every part of their own waiting bundle', async () => {
     const { ctx, sent } = context(world(), { payload: { bundle: 'B1' }, proposals: bundle() })
     expect(await departmentActions.withdraw_department(ctx)).toEqual({ withdrawn: 3 })
-    expect(sent.map(s => [s.call, s.first])).toEqual([['withdraw', 'PD'], ['withdraw', 'PL1'], ['withdraw', 'PL2']])
+    // Links first, then the department: nothing is left pointing at nothing (#1191).
+    expect(sent.map(s => [s.call, s.first])).toEqual([['withdraw', 'PL2'], ['withdraw', 'PL1'], ['withdraw', 'PD']])
   })
   it("refuses one that isn't waiting, or isn't theirs", async () => {
     await expect(departmentActions.withdraw_department(context(world(), { payload: { bundle: 'B9' }, proposals: bundle() }).ctx)).rejects.toThrow('That set-up is no longer waiting')
@@ -338,9 +342,9 @@ describe('what waits for a reviewer', () => {
   it('lists each waiting bundle once, with its sections and their Team Leaders', async () => {
     const { ctx } = context(world(), { user: 'mani', proposals: [...bundle(), ...bundle({ bundle: 'B2', job_assignment: 'J6', maker_name: 'Arun' }).map(p => ({ ...p, row_id: `${p.row_id}-2`, maker: 'arun' }))] })
     expect(await departmentReads.department_approvals(ctx)).toEqual([
-      { bundle: 'B1', who: 'Deepa', job: 'Department Manager', store: 'Lakeside', name: 'Ladies Ethnic', asked_on: today,
+      { bundle: 'B1', who: 'Deepa', job: 'Department Manager', store: 'Lakeside', name: 'Ladies Ethnic', asked_on: today, applied: false,
         sections: [{ id: 'S1', name: 'Sarees', team_leaders: ['Asha'] }, { id: 'S2', name: 'Silk', team_leaders: ['Bala'] }] },
-      { bundle: 'B2', who: 'Arun', job: 'Department Manager', store: 'Lakeside', name: 'Ladies Ethnic', asked_on: today,
+      { bundle: 'B2', who: 'Arun', job: 'Department Manager', store: 'Lakeside', name: 'Ladies Ethnic', asked_on: today, applied: false,
         sections: [{ id: 'S1', name: 'Sarees', team_leaders: ['Asha'] }, { id: 'S2', name: 'Silk', team_leaders: ['Bala'] }] },
     ])
   })
@@ -403,3 +407,59 @@ describe('holds_department_job (#1195)', () => {
     expect(await departmentReads.holds_department_job(context(world(), { settings: {} }).ctx)).toBe(false)
   })
 })
+
+// #1191, dormant until it lands: the one APPROVAL line switched on, against stand-in confirm and undo.
+describe('apply now, review after (#1191)', () => {
+  beforeEach(() => { APPROVAL.type = 'department_setup' })
+  afterEach(() => { delete APPROVAL.type })
+  const applied = (over: Row = {}) => bundle(over, 'Not yet reviewed').map(p => (p.row_id === 'PD' ? { ...p, result_row: 'D-APPLIED' } : p))
+
+  it('applies the department at once, and links each section to it, every row with its own id', async () => {
+    const { ctx, sent } = context(world(), { payload: { job: 'J1', name: 'Ladies Ethnic', sections: ['S1', 'S2'] } })
+    expect(await departmentActions.set_up_department(ctx)).toMatchObject({ state: 'set_up', name: 'Ladies Ethnic' })
+    const [department, ...links] = sent.map(s => s.first as Row & { apply: { newRow: Row } })
+    expect(department).toMatchObject({ type: 'department_setup', apply: { effectiveOn: today, newRow: { department_id: expect.stringMatching(/^LKS-Ladies Ethnic-/), source_key: `Dash, set up ${today}` } } })
+    expect(links.map(l => [l.changes, l.apply.newRow.department_section_id])).toEqual([
+      [{ store: 'LKS', section: 'S1', department: 'ROW-PR1' }, expect.stringMatching(/^LKS-S1-/)],
+      [{ store: 'LKS', section: 'S2', department: 'ROW-PR1' }, expect.stringMatching(/^LKS-S2-/)],
+    ])
+  })
+  it('shows the department in use, and who has yet to review it', async () => {
+    const tables = world()
+    tables.Department.push({ row_id: 'D9', store: 'LKS', name: 'Ladies Ethnic', manager: 'E1', starts_on: '2026-01-01', ends_on: null })
+    expect(await read(tables, { proposals: applied() })).toMatchObject({ current: { state: 'set_up', reviewing: { bundle: 'B1', waiting_for: 'Mani' } } })
+    expect(await read(tables, { proposals: bundle({}, 'Confirmed') })).toMatchObject({ current: { state: 'set_up', reviewing: null } })
+  })
+  it('the maker takes it back with undo, links first and with no reason; a changed one replaces it', async () => {
+    const withdraw = context(world(), { payload: { bundle: 'B1' }, proposals: applied() })
+    await departmentActions.withdraw_department(withdraw.ctx)
+    expect(withdraw.sent.map(s => [s.call, s.first, s.second])).toEqual([
+      ['undo', 'PL2', { approvers: expect.anything() }], ['undo', 'PL1', { approvers: expect.anything() }], ['undo', 'PD', { approvers: expect.anything() }]])
+    const change = context(world(), { payload: { job: 'J1', name: 'Ladies', sections: ['S5'], replaces: 'B1' }, proposals: applied() })
+    await departmentActions.set_up_department(change.ctx)
+    expect(change.sent.map(s => s.call)).toEqual(['undo', 'undo', 'undo', 'propose', 'propose'])
+  })
+  it('the reviewer keeps it with confirm, undoing any section they leave out', async () => {
+    const { ctx, sent } = context(world(), { user: 'mani', payload: { bundle: 'B1', decision: 'approve', sections: ['S2'] }, proposals: applied() })
+    expect(await departmentActions.decide_department(ctx)).toEqual({ state: 'Confirmed', department: 'D-APPLIED' })
+    expect(sent.map(s => [s.call, s.first])).toEqual([['undo', 'PL1'], ['confirm', 'PL2'], ['confirm', 'PD']])
+    expect(sent[0].second).toMatchObject({ reason: 'Left out by the reviewer.' })
+    const all = context(world(), { user: 'mani', payload: { bundle: 'B1', decision: 'approve', name: 'Ladies Ethnic' }, proposals: applied() })
+    await departmentActions.decide_department(all.ctx)
+    expect(all.sent.map(s => s.call)).toEqual(['confirm', 'confirm', 'confirm'])
+  })
+  it('the reviewer turns it down with undo, links first, with the reason', async () => {
+    const { ctx, sent } = context(world(), { user: 'mani', payload: { bundle: 'B1', decision: 'reject', reason: 'Bags is in Kids' }, proposals: applied() })
+    expect(await departmentActions.decide_department(ctx)).toEqual({ state: 'Undone', department: null })
+    expect(sent.map(s => [s.call, s.first, (s.second as Row).reason])).toEqual([['undo', 'PL2', 'Bags is in Kids'], ['undo', 'PL1', 'Bags is in Kids'], ['undo', 'PD', 'Bags is in Kids']])
+  })
+  it('a department in use keeps its name and at least one section', async () => {
+    const decide = (payload: Row) => departmentActions.decide_department(context(world(), { user: 'mani', payload: { bundle: 'B1', decision: 'approve', ...payload }, proposals: applied() }).ctx)
+    await expect(decide({ name: 'Ethnic Wear' })).rejects.toThrow('A department in use keeps its name')
+    await expect(decide({ sections: [] })).rejects.toThrow('Keep at least one section')
+  })
+  it('shows the reviewer which set-ups are already in use', async () => {
+    expect(await departmentReads.department_approvals(context(world(), { user: 'mani', proposals: applied() }).ctx)).toMatchObject([{ bundle: 'B1', applied: true }])
+  })
+})
+
