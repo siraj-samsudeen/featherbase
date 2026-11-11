@@ -130,9 +130,9 @@ await keep('Role', 'Master Data Editor', { row_id: 'Master Data Editor' })
 await save('System Settings', { everyone_roles: 'Dash Reader' })
 // One reader per state of the report page.
 let code = 3000
-for (const reader of org.readers as { key: string; name: string; jobs: [string, string, Record<string, string>][] | null }[]) {
+for (const reader of org.readers as { key: string; name: string; jobs: [string, string, Record<string, string>][] | null; roles?: string[] }[]) {
   const employee = String(++code)
-  const id = await person(`reader-${reader.key}@example.test`, reader.name)
+  const id = await person(`reader-${reader.key}@example.test`, reader.name, reader.roles)
   if (!reader.jobs) continue
   await keep('Employee', employee, { employee_code: employee, name: reader.name, person: id, status: 'Current' })
   for (const [i, [job, site, where]] of reader.jobs.entries()) {
