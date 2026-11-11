@@ -239,6 +239,19 @@ describe('sending a department', () => {
     expect(await run()).toMatchObject({ sections: ['Bags', 'Sarees'] })
     expect((sent[0].first as { about: Row }).about).toMatchObject({ sections: ['S5', 'S1'], section_names: ['Bags', 'Sarees'] })
   })
+  it('names the Department in each link when the platform applies it at once (#1191)', async () => {
+    const { ctx, sent } = context(world(), { payload: { job: 'J1', name: 'Ladies Ethnic', sections: ['S1'] } })
+    const propose = ctx.changeProposals.propose
+    let first = true
+    ctx.changeProposals.propose = (async (request: never) => {
+      const made = await propose(request)
+      if (!first) return made
+      first = false
+      return { ...made, state: 'Applied', result_row: 'D-NEW' }
+    }) as typeof propose
+    await departmentActions.set_up_department(ctx)
+    expect((sent[1].first as { changes: Row }).changes).toEqual({ store: 'LKS', section: 'S1', department: 'D-NEW' })
+  })
   it('orders two sections of one name by their ids', async () => {
     const tables = world()
     tables.Section.push({ row_id: 'S0', name: 'Bags', site: 'LKS', floor: 'F2', status: 'Active' })
