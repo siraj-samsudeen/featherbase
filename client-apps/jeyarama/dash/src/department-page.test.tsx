@@ -406,6 +406,8 @@ describe('apply now, review after (#1191), when it is switched on', () => {
       sections: [{ id: 'S1', name: 'Sarees', team_leaders: ['Asha'] }] }]
     const page = await render('Approvals')
     expect(page.q('setup-applied')?.textContent).toBe("Already in use: Deepa's report shows these sections. Keep it, or undo it.")
+    expect(page.q('setup-card')?.textContent).toContain("Undoing it takes these sections off Deepa's report.")
+    expect(page.q('setup-card')?.textContent).not.toContain('Keeping it opens')
     await page.click('Change, then keep')
     expect(page.q('change-name')).toBeNull()
     await page.click('Cancel')

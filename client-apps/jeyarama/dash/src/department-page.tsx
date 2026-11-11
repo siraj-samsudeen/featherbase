@@ -404,7 +404,7 @@ function SetupCard({ setup, onDecided }: { setup: WaitingSetup; onDecided: (said
         {mode === 'reject' && (
           <Field label="Why not?"><TextInput value={reason} onChange={event => setReason(event.target.value)} data-testid="reject-reason" /></Field>
         )}
-        <p className="fd-muted text-sm">Asked on {fmtDate(setup.asked_on)}. Keeping it opens {setup.who}'s report for these sections.</p>
+        <p className="fd-muted text-sm">Asked on {fmtDate(setup.asked_on)}. {setup.applied ? `Undoing it takes these sections off ${setup.who}'s report.` : `Keeping it opens ${setup.who}'s report for these sections.`}</p>
         {error && <Notice tone="negative"><span data-testid="decide-refused">{error}</span></Notice>}
         <div className="flex flex-wrap gap-2">
           {mode === 'view' && <>
