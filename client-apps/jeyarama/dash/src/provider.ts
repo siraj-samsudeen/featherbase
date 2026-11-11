@@ -137,10 +137,12 @@ export async function reachOf(documents: Documents, person: string, on: string):
   for (const plant of await all(documents, T.plant, [['plant_type', 'in', SOLD_THROUGH]]))
     plantsOf.set(exact(plant.site), [...(plantsOf.get(exact(plant.site)) ?? []), id(plant)])
 
+  /** A site's selling plants; none for a site that sells through none. */
+  const sellingPlants = (site: Row) => plantsOf.get(id(site)) ?? []
   const places = new Places()
   const problems: NoReach[] = []
   const head = (covered: Row[], basis: string, text: string) => {
-    for (const store of covered) for (const plant of plantsOf.get(id(store)) ?? []) places.add(plant, plant, null, basis, { text })
+    for (const store of covered) for (const plant of sellingPlants(store)) places.add(plant, plant, null, basis, { text })
   }
   for (const cluster of clustersHeaded) head(stores.filter(row => exact(row.cluster) === cluster), 'cluster_manager', `Named head of cluster ${cluster}`)
   for (const region of regionsHeaded) head(stores.filter(row => exact(row.operating_region) === region), 'region_head', `Named head of region ${region}`)
@@ -151,7 +153,7 @@ export async function reachOf(documents: Documents, person: string, on: string):
     const reason = reasonOf(job)
     const whole = (sitesCovered: Row[]) => {
       for (const covered of sitesCovered)
-        for (const plant of plantsOf.get(id(covered)) ?? []) places.add(plant, plant, null, basisOf(job), reason)
+        for (const plant of sellingPlants(covered)) places.add(plant, plant, null, basisOf(job), reason)
     }
     if (name === 'Staff' || name === 'Team Leader') {
       if (!exact(job.section)) { problems.push('no_section'); continue }
@@ -186,7 +188,7 @@ export async function reachOf(documents: Documents, person: string, on: string):
         : subcategories.filter(row => exact(row[level]) === named).map(id)
       const region = exact(assignment.operating_region)
       const covered = stores.filter(site => !region || exact(site.operating_region) === region)
-      const plants = covered.flatMap(site => plantsOf.get(id(site)) ?? [])
+      const plants = covered.flatMap(site => sellingPlants(site))
       if (!codes.length || !plants.length) { problems.push('nothing_assigned'); continue }
       const reason: Reason = { text: `${exact(assignment.responsibility)} merchandise assignment`, since: day(assignment.starts_on),
         ...(day(assignment.ends_on) ? { until: day(assignment.ends_on) } : {}) }
