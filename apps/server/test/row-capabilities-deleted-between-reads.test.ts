@@ -9,13 +9,13 @@ import { sql } from '../src/db'
 import { rowCapabilities, saveDoc } from '../src/document'
 import { makeTable } from './fixtures'
 
-const window = vi.hoisted(() => ({ table: '', row: '', docRead: false }))
+const window = vi.hoisted(() => ({ table: '', row: '', docRead: false, readRow: '', deleted: false }))
 
 vi.mock('../src/row-readers', async (original) => {
   const actual = await original<typeof import('../src/row-readers')>()
   return { ...actual, restrictRow: async (...args: Parameters<typeof actual.restrictRow>) => {
     const out = await actual.restrictRow(...args)
-    if (window.table) window.docRead = true
+    if (window.table) Object.assign(window, { docRead: true, readRow: String(out.row_id) })
     return out
   } }
 })
@@ -25,6 +25,7 @@ vi.mock('../src/meta', async (original) => {
     if (window.docRead && table === window.table) {
       const { tableRelation } = await import('../src/table-engine')
       await sql`delete from ${sql(await tableRelation(table))} where row_id = ${window.row}`
+      window.deleted = true
       window.table = ''
       window.docRead = false
     }
@@ -38,4 +39,8 @@ test('a row deleted between the two reads of its capabilities is not found', asy
   Object.assign(window, { table: 'Rcd Note', row: String(doc.row_id), docRead: false })
   await expect(rowCapabilities('Rcd Note', String(doc.row_id), 'Administrator'))
     .rejects.toMatchObject({ type: 'NotFoundError', message: `Rcd Note ${doc.row_id} not found` })
+  // Both reads refuse with the same words. The first one had already read the
+  // row when it was deleted, so the refusal is the second read's.
+  expect(window.readRow).toBe(String(doc.row_id))
+  expect(window.deleted).toBe(true)
 })
