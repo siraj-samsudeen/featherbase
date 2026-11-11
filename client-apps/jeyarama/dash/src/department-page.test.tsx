@@ -234,6 +234,12 @@ describe('Your department', () => {
     await page.click('Change it')
     expect(sentCalls('withdraw_department')).toEqual([])
     expect(page.q('lead')?.textContent).toContain('What you send replaces the one waiting.')
+    await page.click('Step by step')
+    expect(page.q('cancel-change')).toBeTruthy()
+    await page.click('Cancel')
+    expect(page.q('waiting')).toBeTruthy()
+    await page.click('Change it')
+    await page.click('Steps')
     await page.click('Cancel')
     expect(page.q('waiting')).toBeTruthy()
     await page.click('Change it')
@@ -250,6 +256,8 @@ describe('Your department', () => {
     answers.department_setup = SETUP
     await again.click('Withdraw')
     expect(again.q('note')?.textContent).toBe('Withdrawn. Nothing was changed.')
+    await again.click('Menswear')
+    expect(again.q('note')).toBeNull()
     await again.done()
   })
   it('says why a withdrawal failed', async () => {

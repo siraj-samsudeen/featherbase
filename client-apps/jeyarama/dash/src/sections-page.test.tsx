@@ -428,7 +428,7 @@ describe('a Department Manager on Your sections (#1195)', () => {
     answers.my_sections = { state: 'ok', name: 'Devi', jobs: [{ ...job, id: 'dm-job', job: 'Department Manager', section: null, subcategories: [] }], proposals: [], waiting_for_me: 0 }
     answers.holds_department_job = true
     const page = await render('YourSections')
-    expect(page.q('department-job')?.textContent).toContain('Your sections come from your department.')
+    expect(page.q('department-job')?.textContent).toContain("A Department Manager's report shows their department's sections.")
     expect(page.q('department-job')?.querySelector('a')?.getAttribute('href')).toBe('?view=department')
     expect(page.q('department-link')?.getAttribute('href')).toBe('?view=department')
     expect(page.q('department-link')?.getAttribute('aria-current')).toBeNull()

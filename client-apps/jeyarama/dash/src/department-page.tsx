@@ -107,11 +107,11 @@ function Ready({ setup, onChanged }: { setup: Ok; onChanged: () => Promise<unkno
       <>
         {intro}
         {note && <Notice tone={note.tone}><span data-testid="note">{note.text}</span></Notice>}
-        <Notice tone="positive"><span data-testid="sent-note">Sent to {current.waiting_for}. Your report opens as soon as it is kept.</span></Notice>
         <Card title={`Your department · ${setup.job.store}`} data-testid="waiting" actions={<StatusPill tone="caution">Waiting for {current.waiting_for}</StatusPill>}>
           <div className="flex flex-col gap-2 p-4">
             <p className="font-semibold" data-testid="waiting-name">{current.name}</p>
             <p>{listed(current.sections)}</p>
+            <p data-testid="sent-note">Sent to {current.waiting_for}. Your report opens as soon as it is kept.</p>
             <p className="fd-muted text-sm">Sent on {fmtDate(current.asked_on)}.{awayLine(current.waiting_for, setup.reviewer_is_team)}</p>
             <div className="flex flex-wrap gap-2 pt-1">
               <Button variant="quiet" className="-mx-3 max-sm:-mx-4" disabled={busy} onClick={startEditing}>Change it</Button>
@@ -129,14 +129,14 @@ function Ready({ setup, onChanged }: { setup: Ok; onChanged: () => Promise<unkno
       {current?.state === 'turned_down' && (
         <Notice tone="caution"><span data-testid="turned-down">{capital(setup.reviewer)} didn't keep “{current.name}”{current.reason ? `: ${sentence(current.reason)}` : '.'} Change it and send it again.</span></Notice>
       )}
-      <SetupForm setup={setup} before={before} replaces={current?.state === 'waiting' ? current.bundle : undefined}
+      <SetupForm setup={setup} before={before} replaces={current?.state === 'waiting' ? current.bundle : undefined} onTouched={() => setNote(null)}
         onCancel={current?.state === 'waiting' ? () => setEditing(false) : undefined}
         onSent={async () => { setNote(null); setEditing(false); await onChanged() }} />
     </>
   )
 }
 
-function SetupForm({ setup, before, replaces, onCancel, onSent }: { setup: Ok; before: { name: string; sections: string[] } | null; replaces?: string; onCancel?: () => void; onSent: () => Promise<unknown> }) {
+function SetupForm({ setup, before, replaces, onCancel, onTouched, onSent }: { setup: Ok; before: { name: string; sections: string[] } | null; replaces?: string; onCancel?: () => void; onTouched: () => void; onSent: () => Promise<unknown> }) {
   const [layout, setLayout] = useState<Layout>(startLayout)
   const fromBefore = before ? setup.sections.filter(s => before.sections.includes(s.name) && !s.held_by).map(s => s.id) : null
   const [floors, setFloorsNow] = useState<string[]>(() => {
@@ -148,10 +148,11 @@ function SetupForm({ setup, before, replaces, onCancel, onSent }: { setup: Ok; b
   const [name, setNameNow] = useState(before?.name ?? '')
   const [step, setStep] = useState(1)
   const [error, setError] = useState<string | null>(null)
-  // A refusal is about what was sent: any change clears it.
-  const setFloors = (next: string[]) => { setError(null); setFloorsNow(next) }
-  const setTicked = (next: string[]) => { setError(null); setTickedNow(next) }
-  const setName = (next: string) => { setError(null); setNameNow(next) }
+  // A refusal, or a note about what was done before, is stale once anything changes.
+  const touched = () => { setError(null); onTouched() }
+  const setFloors = (next: string[]) => { touched(); setFloorsNow(next) }
+  const setTicked = (next: string[]) => { touched(); setTickedNow(next) }
+  const setName = (next: string) => { touched(); setNameNow(next) }
   const [busy, setBusy] = useState(false)
   useEffect(() => keepLayout(layout), [layout])
   const chosen = setup.sections.filter(s => ticked.includes(s.id))
@@ -208,12 +209,13 @@ function SetupForm({ setup, before, replaces, onCancel, onSent }: { setup: Ok; b
     </div>
   )
   const summary = `${chosen.length} ${chosen.length === 1 ? 'section' : 'sections'}${trimmed ? ` · ${trimmed}` : ''}. Nothing changes until ${setup.reviewer} keeps it.`
+  const cancel = onCancel && <Button variant="quiet" disabled={busy} onClick={onCancel} data-testid="cancel-change">Cancel</Button>
   const sendBar = (
     <div className="flex flex-col gap-2">
       {error && <Notice tone="negative"><span data-testid="refused">{error}</span></Notice>}
       <div className="flex flex-wrap items-center gap-3">
         <Button variant="primary" disabled={busy || !chosen.length || !trimmed} onClick={send} data-testid="send">Send to {setup.reviewer}</Button>
-        {onCancel && <Button variant="quiet" disabled={busy} onClick={onCancel} data-testid="cancel-change">Cancel</Button>}
+        {cancel}
         <span className="fd-muted text-sm" data-testid="summary">{summary}</span>
       </div>
     </div>
@@ -257,6 +259,7 @@ function SetupForm({ setup, before, replaces, onCancel, onSent }: { setup: Ok; b
         <div className="flex flex-wrap gap-2">
           {step > 1 && <Button onClick={() => setStep(step - 1)}>Back</Button>}
           {step < 3 && <Button variant="primary" disabled={step === 2 && !chosen.length} onClick={() => setStep(step + 1)} data-testid="next">Next</Button>}
+          {step < 3 && cancel}
         </div>
         {step === 3 && sendBar}
       </>

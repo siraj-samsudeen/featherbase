@@ -225,7 +225,7 @@ export function YourSections() {
           {answer.jobs.map(job => job.job === 'Department Manager' ? (
             <Card key={job.id} data-testid="department-job" title={`${job.job} · ${job.store}`}>
               <div className="flex flex-col gap-2 p-4">
-                <p>Your sections come from your department. Say which they are on Your department.</p>
+                <p>A Department Manager's report shows their department's sections. See your department, or set it up, on Your department.</p>
                 <a className="fd-link font-semibold" href={DEPARTMENT_ADDRESS}>Open Your department</a>
               </div>
             </Card>
