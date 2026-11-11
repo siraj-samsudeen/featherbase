@@ -3,7 +3,6 @@ import { readNamedVariable } from '../env'
 import { AppError, errorMessage } from '../errors'
 import type { SourceConfig, SourceDriver, SourceEngine } from './types'
 import { postgresDriver } from './postgres-driver'
-import { mysqlDriver } from './mysql-driver'
 import { duckdbDriver } from './duckdb-driver'
 import { csvFolderDriver } from './csv-driver'
 
@@ -17,7 +16,6 @@ const cache = new Map<string, SourceConfig>()
 
 const DRIVERS: Record<SourceEngine, SourceDriver> = {
   postgres: postgresDriver,
-  mysql: mysqlDriver,
   duckdb: duckdbDriver,
   motherduck: duckdbDriver,
   'csv-folder': csvFolderDriver,
@@ -50,7 +48,6 @@ function parseAllowlist(raw: unknown): string[] | null {
 
 export function allowlistQualificationGuidance(engine: string, raw: unknown): string | null {
   const format = engine === 'postgres' ? 'schema.table'
-    : engine === 'mysql' ? 'database.table'
     : engine === 'duckdb' || engine === 'motherduck' ? 'catalog.schema.table'
     : null
   if (!format) return null

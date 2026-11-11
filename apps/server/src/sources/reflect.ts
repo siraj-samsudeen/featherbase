@@ -370,7 +370,7 @@ async function buildBoundTable(
       ...(isRef ? { reference_table: target!.name } : {}),
       // Write-relevant only on engines with a write path; keeps forms honest
       // about what the source will reject.
-      reqd: (cfg.engine === 'postgres' || cfg.engine === 'mysql') && !c.nullable && !c.has_default,
+      reqd: cfg.engine === 'postgres' && !c.nullable && !c.has_default,
       in_list_view: defaults.listed.has(i),
     }
   })

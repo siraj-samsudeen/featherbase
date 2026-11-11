@@ -87,15 +87,10 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
-      // The MySQL driver is exercised only where a MySQL server is reachable
-      // (CI sets MYSQL_TEST_URL; a laptop usually does not). Measuring it
-      // without one would report a permanent gap that says nothing about the
-      // code, so it is counted exactly when its tests can run.
       exclude: [
         // ADR 0012: this boundary needs the hosted MotherDuck service and a
         // live token. Token validation and query construction remain covered.
         'src/motherduck-hosted.ts',
-        ...(process.env.MYSQL_TEST_URL ? [] : ['src/sources/mysql-driver.ts']),
       ],
       reporter: ['text', 'json-summary'],
       // Without this a single failing test suppresses the report entirely
