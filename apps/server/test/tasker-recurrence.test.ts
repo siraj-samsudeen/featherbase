@@ -1,4 +1,5 @@
 import { expect } from 'vitest'
+import { makeQueuedJobsDue } from './jobs-due'
 import { withTime } from './clock'
 import { test as databaseTest } from './pg-test'
 import { resolve } from 'node:path'
@@ -6,14 +7,13 @@ import { discoverPackages } from '../src/runtime-packages'
 import { installApp } from '../src/apps'
 import { taskerClient } from './tasker-client'
 import { enqueue, drainJobs } from '../src/jobs'
-import { sql } from '../src/db'
 import { issueSession } from '../src/auth'
 import type { CreateUserFn } from 'feather-testing-postgres'
 import { expectRefused } from './fixtures'
 
 async function tick() {
   await enqueue('tasker.repeat_tasks', {})
-  await sql`update background_job set run_at = now() - interval '1 second' where job_status = 'queued'`
+  await makeQueuedJobsDue()
   await drainJobs()
 }
 

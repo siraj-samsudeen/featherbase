@@ -3,6 +3,7 @@
 // installed, follows the app through disable, upgrade and removal, and runs
 // as its own system actor holding only the grants it declares. The packages
 // are written per test, so each case shows exactly the manifest it proves.
+import { makeQueuedJobsDue } from './jobs-due'
 import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect } from 'vitest'
@@ -151,7 +152,7 @@ async function writeApp(opts: { name?: string; version?: string; jobs: Job[]; mi
 // The sandbox's clock is its transaction's start, earlier than a run queued
 // just now; make every queued run due, then drain the queue.
 async function runDue() {
-  await sql`update background_job set run_at = now() - interval '1 second' where job_status = 'queued'`
+  await makeQueuedJobsDue()
   await drainJobs()
 }
 
