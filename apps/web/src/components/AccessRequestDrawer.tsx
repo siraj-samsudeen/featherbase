@@ -169,19 +169,19 @@ export function AccessRequestDrawer({ id, onClose, onDone }: {
               </PaneSection>
             ))}
 
-            {partly && (
-              <Notice tone={partly.failed.length ? 'negative' : 'caution'}>
-                <span data-testid="request-partly">
-                  {partly.given.length ? `Given: ${partly.given.join(', ')}. ` : ''}
-                  {partly.failed.map((f) => `${f.label}: ${f.problem}. `).join('')}
-                  {!partly.open && `Given, but this doesn't open ${data.app} yet.`}
-                </span>
-              </Notice>
-            )}
-            {confirming && <Notice tone="caution"><span data-testid="full-admin-confirm">System Manager gives full admin access to everything in Featherbase. Approve again to confirm.</span></Notice>}
-            {problem && <Notice tone="negative"><span data-testid="request-problem">{problem}</span></Notice>}
+            <div className="sticky bottom-0 -mx-4 border-t border-border bg-surface flex flex-col gap-2 px-4 py-3">
+              {partly && (
+                <Notice tone={partly.failed.length ? 'negative' : 'caution'}>
+                  <span data-testid="request-partly">
+                    {partly.given.length ? `Given: ${partly.given.join(', ')}. ` : ''}
+                    {partly.failed.map((f) => `${f.label}: ${f.problem}. `).join('')}
+                    {!partly.open && `Given, but this doesn't open ${data.app} yet.`}
+                  </span>
+                </Notice>
+              )}
+              {confirming && <Notice tone="caution"><span data-testid="full-admin-confirm">System Manager gives full admin access to everything in Featherbase. Approve again to confirm.</span></Notice>}
+              {problem && <Notice tone="negative"><span data-testid="request-problem">{problem}</span></Notice>}
 
-            <div className="sticky bottom-0 -mx-4 border-t border-border bg-surface px-4 py-3">
             {declining ? (
               <div className="flex flex-col gap-2" data-testid="decline-form">
                 <label className="flex flex-col gap-1 text-sm font-semibold">
