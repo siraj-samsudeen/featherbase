@@ -14,6 +14,7 @@ const SALES = { key: 'sales', name: 'Sales versus target', takes_store: true, ta
 const WHOLE = { key: 'whole', name: 'Store target month to date', takes_store: false, takes_month: false }
 let reportsAnswer: unknown = [SALES, WHOLE]
 let problemsAnswer: unknown = { problems: [] }
+let setupAnswer: unknown = { state: 'ok', reviewer: 'Mani', current: null }
 
 beforeAll(() => {
   // This repository's root (client-apps/jeyarama/dash/src → four levels up), with `pnpm install` run.
@@ -40,6 +41,7 @@ beforeAll(() => {
       if (name === 'stores') answer.resolve([{ value: '9901', label: 'Lakeside · 9901' }, { value: '9902', label: 'Hillview · 9902' }])
       if (name === 'reports') answer.resolve(reportsAnswer)
       if (name === 'reach_problem') answer.resolve(problemsAnswer)
+      if (name === 'department_setup') answer.resolve(setupAnswer)
     })
   }
   teardown = () => { for (const key of added) delete (globalThis as Record<string, unknown>)[key]; dom.window.close() }
@@ -551,10 +553,29 @@ describe('a report on the rendered page', () => {
       await unmount()
     })
 
-    it("says a Department Manager's report waits for the departments, with no link", async () => {
+    it("asks a Department Manager to set up their department, naming who reviews it (#1195)", async () => {
       const { container, unmount } = await refusing(['departments_not_filled'])
-      expect(container.querySelector('[data-testid=reach-problem]')?.textContent).toContain("Your store's departments aren't filled in yet")
+      expect(container.querySelector('[data-testid=reach-title]')?.textContent).toBe('Set up your department to open your report')
+      expect(container.querySelector('[data-testid=department-reviewer]')?.textContent).toBe('Mani reviews it. If they are away, a Master Data Editor can.')
+      expect(container.querySelector('[data-testid=department-link]')?.textContent).toBe('Set up my department')
+      expect(container.querySelector('[data-testid=department-link]')?.getAttribute('href')).toBe('?view=department')
       expect(container.querySelector('[data-testid=fix-link]')).toBeNull()
+      await unmount()
+    })
+
+    it('says a set-up already waits, and for whom (#1195)', async () => {
+      setupAnswer = { state: 'ok', reviewer: 'Mani', current: { state: 'waiting', name: 'Ladies Ethnic', asked_on: '2026-11-11', waiting_for: 'Mani' } }
+      const { container, unmount } = await refusing(['departments_not_filled'])
+      expect(container.querySelector('[data-testid=department-waiting]')?.textContent).toBe('You sent “Ladies Ethnic” on 11-Nov-2026. It is waiting for Mani.')
+      expect(container.querySelector('[data-testid=department-link]')?.textContent).toBe('Open your department')
+      setupAnswer = { state: 'ok', reviewer: 'Mani', current: null }
+      await unmount()
+    })
+
+    it("says a store with no sections waits for the master data team, with no button (#1195)", async () => {
+      const { container, unmount } = await refusing(['store_sections_not_set_up'])
+      expect(container.querySelector('[data-testid=reach-title]')?.textContent).toBe("Your store's sections aren't set up yet")
+      expect(container.querySelector('[data-testid=department-link]')).toBeNull()
       await unmount()
     })
 

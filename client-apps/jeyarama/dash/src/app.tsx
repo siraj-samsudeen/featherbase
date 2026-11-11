@@ -3,7 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { accessFacts, read } from './api'
 import { REPORT_TIMEOUT_MS, reachMessage, MEASURE_LINE, TOTALS_NOTE, isMonthChoice, monthChooser, monthWords, notArrivedLine, type MonthChoice, noAccessHelp, type NoAccessHelp, headingParts, periodLine, sectionHeading, whyLine, storeChooser, totalCells, visibleState, blankNote, dataLine, firstStore, inr, liveFrame, pageView, percent, quickBody, reportLoader, signedInr, subcategoryLabel, subtotalLabel, type LoadState } from './page'
 import type { Heading, Report, ReportRow, Totals } from './report'
-import { DashSidebar, SECTIONS_ADDRESS, readReports, type ReportLink } from './sections-page'
+import { DashSidebar, DEPARTMENT_ADDRESS, SECTIONS_ADDRESS, readReports, type ReportLink } from './sections-page'
+import type { Setup } from './department-page'
+import { buttonClasses, fmtDate } from '@featherbase/shop-floor'
 
 /** The store the bar's picker keeps in the address (`?store=`). */
 const storeInAddress = () => new URLSearchParams(window.location.search).get('store') ?? undefined
@@ -219,8 +221,10 @@ function NoAccess({ otherReports }: { otherReports: boolean }) {
   if (message)
     return (
       <Notice testid="reach-problem">
+        {message.title && <h2 className="text-lg font-semibold" data-testid="reach-title">{message.title}</h2>}
         <span>{message.text}</span>
         {message.sectionsLink && <a href={SECTIONS_ADDRESS} data-testid="fix-link">Open Your sections to see what is set against you, and correct it</a>}
+        {message.departmentLink && <DepartmentCall />}
       </Notice>
     )
   if (help.kind === 'reader') return <AskForAccess />
@@ -368,5 +372,21 @@ function QuickView({ report }: { report: Report }) {
       {body === 'table' && <p className="fd-muted fd-small" data-testid="totals-note">{TOTALS_NOTE}</p>}
       {body === 'table' && blanks > 0 && <p className="fd-muted fd-small" data-testid="blank-note">{blankNote(blanks, report.month)}</p>}
     </section>
+  )
+}
+
+/** #1195: who reviews a Department Manager's set-up, or that one already waits, and the way in. */
+function DepartmentCall() {
+  const [setup, setSetup] = useState<Setup | null>(null)
+  useEffect(() => { let live = true; read<Setup>('department_setup').then(answer => { if (live) setSetup(answer) }, () => {}); return () => { live = false } }, [])
+  const ok = setup?.state === 'ok' ? setup : null
+  const waiting = ok?.current?.state === 'waiting' ? ok.current : null
+  return (
+    <div className="mt-3 flex flex-col gap-3">
+      {waiting
+        ? <p data-testid="department-waiting">You sent “{waiting.name}” on {fmtDate(waiting.asked_on)}. It is waiting for {waiting.waiting_for}.</p>
+        : ok && <p className="fd-muted text-sm" data-testid="department-reviewer">{ok.reviewer} reviews it. If they are away, a Master Data Editor can.</p>}
+      <div><a href={DEPARTMENT_ADDRESS} className={buttonClasses({ variant: 'primary', className: '!text-action-ink !no-underline' })} data-testid="department-link">{waiting ? 'Open your department' : 'Set up my department'}</a></div>
+    </div>
   )
 }

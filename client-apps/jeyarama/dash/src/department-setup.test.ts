@@ -23,6 +23,7 @@ function world(over: Partial<Record<string, Row[]>> = {}) {
       { row_id: 'E6', name: 'Arun', status: 'Current', person: 'arun' },
       { row_id: 'E7', name: 'Ravi', status: 'Current', person: null },
       { row_id: 'E8', name: 'Siva', status: 'Current', person: null },
+      { row_id: 'E12', name: 'Zara', status: 'Current', person: null },
     ],
     'Job Assignment': [
       job('J1', 'E1', 'Department Manager', 'LKS', null, 'E2'),
@@ -34,6 +35,10 @@ function world(over: Partial<Record<string, Row[]>> = {}) {
       job('J5', 'E5', 'Team Leader', 'LKS', 'S5', 'E2'),
       job('J6', 'E6', 'Department Manager', 'LKS', null, 'E2'),
       job('J7', 'E7', 'Team Leader', 'LKS', 'S3', 'E6'),
+      // A second row for the same Team Leader, and one whose person HR no longer lists.
+      job('J10', 'E7', 'Team Leader', 'LKS', 'S3', 'E6'),
+      job('J9', 'E99', 'Team Leader', 'LKS', 'S5', 'E2'),
+      job('J11', 'E12', 'Team Leader', 'LKS', 'S3', 'E6'),
     ],
     Section: [
       { row_id: 'S1', name: 'Sarees', site: 'LKS', floor: 'F1', status: 'Active' },
@@ -61,14 +66,21 @@ function world(over: Partial<Record<string, Row[]>> = {}) {
       { row_id: 'D3', department_id: 'D3', store: 'HIL', name: 'Menswear', manager: 'E9', starts_on: '2026-01-01', ends_on: null },
       { row_id: 'D4', department_id: 'D4', store: 'HIL', name: 'Old name', manager: 'E9', starts_on: '2026-01-01', ends_on: '2026-02-01' },
       { row_id: 'D5', department_id: 'D5', store: 'NGT', name: 'Footwear and Bags', manager: 'E9', starts_on: '2026-01-01', ends_on: null },
+      // Here: one whose manager is no longer on the staff list, and one that has ended.
+      { row_id: 'D6', department_id: 'D6', store: 'LKS', name: 'Shoes', manager: 'E99', starts_on: '2026-01-01', ends_on: null },
+      { row_id: 'D7', department_id: 'D7', store: 'LKS', name: 'Gone', manager: 'E1', starts_on: '2026-01-01', ends_on: '2026-02-01' },
     ],
-    'Department Section': [{ row_id: 'DS1', department_section_id: 'DS1', store: 'LKS', department: 'D1', section: 'S3', starts_on: '2026-01-01', ends_on: null }],
+    'Department Section': [
+      { row_id: 'DS1', department_section_id: 'DS1', store: 'LKS', department: 'D1', section: 'S3', starts_on: '2026-01-01', ends_on: null },
+      { row_id: 'DS6', department_section_id: 'DS6', store: 'LKS', department: 'D6', section: 'S6', starts_on: '2026-01-01', ends_on: null },
+      { row_id: 'DS7', department_section_id: 'DS7', store: 'LKS', department: 'D7', section: 'S7', starts_on: '2026-01-01', ends_on: null },
+    ],
     ...over,
   } as Record<string, Row[]>
 }
 
 const DECIDED: Record<string, string> = { approve: 'Applied', reject: 'Rejected', withdraw: 'Withdrawn' }
-function context(tables: Record<string, Row[]>, { user = 'deepa', payload, settings = { linked_tables: LISTED }, proposals = [] as Row[], route = 'people' }: { user?: string; payload?: unknown; settings?: Record<string, string>; proposals?: Row[]; route?: string } = {}) {
+function context(tables: Record<string, Row[]>, { user = 'deepa', payload, settings = { linked_tables: LISTED }, proposals = [] as Row[], route = 'people', decides = true }: { user?: string; payload?: unknown; settings?: Record<string, string>; proposals?: Row[]; route?: string; decides?: boolean } = {}) {
   const sent: { call: string; first: unknown; second?: unknown }[] = []
   let made = 0
   const answer = (call: string) => async (first: unknown, second?: unknown) => {
@@ -96,7 +108,7 @@ function context(tables: Record<string, Row[]>, { user = 'deepa', payload, setti
         const start = filter.start ?? 0
         return rows.slice(start, start + (filter.limit ?? 200))
       },
-      mayDecide: async () => true,
+      mayDecide: async () => decides,
       routeFor: async (_maker: string, approvers: { people: string[] }) => (route === 'none' ? null : { people: route === 'people' ? approvers.people : [], roles: [] }),
       lockRow: async () => {},
       serialize: async () => {},
@@ -145,8 +157,8 @@ describe('the department set-up read', () => {
       { id: 'S5', name: 'Bags', floor: 'F1', sells: [], more: 0, team_leaders: ['Kavya'], suggested: false, held_by: null },
       { id: 'S1', name: 'Sarees', floor: 'F1', sells: ['Banarasi sarees', 'Cotton sarees', 'Kanchi sarees'], more: 1, team_leaders: ['Asha'], suggested: true, held_by: null },
       { id: 'S2', name: 'Silk', floor: 'F1', sells: ['Salwar sets'], more: 0, team_leaders: ['Bala'], suggested: true, held_by: null },
-      { id: 'S6', name: 'Footwear', floor: 'F2', sells: [], more: 0, team_leaders: [], suggested: false, held_by: null },
-      { id: 'S3', name: 'Kids Wear', floor: 'F2', sells: [], more: 0, team_leaders: ['Ravi'], suggested: false, held_by: 'Kids (Arun)' },
+      { id: 'S6', name: 'Footwear', floor: 'F2', sells: [], more: 0, team_leaders: [], suggested: false, held_by: 'Shoes (no manager now)' },
+      { id: 'S3', name: 'Kids Wear', floor: 'F2', sells: [], more: 0, team_leaders: ['Ravi', 'Zara'], suggested: false, held_by: 'Kids (Arun)' },
       { id: 'S7', name: 'Loose', floor: '', sells: [], more: 0, team_leaders: [], suggested: false, held_by: null },
     ])
     // Names used at other stores, most used first; never one in force here, nor one that has ended.
@@ -163,7 +175,9 @@ describe('the department set-up read', () => {
     const tables = world()
     tables['Job Assignment'] = [job('J1', 'E1', 'Department Manager', 'LKS', null, 'E2'),
       ...chain.map((e, i) => job(`JC${i}`, e, i ? 'Staff' : 'Team Leader', 'LKS', i ? null : 'S1', chain[i + 1] ?? 'E1')),
-      job('JL1', 'E4', 'Team Leader', 'LKS', 'S2', 'E15'), job('JL2', 'E15', 'Staff', 'LKS', null, 'E4')]
+      job('JL1', 'E4', 'Team Leader', 'LKS', 'S2', 'E15'), job('JL2', 'E15', 'Staff', 'LKS', null, 'E4'),
+      // A line that runs to someone with no job at this store.
+      job('JL3', 'E5', 'Team Leader', 'LKS', 'S5', 'E77')]
     const answer = await read(tables)
     expect(answer.state === 'ok' && answer.sections.filter(s => s.suggested).map(s => s.id)).toEqual([])
   })
@@ -298,3 +312,50 @@ describe('what waits for a reviewer', () => {
     expect(await departmentReads.department_approvals(context(world(), { user: 'mani', settings: {}, proposals: bundle() }).ctx)).toEqual([])
   })
 })
+
+describe('the edges (#1195)', () => {
+  it("names the master data team when nobody can be routed to", async () => {
+    expect(await read(world(), { route: 'none' })).toMatchObject({ reviewer: 'the master data team' })
+  })
+  it('lists no "No floor" when every section has a floor, and sells nothing where nothing is placed', async () => {
+    const tables = world({ 'Section Subcategory': [] })
+    tables.Section = tables.Section.filter(s => s.row_id !== 'S7')
+    const answer = await read(tables)
+    if (answer.state !== 'ok') throw new Error('not ok')
+    expect(answer.floors.map(f => f.id)).toEqual(['F1', 'F2'])
+    expect(answer.sections.every(s => !s.sells.length)).toBe(true)
+  })
+  it('lists the sections of their department in name order', async () => {
+    const tables = world()
+    tables.Department.push({ row_id: 'D9', store: 'LKS', name: 'Ladies', manager: 'E1', starts_on: '2026-01-01', ends_on: null })
+    tables['Department Section'].push({ row_id: 'DS8', store: 'LKS', department: 'D9', section: 'S2', starts_on: '2026-01-01', ends_on: null },
+      { row_id: 'DS9', store: 'LKS', department: 'D9', section: 'S1', starts_on: '2026-01-01', ends_on: null })
+    expect(await read(tables)).toMatchObject({ current: { state: 'set_up', sections: ['Sarees', 'Silk'] } })
+  })
+  it('reads the newest set-up first, and a turn-down with no reason as an empty one', async () => {
+    const older = bundle({}, 'Rejected').map(p => ({ ...p, row_id: `old-${p.row_id}`, created_at: `${today}T01:00:00Z` }))
+    expect(await read(world(), { proposals: [...older, ...bundle({}, 'Withdrawn')] })).toMatchObject({ current: null })
+    expect(await read(world(), { proposals: bundle({}, 'Needs fresh review') })).toMatchObject({ current: { state: 'turned_down', reason: '' } })
+  })
+  it('finds a bundle beyond the first page, past proposals about nothing it knows', async () => {
+    const filler = Array.from({ length: 500 }, (_, i) => ({ row_id: `F${String(i).padStart(3, '0')}`, maker: 'deepa', state: 'Pending', about: null, created_at: `${today}T00:00:00Z`, route: { people: [], roles: [] } }))
+    const { ctx } = context(world(), { payload: { bundle: 'B1' }, proposals: [...filler, ...bundle()] })
+    expect(await departmentActions.withdraw_department(ctx)).toEqual({ withdrawn: 3 })
+    const reviewer = context(world(), { user: 'mani', proposals: [...filler, ...bundle()] })
+    expect(await departmentReads.department_approvals(reviewer.ctx)).toHaveLength(1)
+  })
+  it('shows a section with no Team Leader as having none', async () => {
+    const proposals = bundle({ sections: ['S6'], section_names: ['Footwear'] })
+    expect(await departmentReads.department_approvals(context(world(), { user: 'mani', proposals }).ctx)).toMatchObject([{ sections: [{ id: 'S6', name: 'Footwear', team_leaders: [] }] }])
+  })
+  it('leaves out set-ups the platform says they may not decide', async () => {
+    expect(await departmentReads.department_approvals(context(world(), { user: 'mani', proposals: bundle(), decides: false }).ctx)).toEqual([])
+  })
+  it('refuses a bundle that is not a name, a send with nothing in it, a turn-down with no reason, and a long name', async () => {
+    await expect(departmentActions.withdraw_department(context(world(), { payload: { bundle: 7 }, proposals: bundle() }).ctx)).rejects.toThrow('That set-up is no longer waiting')
+    await expect(departmentActions.set_up_department(context(world()).ctx)).rejects.toThrow('Tick at least one section')
+    await expect(departmentActions.decide_department(context(world(), { user: 'mani', payload: { bundle: 'B1', decision: 'reject' }, proposals: bundle() }).ctx)).rejects.toThrow('Say why it is turned down')
+    await expect(departmentActions.decide_department(context(world(), { user: 'mani', payload: { bundle: 'B1', decision: 'approve', name: 'x'.repeat(61) }, proposals: bundle() }).ctx)).rejects.toThrow('Keep the name to 60 characters')
+  })
+})
+

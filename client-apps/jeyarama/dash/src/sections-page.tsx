@@ -5,11 +5,12 @@ import { Button, Card, EmptyState, Field, fmtDate, Notice, Select, Skeleton, Sta
 import { HierarchyGroups, HierarchyPath, HierarchyPicker, type HierarchyLeaf, type HierarchyNode } from '@featherbase/shop-floor/hierarchy'
 import { act, read } from './api'
 import { reportAddress } from './page'
+import { DepartmentApprovals, type WaitingSetup } from './department-page'
 
-export type DashView = 'report' | 'sections' | 'approvals' | 'access' | 'unplaced'
+export type DashView = 'report' | 'sections' | 'approvals' | 'access' | 'unplaced' | 'department'
 export function currentView(search = window.location.search): DashView {
   const view = new URLSearchParams(search).get('view')
-  return view === 'sections' || view === 'approvals' || view === 'access' || view === 'unplaced' ? view : 'report'
+  return view === 'sections' || view === 'approvals' || view === 'access' || view === 'unplaced' || view === 'department' ? view : 'report'
 }
 /** The Report access page (#1046), for Report Access Managers and System Managers. */
 export const ACCESS_ADDRESS = '?view=access'
@@ -17,6 +18,8 @@ export const SECTIONS_ADDRESS = '?view=sections'
 export const APPROVALS_ADDRESS = '?view=approvals'
 /** The master data team's list of subcategories in no section (#1175). */
 export const UNPLACED_ADDRESS = '?view=unplaced'
+/** A Department Manager's set-up page (#1195). */
+export const DEPARTMENT_ADDRESS = '?view=department'
 
 interface Named { id: string; name: string }
 interface Leveled extends HierarchyNode { code: string; name: string }
@@ -109,7 +112,8 @@ export function DashSidebar({ current, count }: { current: DashView; count?: num
   useEffect(() => {
     if (count !== undefined) return
     let live = true
-    read<Waiting>('approvals').then(answer => { if (live && answer.state === 'ok') setWaiting(answer.proposals.length) }, () => {})
+    Promise.all([read<Waiting>('approvals'), read<WaitingSetup[]>('department_approvals').catch(() => [])])
+      .then(([answer, setups]) => { if (live && answer.state === 'ok') setWaiting(answer.proposals.length + setups.length) }, () => {})
     return () => { live = false }
   }, [count])
   // #1046: the Report access link shows only to someone who manages it.
@@ -138,6 +142,12 @@ export function DashSidebar({ current, count }: { current: DashView; count?: num
         <span className="sm:hidden">Approve{waiting > 0 ? ` (${waiting})` : ''}</span>
       </a>
     ),
+    current === 'department' && (
+      <a href={DEPARTMENT_ADDRESS} aria-current="page" data-testid="department-link">
+        <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6" /></svg>
+        <span>Your department</span>
+      </a>
+    ),
     (masterData || current === 'unplaced') && (
       <a href={UNPLACED_ADDRESS} {...here('unplaced')} data-testid="unplaced-link">
         <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 8v4m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0" /></svg>
@@ -152,7 +162,7 @@ export function DashSidebar({ current, count }: { current: DashView; count?: num
     ))
 }
 
-function Shell({ current, count, title, testid, children }: { current: DashView; count?: number; title: string; testid: string; children: ReactNode }) {
+export function Shell({ current, count, title, testid, children }: { current: DashView; count?: number; title: string; testid: string; children: ReactNode }) {
   return (
     <div className="fd-shell">
       <DashSidebar current={current} count={count} />
@@ -167,7 +177,7 @@ function Shell({ current, count, title, testid, children }: { current: DashView;
 }
 
 /** Loads one read, with Try again when it fails. */
-function useAnswer<T>(name: string) {
+export function useAnswer<T>(name: string) {
   const [answer, setAnswer] = useState<T | undefined>()
   const [failed, setFailed] = useState(false)
   const load = useCallback(() => {
@@ -178,11 +188,11 @@ function useAnswer<T>(name: string) {
   return { answer, failed, load }
 }
 
-const Loading = () => <div className="flex flex-col gap-3" data-testid="loading"><Skeleton label="Opening your sections" lines={6} /></div>
-const LoadFailed = ({ onRetry }: { onRetry: () => void }) => (
+export const Loading = () => <div className="flex flex-col gap-3" data-testid="loading"><Skeleton label="Opening your sections" lines={6} /></div>
+export const LoadFailed = ({ onRetry }: { onRetry: () => void }) => (
   <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={onRetry}>Try again</Button>} /></Card>
 )
-const NotSetUp = () => (
+export const NotSetUp = () => (
   <Card data-testid="not-set-up">
     <EmptyState title="This isn't set up here yet" body="Tell an administrator that Dash's linked Tables setting needs the store and staff Tables." />
   </Card>
@@ -428,16 +438,21 @@ function YourProposals({ proposals }: { proposals: Proposal[] }) {
 
 export function Approvals() {
   const { answer, failed, load } = useAnswer<Waiting>('approvals')
+  // #1195: Department Managers' set-ups wait here too, one card each.
+  const setups = useAnswer<WaitingSetup[]>('department_approvals')
+  const reload = () => Promise.all([load(), setups.load()])
+  const waitingSetups = setups.answer ?? []
   // What just happened stays said after the card has gone from the list.
   const [note, setNote] = useState<{ tone: 'positive' | 'negative' | 'caution'; text: string } | null>(null)
-  const after = (next: NonNullable<typeof note>) => { setNote(next); return load() }
+  const after = (next: NonNullable<typeof note>) => { setNote(next); return reload() }
   return (
-    <Shell current="approvals" count={answer?.state === 'ok' ? answer.proposals.length : undefined} title="Waiting for your approval" testid="approvals">
+    <Shell current="approvals" count={answer?.state === 'ok' ? answer.proposals.length + waitingSetups.length : undefined} title="Waiting for your approval" testid="approvals">
       {note && <Notice tone={note.tone}><span data-testid="decision-note">{note.text}</span></Notice>}
       {!answer && !failed && <Loading />}
       {failed && <LoadFailed onRetry={load} />}
       {answer?.state === 'not_set_up' && <NotSetUp />}
-      {answer?.state === 'ok' && answer.proposals.length === 0 && (
+      {answer?.state === 'ok' && <DepartmentApprovals setups={waitingSetups} onDecided={() => after({ tone: 'positive', text: 'Done. The Department Manager sees it now.' })} />}
+      {answer?.state === 'ok' && answer.proposals.length === 0 && waitingSetups.length === 0 && (
         <Card data-testid="nothing-waiting">
           <EmptyState title="Nothing is waiting for you" body="When someone asks to correct their sections and it needs you, it shows here." />
         </Card>

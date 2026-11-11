@@ -137,12 +137,12 @@ export const departmentReads = {
     const reportsTo = new Map<string, string>()
     for (const row of jobs) if (!reportsTo.has(exact(row.employee))) reportsTo.set(exact(row.employee), exact(row.reports_to))
     const reachesMe = (from: string) => {
-      let at = reportsTo.get(from) ?? ''
-      const seen = new Set<string>()
-      for (let step = 0; step < STEPS && at && !seen.has(at); step++) {
+      const seen = new Set([from])
+      for (let at = from, step = 0; step < STEPS; step++) {
+        at = reportsTo.get(at) ?? ''
+        if (!at || seen.has(at)) return false
         if (me.has(at)) return true
         seen.add(at)
-        at = reportsTo.get(at) ?? ''
       }
       return false
     }
@@ -166,7 +166,7 @@ export const departmentReads = {
       return { id, name: text(section.name), floor: exact(section.floor), sells: sells.slice(0, SELLS_SHOWN), more: Math.max(0, sells.length - SELLS_SHOWN),
         team_leaders: leaders.get(id) ?? [], suggested: suggested.has(id),
         held_by: heldByOther ? `${text(holder.name)} (${managers.get(exact(holder.manager)) ?? 'no manager now'})` : null }
-    }).sort((a, b) => (order.get(a.floor) ?? 0) - (order.get(b.floor) ?? 0) || a.name.localeCompare(b.name))
+    }).sort((a, b) => order.get(a.floor)! - order.get(b.floor)! || a.name.localeCompare(b.name))
 
     const perFloor = new Map<string, number>()
     for (const s of sections) if (s.suggested) perFloor.set(s.floor, (perFloor.get(s.floor) ?? 0) + 1)
@@ -203,7 +203,7 @@ export const departmentReads = {
       const a = about(head)
       const { leaders } = await teamLeadersOf(ctx, a.site, today)
       answers.push({ bundle: a.bundle, who: a.maker_name, job: JOB, store: a.store, name: a.name, asked_on: istDay(head.created_at),
-        sections: a.sections.map((id, i) => ({ id, name: a.section_names[i] ?? '', team_leaders: leaders.get(id) ?? [] })) })
+        sections: a.sections.map((id, i) => ({ id, name: a.section_names[i], team_leaders: leaders.get(id) ?? [] })) })
     }
     return answers
   },
@@ -306,7 +306,7 @@ export const departmentActions = {
     const sectionNames = byId(shop.sections)
     const taken = [...keep].sort().find(id => shop.holding.has(id))
     if (taken) {
-      const reason = `${text(sectionNames.get(taken)?.name) || 'A section'} is now in ${text(shop.holding.get(taken)!.name)}.`
+      const reason = `${text(sectionNames.get(taken)!.name)} is now in ${text(shop.holding.get(taken)!.name)}.`
       for (const part of parts) await ctx.changeProposals.needsFreshReview(part.row_id, { approvers, reason })
       return { state: 'Needs fresh review', department: null }
     }

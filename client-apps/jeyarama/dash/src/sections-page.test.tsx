@@ -34,7 +34,7 @@ beforeAll(() => {
     const [, kind, name] = /app_(reads|actions)\/dash\/(.+)$/.exec(String(url))!
     const body = JSON.parse(String(init.body))
     calls.push({ kind: kind as Call['kind'], name, payload: body.payload })
-    const answer = name === 'reports' ? answers[name] ?? [] : answers[name]
+    const answer = name === 'reports' || name === 'department_approvals' ? answers[name] ?? [] : answers[name]
     if (answer instanceof Error) return new Response(JSON.stringify({ error: { message: answer.message } }), { status: 417 })
     return new Response(JSON.stringify({ result: answer ?? { state: 'ok', proposals: [] } }), { status: 200 })
   }
