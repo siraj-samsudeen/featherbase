@@ -1,4 +1,5 @@
 import { describe, expect } from 'vitest'
+import { nudgeDueJobs } from './jobs-due'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import {
@@ -26,12 +27,6 @@ async function setup() {
   await sql`delete from background_job`
   await sql`delete from job_execution`
   await sql`delete from scheduled_job where method = ${METHOD}`
-}
-
-async function nudgeDueJobs() {
-  await sql`
-    update background_job set run_at = now()
-    where job_status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
 }
 
 async function liveEntries(method: string) {
