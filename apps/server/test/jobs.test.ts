@@ -1,4 +1,5 @@
 import { describe, expect } from 'vitest'
+import { makeJobDue, nudgeDueJobs } from './jobs-due'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { FinalJobFailure, drainJobs, enqueue, loadJobs, registerJob, runOneJob, startWorker, stopWorker } from '../src/jobs'
@@ -15,16 +16,6 @@ async function setup() {
   await sql`delete from background_job`
   await sql`delete from job_execution`
   await sql.unsafe('drop table if exists job_demo_rows, job_flaky_counter')
-}
-
-// Sandbox clock shim: inside the rolled-back test transaction now() is frozen
-// at BEGIN, while enqueue() stamps run_at from the wall clock — so nothing
-// ever counts as "due" for the claim query. Mark any job whose run_at has
-// passed by the wall clock (clock_timestamp) as due by the transaction clock.
-async function nudgeDueJobs() {
-  await sql`
-    update background_job set run_at = now()
-    where job_status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
 }
 
 describe('JOB-001: enqueue + worker + drain', () => {
@@ -226,7 +217,7 @@ describe('a scheduled job this server has no handler for yet', () => {
     await nudgeDueJobs()
     await runOneJob()
     registerJob('made_up_arriving_job', () => {})
-    await sql`update background_job set run_at = now() - interval '1 second' where row_id = ${id}`
+    await makeJobDue(id)
 
     expect(await runOneJob()).toBe(true)
 
@@ -300,7 +291,7 @@ describe('the worker', () => {
       running--
     })
     const id = await enqueue('slow_job', {})
-    await sql`update background_job set run_at = now() - interval '1 second' where row_id = ${id}`
+    await makeJobDue(id)
     startWorker(10)
     try {
       await expect.poll(async () => (await sql`select job_status from background_job where row_id = ${id}`)[0].job_status, { timeout: 5000 }).toBe('done')

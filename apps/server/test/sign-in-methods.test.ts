@@ -5,6 +5,7 @@ import { describe, expect, vi } from 'vitest'
 import { getSignInMethod, methodUsable } from '../src/identities'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
+import { mockOAuth } from './google-mock'
 import { sql } from '../src/db'
 import { expectStatus, makePerson } from './fixtures'
 import { configureDelegated, linkDelegated } from './identity-fixtures'
@@ -110,7 +111,7 @@ describe('a sign-in method row with fields left empty', () => {
   })
 
   test('Google with no client id at all is not usable without the mock provider', () => {
-    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    mockOAuth(false)
     try {
       expect(methodUsable({ kind: 'google', enabled: true })).toBe(false)
     } finally {

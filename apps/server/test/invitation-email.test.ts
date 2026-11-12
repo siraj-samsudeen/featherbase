@@ -10,7 +10,7 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { expectStatus, makePerson } from './fixtures'
 import { configureGoogle } from './identity-fixtures'
-import { googleSignIn, redeemSession } from './google-mock'
+import { googleSignIn, mockOAuth, redeemSession } from './google-mock'
 import { _setInvitationDeliveryForTests, _setInvitationHooksForTests, composeInvitation } from '../src/invitation-email'
 import { config } from '../src/config'
 import { preflightRelease } from '../src/release-preflight'
@@ -272,7 +272,7 @@ describe('hardening', () => {
     // (env.ts): its own JWT_SECRET, and no mock Google provider, which this
     // suite turns on for itself (vitest.config.ts).
     vi.stubEnv('JWT_SECRET', 'a-production-secret')
-    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    mockOAuth(false)
     await withConfig({ instanceAddresses: null }, async () => {
       const prev = process.env.DISABLE_DATABASE_ENVIRONMENT_CHECK
       process.env.DISABLE_DATABASE_ENVIRONMENT_CHECK = '1'
