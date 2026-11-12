@@ -91,6 +91,24 @@
           }
         ]
       }
+    ],
+    "Approval Type": [
+      {
+        "row_id": "dash.subcategory_add",
+        "mode": "Apply now, review after"
+      },
+      {
+        "row_id": "dash.subcategory_removal",
+        "mode": "Apply now, review after"
+      },
+      {
+        "row_id": "dash.job_section",
+        "mode": "Apply now, review after"
+      },
+      {
+        "row_id": "dash.department_setup",
+        "mode": "Apply now, review after"
+      }
     ]
   },
   "environments": {

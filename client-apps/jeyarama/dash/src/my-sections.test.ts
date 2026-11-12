@@ -62,10 +62,11 @@ function context(tables: Record<string, Row[]>, { user = 'asha', payload, settin
         return rows.slice(start, start + (filter.limit ?? 200))
       },
       mayDecide: async () => true,
+      modeOf: async () => 'Approve first',
       routeFor: async (_maker: string, approvers: { people: string[] }) => (route === 'none' ? null : { people: route === 'ghost' ? ['nobody-on-staff'] : approvers.people, roles: [] }),
       lockRow: async () => {},
       serialize: async () => {},
-      propose: answer('propose'), approve: answer('approve'), reject: answer('reject'), needsFreshReview: answer('needsFreshReview'), withdraw: answer('withdraw'),
+      propose: answer('propose'), approve: answer('approve'), reject: answer('reject'), needsFreshReview: answer('needsFreshReview'), withdraw: answer('withdraw'), confirm: answer('confirm'), undo: answer('undo'),
     },
   }
   return { ctx: ctx as unknown as ActionContext & ReadContext, sent }
@@ -132,7 +133,7 @@ describe('browsing', () => {
   it('a section with no Team Leader is named without one', async () => {
     const tables = world({ Subcategory: [{ row_id: 'C2', subcategory: 'Silk Sarees', subcategory_type: 'Merchandise' }],
       'Section Subcategory': [{ row_id: 'P2', store: 'LKS', subcategory: 'C2', section: 'S2', starts_on: '2026-01-01', ends_on: null }] })
-    expect(await reads.category_subcategories(context(tables, { payload: { job: 'J1' } }).ctx)).toEqual([{ code: 'C2', name: 'Silk Sarees', holder: { kind: 'other', section: 'Silk', team_leader: null }, asked: false }])
+    expect(await reads.category_subcategories(context(tables, { payload: { job: 'J1' } }).ctx)).toEqual([{ code: 'C2', name: 'Silk Sarees', holder: { kind: 'other', section: 'Silk', team_leader: null }, asked: false, taken_out: false }])
   })
 })
 
@@ -254,8 +255,8 @@ describe('the edges of the new reads (#1175)', () => {
   it('a category nobody holds anything of lists each as in no section, two of one name by code', async () => {
     const tables = world({ Subcategory: [{ row_id: 'Z2', subcategory: 'Leggings', subcategory_type: 'Merchandise' }, { row_id: 'Z1', subcategory: 'Leggings', subcategory_type: 'Merchandise' }], 'Section Subcategory': [] })
     expect(await reads.category_subcategories(context(tables, { payload: { job: 'J1' } }).ctx)).toEqual([
-      { code: 'Z1', name: 'Leggings', holder: { kind: 'none' }, asked: false },
-      { code: 'Z2', name: 'Leggings', holder: { kind: 'none' }, asked: false },
+      { code: 'Z1', name: 'Leggings', holder: { kind: 'none' }, asked: false, taken_out: false },
+      { code: 'Z2', name: 'Leggings', holder: { kind: 'none' }, asked: false, taken_out: false },
     ])
   })
 
@@ -315,3 +316,26 @@ describe('the queue', () => {
     expect(answer.proposals).toHaveLength(501)
   })
 })
+
+describe("a Department Manager's set-up, beside Your sections (#1195)", () => {
+  const set = (row_id: string, kind: string, bundle = 'B1') => proposal({ kind, bundle, job_assignment: 'J1', site: 'LKS', store: 'Lakeside', name: 'Ladies', sections: ['S1'], section_names: ['Ladies'], maker_name: 'Asha', manager_name: 'Mani' }, { row_id })
+  const sets = [set('PD', 'department'), set('PL', 'department_section'), set('PD2', 'department', 'B2'), set('PL2', 'department_section', 'B2')]
+  it("isn't listed as a section proposal, for the person who sent it", async () => {
+    expect(await reads.my_sections(context(world(), { proposals: sets }).ctx)).toMatchObject({ state: 'ok', proposals: [] })
+  })
+  it('counts once per set-up for the reviewer, and stays off their section approvals', async () => {
+    const waiting = sets.map(p => ({ ...p, maker: 'asha' }))
+    expect(await reads.my_sections(context(world(), { user: 'mani', proposals: waiting }).ctx)).toMatchObject({ waiting_for_me: 2 })
+    expect(await reads.approvals(context(world(), { user: 'mani', proposals: waiting }).ctx)).toEqual({ state: 'ok', proposals: [] })
+  })
+})
+
+describe("a Department Manager's own pre-fill (#1205)", () => {
+  it('is not counted as waiting for them, though it is for their manager', async () => {
+    const prefill = proposal({ kind: 'department', bundle: 'B1', job_assignment: 'J1', site: 'LKS', store: 'Lakeside', name: 'Womenswear', sections: ['S1'], section_names: ['Ladies'],
+      maker_name: 'Asha', manager_name: 'Mani', prefilled: true, for_person: 'asha' }, { row_id: 'PD', maker: 'loader' })
+    expect(await reads.my_sections(context(world(), { user: 'asha', proposals: [prefill] }).ctx)).toMatchObject({ waiting_for_me: 0 })
+    expect(await reads.my_sections(context(world(), { user: 'mani', proposals: [prefill] }).ctx)).toMatchObject({ waiting_for_me: 1 })
+  })
+})
+

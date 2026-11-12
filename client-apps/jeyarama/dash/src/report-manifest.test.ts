@@ -226,11 +226,11 @@ describe('the read grants, declared before the first install', () => {
 
 // #1192: production runs 0.12.10; this version's ledger extends it with one step that changes no Table.
 describe('the version step for Dash All-Stores Reader', () => {
-  it('follows production\'s 0.12.10 history exactly, then adds the role with no Table change', () => {
-    // #1175's sections_not_mine follows it, also with no Table change.
-    const tail = manifest.migrations.slice(-5).map(m => [m.id, m.fromVersion, m.toVersion, m.operations.length])
+  it('follows production\'s 0.12.10 history exactly, then adds the role, then Your sections (#1175, #1191), then Your department (#1195), with no Table change', () => {
+    const tail = manifest.migrations.slice(-6, -1).map(m => [m.id, m.fromVersion, m.toVersion, m.operations.length])
     expect(tail).toEqual([['pickers_in_dive', '0.12.5', '0.12.6', tail[0][3]], ['merchandise_reach', '0.12.6', '0.12.9', 0],
       ['opens_for_dash_roles', '0.12.9', '0.12.10', 0], ['all_stores_reader', '0.12.10', '0.12.11', 0], ['sections_not_mine', '0.12.11', '0.13.0', 0]])
-    expect(pkg.version).toBe('0.13.0')
+    expect(manifest.migrations.at(-1)).toMatchObject({ id: 'department_self_setup', fromVersion: '0.13.0', toVersion: '0.13.1', operations: [] })
+    expect(pkg.version).toBe('0.13.1')
   })
 })
