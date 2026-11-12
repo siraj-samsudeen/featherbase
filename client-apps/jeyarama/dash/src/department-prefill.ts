@@ -7,22 +7,13 @@
 import { FALLBACK_ROLE, JOB_FIELDS, SECTION_FIELDS, T, all, approversOf, byId, inForce, list, unique, type ActionContext, type Row } from './my-sections.ts'
 import { OPEN, about, allSetUps, isSetUp, pendingBundle, proposeDepartment, storeOf, takeBack } from './department-setup.ts'
 import { istToday } from './report.ts'
+import { sectionsName } from './department-name.ts'
 import { EMPLOYEE_STATUS, exact, text } from './values.ts'
 
 const LOADERS = ['System Manager', FALLBACK_ROLE]
 const fold = (name: string) => name.trim().toLowerCase()
-const NAME_LIMIT = 40
 
-/**
- * A pre-filled department's name: its sections, in name order, joined with ", " and " & " (the
- * owner, 11-Nov-2026). Past 40 characters, the first two and how many more; the page lists them all.
- */
-export function sectionsName(sections: string[]): string {
-  const joined = sections.length < 2 ? sections.join('') : `${sections.slice(0, -1).join(', ')} & ${sections.at(-1)}`
-  if (joined.length <= NAME_LIMIT || sections.length < 3) return joined
-  const two = `${sections[0]}, ${sections[1]} & ${sections.length - 2} more`
-  return two.length <= NAME_LIMIT ? two : `${sections[0]} & ${sections.length - 1} more`
-}
+export { sectionsName }
 
 const mayLoad = (ctx: ActionContext) => (ctx.roles ?? []).some(role => LOADERS.includes(role))
 

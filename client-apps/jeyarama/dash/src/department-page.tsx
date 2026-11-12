@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react'
 import { Button, Card, EmptyState, Field, fmtDate, Notice, Segmented, StatusPill, TextInput } from '@featherbase/shop-floor'
 import { act } from './api'
+import { andList, mentionsRemoved, sectionsName } from './department-name'
 import { LoadFailed, Loading, NotSetUp, Shell, useAnswer } from './sections-page'
 
 interface Section { id: string; name: string; floor: string; sells: string[]; more: number; team_leaders: string[]; suggested: boolean; held_by: string | null }
@@ -181,19 +182,24 @@ function SetupForm({ setup, before, replaces, inUse = false, onCancel, onTouched
     const wanted = new Set(setup.sections.filter(s => fromBefore.includes(s.id)).map(s => s.floor))
     return setup.floors.map(f => f.id).filter(id => wanted.has(id))
   })
-  const [ticked, setTickedNow] = useState<string[]>(fromBefore ?? setup.sections.filter(s => s.suggested && !s.held_by).map(s => s.id))
+  const [startTicked] = useState<string[]>(() => fromBefore ?? setup.sections.filter(s => s.suggested && !s.held_by).map(s => s.id))
+  const [ticked, setTickedNow] = useState<string[]>(startTicked)
   const [name, setNameNow] = useState(before?.name ?? '')
+  // #1209: a name built from the sections follows them as they are ticked; one they typed or picked stays theirs.
+  const nameOf = (ids: string[]) => sectionsName(setup.sections.filter(s => ids.includes(s.id)).map(s => s.name).sort((a, b) => a.localeCompare(b)))
+  const [following, setFollowing] = useState(() => !!before?.name.trim() && before.name.trim() === nameOf(startTicked))
   const [step, setStep] = useState(1)
   const [error, setError] = useState<string | null>(null)
   // A refusal, or a note about what was done before, is stale once anything changes.
   const touched = () => { setError(null); onTouched() }
   const setFloors = (next: string[]) => { touched(); setFloorsNow(next) }
-  const setTicked = (next: string[]) => { touched(); setTickedNow(next) }
-  const setName = (next: string) => { touched(); setNameNow(next) }
+  const setTicked = (next: string[]) => { touched(); setTickedNow(next); if (following) setNameNow(nameOf(next)) }
+  const setName = (next: string) => { touched(); setFollowing(false); setNameNow(next) }
   const [busy, setBusy] = useState(false)
   useEffect(() => keepLayout(layout), [layout])
   const chosen = setup.sections.filter(s => ticked.includes(s.id))
   const trimmed = name.trim()
+  const removed = following ? [] : mentionsRemoved(trimmed, setup.sections.filter(s => startTicked.includes(s.id) && !ticked.includes(s.id)).map(s => s.name))
   async function send() {
     setBusy(true)
     setError(null)
@@ -243,6 +249,7 @@ function SetupForm({ setup, before, replaces, inUse = false, onCancel, onTouched
       <Field label="Department name" hint="Use the name your store uses on the floor, for example Ladies Ethnic.">
         <TextInput value={name} maxLength={60} onChange={event => setName(event.target.value)} data-testid="name-input" />
       </Field>
+      {removed.length > 0 && <p className="fd-muted text-sm" role="status" data-testid="name-mentions-removed">This name mentions {andList(removed)}, which you've taken out.</p>}
     </div>
   )
   const atOnce = setup.applies_at_once === true
