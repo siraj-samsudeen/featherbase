@@ -830,7 +830,7 @@
      "2002"
     ]
    ],
-   "says": "Department Manager at Lakeside, reporting to Mani Manager: sets up their department on Your department (#1195)"
+   "says": "Department Manager at Lakeside, reporting to Mani Manager: their department is pre-filled from their team as Bags & Silk, waiting for Mani; the banner asks \"Is this right?\" (#1205)"
   },
   {
    "key": "bagsleader",
@@ -878,7 +878,17 @@
      "2002"
     ]
    ],
-   "says": "Department Manager at Lakeside, reporting to Mani Manager, with no pre-fill: sets up their department from the card (#1195)"
+   "says": "Department Manager at Lakeside, reporting to Mani Manager, with no department: sets it up from the card (#1195)"
+  },
+  {
+   "key": "sysmanager",
+   "name": "Sam System-Manager",
+   "code": null,
+   "roles": [
+    "System Manager"
+   ],
+   "jobs": [],
+   "says": "System Manager with no job: approves nothing, because approvers come from the reporting line (Master Data Editor is the only fallback)"
   }
  ],
  "noSignIn": [
@@ -1143,5 +1153,19 @@
    "2008",
    []
   ]
+ ],
+ "_departmentStart": "Every run puts the made-up Department Managers without a department back to their start: their set-ups are removed, then each in prefills is pre-filled again as the loader would (#1205). Sections are names at that store; flagged ones are shared with another Team Leader.",
+ "prefills": [
+  {
+   "store": "LKS",
+   "employee": "2010",
+   "sections": [
+    "Bags",
+    "Silk"
+   ],
+   "flagged": [
+    "Silk"
+   ]
+  }
  ]
 }

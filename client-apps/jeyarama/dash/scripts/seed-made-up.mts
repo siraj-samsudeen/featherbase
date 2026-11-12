@@ -7,8 +7,10 @@
 // Normally run for you: `pnpm dev jeyarama/dash --made-up-data` (instance.json's
 // `madeUpData`). It needs the server running with a value for every secret the
 // app declares, which that command gives it. It refuses a database that is not
-// stamped `development`, and is safe to rerun: what exists stays, and the cached
-// copy is replaced with one dated today.
+// stamped `development`, and is safe to rerun: what exists stays, the cached
+// copy is replaced with one dated today, and the made-up Department Managers
+// without a seeded department go back to their start (Devi pre-filled, Kiran
+// with the set-up card), so rerunning it restarts a used-up department test.
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
@@ -238,6 +240,37 @@ for (const [department_id, store, name, manager, sections] of org.departments as
   await keep('Department', department_id, { department_id, store, name, manager, starts_on: '2026-10-01', source_key: 'Made-up' })
   for (const section of sections)
     await keep('Department Section', `${department_id}-${section}`, { department_section_id: `${department_id}-${section}`, store, department: department_id, section, starts_on: '2026-10-01', source_key: 'Made-up' })
+}
+
+// #1205: every run puts the made-up Department Managers without a seeded department back to their
+// start, so a used-up test begins again: what they or a reviewer did is removed (local data only,
+// on a database stamped development), then the fixture's pre-fills are made again through Dash's
+// own load action, as the production loader makes them.
+const seeded = new Set((org.departments as [string, string, string, string][]).map(([, , , manager]) => manager))
+const starting = (org.sectionPeople as { code: string | null; jobs: [string, string, ...unknown[]][] }[])
+  .flatMap(staff => staff.jobs.filter(([, job]) => job === 'Department Manager').map(([assignment]) => ({ assignment, employee: staff.code! })))
+  .filter(({ employee }) => !seeded.has(employee))
+if (!starting.length) throw new Error('The made-up org chart has no Department Manager without a department to start from')
+const proposals = (await sql`select row_id from featherbase.change_proposal where about->>'job_assignment' in ${sql(starting.map(s => s.assignment))}
+  and about->>'kind' in ('department', 'department_section')`).map((r: { row_id: string }) => r.row_id)
+const departments = (await sql`select row_id from featherbase.department where manager in ${sql(starting.map(s => s.employee))}`).map((r: { row_id: string }) => r.row_id)
+const links = departments.length ? (await sql`select row_id from featherbase.department_section where department in ${sql(departments)}`).map((r: { row_id: string }) => r.row_id) : []
+await sql.begin(async (tx: typeof sql) => {
+  if (proposals.length) {
+    await tx`delete from featherbase.change_proposal_approver where parent in ${tx(proposals)}`
+    await tx`delete from featherbase.change_proposal_column where parent in ${tx(proposals)}`
+    await tx`delete from featherbase.change_proposal where row_id in ${tx(proposals)}`
+  }
+  if (links.length) await tx`delete from featherbase.version where ref_table = 'Department Section' and ref_name in ${tx(links)}`
+  if (departments.length) await tx`delete from featherbase.version where ref_table = 'Department' and ref_name in ${tx(departments)}`
+  if (links.length) await tx`delete from featherbase.department_section where row_id in ${tx(links)}`
+  if (departments.length) await tx`delete from featherbase.department where row_id in ${tx(departments)}`
+})
+for (const [store, managers] of Object.entries(Object.groupBy(org.prefills as { store: string; employee: string; sections: string[]; flagged: string[] }[], p => p.store))) {
+  const { result } = await post('/api/app_actions/dash/prefill_departments', { idempotencyKey: randomUUID(),
+    payload: { store, managers: managers!.map(({ employee, sections, flagged }) => ({ employee, sections, flagged })) } }) as { result: { results: { name: string; outcome: string; notes: string[] }[] } }
+  const failed = result.results.filter(r => r.outcome !== 'pre-filled')
+  if (failed.length) throw new Error(`A made-up pre-fill did not take: ${JSON.stringify(failed)}`)
 }
 
 // The proof it worked: a made-up Store Manager opens Lakeside's report and gets figures.
