@@ -1,4 +1,4 @@
-# ADR 0026: Agents connect by signing in through the instance, which issues ordinary access tokens
+# ADR 0027: Agents connect by signing in through the instance, which issues ordinary access tokens
 
 **Status:** Proposed · **Date:** 2026-11-12 · **Issue:** [#1207](https://github.com/siraj-samsudeen/featherbase/issues/1207) · **Change:** `openspec/changes/mcp-oauth-connect`
 
