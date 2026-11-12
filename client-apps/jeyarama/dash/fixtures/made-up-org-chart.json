@@ -283,6 +283,16 @@
    "990101001",
    "Saree hangers",
    "Consumable"
+  ],
+  [
+   "010202003",
+   "Girls leggings",
+   "Merchandise"
+  ],
+  [
+   "010202004",
+   "Girls leggings",
+   "Merchandise"
   ]
  ],
  "placements": [
@@ -350,6 +360,16 @@
    "NGT",
    "011111001",
    "NGT-S1"
+  ],
+  [
+   "LKS",
+   "010202003",
+   "LKS-S3"
+  ],
+  [
+   "LKS",
+   "010202004",
+   "LKS-S3"
   ]
  ],
  "readers": [
@@ -765,6 +785,22 @@
    "says": "holds Master Data Editor"
   },
   {
+   "key": "silkleader",
+   "name": "Bala Silk-Leader",
+   "code": "2009",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2009-LKS-S2",
+     "Team Leader",
+     "LKS",
+     "LKS-S2",
+     "2008"
+    ]
+   ],
+   "says": "Team Leader of Silk at Lakeside; asks Selvi Other-Manager, so a move from Silk waits for Mani or Selvi"
+  },
+  {
    "key": "manager2",
    "name": "Selvi Other-Manager",
    "code": "2008",
@@ -779,6 +815,70 @@
    "roles": [],
    "jobs": [],
    "says": "not on the staff list"
+  },
+  {
+   "key": "department",
+   "name": "Devi Department-Manager",
+   "code": "2010",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2010-LKS",
+     "Department Manager",
+     "LKS",
+     null,
+     "2002"
+    ]
+   ],
+   "says": "Department Manager at Lakeside, reporting to Mani Manager: sets up their department on Your department (#1195)"
+  },
+  {
+   "key": "bagsleader",
+   "name": "Kavya Bags-Leader",
+   "code": "2011",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2011-LKS-S5",
+     "Team Leader",
+     "LKS",
+     "LKS-S5",
+     "2010"
+    ]
+   ],
+   "says": "Team Leader of Bags, reporting to Devi: Bags is suggested for Devi's department"
+  },
+  {
+   "key": "kidsmanager",
+   "name": "Arun Kids-Manager",
+   "code": "2012",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2012-LKS",
+     "Department Manager",
+     "LKS",
+     null,
+     "2002"
+    ]
+   ],
+   "says": "Department Manager of Kids at Lakeside, which holds Kids Wear"
+  },
+  {
+   "key": "setupcard",
+   "name": "Kiran Setup-Manager",
+   "code": "2013",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2013-LKS",
+     "Department Manager",
+     "LKS",
+     null,
+     "2002"
+    ]
+   ],
+   "says": "Department Manager at Lakeside, reporting to Mani Manager, with no pre-fill: sets up their department from the card (#1195)"
   }
  ],
  "noSignIn": [
@@ -792,11 +892,64 @@
   "West"
  ],
  "merchandise": {
-  "_about": "The tree above three made-up saree subcategories, and the made-up buyers who hold parts of it.",
+  "_about": "The merchandise tree above the made-up subcategories, and the made-up buyers who hold parts of it. Two leaves named Girls leggings sit in different categories (#1175).",
   "divisions": [
-   "Fashion"
+   "Accessories",
+   "Consumables",
+   "Fashion",
+   "Footwear",
+   "Kids",
+   "Menswear"
   ],
   "subdivisions": [
+   [
+    "Bags",
+    "Accessories"
+   ],
+   [
+    "Boys western",
+    "Kids"
+   ],
+   [
+    "Fashion accessories",
+    "Accessories"
+   ],
+   [
+    "Formal wear",
+    "Menswear"
+   ],
+   [
+    "Girls ethnic",
+    "Kids"
+   ],
+   [
+    "Girls western",
+    "Kids"
+   ],
+   [
+    "Packing",
+    "Consumables"
+   ],
+   [
+    "Sportswear",
+    "Menswear"
+   ],
+   [
+    "Store supplies",
+    "Consumables"
+   ],
+   [
+    "Toys",
+    "Kids"
+   ],
+   [
+    "Watches",
+    "Accessories"
+   ],
+   [
+    "Women's footwear",
+    "Footwear"
+   ],
    [
     "Womenswear",
     "Fashion"
@@ -804,8 +957,72 @@
   ],
   "categories": [
    [
+    "Belts",
+    "Fashion accessories"
+   ],
+   [
+    "Boys tops",
+    "Boys western"
+   ],
+   [
+    "Clutches",
+    "Bags"
+   ],
+   [
+    "Formal shirts",
+    "Formal wear"
+   ],
+   [
+    "Formal trousers",
+    "Formal wear"
+   ],
+   [
+    "Gift wrap",
+    "Packing"
+   ],
+   [
+    "Girls dresses",
+    "Girls western"
+   ],
+   [
+    "Girls ethnic bottoms",
+    "Girls ethnic"
+   ],
+   [
+    "Girls western bottoms",
+    "Girls western"
+   ],
+   [
+    "Handbags",
+    "Bags"
+   ],
+   [
+    "Hangers",
+    "Store supplies"
+   ],
+   [
+    "Salwar and kurtis",
+    "Womenswear"
+   ],
+   [
+    "Sandals",
+    "Women's footwear"
+   ],
+   [
     "Sarees",
     "Womenswear"
+   ],
+   [
+    "Soft toys",
+    "Toys"
+   ],
+   [
+    "Track pants",
+    "Sportswear"
+   ],
+   [
+    "Wrist watches",
+    "Watches"
    ]
   ],
   "placed": [
@@ -820,6 +1037,70 @@
    [
     "010303001",
     "Sarees"
+   ],
+   [
+    "010101003",
+    "Salwar and kurtis"
+   ],
+   [
+    "010202001",
+    "Boys tops"
+   ],
+   [
+    "010202002",
+    "Girls dresses"
+   ],
+   [
+    "010202003",
+    "Girls western bottoms"
+   ],
+   [
+    "010202004",
+    "Girls ethnic bottoms"
+   ],
+   [
+    "010404001",
+    "Belts"
+   ],
+   [
+    "010505001",
+    "Handbags"
+   ],
+   [
+    "010606001",
+    "Clutches"
+   ],
+   [
+    "010707001",
+    "Sandals"
+   ],
+   [
+    "010808001",
+    "Wrist watches"
+   ],
+   [
+    "010909001",
+    "Gift wrap"
+   ],
+   [
+    "011010001",
+    "Track pants"
+   ],
+   [
+    "011111001",
+    "Soft toys"
+   ],
+   [
+    "011212001",
+    "Formal shirts"
+   ],
+   [
+    "011313001",
+    "Formal trousers"
+   ],
+   [
+    "990101001",
+    "Hangers"
    ]
   ],
   "buyers": [
@@ -837,5 +1118,30 @@
     ]
    }
   ]
- }
+ },
+ "departments": [
+  [
+   "LKS-Kids",
+   "LKS",
+   "Kids",
+   "2012",
+   [
+    "LKS-S3"
+   ]
+  ],
+  [
+   "HIL-Menswear",
+   "HIL",
+   "Menswear",
+   "2008",
+   []
+  ],
+  [
+   "BAY-Footwear",
+   "BAY",
+   "Footwear and Bags",
+   "2008",
+   []
+  ]
+ ]
 }

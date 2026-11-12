@@ -393,3 +393,62 @@ describe('listing', () => {
     await expectRefused(probe(manager, { op: 'approve', id: 'no-such', decision: approval(manager.user) }), 404)
   })
 })
+
+// #1175: undo, a removal with nothing in its place, and an approver who puts it elsewhere.
+describe('the maker withdraws, a proposal ends a row, an approver applies another value', () => {
+  test('the maker withdraws a pending proposal; nobody else can, and a decided one stays decided', async ({ admin, createUser }) => {
+    const { maker, manager, other } = await setUp(admin, createUser)
+    const proposal = await probe(maker, ask(manager.user))
+    await expectRefused(probe(other, { op: 'withdraw', id: proposal.row_id }), 417)
+    await expectRefused(probe(manager, { op: 'withdraw', id: proposal.row_id }), 417)
+    expect(await probe(maker, { op: 'withdraw', id: proposal.row_id })).toMatchObject({ state: 'Withdrawn', decided_by: maker.user })
+    await expectRefused(probe(maker, { op: 'withdraw', id: proposal.row_id }), 417, 'The person who asked has withdrawn this')
+    await expectRefused(probe(manager, { op: 'approve', id: proposal.row_id, decision: approval(manager.user) }), 417, 'The person who asked has withdrawn this')
+    expect(await placement('P-1')).toMatchObject({ label: 'Sarees', ends_on: null })
+    // Asking again after withdrawing is a new proposal, not a repeat.
+    const again = await probe(maker, ask(manager.user))
+    await probe(manager, { op: 'approve', id: again.row_id, decision: approval(manager.user) })
+    await expectRefused(probe(maker, { op: 'withdraw', id: again.row_id }), 417, 'This has already been decided')
+  })
+
+  test('an ending ends the row the day before and adds nothing', async ({ admin, createUser }) => {
+    const { maker, manager } = await setUp(admin, createUser)
+    const ending = (row: string | null = 'P-1', changes: Record<string, string> = {}) => ({ op: 'propose', request: { table: 'Placement', row, changes, ends: true,
+      approvers: { people: [manager.user], fallbackRoles: [] }, about: { kind: 'removal' } } })
+    await expectRefused(probe(maker, ending(null)), 417)
+    await expectRefused(probe(maker, ending('P-1', { label: 'Silk' })), 417)
+    const proposal = await probe(maker, ending())
+    expect(proposal).toMatchObject({ state: 'Pending', ends_row: true, target_row: 'P-1' })
+    await expectRefused(probe(maker, ending()), 417, 'You have already asked for this')
+    // A change to the same row is a different ask.
+    const other = await probe(maker, ask(manager.user))
+    const applied = await probe(manager, { op: 'approve', id: proposal.row_id, decision: decision(manager.user, { effectiveOn: '2026-11-05' }) })
+    expect(applied).toMatchObject({ state: 'Applied', result_row: null })
+    expect(asDay((await placement('P-1')).ends_on)).toBe('2026-11-04')
+    expect((await sql`select count(*)::int as n from ${sql(await tableRelation('Placement'))}`)[0].n).toBe(1)
+    expect((await probe(maker, { op: 'proposals', filter: { ids: [other.row_id] } }))[0].state).toBe('Needs fresh review')
+    const events = await sql`select data from version where ref_table = 'Placement' and ref_name = 'P-1'`
+    expect(events.map(e => e.data)).toContainEqual(expect.objectContaining({ change_proposal: proposal.row_id, approved_by: manager.user }))
+  })
+
+  test('refused: an ending flag that is not true or false, ending a row that already ends, and non-text values or reasons', async ({ admin, createUser }) => {
+    const { maker, manager } = await setUp(admin, createUser)
+    const request = (row: string, ends: unknown) => ({ op: 'propose', request: { table: 'Placement', row, changes: {}, ends, approvers: { people: [manager.user], fallbackRoles: [] }, about: { kind: 'removal' } } })
+    await expectRefused(probe(maker, request('P-1', 'yes')), 417, 'Expected ends to be true or false')
+    await admin.post('/api/save_row', { table: 'Placement', row: { placement_id: 'P-ENDING', label: 'Linen', starts_on: '2026-10-01', ends_on: '2026-12-31' } })
+    await expectRefused(probe(maker, request('P-ENDING', true)), 417, 'That already has an end')
+    const proposal = await probe(maker, ask(manager.user))
+    await expectRefused(probe(manager, { op: 'approve', id: proposal.row_id, decision: { ...approval(manager.user), instead: { label: 7 } } }), 417, 'Proposed values are text')
+    await expectRefused(probe(manager, { op: 'approve', id: proposal.row_id, decision: { ...approval(manager.user), reason: 7 } }), 417, 'A reason is text')
+    expect((await probe(maker, { op: 'proposals', filter: { ids: [proposal.row_id] } }))[0].state).toBe('Pending')
+  })
+
+  test('an approver applies another value for a column the proposal changes, and says so', async ({ admin, createUser }) => {
+    const { maker, manager } = await setUp(admin, createUser)
+    const proposal = await probe(maker, ask(manager.user))
+    await expectRefused(probe(manager, { op: 'approve', id: proposal.row_id, decision: { ...approval(manager.user), instead: { site: 'South' } } }), 417)
+    const applied = await probe(manager, { op: 'approve', id: proposal.row_id, decision: { ...approval(manager.user), instead: { label: 'Linen' }, reason: 'Put in Linen instead.' } })
+    expect(applied).toMatchObject({ state: 'Applied', result_row: 'P-2', decision_reason: 'Put in Linen instead.' })
+    expect(await placement('P-2')).toMatchObject({ label: 'Linen', site: 'North' })
+  })
+})

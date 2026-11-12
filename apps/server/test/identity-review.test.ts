@@ -10,7 +10,7 @@ import { expectStatus, makePerson } from './fixtures'
 import { hashPassword, issueSession } from '../src/auth'
 import { _setDelegatedFetch } from '../src/delegated-login'
 import { configureDelegated, configureGoogle, linkDelegated } from './identity-fixtures'
-import { googleSignIn, redeemSession } from './google-mock'
+import { googleSignIn, mockOAuth, redeemSession } from './google-mock'
 
 const SECRET = process.env.JWT_SECRET ?? 'dev-secret-change-me'
 const now = () => Math.floor(Date.now() / 1000)
@@ -88,7 +88,7 @@ describe('administrators are never locked out (A-M2, minor 1)', () => {
   })
 
   test('Google counts only when it can sign anyone in; blanking its client id is guarded', async ({ admin }) => {
-    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    mockOAuth(false)
     await configureGoogle({ client_id: 'real-client-id' })
     const smog = await person('sm.only.google', { roles: [{ role: 'System Manager' }] })
     await sql`insert into sign_in_identity (id, person_id, method, subject, linked_by) values ('uid_smog', ${smog}, 'google', 'g-smog', 'test')`
@@ -104,7 +104,7 @@ describe('administrators are never locked out (A-M2, minor 1)', () => {
   })
 
   test('moving a System Manager\'s only way in to someone else is refused and names them; the link stays', async ({ admin }) => {
-    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    mockOAuth(false)
     await configureGoogle({ client_id: 'real-client-id' })
     const smove = await person('sm.only.moved', { roles: [{ role: 'System Manager' }] })
     const other = await person('someone.else')

@@ -3,6 +3,8 @@ import { test } from './pg-test'
 import { config } from '../src/config'
 import { parseInstanceAddresses } from '../src/instance-addresses'
 import { configureGoogle, inviteGoogleRaw } from './identity-fixtures'
+import { beginMockApproval, mockOAuth } from './google-mock'
+import { withTimeFromNow } from './clock'
 import { saveDoc } from '../src/document'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
@@ -80,14 +82,8 @@ describe('Google sign-in per address', () => {
 
 // The mock provider's dance, started on one address and finished on another.
 async function mockCallbackUrl(api: TestClient, startOn: string, email: string): Promise<{ callback: string; cookie: string }> {
-  const login = await api.fetch(`${startOn}/api/oauth/google/login`)
-  const state = new URLSearchParams((login.headers.get('location') as string).split('?')[1]).get('state') as string
-  const cookie = login.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
-  const approve = await api.fetch(
-    `${startOn}/api/oauth/mock/approve?${new URLSearchParams({ state, redirect_uri: '/api/oauth/google/callback', email, name: 'Someone' })}`,
-    { headers: { cookie } },
-  )
-  return { callback: approve.headers.get('location') as string, cookie }
+  const { callback, cookie } = await beginMockApproval(api, email, { origin: startOn, name: 'Someone' })
+  return { callback: callback as string, cookie }
 }
 
 describe('the OAuth state is bound to its address', () => {
@@ -429,13 +425,9 @@ describe('the hand-off between addresses', () => {
     const viewer = await personWith(admin, 'viewer.late', ['Sales Target Viewer'])
     const { body, sid } = await signIn(api, ADMIN, viewer.usr)
     const { code, nonce } = await followHandoff(api, body.handoff!, sid)
-    const now = Date.now()
-    const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 61_000)
-    try {
+    await withTimeFromNow(61_000, async () => {
       await expectStatus(await redeemOn(api, DASH, code, nonce), 401)
-    } finally {
-      clock.mockRestore()
-    }
+    })
   })
 
   test('a code is refused once the source session has signed out', async ({ api, admin }) => {
@@ -542,7 +534,7 @@ describe('the release preflight', () => {
   // (env.ts): its own JWT_SECRET, and no mock Google provider.
   const asRelease = async <T>(run: () => Promise<T>) => {
     vi.stubEnv('JWT_SECRET', 'a-production-secret')
-    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    mockOAuth(false)
     const before = process.env.DISABLE_DATABASE_ENVIRONMENT_CHECK
     process.env.DISABLE_DATABASE_ENVIRONMENT_CHECK = '1'
     try {
