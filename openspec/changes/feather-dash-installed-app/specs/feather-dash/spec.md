@@ -85,6 +85,23 @@ no reviewer page.)
 - **WHEN** a Team Leader proposes a move into a section of another store
 - **THEN** the proposal is refused
 
+### Requirement: Undo takes back your own request
+
+Until a request is decided or reviewed, the person who asked SHALL be able to take it
+back (Undo). A pending proposal SHALL then change nothing; a change already applied
+under "Apply now, review after" SHALL be put back. Either SHALL no longer wait for
+anyone.
+
+#### Scenario: Undo withdraws a pending proposal
+
+- **WHEN** the Team Leader undoes their pending proposal before it is decided
+- **THEN** it changes nothing and no longer waits for their manager
+
+#### Scenario: Undo puts back a change applied at once
+
+- **WHEN** the Team Leader undoes a change that was applied at once and not yet reviewed
+- **THEN** the change is put back and no longer waits for review
+
 ### Requirement: The job's manager decides, or else a Master Data Editor
 
 A proposal SHALL go to the manager the job reports to, while that manager is current

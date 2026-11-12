@@ -443,6 +443,37 @@ describe('what an approver decides', () => {
   })
 })
 
+// #1174 (Dash opens for anyone holding a Dash role): the people who decide, and a Team Leader left
+// with nothing, each hold Dash Reader; Dash must open for them and show their part of Your sections.
+describe('Dash opens for the people sections work needs', () => {
+  const opensDash = async (client: TestClient) => (await client.get<{ name: string }[]>('/api/app_catalog')).some(app => app.name === 'dash')
+
+  test('a head-office Master Data Editor, with no job, opens Dash and sees the list of what is in no section', async ({ admin, createUser }) => {
+    const { maker, manager, editor } = await world(admin, createUser)
+    const proposal = await act(maker, 'propose_removal', removal())
+    await act(manager, 'decide', { proposal: proposal.id, decision: 'approve' })
+    expect(await opensDash(editor)).toBe(true)
+    expect(await read(editor, 'holds_master_data')).toBe(true)
+    expect((await read(editor, 'unplaced')).rows.map((r: any) => [r.store, r.name, r.was_in])).toEqual([['Lakeside', 'Sarees', 'Ladies Wear']])
+  })
+
+  test('a manager with no job of their own opens Dash and sees what waits for them', async ({ admin, createUser }) => {
+    const { maker, manager } = await world(admin, createUser)
+    await act(maker, 'propose_removal', removal())
+    expect(await opensDash(manager)).toBe(true)
+    expect((await read(manager, 'approvals')).proposals.map((p: any) => [p.kind, p.who])).toEqual([['removal', 'Asha Maker']])
+  })
+
+  test('a Team Leader whose last subcategory moved away still opens Dash and sees their empty section', async ({ admin, createUser }) => {
+    const { maker, manager, holder } = await world(admin, createUser)
+    const [asked] = await act(maker, 'propose_adds', adds('010101003'))
+    await act(manager, 'decide', { proposal: asked.id, decision: 'approve' })
+    expect(await opensDash(holder)).toBe(true)
+    const { jobs } = await read(holder, 'my_sections')
+    expect(jobs.map((j: any) => [j.section.name, j.subcategories.length])).toEqual([['Silk', 0]])
+  })
+})
+
 // #1191: on an instance that sets Your sections to "Apply now, review after", a change happens
 // when it is asked for; the reviewer confirms it or undoes it.
 const applyNow = async (admin: TestClient) => {

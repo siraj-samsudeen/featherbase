@@ -696,6 +696,10 @@ describes what shipped, in `client-apps/jeyarama/dash/src/my-sections.ts` (#975)
   placement, or the job) ends and a new one starts; a subcategory that had no section
   just gets its new placement. If the section closed, moved floor, or the row changed
   since the proposal, the proposal goes to "Needs fresh review" and nothing changes.
+- **Undo.** The person who asked can take back their own request until it is decided
+  (`withdraw`, #1175). A pending proposal is withdrawn and changes nothing. Under
+  "Apply now, review after" (#1191), a change already made and not yet reviewed is
+  undone, which puts it back. Either way it then waits for nobody.
 
 **Rejected:** direct writes by managers (a subcategory move changes someone else's
 scope); Admin grants plus Data Scope rows (they cannot express "sections your
