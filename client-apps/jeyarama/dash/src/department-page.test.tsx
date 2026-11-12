@@ -613,6 +613,21 @@ describe('the name keeps up with the ticked sections (#1209)', () => {
     expect(page.q('name-mentions-removed')).toBeNull()
     await page.done()
   })
+  it('puts the hint right under the name, read with it, and counts a section ticked here then taken out', async () => {
+    answers.department_setup = named('Sarees & Silk', [['S1', 'Sarees'], ['S2', 'Silk']])
+    const page = await render('YourDepartment')
+    await page.click('Change it')
+    await page.choose(page.q('name-input') as HTMLInputElement, 'Bags Corner')
+    await page.press(tick(page.container, 'Bags'))
+    expect(page.q('name-mentions-removed')).toBeNull()
+    await page.press(tick(page.container, 'Bags'))
+    const hint = page.q('name-mentions-removed')!
+    expect(hint.textContent).toBe("This name mentions Bags, which you've taken out.")
+    const described = (page.q('name-input') as HTMLInputElement).getAttribute('aria-describedby')!.split(' ').map(id => document.getElementById(id))
+    expect(described.some(element => element?.contains(hint))).toBe(true)
+    expect(described.some(element => element?.textContent?.includes('Use the name your store uses on the floor'))).toBe(true)
+    await page.done()
+  })
   it('treats a name of their own the same from the start, and names every section it mentions', async () => {
     answers.department_setup = named('Sarees and Silk Corner', [['S1', 'Sarees'], ['S2', 'Silk']])
     const page = await render('YourDepartment')

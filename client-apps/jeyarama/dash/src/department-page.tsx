@@ -184,6 +184,8 @@ function SetupForm({ setup, before, replaces, inUse = false, onCancel, onTouched
   })
   const [startTicked] = useState<string[]>(() => fromBefore ?? setup.sections.filter(s => s.suggested && !s.held_by).map(s => s.id))
   const [ticked, setTickedNow] = useState<string[]>(startTicked)
+  // Every section ticked at any point in this edit: unticking one of them is "taking it out".
+  const [hadTicked, setHadTicked] = useState<string[]>(startTicked)
   const [name, setNameNow] = useState(before?.name ?? '')
   // #1209: a name built from the sections follows them as they are ticked; one they typed or picked stays theirs.
   const nameOf = (ids: string[]) => sectionsName(setup.sections.filter(s => ids.includes(s.id)).map(s => s.name).sort((a, b) => a.localeCompare(b)))
@@ -193,13 +195,16 @@ function SetupForm({ setup, before, replaces, inUse = false, onCancel, onTouched
   // A refusal, or a note about what was done before, is stale once anything changes.
   const touched = () => { setError(null); onTouched() }
   const setFloors = (next: string[]) => { touched(); setFloorsNow(next) }
-  const setTicked = (next: string[]) => { touched(); setTickedNow(next); if (following) setNameNow(nameOf(next)) }
+  const setTicked = (next: string[]) => {
+    touched(); setTickedNow(next); setHadTicked(had => [...new Set([...had, ...next])])
+    if (following) setNameNow(nameOf(next))
+  }
   const setName = (next: string) => { touched(); setFollowing(false); setNameNow(next) }
   const [busy, setBusy] = useState(false)
   useEffect(() => keepLayout(layout), [layout])
   const chosen = setup.sections.filter(s => ticked.includes(s.id))
   const trimmed = name.trim()
-  const removed = following ? [] : mentionsRemoved(trimmed, setup.sections.filter(s => startTicked.includes(s.id) && !ticked.includes(s.id)).map(s => s.name))
+  const removed = following ? [] : mentionsRemoved(trimmed, setup.sections.filter(s => hadTicked.includes(s.id) && !ticked.includes(s.id)).map(s => s.name))
   async function send() {
     setBusy(true)
     setError(null)
@@ -246,10 +251,12 @@ function SetupForm({ setup, before, replaces, inUse = false, onCancel, onTouched
           </div>
         </div>
       )}
-      <Field label="Department name" hint="Use the name your store uses on the floor, for example Ladies Ethnic.">
+      <Field label="Department name" hint={<>
+        {removed.length > 0 && <span className="block text-ink" role="status" data-testid="name-mentions-removed">This name mentions {andList(removed)}, which you've taken out.</span>}
+        <span className="block">Use the name your store uses on the floor, for example Ladies Ethnic.</span>
+      </>}>
         <TextInput value={name} maxLength={60} onChange={event => setName(event.target.value)} data-testid="name-input" />
       </Field>
-      {removed.length > 0 && <p className="fd-muted text-sm" role="status" data-testid="name-mentions-removed">This name mentions {andList(removed)}, which you've taken out.</p>}
     </div>
   )
   const atOnce = setup.applies_at_once === true
