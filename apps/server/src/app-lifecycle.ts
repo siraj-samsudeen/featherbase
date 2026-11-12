@@ -14,7 +14,10 @@ const locks = postgres(config.databaseUrl, {
   idle_timeout: 1,
 })
 const scope = new AsyncLocalStorage<{ exclusive: boolean; provisioning?: string }>()
-const clientVersion = new AsyncLocalStorage<Map<string, string>>()
+/** #1211: an agent's call through /mcp speaks each app's installed version,
+ *  read at the check itself (under the lifecycle lock), never a snapshot. */
+const INSTALLED = Symbol('installed application versions')
+const clientVersion = new AsyncLocalStorage<Map<string, string> | typeof INSTALLED>()
 export const activeApps = new Set<string>()
 
 export function withAppClientVersion<T>(version: string, fn: () => Promise<T>) {
@@ -29,13 +32,21 @@ export function withAppClientVersion<T>(version: string, fn: () => Promise<T>) {
   return clientVersion.run(identities, fn)
 }
 
+/** #1211: an agent has no loaded client to go stale, so its calls through
+ *  /mcp (marked in-process by runAsAgent, never by a header) are checked
+ *  against each app's installed version. Browser requests keep their header. */
+export function withInstalledAppVersions<T>(fn: () => Promise<T>) {
+  return clientVersion.run(INSTALLED, fn)
+}
+
 /** #559: platform-internal work done on an app's behalf (its scope provider)
  *  runs as that app's verified installed version, whatever the request named
  *  for it. The request's identities for every other app are kept. */
 export function withAppIdentity<T>(app: string, version: string, fn: () => Promise<T>) {
   const supplied = clientVersion.getStore()
-  // A trusted in-process call has no HTTP identities to correct.
-  if (supplied === undefined) return fn()
+  // A trusted in-process call has no HTTP identities to correct; an agent's
+  // already speaks every app's installed version.
+  if (supplied === undefined || supplied === INSTALLED) return fn()
   const identities = new Map(supplied)
   identities.set(app, `${app}@${version}`)
   return clientVersion.run(identities, fn)
@@ -164,7 +175,10 @@ export async function assertAppAvailable(name: string, exactClientIdentity = fal
     const apps = await import('./apps')
     if (!(await apps.activateInstalledApp(owner))) throw new AppNotRunningError(await apps.whyAppNotRunning(owner))
   }
-  const supplied = clientVersion.getStore()
+  const snapshot = clientVersion.getStore()
+  // An agent's call speaks the version installed now, so it passes both checks.
+  if (snapshot === INSTALLED) return
+  const supplied = snapshot
   // The declared boundary requires an exact HTTP identity even on first install.
   // Trusted in-process calls have no HTTP client snapshot; legacy CRUD is unchanged.
   if (exactClientIdentity && supplied !== undefined && supplied.get(owner) !== `${owner}@${installed.package_version}`)
