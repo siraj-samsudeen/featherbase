@@ -12,8 +12,7 @@ Checked against Dash 0.13.1 (#1175, #1191, #1195, #1205) and the made-up data, 1
 Everyone (the owner's machine or the tester's) uses the same code and the same made-up data, so a
 run can move between machines.
 
-1. Get the code: pull `main` (until the seed commit `75411c501` is on `main`, check out
-   `issue-1205-seed-test-start` instead). From the repository root, run `./init.sh`, then:
+1. Pull `main`. From the repository root, run `./init.sh`, then:
 
    ```sh
    pnpm dev jeyarama/dash --made-up-data
