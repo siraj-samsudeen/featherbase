@@ -252,7 +252,7 @@ function SetupForm({ setup, before, replaces, inUse = false, onCancel, onTouched
         </div>
       )}
       <Field label="Department name" hint={<>
-        {removed.length > 0 && <span className="block text-ink" role="status" data-testid="name-mentions-removed">This name mentions {andList(removed)}, which you've taken out.</span>}
+        {removed.length > 0 && <span className="mb-1 block text-ink" role="status" data-testid="name-mentions-removed">This name mentions {andList(removed)}, which you've taken out.</span>}
         <span className="block">Use the name your store uses on the floor, for example Ladies Ethnic.</span>
       </>}>
         <TextInput value={name} maxLength={60} onChange={event => setName(event.target.value)} data-testid="name-input" />
