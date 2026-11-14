@@ -308,6 +308,26 @@ describe('a newer version in the image', () => {
     await expect(assertInstalledAppsShipped({ followFiles: true })).rejects.toThrow(/does not ship it/)
   })
 
+  // #1169: an upgrade applies the access its version declares with nobody reviewing it, so the
+  // deploy's own output says what it gave.
+  test('names each grant an upgrade gives in what the deploy prints', async () => {
+    await pretendTo('staging')
+    await deploy()
+    const next = join(apps, 'other-next')
+    cpSync(app, next, { recursive: true })
+    const nextVersion = '99.0.0'
+    writeFileSync(join(next, 'package.json'), JSON.stringify({ ...readJson(packageFile), version: nextVersion }))
+    const manifest = readJson(manifestFile)
+    writeFileSync(join(next, 'featherbase.json'), JSON.stringify({
+      ...manifest, roles: [...(manifest.roles ?? []), 'Task Auditor'],
+      permissions: [...(manifest.permissions ?? []), { table: `${name}.task`, role: 'Task Auditor', operations: { read: '*' } }],
+      migrations: [...(manifest.migrations ?? []), { id: 'to_next', fromVersion: version, toVersion: nextVersion, operations: [] }],
+    }))
+    const said = await deploy()
+    expect(said).toContain(`upgraded ${name} from ${version} to ${nextVersion}`)
+    expect(said).toContain(`  ${name} gives Task Auditor read on ${name}.task`)
+  })
+
   // #1178 (D4): the image ships only the new version; the upgrade moves from
   // the installed record, so the old version's files are not needed.
   test('an image holding only the newer version upgrades to it on production', async () => {

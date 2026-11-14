@@ -89,15 +89,15 @@ async function fixtureModule(name: string, directory: string) {
   return import(`${pathToFileURL(resolve(directory, 'server.mjs')).href}?artifact=${digest}`)
 }
 
-async function setup(admin: TestClient, createUser: CreateUserFn, { roles = ['Dataset Reader'], source = true } = {}) {
-  expect(await discoverPackages([fixture, provider])).toEqual([])
+async function setup(admin: TestClient, createUser: CreateUserFn, { roles = ['Dataset Reader'], source = true, directory = fixture } = {}) {
+  expect(await discoverPackages([directory, provider])).toEqual([])
   await admin.post('/api/install_app', { name: 'datasetproof' })
   await admin.post('/api/install_app', { name: 'placeroster' })
   invalidateSources()
   if (source) await admin.post('/api/table/Data%20Source', {
     row_id: 'datasetproof-warehouse', engine: 'postgres', url_env: SOURCE_ENV, access: 'read_only' })
   const reader = await createUser({ email: 'reader@example.test', roles })
-  const app = await fixtureModule('datasetproof', fixture)
+  const app = await fixtureModule('datasetproof', directory)
   app.calls.handler = 0
   return { reader, app }
 }
@@ -553,6 +553,25 @@ describe('a cached dataset read', () => {
     app.hooks.run = (context: Context) => context.datasets.active('sales')
     const answer = await reader.post<{ result: { rows: unknown[] } }>(read + 'unscoped', { payload: {} })
     expect(answer.result.rows).toEqual([])
+  })
+
+  // #1169: the same read, on a dataset declared unscoped, gets every row though the reader has no place.
+  test('a read whose policy carries no places gets every row of an unscoped dataset', async ({ admin, createUser }) => {
+    const copy = await mkdtemp(resolve('test/.dataset-proof-'))
+    try {
+      await cp(fixture, copy, { recursive: true })
+      const manifest = JSON.parse(await readFile(resolve(copy, 'featherbase.json'), 'utf8'))
+      const { filters: _filters, ...sales } = manifest.datasets[0]
+      manifest.datasets[0] = { ...sales, unscoped: true }
+      await writeFile(resolve(copy, 'featherbase.json'), JSON.stringify(manifest))
+      const { reader, app } = await setup(admin, createUser, { directory: copy })
+      await buildSnapshot('datasetproof.sales')
+      app.hooks.run = (context: Context) => context.datasets.active('sales')
+      const answer = await reader.post<{ result: { rows: unknown[] } }>(read + 'unscoped', { payload: {} })
+      expect(answer.result.rows).toHaveLength(SALES.length)
+    } finally {
+      await rm(copy, { recursive: true, force: true })
+    }
   })
 
   test('before the dataset has built, answers nothing and records the ask', async ({ admin, createUser }) => {
