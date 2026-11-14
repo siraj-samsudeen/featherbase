@@ -599,19 +599,27 @@ describe('an upgrade that declares a new role', () => {
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
-  // The upgrade audience contract (runtime-privacy-contract.test.ts) still holds: an upgrade never
-  // brings write access to a Table the app already had, not even to a role it creates.
-  test("a new role's write on a Table the app already had is refused", async ({ admin }) => {
-    const { directory } = await upgradeTo(admin, manifest => ({ ...manifest, roles: ['Task Auditor'],
-      permissions: [...(manifest.permissions as unknown[]), { table: 'other.task', role: 'Task Auditor', operations: { read: '*', update: '*' } }] }))
+  // #1169 (owner, 14-Nov-2026): an upgrade applies the access its version declares, writes
+  // included, for a role the version declares. All, Guest and roles the app doesn't declare
+  // stay refused (runtime-privacy-contract.test.ts).
+  test("a new role's write on a Table the app already had is applied and logged", async ({ admin }) => {
+    const writer = { table: 'other.task', role: 'Task Auditor', operations: { read: '*', update: '*' } }
+    const { directory, source } = await upgradeTo(admin, manifest => ({ ...manifest, roles: ['Task Auditor'],
+      permissions: [...(manifest.permissions as unknown[]), writer] }))
     try {
-      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417,
-        message: expect.stringContaining('Permission or package identity changes are unsupported') })
-      expect(await sql`select 1 from role where row_id = 'Task Auditor'`).toEqual([])
+      const plan = await admin.post<{ planId: string; permissions: unknown }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
+      expect(plan.permissions).toEqual([{ grant: writer }])
+      await admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: plan.planId })
+      await discoverPackages([source, directory])
+      await loadInstalledApps()
+      await admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })
+      expect((await sql`select operation from permission where role = 'Task Auditor' order by operation`).map(row => row.operation)).toEqual(['read', 'update'])
+      expect((await sql`select operation from activity_log where operation like 'app_grant_added%'`).map(row => row.operation))
+        .toEqual(['app_grant_added other@2.0.0: Task Auditor on other.task'])
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
-  test('a new grant to a role the installed version already declared is still refused', async ({ admin }) => {
+  test('a new grant to a role the installed version already declared is applied', async ({ admin }) => {
     const source = resolve('../..', 'test-apps/other')
     const installed = await mkdtemp(resolve('test/.upgrade-installed-'))
     await cp(source, installed, { recursive: true })
@@ -625,8 +633,10 @@ describe('an upgrade that declares a new role', () => {
       await admin.post('/api/install_app', { name: 'other' })
       await discoverPackages([installed, directory])
       await loadInstalledApps()
-      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417,
-        message: expect.stringContaining('Permission or package identity changes are unsupported') })
+      const plan = await admin.post<{ planId: string; roles: unknown; permissions: unknown }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
+      expect([plan.roles, plan.permissions]).toEqual([[], [{ grant: auditor }]])
+      await admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: plan.planId })
+      expect(await sql`select role, operation from permission where role = 'Task Auditor'`).toEqual([{ role: 'Task Auditor', operation: 'read' }])
     } finally {
       await rm(directory, { recursive: true, force: true })
       await rm(installed, { recursive: true, force: true })
