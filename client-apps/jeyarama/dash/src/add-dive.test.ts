@@ -60,3 +60,11 @@ describe("a new report's key", () => {
     expect(reportKeyFor('· ·', [])).toBe('report')
   })
 })
+
+describe('Dives never saved', () => {
+  it('come after every saved Dive, by title', () => {
+    const unsaved = dive({ dive_id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', title: 'Draft', saved_on: null })
+    const alsoUnsaved = dive({ dive_id: 'ffffffff-ffff-4fff-8fff-ffffffffffff', title: 'Another draft', saved_on: null })
+    expect(matchingDives([unsaved, floor, alsoUnsaved], '').map(d => d.title)).toEqual(['Floor stock', 'Another draft', 'Draft'])
+  })
+})

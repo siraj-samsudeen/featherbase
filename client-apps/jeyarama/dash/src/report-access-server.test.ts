@@ -314,3 +314,30 @@ describe('a report saved by any route', () => {
     expect(row.dive_id).toBe('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
   })
 })
+
+describe('the edges of adding a Dive (#1169)', () => {
+  const reject = (message: string): never => { throw new Error(message) }
+
+  it('saves a report with no Dive yet, or with nothing to compare it to, leaving the required-field rule to say so', async () => {
+    const reports = tables({ 'dash.report': [{ report_key: 'sales', report_name: 'Sales', dive_id: '' }] })
+    await expect(validators['dash.report']({ row: { report_key: 'new', dive_id: '  ' }, documents: reports, reject })).resolves.toBeUndefined()
+    await expect(validators['dash.report']({ row: { report_key: 'new', dive_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }, reject })).resolves.toBeUndefined()
+  })
+
+  it('asks for a Dive when nothing was sent', async () => {
+    await expect(addReport(context({ payload: undefined }))).rejects.toThrow('Choose a Dive')
+  })
+
+  it('says MotherDuck is out of reach whatever was thrown, logging the cause without anything token-shaped', async () => {
+    const logged: string[] = []
+    const original = console.error
+    console.error = (line: string) => { logged.push(line) }
+    try {
+      const ctx = context()
+      const datasets = { async live(): Promise<{ rows: unknown[] }> { throw 'md: token=secret-value refused' } }
+      expect(await diveChoices({ ...ctx, datasets }, await diveChoicesPrepared(ctx))).toEqual({ unreachable: true })
+    } finally { console.error = original }
+    expect(logged.join()).toContain('dash_dive_list_failed')
+    expect(logged.join()).not.toContain('secret-value')
+  })
+})
