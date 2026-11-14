@@ -28,7 +28,7 @@ import { withNamedVariable } from '../src/env'
 import { appSetupState } from '../src/app-settings'
 import { drainJobs, enqueue, loadJobs } from '../src/jobs'
 import { datasetsDue } from '../src/jobs/refresh-datasets'
-import { guardRefusal, recordPlaceDrops, shapeRows, storedRowJson, type DatasetDeclaration, type DatasetGuard, type PlaceDrop } from '../src/app-datasets'
+import { datasetWhere, guardRefusal, recordPlaceDrops, shapeRows, storedRowJson, type DatasetDeclaration, type DatasetGuard, type PlaceDrop } from '../src/app-datasets'
 import { _getRootSql, inAppTransaction, sql } from '../src/db'
 import { assertStillServing, servingIdentity } from '../src/app-lifecycle'
 import { runHealthChecks } from '../src/instance-health'
@@ -853,6 +853,9 @@ describe('a dataset declaration', () => {
       /sales's guard within column amount must be text, integer or date/],
     ['guard compares a minimum within a period', { guard: [{ kind: 'min_rows', value: 1, within: 'business_day' }] }, /only a drop guard compares within a column/],
     ['guard checks for zeros within a period', { guard: [{ kind: 'not_all_zero', column: 'units', within: 'business_day' }] }, /only a drop guard compares within a column/],
+    // #1169: an unscoped dataset maps no scope filter, and only it may map none.
+    ['is unscoped but maps a scope filter', { unscoped: true }, /sales is unscoped, so it maps no scope filter/],
+    ['maps no scope filter and is not unscoped', { filters: {} }, /A dataset maps at least one scope filter/],
   ] as const)('refuses an app whose dataset %s', async ([, change, message]) => {
     const copy = await mkdtemp(resolve('test/.dataset-proof-'))
     try {
@@ -1454,6 +1457,23 @@ describe('recording a dropped place', () => {
       const results = await both
       expect(results.reduce((a, b) => a + b)).toBe(1)
     } finally { await cleanUp() }
+  })
+})
+
+describe('an unscoped dataset', () => {
+  // #1169: a catalogue holds nothing about places, so a reader with no place gets every row
+  // (a scoped dataset gives them none), and a read's own filters still narrow it.
+  const catalogue = { name: 'dives', source: 'warehouse', query: 'select 1 as id', columns: [{ name: 'id', type: 'text' }],
+    keys: ['id'], filters: {}, unscoped: true } as unknown as DatasetDeclaration
+  const dialect = { placeholder: (n: number) => `$${n}`, asText: (q: string) => q, asDay: (q: string) => q }
+  test('reaches every row for a reader with no place', () => {
+    expect(datasetQueryText('select 1 as id', catalogue.columns, datasetWhere(catalogue, undefined, undefined), dialect).text)
+      .toBe('select * from (select "id" from (select 1 as id) as source) as dataset where ((true)) and (true)')
+  })
+  test("ignores the places a reader has, and keeps the read's own filters", () => {
+    const where = datasetWhere(catalogue, [{ label: 'North', filters: { store: ['N1'] } }] as never, { id: 'a' })
+    expect(datasetQueryText('select 1 as id', catalogue.columns, where, dialect)).toEqual({
+      text: 'select * from (select "id" from (select 1 as id) as source) as dataset where ((true)) and ("id" in ($1))', values: ['a'] })
   })
 })
 
