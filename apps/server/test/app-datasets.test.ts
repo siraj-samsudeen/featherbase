@@ -1461,6 +1461,28 @@ describe('recording a dropped place', () => {
 })
 
 describe('an unscoped dataset', () => {
+  // #1169 review: turning a scoped dataset unscoped would give every reader every row, unnoticed.
+  test("can't come from an upgrade of a dataset that was scoped", async ({ admin }) => {
+    const copy = await mkdtemp(resolve('test/.dataset-proof-'))
+    try {
+      await cp(fixture, copy, { recursive: true })
+      const manifest = JSON.parse(await readFile(resolve(copy, 'featherbase.json'), 'utf8'))
+      const { filters: _filters, ...sales } = manifest.datasets[0]
+      manifest.datasets[0] = { ...sales, unscoped: true }
+      manifest.migrations = [{ id: 'unscoped_sales', fromVersion: '1.0.0', toVersion: '2.0.0', operations: [] }]
+      await writeFile(resolve(copy, 'featherbase.json'), JSON.stringify(manifest))
+      const pkg = JSON.parse(await readFile(resolve(copy, 'package.json'), 'utf8'))
+      await writeFile(resolve(copy, 'package.json'), JSON.stringify({ ...pkg, version: '2.0.0' }))
+      expect(await discoverPackages([fixture, provider])).toEqual([])
+      await admin.post('/api/install_app', { name: 'datasetproof' })
+      expect(await discoverPackages([fixture, provider, copy])).toEqual([])
+      await expect(admin.post('/api/preview_app_upgrade', { name: 'datasetproof', version: '2.0.0' })).rejects.toMatchObject({ status: 417,
+        message: expect.stringContaining("The dataset sales was limited to each reader's stores; an upgrade can't make it unscoped") })
+    } finally {
+      await rm(copy, { recursive: true, force: true })
+    }
+  })
+
   // #1169: a catalogue holds nothing about places, so a reader with no place gets every row
   // (a scoped dataset gives them none), and a read's own filters still narrow it.
   const catalogue = { name: 'dives', source: 'warehouse', query: 'select 1 as id', columns: [{ name: 'id', type: 'text' }],

@@ -615,7 +615,16 @@ describe('an upgrade that declares a new role', () => {
       await admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })
       expect((await sql`select operation from permission where role = 'Task Auditor' order by operation`).map(row => row.operation)).toEqual(['read', 'update'])
       expect((await sql`select operation from activity_log where operation like 'app_grant_added%'`).map(row => row.operation))
-        .toEqual(['app_grant_added other@2.0.0: Task Auditor on other.task'])
+        .toEqual(['app_grant_added other@2.0.0: Task Auditor read, update on other.task'])
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test("a grant to the app's own role on a Table the app doesn't own is refused", async ({ admin }) => {
+    const { directory } = await upgradeTo(admin, manifest => ({ ...manifest, roles: ['Task Auditor'],
+      permissions: [...(manifest.permissions as unknown[]), { table: 'Role', role: 'Task Auditor', operations: { read: '*', update: '*' } }] }))
+    try {
+      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417,
+        message: expect.stringContaining('Permission or package identity changes are unsupported') })
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 

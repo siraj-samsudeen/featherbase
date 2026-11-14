@@ -297,3 +297,20 @@ describe('the Dives to choose from', () => {
     expect(asked).toBe(false)
   })
 })
+
+describe('a report saved by any route', () => {
+  const reports = tables({ 'dash.report': [{ report_key: 'sales', report_name: 'Sales versus target', dive_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' }] })
+  const reject = (message: string): never => { throw new Error(message) }
+
+  it("is refused on a Dive another report already opens, whatever its case or spaces, naming that report (#1169)", async () => {
+    await expect(validators['dash.report']({ row: { report_key: 'open-sales', dive_id: ' CCCCCCCC-cccc-4ccc-8ccc-cccccccccccc ', filter_shape: 'No filter' }, documents: reports, reject }))
+      .rejects.toThrow('That Dive is already in Dash as Sales versus target')
+  })
+
+  it('is saved on its own Dive, and on a Dive no report opens, with the id trimmed', async () => {
+    await expect(validators['dash.report']({ row: { report_key: 'sales', dive_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' }, documents: reports, reject })).resolves.toBeUndefined()
+    const row: Record<string, unknown> = { report_key: 'floor', dive_id: ' aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa ' }
+    await validators['dash.report']({ row, documents: reports, reject })
+    expect(row.dive_id).toBe('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+  })
+})

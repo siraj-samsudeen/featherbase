@@ -15,6 +15,7 @@ export const ACCESS_MANAGER = 'Report Access Manager'
 export const ACCESS = 'dash.report_access'
 export const BUNDLE = 'dash.report_bundle'
 export const MEMBER = 'dash.report_bundle_member'
+export const REPORT = 'dash.report'
 
 /** What these reads and actions use of the platform's context. */
 export interface AccessContext {
@@ -260,6 +261,19 @@ export async function addToBundle(ctx: AccessContext) {
 
 /** Save rules for the access Tables: one thing to one receiver, and keys that refuse duplicates. */
 export const validators = {
+  /**
+   * #1169: a Dive opens through one report only, on every save, the generic save path included.
+   * A Report Access Manager may create reports; without this they could register a Dive Dash
+   * already narrows to a reader's stores a second time, as a report taking no filter, and give
+   * every store's figures to anyone.
+   */
+  async [REPORT](context: { row: Row; documents?: Pick<Documents, 'list'>; reject(message: string, fields?: Record<string, string>): never }) {
+    context.row.dive_id = exact(context.row.dive_id).trim()
+    const dive = exact(context.row.dive_id).toLowerCase()
+    if (!dive || !context.documents) return
+    const other = (await reportRows(context.documents)).find(report => report.dive === dive && report.key !== exact(context.row.report_key))
+    if (other) context.reject(`That Dive is already in Dash as ${other.name}`, { dive_id: `Already in Dash as ${other.name}` })
+  },
   [ACCESS](context: { row: Row; reject(message: string, fields?: Record<string, string>): never }) {
     for (const column of ['report', 'report_bundle', 'person', 'role', 'job']) if (exact(context.row[column]).trim() === '') context.row[column] = null
     const checked = accessKey(context.row)
@@ -273,16 +287,16 @@ export const validators = {
   },
 }
 
-/** The Dash report that opens each Dive, by Dive id. */
-async function reportsByDive(documents: Documents): Promise<Map<string, { key: string; name: string }>> {
+/** Every Dash report: its key, its name and the Dive it opens (ids compared trimmed, in lower case). */
+async function reportRows(documents: Pick<Documents, 'list'>): Promise<{ key: string; name: string; dive: string }[]> {
   const rows = await documents.list('dash.report', { fields: ['report_key', 'report_name', 'dive_id'], limit_page_length: 1000 })
-  return new Map(rows.map(row => [exact(row.dive_id).toLowerCase(), { key: exact(row.report_key), name: text(row.report_name) }]))
+  return rows.map(row => ({ key: exact(row.report_key), name: text(row.report_name), dive: exact(row.dive_id).trim().toLowerCase() }))
 }
 
 /** What `dive_choices` reads in its transaction: whether the caller manages access, and which Dives are in Dash. */
 export async function diveChoicesPrepared(ctx: AccessContext) {
   if (!managesAccess(ctx)) return { manager: false, inDash: [] as [string, string][] }
-  return { manager: true, inDash: [...await reportsByDive(ctx.documents!)].map(([id, report]) => [id, report.name] as [string, string]) }
+  return { manager: true, inDash: (await reportRows(ctx.documents!)).map(report => [report.dive, report.name] as [string, string]) }
 }
 
 /**
@@ -298,7 +312,9 @@ export async function diveChoices(ctx: AccessContext & { datasets?: { live(name:
   try {
     rows = (await ctx.datasets!.live(DIVES_DATASET)).rows
   } catch (error) {
-    console.error(JSON.stringify({ event: 'dash_dive_list_failed', person: ctx.user, message: (error as Error)?.constructor?.name ?? 'error' }))
+    // The cause, so a wrong query can be told from an outage; anything shaped like a token is cut out.
+    const message = String((error as Error)?.message ?? error).replace(/(token|password)\S*/gi, '$1=…').slice(0, 300)
+    console.error(JSON.stringify({ event: 'dash_dive_list_failed', person: ctx.user, message }))
     return { unreachable: true as const }
   }
   const dives: DiveChoice[] = (rows as Row[]).map(row => ({ dive_id: exact(row.dive_id).toLowerCase(), title: text(row.title) || 'Untitled Dive',
@@ -320,12 +336,12 @@ export async function addReport(ctx: AccessContext) {
   if (!dive || dive !== exact(payload.dive_id).trim().toLowerCase()) ctx.reject!('Choose a Dive')
   const name = text(payload.name).replace(/\s+/g, ' ')
   if (!name) ctx.reject!('Name the report')
-  const reports = await reportsByDive(ctx.documents!)
-  const already = reports.get(dive!)
+  const reports = await reportRows(ctx.documents!)
+  const already = reports.find(report => report.dive === dive)
   if (already) ctx.reject!(`That Dive is already in Dash as ${already.name}`)
-  const sameName = [...reports.values()].find(report => report.name.toLowerCase() === name.toLowerCase())
+  const sameName = reports.find(report => report.name.toLowerCase() === name.toLowerCase())
   if (sameName) ctx.reject!(`Another report is called ${sameName.name}`)
-  const key = reportKeyFor(name, [...reports.values()].map(report => report.key))
+  const key = reportKeyFor(name, reports.map(report => report.key))
   await ctx.documents!.create!('dash.report', { report_key: key, report_name: name, dive_id: dive, filter_shape: 'No filter' })
   return { key, name }
 }

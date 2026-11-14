@@ -56,7 +56,7 @@ describe("upgrading production's Dash 0.13.1", () => {
       await admin.post('/api/activate_app_upgrade', { name: 'dash', version: VERSION })
       expect((await sql`select operation from permission where role = ${MANAGER} and ref_table = 'dash.report' order by operation`).map(r => r.operation)).toEqual(['create', 'read'])
       expect((await sql`select operation from activity_log where operation like 'app_grant_added dash%'`).map(r => r.operation))
-        .toEqual([`app_grant_added dash@${VERSION}: ${MANAGER} on dash.report`])
+        .toEqual([`app_grant_added dash@${VERSION}: ${MANAGER} read, create on dash.report`])
 
       await createCoreTables(admin)
       const manager = await createUser({ email: 'add-dive-manager@example.test', roles: ['Dash Reader', MANAGER] })
@@ -64,6 +64,10 @@ describe("upgrading production's Dash 0.13.1", () => {
       expect((await action(manager, 'add_report', { dive_id: DIVE, name: 'Floor stock' })).result).toEqual({ key: 'floor-stock', name: 'Floor stock' })
       expect(await sql`select report_key, report_name, dive_id, filter_shape from dash.report where report_key = 'floor-stock'`)
         .toEqual([{ report_key: 'floor-stock', report_name: 'Floor stock', dive_id: DIVE, filter_shape: 'No filter' }])
+      // The review's hole (#1169): a manager's own save of a second report on a Dive already in
+      // Dash, taking no filter, would give every store's figures. Refused on the generic path too.
+      await expect(manager.post('/api/table/dash.report', { report_key: 'floor-again', report_name: 'Floor again', dive_id: DIVE.toUpperCase(), filter_shape: 'No filter' }))
+        .rejects.toMatchObject({ message: expect.stringContaining('That Dive is already in Dash as Floor stock') })
       await action(manager, 'give_report', { report: 'floor-stock', person: reader.user })
       expect((await reader.post<{ result: { key: string }[] }>('/api/app_reads/dash/reports', { payload: {} })).result.map(r => r.key)).toEqual(['floor-stock'])
 
