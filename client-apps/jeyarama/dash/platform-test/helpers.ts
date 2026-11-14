@@ -37,3 +37,14 @@ export async function createCoreTables(admin: TestClient) {
 }
 
 export { ACCESS_ROWS, REPORT_ROWS }
+
+/**
+ * #1169's 0.13.2 taken out of a manifest, for the upgrade tests' earlier versions: a Report Access
+ * Manager reads reports and creates none. Its read, action and dataset stay declared, since the
+ * earlier version shares this build's server module; only the grant differs from production's.
+ */
+export function revertAddDive(manifest: { permissions: Record<string, unknown>[] }) {
+  const grant = manifest.permissions.find(p => p.table === 'dash.report' && p.role === 'Report Access Manager')!
+  delete grant.operations
+  grant.can_read = true
+}

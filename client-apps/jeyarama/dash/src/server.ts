@@ -8,7 +8,7 @@ import { MONTH_CHOICES, buildReport, monthLabel, headingOf, istToday, periodOf, 
 import { actions as sectionActions, reads as sectionReads } from './my-sections.ts'
 import { departmentActions, departmentReads } from './department-setup.ts'
 import { prefillActions } from './department-prefill.ts'
-import { accessPage, addToBundle, giveReport, makeBundle, managesAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
+import { accessPage, addReport, addToBundle, diveChoices, diveChoicesPrepared, giveReport, makeBundle, managesAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
 
 /** The save rules of Dash's own Tables. */
 export const validators = accessValidators
@@ -291,6 +291,7 @@ export const actions = {
   make_bundle: (context: AccessContext) => makeBundle(context),
   add_to_bundle: (context: AccessContext) => addToBundle(context),
   remove_from_bundle: (context: AccessContext) => removeFromBundle(context),
+  add_report: (context: AccessContext) => addReport(context),
 }
 
 export const reads = {
@@ -320,6 +321,15 @@ export const reads = {
   /** The Report access page (#1046). Managers only. */
   access_page: (context: ReadContext) => accessPage(context as AccessContext),
   person_search: (context: ReadContext) => personSearch(context as AccessContext),
+
+  /**
+   * The organisation's Dives for Add a Dive (#1169), read live from MotherDuck (outbound: it runs
+   * after the transaction has closed, so `prepare` reads which Dives are already reports).
+   */
+  dive_choices: Object.assign(async (context: ReadContext) => diveChoices(context as AccessContext & Pick<ReadContext, 'datasets'>,
+    (context as ScopedContext).prepared as Awaited<ReturnType<typeof diveChoicesPrepared>> | undefined), {
+    prepare: (context: ReadContext) => diveChoicesPrepared(context as AccessContext),
+  }),
   person_lookup: (context: ReadContext) => personLookup(context as AccessContext, istToday(), async (person, roles) => {
     try {
       const { places } = await reachOf((context as ScopedContext).baseTables, person, istToday(), roles)

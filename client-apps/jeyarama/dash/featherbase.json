@@ -352,6 +352,33 @@
         "store": "store_code",
         "subcategory": "subcategory_code"
       }
+    },
+    {
+      "name": "organisation_dives",
+      "source": "motherduck",
+      "unscoped": true,
+      "query": "select cast(id as varchar) as dive_id, title, owner_name, cast(updated_at as date) as saved_on from MD_LIST_DIVES(include_org_shares => true) where coalesce(status, '') <> 'archived'",
+      "columns": [
+        {
+          "name": "dive_id",
+          "type": "text"
+        },
+        {
+          "name": "title",
+          "type": "text"
+        },
+        {
+          "name": "owner_name",
+          "type": "text"
+        },
+        {
+          "name": "saved_on",
+          "type": "date"
+        }
+      ],
+      "keys": [
+        "dive_id"
+      ]
     }
   ],
   "tables": [
@@ -609,7 +636,10 @@
     {
       "table": "dash.report",
       "role": "Report Access Manager",
-      "can_read": true
+      "operations": {
+        "read": "@basic",
+        "create": "@basic"
+      }
     },
     {
       "table": "dash.report_bundle",
@@ -854,6 +884,15 @@
         "authorization": {
           "kind": "generic"
         }
+      },
+      "dive_choices": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        },
+        "outbound": true
       }
     }
   },
@@ -1961,6 +2000,12 @@
       "fromVersion": "0.13.0",
       "toVersion": "0.13.1",
       "operations": []
+    },
+    {
+      "id": "report_access_managers_add_dives",
+      "fromVersion": "0.13.1",
+      "toVersion": "0.13.2",
+      "operations": []
     }
   ],
   "baseTables": {
@@ -2245,6 +2290,14 @@
         }
       },
       "undo_prefill": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "add_report": {
         "policy": {
           "kind": "table"
         },

@@ -79,8 +79,8 @@ describe('the report in the manifest', () => {
       .toEqual(['stores', 'report', 'embed_session'].map(name => [name, 'person_scope', ROLES.filter(role => role !== 'Report Access Manager')]))
   })
 
-  it('declares only the two Dive openers as calling out', () => {
-    expect(Object.entries(operations).filter(([, o]) => o.outbound).map(([name]) => name).sort()).toEqual(['embed_open', 'embed_session'])
+  it('declares only the two Dive openers and the Dive list for Add a Dive (#1169) as calling out', () => {
+    expect(Object.entries(operations).filter(([, o]) => o.outbound).map(([name]) => name).sort()).toEqual(['dive_choices', 'embed_open', 'embed_session'])
   })
 
   it('draws the store picker and the month picker (#750) in the top bar, setting ?store= and ?month=', () => {
@@ -217,20 +217,27 @@ describe('the read grants, declared before the first install', () => {
     expect(manifest.permissions.filter(p => ['Employee', 'Job Assignment'].includes(p.table))).toEqual([])
   })
 
-  it('grant reads only, apart from the Report Access Manager on the report access Tables (#1046)', () => {
+  it('grant reads only, apart from the Report Access Manager on the report access Tables (#1046) and adding reports (#1169)', () => {
     const writes = manifest.permissions.filter(p => Object.keys(p).sort().join() !== 'can_read,role,table' || (p as { can_read?: boolean }).can_read !== true)
-    expect(writes.map(p => [p.role, p.table])).toEqual([
+    expect(writes.map(p => [p.role, p.table])).toEqual([['Report Access Manager', 'dash.report'],
       ['Report Access Manager', 'dash.report_bundle'], ['Report Access Manager', 'dash.report_bundle_member'], ['Report Access Manager', 'dash.report_access']])
+  })
+
+  it('lets a Report Access Manager read and create reports, never change or delete one (#1169)', () => {
+    expect(manifest.permissions.find(p => p.table === 'dash.report' && p.role === 'Report Access Manager'))
+      .toEqual({ table: 'dash.report', role: 'Report Access Manager', operations: { read: '@basic', create: '@basic' } })
   })
 })
 
 // #1192: production runs 0.12.10; this version's ledger extends it with one step that changes no Table.
 describe('the version step for Dash All-Stores Reader', () => {
   it('follows production\'s 0.12.10 history exactly, then adds the role, then Your sections (#1175, #1191), then Your department (#1195), with no Table change', () => {
-    const tail = manifest.migrations.slice(-6, -1).map(m => [m.id, m.fromVersion, m.toVersion, m.operations.length])
+    const tail = manifest.migrations.slice(-7, -2).map(m => [m.id, m.fromVersion, m.toVersion, m.operations.length])
     expect(tail).toEqual([['pickers_in_dive', '0.12.5', '0.12.6', tail[0][3]], ['merchandise_reach', '0.12.6', '0.12.9', 0],
       ['opens_for_dash_roles', '0.12.9', '0.12.10', 0], ['all_stores_reader', '0.12.10', '0.12.11', 0], ['sections_not_mine', '0.12.11', '0.13.0', 0]])
-    expect(manifest.migrations.at(-1)).toMatchObject({ id: 'department_self_setup', fromVersion: '0.13.0', toVersion: '0.13.1', operations: [] })
-    expect(pkg.version).toBe('0.13.1')
+    expect(manifest.migrations.at(-2)).toMatchObject({ id: 'department_self_setup', fromVersion: '0.13.0', toVersion: '0.13.1', operations: [] })
+    // #1169: production's 0.13.1 takes one more step that changes no Table, only access and reads.
+    expect(manifest.migrations.at(-1)).toMatchObject({ id: 'report_access_managers_add_dives', fromVersion: '0.13.1', toVersion: '0.13.2', operations: [] })
+    expect(pkg.version).toBe('0.13.2')
   })
 })
