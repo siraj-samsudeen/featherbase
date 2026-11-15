@@ -24,7 +24,32 @@ Each is a default to confirm, not a decision.
 8. **Formats in this build:** dates as `2015-01-01`; yes/no as `true` / `false`; numbers as plain digits with
    an optional decimal point; CSV files in UTF-8. Excel files and other formats come later.
 
-## Scenarios
+## The journey
+
+This is build 1 as a person lives it. It doubles as the product demo, and it is the first test written: one
+run through these steps in a real browser, with the sample file.
+
+**Priya has an employee list in a spreadsheet. Two minutes later it is a working Table.**
+
+1. **Drop the file.** Priya signs in and drops `employees-clean.csv` on the page.
+2. **See what Featherbase understood.** A preview appears: a Table called "Employees", 24 rows, seven Columns.
+   Featherbase has worked out that joining and leaving dates are Dates, Active is Yes/No, Weekly Hours is a
+   Number, and Department is a Choice of five values. It suggests Employee Code as the key.
+3. **Confirm.** She changes nothing and presses Create.
+4. **Browse.** The Employees list opens with all 24 people.
+5. **Open one.** She clicks Asha Raman. A form shows her seven values, and where the row came from:
+   `employees-clean.csv`, row 2.
+6. **Change one.** She moves Asha from Sales to Billing, choosing from the five departments, and saves. The row
+   shows who changed it and when.
+7. **The original is safe.** She downloads the uploaded file again; it is exactly what she dropped.
+
+**When the file has a problem.** Priya drops `employees-messy.csv` and presses Create. Nothing is created.
+Featherbase lists what is wrong: row 3 has no Employee Code; rows 4 and 5 have the same one. She is told to
+fix the file and try again. Cleaning it up inside Featherbase is build 2.
+
+## The checks behind the journey
+
+Each scenario below is one step of the journey, or one refusal, stated exactly so it can be tested.
 
 ### The upload is kept
 - Given the sample file
