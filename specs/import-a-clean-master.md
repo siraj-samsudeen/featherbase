@@ -12,7 +12,7 @@ Each is a default to confirm, not a decision.
 
 1. **Stack, decided by the owner:** Bun, ElysiaJS, Postgres 18.6, `feather-testing-postgres`. Every other
    package is discussed one decision at a time and recorded in `adr/`.
-2. **Sign-in:** one built-in administrator. No roles or permissions yet. Every write still records who made it.
+2. **Sign-in:** none in this build. Signing in, and recording who changed what and when, come later.
 3. **Screens:** three plain ones: upload, confirm the Table, list with a form.
 4. **Where the Table's definition lives:** in the database, made by the import. Definition files come later.
 5. **Tests:** every scenario below is a test that uses only HTTP, as a person's browser would. No test calls
@@ -32,7 +32,7 @@ run through these steps in a real browser, with the sample file.
 
 **Priya has an employee list in a spreadsheet. Two minutes later it is a working Table.**
 
-1. **Drop the file.** Priya signs in and drops `employees-clean.csv` on the page.
+1. **Drop the file.** Priya opens Featherbase and drops `employees-clean.csv` on the page.
 2. **See what Featherbase understood.** A preview appears: a Table called "Employees", 24 rows, seven Columns.
    Featherbase has worked out that joining and leaving dates are Dates, Active is Yes/No, Weekly Hours is a
    Number, and Department is a Choice of five values. It suggests Employee Code as the key.
@@ -40,8 +40,8 @@ run through these steps in a real browser, with the sample file.
 4. **Browse.** The Employees list opens with all 24 people.
 5. **Open one.** She clicks Asha Raman. A form shows her seven values, and where the row came from:
    `employees-clean.csv`, row 2.
-6. **Change one.** She moves Asha from Sales to Billing, choosing from the five departments, and saves. The row
-   shows who changed it and when.
+6. **Change one.** She moves Asha from Sales to Billing, choosing from the five departments, and saves. The list
+   shows Billing.
 7. **The original is safe.** She downloads the uploaded file again; it is exactly what she dropped.
 
 ## The checks behind the journey
@@ -50,9 +50,9 @@ Each scenario below is one step of the journey, stated exactly so it can be test
 
 ### The upload is kept
 - Given the sample file
-- When the administrator uploads it
+- When a person uploads it
 - Then the same bytes can be downloaded again
-- And the upload records the file name, its size, who uploaded it and when
+- And the upload records the file name, its size and when it was uploaded
 
 ### The raw rows are kept
 - When the sample file is uploaded
@@ -89,8 +89,8 @@ Each scenario below is one step of the journey, stated exactly so it can be test
 
 ### People edit a row
 - Given the sample file has been imported
-- When the administrator changes E0007's Department to Billing
-- Then the row shows Billing, who changed it and when
+- When a person changes E0007's Department to Billing
+- Then the row shows Billing
 - And changing it to a value outside the Choice is refused
 
 ### A second Table with the same name is refused
@@ -103,5 +103,6 @@ Each scenario below is one step of the journey, stated exactly so it can be test
 A file with problems: blank or repeated keys, cells that do not fit their Column. Build 1 assumes a clean
 file; what happens otherwise is designed in build 2. Excel files; other date and number formats; Issues,
 corrections and partial imports (build 2); re-import of a
-newer version; references between Tables; roles and permissions; history of every change; outside sources;
+newer version; references between Tables; signing in, roles and permissions; who changed a row and when, and the history
+of every change; outside sources;
 definition files; apps.
