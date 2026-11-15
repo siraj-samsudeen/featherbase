@@ -1,25 +1,25 @@
-Employee Code,Name,Department,Store,Job Title,Date of Joining,Date of Leaving,Status,Weekly Hours
-00007,Asha Raman,Sales,Hill Road,Sales Associate,01-Jan-2015,,Active,48
-00014,Bala Krishnan,Billing,Hill Road,Cashier,04-Jun-2016,,Active,40
-00021,Chitra Mohan,Stores,Market Square,Senior Stock Keeper,07-Nov-2017,,Active,44
-00028,Dinesh Kumar,Accounts,Riverside,Accountant,10-Apr-2018,,Active,36
-00035,Esther Paul,Tailoring,Hill Road,Tailor,13-Sep-2019,09-May-2025,Left,48
-00042,Farid Khan,Sales,Market Square,Sales Associate,16-Feb-2020,,Active,40
-00049,Gita Nair,Billing,Riverside,Cashier,19-Jul-2021,,Active,44
-00056,Hari Prasad,Stores,Hill Road,Stock Keeper,22-Dec-2022,,Active,36
-00063,Indira Das,Accounts,Market Square,Accountant,25-May-2023,,Active,48
-00070,Jacob Thomas,Tailoring,Riverside,Tailor,01-Oct-2024,15-Oct-2026,Left,40
-00077,Kavya Iyer,Sales,Hill Road,Sales Associate,04-Mar-2015,,Active,44
-00084,Lokesh Rao,Billing,Market Square,Cashier,07-Aug-2016,,Active,36
-00091,Meena Pillai,Stores,Riverside,Stock Keeper,10-Jan-2017,,Active,48
-00098,Naveen Shetty,Accounts,Hill Road,Accountant,13-Jun-2018,27-Aug-2025,Left,40
-00105,Oviya Selvam,Tailoring,Market Square,Tailor,16-Nov-2019,,Active,44
-00112,Prakash Menon,Sales,Riverside,Sales Associate,19-Apr-2020,,Active,36
-00119,Qadir Ali,Billing,Hill Road,Cashier,22-Sep-2021,,Active,48
-00126,Revathi Suresh,Stores,Market Square,Stock Keeper,25-Feb-2022,,Active,40
-00133,Sanjay Gupta,Accounts,Riverside,Accountant,01-Jul-2023,,Active,44
-00140,Tara Joseph,Tailoring,Hill Road,Tailor,04-Dec-2024,,Active,36
-00147,Uma Shankar,Sales,Market Square,Sales Associate,07-May-2015,14-Sep-2025,Left,48
-00154,Vikram Bose,Billing,Riverside,Cashier,10-Oct-2016,,Active,40
-00168,Yamini Reddy,Accounts,Market Square,Accountant,16-Aug-2018,,Active,36
-00175,Zoya Fernandes,Sales,Riverside,Sales Associate,02-Nov-2026,,Active,40
+Employee Code,Name,Department,Date of Joining,Date of Leaving,Active,Weekly Hours
+E0007,Asha Raman,Billing,2015-01-01,,true,48
+E0014,Bala Krishnan,Billing,2016-06-04,,true,40
+E0021,Chitra Mohan,Stores,2017-11-07,,true,44
+E0028,Dinesh Kumar,Accounts,2018-04-10,,true,36
+E0035,Esther Paul,Tailoring,2019-09-13,2025-05-09,false,48
+E0042,Farid Khan,Sales,2020-02-16,,true,40
+E0049,Gita Nair,Billing,2021-07-19,,true,37.5
+E0056,Hari Prasad,Stores,2022-12-22,,true,36
+E0063,Indira Das,Accounts,2023-05-25,,true,48
+E0070,Jacob Thomas,Tailoring,2024-10-01,2026-10-15,false,40
+E0077,Kavya Iyer,Sales,2015-03-04,,true,37.5
+E0084,Lokesh Rao,Billing,2016-08-07,,true,36
+E0091,Meena Pillai,Stores,2017-01-10,,true,48
+E0098,Naveen Shetty,Accounts,2018-06-13,2025-08-27,false,40
+E0105,Oviya Selvam,Tailoring,2019-11-16,,true,37.5
+E0112,Prakash Menon,Sales,2020-04-19,,true,36
+E0119,Qadir Ali,Billing,2021-09-22,,true,48
+E0126,Revathi Suresh,Stores,2022-02-25,,true,40
+E0133,Sanjay Gupta,Accounts,2023-07-01,,true,37.5
+E0140,Tara Joseph,Tailoring,2024-12-04,,true,36
+E0147,Uma Shankar,Sales,2015-05-07,2025-09-14,false,48
+E0154,Vikram Bose,Billing,2016-10-10,,true,40
+E0168,Yamini Reddy,Accounts,2018-08-16,,true,36
+E0175,Zoya Fernandes,Sales,2026-11-02,,true,40
