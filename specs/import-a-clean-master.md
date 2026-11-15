@@ -10,7 +10,8 @@ brings the rows in, and lets people browse and edit them. The sample is
 
 Each is a default to confirm, not a decision.
 
-1. **Stack:** Node, Hono, Postgres through `postgres.js`, React, pnpm, Vitest with `feather-testing-postgres`.
+1. **Stack, decided by the owner:** Bun, ElysiaJS, Postgres 18.6, `feather-testing-postgres`. Every other
+   package is discussed one decision at a time and recorded in `adr/`.
 2. **Sign-in:** one built-in administrator. No roles or permissions yet. Every write still records who made it.
 3. **Screens:** three plain ones: upload, confirm the Table, list with a form.
 4. **Where the Table's definition lives:** in the database, made by the import. Definition files come later.
@@ -43,13 +44,9 @@ run through these steps in a real browser, with the sample file.
    shows who changed it and when.
 7. **The original is safe.** She downloads the uploaded file again; it is exactly what she dropped.
 
-**When the file has a problem.** Priya drops `employees-messy.csv` and presses Create. Nothing is created.
-Featherbase lists what is wrong: row 3 has no Employee Code; rows 4 and 5 have the same one. She is told to
-fix the file and try again. Cleaning it up inside Featherbase is build 2.
-
 ## The checks behind the journey
 
-Each scenario below is one step of the journey, or one refusal, stated exactly so it can be tested.
+Each scenario below is one step of the journey, stated exactly so it can be tested.
 
 ### The upload is kept
 - Given the sample file
@@ -85,18 +82,6 @@ Each scenario below is one step of the journey, or one refusal, stated exactly s
 - Given the sample file has been imported
 - Then each row names the upload and the sheet row it came from
 
-### Nothing comes in if a key is blank or repeated
-- Given `samples/employees/employees-messy.csv`
-- When the person confirms its proposal with Employee Code as the key
-- Then no Table is created and no rows come in
-- And the answer lists sheet row 3 as a blank key and rows 4 and 5 as the same key
-
-### Nothing comes in if a cell does not fit its Column
-- Given a copy of the sample file where one Weekly Hours cell is "forty"
-- When the person confirms its proposal
-- Then no rows come in
-- And the answer names the sheet row, the Column and the value
-
 ### People browse the rows
 - Given the sample file has been imported
 - Then the list shows 24 rows in key order with all seven Columns
@@ -115,6 +100,8 @@ Each scenario below is one step of the journey, or one refusal, stated exactly s
 
 ## Not in this build
 
-Excel files; other date and number formats; Issues, corrections and partial imports (build 2); re-import of a
+A file with problems: blank or repeated keys, cells that do not fit their Column. Build 1 assumes a clean
+file; what happens otherwise is designed in build 2. Excel files; other date and number formats; Issues,
+corrections and partial imports (build 2); re-import of a
 newer version; references between Tables; roles and permissions; history of every change; outside sources;
 definition files; apps.
