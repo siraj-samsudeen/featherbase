@@ -80,6 +80,9 @@ through the owner's change-data-capture package, out to the source as a detached
 2. Import and clean up: Issues are recorded, people correct them, clean rows go in, a re-import keeps their
    decisions. The owner calls this "the very core of everything we do".
 
+The first round reads the easiest formats only and supports five types: Text, Number, Date, Yes/No and
+Choice. The sample is `samples/employees/`; the draft of build 1 is `specs/import-a-clean-master.md`.
+
 The warehouse catalogue, curation of warehouse entities and sending to source systems follow on the same
 mechanism.
 
