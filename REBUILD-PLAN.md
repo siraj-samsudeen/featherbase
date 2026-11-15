@@ -62,9 +62,30 @@ touched.
 Default working answers, to confirm: alerts on control-plane rows by polling about once a minute; corrections
 to single transactions (the barcode case) held as an Issue plus an override.
 
-**Idea 2 (the curation loop) is open:** raw, Issue, decision (identifier, merge, own attribute, override,
-exclude), clean, re-check. Not yet chosen: whether the first real case is store identifiers and merges from the
-warehouse repo's seeds, or a spreadsheet.
+**Keys (closes point 4 above).** Featherbase gives each source row it attaches anything to its own permanent
+id (an anchor). The source's key is stored beside it as plain Columns, one per key Column, unique together.
+An anchor is created when something is first attached, not for every source row. A source key is the same
+concept as an Identifier: the values by which one system knows the row. Two source rows with one key share an
+anchor and raise a duplicate-key Issue. Warehouse surrogate keys should be a hash of the natural key, not a
+counter.
+
+**Idea 2: from browsing to owning.** An entity moves through three stages: browse (the source owns everything;
+Featherbase reads, discusses, raises tickets), curate (Featherbase adds decisions beside the raw values), own
+(Featherbase is the master and sends changes to the source). The pieces: raw, anchor, Issue, decision
+(identifier, merge, own attribute, override, exclude, and create at the third stage), out to the warehouse
+through the owner's change-data-capture package, out to the source as a detached send, re-check.
+
+**First build, chosen by the owner:** start from Excel.
+1. Import a clean master from a spreadsheet: the file is kept, the rows become a Table, people browse it.
+2. Import and clean up: Issues are recorded, people correct them, clean rows go in, a re-import keeps their
+   decisions. The owner calls this "the very core of everything we do".
+
+The warehouse catalogue, curation of warehouse entities and sending to source systems follow on the same
+mechanism.
+
+**Parked:** the Featherflow configuration that lives in a YAML file and should be editable in Featherbase
+(one owner: either Featherbase owns it and writes the file out, or the file owns it). To be looked at when the
+packages are added to the session.
 
 ## Contents
 
