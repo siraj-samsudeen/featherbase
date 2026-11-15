@@ -6,24 +6,29 @@ A person uploads a spreadsheet of clean master data. Featherbase keeps the file,
 brings the rows in, and lets people browse and edit them. The sample is
 `samples/employees/employees-clean.csv` (24 rows, 7 Columns).
 
-## Working choices this build forces
+## Decisions for this build
 
-Each is a default to confirm, not a decision.
+Taken one at a time with the owner. Only what the journey needs is decided; everything else waits.
 
-1. **Stack, decided by the owner:** Bun, ElysiaJS, Postgres 18.6, `feather-testing-postgres`. Every other
-   package is discussed one decision at a time and recorded in `adr/`.
-2. **Sign-in:** none in this build. Signing in, and recording who changed what and when, come later.
-3. **Screens:** three plain ones: upload, confirm the Table, list with a form.
-4. **Where the Table's definition lives:** in the database, made by the import. Definition files come later.
-5. **Tests:** every scenario below is a test that uses only HTTP, as a person's browser would. No test calls
-   an internal function. Coverage of the server is 100%, reached by those tests; code they cannot reach is
-   deleted.
-6. **Carried over from `main` unchanged:** the process files (`AGENTS.md`, skills, OpenSpec config),
-   `CONTEXT.md`, and the pure logic that infers Column types and converts cell text
-   (`packages/shared/src/import.ts`).
-7. **Types in this build:** Text, Number, Date, Yes/No, Choice.
-8. **Formats in this build:** dates as `2015-01-01`; yes/no as `true` / `false`; numbers as plain digits with
-   an optional decimal point; CSV files in UTF-8. Excel files and other formats come later.
+| # | Aspect | Decision | Status |
+|---|---|---|---|
+| — | Runtime and framework | Bun, ElysiaJS, Postgres 18.6 | Decided |
+| — | Test runner and harness | `bun test` with `feather-testing-elysia` (v0.1, to be released first) | Decided |
+| — | Scope | No sign-in and no record of who changed a row. CSV only, clean files only | Decided |
+| — | Types and formats | Text, Number, Date, Yes/No, Choice; dates `2015-01-01`, yes/no `true`/`false` | Decided |
+| 1 | Database access | Drizzle on Bun's built-in Postgres driver; `postgres.js` if that misbehaves on 18.6, checked at setup | Decided |
+| 2 | How a Table and its rows are stored | | Open |
+| 3 | Migrations for Featherbase's own tables | | Open |
+| 4 | Where the uploaded file is kept | | Open |
+| 5 | Reading the CSV and working out types | | Open |
+| 6 | The API for the journey | | Open |
+| 7 | The web side | | Open |
+| 8 | Tests and coverage | | Open |
+| 9 | Repo layout and tooling | | Open |
+
+The owner's October stack evaluation (`featherbase-stack-evaluation`, phase 4d) built an import feature on
+Elysia with Drizzle, Eden, Vite, React, TanStack Query and Router, shadcn/ui and Playwright. Its choices and
+its recorded lessons are the starting point for each open row.
 
 ## The journey
 
