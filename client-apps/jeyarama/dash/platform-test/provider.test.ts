@@ -97,6 +97,19 @@ describe('the org_chart scope provider on the platform, per job (#967)', () => {
     expect(scopes[0][0]).toMatchObject({ basis: 'team_leader' })
   })
 
+  // #1191: a subcategory added at once reaches the Team Leader at once; undone, it reaches them no
+  // more. Undo ends the row the day before it started and retires it: a scope provider sees retired
+  // rows (ADR 0019), so the end date is what takes it away.
+  test('an added subcategory reaches them at once, and an undone one no longer does', async ({ admin, createUser }) => {
+    const { reader, place } = await setup(admin, createUser)
+    const person = await reader([{ job: 'Team Leader', section: 'LKS-S1' }])
+    const added = await place('P-ADDED', 'LKS', BELTS[0], 'LKS-S1', { starts_on: '2026-03-01' })
+    expect(sections(await resolvePersonScope(person, await binding()))).toEqual([['9901 / Section: Sarees', [...SARI, ...BELTS].sort()]])
+    await admin.post('/api/save_row', { table: 'Section Subcategory', row: { row_id: added.row_id, updated_at: added.updated_at, ends_on: '2026-02-28' } })
+    await admin.post(`/api/table/Section%20Subcategory/${encodeURIComponent(String(added.row_id))}:retire`, { reason: 'Undone' })
+    expect(sections(await resolvePersonScope(person, await binding()))).toEqual([['9901 / Section: Sarees', SARI]])
+  })
+
   test('an acting Team Leader says so', async ({ admin, createUser }) => {
     const { reader } = await setup(admin, createUser)
     const [place] = await resolvePersonScope(await reader([{ job: 'Team Leader', section: 'LKS-S1', acting: true }]), await binding())
@@ -197,7 +210,7 @@ describe('what never widens a scope', () => {
 })
 
 describe('the core Tables the provider reads stay ordinary Tables', () => {
-  const SCOPE_TABLES = ['Employee', 'Job Assignment', 'Site', 'Plant', 'Section', 'Section Subcategory', 'Merchandise Assignment', 'Subcategory']
+  const SCOPE_TABLES = ['Employee', 'Job Assignment', 'Site', 'Plant', 'Section', 'Section Subcategory', 'Merchandise Assignment', 'Subcategory', 'Department', 'Department Section']
 
   test('the provider reads them with none of them marked', async ({ admin, createUser }) => {
     const { reader } = await setup(admin, createUser)

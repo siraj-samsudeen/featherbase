@@ -37,7 +37,8 @@ export function hideRetired(meta: TableMeta, filters: Filter[], withRetired = fa
   return [...filters, ['retired_at', '=', null]]
 }
 
-const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in', ...RELATED_OPS] as const
+// #1196: 'is blank' / 'is not blank' take no value: no value or empty text.
+const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in', 'is blank', 'is not blank', ...RELATED_OPS] as const
 /** The list language's filter operators, for texts that describe it (#1083, /mcp). */
 export const LIST_OPERATORS: readonly string[] = OPS
 
@@ -238,6 +239,8 @@ export async function scopedWhere(
       case '<=': return sql`${sql(field)} <= ${value as string}`
       case 'like': return sql`${sql(field)}::text ilike ${value as string}`
       case 'not like': return sql`${sql(field)}::text not ilike ${value as string}`
+      case 'is blank': return sql`(${sql(field)} is null or ${sql(field)}::text = '')`
+      case 'is not blank': return sql`(${sql(field)} is not null and ${sql(field)}::text <> '')`
       // An empty list: in nothing matches nothing, not in nothing excludes
       // nothing (#1137), as on a connected Table's drivers.
       case 'in': return (value as string[]).length ? sql`${sql(field)} in ${sql(value as string[])}` : sql`false`

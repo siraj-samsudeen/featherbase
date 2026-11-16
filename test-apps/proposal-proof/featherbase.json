@@ -11,6 +11,17 @@
       "required": false
     }
   ],
+  "approvalTypes": [
+    {
+      "name": "label_change",
+      "title": "Change a label"
+    },
+    {
+      "name": "role_grant",
+      "title": "Give someone a role",
+      "grantsAccess": true
+    }
+  ],
   "baseTables": {
     "read": {
       "Placement": [

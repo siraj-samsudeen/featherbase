@@ -49,35 +49,54 @@ export async function accessTarget(name: string): Promise<AccessTarget | null> {
 }
 
 /** Can `person` open `app` now: the same rule as the page they opened. */
-async function canOpen(person: string, app: string): Promise<boolean> {
+export async function canOpen(person: string, app: string): Promise<boolean> {
   if (app !== FEATHERBASE_APP.name) return canOpenApp(person, app)
   return (await canUseAdmin(person)) || (await getRoles(person)).includes(VIEWER_ROLE)
 }
 
-/** Removes every request whose person can now open its app, or who can no
- *  longer sign in. Run before the list is counted, so the count, the list and
- *  the reminder agree with what each person can open right now. */
+/** What `person` is told instead of waiting for `target`, or null when they
+ *  are waiting for it. One rule for asking and for settling (#1204): a request
+ *  goes once this answers. */
+async function notWaiting(person: string, target: AccessTarget): Promise<AccessAnswer | null> {
+  if (await canOpen(person, target.name)) return { state: 'open', title: target.title }
+  // Found on staging (10-Nov-2026): someone who belongs in an app, sent to the Admin, isn't waiting
+  // for it. Their app is named so the page sends them there; nothing is recorded or mailed.
+  if (target.name === FEATHERBASE_APP.name) {
+    const home = await homeApp(person)
+    if (home) return { state: 'elsewhere', title: target.title, home }
+    // Only apps open to everyone: shown them, and nobody is told.
+    const apps = (await appCatalog(person)).map(({ name, title, href }) => ({ name, title, href }))
+    if (apps.length) return { state: 'apps', title: target.title, apps }
+  }
+  return null
+}
+
+/** Removes every request whose person is no longer waiting for its app, or
+ *  who can no longer sign in. Run before the list is counted, so the count,
+ *  the list and the reminder agree with what each person can open right now. */
 export async function settleAccessRequests(): Promise<void> {
   const rows = await sql`
-    select r.row_id, r.person, r.app_name,
+    select r.row_id, r.person, r.app, r.app_name,
       coalesce(p.enabled and p.replaced_by is null, false) as live
     from access_request r left join person p on p.row_id = r.person`
   const settled: string[] = []
   for (const row of rows)
-    if (!row.live || (await canOpen(String(row.person), String(row.app_name)))) settled.push(String(row.row_id))
+    if (!row.live || (await notWaiting(String(row.person), { name: String(row.app_name), title: String(row.app) })))
+      settled.push(String(row.row_id))
   if (settled.length) await sql`delete from access_request where row_id in ${sql(settled)}`
 }
 
 export async function countWaitingForAccess(): Promise<number> {
   await settleAccessRequests()
-  const [row] = await sql`select count(*)::int as n from access_request`
+  const [row] = await sql`select count(*)::int as n from access_request where declined_at is null`
   return Number(row.n)
 }
 
 export interface AccessAnswer {
   /** `open`: they can open it after all. `waiting`: an admin has been told.
-   *  `elsewhere`: they belong in the app at `home`, and nobody was told. */
-  state: 'open' | 'waiting' | 'elsewhere' | 'apps'
+   *  `elsewhere`: they belong in the app at `home`, and nobody was told.
+   *  `declined`: an admin declined it (#1173); nobody is told again. */
+  state: 'open' | 'waiting' | 'elsewhere' | 'apps' | 'declined'
   title: string
   home?: string
   /** `apps`: the apps they can open, each open to everyone (#659: none of them is theirs). */
@@ -91,16 +110,8 @@ export interface AccessAnswer {
 export async function requestAccess(person: string, app: string): Promise<AccessAnswer | null> {
   const target = await accessTarget(app)
   if (!target) return null
-  if (await canOpen(person, target.name)) return { state: 'open', title: target.title }
-  // Found on staging (10-Nov-2026): someone who belongs in an app, sent to the Admin, isn't waiting
-  // for it. Their app is named so the page sends them there; nothing is recorded or mailed.
-  if (target.name === 'featherbase') {
-    const home = await homeApp(person)
-    if (home) return { state: 'elsewhere', title: target.title, home }
-    // Only apps open to everyone: shown them, and nobody is told.
-    const apps = (await appCatalog(person)).map(({ name, title, href }) => ({ name, title, href }))
-    if (apps.length) return { state: 'apps', title: target.title, apps }
-  }
+  const answer = await notWaiting(person, target)
+  if (answer) return answer
   // A built-in account (Administrator, Guest) is nobody to give a role to:
   // it asks for nothing, and an app's address shows it as unavailable.
   const [{ built_in: builtIn }] = await sql`select coalesce(built_in, false) as built_in from person where row_id = ${person}`
@@ -112,6 +123,10 @@ export async function requestAccess(person: string, app: string): Promise<Access
     on conflict (person, app_name) do nothing
     returning row_id`
   if (made.length) await alertAccessRequest(person, target)
+  else {
+    const [held] = await sql`select declined_at from access_request where person = ${person} and app_name = ${target.name}`
+    if (held?.declined_at) return { state: 'declined', title: target.title }
+  }
   return { state: 'waiting', title: target.title }
 }
 
@@ -211,7 +226,7 @@ export async function alertAccessRequest(person: string, target: AccessTarget): 
 export async function remindAccessRequests(): Promise<number | 'no recipients'> {
   await settleAccessRequests()
   return withTransaction(async () => {
-    const dueWhere = sql`reminded_at is null and created_at < now() - make_interval(hours => ${REMINDER_AFTER_HOURS})`
+    const dueWhere = sql`declined_at is null and reminded_at is null and created_at < now() - make_interval(hours => ${REMINDER_AFTER_HOURS})`
     const managers = await systemManagerEmails()
     // With nobody to tell, nothing is marked reminded: a later run, once a
     // System Manager has an address, still names these requests.
@@ -243,10 +258,18 @@ export async function remindAccessRequests(): Promise<number | 'no recipients'> 
 const escapeHtml = (value: string) =>
   value.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!)
 
+/** #1173: what a person whose request was declined is told; never the reason. */
+export const DECLINED_LINE = 'An admin declined your request. Ask your manager if you need it.'
+
 /** What an installed app's address shows a person who has just asked for it
  *  by opening it. */
-export function noAccessYetPage(title: string): string {
+export function noAccessYetPage(title: string, declined = false): string {
   const app = escapeHtml(title)
+  if (declined)
+    return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>No access to ${app}</title></head>
+      <body style="font:16px system-ui;background:#f4f5f6;color:#1c2126;margin:0;padding:8vw"><main data-testid="access-declined" style="max-width:36rem;margin:auto;background:white;border:1px solid #ebeef0;border-radius:8px;padding:2rem">
+      <h1>You don't have access to ${app}</h1><p>${DECLINED_LINE}</p>
+      <p><a href="/featherbase/login">Sign in as someone else</a></p></main></body></html>`
   return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>No access to ${app} yet</title></head>
       <body style="font:16px system-ui;background:#f4f5f6;color:#1c2126;margin:0;padding:8vw"><main data-testid="no-access-yet" style="max-width:36rem;margin:auto;background:white;border:1px solid #ebeef0;border-radius:8px;padding:2rem">
       <h1>You don't have access to ${app} yet</h1><p>An admin has been told. Once they give you access, open this page again.</p>

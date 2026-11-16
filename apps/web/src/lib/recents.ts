@@ -321,7 +321,8 @@ export function describeFilters(
         const value = column?.column_type === 'Choice' && ['=', '!='].includes(f[1])
           ? choiceLabel(String(f[2]), column.choice_labels, t)
           : String(f[2])
-        return `${t(column?.label ?? f[0])} ${f[1]} ${value}`
+        // #1196: is blank / is not blank take no value.
+        return f[1].includes('blank') ? `${t(column?.label ?? f[0])} ${f[1]}` : `${t(column?.label ?? f[0])} ${f[1]} ${value}`
       })
     return parts.length ? parts.join(' · ') : undefined
   } catch {

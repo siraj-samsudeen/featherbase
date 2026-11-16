@@ -1,5 +1,6 @@
-import { useId, useRef, useState, type ReactNode } from 'react'
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { buttonClasses, cardClasses, ChevronDown } from '@featherbase/shop-floor'
+import { menuAlign, visibleSpan, type MenuAlign } from './menuPlacement'
 
 /** Ordinary links/buttons keep their native keyboard behavior inside the disclosure. */
 export function ActionDisclosure({ label, children, open: controlledOpen, onOpenChange }: {
@@ -12,9 +13,18 @@ export function ActionDisclosure({ label, children, open: controlledOpen, onOpen
   const open = controlledOpen ?? localOpen
   const setOpen = onOpenChange ?? setLocalOpen
   const button = useRef<HTMLButtonElement>(null)
+  const root = useRef<HTMLDivElement>(null)
+  const menu = useRef<HTMLDivElement>(null)
+  const [align, setAlign] = useState<MenuAlign>('end')
   const id = useId()
+  // #1185: measured before the browser paints, so the menu never shows on the clipped side first.
+  useLayoutEffect(() => {
+    if (!open) return
+    setAlign(menuAlign(root.current!.getBoundingClientRect(), menu.current!.getBoundingClientRect().width, visibleSpan(root.current!)))
+  }, [open])
   return (
     <div
+      ref={root}
       className="relative"
       onBlur={(e) => {
         // A dialog opened from this menu renders inside it: closing the menu
@@ -41,7 +51,14 @@ export function ActionDisclosure({ label, children, open: controlledOpen, onOpen
         <ChevronDown aria-hidden data-chevron size={18} />
       </button>
       {open && (
-        <div id={id} className={cardClasses('absolute right-0 z-20 mt-1 flex w-full flex-col items-stretch gap-1 p-2 sm:w-64')}>
+        <div
+          id={id}
+          ref={menu}
+          role="group"
+          aria-label={label}
+          data-align={align}
+          className={cardClasses(`absolute ${align === 'end' ? 'right-0' : 'left-0'} z-20 mt-1 flex w-full flex-col items-stretch gap-1 p-2 sm:w-64`)}
+        >
           {children}
         </div>
       )}

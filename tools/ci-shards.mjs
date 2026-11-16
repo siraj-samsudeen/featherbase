@@ -69,7 +69,8 @@ async function execute(suite, shard) {
   mkdirSync(directory, { recursive: true })
   const selection = `--shard=${shard}/${shardCount}`
   const report = resolve(directory, 'results.json')
-  run(['vitest', 'run', selection, '--coverage', '--maxWorkers=1',
+  // Its own report folder: shards may run side by side (pnpm coverage:ci).
+  run(['vitest', 'run', selection, '--coverage', '--maxWorkers=1', `--coverage.reportsDirectory=coverage/${suite}-${shard}`,
     '--coverage.thresholds.lines=0', '--coverage.thresholds.statements=0',
     '--coverage.thresholds.functions=0', '--coverage.thresholds.branches=0',
     '--reporter=default', '--reporter=blob', '--reporter=json',

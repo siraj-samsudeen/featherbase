@@ -1,0 +1,672 @@
+// A Department Manager sets up their own department (#1195), on a stand-in for the platform's
+// helpers. Made-up stores and people. The main path also runs on the real platform in
+// platform-test/department-setup.test.ts.
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { DEPARTMENT_TABLES, DEPARTMENT_TYPE, departmentActions, departmentReads } from './department-setup.ts'
+import { prefillActions, sectionsName } from './department-prefill.ts'
+import { BASE_TABLES, type ActionContext, type ReadContext } from './my-sections.ts'
+import { istToday } from './report.ts'
+
+type Row = Record<string, unknown>
+const today = istToday()
+const LISTED = JSON.stringify([...BASE_TABLES, ...DEPARTMENT_TABLES])
+const job = (row_id: string, employee: string, job: string, site: string, section: string | null, reports_to: string | null, over: Row = {}) =>
+  ({ row_id, employee, job, site, section, floor: null, reports_to, starts_on: '2026-01-01', ends_on: null, ...over })
+
+function world(over: Partial<Record<string, Row[]>> = {}) {
+  return {
+    Employee: [
+      { row_id: 'E1', name: 'Deepa', status: 'Current', person: 'deepa' },
+      { row_id: 'E2', name: 'Mani', status: 'Current', person: 'mani' },
+      { row_id: 'E3', name: 'Asha', status: 'Current', person: null },
+      { row_id: 'E4', name: 'Bala', status: 'Current', person: null },
+      { row_id: 'E5', name: 'Kavya', status: 'Current', person: null },
+      { row_id: 'E6', name: 'Arun', status: 'Current', person: 'arun' },
+      { row_id: 'E7', name: 'Ravi', status: 'Current', person: null },
+      { row_id: 'E8', name: 'Siva', status: 'Current', person: null },
+      { row_id: 'E12', name: 'Zara', status: 'Current', person: null },
+    ],
+    'Job Assignment': [
+      job('J1', 'E1', 'Department Manager', 'LKS', null, 'E2'),
+      job('J2', 'E2', 'Store Manager', 'LKS', null, null),
+      job('J3', 'E3', 'Team Leader', 'LKS', 'S1', 'E1'),
+      // Two steps up: Bala reports to Siva, who reports to Deepa.
+      job('J4', 'E4', 'Team Leader', 'LKS', 'S2', 'E8'),
+      job('J8', 'E8', 'Staff', 'LKS', 'S2', 'E1'),
+      job('J5', 'E5', 'Team Leader', 'LKS', 'S5', 'E2'),
+      job('J6', 'E6', 'Department Manager', 'LKS', null, 'E2'),
+      job('J7', 'E7', 'Team Leader', 'LKS', 'S3', 'E6'),
+      // A second row for the same Team Leader, and one whose person HR no longer lists.
+      job('J10', 'E7', 'Team Leader', 'LKS', 'S3', 'E6'),
+      job('J9', 'E99', 'Team Leader', 'LKS', 'S5', 'E2'),
+      job('J11', 'E12', 'Team Leader', 'LKS', 'S3', 'E6'),
+    ],
+    Section: [
+      { row_id: 'S1', name: 'Sarees', site: 'LKS', floor: 'F1', status: 'Active' },
+      { row_id: 'S2', name: 'Silk', site: 'LKS', floor: 'F1', status: 'Active' },
+      { row_id: 'S5', name: 'Bags', site: 'LKS', floor: 'F1', status: 'Active' },
+      { row_id: 'S3', name: 'Kids Wear', site: 'LKS', floor: 'F2', status: 'Active' },
+      { row_id: 'S6', name: 'Footwear', site: 'LKS', floor: 'F2', status: 'Active' },
+      { row_id: 'S9', name: 'Closed Corner', site: 'LKS', floor: 'F2', status: 'Inactive' },
+      { row_id: 'S7', name: 'Loose', site: 'LKS', floor: null, status: 'Active' },
+      { row_id: 'H1', name: 'Tops', site: 'HIL', floor: null, status: 'Active' },
+    ],
+    'Store Floor': [{ row_id: 'F1', name: 'First floor', site: 'LKS' }, { row_id: 'F2', name: 'Second floor', site: 'LKS' }],
+    'Section Subcategory': ['C1', 'C2', 'C3', 'C4'].map(code => ({ row_id: `P-${code}`, store: 'LKS', subcategory: code, section: 'S1', starts_on: '2026-01-01', ends_on: null as string | null }))
+      .concat([{ row_id: 'P-C9', store: 'LKS', subcategory: 'C9', section: 'S1', starts_on: '2026-01-01', ends_on: '2026-02-01' },
+        { row_id: 'P-C5', store: 'LKS', subcategory: 'C5', section: 'S2', starts_on: '2026-01-01', ends_on: null }]),
+    Subcategory: [
+      ...['C1', 'C2', 'C3', 'C4'].map((row_id, i) => ({ row_id, subcategory: ['Silk sarees', 'Cotton sarees', 'Kanchi sarees', 'Banarasi sarees'][i], subcategory_type: 'Merchandise', subdivision: 'Womenswear', division: 'Fashion' })),
+      { row_id: 'C5', subcategory: 'Salwar sets', subcategory_type: 'Merchandise', subdivision: 'Womenswear', division: 'Fashion' },
+      { row_id: 'C6', subcategory: 'Clutches', subcategory_type: 'Merchandise', subdivision: 'Accessories', division: 'Fashion' },
+      { row_id: 'C7', subcategory: 'Sandals', subcategory_type: 'Merchandise', subdivision: 'Footwear', division: 'Fashion' },
+      { row_id: 'C8', subcategory: 'Rice', subcategory_type: 'Merchandise', subdivision: 'Staples', division: 'Grocery' },
+    ],
+    Site: [{ row_id: 'LKS', name: 'Lakeside', is_store: true }, { row_id: 'HIL', name: 'Hillview', is_store: true }, { row_id: 'RIV', name: 'Riverside', is_store: true }],
+    Department: [
+      { row_id: 'D1', department_id: 'D1', store: 'LKS', name: 'Kids', manager: 'E6', starts_on: '2026-01-01', ends_on: null },
+      { row_id: 'D2', department_id: 'D2', store: 'HIL', name: 'Kids', manager: 'E9', starts_on: '2026-01-01', ends_on: null },
+      { row_id: 'D3', department_id: 'D3', store: 'HIL', name: 'Menswear', manager: 'E9', starts_on: '2026-01-01', ends_on: null },
+      { row_id: 'D4', department_id: 'D4', store: 'HIL', name: 'Old name', manager: 'E9', starts_on: '2026-01-01', ends_on: '2026-02-01' },
+      { row_id: 'D5', department_id: 'D5', store: 'NGT', name: 'Footwear and Bags', manager: 'E9', starts_on: '2026-01-01', ends_on: null },
+      // Here: one whose manager is no longer on the staff list, and one that has ended.
+      { row_id: 'D6', department_id: 'D6', store: 'LKS', name: 'Shoes', manager: 'E99', starts_on: '2026-01-01', ends_on: null },
+      { row_id: 'D7', department_id: 'D7', store: 'LKS', name: 'Gone', manager: 'E1', starts_on: '2026-01-01', ends_on: '2026-02-01' },
+    ],
+    'Department Section': [
+      { row_id: 'DS1', department_section_id: 'DS1', store: 'LKS', department: 'D1', section: 'S3', starts_on: '2026-01-01', ends_on: null },
+      { row_id: 'DS6', department_section_id: 'DS6', store: 'LKS', department: 'D6', section: 'S6', starts_on: '2026-01-01', ends_on: null },
+      { row_id: 'DS7', department_section_id: 'DS7', store: 'LKS', department: 'D7', section: 'S7', starts_on: '2026-01-01', ends_on: null },
+    ],
+    ...over,
+  } as Record<string, Row[]>
+}
+
+/** The instance's mode for the department type, as its Approval Type row sets it (#1191). */
+let MODE = 'Approve first'
+const DECIDED: Record<string, string> = { approve: 'Applied', reject: 'Rejected', withdraw: 'Withdrawn', confirm: 'Confirmed', undo: 'Undone' }
+function context(tables: Record<string, Row[]>, { user = 'deepa', payload, settings = { linked_tables: LISTED }, proposals = [] as Row[], route = 'people', decides = true, roles = [] as string[] }: { user?: string; payload?: unknown; settings?: Record<string, string>; proposals?: Row[]; route?: string; decides?: boolean; roles?: string[] } = {}) {
+  const sent: { call: string; first: unknown; second?: unknown }[] = []
+  let made = 0
+  const answer = (call: string) => async (first: unknown, second?: unknown) => {
+    sent.push({ call, first, second })
+    const id = call === 'propose' ? `PR${++made}` : String(first)
+    const known = proposals.find(p => p.row_id === id)
+    // #1191: a proposal of an apply-now type applies at once and is not yet reviewed.
+    const appliedNow = call === 'propose' && (first as Row).type === DEPARTMENT_TYPE && MODE === 'Apply now, review after'
+    return { row_id: id, maker: 'deepa', state: appliedNow ? 'Not yet reviewed' : DECIDED[call] ?? 'Pending', about: call === 'propose' ? (first as Row).about : known?.about ?? null,
+      decision_reason: (second as { reason?: string } | undefined)?.reason ?? null, result_row: call === 'approve' || appliedNow ? `ROW-${id}` : null,
+      changes: [], created_at: `${today}T00:00:00Z`, decided_at: null, route: { people: route === 'people' ? ['mani'] : [], roles: [] } }
+  }
+  const ctx = {
+    user, payload, settings, roles,
+    reject(message: string): never { throw new Error(message) },
+    baseTables: {
+      async list(table: string, args: { filters?: [string, string, unknown][]; limit_start?: number; limit_page_length?: number }) {
+        const rows = (tables[table] ?? []).filter(row => (args.filters ?? []).every(([column, op, value]) =>
+          op === 'in' ? (value as unknown[]).includes(row[column]) : (row[column] ?? null) === value))
+        const start = args.limit_start ?? 0
+        return rows.slice(start, start + (args.limit_page_length ?? 500))
+      },
+    },
+    changeProposals: {
+      async list(filter: { ids?: string[]; states?: string[]; makers?: string[]; start?: number; limit?: number } = {}) {
+        const rows = proposals.filter(p => (!filter.ids || filter.ids.includes(String(p.row_id))) && (!filter.states || filter.states.includes(String(p.state))) && (!filter.makers || filter.makers.includes(String(p.maker))))
+        const start = filter.start ?? 0
+        return rows.slice(start, start + (filter.limit ?? 200))
+      },
+      mayDecide: async () => decides,
+      modeOf: async () => MODE,
+      routeFor: async (_maker: string, approvers: { people: string[] }) => (route === 'none' ? null : { people: route === 'people' ? approvers.people : [], roles: [] }),
+      lockRow: async () => {},
+      serialize: async () => {},
+      propose: answer('propose'), approve: answer('approve'), reject: answer('reject'), needsFreshReview: answer('needsFreshReview'), withdraw: answer('withdraw'),
+      confirm: answer('confirm'), undo: answer('undo'),
+    },
+  }
+  return { ctx: ctx as unknown as ActionContext & ReadContext, sent }
+}
+const read = (tables = world(), options: Parameters<typeof context>[1] = {}) => departmentReads.department_setup(context(tables, { payload: { job: 'J1' }, ...options }).ctx)
+
+/** A pending bundle as the platform would hold it: the department and one link per section. */
+const bundle = (over: Row = {}, state = 'Pending', reason: string | null = null) => {
+  const about = { kind: 'department', bundle: 'B1', job_assignment: 'J1', site: 'LKS', store: 'Lakeside', name: 'Ladies Ethnic', sections: ['S1', 'S2'], section_names: ['Sarees', 'Silk'], maker_name: 'Deepa', manager_name: 'Mani', ...over }
+  const base = { maker: 'deepa', state, decision_reason: reason, changes: [], created_at: `${today}T03:00:00Z`, decided_at: state === 'Pending' ? null : `${today}T05:00:00Z`, route: { people: ['mani'], roles: [] } }
+  return [
+    { ...base, row_id: 'PD', about },
+    { ...base, row_id: 'PL1', about: { ...about, kind: 'department_section', section: 'S1' } },
+    { ...base, row_id: 'PL2', about: { ...about, kind: 'department_section', section: 'S2' } },
+  ]
+}
+
+describe('the department set-up read', () => {
+  it.each([[{}], [{ linked_tables: 'not json' }], [{ linked_tables: JSON.stringify(BASE_TABLES) }]])('says it is not set up with %j', async settings => {
+    expect(await read(world(), { settings })).toEqual({ state: 'not_set_up' })
+  })
+  it('says so for someone not on the staff list, or with no Department Manager job', async () => {
+    expect(await read(world(), { user: 'stranger' })).toEqual({ state: 'unknown_person' })
+    expect(await read(world(), { user: 'mani', payload: {} })).toEqual({ state: 'no_job' })
+  })
+  it('tells the page a set-up waits for approval when the instance says so', async () => {
+    expect(await read()).toMatchObject({ applies_at_once: false })
+  })
+  it('takes their first Department Manager job when none is named', async () => {
+    expect(await read(world(), { payload: {} })).toMatchObject({ state: 'ok', job: { id: 'J1', store: 'Lakeside' } })
+  })
+  it("says a store with no sections can't be set up yet, and who sets up its sections", async () => {
+    const tables = world({ 'Job Assignment': [job('J1', 'E1', 'Department Manager', 'RIV', null, 'E2')] })
+    expect(await read(tables)).toEqual({ state: 'no_sections', job: { id: 'J1', store: 'Riverside' }, reviewer: 'Mani', reviewer_is_team: false })
+  })
+
+  it('lists the floors, the sections with what they sell and who leads them, and what is suggested', async () => {
+    const answer = await read()
+    expect(answer).toMatchObject({ state: 'ok', name: 'Deepa', job: { id: 'J1', store: 'Lakeside' }, reviewer: 'Mani', current: null })
+    if (answer.state !== 'ok') throw new Error('not ok')
+    expect(answer.floors).toEqual([{ id: 'F1', name: 'First floor' }, { id: 'F2', name: 'Second floor' }, { id: '', name: 'No floor' }])
+    expect(answer.start_floors).toEqual(['F1'])
+    // Floor by floor, as the floors are listed, then by name; a closed section is left out.
+    expect(answer.sections).toEqual([
+      { id: 'S5', name: 'Bags', floor: 'F1', sells: [], more: 0, team_leaders: ['Kavya'], suggested: false, held_by: null },
+      { id: 'S1', name: 'Sarees', floor: 'F1', sells: ['Banarasi sarees', 'Cotton sarees', 'Kanchi sarees'], more: 1, team_leaders: ['Asha'], suggested: true, held_by: null },
+      { id: 'S2', name: 'Silk', floor: 'F1', sells: ['Salwar sets'], more: 0, team_leaders: ['Bala'], suggested: true, held_by: null },
+      { id: 'S6', name: 'Footwear', floor: 'F2', sells: [], more: 0, team_leaders: [], suggested: false, held_by: 'Shoes (no manager now)' },
+      { id: 'S3', name: 'Kids Wear', floor: 'F2', sells: [], more: 0, team_leaders: ['Ravi', 'Zara'], suggested: false, held_by: 'Kids (Arun)' },
+      { id: 'S7', name: 'Loose', floor: '', sells: [], more: 0, team_leaders: [], suggested: false, held_by: null },
+    ])
+    // Names used at other stores, most used first; never one in force here, nor one that has ended.
+    expect(answer.names).toEqual(['Footwear and Bags', 'Menswear'])
+  })
+  it('starts on every floor when nothing is suggested', async () => {
+    const tables = world()
+    tables['Job Assignment'] = tables['Job Assignment'].map(row => ({ ...row, reports_to: row.employee === 'E1' ? 'E2' : 'E2' }))
+    const answer = await read(tables)
+    expect(answer.state === 'ok' && answer.start_floors).toEqual(['F1', 'F2', ''])
+  })
+  it('follows a reporting line no further than five steps, and survives a loop', async () => {
+    const chain = ['E3', 'E10', 'E11', 'E12', 'E13', 'E14']
+    const tables = world()
+    tables['Job Assignment'] = [job('J1', 'E1', 'Department Manager', 'LKS', null, 'E2'),
+      ...chain.map((e, i) => job(`JC${i}`, e, i ? 'Staff' : 'Team Leader', 'LKS', i ? null : 'S1', chain[i + 1] ?? 'E1')),
+      job('JL1', 'E4', 'Team Leader', 'LKS', 'S2', 'E15'), job('JL2', 'E15', 'Staff', 'LKS', null, 'E4'),
+      // A line that runs to someone with no job at this store.
+      job('JL3', 'E5', 'Team Leader', 'LKS', 'S5', 'E77')]
+    const answer = await read(tables)
+    expect(answer.state === 'ok' && answer.sections.filter(s => s.suggested).map(s => s.id)).toEqual([])
+  })
+  it("names the master data team when their manager can't sign in", async () => {
+    expect(await read(world(), { route: 'roles' })).toMatchObject({ reviewer: 'the master data team', reviewer_is_team: true })
+  })
+
+  it('shows the department they manage now', async () => {
+    const tables = world()
+    tables.Department.push({ row_id: 'D9', department_id: 'D9', store: 'LKS', name: 'Ladies Ethnic', manager: 'E1', starts_on: '2026-01-01', ends_on: null })
+    tables['Department Section'].push({ row_id: 'DS9', store: 'LKS', department: 'D9', section: 'S1', starts_on: '2026-01-01', ends_on: null })
+    expect(await read(tables)).toMatchObject({ current: { state: 'set_up', name: 'Ladies Ethnic', sections: ['Sarees'] } })
+  })
+  it('shows a set-up waiting for review, and who it waits for', async () => {
+    expect(await read(world(), { proposals: bundle() })).toMatchObject({ current: { state: 'waiting', bundle: 'B1', name: 'Ladies Ethnic', sections: ['Sarees', 'Silk'], waiting_for: 'Mani', asked_on: today } })
+  })
+  it('shows why the last set-up was turned down, until they send another', async () => {
+    expect(await read(world(), { proposals: bundle({}, 'Rejected', 'Bags is in Kids') })).toMatchObject({ current: { state: 'turned_down', reason: 'Bags is in Kids', name: 'Ladies Ethnic' } })
+    expect(await read(world(), { proposals: bundle({}, 'Withdrawn') })).toMatchObject({ current: null })
+  })
+})
+
+describe('sending a department', () => {
+  const send = (payload: Row, tables = world(), proposals: Row[] = []) => {
+    const { ctx, sent } = context(tables, { payload: { job: 'J1', ...payload }, proposals })
+    return { run: () => departmentActions.set_up_department(ctx), sent }
+  }
+
+  it('proposes the department and one link per section, as one bundle for their manager', async () => {
+    const { run, sent } = send({ name: '  Ladies Ethnic ', sections: ['S2', 'S1'] })
+    const answer = await run()
+    expect(answer).toMatchObject({ state: 'waiting', name: 'Ladies Ethnic', sections: ['Sarees', 'Silk'], waiting_for: 'Mani' })
+    expect(sent.map(s => s.call)).toEqual(['propose', 'propose', 'propose'])
+    const [department, ...links] = sent.map(s => s.first as { table: string; row: null; changes: Row; approvers: Row; about: Row })
+    expect(department).toMatchObject({ table: 'Department', row: null, changes: { store: 'LKS', name: 'Ladies Ethnic', manager: 'E1' },
+      approvers: { people: ['mani'], fallbackRoles: ['Master Data Editor'] }, about: { kind: 'department', job_assignment: 'J1', sections: ['S1', 'S2'], section_names: ['Sarees', 'Silk'] } })
+    expect(links.map(l => [l.table, l.changes, l.about.kind, l.about.section])).toEqual([
+      ['Department Section', { store: 'LKS', section: 'S1', department: null }, 'department_section', 'S1'],
+      ['Department Section', { store: 'LKS', section: 'S2', department: null }, 'department_section', 'S2'],
+    ])
+    expect(new Set([department, ...links].map(p => p.about.bundle)).size).toBe(1)
+  })
+  it.each([
+    [{ job: 'J2' }, 'That is not a Department Manager job of yours'],
+    [{ sections: [] }, 'Tick at least one section'],
+    [{ sections: 'S1' }, 'Tick at least one section'],
+    [{ name: '   ' }, 'Give your department a name'],
+    [{ name: 7 }, 'Give your department a name'],
+    [{ name: 'Kids' }, 'Lakeside already has a department called Kids'],
+    [{ name: 'x'.repeat(61) }, 'Keep the name to 60 characters'],
+    [{ sections: ['H1'] }, 'Pick sections in Lakeside'],
+    [{ sections: ['S9'] }, 'Closed Corner is no longer open'],
+    [{ sections: ['S3'] }, 'Kids Wear is already in Kids. Ask Mani to move it'],
+  ])('refuses %j', async (over, message) => {
+    await expect(send({ name: 'Ladies Ethnic', sections: ['S1'], ...over }).run()).rejects.toThrow(message)
+  })
+  it('keeps the sections in name order, whatever their ids', async () => {
+    const { run, sent } = send({ name: 'Ladies Ethnic', sections: ['S5', 'S1'] })
+    expect(await run()).toMatchObject({ sections: ['Bags', 'Sarees'] })
+    expect((sent[0].first as { about: Row }).about).toMatchObject({ sections: ['S5', 'S1'], section_names: ['Bags', 'Sarees'] })
+  })
+  it('names the Department in each link when the platform applies it at once (#1191)', async () => {
+    const { ctx, sent } = context(world(), { payload: { job: 'J1', name: 'Ladies Ethnic', sections: ['S1'] } })
+    const propose = ctx.changeProposals.propose
+    let first = true
+    ctx.changeProposals.propose = (async (request: never) => {
+      const made = await propose(request)
+      if (!first) return made
+      first = false
+      return { ...made, state: 'Not yet reviewed', result_row: 'D-NEW' }
+    }) as typeof propose
+    await departmentActions.set_up_department(ctx)
+    expect((sent[1].first as { changes: Row }).changes).toEqual({ store: 'LKS', section: 'S1', department: 'D-NEW' })
+  })
+  it('names its type on every proposal, with its own id; approve first leaves it waiting', async () => {
+    const { run, sent } = send({ name: 'Ladies', sections: ['S1'] })
+    expect(await run()).toMatchObject({ state: 'waiting' })
+    expect(sent.map(s => [(s.first as Row).type, Object.keys(((s.first as Row).apply as { newRow: Row }).newRow)])).toEqual([
+      ['department_setup', ['department_id', 'source_key']], ['department_setup', ['department_section_id', 'source_key']]])
+  })
+  it('orders two sections of one name by their ids', async () => {
+    const tables = world()
+    tables.Section.push({ row_id: 'S0', name: 'Bags', site: 'LKS', floor: 'F2', status: 'Active' })
+    const { run } = send({ name: 'Ladies Ethnic', sections: ['S5', 'S0'] }, tables)
+    expect(await run()).toMatchObject({ sections: ['Bags', 'Bags'] })
+  })
+  it('sends a changed one in place of the one waiting, withdrawing it first (#1195 verifier A)', async () => {
+    const { run, sent } = send({ name: 'Ladies', sections: ['S5'], replaces: 'B1' }, world(), bundle())
+    expect(await run()).toMatchObject({ state: 'waiting', name: 'Ladies' })
+    expect(sent.map(s => [s.call, s.call === 'withdraw' ? s.first : (s.first as { table: string }).table])).toEqual([
+      ['withdraw', 'PL2'], ['withdraw', 'PL1'], ['withdraw', 'PD'], ['propose', 'Department'], ['propose', 'Department Section']])
+  })
+  it('refuses a second while one waits, and when they already have a department', async () => {
+    await expect(send({ name: 'Other', sections: ['S5'] }, world(), bundle()).run()).rejects.toThrow('You already sent one. Change or withdraw it first')
+    const tables = world()
+    tables.Department.push({ row_id: 'D9', store: 'LKS', name: 'Ladies Ethnic', manager: 'E1', starts_on: '2026-01-01', ends_on: null })
+    await expect(send({ name: 'Other', sections: ['S5'] }, tables).run()).rejects.toThrow('You already have a department here')
+  })
+})
+
+describe('withdrawing a department', () => {
+  it('withdraws every part of their own waiting bundle', async () => {
+    const { ctx, sent } = context(world(), { payload: { bundle: 'B1' }, proposals: bundle() })
+    expect(await departmentActions.withdraw_department(ctx)).toEqual({ withdrawn: 3 })
+    // Links first, then the department: nothing is left pointing at nothing (#1191).
+    expect(sent.map(s => [s.call, s.first])).toEqual([['withdraw', 'PL2'], ['withdraw', 'PL1'], ['withdraw', 'PD']])
+  })
+  it("refuses one that isn't waiting, or isn't theirs", async () => {
+    await expect(departmentActions.withdraw_department(context(world(), { payload: { bundle: 'B9' }, proposals: bundle() }).ctx)).rejects.toThrow('That set-up is no longer waiting')
+    await expect(departmentActions.withdraw_department(context(world(), { user: 'mani', payload: { bundle: 'B1' }, proposals: bundle() }).ctx)).rejects.toThrow('That set-up is no longer waiting')
+  })
+})
+
+describe('deciding a department', () => {
+  const decide = (payload: Row, proposals = bundle()) => {
+    const { ctx, sent } = context(world(), { user: 'mani', payload: { bundle: 'B1', ...payload }, proposals })
+    return { run: () => departmentActions.decide_department(ctx), sent }
+  }
+  it('approves the department, then each link pointing at the new department', async () => {
+    const { run, sent } = decide({ decision: 'approve' })
+    expect(await run()).toEqual({ state: 'Applied', department: 'ROW-PD' })
+    expect(sent.map(s => [s.call, s.first])).toEqual([['approve', 'PD'], ['approve', 'PL1'], ['approve', 'PL2']])
+    expect(sent[0].second).toMatchObject({ effectiveOn: today, newRow: { department_id: expect.stringMatching(/^LKS-Ladies Ethnic-/), source_key: `Dash, approved ${today}` } })
+    expect(sent[1].second).toMatchObject({ instead: { department: 'ROW-PD' }, newRow: { department_section_id: expect.stringMatching(/^LKS-S1-/) } })
+  })
+  it('applies a changed name and leaves out unticked sections, saying why', async () => {
+    const { run, sent } = decide({ decision: 'approve', name: 'Ethnic Wear', sections: ['S2'] })
+    await run()
+    expect(sent.map(s => [s.call, s.first])).toEqual([['approve', 'PD'], ['reject', 'PL1'], ['approve', 'PL2']])
+    expect(sent[0].second).toMatchObject({ instead: { name: 'Ethnic Wear' }, reason: 'Named Ethnic Wear instead.' })
+    expect(sent[1].second).toMatchObject({ reason: 'Left out by the reviewer.' })
+  })
+  it('turns the whole bundle down, with the reason', async () => {
+    const { run, sent } = decide({ decision: 'reject', reason: 'Bags is in Kids' })
+    expect(await run()).toEqual({ state: 'Rejected', department: null })
+    expect(sent.map(s => [s.call, (s.second as Row).reason])).toEqual([['reject', 'Bags is in Kids'], ['reject', 'Bags is in Kids'], ['reject', 'Bags is in Kids']])
+  })
+  it.each([
+    [{ decision: 'approve', bundle: 'B9' }, 'That set-up is no longer waiting'],
+    [{ decision: 'maybe' }, 'Keep it or turn it down'],
+    [{ decision: 'reject', reason: ' ' }, 'Say why it is turned down'],
+    [{ decision: 'approve', sections: [] }, 'Keep at least one section'],
+    [{ decision: 'approve', name: 'Kids' }, 'Lakeside already has a department called Kids'],
+  ])('refuses %j', async (payload, message) => {
+    await expect(decide(payload).run()).rejects.toThrow(message)
+  })
+  it('turns down a bundle whose section was taken meanwhile, saying so', async () => {
+    const tables = world()
+    tables['Department Section'].push({ row_id: 'DS2', store: 'LKS', department: 'D1', section: 'S1', starts_on: '2026-01-01', ends_on: null })
+    const { ctx, sent } = context(tables, { user: 'mani', payload: { bundle: 'B1', decision: 'approve' }, proposals: bundle() })
+    expect(await departmentActions.decide_department(ctx)).toEqual({ state: 'Needs fresh review', department: null })
+    expect(sent.map(s => s.call)).toEqual(['needsFreshReview', 'needsFreshReview', 'needsFreshReview'])
+    expect(sent[0].second).toMatchObject({ reason: 'Sarees is now in Kids.' })
+  })
+})
+
+describe('what waits for a reviewer', () => {
+  it('lists each waiting bundle once, with its sections and their Team Leaders', async () => {
+    const { ctx } = context(world(), { user: 'mani', proposals: [...bundle(), ...bundle({ bundle: 'B2', job_assignment: 'J6', maker_name: 'Arun' }).map(p => ({ ...p, row_id: `${p.row_id}-2`, maker: 'arun' }))] })
+    expect(await departmentReads.department_approvals(ctx)).toEqual([
+      { bundle: 'B1', who: 'Deepa', job: 'Department Manager', store: 'Lakeside', name: 'Ladies Ethnic', asked_on: today, applied: false, prefilled: false, flagged: [],
+        sections: [{ id: 'S1', name: 'Sarees', team_leaders: ['Asha'] }, { id: 'S2', name: 'Silk', team_leaders: ['Bala'] }] },
+      { bundle: 'B2', who: 'Arun', job: 'Department Manager', store: 'Lakeside', name: 'Ladies Ethnic', asked_on: today, applied: false, prefilled: false, flagged: [],
+        sections: [{ id: 'S1', name: 'Sarees', team_leaders: ['Asha'] }, { id: 'S2', name: 'Silk', team_leaders: ['Bala'] }] },
+    ])
+  })
+  it('leaves out their own, and answers nothing when not set up', async () => {
+    expect(await departmentReads.department_approvals(context(world(), { proposals: bundle() }).ctx)).toEqual([])
+    expect(await departmentReads.department_approvals(context(world(), { user: 'mani', settings: {}, proposals: bundle() }).ctx)).toEqual([])
+  })
+})
+
+describe('the edges (#1195)', () => {
+  it("names the master data team when nobody can be routed to", async () => {
+    expect(await read(world(), { route: 'none' })).toMatchObject({ reviewer: 'the master data team' })
+  })
+  it('lists no "No floor" when every section has a floor, and sells nothing where nothing is placed', async () => {
+    const tables = world({ 'Section Subcategory': [] })
+    tables.Section = tables.Section.filter(s => s.row_id !== 'S7')
+    const answer = await read(tables)
+    if (answer.state !== 'ok') throw new Error('not ok')
+    expect(answer.floors.map(f => f.id)).toEqual(['F1', 'F2'])
+    expect(answer.sections.every(s => !s.sells.length)).toBe(true)
+  })
+  it('lists the sections of their department in name order', async () => {
+    const tables = world()
+    tables.Department.push({ row_id: 'D9', store: 'LKS', name: 'Ladies', manager: 'E1', starts_on: '2026-01-01', ends_on: null })
+    tables['Department Section'].push({ row_id: 'DS8', store: 'LKS', department: 'D9', section: 'S2', starts_on: '2026-01-01', ends_on: null },
+      { row_id: 'DS9', store: 'LKS', department: 'D9', section: 'S1', starts_on: '2026-01-01', ends_on: null })
+    expect(await read(tables)).toMatchObject({ current: { state: 'set_up', sections: ['Sarees', 'Silk'] } })
+  })
+  it('reads the newest set-up first, and a turn-down with no reason as an empty one', async () => {
+    const older = bundle({}, 'Rejected').map(p => ({ ...p, row_id: `old-${p.row_id}`, created_at: `${today}T01:00:00Z` }))
+    expect(await read(world(), { proposals: [...older, ...bundle({}, 'Withdrawn')] })).toMatchObject({ current: null })
+    expect(await read(world(), { proposals: bundle({}, 'Needs fresh review') })).toMatchObject({ current: { state: 'turned_down', reason: '' } })
+  })
+  it('finds a bundle beyond the first page, past proposals about nothing it knows', async () => {
+    const filler = Array.from({ length: 500 }, (_, i) => ({ row_id: `F${String(i).padStart(3, '0')}`, maker: 'deepa', state: 'Pending', about: null, created_at: `${today}T00:00:00Z`, route: { people: [], roles: [] } }))
+    const { ctx } = context(world(), { payload: { bundle: 'B1' }, proposals: [...filler, ...bundle()] })
+    expect(await departmentActions.withdraw_department(ctx)).toEqual({ withdrawn: 3 })
+    const reviewer = context(world(), { user: 'mani', proposals: [...filler, ...bundle()] })
+    expect(await departmentReads.department_approvals(reviewer.ctx)).toHaveLength(1)
+  })
+  it('shows a section with no Team Leader as having none', async () => {
+    const proposals = bundle({ sections: ['S6'], section_names: ['Footwear'] })
+    expect(await departmentReads.department_approvals(context(world(), { user: 'mani', proposals }).ctx)).toMatchObject([{ sections: [{ id: 'S6', name: 'Footwear', team_leaders: [] }] }])
+  })
+  it('leaves out set-ups the platform says they may not decide', async () => {
+    expect(await departmentReads.department_approvals(context(world(), { user: 'mani', proposals: bundle(), decides: false }).ctx)).toEqual([])
+  })
+  it('refuses a bundle that is not a name, a send with nothing in it, a turn-down with no reason, and a long name', async () => {
+    await expect(departmentActions.withdraw_department(context(world(), { payload: { bundle: 7 }, proposals: bundle() }).ctx)).rejects.toThrow('That set-up is no longer waiting')
+    await expect(departmentActions.set_up_department(context(world()).ctx)).rejects.toThrow('Tick at least one section')
+    await expect(departmentActions.decide_department(context(world(), { user: 'mani', payload: { bundle: 'B1', decision: 'reject' }, proposals: bundle() }).ctx)).rejects.toThrow('Say why it is turned down')
+    await expect(departmentActions.decide_department(context(world(), { user: 'mani', payload: { bundle: 'B1', decision: 'approve', name: 'x'.repeat(61) }, proposals: bundle() }).ctx)).rejects.toThrow('Keep the name to 60 characters')
+  })
+})
+
+describe('holds_department_job (#1195)', () => {
+  it('says whether the signed-in person is a Department Manager now', async () => {
+    expect(await departmentReads.holds_department_job(context(world()).ctx)).toBe(true)
+    expect(await departmentReads.holds_department_job(context(world(), { user: 'mani' }).ctx)).toBe(false)
+    expect(await departmentReads.holds_department_job(context(world(), { settings: {} }).ctx)).toBe(false)
+  })
+})
+
+// #1191: the instance sets the department type to apply now, review after.
+describe('apply now, review after (#1191)', () => {
+  beforeEach(() => { MODE = 'Apply now, review after' })
+  afterEach(() => { MODE = 'Approve first' })
+  const applied = (over: Row = {}) => bundle(over, 'Not yet reviewed').map(p => (p.row_id === 'PD' ? { ...p, result_row: 'D-APPLIED' } : p))
+
+  it('applies the department at once, and links each section to it, every row with its own id', async () => {
+    const { ctx, sent } = context(world(), { payload: { job: 'J1', name: 'Ladies Ethnic', sections: ['S1', 'S2'] } })
+    expect(await departmentActions.set_up_department(ctx)).toMatchObject({ state: 'set_up', name: 'Ladies Ethnic' })
+    const [department, ...links] = sent.map(s => s.first as Row & { apply: { newRow: Row } })
+    expect(department).toMatchObject({ type: 'department_setup', apply: { effectiveOn: today, newRow: { department_id: expect.stringMatching(/^LKS-Ladies Ethnic-/), source_key: `Dash, set up ${today}` } } })
+    expect(links.map(l => [l.changes, l.apply.newRow.department_section_id])).toEqual([
+      [{ store: 'LKS', section: 'S1', department: 'ROW-PR1' }, expect.stringMatching(/^LKS-S1-/)],
+      [{ store: 'LKS', section: 'S2', department: 'ROW-PR1' }, expect.stringMatching(/^LKS-S2-/)],
+    ])
+  })
+  it('shows the department in use, and who has yet to review it', async () => {
+    const tables = world()
+    tables.Department.push({ row_id: 'D9', store: 'LKS', name: 'Ladies Ethnic', manager: 'E1', starts_on: '2026-01-01', ends_on: null })
+    expect(await read(tables, { proposals: applied() })).toMatchObject({ current: { state: 'set_up', reviewing: { bundle: 'B1', waiting_for: 'Mani' } } })
+    expect(await read(tables, { proposals: bundle({}, 'Confirmed') })).toMatchObject({ current: { state: 'set_up', reviewing: null } })
+  })
+  it('the maker takes it back with undo, links first and with no reason; a changed one replaces it', async () => {
+    const withdraw = context(world(), { payload: { bundle: 'B1' }, proposals: applied() })
+    await departmentActions.withdraw_department(withdraw.ctx)
+    expect(withdraw.sent.map(s => [s.call, s.first, s.second])).toEqual([
+      ['undo', 'PL2', { approvers: expect.anything() }], ['undo', 'PL1', { approvers: expect.anything() }], ['undo', 'PD', { approvers: expect.anything() }]])
+    const change = context(world(), { payload: { job: 'J1', name: 'Ladies', sections: ['S5'], replaces: 'B1' }, proposals: applied() })
+    await departmentActions.set_up_department(change.ctx)
+    expect(change.sent.map(s => s.call)).toEqual(['undo', 'undo', 'undo', 'propose', 'propose'])
+  })
+  it('the reviewer keeps it with confirm, undoing any section they leave out', async () => {
+    const { ctx, sent } = context(world(), { user: 'mani', payload: { bundle: 'B1', decision: 'approve', sections: ['S2'] }, proposals: applied() })
+    expect(await departmentActions.decide_department(ctx)).toEqual({ state: 'Confirmed', department: 'D-APPLIED' })
+    expect(sent.map(s => [s.call, s.first])).toEqual([['undo', 'PL1'], ['confirm', 'PL2'], ['confirm', 'PD']])
+    expect(sent[0].second).toMatchObject({ reason: 'Left out by the reviewer.' })
+    const all = context(world(), { user: 'mani', payload: { bundle: 'B1', decision: 'approve', name: 'Ladies Ethnic' }, proposals: applied() })
+    await departmentActions.decide_department(all.ctx)
+    expect(all.sent.map(s => s.call)).toEqual(['confirm', 'confirm', 'confirm'])
+  })
+  it('the reviewer turns it down with undo, links first, with the reason', async () => {
+    const { ctx, sent } = context(world(), { user: 'mani', payload: { bundle: 'B1', decision: 'reject', reason: 'Bags is in Kids' }, proposals: applied() })
+    expect(await departmentActions.decide_department(ctx)).toEqual({ state: 'Undone', department: null })
+    expect(sent.map(s => [s.call, s.first, (s.second as Row).reason])).toEqual([['undo', 'PL2', 'Bags is in Kids'], ['undo', 'PL1', 'Bags is in Kids'], ['undo', 'PD', 'Bags is in Kids']])
+  })
+  it('a department in use keeps its name and at least one section', async () => {
+    const decide = (payload: Row) => departmentActions.decide_department(context(world(), { user: 'mani', payload: { bundle: 'B1', decision: 'approve', ...payload }, proposals: applied() }).ctx)
+    await expect(decide({ name: 'Ethnic Wear' })).rejects.toThrow('A department in use keeps its name')
+    await expect(decide({ sections: [] })).rejects.toThrow('Keep at least one section')
+  })
+  it("reads a reviewer's undo as turned down, with the reason, and the maker's own undo as nothing", async () => {
+    const undone = (by: string) => bundle({}, 'Undone', 'Sarees is in Ethnic').map(p => ({ ...p, decided_by: by }))
+    expect(await read(world(), { proposals: undone('mani') })).toMatchObject({ current: { state: 'turned_down', reason: 'Sarees is in Ethnic' } })
+    expect(await read(world(), { proposals: undone('deepa') })).toMatchObject({ current: null })
+  })
+  it('tells the page that a set-up applies at once', async () => {
+    expect(await read()).toMatchObject({ applies_at_once: true })
+  })
+  it('shows the reviewer which set-ups are already in use', async () => {
+    expect(await departmentReads.department_approvals(context(world(), { user: 'mani', proposals: applied() }).ctx)).toMatchObject([{ bundle: 'B1', applied: true }])
+  })
+})
+
+// #1205: pre-filling departments from reporting lines, by a service account, through the set-up path.
+describe('pre-fill from reporting lines (#1205)', () => {
+  beforeEach(() => { MODE = 'Apply now, review after' })
+  afterEach(() => { MODE = 'Approve first' })
+  const LOADER = { user: 'loader', roles: ['System Manager'] }
+  const prefill = (managers: Row[], tables = world(), options: Parameters<typeof context>[1] = {}) => {
+    const { ctx, sent } = context(tables, { ...LOADER, payload: { store: 'LKS', managers }, ...options })
+    return { run: () => prefillActions.prefill_departments(ctx), sent }
+  }
+  const deepa = { employee: 'E1', sections: ['Sarees', 'Silk'], flagged: ['Silk'] }
+
+  it('pre-fills a manager through the set-up path: applied, for review, the Department Manager among those who may decide', async () => {
+    const { run, sent } = prefill([deepa])
+    expect(await run()).toMatchObject({ store: 'Lakeside', results: [{ employee: 'E1', name: 'Deepa', outcome: 'pre-filled', department: 'Sarees & Silk', sections: ['Sarees', 'Silk'], notes: [] }] })
+    const [department, ...links] = sent.map(s => s.first as Row & { about: Row; approvers: Row; changes: Row })
+    expect(department).toMatchObject({ type: 'department_setup', table: 'Department', changes: { store: 'LKS', name: 'Sarees & Silk', manager: 'E1' },
+      approvers: { people: ['mani', 'deepa'], fallbackRoles: ['Master Data Editor'] },
+      about: { kind: 'department', prefilled: true, flagged: ['S2'], for_person: 'deepa', maker_name: 'Deepa', sections: ['S1', 'S2'], name: 'Sarees & Silk' } })
+    expect(links.map(l => l.changes)).toEqual([{ store: 'LKS', section: 'S1', department: 'ROW-PR1' }, { store: 'LKS', section: 'S2', department: 'ROW-PR1' }])
+  })
+  it('refuses anyone who is not a System Manager or Master Data Editor', async () => {
+    await expect(prefill([deepa], world(), { roles: [] }).run()).rejects.toThrow('Only a System Manager or Master Data Editor can pre-fill departments')
+    expect(await prefill([deepa], world(), { roles: ['Master Data Editor'] }).run()).toMatchObject({ results: [{ outcome: 'pre-filled' }] })
+  })
+  it('skips a manager with a department, a set-up open, or any earlier pre-fill, even one undone', async () => {
+    const withDepartment = world()
+    withDepartment.Department.push({ row_id: 'D9', store: 'LKS', name: 'Ladies', manager: 'E1', starts_on: '2026-01-01', ends_on: null })
+    expect((await prefill([deepa], withDepartment).run()).results).toMatchObject([{ outcome: 'skipped', notes: ['already has a department'] }])
+    expect((await prefill([deepa], world(), { proposals: bundle() }).run()).results).toMatchObject([{ outcome: 'skipped', notes: ['has a set-up open'] }])
+    const undone = bundle({ prefilled: true }, 'Undone').map(p => ({ ...p, maker: 'loader' }))
+    const again = prefill([deepa], world(), { proposals: undone })
+    expect((await again.run()).results).toMatchObject([{ outcome: 'skipped', notes: ['pre-filled before'] }])
+    expect(again.sent).toEqual([])
+  })
+  it('refuses a manager it cannot place, and leaves out sections it cannot use, saying why', async () => {
+    const tables = world()
+    tables['Job Assignment'].push(job('J20', 'E8', 'Staff', 'LKS', null, 'E1'))
+    const { run } = prefill([
+      { employee: 'E404', sections: ['Sarees'] },
+      { employee: 'E8', sections: ['Sarees'] },
+      { employee: 'E1', sections: ['Sarees', 'Nowhere', 'Closed Corner', 'Kids Wear', 'Tops'] },
+      { employee: 'E6', sections: ['Kids Wear'] },
+    ], tables)
+    expect((await run()).results).toEqual([
+      { employee: 'E404', name: '', outcome: 'refused', notes: ['not on the staff list'] },
+      { employee: 'E8', name: 'Siva', outcome: 'refused', notes: ['no Department Manager job at Lakeside'] },
+      { employee: 'E1', name: 'Deepa', outcome: 'pre-filled', department: 'Sarees', sections: ['Sarees'], bundle: expect.any(String), created: expect.any(Object),
+        notes: ['no section Nowhere at Lakeside', 'Closed Corner is closed', 'Kids Wear is already in Kids', 'no section Tops at Lakeside'] },
+      { employee: 'E6', name: 'Arun', outcome: 'skipped', notes: ['already has a department'] },
+    ])
+  })
+  it('refuses a manager left with no section', async () => {
+    expect((await prefill([{ employee: 'E1', sections: ['Kids Wear'] }]).run()).results).toEqual([
+      { employee: 'E1', name: 'Deepa', outcome: 'refused', notes: ['Kids Wear is already in Kids', 'no section left to pre-fill'] }])
+  })
+  it('refuses a bad payload', async () => {
+    await expect(prefill([deepa], world(), { payload: { store: 'XXX', managers: [] } }).run()).rejects.toThrow('No store XXX')
+    await expect(prefill([deepa], world(), { payload: { store: 'LKS', managers: 'E1' } }).run()).rejects.toThrow('Send the managers to pre-fill')
+    await expect(prefill([deepa], world(), { settings: {} }).run()).rejects.toThrow('Dash is not set up for departments here')
+  })
+
+  it('takes loose input: no roles, no payload, a store that is not text, managers missing fields', async () => {
+    const bare = context(world(), { ...LOADER })
+    delete (bare.ctx as { roles?: string[] }).roles
+    await expect(prefillActions.prefill_departments(bare.ctx)).rejects.toThrow('Only a System Manager')
+    await expect(prefillActions.prefill_departments(context(world(), { ...LOADER }).ctx)).rejects.toThrow('No store undefined')
+    await expect(prefill([], world(), { payload: { store: 7, managers: [] } }).run()).rejects.toThrow('No store 7')
+    expect((await prefill([{}, { employee: 'E1', sections: 'Sarees' }]).run()).results).toEqual([
+      { employee: '', name: '', outcome: 'refused', notes: ['not on the staff list'] },
+      { employee: 'E1', name: 'Deepa', outcome: 'refused', notes: ['no section left to pre-fill'] }])
+  })
+  it('names a department on no floor, in a store with nothing placed, by its section', async () => {
+    const { results } = await prefill([{ employee: 'E1', sections: ['Loose'] }], world({ 'Section Subcategory': [] })).run()
+    expect(results).toMatchObject([{ outcome: 'pre-filled', department: 'Loose' }])
+  })
+  it('finds earlier pre-fills beyond the first page, and shows a pre-fill with nothing flagged', async () => {
+    const filler = Array.from({ length: 500 }, (_, i) => ({ row_id: `F${String(i).padStart(3, '0')}`, maker: 'x', state: 'Applied', about: null, created_at: `${today}T00:00:00Z`, route: { people: [], roles: [] } }))
+    const undone = bundle({ prefilled: true }, 'Undone').map(p => ({ ...p, maker: 'loader' }))
+    expect((await prefill([deepa], world(), { proposals: [...filler, ...undone] }).run()).results).toMatchObject([{ outcome: 'skipped', notes: ['pre-filled before'] }])
+    const tables = world()
+    tables.Department.push({ row_id: 'D9', store: 'LKS', name: 'Womenswear', manager: 'E1', starts_on: '2026-01-01', ends_on: null })
+    const open = bundle({ prefilled: true, for_person: 'deepa' }, 'Not yet reviewed').map(p => ({ ...p, maker: 'loader' }))
+    expect(await read(tables, { proposals: open })).toMatchObject({ current: { prefilled: { flagged: [] } } })
+  })
+  describe('sectionsName (the owner, 11-Nov-2026)', () => {
+    it('joins the sections with commas and an ampersand', () => {
+      expect(sectionsName(['Sarees'])).toBe('Sarees')
+      expect(sectionsName(['Sarees', 'Silk'])).toBe('Sarees & Silk')
+      expect(sectionsName(['Kurti', 'Women Bottoms', 'Women Ethnic Sets'])).toBe('Kurti, Women Bottoms & Women Ethnic Sets')
+    })
+    it('past 40 characters, the first two and how many more', () => {
+      expect(sectionsName(['Cotton, Syn Saree', 'Fancy Saree', 'Lehenga & Gown', 'Nerial & Chudi Material'])).toBe('Cotton, Syn Saree, Fancy Saree & 2 more')
+      expect(sectionsName(['Men Dhothy & Lungi', "Men's Fabric", "Men's Inner & Underwear"])).toBe('Men Dhothy & Lungi & 2 more')
+    })
+    it('when the first two are still too long, the first and how many more', () => {
+      expect(sectionsName(['Shared Services - Back End', 'Processed Food & Beverages', 'Staples', 'Health N Beauty'])).toBe('Shared Services - Back End & 3 more')
+    })
+  })
+  it('names each department after its sections, unique in the store; a name already taken gets the floor', async () => {
+    const two = await prefill([deepa, { employee: 'E6', sections: ['Footwear'] }], world({ Department: [], 'Department Section': [] })).run()
+    expect(two.results.map(r => r.department)).toEqual(['Sarees & Silk', 'Footwear'])
+    const tables = world()
+    tables.Department.push({ row_id: 'D8', store: 'LKS', name: 'Sarees & Silk', manager: 'E99', starts_on: '2026-01-01', ends_on: null })
+    expect((await prefill([deepa], tables).run()).results).toMatchObject([{ department: 'Sarees & Silk, First floor' }])
+  })
+  it('the edges: a department on two floors, a manager with no sign-in, approve first, an undo with nothing sent', async () => {
+    const tables = world()
+    tables.Department = tables.Department.filter(r => r.row_id !== 'D6')
+    tables['Department Section'] = tables['Department Section'].filter(r => r.row_id !== 'DS6')
+    tables.Department.push({ row_id: 'D8', store: 'LKS', name: 'Footwear, Sarees & Silk', manager: 'E99', starts_on: '2026-01-01', ends_on: null })
+    expect((await prefill([{ employee: 'E1', sections: ['Footwear', 'Sarees', 'Silk'] }], tables).run()).results).toMatchObject([{ department: 'Footwear, Sarees & Silk, First floor' }])
+    const noSignIn = world()
+    noSignIn['Job Assignment'].push(job('J30', 'E5', 'Department Manager', 'LKS', null, 'E2'))
+    const loose = prefill([{ employee: 'E5', sections: ['Bags'] }], noSignIn)
+    await loose.run()
+    expect((loose.sent[0].first as { about: Row }).about.for_person).toBeNull()
+    // Two floors with as many sections each: the first floor by its id names it.
+    tables.Department.push({ row_id: 'D7b', store: 'LKS', name: 'Footwear & Sarees', manager: 'E99', starts_on: '2026-01-01', ends_on: null })
+    expect((await prefill([{ employee: 'E1', sections: ['Footwear', 'Sarees'] }], tables).run()).results).toMatchObject([{ department: 'Footwear & Sarees, First floor' }])
+    MODE = 'Approve first'
+    expect((await prefill([deepa]).run()).results).toMatchObject([{ outcome: 'pre-filled', created: { department: null, links: [null, null] } }])
+    await expect(prefillActions.undo_prefill(context(world(), { ...LOADER }).ctx)).rejects.toThrow('Send the pre-fills to take back')
+  })
+  it('a dry run says what it would do, and sends nothing', async () => {
+    const { run, sent } = prefill([deepa, { employee: 'E6', sections: ['Kids Wear'] }], world(), { payload: { store: 'LKS', managers: [deepa, { employee: 'E6', sections: ['Kids Wear'] }], dry_run: true } })
+    expect((await run()).results).toEqual([
+      { employee: 'E1', name: 'Deepa', outcome: 'would pre-fill', department: 'Sarees & Silk', sections: ['Sarees', 'Silk'], notes: [] },
+      { employee: 'E6', name: 'Arun', outcome: 'skipped', notes: ['already has a department'] },
+    ])
+    expect(sent).toEqual([])
+  })
+  it('records what each pre-fill created, so it can be undone', async () => {
+    const { results } = await prefill([deepa]).run()
+    expect(results[0]).toMatchObject({ bundle: expect.stringMatching(/^J1:/), created: { department: 'ROW-PR1', links: ['ROW-PR2', 'ROW-PR3'], proposals: ['PR1', 'PR2', 'PR3'] } })
+  })
+  describe('undo_prefill', () => {
+    const made = bundle({ prefilled: true }, 'Not yet reviewed').map(p => ({ ...p, maker: 'loader' }))
+    const undo = (bundles: unknown, proposals = made, options: Parameters<typeof context>[1] = {}) =>
+      context(world(), { ...LOADER, payload: { bundles }, proposals, ...options })
+    it('takes back what the loader pre-filled, links first, with no reason', async () => {
+      const { ctx, sent } = undo(['B1', 'B9'])
+      expect(await prefillActions.undo_prefill(ctx)).toEqual({ results: [{ bundle: 'B1', outcome: 'undone', parts: 3 }, { bundle: 'B9', outcome: 'not open' }] })
+      expect(sent.map(s => [s.call, s.first])).toEqual([['undo', 'PL2'], ['undo', 'PL1'], ['undo', 'PD']])
+    })
+    it('never takes back what someone else made, nor a self set-up', async () => {
+      const theirs = bundle({ prefilled: true }, 'Not yet reviewed').map(p => ({ ...p, maker: 'someone-else' }))
+      expect((await prefillActions.undo_prefill(undo(['B1'], theirs).ctx)).results).toEqual([{ bundle: 'B1', outcome: 'not open' }])
+      expect((await prefillActions.undo_prefill(undo(['B1'], bundle({}, 'Not yet reviewed').map(p => ({ ...p, maker: 'loader' }))).ctx)).results).toEqual([{ bundle: 'B1', outcome: 'not open' }])
+    })
+    it('refuses anyone but a System Manager or Master Data Editor, and a list that is not one', async () => {
+      await expect(prefillActions.undo_prefill(undo(['B1'], made, { roles: [] }).ctx)).rejects.toThrow('Only a System Manager or Master Data Editor can take pre-fills back')
+      await expect(prefillActions.undo_prefill(undo('B1').ctx)).rejects.toThrow('Send the pre-fills to take back')
+    })
+  })
+  it('shows the Department Manager their pre-fill, with what is flagged', async () => {
+    const tables = world()
+    tables.Department.push({ row_id: 'D9', store: 'LKS', name: 'Womenswear', manager: 'E1', starts_on: '2026-01-01', ends_on: null })
+    tables['Department Section'].push({ row_id: 'DS9', store: 'LKS', department: 'D9', section: 'S1', starts_on: '2026-01-01', ends_on: null })
+    const proposals = bundle({ prefilled: true, flagged: ['S2'], for_person: 'deepa' }, 'Not yet reviewed').map(p => ({ ...p, maker: 'loader' }))
+    expect(await read(tables, { proposals })).toMatchObject({ current: { state: 'set_up', name: 'Womenswear',
+      prefilled: { bundle: 'B1', sections: [{ id: 'S1', name: 'Sarees' }, { id: 'S2', name: 'Silk' }], flagged: ['Silk'] } } })
+  })
+  it('the reviewer sees it as set up from reporting lines; the Department Manager never reviews their own', async () => {
+    const proposals = bundle({ prefilled: true, flagged: ['S2'], for_person: 'deepa' }, 'Not yet reviewed').map(p => ({ ...p, maker: 'loader' }))
+    expect(await departmentReads.department_approvals(context(world(), { user: 'mani', proposals }).ctx)).toMatchObject([{ bundle: 'B1', prefilled: true, flagged: ['Silk'] }])
+    expect(await departmentReads.department_approvals(context(world(), { user: 'deepa', proposals }).ctx)).toEqual([])
+    await expect(departmentActions.decide_department(context(world(), { user: 'deepa', payload: { bundle: 'B1', decision: 'approve' }, proposals }).ctx))
+      .rejects.toThrow('This is your own department: say whether it is right on Your department')
+  })
+  it('Yes or Change it takes the pre-fill over: undone as the Department Manager, then theirs', async () => {
+    const proposals = bundle({ prefilled: true, for_person: 'deepa' }, 'Not yet reviewed').map(p => ({ ...p, maker: 'loader' }))
+    const { ctx, sent } = context(world(), { payload: { job: 'J1', name: 'Womenswear', sections: ['S1', 'S2'], replaces: 'B1' }, proposals })
+    expect(await departmentActions.set_up_department(ctx)).toMatchObject({ state: 'set_up', name: 'Womenswear' })
+    expect(sent.slice(0, 3).map(s => [s.call, s.first, s.second])).toEqual(['PL2', 'PL1', 'PD'].map(id =>
+      ['undo', id, { approvers: { people: ['deepa'], fallbackRoles: [] }, reason: 'Taken over by Deepa' }]))
+    expect(sent.slice(3).map(s => s.call)).toEqual(['propose', 'propose', 'propose'])
+  })
+  it("a reviewer's undo of the pre-fill reads as turned down, with the reason; taken over or the loader's own undo does not", async () => {
+    const undone = (by: string) => bundle({ prefilled: true, for_person: 'deepa' }, 'Undone', 'Not her sections').map(p => ({ ...p, maker: 'loader', decided_by: by }))
+    expect(await read(world(), { proposals: undone('mani') })).toMatchObject({ current: { state: 'turned_down', reason: 'Not her sections' } })
+    expect(await read(world(), { proposals: undone('deepa') })).toMatchObject({ current: null })
+    expect(await read(world(), { proposals: undone('loader') })).toMatchObject({ current: null })
+  })
+  it("never takes over another Department Manager's pre-fill", async () => {
+    const proposals = bundle({ prefilled: true, job_assignment: 'J6', for_person: 'arun' }, 'Not yet reviewed').map(p => ({ ...p, maker: 'loader' }))
+    const { ctx, sent } = context(world(), { payload: { job: 'J1', name: 'Womenswear', sections: ['S1'], replaces: 'B1' }, proposals })
+    await departmentActions.set_up_department(ctx)
+    expect(sent.map(s => s.call)).toEqual(['propose', 'propose'])
+  })
+})
+
