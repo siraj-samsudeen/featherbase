@@ -182,6 +182,15 @@ describe('telling people with the same name apart (#1216)', () => {
     expect([found.length, found[0].name, found[19].name]).toEqual([20, 'Zed 00', 'Zed 19'])
   })
 
+  it('keeps the first twenty by code when more than twenty share a name, whatever order the rows come in', async () => {
+    const codes = Array.from({ length: 25 }, (_, i) => `K${String(i + 1).padStart(3, '0')}`)
+    const shuffled = [...codes.slice(12), ...codes.slice(0, 12)].reverse()
+    const many = { Employee: shuffled.map(code => ({ row_id: code, employee_code: code, person: `p-${code}`, name: 'Kumar', status: 'Current' })) }
+    expect((await personSearch(context({ payload: { q: 'kumar' } }, many))).map(found => found.code)).toEqual(codes.slice(0, 20))
+    // A code that also matches the name text is still listed once, in its place.
+    expect((await personSearch(context({ payload: { q: 'k0' } }, many))).map(found => found.code)).toEqual(codes.slice(0, 20))
+  })
+
   it('says who a person is in who has what and who is waiting: on the staff list, left, or not on it', async () => {
     const ctx = context({ people: {
       async names(ids) { return Object.fromEntries(ids.map(id => [id, { k1: 'Kumar', k2: 'Kumar', gone: 'Kumar Old', svc: 'Report robot' }[id] ?? null])) },

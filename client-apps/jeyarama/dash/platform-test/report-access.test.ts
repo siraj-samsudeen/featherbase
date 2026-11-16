@@ -258,6 +258,13 @@ describe('the Report access page', () => {
       { name: 'Made-up Leader', code: 'TN0042', jobs: ['Head office staff · Head Office'], staff: 'current' },
     ])
     expect((await search('tn004')).map(found => found.code)).toEqual(['TN0042'])
+    // More than twenty with one name, saved in reverse: the first twenty by code, not the database's pick.
+    const codes = Array.from({ length: 22 }, (_, i) => `TW${String(i + 1).padStart(2, '0')}`)
+    for (const code of [...codes].reverse()) {
+      const twin = await createUser({ email: `ra-${code.toLowerCase()}@example.test`, roles: ['Dash Reader'] })
+      await save('Employee', { employee_code: code, name: 'Made-up Twin', person: twin.user, status: 'Current' })
+    }
+    expect((await search('made-up twin')).map(found => found.code)).toEqual(codes.slice(0, 20))
     const reader = await createUser({ email: 'ra-reader@example.test', roles: ['Dash Reader'] })
     expect((await reader.fetch('/api/app_reads/dash/person_search', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ payload: { q: 'tn004' } }) })).status).toBeGreaterThanOrEqual(400)
   })

@@ -188,7 +188,15 @@ export async function personSearch(ctx: AccessContext, on: string = istToday()) 
   managerOnly(ctx)
   const typed = text((ctx.payload as { q?: unknown } | undefined)?.q)
   if (typed.length < 2) return []
-  const matching = (column: string) => ctx.baseTables!.list('Employee', { fields: ['name', 'person', EMPLOYEE_STATUS], filters: [[column, 'like', `%${typed}%`], [EMPLOYEE_STATUS, '=', 'Current']], order_by: 'name asc', limit_page_length: SEARCH_LIMIT })
+  // The first twenty by name, and everyone sharing the twentieth's name: the platform orders by one
+  // column, so ties at the cut are settled here, by code, rather than by however the database returns them.
+  const matching = async (column: string) => {
+    const filters: [string, string, unknown][] = [[column, 'like', `%${typed}%`], [EMPLOYEE_STATUS, '=', 'Current']]
+    const first = await ctx.baseTables!.list('Employee', { fields: ['name', 'person', EMPLOYEE_STATUS], filters, order_by: 'name asc', limit_page_length: SEARCH_LIMIT })
+    if (first.length < SEARCH_LIMIT) return first
+    const last = exact(first.at(-1)!.name)
+    return [...first.filter(row => exact(row.name) !== last), ...await all(ctx.baseTables!, 'Employee', ['name', 'person', EMPLOYEE_STATUS], [...filters, ['name', '=', last]])]
+  }
   const names = new Map<string, string>()
   for (const row of [...await matching('name'), ...await matching('employee_code')])
     if (exact(row.person) && !names.has(exact(row.person))) names.set(exact(row.person), text(row.name))
