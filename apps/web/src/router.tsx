@@ -469,14 +469,20 @@ function NavigatedList({ table, filters, path }: { table: string; filters?: stri
     return parsed.length ? { screen: 'list', table, filters: parsed } : { screen: 'list', table }
   }, [table, filters])
   const nav = useAddressNavigation(here, path)
+  const navigate = tableRoute.useNavigate()
   // #1228: a bare open (no filters, no walk in the address) brings back the
   // person's last filters, replacing the address rather than adding a Back step.
   // The list waits for that answer, so it never shows unfiltered first.
+  // Either way the address is settled: with nothing remembered it says so
+  // (`filters=[]`), so Back to this entry later shows it as it was, rather than
+  // restoring over it filters chosen since (Codex review, round 2).
   const fresh = filters === undefined && path === undefined
   const remembered = useRememberedFilters(table, fresh)
   const restoring = fresh && (remembered === undefined || remembered.length > 0)
   useEffect(() => {
-    if (fresh && remembered?.length) nav.replace({ ...nav.step, filters: remembered })
+    if (!fresh || remembered === undefined) return
+    if (remembered.length) nav.replace({ ...nav.step, filters: remembered })
+    else void navigate({ search: (prev: Record<string, unknown>) => ({ ...prev, filters: '[]' }), replace: true } as never)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fresh, remembered])
   if (restoring) return <div data-testid="table-page" aria-busy="true" />

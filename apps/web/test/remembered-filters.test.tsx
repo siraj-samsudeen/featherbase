@@ -123,3 +123,21 @@ test('a bare open of the same Table, without leaving the list, brings back the r
   await waitFor(() => expect(chips()).toHaveLength(0), T)
   expect(await rows()).toHaveLength(3)
 })
+
+// Codex review, round 2: Back to a bare entry must show it as it was, not
+// restore over it filters chosen since.
+test('Back to the unfiltered list it opened as shows it unfiltered, after a filter was added', async ({ admin }) => {
+  await seed(admin)
+  const { router } = await renderApp(tableHref(DEPT), admin)
+  expect(await rows()).toHaveLength(3)
+  // A filter added since, and remembered.
+  await admin.put(`/api/user_settings/${encodeURIComponent(DEPT)}`, { filters: [ATK] })
+  await act(async () => { await router.navigate({ href: withFilters([ATK]) }) })
+  await waitFor(() => expect(chips()).toHaveLength(1), T)
+
+  await act(async () => { router.history.back() })
+  await waitFor(() => expect(chips()).toHaveLength(0), T)
+  await new Promise((r) => setTimeout(r, 300))
+  expect(chips()).toHaveLength(0)
+  expect(await rows()).toHaveLength(3)
+}, 45_000)
