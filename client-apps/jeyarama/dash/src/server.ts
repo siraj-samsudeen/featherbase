@@ -8,7 +8,8 @@ import { MONTH_CHOICES, buildReport, monthLabel, headingOf, istToday, periodOf, 
 import { actions as sectionActions, reads as sectionReads } from './my-sections.ts'
 import { departmentActions, departmentReads } from './department-setup.ts'
 import { prefillActions } from './department-prefill.ts'
-import { accessPage, addReport, addToBundle, diveChoices, diveChoicesPrepared, giveReport, grantOptions, makeBundle, managesAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
+import { accessPage, addReport, addToBundle, diveChoices, diveChoicesPrepared, giveReport, grantOptions, makeBundle, managesAccess, managesTeamAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
+import { TEAM_MANAGER } from './team-access.ts'
 
 /** The save rules of Dash's own Tables. */
 export const validators = accessValidators
@@ -72,7 +73,7 @@ export function setEmbedFetch(f: typeof fetch | null) {
 const placesOf = (ctx: ScopedContext) => ctx.authorization.places ?? []
 
 /** Dash's own roles (featherbase.json's `roles`): holding any of them opens Dash (#1172). */
-export const DASH_ROLES = new Set([ALL_STORES_ROLE, 'Dash Reader', 'Report Access Manager'])
+export const DASH_ROLES = new Set([ALL_STORES_ROLE, 'Dash Reader', 'Report Access Manager', TEAM_MANAGER])
 
 const REPORT_FIELDS = ['report_key', 'report_name', 'dive_id', 'filter_shape', 'store_key', 'subcategory_key', 'whole_store_key', 'month_key', 'ready_signal', 'quick_view', 'pickers_in_dive']
 
@@ -282,12 +283,22 @@ async function openDive(ctx: ScopedContext, report: ReportRecord | null) {
 }
 
 /** Your sections and its approvals (#975), and giving reports (#1046). */
+/** What a person reaches today, for Report access: any store, and a whole store. Unreadable means nothing. */
+const reachFor = (context: AccessContext) => async (person: string, roles: readonly string[]) => {
+  try {
+    const { places } = await reachOf((context as unknown as ScopedContext).baseTables, person, istToday(), roles)
+    return { any: places.length > 0, wholeStore: places.some(place => !place.filters.subcategory) }
+  } catch { return { any: false, wholeStore: false } }
+}
+/** #1217: a Team Report Manager gives only reports they can open, so the access reads and actions know reach. */
+const withReach = (context: AccessContext): AccessContext => ({ ...context, reach: reachFor(context) })
+
 export const actions = {
   ...sectionActions,
   ...departmentActions,
   ...prefillActions,
-  give_report: (context: AccessContext) => giveReport(context),
-  remove_report_access: (context: AccessContext) => removeAccess(context),
+  give_report: (context: AccessContext) => giveReport(withReach(context)),
+  remove_report_access: (context: AccessContext) => removeAccess(withReach(context)),
   make_bundle: (context: AccessContext) => makeBundle(context),
   add_to_bundle: (context: AccessContext) => addToBundle(context),
   remove_from_bundle: (context: AccessContext) => removeFromBundle(context),
@@ -313,16 +324,16 @@ export const reads = {
     return managesAccess(ctx) || (ctx.roles ?? []).some(role => DASH_ROLES.has(role)) || (await offeredReports(ctx)).length > 0
   },
 
-  /** Whether this person manages report access, for the sidebar's link. */
+  /** Whether this person manages report access, company-wide or for their team (#1217), for the sidebar's link. */
   manages_access(context: ReadContext) {
-    return managesAccess(context as AccessContext)
+    return managesAccess(context as AccessContext) || managesTeamAccess(context as AccessContext)
   },
 
   /** The Report access page (#1046). Managers only. */
-  access_page: (context: ReadContext) => accessPage(context as AccessContext),
-  /** #1173: what the platform's Waiting for access drawer can give one person. Managers only. */
+  access_page: (context: ReadContext) => accessPage(withReach(context as AccessContext)),
+  /** #1173: what the platform's Waiting for access drawer can give one person. Company managers only. */
   grant_options: (context: ReadContext) => grantOptions(context as AccessContext, istToday()),
-  person_search: (context: ReadContext) => personSearch(context as AccessContext),
+  person_search: (context: ReadContext) => personSearch(withReach(context as AccessContext)),
 
   /**
    * The organisation's Dives for Add a Dive (#1169), read live from MotherDuck (outbound: it runs
@@ -332,12 +343,7 @@ export const reads = {
     (context as ScopedContext).prepared as Awaited<ReturnType<typeof diveChoicesPrepared>> | undefined), {
     prepare: (context: ReadContext) => diveChoicesPrepared(context as AccessContext),
   }),
-  person_lookup: (context: ReadContext) => personLookup(context as AccessContext, istToday(), async (person, roles) => {
-    try {
-      const { places } = await reachOf((context as ScopedContext).baseTables, person, istToday(), roles)
-      return { any: places.length > 0, wholeStore: places.some(place => !place.filters.subcategory) }
-    } catch { return { any: false, wholeStore: false } }
-  }),
+  person_lookup: (context: ReadContext) => personLookup(withReach(context as AccessContext), istToday(), reachFor(context as AccessContext)),
 
   /** The reports this person may open, for the sidebar. */
   async reports(context: ReadContext) {

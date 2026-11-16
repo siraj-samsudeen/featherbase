@@ -9,7 +9,7 @@ import { test as pgTest } from '../pg-test'
 import { sql } from '../../src/db'
 import { discoverPackages } from '../../src/runtime-packages'
 import { loadInstalledApps } from '../../src/apps'
-import { APP_DIR, VERSION, createCoreTables, pinned, revertAddDive, revertPersonIdentity } from './helpers'
+import { APP_DIR, TEAM_MANAGER, VERSION, createCoreTables, pinned, revertAddDive, revertPersonIdentity, revertTeamReportGiving, withoutTeamManager } from './helpers'
 
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(pinned(admin)),
@@ -24,7 +24,8 @@ async function previousVersion(): Promise<string> {
   const directory = await mkdtemp(resolve(APP_DIR, '..', 'dash-0.13.1-'))
   await cp(APP_DIR, directory, { recursive: true })
   const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
-  expect(manifest.migrations.pop()).toMatchObject({ id: 'waiting_for_access_grant', fromVersion: '0.13.3' })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'waiting_for_access_grant', fromVersion: '0.13.4' })
+  revertTeamReportGiving(manifest)
   expect(manifest.migrations.pop()).toMatchObject({ id: 'report_access_managers_add_dives', fromVersion: '0.13.2' })
   revertAddDive(manifest)
   expect(manifest.migrations.pop()).toMatchObject({ id: 'person_identity', fromVersion: '0.13.1' })
@@ -49,16 +50,17 @@ describe("upgrading production's Dash 0.13.1", () => {
       expect(await discoverPackages([previous, APP_DIR])).toEqual([])
       await loadInstalledApps()
       const plan = await admin.post<{ planId: string; permissions: unknown; migrations: { id: string }[] }>('/api/preview_app_upgrade', { name: 'dash', version: VERSION })
-      expect([plan.permissions, plan.migrations.map(m => m.id)]).toEqual([[
+      // #1217's role and grants come with this version too; team-report-upgrade.test.ts checks them.
+      expect([withoutTeamManager(plan.permissions as never[]), plan.migrations.map(m => m.id)]).toEqual([[
         { withdraw: { table: 'dash.report', role: MANAGER, operations: { read: '@basic' } } },
         { grant: { table: 'dash.report', role: MANAGER, operations: { read: '@basic', create: '@basic' } } }],
-      ['person_identity', 'report_access_managers_add_dives', 'waiting_for_access_grant']])
+      ['person_identity', 'report_access_managers_add_dives', 'team_report_giving', 'waiting_for_access_grant']])
       await admin.post('/api/upgrade_app', { name: 'dash', version: VERSION, planId: plan.planId })
       await discoverPackages([previous, APP_DIR])
       await loadInstalledApps()
       await admin.post('/api/activate_app_upgrade', { name: 'dash', version: VERSION })
       expect((await sql`select operation from permission where role = ${MANAGER} and ref_table = 'dash.report' order by operation`).map(r => r.operation)).toEqual(['create', 'read'])
-      expect((await sql`select operation from activity_log where operation like 'app_grant_added dash%'`).map(r => r.operation))
+      expect((await sql`select operation from activity_log where operation like 'app_grant_added dash%' and operation not like ${`%${TEAM_MANAGER}%`}`).map(r => r.operation))
         .toEqual([`app_grant_added dash@${VERSION}: ${MANAGER} read, create on dash.report`])
 
       await createCoreTables(admin)

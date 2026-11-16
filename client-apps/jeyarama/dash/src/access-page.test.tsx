@@ -152,3 +152,49 @@ describe('three layouts behind a toggle (#1216)', () => {
     await again.done()
   })
 })
+
+// #1217: a Team Report Manager's page — their team only, each person with who they are.
+describe('the team page (#1217)', () => {
+  const TEAM_PAGE = {
+    scope: 'team', team: [{ person: 'k1', name: 'Kumar', ...LEADER }, { person: 'k3', name: 'Kumar', code: 'E1003', jobs: [], staff: 'current' }],
+    reports: [{ key: 'sales', name: 'Sales versus target' }], bundles: [], roles: [], jobs: [], waiting: [],
+    rows: [
+      { id: 'a1', updated_at: 'u', gives: { kind: 'Report', name: 'Sales versus target' }, to: { kind: 'Person', name: 'Kumar', who: LEADER }, given_by: 'Hema', given_on: '2026-11-07', removable: true },
+      { id: 'a5', updated_at: 'u', gives: { kind: 'Report', name: 'Store target' }, to: { kind: 'Person', name: 'Kumar', who: LEADER }, given_by: 'Meera', given_on: '2026-11-07', removable: false },
+    ],
+  }
+
+  it('says whose access they manage, offers only their team by name and code, and gives to a person only', async () => {
+    answers = { access_page: TEAM_PAGE, person_search: [], give_report: { id: 'new' } }
+    const page = await render()
+    expect(page.all('team-note')[0].textContent).toBe('You give reports to your team: the 2 people who report to you. You can give only reports you can open yourself.')
+    expect([page.all('give-kind').length, page.all('bundles').length, page.all('waiting').length, page.all('add-dive').length]).toEqual([0, 0, 0, 0])
+    const [give] = page.all('team-select') as HTMLSelectElement[]
+    expect([...give.options].map(option => option.textContent)).toEqual(['Choose someone in your team', 'Kumar · E1001 · Team Leader · Lakeside', 'Kumar · E1003 · No current job'])
+    await page.choose(page.all('give-what')[0] as HTMLSelectElement, 'report:sales')
+    await page.choose(give, 'k3')
+    await page.click(page.all('give-button')[0])
+    expect(calls.filter(call => call.kind === 'actions')).toEqual([{ kind: 'actions', name: 'give_report', payload: { report: 'sales', person: 'k3' } }])
+    expect(page.all('give-done')[0].textContent).toBe('Sales versus target is given to Kumar (E1003).')
+    await page.done()
+  })
+
+  it('lets them take away only what they gave, and says so for the rest', async () => {
+    answers = { access_page: TEAM_PAGE }
+    const page = await render()
+    expect(page.all('access-row').map(row => [row.querySelector('[data-testid="person-name"]')?.textContent, !!row.querySelector('[data-testid="remove"]'), row.querySelector('[data-testid="not-yours"]')?.textContent ?? null]))
+      .toEqual([['KumarE1001 · Team Leader · Lakeside', true, null], ['KumarE1001 · Team Leader · Lakeside', false, 'Not given by you']])
+    await page.done()
+  })
+
+  it('finds by typing a name or a code when they choose to, and says no one in your team matches', async () => {
+    answers = { access_page: TEAM_PAGE, person_search: [] }
+    localStorage.setItem('dash.team-picker-layout', 'search')
+    const page = await render()
+    expect(page.all('team-select').length).toBe(0)
+    const [search] = page.all('person-search') as HTMLInputElement[]
+    await page.type(search, 'asha')
+    expect(page.all('person-results')[0].textContent).toBe('No one in your team matches that')
+    await page.done()
+  })
+})

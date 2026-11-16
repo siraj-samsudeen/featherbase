@@ -938,6 +938,72 @@
    ],
    "jobs": [],
    "says": "System Manager with no job: approves nothing, because approvers come from the reporting line (Master Data Editor is the only fallback)"
+  },
+  {
+   "key": "categoryhead",
+   "name": "Hema Category-Head",
+   "code": "2020",
+   "roles": [
+    "Team Report Manager"
+   ],
+   "jobs": [
+    [
+     "JA-2020-HOF",
+     "Head office staff",
+     "HOF",
+     null,
+     null
+    ]
+   ],
+   "says": "Team Report Manager: gives reports to Usha and Vinod, who report to her (#1217)"
+  },
+  {
+   "key": "buyerone",
+   "name": "Usha Buyer-One",
+   "code": "2021",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2021-HOF",
+     "Head office staff",
+     "HOF",
+     null,
+     "2020"
+    ]
+   ],
+   "says": "Reports to Hema; Vendor sales given to her by the Access Manager"
+  },
+  {
+   "key": "buyertwo",
+   "name": "Vinod Buyer-Two",
+   "code": "2022",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2022-HOF",
+     "Head office staff",
+     "HOF",
+     null,
+     "2020"
+    ]
+   ],
+   "says": "Reports to Hema"
+  },
+  {
+   "key": "buyertwosame",
+   "name": "Vinod Buyer-Two",
+   "code": "2023",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2023-LKS",
+     "Staff",
+     "LKS",
+     null,
+     "2020"
+    ]
+   ],
+   "says": "A second Vinod Buyer-Two in Hema's team, at Lakeside: told apart by code, job and site (#1216, #1217)"
   }
  ],
  "noSignIn": [
