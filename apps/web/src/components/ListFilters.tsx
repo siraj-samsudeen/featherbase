@@ -65,7 +65,15 @@ export function ListSearch({ meta, filters, onChange, label }: {
 }) {
   const column = searchColumn(meta)
   const on = column ? filters.find((f) => f[0] === column && f[1] === SEARCH_OP) : undefined
-  const [text, setText] = useState(() => unwrap(on?.[2]))
+  const active = unwrap(on?.[2])
+  const [text, setText] = useState(active)
+  // Codex review, round 9: when the search on the list changes from elsewhere (a
+  // saved view, Back, Clear filters), the box shows it; typing in between is kept.
+  const [shown, setShown] = useState(active)
+  if (active !== shown) {
+    setShown(active)
+    setText(active)
+  }
   if (!column) return null
   return (
     <form

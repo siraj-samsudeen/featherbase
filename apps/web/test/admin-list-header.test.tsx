@@ -89,3 +89,20 @@ test('an empty Table shows the way forward: New and Import data', async ({ admin
   expect(screen.getByTestId('list-empty-import')).toHaveTextContent('Import data')
 })
 // A linked cell's code, muted inside the link: drill-pane.test.tsx ("Kerala · KL").
+
+// Codex review, round 9: the box follows the search the list has, so Enter never
+// brings back words that were taken off elsewhere.
+test('Clear filters empties the search box as well', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(tableHref(DEPT), admin)
+  await waitFor(() => expect(rows()).toHaveLength(3), T)
+  const search = screen.getByRole('searchbox', { name: 'Search Job Assignment' })
+  await userEvent.type(search, 'silk{Enter}')
+  await waitFor(() => expect(rows()).toHaveLength(1), T)
+  await userEvent.click(screen.getByTestId('filter-clear-all'))
+  await waitFor(() => expect(rows()).toHaveLength(3), T)
+  expect(search).toHaveValue('')
+  await userEvent.type(search, '{Enter}')
+  await waitFor(() => expect(rows()).toHaveLength(3), T)
+  expect(screen.queryAllByTestId('filter-chip')).toHaveLength(0)
+})
