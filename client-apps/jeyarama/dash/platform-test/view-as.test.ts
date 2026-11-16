@@ -130,6 +130,8 @@ describe('View as: a tester sees what a person sees', () => {
     const { tester, buyer } = await setup(admin, createUser)
     await ok(start(tester, buyer.user))
     await sql`update view_as_session set expires_at = now() - interval '1 second'`
+    // The one request that finds it over says so, so an open page reloads; the next is the tester's own.
+    await refused(call(tester, 'app_reads', 'reports', {}), 'View as has ended')
     expect(await reports(tester)).toEqual(['open'])
     // Its end is on the record, under the tester.
     expect(await sql`select "user", reference_name, method from access_log where operation = 'view_as_end'`)
@@ -137,6 +139,7 @@ describe('View as: a tester sees what a person sees', () => {
     await ok(start(tester, buyer.user))
     expect(await reports(tester)).toEqual(['sales'])
     await sql`delete from has_role where parent = ${tester.user} and role = ${TESTER}`
+    await refused(call(tester, 'app_reads', 'reports', {}), 'View as has ended')
     expect(await reports(tester)).toEqual(['open'])
     expect(await sql`select count(*)::int as n from view_as_session`).toEqual([{ n: 0 }])
     expect(await sql`select method from access_log where operation = 'view_as_end' order by created_at`).toEqual([{ method: 'expired' }, { method: 'no_longer_allowed' }])
@@ -157,6 +160,7 @@ describe('View as: a tester sees what a person sees', () => {
     const { tester, buyer } = await setup(admin, createUser)
     await ok(start(tester, buyer.user))
     await admin.post('/api/set_app_enabled', { name: 'dash', enabled: false })
+    await refused(tester.fetch('/api/view_as'), 'View as has ended')
     expect(await state(tester)).toEqual({ may: false })
     expect(await sql`select count(*)::int as n from view_as_session`).toEqual([{ n: 0 }])
     await refused(start(tester, buyer.user), 'Only a View As Tester')

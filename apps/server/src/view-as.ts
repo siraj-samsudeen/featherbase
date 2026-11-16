@@ -19,6 +19,9 @@ import { activeApps } from './app-lifecycle'
 import type { SessionUser } from './auth'
 import type { ViewingAs } from './view-as-context'
 
+/** The answer to the one request that finds its View as has just ended. */
+export const VIEW_AS_ENDED = 'View as has ended. Reload the page to see your own view.'
+
 /** How long one View as lasts from its start (or its last switch). */
 export const VIEW_AS_MINUTES = 60
 const RECENT = 5
@@ -86,12 +89,13 @@ export async function activeViewAs(user: SessionUser): Promise<{ as: ViewingAs; 
   if (!row) return null
   if (row.expired) {
     await sql.begin(endExpired)
-    return null
+    throw new AppError('ConflictError', VIEW_AS_ENDED)
   }
   const person = String(row.person)
   if (String(row.tester) !== user.row_id || !(await testerApp(user.row_id)) || (await unviewable(user.row_id, person))) {
     await endViewAs(user, 'no_longer_allowed')
-    return null
+    // This request was made for the person viewed: it fails, so an open page reloads rather than mixing two people.
+    throw new AppError('ConflictError', VIEW_AS_ENDED)
   }
   const [viewed] = await sql`select row_id, email, full_name from person where row_id = ${person}`
   const name = await nameOf(person)

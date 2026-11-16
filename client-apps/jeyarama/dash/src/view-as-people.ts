@@ -9,7 +9,8 @@ import { all, personNames, whoIs, type AccessContext } from './report-access-ser
 /** The Dash role whose holders may view as someone else (featherbase.json `viewAs.role`). */
 export const VIEW_AS_TESTER = 'View As Tester'
 
-const LIMIT = 20
+/** The platform keeps the first 20 it may show, after its own checks; this leaves it room. */
+const LIMIT = 100
 const MAX_WORDS = 5
 const MAX_DESCRIBED = 50
 

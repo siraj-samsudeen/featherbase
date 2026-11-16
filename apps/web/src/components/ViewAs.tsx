@@ -61,8 +61,23 @@ export function useViewAs() {
     queryKey: ['view-as'],
     queryFn: () => api.get<ViewAsState>('/api/view_as'),
     enabled: Boolean(getSessionUser()),
-    staleTime: 60_000,
+    staleTime: 30_000,
+    // Asked again now and then and on return to the tab: View as can end on the server.
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   })
+}
+
+/** Reloads the page when whom it shows changes under it (View as ended, or switched in another tab). */
+function useReloadOnChange(state: ViewAsState | undefined, error: unknown) {
+  const shown = useRef<string | null | undefined>(undefined)
+  useEffect(() => {
+    if (error instanceof ApiError && error.status === 409) { window.location.reload(); return }
+    if (!state) return
+    const now = state.may ? state.viewing?.person ?? null : null
+    if (shown.current !== undefined && shown.current !== now) window.location.reload()
+    shown.current = now
+  }, [state, error])
 }
 
 /** "KL-1234 · Team Leader · Lakeside", and how many more jobs. */
@@ -206,7 +221,8 @@ function useDismiss(open: boolean, close: () => void, inside: React.RefObject<HT
 
 /** The banner while viewing: who, for viewing only, Switch and Exit. Always shown, whichever picker style. */
 export function ViewAsBanner() {
-  const { data } = useViewAs()
+  const { data, error: stateError } = useViewAs()
+  useReloadOnChange(data, stateError)
   const [switching, setSwitching] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const wrapper = useRef<HTMLDivElement>(null)
