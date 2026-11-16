@@ -12,7 +12,7 @@ import { tableAccessPolicy } from './mandatory-access'
 import { AppError, errorMessage } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
 import { APP_ACCENTS, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
-import { callerDocuments, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
+import { callerDocuments, callerRoles, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
 import { approvalTypesDeclaration, baseTablesDeclaration } from './change-proposals'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import type { ScopeProviderBinding } from './person-scope'
@@ -32,6 +32,8 @@ interface PackageHookContext {
   row: Record<string, unknown>
   old?: Record<string, unknown>
   user: string
+  /** #1217: the writer's roles, read fresh for this save, so a rule can treat writers differently. */
+  readonly roles: readonly string[]
   isNew: boolean
   documents: Pick<import('shared').RuntimeActionContext['documents'], 'get' | 'list' | 'members'>
   reject(message: string, fields?: Record<string, string>): never
@@ -450,7 +452,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
         const access = callerDocuments(manifest.name, [...names], ctx.user)
         try {
           await (validator as Validator)({
-            row: ctx.row, old: ctx.old, user: ctx.user, isNew: ctx.isNew,
+            row: ctx.row, old: ctx.old, user: ctx.user, roles: await callerRoles(ctx.user), isNew: ctx.isNew,
             now: new Date().toISOString(), timeZone: (await getSystemSettings()).time_zone,
             documents: Object.freeze({ get: access.documents.get, list: access.documents.list, members: access.documents.members }),
             reject(message, fields) { throw new AppError('ValidationError', message, fields) },

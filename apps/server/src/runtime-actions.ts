@@ -82,7 +82,7 @@ function callerPeople(user: string, app: string, settings: Readonly<Record<strin
 }
 
 // #918: the caller's own roles, so an app can let a role take a step.
-async function callerRoles(user: string): Promise<readonly string[]> {
+export async function callerRoles(user: string): Promise<readonly string[]> {
   return Object.freeze([...new Set(await getRoles(user))].sort())
 }
 
