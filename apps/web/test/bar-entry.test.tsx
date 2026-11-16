@@ -12,7 +12,6 @@ import type { TestClient } from 'feather-testing-postgres'
 import { setSession } from '../src/lib/api'
 import '../src/bar/main'
 import { test, expect } from './pg-test'
-import { appChoices, chooseApp } from './app-switcher'
 
 const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
 
@@ -56,9 +55,9 @@ test('a bar moved within the page is drawn once, not again', async ({ admin }) =
 test('choosing Featherbase in the app-name dropdown loads the Admin in place of the app', async ({ admin }) => {
   const host = await appPage(admin)
   const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
-  const bar = barOf(host)
-  await waitFor(async () => expect(await appChoices(bar, { timeout: 8000 })).toContain(FEATHERBASE_ADMIN_DESTINATION.label), { timeout: 8000 })
-  await chooseApp(bar, FEATHERBASE_ADMIN_DESTINATION.label)
+  const choices = await barOf(host).findByRole('combobox', { name: 'Switch application' }, { timeout: 8000 })
+  await within(choices).findByRole('option', { name: FEATHERBASE_ADMIN_DESTINATION.label })
+  await userEvent.selectOptions(choices, FEATHERBASE_ADMIN_DESTINATION.href)
   // jsdom cannot load another document; it reports the attempt instead.
   await waitFor(() => expect(errors.mock.calls.some((c) => /Not implemented: navigation/.test(String((c[0] as Error)?.message ?? c[0])))).toBe(true))
 })

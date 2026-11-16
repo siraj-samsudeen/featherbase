@@ -24,7 +24,6 @@ async function previousVersion(): Promise<string> {
   const directory = await mkdtemp(resolve(APP_DIR, '..', 'dash-0.13.1-'))
   await cp(APP_DIR, directory, { recursive: true })
   const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
-  expect(manifest.migrations.pop()).toMatchObject({ id: 'switcher_summary', fromVersion: '0.13.17', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'buyer_section_moves', fromVersion: '0.13.16', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'buyer_section_desks', fromVersion: '0.13.15', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'store_run_by', fromVersion: '0.13.14', operations: [] })
@@ -66,7 +65,7 @@ describe("upgrading production's Dash 0.13.1", () => {
       expect([withoutTeamManager(plan.permissions as never[]), plan.migrations.map(m => m.id)]).toEqual([[
         { withdraw: { table: 'dash.report', role: MANAGER, operations: { read: '@basic' } } },
         { grant: { table: 'dash.report', role: MANAGER, operations: { read: '@basic', create: '@basic' } } }],
-      ['person_identity', 'report_access_managers_add_dives', 'team_report_giving', 'waiting_for_access_grant', 'department_name_follows_sections', 'named_cluster_head', 'one_app_chrome', 'ends_on_inclusive', 'manager_area', 'report_an_issue', 'report_access_redesign', 'more_list_closes', 'store_run_by', 'buyer_section_desks', 'buyer_section_moves', 'switcher_summary']])
+      ['person_identity', 'report_access_managers_add_dives', 'team_report_giving', 'waiting_for_access_grant', 'department_name_follows_sections', 'named_cluster_head', 'one_app_chrome', 'ends_on_inclusive', 'manager_area', 'report_an_issue', 'report_access_redesign', 'more_list_closes', 'store_run_by', 'buyer_section_desks', 'buyer_section_moves']])
       await admin.post('/api/upgrade_app', { name: 'dash', version: VERSION, planId: plan.planId })
       await discoverPackages([previous, APP_DIR])
       await loadInstalledApps()

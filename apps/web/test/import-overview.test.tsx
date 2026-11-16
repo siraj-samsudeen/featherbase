@@ -8,7 +8,6 @@ import * as XLSX from 'xlsx'
 import { tableHref } from 'shared'
 import { test, expect, renderApp } from './pg-test'
 import { clearSession } from '../src/lib/import-session'
-import { openSidebarNew } from './list-menus'
 
 const PICKED_DT = 'Overview Picked'
 
@@ -47,7 +46,6 @@ const pathOf = (r: { router: unknown }) =>
 test('Import data on the Admin opens the wizard, where a workbook opens on its sheet overview', async ({ admin }) => {
   clearSession()
   const r = await renderApp('/featherbase/admin', admin)
-  await openSidebarNew({ timeout: 8000 })
   await userEvent.click(await screen.findByTestId('import-data-link', {}, { timeout: 8000 }))
   await waitFor(() => expect(pathOf(r)).toBe('/featherbase/admin/import'))
   await drop(workbook())

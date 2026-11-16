@@ -8,7 +8,6 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
-import { openListMenu } from './list-menus'
 
 const T = 'Lx Order'
 const ENC = encodeURIComponent(T)
@@ -122,8 +121,6 @@ test('Explore opens the explorer starting from this table', async ({ admin }) =>
   const user = userEvent.setup()
   await seed(admin)
   await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}`, admin)
-  // #1242: Explore sits in the list's View menu.
-  await openListMenu('View', screen, { timeout: 10_000 })
   await user.click(await screen.findByTestId('open-explore', {}, { timeout: 10_000 }))
   expect(await screen.findByTestId('explore-view')).toBeInTheDocument()
   await waitFor(() => expect(screen.getByTestId('explore-root')).toHaveValue(T))

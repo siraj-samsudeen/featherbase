@@ -26,11 +26,7 @@ export function RowLink({ table, rowId, onClick, className = 'text-action hover:
   return (
     <Link to="/featherbase/admin/table/$table/row/$name" search={{ prefill: undefined }}
       params={{ table, name: rowId }} onClick={onClick} className={className}>
-      {name.state === 'loading' ? <span className="text-ink-subtle">…</span> : withCode && name.code
-        // #1242 (admin-lists 5): the code is part of the link, muted ("Lakeside · LKS").
-        // The space stays outside the span, so the link is named "Lakeside · LKS".
-        ? <>{name.title} <span className="font-normal text-ink-muted">· {name.code}</span></>
-        : name.title}
+      {name.state === 'loading' ? <span className="text-ink-subtle">…</span> : withCode ? rowNameText(name) : name.title}
     </Link>
   )
 }

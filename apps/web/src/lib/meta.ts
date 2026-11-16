@@ -40,8 +40,6 @@ export interface ColumnDef {
 
 export interface TableMeta {
   name: string
-  /** The Table as people read it ("Ticket"); `name` is internal ("tickets.ticket"). Use tableLabel. */
-  label?: string | null
   module: string
   kind: 'table' | 'sub_table' | 'settings' | 'view'
   /** #1021: a view's base Table and the filters choosing its rows. A view
@@ -185,16 +183,6 @@ export function metaQuery(table: string) {
 
 export function useMeta(table: string, enabled = true) {
   return useQuery({ ...metaQuery(table), enabled: enabled && Boolean(table) })
-}
-
-/** #1237: a Table as people read it, its label ("Ticket"), never its internal
- *  name ("tickets.ticket") unless it has no label. The name while the label loads. */
-export function tableLabel(table: string, meta: Pick<TableMeta, 'label'> | undefined): string {
-  return meta?.label?.trim() || table
-}
-
-export function useTableLabel(table: string): string {
-  return tableLabel(table, useMeta(table).data)
 }
 
 // Columns for a list view: Row ID first, then the Table's list columns (or

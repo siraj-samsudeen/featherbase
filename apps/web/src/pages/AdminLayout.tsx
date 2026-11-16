@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, tableHref, type CommandDestinations, type CommandPageDestination } from 'shared'
+import { FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, tableHref, type CommandDestinations, type CommandPageDestination } from 'shared'
 import { SIDEBAR_VIEWS_KEY } from '../lib/nav-settings'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import {
@@ -24,7 +24,6 @@ import { useRealtime } from '../lib/realtime'
 import { ThemeChoiceProvider, useThemeChoice } from '../lib/theme-choice'
 import { searchHitKind } from '../lib/search-hit'
 import { AppSwitcher } from '../components/AppSwitcher'
-import { ActionDisclosure } from '../components/ActionDisclosure'
 import { PHONE_QUERY, TopBar } from '../components/TopBar'
 import { isOpaqueId } from '../lib/people'
 import { EntryLabel, useLiveDestinations } from '../lib/row-titles'
@@ -39,7 +38,7 @@ import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PA
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
 import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
-import { Bell, BookOpen, Bookmark, CalendarClock, Clock, Compass, Database, Eye, History, Key, LayoutDashboard, ListChecks, LogIn, ShieldLock, Table, UserRound, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
+import { Bell, BookOpen, Bookmark, CalendarClock, Clock, Compass, Database, History, Key, ListChecks, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 
 interface SearchHit {
@@ -115,7 +114,7 @@ function AdminLayoutForKind({ wide, fullWidth }: { wide: boolean; fullWidth: boo
   return <AdminShell wide={wide} fullWidth={fullWidth} />
 }
 
-export function AdminShell({ wide, fullWidth = false, account = false }: { wide: boolean; fullWidth?: boolean; account?: boolean }) {
+export function AdminShell({ wide, fullWidth = false }: { wide: boolean; fullWidth?: boolean }) {
   const navigate = useNavigate()
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -197,7 +196,10 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
   // be collapsed to give the page its width; a phone keeps its drawer,
   // whatever was chosen on a wider window. #1227: the state, the controls and
   // Ctrl/Cmd+B are the shared ones every app's sidebar uses (TopBar).
-  const { setDrawerOpen: setSidebarOpen } = useSidebar(user?.row_id)
+  useRegisterSidebar(user?.row_id)
+  const { collapsed: collapsedChoice, drawerOpen: sidebarOpen, setDrawerOpen: setSidebarOpen } = useSidebar(user?.row_id)
+  const isMobileSidebar = useMediaQuery(SIDEBAR_DRAWER_QUERY)
+  const sidebarCollapsed = collapsedChoice && !isMobileSidebar
   // #489: on a phone the command bar takes its own row under the bar, so Tab
   // still follows what the eye reads: the bar's row first, then the search.
   const isPhone = useMediaQuery(PHONE_QUERY)
@@ -324,19 +326,6 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
   // dedicated endpoint is its only source (role visibility and link
   // permission-filtering are computed server-side).
   const homePages = useHomePages()
-  // #1242 (admin-lists 8): the module of the Table open now is marked in the
-  // sidebar: the Home Page that lists it (every Table is linked from its module's
-  // page when made; System's are listed on System though their module is Core,
-  // the default), else its module's page.
-  const openTable = useRouterState({ select: (state) => (state.matches.find((match) => 'table' in match.params)?.params as { table?: string } | undefined)?.table })
-  const openMeta = useQuery({ ...metaQuery(openTable ?? ''), enabled: Boolean(openTable) })
-  const openModulePage = (() => {
-    const meta = openTable ? openMeta.data : undefined
-    if (!meta) return undefined
-    const pages = homePages.data?.pages ?? []
-    return (pages.find((page) => page.cards.some((card) => card.links.some((link) => link.link_to === meta.name)))
-      ?? pages.find((page) => page.module && page.module === meta.module))?.row_id
-  })()
 
 
   // UI-014: row hits from the server, debounced.
@@ -749,30 +738,45 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
       </TopBar>
 
       <div className="relative flex min-h-0 flex-1">
-        <SidebarAside testid="admin-sidebar" user={user?.row_id}>
-          {/* #1235 item 7: on the account pages, the Account group leads the sidebar. */}
-          {account && <AccountSidebarGroup />}
-          {/* #1242 (admin-lists 7): one quiet "+ New" menu, so the sidebar does not
-              compete with the page's own New. */}
+        {/* UI-025: on mobile, a backdrop closes the drawer. */}
+        {sidebarOpen && (
+          <div
+            className="absolute inset-0 z-20 bg-scrim/30 md:hidden"
+            data-testid="sidebar-backdrop"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+        {/* Sidebar — static on md+, a slide-in drawer on mobile. Clicking any
+            link inside closes the drawer. */}
+        <aside
+          data-testid="admin-sidebar"
+          data-collapsed={sidebarCollapsed ? true : undefined}
+          inert={isMobileSidebar && !sidebarOpen ? true : undefined}
+          aria-hidden={isMobileSidebar && !sidebarOpen ? true : undefined}
+          onClick={(e) => {
+            if ((e.target as HTMLElement).closest('a')) setSidebarOpen(false)
+          }}
+          className={`absolute inset-y-0 left-0 z-30 flex w-64 flex-col overflow-y-auto border-r border-border bg-surface transition-transform md:static md:w-60 md:shrink-0 md:translate-x-0 ${
+            sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          }${sidebarCollapsed ? ' md:hidden' : ''}`}
+        >
           {canManage && (
-          <div className="px-3 pt-4 [&>div>button]:w-full [&>div>button]:justify-between" data-testid="sidebar-new">
-            <ActionDisclosure label="+ New">
-              <Link
-                to="/featherbase/admin/new-table"
-                data-testid="new-table-link"
-                className={buttonClasses({ variant: 'quiet', className: 'justify-start' })}
-              >
-                New table
-              </Link>
-              <Link
-                to="/featherbase/admin/import"
-                search={{ table: undefined }}
-                data-testid="import-data-link"
-                className={buttonClasses({ variant: 'quiet', className: 'justify-start' })}
-              >
-                Import data
-              </Link>
-            </ActionDisclosure>
+          <div className="px-3 pt-4">
+            <Link
+              to="/featherbase/admin/new-table"
+              data-testid="new-table-link"
+              className={buttonClasses({ variant: 'primary', className: 'w-full justify-center' })}
+            >
+              + New Table
+            </Link>
+            <Link
+              to="/featherbase/admin/import"
+              search={{ table: undefined }}
+              data-testid="import-data-link"
+              className={buttonClasses({ className: 'mt-2 w-full justify-center' })}
+            >
+              Import Data
+            </Link>
           </div>
           )}
           {/* #80: the sidebar is Home Pages only. Every
@@ -780,36 +784,25 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
               grouping and curation moved there, nothing is hidden. */}
           {/* The sidebar scrolls as ONE column: the Home Pages keep their full
               height whatever sits below them. */}
-          <nav className="shrink-0 px-2 pb-4 pt-3" data-testid="home-page-nav" aria-label="Modules">
-            {/* #1242 (admin-lists 8): headed and drawn like every other group. */}
-            <h2 className="flex items-center gap-1.5 px-2 pb-0.5 pt-1 text-xs font-medium text-ink-subtle" data-testid="sidebar-group-heading">
-              <LayoutDashboard aria-hidden size={12} />
-              Modules
-            </h2>
+          <nav className="shrink-0 px-2 pb-4 pt-3" data-testid="home-page-nav">
             {homePages.isLoading && (
               <p className="px-2 py-1 text-xs text-ink-subtle">Loading…</p>
             )}
-            {(homePages.data?.pages ?? []).map((p) => {
-              const marked = p.row_id === openModulePage
-              return (
-                <Link
-                  key={p.row_id}
-                  to="/featherbase/admin/home/$name"
-                  params={{ name: p.row_id }}
-                  data-testid={`home-page-link-${p.row_id}`}
-                  aria-current={marked ? 'page' : undefined}
-                  className={`${touchRowClasses('flex items-center gap-2 rounded-md px-2 py-1.5 text-sm')}${marked ? ` ${SIDEBAR_ROW_SELECTED}` : ''}`}
-                  inactiveProps={{ className: marked ? '' : SIDEBAR_ROW_IDLE }}
-                  activeProps={{ className: SIDEBAR_ROW_SELECTED, 'aria-current': 'page' }}
-                >
-                  {/* The page's own emoji takes the icon's place, unread. */}
-                  {p.icon
-                    ? <span aria-hidden data-testid="sidebar-item-icon" className="flex w-3.5 shrink-0 justify-center text-sm leading-none text-ink-subtle">{p.icon}</span>
-                    : <LayoutDashboard aria-hidden size={14} className="shrink-0 text-ink-subtle" data-testid="sidebar-item-icon" />}
-                  <span className="min-w-0 flex-1 truncate">{p.label || p.row_id}</span>
-                </Link>
-              )
-            })}
+            {(homePages.data?.pages ?? []).map((p) => (
+              <Link
+                key={p.row_id}
+                to="/featherbase/admin/home/$name"
+                params={{ name: p.row_id }}
+                data-testid={`home-page-link-${p.row_id}`}
+                className={touchRowClasses('flex items-center rounded-md px-2 py-1.5 text-sm text-ink hover:bg-subtle')}
+                activeProps={{
+                  className: touchRowClasses('flex items-center rounded-md px-2 py-1.5 text-sm font-medium text-action bg-action-tint'),
+                }}
+              >
+                {p.icon ? `${p.icon} ` : ''}
+                {p.label || p.row_id}
+              </Link>
+            ))}
           </nav>
           {/* #101 Phase 2: recall without a keystroke — the same per-user
               buffer the command bar reads. */}
@@ -894,13 +887,11 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
                 ]
               : []}
           />
-        </SidebarAside>
+        </aside>
 
         {/* Page canvas */}
-        {/* UX standard §3.1 (#1242): content starts 32px from the sidebar, left-aligned,
-            so every page's title sits at the same x; lists up to 1280, reading pages 880. */}
-        <main className={`min-w-0 flex-1 overflow-auto bg-canvas p-4 sm:px-8 sm:py-6${wide ? ' flex flex-col' : ''}`}>
-          <div className={wide ? 'flex min-h-0 w-full flex-1 flex-col' : fullWidth ? 'w-full max-w-[1280px]' : 'max-w-[880px] has-data-[pane=right]:max-w-none'}>
+        <main className={`min-w-0 flex-1 overflow-auto bg-canvas p-4 sm:p-6${wide ? ' flex flex-col' : ''}`}>
+          <div className={wide ? 'flex min-h-0 w-full flex-1 flex-col' : fullWidth ? 'w-full' : 'mx-auto max-w-5xl has-data-[pane=right]:max-w-none'}>
             <Outlet />
           </div>
         </main>
@@ -909,11 +900,6 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
     </>
   )
 }
-
-/** A sidebar row's colours (UI standard §4): selected is action-tint with action
- *  text, nothing else coloured; otherwise muted. */
-const SIDEBAR_ROW_IDLE = 'text-ink-muted hover:bg-subtle hover:text-ink'
-const SIDEBAR_ROW_SELECTED = 'font-medium text-action bg-action-tint'
 
 interface SidebarItem {
   to: string
@@ -930,18 +916,16 @@ interface SidebarItem {
 /** Recently opened holds at most this many items, Frequent included. */
 const SIDEBAR_RECENT_CAP = 5
 
-export function SidebarGroup({ heading, icon: HeadingIcon, testid, items, first = false }: {
+export function SidebarGroup({ heading, icon: HeadingIcon, testid, items }: {
   heading: string
   icon: LucideIcon
   testid: string
   items: SidebarItem[]
-  /** The sidebar's first group: no rule above it. */
-  first?: boolean
 }) {
   if (items.length === 0) return null
   const base = touchRowClasses('flex items-center gap-2 rounded-md px-2 py-1.5 text-sm')
   return (
-    <div className={`${first ? 'pt-3' : 'border-t border-border'} px-2 py-2`} data-testid={testid}>
+    <div className="border-t border-border px-2 py-2" data-testid={testid}>
       <h2 className="flex items-center gap-1.5 px-2 pb-0.5 pt-1 text-xs font-medium text-ink-subtle" data-testid="sidebar-group-heading">
         <HeadingIcon aria-hidden size={12} />
         {heading}
@@ -952,11 +936,8 @@ export function SidebarGroup({ heading, icon: HeadingIcon, testid, items, first 
           to={to}
           search={search as never}
           data-testid={id}
-          // TanStack adds activeProps to className rather than replacing it, so
-          // the unselected colours live in inactiveProps: never both at once.
-          className={base}
-          inactiveProps={{ className: SIDEBAR_ROW_IDLE }}
-          activeProps={{ className: SIDEBAR_ROW_SELECTED, 'aria-current': 'page' }}
+          className={`${base} text-ink-muted hover:bg-subtle hover:text-ink`}
+          activeProps={{ className: `${base} font-medium text-action bg-action-tint` }}
         >
           <Icon aria-hidden size={14} className="shrink-0 text-ink-subtle" data-testid="sidebar-item-icon" />
           <span className="min-w-0 flex-1 truncate">{label}</span>
@@ -964,63 +945,6 @@ export function SidebarGroup({ heading, icon: HeadingIcon, testid, items, first 
         </Link>
       ))}
     </div>
-  )
-}
-
-/**
- * #1227: the one sidebar frame, for the Admin and the account pages alike: 240px
- * beside the page, a 256px drawer with a backdrop under 48rem, hidden when
- * collapsed; the bar's controls and Cmd/Ctrl+B work it (lib/sidebar-collapsed).
- * Following any link inside it closes the drawer.
- */
-export function SidebarAside({ testid, user, children }: { testid: string; user: string | undefined; children: ReactNode }) {
-  useRegisterSidebar(user)
-  const { collapsed: choice, drawerOpen, setDrawerOpen } = useSidebar(user)
-  const isDrawer = useMediaQuery(SIDEBAR_DRAWER_QUERY)
-  const collapsed = choice && !isDrawer
-  return (
-    <>
-      {/* UI-025: on mobile, a backdrop closes the drawer. */}
-      {drawerOpen && (
-        <div
-          className="absolute inset-0 z-20 bg-scrim/30 md:hidden"
-          data-testid="sidebar-backdrop"
-          onClick={() => setDrawerOpen(false)}
-        />
-      )}
-      <aside
-        data-testid={testid}
-        data-collapsed={collapsed ? true : undefined}
-        inert={isDrawer && !drawerOpen ? true : undefined}
-        aria-hidden={isDrawer && !drawerOpen ? true : undefined}
-        onClick={(e) => {
-          if ((e.target as HTMLElement).closest('a')) setDrawerOpen(false)
-        }}
-        className={`absolute inset-y-0 left-0 z-30 flex w-64 flex-col overflow-y-auto border-r border-border bg-surface transition-transform md:static md:w-60 md:shrink-0 md:translate-x-0 ${
-          drawerOpen ? 'translate-x-0' : '-translate-x-full'
-        }${collapsed ? ' md:hidden' : ''}`}
-      >
-        {children}
-      </aside>
-    </>
-  )
-}
-
-/** #1235 item 7 (UI standard §4): the person's own pages, at the top of the
- *  sidebar on every account page. */
-export function AccountSidebarGroup() {
-  const user = getSessionUser()
-  return (
-    <SidebarGroup
-      first
-      heading="Account"
-      icon={UserRound}
-      testid="sidebar-group-account"
-      items={[
-        { to: ACCOUNT_SIGN_IN_METHODS_PATH, label: 'Sign-in methods', icon: LogIn, testid: 'sidebar-sign-in-methods' },
-        ...(user ? [{ to: `/featherbase/account/access/${encodeURIComponent(user.row_id)}`, label: 'What you can see', icon: Eye, testid: 'sidebar-access-explanation' }] : []),
-      ]}
-    />
   )
 }
 

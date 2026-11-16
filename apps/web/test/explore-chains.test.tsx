@@ -5,7 +5,6 @@
 // explore-page.test.tsx covers a deep-linked one-step chain.
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { openListMenu } from './list-menus'
 import { test, expect, renderApp } from './pg-test'
 
 configure({ asyncUtilTimeout: 10_000 })
@@ -160,8 +159,6 @@ test("the list's Explore button opens a chain of the dependents ticked under it"
   const user = userEvent.setup()
   await seed(admin)
   const { router } = await renderApp(`/featherbase/admin/table/ec-supplier`, admin)
-  // #1242: Explore sits in the list's View menu.
-  await openListMenu('View')
   await user.click(await screen.findByTestId('explore-split-toggle'))
   const [option] = await within(await screen.findByTestId('explore-split-panel')).findAllByTestId('explore-split-option')
   await user.click(option)

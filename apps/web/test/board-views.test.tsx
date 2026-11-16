@@ -5,7 +5,6 @@ import { tableSlug } from 'shared'
 import { afterEach, vi } from 'vitest'
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { test, expect, renderApp } from './pg-test'
-import { openListMenu } from './list-menus'
 
 // The suite shares a busy machine with other runs: give each wait room.
 configure({ asyncUtilTimeout: 10_000 })
@@ -162,7 +161,7 @@ const pathOf = (r: { router: unknown }) =>
 test('Calendar: the View menu of the list opens the calendar', async ({ admin }) => {
   await seedSchedule(admin)
   const app = await renderApp(`/featherbase/admin/table/${tableSlug(SCHED)}`, admin)
-  await openListMenu('View')
+  fireEvent.click(await screen.findByRole('button', { name: 'View: List' }))
   fireEvent.click(await screen.findByRole('link', { name: 'Calendar' }))
   expect(await screen.findByTestId('calendar-view')).toBeInTheDocument()
   expect(pathOf(app)).toBe(`/featherbase/admin/table/${tableSlug(SCHED)}/view/calendar`)
@@ -313,7 +312,7 @@ test('Board: with two choice columns the user picks which one the board follows'
 test('Board: the list\'s view menu opens the Board', async ({ admin }) => {
   await seedBoard(admin)
   const { router } = await renderApp(`/featherbase/admin/table/${tableSlug(BOARD)}`, admin)
-  await openListMenu('View')
+  fireEvent.click(await screen.findByRole('button', { name: 'View: List' }))
   fireEvent.click(await screen.findByTestId('open-kanban'))
   await screen.findByTestId('kanban-view')
   await waitFor(() => expect(within(screen.getByTestId('kanban-column-Open')).getAllByTestId('kanban-card')).toHaveLength(2))

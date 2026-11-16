@@ -9,7 +9,6 @@ import { logActivity } from 'server/src/audit'
 import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
 import { clearSession } from '../src/lib/api'
-import { openListMenu, hasListMenu } from './list-menus'
 
 beforeEach(clearSession)
 
@@ -36,12 +35,12 @@ test('the Activity Log list offers no way to write, even to the Administrator', 
   await screen.findByTestId('list-view')
   // The list itself still reads: the seeded row and the report view are there.
   expect(await screen.findByText('seeded for the read-only form')).toBeInTheDocument()
-  await openListMenu('View')
+  await userEvent.click(screen.getByRole('button', { name: 'View: List' }))
   expect(screen.getByTestId('open-report')).toBeInTheDocument()
   // Permissions stay, so read access can still be granted.
-  await openListMenu('Table administration')
+  await userEvent.click(screen.getByRole('button', { name: 'Table administration' }))
   expect(screen.getByTestId('open-permissions')).toBeInTheDocument()
-  expect(await hasListMenu('List actions')).toBe(false)
+  expect(screen.queryByRole('button', { name: 'List actions' })).not.toBeInTheDocument()
   for (const id of WRITE_CONTROLS) expect(screen.queryByTestId(id), id).toBeNull()
 })
 

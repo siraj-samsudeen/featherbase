@@ -8,7 +8,6 @@ import userEvent from '@testing-library/user-event'
 import * as XLSX from 'xlsx'
 import { test, expect, renderApp } from './pg-test'
 import { clearSession } from '../src/lib/import-session'
-import { openSidebarNew } from './list-menus'
 
 type Admin = Parameters<typeof renderApp>[1]
 
@@ -37,7 +36,6 @@ async function openColumns(admin: Admin) {
   onTestFinished(clearSession)
   // Arrives by clicking, as a person does, from the Admin home.
   await renderApp('/featherbase/admin', admin)
-  await openSidebarNew({ timeout: 8000 })
   await userEvent.click(await screen.findByTestId('import-data-link', {}, { timeout: 8000 }))
   fireEvent.change(await screen.findByTestId('iw-file-input', {}, { timeout: 8000 }), { target: { files: [workbook()] } })
   await userEvent.click(await screen.findByTestId('iw-ov-master', {}, { timeout: 8000 }))

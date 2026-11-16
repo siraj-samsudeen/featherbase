@@ -3,8 +3,6 @@
   "platformVersion": "2026-10",
   "name": "dash",
   "title": "Dash",
-  "summary": "Sales and targets for the stores you look after",
-  "icon": "report",
   "server": "dist/server.mjs",
   "client": "dist/client",
   "entryTable": "dash.report",
@@ -2220,8 +2218,7 @@
       "fromVersion": "0.13.16",
       "toVersion": "0.13.17",
       "operations": []
-    },
-    {"id": "switcher_summary", "fromVersion": "0.13.17", "toVersion": "0.13.19", "operations": []}
+    }
   ],
   "baseTables": {
     "read": {

@@ -21,7 +21,6 @@ import { test, expect, renderApp } from './pg-test'
 import { ANY_TABLE_LINK } from '../src/pages/ColumnEditor'
 import type { Sql } from 'postgres'
 import { invalidateMeta } from 'server/src/meta'
-import { openListMenu } from './list-menus'
 
 const DT = 'Ce Zones'
 
@@ -336,7 +335,7 @@ test("the Table's list opens its column editor from Table administration", async
   const user = userEvent.setup()
   await seed(admin)
   const { router } = await renderApp(`/featherbase/admin/table/${tableSlug(DT)}`, admin)
-  await openListMenu('Table administration', screen, { timeout: 8000 })
+  await user.click(await screen.findByRole('button', { name: 'Table administration' }, { timeout: 8000 }))
   await user.click(await screen.findByRole('link', { name: 'Edit columns' }))
   expect(await screen.findByTestId('column-editor')).toBeInTheDocument()
   expect(await screen.findByTestId('ce-row-glor')).toBeInTheDocument()

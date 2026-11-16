@@ -3,9 +3,6 @@
   "platformVersion": "2026-10",
   "name": "tickets",
   "title": "Tickets",
-  "summary": "Ask for help or a change, and follow it to done",
-  "icon": "inbox",
-  "recordPages": {"tickets.ticket": "/tickets/?ticket={row}"},
   "accent": "green",
   "server": "dist/server.mjs",
   "client": "dist/client",
@@ -147,8 +144,7 @@
     {"id": "list_and_toolbar", "fromVersion": "0.2.12", "toVersion": "0.2.13", "operations": []},
     {"id": "assigned_view_words", "fromVersion": "0.2.13", "toVersion": "0.2.14", "operations": []},
     {"id": "remove_assignee_words", "fromVersion": "0.2.14", "toVersion": "0.2.15", "operations": []},
-    {"id": "report_feedback", "fromVersion": "0.2.15", "toVersion": "0.2.17", "operations": []},
-    {"id": "switcher_summary", "fromVersion": "0.2.17", "toVersion": "0.2.18", "operations": []}
+    {"id": "report_feedback", "fromVersion": "0.2.15", "toVersion": "0.2.17", "operations": []}
   ],
   "baseTables": {"read": {"Data Quality Row": ["ticket", "affected_table", "affected_row", "fixed_on", "note"]}},
   "permissions": [

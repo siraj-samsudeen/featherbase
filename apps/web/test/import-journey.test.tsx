@@ -7,7 +7,6 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { tableSlug } from 'shared'
 import { test, expect, renderApp } from './pg-test'
-import { openSidebarNew } from './list-menus'
 import { clearSession } from '../src/lib/import-session'
 
 type Admin = Parameters<typeof renderApp>[1]
@@ -35,9 +34,7 @@ function zonesCsv(): File {
 async function dropZones(admin: Admin) {
   clearSession()
   const r = await renderApp('/featherbase/admin', admin)
-  // #1242 (admin-lists 7): Import data is in the sidebar's "+ New" menu.
-  await openSidebarNew(WAIT)
-  await userEvent.click(await screen.findByRole('link', { name: 'Import data' }, WAIT))
+  await userEvent.click(await screen.findByRole('link', { name: 'Import Data' }, WAIT))
   expect(await screen.findByTestId('iw-dropzone', {}, WAIT)).toHaveTextContent('Drag & drop a CSV or Excel workbook here')
   fireEvent.drop(screen.getByTestId('iw-dropzone'), { dataTransfer: { files: [zonesCsv()] } })
   await screen.findByTestId('iw-target-0', {}, WAIT)

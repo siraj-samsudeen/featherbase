@@ -7,7 +7,6 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
 import { grantRole } from 'server/test/fixtures'
-import { openListMenu } from './list-menus'
 
 const DT = 'Pm Depots'
 const ENC = encodeURIComponent(DT)
@@ -24,7 +23,7 @@ test('the list leads to the matrix; ticking and saving stores the grant', async 
   const user = userEvent.setup()
   await seed(admin)
   await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}`, admin)
-  await openListMenu('Table administration')
+  await user.click(await screen.findByRole('button', { name: 'Table administration' }))
   await user.click(await screen.findByTestId('open-permissions', undefined, { timeout: 10_000 }))
   expect(await screen.findByRole('heading', { name: `Permissions — ${DT}` })).toBeInTheDocument()
 

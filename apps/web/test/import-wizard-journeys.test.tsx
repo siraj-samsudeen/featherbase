@@ -10,8 +10,6 @@ import * as XLSX from 'xlsx'
 import { tableSlug } from 'shared'
 import { test, expect, renderApp } from './pg-test'
 import { clearSession } from '../src/lib/import-session'
-import { openListMenu } from './list-menus'
-import { openSidebarNew } from './list-menus'
 
 type Admin = Parameters<typeof renderApp>[1]
 const NEW_DT = 'Wizard Orders'
@@ -70,7 +68,6 @@ const cell = (row: HTMLElement, field: string) => row.querySelector<HTMLInputEle
 async function openOnBook(admin: Admin, file: File) {
   clearSession()
   const r = await renderApp('/featherbase/admin', admin)
-  await openSidebarNew({ timeout: 8000 })
   await userEvent.click(await screen.findByTestId('import-data-link', {}, WAIT))
   expect(await screen.findByTestId('import-wizard', {}, WAIT)).toBeInTheDocument()
   fireEvent.change(screen.getByTestId('iw-file-input'), { target: { files: [file] } })
@@ -212,7 +209,7 @@ test('IMP-010: the list\'s Import button opens the wizard with that Table as the
   await admin.post('/api/save_row', { table: EXISTING_DT, row: { wizard_sku: 'Held', bin_count: 1, restock_level: 1 } })
   clearSession()
   const r = await renderApp(`/featherbase/admin/table/${tableSlug(EXISTING_DT)}`, admin)
-  await openListMenu('List actions', screen, WAIT)
+  await userEvent.click(await screen.findByRole('button', { name: 'List actions' }, WAIT))
   await userEvent.click(await screen.findByTestId('open-import'))
   expect(await screen.findByTestId('import-wizard', {}, WAIT)).toBeInTheDocument()
   fireEvent.change(screen.getByTestId('iw-file-input'), { target: { files: [csv('anything at all.csv', 'Wizard SKU,Bin Count,Restock Level\nCog-1,4,1')] } })

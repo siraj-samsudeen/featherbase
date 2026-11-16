@@ -27,7 +27,6 @@ import { mountBar } from '../../src/bar/mount'
 import { FeatherbaseSidebar } from '../../src/bar/sidebar'
 import { safeLoginNext } from '../../src/pages/Login'
 import { test, expect, renderApp } from '../pg-test'
-import { appChoices, switcherButton } from '../app-switcher'
 
 const scenario = scenarioFor(test, 'trusted-runtime-packages')
 const REPO = resolve('../..')
@@ -167,6 +166,7 @@ describe('trusted-runtime-packages', () => {
   // ---- The platform is named Featherbase ----
 
   scenario('A clean instance identifies the platform', async ({ admin }, step) => {
+    let switcher!: HTMLElement
     await step('the user is a System Manager on an instance with no installed apps', async () => {
       await discoverAppLibrary([])
       await loadInstalledApps()
@@ -174,26 +174,26 @@ describe('trusted-runtime-packages', () => {
     })
     await step('the user inspects the destination switcher', async () => {
       await renderApp('/featherbase/admin', admin)
-      await switcherButton(screen, LONG)
+      switcher = await screen.findByRole('combobox', { name: 'Switch application' }, LONG)
     })
     await step('the platform destination is named "Featherbase"', async () => {
-      await waitFor(async () => expect(await appChoices(screen, LONG)).toContain('Featherbase'))
+      await waitFor(() => expect(within(switcher).getAllByRole('option').map((o) => o.textContent)).toContain('Featherbase'))
     })
   })
 
   scenario('An installed app preserves the platform name', async ({ admin }, step) => {
-    let appBar!: ReturnType<typeof within>
+    let switcher!: HTMLElement
     await step('the user is a System Manager with Tasker installed', () => installTasker(admin))
     await step('the user inspects the destination switcher while using Tasker', async () => {
       const { bar } = await openAppPage(admin, 'tasker')
-      appBar = bar
-      await switcherButton(bar, LONG)
+      switcher = await bar.findByRole('combobox', { name: 'Switch application' }, LONG)
     })
     await step('the platform destination is named "Featherbase"', async () => {
-      await waitFor(async () => expect(await appChoices(appBar, LONG)).toContain(FEATHERBASE_ADMIN_DESTINATION.label))
+      const featherbase = await within(switcher).findByRole('option', { name: 'Featherbase' })
+      expect(featherbase).toHaveValue(FEATHERBASE_ADMIN_DESTINATION.href)
     })
     await step('Tasker retains its own app name', async () => {
-      await waitFor(async () => expect(await appChoices(appBar, LONG)).toContain('Tasker'))
+      await waitFor(() => expect(within(switcher).getAllByRole('option').map((o) => o.textContent)).toContain('Tasker'))
     })
   })
 

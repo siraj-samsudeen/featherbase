@@ -98,8 +98,6 @@ export function useCanReadTable(table: string): boolean | undefined {
 
 export interface TableSummary {
   row_id: string
-  /** #1242: one line of what the Table holds (System Managers' list). */
-  description?: string | null
   module: string
   system: boolean
   // #432: no "New" anywhere for a Table only the platform writes.
@@ -125,7 +123,7 @@ export function useShellTables(): TableSummary[] | undefined {
     queryFn: () =>
       listResource<TableSummary>('Table', {
         filters: [['kind', '!=', 'sub_table']],
-        fields: ['row_id', 'description', 'module', 'system', 'system_written', 'kind', 'view_of'],
+        fields: ['row_id', 'module', 'system', 'system_written', 'kind', 'view_of'],
         order_by: 'row_id asc',
         limit_page_length: 200,
       }),

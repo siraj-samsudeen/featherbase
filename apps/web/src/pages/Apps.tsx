@@ -4,25 +4,12 @@ import { tableHref } from 'shared'
 import { api } from '../lib/api'
 import { Button, Card, EmptyState, Notice, Skeleton, StatusPill, buttonClasses, cx, fmtInstant } from '@featherbase/shop-floor'
 
-/** "Opens for: Tasker Member", "Opens for everyone", "No role opens it yet", with
- *  the app's own further check when it has one. */
-export function opensForWords(title: string, who: { everyone: boolean; roles: string[]; admits?: string[]; gated: boolean }): string {
-  if (!who.everyone && !who.roles.length) return 'No role opens it yet'
-  const words = [who.everyone ? 'Opens for everyone' : `Opens for: ${who.roles.join(', ')}`]
-  // A mandatory policy is a second, separate requirement.
-  if (who.admits) words.push(`and only for ${who.admits.join(', ')}`)
-  if (who.gated) words.push(`then ${title}'s own check`)
-  return words.join(', ')
-}
-
 interface CatalogApp {
   name: string
   title: string
   version: string
   platformVersion: string
   installed: boolean
-  /** #1236: the roles that open an installed app (the switcher shows only what a person can open). */
-  opensFor?: { everyone: boolean; roles: string[]; admits?: string[]; gated: boolean }
   preparation: { state: 'needed' | 'preparing' | 'ready' | 'failed' | 'unavailable'; error?: string }
   declarations: {
     tables: { name: string; label: string }[]
@@ -135,11 +122,6 @@ function AppDetails({ app, repositoryUrl }: { app: CatalogApp; repositoryUrl: st
           <div>
             <h2 className="text-xl font-semibold text-ink">{app.title}</h2>
             <p className="mt-1 text-sm text-ink-muted">Version {app.version} · Requires platform {app.platformVersion}</p>
-            {app.installed && app.opensFor && (
-              <p className="mt-1 text-sm text-ink" data-testid="app-opens-for">
-                {opensForWords(app.title, app.opensFor)}
-              </p>
-            )}
           </div>
           <StatusPill tone={app.installed ? 'positive' : 'neutral'}>{app.installed ? 'Installed' : 'Not installed'}</StatusPill>
         </div>

@@ -7,7 +7,6 @@ import { fireEvent } from '@testing-library/dom'
 import { tableSlug } from 'shared'
 import { test, expect, renderApp } from './pg-test'
 import { holdResponses } from './held-requests'
-import { openListMenu } from './list-menus'
 
 type Admin = Parameters<typeof renderApp>[1]
 
@@ -26,7 +25,7 @@ test('a refused name is said in the dialog, which stays open when focus leaves i
   await seed(admin)
   const filters = encodeURIComponent(JSON.stringify([['is_store', '=', 1]]))
   await renderApp(`/featherbase/admin/table/vwd-site?filters=${filters}`, admin)
-  await openListMenu('Table administration')
+  fireEvent.click(await screen.findByRole('button', { name: /Table administration/ }))
   fireEvent.click(await screen.findByTestId('save-as-view'))
   const name = await screen.findByTestId('save-as-view-name')
   // A busy button gives up focus, as does a click on the dialog's own words.
@@ -44,7 +43,7 @@ const STORES = encodeURIComponent(JSON.stringify([['is_store', '=', 1]]))
 async function openNewView(admin: Admin, filters = STORES) {
   await seed(admin)
   await renderApp(`/featherbase/admin/table/vwd-site?filters=${filters}`, admin)
-  await openListMenu('Table administration', screen, T)
+  fireEvent.click(await screen.findByRole('button', { name: /Table administration/ }, T))
   fireEvent.click(await screen.findByTestId('save-as-view'))
   return screen.findByTestId('save-as-view-dialog')
 }

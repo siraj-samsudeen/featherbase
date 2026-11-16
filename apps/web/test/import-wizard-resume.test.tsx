@@ -12,7 +12,6 @@ import * as XLSX from 'xlsx'
 import { tableSlug } from 'shared'
 import { test, expect, renderApp } from './pg-test'
 import { IMPORT_DATA_KEY, clearSession } from '../src/lib/import-session'
-import { openSidebarNew } from './list-menus'
 
 type Admin = Parameters<typeof renderApp>[1]
 
@@ -43,7 +42,6 @@ async function openWizard(admin: Admin) {
   clearSession()
   onTestFinished(clearSession)
   const rendered = await renderApp('/featherbase/admin', admin)
-  await openSidebarNew({ timeout: 8000 })
   await userEvent.click(await screen.findByTestId('import-data-link', {}, { timeout: 8000 }))
   return rendered
 }
@@ -78,7 +76,6 @@ test('#204: going to look at the imported rows and coming back resumes everythin
 
   await userEvent.click(within(screen.getByTestId('iw-result-0')).getByRole('link', { name: ONE }))
   expect(await screen.findByTestId('list-view')).toBeInTheDocument()
-  await openSidebarNew({ timeout: 8000 })
   await userEvent.click(await screen.findByTestId('import-data-link'))
 
   expect(await screen.findByTestId('iw-file-name')).toHaveTextContent(FILE)

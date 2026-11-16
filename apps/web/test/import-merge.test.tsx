@@ -7,7 +7,6 @@ import userEvent from '@testing-library/user-event'
 import * as XLSX from 'xlsx'
 import { test, expect, renderApp } from './pg-test'
 import { clearSession } from '../src/lib/import-session'
-import { openSidebarNew } from './list-menus'
 
 type Admin = Parameters<typeof renderApp>[1]
 const MERGED = 'Merge Sections'
@@ -36,7 +35,6 @@ const STORES = {
 async function overview(admin: Admin, file: File) {
   clearSession()
   await renderApp('/featherbase/admin', admin)
-  await openSidebarNew({ timeout: 8000 })
   await userEvent.click(await screen.findByTestId('import-data-link', {}, WAIT))
   fireEvent.change(await screen.findByTestId('iw-file-input', {}, WAIT), { target: { files: [file] } })
   await screen.findByTestId('iw-overview', {}, WAIT)

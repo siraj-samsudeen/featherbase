@@ -9,4 +9,4 @@
 
 - [x] 2.1 Unit tests: each app's sidebar collapses with the control and Ctrl/Cmd+B, not while typing; the phone drawer; the account pages' switcher.
 - [x] 2.2 The change's scenarios run against Tasker's and Dash's real pages.
-- [x] 2.3 An independent verifier compares before and after at desktop and phone width for Admin, the account pages and each app.
+- [ ] 2.3 An independent verifier compares before and after at desktop and phone width for Admin, the account pages and each app.

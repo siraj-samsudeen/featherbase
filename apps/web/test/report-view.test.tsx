@@ -6,7 +6,6 @@ import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
-import { openListMenu } from './list-menus'
 
 type Admin = Parameters<typeof renderApp>[1]
 const DT = 'Rpv Task'
@@ -40,7 +39,7 @@ async function openReport(admin: Admin) {
 test('RPT-001: the list\'s view menu opens the report, with every row and the grand total', async ({ admin }) => {
   await seed(admin)
   const { router } = await renderApp(`/featherbase/admin/table/${tableSlug(DT)}`, admin)
-  await openListMenu('View', screen, WAIT)
+  await userEvent.click(await screen.findByRole('button', { name: 'View: List' }, WAIT))
   await userEvent.click(await screen.findByTestId('open-report'))
   await screen.findByTestId('report-view', {}, WAIT)
   expect((router.state as { location: { pathname: string } }).location.pathname).toBe(`/featherbase/admin/table/${tableSlug(DT)}/view/report`)

@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, appHref, appTabLinks, type AppTabLink } from 'shared'
+import { ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, appHref, appTabLinks, type AppTabIcon, type AppTabLink } from 'shared'
 import { SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, signOut } from '../lib/api'
 import { flushPendingEvents } from '../lib/recents'
 import { useBarAddress } from '../lib/bar-address'
@@ -13,10 +13,8 @@ import { BarControls, useBarControls } from './BarControls'
 import { AppSwitcher, useOpenAdmin } from './AppSwitcher'
 import { Logo } from './Logo'
 import { RecordLink, TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, useMediaQuery } from '@featherbase/shop-floor'
-import { List, Menu, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Sun, type LucideIcon } from '@featherbase/shop-floor'
+import { CalendarDays, ChartColumn, House, Inbox, List, ListChecks, Menu, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Sun, Target, UserRound, type LucideIcon } from '@featherbase/shop-floor'
 import { SIDEBAR_SHORTCUT, listenForSidebarKeys, useSidebar } from '../lib/sidebar-collapsed'
-import { APP_ICON } from '../lib/app-icons'
-import { useCurrentPageTitle } from '../lib/page-title'
 
 // #489 (design D3, "One top bar on every address"): one bar, drawn by the
 // platform, on every address and every shell — the Admin screens, an app's
@@ -128,6 +126,10 @@ function homeHref(context: string, installed: boolean): string {
   return INTERIM_APPS[context]?.root ?? appHref(context)
 }
 
+const TAB_ICON: Record<AppTabIcon, LucideIcon> = {
+  home: House, report: ChartColumn, target: Target, list: List,
+  checklist: ListChecks, calendar: CalendarDays, inbox: Inbox, person: UserRound,
+}
 
 /** The tabs the app behind this bar declares: an interim app's from shared,
  *  an installed app's from the catalog (only apps the person can open). */
@@ -193,11 +195,10 @@ export function TopBar({
   // person's own on account/no-access pages (item 3, #552). The Portal on the
   // Admin side keeps the tab it was opened with, and an app's own page
   // keeps the title its document gives it (#650).
-  const page = useCurrentPageTitle()
   const titlesTab = !app && (context !== ADMIN || home === ADMIN || forPerson)
   useEffect(() => {
-    if (name && titlesTab) document.title = page ? `${page} · ${name}` : name
-  }, [name, titlesTab, page])
+    if (name && titlesTab) document.title = name
+  }, [name, titlesTab])
   const isPhone = useMediaQuery(PHONE_QUERY)
   const canUseAdmin = Boolean(caps && (caps.admin))
   // #501 item 2: only on an app's address. The Admin address, and a host the
@@ -265,7 +266,7 @@ export function TopBar({
       {isPhone && caps && name && tabs.length > 0 && (
         <TabBar
           label={name}
-          tabs={tabs.map((tab) => ({ label: tab.label, icon: APP_ICON[tab.icon] ?? List, href: tab.href, current: tab.href === open }))}
+          tabs={tabs.map((tab) => ({ label: tab.label, icon: TAB_ICON[tab.icon] ?? List, href: tab.href, current: tab.href === open }))}
         />
       )}
     </>
@@ -549,8 +550,7 @@ function AccountMenu({ inMenu }: { inMenu?: { offerAdmin: boolean } }) {
               data-testid="account-access-explanation"
               className={MENU_ITEM}
             >
-              {/* #1224's verifier: the menu uses the page's own words. */}
-              {t('What you can see')}
+              {t('What can I see?')}
             </Link>
           )}
           <button role="menuitem" type="button" onClick={() => void signOutNow()} data-testid="logout" className={MENU_ITEM}>

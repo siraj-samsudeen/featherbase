@@ -4,7 +4,6 @@ import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
 import { holdResponses } from './held-requests'
-import { openListMenu } from './list-menus'
 
 type Admin = Parameters<typeof renderApp>[1]
 const OLD = 'Twr SAP Plant'
@@ -20,7 +19,7 @@ test('renaming a Table from its list opens it under the new name, with its rows'
   const user = userEvent.setup()
   await seed(admin)
   const app = await renderApp('/featherbase/admin/table/twr-sap-plant', admin)
-  await openListMenu('Table administration')
+  await user.click(await screen.findByRole('button', { name: 'Table administration' }))
   await user.click(await screen.findByTestId('rename-table', undefined, { timeout: 10_000 }))
   const dialog = await screen.findByTestId('rename-table-dialog')
   expect(dialog).toHaveTextContent(`Rename ${OLD}`)
@@ -39,7 +38,7 @@ test('the list just opened stays in recently opened under the new name', async (
   const user = userEvent.setup()
   await seed(admin)
   await renderApp('/featherbase/admin/table/twr-sap-plant', admin)
-  await openListMenu('Table administration')
+  await user.click(await screen.findByRole('button', { name: 'Table administration' }))
   await user.click(await screen.findByTestId('rename-table', undefined, { timeout: 10_000 }))
   const input = screen.getByTestId('rename-table-input')
   await user.clear(input)
@@ -56,7 +55,7 @@ test('a name already in use is refused in the dialog, and nothing changes', asyn
   await seed(admin)
   await admin.post('/api/table_def', { name: NEW, columns: [{ column_name: 'code', column_type: 'Data' }] })
   await renderApp('/featherbase/admin/table/twr-sap-plant', admin)
-  await openListMenu('Table administration')
+  await user.click(await screen.findByRole('button', { name: 'Table administration' }))
   await user.click(await screen.findByTestId('rename-table', undefined, { timeout: 10_000 }))
   const input = screen.getByTestId('rename-table-input')
   await user.clear(input)
@@ -88,7 +87,7 @@ test('a platform Table offers no Rename', async ({ admin }) => {
 async function openRename(admin: Admin) {
   await seed(admin)
   await renderApp('/featherbase/admin/table/twr-sap-plant', admin)
-  await openListMenu('Table administration', screen, { timeout: 10_000 })
+  await userEvent.click(await screen.findByRole('button', { name: 'Table administration' }, { timeout: 10_000 }))
   await userEvent.click(await screen.findByTestId('rename-table', undefined, { timeout: 10_000 }))
   return screen.findByTestId('rename-table-dialog')
 }

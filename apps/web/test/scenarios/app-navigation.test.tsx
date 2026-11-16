@@ -29,7 +29,6 @@ import { Dash } from '../../../../client-apps/jeyarama/dash/src/app'
 // @ts-expect-error a plain .mjs module of Dash's own platform tests
 import { ACCESS_ROWS, BASE_TABLES, LINKED_TABLES, REPORT_ROWS } from '../../../../client-apps/jeyarama/dash/platform-test/base-tables.mjs'
 import { test, expect, renderApp } from '../pg-test'
-import { appChoices, chooseApp, currentApp, switcherButton } from '../app-switcher'
 
 const scenario = scenarioFor(test, 'app-navigation')
 const WAIT = { timeout: 15_000 }
@@ -143,6 +142,7 @@ const sidebar = () => document.querySelector('featherbase-sidebar') as HTMLEleme
  *  Testing Library over its shadow root: they read a select's option values, an
  *  element's absence and a select's whole text, which no DSL verb checks the same way. */
 const page = () => createSession({ timeout: WAIT.timeout })
+const switcher = (barView: ReturnType<typeof within>) => barView.findByRole('combobox', { name: 'Switch application' }, WAIT)
 
 /** The person who may open Tasker and Dash but not Featherbase. */
 async function tlWithoutFeatherbase(admin: TestClient, seed: SeedFn, createUser: (o: { email?: string; roles: string[] }) => Promise<TestClient>) {
@@ -162,8 +162,9 @@ describe('app-navigation', () => {
     })
     await step("the user chooses Featherbase from Tasker's application name", async () => {
       barView = await openAppPage(admin, 'tasker', '/tasker/')
-      await waitFor(async () => expect(await appChoices(barView, WAIT)).toContain('Featherbase'), WAIT)
-      await chooseApp(barView, 'Featherbase')
+      const choices = (await switcher(barView)) as HTMLSelectElement
+      await waitFor(() => expect([...choices.options].map((o) => o.value)).toContain('/featherbase/admin'), WAIT)
+      await userEvent.selectOptions(choices, '/featherbase/admin')
       await waitFor(() => expect(left).toEqual(['/featherbase/admin']), WAIT)
     })
     await step('Featherbase opens', async () => {
@@ -173,7 +174,7 @@ describe('app-navigation', () => {
     })
     await step('no separate administration control is offered on Tasker', async () => {
       barView = await openAppPage(admin, 'tasker', '/tasker/')
-      await switcherButton(barView, WAIT)
+      await switcher(barView)
       await waitFor(() => expect(sidebar()).not.toBeNull(), WAIT)
       expect(barView.queryByTestId('open-admin')).toBeNull()
       expect(screen.queryByTestId('open-admin')).toBeNull()
@@ -190,12 +191,14 @@ describe('app-navigation', () => {
     })
     await step('Tasker and Dash are offered', async () => {
       expect(await barView.findByTestId('session-user', {}, WAIT)).toBeInTheDocument()
+      const choices = (await switcher(barView)) as HTMLSelectElement
       // The switcher holds only the current app until the catalog answers.
-      await waitFor(async () => expect(await appChoices(barView, WAIT)).toContain('Tasker'), WAIT)
-      expect((await appChoices(barView, WAIT)).sort()).toEqual(['Dash', 'Tasker'])
+      await waitFor(() => expect([...choices.options].some((o) => o.textContent === 'Tasker')).toBe(true), WAIT)
+      expect([...choices.options].map((o) => o.textContent).sort()).toEqual(['Dash', 'Tasker'])
     })
     await step('Featherbase is not offered', async () => {
-      expect(await appChoices(barView, WAIT)).not.toContain('Featherbase')
+      const choices = (await switcher(barView)) as HTMLSelectElement
+      expect(choices.querySelector('option[value="/featherbase/admin"]')).toBeNull()
     })
   })
 
@@ -311,10 +314,12 @@ describe('app-navigation', () => {
       expect(await screen.findByTestId('account-layout', {}, WAIT)).toBeInTheDocument()
     })
     await step('the application name shows Dash', async () => {
-      await waitFor(async () => expect(await currentApp(screen, WAIT)).toBe('Dash'), WAIT)
+      const choices = (await screen.findByRole('combobox', { name: 'Switch application' }, WAIT)) as HTMLSelectElement
+      await waitFor(() => expect(choices.selectedOptions[0]).toHaveTextContent(/^Dash$/), WAIT)
     })
     await step('Tasker is offered beside it', async () => {
-      await waitFor(async () => expect(await appChoices(screen, WAIT)).toContain('Tasker'), WAIT)
+      const choices = (await screen.findByRole('combobox', { name: 'Switch application' }, WAIT)) as HTMLSelectElement
+      await waitFor(() => expect([...choices.options].map((o) => o.textContent)).toContain('Tasker'), WAIT)
     })
   })
 })

@@ -601,7 +601,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       await admin.post('/api/install_app', { name: 'tasker' })
       await admin.post('/api/install_app', { name: 'other' })
       const member = await createUser({ email: 'runtime-shell-no-manager@example.com', roles: ['Tasker Member'] })
-      expect(await member.get('/api/app_catalog')).toEqual([{ name: 'tasker', title: 'Tasker', href: '/tasker/', summary: 'Tasks and store work, with what is due', icon: 'checklist' }])
+      expect(await member.get('/api/app_catalog')).toEqual([{ name: 'tasker', title: 'Tasker', href: '/tasker/' }])
       const html = await (await member.fetch('/tasker/')).text()
       expect(html).toContain('<featherbase-bar data-app="tasker" data-title="Tasker"></featherbase-bar>')
       expect(html).not.toContain('Other tasks')
@@ -875,7 +875,7 @@ describe('An app owns its own screen', () => {
       expect(await discoverPackages([staged])).toEqual([])
       await admin.post('/api/install_app', { name: 'tasker' })
       const member = await createUser({ email: 'delivered-member@example.com', roles: ['Tasker Member'] })
-      expect(await member.get('/api/app_catalog')).toContainEqual({ name: 'tasker', title: 'Tasker', href: '/tasker/', summary: 'Tasks and store work, with what is due', icon: 'checklist' })
+      expect(await member.get('/api/app_catalog')).toContainEqual({ name: 'tasker', title: 'Tasker', href: '/tasker/' })
 
       const page = await member.fetch('/tasker/', { headers: { accept: 'text/html' } })
       await expectStatus(page, 200)

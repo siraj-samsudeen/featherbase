@@ -9,7 +9,7 @@ import { RecordLink, RecordPagesProvider } from '@featherbase/shop-floor'
 describe('RecordLink', () => {
   test("is a link to the record's Featherbase page, named, with who it is beside the name", () => {
     render(<RecordLink table="Employee" rowId="E1001" name="Kumar" detail="E1001 · Team Leader · Lakeside" />)
-    const link = screen.getByRole('link', { name: 'Kumar · E1001 · Team Leader · Lakeside' })
+    const link = screen.getByRole('link', { name: /^Kumar\s*· E1001 · Team Leader · Lakeside$/ })
     expect(link).toHaveAttribute('href', rowHref('Employee', 'E1001'))
     expect(link).toHaveAttribute('data-record-link', 'link')
   })

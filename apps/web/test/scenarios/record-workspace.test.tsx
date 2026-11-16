@@ -12,7 +12,6 @@ import { grantRole, patchDoc } from 'server/test/fixtures'
 import { scenarioFor } from 'server/test/scenario'
 import { test, expect, renderApp, onScreen, byTestId } from '../pg-test'
 import { useNodeMultipart } from '../node-multipart'
-import { openListMenu, hasListMenu } from '../list-menus'
 
 configure({ asyncUtilTimeout: 10_000 })
 
@@ -135,7 +134,7 @@ describe('record-workspace', () => {
     await step('the selection offers deletion of rows separately from deletion of the Table', async () => {
       await onScreen().within(byTestId('bulk-delete'), (el) => el.assertText('Delete rows'))
       expect(screen.queryByTestId('delete-table')).not.toBeInTheDocument()
-      await openListMenu('Table administration')
+      await onScreen().clickButton('Table administration')
       await onScreen().within(byTestId('delete-table'), (el) => el.assertText('Delete Table'))
       await onScreen().pressKey('Escape')
     })
@@ -155,15 +154,13 @@ describe('record-workspace', () => {
     })
     await step('the user consults its list views and related navigation', async () => {
       await openList(reader)
-      // #1242 (admin-lists 2): the other views and Explore share the View menu.
-      const views = await openListMenu('View')
+      await onScreen().clickButton('View: List')
       expect(await screen.findByTestId('open-report')).toBeVisible()
-      expect(views.getByTestId('open-explore')).toBeVisible()
       await onScreen().pressKey('Escape')
-      expect(screen.queryByTestId('open-report')).not.toBeInTheDocument()
+      expect(screen.getByTestId('open-explore')).toBeVisible()
     })
-    await step('the list does not offer Table administration', async () => {
-      expect(await hasListMenu('Table administration')).toBe(false)
+    await step('the list does not offer Table administration', () => {
+      expect(screen.queryByRole('button', { name: 'Table administration' })).not.toBeInTheDocument()
       expect(screen.queryByTestId('open-columns')).not.toBeInTheDocument()
     })
     await step('Tenkasi remains readable', () => openRow(reader))

@@ -6,7 +6,6 @@
 import { screen, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { test, expect, renderApp } from './pg-test'
-import { openListMenu } from './list-menus'
 
 
 type Admin = Parameters<typeof renderApp>[1]
@@ -88,13 +87,11 @@ test('Controls are clearly named: no two controls in a Table\'s list toolbar sha
   await renderApp('/featherbase/admin/table/named-thing', admin)
   await screen.findByTestId('list-view', {}, { timeout: 8000 })
   const toolbar = screen.getByTestId('list-toolbar')
-  await openListMenu('Table administration', within(toolbar))
+  fireEvent.click(within(toolbar).getByRole('button', { name: 'Table administration' }))
   await within(toolbar).findByRole('link', { name: 'Edit columns' })
-  // #1242: the header's controls and the toolbar's view controls, together.
-  const tools = screen.getByTestId('list-view-tools')
-  const names = [toolbar, tools].flatMap((root) => Array.from(root.querySelectorAll('button, a[href]')))
+  const names = Array.from(toolbar.querySelectorAll('button, a[href]'))
     .map((el) => el.getAttribute('aria-label') ?? el.textContent?.trim() ?? '')
   expect(names.filter((n, i) => names.indexOf(n) !== i)).toEqual([])
-  expect(within(tools).getByRole('button', { name: 'Show columns' })).toBeInTheDocument()
+  expect(within(toolbar).getByRole('button', { name: 'Show columns' })).toBeInTheDocument()
   expect(within(toolbar).getByRole('link', { name: 'Edit columns' })).toBeInTheDocument()
 })

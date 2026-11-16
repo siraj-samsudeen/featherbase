@@ -15,7 +15,6 @@ import { test, expect, renderApp } from './pg-test'
 import { issueSession } from 'server/src/auth'
 import { setSession } from '../src/lib/api'
 import { grantRole } from 'server/test/fixtures'
-import { openListMenu, hasListMenu } from './list-menus'
 
 const DT = 'Lc Mapping'
 const URL = `/api/user_settings/${encodeURIComponent(DT)}`
@@ -181,7 +180,7 @@ test('a System Manager is offered "Make this the default for everyone" at the fo
   await openList(admin)
   const menu = await openMenu()
   expect(menu.lastElementChild).toHaveTextContent(MAKE_DEFAULT)
-  await openListMenu('Table administration')
+  await userEvent.click(screen.getByRole('button', { name: 'Table administration' }))
   expect(screen.getByTestId('open-columns')).toBeInTheDocument()
 })
 
@@ -193,7 +192,7 @@ test('a reader who is not a System Manager is not offered it, nor "Edit columns"
   await openList(reader)
   const menu = await openMenu()
   expect(within(menu).queryByRole('button', { name: MAKE_DEFAULT })).not.toBeInTheDocument()
-  expect(await hasListMenu('Table administration')).toBe(false)
+  expect(screen.queryByRole('button', { name: 'Table administration' })).not.toBeInTheDocument()
   expect(screen.queryByTestId('open-columns')).not.toBeInTheDocument()
 })
 
@@ -202,7 +201,7 @@ test('a Table whose columns belong to the platform offers neither', async ({ adm
   await screen.findByTestId('list-view')
   const menu = await openMenu()
   expect(within(menu).queryByRole('button', { name: MAKE_DEFAULT })).not.toBeInTheDocument()
-  await openListMenu('Table administration')
+  await userEvent.click(screen.getByRole('button', { name: 'Table administration' }))
   expect(screen.queryByTestId('open-columns')).not.toBeInTheDocument()
 })
 

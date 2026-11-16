@@ -13,7 +13,6 @@ import userEvent from '@testing-library/user-event'
 import * as XLSX from 'xlsx'
 import { test, expect, renderApp } from './pg-test'
 import { clearSession } from '../src/lib/import-session'
-import { openSidebarNew } from './list-menus'
 
 type Admin = Parameters<typeof renderApp>[1]
 const FIRST = 'Partial First'
@@ -36,7 +35,6 @@ async function openWizard(admin: Admin) {
   clearSession()
   const user = userEvent.setup()
   const app = await renderApp('/featherbase/admin', admin)
-  await openSidebarNew({ timeout: 8000 })
   await user.click(await screen.findByTestId('import-data-link', {}, { timeout: 8000 }))
   return { user, app }
 }
