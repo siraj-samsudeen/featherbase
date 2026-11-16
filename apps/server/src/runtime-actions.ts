@@ -74,7 +74,7 @@ function callerPeople(user: string, app: string, settings: Readonly<Record<strin
       await settleAccessRequests()
       // Their name, so an approver who can't read people still sees who is waiting; a name that is still an address isn't shown.
       const rows = await sql`select r.person, r.created_at, p.full_name from access_request r left join person p on p.row_id = r.person
-        where r.app_name = ${app} order by r.created_at, r.person`
+        where r.app_name = ${app} and r.declined_at is null order by r.created_at, r.person`
       return Object.freeze(rows.map((r) => ({ person: String(r.person), name: r.full_name && !String(r.full_name).includes('@') ? String(r.full_name) : null,
         asked_at: new Date(r.created_at as string).toISOString() })))
     },
@@ -82,7 +82,7 @@ function callerPeople(user: string, app: string, settings: Readonly<Record<strin
 }
 
 // #918: the caller's own roles, so an app can let a role take a step.
-async function callerRoles(user: string): Promise<readonly string[]> {
+export async function callerRoles(user: string): Promise<readonly string[]> {
   return Object.freeze([...new Set(await getRoles(user))].sort())
 }
 
@@ -358,7 +358,7 @@ function closedDocuments(): never {
 }
 const CLOSED_DOCUMENTS: RuntimeReadContext['documents'] = Object.freeze({ get: closedDocuments, list: closedDocuments, count: closedDocuments, activity: closedDocuments, isReader: closedDocuments })
 const CLOSED_BASE_TABLES: RuntimeReadContext['baseTables'] = Object.freeze({ list: closedDocuments })
-const CLOSED_PROPOSALS: RuntimeReadContext['changeProposals'] = Object.freeze({ list: closedDocuments, mayDecide: closedDocuments, routeFor: closedDocuments })
+const CLOSED_PROPOSALS: RuntimeReadContext['changeProposals'] = Object.freeze({ list: closedDocuments, mayDecide: closedDocuments, routeFor: closedDocuments, modeOf: closedDocuments })
 
 interface Frozen { authorization: AppAuthorizationContext; payload: unknown; setup: ReadySetup; provenance?: DropProvenance; prepared?: unknown }
 

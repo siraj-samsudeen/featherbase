@@ -289,13 +289,25 @@ describe('refusals', () => {
     } finally { await rm(narrowed, { recursive: true, force: true }) }
   })
 
-  test('a wider grant on a Table the app already had is still refused', async ({ admin }) => {
+  // #1169 (owner, 14-Nov-2026): a wider grant for the app's own role is applied, listed in the
+  // preview; one for every signed-in person is still refused.
+  test("a wider grant on a Table the app already had is listed and applied for the app's own role", async ({ admin }) => {
     const wider = await variant(2, (m) => { m.permissions[1].operations.update = '*' })
     try {
       await install(admin)
       await discoverPackages([fixture(1), wider])
-      await expectRefused(admin.post('/api/preview_app_upgrade', { name: 'evolve', version: '0.2.0' }), 417)
+      const plan = await admin.post<{ permissions: unknown[] }>('/api/preview_app_upgrade', { name: 'evolve', version: '0.2.0' })
+      expect(plan.permissions).toContainEqual({ grant: { table: 'evolve.memo', role: 'Evolve Clerk', operations: { read: '*', update: '*' } } })
     } finally { await rm(wider, { recursive: true, force: true }) }
+  })
+
+  test('a wider grant on a Table the app already had, for every signed-in person, is still refused', async ({ admin }) => {
+    const toAll = await variant(2, (m) => { m.permissions.push({ table: 'evolve.memo', role: 'All', operations: { read: '*' } }) })
+    try {
+      await install(admin)
+      await discoverPackages([fixture(1), toAll])
+      await expectRefused(admin.post('/api/preview_app_upgrade', { name: 'evolve', version: '0.2.0' }), 417)
+    } finally { await rm(toAll, { recursive: true, force: true }) }
   })
 
   test('a step that would fail here is refused at the preview', async ({ admin }) => {
@@ -405,13 +417,15 @@ describe('a dropped Table takes its grants with it', () => {
   }
   const grants = () => sql`select ref_table, role, operation from permission where owner_app = 'swap' order by ref_table, role`
 
+  // #1169: the dropped Table's grant still ends with it; the renamed Table gets the grant only
+  // because this version declares it for its own role, withdrawn and granted in the preview.
   test('a Table renamed into a dropped Table\'s name does not inherit its grants', async ({ admin }) => {
     try {
       const v2 = await version('0.2.0', { entryTable: 'swap.b', tables: [{ ...a, name: 'swap.b' }], permissions: [clerkReadsB],
         migrations: [{ id: 'swap', fromVersion: '0.1.0', toVersion: '0.2.0', operations: [drop, { kind: 'renameTable', from: 'swap.a', to: 'swap.b' }] }] })
       await installFirst(admin, v2)
-      await expect(admin.post('/api/preview_app_upgrade', { name: 'swap', version: '0.2.0' }))
-        .rejects.toMatchObject({ status: 417, message: expect.stringContaining('Permission') })
+      const plan = await admin.post<{ permissions: unknown }>('/api/preview_app_upgrade', { name: 'swap', version: '0.2.0' })
+      expect(plan.permissions).toEqual([{ withdraw: clerkReadsB }, { grant: clerkReadsB }])
     } finally { for (const d of directories.splice(0)) await rm(d, { recursive: true, force: true }) }
   })
 

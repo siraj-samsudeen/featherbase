@@ -8,27 +8,15 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { expectStatus, makePerson } from './fixtures'
 import { configureGoogle } from './identity-fixtures'
+import { beginMockApproval } from './google-mock'
 
 const PAGE = { accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' }
 
-async function beginLogin(api: TestClient, headers: Record<string, string> = {}) {
-  const res = await api.fetch('/api/oauth/google/login', { headers })
-  const location = res.headers.get('location') as string
-  const state = new URLSearchParams(location.split('?')[1]).get('state') as string
-  const cookie = res.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
-  return { state, cookie }
-}
-
 /** The mock Google dance; the last hop (the callback) is sent with `headers`. */
 async function googleSignIn(api: TestClient, email: string, headers: Record<string, string>, opts: { before?: () => Promise<void> } = {}) {
-  const { state, cookie } = await beginLogin(api)
-  const approve = await api.fetch(
-    '/api/oauth/mock/approve?' +
-      new URLSearchParams({ state, redirect_uri: '/api/oauth/google/callback', email, name: 'Someone' }).toString(),
-    { headers: { cookie } },
-  )
+  const { callback, cookie } = await beginMockApproval(api, email, { name: 'Someone' })
   await opts.before?.()
-  return api.fetch(approve.headers.get('location') as string, { headers: { ...headers, cookie } })
+  return api.fetch(callback as string, { headers: { ...headers, cookie } })
 }
 
 const refusalCode = (res: Response) => {

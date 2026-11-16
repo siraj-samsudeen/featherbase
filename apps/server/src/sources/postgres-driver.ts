@@ -245,7 +245,7 @@ export const postgresDriver: SourceDriver = {
       [schemaFilter ?? null],
     )
     // A column under two FK constraints keeps the first (the ORDER BY makes
-    // that deterministic) — same rule as the mysql grouping.
+    // that deterministic).
     const fks = new Map<string, { schema: string; table: string; column: string }>()
     for (const r of fkRows) {
       const key = fkKey(String(r.table_schema), String(r.table_name), String(r.column_name))

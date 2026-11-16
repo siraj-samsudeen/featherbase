@@ -178,9 +178,16 @@ const datasetSchema = z.object({
   keys: z.array(identifier).refine(distinct, 'Dataset keys must be distinct'),
   // Scope filter key → column. A place must use these keys: one naming any
   // other key adds no rows from this dataset (#667).
-  filters: z.record(identifier, identifier).refine(filters => Object.keys(filters).length > 0, 'A dataset maps at least one scope filter'),
+  filters: z.record(identifier, identifier).default({}),
+  // #1169: a dataset that holds nothing about places (a catalogue, a list of
+  // the warehouse's own objects) maps no scope filter, and every read gets
+  // all of its rows. The app's read policy alone decides who may ask.
+  unscoped: z.literal(true).optional(),
   guard: z.array(guardSchema).optional(),
 }).strict().superRefine((dataset, context) => {
+  const mapped = Object.keys(dataset.filters).length > 0
+  if (dataset.unscoped && mapped) context.addIssue({ code: 'custom', message: `Dataset ${dataset.name} is unscoped, so it maps no scope filter` })
+  if (!dataset.unscoped && !mapped) context.addIssue({ code: 'custom', message: 'A dataset maps at least one scope filter' })
   const types = new Map(dataset.columns.map(column => [column.name, column.type]))
   for (const { column } of dataset.guard ?? []) {
     if (column === undefined) continue
@@ -426,6 +433,8 @@ export function datasetWhere(dataset: DatasetDeclaration, places: PersonScope | 
       throw new AppError('ValidationError', `Dataset filter ${key} must be a value or a list of values`)
     return { column: key, values: list.map(String) }
   })
+  // #1169: one group with no condition, so every row is in reach.
+  if (dataset.unscoped) return { any: [[]], all }
   const any = (places ?? []).flatMap((place) => {
     if (unappliableKeys(dataset, place).length) return []
     return [Object.entries(place.filters).map(([name, values]) => ({ column: dataset.filters[name], values: [...values] }))]
@@ -572,6 +581,7 @@ export async function recordPlaceDrops(drops: readonly PlaceDrop[], db: Sql = sq
 export function appDatasets({ app, operation, user, title, declarations, places, outbound, deferWrite, provenance }: DatasetReadRequest) {
   const met = new Map<string, PlaceDrop>()
   function noteDrops(dataset: DatasetDeclaration) {
+    if (dataset.unscoped) return
     for (const keys of provenance?.providerKeys ?? []) {
       const unmapped = unmappedKeys(dataset, keys)
       if (unmapped.length) met.set(`${dataset.name}\u0000${unmapped.join(',')}`, { app, dataset: dataset.name, keys: unmapped, versions: provenance!.versions })

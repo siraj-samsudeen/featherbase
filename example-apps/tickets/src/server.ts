@@ -54,8 +54,9 @@ function validate(table: string, ctx: Validation) {
   if (!allowed || allowed.user !== ctx.user) ctx.reject('Use an authorized Tickets action')
   if ((table === 'event' || table === 'open_event' || table === 'progress') && !ctx.isNew) ctx.reject('History is append-only')
   // Each person writes only their own name, which the platform supplies.
-  // #963: changing the raiser also records the new raiser's name, for those who may not read Person.
-  if (table === 'member' && ctx.row.row_id !== ctx.user && !(allowed?.operation === 'change_raiser' && ctx.isNew)) ctx.reject('A person may record only their own name')
+  // #963, #1193: naming a raiser also records their name, for those who may not read Person.
+  if (table === 'member' && ctx.row.row_id !== ctx.user && !((allowed?.operation === 'change_raiser' || allowed?.operation === 'create') && ctx.isNew))
+    ctx.reject('A person may record only their own name')
   // The wording is corrected only through the edit action, which keeps the earlier wording in history.
   if ((table === 'request' || table === 'open_request') && ctx.old && ctx.row.original !== ctx.old.original && allowed?.operation !== 'edit')
     ctx.reject('The original request is changed only by editing the ticket')
@@ -348,11 +349,20 @@ async function remember(ctx: Context) {
   if (!row) await ctx.documents.create('tickets.member', { row_id: ctx.user, full_name: ctx.userName })
   else if (row.full_name !== ctx.userName) await ctx.documents.update('tickets.member', { row_id: ctx.user, updated_at: row.updated_at, full_name: ctx.userName })
 }
+// #963, #1193: a raiser named by a System Manager. Only that check reaches here; the
+// raiser must be an enabled person, and their name is kept for those who may not read Person.
+async function namedRaiser(ctx: Context, raiser: string) {
+  if (!(await ctx.people.enabled([raiser])).includes(raiser)) ctx.reject('The raiser must be an enabled person')
+  const [known] = await ctx.documents.list('tickets.member', { fields: ['row_id'], filters: [['row_id', '=', raiser]], limit_page_length: 1 })
+  const name = (await ctx.people.names([raiser]))[raiser]
+  if (!known && name) await ctx.documents.create('tickets.member', { row_id: raiser, full_name: name })
+}
+const isSystemManager = (ctx: ReadContext) => (ctx.roles ?? []).includes('System Manager')
 function idsIn(value: unknown, out: Set<string>) {
   if (typeof value === 'string') out.add(value)
   else if (Array.isArray(value)) for (const item of value) idsIn(item, out)
   else if (value && typeof value === 'object') for (const [key, item] of Object.entries(value))
-    if (['owner', 'by', 'assigned_to', 'replaced_by', 'old_raiser', 'new_raiser'].includes(key)) idsIn(item, out)
+    if (['owner', 'by', 'assigned_to', 'replaced_by', 'old_raiser', 'new_raiser', 'raiser'].includes(key)) idsIn(item, out)
     else if (key === 'text' && typeof item === 'string') idsIn(parse(item), out)
     else if (item && typeof item === 'object') idsIn(item, out)
 }
@@ -449,7 +459,12 @@ async function rulesOf(ctx: ReadContext, ticketId: string) {
 }
 const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
   async create(ctx) {
-    const p = input(ctx, ['title', 'original', 'kind', 'details'])
+    const p = input(ctx, ['title', 'original', 'kind', 'details', 'raiser'])
+    // #1193: a System Manager (an agent's service account, say) raises it for someone else.
+    const raiser = p.raiser === undefined ? ctx.user : text(ctx, p.raiser, 'Raiser')
+    const onBehalf = raiser !== ctx.user
+    if (onBehalf && !isSystemManager(ctx)) ctx.reject('Only a System Manager may raise a ticket for someone else')
+    if (onBehalf) await namedRaiser(ctx, raiser)
     const title = text(ctx, p.title, 'Public summary')
     const original = text(ctx, p.original, 'Original request')
     const types = await configuredTypes(ctx)
@@ -457,11 +472,14 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     const type = types.get(category)
     const structured = type ? await typedDetails(ctx, type, object(ctx, p.details ?? {})) : details(ctx, p.details ?? {})
     const assignee = type ? await routed(ctx, type, structured) : null
-    const ticket = await ctx.documents.create('tickets.ticket', { title, owner: ctx.user, kind: category,
+    const ticket = await ctx.documents.create('tickets.ticket', { title, owner: raiser, kind: category,
       ticket_state: type ? type.states[0] : category === 'access' ? 'Needs verification' : 'New', ...(assignee ? { assigned_to: assignee } : {}) })
     // Access gates' keys belong to private requests only.
     await ctx.documents.create(type?.visibility === 'everyone' ? OPEN.request : PRIVATE.request, { row_id: ticket.row_id, original, details_json: JSON.stringify(structured),
       ...(type?.visibility === 'everyone' ? {} : { verification_key: randomUUID(), approval_key: randomUUID() }) })
+    // A private request is reached through an own-rows grant, so it is the raiser's row.
+    if (onBehalf && type?.visibility !== 'everyone') await ctx.documents.handOver(PRIVATE.request, String(ticket.row_id), raiser)
+    if (onBehalf) await event(ctx, ticket, 'raise_on_behalf', { raiser })
     if (type?.visibility !== 'everyone') await keepReaders(ctx, ticket, structured, type)
     return { ticket }
   },
@@ -683,18 +701,15 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
   // own-rows grant, so it moves with the raiser; the rest of the ticket stays.
   async change_raiser(ctx) {
     const p = input(ctx, ['row_id', 'updated_at', 'new_raiser', 'reason'])
-    if (!(ctx.roles ?? []).includes('System Manager')) ctx.reject('Only a System Manager may change who raised a ticket')
+    if (!isSystemManager(ctx)) ctx.reject('Only a System Manager may change who raised a ticket')
     const ticket = await ctx.documents.get('tickets.ticket', text(ctx, p.row_id, 'Ticket'))
     if (String(ticket.updated_at) !== text(ctx, p.updated_at, 'Revision')) ctx.reject('This ticket changed; reload before trying again')
     const reason = text(ctx, p.reason, 'Reason')
     const raiser = text(ctx, p.new_raiser, 'New raiser')
     if (raiser === ticket.owner) ctx.reject('That person is already the raiser')
-    if (!(await ctx.people.enabled([raiser])).includes(raiser)) ctx.reject('The new raiser must be an enabled person')
+    await namedRaiser(ctx, raiser)
     const [kept] = await ctx.documents.list(PRIVATE.request, { fields: ['row_id'], filters: [['row_id', '=', String(ticket.row_id)]], limit_page_length: 1 })
     if (kept) await ctx.documents.handOver(PRIVATE.request, String(kept.row_id), raiser)
-    const [known] = await ctx.documents.list('tickets.member', { fields: ['row_id'], filters: [['row_id', '=', raiser]], limit_page_length: 1 })
-    const name = (await ctx.people.names([raiser]))[raiser]
-    if (!known && name) await ctx.documents.create('tickets.member', { row_id: raiser, full_name: name })
     await event(ctx, ticket, 'change_raiser', { old_raiser: ticket.owner, new_raiser: raiser, reason })
     const saved = await bump(ctx, ticket, { owner: raiser })
     if (kept) await keepReaders(ctx, saved, parse((await ctx.documents.get(PRIVATE.request, String(ticket.row_id))).details_json), (await configuredTypes(ctx)).get(String(ticket.kind)))

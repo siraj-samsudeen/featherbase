@@ -283,6 +283,16 @@
    "990101001",
    "Saree hangers",
    "Consumable"
+  ],
+  [
+   "010202003",
+   "Girls leggings",
+   "Merchandise"
+  ],
+  [
+   "010202004",
+   "Girls leggings",
+   "Merchandise"
   ]
  ],
  "placements": [
@@ -350,6 +360,16 @@
    "NGT",
    "011111001",
    "NGT-S1"
+  ],
+  [
+   "LKS",
+   "010202003",
+   "LKS-S3"
+  ],
+  [
+   "LKS",
+   "010202004",
+   "LKS-S3"
   ]
  ],
  "readers": [
@@ -644,10 +664,74 @@
    ]
   },
   {
+   "key": "allstores",
+   "name": "Hema All-Stores",
+   "says": "Head office staff holding Dash All-Stores Reader: every store, as a Director",
+   "jobs": [
+    [
+     "Head office staff",
+     "HOF",
+     {}
+    ]
+   ],
+   "roles": [
+    "Dash All-Stores Reader"
+   ]
+  },
+  {
    "key": "none",
    "name": "Nisha No-Job",
    "says": "on no staff list: the no-access page",
    "jobs": null
+  },
+  {
+   "key": "same-leader",
+   "name": "Kumar",
+   "says": "one of four staff named Kumar (#1216): Team Leader of Sarees at Lakeside",
+   "jobs": [
+    [
+     "Team Leader",
+     "LKS",
+     {
+      "section": "LKS-S1"
+     }
+    ]
+   ]
+  },
+  {
+   "key": "same-office",
+   "name": "Kumar",
+   "says": "one of four staff named Kumar (#1216): Head office staff",
+   "jobs": [
+    [
+     "Head office staff",
+     "HOF",
+     {}
+    ]
+   ]
+  },
+  {
+   "key": "same-two-jobs",
+   "name": "Kumar",
+   "says": "one of four staff named Kumar (#1216): Store Manager at Hillview and Floor Manager at Riverside",
+   "jobs": [
+    [
+     "Store Manager",
+     "HIL",
+     {}
+    ],
+    [
+     "Floor Manager",
+     "RIV",
+     {}
+    ]
+   ]
+  },
+  {
+   "key": "same-no-job",
+   "name": "Kumar",
+   "says": "one of four staff named Kumar (#1216): on the staff list with no job today",
+   "jobs": []
   }
  ],
  "sectionPeople": [
@@ -750,6 +834,22 @@
    "says": "holds Master Data Editor"
   },
   {
+   "key": "silkleader",
+   "name": "Bala Silk-Leader",
+   "code": "2009",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2009-LKS-S2",
+     "Team Leader",
+     "LKS",
+     "LKS-S2",
+     "2008"
+    ]
+   ],
+   "says": "Team Leader of Silk at Lakeside; asks Selvi Other-Manager, so a move from Silk waits for Mani or Selvi"
+  },
+  {
    "key": "manager2",
    "name": "Selvi Other-Manager",
    "code": "2008",
@@ -764,6 +864,146 @@
    "roles": [],
    "jobs": [],
    "says": "not on the staff list"
+  },
+  {
+   "key": "department",
+   "name": "Devi Department-Manager",
+   "code": "2010",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2010-LKS",
+     "Department Manager",
+     "LKS",
+     null,
+     "2002"
+    ]
+   ],
+   "says": "Department Manager at Lakeside, reporting to Mani Manager: their department is pre-filled from their team as Bags & Silk, waiting for Mani; the banner asks \"Is this right?\" (#1205)"
+  },
+  {
+   "key": "bagsleader",
+   "name": "Kavya Bags-Leader",
+   "code": "2011",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2011-LKS-S5",
+     "Team Leader",
+     "LKS",
+     "LKS-S5",
+     "2010"
+    ]
+   ],
+   "says": "Team Leader of Bags, reporting to Devi: Bags is suggested for Devi's department"
+  },
+  {
+   "key": "kidsmanager",
+   "name": "Arun Kids-Manager",
+   "code": "2012",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2012-LKS",
+     "Department Manager",
+     "LKS",
+     null,
+     "2002"
+    ]
+   ],
+   "says": "Department Manager of Kids at Lakeside, which holds Kids Wear"
+  },
+  {
+   "key": "setupcard",
+   "name": "Kiran Setup-Manager",
+   "code": "2013",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2013-LKS",
+     "Department Manager",
+     "LKS",
+     null,
+     "2002"
+    ]
+   ],
+   "says": "Department Manager at Lakeside, reporting to Mani Manager, with no department: sets it up from the card (#1195)"
+  },
+  {
+   "key": "sysmanager",
+   "name": "Sam System-Manager",
+   "code": null,
+   "roles": [
+    "System Manager"
+   ],
+   "jobs": [],
+   "says": "System Manager with no job: approves nothing, because approvers come from the reporting line (Master Data Editor is the only fallback)"
+  },
+  {
+   "key": "categoryhead",
+   "name": "Hema Category-Head",
+   "code": "2020",
+   "roles": [
+    "Team Report Manager"
+   ],
+   "jobs": [
+    [
+     "JA-2020-HOF",
+     "Head office staff",
+     "HOF",
+     null,
+     null
+    ]
+   ],
+   "says": "Team Report Manager: gives reports to Usha and Vinod, who report to her (#1217)"
+  },
+  {
+   "key": "buyerone",
+   "name": "Usha Buyer-One",
+   "code": "2021",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2021-HOF",
+     "Head office staff",
+     "HOF",
+     null,
+     "2020"
+    ]
+   ],
+   "says": "Reports to Hema; Vendor sales given to her by the Access Manager"
+  },
+  {
+   "key": "buyertwo",
+   "name": "Vinod Buyer-Two",
+   "code": "2022",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2022-HOF",
+     "Head office staff",
+     "HOF",
+     null,
+     "2020"
+    ]
+   ],
+   "says": "Reports to Hema"
+  },
+  {
+   "key": "buyertwosame",
+   "name": "Vinod Buyer-Two",
+   "code": "2023",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2023-LKS",
+     "Staff",
+     "LKS",
+     null,
+     "2020"
+    ]
+   ],
+   "says": "A second Vinod Buyer-Two in Hema's team, at Lakeside: told apart by code, job and site (#1216, #1217)"
   }
  ],
  "noSignIn": [
@@ -777,11 +1017,64 @@
   "West"
  ],
  "merchandise": {
-  "_about": "The tree above three made-up saree subcategories, and the made-up buyers who hold parts of it.",
+  "_about": "The merchandise tree above the made-up subcategories, and the made-up buyers who hold parts of it. Two leaves named Girls leggings sit in different categories (#1175).",
   "divisions": [
-   "Fashion"
+   "Accessories",
+   "Consumables",
+   "Fashion",
+   "Footwear",
+   "Kids",
+   "Menswear"
   ],
   "subdivisions": [
+   [
+    "Bags",
+    "Accessories"
+   ],
+   [
+    "Boys western",
+    "Kids"
+   ],
+   [
+    "Fashion accessories",
+    "Accessories"
+   ],
+   [
+    "Formal wear",
+    "Menswear"
+   ],
+   [
+    "Girls ethnic",
+    "Kids"
+   ],
+   [
+    "Girls western",
+    "Kids"
+   ],
+   [
+    "Packing",
+    "Consumables"
+   ],
+   [
+    "Sportswear",
+    "Menswear"
+   ],
+   [
+    "Store supplies",
+    "Consumables"
+   ],
+   [
+    "Toys",
+    "Kids"
+   ],
+   [
+    "Watches",
+    "Accessories"
+   ],
+   [
+    "Women's footwear",
+    "Footwear"
+   ],
    [
     "Womenswear",
     "Fashion"
@@ -789,8 +1082,72 @@
   ],
   "categories": [
    [
+    "Belts",
+    "Fashion accessories"
+   ],
+   [
+    "Boys tops",
+    "Boys western"
+   ],
+   [
+    "Clutches",
+    "Bags"
+   ],
+   [
+    "Formal shirts",
+    "Formal wear"
+   ],
+   [
+    "Formal trousers",
+    "Formal wear"
+   ],
+   [
+    "Gift wrap",
+    "Packing"
+   ],
+   [
+    "Girls dresses",
+    "Girls western"
+   ],
+   [
+    "Girls ethnic bottoms",
+    "Girls ethnic"
+   ],
+   [
+    "Girls western bottoms",
+    "Girls western"
+   ],
+   [
+    "Handbags",
+    "Bags"
+   ],
+   [
+    "Hangers",
+    "Store supplies"
+   ],
+   [
+    "Salwar and kurtis",
+    "Womenswear"
+   ],
+   [
+    "Sandals",
+    "Women's footwear"
+   ],
+   [
     "Sarees",
     "Womenswear"
+   ],
+   [
+    "Soft toys",
+    "Toys"
+   ],
+   [
+    "Track pants",
+    "Sportswear"
+   ],
+   [
+    "Wrist watches",
+    "Watches"
    ]
   ],
   "placed": [
@@ -805,6 +1162,70 @@
    [
     "010303001",
     "Sarees"
+   ],
+   [
+    "010101003",
+    "Salwar and kurtis"
+   ],
+   [
+    "010202001",
+    "Boys tops"
+   ],
+   [
+    "010202002",
+    "Girls dresses"
+   ],
+   [
+    "010202003",
+    "Girls western bottoms"
+   ],
+   [
+    "010202004",
+    "Girls ethnic bottoms"
+   ],
+   [
+    "010404001",
+    "Belts"
+   ],
+   [
+    "010505001",
+    "Handbags"
+   ],
+   [
+    "010606001",
+    "Clutches"
+   ],
+   [
+    "010707001",
+    "Sandals"
+   ],
+   [
+    "010808001",
+    "Wrist watches"
+   ],
+   [
+    "010909001",
+    "Gift wrap"
+   ],
+   [
+    "011010001",
+    "Track pants"
+   ],
+   [
+    "011111001",
+    "Soft toys"
+   ],
+   [
+    "011212001",
+    "Formal shirts"
+   ],
+   [
+    "011313001",
+    "Formal trousers"
+   ],
+   [
+    "990101001",
+    "Hangers"
    ]
   ],
   "buyers": [
@@ -822,5 +1243,44 @@
     ]
    }
   ]
- }
+ },
+ "departments": [
+  [
+   "LKS-Kids",
+   "LKS",
+   "Kids",
+   "2012",
+   [
+    "LKS-S3"
+   ]
+  ],
+  [
+   "HIL-Menswear",
+   "HIL",
+   "Menswear",
+   "2008",
+   []
+  ],
+  [
+   "BAY-Footwear",
+   "BAY",
+   "Footwear and Bags",
+   "2008",
+   []
+  ]
+ ],
+ "_departmentStart": "Every run puts the made-up Department Managers without a department back to their start: their set-ups are removed, then each in prefills is pre-filled again as the loader would (#1205). Sections are names at that store; flagged ones are shared with another Team Leader.",
+ "prefills": [
+  {
+   "store": "LKS",
+   "employee": "2010",
+   "sections": [
+    "Bags",
+    "Silk"
+   ],
+   "flagged": [
+    "Silk"
+   ]
+  }
+ ]
 }

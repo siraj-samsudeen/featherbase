@@ -158,6 +158,20 @@ export class Tickets {
     return this.action('change_raiser', { new_raiser: this.ids[person], reason }, actor, true)
   }
 
+  /** An agent (#1193): a service account holding System Manager that calls with its access token, as automation does. */
+  async agent(name = 'Agent') {
+    if (this.people[name]) return this.people[name]
+    const account = await this.admin.post<{ row_id: string }>('/api/service_accounts', { label: `svc-${name.toLowerCase()}`, roles: ['System Manager'] })
+    const { token } = await this.admin.post<{ token: string }>('/api/access_tokens', { label: name, owner: account.row_id })
+    // The admin client carries the pinned Tickets version; the token's header replaces the admin's.
+    this.people[name] = makeClient({ request: (path, init) => this.admin.fetch(String(path), init) }, token, account.row_id)
+    this.ids[name] = account.row_id
+    this.roles[name] = ['System Manager']
+    return this.people[name]
+  }
+  /** How many tickets exist: a refused create leaves it as it was. */
+  async ticketCount() { return Number((await sql`select count(*) as n from tickets.ticket`)[0]!.n) }
+
   /** What Tickets queued about the current ticket (#1001): nothing here sends. */
   async mail(): Promise<{ recipient: string; body: string }[]> {
     return [...await sql<{ recipient: string; body: string }[]>`select recipient, body from email_queue
@@ -293,6 +307,13 @@ export class TicketTransitions {
     await this.configure()
     await this.types.submit({ urgency: 'Now', source_system: this.types.systems.SAP, current_value: '78/499/1' })
     expect(this.t.ticket.assigned_to).toBe(this.t.ids.Bala)
+  }
+  /** #1193: `actor` raises the Data Quality Issue for SAP naming `person` as its raiser; refused or not when `attempt`. */
+  async raiseFor(actor: string, person: string, attempt = false) {
+    await this.configure()
+    if (actor === 'Agent') await this.t.agent()
+    return this.t.action('create', { title: 'Plant address is wrong', original: 'Two plants carry both door numbers', kind: this.types.key,
+      details: { urgency: 'Now', source_system: this.types.systems.SAP, current_value: '78/499/1' }, raiser: this.t.ids[person] }, actor, attempt)
   }
   take(actor: string, action: string, values?: Record<string, unknown>, attempt = false) {
     return this.t.action('transition', { action, ...(values ? { values } : {}) }, actor, attempt)

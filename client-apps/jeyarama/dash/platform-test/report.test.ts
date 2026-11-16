@@ -130,6 +130,24 @@ describe('the report reads on the platform', () => {
     expect([answer.state, answer.rows.map(r => r.code)]).toEqual(['ready', ['010101001']])
   })
 
+  // #1192: Dash All-Stores Reader reaches every store, through the platform's own scope.
+  test('give a head-office holder of Dash All-Stores Reader every store\'s rows, and refuse a plain head-office reader', async ({ admin, createUser }) => {
+    const { headOffice, save } = await setup(admin, createUser)
+    const holder = await createUser({ email: 'p-997@example.test', roles: [READER, 'Dash All-Stores Reader'] })
+    await save('Employee', { employee_code: '997', name: 'Made-up Data Steward', person: holder.user, status: 'Current' })
+    await save('Job Assignment', { assignment_id: 'JA-997', employee: '997', job: 'Head office staff', site: 'HOF', starts_on: '2026-01-01' })
+    const read = (client: TestClient, store: string) => client.fetch('/api/app_reads/dash/report', { method: 'POST',
+      headers: { 'content-type': 'application/json' }, body: JSON.stringify({ payload: { store } }) })
+    const lakeside = await read(holder, '9901')
+    const body = await lakeside.json() as { result: { state: string; rows: { code: string }[]; heading: unknown } }
+    expect([lakeside.status, body.result.state, body.result.rows.map(r => r.code)]).toEqual([200, 'ready', ['010101001', '010101003', '010909001']])
+    expect(body.result.heading).toEqual({ name: 'Lakeside', sections: [], reasons: [{ basis: 'all_stores_reader', sections: [] }] })
+    expect((await report(holder, { store: '9902' })).rows.map(r => r.code)).toEqual(['010404001'])
+    expect((await holder.post<{ result: unknown }>('/api/app_reads/dash/reach_problem', { payload: {} })).result).toEqual({ problems: [] })
+    expect((await read(headOffice, '9901')).status).toBe(403)
+    expect((await headOffice.post<{ result: unknown }>('/api/app_reads/dash/reach_problem', { payload: {} })).result).toEqual({ problems: ['head_office'] })
+  })
+
   test('refuse a person who covers nothing', async ({ admin, createUser }) => {
     const { nobody } = await setup(admin, createUser)
     await expect(report(nobody)).rejects.toMatchObject({ status: 403 })
