@@ -3,6 +3,7 @@
 // sit behind a toggle while the owner picks one; the choice is remembered in this browser only.
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { Segmented } from '@featherbase/shop-floor'
+import { RECORD, RecordLink } from './record-link'
 
 /** As report-access-server.ts's `whoIs` answers it. */
 export type Who = { code: string | null; jobs: string[]; staff: 'current' | 'left' | 'none' }
@@ -50,6 +51,12 @@ export function PeopleLayoutProvider({ children }: { children: ReactNode }) {
 }
 
 /** The toggle between the three layouts, while the owner picks one. */
+/** #1225: the people display for a `View ▾` menu: the choice and its options. */
+export function usePeopleLayout() {
+  const { layout, setLayout } = useContext(Layout)
+  return { layout, setLayout, options: LAYOUTS }
+}
+
 export function PeopleLayoutToggle() {
   const { layout, setLayout } = useContext(Layout)
   return (
@@ -61,9 +68,12 @@ export function PeopleLayoutToggle() {
 }
 
 /** A person's name with who they are, in the chosen layout. */
-export function PersonName({ name, who, strong = false }: { name: string; who: Who | undefined; strong?: boolean }) {
+export function PersonName({ name, who, strong = false, id }: { name: string; who: Who | undefined; strong?: boolean
+  /** #1225: their Employee record, so the name is a link when the viewer can open it. */
+  id?: string | null }) {
   const { layout } = useContext(Layout)
-  const named = <span className={strong ? 'font-semibold' : undefined}>{name}</span>
+  // Someone not on the staff list has no record to open: the name stays plain text.
+  const named = <RecordLink table={RECORD.employee} id={who?.staff === 'none' ? null : id} className={strong ? 'font-semibold' : undefined}>{name}</RecordLink>
   if (!who) return named
   if (layout === 'code-first')
     return (
