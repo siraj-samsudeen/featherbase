@@ -15,6 +15,7 @@ import { AppError } from './errors'
 import { logAccess } from './audit'
 import { getRoles, isPrivileged } from './permissions'
 import { runGrant, viewAsApps } from './runtime-packages'
+import { activeApps } from './app-lifecycle'
 import type { SessionUser } from './auth'
 import type { ViewingAs } from './view-as-context'
 
@@ -35,10 +36,15 @@ export interface ViewAsPerson {
   jobs?: string[]
 }
 
-/** The View as app this tester may use: the first, by app name, whose role they hold. */
+/** The View as app this tester may use: the first, by app name, that is switched on and whose role they hold. */
 async function testerApp(tester: string) {
+  const declared = viewAsApps()
+  if (!declared.length) return null
+  // An app turned off (or not yet activated) gives no one View as.
+  const on = new Set((await sql`select name from installed_app where enabled and not activation_pending and name in ${sql(declared.map((d) => d.app))}`)
+    .map((r) => String(r.name)).filter((name) => activeApps.has(name)))
   const roles = new Set(await getRoles(tester))
-  return viewAsApps().sort((a, b) => a.app.localeCompare(b.app)).find((entry) => roles.has(entry.role)) ?? null
+  return declared.sort((a, b) => a.app.localeCompare(b.app)).find((entry) => on.has(entry.app) && roles.has(entry.role)) ?? null
 }
 
 export async function mayViewAs(user: SessionUser): Promise<boolean> {
@@ -238,8 +244,8 @@ export async function viewAsState(user: SessionUser) {
   }
 }
 
-/** Featherbase's reads that are sent as POST (a body too large for an address). */
-const READ_POSTS = new Set(['/api/dashboard/count', '/api/dashboard/chart', '/api/report_chart', '/api/run_script_report', '/api/row_titles', '/api/people/names'])
+/** Featherbase's reads that are sent as POST (a body too large for an address), and the record of an export, which is a read's own audit row. */
+const READ_POSTS = new Set(['/api/access_log', '/api/dashboard/count', '/api/dashboard/chart', '/api/report_chart', '/api/run_script_report', '/api/row_titles', '/api/people/names'])
 
 /**
  * How the middleware treats a request while viewing:

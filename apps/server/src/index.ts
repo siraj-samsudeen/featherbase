@@ -761,8 +761,12 @@ app.get('*', async (c, next) => {
     let resource
     let user: SessionUser | undefined
     try {
-      user = await resolveToken(authCredential(c))
-      resource = await appAsset(name, asset, user.row_id, c.req.header('accept')?.includes('text/html'))
+      const signedIn = await resolveToken(authCredential(c))
+      // #1222: while viewing as someone, an app's page opens as it does for them.
+      const viewing = await activeViewAs(signedIn)
+      user = viewing?.user ?? signedIn
+      const open = (as: string) => appAsset(name, asset, as, c.req.header('accept')?.includes('text/html'))
+      resource = viewing ? await runViewingAs(viewing.as, () => open(viewing.user.row_id)) : await open(signedIn.row_id)
     } catch (error) {
       if (!(error instanceof AppError)) throw error
       const navigation = !asset || c.req.header('accept')?.includes('text/html')

@@ -153,6 +153,15 @@ describe('View as: a tester sees what a person sees', () => {
     expect(await sql`select count(*)::int as n from view_as_session`).toEqual([{ n: 0 }])
   })
 
+  test('turning Dash off ends it, and nobody can start one', async ({ admin, createUser }) => {
+    const { tester, buyer } = await setup(admin, createUser)
+    await ok(start(tester, buyer.user))
+    await admin.post('/api/set_app_enabled', { name: 'dash', enabled: false })
+    expect(await state(tester)).toEqual({ may: false })
+    expect(await sql`select count(*)::int as n from view_as_session`).toEqual([{ n: 0 }])
+    await refused(start(tester, buyer.user), 'Only a View As Tester')
+  })
+
   test('signing out ends it, on the record', async ({ admin, createUser }) => {
     const { tester, buyer } = await setup(admin, createUser)
     await ok(start(tester, buyer.user))

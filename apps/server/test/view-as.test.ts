@@ -76,7 +76,7 @@ describe('View as: what an app declares', () => {
 })
 
 describe('View as: which requests run as the person viewed', () => {
-  test.for([['GET', '/api/table/ToDo', 'read'], ['POST', '/api/app_reads/dash/reports', 'read'], ['POST', '/api/dashboard/count', 'read'], ['POST', '/api/row_titles', 'read'],
+  test.for([['GET', '/api/table/ToDo', 'read'], ['POST', '/api/app_reads/dash/reports', 'read'], ['POST', '/api/dashboard/count', 'read'], ['POST', '/api/row_titles', 'read'], ['POST', '/api/access_log', 'read'],
     ['POST', '/api/save_row', 'tester'], ['POST', '/api/app_actions/dash/give_report', 'tester'], ['DELETE', '/api/table/ToDo/x', 'tester'], ['POST', '/api/view_as/exit', 'tester'], ['GET', '/api/view_as', 'tester'], ['POST', '/api/events', 'drop']] as const)(
     '%s %s is handled as %s', ([method, path, route]) => {
       expect(viewAsRoute(method, path)).toBe(route)
