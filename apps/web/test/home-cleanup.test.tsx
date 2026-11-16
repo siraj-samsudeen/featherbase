@@ -242,10 +242,11 @@ test('a row whose Table has no title column is headed by its readable values', a
 })
 
 test.for(['Person', 'Service Account'] as const)('a %s-valued row title names recents, sidebar, heading and breadcrumb', async (principalTable, { admin }) => {
-  const label = principalTable === 'Person' ? 'Maya Title Owner' : 'warehouse-title-importer'
+  // #1224: a service account reads as automation, never its slug.
+  const label = principalTable === 'Person' ? 'Maya Title Owner' : 'Automation (warehouse title importer)'
   const principal = principalTable === 'Person'
     ? await makePerson({ full_name: label })
-    : (await admin.post<{ row_id: string }>('/api/service_accounts', { label })).row_id
+    : (await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'warehouse-title-importer' })).row_id
   const table = `Home Title ${principalTable}`
   await admin.post('/api/table_def', { name: table, id_pattern: 'prompt', title_column: 'owner', columns: [
     { column_name: 'owner', column_type: 'Reference', reference_table: principalTable },

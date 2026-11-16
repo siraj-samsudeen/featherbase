@@ -236,22 +236,28 @@ describe('the read grants, declared before the first install', () => {
 // #1192: production runs 0.12.10; this version's ledger extends it with one step that changes no Table.
 describe('the version step for Dash All-Stores Reader', () => {
   it('follows production\'s 0.12.10 history exactly, then adds the role, then Your sections (#1175, #1191), then Your department (#1195), then who a person is (#1216), then managers add Dives (#1169), then team report giving (#1217), then grant from Waiting for access (#1173), then the department name follows its sections (#1209), then a named cluster head (#4588), then one top bar and sidebar (#1227), with no Table change', () => {
-    const tail = manifest.migrations.slice(-13, -8).map(m => [m.id, m.fromVersion, m.toVersion, m.operations.length])
+    const tail = manifest.migrations.slice(-16, -11).map(m => [m.id, m.fromVersion, m.toVersion, m.operations.length])
     expect(tail).toEqual([['pickers_in_dive', '0.12.5', '0.12.6', tail[0][3]], ['merchandise_reach', '0.12.6', '0.12.9', 0],
       ['opens_for_dash_roles', '0.12.9', '0.12.10', 0], ['all_stores_reader', '0.12.10', '0.12.11', 0], ['sections_not_mine', '0.12.11', '0.13.0', 0]])
-    expect(manifest.migrations.at(-8)).toMatchObject({ id: 'department_self_setup', fromVersion: '0.13.0', toVersion: '0.13.1', operations: [] })
-    expect(manifest.migrations.at(-7)).toMatchObject({ id: 'person_identity', fromVersion: '0.13.1', toVersion: '0.13.2', operations: [] })
+    expect(manifest.migrations.at(-11)).toMatchObject({ id: 'department_self_setup', fromVersion: '0.13.0', toVersion: '0.13.1', operations: [] })
+    expect(manifest.migrations.at(-10)).toMatchObject({ id: 'person_identity', fromVersion: '0.13.1', toVersion: '0.13.2', operations: [] })
     // #1169: after #1216's 0.13.2, one more step that changes no Table, only access and reads.
-    expect(manifest.migrations.at(-6)).toMatchObject({ id: 'report_access_managers_add_dives', fromVersion: '0.13.2', toVersion: '0.13.3', operations: [] })
-    expect(manifest.migrations.at(-5)).toMatchObject({ id: 'team_report_giving', fromVersion: '0.13.3', toVersion: '0.13.4', operations: [] })
+    expect(manifest.migrations.at(-9)).toMatchObject({ id: 'report_access_managers_add_dives', fromVersion: '0.13.2', toVersion: '0.13.3', operations: [] })
+    expect(manifest.migrations.at(-8)).toMatchObject({ id: 'team_report_giving', fromVersion: '0.13.3', toVersion: '0.13.4', operations: [] })
     // #1173: the Waiting for access drawer gives Dash reports; no Table change.
-    expect(manifest.migrations.at(-4)).toMatchObject({ id: 'waiting_for_access_grant', fromVersion: '0.13.4', toVersion: '0.13.5', operations: [] })
+    expect(manifest.migrations.at(-7)).toMatchObject({ id: 'waiting_for_access_grant', fromVersion: '0.13.4', toVersion: '0.13.5', operations: [] })
     // #1209: the department name follows its sections; no Table change.
-    expect(manifest.migrations.at(-3)).toMatchObject({ id: 'department_name_follows_sections', fromVersion: '0.13.5', toVersion: '0.13.6', operations: [] })
+    expect(manifest.migrations.at(-6)).toMatchObject({ id: 'department_name_follows_sections', fromVersion: '0.13.5', toVersion: '0.13.6', operations: [] })
     // #4588: a Cluster row names its head; no Table change.
-    expect(manifest.migrations.at(-2)).toMatchObject({ id: 'named_cluster_head', fromVersion: '0.13.6', toVersion: '0.13.7', operations: [] })
+    expect(manifest.migrations.at(-5)).toMatchObject({ id: 'named_cluster_head', fromVersion: '0.13.6', toVersion: '0.13.7', operations: [] })
     // #1227: one top bar and sidebar for every app; no Table change.
-    expect(manifest.migrations.at(-1)).toMatchObject({ id: 'one_app_chrome', fromVersion: '0.13.7', toVersion: '0.13.8', operations: [] })
-    expect(pkg.version).toBe('0.13.8')
+    expect(manifest.migrations.at(-4)).toMatchObject({ id: 'one_app_chrome', fromVersion: '0.13.7', toVersion: '0.13.8', operations: [] })
+    // #1243: ends_on is a row's last day; no Table change.
+    expect(manifest.migrations.at(-3)).toMatchObject({ id: 'ends_on_inclusive', fromVersion: '0.13.8', toVersion: '0.13.9', operations: [] })
+    // #1223: Your store, floor, department and sections, and What they cover; no Table change.
+    expect(manifest.migrations.at(-2)).toMatchObject({ id: 'manager_area', fromVersion: '0.13.9', toVersion: '0.13.10', operations: [] })
+    // #1236: the switcher says what Dash is for; no Table change.
+    expect(manifest.migrations.at(-1)).toMatchObject({ id: 'switcher_summary', fromVersion: '0.13.10', toVersion: '0.13.11', operations: [] })
+    expect(pkg.version).toBe('0.13.11')
   })
 })

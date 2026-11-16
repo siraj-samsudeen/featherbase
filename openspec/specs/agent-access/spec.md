@@ -82,7 +82,7 @@ And "Payroll" is not
 ```gherkin
 Given an agent connected with the access token "Sync agent" of the service account "nightly-sync"
 When the agent adds a customer "Dhan Agencies"
-Then the customer's history shows "nightly-sync" added it
+Then the customer's history shows "Automation (nightly sync)" added it
 And it is marked as made through an agent with the token "Sync agent"
 ```
 

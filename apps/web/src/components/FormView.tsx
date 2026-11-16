@@ -4,7 +4,7 @@ import { Link as RouterLink, useBlocker, useNavigate } from '@tanstack/react-rou
 import { idFromColumn, namingColumn, INSTANCE_SETTINGS_TABLES, tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api } from '../lib/api'
 import { changeOverride, overrideControl } from '../lib/metadata-override-editor'
-import { isOpaqueId } from '../lib/people'
+import { isOpaqueId, invalidatePrincipalName } from '../lib/people'
 import { RowTitle } from '../lib/row-titles'
 import { useRowCapabilities } from '../lib/row-capabilities'
 import { useWhoAmI } from '../lib/session'
@@ -445,7 +445,7 @@ export function FormView({
       await refreshWaitingAfterSave(queryClient, table)
       // #414: a person's name is cached per id for the heading, breadcrumb
       // and Recent; a save may have changed it.
-      if (!isNew && isOpaqueId(name)) await queryClient.invalidateQueries({ queryKey: ['principal-name', name] })
+      if (!isNew && isOpaqueId(name)) await invalidatePrincipalName(queryClient, name)
       if (!isNew) await queryClient.invalidateQueries({ queryKey: ['row-title', table, name] })
       if (isNew) {
         navigate({
@@ -519,7 +519,7 @@ export function FormView({
             {!rowsReadOnly && (
               <FieldGroupView group={{ key: 'bookkeeping', fields: bookkeeping }} columns={arrangement.columns}>{control}</FieldGroupView>
             )}
-            <BookkeepingLine fields={rowsReadOnly ? bookkeeping : []} values={baseline as Row} settings={formSettings} />
+            <BookkeepingLine table={table} fields={rowsReadOnly ? bookkeeping : []} values={baseline as Row} settings={formSettings} />
           </div>
         )
       })() : (
@@ -913,7 +913,7 @@ export function FormView({
           onClose={() => setRetiring(false)}
         />
       )}
-      {!isNew && <RetiredNotice row={baseline} />}
+      {!isNew && <RetiredNotice row={baseline} table={table} />}
       {banner && (
         <p
           className={`mb-3 text-sm ${banner === 'Saved' || banner === 'Done' ? 'text-positive' : 'text-negative'}`}

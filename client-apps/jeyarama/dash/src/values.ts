@@ -26,11 +26,13 @@ export function checked(value: unknown): boolean {
   return value === true || value === 1 || value === '1' || value === 'true'
 }
 
-/** Does a dated row hold on `on`? starts_on is inclusive, ends_on exclusive and empty means current. */
+/** Does a dated row hold on `on`? Both ends are inclusive: ends_on is the last day the row holds, as
+ *  Featherbase describes the column and its change writer sets it (the day before a change); empty means
+ *  current (#1243, manager decision 16-Nov-2026). */
 export function holdsOn(row: { starts_on?: unknown; ends_on?: unknown }, on: string): boolean {
   const start = day(row.starts_on)
   const end = day(row.ends_on)
-  return !!start && start <= on && (!end || on < end)
+  return !!start && start <= on && (!end || on <= end)
 }
 
 /** The status column of Employee, and of Section: each name is written here alone. */

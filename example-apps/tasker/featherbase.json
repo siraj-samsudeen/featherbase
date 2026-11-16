@@ -1082,9 +1082,11 @@
       "fromVersion": "3.3.2",
       "toVersion": "3.3.3",
       "operations": []
-    }
+    },
+    {"id": "switcher_summary", "fromVersion": "3.3.3", "toVersion": "3.3.4", "operations": []}
   ],
   "releaseNotes": [
+    {"version": "3.3.4", "changes": ["The app switcher shows what this app is for, with its icon"]},
     {
       "version": "3.3.3",
       "changes": [

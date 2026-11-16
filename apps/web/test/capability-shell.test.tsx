@@ -93,7 +93,8 @@ test('a viewer-only person reaches their sign-in methods on the account page, st
   expect(await screen.findByTestId('sign-in-methods')).toBeInTheDocument()
   expect(screen.getByTestId('top-bar')).toBeInTheDocument()
   for (const id of [...ADMIN_ONLY_TESTIDS, 'all-tables-link', 'admin-sidebar']) expect(screen.queryByTestId(id)).not.toBeInTheDocument()
-  // #1227: the shared switcher reads the open app catalog on every page; the closed list stays a System Manager's.
+  // #1227: the shared switcher reads the open app catalog on every signed-in page
+  // (only the apps this person can open); the closed-app list stays a System Manager's.
   expect(urls.filter((u) => /^\/api\/(table|home_pages|app_catalog\/closed|unread_count|events|navigable_tables)/.test(u))).toEqual([])
 })
 

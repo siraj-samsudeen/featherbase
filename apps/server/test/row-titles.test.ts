@@ -59,7 +59,8 @@ describe('POST /api/row_titles', () => {
     const rows = [{ table: name, row_id: 'owned-1' }, { table: name, row_id: 'unassigned-1' }]
     const res = await admin.post<Titles>('/api/row_titles', { rows })
     expect(res.titles.sort((a, b) => a.row_id.localeCompare(b.row_id))).toEqual([
-      { table: name, row_id: 'owned-1', title: principalTable === 'Person' ? 'Title Owner' : 'title-importer' },
+      // #1224: a service account reads as automation, never its slug.
+      { table: name, row_id: 'owned-1', title: principalTable === 'Person' ? 'Title Owner' : 'Automation (title importer)' },
       { table: name, row_id: 'unassigned-1', title: 'Waiting for an owner' },
     ])
     const outsider = await createUser({ roles: [] })

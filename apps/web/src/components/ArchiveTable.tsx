@@ -154,7 +154,7 @@ export function ArchivedBanner({ table, meta, canUnarchive }: { table: string; m
           <strong>{table} is archived.</strong> Archived on {fmtInstant(meta.archived_at)}
           {meta.archived_by && (
             <>
-              {' '}by <PrincipalName id={meta.archived_by} />
+              {' '}by <PrincipalName id={meta.archived_by} actorOf={table} />
             </>
           )}
           . Its rows are read only.

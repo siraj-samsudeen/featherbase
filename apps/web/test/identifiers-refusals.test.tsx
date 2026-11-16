@@ -18,6 +18,7 @@ async function joinerWithHandCode(admin: Parameters<typeof renderApp>[1], create
   const joiner = await createUser({ email: 'joiner.end@example.com', fullName: 'Joiner Jaya' })
   await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(joiner.user!)}`, admin)
   const panel = await screen.findByTestId('person-identifiers', {}, { timeout: 8000 })
+  await userEvent.click(await within(panel).findByRole('button', { name: 'Add an identifier' }))
   const form = await within(panel).findByTestId('add-identifier-form')
   await userEvent.selectOptions(within(form).getByLabelText('Identifier'), 'stylehr-employee-code')
   await userEvent.type(within(form).getByLabelText('Value'), 'rr-30002')
@@ -30,19 +31,22 @@ async function joinerWithHandCode(admin: Parameters<typeof renderApp>[1], create
 test('ending a hand-recorded code asks why; no answer leaves it, an answer ends it', async ({ admin, createUser }) => {
   const { joiner, codes } = await joinerWithHandCode(admin, createUser)
   const ask = vi.spyOn(window, 'prompt').mockReturnValueOnce('').mockReturnValueOnce('  Typo, re-entered  ')
-  await userEvent.click(within(codes).getByRole('button', { name: 'End' }))
+  await userEvent.click(within(codes).getByRole('button', { name: /^More actions for StyleHR employee code/ }))
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'End' }))
   expect(ask).toHaveBeenCalledWith('Why are you ending this by hand? (kept with the record)')
   const current = async () =>
     (await sql`select count(*)::int as n from person_identifier
       where person_id = ${joiner.user!} and value = 'RR-30002' and upper_inf(valid)`)[0].n
   expect(await current()).toBe(1)
 
-  await userEvent.click(within(codes).getByRole('button', { name: 'End' }))
+  await userEvent.click(within(codes).getByRole('button', { name: /^More actions for StyleHR employee code/ }))
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'End' }))
   await waitFor(async () => expect(await current()).toBe(0))
 })
 
 test('a value the server refuses says why and adds nothing', async ({ admin, createUser }) => {
   const { panel } = await joinerWithHandCode(admin, createUser)
+  await userEvent.click(within(panel).getByRole('button', { name: 'Add an identifier' }))
   const form = within(panel).getByTestId('add-identifier-form')
   // Not a phone number: refused.
   await userEvent.selectOptions(within(form).getByLabelText('Identifier'), 'phone')

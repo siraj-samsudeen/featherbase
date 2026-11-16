@@ -7,6 +7,8 @@ import { diveFilters, storesOfReport, storesReached, type ReportRecord } from '.
 import { MONTH_CHOICES, buildReport, monthLabel, headingOf, istToday, periodOf, storeLabels, storeShortName, type CachedAnswer, type Heading, type Month, type MonthChoice, type SalesRow } from './report.ts'
 import { actions as sectionActions, reads as sectionReads } from './my-sections.ts'
 import { departmentActions, departmentReads } from './department-setup.ts'
+import { storeActions, storeReads } from './my-store.ts'
+import { coverageReads } from './coverage.ts'
 import { prefillActions } from './department-prefill.ts'
 import { accessPage, addReport, addToBundle, diveChoices, diveChoicesPrepared, giveReport, grantOptions, makeBundle, managesAccess, managesTeamAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
 import { TEAM_MANAGER } from './team-access.ts'
@@ -296,6 +298,7 @@ const withReach = (context: AccessContext): AccessContext => ({ ...context, reac
 export const actions = {
   ...sectionActions,
   ...departmentActions,
+  ...storeActions,
   ...prefillActions,
   give_report: (context: AccessContext) => giveReport(withReach(context)),
   remove_report_access: (context: AccessContext) => removeAccess(withReach(context)),
@@ -308,6 +311,8 @@ export const actions = {
 export const reads = {
   ...sectionReads,
   ...departmentReads,
+  ...storeReads,
+  ...coverageReads,
 
   /** The signed-in person, as the platform knows them. */
   me({ user }: ReadContext) {

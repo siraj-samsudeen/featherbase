@@ -2,7 +2,8 @@ import type { ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import { ShownName } from '../lib/people'
-import { Card, Notice, fmtDate, fmtInstantIST } from '@featherbase/shop-floor'
+import { Card, EmptyState, Notice, ShieldLock, buttonClasses, fmtDate, fmtInstantIST } from '@featherbase/shop-floor'
+import { AreasLayout, LayoutToggle, RolesLayout, SummaryLayout, reachedTables, useAccessLayout, withImplicitRoles, Actor, OpensContext, Rec, opensFrom, type RoleRow, type TableReach } from './AccessLayouts'
 
 // #628: "What can this person see, and why". The platform's own reasons, from
 // GET /api/access_explanation/:person: roles, the Tables they reach, the Data
@@ -10,15 +11,19 @@ import { Card, Notice, fmtDate, fmtInstantIST } from '@featherbase/shop-floor'
 // says that access exists and why, never the data: a row shows its title only
 // when the viewer can read it, else its Table and id.
 
-interface TableReach { table: string; own_rows: boolean; roles: string[] }
 interface Explanation {
   person: string
+  person_name?: string | null
+  apps?: { name: string; title: string; href: string }[]
+  private_tables?: string[]
   every_table: boolean
-  roles: { role: string; app: string | null; through: string | null; everyone?: boolean; given_by: string | null; given_at: string | null }[]
+  viewer_opens?: string[]
+  viewer_opens_rows?: { table: string; row_id: string }[]
+  roles: RoleRow[]
   read: TableReach[]
   change: TableReach[]
-  limits: { table: string; value: string; title: string | null; set_by: string; set_at: string }[]
-  shares: { table: string; row_id: string; title: string | null; write: boolean; reshare: boolean; shared_by: string; shared_at: string }[]
+  limits: { table: string; value: string; title: string | null; set_by: string; set_by_name?: string | null; set_at: string }[]
+  shares: { table: string; row_id: string; title: string | null; write: boolean; reshare: boolean; shared_by: string; shared_by_name?: string | null; shared_at: string }[]
   scope: {
     app: string
     title: string
@@ -42,111 +47,94 @@ function Reason({ text, since, until }: { text: string; since: string | null; un
   )
 }
 
-/** The built-in All role is every account's: it reads as that. */
-const roleName = (role: string) => (role === 'All' ? 'every account' : role)
-
 function Section({ title, testid, empty, children }: { title: string; testid: string; empty: string | null; children: ReactNode }) {
   return (
     <Card className="p-4" data-testid={testid}>
-      <h2 className="mb-2 text-sm font-semibold text-ink">{title}</h2>
+      <h2 className="mb-2 text-base font-semibold text-ink">{title}</h2>
       {empty ? <p className="text-sm text-ink-muted" data-testid={`${testid}-empty`}>{empty}</p> : children}
     </Card>
   )
 }
 
-function By({ who, when, verb }: { who: string; when: string; verb: string }) {
+function By({ who, name, when, verb }: { who: string; name?: string | null; when: string; verb: string }) {
   return (
     <span className="text-ink-muted">
-      {' — '}{verb} by <ShownName id={who} />, {fmtInstantIST(when)}
+      {' — '}{verb} by <Actor id={who} name={name} />, {fmtInstantIST(when)}
     </span>
   )
 }
 
-function TableList({ label, tables, testid }: { label: string; tables: TableReach[]; testid: string }) {
-  return (
-    <div className="mt-2" data-testid={testid}>
-      <h3 className="text-xs font-medium uppercase tracking-wide text-ink-subtle">{label}</h3>
-      {tables.length === 0 ? (
-        <p className="text-sm text-ink-muted">No Tables.</p>
-      ) : (
-        <ul className="mt-1 space-y-1 text-sm">
-          {tables.map((t) => (
-            <li key={t.table} data-testid={`${testid}-item`}>
-              <span className="font-medium text-ink">{t.table}</span>
-              {t.own_rows && <span className="text-ink"> (own rows only)</span>}
-              <span className="text-ink-muted"> — through {t.roles.map(roleName).join(', ')}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  )
-}
-
 export function AccessExplanation({ person }: { person: string }) {
-  const self = getSessionUser()?.row_id === person
+  const me = getSessionUser()?.row_id
+  const self = me === person
   // #1006: on your own page, every section says "you".
   const they = self ? 'you' : 'they'
   const them = self ? 'you' : 'them'
+  const [layout, setLayout] = useAccessLayout()
   const { data, error } = useQuery({
     queryKey: ['access-explanation', person],
     queryFn: () => api.get<Explanation>(`/api/access_explanation/${encodeURIComponent(person)}`),
     retry: false,
   })
 
+  const tables = data ? reachedTables(data.read, data.change) : []
+  // Empty sections get one muted line, not a card of their own (spec item 8).
+  const notes = data && (data.limits.length === 0 || data.shares.length === 0) ? (
+    <div className="mt-3 space-y-0.5 text-[13px] text-ink-muted">
+      {data.limits.length === 0 && <p data-testid="access-limits-empty">Limited to: no row-by-row limits set by an administrator.</p>}
+      {data.shares.length === 0 && <p data-testid="access-shares-empty">Shared with {them}: no rows are shared directly with {them}.</p>}
+    </div>
+  ) : null
+  const roles = data ? withImplicitRoles(data.roles, tables) : []
   const refused = error instanceof ApiError && error.status === 403
   const missing = error instanceof ApiError && error.status === 404
   return (
     <div className="space-y-4" data-testid="access-explanation">
-      <div>
-        <h1 className="text-lg font-semibold text-ink" data-testid="access-explanation-heading">
-          {self ? 'What you can see' : <>What <ShownName id={person} /> can see</>}
-        </h1>
-        <p className="text-sm text-ink-muted">As of today. This page says what access exists and why; it never shows the data itself.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-ink" data-testid="access-explanation-heading">
+            {self ? 'What you can see' : refused ? 'Someone else\'s access' : <>What {data?.person_name
+              ? <OpensContext.Provider value={opensFrom(data)}><Rec table="Person" id={person} name={data.person_name} /></OpensContext.Provider>
+              : <ShownName id={person} />} can see</>}
+          </h1>
+          <p className="text-sm text-ink-muted">As of today: what access exists and why, never the data itself.</p>
+        </div>
+        {data && <LayoutToggle value={layout} onChange={setLayout} />}
       </div>
       {refused && (
-        <div data-testid="access-explanation-refused">
-          <Notice tone="negative">You can't open this page. It opens for the person themselves, System Managers, Access Auditors, and anyone whose places cover theirs.</Notice>
-        </div>
+        // Not a failure, so not a red box (spec item 9): who may open it, and the way to your own.
+        <Card className="p-4" data-testid="access-explanation-refused">
+          <EmptyState icon={ShieldLock} title="You can't open this page"
+            body="It opens for the person themselves, System Managers, Access Auditors, and anyone whose places cover theirs."
+            action={me ? <a className={buttonClasses({ variant: 'secondary' })} href={`/featherbase/account/access/${encodeURIComponent(me)}`}>See your own</a> : undefined} />
+        </Card>
       )}
       {missing && <Notice tone="negative">There is no such person.</Notice>}
       {error && !refused && !missing && <Notice tone="negative">{(error as Error).message}</Notice>}
       {data && (
-        <>
-          <Section title="Roles" testid="access-roles" empty={data.roles.length ? null : `No roles of ${self ? 'your' : 'their'} own: only what every account can see.`}>
-            <ul className="space-y-1 text-sm">
-              {data.roles.map((r) => (
-                <li key={`${r.app ?? ''}/${r.role}/${r.through ?? ''}`} data-testid="access-role">
-                  <span className="font-medium text-ink">{r.role}</span>
-                  {r.app
-                    ? <span className="text-ink-muted"> — from app {r.app}, through {r.through}</span>
-                    : r.everyone
-                      ? <span className="text-ink-muted"> — everyone who signs in holds it (System Settings)</span>
-                      : r.given_by && r.given_at && <By who={r.given_by} when={r.given_at} verb="given" />}
-                </li>
-              ))}
-            </ul>
-          </Section>
-          <Section title={`Tables ${they} reach`} testid="access-tables" empty={null}>
-            {data.every_table ? (
-              <p className="text-sm text-ink" data-testid="access-every-table">Every Table, to read and to change — through System Manager.</p>
-            ) : (
-              <>
-                <TableList label="Can read" tables={data.read} testid="access-read" />
-                <TableList label="Can change" tables={data.change} testid="access-change" />
-              </>
-            )}
-          </Section>
-          <Section title="Limited to" testid="access-limits" empty={data.limits.length ? null : 'No Data Scope rows: no limit to particular rows.'}>
+        <OpensContext.Provider value={opensFrom(data)}>
+          {data.roles.every((r) => r.app || r.everyone) && (
+            <p className="text-sm text-ink-muted" data-testid="access-roles-empty">No roles of {self ? 'your' : 'their'} own: only what every account can see{data.roles.length ? ', and the roles below' : ''}.</p>
+          )}
+          <div data-testid="access-tables">
+            {layout === 'summary' && <SummaryLayout roles={roles} tables={tables} everyTable={data.every_table}
+              limits={data.limits.length} shares={data.shares.length} self={self} notes={notes}
+              apps={data.apps ?? []} privateTables={data.private_tables ?? []}
+              places={data.scope ? { title: data.scope.title, count: data.scope.places.length } : null} />}
+            {layout === 'roles' && <RolesLayout roles={roles} tables={tables} everyTable={data.every_table} self={self} />}
+            {layout === 'areas' && <AreasLayout tables={tables} everyTable={data.every_table} />}
+          </div>
+          {layout !== 'summary' && notes}
+          {data.limits.length > 0 && <Section title="Limited to" testid="access-limits" empty={null}>
             <ul className="space-y-1 text-sm">
               {data.limits.map((l) => (
                 <li key={`${l.table}/${l.value}`} data-testid="access-limit">
-                  <span className="font-medium text-ink">{l.table}: {l.title ?? l.value}</span>
-                  <By who={l.set_by} when={l.set_at} verb="set" />
+                  <span className="font-medium text-ink">{l.table}: <Rec table={l.table} id={l.value} name={l.title ?? l.value} /></span>
+                  <By who={l.set_by} name={l.set_by_name} when={l.set_at} verb="set" />
                 </li>
               ))}
             </ul>
-          </Section>
+          </Section>}
           {data.scope && (
             <Section title={`Places from ${data.scope.title}`} testid="access-places"
               empty={data.scope.problem ? `${data.scope.title} ${noPlaces(data.scope.problem, them)}` : null}>
@@ -163,18 +151,18 @@ export function AccessExplanation({ person }: { person: string }) {
               </ul>
             </Section>
           )}
-          <Section title={`Shared with ${them}`} testid="access-shares" empty={data.shares.length ? null : `No rows are shared directly with ${them}.`}>
+          {data.shares.length > 0 && <Section title={`Shared with ${them}`} testid="access-shares" empty={null}>
             <ul className="space-y-1 text-sm">
               {data.shares.map((s) => (
                 <li key={`${s.table}/${s.row_id}`} data-testid="access-share">
-                  <span className="font-medium text-ink">{s.table}: {s.title ?? s.row_id}</span>
+                  <span className="font-medium text-ink">{s.table}: <Rec table={s.table} id={s.row_id} name={s.title ?? s.row_id} /></span>
                   <span className="text-ink"> ({s.write ? 'can change' : 'read only'}{s.reshare ? ', can share on' : ''})</span>
-                  <By who={s.shared_by} when={s.shared_at} verb="shared" />
+                  <By who={s.shared_by} name={s.shared_by_name} when={s.shared_at} verb="shared" />
                 </li>
               ))}
             </ul>
-          </Section>
-        </>
+          </Section>}
+        </OpensContext.Provider>
       )}
     </div>
   )

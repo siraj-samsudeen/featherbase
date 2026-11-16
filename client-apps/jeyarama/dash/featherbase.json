@@ -931,6 +931,62 @@
           "kind": "generic"
         },
         "outbound": true
+      },
+      "manages_area": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "my_store": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "coverage": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "section_subcategories": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "find_subcategories": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "coverage_people": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "dash_pages_open": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
       }
     }
   },
@@ -2080,7 +2136,20 @@
       "fromVersion": "0.13.7",
       "toVersion": "0.13.8",
       "operations": []
-    }
+    },
+    {
+      "id": "ends_on_inclusive",
+      "fromVersion": "0.13.8",
+      "toVersion": "0.13.9",
+      "operations": []
+    },
+    {
+      "id": "manager_area",
+      "fromVersion": "0.13.9",
+      "toVersion": "0.13.10",
+      "operations": []
+    },
+    {"id": "switcher_summary", "fromVersion": "0.13.10", "toVersion": "0.13.11", "operations": []}
   ],
   "baseTables": {
     "read": {
@@ -2376,6 +2445,30 @@
         }
       },
       "add_report": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "move_staff": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "manage_add": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "manage_remove": {
         "policy": {
           "kind": "table"
         },

@@ -3,7 +3,8 @@
 // Tables: Dash keeps no copy. These reads run as the app, so each answer here is limited to what
 // this person may see, by this code.
 import { istToday } from './report.ts'
-import { EMPLOYEE_STATUS, SECTION_STATUS, day, exact, text } from './values.ts'
+import { DEPARTMENT, DEPARTMENT_SECTION, authorityRows, mayMove, sectionAreaOf } from './areas.ts'
+import { EMPLOYEE_STATUS, SECTION_STATUS, day, exact, holdsOn, text } from './values.ts'
 
 export type Row = Record<string, unknown>
 // The platform's helpers, structurally: this module imports nothing from the platform.
@@ -44,7 +45,7 @@ export const BASE_TABLES: readonly string[] = Object.values(T)
 export const APPROVAL_TYPE = { add: 'subcategory_add', removal: 'subcategory_removal', section: 'job_section' } as const
 export const APPLY_NOW = 'Apply now, review after'
 /** Applied when asked for, waiting for a reviewer: shown with the waiting ones. */
-const OPEN = ['Pending', 'Not yet reviewed']
+export const OPEN = ['Pending', 'Not yet reviewed']
 const isApplied = (proposal: ChangeProposal) => proposal.state === 'Not yet reviewed'
 
 /** Who approves when a person has no manager who can sign in. */
@@ -68,6 +69,10 @@ interface About {
   from_section?: string
   /** Empty for a removal: it goes to no section. */
   to_section: string
+  /** #1223: a Store or Floor Manager moved someone on their staff; the maker is the manager, not the job's holder. */
+  by_manager?: boolean
+  /** #1223: who a manager moved, by name. */
+  moved_name?: string
 }
 
 interface BaseContext {
@@ -140,20 +145,20 @@ export async function approversOf(ctx: BaseContext, job: Row | undefined): Promi
 }
 
 /** A later placement of this subcategory here: an open-ended new row would overlap it. */
-async function scheduledLater(ctx: BaseContext, site: string, subcategory: string, today: string): Promise<boolean> {
+export async function scheduledLater(ctx: BaseContext, site: string, subcategory: string, today: string): Promise<boolean> {
   const rows = await list(ctx, T.placement, PLACEMENT_FIELDS, [['store', '=', site], ['subcategory', '=', subcategory]])
   return rows.some(row => notOver(row, today) && day(row.starts_on) > today)
 }
-const SCHEDULED = 'A change to that subcategory is already planned here. Ask the master data team to look at it'
+export const SCHEDULED = 'A change to that subcategory is already planned here. Ask the master data team to look at it'
 
-const about = (proposal: ChangeProposal) => (proposal.about ?? {}) as unknown as About
+export const about = (proposal: ChangeProposal) => (proposal.about ?? {}) as unknown as About
 /** A Department Manager's set-up (#1195): department-setup.ts shows and decides those. */
 const isSetUp = (proposal: ChangeProposal) => ['department', 'department_section'].includes(String((proposal.about as Record<string, unknown> | null)?.kind))
 const VIEW_LIMIT = 50
 const SUB_FIELDS = ['subcategory', 'division', 'subdivision', 'category', 'subcategory_type']
 /** A subcategory's place in the merchandise hierarchy, as its row holds it. */
 const pathOf = (row: Row | undefined) => ({ division: text(row?.division), subdivision: text(row?.subdivision), category: text(row?.category) })
-const isMerchandise = (row: Row | undefined) => row?.subcategory_type === 'Merchandise'
+export const isMerchandise = (row: Row | undefined) => row?.subcategory_type === 'Merchandise'
 
 /** The Team Leaders holding these sections now. */
 /** Who holds a section, in a few words: one or two names, else the first and how many others. */
@@ -191,7 +196,7 @@ async function approversFor(ctx: BaseContext, a: Pick<About, 'kind' | 'from_sect
 }
 
 /** Who a job's proposal goes to now: authority moves with the job, so this is read fresh. */
-async function waitingOnNow(ctx: ReadContext, job: Row | undefined, maker: string, a?: About): Promise<string> {
+export async function waitingOnNow(ctx: ReadContext, job: Row | undefined, maker: string, a?: About): Promise<string> {
   const approvers = a ? await approversFor(ctx, a, job, istToday()) : (await approversOf(ctx, job)).approvers
   const route = await ctx.changeProposals.routeFor(maker, approvers)
   return waitingName(ctx, route?.people ?? [])
@@ -205,11 +210,12 @@ const dayAfter = (value: string) => new Date(Date.parse(`${value}T00:00:00Z`) + 
 function view(proposal: ChangeProposal, waitingFor?: string) {
   const a = about(proposal)
   return { id: proposal.row_id, kind: a.kind, what: a.what, from: a.from, to: a.to, store: a.store, state: proposal.state, applied: isApplied(proposal),
+    moved: a.moved_name ?? null,
     taken_back: proposal.state === 'Undone' && proposal.decided_by === proposal.maker,
     waiting_for: waitingFor ?? (proposal.route.people.length ? a.manager_name : null) ?? MASTER_DATA_TEAM,
     reason: proposal.decision_reason, asked_on: istDay(proposal.created_at), decided_on: istDay(proposal.decided_at) }
 }
-const sentView = async (ctx: BaseContext, proposal: ChangeProposal) => view(proposal, await waitingName(ctx, proposal.route.people))
+export const sentView = async (ctx: BaseContext, proposal: ChangeProposal) => view(proposal, await waitingName(ctx, proposal.route.people))
 
 /** The pending proposals this caller may decide now; with `setUps`, the Department Managers' set-ups instead. */
 async function waitingForMe(ctx: ReadContext, setUps = false): Promise<ChangeProposal[]> {
@@ -281,7 +287,7 @@ export const reads = {
       const applied = (p: ChangeProposal) => ({ id: p.row_id, waiting_for: waiting.get(p.row_id)! })
       const sectionChange = pending.find(p => isApplied(p) && about(p).kind === 'section' && exact(p.result_row) === exact(job.row_id))
       views.push({
-        id: exact(job.row_id), job: text(job.job), store: text(siteRows.get(site)?.name), is_store: siteRows.get(site)?.is_store === true,
+        id: exact(job.row_id), job: text(job.job), store: text(siteRows.get(site)?.name), store_id: site, reports_to_code: exact(job.reports_to) || null, is_store: siteRows.get(site)?.is_store === true,
         reports_to: reportsTo,
         waiting_for: await waitingOnNow(ctx, job, ctx.user),
         section: section ? { id: exact(section.row_id), name: text(section.name), floor: floorName(section) } : null,
@@ -441,7 +447,7 @@ async function sectionInStore(ctx: BaseContext, id: unknown, site: string): Prom
 }
 
 /** The frozen part of every proposal's description. */
-async function aboutTheJob(ctx: ActionContext, job: Row, employee: Row): Promise<Pick<About, 'store' | 'site' | 'maker_name' | 'manager_name' | 'job_assignment'>> {
+export async function aboutTheJob(ctx: ActionContext, job: Row, employee: Row): Promise<Pick<About, 'store' | 'site' | 'maker_name' | 'manager_name' | 'job_assignment'>> {
   const site = exact(job.site)
   const [store] = await list(ctx, T.site, ['name', 'is_store'], [['row_id', '=', site]])
   const { manager } = await approversOf(ctx, job)
@@ -455,7 +461,13 @@ const heldSection = async (ctx: ActionContext, job: Row) => {
 }
 
 /** One addition: bring a subcategory into my section, from wherever it is in this store. */
-async function proposeAdd(ctx: ActionContext, job: Row, employee: Row, section: Row, code: string, today: string) {
+/** `extra` marks who asks when it isn't the section's own Team Leader (#1223: a manager, `by_manager`).
+ *  `expectedFrom`: the section the caller checked it may take from ('' for none); one read under lock that
+ *  differs is refused, so what was authorised is what is proposed. */
+/** `holds`: which placements count as in a section today. Your sections reads them inclusively (inForce);
+ *  a manager's page reads them as reach does (holdsOn), so a manager's addition passes that (#1223). */
+export async function proposeAdd(ctx: ActionContext, job: Row, employee: Row, section: Row, code: string, today: string, extra: Partial<About> = {}, expectedFrom?: string,
+  holds: (row: Row, today: string) => boolean = inForce) {
   const [subcategory] = await list(ctx, T.subcategory, ['subcategory', 'subcategory_type'], [['row_id', '=', code]])
   if (!isMerchandise(subcategory)) ctx.reject('Pick a subcategory from the list')
   const site = exact(job.site)
@@ -465,16 +477,20 @@ async function proposeAdd(ctx: ActionContext, job: Row, employee: Row, section: 
   const takenOut = (await ctx.changeProposals.list({ makers: [ctx.user], states: ['Not yet reviewed'], limit: 500 }))
     .some(p => about(p).kind === 'removal' && about(p).site === site && about(p).subcategory === code)
   if (takenOut) ctx.reject(`You took ${name} out and it isn't reviewed yet. Use Undo on it to put it back`)
-  const seen = (await list(ctx, T.placement, PLACEMENT_FIELDS, [['store', '=', site], ['subcategory', '=', code]])).filter(row => inForce(row, today))
+  const seen = (await list(ctx, T.placement, PLACEMENT_FIELDS, [['store', '=', site], ['subcategory', '=', code]])).filter(row => holds(row, today))
   // What is checked below is what the proposal records.
   for (const row of seen) await ctx.changeProposals.lockRow(T.placement, exact(row.row_id))
-  const placed = (await list(ctx, T.placement, PLACEMENT_FIELDS, [['store', '=', site], ['subcategory', '=', code]])).filter(row => inForce(row, today))
+  // #1223: in no section when checked: queue with any other addition of it before reading again.
+  if (expectedFrom === '') await ctx.changeProposals.serialize(`${site}:${code}`)
+  const placed = (await list(ctx, T.placement, PLACEMENT_FIELDS, [['store', '=', site], ['subcategory', '=', code]])).filter(row => holds(row, today))
+  if (expectedFrom !== undefined && placed.length <= 1 && exact(placed[0]?.section) !== expectedFrom && exact(placed[0]?.section) !== exact(section.row_id))
+    ctx.reject(`${name} has just moved. Open the page again`)
   if (placed.some(row => exact(row.section) === exact(section.row_id))) ctx.reject(`${name} is already in your section`)
   if (placed.length > 1) ctx.reject(`${name} is in more than one section here. Ask the master data team to look at it`)
   const elsewhere = placed[0]
   const [other] = elsewhere ? await list(ctx, T.section, SECTION_FIELDS, [['row_id', '=', exact(elsewhere.section)]]) : []
   const base = await aboutTheJob(ctx, job, employee)
-  const a = { ...base, kind: 'add' as const, what: name, from: elsewhere ? text(other?.name) : 'No section', to: text(section.name), subcategory: code, from_section: exact(elsewhere?.section), to_section: exact(section.row_id) }
+  const a = { ...base, kind: 'add' as const, what: name, from: elsewhere ? text(other?.name) : 'No section', to: text(section.name), subcategory: code, from_section: exact(elsewhere?.section), to_section: exact(section.row_id), ...extra }
   // A subcategory in no section has no row to queue at: two adds of it queue on what they share.
   if (!elsewhere) await ctx.changeProposals.serialize(`${site}:${code}`)
   const proposal = await ctx.changeProposals.propose({ table: T.placement, row: elsewhere ? exact(elsewhere.row_id) : null,
@@ -564,14 +580,22 @@ export const actions = {
     const today = istToday()
     // Authority holds still until this commits: the jobs, then their people, then the reads.
     const holders = a.kind === 'add' && a.from_section ? await holdersOf(ctx, [a.from_section], today) : []
-    for (const id of unique([a.job_assignment, ...holders.map(h => exact(h.row_id))]).sort()) await ctx.changeProposals.lockRow(T.job, id)
+    // #1223: a manager's move also holds the manager's own authority still: their managing jobs, staff rows,
+    // departments and department links there. Order everywhere: jobs, people, departments, links, sections.
+    const authority = a.by_manager ? await authorityRows(ctx, proposal.maker, a.site) : { jobs: [], employees: [], departments: [], links: [] }
+    // An applied section change is undone through its replacement row: it joins the jobs, before any person is locked.
+    const replacement = a.kind === 'section' && isApplied(proposal) ? exact(proposal.result_row) : ''
+    for (const id of unique([a.job_assignment, ...holders.map(h => exact(h.row_id)), ...authority.jobs, replacement]).sort()) await ctx.changeProposals.lockRow(T.job, id)
     const [job] = await list(ctx, T.job, JOB_FIELDS, [['row_id', '=', a.job_assignment]])
     const jobs = [job, ...(await holdersOf(ctx, a.kind === 'add' && a.from_section ? [a.from_section] : [], today))].filter(Boolean)
     // The people in one order, so two decisions can't wait on each other's; then what the rules below read.
-    for (const person of unique(jobs.flatMap(j => [exact(j.reports_to), exact(j.employee)])).sort()) await ctx.changeProposals.lockRow(T.employee, person)
+    for (const person of unique([...jobs.flatMap(j => [exact(j.reports_to), exact(j.employee)]), ...authority.employees]).sort()) await ctx.changeProposals.lockRow(T.employee, person)
+    for (const id of [...authority.departments].sort()) await ctx.changeProposals.lockRow(DEPARTMENT, id)
+    for (const id of [...authority.links].sort()) await ctx.changeProposals.lockRow(DEPARTMENT_SECTION, id)
     const instead = typeof payload.to_section === 'string' && payload.to_section && payload.to_section !== a.to_section ? payload.to_section : ''
     // In id order, as with the people: two moves between the same two sections can't cross.
-    for (const section of unique([a.to_section, a.kind === 'move' || a.kind === 'removal' ? exact(a.from_section) : '', instead]).sort()) await ctx.changeProposals.lockRow(T.section, section)
+    // #1223: a manager's move rests on the moved job's current section's floor: it holds still too.
+    for (const section of unique([a.to_section, a.kind === 'move' || a.kind === 'removal' || (a.by_manager && a.kind === 'add') ? exact(a.from_section) : '', a.by_manager && a.kind === 'section' ? exact(job?.section) : '', instead]).sort()) await ctx.changeProposals.lockRow(T.section, section)
     const approvers = await approversFor(ctx, a, job, today)
     // #1191: a change that applied at once is confirmed or undone; one waiting is approved or rejected.
     if (isApplied(proposal)) {
@@ -609,7 +633,7 @@ export const actions = {
 /** The identifier and source of a new row: how it came, and on which day. */
 const placementStamp = async (ctx: ActionContext, site: string, code: string, today: string, how = 'applied') =>
   ({ section_subcategory_id: await freeId(ctx, T.placement, `${site}-${code}-${today}`), source_key: `Dash, ${how} ${today}` })
-const jobStamp = async (ctx: ActionContext, job: Row, toSection: string, today: string, how = 'applied') =>
+export const jobStamp = async (ctx: ActionContext, job: Row, toSection: string, today: string, how = 'applied') =>
   ({ assignment_id: await freeId(ctx, T.job, `JA-${exact(job.employee)}-${exact(job.site)}-${toSection.split('-').at(-1)}-${today}`), source_key: `Dash, ${how} ${today}` })
 
 /** An undone removal puts the subcategory back in the section it left: not if it has since gone to another.
@@ -633,10 +657,27 @@ export async function freeId(ctx: ActionContext, table: string, base: string): P
 }
 
 /** What the row comparison can't see: the person still holds the job, and the section still stands. */
+
+
 async function whyStale(ctx: ActionContext, proposal: ChangeProposal, a: About, job: Row | undefined, today: string, destination: string): Promise<string | null> {
   if (!job || !inForce(job, today)) return 'The job behind this has ended.'
   const [employee] = await list(ctx, T.employee, ['person', EMPLOYEE_STATUS], [['row_id', '=', exact(job.employee)]])
-  if (exact(employee?.person) !== proposal.maker || exact(employee?.[EMPLOYEE_STATUS]) !== 'Current') return 'The person who asked no longer holds this job.'
+  if (a.by_manager) {
+    // A manager's change is judged as reach is: the job no longer holds on its ends_on day.
+    if (!holdsOn(job, today)) return 'The job behind this has ended.'
+    if (a.kind === 'section') {
+      if (exact(employee?.[EMPLOYEE_STATUS]) !== 'Current') return 'The person being moved has left.'
+      const [to] = await list(ctx, T.section, SECTION_FIELDS, [['row_id', '=', destination]])
+      if (!(await mayMove(ctx, proposal.maker, job, to, today))) return 'The manager who asked no longer manages that part of the store.'
+    } else {
+      // #1223: a manager adding to or taking from a section in their area; the job is their own.
+      if (exact(employee?.person) !== proposal.maker || exact(employee?.[EMPLOYEE_STATUS]) !== 'Current') return 'The person who asked no longer holds this job.'
+      const [section] = await list(ctx, T.section, SECTION_FIELDS, [['row_id', '=', a.kind === 'removal' ? exact(a.from_section) : a.to_section]])
+      // An addition moved from another section needs both in one of their areas, as when it was asked.
+      const [from] = a.kind === 'add' && a.from_section ? await list(ctx, T.section, SECTION_FIELDS, [['row_id', '=', exact(a.from_section)]]) : []
+      if (!(await sectionAreaOf(ctx, proposal.maker, section, today, a.kind === 'add' && a.from_section ? (from ? [from] : [{}]) : []))) return 'The manager who asked no longer manages that section.'
+    }
+  } else if (exact(employee?.person) !== proposal.maker || exact(employee?.[EMPLOYEE_STATUS]) !== 'Current') return 'The person who asked no longer holds this job.'
   if (a.kind !== 'removal') {
     const [to] = await list(ctx, T.section, SECTION_FIELDS, [['row_id', '=', destination]])
     if (!isActive(to) || exact(to?.site) !== a.site) return 'The section it would go to is no longer open.'
@@ -644,12 +685,12 @@ async function whyStale(ctx: ActionContext, proposal: ChangeProposal, a: About, 
     const floor = proposal.changes.find(change => change.column_name === 'floor' && (change.proposed_value !== null || change.review_base_value !== null))
     if (a.kind === 'section' && floor && floor.proposed_value !== (exact(to.floor) || null)) return 'The section it would go to has moved floor.'
   }
-  if ((a.kind === 'move' || a.kind === 'removal') && exact(job.section) !== a.from_section) return 'The person who asked no longer holds that section.'
+  if (!a.by_manager && (a.kind === 'move' || a.kind === 'removal') && exact(job.section) !== a.from_section) return 'The person who asked no longer holds that section.'
   if (a.kind === 'move') {
     const [from] = await list(ctx, T.section, SECTION_FIELDS, [['row_id', '=', exact(a.from_section)]])
     if (!isActive(from)) return 'The section it would leave is no longer open.'
   }
-  if (a.kind === 'add' && exact(job.section) !== a.to_section) return 'The person who asked no longer holds that section.'
+  if (!a.by_manager && a.kind === 'add' && exact(job.section) !== a.to_section) return 'The person who asked no longer holds that section.'
   if (a.kind === 'add') {
     const [subcategory] = await list(ctx, T.subcategory, ['subcategory_type'], [['row_id', '=', exact(a.subcategory)]])
     if (!isMerchandise(subcategory)) return 'That subcategory is no longer sold.'
@@ -657,7 +698,14 @@ async function whyStale(ctx: ActionContext, proposal: ChangeProposal, a: About, 
   if (a.kind !== 'section') {
     const rows = await list(ctx, T.placement, PLACEMENT_FIELDS, [['store', '=', a.site], ['subcategory', '=', exact(a.subcategory)]])
     if (rows.some(row => notOver(row, today) && day(row.starts_on) > today)) return 'A change to that subcategory is already planned.'
-    if (a.kind === 'add' && !a.from_section && rows.some(row => notOver(row, today))) return 'That subcategory has since been put in a section.'
+    // A manager's addition moved from a section: its placement there must still hold today, or approving it
+    // would copy an ended placement into the new one (#1223, Codex 28).
+    if (a.by_manager && a.kind === 'add' && a.from_section) {
+      const [source] = proposal.target_row ? await list(ctx, T.placement, PLACEMENT_FIELDS, [['row_id', '=', exact(proposal.target_row)]]) : []
+      if (!source || !holdsOn(source, today) || exact(source.section) !== exact(a.from_section)) return 'Where that subcategory was has since changed.'
+    }
+    // A manager's addition reads placements as their page does (holdsOn, #1223); Your sections' own stays inclusive.
+    if (a.kind === 'add' && !a.from_section && rows.some(row => (a.by_manager ? holdsOn(row, today) : notOver(row, today)))) return 'That subcategory has since been put in a section.'
   }
   return null
 }
