@@ -918,6 +918,13 @@ describe('the context of a report issue', () => {
     })
   })
 
+  it('counts only the places that name a store', async () => {
+    const { ctx } = context({ payload: { report: 'sales' }, places: [
+      lead('9901 / Section: Sarees', '9901', ['010101001']), { label: 'Merchandise only', filters: { subcategory: ['020202002'] } }] })
+    const answer = await reads.feedback_context(ctx) as { reach: { store: string; subcategories: string[] }[] }
+    expect(answer.reach).toEqual([{ store: '9901', name: 'Lakeside', whole: false, sections: ['Sarees'], subcategories: ['010101001'] }])
+  })
+
   it('says nothing about a report that isn\'t the reader\'s', async () => {
     const { ctx } = context({ payload: { report: 'not-given' } })
     expect(await reads.feedback_context(ctx)).toEqual({ state: 'no_access' })

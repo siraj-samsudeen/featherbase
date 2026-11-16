@@ -252,7 +252,8 @@ async function reachInWords(ctx: ScopedContext) {
     const here = places.filter(place => (place.filters.store ?? []).includes(store))
     const whole = here.some(place => !place.filters.subcategory)
     return { store, name: names.get(store) ?? null, whole, sections: whole ? [] : headingOf(places, store, null).sections,
-      subcategories: whole ? [] : [...new Set(here.flatMap(place => place.filters.subcategory ?? []))].sort() }
+      // Not whole: every place here names its subcategories.
+      subcategories: whole ? [] : [...new Set(here.flatMap(place => place.filters.subcategory!))].sort() }
   })
   return { jobs, reach }
 }
