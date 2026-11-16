@@ -151,13 +151,13 @@ export async function accessPage(ctx: AccessContext, on: string = istToday()) {
   const team = scope.kind === 'team' ? scope : null
   const named = await names(ctx)
   // A Team Report Manager sees only what may be given, and only grants to their team, as a person.
-  if (team) for (const key of [...named.reports.keys()]) if (!team.holds.has(key)) named.reports.delete(key)
+  // The full name maps describe existing grants; only what may be given narrows (Codex standard round 1).
+  const givable = { reports: new Set(team ? [...named.reports.keys()].filter(key => team.holds.has(key)) : named.reports.keys()), bundles: new Set(named.bundles.keys()) }
   const access = (await all(ctx.baseTables!, ACCESS, ['report', 'report_bundle', 'person', 'role', 'job', 'updated_at', 'created_by', 'given_by_name', 'removed']))
     .filter(row => !ticked(row.removed) && (!team || team.team.has(exact(row.person))))
   const members = (await all(ctx.baseTables!, MEMBER, ['report_bundle', 'report', 'updated_at', 'removed'])).filter(row => !ticked(row.removed))
   if (team) {
-    const givable = givableBundles([...named.bundles.keys()], members.map(m => ({ report_bundle: exact(m.report_bundle), report: exact(m.report) })), team.holds)
-    for (const id of [...named.bundles.keys()]) if (!givable.has(id)) named.bundles.delete(id)
+    givable.bundles = givableBundles([...named.bundles.keys()], members.map(m => ({ report_bundle: exact(m.report_bundle), report: exact(m.report) })), team.holds)
   }
   const jobs = team ? [] : await all(ctx.baseTables!, 'Job Assignment', ['job'])
   const waiting = team ? [] : (await ctx.people!.waitingForAccess?.()) ?? []
@@ -176,8 +176,8 @@ export async function accessPage(ctx: AccessContext, on: string = istToday()) {
   return {
     scope: scope.kind,
     team: team ? [...team.team].map(([person, name]) => ({ person, name })) : [],
-    reports: [...named.reports].map(([key, report]) => ({ key, name: report.name })),
-    bundles: [...named.bundles].map(([id, name]) => ({ id, name,
+    reports: [...named.reports].filter(([key]) => givable.reports.has(key)).map(([key, report]) => ({ key, name: report.name })),
+    bundles: [...named.bundles].filter(([id]) => givable.bundles.has(id)).map(([id, name]) => ({ id, name,
       reports: members.filter(m => exact(m.report_bundle) === id && named.reports.has(exact(m.report)))
         .map(m => ({ member: exact(m.row_id), updated_at: exact(m.updated_at), key: exact(m.report), name: named.reports.get(exact(m.report))!.name }))
         .sort((a, b) => a.name.localeCompare(b.name)) }))

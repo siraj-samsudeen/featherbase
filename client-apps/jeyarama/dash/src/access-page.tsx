@@ -34,6 +34,7 @@ const dayOf = (iso: string) => {
 
 export function ReportAccess() {
   const [page, setPage] = useState<Page | undefined>()
+  const [removals, setRemovals] = useState(0)
   const [failed, setFailed] = useState<string | null>(null)
   const load = useCallback(() => read<Page>('access_page').then(answer => { setPage(answer); setFailed(null) }, error => setFailed(messageOf(error))), [])
   useEffect(() => { void load() }, [load])
@@ -51,8 +52,8 @@ export function ReportAccess() {
           {page && page.scope !== 'team' && (
             <>
               <p className="fd-muted">A person sees every report given to them, through a role they hold, or through their current job. What a report shows them still follows their job.</p>
-              <GiveBar page={page} onGiven={load} />
-              <WhoHasWhat rows={page.rows} onRemoved={load} />
+              <GiveBar key={removals} page={page} onGiven={load} />
+              <WhoHasWhat rows={page.rows} onRemoved={() => { setRemovals(n => n + 1); return load() }} />
               <PersonLookup />
               <Bundles page={page} onChanged={load} />
               {page.waiting.length > 0 && <Waiting waiting={page.waiting} />}
@@ -67,13 +68,17 @@ export function ReportAccess() {
 /** #1217: a Team Report Manager's page: their team only, no roles, jobs, bundle tools or waiting list. */
 function TeamAccess({ page, onChanged }: { page: Page; onChanged: () => Promise<unknown> }) {
   const [layout, setLayout] = useState<PickerLayout>(startPickerLayout)
+  // A remove starts the Give bar afresh, so its last "is given" message doesn't outlive the row.
+  const [removals, setRemovals] = useState(0)
   const team = page.team ?? []
   return (
     <>
-      <PickerToggle value={layout} onChange={setLayout} />
-      <TeamNote team={team} />
-      <GiveBar page={page} onGiven={onChanged} team={{ members: team, layout }} />
-      <WhoHasWhat rows={page.rows} onRemoved={onChanged} empty="Nobody in your team has a report given to them as a person yet." />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <TeamNote team={team} />
+        <PickerToggle value={layout} onChange={setLayout} />
+      </div>
+      <GiveBar key={removals} page={page} onGiven={onChanged} team={{ members: team, layout }} />
+      <WhoHasWhat rows={page.rows} onRemoved={() => { setRemovals(n => n + 1); return onChanged() }} empty="Nobody in your team has a report given to them as a person yet." />
       <PersonLookup team={{ members: team, layout }} />
     </>
   )
@@ -139,7 +144,7 @@ function GiveBar({ page, onGiven, team }: { page: Page; onGiven: () => Promise<u
           </Field>}
           {kind === 'Person' && (team?.layout === 'list'
             ? <TeamSelect team={team.members} chosen={person} onChoose={setPerson} label="To someone in your team" />
-            : <PersonPicker chosen={person} onChoose={setPerson} label={team ? 'To someone in your team' : 'Person'} />)}
+            : <PersonPicker chosen={person} onChoose={setPerson} label={team ? 'To someone in your team' : 'Person'} nobody={team ? 'No one in your team by that name' : undefined} />)}
           {kind === 'Role' && (
             <Field label="Role" className="min-w-56 flex-1">
               <Select value={receiver} onChange={event => setReceiver(event.target.value)} data-testid="give-role">
@@ -166,7 +171,7 @@ function GiveBar({ page, onGiven, team }: { page: Page; onGiven: () => Promise<u
 }
 
 /** Finds a person on the staff list by name. */
-function PersonPicker({ chosen, onChoose, label }: { chosen: Found | null; onChoose: (found: Found | null) => void; label: string }) {
+function PersonPicker({ chosen, onChoose, label, nobody = 'No one on the staff list by that name' }: { chosen: Found | null; onChoose: (found: Found | null) => void; label: string; nobody?: string }) {
   const [typed, setTyped] = useState('')
   const [found, setFound] = useState<Found[] | null>(null)
   useEffect(() => {
@@ -193,7 +198,7 @@ function PersonPicker({ chosen, onChoose, label }: { chosen: Found | null; onCho
       </Field>
       {found && (
         <ul className="absolute z-10 mt-1 w-full rounded-control border border-border bg-surface shadow-sm" data-testid="person-results">
-          {found.length === 0 && <li className="px-3 py-2 text-sm text-ink-muted">No one on the staff list by that name</li>}
+          {found.length === 0 && <li className="px-3 py-2 text-sm text-ink-muted">{nobody}</li>}
           {found.map(person => (
             <li key={person.person}>
               <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-start hover:bg-subtle" onClick={() => { onChoose(person); setTyped('') }} data-testid="person-result">
@@ -236,7 +241,7 @@ function WhoHasWhat({ rows, onRemoved, empty }: { rows: Row[]; onRemoved: () => 
           <Button variant="danger" loading={busy} onClick={() => void remove(row)} data-testid="remove-yes">Remove</Button>
           <Button variant="quiet" disabled={busy} onClick={() => setConfirming(null)}>Cancel</Button>
         </span>
-      ) : row.removable === false ? <span className="text-sm text-ink-muted" data-testid="not-yours">Not given by you</span>
+      ) : row.removable === false ? <span className="px-3 text-sm text-ink-muted" data-testid="not-yours">Not given by you</span>
         : <Button variant="quiet" onClick={() => { setError(null); setConfirming(row) }} data-testid="remove">Remove</Button>
     ) },
   ]
@@ -269,7 +274,7 @@ function PersonLookup({ team }: { team?: TeamPicking } = {}) {
       <div className="flex flex-col gap-3 p-4">
         <div className="flex flex-wrap items-end gap-3">{team?.layout === 'list'
           ? <TeamSelect team={team.members} chosen={person} onChoose={setPerson} label="Look up someone in your team" />
-          : <PersonPicker chosen={person} onChoose={setPerson} label={team ? 'Look up someone in your team' : 'Look up a person'} />}</div>
+          : <PersonPicker chosen={person} onChoose={setPerson} label={team ? 'Look up someone in your team' : 'Look up a person'} nobody={team ? 'No one in your team by that name' : undefined} />}</div>
         {error && <Notice tone="negative">{error}</Notice>}
         {answer && answer.reports.length === 0 && <p data-testid="lookup-none">{answer.name} sees no report. Nothing has been given to them, their roles or their job.</p>}
         {answer && answer.reports.length > 0 && (

@@ -1,7 +1,7 @@
 // The Report access page's team parts (#1217): what a Team Report Manager sees instead of the
 // company-wide tools. Their picker has two layouts behind a toggle, so the owner can compare them
 // in the real app: a list of the team (the default) or type a name.
-import { Field, Notice, Segmented, Select } from '@featherbase/shop-floor'
+import { Field, Segmented, Select } from '@featherbase/shop-floor'
 
 export interface TeamMember { person: string; name: string }
 export type PickerLayout = 'list' | 'search'
@@ -21,19 +21,22 @@ export function keepPickerLayout(layout: PickerLayout) {
 }
 
 export function PickerToggle({ value, onChange }: { value: PickerLayout; onChange: (layout: PickerLayout) => void }) {
-  return <Segmented label="Choose people by" options={LAYOUTS} value={value} onChange={layout => { keepPickerLayout(layout); onChange(layout) }} className="self-end" />
+  return (
+    <div className="flex items-center gap-2 self-end" data-testid="picker-toggle">
+      <span className="text-sm text-ink-muted">Choose people by</span>
+      <Segmented label="Choose people by" options={LAYOUTS} value={value} onChange={layout => { keepPickerLayout(layout); onChange(layout) }} />
+    </div>
+  )
 }
 
 /** Says why the page is narrower than a company-wide manager's. */
 export function TeamNote({ team }: { team: TeamMember[] }) {
   return (
-    <Notice tone="info">
-      <span data-testid="team-note">
-        {team.length === 0
-          ? 'You give reports to the people who report to you, and nobody reports to you today. Ask the master data team if that is wrong.'
-          : `You give reports to your team: the ${team.length === 1 ? 'one person' : `${team.length} people`} who report to you. You can give only reports you can open yourself.`}
-      </span>
-    </Notice>
+    <p className="fd-muted" data-testid="team-note">
+      {team.length === 0
+        ? 'You give reports to the people who report to you, and nobody reports to you today. Ask the master data team if that is wrong.'
+        : `You give reports to your team: the ${team.length === 1 ? 'one person' : `${team.length} people`} who report to you. You can give only reports you can open yourself.`}
+    </p>
   )
 }
 

@@ -176,6 +176,8 @@ describe('the Report access page, for a Team Report Manager', () => {
       scope: 'team', team: [{ person: buyer.user, name: 'Made-up Buyer' }], reports: ['open', 'sales'], roles: [], jobs: [], waiting: [],
       rows: [['Made-up Buyer', false]],
     })
+    // A grant of a report they can't give still shows its name (Codex standard round 1).
+    expect(seen.rows.map(r => (r as unknown as { gives: { name: string } }).gives.name)).toEqual(['Store target month to date'])
     expect(await ok<{ person: string }[]>(call(head, 'app_reads', 'person_search', { q: 'Made-up' }))).toEqual([{ person: buyer.user, name: 'Made-up Buyer' }])
     await refused(await call(head, 'app_reads', 'person_lookup', { person: other.user }), 'is not in your team')
     expect(await ok<boolean>(call(head, 'app_reads', 'manages_access', {}))).toBe(true)
