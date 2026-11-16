@@ -1,4 +1,5 @@
 import { getSystemSettings } from './settings'
+import { grantWords } from './app-permission-format'
 import { readFile, readdir, realpath, stat } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
@@ -803,7 +804,7 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
           for (const role of created.roles)
             await logActivity(actor, `app_role_added ${name}@${version}: ${role}`.slice(0, 140))
           for (const p of prepared.granted)
-            await logActivity(actor, `app_grant_added ${name}@${version}: ${p.role} ${Object.keys(p.operations).join(', ')} on ${p.table}`.slice(0, 140))
+            await logActivity(actor, `app_grant_added ${name}@${version}: ${grantWords(p)}`.slice(0, 140))
         }
         await sql`update installed_app set package_version = ${version}, artifact_digest = ${prepared.target.digest},
           manifest = ${sql.json(prepared.target.app.runtime_manifest as never)},

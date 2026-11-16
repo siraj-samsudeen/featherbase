@@ -73,7 +73,7 @@ describe("upgrading production's Dash 0.13.1 to team report giving", () => {
       expect((await sql`select operation from activity_log where operation like ${`app_grant_added dash%${TEAM_MANAGER}%`} order by operation`).map(r => r.operation)).toEqual([
         `app_grant_added dash@${VERSION}: ${TEAM_MANAGER} read on dash.report`,
         `app_grant_added dash@${VERSION}: ${TEAM_MANAGER} read on dash.report_bundle`,
-        `app_grant_added dash@${VERSION}: ${TEAM_MANAGER} read, create, update on dash.report_access`,
+        `app_grant_added dash@${VERSION}: ${TEAM_MANAGER} read, create, update (own rows only) on dash.report_access`,
       ].sort())
 
       // A holder, after the upgrade: gives a report taking no filter to the one person reporting to them.
