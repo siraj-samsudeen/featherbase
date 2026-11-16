@@ -5,6 +5,7 @@
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { tableHref } from 'shared'
+import { vi } from 'vitest'
 
 /** The router under the fixture, as TanStack's own: it navigates by address and keeps a history. */
 type Router = { navigate: (to: { href: string }) => Promise<void>; history: { back: () => void } }
@@ -166,4 +167,25 @@ test('remembered filters come back on a Table opened by its exact name, whose sl
   expect(chipWords()[0]).toContain('Lakeside')
   expect(screen.queryByText(/ambiguous/i)).toBeNull()
   await waitFor(() => expect(screen.getAllByRole('row').slice(1)).toHaveLength(1), T)
+})
+
+// A failed read of the remembered filters never leaves the list waiting: it
+// opens unfiltered, as with nothing remembered.
+test('when the remembered filters cannot be read, the list opens unfiltered', async ({ admin }) => {
+  await seed(admin)
+  await admin.put(`/api/user_settings/${encodeURIComponent(DEPT)}`, { filters: [ATK] })
+  const real = globalThis.fetch
+  const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const path = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (path.includes(`/api/user_settings/${encodeURIComponent(DEPT)}`) && (!init?.method || init.method === 'GET'))
+      return new Response('{}', { status: 503 })
+    return real(input, init)
+  })
+  try {
+    await renderApp(tableHref(DEPT), admin)
+    expect(await rows()).toHaveLength(3)
+    expect(chips()).toHaveLength(0)
+  } finally {
+    spy.mockRestore()
+  }
 })
