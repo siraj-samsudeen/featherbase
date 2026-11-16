@@ -39,6 +39,20 @@ describe("a reader's scope in one store", () => {
   })
 })
 
+// #1223: a place naming no store (a no-filter report's) and a section's place naming no subcategory are read as naming none.
+describe('places that name less', () => {
+  const noStore: Place = { label: 'Everything', filters: {} }
+  const bareSection: Place = { label: '9901 / Section: Sarees', filters: { store: ['9901'] } }
+  it('a place with no store adds no store, scope or heading', () => {
+    expect(storesOf([noStore, place('9901', '9901')])).toEqual(['9901'])
+    expect(scopeIn([noStore], '9901')).toMatchObject({ wholeStore: false, codes: [], sectionOf: {} })
+    expect(headingOf([noStore], '9901', 'Lakeside').sections).toEqual([])
+  })
+  it("a section's place with no subcategory is the whole store and maps no subcategory", () => {
+    expect(scopeIn([bareSection], '9901')).toMatchObject({ wholeStore: true, codes: [], sectionOf: {} })
+  })
+})
+
 describe('the period', () => {
   it('is the month to date', () => {
     expect(periodOf('2026-10-15')).toEqual({ period_start: '2026-10-01', period_end: '2026-10-15' })

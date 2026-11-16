@@ -9,6 +9,7 @@ import { DASH_ROLES, EMBED_ORIGIN, LAST_MONTH_DATASET, LAST_SALES_DATASET, MONTH
 import type { SalesRow } from './report.ts'
 import { PROVIDER_FIELDS, PROVIDER_TABLES } from './provider.ts'
 import { BASE_TABLES } from './my-sections.ts'
+import { BUYER_TABLES } from './buyers.ts'
 
 type Dataset = { name: string; source: string; query: string; columns: { name: string; type: string }[]; keys: string[]; filters: Record<string, string>
   guard?: { kind: string; column?: string; value?: number; within?: string }[] }
@@ -157,7 +158,7 @@ describe('what Dash owns and what it reads', () => {
 
   it("declares a read of every Table its scope provider and Your sections read, and of nothing else", () => {
     // #1046: and its own report access Tables, read as the app so a reader needs no grant on them.
-    expect(Object.keys(manifest.baseTables.read).sort()).toEqual([...new Set([...PROVIDER_TABLES, ...BASE_TABLES,
+    expect(Object.keys(manifest.baseTables.read).sort()).toEqual([...new Set([...PROVIDER_TABLES, ...BASE_TABLES, ...BUYER_TABLES,
       'dash.report_access', 'dash.report_bundle', 'dash.report_bundle_member'])].sort())
   })
 
@@ -236,8 +237,8 @@ describe('the read grants, declared before the first install', () => {
 // #1192: production runs 0.12.10; this version's ledger extends it with one step that changes no Table.
 describe('the version step for Dash All-Stores Reader', () => {
   it('follows production\'s 0.12.10 history exactly, then adds the role, then Your sections (#1175, #1191), then Your department (#1195), then who a person is (#1216), then managers add Dives (#1169), then team report giving (#1217), then grant from Waiting for access (#1173), then the department name follows its sections (#1209), then a named cluster head (#4588), then one top bar and sidebar (#1227), with no Table change', () => {
-    // From 0.12.5 on, every step in order, each named with its versions: read
-    // by position from that step, so a step added at the end moves nothing here.
+    // From 0.12.5 on, every step in order, each with its versions: read by
+    // position from that step, so a step added at the end moves nothing here.
     const from = manifest.migrations.findIndex(m => m.id === 'pickers_in_dive')
     const steps = manifest.migrations.slice(from).map(m => [m.id, m.fromVersion, m.toVersion, m.operations.length])
     expect(steps).toEqual([
@@ -267,8 +268,14 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['report_an_issue', '0.13.10', '0.13.12', 0],
       // #1225: the Report access redesign.
       ['report_access_redesign', '0.13.12', '0.13.13', 0],
+      // #1223: a "+N more" list closes on Escape and on a click outside it.
+      ['more_list_closes', '0.13.13', '0.13.14', 0],
+      // #1245: who runs a store, under the area's title.
+      ['store_run_by', '0.13.14', '0.13.15', 0],
+      // #1246: Buyer Sections: who buys a subcategory, and a category head moving them.
+      ['buyer_section_desks', '0.13.15', '0.13.16', 0],
       // #1236: the switcher says what Dash is for.
-      ['switcher_summary', '0.13.13', '0.13.17', 0],
+      ['switcher_summary', '0.13.16', '0.13.17', 0],
     ])
     expect(pkg.version).toBe('0.13.17')
   })

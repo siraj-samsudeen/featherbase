@@ -6,16 +6,17 @@ import { useEffect, useRef, useState } from 'react'
 import { Button, Card, EmptyState, Field, Notice, SearchInput, Select, StatusPill, TextInput, fmtCount } from '@featherbase/shop-floor'
 import { act, read } from './api'
 import { LoadFailed, Loading, Shell, useAnswer } from './sections-page'
+import { YourBuyerSections, type BuyerSectionsAnswer } from './buyer-sections-page'
 import { RECORD, RecordLink } from './record-link'
 
 interface PersonRef { code: string; name: string }
 interface Section { id: string; name: string; active: boolean; team_leaders: PersonRef[]; subcategories: number }
 interface Staff extends PersonRef { job_id: string; job: string; section: string | null; section_id: string | null; reports_to: PersonRef | null; movable: boolean; waiting_for?: string | null }
 export interface Place { kind: 'store' | 'floor' | 'department' | 'section'; page: string; store: string; store_id: string; floor: string | null; floor_id: string | null
-  department: { id: string; name: string } | null; floors: { floor_id: string | null; floor: string; sections: Section[] }[]; staff: Staff[]; sections: { id: string; name: string }[] }
+  department: { id: string; name: string } | null; managers: { store: Ref[]; cluster: Ref[] }; floors: { floor_id: string | null; floor: string; sections: Section[] }[]; staff: Staff[]; sections: { id: string; name: string }[] }
 interface Ref { code: string; name: string }
 interface Category { category: string; region: string | null; responsibility: string; buyers: { name: string; code: string; assignment: string; buys: string; subcategory: string | null }[]; no_buyer: Ref[] }
-interface Buys { assignment: string; level: string | null; named: string; region: string | null; subcategories: Ref[] }
+interface Buys { assignment: string; level: string | null; named: string; region: string | null; subcategories: (Ref & { only?: string })[]; buyer_section?: { id: string; name: string } }
 type Answer = { state: 'unknown_person' | 'nothing' } | { state: 'ok'; name: string; code: string; places: Place[]; categories: Category[]; buys: Buys[] }
 
 const SUBCATEGORIES = (n: number) => `${n} ${n === 1 ? 'subcategory' : 'subcategories'}`
@@ -165,8 +166,30 @@ const TH = 'px-3 py-2 text-left text-[13px] font-medium text-ink-muted'
 // Cells wrap only where words allow (a space, a hyphen), never mid-word: the shared link breaks anywhere by default.
 const TD = 'px-3 py-2 align-top text-sm [&_*]:wrap-normal [&_[data-table=Employee]]:whitespace-nowrap'
 
+/** A <details> list that closes as a menu does: on Escape (focus back on its summary) and on a press outside it. */
+function useClosesLikeAMenu() {
+  const ref = useRef<HTMLDetailsElement>(null)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const list = ref.current
+      if (e.key !== 'Escape' || !list?.open) return
+      list.open = false
+      list.querySelector('summary')?.focus()
+    }
+    const onPress = (e: MouseEvent) => {
+      const list = ref.current
+      if (list?.open && !list.contains(e.target as Node)) list.open = false
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onPress)
+    return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('mousedown', onPress) }
+  }, [])
+  return ref
+}
+
 /** "Kavya, Meena +2 more": the first two as links, the rest in a popover, all links. */
-function FewPeople({ people }: { people: PersonRef[] }) {
+export function FewPeople({ people }: { people: PersonRef[] }) {
+  const more = useClosesLikeAMenu()
   if (!people.length) return <span className="text-ink-muted">—</span>
   const rest = people.slice(2)
   return (
@@ -175,7 +198,7 @@ function FewPeople({ people }: { people: PersonRef[] }) {
       {people.slice(0, 2).map((p, i, shown) => <span key={p.code} className="whitespace-nowrap"><RecordLink table={RECORD.employee} id={p.code}>{p.name}</RecordLink>{i < shown.length - 1 || rest.length ? ',' : ''}</span>)}
       {rest.length > 0 && (
         // One list open at a time (an exclusive group), so two never cover each other.
-        <details name="more-people" className="relative inline-block" data-testid="more-people">
+        <details ref={more} name="more-people" className="relative inline-block" data-testid="more-people">
           <summary className="cursor-pointer list-none text-ink-muted hover:underline">+{rest.length} more</summary>
           <div className="absolute z-10 mt-1 flex min-w-48 flex-col gap-1 rounded-control border border-border bg-surface p-2 shadow-lg">
             {rest.map(p => <RecordLink key={p.code} table={RECORD.employee} id={p.code}>{p.name}</RecordLink>)}
@@ -330,10 +353,24 @@ function AreaTitle({ place }: { place: Place }) {
   )
 }
 
+/** #1245: who runs the store, under the area's title: "Store Manager: Selvi · Cluster Manager: Kiran, Lata". */
+export function StoreRunBy({ managers, store }: { managers: Place['managers']; store?: { id: string; name: string } }) {
+  // Each label stays on one line with its first name, so a row never ends on "Cluster Manager:".
+  const names = (label: string, people: Ref[], lead = '') => people.map((p, i) => (
+    <span key={p.code} className="whitespace-nowrap">{i === 0 && <span className="text-ink-muted">{lead}{label}: </span>}<RecordLink table={RECORD.employee} id={p.code}>{p.name}</RecordLink>{i < people.length - 1 ? ', ' : ''}</span>))
+  return (
+    <span className="inline-flex flex-wrap items-baseline gap-x-1" data-testid="store-run-by">
+      {store && <><RecordLink table={RECORD.site} id={store.id}>{store.name}</RecordLink><span aria-hidden="true" className="text-ink-muted"> · </span></>}
+      {managers.store.length ? names('Store Manager', managers.store) : <span className="text-ink-muted">No store manager</span>}
+      {managers.cluster.length > 0 && names('Cluster Manager', managers.cluster, '· ')}
+    </span>
+  )
+}
+
 function PlaceCard({ place, onMoved, staffOnly = false }: { place: Place; onMoved: (message: string) => void; staffOnly?: boolean }) {
   return (
     <div className="flex flex-col gap-4" data-testid="area-place">
-      {!staffOnly && <p className="text-sm"><AreaTitle place={place} /></p>}
+      <div className="flex flex-col gap-1 text-sm">{!staffOnly && <AreaTitle place={place} />}<StoreRunBy managers={place.managers} store={staffOnly ? { id: place.store_id, name: place.store } : undefined} /></div>
       {!staffOnly && <SummaryStrip place={place} />}
       {!staffOnly && <SectionsTable place={place} onChanged={onMoved} />}
       <StaffTable place={place} onMoved={onMoved} title={staffOnly ? 'Your team' : 'Staff'} />
@@ -342,6 +379,10 @@ function PlaceCard({ place, onMoved, staffOnly = false }: { place: Place; onMove
 }
 
 function Categories({ categories, buys }: { categories: Category[]; buys: Buys[] }) {
+  // #1246: a head's Buyer Sections, read beside the page; the categories' buyers re-read after a move.
+  const desks = useAnswer<BuyerSectionsAnswer>('buyer_sections')
+  const mine = Array.isArray(desks.answer?.desks) ? desks.answer : undefined
+  const heads = !!mine?.desks.length
   return (
     <>
       {categories.map(c => (
@@ -360,16 +401,17 @@ function Categories({ categories, buys }: { categories: Category[]; buys: Buys[]
             {c.no_buyer.length > 0 && (
               <Notice tone="caution" data-testid="no-buyer">No buyer for {SUBCATEGORIES(c.no_buyer.length)}: {c.no_buyer.map((s, i) => <span key={s.code}>{i ? ', ' : ''}<RecordLink table={RECORD.subcategory} id={s.code}>{s.name}</RecordLink></span>)}</Notice>
             )}
-            <p className="fd-muted text-sm">Changing who buys what goes to the master data team until Buyer Sections arrives.</p>
+            {!heads && <p className="fd-muted text-sm">Changing who buys what goes to the master data team until Buyer Sections arrives.</p>}
           </div>
         </Card>
       ))}
+      {mine && categories.length > 0 && <YourBuyerSections answer={mine} onChanged={desks.load} />}
       {buys.map(b => (
         <Card key={b.assignment} data-testid="area-buys"
-          title={<span className="inline-flex flex-wrap gap-x-1">You buy · <RecordLink table={RECORD.merchandise} id={b.assignment}>{b.named || 'nothing named'}</RecordLink>{b.region && <> · <RecordLink table={RECORD.region} id={b.region}>{b.region}</RecordLink></>}</span>}>
+          title={<span className="inline-flex flex-wrap gap-x-1">You buy · {b.buyer_section ? <RecordLink table={RECORD.buyerSection} id={b.buyer_section.id}>{b.buyer_section.name}</RecordLink> : <RecordLink table={RECORD.merchandise} id={b.assignment}>{b.named || 'nothing named'}</RecordLink>}{b.region && <> · <RecordLink table={RECORD.region} id={b.region}>{b.region}</RecordLink></>}</span>}>
           <div className="p-4 text-sm">
             {b.subcategories.length
-              ? <p>{b.subcategories.map((s, i) => <span key={s.code}>{i ? ', ' : ''}<RecordLink table={RECORD.subcategory} id={s.code}>{s.name}</RecordLink></span>)}</p>
+              ? <p>{b.subcategories.map((s, i) => <span key={s.code}>{i ? ', ' : ''}<RecordLink table={RECORD.subcategory} id={s.code}>{s.name}</RecordLink>{s.only && <span className="text-ink-muted"> ({s.only} only)</span>}</span>)}</p>
               : <p className="fd-muted">No subcategories.</p>}
           </div>
         </Card>

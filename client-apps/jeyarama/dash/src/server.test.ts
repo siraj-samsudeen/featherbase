@@ -936,3 +936,43 @@ describe('the context of a report issue', () => {
     expect(answer.reach).toEqual([{ store: '9901', name: null, whole: false, sections: ['Sarees'], subcategories: ['010101001'] }])
   })
 })
+
+// #1223: the edges of the report read and its store names that the tests above don't reach.
+describe('the report read at its edges', () => {
+  it("offers no whole-stores report when the reader's reach reads, then fails when the whole-store check reads it again", async () => {
+    const { ctx } = context({ places: [], reports: [SALES, WHOLE], core: jobOf({ job: 'Store Manager' }) })
+    const list = ctx.baseTables.list
+    let employeeReads = 0
+    ctx.baseTables.list = async (table, args) => {
+      if (table === 'Employee' && ++employeeReads > 2) throw new Error('not set up')
+      return list(table, args)
+    }
+    expect((await reads.reports(ctx) as { key: string }[]).map(r => r.key)).toEqual(['sales'])
+  })
+
+  it('opens a Dive with its own pickers on the first store A–Z when the cached figures fail', async () => {
+    const PLAIN = { ...SALES, pickers_in_dive: 1, quick_view: null }
+    const { ctx } = context({ places: [place('9902', '9902'), place('9901', '9901')], reports: [PLAIN], cacheThrows: true })
+    expect(await reads.report(ctx)).toMatchObject({ state: 'ready', pickers_in_dive: true, heading: { name: 'Hillview' } })
+  })
+
+  it('answers no_access for a Dive with its own pickers when the reader reaches no store', async () => {
+    const { ctx } = context({ places: [], reports: [{ ...SALES, pickers_in_dive: 1 }], core: jobOf({ job: 'Head office staff' }) })
+    ctx.roles = ['All', 'Dash Reader', 'Dash All-Stores Reader']
+    expect(await reads.report(ctx)).toEqual({ state: 'no_access' })
+  })
+
+  it('names a store whose site the core Tables lack from its figures, or not at all without them', async () => {
+    const core = { Plant: [{ row_id: '9901', site: 'ZZZ', plant_type: 'Store' }], Site: STORES.Site }
+    expect(await reads.report(context({ payload: { store: '9901' }, core }).ctx)).toMatchObject({ store: '9901', heading: { name: 'Lakeside' } })
+    expect(await reads.report(context({ reports: [{ ...SALES, quick_view: null }], payload: { store: '9901' }, core }).ctx))
+      .toMatchObject({ state: 'ready', no_quick_view: true, heading: { name: null } })
+  })
+
+  it('says the Dive is unreachable when the call fails with no error at all', async () => {
+    setEmbedFetch(() => Promise.reject(null))
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(await embedSession(context({ payload: { store: '9901' } }).ctx)).toEqual({ unreachable: true })
+    expect(JSON.stringify(logged.mock.calls)).toContain('embed API unreachable: error')
+  })
+})

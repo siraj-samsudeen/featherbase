@@ -4,7 +4,7 @@ import { appendFile, cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promis
 import { test } from './pg-test'
 import { expectStatus, grantRole } from './fixtures'
 import { discoverPackages } from '../src/runtime-packages'
-import { actorNames, serviceAccountName } from '../src/actor-names'
+import { actorNames, actorNamesOn as namesOn, appActorNames, serviceAccountName } from '../src/actor-names'
 
 // #1224: who did something is named wherever it is shown — a person by their
 // display name even to a viewer who may not read Person, a service account by
@@ -68,6 +68,9 @@ test('only a System Manager names a service account', async ({ admin, createUser
   const someone = await createUser({ roles: [] })
   const res = await someone.fetch(`/api/service_accounts/${account.row_id}`, { method: 'PATCH', body: JSON.stringify({ display_name: 'Me' }), headers: { 'content-type': 'application/json' } })
   expect(res.status).toBe(403)
+  // Nor longer than 80 characters, by anyone.
+  const long = await admin.fetch(`/api/service_accounts/${account.row_id}`, { method: 'PATCH', body: JSON.stringify({ display_name: 'x'.repeat(81) }), headers: { 'content-type': 'application/json' } })
+  expect(long.status).toBe(417)
 })
 
 test('system steps read as plain phrases; an unknown opaque id names nobody', async () => {
@@ -121,6 +124,14 @@ test('an app names only who acted on its own data; any other id is null (no name
     'roster-link': 'Staff roster sync',
     psn_aaaaaaaaaaaaaaaaaaaa: null,
   })
+  // No list, or an empty one, names nobody and reads nothing.
+  expect([await appActorNames('barproof', 'not a list'), await appActorNames('barproof', ['', 7])]).toEqual([{}, {}])
+  // An id that wrote one of its rows but is no longer anyone is acted, yet unnamed.
+  const { sql } = await import('../src/db')
+  const { tableRelation } = await import('../src/table-engine')
+  const ghost = 'psn_ghostghostghostghos'
+  await sql`update ${sql(await tableRelation('barproof.note'))} set created_by = ${ghost} where row_id = 'n-1224'`
+  expect(await appActorNames('barproof', [ghost])).toEqual({ [ghost]: null })
 })
 
 test('the name an admin gives a service account shows only to those who may read Service Account', async ({ admin, createUser }) => {
@@ -185,6 +196,8 @@ test('rows the viewer may not read name nobody: creator-only reach, and a Table 
   expect(await actorNamesOn(nobody, 'Act Private', [writer.user!])).toEqual({ [writer.user!]: null })
   const bad = await nobody.fetch('/api/people/actor_names', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids: 'x' }) })
   expect(bad.status).toBe(417)
+  const notJson = await nobody.fetch('/api/people/actor_names', { method: 'POST', headers: { 'content-type': 'application/json' }, body: 'not json' })
+  expect(notJson.status).toBe(417)
 })
 
 test('a sub-table names nobody through its rows; anyone the rule does not name is looked up as before', async ({ admin, createUser }) => {
@@ -252,4 +265,38 @@ test('who archived a View is named to a reader of its rows, though they never to
   await archiver.post('/api/table_def/Act%20Arch%20View/archive', { note: 'old' })
   const reader = await createUser({ roles: ['Act Arch Reader'] })
   expect(await actorNamesOn(reader, 'Act Arch View', [archiver.user!])).toEqual({ [archiver.user!]: 'View Archiver' })
+})
+
+test('no ids, or only empty ones, name nobody; a Table that does not exist names nobody', async ({ createUser }) => {
+  const viewer = await createUser({ roles: [] })
+  expect([await namesOn(viewer.user!, 'Person', []), await namesOn(viewer.user!, 'Person', [''])]).toEqual([{}, {}])
+  expect(await namesOn(viewer.user!, 'No Such Table', [viewer.user!])).toEqual({ [viewer.user!]: null })
+})
+
+test('a row that names someone who no longer exists reads as acted but unnamed', async ({ admin, createUser }) => {
+  const { sql } = await import('../src/db')
+  const { tableRelation } = await import('../src/table-engine')
+  await admin.post('/api/table_def', { name: 'Act Ghost', columns: [{ column_name: 'body', column_type: 'Data' }] })
+  await grantRole(admin, { role: 'Act Ghost Reader', table: 'Act Ghost', can_read: true })
+  const row = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Act Ghost', row: { body: 'old' } })
+  const ghost = 'psn_ghostghostghostghos'
+  await sql`update ${sql(await tableRelation('Act Ghost'))} set created_by = ${ghost} where row_id = ${row.row_id}`
+  const reader = await createUser({ roles: ['Act Ghost Reader'] })
+  expect(await actorNamesOn(reader, 'Act Ghost', [ghost])).toEqual({ [ghost]: null })
+})
+
+test('a system-written Table, which has no retirement, names who wrote its rows to a reader', async ({ admin, createUser }) => {
+  const stranger = await createUser({ roles: [], fullName: 'Sink Stranger' })
+  // Not an actor there: named only because the admin may read Person.
+  expect(await actorNamesOn(admin, 'Email Sink', [stranger.user!])).toEqual({ [stranger.user!]: 'Sink Stranger' })
+})
+
+test("a share without read opens nothing, so it names nobody", async ({ admin, createUser }) => {
+  await admin.post('/api/table_def', { name: 'Act Unread', columns: [{ column_name: 'body', column_type: 'Data' }] })
+  await grantRole(admin, { role: 'Act Unread Writer', table: 'Act Unread', can_read: true, can_create: true })
+  const writer = await createUser({ roles: ['Act Unread Writer'], fullName: 'Unread Writer' })
+  const row = await writer.post<{ row_id: string }>('/api/save_row', { table: 'Act Unread', row: { body: 'not for you' } })
+  const recipient = await createUser({ roles: [] })
+  await admin.post('/api/save_row', { table: 'Share', row: { share_table: 'Act Unread', share_name: row.row_id, person: recipient.user, read: false, write: true } })
+  expect(await actorNamesOn(recipient, 'Act Unread', [writer.user!])).toEqual({ [writer.user!]: null })
 })

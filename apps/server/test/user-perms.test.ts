@@ -152,6 +152,31 @@ describe('PERM-005: Data Scopes', () => {
     await expectRefused(user.get(`/api/table/Up%20Note/${String(south.row_id)}`), 403)
   })
 
+  test("a Sub-table's rows are listed only under parents the viewer's scope names by their own row", async ({ admin, createUser }) => {
+    const { user } = await setup(admin, createUser)
+    await makeTable(admin, { name: 'Up Pin Note', kind: 'sub_table', columns: ['note'] })
+    await makeTable(admin, { name: 'Up Pin', id_pattern: 'prompt', columns: ['title', { column_name: 'notes', column_type: 'Sub-table', row_table: 'Up Pin Note' }] })
+    await grantRole(admin, { role: ROLE, table: ['Up Pin', 'Up Pin Note'], can_read: true })
+    await admin.post('/api/save_row', { table: 'Up Pin', row: { row_id: 'Pin North', title: 'north', notes: [{ note: 'north line' }] } })
+    await admin.post('/api/save_row', { table: 'Up Pin', row: { row_id: 'Pin South', title: 'south', notes: [{ note: 'south line' }] } })
+    await admin.post('/api/save_row', { table: 'Data Scope', row: { person: user.user, allow_table: 'Up Pin', for_value: 'Pin North' } })
+    const listed = await user.get<{ data: { note: string }[] }>('/api/table/Up%20Pin%20Note?fields=%5B%22note%22%5D')
+    expect(listed.data.map((r) => r.note)).toEqual(['north line'])
+  })
+
+  test("a Sub-table's rows under a parent whose required scope the viewer lacks are not listed", async ({ admin, createUser }) => {
+    const { user } = await setup(admin, createUser)
+    await makeTable(admin, { name: 'Up Region', id_pattern: 'prompt', columns: ['label'] })
+    await makeTable(admin, { name: 'Up Shelf Note', kind: 'sub_table', columns: ['note'] })
+    await makeTable(admin, { name: 'Up Shelf', scope_on: ['region'], scope_required: true, columns: ['title',
+      { column_name: 'region', column_type: 'Reference', reference_table: 'Up Region' }, { column_name: 'notes', column_type: 'Sub-table', row_table: 'Up Shelf Note' }] })
+    await grantRole(admin, { role: ROLE, table: ['Up Shelf', 'Up Shelf Note', 'Up Region'], can_read: true })
+    await admin.post('/api/save_row', { table: 'Up Region', row: { row_id: 'East' } })
+    await admin.post('/api/save_row', { table: 'Up Shelf', row: { title: 'one', region: 'East', notes: [{ note: 'east line' }] } })
+    const listed = await user.get<{ data: { note: string }[] }>('/api/table/Up%20Shelf%20Note?fields=%5B%22note%22%5D')
+    expect(listed.data).toEqual([])
+  })
+
   test('admins are unaffected', async ({ admin, createUser }) => {
     const { project } = await setup(admin, createUser)
     const res = await admin.get<{ total: number }>(project.url)
