@@ -111,7 +111,7 @@ describe('tickets-raiser', () => {
       const event = detail.privateEvents.find((e: { operation: string }) => e.operation === 'raise_on_behalf')
       expect(event.by).toBe(t.ids.Agent)
       expect(JSON.parse(event.text)).toEqual({ raiser: t.ids.Anjali })
-      expect(detail.names).toMatchObject({ [t.ids.Agent]: 'svc-agent', [t.ids.Anjali]: 'Anjali' })
+      expect(detail.names).toMatchObject({ [t.ids.Agent]: 'Automation (agent)', [t.ids.Anjali]: 'Anjali' })
     })
   })
 
