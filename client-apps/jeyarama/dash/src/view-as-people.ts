@@ -10,8 +10,6 @@ import { all, personNames, whoIs, type AccessContext } from './report-access-ser
 export const VIEW_AS_TESTER = 'View As Tester'
 
 const LIMIT = 20
-/** How many rows each word may bring in before matching: enough for a store's staff. */
-const CANDIDATES = 200
 const MAX_WORDS = 5
 const MAX_DESCRIBED = 50
 
@@ -26,13 +24,14 @@ export async function viewAsPeople(ctx: AccessContext, on: string = istToday()):
   if (typed.length < 2) return []
   const words = typed.toLowerCase().split(/\s+/).filter(Boolean).slice(0, MAX_WORDS)
   const base = ctx.baseTables!
-  const list = (table: string, fields: string[], filters: [string, string, unknown][]) =>
-    base.list(table, { fields: ['row_id', ...fields], filters, limit_page_length: CANDIDATES })
+  // Every candidate, page by page: a limit here would drop people before they are checked.
+  const list = (table: string, fields: string[], filters: [string, string, unknown][]) => all(base, table, fields, filters)
   // Candidates: anyone a word finds by name, code, job or site; then every word must match.
   const employees = new Map<string, Record<string, unknown>>()
   const keep = (rows: Record<string, unknown>[]) => { for (const row of rows) if (exact(row.person) && text(row[EMPLOYEE_STATUS]) === 'Current') employees.set(exact(row.row_id), row) }
   const fields = ['name', 'person', 'employee_code', EMPLOYEE_STATUS]
-  for (const word of words) {
+  // Words of two letters or more find candidates; every word must still match.
+  for (const word of words.filter(w => w.length >= 2)) {
     keep(await list('Employee', fields, [['name', 'like', `%${word}%`]]))
     keep(await list('Employee', fields, [['employee_code', 'like', `%${word}%`]]))
     const sites = (await list('Site', ['name'], [['name', 'like', `%${word}%`]])).map(row => exact(row.row_id))

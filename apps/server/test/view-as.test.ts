@@ -14,6 +14,7 @@ import { issueAccessToken } from '../src/auth'
 import { logAccess, logActivity } from '../src/audit'
 import { runViewingAs } from '../src/view-as-context'
 import { viewAsRoute } from '../src/view-as'
+import { rowCapabilities } from '../src/document'
 import { sql } from '../src/db'
 
 const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
@@ -122,6 +123,15 @@ describe('View as on the platform', () => {
     const { token } = await issueAccessToken(tester.user!, 'view as 1222', null)
     const agent = makeClient({ request: sandboxRequest }, token, tester.user)
     expect(await status(start(agent, person.user))).toEqual([403, expect.stringContaining('Only a View As Tester')])
+  })
+
+  test('while viewing, a row offers no change of any kind', async ({ admin, createUser }) => {
+    const { tester } = await install(admin, createUser)
+    const row = await admin.post<{ row_id: string }>('/api/save_row', { table: 'ToDo', row: { description: 'a row', allocated_to: 'Administrator' } })
+    const own = await rowCapabilities('ToDo', row.row_id, 'Administrator')
+    expect(own.write && own.delete && own.tag).toBe(true)
+    const viewed = await runViewingAs({ tester: tester.user!, person: 'Administrator', name: 'Made-up' }, () => rowCapabilities('ToDo', row.row_id, 'Administrator'))
+    expect(Object.values(viewed).every((allowed) => allowed === false)).toBe(true)
   })
 
   test('what is read while viewing is logged under the tester, marked with whom', async ({ admin, createUser }) => {

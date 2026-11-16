@@ -71,9 +71,15 @@ export function identityLine(person: ViewAsPerson): string {
   return [person.code, jobs[0], jobs.length > 1 ? `+${jobs.length - 1} more` : null].filter(Boolean).join(' · ')
 }
 
+/** Other tabs on this sign-in are told, and reload too, so no page mixes two people. */
+const CHANGED_KEY = 'featherbase.view-as.changed'
+if (typeof window !== 'undefined')
+  window.addEventListener('storage', (event) => { if (event.key === CHANGED_KEY) window.location.reload() })
+
 async function changeView(path: string, body: unknown, onError: (message: string) => void) {
   try {
     await api.post(path, body)
+    try { window.localStorage.setItem(CHANGED_KEY, String(Date.now())) } catch { /* private window: this tab only */ }
     window.location.reload()
   } catch (error) {
     onError(error instanceof ApiError ? error.message : 'Could not change the view. Try again.')

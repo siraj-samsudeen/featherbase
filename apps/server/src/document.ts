@@ -7,6 +7,7 @@ import { sql } from './db'
 import { AppError, orWhenRefused } from './errors'
 import { refusalSubject, tableWords } from './refusals'
 import { sessionMayAddWayIn } from './session-context'
+import { viewingAs } from './view-as-context'
 import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
 import { mayPurge } from './purge'
@@ -2052,11 +2053,18 @@ export function getDoc(...args: Parameters<typeof getDocImpl>) {
 // Read first through the normal path, including parent access, tiers and Data
 // Scopes. Never turn an unreadable/missing row into a capabilities response.
 export function rowCapabilities(table: string, name: string, user: string): Promise<RowCapabilities> {
+  // #1222: while viewing as someone, a row offers no change of any kind.
+  if (viewingAs())
+    return rowCapabilitiesFor(table, name, user).then((caps) => Object.fromEntries(Object.keys(caps).map((key) => [key, false])) as unknown as RowCapabilities)
+  return rowCapabilitiesFor(table, name, user)
+}
+
+function rowCapabilitiesFor(table: string, name: string, user: string): Promise<RowCapabilities> {
   return appOperation(async () => {
     const readable = await getDoc(table, name, user)
     const meta = await getMeta(table)
     // #1021: a view's row is its base's row; what may be done to it is too.
-    if (meta.kind === 'view') return rowCapabilities(meta.view_of!, name, user)
+    if (meta.kind === 'view') return rowCapabilitiesFor(meta.view_of!, name, user)
     // A read share can bypass Data Scopes, but (unlike a write share) cannot
     // authorize saving. Check mutations against the full row, not a read-tier
     // projection that may omit a restricted Reference used by a Data Scope.
