@@ -5,6 +5,9 @@
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { tableHref } from 'shared'
+
+/** The router under the fixture, as TanStack's own: it navigates by address and keeps a history. */
+type Router = { navigate: (to: { href: string }) => Promise<void>; history: { back: () => void } }
 import { test, expect, renderApp } from './pg-test'
 
 type Admin = Parameters<typeof renderApp>[1]
@@ -107,7 +110,8 @@ test('a remembered value that is not a list of filters opens the list unfiltered
 test('a bare open of the same Table, without leaving the list, brings back the remembered filters', async ({ admin }) => {
   await seed(admin)
   await admin.put(`/api/user_settings/${encodeURIComponent(DEPT)}`, { filters: [KIDS] })
-  const { router } = await renderApp(withFilters([['store', '=', 'Lakeside']]), admin)
+  const { router: fixtureRouter } = await renderApp(withFilters([['store', '=', 'Lakeside']]), admin)
+  const router = fixtureRouter as unknown as Router
   await waitFor(() => expect(chips()).toHaveLength(1), T)
   expect(chipWords()[0]).toContain('Lakeside')
 
@@ -128,7 +132,8 @@ test('a bare open of the same Table, without leaving the list, brings back the r
 // restore over it filters chosen since.
 test('Back to the unfiltered list it opened as shows it unfiltered, after a filter was added', async ({ admin }) => {
   await seed(admin)
-  const { router } = await renderApp(tableHref(DEPT), admin)
+  const { router: fixtureRouter } = await renderApp(tableHref(DEPT), admin)
+  const router = fixtureRouter as unknown as Router
   expect(await rows()).toHaveLength(3)
   // A filter added since, and remembered.
   await admin.put(`/api/user_settings/${encodeURIComponent(DEPT)}`, { filters: [ATK] })

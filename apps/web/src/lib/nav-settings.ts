@@ -44,13 +44,15 @@ export function useNavigationSettings() {
   const queryClient = useQueryClient()
   const stored = useQuery({
     queryKey: KEY,
-    queryFn: () => api.get<{ settings: Stored | null }>(`/api/user_settings/${NAVIGATION_SETTINGS}`),
+    // `read` marks data the server answered: a save's optimistic write carries
+    // it forward and never invents it (Codex review, round 4).
+    queryFn: async () => ({ ...(await api.get<{ settings: Stored | null }>(`/api/user_settings/${NAVIGATION_SETTINGS}`)), read: true }),
     retry: false,
     staleTime: Infinity,
   })
   const settings = stored.data?.settings ?? {}
   const save = (next: Stored) => {
-    queryClient.setQueryData(KEY, { settings: { ...settings, ...next } })
+    queryClient.setQueryData(KEY, { settings: { ...settings, ...next }, read: stored.data?.read === true })
     // A save merges into the person's record; one that fails keeps the
     // choice for this visit only.
     const token = getToken()
@@ -70,9 +72,9 @@ export function useNavigationSettings() {
     /** Stars can be changed only once the person's settings have been read:
      *  before that (or after a failed read) the list is unknown, and a save
      *  would overwrite the stars they have (Codex review, round 3). */
-    starsLoaded: stored.isSuccess,
+    starsLoaded: stored.data?.read === true,
     toggleStar: (view: string) => {
-      if (!stored.isSuccess) return
+      if (stored.data?.read !== true) return
       const next = starredViews.includes(view) ? starredViews.filter((id) => id !== view) : [...starredViews, view]
       save({ starredViews: next })
       // The sidebar's list reads the stars on the server: ask again once saved.
