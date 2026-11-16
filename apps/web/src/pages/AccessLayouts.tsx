@@ -261,11 +261,15 @@ const tablesOf = (role: string, tables: Reached[]) => tables
     readOwn: t.readOwnRoles.includes(role), changeOwn: t.changeOwnRoles.includes(role) }))
 
 /** Which rows: "every row" only when nothing narrows it (Codex round 3). */
-function rowsLine({ limits, ownOnly, places, everyTable, self }: { limits: number; ownOnly: number; places: { title: string; count: number } | null; everyTable: boolean; self: boolean }): string {
+export function rowsLine({ limits, readOwn, changeOwn, places, self }: { limits: number; readOwn: number; changeOwn: number; places: { title: string; count: number } | null; self: boolean }): string {
   const whose = self ? 'Your' : 'Their'
+  const who = self ? 'you' : 'they'
+  // Reading and changing are narrowed on their own (Codex round 9): "read
+  // every row, change only your own" must not read as "see only your own".
   const narrows = [
     limits && `limited to ${plural(limits, 'set of rows', 'sets of rows')} (see “Limited to” below)`,
-    ownOnly && `${plural(ownOnly, 'table')} ${ownOnly === 1 ? 'shows' : 'show'} only rows ${self ? 'you' : 'they'} created`,
+    readOwn && `${plural(readOwn, 'table')} ${readOwn === 1 ? 'shows' : 'show'} only rows ${who} created`,
+    changeOwn && `in ${plural(changeOwn, 'table')} ${who} can change only rows ${who} created`,
     places && `${places.title} gives ${self ? 'you' : 'them'} ${plural(places.count, 'place')} (see below)`,
   ].filter(Boolean) as string[]
   // Never "every row": a table can keep some rows private to the people they
@@ -343,7 +347,8 @@ export function SummaryLayout({ roles, tables, everyTable, limits, shares, place
           <li className="text-ink-muted" data-testid="access-summary-line">{you} only see what every account can see.</li>
         )}
         <li className="text-ink" data-testid="access-summary-line">
-          {rowsLine({ limits, ownOnly: tables.filter((t) => t.readOwn || t.changeOwn).length, places, everyTable, self })}
+          {rowsLine({ limits, readOwn: tables.filter((t) => t.read && t.readOwn).length,
+            changeOwn: tables.filter((t) => t.change && t.changeOwn).length, places, self })}
           {shares > 0 && ` ${plural(shares, 'row is', 'rows are')} also shared with ${self ? 'you' : 'them'} directly.`}
         </li>
       </ul>

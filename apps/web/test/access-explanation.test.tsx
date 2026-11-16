@@ -197,7 +197,9 @@ test('#1224 a role card says only what that role gives; own-rows reach is per op
 
   await renderApp(pageOf(person.user!), admin)
   const summary = await screen.findByTestId('access-summary', {}, WAIT)
-  expect(summary).toHaveTextContent('Their access is narrowed: 1 table shows only rows they created.')
+  // Reader reads every row; only changing is limited to their own (Codex round 9).
+  expect(summary).toHaveTextContent('Their access is narrowed: in 1 table they can change only rows they created.')
+  expect(summary).not.toHaveTextContent('shows only rows')
   expect(summary).not.toHaveTextContent('every row')
 
   await userEvent.click(screen.getByRole('button', { name: 'By role' }))
