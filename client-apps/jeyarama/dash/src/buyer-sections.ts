@@ -19,7 +19,8 @@ const APPLIED_UNREVIEWED = 'Not yet reviewed'
 
 interface About { kind: typeof KIND; subcategory: string; subcategory_name: string; region: string; from_section: string; from: string; to_section: string; to: string
   maker_name: string; link: string }
-const about = (p: ChangeProposal) => (p.about ?? {}) as unknown as About
+// Only ever read for a buyer move, which always carries its About.
+const about = (p: ChangeProposal) => p.about as unknown as About
 export const isBuyerMove = (p: ChangeProposal) => (p.about as Record<string, unknown> | null)?.kind === KIND
 
 type Ctx = ReadContext | ActionContext
@@ -64,7 +65,7 @@ async function linkIn(ctx: Ctx, subcategory: string, region: string, today: stri
 /** A link for `subcategory` in `region` set to start after `today`: an open-ended row made today would overlap it
  *  (as scheduledLater guards Section Subcategory). */
 async function laterLink(ctx: Ctx, subcategory: string, region: string, today: string): Promise<Row | null> {
-  const later = (await all(ctx, BUYER_SECTION_SUBCATEGORY, BUYER_LINK_FIELDS, [['subcategory', '=', subcategory]])).filter(l => (exact(l.starts_on) || '').slice(0, 10) > today)
+  const later = (await all(ctx, BUYER_SECTION_SUBCATEGORY, BUYER_LINK_FIELDS, [['subcategory', '=', subcategory]])).filter(l => exact(l.starts_on).slice(0, 10) > today)
   if (!later.length) return null
   const desks = byId(await all(ctx, BUYER_SECTION, BUYER_SECTION_FIELDS, [['row_id', 'in', unique(later.map(l => exact(l.buyer_section)))]]))
   const found = later.find(l => exact(desks.get(exact(l.buyer_section))?.operating_region) === region)

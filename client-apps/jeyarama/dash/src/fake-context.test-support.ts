@@ -34,6 +34,8 @@ export function context(tables: Record<string, Row[]>, { user = 'sm', payload, r
     user, payload, settings: { linked_tables: JSON.stringify(BASE_TABLES) }, roles,
     reject(message: string): never { throw new Error(message) },
     baseTables: {
+      // A Table is installed when the test's tables name it (#1246's Buyer Sections are optional).
+      available: async (table: string) => table in tables,
       async list(table: string, args: { filters?: [string, string, unknown][]; limit_start?: number; limit_page_length?: number }) {
         const n = (count.get(table) ?? 0) + 1
         count.set(table, n)
