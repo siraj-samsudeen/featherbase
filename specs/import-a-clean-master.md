@@ -17,7 +17,7 @@ Taken one at a time with the owner. Only what the journey needs is decided; ever
 | — | Scope | No sign-in and no record of who changed a row. CSV only, clean files only | Decided |
 | — | Types and formats | Text, Number, Date, Yes/No, Choice; dates `2015-01-01`, yes/no `true`/`false` | Decided |
 | 1 | Database access | Drizzle on Bun's built-in Postgres driver; `postgres.js` if that misbehaves on 18.6, checked at setup | Decided |
-| 2 | How a Table and its rows are stored | A plain Postgres table per Table, one real column per Column, readable names (`employees`, `date_of_joining`). People's Tables go in schema `main` by default; later a person picks the schema, or it is the app's name. Featherbase's own tables go in schema `featherbase`. `featherbase`, `main`, and the names Postgres reserves are refused as app or schema names. Featherbase's own columns start with an underscore (`_id`, `_created_at`). `_id` is a time-ordered unique id made by Postgres. Required and unique are real database rules on the key. Number is one exact decimal type | Decided |
+| 2 | How a Table and its rows are stored | A plain Postgres table per Table, one real column per Column, readable names (`employees`, `date_of_joining`). People's Tables go in schema `main` by default; later a person picks the schema, or it is the app's name. Featherbase's own tables go in schema `featherbase`. `featherbase`, `main`, and the names Postgres reserves are refused as app or schema names. Featherbase's own columns start with an underscore (`_id`, `_created_at`). `_id` is a time-ordered unique id made by Postgres. Required and unique are real database rules on the key. Number is one exact decimal type. Every internal link to a Table or Column uses its `_id`, never its name, so a Table can later be renamed or moved to another schema without breaking anything inside | Decided |
 | 2a | How raw rows are stored | One shared table for every upload: `_id`, upload, sheet row number (header is 1), cells, and the pair "written to" (the Table and the row's `_id`), empty until imported. Cells are one JSON column: the values only, as text, in sheet order. Header names are stored once on the upload. A database view pairs each value with its header name by position, so a raw row reads as a list of `{name, value}`. One raw row per upload and row number, enforced by the database. Cells are never edited. Blank rows are stored. Rows are loaded in bulk. Measured on 16-Nov-2026 (Bun 1.4.4, local Postgres 16), 100,000 rows of 30 columns: values only takes 39 MB and loads in 2.6 s; name and value in every cell takes 158 MB and loads in 5.0 s; the CSV itself is 22 MB. Postgres compression gave no saving. Later levers, not in this build: drop raw rows of superseded uploads (they can be re-read from the kept file); a size limit per upload | Decided |
 | 2b | How a Choice is stored | The row holds the word (`department = 'Sales'`). One shared table holds every list: Column, value, position, retired; a value appears once per Column. The import fills the list from the sheet's distinct values in alphabetical order; the form reads it; a save outside it is refused. A Column is proposed as a Choice only if it is text, is not the key, and its values repeat with at most 10 distinct ones; the person can overrule. Matching is exact; blank is allowed unless the Column is required | Decided |
 | 3 | Migrations for Featherbase's own tables | Drizzle's migration tool: tables described in code, one generated SQL file per change, file names by timestamp (to confirm at setup), pointed at schema `featherbase` only. Tables people make are created by the app, not by migrations | Decided |
@@ -31,6 +31,17 @@ Taken one at a time with the owner. Only what the journey needs is decided; ever
 The owner's October stack evaluation (`featherbase-stack-evaluation`, phase 4d) built an import feature on
 Elysia with Drizzle, Eden, Vite, React, TanStack Query and Router, shadcn/ui and Playwright. Its choices and
 its recorded lessons are the starting point for each open row.
+
+## Agreed for later, not in this build
+
+- **Regrouping is free.** A module is a label on a Table for menus and lists; changing it touches nothing in
+  Postgres.
+- **Moving a Table between `main` and an app, or renaming a schema, is one deliberate step** in one
+  transaction. Postgres moves a table to another schema without copying data.
+- **A name history** records every move and rename (this Table was `main.employees` until this date, then
+  `hr.employees`). It travels to MotherDuck through the change-data-capture package so the pipeline can follow
+  a Table across a rename and rewrite itself. Old addresses are answered from it.
+- **A preview before a move**, and a refusal when the new name is already taken.
 
 ## The journey
 
