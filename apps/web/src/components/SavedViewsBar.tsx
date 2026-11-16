@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, getSessionUser } from '../lib/api'
-import { useNavigationSettings } from '../lib/nav-settings'
+import { refreshSavedViews, useNavigationSettings } from '../lib/nav-settings'
 import { buttonClasses, inputClasses } from '@featherbase/shop-floor'
 import type { Filter } from './ListFilters'
 
@@ -119,10 +119,10 @@ export function SavedViewsBar({
       setNudgeGone(true)
       setNaming(false)
       setNudgeName('')
-      // Invalidation reuses a pending initial read with no cached data. Cancel
-      // it first so its pre-save result cannot hide the newly saved view.
-      await queryClient.cancelQueries({ queryKey: ['saved-views', table] })
-      void queryClient.invalidateQueries({ queryKey: ['saved-views'] })
+      // Invalidation reuses a pending initial read with no cached data; the
+      // refresh cancels every saved-view read first (this list's and the
+      // sidebar's), so a pre-save answer cannot hide the newly saved view.
+      await refreshSavedViews(queryClient)
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "Couldn't save this view. Try again.")
     } finally {
@@ -183,6 +183,7 @@ export function SavedViewsBar({
                       aria-label={starred ? `Remove ${v.label} from the sidebar` : `Add ${v.label} to the sidebar`}
                       title={starred ? 'Remove from the sidebar' : 'Add to the sidebar'}
                       data-testid="saved-view-star"
+                      disabled={!navigation.starsLoaded}
                       onClick={() => navigation.toggleStar(v.row_id)}
                       className="rounded-full px-1 hover:bg-surface/20"
                     >
@@ -199,7 +200,7 @@ export function SavedViewsBar({
                       await api.post(`/api/saved_views/${encodeURIComponent(v.row_id)}/share`, {
                         shared: !v.shared,
                       })
-                      void queryClient.invalidateQueries({ queryKey: ['saved-views'] })
+                      void refreshSavedViews(queryClient)
                     }}
                     className="rounded-full px-1 hover:bg-surface/20"
                   >
@@ -213,7 +214,7 @@ export function SavedViewsBar({
                     data-testid="saved-view-delete"
                     onClick={async () => {
                       await api.delete(`/api/saved_views/${encodeURIComponent(v.row_id)}`)
-                      void queryClient.invalidateQueries({ queryKey: ['saved-views'] })
+                      void refreshSavedViews(queryClient)
                     }}
                     className="rounded-full px-1 hover:bg-surface/20"
                   >

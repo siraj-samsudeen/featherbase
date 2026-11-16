@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import type { PanePlaceValue } from '@featherbase/shop-floor'
 import { api, getToken } from './api'
 import { decodeRecent, encodePath, rememberWalk, type NavPath } from './nav-path'
@@ -21,6 +21,15 @@ interface Stored {
 /** The Admin sidebar's saved views (GET /api/saved_views/sidebar), under the
  *  saved-views prefix every view change invalidates. */
 export const SIDEBAR_VIEWS_KEY = ['saved-views', '__sidebar'] as const
+
+/** After any change to saved views (save, share, delete, star): every saved-view
+ *  read, the sidebar's included, asks again. A read still pending is cancelled
+ *  first: invalidation would reuse it, and its answer from before the change
+ *  could hide the change (Codex review, round 3). */
+export async function refreshSavedViews(queryClient: QueryClient): Promise<void> {
+  await queryClient.cancelQueries({ queryKey: ['saved-views'] })
+  await queryClient.invalidateQueries({ queryKey: ['saved-views'] })
+}
 
 const KEY = ['user-settings', NAVIGATION_SETTINGS]
 
@@ -58,11 +67,16 @@ export function useNavigationSettings() {
   return {
     starredViews,
     /** #1229: puts another person's shared view in the sidebar, or takes it out. */
+    /** Stars can be changed only once the person's settings have been read:
+     *  before that (or after a failed read) the list is unknown, and a save
+     *  would overwrite the stars they have (Codex review, round 3). */
+    starsLoaded: stored.isSuccess,
     toggleStar: (view: string) => {
+      if (!stored.isSuccess) return
       const next = starredViews.includes(view) ? starredViews.filter((id) => id !== view) : [...starredViews, view]
       save({ starredViews: next })
       // The sidebar's list reads the stars on the server: ask again once saved.
-      void settingsWrite.then(() => queryClient.invalidateQueries({ queryKey: SIDEBAR_VIEWS_KEY }))
+      void settingsWrite.then(() => refreshSavedViews(queryClient))
     },
     ready: !stored.isPending,
     panePlace: PLACES.includes(settings.panePlace as PanePlaceValue) ? settings.panePlace! : 'auto',

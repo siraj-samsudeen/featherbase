@@ -5,6 +5,8 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { tableHref } from 'shared'
+import { afterEach, vi } from 'vitest'
+import { holdResponses } from './held-requests'
 import { test, expect, renderApp } from './pg-test'
 
 type Admin = Parameters<typeof renderApp>[1]
@@ -70,4 +72,63 @@ test('the star is offered only on shared views of other people', async ({ admin 
   await renderApp(tableHref(DEPT), admin)
   await screen.findAllByTestId('saved-view-chip', {}, T)
   expect(screen.queryByTestId('saved-view-star')).not.toBeInTheDocument()
+})
+
+afterEach(() => vi.restoreAllMocks())
+
+// Codex review, round 3: a star changed before the person's stars are known
+// would save a list of one and overwrite the rest.
+test("the star waits for the person's settings, and stays off when they cannot be read", async ({ admin, createUser }) => {
+  await seed(admin)
+  await admin.post('/api/saved_views', { table: DEPT, label: 'ATK Departments', filters: [ATK], shared: true })
+  const manager = await createUser({ email: 'ssv.wait@example.test', roles: ['System Manager'] })
+  const settings = holdResponses('/api/user_settings/__navigation')
+  await renderApp(tableHref(DEPT), manager)
+  const star = await screen.findByTestId('saved-view-star', {}, T)
+  await settings.asked
+  expect(star).toBeDisabled()
+  settings.release()
+  await waitFor(() => expect(screen.getByTestId('saved-view-star')).toBeEnabled(), T)
+})
+
+test("with the person's settings unreadable, no star can be changed", async ({ admin, createUser }) => {
+  await seed(admin)
+  await admin.post('/api/saved_views', { table: DEPT, label: 'ATK Departments', filters: [ATK], shared: true })
+  const manager = await createUser({ email: 'ssv.unread@example.test', roles: ['System Manager'] })
+  const real = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const path = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (path.includes('/api/user_settings/__navigation') && (!init?.method || init.method === 'GET')) return new Response('{}', { status: 503 })
+    return real(input, init)
+  })
+  await renderApp(tableHref(DEPT), manager)
+  const star = await screen.findByTestId('saved-view-star', {}, T)
+  await new Promise((r) => setTimeout(r, 300))
+  expect(star).toBeDisabled()
+})
+
+// Codex review, round 3: a view saved while the sidebar's first read is out must
+// still appear: that read's answer from before the save is not the last word.
+test("a view saved while the sidebar's first read is out still appears in the sidebar", async ({ admin }) => {
+  await seed(admin)
+  let deliver!: () => void
+  const late = new Promise<void>((resolve) => { deliver = resolve })
+  let first = true
+  const real = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const path = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (!path.includes('/api/saved_views/sidebar') || !first) return real(input, init)
+    first = false
+    // Answered now (no views yet), delivered after the save.
+    const answer = await real(input, init)
+    await late
+    return answer
+  })
+  await renderApp(`${tableHref(DEPT)}?filters=${encodeURIComponent(JSON.stringify([ATK]))}`, admin)
+  await userEvent.click(await screen.findByTestId('save-view-open', {}, T))
+  await userEvent.type(await screen.findByTestId('nudge-name', {}, T), 'ATK Departments')
+  await userEvent.click(screen.getByTestId('nudge-save'))
+  expect(await screen.findByTestId('saved-view-chip', {}, T)).toHaveTextContent('ATK Departments')
+  deliver()
+  expect(await within(await group()).findByRole('link', { name: /ATK Departments/ }, T)).toBeInTheDocument()
 })
