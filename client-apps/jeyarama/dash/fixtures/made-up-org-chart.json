@@ -683,6 +683,55 @@
    "name": "Nisha No-Job",
    "says": "on no staff list: the no-access page",
    "jobs": null
+  },
+  {
+   "key": "same-leader",
+   "name": "Kumar",
+   "says": "one of four staff named Kumar (#1216): Team Leader of Sarees at Lakeside",
+   "jobs": [
+    [
+     "Team Leader",
+     "LKS",
+     {
+      "section": "LKS-S1"
+     }
+    ]
+   ]
+  },
+  {
+   "key": "same-office",
+   "name": "Kumar",
+   "says": "one of four staff named Kumar (#1216): Head office staff",
+   "jobs": [
+    [
+     "Head office staff",
+     "HOF",
+     {}
+    ]
+   ]
+  },
+  {
+   "key": "same-two-jobs",
+   "name": "Kumar",
+   "says": "one of four staff named Kumar (#1216): Store Manager at Hillview and Floor Manager at Riverside",
+   "jobs": [
+    [
+     "Store Manager",
+     "HIL",
+     {}
+    ],
+    [
+     "Floor Manager",
+     "RIV",
+     {}
+    ]
+   ]
+  },
+  {
+   "key": "same-no-job",
+   "name": "Kumar",
+   "says": "one of four staff named Kumar (#1216): on the staff list with no job today",
+   "jobs": []
   }
  ],
  "sectionPeople": [
