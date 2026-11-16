@@ -470,6 +470,9 @@ function NavigatedList({ table, filters, path }: { table: string; filters?: stri
   }, [table, filters])
   const nav = useAddressNavigation(here, path)
   const navigate = tableRoute.useNavigate()
+  // The address as the person opened it: rebuilding it from the Table's name would
+  // write its slug, which for two legacy Tables of one spelling names neither.
+  const openedPath = useRouterState({ select: (state) => state.location.pathname })
   // #1228: a bare open (no filters, no walk in the address) brings back the
   // person's last filters, replacing the address rather than adding a Back step.
   // The list waits for that answer, so it never shows unfiltered first.
@@ -482,7 +485,7 @@ function NavigatedList({ table, filters, path }: { table: string; filters?: stri
   useEffect(() => {
     if (!fresh || remembered === undefined) return
     if (remembered.length) nav.replace({ ...nav.step, filters: remembered })
-    else void navigate({ search: (prev: Record<string, unknown>) => ({ ...prev, filters: '[]' }), replace: true } as never)
+    else void navigate({ to: openedPath, search: (prev: Record<string, unknown>) => ({ ...prev, filters: '[]' }), replace: true } as never)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fresh, remembered])
   if (restoring) return <div data-testid="table-page" aria-busy="true" />
