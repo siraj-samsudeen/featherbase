@@ -12,7 +12,7 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { scopedWhere } from './query'
 import { canRetire } from './table-engine'
-import { displayName } from './people-directory'
+import { displayName, principalNames } from './people-directory'
 import { ROSTER_LINK_ACTOR } from './roster-link-actor'
 
 /** System steps, as a reader says them. Not people, not service accounts. */
@@ -89,17 +89,25 @@ export async function actorNamesOn(viewer: string, table: unknown, ids: unknown)
   // A Table the viewer may not read here, or one that cannot be read this way
   // (source-bound, a settings Table), names nobody.
   const scoped = await scopedWhere(table, viewer, []).catch((error: unknown) => (error instanceof AppError ? null : Promise.reject(error)))
-  if (!scoped) return out
   const acted = new Set(wanted.filter((id) => ACTOR_LABELS[id]))
-  const relation = sql(scoped.table)
-  const columns = ['created_by', 'updated_by', ...(canRetire(scoped.meta) ? ['retired_by'] : [])]
-  for (const column of columns)
-    for (const r of await sql`select distinct ${sql(column)} as id from ${relation}
-      where ${scoped.where as ReturnType<typeof sql>} and ${sql(column)} = any(${wanted})`)
-      acted.add(String(r.id))
-  const [archive] = await sql`select archived_by from table_def where name = ${scoped.meta.name} and archived_by = any(${wanted})`
-  if (archive) acted.add(String(archive.archived_by))
+  // A sub-table's rows are only as visible as their parent's, and the scoped
+  // read does not yet apply the parent's Data Scope to them (Codex round 11):
+  // they name nobody here (#1244).
+  if (scoped && scoped.meta.kind !== 'sub_table') {
+    const relation = sql(scoped.table)
+    const columns = ['created_by', 'updated_by', ...(canRetire(scoped.meta) ? ['retired_by'] : [])]
+    for (const column of columns)
+      for (const r of await sql`select distinct ${sql(column)} as id from ${relation}
+        where ${scoped.where as ReturnType<typeof sql>} and ${sql(column)} = any(${wanted})`)
+        acted.add(String(r.id))
+    const [archive] = await sql`select archived_by from table_def where name = ${scoped.meta.name} and archived_by = any(${wanted})`
+    if (archive) acted.add(String(archive.archived_by))
+  }
   const named = await actorNames([...acted])
   for (const id of acted) out[id] = named.get(id) ?? null
+  // Anyone this rule does not name is looked up as before, as the viewer: it
+  // only ever adds names (a row reached through a share, Codex round 11).
+  const rest = wanted.filter((id) => out[id] == null)
+  if (rest.length) for (const [id, name] of Object.entries(await principalNames(rest, viewer))) if (name) out[id] = name
   return out
 }

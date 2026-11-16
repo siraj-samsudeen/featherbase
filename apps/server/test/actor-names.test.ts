@@ -186,3 +186,21 @@ test('rows the viewer may not read name nobody: creator-only reach, and a Table 
   const bad = await nobody.fetch('/api/people/actor_names', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids: 'x' }) })
   expect(bad.status).toBe(417)
 })
+
+test('a sub-table names nobody through its rows; anyone the rule does not name is looked up as before', async ({ admin, createUser }) => {
+  const { makeTable } = await import('./fixtures')
+  await makeTable(admin, { name: 'Act Step', kind: 'sub_table', columns: ['note'] })
+  await makeTable(admin, { name: 'Act Plan', columns: ['title', { column_name: 'steps', column_type: 'Sub-table', row_table: 'Act Step' }] })
+  await grantRole(admin, { role: 'Act Planner', table: ['Act Plan', 'Act Step'], can_read: true, can_create: true, can_write: true })
+  const planner = await createUser({ roles: ['Act Planner'], fullName: 'Act Planner Person' })
+  await planner.post('/api/save_row', { table: 'Act Plan', row: { title: 'p', steps: [{ note: 'one' }] } })
+  await grantRole(admin, { role: 'Act Plan Reader', table: ['Act Plan', 'Act Step'], can_read: true })
+  const reader = await createUser({ roles: ['Act Plan Reader'] })
+  // Through the parent, the planner is named; through the child rows, nobody is.
+  expect((await actorNamesOn(reader, 'Act Plan', [planner.user!]))[planner.user!]).toBe('Act Planner Person')
+  expect((await actorNamesOn(reader, 'Act Step', [planner.user!]))[planner.user!]).toBeNull()
+  // A viewer who may read Person but not the Table still gets the name, as before this change.
+  await grantRole(admin, { role: 'Act People Reader', table: 'Person', can_read: true })
+  const peopleReader = await createUser({ roles: ['Act People Reader'] })
+  expect((await actorNamesOn(peopleReader, 'Act Plan', [planner.user!]))[planner.user!]).toBe('Act Planner Person')
+})
