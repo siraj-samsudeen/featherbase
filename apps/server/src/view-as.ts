@@ -79,7 +79,7 @@ export async function activeViewAs(user: SessionUser): Promise<{ as: ViewingAs; 
   const [row] = await sql`select tester, person, expires_at <= now() as expired from view_as_session where session_id = ${session}`
   if (!row) return null
   if (row.expired) {
-    await endViewAsSession(session, 'expired')
+    await sql.begin(endExpired)
     return null
   }
   const person = String(row.person)
@@ -106,6 +106,10 @@ export async function startViewAs(user: SessionUser, person: unknown): Promise<v
   // Never outlives the session it belongs to.
   const ends = Math.min(Date.now() + VIEW_AS_MINUTES * 60_000, user.sign_in!.expires_at * 1000)
   await sql.begin(async (tx) => {
+    await lockSession(tx, session)
+    // Under the lock: a sign-out that got here first has ended this session.
+    const [revoked] = await tx`select 1 from revoked_session where jti = ${session}`
+    if (revoked) throw new AppError('AuthenticationError', 'Invalid or expired session')
     await endExpired(tx)
     const [before] = await tx`select person from view_as_session where session_id = ${session}`
     await tx`insert into view_as_session (session_id, tester, person, expires_at)
@@ -127,15 +131,36 @@ export async function endViewAs(user: SessionUser, method = 'exit'): Promise<voi
  */
 export async function endViewAsSession(session: string, method: string): Promise<void> {
   await sql.begin(async (tx) => {
+    await lockSession(tx, session)
     const [ended] = await tx`delete from view_as_session where session_id = ${session} returning tester, person`
     if (ended) await logAccess(String(ended.tester), 'view_as_end', { table: 'Person', row_id: String(ended.person), method, required: true }, tx)
   })
 }
 
-/** End every View as whose time is up, each logged under its tester. */
+/** Start, switch and every ending of one session's View as happen one at a time, row or no row. */
+async function lockSession(tx: TxSql, session: string) {
+  await tx`select pg_advisory_xact_lock(hashtextextended(${`view_as:${session}`}, 0))`
+}
+
+/** End every View as whose time is up, each logged under its tester with the time it ended. */
 async function endExpired(tx: TxSql) {
-  for (const ended of await tx`delete from view_as_session where expires_at <= now() returning tester, person`)
-    await logAccess(String(ended.tester), 'view_as_end', { table: 'Person', row_id: String(ended.person), method: 'expired', required: true }, tx)
+  for (const ended of await tx`delete from view_as_session where expires_at <= now() returning tester, person, expires_at`)
+    await logAccess(String(ended.tester), 'view_as_end', { table: 'Person', row_id: String(ended.person), method: 'expired',
+      scope: `ended ${new Date(ended.expires_at as string).toISOString()}`, required: true }, tx)
+}
+
+const SWEEP_MS = 60_000
+let lastSweep = 0
+/**
+ * Expired View as rows are ended and logged by any request to the instance, at
+ * most once a minute per server, so an end is on the record even when the
+ * tester never comes back.
+ */
+export async function sweepExpiredViewAs(now = false): Promise<void> {
+  if (!now && Date.now() - lastSweep < SWEEP_MS) return
+  lastSweep = Date.now()
+  const [due] = await sql`select 1 from view_as_session where expires_at <= now() limit 1`
+  if (due) await sql.begin(endExpired)
 }
 
 /** The people the app describes, in the order asked; a name only where it can't. */

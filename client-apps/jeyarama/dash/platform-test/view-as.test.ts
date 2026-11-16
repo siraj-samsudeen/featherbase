@@ -8,6 +8,7 @@ import { sandboxRequest } from '../pg-test-shared'
 import { tableRelation } from '../../src/table-engine'
 import { sql } from '../../src/db'
 import { issueSession } from '../../src/auth'
+import { sweepExpiredViewAs } from '../../src/view-as'
 import { APP_DIR, REPORT_ROWS, createCoreTables, installApp, pinned, saveRow } from './helpers'
 
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
@@ -139,6 +140,17 @@ describe('View as: a tester sees what a person sees', () => {
     expect(await reports(tester)).toEqual(['open'])
     expect(await sql`select count(*)::int as n from view_as_session`).toEqual([{ n: 0 }])
     expect(await sql`select method from access_log where operation = 'view_as_end' order by created_at`).toEqual([{ method: 'expired' }, { method: 'no_longer_allowed' }])
+  })
+
+  test('a View as nobody comes back to is ended on the record when its time is up', async ({ admin, createUser }) => {
+    const { tester, buyer } = await setup(admin, createUser)
+    await ok(start(tester, buyer.user))
+    await sql`update view_as_session set expires_at = now() - interval '5 minutes'`
+    // No request from the tester: the instance's own sweep ends it.
+    await sweepExpiredViewAs(true)
+    const [ended] = await sql`select "user", reference_name, method, scope from access_log where operation = 'view_as_end'`
+    expect([ended?.user, ended?.reference_name, ended?.method, String(ended?.scope).startsWith('ended ')]).toEqual([tester.user, buyer.user, 'expired', true])
+    expect(await sql`select count(*)::int as n from view_as_session`).toEqual([{ n: 0 }])
   })
 
   test('signing out ends it, on the record', async ({ admin, createUser }) => {

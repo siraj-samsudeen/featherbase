@@ -10,7 +10,7 @@ import { assertRowsWritable } from './system-written'
 import { assertNotView, storedTable } from './views'
 import { AppError, errorResponse } from './errors'
 import { runInSession } from './session-context'
-import { activeViewAs, endViewAs, endViewAsSession, searchViewAs, startViewAs, viewAsRoute, viewAsState } from './view-as'
+import { activeViewAs, endViewAs, endViewAsSession, searchViewAs, sweepExpiredViewAs, startViewAs, viewAsRoute, viewAsState } from './view-as'
 import { runViewingAs } from './view-as-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { tableStorageIdentity } from './table-engine'
@@ -323,17 +323,18 @@ app.post('/api/logout', async (c) => {
     const session = await sessionToRevoke(credential)
     if (!session) continue
     closeSessionSockets(session.jti)
-    // #1222: signing out ends a View as too, on the record.
-    try {
-      await endViewAsSession(session.jti, 'sign_out')
-    } catch (err) {
-      console.error('sign-out: ending View as failed', err)
-      incomplete = true
-    }
     try {
       await revokeSession(session)
     } catch (err) {
       console.error('sign-out: revoking a session failed', err)
+      incomplete = true
+    }
+    // #1222: signing out ends a View as too, on the record: after the revocation, so a
+    // start racing the sign-out finds the session ended and refuses.
+    try {
+      await endViewAsSession(session.jti, 'sign_out')
+    } catch (err) {
+      console.error('sign-out: ending View as failed', err)
       incomplete = true
     }
   }
@@ -634,6 +635,7 @@ app.use('/api/*', async (c, next) => {
   // #1222: a session viewing as someone reads as that person. Anything else
   // (its own View as controls, any change) runs as the tester themself, never
   // as the person viewed; the pages offer no change while viewing.
+  await sweepExpiredViewAs()
   const viewing = await activeViewAs(user)
   const route = viewing ? viewAsRoute(c.req.method, c.req.path) : 'tester'
   if (viewing && route === 'drop') return c.body(null, 204)
