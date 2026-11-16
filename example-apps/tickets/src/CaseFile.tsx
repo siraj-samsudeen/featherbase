@@ -598,14 +598,6 @@ export function CaseFile({
                 {support && (
                   <>
                     {editing && (
-                      <button
-                        className="secondary"
-                        onClick={() => setEditing(false)}
-                      >
-                        Cancel editing
-                      </button>
-                    )}
-                    {editing && (
                       <form
                         id="action-edit"
                         className="card"
@@ -672,7 +664,11 @@ export function CaseFile({
                             requires the dependent checks again. The original
                             message cannot be edited.
                           </p>
-                          <button className="primary">Save request</button>
+                          {/* #1233: Cancel sits beside Save, as on every other form here, and drops the draft. */}
+                          <div className="actions">
+                            <button type="button" onClick={() => { setKind(ticket.kind); setDraft(structured ?? {}); setEditing(false) }}>Cancel</button>
+                            <button className="primary">Save request</button>
+                          </div>
                         </fieldset>
                       </form>
                     )}

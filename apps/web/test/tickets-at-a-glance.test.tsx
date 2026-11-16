@@ -89,3 +89,24 @@ describe('the ticket list reads at a glance (#1233)', () => {
     void session
   })
 })
+
+describe('Edit request sits in its own form with Cancel beside Save (#1233)', () => {
+  test('Cancel closes the form and drops what was typed', async ({ admin, createUser }) => {
+    const t = new Tickets(admin, createUser)
+    await t.complaint()
+    await open(t, 'Support')
+    fireEvent.click(within(actions()).getByRole('button', { name: 'More ▾' }))
+    fireEvent.click(within(actions()).getByRole('menuitem', { name: 'Edit request' }))
+    const form = await waitFor(() => document.getElementById('action-edit')!)
+    const buttons = within(form).getAllByRole('button').map(b => b.textContent)
+    expect(buttons.slice(-2)).toEqual(['Cancel', 'Save request'])
+    expect(screen.queryByRole('button', { name: 'Cancel editing' })).toBeNull()
+    fireEvent.change(within(form).getByLabelText('Public subject'), { target: { value: 'Typed then abandoned' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Cancel' }))
+    expect(document.getElementById('action-edit')).toBeNull()
+    fireEvent.click(within(actions()).getByRole('button', { name: 'More ▾' }))
+    fireEvent.click(within(actions()).getByRole('menuitem', { name: 'Edit request' }))
+    const again = await waitFor(() => document.getElementById('action-edit')!)
+    expect((within(again).getByLabelText('Public subject') as HTMLInputElement).value).not.toBe('Typed then abandoned')
+  })
+})
