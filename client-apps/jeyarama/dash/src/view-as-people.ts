@@ -53,5 +53,6 @@ export async function viewAsPeople(ctx: AccessContext, on: string = istToday()):
 async function describe(ctx: AccessContext, persons: string[], on: string): Promise<Person[]> {
   const names = await personNames(ctx, persons)
   const who = await whoIs(ctx.baseTables!, persons, on)
-  return persons.map(person => ({ person, name: names.get(person) ?? 'Someone you can’t see', code: who.get(person)?.code ?? null, jobs: who.get(person)?.jobs ?? [] }))
+  // A name the tester can't read here is left blank: the platform, which knows every name, fills it in.
+  return persons.map(person => ({ person, name: names.get(person) ?? '', code: who.get(person)?.code ?? null, jobs: who.get(person)?.jobs ?? [] }))
 }

@@ -628,6 +628,15 @@ app.post('/deliver/app', async (c) => {
   return c.json(await deliverApp(await c.req.json().catch(() => null)))
 })
 
+/** #1222: an app the person being viewed can't open. Nothing is asked in their name. */
+function viewingNoAccessPage(name: string): string {
+  const who = name.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`)
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not open to ${who}</title></head>
+    <body style="font:16px system-ui;background:#f4f5f6;color:#1c2126;margin:0;padding:8vw"><main style="max-width:36rem;margin:auto;background:white;border:1px solid #ebeef0;border-radius:8px;padding:2rem">
+    <h1>${who} can't open this application</h1><p>You are viewing as ${who}, for viewing only. They have no access to it, so there is nothing of theirs to see here.</p>
+    <p><a href="/dash/">Back to Dash</a>, where the View as banner has Switch and Exit.</p></main></body></html>`
+}
+
 // ---- API-004: everything below requires a valid session --------------------
 
 app.use('/api/*', async (c, next) => {
@@ -761,13 +770,15 @@ app.get('*', async (c, next) => {
     }
     let resource
     let user: SessionUser | undefined
+    let viewing: Awaited<ReturnType<typeof activeViewAs>> = null
     try {
       const signedIn = await resolveToken(authCredential(c))
       // #1222: while viewing as someone, an app's page opens as it does for them.
-      const viewing = await activeViewAs(signedIn)
+      viewing = await activeViewAs(signedIn)
       user = viewing?.user ?? signedIn
       const open = (as: string) => appAsset(name, asset, as, c.req.header('accept')?.includes('text/html'))
-      resource = viewing ? await runViewingAs(viewing.as, () => open(viewing.user.row_id)) : await open(signedIn.row_id)
+      const as = viewing
+      resource = as ? await runViewingAs(as.as, () => open(as.user.row_id)) : await open(signedIn.row_id)
     } catch (error) {
       if (!(error instanceof AppError)) throw error
       const navigation = !asset || c.req.header('accept')?.includes('text/html')
@@ -776,6 +787,8 @@ app.get('*', async (c, next) => {
           `/featherbase/login?next=${encodeURIComponent(`${url.pathname}${url.search}`)}`,
         )
       if (!navigation || path.extname(asset)) throw error
+      // #1222: while viewing, nothing is asked in the viewed person's name; just say they can't open it.
+      if (viewing) return c.html(viewingNoAccessPage(viewing.as.name), 403)
       // #955: a served app this person cannot open: opening it is the request.
       const asked = user && (await requestAccess(user.row_id, name))
       if (asked && asked.state !== 'open')

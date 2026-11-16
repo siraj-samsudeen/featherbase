@@ -151,7 +151,8 @@ export function ViewAsPicker({ state, autoFocus = false }: {
   const viewing = state.viewing?.person
   const cap = 5
   const recent = (state.recent ?? []).filter((p) => p.person !== viewing).slice(0, cap)
-  const frequent = (state.frequent ?? []).filter((p) => p.person !== viewing && !recent.some((r) => r.person === p.person)).slice(0, cap)
+  // Like Featherbase's sidebar, someone can be both recent and frequent.
+  const frequent = (state.frequent ?? []).filter((p) => p.person !== viewing).slice(0, cap)
   return (
     <div className="flex flex-col gap-1" data-testid="view-as-picker">
       <label htmlFor={inputId} className="sr-only">Find a person to view as</label>
@@ -307,7 +308,7 @@ export function ViewAsPaletteButton({ compact }: { compact: boolean }) {
         {!compact && <kbd className="ml-1 rounded border border-border px-1 text-[10px] text-ink-subtle">⌃⇧K</kbd>}
       </button>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-scrim px-2 pt-[12vh]" data-testid="view-as-palette">
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-scrim/40 px-2 pt-[12vh]" data-testid="view-as-palette">
           <div ref={card} role="dialog" aria-modal="true" aria-label="View as" className={cardClasses('w-[min(36rem,100%)] p-3')}>
             <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-ink"><UserRoundSearch aria-hidden size={16} />View as someone</h2>
             <ViewAsPicker state={data} autoFocus />

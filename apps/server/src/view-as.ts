@@ -191,7 +191,10 @@ async function describe(tester: string, persons: string[]): Promise<ViewAsPerson
     for (const entry of peopleOf(answer)) described.set(entry.person, entry)
   }
   const out: ViewAsPerson[] = []
-  for (const person of persons) out.push(described.get(person) ?? { person, name: await nameOf(person) })
+  for (const person of persons) {
+    const entry = described.get(person) ?? { person, name: '' }
+    out.push(entry.name ? entry : { ...entry, name: await nameOf(person) })
+  }
   return out
 }
 
@@ -201,7 +204,7 @@ function peopleOf(answer: unknown): ViewAsPerson[] {
   return answer.flatMap((entry) => {
     const e = entry as Record<string, unknown>
     if (typeof e?.person !== 'string' || typeof e.name !== 'string') return []
-    return [{ person: e.person, name: e.name, code: typeof e.code === 'string' ? e.code : null,
+    return [{ person: e.person, name: e.name.trim(), code: typeof e.code === 'string' ? e.code : null,
       jobs: Array.isArray(e.jobs) ? e.jobs.filter((job): job is string => typeof job === 'string') : [] }]
   })
 }

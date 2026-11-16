@@ -118,6 +118,15 @@ describe('View as on the platform', () => {
     expect(await tester.get('/api/view_as/people?q=%25%25')).toEqual([])
   })
 
+  test("opening an app the person can't open asks for nothing in their name", async ({ admin, createUser }) => {
+    const { tester } = await install(admin, createUser)
+    const outsider = await createUser({ email: 'outsider@example.test', roles: [] })
+    expect((await status(start(tester, outsider.user)))[0]).toBe(200)
+    const page = await tester.fetch('/barproof/', { headers: { accept: 'text/html' } })
+    expect([page.status, await page.text()]).toEqual([403, expect.stringContaining("can't open this application")])
+    expect(await sql`select count(*)::int as n from access_request`).toEqual([{ n: 0 }])
+  })
+
   test('an access token never views as anyone', async ({ admin, createUser }) => {
     const { tester, person } = await install(admin, createUser)
     const { token } = await issueAccessToken(tester.user!, 'view as 1222', null)
