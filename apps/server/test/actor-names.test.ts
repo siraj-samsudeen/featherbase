@@ -217,3 +217,17 @@ test('a row shared directly with someone names who made it, though they may read
   const other = await createUser({ roles: [] })
   expect(await actorNamesOn(other, 'Act Shared', [writer.user!])).toEqual({ [writer.user!]: null })
 })
+
+test('more than a hundred shared rows: an actor on the last one is still named', async ({ admin, createUser }) => {
+  const { sql } = await import('../src/db')
+  await admin.post('/api/table_def', { name: 'Act Many', columns: [{ column_name: 'body', column_type: 'Data' }] })
+  await grantRole(admin, { role: 'Act Many Writer', table: 'Act Many', can_read: true, can_create: true })
+  const busy = await createUser({ roles: ['Act Many Writer'], fullName: 'Busy Writer' })
+  const late = await createUser({ roles: ['Act Many Writer'], fullName: 'Late Writer' })
+  const recipient = await createUser({ roles: [] })
+  const share = (id: string) => admin.post('/api/save_row', { table: 'Share', row: { share_table: 'Act Many', share_name: id, person: recipient.user, read: true } })
+  for (let i = 0; i < 101; i++) await share((await busy.post<{ row_id: string }>('/api/save_row', { table: 'Act Many', row: { body: `b${i}` } })).row_id)
+  await share((await late.post<{ row_id: string }>('/api/save_row', { table: 'Act Many', row: { body: 'last' } })).row_id)
+  expect(Number((await sql`select count(*) as n from share where share_table = 'Act Many' and person = ${recipient.user!}`)[0]!.n)).toBe(102)
+  expect(await actorNamesOn(recipient, 'Act Many', [late.user!, busy.user!])).toEqual({ [late.user!]: 'Late Writer', [busy.user!]: 'Busy Writer' })
+}, 120_000)

@@ -11,7 +11,9 @@ import { SYSTEM_ACTOR_LABELS } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
 import { scopedWhere } from './query'
-import { canRetire } from './table-engine'
+import { canRetire, tableRelation } from './table-engine'
+import { getMeta } from './meta'
+import { isBound } from './sources/dispatch'
 import { displayName, principalNames } from './people-directory'
 import { ROSTER_LINK_ACTOR } from './roster-link-actor'
 
@@ -106,13 +108,22 @@ export async function actorNamesOn(viewer: string, table: unknown, ids: unknown)
   // Rows shared directly with the viewer are readable without the Table's
   // grant: each is opened as the viewer (getDoc: mandatory access, parent and
   // Data Scope checks), and who made, changed or retired it counts (Codex).
-  const shares = await sql`select distinct share_name from share
-    where share_table = ${table} and (person = ${viewer} or service_account = ${viewer}) and share_name is not null limit 100`
-  if (shares.length) {
+  // Only shared rows whose actor columns hold an id still unnamed are
+  // candidates, so no share is skipped by a cap (Codex round 14).
+  const pending = () => wanted.filter((id) => !acted.has(id))
+  const meta = await getMeta(table).catch(() => null)
+  const relation = meta && !isBound(meta) ? await tableRelation(table).catch(() => null) : null
+  if (relation && pending().length) {
+    const stamps = ['created_by', 'updated_by', ...(canRetire(meta!) ? ['retired_by'] : [])]
+    const rows = await sql`select distinct s.share_name from share s
+      join ${sql(relation)} r on r.${sql(meta!.row_key)} = s.share_name
+      where s.share_table = ${table} and (s.person = ${viewer} or s.service_account = ${viewer})
+        and (${stamps.map((c, i) => sql`${i ? sql`or ` : sql``}r.${sql(c)} = any(${pending()})`)})`
     const { getDoc } = await import('./document')
-    for (const share of shares) {
-      const doc = await getDoc(table, String(share.share_name), viewer).catch(() => null)
-      for (const column of ['created_by', 'updated_by', 'retired_by'])
+    for (const row of rows) {
+      if (!pending().length) break
+      const doc = await getDoc(table, String(row.share_name), viewer).catch(() => null)
+      for (const column of stamps)
         if (doc && wanted.includes(String(doc[column]))) acted.add(String(doc[column]))
     }
   }
