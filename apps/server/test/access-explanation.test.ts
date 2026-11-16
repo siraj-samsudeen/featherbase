@@ -246,7 +246,11 @@ test('#1224 the page names the person it is about, even to a viewer who may not 
   const person = await createUser({ roles: [], fullName: 'Ae Named Person' })
   const own = await person.get<{ person_name: string; apps: { name: string; title: string }[] }>(pageOf(person.user!))
   expect(own.person_name).toBe('Ae Named Person')
-  expect(Array.isArray(own.apps)).toBe(true)
+  expect(own.apps).toEqual([])
+  // An installed app with pages of its own, open to everyone: listed by name, title and address.
+  await discoverPackages([resolve('../..', 'test-apps/other')])
+  await admin.post('/api/install_app', { name: 'other' })
+  expect((await person.get<{ apps: unknown[] }>(pageOf(person.user!))).apps).toEqual([{ name: 'other', title: 'Other tasks', href: '/other/' }])
 })
 
 test('#1224 a row is linkable only when the viewer may open that row, not just its Table', async ({ admin, createUser }) => {

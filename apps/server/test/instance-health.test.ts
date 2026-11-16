@@ -159,6 +159,13 @@ describe('the checks (5.1)', () => {
     expect(applied.message).toMatch(/ by an unnamed principal for production from revision abc123\.$/)
   })
 
+  test('an apply by a service account names it as automation', async ({ admin }) => {
+    await apply()
+    const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-settings', roles: [] })
+    await sql`update instance_settings_apply set applied_by = ${account.row_id}`
+    expect(byKey(await runHealthChecks(), 'settings-applied').message).toContain(' by Automation (settings).')
+  })
+
   test('settings match the file: a row field that drifted is named with its row', async () => {
     await sql`delete from instance_settings_apply`
     await apply({ settings: { 'Scheduled Job': [{ row_id: 'disable_leavers', enabled: false }] } })
