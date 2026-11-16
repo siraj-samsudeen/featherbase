@@ -25,6 +25,11 @@ export function ReportIssue({ reportKey, reportName, store, month, diveFilters, 
   // submission still going, its answer, or its failure, and a retry resends that submission itself.
   const pending = useRef<Submission | null>(null)
   const [sending, setSending] = useState<Sending>({ busy: false, sent: null, error: null })
+  // The reader moving to another store or month is a new view to report on: an unanswered submission
+  // of the old one is not resent for it. (A Dive's own messages change no store here, so they never drop it.)
+  useEffect(() => { if (!sending.busy) { pending.current = null; setSending(now => now.busy ? now : { busy: false, sent: null, error: null }) } },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [reportKey, store, month])
   useEffect(() => { let live = true; ticketsRunning().then(yes => { if (live) setRunning(yes) }, () => {}); return () => { live = false } }, [])
   const refresh = useCallback(() => openFeedback(reportKey).then(answer => setMine(answer.tickets), () => setMine(null)), [reportKey])
   useEffect(() => { if (running) void refresh() }, [running, refresh])

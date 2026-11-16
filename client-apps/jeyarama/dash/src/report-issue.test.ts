@@ -109,6 +109,13 @@ describe('a retried submission', () => {
     expect(again.payload.details.seen_at).toBe('2026-11-16T14:43:00.000Z')
   })
 
+  it('keeps the view it was made on when the page updates under it, as a late Dive message does', () => {
+    const first = submissionFor(null, CONTEXT, view, answer, NOW, key)
+    const later = submissionFor(first, CONTEXT, { ...view, diveFilters: { month: '2026-11', store: '9901' } }, answer, NOW, key)
+    expect(later).toBe(first)
+    expect(later.payload.details).not.toHaveProperty('filters')
+  })
+
   it('is a new submission once the reader changes what they send', () => {
     const first = submissionFor(null, CONTEXT, view, answer, NOW, key)
     const changed = submissionFor(first, CONTEXT, view, { ...answer, note: 'Since Monday' }, NOW, key)

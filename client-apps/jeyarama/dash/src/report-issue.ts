@@ -122,11 +122,14 @@ export function viewPath(location: { pathname: string; search: string }, reportK
   return `${path}?${query}`
 }
 
-/** One submission, kept for its retries: the same key and payload until the reader changes what they send. */
+/** One submission, kept for its retries: the same key and payload until the reader changes what they say. */
 export interface Submission { key: string; answer: string; said: Answer; payload: ReturnType<typeof ticketPayload> }
 
-/** The submission to send now: the pending one if the reader's answer is unchanged, else a new one. */
+/**
+ * The submission to send now: the pending one, frozen with the view it was made on, while the reader's
+ * own answer is unchanged (the page updating under it never makes a new one); else a new one.
+ */
 export function submissionFor(pending: Submission | null, context: FeedbackContext, view: PageView, answer: Answer, now: Date, newKey: () => string): Submission {
-  const said = JSON.stringify([answer.problem, answer.about, answer.note, view])
+  const said = JSON.stringify([answer.problem, answer.about, answer.note])
   return pending && pending.answer === said ? pending : { key: newKey(), answer: said, said: answer, payload: ticketPayload(context, view, answer, now) }
 }
