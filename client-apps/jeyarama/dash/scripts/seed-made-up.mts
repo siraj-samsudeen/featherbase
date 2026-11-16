@@ -235,6 +235,10 @@ for (const staff of org.sectionPeople as { code: string | null; jobs: [string, s
   for (const [assignment_id, job, site, section, reports_to] of staff.jobs)
     await keep('Job Assignment', assignment_id, { assignment_id, employee: staff.code, job, site, section, reports_to, starts_on: '2026-10-01', source_key: 'Made-up' })
 
+// #1217: a grant the company-wide manager gave one of Hema's team, which Hema sees but can't take away.
+const [usha] = await sql`select row_id from person where lower(email) = 'sections-buyerone@example.test'`
+await save('dash.report_access', { report: 'vendor_sales', person: String(usha.row_id) }).catch(() => {})
+
 // #1195: departments already set up, which the made-up Department Manager meets on Your department.
 for (const [department_id, store, name, manager, sections] of org.departments as [string, string, string, string, string[]][]) {
   await keep('Department', department_id, { department_id, store, name, manager, starts_on: '2026-10-01', source_key: 'Made-up' })
@@ -294,6 +298,7 @@ ${says(org.readers, 'reader')}
 Your sections (/dash/?view=sections), same password:
 ${says(org.sectionPeople, 'sections')}
 Report access (/dash/?view=access), same password:
-  access-manager@example.test          Report Access Manager: gives reports and bundles, and sees who has what`)
+  access-manager@example.test          Report Access Manager: gives reports and bundles, and sees who has what
+  sections-categoryhead@example.test   Team Report Manager: gives reports to her own team only (#1217)`)
 await sql.end()
 process.exit(0)

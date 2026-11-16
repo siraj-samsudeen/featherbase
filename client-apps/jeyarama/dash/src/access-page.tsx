@@ -6,10 +6,14 @@ import { useCallback, useEffect, useState } from 'react'
 import { Button, Card, DataList, EmptyState, Field, KindTag, Notice, SearchInput, Select, Skeleton, TextInput, type DataColumn } from '@featherbase/shop-floor'
 import { act, read } from './api'
 import { DashSidebar } from './sections-page'
+import { PickerToggle, TeamNote, TeamSelect, startPickerLayout, type PickerLayout, type TeamMember } from './team-access-page'
 
 type Kind = 'Person' | 'Role' | 'Job'
-interface Row { id: string; updated_at: string; gives: { kind: 'Report' | 'Bundle'; name: string }; to: { kind: Kind; name: string }; given_by: string; given_on: string }
+interface Row { id: string; updated_at: string; gives: { kind: 'Report' | 'Bundle'; name: string }; to: { kind: Kind; name: string }; given_by: string; given_on: string; removable?: boolean }
 interface Page {
+  /** #1217: 'team' for a Team Report Manager, who gives only to `team`. */
+  scope?: 'company' | 'team'
+  team?: TeamMember[]
   reports: { key: string; name: string }[]
   bundles: { id: string; name: string; reports: { member: string; updated_at: string; key: string; name: string }[] }[]
   roles: string[]
@@ -43,7 +47,8 @@ export function ReportAccess() {
           {failed && !page && (
             <Card data-testid="access-refused"><EmptyState title="This page couldn't open" body={failed} action={failed.startsWith('Only a Report Access Manager') ? undefined : <Button onClick={() => void load()}>Try again</Button>} /></Card>
           )}
-          {page && (
+          {page && page.scope === 'team' && <TeamAccess page={page} onChanged={load} />}
+          {page && page.scope !== 'team' && (
             <>
               <p className="fd-muted">A person sees every report given to them, through a role they hold, or through their current job. What a report shows them still follows their job.</p>
               <GiveBar page={page} onGiven={load} />
@@ -59,8 +64,24 @@ export function ReportAccess() {
   )
 }
 
-/** "Give [report or bundle] to [person, role or job]". */
-function GiveBar({ page, onGiven }: { page: Page; onGiven: () => Promise<unknown> }) {
+/** #1217: a Team Report Manager's page: their team only, no roles, jobs, bundle tools or waiting list. */
+function TeamAccess({ page, onChanged }: { page: Page; onChanged: () => Promise<unknown> }) {
+  const [layout, setLayout] = useState<PickerLayout>(startPickerLayout)
+  const team = page.team ?? []
+  return (
+    <>
+      <PickerToggle value={layout} onChange={setLayout} />
+      <TeamNote team={team} />
+      <GiveBar page={page} onGiven={onChanged} team={{ members: team, layout }} />
+      <WhoHasWhat rows={page.rows} onRemoved={onChanged} empty="Nobody in your team has a report given to them as a person yet." />
+      <PersonLookup team={{ members: team, layout }} />
+    </>
+  )
+}
+type TeamPicking = { members: TeamMember[]; layout: PickerLayout }
+
+/** "Give [report or bundle] to [person, role or job]"; to a person in their team only, for a Team Report Manager. */
+function GiveBar({ page, onGiven, team }: { page: Page; onGiven: () => Promise<unknown>; team?: TeamPicking }) {
   const [gives, setGives] = useState('')
   const [kind, setKind] = useState<Kind>('Person')
   const [receiver, setReceiver] = useState('')
@@ -109,14 +130,16 @@ function GiveBar({ page, onGiven }: { page: Page; onGiven: () => Promise<unknown
               )}
             </Select>
           </Field>
-          <Field label="To" className="w-40">
+          {!team && <Field label="To" className="w-40">
             <Select value={kind} onChange={event => { setKind(event.target.value as Kind); setReceiver(''); setPerson(null) }} data-testid="give-kind">
               <option value="Person">A person</option>
               <option value="Role">A role</option>
               <option value="Job">A job</option>
             </Select>
-          </Field>
-          {kind === 'Person' && <PersonPicker chosen={person} onChoose={setPerson} label="Person" />}
+          </Field>}
+          {kind === 'Person' && (team?.layout === 'list'
+            ? <TeamSelect team={team.members} chosen={person} onChoose={setPerson} label="To someone in your team" />
+            : <PersonPicker chosen={person} onChoose={setPerson} label={team ? 'To someone in your team' : 'Person'} />)}
           {kind === 'Role' && (
             <Field label="Role" className="min-w-56 flex-1">
               <Select value={receiver} onChange={event => setReceiver(event.target.value)} data-testid="give-role">
@@ -185,7 +208,7 @@ function PersonPicker({ chosen, onChoose, label }: { chosen: Found | null; onCho
 }
 
 /** Who has what, with Remove after a confirmation naming what goes. */
-function WhoHasWhat({ rows, onRemoved }: { rows: Row[]; onRemoved: () => Promise<unknown> }) {
+function WhoHasWhat({ rows, onRemoved, empty }: { rows: Row[]; onRemoved: () => Promise<unknown>; empty?: string }) {
   const [confirming, setConfirming] = useState<Row | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -213,7 +236,8 @@ function WhoHasWhat({ rows, onRemoved }: { rows: Row[]; onRemoved: () => Promise
           <Button variant="danger" loading={busy} onClick={() => void remove(row)} data-testid="remove-yes">Remove</Button>
           <Button variant="quiet" disabled={busy} onClick={() => setConfirming(null)}>Cancel</Button>
         </span>
-      ) : <Button variant="quiet" onClick={() => { setError(null); setConfirming(row) }} data-testid="remove">Remove</Button>
+      ) : row.removable === false ? <span className="text-sm text-ink-muted" data-testid="not-yours">Not given by you</span>
+        : <Button variant="quiet" onClick={() => { setError(null); setConfirming(row) }} data-testid="remove">Remove</Button>
     ) },
   ]
   return (
@@ -221,14 +245,14 @@ function WhoHasWhat({ rows, onRemoved }: { rows: Row[]; onRemoved: () => Promise
       <div className="flex flex-col gap-3 p-4">
         {error && <Notice tone="negative">{error}</Notice>}
         <DataList caption="Who has what" rows={rows} columns={columns} rowKey={row => row.id} rowTestId={() => 'access-row'} layout="table"
-          empty={{ title: "Nobody has a report yet", body: "Give one above. Until then nobody sees any report." }} />
+          empty={{ title: "Nobody has a report yet", body: empty ?? "Give one above. Until then nobody sees any report." }} />
       </div>
     </Card>
   )
 }
 
 /** What one person sees, and why. */
-function PersonLookup() {
+function PersonLookup({ team }: { team?: TeamPicking } = {}) {
   const [person, setPerson] = useState<Found | null>(null)
   const [answer, setAnswer] = useState<Lookup | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -243,7 +267,9 @@ function PersonLookup() {
   return (
     <Card title="What a person sees" data-testid="person-lookup">
       <div className="flex flex-col gap-3 p-4">
-        <div className="flex flex-wrap items-end gap-3"><PersonPicker chosen={person} onChoose={setPerson} label="Look up a person" /></div>
+        <div className="flex flex-wrap items-end gap-3">{team?.layout === 'list'
+          ? <TeamSelect team={team.members} chosen={person} onChoose={setPerson} label="Look up someone in your team" />
+          : <PersonPicker chosen={person} onChoose={setPerson} label={team ? 'Look up someone in your team' : 'Look up a person'} />}</div>
         {error && <Notice tone="negative">{error}</Notice>}
         {answer && answer.reports.length === 0 && <p data-testid="lookup-none">{answer.name} sees no report. Nothing has been given to them, their roles or their job.</p>}
         {answer && answer.reports.length > 0 && (
