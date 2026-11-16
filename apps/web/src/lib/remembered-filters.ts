@@ -14,9 +14,17 @@ const settingsPath = (table: string) => `/api/user_settings/${encodeURIComponent
  *  save cannot land after a newer one and bring back older filters. */
 let filtersWrite: Promise<unknown> = Promise.resolve()
 
+/** What this tab last read or saved for a person's list of a Table. Every
+ *  change made in this tab passes through rememberFilters, so a bare open can
+ *  decide at once from it, with no wait and no empty page; only a Table not
+ *  yet seen in this tab waits for the server's answer. */
+const known = new Map<string, Filter[]>()
+const knownKey = (table: string) => `${getToken() ?? ''}\u0000${table}`
+
 /** Remembers the list's filters now on (none included: a list cleared of its
  *  filters opens unfiltered next time). */
 export function rememberFilters(table: string, filters: Filter[]): void {
+  known.set(knownKey(table), filters)
   const token = getToken()
   filtersWrite = filtersWrite
     .then(() => {
@@ -31,10 +39,13 @@ export function rememberFilters(table: string, filters: Filter[]): void {
  *  filters, once known: `undefined` while asking, `[]` for none. Any other open
  *  shows what its address says, so the answer is `[]` at once.
  *
- *  Each arrival at a bare open is its own visit with its own read, including on
- *  the same Table without the list unmounting (a filtered link, then the
- *  sidebar's bare one): an earlier visit's answer is never reused. A read waits
- *  for any save still queued, so it never brings back older filters. */
+ *  Each arrival at a bare open is its own visit, including on the same Table
+ *  without the list unmounting (a filtered link, then the sidebar's bare one).
+ *  It is decided at once from what this tab last read or saved for the Table
+ *  (every change here passes through rememberFilters), so returning to a list
+ *  shows it with no wait; a Table not yet seen in this tab is read from the
+ *  server, after any save still queued. A change made on another device shows
+ *  on the next page load. */
 export function useRememberedFilters(table: string, fresh: boolean): Filter[] | undefined {
   // The visit: counted up each time the address becomes a bare open (derived
   // during render, so no frame ever sees the previous visit's answer).
@@ -46,7 +57,8 @@ export function useRememberedFilters(table: string, fresh: boolean): Filter[] | 
   }
   const [answer, setAnswer] = useState<{ table: string; visit: number; filters: Filter[] } | undefined>()
   useEffect(() => {
-    if (!fresh) return
+    // Known in this tab: decided already, with no read.
+    if (!fresh || known.has(knownKey(table))) return
     let live = true
     filtersWrite
       .then(() => api.get<{ settings: { filters?: unknown } | null }>(settingsPath(table)))
@@ -54,11 +66,14 @@ export function useRememberedFilters(table: string, fresh: boolean): Filter[] | 
         // Read back through the address's own parser, so a stored value that is
         // not a list of filters reads as none.
         const stored = res.settings?.filters
-        if (live) setAnswer({ table, visit, filters: Array.isArray(stored) ? (parseFilters(JSON.stringify(stored)) as Filter[]) : [] })
+        const filters = Array.isArray(stored) ? (parseFilters(JSON.stringify(stored)) as Filter[]) : []
+        known.set(knownKey(table), filters)
+        if (live) setAnswer({ table, visit, filters })
       })
       .catch(() => { if (live) setAnswer({ table, visit, filters: [] }) })
     return () => { live = false }
   }, [table, fresh, visit])
   if (!fresh) return []
-  return answer && answer.table === table && answer.visit === visit ? answer.filters : undefined
+  if (answer && answer.table === table && answer.visit === visit) return answer.filters
+  return known.get(knownKey(table))
 }

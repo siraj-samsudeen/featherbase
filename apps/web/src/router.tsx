@@ -469,7 +469,7 @@ function NavigatedList({ table, filters, path }: { table: string; filters?: stri
     return parsed.length ? { screen: 'list', table, filters: parsed } : { screen: 'list', table }
   }, [table, filters])
   const nav = useAddressNavigation(here, path)
-  const navigate = tableRoute.useNavigate()
+  const router = useRouter()
   // #1228: a bare open (no filters, no walk in the address) brings back the
   // person's last filters, replacing the address rather than adding a Back step.
   // The list waits for that answer, so it never shows unfiltered first.
@@ -482,7 +482,13 @@ function NavigatedList({ table, filters, path }: { table: string; filters?: stri
   useEffect(() => {
     if (!fresh || remembered === undefined) return
     if (remembered.length) nav.replace({ ...nav.step, filters: remembered })
-    else void navigate({ search: (prev: Record<string, unknown>) => ({ ...prev, filters: '[]' }), replace: true } as never)
+    else {
+      // Only the query changes: the path stays spelled as it was opened (a
+      // Table's exact name is not always its slug, which may be ambiguous).
+      const at = new URL(router.state.location.href, 'http://address.invalid')
+      at.searchParams.set('filters', '[]')
+      router.history.replace(`${at.pathname}${at.search}${at.hash}`, router.state.location.state)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fresh, remembered])
   if (restoring) return <div data-testid="table-page" aria-busy="true" />
