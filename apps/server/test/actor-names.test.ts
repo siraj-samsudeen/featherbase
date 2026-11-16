@@ -204,3 +204,16 @@ test('a sub-table names nobody through its rows; anyone the rule does not name i
   const peopleReader = await createUser({ roles: ['Act People Reader'] })
   expect((await actorNamesOn(peopleReader, 'Act Plan', [planner.user!]))[planner.user!]).toBe('Act Planner Person')
 })
+
+test('a row shared directly with someone names who made it, though they may read neither the Table nor Person', async ({ admin, createUser }) => {
+  await admin.post('/api/table_def', { name: 'Act Shared', columns: [{ column_name: 'body', column_type: 'Data' }] })
+  await grantRole(admin, { role: 'Act Shared Writer', table: 'Act Shared', can_read: true, can_create: true })
+  const writer = await createUser({ roles: ['Act Shared Writer'], fullName: 'Shared Writer' })
+  const row = await writer.post<{ row_id: string }>('/api/save_row', { table: 'Act Shared', row: { body: 'for you' } })
+  const recipient = await createUser({ roles: [] })
+  await admin.post('/api/save_row', { table: 'Share', row: { share_table: 'Act Shared', share_name: row.row_id, person: recipient.user, read: true } })
+  expect(await actorNamesOn(recipient, 'Act Shared', [writer.user!])).toEqual({ [writer.user!]: 'Shared Writer' })
+  // Without the share, nothing.
+  const other = await createUser({ roles: [] })
+  expect(await actorNamesOn(other, 'Act Shared', [writer.user!])).toEqual({ [writer.user!]: null })
+})

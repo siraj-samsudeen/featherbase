@@ -103,6 +103,19 @@ export async function actorNamesOn(viewer: string, table: unknown, ids: unknown)
     const [archive] = await sql`select archived_by from table_def where name = ${scoped.meta.name} and archived_by = any(${wanted})`
     if (archive) acted.add(String(archive.archived_by))
   }
+  // Rows shared directly with the viewer are readable without the Table's
+  // grant: each is opened as the viewer (getDoc: mandatory access, parent and
+  // Data Scope checks), and who made, changed or retired it counts (Codex).
+  const shares = await sql`select distinct share_name from share
+    where share_table = ${table} and (person = ${viewer} or service_account = ${viewer}) and share_name is not null limit 100`
+  if (shares.length) {
+    const { getDoc } = await import('./document')
+    for (const share of shares) {
+      const doc = await getDoc(table, String(share.share_name), viewer).catch(() => null)
+      for (const column of ['created_by', 'updated_by', 'retired_by'])
+        if (doc && wanted.includes(String(doc[column]))) acted.add(String(doc[column]))
+    }
+  }
   const named = await actorNames([...acted])
   for (const id of acted) out[id] = named.get(id) ?? null
   // Anyone this rule does not name is looked up as before, as the viewer: it
