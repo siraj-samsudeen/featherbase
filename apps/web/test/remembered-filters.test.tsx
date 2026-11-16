@@ -9,6 +9,8 @@ import { tableHref } from 'shared'
 /** The router under the fixture, as TanStack's own: it navigates by address and keeps a history. */
 type Router = { navigate: (to: { href: string }) => Promise<void>; history: { back: () => void } }
 import { test, expect, renderApp } from './pg-test'
+import { sql } from 'server/src/db'
+import { invalidateMeta } from 'server/src/meta'
 
 type Admin = Parameters<typeof renderApp>[1]
 const DEPT = 'Rf Department'
@@ -146,3 +148,22 @@ test('Back to the unfiltered list it opened as shows it unfiltered, after a filt
   expect(chips()).toHaveLength(0)
   expect(await rows()).toHaveLength(3)
 }, 45_000)
+
+// Merge train's note on #1228: settling the address must keep the path as it was
+// opened, the remembered filters included. Two legacy Tables of one spelling share
+// a slug, which names neither; opened by its exact name, the list must stay.
+test('remembered filters come back on a Table opened by its exact name, whose slug is ambiguous', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Legacy Rf Probe', id_pattern: 'prompt', title_column: 'place',
+    columns: [{ column_name: 'place', column_type: 'Data', label: 'Place', in_list_view: true }] })
+  await admin.post('/api/save_row', { table: 'Legacy Rf Probe', row: { row_id: 'P1', place: 'Lakeside' } })
+  await admin.post('/api/save_row', { table: 'Legacy Rf Probe', row: { row_id: 'P2', place: 'Hillview' } })
+  // Hyphenated plain names are not legal for new Tables: a pre-existing legacy definition.
+  await sql`insert into table_def (name, module, custom) values ('Legacy-Rf-Probe', 'Route acceptance', true)`
+  invalidateMeta()
+  await admin.put(`/api/user_settings/${encodeURIComponent('Legacy Rf Probe')}`, { filters: [['place', '=', 'Lakeside']] })
+  await renderApp('/featherbase/admin/table/Legacy%20Rf%20Probe', admin)
+  await waitFor(() => expect(chips()).toHaveLength(1), T)
+  expect(chipWords()[0]).toContain('Lakeside')
+  expect(screen.queryByText(/ambiguous/i)).toBeNull()
+  await waitFor(() => expect(screen.getAllByRole('row').slice(1)).toHaveLength(1), T)
+})

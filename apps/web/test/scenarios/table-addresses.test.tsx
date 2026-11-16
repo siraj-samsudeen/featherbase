@@ -344,7 +344,9 @@ describe('table-addresses', () => {
       expect(screen.queryByTestId('list-view')).toBeNull()
       expect(screen.queryByTestId('form-view')).toBeNull()
       await visit('/featherbase/admin/table/Legacy%20Route%20Probe', admin)
-      await onScreen().within(byTestId('list-rows'), (el) => el.assertText('Stock review'))
+      // #1228: a bare open shows the list once the person's saved settings have been read, and may
+      // draw it again when they arrive, so wait for the row itself.
+      await waitFor(() => expect(screen.getByTestId('list-rows')).toHaveTextContent('Stock review'), WAIT)
     })
   })
 

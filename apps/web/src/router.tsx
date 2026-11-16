@@ -484,14 +484,12 @@ function NavigatedList({ table, filters, path }: { table: string; filters?: stri
   const remembered = useRememberedFilters(table, fresh)
   useEffect(() => {
     if (!fresh || remembered === undefined) return
-    if (remembered.length) nav.replace({ ...nav.step, filters: remembered })
-    else {
-      // Only the query changes: the path stays spelled as it was opened (a
-      // Table's exact name is not always its slug, which may be ambiguous).
-      const at = new URL(router.state.location.href, 'http://address.invalid')
-      at.searchParams.set('filters', '[]')
-      router.history.replace(`${at.pathname}${at.search}${at.hash}`, router.state.location.state)
-    }
+    // Only the query changes, for the remembered filters as for none: the path
+    // stays spelled as it was opened (a Table's exact name is not always its
+    // slug, which for two legacy Tables of one spelling names neither).
+    const at = new URL(router.state.location.href, 'http://address.invalid')
+    at.searchParams.set('filters', JSON.stringify(remembered))
+    router.history.replace(`${at.pathname}${at.search}${at.hash}`, router.state.location.state)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fresh, remembered])
   return (
