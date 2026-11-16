@@ -20,11 +20,15 @@ let filtersWrite: Promise<unknown> = Promise.resolve()
  *  yet seen in this tab waits for the server's answer. */
 const known = new Map<string, Filter[]>()
 const knownKey = (table: string) => `${getToken() ?? ''}\u0000${table}`
+/** Each save in this tab counts up its Table's version, so a read that started
+ *  before a save can never overwrite what was saved (Codex review, round 8). */
+const saves = new Map<string, number>()
 
 /** Remembers the list's filters now on (none included: a list cleared of its
  *  filters opens unfiltered next time). */
 export function rememberFilters(table: string, filters: Filter[]): void {
   known.set(knownKey(table), filters)
+  saves.set(knownKey(table), (saves.get(knownKey(table)) ?? 0) + 1)
   const token = getToken()
   filtersWrite = filtersWrite
     .then(() => {
@@ -60,6 +64,8 @@ export function useRememberedFilters(table: string, fresh: boolean): Filter[] | 
     // Known in this tab: decided already, with no read.
     if (!fresh || known.has(knownKey(table))) return
     let live = true
+    const key = knownKey(table)
+    const before = saves.get(key) ?? 0
     filtersWrite
       .then(() => api.get<{ settings: { filters?: unknown } | null }>(settingsPath(table)))
       .then((res) => {
@@ -67,8 +73,10 @@ export function useRememberedFilters(table: string, fresh: boolean): Filter[] | 
         // not a list of filters reads as none.
         const stored = res.settings?.filters
         const filters = Array.isArray(stored) ? (parseFilters(JSON.stringify(stored)) as Filter[]) : []
-        known.set(knownKey(table), filters)
-        if (live) setAnswer({ table, visit, filters })
+        // Only a read still wanted, with no save since it began, says what is known.
+        if (!live || (saves.get(key) ?? 0) !== before) return
+        known.set(key, filters)
+        setAnswer({ table, visit, filters })
       })
       .catch(() => { if (live) setAnswer({ table, visit, filters: [] }) })
     return () => { live = false }

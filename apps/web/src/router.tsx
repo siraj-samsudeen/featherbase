@@ -472,13 +472,15 @@ function NavigatedList({ table, filters, path }: { table: string; filters?: stri
   const router = useRouter()
   // #1228: a bare open (no filters, no walk in the address) brings back the
   // person's last filters, replacing the address rather than adding a Back step.
-  // The list waits for that answer, so it never shows unfiltered first.
+  // The list shows at once and takes them when they arrive, while the address is
+  // still bare: a slow answer never leaves an empty page, and never overrides what
+  // the person has chosen meanwhile (a Table's first open in a tab; later ones are
+  // known in the tab at once).
   // Either way the address is settled: with nothing remembered it says so
   // (`filters=[]`), so Back to this entry later shows it as it was, rather than
   // restoring over it filters chosen since (Codex review, round 2).
   const fresh = filters === undefined && path === undefined
   const remembered = useRememberedFilters(table, fresh)
-  const restoring = fresh && (remembered === undefined || remembered.length > 0)
   useEffect(() => {
     if (!fresh || remembered === undefined) return
     // Only the query changes, for the remembered filters as for none: the path
@@ -489,7 +491,6 @@ function NavigatedList({ table, filters, path }: { table: string; filters?: stri
     router.history.replace(`${at.pathname}${at.search}${at.hash}`, router.state.location.state)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fresh, remembered])
-  if (restoring) return <div data-testid="table-page" aria-busy="true" />
   return (
     <div data-testid="table-page">
       {/* #772: a table copied from a data source shows where from, and Copy again. */}
