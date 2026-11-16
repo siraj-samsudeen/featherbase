@@ -5,6 +5,7 @@ import { adminPageTitle } from 'shared'
 import { useShellTables, type TableSummary } from '../lib/session'
 import { metaQuery, tableLabel } from '../lib/meta'
 import { SearchInput, cardClasses, touchRowClasses } from '@featherbase/shop-floor'
+import { usePageTitle } from '../lib/page-title'
 
 // #80: with the sidebar flipped to Home Pages, this page keeps EVERY table
 // reachable — it is the sidebar's "All tables" entry. Same curation as the
@@ -28,6 +29,7 @@ export function AllTablesPage() {
   /** A Table as people read it: its label, else its name. */
   const nameOf = (t: TableSummary) => labels.get(t.row_id) ?? t.row_id
   const [find, setFind] = useState('')
+  usePageTitle(adminPageTitle('all-tables'))
 
   // The System group's open/closed choice sticks per browser (#74 — the
   // same localStorage-mirror pattern as lib/theme.ts).

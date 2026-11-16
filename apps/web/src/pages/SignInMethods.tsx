@@ -7,6 +7,7 @@ import { ApiError, api, getSessionUser } from '../lib/api'
 import { fmtInstantIST } from '@featherbase/shop-floor'
 import { useI18n } from '../lib/i18n'
 import { Button, Card, Notice, buttonClasses } from '@featherbase/shop-floor'
+import { usePageTitle } from '../lib/page-title'
 
 // person-identities (#275): the ways the signed-in person can get in — their
 // password and each linked outside account — with linking Google and removing
@@ -50,6 +51,7 @@ const LINK_OUTCOMES: Record<string, { tone: 'positive' | 'negative' | 'caution';
 const when = (iso: string | null) => (iso ? fmtInstantIST(iso) : 'never')
 
 export function SignInMethods() {
+  usePageTitle('Sign-in methods')
   const qc = useQueryClient()
   const me = getSessionUser()?.row_id
   const { data, error } = useQuery({

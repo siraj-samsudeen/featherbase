@@ -100,7 +100,7 @@ test("on an app's address the account page's tab title is the app's name", async
   document.title = 'Featherbase'
   onAddressThatOpens('dash')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
-  await waitFor(() => expect(document.title).toBe('Dash'))
+  await waitFor(() => expect(document.title).toBe('Sign-in methods · Dash'))
 })
 
 test('the Sales Target page on the Admin address is named Dash in its bar', async ({ admin }) => {
@@ -137,7 +137,7 @@ test('on the Admin address the account page tab title is Featherbase for someone
   onAddressThatOpens('admin')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
   await settledBar()
-  await waitFor(() => expect(document.title).toBe('Featherbase'))
+  await waitFor(() => expect(document.title).toBe('Sign-in methods · Featherbase'))
 })
 
 // #501 item 3: on the Admin address the account page is named for where the
@@ -156,7 +156,7 @@ test("on the Admin address the account page's tab title names the app a person w
   const viewer = await viewerOnly(admin, createUser, 'viewer.account.tab@example.com')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, viewer)
   await settledBar()
-  await waitFor(() => expect(document.title).toBe('Dash'))
+  await waitFor(() => expect(document.title).toBe('Sign-in methods · Dash'))
 })
 
 test('on the Admin address the account page is named Featherbase for someone who can open nothing', async ({ createUser }) => {
@@ -173,7 +173,7 @@ test("on the Admin address the account page's tab title is Featherbase for someo
   const nobody = await createUser({ email: 'nobody.account.tab@example.com' })
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, nobody)
   await settledBar()
-  await waitFor(() => expect(document.title).toBe('Featherbase'))
+  await waitFor(() => expect(document.title).toBe('Sign-in methods · Featherbase'))
 })
 
 test("on an app's address the account page stays named for the app for someone who cannot use Admin", async ({ createUser }) => {

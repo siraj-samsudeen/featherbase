@@ -106,3 +106,12 @@ test('Clear filters empties the search box as well', async ({ admin }) => {
   await waitFor(() => expect(rows()).toHaveLength(3), T)
   expect(screen.queryAllByTestId('filter-chip')).toHaveLength(0)
 })
+
+// #1224's verifier: the tab reads "<page> · <app>", never the app alone on a page that has a name.
+test("a list's tab reads its Table, then the app; a row's page likewise", async ({ admin }) => {
+  await seed(admin)
+  await renderApp(tableHref(DEPT), admin)
+  await waitFor(() => expect(document.title).toBe('Job Assignment · Featherbase'), T)
+  await renderApp(`${tableHref(DEPT)}/row/D1`, admin)
+  await waitFor(() => expect(document.title).toBe('Job Assignment · Featherbase'), T)
+})

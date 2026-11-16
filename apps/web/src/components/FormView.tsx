@@ -49,6 +49,7 @@ import { ArchivedBanner } from './ArchiveTable'
 import { ContentTabs, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
 import type { Row } from './form-row'
 import { FieldControl } from './FieldControl'
+import { usePageTitle } from '../lib/page-title'
 
 // #545: a JSON column's box holds text while the person types. On save, text
 // typed into it becomes the value it describes; text that isn't JSON is
@@ -93,6 +94,7 @@ export function FormView({
   isNew?: boolean
 }) {
   const meta = useMeta(table)
+  usePageTitle(tableLabel(table, meta.data))
   const describedTable = useMeta(name, table === 'Table' && !isNew)
   const storage = table === 'Table' && !isNew ? describedTable.data?.storage_identity : null
   const [storageCopy, setStorageCopy] = useState('')

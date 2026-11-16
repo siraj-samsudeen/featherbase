@@ -16,6 +16,7 @@ import { RecordLink, TabBar, buttonClasses, cardClasses, iconButtonClasses, labe
 import { List, Menu, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Sun, type LucideIcon } from '@featherbase/shop-floor'
 import { SIDEBAR_SHORTCUT, listenForSidebarKeys, useSidebar } from '../lib/sidebar-collapsed'
 import { APP_ICON } from '../lib/app-icons'
+import { useCurrentPageTitle } from '../lib/page-title'
 
 // #489 (design D3, "One top bar on every address"): one bar, drawn by the
 // platform, on every address and every shell — the Admin screens, an app's
@@ -192,10 +193,11 @@ export function TopBar({
   // person's own on account/no-access pages (item 3, #552). The Portal on the
   // Admin side keeps the tab it was opened with, and an app's own page
   // keeps the title its document gives it (#650).
+  const page = useCurrentPageTitle()
   const titlesTab = !app && (context !== ADMIN || home === ADMIN || forPerson)
   useEffect(() => {
-    if (name && titlesTab) document.title = name
-  }, [name, titlesTab])
+    if (name && titlesTab) document.title = page ? `${page} · ${name}` : name
+  }, [name, titlesTab, page])
   const isPhone = useMediaQuery(PHONE_QUERY)
   const canUseAdmin = Boolean(caps && (caps.admin))
   // #501 item 2: only on an app's address. The Admin address, and a host the

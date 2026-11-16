@@ -4,6 +4,7 @@ import { ApiError, api, getSessionUser } from '../lib/api'
 import { ShownName } from '../lib/people'
 import { Card, EmptyState, Notice, ShieldLock, buttonClasses, fmtDate, fmtInstantIST } from '@featherbase/shop-floor'
 import { AreasLayout, LayoutToggle, RolesLayout, SummaryLayout, reachedTables, useAccessLayout, withImplicitRoles, Actor, OpensContext, Rec, opensFrom, type RoleRow, type TableReach } from './AccessLayouts'
+import { usePageTitle } from '../lib/page-title'
 
 // #628: "What can this person see, and why". The platform's own reasons, from
 // GET /api/access_explanation/:person: roles, the Tables they reach, the Data
@@ -65,6 +66,7 @@ function By({ who, name, when, verb }: { who: string; name?: string | null; when
 }
 
 export function AccessExplanation({ person }: { person: string }) {
+  usePageTitle('What you can see')
   const me = getSessionUser()?.row_id
   const self = me === person
   // #1006: on your own page, every section says "you".

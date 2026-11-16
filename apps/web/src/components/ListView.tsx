@@ -31,6 +31,7 @@ import { SavedViewsBar } from './SavedViewsBar'
 import { RecentStrip } from './RecentStrip'
 import { ExploreSplitButton } from './ExploreSplitButton'
 import { ListRow, NAME_CLIP, PhoneList, cell, isFigure } from './ListRows'
+import { usePageTitle } from '../lib/page-title'
 
 const PAGE = 20
 // #738: a Show columns row is thumb-sized at phone width even under a mouse
@@ -108,6 +109,7 @@ export function ListView({
   const meta = useMeta(table)
   // #1237, #1242: the Table as people read it.
   const label = tableLabel(table, meta.data)
+  usePageTitle(title ? undefined : label)
   const settings = useSettings()
   // #910: on a list page, selecting a row shows it in the drill pane.
   const navigation = useNavigation()
