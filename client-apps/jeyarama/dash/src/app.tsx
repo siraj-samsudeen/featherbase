@@ -140,6 +140,9 @@ export function Dash() {
   const frameSrc = liveFrame(shown)
   useEffect(() => setDiveFilters(undefined), [frameSrc])
   const showsReport = view.kind === 'dive' || view.kind === 'quick' || view.kind === 'empty'
+  // The store and month the cached answer is of, when the page shows it (the quick view or an empty state) rather than the Dive.
+  const cachedView = (view.kind === 'quick' || view.kind === 'empty') && report?.ok && typeof (report.value as { store?: unknown }).store === 'string'
+    ? { store: (report.value as { store: string }).store, month: (report.value as { month?: 'this' | 'last' }).month } : null
 
   return (
     <div className="fd-shell">
@@ -154,10 +157,10 @@ export function Dash() {
         <ReportHeading heading={report.value.heading} period={report.value} wide={view.kind === 'dive'} />
       )}
       {showsReport && current && (
-        // The cached view says which store and month it shows; a Dive with its own pickers says so itself.
+        // The cached view, and its empty states, say which store and month they show; a Dive with its own pickers says so itself.
         <ReportIssue reportKey={current.key} reportName={current.name}
-          store={view.kind === 'quick' && report?.ok ? report.value.store : store?.value}
-          month={view.kind === 'quick' && report?.ok ? report.value.month : current.takes_month ? month : undefined}
+          store={cachedView?.store ?? store?.value}
+          month={cachedView?.month ?? (current.takes_month ? month : undefined)}
           diveFilters={view.kind === 'dive' ? diveFilters : undefined} pickersInDive={!!current.pickers_in_dive && view.kind === 'dive'} />
       )}
       </div>

@@ -9,6 +9,8 @@ import { TicketLink } from './record-links'
 import { PROBLEMS, reachText, submissionFor, viewPath, type FeedbackContext, type PageView, type Problem, type Submission } from './report-issue'
 
 type Sent = { row_id: string }
+/** Where the one submission stands: going, answered with its ticket, or failed. */
+type Sending = { busy: boolean; sent: Sent | null; error: string | null }
 
 /** The header button and its panel, for the report on show. Nothing is drawn until Tickets is known to run here. */
 export function ReportIssue({ reportKey, reportName, store, month, diveFilters, pickersInDive = false }: {
@@ -19,11 +21,26 @@ export function ReportIssue({ reportKey, reportName, store, month, diveFilters, 
   const [running, setRunning] = useState(false)
   const [open, setOpen] = useState(false)
   const [mine, setMine] = useState<OpenFeedback[] | null>(null)
-  // Kept here, above the panel, so closing it mid-Send and opening it again still retries the same submission.
+  // The send lives here, above the panel: closed mid-Send and opened again, the panel shows the same
+  // submission still going, its answer, or its failure, and a retry resends that submission itself.
   const pending = useRef<Submission | null>(null)
+  const [sending, setSending] = useState<Sending>({ busy: false, sent: null, error: null })
   useEffect(() => { let live = true; ticketsRunning().then(yes => { if (live) setRunning(yes) }, () => {}); return () => { live = false } }, [])
   const refresh = useCallback(() => openFeedback(reportKey).then(answer => setMine(answer.tickets), () => setMine(null)), [reportKey])
   useEffect(() => { if (running) void refresh() }, [running, refresh])
+  const send = useCallback(async (submission: Submission) => {
+    pending.current = submission
+    setSending({ busy: true, sent: null, error: null })
+    try {
+      const { ticket } = await raiseTicket(submission)
+      pending.current = null
+      setSending({ busy: false, sent: { row_id: ticket.row_id }, error: null })
+      await refresh()
+    } catch (failure) {
+      setSending({ busy: false, sent: null, error: failure instanceof Error ? failure.message : 'That did not go through. Try again.' })
+    }
+  }, [refresh])
+  const another = useCallback(() => { pending.current = null; setSending({ busy: false, sent: null, error: null }) }, [])
   if (!running) return null
   const count = mine?.length ?? 0
   return (
@@ -33,24 +50,22 @@ export function ReportIssue({ reportKey, reportName, store, month, diveFilters, 
       </Button>
       {open && (
         <IssuePanel reportKey={reportKey} reportName={reportName} view={{ path: viewPath(location, reportKey, { pickersInDive, store, month }), ...(pickersInDive ? {} : { store, month }), diveFilters }}
-          mine={mine} onSent={refresh} pending={pending} close={() => setOpen(false)} />
+          mine={mine} pending={pending.current} sending={sending} send={send} another={another} close={() => setOpen(false)} />
       )}
     </>
   )
 }
 
-function IssuePanel({ reportKey, reportName, view, mine, onSent, pending, close }: {
-  reportKey: string; reportName: string; view: PageView; mine: OpenFeedback[] | null; onSent: () => Promise<void>
-  pending: { current: Submission | null }; close: () => void
+function IssuePanel({ reportKey, reportName, view, mine, pending, sending, send: submit, another: fresh, close }: {
+  reportKey: string; reportName: string; view: PageView; mine: OpenFeedback[] | null
+  pending: Submission | null; sending: Sending; send: (submission: Submission) => Promise<void>; another: () => void; close: () => void
 }) {
   const [context, setContext] = useState<FeedbackContext | 'refused' | null>(null)
   // A submission still unanswered when the panel was closed comes back as it was, to be sent again as itself.
-  const [problem, setProblem] = useState<Problem | null>(pending.current?.said.problem ?? null)
-  const [about, setAbout] = useState(pending.current?.said.about ?? '')
-  const [note, setNote] = useState(pending.current?.said.note ?? '')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [sent, setSent] = useState<Sent | null>(null)
+  const [problem, setProblem] = useState<Problem | null>(pending?.said.problem ?? null)
+  const [about, setAbout] = useState(pending?.said.about ?? '')
+  const [note, setNote] = useState(pending?.said.note ?? '')
+  const { busy, sent, error } = sending
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
     let live = true
@@ -63,22 +78,12 @@ function IssuePanel({ reportKey, reportName, view, mine, onSent, pending, close 
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [close])
-  const send = async () => {
-    if (!problem || !context || context === 'refused') return
-    setBusy(true); setError(null)
+  const send = () => {
+    if (busy || !problem || !context || context === 'refused') return
     // A retry after a lost answer resends the same submission, so Tickets answers it again rather than raising a second ticket.
-    const submission = submissionFor(pending.current, context, view, { problem, about, note }, new Date(), () => crypto.randomUUID())
-    pending.current = submission
-    try {
-      const { ticket } = await raiseTicket(submission)
-      pending.current = null
-      setSent({ row_id: ticket.row_id })
-      await onSent()
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'That did not go through. Try again.')
-    } finally { setBusy(false) }
+    void submit(submissionFor(pending, context, view, { problem, about, note }, new Date(), () => crypto.randomUUID()))
   }
-  const another = () => { pending.current = null; setSent(null); setProblem(null); setAbout(''); setNote(''); setNow(new Date()) }
+  const another = () => { fresh(); setProblem(null); setAbout(''); setNote(''); setNow(new Date()) }
   const store = view.store && context && context !== 'refused' ? context.reach.find(s => s.store === view.store) : undefined
   return (
     <aside className="fd-issue-panel shadow-lg" role="dialog" aria-modal="false" aria-labelledby="fd-issue-title" data-testid="issue-panel">
@@ -97,7 +102,7 @@ function IssuePanel({ reportKey, reportName, view, mine, onSent, pending, close 
       ) : context === 'refused' ? (
         <div className="fd-issue-body"><Notice tone="negative">This report can't take an issue from you. Open one of your reports and try again.</Notice></div>
       ) : (
-        <form className="fd-issue-body" onSubmit={event => { event.preventDefault(); void send() }}>
+        <form className="fd-issue-body" onSubmit={event => { event.preventDefault(); send() }}>
           <fieldset className="fd-issue-field" disabled={busy}>
             <legend className="fd-issue-label">What's wrong?</legend>
             <div className="fd-chips" role="radiogroup" aria-label="What's wrong?">

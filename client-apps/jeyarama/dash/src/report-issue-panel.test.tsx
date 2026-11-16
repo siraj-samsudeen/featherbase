@@ -115,6 +115,23 @@ describe('Report an issue, closed mid-Send', () => {
     await page.done()
   })
 
+  it('reopened before its answer, shows it still going and then its ticket, and cannot be sent a second time', async () => {
+    const page = await render()
+    await page.open()
+    await page.pick('Item ran out')
+    nextCreate = 'hold'
+    await page.send()
+    await page.close()
+    await page.open()
+    expect((page.one('issue-send') as HTMLButtonElement).disabled).toBe(true)
+    await page.send()
+    await page.act(async () => { release() })
+    await page.settle()
+    expect(page.one('issue-sent')?.textContent).toContain('FT-00001')
+    expect(byKey.size).toBe(1)
+    await page.done()
+  })
+
   it('answered after it was closed, raises one ticket, which the reopened panel and the button show as open', async () => {
     const page = await render()
     await page.open()
