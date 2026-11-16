@@ -1,4 +1,4 @@
-# Featherbase rebuild plan
+# Review of the old Featherbase
 
 Analysis and planning only. Nothing in the repository was changed apart from this file, which is uncommitted.
 Written 15-Nov-2026 against `main` at `0e7ac3e`.
@@ -11,84 +11,9 @@ database), so behaviour claims come from reading code, not from executing it.
 **Limits of the history.** The clone is shallow: 518 commits, 09-Nov to 12-Nov-2026
 (`git rev-parse --is-shallow-repository` → `true`). Churn figures describe those four days only.
 
-## Working answers from the discussion of 15-Nov-2026
-
-These come from talking the plan through with the owner. They are working answers, not yet ADRs, and they
-override the sections below where they differ. The sections below have not been rewritten yet.
-
-**Idea 1 (replaces D1 and D11, removes step 7).** The owner's real cases: own Postgres; a control-plane Postgres
-that is only read, discussed and ticketed; MotherDuck warehouses that are only read; curation data (identifiers,
-merges, own attributes) that today lives in the warehouse repo's seeds; later, a client's MySQL that must never be
-touched.
-
-1. **Featherbase never writes into a database it does not own as part of a save.** A save commits in
-   Featherbase's Postgres only. Sending a change to a source system is a separate, detached step with its own
-   retry: the save records "to be sent" in the same transaction, and a sender delivers it afterwards.
-   The owner expects Featherbase to become the master data system: employees and items are created and corrected
-   here and sent back to the source systems. This is already starting for employee master data.
-   Featherbase's own changes reach the warehouse through the owner's change-data-capture package
-   (Featherbase Postgres CDC, part of Featherflow), which loads them into `bronze_featherbase` in MotherDuck.
-   That answers how the pipeline reads curation data.
-2. **Every Table has a source part and a Featherbase part.** The source part is the raw rows, read-only. The
-   Featherbase part is everything people add (own Columns, comments, links, identifiers, merges, issues,
-   corrections, history, access rules), always in Featherbase's Postgres, attached by the row's key. A managed
-   Table has no source part.
-3. **Three ways to read a source part:** live, cached copy, or brought over (copied once, then owned).
-4. **A declared key, possibly several Columns,** is required before anything can be attached to an outside row.
-5. **A warehouse is browsed as a catalogue** (database, schema, table) with access granted on containers; a
-   Table is made from a catalogue entry when one is needed.
-6. **Dropped:** platform-run DDL in an outside database (D1 option C, step 7), and editing rows of a Table the
-   platform does not own.
-7. **"Seeds" means curation data,** not an app's starting rows. Step 8 and step 2 become one curation module.
-
-**Consequences to design for (raised 15-Nov, not yet discussed in full):**
-
-- **The physical shape of Featherbase's tables is a contract.** The change-data-capture package reads them, so
-  a renamed table or Column changes `bronze_featherbase`. The Featherbase part of a Table should be stored as
-  plain Columns in one table per Table, not as key-value rows or JSON, and renames need a notice to the pipeline.
-- **Deletes and merges must be visible downstream.** Retire a row and point a merged row at its survivor;
-  do not hard-delete.
-- **One owner per Column.** For each Column either the source system or Featherbase is the owner. Without that,
-  a value pushed to the source and loaded back looks like a conflict, or the two overwrite each other in turn.
-- **An explicit hand-over per entity.** Before it, the source owns the employee and Featherbase curates. After
-  it, Featherbase owns the employee and the source receives. Identifiers are the map used to address the row in
-  each system.
-- **A row created in Featherbase has no id in the source yet.** The source assigns one later; it returns as an
-  Identifier.
-- **Delivery states are visible.** A row can be saved here and not yet accepted by the source, or refused by
-  it. A refusal is an Issue someone works through.
-- **Sending needs write credentials for source systems,** a larger security surface than read-only access.
-
-Default working answers, to confirm: alerts on control-plane rows by polling about once a minute; corrections
-to single transactions (the barcode case) held as an Issue plus an override.
-
-**Keys (closes point 4 above).** Featherbase gives each source row it attaches anything to its own permanent
-id (an anchor). The source's key is stored beside it as plain Columns, one per key Column, unique together.
-An anchor is created when something is first attached, not for every source row. A source key is the same
-concept as an Identifier: the values by which one system knows the row. Two source rows with one key share an
-anchor and raise a duplicate-key Issue. Warehouse surrogate keys should be a hash of the natural key, not a
-counter.
-
-**Idea 2: from browsing to owning.** An entity moves through three stages: browse (the source owns everything;
-Featherbase reads, discusses, raises tickets), curate (Featherbase adds decisions beside the raw values), own
-(Featherbase is the master and sends changes to the source). The pieces: raw, anchor, Issue, decision
-(identifier, merge, own attribute, override, exclude, and create at the third stage), out to the warehouse
-through the owner's change-data-capture package, out to the source as a detached send, re-check.
-
-**First build, chosen by the owner:** start from Excel.
-1. Import a clean master from a spreadsheet: the file is kept, the rows become a Table, people browse it.
-2. Import and clean up: Issues are recorded, people correct them, clean rows go in, a re-import keeps their
-   decisions. The owner calls this "the very core of everything we do".
-
-The first round reads the easiest formats only and supports five types: Text, Number, Date, Yes/No and
-Choice. The sample is `samples/employees/`; the draft of build 1 is `specs/import-a-clean-master.md`.
-
-The warehouse catalogue, curation of warehouse entities and sending to source systems follow on the same
-mechanism.
-
-**Parked:** the Featherflow configuration that lives in a YAML file and should be editable in Featherbase
-(one owner: either Featherbase owns it and writes the file out, or the file owns it). To be looked at when the
-packages are added to the session.
+> The owner has since decided to rebuild from scratch on a new branch, on Bun and ElysiaJS. This review of the
+> old system stays as background. The design that replaced its recommendations is in `BIG-PICTURE.md`. Sections
+> 3 to 5 below (decisions, sequence, first modules) are superseded.
 
 ## Contents
 

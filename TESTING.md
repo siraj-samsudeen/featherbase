@@ -14,15 +14,15 @@ Read this before writing any test.
 browser, with a real file, on a fresh install: an empty database, migrated, then started. Every run records a
 video. There are few journeys, and only the owner adds one.
 
-**Behaviours.** One rule each, written as one sentence in everyday words in the spec. Where a rule has cases,
-the spec holds them in a table.
+**Behaviours.** One rule each, written as one sentence in everyday words in its folder's `.md` file. Where a rule
+has cases, that file holds them in a table.
 
 ## Rules
 
 - **One test per sentence.** The test's name is the sentence, word for word. No sentence goes without a test,
   and no test exists without a sentence.
-- **The spec's tables are the test data.** A test reads its cases from the table in the spec. It does not
-  keep its own copy.
+- **The tables are the test data.** A test reads its cases from the table in its folder's `.md` file. It does
+  not keep its own copy.
 - **Tests stay outside.** A test reaches the app only as a person or an agent would: through a page, the API
   or MCP. It does not import the product's code, and it does not read or write the database directly. To set
   something up, it does what a person would do, such as uploading a file.
@@ -32,7 +32,7 @@ the spec holds them in a table.
   fails and names the file and the lines. The answer is one of two: the owner approves a new sentence for
   what that code does, or the code is deleted.
 - **Done means the journeys pass on a fresh install, with their recordings.** It does not mean an agent says
-  so. The owner reviews the spec and the tests.
+  so. The owner reviews the sentences and the tests.
 
 ## What is deliberately not here
 
