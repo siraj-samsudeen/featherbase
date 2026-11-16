@@ -165,8 +165,30 @@ const TH = 'px-3 py-2 text-left text-[13px] font-medium text-ink-muted'
 // Cells wrap only where words allow (a space, a hyphen), never mid-word: the shared link breaks anywhere by default.
 const TD = 'px-3 py-2 align-top text-sm [&_*]:wrap-normal [&_[data-table=Employee]]:whitespace-nowrap'
 
+/** A <details> list that closes as a menu does: on Escape (focus back on its summary) and on a press outside it. */
+function useClosesLikeAMenu() {
+  const ref = useRef<HTMLDetailsElement>(null)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const list = ref.current
+      if (e.key !== 'Escape' || !list?.open) return
+      list.open = false
+      list.querySelector('summary')?.focus()
+    }
+    const onPress = (e: MouseEvent) => {
+      const list = ref.current
+      if (list?.open && !list.contains(e.target as Node)) list.open = false
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onPress)
+    return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('mousedown', onPress) }
+  }, [])
+  return ref
+}
+
 /** "Kavya, Meena +2 more": the first two as links, the rest in a popover, all links. */
-function FewPeople({ people }: { people: PersonRef[] }) {
+export function FewPeople({ people }: { people: PersonRef[] }) {
+  const more = useClosesLikeAMenu()
   if (!people.length) return <span className="text-ink-muted">—</span>
   const rest = people.slice(2)
   return (
@@ -175,7 +197,7 @@ function FewPeople({ people }: { people: PersonRef[] }) {
       {people.slice(0, 2).map((p, i, shown) => <span key={p.code} className="whitespace-nowrap"><RecordLink table={RECORD.employee} id={p.code}>{p.name}</RecordLink>{i < shown.length - 1 || rest.length ? ',' : ''}</span>)}
       {rest.length > 0 && (
         // One list open at a time (an exclusive group), so two never cover each other.
-        <details name="more-people" className="relative inline-block" data-testid="more-people">
+        <details ref={more} name="more-people" className="relative inline-block" data-testid="more-people">
           <summary className="cursor-pointer list-none text-ink-muted hover:underline">+{rest.length} more</summary>
           <div className="absolute z-10 mt-1 flex min-w-48 flex-col gap-1 rounded-control border border-border bg-surface p-2 shadow-lg">
             {rest.map(p => <RecordLink key={p.code} table={RECORD.employee} id={p.code}>{p.name}</RecordLink>)}

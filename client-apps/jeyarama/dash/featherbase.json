@@ -2166,6 +2166,12 @@
       "fromVersion": "0.13.12",
       "toVersion": "0.13.13",
       "operations": []
+    },
+    {
+      "id": "more_list_closes",
+      "fromVersion": "0.13.13",
+      "toVersion": "0.13.14",
+      "operations": []
     }
   ],
   "baseTables": {

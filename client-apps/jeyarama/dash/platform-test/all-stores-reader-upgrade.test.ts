@@ -28,6 +28,7 @@ async function previousVersion(): Promise<string> {
   manifest.permissions = manifest.permissions.filter((p: { role: string }) => p.role !== ROLE)
   for (const op of Object.values(manifest.reads.operations) as { policy: { readRoles?: string[] } }[])
     if (op.policy.readRoles) op.policy.readRoles = without(op.policy.readRoles)
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'more_list_closes', fromVersion: '0.13.13', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'report_access_redesign', fromVersion: '0.13.12', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'report_an_issue', fromVersion: '0.13.10', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'manager_area', fromVersion: '0.13.9', operations: [] })
@@ -68,14 +69,14 @@ describe('upgrading production\'s Dash 0.12.10', () => {
           { withdraw: { table: 'dash.report', role: 'Report Access Manager', operations: { read: '@basic' } } },
           { grant: { table: 'dash.report', role: ROLE, operations: { read: '@basic' } } },
           { grant: { table: 'dash.report', role: 'Report Access Manager', operations: { read: '@basic', create: '@basic' } } }],
-        ['all_stores_reader', 'sections_not_mine', 'department_self_setup', 'person_identity', 'report_access_managers_add_dives', 'team_report_giving', 'waiting_for_access_grant', 'department_name_follows_sections', 'named_cluster_head', 'one_app_chrome', 'ends_on_inclusive', 'manager_area', 'report_an_issue', 'report_access_redesign']])
+        ['all_stores_reader', 'sections_not_mine', 'department_self_setup', 'person_identity', 'report_access_managers_add_dives', 'team_report_giving', 'waiting_for_access_grant', 'department_name_follows_sections', 'named_cluster_head', 'one_app_chrome', 'ends_on_inclusive', 'manager_area', 'report_an_issue', 'report_access_redesign', 'more_list_closes']])
       await admin.post('/api/upgrade_app', { name: 'dash', version: VERSION, planId: plan.planId })
       await discoverPackages([previous, APP_DIR])
       await loadInstalledApps()
       await admin.post('/api/activate_app_upgrade', { name: 'dash', version: VERSION })
       const [installed] = await sql`select package_version, roles, migration_ledger from installed_app where name = 'dash'`
-      expect([installed.package_version, (installed.roles as string[]).filter(role => role !== TEAM_MANAGER), (installed.migration_ledger as { id: string }[]).slice(-14).map(m => m.id)])
-        .toEqual([VERSION, ['Dash Reader', 'Report Access Manager', ROLE], ['all_stores_reader', 'sections_not_mine', 'department_self_setup', 'person_identity', 'report_access_managers_add_dives', 'team_report_giving', 'waiting_for_access_grant', 'department_name_follows_sections', 'named_cluster_head', 'one_app_chrome', 'ends_on_inclusive', 'manager_area', 'report_an_issue', 'report_access_redesign']])
+      expect([installed.package_version, (installed.roles as string[]).filter(role => role !== TEAM_MANAGER), (installed.migration_ledger as { id: string }[]).slice(-15).map(m => m.id)])
+        .toEqual([VERSION, ['Dash Reader', 'Report Access Manager', ROLE], ['all_stores_reader', 'sections_not_mine', 'department_self_setup', 'person_identity', 'report_access_managers_add_dives', 'team_report_giving', 'waiting_for_access_grant', 'department_name_follows_sections', 'named_cluster_head', 'one_app_chrome', 'ends_on_inclusive', 'manager_area', 'report_an_issue', 'report_access_redesign', 'more_list_closes']])
       expect(await sql`select ref_table, operation from permission where role = ${ROLE} order by operation`).toEqual([{ ref_table: 'dash.report', operation: 'read' }])
       const holder = await createUser({ email: 'upgrade-holder@example.test', roles: [ROLE] })
       expect((await holder.post<{ result: unknown }>('/api/app_reads/dash/can_open', { payload: {} })).result).toBe(true)
