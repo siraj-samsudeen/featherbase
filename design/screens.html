@@ -129,8 +129,8 @@ tbody tr[aria-selected="true"] td:first-child { box-shadow: inset 3px 0 0 var(--
 .app[data-open="page"] .x { display: none; }
 
 .view { flex: 1; min-height: 0; display: flex; flex-direction: column; min-width: 0; }
-.page { flex: 1; min-height: 0; overflow: auto; padding: 22px 24px 28px; display: grid; gap: 26px; align-content: start; }
-.page > * { width: 100%; max-width: 780px; }
+.page { flex: 1; min-height: 0; overflow: auto; padding: 22px 24px 28px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 26px; align-content: start; }
+.page > * { width: 100%; max-width: 780px; min-width: 0; }
 .hello h2 { margin: 0 0 6px; font-size: 22px; font-weight: 600; letter-spacing: -.02em; text-wrap: balance; }
 .hello p { margin: 0; color: var(--muted); max-width: 60ch; }
 .sect h3 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--faint); font-weight: 600; }
@@ -158,6 +158,29 @@ tbody tr[aria-selected="true"] td:first-child { box-shadow: inset 3px 0 0 var(--
 .nav button[aria-current] { background: var(--surface); color: var(--fg); font-weight: 500; box-shadow: 0 0 0 1px var(--line); }
 .nav button span { font-variant-numeric: tabular-nums; color: var(--faint); font-size: 12px; }
 
+.tbox { border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+.tbox table { min-width: 720px; }
+.tbox tr:last-child td { border-bottom: 0; }
+.plain tbody tr { cursor: default; }
+.plain tbody tr:hover td { background: var(--surface); }
+.plain td { white-space: normal; padding-block: 7px; height: auto; vertical-align: middle; }
+.plain td:first-child { font-weight: 500; white-space: nowrap; }
+.plain select { height: 32px; border: 1px solid var(--line-strong); border-radius: 7px; padding: 0 8px; background: var(--surface); }
+.plain select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
+.saw { color: var(--muted); font-size: 13px; }
+.saw code { font-family: var(--mono); font-size: 12px; color: var(--fg); }
+.keyc { text-align: center; }
+.keyc input { width: 17px; height: 17px; accent-color: var(--accent); }
+.lead { display: grid; gap: 4px; }
+.lead p { margin: 0; color: var(--muted); }
+.lead p b { color: var(--fg); font-weight: 600; }
+.namerow { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+.namerow .f { width: 300px; max-width: 100%; }
+.namerow .tag { font-family: var(--mono); font-size: 12px; color: var(--faint); border: 1px solid var(--line); border-radius: 6px; padding: 8px 9px; }
+.footbar { border-top: 1px solid var(--line); padding: 10px 24px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.footbar .hint { margin-left: auto; }
+#v-proposal .page > * { max-width: 980px; }
+
 .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--surface); padding: 9px 14px; border-radius: 9px; font-size: 13px; box-shadow: var(--shadow); }
 
 @media (max-width: 760px) {
@@ -166,6 +189,8 @@ tbody tr[aria-selected="true"] td:first-child { box-shadow: inset 3px 0 0 var(--
   .bar { padding: 10px 12px; }
   .bar .imp { display: none; }
   .page { padding: 18px 14px 24px; }
+  .footbar { padding: 10px 14px; }
+  .footbar .hint { margin-left: 0; width: 100%; }
   .app[data-open="panel"] .gridbox { display: none; }
   .rec { width: auto; flex: 1; border-left: 0; }
   .app[data-open="page"] .fields { grid-template-columns: minmax(0, 1fr); }
@@ -217,6 +242,18 @@ tbody tr[aria-selected="true"] td:first-child { box-shadow: inset 3px 0 0 var(--
         <div class="btns"><button type="button" class="btn primary" id="pick">Choose a file</button><button type="button" class="btn" id="sample">Try the sample: employees.csv</button></div></div>
       <p class="hint">Featherbase keeps the file as you gave it, works out a Table from it, and shows you the result before anything is created.</p>
     </div>
+   </section>
+   <section class="view" id="v-proposal" hidden>
+    <div class="bar"><button type="button" class="crumb" id="prop-back">Import data /</button><h1>employees.csv</h1></div>
+    <div class="page">
+      <div class="lead"><p>Featherbase read <b>24 rows</b> and <b>7 columns</b>. This is the Table it would make. Change anything that looks wrong.</p></div>
+      <div class="namerow"><div class="f"><label for="p-name">Table name</label><input type="text" id="p-name" value="Employees" autocomplete="off"></div><span class="tag">main</span></div>
+      <div class="sect"><h3>Columns</h3>
+        <div class="tbox"><table class="plain"><thead><tr><th>Column</th><th>Type</th><th>What Featherbase saw</th><th class="keyc">Key</th></tr></thead><tbody id="p-cols"></tbody></table></div></div>
+      <div class="sect"><h3>How the first rows will look</h3>
+        <div class="tbox"><table class="plain"><thead id="p-head"></thead><tbody id="p-rows"></tbody></table></div></div>
+    </div>
+    <div class="footbar"><button type="button" class="btn primary" id="p-create">Create Table</button><button type="button" class="btn" id="p-cancel">Cancel</button><span class="hint">Nothing is created until you press Create.</span></div>
    </section>
    <section class="view" id="v-table" hidden>
     <div class="bar">
@@ -298,7 +335,7 @@ $('close').addEventListener('click',shut); $('back').addEventListener('click',sh
 $('imp').addEventListener('click',()=>show('import'));
 let state='fresh';
 function show(v){
-  ['home','import','table'].forEach(x=>$('v-'+x).hidden=x!==v);
+  ['home','import','proposal','table'].forEach(x=>$('v-'+x).hidden=x!==v);
   if(v!=='table'&&!$('rec').hidden) shut();
   document.querySelectorAll('.tblopt').forEach(x=>x.hidden=v!=='table');
   $('n-home').toggleAttribute('aria-current',v!=='table'); $('n-emp').toggleAttribute('aria-current',v==='table');
@@ -314,8 +351,39 @@ $('n-emp').addEventListener('click',()=>show('table'));
 $('t-emp').addEventListener('click',()=>show('table'));
 $('n-up').addEventListener('click',()=>say("The upload's page is the next mock-up"));
 $('u-emp').addEventListener('click',()=>say("The upload's page is the next mock-up"));
-$('pick').addEventListener('click',()=>say('The proposal screen is the next mock-up'));
-$('sample').addEventListener('click',()=>{ setState('data'); show('table'); say('Skipped the proposal: that screen is the next mock-up'); });
+const TYPES=['Text','Number','Date','Yes/No','Choice'];
+const cols=[
+ {k:'code', label:'Employee Code', type:'Text', fits:['Text'], canKey:true, saw:'Never blank, never repeats. <code>E0007</code>, <code>E0014</code>, <code>E0021</code>'},
+ {k:'name', label:'Name', type:'Text', fits:['Text'], canKey:true, saw:'24 different values. <code>Asha Raman</code>, <code>Bala Krishnan</code>'},
+ {k:'dept', label:'Department', type:'Choice', fits:['Text','Choice'], saw:'5 values, each used several times: '+sorted.map(d=>`<span class="chip c${sorted.indexOf(d)+1}">${d}</span>`).join(' ')},
+ {k:'doj', label:'Date of Joining', type:'Date', fits:['Text','Date'], saw:'Every cell is a date. <code>2015-01-01</code>, <code>2016-06-04</code>'},
+ {k:'dol', label:'Date of Leaving', type:'Date', fits:['Text','Date'], saw:'3 dates, 21 blank. <code>2025-05-09</code>'},
+ {k:'active', label:'Active', type:'Yes/No', fits:['Text','Yes/No','Choice'], saw:'Every cell is <code>true</code> or <code>false</code>'},
+ {k:'hours', label:'Weekly Hours', type:'Number', fits:['Text','Number','Choice'], saw:'Every cell is a number. <code>48</code>, <code>40</code>, <code>37.5</code>'}];
+let pkey='code';
+function cell(c,r){ const v=r[c.k];
+  if(c.k==='active') return c.type==='Yes/No'?`<span class="${v?'yes':'no'}">${v?'Yes':'No'}</span>`:(c.type==='Choice'?`<span class="chip c${v?3:5}">${v}</span>`:String(v));
+  if(v==='') return '<span class="empty">–</span>';
+  if(c.type==='Date') return fmt(v);
+  if(c.type==='Choice') return c.k==='dept'?`<span class="chip c${sorted.indexOf(v)+1}">${esc(v)}</span>`:`<span class="chip c1">${esc(v)}</span>`;
+  return esc(v); }
+function drawProposal(){
+  $('p-cols').innerHTML=cols.map((c,i)=>`<tr><td>${c.label}</td>
+   <td><select id="p-type-${i}" data-i="${i}" aria-label="Type of ${c.label}">${TYPES.map(t=>`<option${t===c.type?' selected':''}${c.fits.includes(t)?'':' disabled'}>${t}</option>`).join('')}</select></td>
+   <td class="saw">${c.saw}</td>
+   <td class="keyc"><input type="radio" name="p-key" id="p-key-${i}" value="${c.k}" aria-label="${c.label} is the key"${pkey===c.k?' checked':''}${c.canKey&&c.type!=='Choice'?'':' disabled'}></td></tr>`).join('');
+  $('p-head').innerHTML='<tr>'+cols.map(c=>`<th${c.type==='Number'?' class="num"':''}>${c.label}</th>`).join('')+'</tr>';
+  $('p-rows').innerHTML=data.slice(0,5).map(r=>'<tr>'+cols.map(c=>`<td class="${c.type==='Number'?'num':''}${c.k==='code'?' code':''}">${cell(c,r)}</td>`).join('')+'</tr>').join('');
+}
+$('p-cols').addEventListener('change',e=>{
+  if(e.target.matches('select')){ cols[+e.target.dataset.i].type=e.target.value; drawProposal(); $(e.target.id).focus(); }
+  if(e.target.name==='p-key') pkey=e.target.value; });
+const toProposal=()=>{ drawProposal(); show('proposal'); };
+$('pick').addEventListener('click',toProposal);
+$('sample').addEventListener('click',toProposal);
+$('prop-back').addEventListener('click',()=>show('import'));
+$('p-cancel').addEventListener('click',()=>show('import'));
+$('p-create').addEventListener('click',()=>{ const n=$('p-name').value.trim()||'Employees'; setState('data'); show('table'); say(`Created ${n} with 24 rows`); });
 $('f-active').addEventListener('change',e=>$('activeword').textContent=e.target.checked?'Yes':'No');
 $('foot').addEventListener('click',e=>{
   if(e.target.id==='cancel') shut();
