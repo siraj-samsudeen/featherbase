@@ -1,0 +1,267 @@
+<title>Featherbase List and Form</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one fixed app window. Sidebar | (bar, grid). Only the grid body scrolls, in both directions.
+   A record opens beside the grid (panel) or in place of it (page). */
+:root {
+  --bg: #eef1f3; --surface: #ffffff; --sunken: #f6f8f9; --line: #e2e7ea; --line-strong: #cfd6da;
+  --fg: #16212a; --muted: #5d6b76; --faint: #8a97a1;
+  --accent: #0b6b80; --accent-fg: #ffffff; --accent-soft: #e2f1f4; --focus: #0b6b8055;
+  --danger: #b3261e; --danger-soft: #fbeae8; --ok: #1f7a4d;
+  --c1-bg:#e3effb; --c1-fg:#1c4f86; --c2-bg:#f6ebd9; --c2-fg:#7a4c0b; --c3-bg:#e4f2e6; --c3-fg:#23633a;
+  --c4-bg:#efe6f7; --c4-fg:#5b3688; --c5-bg:#fbe6ec; --c5-fg:#8c2749;
+  --shadow: 0 1px 2px #16212a14, 0 8px 28px #16212a14;
+  --row: 40px; --pad: 12px;
+  --ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#0e1418; --surface:#161e24; --sunken:#1b252c; --line:#27333b; --line-strong:#34424b;
+  --fg:#e6edf1; --muted:#9aa8b2; --faint:#6f7e89;
+  --accent:#5cc1d6; --accent-fg:#06222a; --accent-soft:#12343d; --focus:#5cc1d655;
+  --danger:#f08a82; --danger-soft:#3a1d1b; --ok:#6fd3a0;
+  --c1-bg:#17304b; --c1-fg:#a9cdf5; --c2-bg:#3d2f17; --c2-fg:#efcf96; --c3-bg:#183624; --c3-fg:#a5dcb4;
+  --c4-bg:#2e2242; --c4-fg:#d1b8ee; --c5-bg:#41202c; --c5-fg:#f3b3c6;
+  --shadow: 0 1px 2px #0008, 0 8px 28px #0008; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg:#0e1418; --surface:#161e24; --sunken:#1b252c; --line:#27333b; --line-strong:#34424b;
+  --fg:#e6edf1; --muted:#9aa8b2; --faint:#6f7e89;
+  --accent:#5cc1d6; --accent-fg:#06222a; --accent-soft:#12343d; --focus:#5cc1d655;
+  --danger:#f08a82; --danger-soft:#3a1d1b; --ok:#6fd3a0;
+  --c1-bg:#17304b; --c1-fg:#a9cdf5; --c2-bg:#3d2f17; --c2-fg:#efcf96; --c3-bg:#183624; --c3-fg:#a5dcb4;
+  --c4-bg:#2e2242; --c4-fg:#d1b8ee; --c5-bg:#41202c; --c5-fg:#f3b3c6;
+  --shadow: 0 1px 2px #0008, 0 8px 28px #0008; color-scheme: dark; }
+:root[data-density="compact"] { --row: 32px; --pad: 10px; }
+
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.4 var(--ui); display: flex; flex-direction: column; gap: 10px;
+  padding-block: 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); box-sizing: border-box; }
+* { box-sizing: border-box; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* the strip above the window: what this is, and the two things to choose */
+.meta { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font-size: 12.5px; color: var(--muted); }
+.meta b { color: var(--fg); font-weight: 600; }
+.seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 7px; overflow: hidden; background: var(--surface); }
+.seg button { border: 0; background: none; padding: 5px 10px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.opt { display: inline-flex; gap: 6px; align-items: center; }
+
+.app { flex: 1; min-height: 0; display: grid; grid-template-columns: 212px minmax(0, 1fr); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+.side { background: var(--sunken); border-right: 1px solid var(--line); padding: 14px 10px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 600; padding: 0 6px; letter-spacing: -.01em; }
+.brand i { width: 20px; height: 20px; border-radius: 6px; background: var(--accent); display: block; position: relative; }
+.brand i::after { content: ""; position: absolute; inset: 5px 9px 5px 5px; border-left: 2px solid var(--accent-fg); border-radius: 60% 0 0 60%; transform: rotate(18deg); }
+.group { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--faint); padding: 0 8px; font-weight: 600; }
+.nav { display: flex; flex-direction: column; gap: 1px; }
+.nav a { display: flex; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: 7px; color: var(--muted); text-decoration: none; }
+.nav a[aria-current] { background: var(--surface); color: var(--fg); font-weight: 500; box-shadow: 0 0 0 1px var(--line); }
+.nav a span { font-variant-numeric: tabular-nums; color: var(--faint); font-size: 12px; }
+
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.bar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); min-width: 0; }
+.bar h1 { font-size: 17px; font-weight: 600; margin: 0; letter-spacing: -.015em; white-space: nowrap; }
+.count { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.grow { flex: 1; min-width: 0; }
+.btn { border: 1px solid var(--line-strong); background: var(--surface); padding: 7px 12px; border-radius: 8px; cursor: pointer; font-weight: 500; white-space: nowrap; }
+.btn:hover { background: var(--sunken); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.danger { color: var(--danger); border-color: transparent; background: none; }
+.btn.danger:hover { background: var(--danger-soft); }
+.crumb { color: var(--muted); background: none; border: 0; padding: 0; cursor: pointer; font-size: 17px; }
+.crumb:hover { color: var(--fg); }
+
+.work { flex: 1; min-height: 0; display: flex; }
+/* the one scrolling box: header stays, first column stays */
+.gridbox { flex: 1; min-width: 0; overflow: auto; overscroll-behavior: contain; }
+table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 860px; }
+th, td { height: var(--row); padding: 0 var(--pad); border-bottom: 1px solid var(--line); white-space: nowrap; text-align: left; }
+th { position: sticky; top: 0; z-index: 2; background: var(--sunken); color: var(--muted); font-weight: 500; font-size: 12.5px; border-bottom-color: var(--line-strong); }
+th:first-child, td:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface); border-right: 1px solid var(--line); }
+th:first-child { z-index: 3; background: var(--sunken); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.code { font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+td.name { font-weight: 500; }
+td.date { font-variant-numeric: tabular-nums; }
+.empty { color: var(--faint); }
+tbody tr { cursor: pointer; }
+tbody tr:hover td { background: var(--sunken); }
+tbody tr[aria-selected="true"] td { background: var(--accent-soft); }
+tbody tr[aria-selected="true"] td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.chip { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12.5px; font-weight: 500; }
+.c1{background:var(--c1-bg);color:var(--c1-fg)} .c2{background:var(--c2-bg);color:var(--c2-fg)} .c3{background:var(--c3-bg);color:var(--c3-fg)}
+.c4{background:var(--c4-bg);color:var(--c4-fg)} .c5{background:var(--c5-bg);color:var(--c5-fg)}
+.yes, .no { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.yes::before, .no::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+.no::before { background: none; box-shadow: inset 0 0 0 1.5px var(--faint); }
+
+/* the record: a panel beside the grid, or a page in its place */
+.rec { width: 372px; max-width: 100%; border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; background: var(--surface); }
+.rec header { padding: 14px 16px 10px; display: flex; gap: 10px; align-items: flex-start; }
+.rec h2 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.rec .sub { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.x { margin-left: auto; border: 0; background: none; font-size: 20px; line-height: 1; color: var(--muted); cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+.x:hover { background: var(--sunken); }
+.fields { flex: 1; min-height: 0; overflow: auto; padding: 4px 16px 16px; display: grid; gap: 12px; align-content: start; }
+.f { display: grid; gap: 4px; min-width: 0; }
+.f label { font-size: 12.5px; color: var(--muted); font-weight: 500; }
+.f label em { font-style: normal; color: var(--faint); font-weight: 400; }
+.f input[type=text], .f input[type=date], .f select { height: 36px; border: 1px solid var(--line-strong); border-radius: 8px; padding: 0 10px; background: var(--surface); width: 100%; min-width: 0; }
+.f input:focus, .f select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
+.f input[aria-invalid="true"] { border-color: var(--danger); }
+.err { color: var(--danger); font-size: 12.5px; }
+.check { display: flex; align-items: center; gap: 8px; height: 36px; }
+.check input { width: 18px; height: 18px; accent-color: var(--accent); }
+.from { font-size: 12px; color: var(--faint); border-top: 1px dashed var(--line); padding-top: 10px; }
+.from span { font-family: var(--mono); }
+.rec footer { border-top: 1px solid var(--line); padding: 10px 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; color: var(--danger); width: 100%; }
+
+.app[data-open="page"] .gridbox { display: none; }
+.app[data-open="page"] .rec { width: auto; flex: 1; border-left: 0; }
+.app[data-open="page"] .rec header, .app[data-open="page"] .rec footer, .app[data-open="page"] .fields { width: 100%; max-width: 760px; margin-inline: auto; }
+.app[data-open="page"] .fields { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 20px; }
+.app[data-open="page"] .fields .wide { grid-column: 1 / -1; }
+.app[data-open="page"] .x { display: none; }
+
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--surface); padding: 9px 14px; border-radius: 9px; font-size: 13px; box-shadow: var(--shadow); }
+
+@media (max-width: 760px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .side { display: none; }
+  .bar { padding: 10px 12px; }
+  .bar .imp { display: none; }
+  .app[data-open="panel"] .gridbox { display: none; }
+  .rec { width: auto; flex: 1; border-left: 0; }
+  .app[data-open="page"] .fields { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: no-preference) { tbody tr td, .btn { transition: background-color .08s; } }
+</style>
+
+<div class="meta">
+  <span><b>Mock-up.</b> Made-up data; nothing is saved. Click a row.</span>
+  <span class="opt">A record opens as
+    <span class="seg" id="mode"><button type="button" data-v="panel" aria-pressed="true">Side panel</button><button type="button" data-v="page" aria-pressed="false">Full page</button></span></span>
+  <span class="opt">Rows
+    <span class="seg" id="density"><button type="button" data-v="comfortable" aria-pressed="true">Comfortable</button><button type="button" data-v="compact" aria-pressed="false">Compact</button></span></span>
+</div>
+
+<div class="app" id="app" data-open="">
+  <nav class="side" aria-label="Tables">
+    <div class="brand"><i></i>Featherbase</div>
+    <div>
+      <div class="group">main</div>
+      <div class="nav"><a href="#" aria-current="page">Employees <span id="navcount">24</span></a><a href="#">Stores <span>12</span></a><a href="#">Items <span>3,480</span></a></div>
+    </div>
+    <div>
+      <div class="group">Uploads</div>
+      <div class="nav"><a href="#">employees.csv <span>24</span></a></div>
+    </div>
+  </nav>
+  <div class="main">
+    <div class="bar">
+      <button type="button" class="crumb" id="back" hidden>Employees /</button>
+      <h1 id="title">Employees</h1><span class="count" id="count"></span>
+      <span class="grow"></span>
+      <button type="button" class="btn imp" id="imp">Import</button>
+      <button type="button" class="btn primary" id="new">New employee</button>
+    </div>
+    <div class="work">
+      <div class="gridbox" id="gridbox" tabindex="0" aria-label="Employees">
+        <table>
+          <thead><tr><th>Employee Code</th><th>Name</th><th>Department</th><th>Date of Joining</th><th>Date of Leaving</th><th>Active</th><th class="num">Weekly Hours</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <form class="rec" id="rec" hidden novalidate>
+        <header><div><h2 id="rtitle"></h2><div class="sub" id="rsub"></div></div><button type="button" class="x" id="close" aria-label="Close">×</button></header>
+        <div class="fields">
+          <div class="f"><label for="f-code">Employee Code <em>· key</em></label><input type="text" id="f-code" autocomplete="off"><div class="err" id="e-code" hidden></div></div>
+          <div class="f"><label for="f-name">Name</label><input type="text" id="f-name" autocomplete="off"><div class="err" id="e-name" hidden></div></div>
+          <div class="f"><label for="f-dept">Department</label><select id="f-dept"></select></div>
+          <div class="f"><label for="f-hours">Weekly Hours</label><input type="text" id="f-hours" inputmode="decimal" autocomplete="off"><div class="err" id="e-hours" hidden></div></div>
+          <div class="f"><label for="f-doj">Date of Joining</label><input type="date" id="f-doj"></div>
+          <div class="f"><label for="f-dol">Date of Leaving</label><input type="date" id="f-dol"></div>
+          <div class="f wide"><label for="f-active">Active</label><div class="check"><input type="checkbox" id="f-active"><span id="activeword"></span></div></div>
+          <div class="from wide" id="from"></div>
+        </div>
+        <footer id="foot"></footer>
+      </form>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script>
+const names=['Asha Raman','Bala Krishnan','Chitra Mohan','Dinesh Kumar','Esther Paul','Farid Khan','Gita Nair','Hari Prasad','Indira Das','Jacob Thomas','Kavya Iyer','Lokesh Rao','Meena Pillai','Naveen Shetty','Oviya Selvam','Prakash Menon','Qadir Ali','Revathi Suresh','Sanjay Gupta','Tara Joseph','Uma Shankar','Vikram Bose','Waseem Sheikh','Yamini Reddy'];
+const depts=['Sales','Billing','Stores','Accounts','Tailoring'], sorted=[...depts].sort();
+const p2=n=>String(n).padStart(2,'0');
+let data=names.map((name,i)=>{const left=[4,13,20].includes(i);return{code:'E'+String((i+1)*7).padStart(4,'0'),name,dept:depts[i%5],
+  doj:`${2015+i%10}-${p2((i*5)%12+1)}-${p2((i*3)%27+1)}`,dol:left?`2025-${p2((i*7)%12+1)}-${p2((i*2)%27+1)}`:'',active:!left,hours:String([48,40,37.5,36][i%4]),row:i+2};});
+const $=id=>document.getElementById(id), app=$('app'), mon=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const fmt=d=>d?`${d.slice(8)}-${mon[+d.slice(5,7)-1]}-${d.slice(0,4)}`:'';
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let mode='panel', current=null, isNew=false, confirming=false;
+
+function draw(){
+  $('rows').innerHTML=data.map((r,i)=>`<tr data-i="${i}" tabindex="0" aria-selected="${current===i}"><td class="code">${esc(r.code)}</td><td class="name">${esc(r.name)}</td>
+   <td>${r.dept?`<span class="chip c${sorted.indexOf(r.dept)+1}">${esc(r.dept)}</span>`:''}</td><td class="date">${fmt(r.doj)}</td>
+   <td class="date">${r.dol?fmt(r.dol):'<span class="empty">–</span>'}</td><td><span class="${r.active?'yes':'no'}">${r.active?'Yes':'No'}</span></td><td class="num">${esc(r.hours)}</td></tr>`).join('');
+  const t=`${data.length} rows`; $('count').textContent=app.dataset.open==='page'?'':t; $('navcount').textContent=data.length;
+}
+function foot(){
+  $('foot').innerHTML=confirming
+   ?`<div class="confirm">Delete ${esc(data[current].name)}? This can't be undone.<span class="grow"></span><button type="button" class="btn" id="no">Keep</button><button type="button" class="btn danger" id="yes" style="border-color:currentColor">Delete</button></div>`
+   :`<button type="submit" class="btn primary">${isNew?'Create':'Save'}</button><button type="button" class="btn" id="cancel">Cancel</button><span class="grow"></span>${isNew?'':'<button type="button" class="btn danger" id="del">Delete</button>'}`;
+}
+function open(i){
+  isNew=i===null; current=i; confirming=false;
+  const r=isNew?{code:'',name:'',dept:'',doj:'',dol:'',active:true,hours:''}:data[i];
+  $('f-dept').innerHTML='<option value=""></option>'+sorted.map(d=>`<option${d===r.dept?' selected':''}>${d}</option>`).join('');
+  $('f-code').value=r.code; $('f-name').value=r.name; $('f-doj').value=r.doj; $('f-dol').value=r.dol; $('f-hours').value=r.hours; $('f-active').checked=r.active;
+  $('activeword').textContent=r.active?'Yes':'No';
+  ['code','name','hours'].forEach(k=>{$('e-'+k).hidden=true;$('f-'+k).removeAttribute('aria-invalid');});
+  $('rtitle').textContent=isNew?'New employee':r.name; $('rsub').textContent=isNew?'':r.code;
+  $('from').innerHTML=isNew?'Added by hand, not from an upload.':`Came from <span>employees.csv</span>, row ${r.row}.`;
+  $('rec').hidden=false; app.dataset.open=mode; $('back').hidden=mode!=='page'; $('title').textContent=mode==='page'?(isNew?'New employee':r.name):'Employees';
+  foot(); draw(); if(isNew) $('f-code').focus();
+}
+function shut(){ current=null; $('rec').hidden=true; app.dataset.open=''; $('back').hidden=true; $('title').textContent='Employees'; draw(); }
+function say(t){ const el=$('toast'); el.textContent=t; el.hidden=false; clearTimeout(say.t); say.t=setTimeout(()=>el.hidden=true,1800); }
+function bad(k,msg){ $('e-'+k).textContent=msg; $('e-'+k).hidden=false; $('f-'+k).setAttribute('aria-invalid','true'); return true; }
+
+$('rows').addEventListener('click',e=>{const tr=e.target.closest('tr'); if(tr) open(+tr.dataset.i);});
+$('rows').addEventListener('keydown',e=>{ if(e.key==='Enter'){const tr=e.target.closest('tr'); if(tr) open(+tr.dataset.i);} });
+$('new').addEventListener('click',()=>open(null));
+$('close').addEventListener('click',shut); $('back').addEventListener('click',shut);
+$('imp').addEventListener('click',()=>say('Import is the upload screen, not in this mock-up'));
+$('f-active').addEventListener('change',e=>$('activeword').textContent=e.target.checked?'Yes':'No');
+$('foot').addEventListener('click',e=>{
+  if(e.target.id==='cancel') shut();
+  if(e.target.id==='del'){confirming=true;foot();}
+  if(e.target.id==='no'){confirming=false;foot();}
+  if(e.target.id==='yes'){const n=data[current].name; data.splice(current,1); shut(); say(`Deleted ${n}`);}
+});
+$('rec').addEventListener('submit',e=>{
+  e.preventDefault(); let stop=false;
+  ['code','name','hours'].forEach(k=>{$('e-'+k).hidden=true;$('f-'+k).removeAttribute('aria-invalid');});
+  const code=$('f-code').value.trim(), name=$('f-name').value.trim(), hours=$('f-hours').value.trim();
+  if(!code) stop=bad('code','Employee Code is required.');
+  else if(data.some((r,i)=>r.code===code&&i!==current)) stop=bad('code',`${code} is already used.`);
+  if(!name) stop=bad('name','Name is required.');
+  if(hours&&!/^-?\d+(\.\d+)?$/.test(hours)) stop=bad('hours','Enter a number, such as 40 or 37.5.');
+  if(stop) return;
+  const v={code,name,dept:$('f-dept').value,doj:$('f-doj').value,dol:$('f-dol').value,active:$('f-active').checked,hours};
+  if(isNew){ data.push({...v,row:null}); data.sort((a,b)=>a.code.localeCompare(b.code)); shut(); say(`Created ${name}`); }
+  else { Object.assign(data[current],v); const keep=mode==='panel'; say('Saved'); keep?open(current):shut(); }
+});
+function seg(id,fn){ $(id).addEventListener('click',e=>{const b=e.target.closest('button'); if(!b) return;
+  $(id).querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b)); fn(b.dataset.v);}); }
+seg('mode',v=>{ mode=v; if(!$('rec').hidden) open(current); });
+seg('density',v=>{ document.documentElement.dataset.density=v; });
+draw();
+</script>
