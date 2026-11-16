@@ -13,15 +13,13 @@
 - [ ] 3.2 Team scope on access_page, person_search, person_lookup, give_report, remove_report_access; save-rule guard
 - [ ] 3.3 Page: team note, Person-only give, hidden bundle tools and waiting list; picker layouts behind a toggle
 
-## 3b. After #1169 lands (ADR 0026)
+## 3b. After #1212 lands (#1169's upgrade rule)
 
-- [ ] 3b.1 Rebase onto #1169; the upgrade test expects the access grant to wait, the two reads to be applied
-- [ ] 3b.2 Give and remove check `documents.can`; the page says when the grant waits for approval
+- [ ] 3b.1 Rebase onto main as Dash 0.13.4; the upgrade test from 0.13.1 applies the role and its three grants, the write one own rows only
 
 ## 3c. After #1216 lands (who a person is)
 
 - [ ] 3c.1 Rebase onto #1216; the team list, Type a name search (name or employee code) and Who has what show the same identity lines (code · job · site)
-- [ ] 3c.2 Dash version past whatever main holds; version-step tests follow
 
 ## 4. Checks
 
