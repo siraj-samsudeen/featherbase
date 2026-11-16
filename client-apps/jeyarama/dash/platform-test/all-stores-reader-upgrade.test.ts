@@ -28,7 +28,10 @@ async function previousVersion(): Promise<string> {
   manifest.permissions = manifest.permissions.filter((p: { role: string }) => p.role !== ROLE)
   for (const op of Object.values(manifest.reads.operations) as { policy: { readRoles?: string[] } }[])
     if (op.policy.readRoles) op.policy.readRoles = without(op.policy.readRoles)
-  // #1175 and #1191 ship after it, as 0.13.0, then #1195 as 0.13.1: each step comes off to reach 0.12.10.
+  // #1175 and #1191 ship after it, as 0.13.0, then #1195 as 0.13.1, then #1217 as 0.13.2: each step comes off to reach 0.12.10.
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'team_report_giving', fromVersion: '0.13.1' })
+  manifest.roles = manifest.roles.filter((role: string) => role !== 'Team Report Manager')
+  manifest.permissions = manifest.permissions.filter((p: { role: string }) => p.role !== 'Team Report Manager')
   expect(manifest.migrations.pop()).toMatchObject({ id: 'department_self_setup', fromVersion: '0.13.0' })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'sections_not_mine', fromVersion: '0.12.11' })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'all_stores_reader', fromVersion: '0.12.10' })
@@ -50,7 +53,7 @@ describe('upgrading production\'s Dash 0.12.10', () => {
       await loadInstalledApps()
       const plan = await admin.post<{ planId: string; roles: unknown; permissions: unknown; migrations: { id: string }[] }>('/api/preview_app_upgrade', { name: 'dash', version: VERSION })
       expect([plan.roles, plan.permissions, plan.migrations.map(m => m.id)])
-        .toEqual([[{ create: ROLE }], [{ grant: { table: 'dash.report', role: ROLE, operations: { read: '@basic' } } }], ['all_stores_reader', 'sections_not_mine', 'department_self_setup']])
+        .toEqual([[{ create: ROLE }], [{ grant: { table: 'dash.report', role: ROLE, operations: { read: '@basic' } } }], ['all_stores_reader', 'sections_not_mine', 'department_self_setup', 'team_report_giving']])
       await admin.post('/api/upgrade_app', { name: 'dash', version: VERSION, planId: plan.planId })
       await discoverPackages([previous, APP_DIR])
       await loadInstalledApps()

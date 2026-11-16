@@ -8,7 +8,8 @@ import { MONTH_CHOICES, buildReport, monthLabel, headingOf, istToday, periodOf, 
 import { actions as sectionActions, reads as sectionReads } from './my-sections.ts'
 import { departmentActions, departmentReads } from './department-setup.ts'
 import { prefillActions } from './department-prefill.ts'
-import { accessPage, addToBundle, giveReport, makeBundle, managesAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
+import { accessPage, addToBundle, giveReport, makeBundle, managesAccess, managesTeamAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
+import { TEAM_MANAGER } from './team-access.ts'
 
 /** The save rules of Dash's own Tables. */
 export const validators = accessValidators
@@ -72,7 +73,7 @@ export function setEmbedFetch(f: typeof fetch | null) {
 const placesOf = (ctx: ScopedContext) => ctx.authorization.places ?? []
 
 /** Dash's own roles (featherbase.json's `roles`): holding any of them opens Dash (#1172). */
-export const DASH_ROLES = new Set([ALL_STORES_ROLE, 'Dash Reader', 'Report Access Manager'])
+export const DASH_ROLES = new Set([ALL_STORES_ROLE, 'Dash Reader', 'Report Access Manager', TEAM_MANAGER])
 
 const REPORT_FIELDS = ['report_key', 'report_name', 'dive_id', 'filter_shape', 'store_key', 'subcategory_key', 'whole_store_key', 'month_key', 'ready_signal', 'quick_view', 'pickers_in_dive']
 
@@ -312,9 +313,9 @@ export const reads = {
     return managesAccess(ctx) || (ctx.roles ?? []).some(role => DASH_ROLES.has(role)) || (await offeredReports(ctx)).length > 0
   },
 
-  /** Whether this person manages report access, for the sidebar's link. */
+  /** Whether this person manages report access, company-wide or for their team (#1217), for the sidebar's link. */
   manages_access(context: ReadContext) {
-    return managesAccess(context as AccessContext)
+    return managesAccess(context as AccessContext) || managesTeamAccess(context as AccessContext)
   },
 
   /** The Report access page (#1046). Managers only. */

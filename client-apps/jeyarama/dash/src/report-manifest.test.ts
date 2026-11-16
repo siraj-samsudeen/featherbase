@@ -15,7 +15,7 @@ type Dataset = { name: string; source: string; query: string; columns: { name: s
 const datasets = (manifest as unknown as { datasets: Dataset[] }).datasets
 const sales = () => datasets.find(d => d.name === SALES_DATASET)!
 const operations = manifest.reads.operations as Record<string, { policy: { kind: string; readRoles?: string[] }; outbound?: boolean; needs?: string[] }>
-const ROLES = ['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager']
+const ROLES = ['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager', 'Team Report Manager']
 
 describe("the app's name in the manifest", () => {
   it('is Dash everywhere: title, identifier, roles and Table group', () => {
@@ -76,7 +76,7 @@ describe('the report in the manifest', () => {
 
   it("scopes the report's reads by the reader's places", () => {
     expect(['stores', 'report', 'embed_session'].map(name => [name, operations[name].policy.kind, operations[name].policy.readRoles]))
-      .toEqual(['stores', 'report', 'embed_session'].map(name => [name, 'person_scope', ROLES.filter(role => role !== 'Report Access Manager')]))
+      .toEqual(['stores', 'report', 'embed_session'].map(name => [name, 'person_scope', ROLES.filter(role => role !== 'Report Access Manager' && role !== 'Team Report Manager')]))
   })
 
   it('declares only the two Dive openers as calling out', () => {
@@ -201,9 +201,9 @@ describe('the read grants, declared before the first install', () => {
   })
 
   // Siraj, 11-Nov-2026 ("Drop whatever is not implemented"): no section editor or reviewer role.
-  // #1192 (same day): Dash All-Stores Reader reaches every store.
+  // #1192 (same day): Dash All-Stores Reader reaches every store. #1217: Team Report Manager gives reports to their team.
   it('declares only the roles Dash uses', () => {
-    expect(manifest.roles).toEqual(['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager'])
+    expect(manifest.roles).toEqual(['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager', 'Team Report Manager'])
   })
 
   it('give the All-Stores Reader only the read of the entry Table, and every read the Reader has', () => {
@@ -220,17 +220,22 @@ describe('the read grants, declared before the first install', () => {
   it('grant reads only, apart from the Report Access Manager on the report access Tables (#1046)', () => {
     const writes = manifest.permissions.filter(p => Object.keys(p).sort().join() !== 'can_read,role,table' || (p as { can_read?: boolean }).can_read !== true)
     expect(writes.map(p => [p.role, p.table])).toEqual([
-      ['Report Access Manager', 'dash.report_bundle'], ['Report Access Manager', 'dash.report_bundle_member'], ['Report Access Manager', 'dash.report_access']])
+      ['Report Access Manager', 'dash.report_bundle'], ['Report Access Manager', 'dash.report_bundle_member'], ['Report Access Manager', 'dash.report_access'],
+      // #1217: a Team Report Manager writes only the access rows they made, and the save rule takes them only from Dash's own actions.
+      ['Team Report Manager', 'dash.report_access']])
+    expect(manifest.permissions.find(p => p.role === 'Team Report Manager' && p.table === 'dash.report_access')).toEqual({
+      table: 'dash.report_access', role: 'Team Report Manager', scope_mode: 'creator', operations: { read: '@basic', create: '@basic', update: '@basic' } })
   })
 })
 
 // #1192: production runs 0.12.10; this version's ledger extends it with one step that changes no Table.
 describe('the version step for Dash All-Stores Reader', () => {
-  it('follows production\'s 0.12.10 history exactly, then adds the role, then Your sections (#1175, #1191), then Your department (#1195), with no Table change', () => {
-    const tail = manifest.migrations.slice(-6, -1).map(m => [m.id, m.fromVersion, m.toVersion, m.operations.length])
+  it('follows production\'s 0.12.10 history exactly, then adds the role, then Your sections (#1175, #1191), then Your department (#1195), then team report giving (#1217), with no Table change', () => {
+    const tail = manifest.migrations.slice(-7, -2).map(m => [m.id, m.fromVersion, m.toVersion, m.operations.length])
     expect(tail).toEqual([['pickers_in_dive', '0.12.5', '0.12.6', tail[0][3]], ['merchandise_reach', '0.12.6', '0.12.9', 0],
       ['opens_for_dash_roles', '0.12.9', '0.12.10', 0], ['all_stores_reader', '0.12.10', '0.12.11', 0], ['sections_not_mine', '0.12.11', '0.13.0', 0]])
-    expect(manifest.migrations.at(-1)).toMatchObject({ id: 'department_self_setup', fromVersion: '0.13.0', toVersion: '0.13.1', operations: [] })
-    expect(pkg.version).toBe('0.13.1')
+    expect(manifest.migrations.at(-2)).toMatchObject({ id: 'department_self_setup', fromVersion: '0.13.0', toVersion: '0.13.1', operations: [] })
+    expect(manifest.migrations.at(-1)).toMatchObject({ id: 'team_report_giving', fromVersion: '0.13.1', toVersion: '0.13.2', operations: [] })
+    expect(pkg.version).toBe('0.13.2')
   })
 })

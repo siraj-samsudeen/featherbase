@@ -6,6 +6,7 @@ import {
   accessKey, accessPage, addToBundle, becauseLine, giveReport, makeBundle, personLookup, personSearch,
   removeAccess, removeFromBundle, validators, type AccessContext,
 } from './report-access-server'
+import { checkedSave } from './team-access'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
@@ -207,15 +208,37 @@ describe('giving, removing and bundles', () => {
 
 describe('the save rules', () => {
   const reject = (message: string): never => { throw new Error(message) }
+  const manager = { user: 'meera', roles: ['Report Access Manager'], isNew: true }
 
   it('keys a given row, clears blanks, and keys a removed one with nothing', () => {
     const row: Row = { report: 'sales', report_bundle: ' ', person: 'asha', role: '', job: null }
-    validators['dash.report_access']({ row, reject })
+    validators['dash.report_access']({ ...manager, row, reject })
     expect(row).toEqual({ report: 'sales', report_bundle: null, person: 'asha', role: null, job: null, access_key: 'report:sales/person:asha' })
     const removed: Row = { report: 'sales', person: 'asha', removed: '1' }
-    validators['dash.report_access']({ row: removed, reject })
+    validators['dash.report_access']({ ...manager, row: removed, reject })
     expect(removed.access_key).toBeNull()
-    expect(() => validators['dash.report_access']({ row: { report: 'sales', person: 'asha', job: 'Team Leader' }, reject })).toThrow('Give it to exactly one person, one role or one job')
+    expect(() => validators['dash.report_access']({ ...manager, row: { report: 'sales', person: 'asha', job: 'Team Leader' }, reject })).toThrow('Give it to exactly one person, one role or one job')
+  })
+
+  // #1217: a Team Report Manager's save is taken only as the one save Dash's action checked.
+  it('takes a Team Report Manager\'s row only as the save the give or remove action checked', async () => {
+    const team = { user: 'asha', roles: ['Dash Reader', 'Team Report Manager'], reject }
+    const save = (over: Record<string, unknown>) => validators['dash.report_access']({ ...team, isNew: true, ...over, row: { ...(over.row as Row) } } as Parameters<typeof validators['dash.report_access']>[0])
+    const refusal = 'Give and take away reports on the Report access page'
+    expect(() => save({ row: { report: 'sales', person: 'ravi' } })).toThrow(refusal)
+    await checkedSave({ user: 'asha', key: 'report:sales/person:ravi' }, async () => {
+      expect(() => save({ row: { report: 'sales', person: 'ravi' } })).not.toThrow()
+      expect(() => save({ row: { report: 'sales', person: 'meena' } })).toThrow(refusal)
+      expect(() => save({ user: 'someone-else', row: { report: 'sales', person: 'ravi' } })).toThrow(refusal)
+    })
+    const old = { row_id: 'g1', report: 'sales', person: 'ravi', removed: 0 }
+    await checkedSave({ user: 'asha', row: 'g1' }, async () => {
+      expect(() => save({ isNew: false, old, row: { ...old, removed: 1 } })).not.toThrow()
+      expect(() => save({ isNew: false, old, row: { ...old, person: 'meena', removed: 1 } })).toThrow(refusal)
+      expect(() => save({ isNew: false, old, row: { ...old } })).toThrow(refusal)
+      expect(() => save({ isNew: false, old: { ...old, row_id: 'g2' }, row: { ...old, row_id: 'g2', removed: 1 } })).toThrow(refusal)
+    })
+    expect(() => save({ isNew: false, old, row: { ...old, removed: 1 } })).toThrow(refusal)
   })
 
   it('keys a bundle member, and refuses one missing its bundle or report', () => {

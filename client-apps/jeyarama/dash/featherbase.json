@@ -9,7 +9,8 @@
   "roles": [
     "Dash All-Stores Reader",
     "Dash Reader",
-    "Report Access Manager"
+    "Report Access Manager",
+    "Team Report Manager"
   ],
   "roleDefaults": {},
   "settings": [
@@ -612,6 +613,11 @@
       "can_read": true
     },
     {
+      "table": "dash.report",
+      "role": "Team Report Manager",
+      "can_read": true
+    },
+    {
       "table": "dash.report_bundle",
       "role": "Report Access Manager",
       "operations": {
@@ -620,6 +626,11 @@
         "update": "@basic",
         "delete": true
       }
+    },
+    {
+      "table": "dash.report_bundle",
+      "role": "Team Report Manager",
+      "can_read": true
     },
     {
       "table": "dash.report_bundle_member",
@@ -639,6 +650,16 @@
         "create": "@basic",
         "update": "@basic",
         "delete": true
+      }
+    },
+    {
+      "table": "dash.report_access",
+      "role": "Team Report Manager",
+      "scope_mode": "creator",
+      "operations": {
+        "read": "@basic",
+        "create": "@basic",
+        "update": "@basic"
       }
     }
   ],
@@ -1960,6 +1981,12 @@
       "id": "department_self_setup",
       "fromVersion": "0.13.0",
       "toVersion": "0.13.1",
+      "operations": []
+    },
+    {
+      "id": "team_report_giving",
+      "fromVersion": "0.13.1",
+      "toVersion": "0.13.2",
       "operations": []
     }
   ],
