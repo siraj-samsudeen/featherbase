@@ -249,34 +249,35 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['sections_not_mine', '0.12.11', '0.13.0', 0],
       ['department_self_setup', '0.13.0', '0.13.1', 0],
       ['person_identity', '0.13.1', '0.13.2', 0],
-      // #1169: managers add Dives; only access and reads change.
+      // #1169: after #1216's 0.13.2, one more step that changes no Table, only access and reads.
       ['report_access_managers_add_dives', '0.13.2', '0.13.3', 0],
       ['team_report_giving', '0.13.3', '0.13.4', 0],
-      // #1173: the Waiting for access drawer gives Dash reports.
+      // #1173: the Waiting for access drawer gives Dash reports
       ['waiting_for_access_grant', '0.13.4', '0.13.5', 0],
-      // #1209: the department name follows its sections.
+      // #1209: the department name follows its sections
       ['department_name_follows_sections', '0.13.5', '0.13.6', 0],
-      // #4588: a Cluster row names its head.
+      // #4588: a Cluster row names its head
       ['named_cluster_head', '0.13.6', '0.13.7', 0],
-      // #1227: one top bar and sidebar for every app.
+      // #1227: one top bar and sidebar for every app
       ['one_app_chrome', '0.13.7', '0.13.8', 0],
-      // #1243: ends_on is a row's last day.
+      // #1243: ends_on is a row's last day
       ['ends_on_inclusive', '0.13.8', '0.13.9', 0],
-      // #1223: Your store, floor, department and sections, and What they cover.
+      // #1223: Your store, floor, department and sections, and What they cover
       ['manager_area', '0.13.9', '0.13.10', 0],
-      // #1240: "Report an issue" reads the report's context.
+      // #1240: "Report an issue" reads the report's context
       ['report_an_issue', '0.13.10', '0.13.12', 0],
-      // #1225: the Report access redesign.
+      // #1225: the Report access redesign
       ['report_access_redesign', '0.13.12', '0.13.13', 0],
-      // #1223: a "+N more" list closes on Escape and on a click outside it.
+      // #1223: a "+N more" list closes on Escape and on a click outside it
       ['more_list_closes', '0.13.13', '0.13.14', 0],
-      // #1245: who runs a store, under the area's title.
+      // #1245: who runs a store, under the area's title
       ['store_run_by', '0.13.14', '0.13.15', 0],
-      // #1246: Buyer Sections: who buys a subcategory, and a category head moving them.
+      // 0.13.16 shipped buyer_section_desks before the move was renamed: kept byte for byte so an instance on it can upgrade.
       ['buyer_section_desks', '0.13.15', '0.13.16', 0],
+      ['buyer_section_moves', '0.13.16', '0.13.17', 0],
       // #1236: the switcher says what Dash is for.
-      ['switcher_summary', '0.13.16', '0.13.17', 0],
+      ['switcher_summary', '0.13.17', '0.13.19', 0],
     ])
-    expect(pkg.version).toBe('0.13.17')
+    expect(pkg.version).toBe('0.13.19')
   })
 })

@@ -1,6 +1,6 @@
 // #1246: a category head moves subcategories between their own Buyer Sections; the master data team decides.
-// A move is a proposal on the subcategory's Buyer Section Subcategory row (a new row when no desk buys it
-// yet), so the approval path versions it as it does Section Subcategory. Desks themselves (their buyer,
+// A move is a proposal on the subcategory's Buyer Section Subcategory row (a new row when no Buyer Section buys it
+// yet), so the approval path versions it as it does Section Subcategory. Buyer Sections themselves (their buyer,
 // their name) are the master data team's, as a department in use is (department-setup.ts).
 import { istToday } from './report.ts'
 import { exact, holdsOn, text } from './values.ts'
@@ -28,7 +28,7 @@ type Ctx = ReadContext | ActionContext
 /** The caller's employee ids, and whether they head `subcategory` in `region` today: an open head row
  *  (category head or above) whose deepest level covers it, in that region or in every region. */
 async function headsIt(ctx: Ctx, employees: string[], sub: Row, region: string, today: string): Promise<boolean> {
-  // Never empty: each caller has already found the desk's category head among them.
+  // Never empty: each caller has already found the Buyer Section's category head among them.
   const rows = (await all(ctx, MERCHANDISE, HEAD_FIELDS, [['employee', 'in', employees]]))
     .filter(r => holdsOn(r, today) && text(r.responsibility) !== 'Buyer' && (!exact(r.operating_region) || exact(r.operating_region) === region))
   return rows.some(r => {
@@ -38,7 +38,7 @@ async function headsIt(ctx: Ctx, employees: string[], sub: Row, region: string, 
   })
 }
 
-/** Hold still what a head's authority over `subcategory` rests on, before any desk or link: their staff rows,
+/** Hold still what a head's authority over `subcategory` rests on, before any Buyer Section or link: their staff rows,
  *  their open head rows, and the subcategory; then re-read who they are. Order everywhere: Employee,
  *  Merchandise Assignment, Subcategory, Buyer Section, Buyer Section Subcategory. */
 async function lockAuthority(ctx: ActionContext, person: string, subcategory: string): Promise<string[]> {
@@ -50,14 +50,14 @@ async function lockAuthority(ctx: ActionContext, person: string, subcategory: st
   return (await list(ctx, T.employee, ['status', 'person'], [['person', '=', person], ['status', '=', 'Current']])).map(e => exact(e.row_id))
 }
 
-/** The open link for `subcategory` in `region`, if a desk buys it there. */
-async function linkIn(ctx: Ctx, subcategory: string, region: string, today: string): Promise<{ link: Row; desk: Row } | null> {
+/** The open link for `subcategory` in `region`, if a Buyer Section buys it there. */
+async function linkIn(ctx: Ctx, subcategory: string, region: string, today: string): Promise<{ link: Row; buyerSection: Row } | null> {
   const links = (await all(ctx, BUYER_SECTION_SUBCATEGORY, BUYER_LINK_FIELDS, [['subcategory', '=', subcategory]])).filter(l => holdsOn(l, today))
   if (!links.length) return null
-  const desks = byId(await all(ctx, BUYER_SECTION, BUYER_SECTION_FIELDS, [['row_id', 'in', unique(links.map(l => exact(l.buyer_section)))]]))
+  const buyerSections = byId(await all(ctx, BUYER_SECTION, BUYER_SECTION_FIELDS, [['row_id', 'in', unique(links.map(l => exact(l.buyer_section)))]]))
   for (const link of links) {
-    const desk = desks.get(exact(link.buyer_section))
-    if (desk && holdsOn(desk, today) && exact(desk.operating_region) === region) return { link, desk }
+    const buyerSection = buyerSections.get(exact(link.buyer_section))
+    if (buyerSection && holdsOn(buyerSection, today) && exact(buyerSection.operating_region) === region) return { link, buyerSection }
   }
   return null
 }
@@ -67,9 +67,9 @@ async function linkIn(ctx: Ctx, subcategory: string, region: string, today: stri
 async function laterLink(ctx: Ctx, subcategory: string, region: string, today: string): Promise<Row | null> {
   const later = (await all(ctx, BUYER_SECTION_SUBCATEGORY, BUYER_LINK_FIELDS, [['subcategory', '=', subcategory]])).filter(l => exact(l.starts_on).slice(0, 10) > today)
   if (!later.length) return null
-  const desks = byId(await all(ctx, BUYER_SECTION, BUYER_SECTION_FIELDS, [['row_id', 'in', unique(later.map(l => exact(l.buyer_section)))]]))
-  const found = later.find(l => exact(desks.get(exact(l.buyer_section))?.operating_region) === region)
-  return found ? desks.get(exact(found.buyer_section))! : null
+  const buyerSections = byId(await all(ctx, BUYER_SECTION, BUYER_SECTION_FIELDS, [['row_id', 'in', unique(later.map(l => exact(l.buyer_section)))]]))
+  const found = later.find(l => exact(buyerSections.get(exact(l.buyer_section))?.operating_region) === region)
+  return found ? buyerSections.get(exact(found.buyer_section))! : null
 }
 
 async function openMoves(ctx: Ctx, makers?: string[]): Promise<ChangeProposal[]> {
@@ -85,22 +85,22 @@ const SUB_FIELDS = ['subcategory', 'category', 'subdivision', 'division', 'subca
 const LEVEL_OF: Record<string, string> = { subcategory: 'row_id', category: 'category', subdivision: 'subdivision', division: 'division' }
 
 export const buyerSectionReads = {
-  /** A category head's desks (they are its category head), what each buys, what in their categories no
-   *  desk buys yet, and their moves waiting for a decision. */
+  /** A category head's Buyer Sections (they are its category head), what each buys, what in their categories no
+   *  Buyer Section buys yet, and their moves waiting for a decision. */
   async buyer_sections(ctx: ReadContext) {
     const today = istToday()
     const employees = (await myEmployees(ctx)).map(e => exact(e.row_id))
     const open = employees.length ? await openBuyerSections(ctx, today) : null
-    if (!open || !open.sections.size) return { desks: [], unplaced: [], waiting: [], decided: [] }
-    const desks = [...open.sections.values()].filter(d => employees.includes(exact(d.category_head)))
-    if (!desks.length) return { desks: [], unplaced: [], waiting: [], decided: [] }
-    const people = byId(await all(ctx, T.employee, ['name', 'status'], [['row_id', 'in', unique(desks.map(d => exact(d.buyer)))]]))
+    if (!open || !open.sections.size) return { buyerSections: [], unplaced: [], waiting: [], decided: [] }
+    const buyerSections = [...open.sections.values()].filter(d => employees.includes(exact(d.category_head)))
+    if (!buyerSections.length) return { buyerSections: [], unplaced: [], waiting: [], decided: [] }
+    const people = byId(await all(ctx, T.employee, ['name', 'status'], [['row_id', 'in', unique(buyerSections.map(d => exact(d.buyer)))]]))
     const codes = unique(open.links.map(l => exact(l.subcategory)))
     const names = codes.length ? byId(await all(ctx, T.subcategory, ['subcategory'], [['row_id', 'in', codes]])) : new Map<string, Row>()
-    // What in their categories no desk of that region buys: from their own head rows.
+    // What in their categories no Buyer Section of that region buys: from their own head rows.
     const heads = (await all(ctx, MERCHANDISE, HEAD_FIELDS, [['employee', 'in', employees]])).filter(r => holdsOn(r, today) && text(r.responsibility) !== 'Buyer')
     const unplaced = new Map<string, { code: string; name: string; region: string }>()
-    for (const region of unique(desks.map(d => exact(d.operating_region)))) {
+    for (const region of unique(buyerSections.map(d => exact(d.operating_region)))) {
       for (const head of heads.filter(h => !exact(h.operating_region) || exact(h.operating_region) === region)) {
         const level = LEVELS.find(l => exact(head[l]))
         if (!level) continue
@@ -119,7 +119,7 @@ export const buyerSectionReads = {
     const waiting = (await openMoves(ctx, [ctx.user])).map(p => ({ id: p.row_id, subcategory: about(p).subcategory, subcategory_name: about(p).subcategory_name, region: about(p).region,
       from: about(p).from || null, to: about(p).to, applied: p.state === APPLIED_UNREVIEWED, waiting_for: MASTER_DATA_TEAM }))
     return {
-      desks: desks.map(d => {
+      buyerSections: buyerSections.map(d => {
         const buyer = exact(d.buyer) ? people.get(exact(d.buyer)) : undefined
         return { id: exact(d.row_id), name: text(d.name), region: exact(d.operating_region),
           buyer: buyer && text(buyer.status) === 'Current' ? { code: exact(d.buyer), name: text(buyer.name) } : null,
@@ -157,12 +157,12 @@ async function whyStale(ctx: ActionContext, p: ChangeProposal, today: string, ma
   const [sub] = await list(ctx, T.subcategory, SUB_FIELDS, [['row_id', '=', a.subcategory]])
   if (!makerEmployees.includes(exact(to.category_head)) || !sub || !(await headsIt(ctx, makerEmployees, sub, a.region, today)))
     return 'The person who asked no longer heads that category.'
-  if (now && !makerEmployees.includes(exact(now.desk.category_head))) return 'The Buyer Section it comes from is no longer theirs.'
+  if (now && !makerEmployees.includes(exact(now.buyerSection.category_head))) return 'The Buyer Section it comes from is no longer theirs.'
   return null
 }
 
 export const buyerSectionActions = {
-  /** Move a subcategory to another of my desks, or put one no desk buys yet into one of them. */
+  /** Move a subcategory to another of my Buyer Sections, or put one no Buyer Section buys yet into one of them. */
   async move_buyer_subcategory(ctx: ActionContext) {
     const payload = (ctx.payload && typeof ctx.payload === 'object' ? ctx.payload : {}) as Record<string, unknown>
     const today = istToday()
@@ -173,11 +173,11 @@ export const buyerSectionActions = {
     const [seen] = toId ? await list(ctx, BUYER_SECTION, BUYER_SECTION_FIELDS, [['row_id', '=', toId]]) : []
     if (!seen || !holdsOn(seen, today) || !mine.includes(exact(seen.category_head))) ctx.reject('Pick one of your own Buyer Sections')
     const region = exact(seen.operating_region)
-    // One change at a time per subcategory and region; then hold still my authority, the desks and the link it rests on.
+    // One change at a time per subcategory and region; then hold still my authority, the Buyer Sections and the link it rests on.
     await ctx.changeProposals.serialize(`buyer:${region}:${code}`)
     mine.splice(0, mine.length, ...await lockAuthority(ctx, ctx.user, code))
     const before = await linkIn(ctx, code, region, today)
-    for (const id of unique([toId, before ? exact(before.desk.row_id) : '']).sort()) await ctx.changeProposals.lockRow(BUYER_SECTION, id)
+    for (const id of unique([toId, before ? exact(before.buyerSection.row_id) : '']).sort()) await ctx.changeProposals.lockRow(BUYER_SECTION, id)
     if (before) await ctx.changeProposals.lockRow(BUYER_SECTION_SUBCATEGORY, exact(before.link.row_id))
     const [to] = await list(ctx, BUYER_SECTION, BUYER_SECTION_FIELDS, [['row_id', '=', toId]])
     if (!to || !holdsOn(to, today) || !mine.includes(exact(to.category_head))) ctx.reject('Pick one of your own Buyer Sections')
@@ -186,12 +186,12 @@ export const buyerSectionActions = {
     if (!sub || text(sub.subcategory_type) !== 'Merchandise') ctx.reject('Pick a subcategory from the list')
     if (!(await headsIt(ctx, mine, sub, region, today))) ctx.reject('That subcategory is outside your categories')
     const now = await linkIn(ctx, code, region, today)
-    if (now && !mine.includes(exact(now.desk.category_head))) ctx.reject('That subcategory is outside your categories: another head\'s Buyer Section buys it')
-    if (now && exact(now.desk.row_id) === toId) ctx.reject(`It is already in ${text(to.name)}`)
+    if (now && !mine.includes(exact(now.buyerSection.category_head))) ctx.reject('That subcategory is outside your categories: another head\'s Buyer Section buys it')
+    if (now && exact(now.buyerSection.row_id) === toId) ctx.reject(`It is already in ${text(to.name)}`)
     const scheduled = await laterLink(ctx, code, region, today)
     if (scheduled) ctx.reject(`${text(sub.subcategory)} is set to join ${text(scheduled.name)} on a later day. Ask the master data team`)
     if ((await openMoves(ctx)).some(p => about(p).subcategory === code && about(p).region === region)) ctx.reject('A change to that subcategory is already waiting')
-    const a: About = { kind: KIND, subcategory: code, subcategory_name: text(sub.subcategory), region, from_section: now ? exact(now.desk.row_id) : '', from: now ? text(now.desk.name) : '',
+    const a: About = { kind: KIND, subcategory: code, subcategory_name: text(sub.subcategory), region, from_section: now ? exact(now.buyerSection.row_id) : '', from: now ? text(now.buyerSection.name) : '',
       to_section: toId, to: text(to.name), maker_name: text(employees[0]?.name), link: now ? exact(now.link.row_id) : '' }
     const proposal = await ctx.changeProposals.propose({ table: BUYER_SECTION_SUBCATEGORY, row: now ? exact(now.link.row_id) : null,
       changes: now ? { buyer_section: toId } : { buyer_section: toId, subcategory: code }, reviewed: now ? ['subcategory'] : [],

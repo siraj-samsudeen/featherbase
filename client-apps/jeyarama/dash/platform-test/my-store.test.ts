@@ -262,8 +262,8 @@ describe('#1223 Your store and Your floor', () => {
     const { leader } = await world(admin, createUser)
     const save = (table: string, values: Record<string, unknown>) => saveRow(admin, table, values)
     const oldBuyer = await createUser({ email: `old-${randomUUID()}@example.test`, roles: ['Dash Reader'] })
-    const deskOnly = await createUser({ email: `desk-${randomUUID()}@example.test`, roles: ['Dash Reader'] })
-    await sql`update person set password_hash = 'made-up' where row_id in ${sql([oldBuyer.user!, deskOnly.user!])}`
+    const sectionOnlyBuyer = await createUser({ email: `Buyer Section-${randomUUID()}@example.test`, roles: ['Dash Reader'] })
+    await sql`update person set password_hash = 'made-up' where row_id in ${sql([oldBuyer.user!, sectionOnlyBuyer.user!])}`
     for (const region of ['East', 'West']) await save('Operating Region', { region })
     await sql`update featherbase.site set operating_region = 'East' where row_id = 'LKS'`
     await sql`update featherbase.site set operating_region = 'West' where row_id = 'HIL'`
@@ -273,19 +273,19 @@ describe('#1223 Your store and Your floor', () => {
     for (const [row_id, subcategory] of [['010505003', 'Women Kurti'], ['010505001', 'Churidar']])
       await save('Subcategory', { row_id, subcategory, category: 'Kurtis', subdivision: 'Ethnic', division: 'Women', subcategory_type: 'Merchandise' })
     await save('Employee', { employee_code: '2030', name: 'Old Category-Buyer', status: 'Current', person: oldBuyer.user })
-    await save('Employee', { employee_code: '2031', name: 'Desk Only-Buyer', status: 'Current', person: deskOnly.user })
+    await save('Employee', { employee_code: '2031', name: 'Buyer Section Only-Buyer', status: 'Current', person: sectionOnlyBuyer.user })
     await save('Merchandise Assignment', { assignment_id: 'MA-HEAD', employee: '2004', responsibility: 'Category head', category: 'Kurtis', operating_region: headRegion, starts_on: '2026-10-01' })
     await save('Merchandise Assignment', { assignment_id: 'MA-ALL', employee: '2030', responsibility: 'Buyer', category: 'Kurtis', operating_region: headRegion, starts_on: '2026-10-01' })
-    const desk = async (id: string, buyer: string | null, subcategory: string) => {
+    const buyerSection = async (id: string, buyer: string | null, subcategory: string) => {
       await save('Buyer Section', { buyer_section_id: id, name: id, operating_region: 'East', buyer, starts_on: '2026-11-01' })
       await save('Buyer Section Subcategory', { buyer_section_subcategory_id: `${id}-L`, buyer_section: id, subcategory, starts_on: '2026-11-01' })
     }
-    return { leader, oldBuyer, deskOnly, desk }
+    return { leader, oldBuyer, sectionOnlyBuyer, buyerSection }
   }
 
-  test('#1246: a vacant desk taking one subcategory of a category-wide Buyer row shows as a gap, and the old buyer keeps only the rest', async ({ admin, createUser }) => {
-    const { leader, oldBuyer, desk } = await broad(admin, createUser, 'East')
-    await desk('Kurti desk', null, '010505003')
+  test('#1246: a vacant Buyer Section taking one subcategory of a category-wide Buyer row shows as a gap, and the old buyer keeps only the rest', async ({ admin, createUser }) => {
+    const { leader, oldBuyer, buyerSection } = await broad(admin, createUser, 'East')
+    await buyerSection('Kurti Buyer Section', null, '010505003')
     const kurtis = (await read(leader, 'my_store')).categories[0]
     expect(kurtis.buyers.map((b: any) => [b.name, b.buys])).toEqual([['Old Category-Buyer', 'Churidar']])
     expect(kurtis.no_buyer).toEqual([{ code: '010505003', name: 'Women Kurti' }])
@@ -294,50 +294,50 @@ describe('#1223 Your store and Your floor', () => {
     expect((await read(oldBuyer, 'coverage', {})).merchandise.map((m: any) => m.subcategories.map((s: any) => s.name))).toEqual([['Churidar']])
   })
 
-  test('#1246: for a head of every region, a both-regions Buyer row still answers where no desk does; a vacant desk is still a gap', async ({ admin, createUser }) => {
-    const { leader, desk } = await broad(admin, createUser, null)
-    await desk('Kurti desk', null, '010505003')
+  test('#1246: for a head of every region, a both-regions Buyer row still answers where no Buyer Section does; a vacant Buyer Section is still a gap', async ({ admin, createUser }) => {
+    const { leader, buyerSection } = await broad(admin, createUser, null)
+    await buyerSection('Kurti Buyer Section', null, '010505003')
     const vacant = (await read(leader, 'my_store')).categories[0]
-    // The old row still buys Kurti in West only: the East desk took East.
+    // The old row still buys Kurti in West only: the East Buyer Section took East.
     expect(vacant.buyers.map((b: any) => [b.name, b.buys])).toEqual([['Old Category-Buyer', 'Churidar, Women Kurti (West only)']])
     expect(vacant.no_buyer).toEqual([{ code: '010505003', name: 'Women Kurti' }])
-    await sql`update featherbase.buyer_section set buyer = '2031' where row_id = 'Kurti desk'`
+    await sql`update featherbase.buyer_section set buyer = '2031' where row_id = 'Kurti Buyer Section'`
     const filled = (await read(leader, 'my_store')).categories[0]
-    expect(filled.buyers.map((b: any) => [b.name, b.buys]).sort()).toEqual([['Desk Only-Buyer', 'Women Kurti, East only'], ['Old Category-Buyer', 'Churidar, Women Kurti (West only)']])
+    expect(filled.buyers.map((b: any) => [b.name, b.buys]).sort()).toEqual([['Buyer Section Only-Buyer', 'Women Kurti, East only'], ['Old Category-Buyer', 'Churidar, Women Kurti (West only)']])
     expect(filled.no_buyer).toEqual([])
   })
 
-  test('#1246: for a head of every region, an East desk buyer and a West Buyer row together cover a subcategory', async ({ admin, createUser }) => {
-    const { leader, desk } = await broad(admin, createUser, null)
+  test('#1246: for a head of every region, an East Buyer Section buyer and a West Buyer row together cover a subcategory', async ({ admin, createUser }) => {
+    const { leader, buyerSection } = await broad(admin, createUser, null)
     await sql`update featherbase.merchandise_assignment set operating_region = 'West' where row_id = 'MA-ALL'`
-    await desk('Kurti desk', '2031', '010505003')
+    await buyerSection('Kurti Buyer Section', '2031', '010505003')
     const kurtis = (await read(leader, 'my_store')).categories[0]
-    // Churidar: West only (no desk, no East buyer) is a gap; Kurti: East desk + West row, covered.
+    // Churidar: West only (no Buyer Section, no East buyer) is a gap; Kurti: East Buyer Section + West row, covered.
     expect(kurtis.no_buyer).toEqual([{ code: '010505001', name: 'Churidar' }])
   })
 
-  test('#1246: a both-regions Buyer row partly taken by an East desk says where it still buys', async ({ admin, createUser }) => {
-    const { leader, oldBuyer, desk } = await broad(admin, createUser, null)
-    await desk('Kurti desk', '2031', '010505003')
+  test('#1246: a both-regions Buyer row partly taken by an East Buyer Section says where it still buys', async ({ admin, createUser }) => {
+    const { leader, oldBuyer, buyerSection } = await broad(admin, createUser, null)
+    await buyerSection('Kurti Buyer Section', '2031', '010505003')
     const kurtis = (await read(leader, 'my_store')).categories[0]
-    expect(kurtis.buyers.map((b: any) => [b.name, b.buys]).sort()).toEqual([['Desk Only-Buyer', 'Women Kurti, East only'], ['Old Category-Buyer', 'Churidar, Women Kurti (West only)']])
+    expect(kurtis.buyers.map((b: any) => [b.name, b.buys]).sort()).toEqual([['Buyer Section Only-Buyer', 'Women Kurti, East only'], ['Old Category-Buyer', 'Churidar, Women Kurti (West only)']])
     expect((await read(oldBuyer, 'my_store')).buys[0].subcategories).toEqual([{ code: '010505001', name: 'Churidar' }, { code: '010505003', name: 'Women Kurti', only: 'West' }])
     expect((await read(oldBuyer, 'coverage', {})).merchandise[0].subcategories).toEqual([{ code: '010505001', name: 'Churidar' }, { code: '010505003', name: 'Women Kurti', only: 'West' }])
   })
 
-  test('#1246: a both-regions Buyer row naming one subcategory, partly taken by an East desk, says West only (Codex)', async ({ admin, createUser }) => {
-    const { leader, desk } = await broad(admin, createUser, null)
+  test('#1246: a both-regions Buyer row naming one subcategory, partly taken by an East Buyer Section, says West only (Codex)', async ({ admin, createUser }) => {
+    const { leader, buyerSection } = await broad(admin, createUser, null)
     await sql`update featherbase.merchandise_assignment set category = null, subcategory = '010505003' where row_id = 'MA-ALL'`
-    await desk('Kurti desk', '2031', '010505003')
+    await buyerSection('Kurti Buyer Section', '2031', '010505003')
     const kurtis = (await read(leader, 'my_store')).categories[0]
-    expect(kurtis.buyers.map((b: any) => [b.name, b.buys]).sort()).toEqual([['Desk Only-Buyer', 'Women Kurti, East only'], ['Old Category-Buyer', 'Women Kurti (West only)']])
+    expect(kurtis.buyers.map((b: any) => [b.name, b.buys]).sort()).toEqual([['Buyer Section Only-Buyer', 'Women Kurti, East only'], ['Old Category-Buyer', 'Women Kurti (West only)']])
   })
 
   test('#1246: a buyer with only a Buyer Section gets Your categories', async ({ admin, createUser }) => {
-    const { deskOnly, desk } = await broad(admin, createUser, 'East')
-    expect(await read(deskOnly, 'manages_area')).toBeNull()
-    await desk('Kurti desk', '2031', '010505003')
-    expect(await read(deskOnly, 'manages_area')).toBe('Your categories')
+    const { sectionOnlyBuyer, buyerSection } = await broad(admin, createUser, 'East')
+    expect(await read(sectionOnlyBuyer, 'manages_area')).toBeNull()
+    await buyerSection('Kurti Buyer Section', '2031', '010505003')
+    expect(await read(sectionOnlyBuyer, 'manages_area')).toBe('Your categories')
   })
 
   test('a buyer who has left covers nothing: their subcategories show with no buyer', async ({ admin, createUser }) => {

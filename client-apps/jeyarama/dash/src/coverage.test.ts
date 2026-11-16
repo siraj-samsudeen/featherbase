@@ -130,8 +130,8 @@ describe("one person's coverage", () => {
   })
 
   it("#1246: a buyer's Buyer Sections, each with its subcategories by name, and the gap of one that buys nothing", async () => {
-    const desk = (row_id: string, operating_region: string | null) => ({ row_id, name: row_id, operating_region, buyer: 'E-BUY', category_head: 'E-CH', starts_on: '2026-01-01', ends_on: null })
-    const tables = world({ 'Buyer Section': [desk('BS-E', 'East'), desk('BS-NONE', null)],
+    const buyerSection = (row_id: string, operating_region: string | null) => ({ row_id, name: row_id, operating_region, buyer: 'E-BUY', category_head: 'E-CH', starts_on: '2026-01-01', ends_on: null })
+    const tables = world({ 'Buyer Section': [buyerSection('BS-E', 'East'), buyerSection('BS-NONE', null)],
       'Buyer Section Subcategory': [{ row_id: 'L1', buyer_section: 'BS-E', subcategory: 'C2', starts_on: '2026-01-01', ends_on: null },
         { row_id: 'L2', buyer_section: 'BS-E', subcategory: 'C1', starts_on: '2026-01-01', ends_on: null }] })
     const lines = (await cover('x', { employee: 'E-BUY' }, MDE, tables)).merchandise.filter((m: { level: string }) => m.level === 'buyer_section')

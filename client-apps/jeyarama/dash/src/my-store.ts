@@ -20,7 +20,7 @@ const LEVELS = ['subcategory', 'category', 'subdivision', 'division'] as const
 
 /** The caller's staff rows, areas, the merchandise they lead and what they buy. */
 export async function areasOf(ctx: ReadContext | ActionContext, today: string): Promise<{ employee: Row | undefined; employees: Row[]; areas: Area[]; leads: Row[]; buys: Row[];
-  desks: { section: Row; subcategories: string[] }[]; stillAnswers: (row: Row, codes: string[]) => string[]; partly: (row: Row, code: string) => string | null }> {
+  buyerSections: { section: Row; subcategories: string[] }[]; stillAnswers: (row: Row, codes: string[]) => string[]; partly: (row: Row, code: string) => string | null }> {
   const employees = await myEmployees(ctx)
   const areas = await areasFor(ctx, employees, today)
   const assignments = employees.length ? (await all(ctx, MERCHANDISE, MERCHANDISE_FIELDS, [['employee', 'in', employees.map(e => exact(e.row_id))]]))
@@ -28,15 +28,15 @@ export async function areasOf(ctx: ReadContext | ActionContext, today: string): 
   // #1246: the Buyer Sections I buy for, and what each of my Buyer rows still answers for.
   const mine = new Set(employees.map(e => exact(e.row_id)))
   const open = employees.length ? await openBuyerSections(ctx, today) : NO_BUYER_SECTIONS
-  const desks = [...open.sections.values()].filter(d => mine.has(exact(d.buyer)))
+  const buyerSections = [...open.sections.values()].filter(d => mine.has(exact(d.buyer)))
     .map(section => ({ section, subcategories: open.links.filter(l => exact(l.buyer_section) === exact(section.row_id)).map(l => exact(l.subcategory)) }))
   const regions = open.sections.size ? knownRegions((await all(ctx, T.site, ['operating_region'], [])).map(r => r.operating_region),
     [...open.sections.values()].map(d => d.operating_region), assignments.map(r => r.operating_region)) : []
-  // A Buyer row answers for the subcategories no desk has taken over in the regions it applies to (buyers.ts rowAnswers).
+  // A Buyer row answers for the subcategories no Buyer Section has taken over in the regions it applies to (buyers.ts rowAnswers).
   const stillAnswers = (row: Row, codes: string[]) => codes.filter(code => rowAnswers(row, code, null, open, regions))
   const partly = (row: Row, code: string) => onlyIn(row, code, open, regions)
   return { employee: employees[0], employees, areas, leads: assignments.filter(r => LEADS_BUYERS.has(text(r.responsibility))),
-    buys: assignments.filter(r => text(r.responsibility) === 'Buyer'), desks, stillAnswers, partly }
+    buys: assignments.filter(r => text(r.responsibility) === 'Buyer'), buyerSections, stillAnswers, partly }
 }
 
 /** What each kind of area is called on its page. */
@@ -45,10 +45,10 @@ const PAGE: Record<Area['kind'], string> = { store: 'Your store', floor: 'Your f
 export const storeReads = {
   /** The sidebar's link for Your store / Your floor / Your categories; departments and sections have their own pages. */
   async manages_area(ctx: ReadContext) {
-    const { areas, leads, buys, desks } = await areasOf(ctx, istToday())
+    const { areas, leads, buys, buyerSections } = await areasOf(ctx, istToday())
     if (areas.some(a => a.kind === 'store')) return PAGE.store
     if (areas.some(a => a.kind === 'floor')) return PAGE.floor
-    return leads.length || buys.length || desks.length ? 'Your categories' : null
+    return leads.length || buys.length || buyerSections.length ? 'Your categories' : null
   },
 
   /** Everything the page shows, for the signed-in manager alone. `kinds` narrows it for the page asking. */
@@ -61,9 +61,9 @@ export const storeReads = {
     const areas = all_.areas.filter(a => !kinds || kinds.has(a.kind))
     const leads = !kinds || kinds.has('categories') ? all_.leads : []
     const buysRows = !kinds || kinds.has('categories') ? all_.buys : []
-    const desksMine = !kinds || kinds.has('categories') ? all_.desks : []
+    const myBuyerSections = !kinds || kinds.has('categories') ? all_.buyerSections : []
     if (!employee) return { state: 'unknown_person' as const }
-    if (!areas.length && !leads.length && !buysRows.length && !desksMine.length) return { state: 'nothing' as const }
+    if (!areas.length && !leads.length && !buysRows.length && !myBuyerSections.length) return { state: 'nothing' as const }
     const mine = new Set(employees.map(e => exact(e.row_id)))
     const sites = unique(areas.map(a => a.site))
     const siteRows = sites.length ? byId(await list(ctx, T.site, ['name'], [['row_id', 'in', sites]])) : new Map<string, Row>()
@@ -136,11 +136,11 @@ export const storeReads = {
     }
     const categories = []
     // #1246: Buyer Sections first; today's Merchandise Assignment Buyer rows only where none covers a subcategory.
-    const desks = led.size ? await openBuyerSections(ctx, today) : NO_BUYER_SECTIONS
+    const buyerSections = led.size ? await openBuyerSections(ctx, today) : NO_BUYER_SECTIONS
     const openBuyerRows = led.size ? (await all(ctx, MERCHANDISE, MERCHANDISE_FIELDS, [['responsibility', '=', 'Buyer']])).filter(row => holdsOn(row, today)) : []
-    // The regions with stores decide "every region" for a head of all of them; desks and Buyer rows add any other region named.
+    // The regions with stores decide "every region" for a head of all of them; Buyer Sections and Buyer rows add any other region named.
     const siteRegions = led.size ? knownRegions((await all(ctx, T.site, ['operating_region'], [])).map(r => r.operating_region)) : []
-    const regions = knownRegions(siteRegions, [...desks.sections.values()].map(d => d.operating_region), openBuyerRows.map(r => r.operating_region))
+    const regions = knownRegions(siteRegions, [...buyerSections.sections.values()].map(d => d.operating_region), openBuyerRows.map(r => r.operating_region))
     for (const { category, region, responsibility, only } of led.values()) {
       const subs = (await all(ctx, T.subcategory, ['subcategory', 'category', 'subdivision', 'division', 'subcategory_type'], [['category', '=', category], ['subcategory_type', '=', 'Merchandise']]))
         .filter(s => !only || only.has(exact(s.row_id)))
@@ -149,40 +149,40 @@ export const storeReads = {
         : exact(row.category) ? exact(row.category) === category
         : exact(row.subdivision) ? levelOf(s).subdivision === exact(row.subdivision)
         : exact(row.division) ? levelOf(s).division === exact(row.division) : false
-      // Per subcategory, by the transition rule (#1246): the desks covering it, else the Buyer rows that still
+      // Per subcategory, by the transition rule (#1246): the Buyer Sections covering it, else the Buyer rows that still
       // answer for it. A row is kept with exactly the subcategories it answers for, never re-expanded.
-      const fromDesks: { link: Row; section: Row; sub: Row }[] = []
+      const fromBuyerSections: { link: Row; section: Row; sub: Row }[] = []
       const answering = new Map<string, Set<string>>()
       for (const sub of subs) {
-        const source = buyerSources(exact(sub.row_id), region, desks, openBuyerRows, row => coversSub(row, sub), regions)
-        fromDesks.push(...source.sections.map(d => ({ ...d, sub })))
+        const source = buyerSources(exact(sub.row_id), region, buyerSections, openBuyerRows, row => coversSub(row, sub), regions)
+        fromBuyerSections.push(...source.sections.map(d => ({ ...d, sub })))
         for (const row of source.assignments) answering.set(exact(row.row_id), (answering.get(exact(row.row_id)) ?? new Set()).add(exact(sub.row_id)))
       }
       const buyerRows = openBuyerRows.filter(row => answering.has(exact(row.row_id)))
-      // A buyer who has left buys nothing: their subcategories show as having no buyer. So does a desk with no buyer.
-      const people = unique([...buyerRows.map(b => exact(b.employee)), ...fromDesks.map(d => exact(d.section.buyer))])
+      // A buyer who has left buys nothing: their subcategories show as having no buyer. So does a Buyer Section with no buyer.
+      const people = unique([...buyerRows.map(b => exact(b.employee)), ...fromBuyerSections.map(d => exact(d.section.buyer))])
       const buyerNames = people.length ? byId(await all(ctx, T.employee, ['name', 'status'], [['row_id', 'in', people]])) : new Map<string, Row>()
       const isCurrent = (id: unknown) => text(buyerNames.get(exact(id))?.status) === 'Current'
       const buyers = buyerRows.filter(b => isCurrent(b.employee))
-      const deskBuyers = fromDesks.filter(d => isCurrent(d.section.buyer))
+      const buyerSectionBuyers = fromBuyerSections.filter(d => isCurrent(d.section.buyer))
       // Only a buyer for every store this head covers closes the gap: for a head with no region, one limited to a region doesn't.
       const whole = (b: Row) => !exact(b.operating_region) || exact(b.operating_region) === region
       const covered = new Set(subs.map(s => exact(s.row_id)).filter(code => {
-        const desksHere = fromDesks.filter(d => exact(d.sub.row_id) === code)
-        // Every desk covering it needs a buyer on the staff: a vacancy is a gap wherever it is.
-        if (desksHere.some(d => !isCurrent(d.section.buyer))) return false
+        const buyerSectionsHere = fromBuyerSections.filter(d => exact(d.sub.row_id) === code)
+        // Every Buyer Section covering it needs a buyer on the staff: a vacancy is a gap wherever it is.
+        if (buyerSectionsHere.some(d => !isCurrent(d.section.buyer))) return false
         const rows = buyers.filter(b => answering.get(exact(b.row_id))!.has(code))
-        if (region) return rows.some(whole) || desksHere.length > 0
-        // A head of every region, where the stores name their regions: each region needs a desk buyer or a Buyer row answering there.
-        if (siteRegions.length) return siteRegions.every(r => desksHere.some(d => exact(d.section.operating_region) === r)
-          || rows.some(b => answersWhere(b, code, desks, regions).some(w => w === null || w === r)))
-        // No region named on any store: as before, only a both-regions row closes the gap, or a desk in every region named.
-        return rows.some(whole) || (regions.length > 0 && regions.every(r => desksHere.some(d => exact(d.section.operating_region) === r)))
+        if (region) return rows.some(whole) || buyerSectionsHere.length > 0
+        // A head of every region, where the stores name their regions: each region needs a Buyer Section buyer or a Buyer row answering there.
+        if (siteRegions.length) return siteRegions.every(r => buyerSectionsHere.some(d => exact(d.section.operating_region) === r)
+          || rows.some(b => answersWhere(b, code, buyerSections, regions).some(w => w === null || w === r)))
+        // No region named on any store: as before, only a both-regions row closes the gap, or a Buyer Section in every region named.
+        return rows.some(whole) || (regions.length > 0 && regions.every(r => buyerSectionsHere.some(d => exact(d.section.operating_region) === r)))
       }))
       const label = (b: Row) => {
         const mine = answering.get(exact(b.row_id))!
         const named = (code: string) => text(subs.find(s => exact(s.row_id) === code)?.subcategory)
-        const partly = (code: string) => region ? null : onlyIn(b, code, desks, regions)
+        const partly = (code: string) => region ? null : onlyIn(b, code, buyerSections, regions)
         if (exact(b.subcategory)) return named(exact(b.subcategory)) + (partly(exact(b.subcategory)) ? ` (${partly(exact(b.subcategory))} only)` : '')
         if (mine.size === subs.filter(s => coversSub(b, s)).length && [...mine].every(code => !partly(code))) return `All of ${exact(b.category) || exact(b.subdivision) || exact(b.division)}`
         const names = [...mine].map(code => named(code) + (partly(code) ? ` (${partly(code)} only)` : '')).sort((x, y) => x.localeCompare(y))
@@ -191,7 +191,7 @@ export const storeReads = {
       categories.push({ category, region, responsibility,
         buyers: buyers.map(b => ({ name: text(buyerNames.get(exact(b.employee))?.name) || 'Unnamed', code: exact(b.employee), assignment: exact(b.row_id),
           buys: label(b) + (whole(b) ? '' : `, ${exact(b.operating_region)} only`),
-          subcategory: exact(b.subcategory) || null, buyer_section: null as { id: string; name: string } | null })).concat(deskBuyers.map(d => ({
+          subcategory: exact(b.subcategory) || null, buyer_section: null as { id: string; name: string } | null })).concat(buyerSectionBuyers.map(d => ({
           name: text(buyerNames.get(exact(d.section.buyer))?.name) || 'Unnamed', code: exact(d.section.buyer), assignment: exact(d.link.row_id),
           buys: text(d.sub.subcategory) + (region ? '' : `, ${exact(d.section.operating_region)} only`), subcategory: exact(d.sub.row_id),
           buyer_section: { id: exact(d.section.row_id), name: text(d.section.name) } }))),
@@ -211,7 +211,7 @@ export const storeReads = {
           .sort((x, y) => x.name.localeCompare(y.name)) })
     }
     // #1246: what my Buyer Sections buy.
-    for (const { section, subcategories } of desksMine) {
+    for (const { section, subcategories } of myBuyerSections) {
       const subs = subcategories.length ? await all(ctx, T.subcategory, ['subcategory'], [['row_id', 'in', subcategories]]) : []
       buys.push({ assignment: exact(section.row_id), level: 'buyer_section', named: text(section.name), region: exact(section.operating_region) || null,
         buyer_section: { id: exact(section.row_id), name: text(section.name) },

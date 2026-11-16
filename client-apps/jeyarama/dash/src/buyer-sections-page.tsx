@@ -7,26 +7,26 @@ import { act } from './api'
 import { RECORD, RecordLink } from './record-link'
 
 interface Ref { code: string; name: string }
-export interface BuyerDesk { id: string; name: string; region: string; buyer: Ref | null; subcategories: (Ref & { link: string })[] }
+export interface BuyerSectionCard { id: string; name: string; region: string; buyer: Ref | null; subcategories: (Ref & { link: string })[] }
 interface Waiting { id: string; subcategory: string; subcategory_name: string; region: string; from: string | null; to: string; applied: boolean; waiting_for: string }
 interface Decided { id: string; subcategory: string; subcategory_name: string; from: string | null; to: string; state: string; reason: string | null; decided_on: string }
-export interface BuyerSectionsAnswer { desks: BuyerDesk[]; unplaced: (Ref & { region: string })[]; waiting: Waiting[]; decided?: Decided[] }
+export interface BuyerSectionsAnswer { buyerSections: BuyerSectionCard[]; unplaced: (Ref & { region: string })[]; waiting: Waiting[]; decided?: Decided[] }
 const OUTCOME: Record<string, string> = { Applied: 'Kept', Confirmed: 'Kept', Rejected: 'Turned down', Undone: 'Undone', 'Needs fresh review': 'Changed since you asked', Withdrawn: 'Taken back' }
 export interface BuyerMoveToDecide { id: string; who: string; who_code?: string | null; subcategory: string; subcategory_name: string; region: string; from: string | null; from_id?: string | null; to: string; to_id?: string; applied: boolean; asked_on: string }
 
 const messageOf = (error: unknown) => (error as Error).message
 
-/** One subcategory and where it could go: the head's other desks in the same region. */
-function MoveRow({ sub, region, here, desks, waiting, onDone }: { sub: Ref; region: string; here: string | null; desks: BuyerDesk[]; waiting?: Waiting
+/** One subcategory and where it could go: the head's other Buyer Sections in the same region. */
+function MoveRow({ sub, region, here, buyerSections, waiting, onDone }: { sub: Ref; region: string; here: string | null; buyerSections: BuyerSectionCard[]; waiting?: Waiting
   onDone: (note: { tone: 'positive' | 'negative'; text: string }) => Promise<unknown> }) {
-  const choices = desks.filter(d => d.region === region && d.id !== here)
+  const choices = buyerSections.filter(d => d.region === region && d.id !== here)
   const [to, setTo] = useState('')
   const [busy, setBusy] = useState(false)
   async function move() {
     setBusy(true)
     try {
       const done = await act<{ state: string }>('move_buyer_subcategory', { subcategory: sub.code, to_section: to })
-      const name = desks.find(d => d.id === to)?.name ?? ''
+      const name = buyerSections.find(d => d.id === to)?.name ?? ''
       await onDone({ tone: 'positive', text: done.state === 'Not yet reviewed' ? `Moved ${sub.name} to ${name}. The master data team reviews it.` : `Asked to move ${sub.name} to ${name}. The master data team decides.` })
       setTo('')
     } catch (failure) { await onDone({ tone: 'negative', text: messageOf(failure) }) }
@@ -51,10 +51,10 @@ function MoveRow({ sub, region, here, desks, waiting, onDone }: { sub: Ref; regi
   )
 }
 
-/** A category head's desks and what in their categories no desk buys yet. Nothing when they head no desk. */
+/** A category head's Buyer Sections and what in their categories no Buyer Section buys yet. Nothing when they head no Buyer Section. */
 export function YourBuyerSections({ answer, onChanged }: { answer: BuyerSectionsAnswer; onChanged: () => Promise<unknown> }) {
   const [note, setNote] = useState<{ tone: 'positive' | 'negative'; text: string } | null>(null)
-  if (!answer.desks.length) return null
+  if (!answer.buyerSections.length) return null
   // One change waits per subcategory and region, as the server serializes them.
   const waitingFor = (code: string, region: string) => answer.waiting.find(w => w.subcategory === code && w.region === region)
   const done = (next: NonNullable<typeof note>) => { setNote(next); return onChanged() }
@@ -63,14 +63,14 @@ export function YourBuyerSections({ answer, onChanged }: { answer: BuyerSections
       <h2 className="text-lg font-semibold">Your Buyer Sections</h2>
       <p className="fd-muted text-sm">Move a subcategory to another of your Buyer Sections to change who buys it. The master data team decides; nothing changes until then.</p>
       {note && <Notice tone={note.tone}><span data-testid="buyer-move-note">{note.text}</span></Notice>}
-      {answer.desks.map(desk => (
-        <Card key={desk.id} data-testid="buyer-desk"
-          title={<span className="inline-flex flex-wrap gap-x-1"><RecordLink table={RECORD.buyerSection} id={desk.id}>{desk.name}</RecordLink><span aria-hidden="true" className="text-ink-muted">·</span>
-            {desk.buyer ? <span className="whitespace-nowrap"><span className="text-ink-muted">Buyer: </span><RecordLink table={RECORD.employee} id={desk.buyer.code}>{desk.buyer.name}</RecordLink></span>
+      {answer.buyerSections.map(buyerSection => (
+        <Card key={buyerSection.id} data-testid="buyer-section-card"
+          title={<span className="inline-flex flex-wrap gap-x-1"><RecordLink table={RECORD.buyerSection} id={buyerSection.id}>{buyerSection.name}</RecordLink><span aria-hidden="true" className="text-ink-muted">·</span>
+            {buyerSection.buyer ? <span className="whitespace-nowrap"><span className="text-ink-muted">Buyer: </span><RecordLink table={RECORD.employee} id={buyerSection.buyer.code}>{buyerSection.buyer.name}</RecordLink></span>
               : <span className="text-ink-muted" data-testid="no-buyer-yet">No buyer yet</span>}
-            <span aria-hidden="true" className="text-ink-muted">·</span><RecordLink table={RECORD.region} id={desk.region}>{desk.region}</RecordLink></span>}>
-          {desk.subcategories.length
-            ? <table className="w-full"><tbody>{desk.subcategories.map(s => <MoveRow key={s.code} sub={s} region={desk.region} here={desk.id} desks={answer.desks} waiting={waitingFor(s.code, desk.region)} onDone={done} />)}</tbody></table>
+            <span aria-hidden="true" className="text-ink-muted">·</span><RecordLink table={RECORD.region} id={buyerSection.region}>{buyerSection.region}</RecordLink></span>}>
+          {buyerSection.subcategories.length
+            ? <table className="w-full"><tbody>{buyerSection.subcategories.map(s => <MoveRow key={s.code} sub={s} region={buyerSection.region} here={buyerSection.id} buyerSections={answer.buyerSections} waiting={waitingFor(s.code, buyerSection.region)} onDone={done} />)}</tbody></table>
             : <p className="fd-muted p-4 text-sm">Buys nothing yet.</p>}
         </Card>
       ))}
@@ -89,7 +89,7 @@ export function YourBuyerSections({ answer, onChanged }: { answer: BuyerSections
       )}
       {answer.unplaced.length > 0 && (
         <Card data-testid="buyer-unplaced" title={`Not in any Buyer Section yet · ${answer.unplaced.length}`}>
-          <table className="w-full"><tbody>{answer.unplaced.map(s => <MoveRow key={`${s.region}|${s.code}`} sub={s} region={s.region} here={null} desks={answer.desks} waiting={waitingFor(s.code, s.region)} onDone={done} />)}</tbody></table>
+          <table className="w-full"><tbody>{answer.unplaced.map(s => <MoveRow key={`${s.region}|${s.code}`} sub={s} region={s.region} here={null} buyerSections={answer.buyerSections} waiting={waitingFor(s.code, s.region)} onDone={done} />)}</tbody></table>
         </Card>
       )}
     </div>

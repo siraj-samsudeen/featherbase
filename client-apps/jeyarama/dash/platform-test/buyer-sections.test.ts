@@ -21,7 +21,7 @@ const act = (client: TestClient, name: string, payload: object) =>
 const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)
 const yesterday = new Date(Date.parse(`${today}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10)
 
-/** Two category heads in East: Hema heads Kurtis (desks Kurti and Salwar); Omar heads Sarees (desk Silk). */
+/** Two category heads in East: Hema heads Kurtis (Buyer Sections Kurti and Salwar); Omar heads Sarees (Buyer Section Silk). */
 async function world(admin: TestClient, createUser: CreateUserFn) {
   await installApp(admin)
   await createCoreTables(admin)
@@ -43,11 +43,11 @@ async function world(admin: TestClient, createUser: CreateUserFn) {
     await save('Employee', { employee_code, name, status: 'Current', person })
   await save('Merchandise Assignment', { assignment_id: 'MA-HEMA', employee: '2001', responsibility: 'Category head', category: 'Kurtis', operating_region: 'East', starts_on: '2026-10-01' })
   await save('Merchandise Assignment', { assignment_id: 'MA-OMAR', employee: '2002', responsibility: 'Category head', category: 'Sarees', operating_region: 'East', starts_on: '2026-10-01' })
-  const desk = (buyer_section_id: string, name: string, buyer: string | null, category_head: string) =>
+  const buyerSection = (buyer_section_id: string, name: string, buyer: string | null, category_head: string) =>
     save('Buyer Section', { buyer_section_id, name, operating_region: 'East', buyer, category_head, starts_on: '2026-11-01' })
-  await desk('BS-KURTI', 'Women Kurti', '2010', '2001')
-  await desk('BS-SALWAR', 'Salwar', '2011', '2001')
-  await desk('BS-SILK', 'Silk', '2012', '2002')
+  await buyerSection('BS-KURTI', 'Women Kurti', '2010', '2001')
+  await buyerSection('BS-SALWAR', 'Salwar', '2011', '2001')
+  await buyerSection('BS-SILK', 'Silk', '2012', '2002')
   const link = (id: string, buyer_section: string, subcategory: string) =>
     save('Buyer Section Subcategory', { buyer_section_subcategory_id: id, buyer_section, subcategory, starts_on: '2026-11-01' })
   await link('BSS-1', 'BS-KURTI', '010505003')
@@ -56,47 +56,47 @@ async function world(admin: TestClient, createUser: CreateUserFn) {
   return { hema, omar, editor, nobody, login, save }
 }
 
-const desksOf = async (client: TestClient) => (await read(client, 'buyer_sections')).desks
+const sectionsOf = async (client: TestClient) => (await read(client, 'buyer_sections')).buyerSections
   .map((d: any) => [d.id, d.buyer?.name ?? null, d.subcategories.map((s: any) => s.code)])
 const openLinks = async () => (await sql`select buyer_section, subcategory, starts_on::text as starts, ends_on::text as ends
   from featherbase.buyer_section_subcategory order by subcategory, starts_on`).map(r => [r.buyer_section, r.subcategory, r.ends])
 
 describe('#1246 a category head and their Buyer Sections', () => {
-  test('sees their own desks, each buyer and the subcategories it buys; and what in their categories no desk buys', async ({ admin, createUser }) => {
+  test('sees their own Buyer Sections, each buyer and the subcategories it buys; and what in their categories no Buyer Section buys', async ({ admin, createUser }) => {
     const { hema, omar, nobody } = await world(admin, createUser)
-    expect(await desksOf(hema)).toEqual([['BS-SALWAR', 'Sara Buyer', []], ['BS-KURTI', 'Kavin Buyer', ['010505001', '010505003']]])
+    expect(await sectionsOf(hema)).toEqual([['BS-SALWAR', 'Sara Buyer', []], ['BS-KURTI', 'Kavin Buyer', ['010505001', '010505003']]])
     expect((await read(hema, 'buyer_sections')).unplaced).toEqual([{ code: '010505009', name: 'Kurti Sets', region: 'East' }])
-    expect(await desksOf(omar)).toEqual([['BS-SILK', 'Silk Buyer', ['010101001']]])
-    expect(await read(nobody, 'buyer_sections')).toEqual({ desks: [], unplaced: [], waiting: [], decided: [] })
+    expect(await sectionsOf(omar)).toEqual([['BS-SILK', 'Silk Buyer', ['010101001']]])
+    expect(await read(nobody, 'buyer_sections')).toEqual({ buyerSections: [], unplaced: [], waiting: [], decided: [] })
   })
 
-  test('moves a subcategory to another of their desks; the master data team approves and it applies today', async ({ admin, createUser }) => {
+  test('moves a subcategory to another of their Buyer Sections; the master data team approves and it applies today', async ({ admin, createUser }) => {
     const { hema, editor } = await world(admin, createUser)
     const asked = await act(hema, 'move_buyer_subcategory', { subcategory: '010505001', to_section: 'BS-SALWAR' })
     expect(asked).toMatchObject({ state: 'Pending', waiting_for: 'the master data team' })
     expect((await read(hema, 'buyer_sections')).waiting).toEqual([expect.objectContaining({ subcategory: '010505001', region: 'East', from: 'Women Kurti', to: 'Salwar' })])
     // Nothing changes until it is approved.
-    expect(await desksOf(hema)).toEqual([['BS-SALWAR', 'Sara Buyer', []], ['BS-KURTI', 'Kavin Buyer', ['010505001', '010505003']]])
+    expect(await sectionsOf(hema)).toEqual([['BS-SALWAR', 'Sara Buyer', []], ['BS-KURTI', 'Kavin Buyer', ['010505001', '010505003']]])
     expect((await read(editor, 'buyer_section_approvals')).map((p: any) => [p.who, p.who_code, p.subcategory_name, p.from, p.from_id, p.to, p.to_id]))
       .toEqual([['Hema Head', '2001', 'Churidar', 'Women Kurti', 'BS-KURTI', 'Salwar', 'BS-SALWAR']])
     expect(await act(editor, 'decide_buyer_section', { proposal: asked.id, decision: 'approve' })).toMatchObject({ state: 'Applied' })
-    expect(await desksOf(hema)).toEqual([['BS-SALWAR', 'Sara Buyer', ['010505001']], ['BS-KURTI', 'Kavin Buyer', ['010505003']]])
+    expect(await sectionsOf(hema)).toEqual([['BS-SALWAR', 'Sara Buyer', ['010505001']], ['BS-KURTI', 'Kavin Buyer', ['010505003']]])
     expect(await openLinks()).toEqual(expect.arrayContaining([['BS-KURTI', '010505001', yesterday], ['BS-SALWAR', '010505001', null]]))
     // Who buys it follows: Sara now buys Churidar.
     const kurtis = (await read(hema, 'my_store')).categories.find((c: any) => c.category === 'Kurtis')
     expect(kurtis.buyers.find((b: any) => b.subcategory === '010505001')).toMatchObject({ name: 'Sara Buyer', buyer_section: { id: 'BS-SALWAR', name: 'Salwar' } })
   })
 
-  test('puts a subcategory no desk buys yet into one of their desks', async ({ admin, createUser }) => {
+  test('puts a subcategory no Buyer Section buys yet into one of their Buyer Sections', async ({ admin, createUser }) => {
     const { hema, editor } = await world(admin, createUser)
     const asked = await act(hema, 'move_buyer_subcategory', { subcategory: '010505009', to_section: 'BS-SALWAR' })
     await expect(act(hema, 'move_buyer_subcategory', { subcategory: '010505009', to_section: 'BS-KURTI' })).rejects.toThrow(/already waiting/)
     await act(editor, 'decide_buyer_section', { proposal: asked.id, decision: 'approve' })
     expect((await read(hema, 'buyer_sections')).unplaced).toEqual([])
-    expect(await desksOf(hema)).toEqual([['BS-SALWAR', 'Sara Buyer', ['010505009']], ['BS-KURTI', 'Kavin Buyer', ['010505001', '010505003']]])
+    expect(await sectionsOf(hema)).toEqual([['BS-SALWAR', 'Sara Buyer', ['010505009']], ['BS-KURTI', 'Kavin Buyer', ['010505001', '010505003']]])
   })
 
-  test("refuses a desk that isn't theirs, a subcategory outside their categories, and a move to where it already is", async ({ admin, createUser }) => {
+  test("refuses a Buyer Section that isn't theirs, a subcategory outside their categories, and a move to where it already is", async ({ admin, createUser }) => {
     const { hema, omar, nobody } = await world(admin, createUser)
     await expect(act(hema, 'move_buyer_subcategory', { subcategory: '010505001', to_section: 'BS-SILK' })).rejects.toThrow(/your own Buyer Sections/)
     await expect(act(omar, 'move_buyer_subcategory', { subcategory: '010505001', to_section: 'BS-SILK' })).rejects.toThrow(/outside your categories/)
@@ -117,10 +117,10 @@ describe('#1246 a category head and their Buyer Sections', () => {
     expect((await read(hema, 'buyer_sections')).decided.map((d: any) => [d.subcategory_name, d.to, d.state, d.reason]).sort()).toEqual([
       ['Churidar', 'Salwar', 'Needs fresh review', 'That subcategory has since been moved another way.'],
       ['Women Kurti', 'Salwar', 'Rejected', 'Kavin keeps Kurti']])
-    expect(await desksOf(hema)).toEqual([['BS-SALWAR', 'Sara Buyer', []], ['BS-KURTI', 'Kavin Buyer', ['010505003']]])
+    expect(await sectionsOf(hema)).toEqual([['BS-SALWAR', 'Sara Buyer', []], ['BS-KURTI', 'Kavin Buyer', ['010505003']]])
   })
 
-  test('a move goes stale when the desk it goes to moves to another region before the decision (Codex)', async ({ admin, createUser }) => {
+  test('a move goes stale when the Buyer Section it goes to moves to another region before the decision (Codex)', async ({ admin, createUser }) => {
     const { hema, editor } = await world(admin, createUser)
     await saveRow(admin, 'Operating Region', { region: 'West' })
     const asked = await act(hema, 'move_buyer_subcategory', { subcategory: '010505001', to_section: 'BS-SALWAR' })
@@ -129,7 +129,7 @@ describe('#1246 a category head and their Buyer Sections', () => {
     expect(await openLinks()).toEqual(expect.arrayContaining([['BS-KURTI', '010505001', null]]))
   })
 
-  test('a subcategory already set to join a desk on a later day is refused, and a move asked before that goes stale (Codex)', async ({ admin, createUser }) => {
+  test('a subcategory already set to join a Buyer Section on a later day is refused, and a move asked before that goes stale (Codex)', async ({ admin, createUser }) => {
     const { hema, editor } = await world(admin, createUser)
     const tomorrow = new Date(Date.parse(`${today}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10)
     const asked = await act(hema, 'move_buyer_subcategory', { subcategory: '010505009', to_section: 'BS-SALWAR' })
@@ -168,26 +168,26 @@ describe('#1246 a category head and their Buyer Sections', () => {
     await admin.post('/api/save_row', { table: 'Approval Type', row: { row_id: 'dash.buyer_section_move', mode: 'Apply now, review after' } })
     const kept = await act(hema, 'move_buyer_subcategory', { subcategory: '010505001', to_section: 'BS-SALWAR' })
     expect(kept.state).toBe('Not yet reviewed')
-    expect(await desksOf(hema)).toEqual([['BS-SALWAR', 'Sara Buyer', ['010505001']], ['BS-KURTI', 'Kavin Buyer', ['010505003']]])
+    expect(await sectionsOf(hema)).toEqual([['BS-SALWAR', 'Sara Buyer', ['010505001']], ['BS-KURTI', 'Kavin Buyer', ['010505003']]])
     await expect(act(hema, 'withdraw', { proposal: kept.id })).rejects.toThrow(/master data team/)
     expect(await act(editor, 'decide_buyer_section', { proposal: kept.id, decision: 'approve' })).toMatchObject({ state: 'Confirmed' })
     const undone = await act(hema, 'move_buyer_subcategory', { subcategory: '010505003', to_section: 'BS-SALWAR' })
     expect(await act(editor, 'decide_buyer_section', { proposal: undone.id, decision: 'reject', reason: 'Kavin keeps Kurti' })).toMatchObject({ state: 'Undone' })
-    expect(await desksOf(hema)).toEqual([['BS-SALWAR', 'Sara Buyer', ['010505001']], ['BS-KURTI', 'Kavin Buyer', ['010505003']]])
+    expect(await sectionsOf(hema)).toEqual([['BS-SALWAR', 'Sara Buyer', ['010505001']], ['BS-KURTI', 'Kavin Buyer', ['010505003']]])
   })
   test('a reader with no staff record, and a Merchandising head over every category (Codex coverage)', async ({ admin, createUser }) => {
     const { hema, editor, login, save } = await world(admin, createUser)
-    // No Employee row: no desks.
-    expect(await read(editor, 'buyer_sections')).toEqual({ desks: [], unplaced: [], waiting: [], decided: [] })
+    // No Employee row: no Buyer Sections.
+    expect(await read(editor, 'buyer_sections')).toEqual({ buyerSections: [], unplaced: [], waiting: [], decided: [] })
     // A Merchandising head names no category: they head everything in East, and list nothing as unplaced.
     const mira = await login('mira')
     await save('Employee', { employee_code: '2004', name: 'Mira Head', status: 'Current', person: mira.user })
     await save('Merchandise Assignment', { assignment_id: 'MA-MIRA', employee: '2004', responsibility: 'Merchandising head', operating_region: 'East', starts_on: '2026-10-01' })
-    await save('Buyer Section', { buyer_section_id: 'BS-MIRA', name: 'Mira desk', operating_region: 'East', buyer: null, category_head: '2004', starts_on: '2026-11-01' })
+    await save('Buyer Section', { buyer_section_id: 'BS-MIRA', name: 'Mira Buyer Section', operating_region: 'East', buyer: null, category_head: '2004', starts_on: '2026-11-01' })
     expect((await read(mira, 'buyer_sections')).unplaced).toEqual([])
-    // Silk sarees is in Omar's desk: heading it is not enough to take it from another head's desk.
+    // Silk sarees is in Omar's Buyer Section: heading it is not enough to take it from another head's Buyer Section.
     await expect(act(mira, 'move_buyer_subcategory', { subcategory: '010101001', to_section: 'BS-MIRA' })).rejects.toThrow(/another head's Buyer Section buys it/)
-    // A desk in another region buying the same subcategory leaves East free to take it.
+    // A Buyer Section in another region buying the same subcategory leaves East free to take it.
     await save('Operating Region', { region: 'West' })
     await save('Buyer Section', { buyer_section_id: 'BS-WEST', name: 'West kurtis', operating_region: 'West', buyer: null, category_head: '2001', starts_on: '2026-11-01' })
     await save('Buyer Section Subcategory', { buyer_section_subcategory_id: 'BSS-W', buyer_section: 'BS-WEST', subcategory: '010505009', starts_on: '2026-11-01' })
@@ -204,7 +204,7 @@ describe('#1246 a category head and their Buyer Sections', () => {
     await expect(act(editor, 'decide_buyer_section', { proposal: first.id, decision: 'maybe' })).rejects.toThrow(/Keep it or turn it down/)
   })
 
-  test('a move goes stale when the desk it goes to closes, or the desk it comes from passes to another head', async ({ admin, createUser }) => {
+  test('a move goes stale when the Buyer Section it goes to closes, or the Buyer Section it comes from passes to another head', async ({ admin, createUser }) => {
     const { hema, editor } = await world(admin, createUser)
     const closed = await act(hema, 'move_buyer_subcategory', { subcategory: '010505001', to_section: 'BS-SALWAR' })
     const handed = await act(hema, 'move_buyer_subcategory', { subcategory: '010505003', to_section: 'BS-SALWAR' })

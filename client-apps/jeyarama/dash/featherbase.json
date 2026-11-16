@@ -2215,7 +2215,13 @@
       "toVersion": "0.13.16",
       "operations": []
     },
-    {"id": "switcher_summary", "fromVersion": "0.13.16", "toVersion": "0.13.17", "operations": []}
+    {
+      "id": "buyer_section_moves",
+      "fromVersion": "0.13.16",
+      "toVersion": "0.13.17",
+      "operations": []
+    },
+    {"id": "switcher_summary", "fromVersion": "0.13.17", "toVersion": "0.13.19", "operations": []}
   ],
   "baseTables": {
     "read": {

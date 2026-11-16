@@ -252,29 +252,29 @@ export const coverageReads = {
 
     // Buyers and heads: the deepest level named decides, as reach reads it. Shown in full views only.
     const merchandise: MerchandiseCover[] = []
-    // #1246: Buyer Sections first. A Buyer row whose subcategory a desk of its region covers no longer counts.
-    const desks = current && full ? await openBuyerSections(ctx, today) : NO_BUYER_SECTIONS
+    // #1246: Buyer Sections first. A Buyer row whose subcategory a Buyer Section of its region covers no longer counts.
+    const buyerSections = current && full ? await openBuyerSections(ctx, today) : NO_BUYER_SECTIONS
     const assignments = current && full ? (await all(ctx, MERCHANDISE, ['employee', 'responsibility', ...LEVELS, 'operating_region', 'starts_on', 'ends_on'], [['employee', '=', code]]))
       .filter(r => holdsOn(r, today)) : []
-    const regions = desks.sections.size ? knownRegions((await all(ctx, T.site, ['operating_region'], [])).map(r => r.operating_region),
-      [...desks.sections.values()].map(d => d.operating_region), assignments.map(r => r.operating_region)) : []
+    const regions = buyerSections.sections.size ? knownRegions((await all(ctx, T.site, ['operating_region'], [])).map(r => r.operating_region),
+      [...buyerSections.sections.values()].map(d => d.operating_region), assignments.map(r => r.operating_region)) : []
     for (const a of assignments) {
       const level = LEVELS.find(l => exact(a[l]))
       const named = level ? exact(a[level]) : ''
       const subs = !level ? [] : await all(ctx, T.subcategory, ['subcategory', 'subcategory_type'],
         [[level === 'subcategory' ? 'row_id' : level, '=', named], ['subcategory_type', '=', 'Merchandise']])
-      // A Buyer row lists only what it still answers for: what a Buyer Section has taken over is the desk's (#1246).
-      const answers = text(a.responsibility) === 'Buyer' ? subs.filter(s => rowAnswers(a, exact(s.row_id), null, desks, regions)) : subs
+      // A Buyer row lists only what it still answers for: what a Buyer Section has taken over is the Buyer Section's (#1246).
+      const answers = text(a.responsibility) === 'Buyer' ? subs.filter(s => rowAnswers(a, exact(s.row_id), null, buyerSections, regions)) : subs
       if (subs.length && !answers.length) continue
-      const only = (s: Row) => text(a.responsibility) === 'Buyer' ? onlyIn(a, exact(s.row_id), desks, regions) : null
+      const only = (s: Row) => text(a.responsibility) === 'Buyer' ? onlyIn(a, exact(s.row_id), buyerSections, regions) : null
       const listed = answers.map(s => ({ code: exact(s.row_id), name: text(s.subcategory), ...(only(s) ? { only: only(s)! } : {}) })).sort((x, y) => x.name.localeCompare(y.name))
       merchandise.push({ assignment: exact(a.row_id), responsibility: text(a.responsibility), level: level ?? 'nothing', named: level === 'subcategory' ? listed[0]?.name ?? named : named,
         region: exact(a.operating_region) || null, subcategories: listed.slice(0, NAMES_SHOWN), more: Math.max(0, listed.length - NAMES_SHOWN),
         gaps: !level ? ['Names no division, category or subcategory'] : !subs.length ? [`${named} · no subcategories`] : [] })
     }
 
-    for (const section of [...desks.sections.values()].filter(d => exact(d.buyer) === code)) {
-      const codes = desks.links.filter(l => exact(l.buyer_section) === exact(section.row_id)).map(l => exact(l.subcategory))
+    for (const section of [...buyerSections.sections.values()].filter(d => exact(d.buyer) === code)) {
+      const codes = buyerSections.links.filter(l => exact(l.buyer_section) === exact(section.row_id)).map(l => exact(l.subcategory))
       const subs = codes.length ? await all(ctx, T.subcategory, ['subcategory'], [['row_id', 'in', codes]]) : []
       const listed = subs.map(s => ({ code: exact(s.row_id), name: text(s.subcategory) })).sort((x, y) => x.name.localeCompare(y.name))
       merchandise.push({ assignment: exact(section.row_id), responsibility: 'Buyer', level: 'buyer_section', named: text(section.name), region: exact(section.operating_region) || null,

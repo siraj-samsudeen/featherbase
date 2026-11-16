@@ -1,4 +1,4 @@
-// #1246: what the platform suite has no cheap way to reach, on an in-memory stand-in — the desk changing
+// #1246: what the platform suite has no cheap way to reach, on an in-memory stand-in — the Buyer Section changing
 // while a move waits for its lock (the platform test runs each test in one transaction, so it cannot hold
 // the lock from a second session), malformed requests, and the rarer shapes of the data. Made-up people
 // and codes.
@@ -11,7 +11,7 @@ type Row = Record<string, unknown>
 const today = istToday()
 const later = '2999-01-01'
 
-const desk = (row_id: string, over: Row = {}): Row => ({ row_id, name: row_id, operating_region: 'East', buyer: null, category_head: 'E1', starts_on: '2026-01-01', ends_on: null, ...over })
+const buyerSection = (row_id: string, over: Row = {}): Row => ({ row_id, name: row_id, operating_region: 'East', buyer: null, category_head: 'E1', starts_on: '2026-01-01', ends_on: null, ...over })
 const move = (row_id: string, over: Row = {}, about: Row = {}): Row => ({ row_id, maker: 'hema', state: 'Pending', decision_reason: null, created_at: `${today}T00:00:00Z`, decided_at: null,
   about: { kind: 'buyer_section', subcategory: 'C1', subcategory_name: 'Sarees', region: 'East', from_section: '', from: '', to_section: 'BS1', to: 'BS1', maker_name: 'Hema', link: '', ...about }, ...over })
 
@@ -20,7 +20,7 @@ function world(over: Record<string, Row[]> = {}): Record<string, Row[]> {
     Employee: [{ row_id: 'E1', name: 'Hema', status: 'Current', person: 'hema' }, { row_id: 'E9', name: 'Elan', status: 'Current', person: 'elan' }],
     'Merchandise Assignment': [{ row_id: 'MA1', employee: 'E1', responsibility: 'Category head', subcategory: 'C1', category: null, subdivision: null, division: null, operating_region: 'East', starts_on: '2026-01-01', ends_on: null }],
     Subcategory: [{ row_id: 'C1', subcategory: 'Sarees', category: 'CAT1', subdivision: 'SUB1', division: 'DIV1', subcategory_type: 'Merchandise' }],
-    'Buyer Section': [desk('BS1')],
+    'Buyer Section': [buyerSection('BS1')],
     'Buyer Section Subcategory': [],
     ...over,
   }
@@ -58,15 +58,15 @@ function context(tables: Record<string, Row[]>, { user = 'hema', payload, propos
   return { ctx: ctx as unknown as ActionContext & ReadContext, sent }
 }
 
-describe('a move whose desk changes while it waits for the lock', () => {
+describe('a move whose Buyer Section changes while it waits for the lock', () => {
   const asked = { subcategory: 'C1', to_section: 'BS1' }
-  it('is refused when the desk moves to another region', async () => {
+  it('is refused when the Buyer Section moves to another region', async () => {
     const tables = world()
     const { ctx } = context(tables, { payload: asked, onSerialize: () => { tables['Buyer Section'][0].operating_region = 'West' } })
     await expect(buyerSectionActions.move_buyer_subcategory(ctx)).rejects.toThrow(/just changed/)
   })
 
-  it('is refused when the desk closes', async () => {
+  it('is refused when the Buyer Section closes', async () => {
     const tables = world()
     const { ctx } = context(tables, { payload: asked, onSerialize: () => { tables['Buyer Section'][0].ends_on = '2026-01-02' } })
     await expect(buyerSectionActions.move_buyer_subcategory(ctx)).rejects.toThrow(/your own Buyer Sections/)
@@ -74,13 +74,13 @@ describe('a move whose desk changes while it waits for the lock', () => {
 })
 
 describe('asking for a move', () => {
-  it('refuses a request that names no desk or no subcategory', async () => {
+  it('refuses a request that names no Buyer Section or no subcategory', async () => {
     await expect(buyerSectionActions.move_buyer_subcategory(context(world()).ctx)).rejects.toThrow(/your own Buyer Sections/)
     await expect(buyerSectionActions.move_buyer_subcategory(context(world(), { payload: { to_section: 'BS1', subcategory: 7 } }).ctx)).rejects.toThrow(/subcategory from the list/)
   })
 
-  it('a head of one subcategory puts it in their desk; a desk in another region set to take it later is no bar, nor are other changes', async () => {
-    const tables = world({ 'Buyer Section': [desk('BS1'), desk('BS-W', { operating_region: 'West' })],
+  it('a head of one subcategory puts it in their Buyer Section; a Buyer Section in another region set to take it later is no bar, nor are other changes', async () => {
+    const tables = world({ 'Buyer Section': [buyerSection('BS1'), buyerSection('BS-W', { operating_region: 'West' })],
       'Buyer Section Subcategory': [{ row_id: 'L-W', buyer_section: 'BS-W', subcategory: 'C1', starts_on: later, ends_on: null }] })
     // More than a page of other open changes: every page is read before the move is allowed.
     const others = Array.from({ length: 500 }, (_, i) => ({ row_id: `X${i}`, maker: 'someone', state: 'Pending', about: { kind: 'section' }, created_at: `${today}T00:00:00Z` }))
@@ -91,10 +91,10 @@ describe('asking for a move', () => {
 })
 
 describe('what a head and the master data team see', () => {
-  it('a desk that buys nothing yet; a put into a desk is shown from nowhere; a decision with no date is not recent', async () => {
+  it('a Buyer Section that buys nothing yet; a put into a Buyer Section is shown from nowhere; a decision with no date is not recent', async () => {
     const decided = [move('P1', { state: 'Rejected', decision_reason: 'No', decided_at: `${today}T01:00:00Z` }), move('P2', { state: 'Rejected', decided_at: null })]
     const answer = await buyerSectionReads.buyer_sections(context(world(), { proposals: decided }).ctx)
-    expect(answer.desks).toEqual([{ id: 'BS1', name: 'BS1', region: 'East', buyer: null, subcategories: [] }])
+    expect(answer.buyerSections).toEqual([{ id: 'BS1', name: 'BS1', region: 'East', buyer: null, subcategories: [] }])
     expect(answer.decided).toEqual([expect.objectContaining({ id: 'P1', from: null, state: 'Rejected', reason: 'No' })])
   })
 

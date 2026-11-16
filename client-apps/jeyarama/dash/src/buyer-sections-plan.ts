@@ -1,6 +1,6 @@
 // #1246: the first Buyer Sections, planned from today's Merchandise Assignment Buyer rows. Pure: it
-// reads exported rows and returns the plan; nothing here writes anywhere. One desk per region, buyer and
-// category head; a Buyer row with no buyer (a vacancy) becomes a desk per region, category head and
+// reads exported rows and returns the plan; nothing here writes anywhere. One Buyer Section per region, buyer and
+// category head; a Buyer row with no buyer (a vacancy) becomes a Buyer Section per region, category head and
 // category, so vacancies stay as small as the business left them.
 import { exact, holdsOn, text } from './values.ts'
 
@@ -45,8 +45,8 @@ export function planBuyerSections(input: { assignments: Row[]; subcategories: Ro
   const groups = new Map<string, { region: string; buyer: string; head: string; rows: { row: Row; sub: Row }[] }>()
   for (const row of buyerRows) {
     const sub = subs.get(exact(row.subcategory))
-    // A row for every region (blank) becomes a desk in each region the instance names (Codex, #1246):
-    // a desk is matched by its region exactly, so a desk with no region would buy nowhere.
+    // A row for every region (blank) becomes a Buyer Section in each region the instance names (Codex, #1246):
+    // a Buyer Section is matched by its region exactly, so a Buyer Section with no region would buy nowhere.
     const regions = exact(row.operating_region) ? [exact(row.operating_region)] : input.regions ?? []
     if (!exact(row.subcategory) || !sub || !regions.length) { summary.wider_buyer_rows.push(exact(row.row_id)); continue }
     for (const region of regions) {
@@ -62,7 +62,7 @@ export function planBuyerSections(input: { assignments: Row[]; subcategories: Ro
     }
   }
 
-  // A desk is named for what it buys: its category, two categories, or its subdivision when wider.
+  // A Buyer Section is named for what it buys: its category, two categories, or its subdivision when wider.
   const lines: PlannedLine[] = []
   const used = new Set<string>()
   const baseName = (g: { rows: { sub: Row }[] }) => {
@@ -71,7 +71,7 @@ export function planBuyerSections(input: { assignments: Row[]; subcategories: Ro
     return categories.length <= 2 ? categories.join(' and ') : subdivisions.length === 1 ? subdivisions[0] : `${categories[0]} and ${categories.length - 1} more`
   }
   const groupList = [...groups.values()]
-  // Named buyers first, vacancies last, so a vacancy, not a person's desk, carries the "(no buyer yet)" suffix.
+  // Named buyers first, vacancies last, so a vacancy, not a person's Buyer Section, carries the "(no buyer yet)" suffix.
   for (const g of [...groups.values()].sort((a, b) => a.region.localeCompare(b.region) || Number(!a.buyer) - Number(!b.buyer) || (names.get(a.buyer) ?? '').localeCompare(names.get(b.buyer) ?? ''))) {
     // A clashing name takes its buyer's name, and their code too where two clashing buyers share a name,
     // then a counter: the id is built from the name, so it must be unique (Codex, #1246).

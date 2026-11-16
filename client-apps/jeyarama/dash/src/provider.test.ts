@@ -40,7 +40,7 @@ const SUBCATEGORIES: Row[] = [
 ]
 
 function fake(jobs: Row[], { employee = { row_id: 'E1', person: 'me', status: 'Current' } as Row, plants = PLANTS, assignments = [] as Row[], departments = [] as Row[], departmentSections = [] as Row[],
-  clusterHeads = {} as Record<string, string>, desks = null as Row[] | null, links = [] as Row[] } = {}): Documents {
+  clusterHeads = {} as Record<string, string>, buyerSections = null as Row[] | null, links = [] as Row[] } = {}): Documents {
   const tables: Record<string, Row[]> = {
     Employee: [employee], 'Job Assignment': jobs.map((job, i) => ({ row_id: `J${i}`, employee: 'E1', starts_on: '2026-01-01', ends_on: null, ...job })),
     'Merchandise Assignment': assignments.map((row, i) => ({ row_id: `M${i}`, employee: 'E1', division: null, subdivision: null, category: null, subcategory: null,
@@ -49,8 +49,8 @@ function fake(jobs: Row[], { employee = { row_id: 'E1', person: 'me', status: 'C
     Department: departments.map((row, i) => ({ row_id: `D${i}`, store: 'AAA', manager: 'E1', starts_on: '2026-01-01', ends_on: null, ...row })),
     'Department Section': departmentSections.map((row, i) => ({ row_id: `DS${i}`, store: 'AAA', starts_on: '2026-01-01', ends_on: null, ...row })),
     Cluster: ['North', 'South'].map(row_id => ({ row_id, cluster_manager: clusterHeads[row_id] ?? null })),
-    // #1246: the Buyer Section Tables exist only when a test gives desks.
-    ...(desks ? { 'Buyer Section': desks.map(row => ({ starts_on: '2026-01-01', ends_on: null, buyer: 'E1', ...row })),
+    // #1246: the Buyer Section Tables exist only when a test gives Buyer Sections.
+    ...(buyerSections ? { 'Buyer Section': buyerSections.map(row => ({ starts_on: '2026-01-01', ends_on: null, buyer: 'E1', ...row })),
       'Buyer Section Subcategory': links.map((row, i) => ({ row_id: `L${i}`, starts_on: '2026-01-01', ends_on: null, ...row })) } : {}),
   }
   return {
@@ -411,7 +411,7 @@ describe('a section change, day by day', () => {
 })
 
 // #1246: report scope follows Buyer Sections where the instance has them (#1247's available()), and
-// Merchandise Assignment Buyer rows only where no desk covers a subcategory in a store's region.
+// Merchandise Assignment Buyer rows only where no Buyer Section covers a subcategory in a store's region.
 describe('buyers, while Buyer Sections are filled in', () => {
   const codesBy = (r: { places: { filters: Record<string, string[]> }[] }) =>
     Object.fromEntries(r.places.map(p => [p.filters.store[0], p.filters.subcategory]))
@@ -427,29 +427,29 @@ describe('buyers, while Buyer Sections are filled in', () => {
   })
 
   it('with the Tables present and empty, reaches the same', async () => {
-    expect(codesBy(await reachOf(fake([], { assignments: [TOPS_BUYER], desks: [] }), 'me', ON)))
+    expect(codesBy(await reachOf(fake([], { assignments: [TOPS_BUYER], buyerSections: [] }), 'me', ON)))
       .toEqual(codesBy(await reachOf(fake([], { assignments: [TOPS_BUYER] }), 'me', ON)))
   })
 
   it('a buyer with only a Buyer Section reaches its subcategories at the stores of its region', async () => {
-    const reach = await reachOf(fake([], { desks: [{ row_id: 'BS1', name: 'Sarees desk', operating_region: 'East' }], links: [{ buyer_section: 'BS1', subcategory: '000000003' }] }), 'me', ON)
+    const reach = await reachOf(fake([], { buyerSections: [{ row_id: 'BS1', name: 'Sarees Buyer Section', operating_region: 'East' }], links: [{ buyer_section: 'BS1', subcategory: '000000003' }] }), 'me', ON)
     expect(reach.problems).toEqual([])
     expect(codesBy(reach)).toEqual({ '9901': ['000000003'], '9902': ['000000003'] })
   })
 
-  it("a subcategory an East desk took from a both-regions Buyer row leaves that row's buyer in the East, and keeps them in the West", async () => {
-    const reach = await reachOf(fake([], { assignments: [TOPS_BUYER], desks: [{ row_id: 'BS9', name: 'Tops desk', operating_region: 'East', buyer: 'E9' }],
+  it("a subcategory an East Buyer Section took from a both-regions Buyer row leaves that row's buyer in the East, and keeps them in the West", async () => {
+    const reach = await reachOf(fake([], { assignments: [TOPS_BUYER], buyerSections: [{ row_id: 'BS9', name: 'Tops Buyer Section', operating_region: 'East', buyer: 'E9' }],
       links: [{ buyer_section: 'BS9', subcategory: '000000001' }] }), 'me', ON)
     expect(codesBy(reach)).toEqual({ '9901': ['000000002'], '9902': ['000000002'], '9903': ['000000001', '000000002'], '9904': ['000000001', '000000002'] })
   })
 
-  it('adopting the seed plan keeps every buyer\'s reach: desks from the plan, the Buyer rows ended (Codex)', async () => {
+  it('adopting the seed plan keeps every buyer\'s reach: Buyer Sections from the plan, the Buyer rows ended (Codex)', async () => {
     const rows = [{ responsibility: 'Buyer', subcategory: '000000001' }, { responsibility: 'Buyer', subcategory: '000000003', operating_region: 'West' }]
     const before = await reachOf(fake([], { assignments: rows }), 'me', ON)
     const { lines } = planBuyerSections({ regions: ['East', 'West'], employees: [{ row_id: 'E1', name: 'Me' }], subcategories: SUBCATEGORIES,
       assignments: rows.map((r, i) => ({ row_id: `M${i}`, employee: 'E1', operating_region: null, starts_on: '2026-01-01', ...r })) }, ON)
-    const desks = [...new Map(lines.map(l => [l.buyer_section_id, { row_id: l.buyer_section_id, name: l.buyer_section, operating_region: l.region, buyer: l.buyer_code }])).values()]
-    const after = await reachOf(fake([], { assignments: rows.map(r => ({ ...r, ends_on: '2026-11-06' })), desks,
+    const buyerSections = [...new Map(lines.map(l => [l.buyer_section_id, { row_id: l.buyer_section_id, name: l.buyer_section, operating_region: l.region, buyer: l.buyer_code }])).values()]
+    const after = await reachOf(fake([], { assignments: rows.map(r => ({ ...r, ends_on: '2026-11-06' })), buyerSections,
       links: lines.map(l => ({ buyer_section: l.buyer_section_id, subcategory: l.subcategory_code })) }), 'me', ON)
     expect(codesBy(after)).toEqual(codesBy(before))
   })
@@ -461,15 +461,15 @@ describe('buyers, while Buyer Sections are filled in', () => {
     const before = await reachOf(fake([], { assignments: rows }), 'me', ON)
     const { lines } = planBuyerSections({ regions: ['East'], subcategories: SUBCATEGORIES, assignments: rows.map((r, i) => ({ row_id: `M${i}`, starts_on: '2026-01-01', ...r })),
       employees: [{ row_id: 'E3', name: 'Anu' }, { row_id: 'E1', name: 'Ravi' }, { row_id: 'E2', name: 'Ravi' }] }, ON)
-    const desks = [...new Map(lines.map(l => [l.buyer_section_id, { row_id: l.buyer_section_id, name: l.buyer_section, operating_region: l.region, buyer: l.buyer_code }])).values()]
-    expect(desks).toHaveLength(3)
-    const after = await reachOf(fake([], { assignments: rows.map(r => ({ ...r, ends_on: '2026-11-06' })), desks,
+    const buyerSections = [...new Map(lines.map(l => [l.buyer_section_id, { row_id: l.buyer_section_id, name: l.buyer_section, operating_region: l.region, buyer: l.buyer_code }])).values()]
+    expect(buyerSections).toHaveLength(3)
+    const after = await reachOf(fake([], { assignments: rows.map(r => ({ ...r, ends_on: '2026-11-06' })), buyerSections,
       links: lines.map(l => ({ buyer_section: l.buyer_section_id, subcategory: l.subcategory_code })) }), 'me', ON)
     expect(codesBy(after)).toEqual(codesBy(before))
   })
 
-  it('refuses the scope when only one Buyer Section Table can be read, so a desk restriction is never lost (Codex)', async () => {
-    const docs = fake([], { assignments: [TOPS_BUYER], desks: [{ row_id: 'BS9', name: 'Tops desk', operating_region: 'East', buyer: 'E9' }],
+  it('refuses the scope when only one Buyer Section Table can be read, so a Buyer Section restriction is never lost (Codex)', async () => {
+    const docs = fake([], { assignments: [TOPS_BUYER], buyerSections: [{ row_id: 'BS9', name: 'Tops Buyer Section', operating_region: 'East', buyer: 'E9' }],
       links: [{ buyer_section: 'BS9', subcategory: '000000001' }] })
     for (const missing of ['Buyer Section', 'Buyer Section Subcategory']) {
       const partial: Documents = { ...docs, available: async table => table !== missing && (await docs.available!(table)) }
@@ -477,8 +477,8 @@ describe('buyers, while Buyer Sections are filled in', () => {
     }
   })
 
-  it('an ended desk, or a desk naming someone else, gives nothing; a vacant desk still takes the subcategory', async () => {
-    const reach = await reachOf(fake([], { assignments: [TOPS_BUYER], desks: [
+  it('an ended Buyer Section, or a Buyer Section naming someone else, gives nothing; a vacant Buyer Section still takes the subcategory', async () => {
+    const reach = await reachOf(fake([], { assignments: [TOPS_BUYER], buyerSections: [
       { row_id: 'OLD', name: 'Old', operating_region: 'East', ends_on: '2026-11-06' },
       { row_id: 'VAC', name: 'Vacant', operating_region: 'West', buyer: null }],
       links: [{ buyer_section: 'OLD', subcategory: '000000002' }, { buyer_section: 'VAC', subcategory: '000000002' }] }), 'me', ON)
