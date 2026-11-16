@@ -162,7 +162,8 @@ function SectionEditor({ section, onChanged }: { section: { id: string; name: st
 }
 
 const TH = 'px-3 py-2 text-left text-[13px] font-medium text-ink-muted'
-const TD = 'px-3 py-2 align-top text-sm'
+// Cells wrap only where words allow (a space, a hyphen), never mid-word: the shared link breaks anywhere by default.
+const TD = 'px-3 py-2 align-top text-sm [&_*]:wrap-normal'
 
 /** "Kavya, Meena +2 more": the first two as links, the rest in a popover, all links. */
 function FewPeople({ people }: { people: PersonRef[] }) {
@@ -170,7 +171,8 @@ function FewPeople({ people }: { people: PersonRef[] }) {
   const rest = people.slice(2)
   return (
     <span className="inline-flex flex-wrap items-baseline gap-x-1">
-      {people.slice(0, 2).map((p, i) => <span key={p.code}>{i ? ', ' : ''}<RecordLink table={RECORD.employee} id={p.code}>{p.name}</RecordLink></span>)}
+      {/* Each name keeps its comma and never breaks inside itself, so no line starts with ", ". */}
+      {people.slice(0, 2).map((p, i, shown) => <span key={p.code} className="whitespace-nowrap"><RecordLink table={RECORD.employee} id={p.code}>{p.name}</RecordLink>{i < shown.length - 1 || rest.length ? ',' : ''}</span>)}
       {rest.length > 0 && (
         <details className="relative inline-block" data-testid="more-people">
           <summary className="cursor-pointer list-none text-ink-muted hover:underline">+{rest.length} more</summary>
