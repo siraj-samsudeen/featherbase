@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { NAVIGATION_SETTINGS } from 'shared'
 import { z } from 'zod'
 import { sql } from './db'
 import { AppError } from './errors'
@@ -50,9 +51,6 @@ export async function listSavedViews(user: string, table: string): Promise<Saved
   return rows.map((r) => toView(r, user))
 }
 
-/** The settings record (user_settings) that holds a person's navigation
- *  choices, the stars on shared views among them (web lib/nav-settings). */
-const NAVIGATION_SETTINGS = '__navigation'
 /** More than a sidebar group can usefully show. */
 const SIDEBAR_LIMIT = 50
 

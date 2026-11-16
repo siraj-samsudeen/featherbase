@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import type { PanePlaceValue } from '@featherbase/shop-floor'
+import { NAVIGATION_SETTINGS } from 'shared'
 import { api, getToken } from './api'
 import { decodeRecent, encodePath, rememberWalk, type NavPath } from './nav-path'
 
@@ -8,8 +9,8 @@ import { decodeRecent, encodePath, rememberWalk, type NavPath } from './nav-path
 // follows them across sign-ins and devices: where the drill pane sits, and
 // their last ten walks — as identities, named afresh whenever shown.
 
-/** The settings record that is not one Table's: the person's navigation. */
-export const NAVIGATION_SETTINGS = '__navigation'
+/** The settings record that is not one Table's: the person's navigation (shared with the server). */
+export { NAVIGATION_SETTINGS }
 
 interface Stored {
   panePlace?: PanePlaceValue
