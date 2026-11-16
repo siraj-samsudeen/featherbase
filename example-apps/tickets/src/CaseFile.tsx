@@ -14,21 +14,25 @@ import { configuredTypes, display, fields, kindLabel, person, short, stateLabel,
 import { Label, Structured, TypeSelect } from './ticket-fields'
 import { StatePill, assignee } from './ticket-state'
 import { RulesCard, type Rule } from './rules'
+import { CoveredRowsCard, type Covered } from './covered-rows'
+import { RecordLink, useOpenablePeople } from './record-link'
 
-function Facts({ values }: { values: RecordData }) {
+function Facts({ values, title }: { values: RecordData; title?: string }) {
+  const shown = Object.entries(values).filter(([, value]) => value !== undefined && value !== null && value !== '')
+  // #1230: a titled set with nothing in it shows nothing, not a heading over whatever comes next.
+  if (title && !shown.length) return null
   return (
-    <dl className="facts">
-      {Object.entries(values)
-        .filter(
-          ([, value]) => value !== undefined && value !== null && value !== '',
-        )
-        .map(([key, value]) => (
+    <>
+      {title && <h3>{title}</h3>}
+      <dl className="facts">
+        {shown.map(([key, value]) => (
           <div key={key}>
             <dt>{stateLabel(key)}</dt>
             <dd>{display(value)}</dd>
           </div>
         ))}
-    </dl>
+      </dl>
+    </>
   )
 }
 function EventBody({ value }: { value: unknown }) {
@@ -355,6 +359,8 @@ export function CaseFile({
     people = session.people ?? [],
     me = typeof session.user === 'string' ? session.user : session.user.row_id
   const [picked, setPicked] = useState(current)
+  // #1230: the requester and assignee link to their Person record for a viewer who may open it.
+  const openPeople = useOpenablePeople([ticket.owner, ticket.assigned_to])
   useEffect(() => setPicked(current), [current, ticket.updated_at, ticket.row_id])
   const rules = detail.rules as Rule[]
   const actions = availableActions({
@@ -409,13 +415,13 @@ export function CaseFile({
                   ))}
                 </select>
               ) : (
-                assignee(ticket)
+                <RecordLink table="Person" id={ticket.assigned_to} open={!!ticket.assigned_to && openPeople.has(ticket.assigned_to)}>{assignee(ticket)}</RecordLink>
               )}
             </dd>
           </div>
           <div>
             <dt>Raised by</dt>
-            <dd>{person(ticket.owner)}</dd>
+            <dd><RecordLink table="Person" id={ticket.owner} open={openPeople.has(ticket.owner)}>{person(ticket.owner)}</RecordLink></dd>
           </div>
           <div>
             <dt>Updated</dt>
@@ -479,13 +485,7 @@ export function CaseFile({
       <section role="tabpanel" id="case-panel" aria-labelledby={`tab-${tab}`}>
         {tab === 'Request' && (
           <>
-            <section className="card public-progress">
-              <h3>Public progress</h3>
-              <p>{ticket.public_update || 'No public update yet.'}</p>
-            </section>
-            {/* Rules are added on configured types (such as a data quality issue), not on built-in requests. */}
-            <RulesCard rules={rules} tables={configured ? (detail.ruleTables as string[] | undefined) : undefined} owners={people}
-              mutate={mutate} busy={busy} />
+            {/* #1230: the ticket's own words first, then the rows it covers, its rules and progress. */}
             {detail.details ? (
               <>
                 <div className="section-label">
@@ -493,10 +493,12 @@ export function CaseFile({
                     ? 'Visible to everyone who can see this ticket'
                     : 'Private · requester & support'}
                 </div>
-                <h3>Original message</h3>
-                <p className="request-body">
-                  {display(detail.details.original)}
-                </p>
+                <section className="card request-message" aria-label="Original message">
+                  <h3>Original message</h3>
+                  <p className="request-body">
+                    {display(detail.details.original)}
+                  </p>
+                </section>
                 {rewording && canReword && (
                   <Reword original={String(detail.details.original ?? '')} mutate={mutate} busy={busy} close={() => setRewording(false)} />
                 )}
@@ -510,8 +512,8 @@ export function CaseFile({
                     ))}
                   </details>
                 )}
-                <h3>Request details</h3>
                 <Facts
+                  title="Request details"
                   values={
                     configured
                       ? Object.fromEntries(
@@ -623,6 +625,14 @@ export function CaseFile({
                 </p>
               </div>
             )}
+            <CoveredRowsCard covered={detail.coveredRows as Covered | undefined} setup={detail.coveredRowsSetup as string | undefined} />
+            {/* Rules are added on configured types (such as a data quality issue), not on built-in requests. */}
+            <RulesCard rules={rules} tables={configured ? (detail.ruleTables as string[] | undefined) : undefined} owners={people}
+              mutate={mutate} busy={busy} />
+            <section className="card public-progress">
+              <h3>Public progress</h3>
+              <p>{ticket.public_update || 'No public update yet.'}</p>
+            </section>
           </>
         )}
         {tab === 'Workflow' && (

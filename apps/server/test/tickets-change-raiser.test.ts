@@ -264,20 +264,21 @@ describe('Tickets: changing who raised a ticket (#963)', () => {
       .toThrow('Use an authorized Tickets action')
   })
 
-  // #1196: 0.2.9 adds the data quality rule Table, with exactly its own grant (after #1193's 0.2.8);
-  // #1227's 0.2.10 changes no Table, so upgrading from 0.2.8 to this version adds the same.
-  test('Tickets upgrades from the version before this one, adding only the data quality rule Table and its grant', async ({ admin }) => {
+  // #1196: 0.2.9 adds the data quality rule Table, with exactly its own grant (after #1193's 0.2.8).
+  test('Tickets upgrades from 0.2.8, adding only the data quality rule Table and its grant', async ({ admin }) => {
     const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
+    // #1230: from 0.2.8 across this step and every later one, to the version shipped now.
     const step = manifest.migrations.find((m: any) => m.id === 'data_quality_rules')
-    expect(manifest.migrations.at(-1)).toMatchObject({ id: 'one_app_chrome', toVersion: version, operations: [] })
-    expect(step).toMatchObject({ id: 'data_quality_rules', operations: [{ kind: 'addTable', table: { name: 'tickets.data_quality_rule' } }] })
+    expect(step).toMatchObject({ toVersion: '0.2.9', operations: [{ kind: 'addTable', table: { name: 'tickets.data_quality_rule' } }] })
+    const later = manifest.migrations.slice(manifest.migrations.indexOf(step))
     const prior = await mkdtemp(resolve('test/.upgrade-tickets-'))
     try {
       await cp(directory, prior, { recursive: true, filter: source => !source.includes('node_modules') })
       // The same files at the earlier version: what this checks is the migration chain and the plan.
       // The earlier version has no rule Table: not listed, read, granted or migrated to.
       const RULES = 'tickets.data_quality_rule'
-      const earlier = { ...manifest, migrations: manifest.migrations.slice(0, manifest.migrations.indexOf(step)),
+      const { baseTables: _base, ...before } = manifest
+      const earlier = { ...before, migrations: manifest.migrations.filter((m: any) => !later.includes(m)),
         tables: manifest.tables.filter((t: any) => t.name !== RULES), permissions: manifest.permissions.filter((p: any) => p.table !== RULES),
         actions: { ...manifest.actions, tables: manifest.actions.tables.filter((t: string) => t !== RULES) },
         reads: { ...manifest.reads, tables: manifest.reads.tables.filter((t: string) => t !== RULES) } }

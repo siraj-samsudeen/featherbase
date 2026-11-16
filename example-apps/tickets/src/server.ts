@@ -26,6 +26,8 @@ interface ReadContext {
     count(table: string, filters?: ListArgs['filters']): Promise<number | null>
     isReader(table: string, id: string): Promise<boolean>
   }
+  /** #1230: instance Tables the manifest declares under baseTables.read, read as the app, only those columns. */
+  baseTables?: { list(table: string, args: ListArgs & { fields: string[] }): Promise<Row[]>; available?(table: string): Promise<boolean> }
 }
 interface Context extends ReadContext {
   mail: {
@@ -432,6 +434,52 @@ const conditionsText = (filters: Filter[]) => filters.map(([column, op, value]) 
   `${column} ${OPERATOR_WORDS[op] ?? op}${op.includes('blank') ? '' : ` "${Array.isArray(value) ? value.join(', ') : String(value)}"`}`).join(' and ')
 // Only add_rule writes a rule (every other write is refused), always as checked JSON.
 const storedFilters = (value: unknown) => JSON.parse(String(value)) as Filter[]
+// #1230: the instance's Data Quality Row Table names the rows a ticket covers. Tickets reads it as a
+// declared base Table (featherbase.json baseTables.read), only once an administrator lists it in
+// linked_tables, and only after the caller has read the ticket itself: no row of a ticket they can't see.
+const COVERED_TABLE = 'Data Quality Row'
+const COVERED_FIELDS = ['ticket', 'affected_table', 'affected_row', 'fixed_on', 'note']
+const COVERED_SETUP = `An administrator lists ${COVERED_TABLE} in Tickets' linked_tables to show the rows a ticket covers here.`
+const day = (value: unknown) => typeof value === 'string' && value ? value.slice(0, 10) : null
+/** Every row a read returns, page by page: the platform caps a page at 500. */
+async function pages(read: (args: ListArgs) => Promise<Row[]>) {
+  const rows: Row[] = []
+  for (let offset = 0; ; offset += 500) {
+    const page = await read({ order_by: 'row_id asc', limit_start: offset, limit_page_length: 500 })
+    rows.push(...page)
+    if (page.length < 500) return rows
+  }
+}
+/** The ids of the matching rows the caller may read themself; none for a linked Table that is gone or
+ *  unreadable. count first: it answers null for those rather than failing the page. */
+async function readableIds(ctx: ReadContext, table: string, filters: ListArgs['filters']) {
+  if (!await ctx.documents.count(table, filters)) return new Set<string>()
+  return new Set((await pages(args => ctx.documents.list(table, { ...args, fields: ['row_id'], filters }))).map(row => String(row.row_id)))
+}
+/** The rows a ticket covers, open first, then fixed; each linked only when the caller may read that row.
+ *  null while Data Quality Row is not a linked Table; undefined when the ticket covers none. */
+async function coveredRows(ctx: ReadContext, ticketId: string) {
+  // Unlinked, deleted or reshaped since: leave the list out rather than fail the page (Codex adversarial, round 1).
+  if (!ctx.baseTables?.available || !linked(ctx, COVERED_TABLE) || !await ctx.baseTables.available(COVERED_TABLE)) return null
+  const base = ctx.baseTables
+  const found = await pages(args => base.list(COVERED_TABLE, { ...args, fields: ['row_id', ...COVERED_FIELDS], filters: [['ticket', '=', ticketId]] }))
+  if (!found.length) return undefined
+  // A row links only where the caller may open it: a linked Table they read, and a row that is there.
+  // count first: it reads a Table that was removed, or can't be read, as nothing rather than failing the page.
+  const readable = new Map<string, Set<string>>()
+  for (const table of [...new Set(found.map(row => String(row.affected_table)))].filter(table => linked(ctx, table))) {
+    const keys = [...new Set(found.filter(row => row.affected_table === table).map(row => String(row.affected_row)))]
+    readable.set(table, await readableIds(ctx, table, [['row_id', 'in', keys]]))
+  }
+  // Each Data Quality Row's own record (where it is marked fixed), for a caller who may open it.
+  const own = await readableIds(ctx, COVERED_TABLE, [['ticket', '=', ticketId]])
+  const rows = found.map(row => ({ table: String(row.affected_table), row: String(row.affected_row),
+    note: typeof row.note === 'string' && row.note.trim() ? row.note : null, fixed_on: day(row.fixed_on),
+    link: readable.get(String(row.affected_table))?.has(String(row.affected_row)) ?? false,
+    record: own.has(String(row.row_id)) ? String(row.row_id) : null }))
+    .sort((a, b) => Number(!!a.fixed_on) - Number(!!b.fixed_on) || a.table.localeCompare(b.table) || a.row.localeCompare(b.row))
+  return { rows, total: rows.length, fixed: rows.filter(row => row.fixed_on).length }
+}
 /** Its raiser, its assignee or Tickets support: those a ticket's "any" action lets act. */
 function involved(ctx: ReadContext, ticket: Row) {
   return ticket.owner === ctx.user || (!!ticket.assigned_to && ticket.assigned_to === ctx.user) || capabilities(ctx).support
@@ -870,6 +918,10 @@ export const reads = {
       answer.actions = actions
     }
     answer.rules = await rulesOf(ctx, id)
+    // #1230: everyone who reads the ticket reads the rows it covers; support is told how to switch them on.
+    const covered = await coveredRows(ctx, id)
+    if (covered) answer.coveredRows = covered
+    if (covered === null && support && type) answer.coveredRowsSetup = COVERED_SETUP
     // #1196: who may add a rule here, and the Tables a rule may check.
     if (involved(ctx, ticket)) answer.ruleTables = members(configured(ctx, 'linked_tables'))
     answer.names = await names(ctx, { owner: ticket.owner, assigned_to: ticket.assigned_to }, answer.events, answer.privateEvents ?? [], answer.rules,
