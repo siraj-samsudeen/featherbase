@@ -5,6 +5,7 @@ import { getRoles, getScopeMap, hasPermission, isPrivileged, requiresScope, tabl
 import { REALTIME_MAX_FRAME_BYTES } from 'shared'
 import { needsMandatoryRowRead } from './mandatory-access'
 import { activeViewAs } from './view-as'
+import { sql } from './db'
 
 // RT-001/002/003: server-side realtime over WebSockets (the local equivalent
 // of Supabase Realtime per the architecture invariants).
@@ -36,7 +37,12 @@ export function onEvent(fn: Listener): () => void {
 
 interface Client {
   socket: WebSocket
+  /** Whose reads the socket follows: the signed-in person, or whom they view as (#1222). */
   user: SessionUser
+  /** #1222: who signed in, whose session ends it. */
+  owner: SessionUser
+  /** #1222: the person it was opened viewing as, if any. */
+  viewing?: string
   channels: Set<string>
 }
 
@@ -202,16 +208,37 @@ export function closeSessionSockets(sessionId: string): void {
   const now = Date.now()
   for (const [id, at] of recentlyRevoked) if (now - at >= RECENTLY_REVOKED_MS) recentlyRevoked.delete(id)
   recentlyRevoked.set(sessionId, now)
-  for (const client of clients) if (client.user.sign_in?.session_id === sessionId) closeSignedOut(client)
+  for (const client of clients) if (client.owner.sign_in?.session_id === sessionId) closeSignedOut(client)
 }
 
 export async function recheckSessionSockets(): Promise<void> {
-  const open = [...clients].filter((c) => c.user.sign_in?.session_id)
-  const sessions = new Map(open.map((c) => [c.user.sign_in!.session_id, {
-    jti: c.user.sign_in!.session_id, person: c.user.row_id, issuedAt: c.user.sign_in!.authenticated_at, expiresAt: c.user.sign_in!.expires_at,
+  const open = [...clients].filter((c) => c.owner.sign_in?.session_id)
+  const sessions = new Map(open.map((c) => [c.owner.sign_in!.session_id, {
+    jti: c.owner.sign_in!.session_id, person: c.owner.row_id, issuedAt: c.owner.sign_in!.authenticated_at, expiresAt: c.owner.sign_in!.expires_at,
   }]))
   const ended = await endedSessionIds([...sessions.values()])
-  for (const client of open) if (ended.has(client.user.sign_in!.session_id)) closeSignedOut(client)
+  for (const client of open) if (ended.has(client.owner.sign_in!.session_id)) closeSignedOut(client)
+  await recheckViewAsSockets(open.filter((c) => !ended.has(c.owner.sign_in!.session_id)))
+}
+
+/**
+ * #1222: a socket serves the identity it was opened with. Once its session
+ * views as someone else, or stops viewing, or may no longer view that person,
+ * it is closed, and the page's reconnect opens one for whom it shows now.
+ */
+async function recheckViewAsSockets(open: Client[]): Promise<void> {
+  if (!open.length) return
+  const live = new Map((await sql`select session_id, person from view_as_session
+    where session_id in ${sql(open.map((c) => c.owner.sign_in!.session_id))} and ended_at is null and expires_at > now()`)
+    .map((r) => [String(r.session_id), String(r.person)]))
+  for (const client of open) {
+    const now = live.get(client.owner.sign_in!.session_id)
+    const stillAllowed = !client.viewing || (now === client.viewing && (await activeViewAs(client.owner).catch(() => null))?.as.person === client.viewing)
+    if (now !== client.viewing || !stillAllowed) {
+      clients.delete(client)
+      client.socket.close(4009, 'view as changed')
+    }
+  }
 }
 
 // Attach a WebSocket server to the shared HTTP server. Clients connect to
@@ -277,14 +304,15 @@ async function authenticate(socket: WebSocket, cookie: string | undefined): Prom
     // #1222: while viewing as someone, live updates follow what that person may read. Starting,
     // switching and leaving View as reload the page, so each socket serves one identity. The
     // session (and so sign-out) stays the tester's.
-    const user = (await activeViewAs(signedIn).catch(() => null))?.user ?? signedIn
+    const viewing = await activeViewAs(signedIn).catch(() => null)
+    const user = viewing?.user ?? signedIn
     // Closed while the token was being checked: never register it.
     if (socket.readyState !== socket.OPEN) return null
-    const client: Client = { socket, user, channels: new Set() }
+    const client: Client = { socket, user, owner: signedIn, ...(viewing ? { viewing: viewing.as.person } : {}), channels: new Set() }
     clients.add(client)
     // #411: signed out while this upgrade was between its token check and
     // here — the sign-out's own sweep could not see it yet.
-    if (revokedHere(user.sign_in?.session_id)) {
+    if (revokedHere(signedIn.sign_in?.session_id)) {
       closeSignedOut(client)
       return null
     }

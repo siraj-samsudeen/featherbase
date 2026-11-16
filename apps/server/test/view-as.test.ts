@@ -16,6 +16,10 @@ import { runViewingAs } from '../src/view-as-context'
 import { viewAsRoute } from '../src/view-as'
 import { rowCapabilities } from '../src/document'
 import { sql } from '../src/db'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
+import WebSocket from 'ws'
+import { attachRealtime, recheckSessionSockets } from '../src/realtime'
 
 const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
 const TESTER = 'Bar Tester'
@@ -133,6 +137,33 @@ describe('View as on the platform', () => {
     await sql`update view_as_session set expires_at = now() - interval '1 second'`
     const page = await tester.fetch('/barproof/?x=1', { headers: { accept: 'text/html' }, redirect: 'manual' })
     expect([page.status, page.headers.get('location')]).toEqual([302, '/barproof/?x=1'])
+  })
+
+  test('a live-update socket opened while viewing closes once the view changes', async ({ admin, createUser }) => {
+    const { tester, person } = await install(admin, createUser)
+    expect((await status(start(tester, person.user)))[0]).toBe(200)
+    const server = createServer()
+    attachRealtime(server)
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const { port } = server.address() as AddressInfo
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { cookie: `sid=${tester.token}` } })
+    const closed = new Promise<number>((resolve) => socket.on('close', (code) => resolve(code)))
+    try {
+      await new Promise<void>((resolve, reject) => {
+        socket.on('message', (raw) => { if ((JSON.parse(String(raw)) as { event?: string }).event === 'ready') resolve() })
+        setTimeout(() => reject(new Error('no ready frame')), 5_000)
+      })
+      // Still the same view: the check leaves it open.
+      await recheckSessionSockets()
+      expect(socket.readyState).toBe(WebSocket.OPEN)
+      await tester.fetch('/api/view_as/exit', { method: 'POST', headers: json, body: '{}' })
+      await recheckSessionSockets()
+      expect(await closed).toBe(4009)
+    } finally {
+      socket.terminate()
+      server.closeAllConnections()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
   })
 
   test('an access token never views as anyone', async ({ admin, createUser }) => {
