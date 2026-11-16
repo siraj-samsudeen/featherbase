@@ -170,15 +170,15 @@ function PersonPicker({ chosen, onChoose, label }: { chosen: Found | null; onCho
   return (
     <div className="relative min-w-56 flex-1">
       <Field label={label}>
-        <SearchInput value={typed} onChange={event => setTyped(event.target.value)} placeholder="Type a name" data-testid="person-search" />
+        <SearchInput value={typed} onChange={event => setTyped(event.target.value)} placeholder="Type a name or employee code" data-testid="person-search" />
       </Field>
       {found && (
         <ul className="absolute z-10 mt-1 w-full rounded-control border border-border bg-surface shadow-sm" data-testid="person-results">
-          {found.length === 0 && <li className="px-3 py-2 text-sm text-ink-muted">No one on the staff list by that name</li>}
+          {found.length === 0 && <li className="px-3 py-2 text-sm text-ink-muted">No one on the staff list matches that</li>}
           {found.map(person => (
             <li key={person.person}>
               <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-start hover:bg-subtle" onClick={() => { onChoose(person); setTyped('') }} data-testid="person-result">
-                <PersonName name={person.name} who={person} /><KindTag>Person</KindTag>
+                <span className="min-w-0 flex-1"><PersonName name={person.name} who={person} /></span><KindTag>Person</KindTag>
               </button>
             </li>
           ))}
@@ -222,7 +222,8 @@ function WhoHasWhat({ rows, onRemoved }: { rows: Row[]; onRemoved: () => Promise
   ]
   return (
     <Card title="Who has what" data-testid="who-has-what">
-      <div className="flex flex-col gap-3 p-4">
+      {/* relative + clip: the hidden "Remove" header is absolutely placed, and must not widen the page on a phone. */}
+      <div className="relative flex flex-col gap-3 overflow-x-clip p-4">
         {error && <Notice tone="negative">{error}</Notice>}
         <DataList caption="Who has what" rows={rows} columns={columns} rowKey={row => row.id} rowTestId={() => 'access-row'} layout="table"
           empty={{ title: "Nobody has a report yet", body: "Give one above. Until then nobody sees any report." }} />
@@ -344,7 +345,7 @@ function Waiting({ waiting }: { waiting: Page['waiting'] }) {
   return (
     <Card title="Waiting for a report" data-testid="waiting">
       <ul className="flex flex-col divide-y divide-border p-4">
-        {waiting.map(w => <li key={w.person} className="py-1" data-testid="waiting-person"><PersonName name={w.name} who={w.who} /> · asked on {dayOf(w.asked_on)}</li>)}
+        {waiting.map(w => <li key={w.person} className="py-1" data-testid="waiting-person"><span className="flex flex-wrap items-baseline justify-between gap-x-3"><PersonName name={w.name} who={w.who} /><span className="text-sm text-ink-muted">asked on {dayOf(w.asked_on)}</span></span></li>)}
       </ul>
     </Card>
   )
