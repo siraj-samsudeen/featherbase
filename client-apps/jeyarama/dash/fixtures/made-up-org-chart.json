@@ -988,6 +988,22 @@
     ]
    ],
    "says": "Reports to Hema"
+  },
+  {
+   "key": "buyertwosame",
+   "name": "Vinod Buyer-Two",
+   "code": "2023",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2023-LKS",
+     "Staff",
+     "LKS",
+     null,
+     "2020"
+    ]
+   ],
+   "says": "A second Vinod Buyer-Two in Hema's team, at Lakeside: told apart by code, job and site (#1216, #1217)"
   }
  ],
  "noSignIn": [

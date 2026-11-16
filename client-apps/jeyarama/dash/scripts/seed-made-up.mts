@@ -308,6 +308,6 @@ Your sections (/dash/?view=sections), same password:
 ${says(org.sectionPeople, 'sections')}
 Report access (/dash/?view=access), same password:
   access-manager@example.test          Report Access Manager: gives reports and bundles, and sees who has what
-  sections-categoryhead@example.test   Team Report Manager: gives reports to her own team only (#1217)`)
+  sections-categoryhead@example.test   Team Report Manager: gives reports to her own team only, two of them named Vinod Buyer-Two (#1217)`)
 await sql.end()
 process.exit(0)
