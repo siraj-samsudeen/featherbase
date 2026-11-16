@@ -1,9 +1,10 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { sign } from 'hono/jwt'
-import { describe, expect, vi } from 'vitest'
+import { describe, expect } from 'vitest'
 import WebSocket from 'ws'
 import { test } from './pg-test'
+import { withTimeFromNow } from './clock'
 import { sql } from '../src/db'
 import { issueAccessToken, issueSession } from '../src/auth'
 import { attachRealtime, closeSessionSockets, recheckSessionSockets } from '../src/realtime'
@@ -104,12 +105,9 @@ describe('#411: sign-out ends that session only', () => {
       const s = await open(token)
       expect(s.socket.readyState).toBe(WebSocket.OPEN)
       // Nine hours on: the token is past its eight-hour expiry.
-      vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 9 * 3600_000 })
-      try {
+      await withTimeFromNow(9 * 3600_000, async () => {
         await expectStatus(await logout(api, bearer(token)), 200)
-      } finally {
-        vi.useRealTimers()
-      }
+      })
       expect(await s.closed).toBe(4001)
     })
     expect(await sql`select 1 from revoked_session`).toHaveLength(0)

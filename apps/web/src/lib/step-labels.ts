@@ -52,6 +52,8 @@ export function filterText(table: string, meta: TableMeta | undefined, filter: L
   }
   const col = meta?.columns.find((c) => c.column_name === column)
   const label = column === 'row_id' ? 'Row ID' : col?.label ?? column
+  // #1196: is blank / is not blank take no value.
+  if (op === 'is blank' || op === 'is not blank') return `${label} ${op}`
   const refs = filterRefs(table, meta, filter)
   const shown = !meta ? '…'
     : refs.length ? refs.map(name).join(', ')

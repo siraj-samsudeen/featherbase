@@ -1,4 +1,5 @@
 import { getSystemSettings } from './settings'
+import { grantWords } from './app-permission-format'
 import { readFile, readdir, realpath, stat } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
@@ -7,13 +8,13 @@ import { z } from 'zod'
 import { appPermissionSchema, registerApp, forgetRuntimePackages, listInstalledApps, suspendRuntimeApp, loadInstalledApps, provisionGrants, syncAppJobs, type AppManifest } from './apps'
 import { applyJobPlan, bindAppJobs, jobsDeclaration, planJobChanges, validateAppJobs } from './app-jobs'
 import { tableDefSchema } from './table-engine'
-import { hasPermission } from './permissions'
+import { PLATFORM_ROLES, hasPermission } from './permissions'
 import { tableAccessPolicy } from './mandatory-access'
 import { AppError, errorMessage } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
 import { APP_ACCENTS, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
-import { callerDocuments, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
-import { baseTablesDeclaration } from './change-proposals'
+import { callerDocuments, callerRoles, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
+import { approvalTypesDeclaration, baseTablesDeclaration } from './change-proposals'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import type { ScopeProviderBinding } from './person-scope'
 import { loadAppSetup, secretEntries, secretsDeclaration, settingsDeclaration } from './app-settings'
@@ -32,6 +33,8 @@ interface PackageHookContext {
   row: Record<string, unknown>
   old?: Record<string, unknown>
   user: string
+  /** #1217: the writer's roles, read fresh for this save, so a rule can treat writers differently. */
+  readonly roles: readonly string[]
   isNew: boolean
   documents: Pick<import('shared').RuntimeActionContext['documents'], 'get' | 'list' | 'members'>
   reject(message: string, fields?: Record<string, string>): never
@@ -98,6 +101,15 @@ const accessDeclaration = z.object({
   approvers: z.array(z.string().min(1)).optional(),
   /** Where on the app's own pages approvers see who is waiting: a query string, like ?view=access. */
   page: z.string().regex(/^\?[a-z0-9_=&-]{1,100}$/).optional(),
+  /** #1173: how a System Manager gives this app's own access from the Waiting
+   *  for access page. `read` lists what can be given to one person (payload
+   *  { person }); `action` gives one of them, with the choice's payload plus
+   *  { person }, under the app's own rules. `title` names the section. */
+  grant: z.object({
+    title: z.string().min(1).max(60),
+    read: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/),
+    action: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/),
+  }).strict().optional(),
 }).strict()
 
 const manifestSchema = z.object({
@@ -117,6 +129,8 @@ const manifestSchema = z.object({
   scopeProvider: scopeProviderDeclaration.optional(),
   // #975: the instance Tables the app reads and proposes changes on.
   baseTables: baseTablesDeclaration.optional(),
+  // #1191: the kinds of approval its proposals come as; an Approval Type row sets each one's mode.
+  approvalTypes: approvalTypesDeclaration.optional(),
   // #620 (E2): what the app reads per instance, and the deployment variables
   // it reads. D4: which of the instance's roles should carry each app role,
   // written as App Role Binding rows once, at install.
@@ -270,8 +284,18 @@ export function notRunningMessage(name: string, version: string, reason: 'files'
 
 /** The manifest this artifact declares is the one the instance installed. */
 function sameManifest(pkg: RuntimePackage, row: Record<string, unknown>) {
+  return storedDeclarationIs(row, pkg.app.runtime_manifest)
+}
+
+function storedDeclarationIs(row: Record<string, unknown>, declaration: unknown) {
   const stored = { ...(row.manifest as object), migrations: (row.manifest as { migrations?: unknown })?.migrations ?? [] }
-  return canonical(stored) === canonical(pkg.app.runtime_manifest)
+  return canonical(stored) === canonical(declaration)
+}
+
+/** #1178 (D8): whether a staged app folder declares exactly what the
+ *  installed record holds, checked before anything of it is loaded. */
+export function declaresAsInstalled(row: Record<string, unknown>, manifest: unknown, pkg: { name: string; version: string }) {
+  return storedDeclarationIs(row, { ...(manifest as object), packageName: pkg.name, packageVersion: pkg.version })
 }
 
 function assertKnownAccent(pkg: RuntimePackage) {
@@ -438,7 +462,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
         const access = callerDocuments(manifest.name, [...names], ctx.user)
         try {
           await (validator as Validator)({
-            row: ctx.row, old: ctx.old, user: ctx.user, isNew: ctx.isNew,
+            row: ctx.row, old: ctx.old, user: ctx.user, roles: await callerRoles(ctx.user), isNew: ctx.isNew,
             now: new Date().toISOString(), timeZone: (await getSystemSettings()).time_zone,
             documents: Object.freeze({ get: access.documents.get, list: access.documents.list, members: access.documents.members }),
             reject(message, fields) { throw new AppError('ValidationError', message, fields) },
@@ -493,7 +517,8 @@ async function loadArtifacts(paths: string[]) {
     const folder = path.slice(0, -2)
     try {
       const entries = await readdir(folder, { withFileTypes: true })
-      directories.push(...entries.filter(e => e.isDirectory()).map(e => resolve(folder, e.name)).sort())
+      // A dot-folder is never an app: delivery (#1178) stages its work in them.
+      directories.push(...entries.filter(e => e.isDirectory() && !e.name.startsWith('.')).map(e => resolve(folder, e.name)).sort())
     } catch (error) {
       failures.push({ path, error: errorMessage(error) })
     }
@@ -506,6 +531,16 @@ async function loadArtifacts(paths: string[]) {
       const duplicate = loaded.get(key)
       if (duplicate) {
         if (duplicate.digest === pkg.digest) continue
+        // #1178 (D8): a delivered copy beside the image's copy of the same
+        // version wins while the image's copy is still the one it replaced; a
+        // deploy that brings other files wins over it. Delivered paths come last.
+        const { deliveredOver } = await import('./app-delivery')
+        const [over, duplicateOver] = [await deliveredOver(pkg.root), await deliveredOver(duplicate.root)]
+        if ((over === null) !== (duplicateOver === null)) {
+          const [delivered, image] = over !== null ? [pkg, duplicate] : [duplicate, pkg]
+          loaded.set(key, (over ?? duplicateOver) === image.digest ? delivered : image)
+          continue
+        }
         loaded.delete(key)
         duplicates.add(key)
         refuse('Duplicate different artifacts for one package version')
@@ -521,6 +556,11 @@ async function loadArtifacts(paths: string[]) {
 /** #642 (E7): the installed rows (`name`, `package_version`,
  *  `artifact_digest`, `manifest`) whose exact version and fingerprint no app on
  *  `paths` ships, as boot would take them. */
+/** #1178 (D8): the digest of `name@version` on `paths`, or '' when none ships. */
+export async function shippedDigest(paths: string[], name: string, version: string): Promise<string> {
+  return (await loadArtifacts(paths)).loaded.get(`${name}@${version}`)?.digest ?? ''
+}
+
 export async function unshippedApps<Row extends Record<string, unknown>>(installed: Row[], paths: string[]): Promise<Row[]> {
   const shipped = [...(await loadArtifacts(paths)).loaded.values()]
   return installed.filter(row => !shipped.some(pkg => pkg.name === row.name && matchesInstalled(pkg, row)))
@@ -529,10 +569,11 @@ export async function unshippedApps<Row extends Record<string, unknown>>(install
 /** #703: why an installed row is not on `paths`: its files changed under the
  *  same version and manifest, its manifest changed under the same version, or
  *  that version is not there at all. */
-export async function whyUnshipped(row: Record<string, unknown>, paths: string[]): Promise<'files' | 'manifest' | 'absent'> {
+export async function whyUnshipped(row: Record<string, unknown>, paths: string[]): Promise<'files' | 'manifest' | 'upgraded' | 'absent'> {
   const shipped = [...(await loadArtifacts(paths)).loaded.values()]
   const pkg = shipped.find(p => p.name === row.name && p.version === row.package_version)
-  if (!pkg) return 'absent'
+  // #1178 (D4): a newer version replaces it; the deploy upgrades from the installed record.
+  if (!pkg) return shipped.some(p => p.name === row.name && compareVersions(p.version, String(row.package_version)) > 0) ? 'upgraded' : 'absent'
   return sameManifest(pkg, row) ? 'files' : 'manifest'
 }
 
@@ -588,13 +629,24 @@ export function declaredPackageActions() {
     ...(pkg.manifest.actions?.version === 1 ? { diagnostic: 'Explicit action policy upgrade required' } : {}) }))
 }
 
+/** #1178 (D4): what an upgrade moves from is the installed record, written
+ *  when that version was installed or upgraded to: its declaration, package
+ *  name and fingerprint. The server needs only the new version's files. */
+function installedRecord(row: Record<string, unknown>) {
+  const declared = row.manifest as (z.infer<typeof manifestSchema> & { packageName?: string; packageVersion?: string }) | null
+  if (typeof declared?.packageName !== 'string')
+    refuse('The installed version has no complete record to upgrade from; reinstall it on a development database')
+  // The stored declaration is the parsed manifest, so its defaults (permissions: []) are filled in.
+  return { version: String(row.package_version), digest: String(row.artifact_digest),
+    manifest: declared, app: { runtime_manifest: declared as unknown } }
+}
+
 async function upgradePlan(name: string, version: string, preview = true) {
   const [row] = await sql`select * from installed_app where name = ${name} and runtime_package`
   if (!row) refuse('Upgrade requires an installed runtime application')
   const target = await verifyArtifact(artifacts.get(`${name}@${version}`))
   assertKnownAccent(target)
-  const prior = await verifyArtifact(artifacts.get(`${name}@${row.package_version}`))
-  if (!matchesInstalled(prior, row)) refuse('Installed artifact does not match its recorded identity')
+  const prior = installedRecord(row)
   if (row.activation_pending) throw new AppError('ConflictError', 'Activate the committed upgrade before previewing another version')
   if (compareVersions(version, prior.version) <= 0) refuse('Target must be newer than installed version; downgrades are unsupported')
   const history = target.manifest.migrations
@@ -611,11 +663,15 @@ async function upgradePlan(name: string, version: string, preview = true) {
   if (!sameDeclaration(replayForward(name, prior.manifest.tables, operations), target.manifest.tables))
     refuse('Unsupported destructive or undeclared schema change')
   // #437: an upgrade may withdraw grants (narrowing access is always safe to
-  // apply) but never add or widen one on a Table the app already had; those
-  // still need a reviewed install. #651: a renamed Table's grants follow it,
+  // apply); since #1169 it may also add or widen them for its own roles (see
+  // ownRole below). #651: a renamed Table's grants follow it,
   // a dropped Table's grants end with it (a Table later given its name does
   // not inherit them), and a Table the upgrade adds arrives with exactly the
   // grants this version declares for it, listed in the preview.
+  // #1169: a dataset that was scoped staying scoped; becoming unscoped would give every reader
+  // every row with nothing in the preview. A new dataset may start unscoped.
+  const widened = (target.manifest.datasets ?? []).filter(d => d.unscoped && (prior.manifest.datasets ?? []).some(p => p.name === d.name && !p.unscoped))
+  if (widened.length) refuse(`The dataset ${widened.map(d => d.name).join(', ')} was limited to each reader's stores; an upgrade can't make it unscoped. Declare a new dataset instead`)
   const { added, follow } = tableFates(prior.manifest.tables.map(t => t.name), operations)
   const priorGrants = prior.manifest.permissions.map(p => ({ prior: p, now: follow(p.table) === undefined ? null : { ...p, table: follow(p.table)! } }))
   const held = new Set(priorGrants.flatMap(g => g.now ? [canonical(g.now)] : []))
@@ -630,12 +686,32 @@ async function upgradePlan(name: string, version: string, preview = true) {
       return canonical(scope) === canonical(priorScope)
     })
   }
-  if (!target.manifest.permissions.every((p) => added.has(p.table) || held.has(canonical(p)) || narrowsAudience(p)) || prior.app.runtime_manifest == null ||
+  // #1192: a role this version declares and the installed one did not is
+  // created by the upgrade, with its declared grants (#1169: writes too, on
+  // any of the app's Tables). Only a role the instance does not have yet: it
+  // starts with no holders. A
+  // same-named role already there is refused rather than merged, and checked
+  // again when the upgrade is applied. A platform role is never new.
+  const priorRoles = new Set(prior.manifest.roles ?? [])
+  const newRoles = (target.manifest.roles ?? []).filter(role => !priorRoles.has(role) && !PLATFORM_ROLES.includes(role))
+  const taken = newRoles.length ? await sql`select row_id from role where row_id in ${sql(newRoles)} order by row_id` : []
+  if (taken.length)
+    refuse(`The role ${taken.map(row => String(row.row_id)).join(', ')} already exists on this instance; this version declares it as new. Rename or remove that role, then upgrade`)
+  // #1169 (owner, 14-Nov-2026): an upgrade applies the access its version
+  // declares, new or wider, so a fix reaches production without the owner
+  // present. Only to a role the version itself declares (never All or Guest,
+  // never a platform role, never another app's or the instance's own), and
+  // only on the app's own Tables, never a platform or another app's Table. Each
+  // grant is in the preview, and the activity log names it once applied.
+  const ownRole = (permission: typeof target.manifest.permissions[number]) =>
+    (target.manifest.roles ?? []).includes(permission.role) && !PLATFORM_ROLES.includes(permission.role) &&
+    permission.table.startsWith(`${name}.`)
+  if (!target.manifest.permissions.every((p) => added.has(p.table) || held.has(canonical(p)) || narrowsAudience(p) || ownRole(p)) || prior.app.runtime_manifest == null ||
       (prior.app.runtime_manifest as { packageName: string }).packageName !== (target.app.runtime_manifest as { packageName: string }).packageName)
     refuse('Permission or package identity changes are unsupported')
   const kept = new Set(target.manifest.permissions.map(canonical))
   const withdrawn = priorGrants.filter(g => !g.now || !kept.has(canonical(g.now))).map(g => g.prior)
-  const granted = target.manifest.permissions.filter(p => added.has(p.table) || (!held.has(canonical(p)) && narrowsAudience(p)))
+  const granted = target.manifest.permissions.filter(p => added.has(p.table) || (!held.has(canonical(p)) && (narrowsAudience(p) || ownRole(p))))
   const destructive = operations.some(op => 'destructive' in op && op.destructive === true)
   // #700: what the upgrade does to the app's scheduled jobs.
   const jobs = planJobChanges(name, prior.manifest.jobs ?? [], target.manifest.jobs ?? [])
@@ -643,6 +719,7 @@ async function upgradePlan(name: string, version: string, preview = true) {
     currentArtifact: prior.digest, targetArtifact: target.digest, enabled: row.enabled,
     migrations: pending.map(m => ({ id: m.id, checksum: checksum(m), operations: m.operations })),
     tables: [...new Set(operations.flatMap(op => op.kind === 'renameTable' ? [op.from, op.to] : [typeof op.table === 'string' ? op.table : op.table.name]))],
+    roles: newRoles.map(role => ({ create: role })),
     permissions: [...withdrawn.map((p) => ({ withdraw: p })), ...granted.map((p) => ({ grant: p }))], jobs, indexes: [], destructive,
     dataEffects: destructive ? 'Destructive: the steps under losses remove data; every other row is unchanged' : 'Existing rows unchanged; added columns are NULL unless backfilled',
     codeOnly: operations.length === 0 }
@@ -653,7 +730,7 @@ async function upgradePlan(name: string, version: string, preview = true) {
   // apply must not make the review stale. Applying runs the steps for real
   // in its own transaction, so it does not count them first.
   const losses = preview ? await countLosses(name, pending, { ownsClient: typeof target.manifest.client === 'string' }) : []
-  return { row, target, prior, pending, ledger, withdrawn, granted, jobs,
+  return { row, target, prior, pending, ledger, withdrawn, granted, newRoles, jobs,
     plan: { ...plan, planId: checksum(plan), losses: losses.map(describeLoss) } }
 }
 
@@ -730,11 +807,13 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
         // Counts only, never values: what each destructive step removed.
         for (const loss of losses)
           await logActivity(actor, `app_data_removed ${name}@${version}: ${describeLoss(loss)}`.slice(0, 140))
-        if (prepared.granted.length) {
+        if (prepared.granted.length || prepared.newRoles.length) {
           const created = await provisionGrants({ name, roles: prepared.target.manifest.roles, runtime_package: true }, prepared.granted)
           await sql`update installed_app set roles = roles || ${sql.json(created.roles)}, perms = perms || ${sql.json(created.perms)} where name = ${name}`
+          for (const role of created.roles)
+            await logActivity(actor, `app_role_added ${name}@${version}: ${role}`.slice(0, 140))
           for (const p of prepared.granted)
-            await logActivity(actor, `app_grant_added ${name}@${version}: ${p.role} on ${p.table}`.slice(0, 140))
+            await logActivity(actor, `app_grant_added ${name}@${version}: ${grantWords(p)}`.slice(0, 140))
         }
         await sql`update installed_app set package_version = ${version}, artifact_digest = ${prepared.target.digest},
           manifest = ${sql.json(prepared.target.app.runtime_manifest as never)},
@@ -883,6 +962,24 @@ async function passesGate(pkg: RuntimePackage, user: string): Promise<boolean> {
 export function accessApprovers(name: string): { roles: readonly string[]; page?: string } {
   const access = packages.get(name)?.manifest.access
   return { roles: access?.approvers ?? [], ...(access?.page ? { page: `${appHref(name)}${access.page}` } : {}) }
+}
+
+/** #1173: the apps loaded here that say how their own access is given. */
+export function accessGrantApps(): { app: string; title: string; read: string; action: string }[] {
+  return [...packages.values()].flatMap((pkg) => {
+    const grant = pkg.manifest.access?.grant
+    return grant ? [{ app: pkg.name, ...grant }] : []
+  })
+}
+
+/** #1173: run an app's declared grant read or action as `user`, as the app's
+ *  loaded version, and return its result. */
+export async function runGrant(app: string, kind: 'read' | 'action', name: string, input: unknown, user: string): Promise<unknown> {
+  const pkg = packages.get(app)
+  if (!pkg) throw new AppError('NotFoundError', 'App is unavailable')
+  const answer = await withAppIdentity(pkg.name, pkg.version, () =>
+    kind === 'read' ? runPackageRead(app, name, input, user) : runPackageAction(app, name, input, user)) as { result?: unknown }
+  return answer.result
 }
 
 /** #1008: the installed apps this person can't open, and the roles that would

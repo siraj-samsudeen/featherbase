@@ -75,12 +75,11 @@ async function setup(admin: TestClient, createUser: (o: { email: string }) => Pr
       await save('Merchandise Assignment', { assignment_id: `MA-${number}-${i}`, employee: String(number), starts_on: '2026-01-01', ...row })
     return person.user!
   }
-  /** Someone on the staff list with no job, named head of these clusters and regions. */
-  const head = async ({ clusters = [] as string[], regions = [] as string[] }) => {
+  /** Someone on the staff list with no job, named head of these clusters (cluster_manager holds their Employee id, as text). */
+  const head = async ({ clusters = [] as string[] }) => {
     const person = await createUser({ email: `p-${++number}@example.test` })
     await save('Employee', { employee_code: String(number), name: `Made-up ${number}`, person: person.user, status: 'Current' })
     for (const code of clusters) await saveRow(admin, 'Cluster', { row_id: code, cluster_manager: String(number), updated_at: await updatedAt(admin, 'Cluster', code) })
-    for (const region of regions) await saveRow(admin, 'Operating Region', { row_id: region, region_head: String(number), updated_at: await updatedAt(admin, 'Operating Region', region) })
     return person.user!
   }
   return { reader, buyer, head, save, place }
@@ -107,6 +106,19 @@ describe('the org_chart scope provider on the platform, per job (#967)', () => {
       await resolvePersonScope(await reader([{ job: 'Team Leader', section: 'LKS-S1' }]), await binding())]
     expect(scopes.map(sections)).toEqual([[['9901 / Section: Sarees', SARI]], [['9901 / Section: Sarees', SARI]]])
     expect(scopes[0][0]).toMatchObject({ basis: 'team_leader' })
+  })
+
+  // #1191: a subcategory added at once reaches the Team Leader at once; undone, it reaches them no
+  // more. Undo ends the row the day before it started and retires it: a scope provider sees retired
+  // rows (ADR 0019), so the end date is what takes it away.
+  test('an added subcategory reaches them at once, and an undone one no longer does', async ({ admin, createUser }) => {
+    const { reader, place } = await setup(admin, createUser)
+    const person = await reader([{ job: 'Team Leader', section: 'LKS-S1' }])
+    const added = await place('P-ADDED', 'LKS', BELTS[0], 'LKS-S1', { starts_on: '2026-03-01' })
+    expect(sections(await resolvePersonScope(person, await binding()))).toEqual([['9901 / Section: Sarees', [...SARI, ...BELTS].sort()]])
+    await admin.post('/api/save_row', { table: 'Section Subcategory', row: { row_id: added.row_id, updated_at: added.updated_at, ends_on: '2026-02-28' } })
+    await admin.post(`/api/table/Section%20Subcategory/${encodeURIComponent(String(added.row_id))}:retire`, { reason: 'Undone' })
+    expect(sections(await resolvePersonScope(person, await binding()))).toEqual([['9901 / Section: Sarees', SARI]])
   })
 
   test('an acting Team Leader says so', async ({ admin, createUser }) => {
@@ -186,13 +198,13 @@ describe('the org_chart scope provider on the platform, per merchandise assignme
   })
 })
 
-// rama_dw #4588, proposal A: the Cluster or Operating Region row names its head.
+// rama_dw #4588: the Cluster row names its head in cluster_manager, a text column holding their Employee id.
 describe('the org_chart scope provider on the platform, per named head', () => {
-  test('the head a cluster names gets its stores whole; a region head gets the region\'s', async ({ admin, createUser }) => {
+  test('the head a cluster names gets its stores whole, and says why', async ({ admin, createUser }) => {
     const { head } = await setup(admin, createUser)
-    expect(stores(await resolvePersonScope(await head({ clusters: ['NORTH'] }), await binding()))).toEqual(['9901', '9902'])
-    const region = await resolvePersonScope(await head({ regions: ['West'] }), await binding())
-    expect(region).toEqual([{ label: '9903', filters: { store: ['9903'] }, basis: 'region_head', reasons: [{ text: 'Named head of region West' }] }])
+    const scope = await resolvePersonScope(await head({ clusters: ['NORTH'] }), await binding())
+    expect(stores(scope)).toEqual(['9901', '9902'])
+    expect(scope[0]).toMatchObject({ basis: 'cluster_manager', reasons: [{ text: 'Named head of cluster NORTH' }] })
   })
 })
 
@@ -219,7 +231,7 @@ describe('what never widens a scope', () => {
 })
 
 describe('the core Tables the provider reads stay ordinary Tables', () => {
-  const SCOPE_TABLES = ['Employee', 'Job Assignment', 'Site', 'Plant', 'Section', 'Section Subcategory', 'Merchandise Assignment', 'Subcategory', 'Cluster', 'Operating Region']
+  const SCOPE_TABLES = ['Employee', 'Job Assignment', 'Site', 'Plant', 'Section', 'Section Subcategory', 'Merchandise Assignment', 'Subcategory', 'Department', 'Department Section', 'Cluster']
 
   test('the provider reads them with none of them marked', async ({ admin, createUser }) => {
     const { reader } = await setup(admin, createUser)

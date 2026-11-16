@@ -2,11 +2,14 @@
 // is structural: this module imports nothing from the platform. Reads are declared in
 // featherbase.json under "reads". A report is a row of `dash.report`; nothing here knows one Dive.
 import { checked } from './values.ts'
-import { orgChartProvider, reachOf, type Documents, type Place } from './provider.ts'
+import { ALL_STORES_ROLE, orgChartProvider, reachOf, type Documents, type Place } from './provider.ts'
 import { diveFilters, storesOfReport, storesReached, type ReportRecord } from './dive-filters.ts'
 import { MONTH_CHOICES, buildReport, monthLabel, headingOf, istToday, periodOf, storeLabels, storeShortName, type CachedAnswer, type Heading, type Month, type MonthChoice, type SalesRow } from './report.ts'
 import { actions as sectionActions, reads as sectionReads } from './my-sections.ts'
-import { accessPage, addToBundle, giveReport, makeBundle, managesAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
+import { departmentActions, departmentReads } from './department-setup.ts'
+import { prefillActions } from './department-prefill.ts'
+import { accessPage, addReport, addToBundle, diveChoices, diveChoicesPrepared, giveReport, grantOptions, makeBundle, managesAccess, managesTeamAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
+import { TEAM_MANAGER } from './team-access.ts'
 
 /** The save rules of Dash's own Tables. */
 export const validators = accessValidators
@@ -69,6 +72,9 @@ export function setEmbedFetch(f: typeof fetch | null) {
 
 const placesOf = (ctx: ScopedContext) => ctx.authorization.places ?? []
 
+/** Dash's own roles (featherbase.json's `roles`): holding any of them opens Dash (#1172). */
+export const DASH_ROLES = new Set([ALL_STORES_ROLE, 'Dash Reader', 'Report Access Manager', TEAM_MANAGER])
+
 const REPORT_FIELDS = ['report_key', 'report_name', 'dive_id', 'filter_shape', 'store_key', 'subcategory_key', 'whole_store_key', 'month_key', 'ready_signal', 'quick_view', 'pickers_in_dive']
 
 /**
@@ -101,13 +107,13 @@ async function offeredReports(ctx: ScopedContext): Promise<ReportRecord[]> {
 /** The reader's places: a person_scope read's, else worked out from the core Tables. Unreadable means none. */
 async function placesHeld(ctx: ScopedContext): Promise<readonly Place[]> {
   if (ctx.authorization?.places?.length) return ctx.authorization.places
-  try { return (await reachOf(ctx.baseTables, ctx.user, istToday())).places } catch { return [] }
+  try { return (await reachOf(ctx.baseTables, ctx.user, istToday(), ctx.roles)).places } catch { return [] }
 }
 
 /** A person_scope read already holds the reader's places; any other read works them out. Unreadable means nothing. */
 async function reachesSomething(ctx: ScopedContext): Promise<boolean> {
   if (ctx.authorization?.places?.length) return true
-  try { return (await reachOf(ctx.baseTables, ctx.user, istToday())).places.length > 0 } catch { return false }
+  try { return (await reachOf(ctx.baseTables, ctx.user, istToday(), ctx.roles)).places.length > 0 } catch { return false }
 }
 
 /** The report the read is for: the one the payload names, or the reader's first. Undefined when it isn't one of theirs. */
@@ -277,43 +283,67 @@ async function openDive(ctx: ScopedContext, report: ReportRecord | null) {
 }
 
 /** Your sections and its approvals (#975), and giving reports (#1046). */
+/** What a person reaches today, for Report access: any store, and a whole store. Unreadable means nothing. */
+const reachFor = (context: AccessContext) => async (person: string, roles: readonly string[]) => {
+  try {
+    const { places } = await reachOf((context as unknown as ScopedContext).baseTables, person, istToday(), roles)
+    return { any: places.length > 0, wholeStore: places.some(place => !place.filters.subcategory) }
+  } catch { return { any: false, wholeStore: false } }
+}
+/** #1217: a Team Report Manager gives only reports they can open, so the access reads and actions know reach. */
+const withReach = (context: AccessContext): AccessContext => ({ ...context, reach: reachFor(context) })
+
 export const actions = {
   ...sectionActions,
-  give_report: (context: AccessContext) => giveReport(context),
-  remove_report_access: (context: AccessContext) => removeAccess(context),
+  ...departmentActions,
+  ...prefillActions,
+  give_report: (context: AccessContext) => giveReport(withReach(context)),
+  remove_report_access: (context: AccessContext) => removeAccess(withReach(context)),
   make_bundle: (context: AccessContext) => makeBundle(context),
   add_to_bundle: (context: AccessContext) => addToBundle(context),
   remove_from_bundle: (context: AccessContext) => removeFromBundle(context),
+  add_report: (context: AccessContext) => addReport(context),
 }
 
 export const reads = {
   ...sectionReads,
+  ...departmentReads,
 
   /** The signed-in person, as the platform knows them. */
   me({ user }: ReadContext) {
     return { user }
   },
 
-  /** The app's gate (#1046): Dash opens for someone with a report, or who manages report access. */
+  /**
+   * The app's gate. #1172 (owner, 10-Nov-2026, "Open for any Dash role"), refining #1046: Dash opens
+   * for anyone holding one of its roles, so someone whose job reaches no store sees Dash's reason.
+   * It opens no data: reports, rows and the Dive still need reach, or a report taking no filter.
+   */
   async can_open(context: ReadContext) {
     const ctx = context as ScopedContext
-    return managesAccess(ctx) || (await offeredReports(ctx)).length > 0
+    return managesAccess(ctx) || (ctx.roles ?? []).some(role => DASH_ROLES.has(role)) || (await offeredReports(ctx)).length > 0
   },
 
-  /** Whether this person manages report access, for the sidebar's link. */
+  /** Whether this person manages report access, company-wide or for their team (#1217), for the sidebar's link. */
   manages_access(context: ReadContext) {
-    return managesAccess(context as AccessContext)
+    return managesAccess(context as AccessContext) || managesTeamAccess(context as AccessContext)
   },
 
   /** The Report access page (#1046). Managers only. */
-  access_page: (context: ReadContext) => accessPage(context as AccessContext),
-  person_search: (context: ReadContext) => personSearch(context as AccessContext),
-  person_lookup: (context: ReadContext) => personLookup(context as AccessContext, istToday(), async person => {
-    try {
-      const { places } = await reachOf((context as ScopedContext).baseTables, person, istToday())
-      return { any: places.length > 0, wholeStore: places.some(place => !place.filters.subcategory) }
-    } catch { return { any: false, wholeStore: false } }
+  access_page: (context: ReadContext) => accessPage(withReach(context as AccessContext)),
+  /** #1173: what the platform's Waiting for access drawer can give one person. Company managers only. */
+  grant_options: (context: ReadContext) => grantOptions(context as AccessContext, istToday()),
+  person_search: (context: ReadContext) => personSearch(withReach(context as AccessContext)),
+
+  /**
+   * The organisation's Dives for Add a Dive (#1169), read live from MotherDuck (outbound: it runs
+   * after the transaction has closed, so `prepare` reads which Dives are already reports).
+   */
+  dive_choices: Object.assign(async (context: ReadContext) => diveChoices(context as AccessContext & Pick<ReadContext, 'datasets'>,
+    (context as ScopedContext).prepared as Awaited<ReturnType<typeof diveChoicesPrepared>> | undefined), {
+    prepare: (context: ReadContext) => diveChoicesPrepared(context as AccessContext),
   }),
+  person_lookup: (context: ReadContext) => personLookup(withReach(context as AccessContext), istToday(), reachFor(context as AccessContext)),
 
   /** The reports this person may open, for the sidebar. */
   async reports(context: ReadContext) {
@@ -326,7 +356,7 @@ export const reads = {
   /** Why this person's job reaches nothing, for the page's message. */
   async reach_problem(context: ReadContext) {
     const ctx = context as ScopedContext
-    return { problems: (await reachOf(ctx.baseTables, ctx.user, istToday())).problems }
+    return { problems: (await reachOf(ctx.baseTables, ctx.user, istToday(), ctx.roles)).problems }
   },
 
   /** The bar's store picker on the chosen report: the reader's stores by name, none on a report taking no store. */

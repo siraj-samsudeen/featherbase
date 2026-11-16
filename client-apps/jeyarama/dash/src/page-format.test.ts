@@ -127,6 +127,12 @@ describe('the group of subcategories in no section', () => {
 describe('the sentence that says why the reader sees the store', () => {
   const at = (reasons: { basis: string; sections: string[] }[], name: string | null = 'LKS') => whyLine({ name, reasons })
 
+  // #1192: the role reaches every store; the sentence says so, whatever job sits beside it.
+  it('says a holder of Dash All-Stores Reader sees every store because of the role', () => {
+    expect([at([{ basis: 'all_stores_reader', sections: [] }]), at([{ basis: 'all_stores_reader', sections: [] }, { basis: 'store_manager', sections: [] }])])
+      .toEqual(Array(2).fill('You see every store because you hold Dash All-Stores Reader.'))
+  })
+
   describe('one reason (item 3)', () => {
     it("names the store, not its sections, for a Store Manager", () => {
       expect(at([{ basis: 'store_manager', sections: ['Alpha', 'Beta', 'Gamma'] }])).toBe('You see LKS because you are its Store Manager.')
@@ -139,9 +145,6 @@ describe('the sentence that says why the reader sees the store', () => {
     })
     it('says the reader works in the sections for section staff', () => {
       expect(at([{ basis: 'section_staff', sections: ['Alpha', 'Beta'] }])).toBe('You see Alpha and Beta at LKS because you work in them.')
-    })
-    it("names the store for a region head (rama_dw #4588)", () => {
-      expect(at([{ basis: 'region_head', sections: [] }])).toBe('You see LKS because you are its Region Head.')
     })
     it('says the subcategories are assigned to the reader, naming no section', () => {
       expect(at([{ basis: 'assignment', sections: ['Alpha'] }])).toBe('You see these subcategories at LKS because they are assigned to you.')

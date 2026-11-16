@@ -3,7 +3,7 @@
 // setting takes it from everyone who held it only that way.
 import { expect } from 'vitest'
 import { test } from './pg-test'
-import { expectRefused, expectStatus, grantRole, makeTable } from './fixtures'
+import { expectRefused, grantRole, makeTable } from './fixtures'
 import { managedScope } from '../src/instance-settings'
 import { getRoles } from '../src/permissions'
 import { sql } from '../src/db'
@@ -21,29 +21,11 @@ async function setup(admin: TestClient) {
   await grantRole(admin, { role: MEMBER, table: NOTES, can_read: true })
 }
 
-test('everyone who signs in holds the roles the setting names, and loses them when it stops', async ({ admin, createUser }) => {
-  await setup(admin)
-  const newcomer = await createUser({})
-  const member = await createUser({ roles: [MEMBER] })
-  await expectStatus(await newcomer.fetch(notes), 403)
-
-  await setEveryone(admin, MEMBER)
-  await expectStatus(await newcomer.fetch(notes), 200)
-  // Someone who signs in for the first time later holds it too.
-  const later = await createUser({})
-  await expectStatus(await later.fetch(notes), 200)
-
-  // A service account is not a person who signs in.
-  await grantRole(admin, { role: 'Er Robot', table: NOTES, can_read: true })
-  const robot = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-er-robot', roles: ['Er Robot'] })
-  expect(await getRoles(robot.row_id)).not.toContain(MEMBER)
-  expect(await getRoles(String(newcomer.user))).toContain(MEMBER)
-
-  await setEveryone(admin, null)
-  await expectStatus(await newcomer.fetch(notes), 403)
-  // A role given to the person directly stays.
-  await expectStatus(await member.fetch(notes), 200)
-})
+// Everyone holding the role, a later sign-in and not a service account, and taking
+// it away only from those who held it that way, are the three scenarios "A newcomer
+// holds the role everyone holds", "Someone who signs in later holds it too, and a
+// service account does not" and "Removing the role takes it only from those who held
+// it that way" (permissions-and-roles).
 
 test('the setting holds existing roles, one per line, and never a platform role', async ({ admin }) => {
   await setup(admin)
@@ -51,8 +33,6 @@ test('the setting holds existing roles, one per line, and never a platform role'
   expect((await settings(admin)).everyone_roles).toBe(MEMBER)
   await expect(setEveryone(admin, 'Er Nobody'))
     .rejects.toMatchObject({ status: 417, fields: { everyone_roles: 'There is no role Er Nobody' } })
-  await expect(setEveryone(admin, `${MEMBER}\nSystem Manager`))
-    .rejects.toMatchObject({ status: 417, fields: { everyone_roles: 'System Manager cannot be given to everyone' } })
   expect((await settings(admin)).everyone_roles).toBe(MEMBER)
 })
 

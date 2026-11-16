@@ -66,8 +66,8 @@ describe('#1034: unticking an edited grant', () => {
     expect((await admin.get<{ title: string }>(`${list}/${row.row_id}`)).title).toBe('holder wrote this')
     await expectStatus(await holder.fetch(list), 200)
 
+    // The holder refused the table after this tick is the scenario "A grant that was edited" (permissions-and-roles).
     await expectStatus(await untick(admin, DT, { can_read: false }), 200)
-    await expectStatus(await holder.fetch(list), 403)
     await expectStatus(await holder.fetch(`${list}/${row.row_id}`), 403)
 
     const { perms } = await admin.get<{ perms: { role: string; can_read: boolean; can_write: boolean }[] }>(matrix)
@@ -87,11 +87,7 @@ describe('#1034: unticking an edited grant', () => {
     const after = await historyOf(admin, read.row_id)
     expect(after).toHaveLength(before.length + 1)
     expect(after).toEqual(expect.arrayContaining(before))
-    const revoked = after.find((entry) => !before.some((old) => JSON.stringify(old) === JSON.stringify(entry)))!
-    expect(revoked.created_by).toBe('Administrator')
-    expect(revoked.data.changed).toEqual(expect.arrayContaining([
-      ['ref_table', DT, null], ['role', ROLE, null], ['operation', 'read', null],
-    ]))
+    // Who took it away and what it was is the scenario "A grant that was edited" (permissions-and-roles).
     // The team feed reads every history entry, this one's row gone or not.
     const feed = await admin.get<{ items: { kind: string; sub?: string; label: string }[] }>('/api/activity_feed?scope=team')
     expect(feed.items).toContainEqual(expect.objectContaining({ kind: 'change', sub: 'Permission', label: read.row_id }))
@@ -174,13 +170,11 @@ describe('#1034: what the matrix still refuses, with history on the grant', () =
 })
 
 describe('#1034: the exemption is the matrix alone', () => {
-  test('a Permission with history is still refused every other delete', async ({ admin }) => {
+  test('a Permission with history is still refused a bulk delete and a purge', async ({ admin }) => {
     await setup(admin)
     const read = await grant(admin, 'read')
     await editTwice(admin, read.row_id, 'creator', 'all')
-    const single = await admin.fetch(`/api/table/Permission/${read.row_id}`, { method: 'DELETE' })
-    await expectStatus(single, 417)
-    expect(await single.text()).toContain('history entries')
+    // The single-row delete is the scenario "Deleting the same grant any other way" (permissions-and-roles).
     const bulk = await admin.fetch('/api/table/Permission:bulk-delete', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows: [read.row_id] }),
     })

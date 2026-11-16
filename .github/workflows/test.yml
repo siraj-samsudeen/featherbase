@@ -250,7 +250,7 @@ jobs:
         run: pnpm --filter web typecheck
 
   # The server suite, split by file across three runners. Each shard has its
-  # own Postgres and MySQL, so the reasons the suite runs files one at a time
+  # own Postgres, so the reasons the suite runs files one at a time
   # (one shared database, one `background_job` queue) do not cross shards.
   #
   # Coverage thresholds are zeroed HERE because a shard only sees its share
@@ -267,9 +267,6 @@ jobs:
       matrix:
         shard: [1, 2, 3]
     env:
-      # sources-mysql.test.ts runs only when this is set (checkouts without a
-      # MySQL skip it); CI provides one so the mysql driver is exercised.
-      MYSQL_TEST_URL: mysql://root@127.0.0.1:3306
       # Every database records the environment that migrated it, and a run
       # whose environment disagrees is refused (src/db-environment.ts). The
       # migrate step below and the suites must therefore agree, and Vitest
@@ -294,18 +291,6 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-      # The version the motivating deployment runs on RDS (8.4).
-      mysql:
-        image: mysql:8.4
-        env:
-          MYSQL_ALLOW_EMPTY_PASSWORD: '1'
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -595,12 +580,20 @@ jobs:
       # Fails below the server's coverage.thresholds, exactly as the
       # unsharded `test:coverage` did.
       - name: Merge server shards and enforce coverage thresholds
-        env:
-          # Keep the driver in the denominator. Merging never connects.
-          MYSQL_TEST_URL: mysql://root@127.0.0.1:3306
+        id: merge
         run: |
           for report in blob-1 blob-2 blob-3 release-pg18; do test -s "apps/server/.vitest-reports/$report.json"; done
           pnpm --filter server exec vitest run --merge-reports=.vitest-reports --coverage
+
+      # Branches are reported, not gated (ADR 0024); keep the merged numbers.
+      - name: Upload merged server coverage summary
+        if: ${{ !cancelled() && steps.merge.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-coverage
+          path: apps/server/coverage/coverage-summary.json
+          if-no-files-found: error
+          retention-days: 7
 
   # Production runs PostgreSQL 18.6, where the release preflight has checks
   # that only exist there (publish_generated_columns, #399). The full suite

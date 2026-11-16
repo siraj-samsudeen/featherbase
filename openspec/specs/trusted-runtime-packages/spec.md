@@ -155,23 +155,41 @@ current address and keeping the rest of what was being looked at intact.
 ### Requirement: A new access rule needs a new, reviewed version
 
 An app SHALL only gain a new access rule — such as who may read or act on
-one of its tables — by shipping a new, reviewed version; Featherbase SHALL
-NOT let an already-installed version quietly pick up a rule it didn't
-originally declare.
+one of its tables — by shipping a new version; Featherbase SHALL NOT let an
+already-installed version quietly pick up a rule it didn't originally
+declare. Deploying a version is its review: an upgrade SHALL apply the new or
+wider access that version declares for the roles it declares, and SHALL
+refuse any for everyone, for signed-out visitors, for a platform role or for
+a role the app doesn't declare.
 
 #### Normative details for the whole requirement
 
 A new version MAY withdraw a rule its predecessor
 declared; applying it SHALL remove only the grant that app created, and
-record the withdrawal in the activity log. The image SHALL ship the installed
-predecessor beside the new version so the upgrade can find it.
+record the withdrawal in the activity log. Every rule an upgrade adds SHALL be
+listed in its preview and the deploy's log, and recorded in the activity log.
+This holds while Featherbase serves one client with one System Manager, and is
+to be revisited before a second.
 
 #### Scenario: An old version can't gain a new rule for free
 
 - **WHEN** an app adds an access rule that its currently installed version
   never declared
-- **THEN** using it requires installing that reviewed new version, previewed
-  and turned on like any other upgrade
+- **THEN** using it requires installing that new version, previewed and
+  turned on like any other upgrade
+
+#### Scenario: A new version lets an existing role edit
+
+- **WHEN** an upgrade's version lets the app's Reviewers role, which could
+  only read tasks, also edit them
+- **THEN** the preview lists that access, and after the upgrade reviewers can
+  edit tasks
+- **AND** the activity log records the access added
+
+#### Scenario: A new version can't open a table to everyone
+
+- **WHEN** an upgrade's version lets every signed-in person edit tasks
+- **THEN** the preview is refused, and the installed version is unchanged
 
 #### Scenario: A new version can withdraw a rule
 
@@ -467,8 +485,7 @@ rules and access.
 ### Requirement: A new table arrives with the access its version declares
 
 A table an upgrade adds SHALL arrive with exactly the access its new version
-declares for it, listed in the preview. Access to the tables the app already
-had SHALL never widen through an upgrade.
+declares for it, listed in the preview.
 
 #### Scenario: A new supplier table is readable by the clerks
 
@@ -649,7 +666,9 @@ Then the app's page turns dark without reloading
 
 ### Requirement: An app knows the roles of the person it acts for
 An app's actions and reads SHALL be told which roles the signed-in person holds, so an app can let a role take a
-step. They SHALL learn only that person's own roles, never another person's.
+step. An app that provides people's scope SHALL be told, each time it works out a person's places, the roles that
+person holds. Both SHALL be the roles Featherbase itself enforces for the person, read fresh, and an app SHALL learn
+only that person's own roles, never another person's.
 
 #### Scenario: Tickets offers a step to the holder of a role
 
@@ -659,6 +678,11 @@ And a person who holds the "Data Quality Verifier" role and is not involved in t
 When that person opens the ticket in Tickets
 Then Tickets offers that person the verification
 ```
+
+#### Scenario: A role taken away stops counting at once
+
+- **WHEN** a person loses a role and then opens a page scoped by their places
+- **THEN** the app working out their places is no longer told they hold it
 
 ### Requirement: An app can choose its accent colour
 
@@ -689,6 +713,82 @@ Given an app names an accent that Featherbase does not provide
 When a System Manager installs that app
 Then the installation is refused and names the accents Featherbase provides
 ```
+
+### Requirement: An upgrade needs only the new version
+
+An upgrade SHALL need only the new version's files. What the installed version declared is
+remembered when it is installed, so the server does not have to keep its files to move on from it.
+
+#### Scenario: An app upgrades once its old files are gone
+
+```gherkin
+Given the user installed version 1 of an app and added a row to it
+And the server now holds only version 2 of that app
+When the user previews and applies the upgrade to version 2
+Then the app is on version 2 and the row is still there
+```
+
+### Requirement: An app's code fix can be delivered to a running instance
+
+The deploy pipeline, holding the instance's deploy key, SHALL be able to deliver an app's changed
+code for the version installed, and the instance SHALL serve it at once, without a rebuild or a
+restart. Without the key, or when the delivery changes what the app declares, it SHALL be refused
+and nothing SHALL change.
+
+#### Scenario: A delivered fix is live at once
+
+```gherkin
+Given version 1 of an app is installed and running
+When the deploy pipeline delivers version 1 with its page changed
+Then the app's page shows the change at once, still as version 1
+```
+
+#### Scenario: A delivery without the deploy key is refused
+
+```gherkin
+Given version 1 of an app is installed and running
+When someone delivers version 1 with its page changed but without the deploy key
+Then the delivery is refused and the app's page is unchanged
+```
+
+#### Scenario: A delivery that changes what the app declares is refused
+
+```gherkin
+Given version 1 of an app is installed and running
+When the deploy pipeline delivers version 1 with a changed declaration
+Then the delivery is refused, asks for an ordinary deploy, and the app's page is unchanged
+```
+
+### Requirement: An upgrade can create a role the instance doesn't have
+An upgrade SHALL create each role its new version declares and its installed version did not, with the access the
+version declares for it, and the preview SHALL list it. Only a role new to the instance qualifies, never a platform
+role, so the new role starts with nobody holding it. When a role of that name already exists, the upgrade SHALL be
+refused, naming it, and change nothing.
+
+#### Scenario: A new reader role arrives with its access
+
+- **WHEN** an upgrade's version declares a new Auditor role that may read the app's existing Tasks table
+- **THEN** the preview lists the role and its access
+- **AND** after the upgrade the role exists, held by nobody, and anyone later given it can read tasks
+
+#### Scenario: A role of the same name already exists
+
+- **WHEN** an upgrade's version declares a new Auditor role and the instance already has a role called Auditor
+- **THEN** the preview and the upgrade are refused, naming the role
+- **AND** the installed version and its access are unchanged
+
+#### Scenario: A new role can bring write access to an existing table
+
+- **WHEN** an upgrade's version declares a new Auditor role that may edit the app's existing Tasks table
+- **THEN** after the upgrade the Auditor role exists and anyone given it can edit tasks
+
+### Requirement: A save rule knows the writer's roles
+An app's save rule (validator) SHALL be told the roles the writer holds, read fresh for that save, so the rule can treat writers differently.
+
+#### Scenario: The save rule sees the roles
+
+- **WHEN** someone holding Team Report Manager saves a row of a Dash Table
+- **THEN** Dash's save rule is told they hold Team Report Manager
 
 ## Deferred
 

@@ -101,6 +101,9 @@ export const VARIABLES = [
   { name: 'FILE_STORAGE_DIR', secret: false, required: 'recommended', default: '`apps/server/storage`',
     purpose: 'uploaded-file directory; it must persist across deploys (on Railway, a Volume)',
     fix: 'Without it, uploads are written inside the container and vanish on the next deploy.' },
+  // ---- Delivering an app fix (#1178, D8)
+  { name: 'APP_DELIVERY_TOKEN', secret: true, required: 'optional',
+    purpose: 'turns on `/deliver/app`: the deploy pipeline, holding this key, delivers an app\'s code fix to the running instance. At least 32 characters; unset keeps the route off. See [Delivering an app fix](#delivering-an-app-fix)' },
   { name: 'CHROMIUM_PATH', secret: false, required: 'optional',
     purpose: 'Chromium binary for PDF printing; unset, Playwright resolves its own. Never hardcoded' },
   { name: 'PLAYWRIGHT_BROWSERS_PATH', secret: false, required: 'optional', default: '`/opt/pw-browsers`',

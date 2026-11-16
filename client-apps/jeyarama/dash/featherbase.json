@@ -7,10 +7,10 @@
   "client": "dist/client",
   "entryTable": "dash.report",
   "roles": [
+    "Dash All-Stores Reader",
     "Dash Reader",
-    "Dash Section Editor",
-    "Dash Section Reviewer",
-    "Report Access Manager"
+    "Report Access Manager",
+    "Team Report Manager"
   ],
   "roleDefaults": {},
   "settings": [
@@ -21,6 +21,25 @@
     {
       "name": "linked_tables",
       "required": false
+    }
+  ],
+  "approvalTypes": [
+    {
+      "name": "subcategory_add",
+      "title": "Add a subcategory to my section"
+    },
+    {
+      "name": "subcategory_removal",
+      "title": "Not mine: take a subcategory out of my section"
+    },
+    {
+      "name": "job_section",
+      "title": "My section is wrong: change my job's section"
+    },
+    {
+      "name": "department_setup",
+      "title": "Set up my department: its sections and its name",
+      "grantsAccess": false
     }
   ],
   "secrets": [
@@ -58,7 +77,12 @@
     "approvers": [
       "Report Access Manager"
     ],
-    "page": "?view=access"
+    "page": "?view=access",
+    "grant": {
+      "title": "Dash reports",
+      "read": "grant_options",
+      "action": "give_report"
+    }
   },
   "datasets": [
     {
@@ -334,6 +358,33 @@
         "store": "store_code",
         "subcategory": "subcategory_code"
       }
+    },
+    {
+      "name": "organisation_dives",
+      "source": "motherduck",
+      "unscoped": true,
+      "query": "select cast(id as varchar) as dive_id, title, owner_name, cast(updated_at as date) as saved_on from MD_LIST_DIVES(include_org_shares => true) where coalesce(status, '') <> 'archived'",
+      "columns": [
+        {
+          "name": "dive_id",
+          "type": "text"
+        },
+        {
+          "name": "title",
+          "type": "text"
+        },
+        {
+          "name": "owner_name",
+          "type": "text"
+        },
+        {
+          "name": "saved_on",
+          "type": "date"
+        }
+      ],
+      "keys": [
+        "dive_id"
+      ]
     }
   ],
   "tables": [
@@ -561,8 +612,9 @@
       "Section Subcategory",
       "Merchandise Assignment",
       "Subcategory",
-      "Cluster",
-      "Operating Region"
+      "Department",
+      "Department Section",
+      "Cluster"
     ],
     "unmarkedTables": [
       "Employee",
@@ -573,11 +625,17 @@
       "Section Subcategory",
       "Merchandise Assignment",
       "Subcategory",
-      "Cluster",
-      "Operating Region"
+      "Department",
+      "Department Section",
+      "Cluster"
     ]
   },
   "permissions": [
+    {
+      "table": "dash.report",
+      "role": "Dash All-Stores Reader",
+      "can_read": true
+    },
     {
       "table": "dash.report",
       "role": "Dash Reader",
@@ -585,17 +643,15 @@
     },
     {
       "table": "dash.report",
-      "role": "Dash Section Editor",
-      "can_read": true
-    },
-    {
-      "table": "dash.report",
-      "role": "Dash Section Reviewer",
-      "can_read": true
-    },
-    {
-      "table": "dash.report",
       "role": "Report Access Manager",
+      "operations": {
+        "read": "@basic",
+        "create": "@basic"
+      }
+    },
+    {
+      "table": "dash.report",
+      "role": "Team Report Manager",
       "can_read": true
     },
     {
@@ -607,6 +663,11 @@
         "update": "@basic",
         "delete": true
       }
+    },
+    {
+      "table": "dash.report_bundle",
+      "role": "Team Report Manager",
+      "can_read": true
     },
     {
       "table": "dash.report_bundle_member",
@@ -626,6 +687,16 @@
         "create": "@basic",
         "update": "@basic",
         "delete": true
+      }
+    },
+    {
+      "table": "dash.report_access",
+      "role": "Team Report Manager",
+      "scope_mode": "creator",
+      "operations": {
+        "read": "@basic",
+        "create": "@basic",
+        "update": "@basic"
       }
     }
   ],
@@ -647,9 +718,8 @@
         "policy": {
           "kind": "person_scope",
           "readRoles": [
-            "Dash Reader",
-            "Dash Section Editor",
-            "Dash Section Reviewer"
+            "Dash All-Stores Reader",
+            "Dash Reader"
           ],
           "actionRoles": []
         },
@@ -669,9 +739,8 @@
         "policy": {
           "kind": "person_scope",
           "readRoles": [
-            "Dash Reader",
-            "Dash Section Editor",
-            "Dash Section Reviewer"
+            "Dash All-Stores Reader",
+            "Dash Reader"
           ],
           "actionRoles": []
         },
@@ -683,9 +752,8 @@
         "policy": {
           "kind": "person_scope",
           "readRoles": [
-            "Dash Reader",
-            "Dash Section Editor",
-            "Dash Section Reviewer"
+            "Dash All-Stores Reader",
+            "Dash Reader"
           ],
           "actionRoles": []
         },
@@ -705,7 +773,31 @@
           "kind": "generic"
         }
       },
-      "subcategory_search": {
+      "subcategory_levels": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "category_subcategories": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "unplaced": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "holds_master_data": {
         "policy": {
           "kind": "table"
         },
@@ -773,6 +865,14 @@
           "kind": "generic"
         }
       },
+      "grant_options": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
       "person_search": {
         "policy": {
           "kind": "table"
@@ -796,6 +896,39 @@
         "authorization": {
           "kind": "generic"
         }
+      },
+      "department_setup": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "department_approvals": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "holds_department_job": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "dive_choices": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        },
+        "outbound": true
       }
     }
   },
@@ -1879,6 +2012,60 @@
       "fromVersion": "0.12.6",
       "toVersion": "0.12.9",
       "operations": []
+    },
+    {
+      "id": "opens_for_dash_roles",
+      "fromVersion": "0.12.9",
+      "toVersion": "0.12.10",
+      "operations": []
+    },
+    {
+      "id": "all_stores_reader",
+      "fromVersion": "0.12.10",
+      "toVersion": "0.12.11",
+      "operations": []
+    },
+    {
+      "id": "sections_not_mine",
+      "fromVersion": "0.12.11",
+      "toVersion": "0.13.0",
+      "operations": []
+    },
+    {
+      "id": "department_self_setup",
+      "fromVersion": "0.13.0",
+      "toVersion": "0.13.1",
+      "operations": []
+    },
+    {
+      "id": "person_identity",
+      "fromVersion": "0.13.1",
+      "toVersion": "0.13.2",
+      "operations": []
+    },
+    {
+      "id": "report_access_managers_add_dives",
+      "fromVersion": "0.13.2",
+      "toVersion": "0.13.3",
+      "operations": []
+    },
+    {
+      "id": "team_report_giving",
+      "fromVersion": "0.13.3",
+      "toVersion": "0.13.4",
+      "operations": []
+    },
+    {
+      "id": "waiting_for_access_grant",
+      "fromVersion": "0.13.4",
+      "toVersion": "0.13.5",
+      "operations": []
+    },
+    {
+      "id": "department_name_follows_sections",
+      "fromVersion": "0.13.5",
+      "toVersion": "0.13.6",
+      "operations": []
     }
   ],
   "baseTables": {
@@ -1886,7 +2073,8 @@
       "Employee": [
         "name",
         "status",
-        "person"
+        "person",
+        "employee_code"
       ],
       "Job Assignment": [
         "employee",
@@ -1967,11 +2155,24 @@
         "updated_at",
         "removed"
       ],
+      "Department": [
+        "department_id",
+        "store",
+        "name",
+        "manager",
+        "starts_on",
+        "ends_on"
+      ],
+      "Department Section": [
+        "department_section_id",
+        "store",
+        "department",
+        "section",
+        "starts_on",
+        "ends_on"
+      ],
       "Cluster": [
         "cluster_manager"
-      ],
-      "Operating Region": [
-        "region_head"
       ]
     },
     "propose": {
@@ -2002,6 +2203,32 @@
         ],
         "startsOn": "starts_on",
         "endsOn": "ends_on"
+      },
+      "Department": {
+        "columns": [
+          "store",
+          "name",
+          "manager"
+        ],
+        "stamp": [
+          "department_id",
+          "source_key"
+        ],
+        "startsOn": "starts_on",
+        "endsOn": "ends_on"
+      },
+      "Department Section": {
+        "columns": [
+          "store",
+          "department",
+          "section"
+        ],
+        "stamp": [
+          "department_section_id",
+          "source_key"
+        ],
+        "startsOn": "starts_on",
+        "endsOn": "ends_on"
       }
     }
   },
@@ -2014,23 +2241,31 @@
       "dash.report_bundle_member"
     ],
     "operations": {
-      "propose_move": {
-        "policy": {
-          "kind": "table"
-        },
-        "authorization": {
-          "kind": "generic"
-        }
-      },
-      "propose_add": {
-        "policy": {
-          "kind": "table"
-        },
-        "authorization": {
-          "kind": "generic"
-        }
-      },
       "propose_section": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "propose_removal": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "propose_adds": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "withdraw": {
         "policy": {
           "kind": "table"
         },
@@ -2079,6 +2314,54 @@
         }
       },
       "remove_from_bundle": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "set_up_department": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "withdraw_department": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "decide_department": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "prefill_departments": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "undo_prefill": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "add_report": {
         "policy": {
           "kind": "table"
         },

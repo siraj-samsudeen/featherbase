@@ -11,7 +11,8 @@ export interface Documents {
   list(table: string, args: { fields: string[]; filters?: Filter[]; order_by?: string; limit_start?: number; limit_page_length?: number }): Promise<Row[]>
 }
 interface ProviderContext {
-  readonly person: { readonly id: string; readonly email: string | null }
+  /** `roles`: the roles the platform enforces for the person (featherbase #1192). */
+  readonly person: { readonly id: string; readonly email: string | null; readonly roles?: readonly string[] }
   readonly documents: Documents
 }
 export interface Reason { text: string; since?: string; until?: string }
@@ -25,7 +26,8 @@ export interface Place {
 }
 
 const T = { employee: 'Employee', job: 'Job Assignment', site: 'Site', plant: 'Plant', section: 'Section', placement: 'Section Subcategory',
-  merchandise: 'Merchandise Assignment', subcategory: 'Subcategory', cluster: 'Cluster', region: 'Operating Region' } as const
+  merchandise: 'Merchandise Assignment', subcategory: 'Subcategory', department: 'Department', departmentSection: 'Department Section',
+  cluster: 'Cluster' } as const
 
 /** Every Table the provider reads: featherbase.json's scopeProvider.tables. */
 export const PROVIDER_TABLES: string[] = Object.values(T)
@@ -40,8 +42,9 @@ export const PROVIDER_FIELDS: Record<string, string[]> = {
   [T.placement]: ['store', 'section', 'subcategory', 'starts_on', 'ends_on'],
   [T.merchandise]: ['employee', 'responsibility', 'division', 'subdivision', 'category', 'subcategory', 'operating_region', 'starts_on', 'ends_on'],
   [T.subcategory]: ['division', 'subdivision', 'category', 'subcategory_type'],
+  [T.department]: ['store', 'manager', 'starts_on', 'ends_on'],
+  [T.departmentSection]: ['store', 'department', 'section', 'starts_on', 'ends_on'],
   [T.cluster]: ['cluster_manager'],
-  [T.region]: ['region_head'],
 }
 
 const PAGE = 500
@@ -69,7 +72,7 @@ export const sectionLabel = (store: string, section: string) => `${store} / Sect
 export const assignedLabel = (store: string) => `${store} / Assigned subcategories`
 
 /** Why someone's job gives them no place: the page says so plainly. */
-export type NoReach = 'no_job' | 'no_section' | 'departments_not_filled' | 'head_office' | 'no_cluster' | 'nothing_placed' | 'nothing_assigned'
+export type NoReach = 'no_job' | 'no_section' | 'departments_not_filled' | 'store_sections_not_set_up' | 'head_office' | 'no_cluster' | 'nothing_placed' | 'nothing_assigned'
 
 export interface Reach {
   places: Place[]
@@ -83,6 +86,8 @@ const BASIS: Record<string, string> = {
   'Director': 'director', 'Managing Director': 'managing_director',
 }
 const EVERY_STORE = new Set(['Director', 'Managing Director', 'Chief Operating Officer'])
+/** #1192 (owner, 11-Nov-2026): the role that reaches every store, as an every-store job does, for head-office staff. */
+export const ALL_STORES_ROLE = 'Dash All-Stores Reader'
 /** The plant types a store sells through, which a site's readers reach. */
 const SOLD_THROUGH = ['Store', 'Shop-in-shop', 'E-commerce fulfilment']
 
@@ -112,19 +117,18 @@ const reasonOf = (job: Row): Reason => ({ text: `${checked(job.acting) ? 'Acting
 /** A Merchandise Assignment's level, most specific first: the deepest link filled decides what it covers. */
 const LEVELS = ['subcategory', 'category', 'subdivision', 'division'] as const
 
-/** What `person` reaches on `on`, by the who-sees-what table in #967. */
-export async function reachOf(documents: Documents, person: string, on: string): Promise<Reach> {
+/** What `person`, holding `roles`, reaches on `on`, by the who-sees-what table in #967. */
+export async function reachOf(documents: Documents, person: string, on: string, roles: readonly string[] = []): Promise<Reach> {
   const employees = (await all(documents, T.employee, [['person', '=', person]])).filter(row => text(row[EMPLOYEE_STATUS]) === 'Current')
   const mine: Filter[] = [['employee', 'in', employees.map(id)]]
   const jobs = employees.length ? (await all(documents, T.job, mine)).filter(row => holdsOn(row, on)) : []
   // rama_dw #4588: buyers, category heads and the heads above them, from their Merchandise Assignments.
   const assignments = employees.length ? (await all(documents, T.merchandise, mine)).filter(row => holdsOn(row, on)) : []
-  // rama_dw #4588, proposal A: a Cluster or Operating Region row names its head.
+  const everyStore = roles.includes(ALL_STORES_ROLE)
+  // rama_dw #4588: a Cluster row names its head in cluster_manager, a text column holding the head's Employee id.
   const ids = employees.map(id)
-  const headed = async (table: string, column: string) => employees.length ? (await all(documents, table, [[column, 'in', ids]])).map(id) : []
-  const clustersHeaded = await headed(T.cluster, 'cluster_manager')
-  const regionsHeaded = await headed(T.region, 'region_head')
-  if (!jobs.length && !assignments.length && !clustersHeaded.length && !regionsHeaded.length) return { places: [], problems: ['no_job'] }
+  const clustersHeaded = employees.length ? (await all(documents, T.cluster, [['cluster_manager', 'in', ids]])).map(id) : []
+  if (!jobs.length && !assignments.length && !everyStore && !clustersHeaded.length) return { places: [], problems: ['no_job'] }
 
   const sites = await all(documents, T.site)
   const stores = sites.filter(site => checked(site.is_store))
@@ -141,11 +145,11 @@ export async function reachOf(documents: Documents, person: string, on: string):
   const sellingPlants = (site: Row) => plantsOf.get(id(site)) ?? []
   const places = new Places()
   const problems: NoReach[] = []
-  const head = (covered: Row[], basis: string, text: string) => {
-    for (const store of covered) for (const plant of sellingPlants(store)) places.add(plant, plant, null, basis, { text })
-  }
-  for (const cluster of clustersHeaded) head(stores.filter(row => exact(row.cluster) === cluster), 'cluster_manager', `Named head of cluster ${cluster}`)
-  for (const region of regionsHeaded) head(stores.filter(row => exact(row.operating_region) === region), 'region_head', `Named head of region ${region}`)
+  if (everyStore)
+    for (const store of stores) for (const plant of sellingPlants(store)) places.add(plant, plant, null, 'all_stores_reader', { text: `${ALL_STORES_ROLE} role` })
+  for (const cluster of clustersHeaded)
+    for (const store of stores.filter(row => exact(row.cluster) === cluster))
+      for (const plant of sellingPlants(store)) places.add(plant, plant, null, 'cluster_manager', { text: `Named head of cluster ${cluster}` })
   const sectionJobs: { job: Row; sections: Row[] }[] = []
   for (const job of jobs) {
     const name = exact(job.job)
@@ -162,7 +166,17 @@ export async function reachOf(documents: Documents, person: string, on: string):
       if (!exact(job.floor)) { problems.push('no_section'); continue }
       sectionJobs.push({ job, sections: await all(documents, T.section, [['floor', '=', exact(job.floor)]]) })
     } else if (name === 'Department Manager') {
-      problems.push('departments_not_filled')
+      // #1195: the sections of the department they manage at this job's store, on the day.
+      const departments = (await all(documents, T.department, [['manager', 'in', employees.map(id)], ['store', '=', site]])).filter(row => holdsOn(row, on))
+      const links = departments.length
+        ? (await all(documents, T.departmentSection, [['department', 'in', departments.map(id)], ['store', '=', site]])).filter(row => holdsOn(row, on))
+        : []
+      if (!links.length) {
+        const storeHasSections = (await all(documents, T.section, [['site', '=', site]])).length > 0
+        problems.push(storeHasSections ? 'departments_not_filled' : 'store_sections_not_set_up')
+        continue
+      }
+      sectionJobs.push({ job, sections: await all(documents, T.section, [['row_id', 'in', links.map(row => exact(row.section))]]) })
     } else if (name === 'Store Manager') {
       whole(sites.filter(row => id(row) === site))
     } else if (name === 'Cluster Manager') {
@@ -211,13 +225,15 @@ export async function reachOf(documents: Documents, person: string, on: string):
     }
     if (!reached) problems.push('nothing_placed')
   }
-  return { places: places.list(), problems: [...new Set(problems)] }
+  // Every store is reached: no job's shortfall is worth telling them.
+  const list = places.list()
+  return { places: list, problems: everyStore && list.length ? [] : [...new Set(problems)] }
 }
 
 export interface ProviderOptions { today?: () => string }
 
 export function orgChartProvider({ today = istToday }: ProviderOptions = {}) {
   return async function orgChart({ person, documents }: ProviderContext): Promise<Place[]> {
-    return (await reachOf(documents, person.id, today())).places
+    return (await reachOf(documents, person.id, today(), person.roles)).places
   }
 }

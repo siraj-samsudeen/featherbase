@@ -3,9 +3,10 @@
 // are platform-test/report-access.test.ts.
 import { describe, expect, it } from 'vitest'
 import {
-  accessKey, accessPage, addToBundle, becauseLine, giveReport, makeBundle, personLookup, personSearch,
+  accessKey, accessPage, addReport, addToBundle, becauseLine, diveChoices, diveChoicesPrepared, giveReport, makeBundle, personLookup, personSearch,
   removeAccess, removeFromBundle, validators, type AccessContext,
 } from './report-access-server'
+import { checkedSave } from './team-access'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
@@ -86,9 +87,9 @@ describe('the page', () => {
     })
     const page = await accessPage(ctx)
     expect(page.rows.map(row => [row.gives, row.to, row.given_by])).toEqual([
-      [{ kind: 'Bundle', name: 'A bundle no longer listed' }, { kind: 'Person', name: 'Someone you can’t see' }, 'Someone'],
-      [{ kind: 'Report', name: 'A report no longer listed' }, { kind: 'Person', name: 'Asha' }, 'Administrator'],
-      [{ kind: 'Report', name: 'Company notices' }, { kind: 'Person', name: 'Ravi' }, 'Ravi'],
+      [{ kind: 'Bundle', name: 'A bundle no longer listed' }, { kind: 'Person', name: 'Someone you can’t see', who: { code: null, jobs: [], staff: 'none' } }, 'Someone'],
+      [{ kind: 'Report', name: 'A report no longer listed' }, { kind: 'Person', name: 'Asha', who: { code: null, jobs: [], staff: 'none' } }, 'Administrator'],
+      [{ kind: 'Report', name: 'Company notices' }, { kind: 'Person', name: 'Ravi', who: { code: null, jobs: [], staff: 'none' } }, 'Ravi'],
       [{ kind: 'Bundle', name: 'Team leader pack' }, { kind: 'Job', name: 'Team Leader' }, 'Meera'],
     ])
     expect(page.bundles).toEqual([{ id: 'b1', name: 'Team leader pack', reports: [
@@ -106,9 +107,9 @@ describe('the page', () => {
     } }, { Employee: [{ row_id: 'E1', person: 'ravi', name: 'Ravi' }] })
     const page = await accessPage(ctx)
     expect([page.roles, page.waiting]).toEqual([['Dash Reader'], [
-      { person: 'p1', name: 'Priya', asked_on: '2026-11-06' },
-      { person: 'ravi', name: 'Ravi', asked_on: '2026-11-07' },
-      { person: 'p3', name: 'Someone', asked_on: '2026-11-07' },
+      { person: 'p1', name: 'Priya', asked_on: '2026-11-06', who: { code: null, jobs: [], staff: 'none' } },
+      { person: 'ravi', name: 'Ravi', asked_on: '2026-11-07', who: { code: null, jobs: [], staff: 'none' } },
+      { person: 'p3', name: 'Someone', asked_on: '2026-11-07', who: { code: null, jobs: [], staff: 'none' } },
     ]])
   })
 })
@@ -133,7 +134,82 @@ describe('the person picker', () => {
     ] }
     expect(await personSearch(context({ payload: { q: 'a' } }, data))).toEqual([])
     expect(await personSearch(context({ payload: undefined }, data))).toEqual([])
-    expect(await personSearch(context({ payload: { q: 'asha' } }, data))).toEqual([{ person: 'asha', name: 'Asha One' }])
+    expect(await personSearch(context({ payload: { q: 'asha' } }, data))).toEqual([{ person: 'asha', name: 'Asha One', code: null, jobs: [], staff: 'current' }])
+  })
+})
+
+// #1216: people with the same name are told apart by their code, and the jobs they hold today with the site.
+const SAME_NAMES = {
+  Employee: [
+    { row_id: 'E1', employee_code: 'E1001', person: 'k1', name: 'Kumar', status: 'Current' },
+    { row_id: 'E2', employee_code: 'E1002', person: 'k2', name: 'Kumar', status: 'Current' },
+    { row_id: 'E3', employee_code: 'E1003', person: 'k3', name: 'Kumar', status: 'Current' },
+    { row_id: 'E4', employee_code: 'E0900', person: 'gone', name: 'Kumar Old', status: 'Left' },
+    { row_id: 'E5', employee_code: 'E2001', person: 'two', name: 'Tara', status: 'Current' },
+  ],
+  'Job Assignment': [
+    { row_id: 'J1', employee: 'E1', job: 'Team Leader', site: 'S1', starts_on: '2026-01-01' },
+    { row_id: 'J2', employee: 'E2', job: 'Head office staff', site: 'HO', starts_on: '2026-01-01' },
+    { row_id: 'J3', employee: 'E2', job: 'Staff', site: 'S1', starts_on: '2025-01-01', ends_on: '2026-01-01' },
+    { row_id: 'J4', employee: 'E5', job: 'Store Manager', site: 'S2', starts_on: '2026-01-01' },
+    { row_id: 'J5', employee: 'E5', job: 'Floor Manager', site: 'S1', starts_on: '2026-01-01' },
+    { row_id: 'J6', employee: 'E4', job: 'Staff', site: 'S1', starts_on: '2020-01-01' },
+  ],
+  Site: [{ row_id: 'S1', name: 'Lakeside' }, { row_id: 'S2', name: 'Hilltop' }, { row_id: 'HO', name: 'Head office' }],
+}
+
+describe('telling people with the same name apart (#1216)', () => {
+  it('shows each one\'s code and the jobs they hold today, with the site', async () => {
+    expect(await personSearch(context({ payload: { q: 'kumar' } }, SAME_NAMES))).toEqual([
+      { person: 'k1', name: 'Kumar', code: 'E1001', jobs: ['Team Leader · Lakeside'], staff: 'current' },
+      { person: 'k2', name: 'Kumar', code: 'E1002', jobs: ['Head office staff · Head office'], staff: 'current' },
+      { person: 'k3', name: 'Kumar', code: 'E1003', jobs: [], staff: 'current' },
+    ])
+  })
+
+  it('finds a person by part of their code, in any letter case, and lists everyone once in name order', async () => {
+    expect((await personSearch(context({ payload: { q: 'e100' } }, SAME_NAMES))).map(found => found.code)).toEqual(['E1001', 'E1002', 'E1003'])
+    expect(await personSearch(context({ payload: { q: 'E2001' } }, SAME_NAMES))).toEqual([
+      { person: 'two', name: 'Tara', code: 'E2001', jobs: ['Floor Manager · Lakeside', 'Store Manager · Hilltop'], staff: 'current' },
+    ])
+    // A name and a code can both match the same person: still once.
+    const both = { Employee: [{ row_id: 'E1', employee_code: 'AB12', person: 'ab', name: 'Abby', status: 'Current' }] }
+    expect((await personSearch(context({ payload: { q: 'ab' } }, both))).map(found => found.person)).toEqual(['ab'])
+  })
+
+  it('keeps the picker to twenty', async () => {
+    const many = { Employee: Array.from({ length: 30 }, (_, i) => ({ row_id: `E${i}`, employee_code: `Z${String(i).padStart(3, '0')}`, person: `p${i}`, name: `Zed ${String(i).padStart(2, '0')}`, status: 'Current' })) }
+    const found = await personSearch(context({ payload: { q: 'zed' } }, many))
+    expect([found.length, found[0].name, found[19].name]).toEqual([20, 'Zed 00', 'Zed 19'])
+  })
+
+  it('keeps the first twenty by code when more than twenty share a name, whatever order the rows come in', async () => {
+    const codes = Array.from({ length: 25 }, (_, i) => `K${String(i + 1).padStart(3, '0')}`)
+    const shuffled = [...codes.slice(12), ...codes.slice(0, 12)].reverse()
+    const many = { Employee: shuffled.map(code => ({ row_id: code, employee_code: code, person: `p-${code}`, name: 'Kumar', status: 'Current' })) }
+    expect((await personSearch(context({ payload: { q: 'kumar' } }, many))).map(found => found.code)).toEqual(codes.slice(0, 20))
+    // A code that also matches the name text is still listed once, in its place.
+    expect((await personSearch(context({ payload: { q: 'k0' } }, many))).map(found => found.code)).toEqual(codes.slice(0, 20))
+  })
+
+  it('says who a person is in who has what and who is waiting: on the staff list, left, or not on it', async () => {
+    const ctx = context({ people: {
+      async names(ids) { return Object.fromEntries(ids.map(id => [id, { k1: 'Kumar', k2: 'Kumar', gone: 'Kumar Old', svc: 'Report robot' }[id] ?? null])) },
+      async waitingForAccess() { return [{ person: 'k2', name: 'Kumar', asked_at: '2026-11-07T08:00:00Z' }] },
+    } }, { ...SAME_NAMES, 'dash.report_access': [
+      { row_id: 'a1', report: 'sales', person: 'k1', updated_at: '' },
+      { row_id: 'a2', report: 'sales', person: 'gone', updated_at: '' },
+      { row_id: 'a3', report: 'sales', person: 'svc', updated_at: '' },
+      { row_id: 'a4', report: 'sales', job: 'Team Leader', updated_at: '' },
+    ] })
+    const page = await accessPage(ctx)
+    expect(page.rows.map(row => row.to)).toEqual([
+      { kind: 'Person', name: 'Kumar', who: { code: 'E1001', jobs: ['Team Leader · Lakeside'], staff: 'current' } },
+      { kind: 'Person', name: 'Kumar Old', who: { code: 'E0900', jobs: [], staff: 'left' } },
+      { kind: 'Person', name: 'Report robot', who: { code: null, jobs: [], staff: 'none' } },
+      { kind: 'Job', name: 'Team Leader' },
+    ])
+    expect(page.waiting).toEqual([{ person: 'k2', name: 'Kumar', asked_on: '2026-11-07', who: { code: 'E1002', jobs: ['Head office staff · Head office'], staff: 'current' } }])
   })
 })
 
@@ -207,15 +283,37 @@ describe('giving, removing and bundles', () => {
 
 describe('the save rules', () => {
   const reject = (message: string): never => { throw new Error(message) }
+  const manager = { user: 'meera', roles: ['Report Access Manager'], isNew: true }
 
   it('keys a given row, clears blanks, and keys a removed one with nothing', () => {
     const row: Row = { report: 'sales', report_bundle: ' ', person: 'asha', role: '', job: null }
-    validators['dash.report_access']({ row, reject })
+    validators['dash.report_access']({ ...manager, row, reject })
     expect(row).toEqual({ report: 'sales', report_bundle: null, person: 'asha', role: null, job: null, access_key: 'report:sales/person:asha' })
     const removed: Row = { report: 'sales', person: 'asha', removed: '1' }
-    validators['dash.report_access']({ row: removed, reject })
+    validators['dash.report_access']({ ...manager, row: removed, reject })
     expect(removed.access_key).toBeNull()
-    expect(() => validators['dash.report_access']({ row: { report: 'sales', person: 'asha', job: 'Team Leader' }, reject })).toThrow('Give it to exactly one person, one role or one job')
+    expect(() => validators['dash.report_access']({ ...manager, row: { report: 'sales', person: 'asha', job: 'Team Leader' }, reject })).toThrow('Give it to exactly one person, one role or one job')
+  })
+
+  // #1217: a Team Report Manager's save is taken only as the one save Dash's action checked.
+  it('takes a Team Report Manager\'s row only as the save the give or remove action checked', async () => {
+    const team = { user: 'asha', roles: ['Dash Reader', 'Team Report Manager'], reject }
+    const save = (over: Record<string, unknown>) => validators['dash.report_access']({ ...team, isNew: true, ...over, row: { ...(over.row as Row) } } as Parameters<typeof validators['dash.report_access']>[0])
+    const refusal = 'Give and take away reports on the Report access page'
+    expect(() => save({ row: { report: 'sales', person: 'ravi' } })).toThrow(refusal)
+    await checkedSave({ user: 'asha', key: 'report:sales/person:ravi' }, async () => {
+      expect(() => save({ row: { report: 'sales', person: 'ravi' } })).not.toThrow()
+      expect(() => save({ row: { report: 'sales', person: 'meena' } })).toThrow(refusal)
+      expect(() => save({ user: 'someone-else', row: { report: 'sales', person: 'ravi' } })).toThrow(refusal)
+    })
+    const old = { row_id: 'g1', report: 'sales', person: 'ravi', removed: 0 }
+    await checkedSave({ user: 'asha', row: 'g1' }, async () => {
+      expect(() => save({ isNew: false, old, row: { ...old, removed: 1 } })).not.toThrow()
+      expect(() => save({ isNew: false, old, row: { ...old, person: 'meena', removed: 1 } })).toThrow(refusal)
+      expect(() => save({ isNew: false, old, row: { ...old } })).toThrow(refusal)
+      expect(() => save({ isNew: false, old: { ...old, row_id: 'g2' }, row: { ...old, row_id: 'g2', removed: 1 } })).toThrow(refusal)
+    })
+    expect(() => save({ isNew: false, old, row: { ...old, removed: 1 } })).toThrow(refusal)
   })
 
   it('keys a bundle member, and refuses one missing its bundle or report', () => {
@@ -234,5 +332,110 @@ describe('the save rules', () => {
       becauseLine({ kind: 'job', receiver: 'Team Leader', bundle: 'b1' }, () => 'Team leader pack'),
       accessKey({ report: 'sales', report_bundle: 'b1', person: 'asha' }),
     ]).toEqual(['Role Dash Reader', 'Job Team Leader, through Team leader pack', { problem: 'Give exactly one report or one bundle' }])
+  })
+})
+
+// #1169: a Report Access Manager adds a MotherDuck Dive as a report taking no filter.
+describe('adding a Dive', () => {
+  const FLOOR = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const reports = { 'dash.report': [...REPORTS.map((r, i) => ({ ...r, dive_id: `0000000${i}-0000-4000-8000-000000000000` })),
+    { report_key: 'kurti', report_name: 'Kurti tower', filter_shape: 'No filter', dive_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' }] }
+
+  it('creates a report taking no filter, named as asked, keyed from its name', async () => {
+    const ctx = context({ payload: { dive_id: FLOOR, name: '  Floor   stock ' } }, reports)
+    await expect(addReport(ctx)).resolves.toEqual({ key: 'floor-stock', name: 'Floor stock' })
+    expect(ctx.written).toEqual([['dash.report', { report_key: 'floor-stock', report_name: 'Floor stock', dive_id: FLOOR, filter_shape: 'No filter' }]])
+  })
+
+  it.each([
+    ['a Dive already in Dash, naming its report', { dive_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', name: 'Kurti again' }, 'That Dive is already in Dash as Kurti tower'],
+    ['a name another report has, whatever its case', { dive_id: FLOOR, name: 'kurti TOWER' }, 'Another report is called Kurti tower'],
+    ['an empty name', { dive_id: FLOOR, name: '   ' }, 'Name the report'],
+    ['a link instead of an id', { dive_id: `https://app.motherduck.com/dives/x-${FLOOR}`, name: 'Floor stock' }, 'Choose a Dive'],
+    ['no Dive', { name: 'Floor stock' }, 'Choose a Dive'],
+  ])('refuses %s, writing nothing', async (_what, payload, message) => {
+    const ctx = context({ payload }, reports)
+    await expect(addReport(ctx)).rejects.toThrow(message)
+    expect(ctx.written).toEqual([])
+  })
+
+  it('is refused to anyone who does not manage report access', async () => {
+    const ctx = context({ roles: ['Dash Reader'], payload: { dive_id: FLOOR, name: 'Floor stock' } }, reports)
+    await expect(addReport(ctx)).rejects.toThrow('Only a Report Access Manager or a System Manager')
+    expect(ctx.written).toEqual([])
+  })
+})
+
+describe('the Dives to choose from', () => {
+  const live = (rows: unknown[] | Error) => ({ datasets: { async live() { if (rows instanceof Error) throw rows; return { rows } } } })
+  const reports = { 'dash.report': [{ report_key: 'kurti', report_name: 'Kurti tower', filter_shape: 'No filter', dive_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' }] }
+
+  it('lists every Dive MotherDuck gives, marking the one already in Dash', async () => {
+    const ctx = context({}, reports)
+    const answer = await diveChoices({ ...ctx, ...live([
+      { dive_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', title: 'Kurti tower', owner_name: 'asha', saved_on: '2026-11-12' },
+      { dive_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', title: '', owner_name: 'ben', saved_on: null },
+    ]) }, await diveChoicesPrepared(ctx))
+    expect(answer).toEqual({ dives: [
+      { dive_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', title: 'Kurti tower', owner: 'asha', saved_on: '2026-11-12', in_dash: 'Kurti tower' },
+      { dive_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', title: 'Untitled Dive', owner: 'ben', saved_on: null, in_dash: null },
+    ] })
+  })
+
+  it('says MotherDuck is out of reach rather than listing nothing', async () => {
+    const ctx = context({}, reports)
+    expect(await diveChoices({ ...ctx, ...live(new Error('timeout')) }, await diveChoicesPrepared(ctx))).toEqual({ unreachable: true })
+  })
+
+  it('is refused to anyone who does not manage report access, before MotherDuck is asked', async () => {
+    const ctx = context({ roles: ['Dash Reader'] }, reports)
+    let asked = false
+    const datasets = { async live() { asked = true; return { rows: [] } } }
+    await expect(diveChoices({ ...ctx, datasets }, await diveChoicesPrepared(ctx))).rejects.toThrow('Only a Report Access Manager or a System Manager can add reports')
+    expect(asked).toBe(false)
+  })
+})
+
+describe('a report saved by any route', () => {
+  const reports = tables({ 'dash.report': [{ report_key: 'sales', report_name: 'Sales versus target', dive_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' }] })
+  const reject = (message: string): never => { throw new Error(message) }
+
+  it("is refused on a Dive another report already opens, whatever its case or spaces, naming that report (#1169)", async () => {
+    await expect(validators['dash.report']({ row: { report_key: 'open-sales', dive_id: ' CCCCCCCC-cccc-4ccc-8ccc-cccccccccccc ', filter_shape: 'No filter' }, documents: reports, reject }))
+      .rejects.toThrow('That Dive is already in Dash as Sales versus target')
+  })
+
+  it('is saved on its own Dive, and on a Dive no report opens, with the id trimmed', async () => {
+    await expect(validators['dash.report']({ row: { report_key: 'sales', dive_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' }, documents: reports, reject })).resolves.toBeUndefined()
+    const row: Record<string, unknown> = { report_key: 'floor', dive_id: ' aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa ' }
+    await validators['dash.report']({ row, documents: reports, reject })
+    expect(row.dive_id).toBe('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+  })
+})
+
+describe('the edges of adding a Dive (#1169)', () => {
+  const reject = (message: string): never => { throw new Error(message) }
+
+  it('saves a report with no Dive yet, or with nothing to compare it to, leaving the required-field rule to say so', async () => {
+    const reports = tables({ 'dash.report': [{ report_key: 'sales', report_name: 'Sales', dive_id: '' }] })
+    await expect(validators['dash.report']({ row: { report_key: 'new', dive_id: '  ' }, documents: reports, reject })).resolves.toBeUndefined()
+    await expect(validators['dash.report']({ row: { report_key: 'new', dive_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }, reject })).resolves.toBeUndefined()
+  })
+
+  it('asks for a Dive when nothing was sent', async () => {
+    await expect(addReport(context({ payload: undefined }))).rejects.toThrow('Choose a Dive')
+  })
+
+  it('says MotherDuck is out of reach whatever was thrown, logging the cause without anything token-shaped', async () => {
+    const logged: string[] = []
+    const original = console.error
+    console.error = (line: string) => { logged.push(line) }
+    try {
+      const ctx = context()
+      const datasets = { async live(): Promise<{ rows: unknown[] }> { throw 'md: token=secret-value refused' } }
+      expect(await diveChoices({ ...ctx, datasets }, await diveChoicesPrepared(ctx))).toEqual({ unreachable: true })
+    } finally { console.error = original }
+    expect(logged.join()).toContain('dash_dive_list_failed')
+    expect(logged.join()).not.toContain('secret-value')
   })
 })

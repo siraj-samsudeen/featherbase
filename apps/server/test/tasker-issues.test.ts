@@ -1,5 +1,7 @@
 import { resolve } from 'node:path'
-import { expect, vi } from 'vitest'
+import { makeJobDue } from './jobs-due'
+import { expect } from 'vitest'
+import { withTime } from './clock'
 import { test } from './pg-test'
 import { installApp } from '../src/apps'
 import { discoverPackages } from '../src/runtime-packages'
@@ -28,15 +30,10 @@ async function escalate() {
   // reach this run. Only this run is wanted, so the scheduled ones are taken off the queue.
   await sql`delete from background_job where job_status = 'queued' and trigger = 'schedule'`
   const job = await enqueue('tasker.escalate_issues', {})
-  await sql`update background_job set run_at = now() - interval '1 second' where row_id = ${job}`
+  await makeJobDue(job)
   await drainJobs()
   const [run] = await sql`select job_status, error from background_job where row_id = ${job}`
   expect(run).toMatchObject({ job_status: 'done', error: null })
-}
-
-async function withTime<T>(when: Date, fn: () => Promise<T>): Promise<T> {
-  vi.useFakeTimers({ toFake: ['Date'] })
-  try { vi.setSystemTime(when); return await fn() } finally { vi.useRealTimers() }
 }
 
 async function setup(createUser: (options: { roles: string[]; fullName?: string }) => Promise<Parameters<typeof taskerClient>[0]>, { manager = true, head = true } = {}) {

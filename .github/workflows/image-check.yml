@@ -116,9 +116,9 @@ jobs:
       - name: The default image holds Tasker and Tickets
         run: |
           app_paths=$(docker image inspect featherbase-default:ci --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^FEATHERBASE_APP_PATHS=//p')
-          expected='["/app/example-apps/tasker","/app/example-apps/tickets","/app/example-apps/tickets-0.1.0","/app/example-apps/tickets-0.2.0","/app/example-apps/tickets-0.2.1","/app/example-apps/tickets-0.2.2"]'
+          expected='["/app/example-apps/tasker","/app/example-apps/tickets"]'
           [ "$app_paths" = "$expected" ] || { echo "FEATHERBASE_APP_PATHS=$app_paths, expected $expected"; exit 1; }
-          for app in tasker tickets tickets-0.1.0 tickets-0.2.0 tickets-0.2.1 tickets-0.2.2; do
+          for app in tasker tickets; do
             for file in package.json featherbase.json dist; do
               docker run --rm featherbase-default:ci test -e "/app/example-apps/$app/$file" || { echo "missing /app/example-apps/$app/$file"; exit 1; }
             done

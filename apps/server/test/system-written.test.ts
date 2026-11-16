@@ -3,9 +3,10 @@
 // rows through the generic API, bulk paths or structure changes; only the
 // server's own writers (sign-in logging, the job runner, the import logger,
 // the version trail) put rows there. Reads are unchanged.
-import { describe, expect, vi } from 'vitest'
+import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
+import { withTimeFromNow } from './clock'
 import { sql } from '../src/db'
 import { app } from '../src/index'
 import * as documentModule from '../src/document'
@@ -100,13 +101,15 @@ async function activityCount(): Promise<number> {
 describe('#432: every privileged principal is refused on an audit table', () => {
   for (const who of PRINCIPALS) {
     describe(who, () => {
-      test('insert, through the row API and save_row', async ({ admin, api, createUser }) => {
-        const client = await as(who, { admin, api, createUser })
-        const before = await activityCount()
-        await expectApiError(client.post(`/api/table/${ENC}`, { user: 'Administrator', operation: 'forged login' }), REFUSED)
-        await expectApiError(client.post('/api/save_row', { table: AL, row: { user: 'Administrator', operation: 'forged' } }), REFUSED)
-        expect(await activityCount()).toBe(before)
-      })
+      // A System Manager's insert is the scenario "An administrator tries to add a sign-in".
+      if (who !== 'System Manager')
+        test('insert, through the row API and save_row', async ({ admin, api, createUser }) => {
+          const client = await as(who, { admin, api, createUser })
+          const before = await activityCount()
+          await expectApiError(client.post(`/api/table/${ENC}`, { user: 'Administrator', operation: 'forged login' }), REFUSED)
+          await expectApiError(client.post('/api/save_row', { table: AL, row: { user: 'Administrator', operation: 'forged' } }), REFUSED)
+          expect(await activityCount()).toBe(before)
+        })
 
       test('update', async ({ admin, api, createUser }) => {
         const id = await seedActivity()
@@ -347,6 +350,7 @@ describe('#432: every write entry point is covered', () => {
     'POST /api/set_password': 'credentials',
     'POST /api/people/names': 'read',
     'POST /api/access_request': 'audit: records an access request for the person asking (#955)',
+    'POST /api/access_request/:id/:decision': 'access control: a System Manager approves (roles through the Person save, app access through the app action), declines or dismisses a request; one activity row each (#1173)',
     'POST /api/row_titles': 'read',
     'POST /api/people/:id/identities': 'person identities',
     'POST /api/people/:id/identifiers': 'person identifiers',
@@ -376,6 +380,7 @@ describe('#432: every write entry point is covered', () => {
     'POST /api/app_actions/:app/:action': 'app actions refuse system tables',
     'POST /api/app_reads/:app/:read': 'read',
     'POST /api/preview_app_upgrade': 'app lifecycle',
+    'POST /deliver/app': 'app lifecycle: a code fix to the installed version, by the deploy key (#1178)',
     'POST /api/upgrade_app': 'app lifecycle',
     'POST /api/activate_app_upgrade': 'app lifecycle',
     'POST /api/set_app_enabled': 'app lifecycle',
@@ -530,18 +535,12 @@ describe('#432: kept history and the database clock', () => {
 
   test('an import stays revertible when the app clock runs behind the database', async ({ admin }) => {
     await makeTable(admin, { name: 'Audit Skew', columns: ['title'] })
-    vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(Date.now() - 60 * 60 * 1000)
     // Called in-process: a skewed clock would also expire the HTTP session.
-    try {
-      await getCollectionAction('import')!.handler({
-        table: 'Audit Skew',
-        args: { rows: [{ title: 'one' }], context: { run_id: 'skew-run' } },
-        user: { row_id: 'Administrator' } as never,
-      })
-    } finally {
-      vi.useRealTimers()
-    }
+    await withTimeFromNow(-60 * 60 * 1000, async () => getCollectionAction('import')!.handler({
+      table: 'Audit Skew',
+      args: { rows: [{ title: 'one' }], context: { run_id: 'skew-run' } },
+      user: { row_id: 'Administrator' } as never,
+    }))
     expect(await admin.post('/api/table/Audit%20Skew:import-revert', { run_id: 'skew-run' })).toMatchObject({ deleted: 1 })
   })
 
@@ -612,9 +611,9 @@ describe('#432: storage decides, not the name', () => {
     const CLASH = { status: 409, type: 'ConflictError' }
     for (const [name, kind] of [
       ['activity log', 'settings'],
-      ['ACTIVITY  LOG', 'settings'],
       ['activity log', 'table'],
       ['Activity log', 'sub_table'],
+      ['ACTIVITY  LOG', 'settings'],
     ] as const)
       await expectApiError(admin.post('/api/table_def', { name, kind, columns: [{ column_name: 'note', column_type: 'Data' }] }), CLASH)
     // An ordinary Table's storage is owned just the same, even by a Settings Table.
