@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import { useRouter, useRouterState } from '@tanstack/react-router'
 import { APP_ROOT_PATTERN } from 'shared'
 import { markSetupOffer } from './FirstRunSetup'
@@ -93,6 +93,27 @@ export function takeLoginNext(): string | undefined {
   }
 }
 
+// #1226: the last ID that signed in with a connected service, per service, so
+// staff type only their password. Only the ID: a password never goes to storage.
+const delegatedIdKey = (service: string) => `fc-delegated-id:${service}`
+
+function rememberedDelegatedId(service: string): string {
+  try {
+    return localStorage.getItem(delegatedIdKey(service)) ?? ''
+  } catch {
+    return '' // Storage blocked: the form starts empty, as before.
+  }
+}
+
+function setRememberedDelegatedId(service: string, id: string | null): void {
+  try {
+    if (id) localStorage.setItem(delegatedIdKey(service), id)
+    else localStorage.removeItem(delegatedIdKey(service))
+  } catch {
+    // Storage blocked: nothing is remembered.
+  }
+}
+
 /** Go to a checked return path: a Featherbase page inside the SPA, anything
  *  else (a runtime app) by a full page load. */
 export function openReturnPath(
@@ -178,6 +199,10 @@ export function LoginPage() {
   const delegatedKey = chosenMode ? chosenKey : (delegatedMethods[0]?.key ?? null)
   const delegated = delegatedMethods.find((m) => m.key === delegatedKey) ?? null
   const delegatedLabel = delegated?.label ?? null
+  // Read on each render, so "Not you?" disappears once the ID is forgotten.
+  const [, refreshRemembered] = useReducer((n: number) => n + 1, 0)
+  const rememberedId = delegated ? rememberedDelegatedId(delegated.key) : ''
+  const delegatedIdBox = useRef<HTMLInputElement>(null)
   // If the brand cannot be read, offer Google as before; the server decides.
   const google = methods === null ? { key: 'google', label: 'Google' } : methods.find((m) => m.kind === 'google')
   // Until the brand answers, and if it cannot, the password form stays.
@@ -256,7 +281,23 @@ export function LoginPage() {
       setError(blank)
       return
     }
-    await signIn(() => loginDelegated(id, password, delegated!.key), blank)
+    const service = delegated!.key
+    // Saved only once the sign-in succeeds; a failure keeps what was there.
+    await signIn(async () => {
+      const user = await loginDelegated(id, password, service)
+      setRememberedDelegatedId(service, id)
+      return user
+    }, blank)
+  }
+
+  function forgetDelegatedId() {
+    if (delegated) setRememberedDelegatedId(delegated.key, null)
+    refreshRemembered()
+    const box = delegatedIdBox.current
+    if (box) {
+      box.value = ''
+      box.focus()
+    }
   }
 
   async function onSignUpSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -378,7 +419,10 @@ export function LoginPage() {
                 </p>
                 <div>
                   <label className={labelClasses()} htmlFor="delegated-id">{`${delegatedLabel} ID`}</label>
+                  {/* Keyed by service, so another service's form starts from its own remembered ID. */}
                   <input
+                    key={delegated?.key}
+                    ref={delegatedIdBox}
                     id="delegated-id"
                     type="text"
                     name="delegated_id"
@@ -386,16 +430,30 @@ export function LoginPage() {
                     autoCapitalize="none"
                     autoCorrect="off"
                     spellCheck={false}
+                    defaultValue={rememberedId}
+                    autoFocus={!rememberedId}
                     className={inputClasses()}
                   />
+                  {rememberedId && (
+                    <button
+                      type="button"
+                      data-testid="delegated-forget-id"
+                      className="inline-flex min-h-control items-center text-sm text-action hover:underline"
+                      onClick={forgetDelegatedId}
+                    >
+                      Not you? Use another ID
+                    </button>
+                  )}
                 </div>
                 <div>
                   <label className={labelClasses()} htmlFor="delegated-password">Password</label>
                   <input
+                    key={delegated?.key}
                     id="delegated-password"
                     type="password"
                     name="delegated_password"
                     autoComplete="current-password"
+                    autoFocus={Boolean(rememberedId)}
                     className={inputClasses()}
                   />
                 </div>
