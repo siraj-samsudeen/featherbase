@@ -11,8 +11,9 @@ import { test } from './pg-test'
 import { sandboxRequest } from './pg-test-shared'
 import { discoverPackages } from '../src/runtime-packages'
 import { issueAccessToken } from '../src/auth'
-import { logAccess } from '../src/audit'
+import { logAccess, logActivity } from '../src/audit'
 import { runViewingAs } from '../src/view-as-context'
+import { viewAsRoute } from '../src/view-as'
 import { sql } from '../src/db'
 
 const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
@@ -74,6 +75,14 @@ describe('View as: what an app declares', () => {
   })
 })
 
+describe('View as: which requests run as the person viewed', () => {
+  test.for([['GET', '/api/table/ToDo', 'read'], ['POST', '/api/app_reads/dash/reports', 'read'], ['POST', '/api/dashboard/count', 'read'], ['POST', '/api/row_titles', 'read'],
+    ['POST', '/api/save_row', 'tester'], ['POST', '/api/app_actions/dash/give_report', 'tester'], ['DELETE', '/api/table/ToDo/x', 'tester'], ['POST', '/api/view_as/exit', 'tester'], ['GET', '/api/view_as', 'tester'], ['POST', '/api/events', 'drop']] as const)(
+    '%s %s is handled as %s', ([method, path, route]) => {
+      expect(viewAsRoute(method, path)).toBe(route)
+    })
+})
+
 describe('View as on the platform', () => {
   test('reads run as the person; a change runs as the tester, never as the person', async ({ admin, createUser }) => {
     const { person } = await install(admin, createUser)
@@ -119,5 +128,8 @@ describe('View as on the platform', () => {
     const { tester, person } = await install(admin, createUser)
     await runViewingAs({ tester: tester.user!, person: person.user!, name: 'Made-up' }, () => logAccess(person.user!, 'view_report', { table: 'barproof.x', scope: 'store=9901' }))
     expect(await sql`select "user", scope from access_log where operation = 'view_report'`).toEqual([{ user: tester.user, scope: `viewing as ${person.user}; store=9901` }])
+    await runViewingAs({ tester: tester.user!, person: person.user!, name: 'Made-up' }, () => logActivity(person.user!, 'identifier_search staff'))
+    expect(await sql`select "user", created_by, operation from activity_log where operation like 'identifier_search%'`)
+      .toEqual([{ user: tester.user, created_by: tester.user, operation: `identifier_search staff (viewing as ${person.user})` }])
   })
 })

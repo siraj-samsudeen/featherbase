@@ -27,6 +27,12 @@ export async function logActivity(
   operation: string,
   extra: { full_name?: string | null; ip_address?: string | null; sign_in_method?: string | null; test_mode?: boolean } = {},
 ): Promise<void> {
+  // #1222: what is done while viewing as someone is the tester's doing, marked with whom.
+  const as = viewingAs()
+  if (as && user === as.person) {
+    user = as.tester
+    operation = `${operation} (viewing as ${as.person})`.slice(0, 140)
+  }
   if (!(await tableExists('activity_log'))) return
   const now = new Date()
   await sql`insert into activity_log ${sql({

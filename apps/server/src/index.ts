@@ -10,7 +10,7 @@ import { assertRowsWritable } from './system-written'
 import { assertNotView, storedTable } from './views'
 import { AppError, errorResponse } from './errors'
 import { runInSession } from './session-context'
-import { activeViewAs, endViewAs, searchViewAs, startViewAs, viewAsRoute, viewAsState } from './view-as'
+import { activeViewAs, endViewAs, endViewAsSession, searchViewAs, startViewAs, viewAsRoute, viewAsState } from './view-as'
 import { runViewingAs } from './view-as-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { tableStorageIdentity } from './table-engine'
@@ -323,6 +323,13 @@ app.post('/api/logout', async (c) => {
     const session = await sessionToRevoke(credential)
     if (!session) continue
     closeSessionSockets(session.jti)
+    // #1222: signing out ends a View as too, on the record.
+    try {
+      await endViewAsSession(session.jti, 'sign_out')
+    } catch (err) {
+      console.error('sign-out: ending View as failed', err)
+      incomplete = true
+    }
     try {
       await revokeSession(session)
     } catch (err) {
@@ -815,6 +822,8 @@ app.get('/api/whoami', async (c) => {
   const access = manage
     ? { readable: [] as string[], creatable: [] as string[], ownGrant: true, admin: true }
     : await tableAccessFor(user.row_id, roles)
+  // #1222: while viewing as someone, the shell offers no new rows.
+  if (c.get('viewingAs')) { access.creatable = []; access.ownGrant = false }
   // #905: archived Tables the person can read, so the shell lists them apart
   // and keeps them out of the pickers.
   const archived = (await sql`select name from table_def where archived_at is not null order by name`)

@@ -10,7 +10,7 @@
 // as soon as the tester no longer holds the role or the person can no longer
 // be viewed. Every start, switch and end is an Access Log row under the
 // tester naming the person; Recent and Frequently used are read from them.
-import { sql } from './db'
+import { sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { logAccess } from './audit'
 import { getRoles, isPrivileged } from './permissions'
@@ -76,8 +76,12 @@ async function nameOf(person: string): Promise<string> {
 export async function activeViewAs(user: SessionUser): Promise<{ as: ViewingAs; user: SessionUser } | null> {
   const session = user.sign_in?.session_id
   if (!session || user.kind !== 'person') return null
-  const [row] = await sql`select tester, person from view_as_session where session_id = ${session} and expires_at > now()`
+  const [row] = await sql`select tester, person, expires_at <= now() as expired from view_as_session where session_id = ${session}`
   if (!row) return null
+  if (row.expired) {
+    await endViewAsSession(session, 'expired')
+    return null
+  }
   const person = String(row.person)
   if (String(row.tester) !== user.row_id || !(await testerApp(user.row_id)) || (await unviewable(user.row_id, person))) {
     await endViewAs(user, 'no_longer_allowed')
@@ -102,7 +106,7 @@ export async function startViewAs(user: SessionUser, person: unknown): Promise<v
   // Never outlives the session it belongs to.
   const ends = Math.min(Date.now() + VIEW_AS_MINUTES * 60_000, user.sign_in!.expires_at * 1000)
   await sql.begin(async (tx) => {
-    await tx`delete from view_as_session where expires_at < now()`
+    await endExpired(tx)
     const [before] = await tx`select person from view_as_session where session_id = ${session}`
     await tx`insert into view_as_session (session_id, tester, person, expires_at)
       values (${session}, ${user.row_id}, ${person}, ${new Date(ends)})
@@ -113,12 +117,25 @@ export async function startViewAs(user: SessionUser, person: unknown): Promise<v
 
 /** Stop viewing as anyone; a no-op when not viewing. */
 export async function endViewAs(user: SessionUser, method = 'exit'): Promise<void> {
-  const session = user.sign_in?.session_id
-  if (!session) return
+  if (user.sign_in?.session_id) await endViewAsSession(user.sign_in.session_id, method)
+}
+
+/**
+ * End one session's View as, logged under the tester who started it, naming
+ * the person: at Exit, sign-out, expiry, or when it may no longer go on.
+ * Every way of ending goes through here, so every start has its end.
+ */
+export async function endViewAsSession(session: string, method: string): Promise<void> {
   await sql.begin(async (tx) => {
-    const [ended] = await tx`delete from view_as_session where session_id = ${session} returning person`
-    if (ended) await logAccess(user.row_id, 'view_as_end', { table: 'Person', row_id: String(ended.person), method, required: true }, tx)
+    const [ended] = await tx`delete from view_as_session where session_id = ${session} returning tester, person`
+    if (ended) await logAccess(String(ended.tester), 'view_as_end', { table: 'Person', row_id: String(ended.person), method, required: true }, tx)
   })
+}
+
+/** End every View as whose time is up, each logged under its tester. */
+async function endExpired(tx: TxSql) {
+  for (const ended of await tx`delete from view_as_session where expires_at <= now() returning tester, person`)
+    await logAccess(String(ended.tester), 'view_as_end', { table: 'Person', row_id: String(ended.person), method: 'expired', required: true }, tx)
 }
 
 /** The people the app describes, in the order asked; a name only where it can't. */
@@ -196,6 +213,9 @@ export async function viewAsState(user: SessionUser) {
   }
 }
 
+/** Featherbase's reads that are sent as POST (a body too large for an address). */
+const READ_POSTS = new Set(['/api/dashboard/count', '/api/dashboard/chart', '/api/report_chart', '/api/run_script_report', '/api/row_titles', '/api/people/names'])
+
 /**
  * How the middleware treats a request while viewing:
  * - `read`: a read, run as the person viewed;
@@ -205,7 +225,7 @@ export async function viewAsState(user: SessionUser) {
 export function viewAsRoute(method: string, path: string): 'read' | 'drop' | 'tester' {
   if (path === '/api/view_as' || path.startsWith('/api/view_as/')) return 'tester'
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return 'read'
-  if (method === 'POST' && /^\/api\/app_reads\/[^/]+\/[^/]+$/.test(path)) return 'read'
+  if (method === 'POST' && (/^\/api\/app_reads\/[^/]+\/[^/]+$/.test(path) || READ_POSTS.has(path))) return 'read'
   if (method === 'POST' && path === '/api/events') return 'drop'
   return 'tester'
 }

@@ -4,6 +4,8 @@ import { AppError } from './errors'
 import { getDoc } from './document'
 import { hasMandatoryRowAccess } from './mandatory-access'
 import { resolveToken } from './auth'
+import { activeViewAs } from './view-as'
+import { runViewingAs } from './view-as-context'
 import { readStored, verifyFileSignature } from './storage'
 import type { Env } from './route-context'
 import { authCredential } from './session-cookies'
@@ -31,10 +33,14 @@ export async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boo
       // in `Referer` and in proxy logs, and that is true of a session JWT just
       // as it is of an access token. A caller that can set no header at all
       // mints a short-lived signed URL from /api/signed_url instead.
-      const user = await resolveToken(authCredential(c))
-      if (row.ref_table && row.ref_name)
-        await getDoc(row.ref_table as string, row.ref_name as string, user.row_id)
-      else await getDoc('File', row.row_id as string, user.row_id)
+      const signedIn = await resolveToken(authCredential(c))
+      // #1222: while viewing as someone, an attachment opens as it does for them.
+      const viewing = await activeViewAs(signedIn)
+      const user = viewing?.user ?? signedIn
+      const read = () => row.ref_table && row.ref_name
+        ? getDoc(row.ref_table as string, row.ref_name as string, user.row_id)
+        : getDoc('File', row.row_id as string, user.row_id)
+      await (viewing ? runViewingAs(viewing.as, read) : read())
     }
   }
 

@@ -130,11 +130,24 @@ describe('View as: a tester sees what a person sees', () => {
     await ok(start(tester, buyer.user))
     await sql`update view_as_session set expires_at = now() - interval '1 second'`
     expect(await reports(tester)).toEqual(['open'])
+    // Its end is on the record, under the tester.
+    expect(await sql`select "user", reference_name, method from access_log where operation = 'view_as_end'`)
+      .toEqual([{ user: tester.user, reference_name: buyer.user, method: 'expired' }])
     await ok(start(tester, buyer.user))
     expect(await reports(tester)).toEqual(['sales'])
     await sql`delete from has_role where parent = ${tester.user} and role = ${TESTER}`
     expect(await reports(tester)).toEqual(['open'])
     expect(await sql`select count(*)::int as n from view_as_session`).toEqual([{ n: 0 }])
+    expect(await sql`select method from access_log where operation = 'view_as_end' order by created_at`).toEqual([{ method: 'expired' }, { method: 'no_longer_allowed' }])
+  })
+
+  test('signing out ends it, on the record', async ({ admin, createUser }) => {
+    const { tester, buyer } = await setup(admin, createUser)
+    await ok(start(tester, buyer.user))
+    expect((await tester.fetch('/api/logout', { method: 'POST', headers: json, body: '{}' })).status).toBeLessThan(300)
+    expect(await sql`select count(*)::int as n from view_as_session`).toEqual([{ n: 0 }])
+    expect(await sql`select "user", reference_name, method from access_log where operation = 'view_as_end'`)
+      .toEqual([{ user: tester.user, reference_name: buyer.user, method: 'sign_out' }])
   })
 
   test('belongs to one session: the same tester signed in elsewhere sees their own view', async ({ admin, createUser }) => {

@@ -212,6 +212,13 @@ export function ViewAsBanner() {
     if (viewing) root.setAttribute(VIEWING_AS_ATTRIBUTE, '')
     else root.removeAttribute(VIEWING_AS_ATTRIBUTE)
   }, [viewing])
+  // When its time is up the server reads as the tester again: reload, so nothing on the page mixes the two.
+  const endsAt = viewing?.expires_at
+  useEffect(() => {
+    if (!endsAt) return
+    const timer = setTimeout(() => window.location.reload(), Math.max(0, Math.min(Date.parse(endsAt) - Date.now() + 1000, 2 ** 31 - 1)))
+    return () => clearTimeout(timer)
+  }, [endsAt])
   if (!data || !viewing) return null
   const line = identityLine(viewing)
   return (
