@@ -4,8 +4,9 @@
 // finally.
 import { randomUUID } from 'node:crypto'
 import postgres from 'postgres'
-import { afterEach, beforeEach, expect, it } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { sql } from '../src/db'
+import { mockOAuth } from './google-mock'
 import { WAYS_IN_LOCK_KEY, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from '../src/identities'
 import { saveDoc } from '../src/document'
 import { loadControllers } from '../src/controllers'
@@ -72,8 +73,7 @@ it('two different Google accounts racing for one invite: exactly one claims it',
 
 it('two concurrent removals of a person\'s last two ways in: one is refused', async () => {
   const p = `psn_conc${randomUUID().slice(0, 8)}` // person-rename: ids live in the psn_ namespace
-  const prev = process.env.ALLOW_MOCK_OAUTH
-  process.env.ALLOW_MOCK_OAUTH = '1' // Google counts as a way in
+  mockOAuth(true) // Google counts as a way in
   try {
     await person(p)
     await sql`insert into sign_in_identity ${sql({ id: `uid_${p}_1`, person_id: p, method: 'google', subject: `g1-${p}`, linked_by: 'test' })}`
@@ -89,8 +89,7 @@ it('two concurrent removals of a person\'s last two ways in: one is refused', as
     // exactly one is still live.
     expect(await sql`select 1 from sign_in_identity where person_id = ${p} and ended_at is null`).toHaveLength(1)
   } finally {
-    if (prev === undefined) delete process.env.ALLOW_MOCK_OAUTH
-    else process.env.ALLOW_MOCK_OAUTH = prev
+    vi.unstubAllEnvs()
     await cleanup(p)
   }
 }, 30_000)
@@ -182,8 +181,7 @@ it('a database failure while creating a first-time person is raised, and no pers
 // shared lock both could pass and commit, leaving no way in.
 it('narrowing the domain list racing a System Manager removing their password: exactly one is refused', async () => {
   const p = `psn_conc${randomUUID().slice(0, 8)}`
-  const prev = process.env.ALLOW_MOCK_OAUTH
-  process.env.ALLOW_MOCK_OAUTH = '1' // Google counts as a way in
+  mockOAuth(true) // Google counts as a way in
   // The Sign In Method controller (its lockout guard) runs on saveDoc only once loaded.
   await loadControllers()
   const [before] = await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`
@@ -218,8 +216,7 @@ it('narrowing the domain list racing a System Manager removing their password: e
     expect(after.has_password && domains.allowed_email_domains === 'example.com,sister.test').toBe(false)
   } finally {
     await sql`update sign_in_method set allowed_email_domains = ${before.allowed_email_domains} where row_id = 'google'`
-    if (prev === undefined) delete process.env.ALLOW_MOCK_OAUTH
-    else process.env.ALLOW_MOCK_OAUTH = prev
+    vi.unstubAllEnvs()
     await cleanup(p)
   }
 }, 30_000)

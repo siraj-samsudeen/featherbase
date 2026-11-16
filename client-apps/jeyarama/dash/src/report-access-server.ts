@@ -5,6 +5,8 @@
 // the save rules and lands in version history.
 import { reportsReaching, type AccessRow, type Because, type BundleMember } from './report-access.ts'
 import { EMPLOYEE_STATUS, exact, holdsOn, text } from './values.ts'
+import { diveIdIn, reportKeyFor, type DiveChoice } from './add-dive.ts'
+import { istToday } from './report.ts'
 import type { Documents } from './provider.ts'
 
 type Row = Record<string, unknown>
@@ -14,6 +16,7 @@ export const ACCESS_MANAGER = 'Report Access Manager'
 export const ACCESS = 'dash.report_access'
 export const BUNDLE = 'dash.report_bundle'
 export const MEMBER = 'dash.report_bundle_member'
+export const REPORT = 'dash.report'
 
 /** What these reads and actions use of the platform's context. */
 export interface AccessContext {
@@ -116,10 +119,10 @@ export function becauseLine(because: Because, bundleName: (id: string) => string
 }
 
 export type Gives = { kind: 'Report' | 'Bundle'; name: string }
-export type To = { kind: 'Person' | 'Role' | 'Job'; name: string }
+export type To = { kind: 'Person' | 'Role' | 'Job'; name: string; who?: Who }
 
 /** The Report access page: who has what, what can be given, and who is waiting. Managers only. */
-export async function accessPage(ctx: AccessContext) {
+export async function accessPage(ctx: AccessContext, on: string = istToday()) {
   managerOnly(ctx)
   const named = await names(ctx)
   const access = (await all(ctx.baseTables!, ACCESS, ['report', 'report_bundle', 'person', 'role', 'job', 'updated_at', 'created_by', 'given_by_name', 'removed'])).filter(row => !ticked(row.removed))
@@ -127,10 +130,11 @@ export async function accessPage(ctx: AccessContext) {
   const jobs = await all(ctx.baseTables!, 'Job Assignment', ['job'])
   const waiting = (await ctx.people!.waitingForAccess?.()) ?? []
   const people = await personNames(ctx, [...access.map(row => exact(row.person)), ...access.map(row => exact(row.created_by)), ...waiting.map(w => w.person)])
+  const who = await whoIs(ctx.baseTables!, [...access.map(row => exact(row.person)), ...waiting.map(w => w.person)], on)
   const rows = access.map(row => {
     const gives: Gives | null = nullable(row.report) ? { kind: 'Report', name: named.reports.get(exact(row.report))?.name ?? 'A report no longer listed' }
       : nullable(row.report_bundle) ? { kind: 'Bundle', name: named.bundles.get(exact(row.report_bundle)) ?? 'A bundle no longer listed' } : null
-    const to: To | null = nullable(row.person) ? { kind: 'Person', name: people.get(exact(row.person)) ?? 'Someone you can’t see' }
+    const to: To | null = nullable(row.person) ? { kind: 'Person', name: people.get(exact(row.person)) ?? 'Someone you can’t see', who: who.get(exact(row.person)) }
       : nullable(row.role) ? { kind: 'Role', name: exact(row.role) } : nullable(row.job) ? { kind: 'Job', name: exact(row.job) } : null
     return { id: exact(row.row_id), updated_at: exact(row.updated_at), gives, to, given_by: text(row.given_by_name) || people.get(exact(row.created_by)) || (exact(row.created_by) === 'Administrator' ? 'Administrator' : 'Someone'),
       given_on: exact(row.updated_at).slice(0, 10) }
@@ -146,18 +150,62 @@ export async function accessPage(ctx: AccessContext) {
     roles: [...((await ctx.people!.roleNames?.()) ?? [])],
     jobs: [...new Set(jobs.map(row => exact(row.job)).filter(Boolean))].sort(),
     rows,
-    waiting: waiting.map(w => ({ person: w.person, name: w.name || people.get(w.person) || 'Someone', asked_on: w.asked_at.slice(0, 10) })),
+    waiting: waiting.map(w => ({ person: w.person, name: w.name || people.get(w.person) || 'Someone', asked_on: w.asked_at.slice(0, 10), who: who.get(w.person) })),
   }
 }
 
-/** People on the staff list whose name holds the text typed, for the Give bar's person picker. */
-export async function personSearch(ctx: AccessContext) {
+/**
+ * Who a person is on the staff list (#1216), so people with the same name can be told apart:
+ * their employee code, each job they hold today with its site, and whether they are current
+ * staff, have left, or are not on the staff list at all (a service account, an outsider).
+ */
+export type Who = { code: string | null; jobs: string[]; staff: 'current' | 'left' | 'none' }
+
+export async function whoIs(base: Documents, persons: string[], on: string): Promise<Map<string, Who>> {
+  const wanted = [...new Set(persons.filter(Boolean))]
+  const found = new Map<string, Who>(wanted.map(person => [person, { code: null, jobs: [], staff: 'none' }]))
+  if (!wanted.length) return found
+  const employees = (await all(base, 'Employee', ['employee_code', 'person', EMPLOYEE_STATUS], [['person', 'in', wanted]]))
+    .sort((a, b) => exact(a.employee_code).localeCompare(exact(b.employee_code)))
+  const current = employees.filter(row => text(row[EMPLOYEE_STATUS]) === 'Current')
+  const jobs = current.length ? (await all(base, 'Job Assignment', ['employee', 'job', 'site', 'starts_on', 'ends_on'], [['employee', 'in', current.map(row => exact(row.row_id))]])).filter(row => holdsOn(row, on) && exact(row.job)) : []
+  const siteIds = [...new Set(jobs.map(row => exact(row.site)).filter(Boolean))]
+  const sites = new Map(siteIds.length ? (await all(base, 'Site', ['name'], [['row_id', 'in', siteIds]])).map(row => [exact(row.row_id), text(row.name)]) : [])
+  for (const person of wanted) {
+    const mine = current.filter(row => exact(row.person) === person)
+    const left = employees.find(row => exact(row.person) === person && text(row[EMPLOYEE_STATUS]) === 'Left')
+    if (mine.length) {
+      const held = jobs.filter(row => mine.some(employee => exact(employee.row_id) === exact(row.employee)))
+        .map(row => (sites.get(exact(row.site)) ? `${exact(row.job)} · ${sites.get(exact(row.site))}` : exact(row.job)))
+      found.set(person, { code: nullable(mine[0].employee_code), jobs: [...new Set(held)].sort(), staff: 'current' })
+    } else if (left) found.set(person, { code: nullable(left.employee_code), jobs: [], staff: 'left' })
+  }
+  return found
+}
+
+const SEARCH_LIMIT = 20
+
+/** Current staff whose name or employee code holds the text typed, for the person picker, each with who they are. */
+export async function personSearch(ctx: AccessContext, on: string = istToday()) {
   managerOnly(ctx)
   const typed = text((ctx.payload as { q?: unknown } | undefined)?.q)
   if (typed.length < 2) return []
-  const rows = await ctx.baseTables!.list('Employee', { fields: ['name', 'person', EMPLOYEE_STATUS], filters: [['name', 'like', `%${typed}%`], [EMPLOYEE_STATUS, '=', 'Current']], order_by: 'name asc', limit_page_length: 20 })
-  const seen = new Set<string>()
-  return rows.filter(row => exact(row.person) && !seen.has(exact(row.person)) && seen.add(exact(row.person))).map(row => ({ person: exact(row.person), name: text(row.name) }))
+  // The first twenty by name, and everyone sharing the twentieth's name: the platform orders by one
+  // column, so ties at the cut are settled here, by code, rather than by however the database returns them.
+  const matching = async (column: string) => {
+    const filters: [string, string, unknown][] = [[column, 'like', `%${typed}%`], [EMPLOYEE_STATUS, '=', 'Current']]
+    const first = await ctx.baseTables!.list('Employee', { fields: ['name', 'person', EMPLOYEE_STATUS], filters, order_by: 'name asc', limit_page_length: SEARCH_LIMIT })
+    if (first.length < SEARCH_LIMIT) return first
+    const last = exact(first.at(-1)!.name)
+    return [...first.filter(row => exact(row.name) !== last), ...await all(ctx.baseTables!, 'Employee', ['name', 'person', EMPLOYEE_STATUS], [...filters, ['name', '=', last]])]
+  }
+  const names = new Map<string, string>()
+  for (const row of [...await matching('name'), ...await matching('employee_code')])
+    if (exact(row.person) && !names.has(exact(row.person))) names.set(exact(row.person), text(row.name))
+  const who = await whoIs(ctx.baseTables!, [...names.keys()], on)
+  return [...names].map(([person, name]) => ({ person, name, ...who.get(person)! }))
+    .sort((a, b) => a.name.localeCompare(b.name) || (a.code ?? '').localeCompare(b.code ?? ''))
+    .slice(0, SEARCH_LIMIT)
 }
 
 /** What their job reaches today: any store at all, and a whole store. */
@@ -171,15 +219,15 @@ function closedBecause(report: { noFilter: boolean; wholeStores: boolean } | und
   return null
 }
 
-/** What one person sees, and why. `reaches` says what their job reaches today. */
-export async function personLookup(ctx: AccessContext, on: string, reaches: (person: string) => Promise<Reach>) {
+/** What one person sees, and why. `reaches` says what they reach today, by their jobs and the roles they hold. */
+export async function personLookup(ctx: AccessContext, on: string, reaches: (person: string, roles: readonly string[]) => Promise<Reach>) {
   managerOnly(ctx)
   const person = exact((ctx.payload as { person?: unknown } | undefined)?.person)
   if (!person) ctx.reject!('Choose a person')
   const named = await names(ctx)
   const roles = (await ctx.people!.rolesOf?.(person)) ?? []
   const given = await reportsGivenTo(ctx.baseTables!, person, roles, on)
-  const reach = await reaches(person)
+  const reach = await reaches(person, roles)
   const name = (await personNames(ctx, [person])).get(person) ?? 'This person'
   const reports = [...given].map(([key, because]) => {
     const report = named.reports.get(key)
@@ -259,6 +307,19 @@ export async function addToBundle(ctx: AccessContext) {
 
 /** Save rules for the access Tables: one thing to one receiver, and keys that refuse duplicates. */
 export const validators = {
+  /**
+   * #1169: a Dive opens through one report only, on every save, the generic save path included.
+   * A Report Access Manager may create reports; without this they could register a Dive Dash
+   * already narrows to a reader's stores a second time, as a report taking no filter, and give
+   * every store's figures to anyone.
+   */
+  async [REPORT](context: { row: Row; documents?: Pick<Documents, 'list'>; reject(message: string, fields?: Record<string, string>): never }) {
+    context.row.dive_id = exact(context.row.dive_id).trim()
+    const dive = exact(context.row.dive_id).toLowerCase()
+    if (!dive || !context.documents) return
+    const other = (await reportRows(context.documents)).find(report => report.dive === dive && report.key !== exact(context.row.report_key))
+    if (other) context.reject(`That Dive is already in Dash as ${other.name}`, { dive_id: `Already in Dash as ${other.name}` })
+  },
   [ACCESS](context: { row: Row; reject(message: string, fields?: Record<string, string>): never }) {
     for (const column of ['report', 'report_bundle', 'person', 'role', 'job']) if (exact(context.row[column]).trim() === '') context.row[column] = null
     const checked = accessKey(context.row)
@@ -270,4 +331,63 @@ export const validators = {
     if (!exact(context.row.report_bundle) || !exact(context.row.report)) context.reject('A bundle member names a bundle and a report')
     context.row.member_key = ticked(context.row.removed) ? null : `${exact(context.row.report_bundle)}/${exact(context.row.report)}`
   },
+}
+
+/** Every Dash report: its key, its name and the Dive it opens (ids compared trimmed, in lower case). */
+async function reportRows(documents: Pick<Documents, 'list'>): Promise<{ key: string; name: string; dive: string }[]> {
+  const rows = await documents.list('dash.report', { fields: ['report_key', 'report_name', 'dive_id'], limit_page_length: 1000 })
+  return rows.map(row => ({ key: exact(row.report_key), name: text(row.report_name), dive: exact(row.dive_id).trim().toLowerCase() }))
+}
+
+/** What `dive_choices` reads in its transaction: whether the caller manages access, and which Dives are in Dash. */
+export async function diveChoicesPrepared(ctx: AccessContext) {
+  if (!managesAccess(ctx)) return { manager: false, inDash: [] as [string, string][] }
+  return { manager: true, inDash: (await reportRows(ctx.documents!)).map(report => [report.dive, report.name] as [string, string]) }
+}
+
+/**
+ * The organisation's Dives for the Add a Dive card (#1169), read live from MotherDuck, each marked
+ * with the report that already opens it. Managers only. MotherDuck out of reach is said, never an
+ * empty list.
+ */
+export async function diveChoices(ctx: AccessContext & { datasets?: { live(name: string): Promise<{ rows: unknown[] }> } },
+  prepared: Awaited<ReturnType<typeof diveChoicesPrepared>> | undefined) {
+  if (!prepared?.manager) ctx.reject!('Only a Report Access Manager or a System Manager can add reports')
+  const inDash = new Map(prepared!.inDash)
+  let rows: unknown[]
+  try {
+    rows = (await ctx.datasets!.live(DIVES_DATASET)).rows
+  } catch (error) {
+    // The cause, so a wrong query can be told from an outage; anything shaped like a token is cut out.
+    const message = String((error as Error)?.message ?? error).replace(/(token|password)\S*/gi, '$1=…').slice(0, 300)
+    console.error(JSON.stringify({ event: 'dash_dive_list_failed', person: ctx.user, message }))
+    return { unreachable: true as const }
+  }
+  const dives: DiveChoice[] = (rows as Row[]).map(row => ({ dive_id: exact(row.dive_id).toLowerCase(), title: text(row.title) || 'Untitled Dive',
+    owner: text(row.owner_name), saved_on: nullable(row.saved_on), in_dash: inDash.get(exact(row.dive_id).toLowerCase()) ?? null }))
+  return { dives }
+}
+
+/** The dataset of the organisation's Dives (featherbase.json's `datasets`). */
+export const DIVES_DATASET = 'organisation_dives'
+
+/**
+ * Add a Dive to Dash as a report taking no filter (#1169): whoever it is given to sees everything
+ * the Dive shows. A Dive that filters by store still needs a System Manager in Admin.
+ */
+export async function addReport(ctx: AccessContext) {
+  managerOnly(ctx)
+  const payload = (ctx.payload ?? {}) as { dive_id?: unknown; name?: unknown }
+  const dive = diveIdIn(exact(payload.dive_id))
+  if (!dive || dive !== exact(payload.dive_id).trim().toLowerCase()) ctx.reject!('Choose a Dive')
+  const name = text(payload.name).replace(/\s+/g, ' ')
+  if (!name) ctx.reject!('Name the report')
+  const reports = await reportRows(ctx.documents!)
+  const already = reports.find(report => report.dive === dive)
+  if (already) ctx.reject!(`That Dive is already in Dash as ${already.name}`)
+  const sameName = reports.find(report => report.name.toLowerCase() === name.toLowerCase())
+  if (sameName) ctx.reject!(`Another report is called ${sameName.name}`)
+  const key = reportKeyFor(name, reports.map(report => report.key))
+  await ctx.documents!.create!('dash.report', { report_key: key, report_name: name, dive_id: dive, filter_shape: 'No filter' })
+  return { key, name }
 }

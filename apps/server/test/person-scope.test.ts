@@ -11,6 +11,7 @@ import { describe, expect } from 'vitest'
 import { test as pgTest } from './pg-test'
 import { availableRuntimeVersions, discoverPackages, findScopeProvider, runPackageRead } from '../src/runtime-packages'
 import { sql } from '../src/db'
+import { getRoles } from '../src/permissions'
 import { resolvePersonScope, type ScopeProviderBinding } from '../src/person-scope'
 import { invalidateMeta } from '../src/meta'
 import { expectApiError, expectRefused, expectStatus, makeTable, tableRef } from './fixtures'
@@ -275,6 +276,40 @@ export const scopeProviders = {
   })
 })
 
+// #1192: a provider is told the roles the person holds, exactly as the
+// platform resolves them for every other check, read fresh on each request.
+describe('the roles a provider receives', () => {
+  test("are the person's roles as the platform resolves them, everyone's roles included", async ({ admin, createUser }) => {
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Store Auditor' } })
+    const { user, roster } = await setup(admin, createUser, { roles: ['Scope Reader', 'Store Auditor'] })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Everyone Here' } })
+    await admin.post('/api/save_row', { table: 'System Settings', row: { everyone_roles: 'Everyone Here' } })
+    await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+    await user.post(read + 'places', { payload: {} })
+    expect(roster.calls.person.roles).toEqual(['All', 'Everyone Here', 'Scope Reader', 'Store Auditor'])
+    expect(roster.calls.person.roles).toEqual([...new Set(await getRoles(user.user!))].sort())
+  })
+
+  test('a role taken away is gone on the next request', async ({ admin, createUser }) => {
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Store Auditor' } })
+    const { user, roster } = await setup(admin, createUser, { roles: ['Scope Reader', 'Store Auditor'] })
+    await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+    await user.post(read + 'places', { payload: {} })
+    expect(roster.calls.person.roles).toContain('Store Auditor')
+    await sql`delete from has_role where parent = ${user.user!} and role = 'Store Auditor'`
+    await user.post(read + 'places', { payload: {} })
+    expect(roster.calls.person.roles).toEqual(['All', 'Scope Reader'])
+  })
+
+  test('cannot be changed by the provider', async ({ admin, createUser }) => {
+    const { user, roster } = await setup(admin, createUser)
+    await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+    roster.faults.addRole = 'System Manager'
+    await expectRefused(user.post(read + 'places', { payload: {} }), 403)
+    expect(await refusals(user)).toEqual(['scopeproof.places:provider'])
+  })
+})
+
 // #660: a provider that declares identifier systems gets the person's
 // current values for those systems, and nothing else about the person.
 describe("the person's identifiers a provider receives", () => {
@@ -282,7 +317,7 @@ describe("the person's identifiers a provider receives", () => {
     const { user, roster } = await setup(admin, createUser)
     await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
     await user.post(read + 'places', { payload: {} })
-    expect(roster.calls.person).toEqual({ id: user.user, email: 'placed@example.test', identifiers: {} })
+    expect(roster.calls.person).toEqual({ id: user.user, email: 'placed@example.test', identifiers: {}, roles: ['All', 'Scope Reader'] })
   })
 
   // The place-roster fixture, its provider declaring `identifiers`.

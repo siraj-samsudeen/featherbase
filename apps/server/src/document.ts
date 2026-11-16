@@ -1832,8 +1832,8 @@ async function deleteBoundDoc(
 // the write right; a reason is required to retire. Only the three
 // retirement columns (and the update stamp) change, and each step is one
 // history entry, recorded whether or not the Table tracks changes.
-export function retireDoc(table: string, name: string, reason: unknown, user = 'Administrator') {
-  return appOperation(() => setRetirement(table, name, user, { reason }))
+export function retireDoc(table: string, name: string, reason: unknown, user = 'Administrator', opts: { skipPermissions?: boolean } = {}) {
+  return appOperation(() => setRetirement(table, name, user, { reason }, opts))
 }
 export function reactivateDoc(table: string, name: string, user = 'Administrator') {
   return appOperation(() => setRetirement(table, name, user, null))
@@ -1844,6 +1844,8 @@ async function setRetirement(
   name: string,
   user: string,
   retire: { reason: unknown } | null,
+  // #1191: the platform's own trusted path, as saveDoc's: an undo retires what it added, whoever undoes it.
+  opts: { skipPermissions?: boolean } = {},
 ): Promise<RowValues> {
   const meta = await getMeta(table)
   assertRowsWritable(meta, retire ? 'retired' : 'reactivated')
@@ -1860,7 +1862,7 @@ async function setRetirement(
   }
   // Only someone who may open the row may retire or reactivate it: the read
   // path's own checks (mandatory access, shares, a comment's or file's row).
-  await getDoc(table, name, user)
+  if (!opts.skipPermissions) await getDoc(table, name, user)
   // PERM-008: reactivating is editing, so a write share grants it as it
   // grants an update; retiring is deleting, which no share grants.
   const sharedWrite = !retire && await isSharedWith(user, table, name, 'write')
@@ -1873,8 +1875,8 @@ async function setRetirement(
       select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${name} for update`
     if (!existing) throw new AppError('NotFoundError', `${table} ${name} not found`)
     previous = existing as RowValues
-    await assertMandatoryAccess(user, meta, existing as RowValues)
-    if (!sharedWrite) {
+    if (!opts.skipPermissions) await assertMandatoryAccess(user, meta, existing as RowValues)
+    if (!sharedWrite && !opts.skipPermissions) {
       await assertDocPermission(user, table, retire ? 'delete' : 'write', String(existing.created_by))
       await assertUserPermissions(user, meta, existing as RowValues)
     }
@@ -1929,7 +1931,7 @@ async function setRetirement(
     await evaluateWebhooks('on_update', meta.name, result)
     await runHooks('after_commit', { row: result, old: previous, meta, user, isNew: false, tx: sql })
   })
-  return getDoc(table, name, user)
+  return opts.skipPermissions ? result : getDoc(table, name, user)
 }
 
 // DOC-012: rename a row's primary key and update every Reference that

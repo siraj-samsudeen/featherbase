@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import postgres from 'postgres'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { test } from './pg-test'
+import { mockOAuth } from './google-mock'
 import { sql } from '../src/db'
 import { config } from '../src/config'
 import { parseInstanceAddresses } from '../src/instance-addresses'
@@ -53,7 +54,7 @@ describe('release preflight', () => {
 
   test('test mode against a database labelled production refuses, even for a staging process', async () => {
     // A hosted staging trial never runs the mock Google provider this suite turns on (env.ts).
-    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    mockOAuth(false)
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
     vi.stubEnv('DISABLE_DATABASE_ENVIRONMENT_CHECK', '1')
     await sql`update internal_metadata set value = 'production' where key = 'environment'`
@@ -304,7 +305,7 @@ describe('release preflight: access configuration', () => {
   let addressesBefore: typeof config.instanceAddresses = null
   beforeEach(() => {
     vi.stubEnv('JWT_SECRET', 'a-production-secret')
-    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    mockOAuth(false)
     addressesBefore = config.instanceAddresses
     config.instanceAddresses = parseInstanceAddresses('[{"address":"https://featherbase.example.test","opens":"admin","emails":true}]', 'production')
   })
@@ -460,7 +461,7 @@ describe('release preflight: deployment variables', () => {
     vi.stubEnv('INSTANCE_ADDRESSES', '[{"address":"https://featherbase.example.test","opens":"admin","emails":true}]')
     vi.stubEnv('JWT_SECRET', 'a-production-secret')
     vi.stubEnv('FILE_STORAGE_DIR', '/data/files')
-    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    mockOAuth(false)
     vi.stubEnv('GOOGLE_CLIENT_SECRET', '')
   })
 
@@ -481,7 +482,7 @@ describe('release preflight: deployment variables', () => {
   })
 
   test('the mock Google provider refuses a production release', async () => {
-    vi.stubEnv('ALLOW_MOCK_OAUTH', '1')
+    mockOAuth(true)
     await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(/^ALLOW_MOCK_OAUTH is set on a "production" server/)
   })
 

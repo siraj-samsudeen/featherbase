@@ -68,7 +68,8 @@ test for any file is whether a second client would have to change it.
 - **Security #441/#443/#437**: audit tables are system-written; access-deciding
   tables are written by a System Manager only.
 - **#462**: a named role that may write specific protected tables without being a
-  System Manager. Section editing waits for it (D5).
+  System Manager. *(11-Nov-2026: trimmed to what is built (owner): section editing did not wait for it; a
+  proposal is decided by the job's manager or a Master Data Editor, D5.)*
 - **#484**: turning UI-built Tables into app code. Not needed here.
 - **#487**: moving a client seed pack and runbook out of this repo.
 
@@ -115,7 +116,7 @@ flowchart TB
     AD["INSTANCE_ADDRESSES"]
   end
   subgraph App["Feather Dash client app (client's private repo)"]
-    FD["Report page · bar store picker<br/>reads: me, report, embed session<br/>my sections · requests · review"]
+    FD["Report page · bar store picker<br/>reads: me, report, embed session<br/>your sections · proposals · approvals"]
     RD["Cached dataset<br/>query · columns · keys"]
     SP["Scope provider<br/>(the client's roster)"]
   end
@@ -138,7 +139,7 @@ flowchart TB
 |---|---|---|
 | Report page, empty and error states, the remembered store | **App** | Product UI, the same for every client |
 | Reads `me`, `report`, `embed_session`; the IST month-to-date period; the embed-session call | **App** | Product behaviour |
-| Section-change requests, the my-sections and review pages | **App** | The app's own workflow |
+| Your sections: proposals and their approvals | **App** | The app's own workflow |
 | The roles the app needs, and their suggested jobs | **App** (declared) | The app says what it needs; the instance decides who |
 | **The cached dataset**: the query, its columns, keys, which columns are money, and its budget | **App** (client app, ADR 0013) | It names one client's warehouse; a second client adapts a copy of the app |
 | **The scope provider**: who covers which stores and sections | **App** (client app, declared, E1) | The client's roster logic; the platform only enforces the shape |
@@ -169,7 +170,7 @@ that fills it).
   `{ label: "Store 12 / Kids Wear", filters: { store: ["12"], subcategory: [...] } }`.
   A place may also carry the basis (section staff, team leader, department manager,
   floor manager, store manager) for display, and a confirmation status
-  (`confirmed` / `assumed`) per filter value, which stage D shows (task 4.1). A place
+  (`confirmed` / `assumed`) per filter value (task 4.1); Dash does not show it yet. A place
   always names at least one filter value, and labels are unique within a scope. The
   shape is a shared type, validated at the boundary. A place must use the filter
   keys the app's datasets map: a dataset drops a place naming any other key (E3,
@@ -627,8 +628,11 @@ feature (follow-up).
 | App role | Lets a person |
 |---|---|
 | Feather Dash Reader | open the report for their own scope |
-| Feather Dash Section Editor | raise change requests for sections in their own scope |
-| Feather Dash Section Reviewer | see every open request and apply or reject it |
+
+*(11-Nov-2026: trimmed to what is built (owner). Dash ships Dash Reader and Report
+Access Manager; the Section Editor and Section Reviewer roles were never used and are
+gone, from 0.12.10 (#1172). Your sections needs no app role: who may decide a
+proposal is the job's manager or a Master Data Editor, D5.)*
 
 - **People never hold these by hand.** An **Admin-editable setting binds jobs and
   roles to app roles** (owner decision 26-Oct-2026). It is a security Table, `App
@@ -657,35 +661,41 @@ feature (follow-up).
   keep access with no edits. Everything else in the app is built and tested against
   the setting, so stage C changes only the setting's rows.
 
-### D5. Section editing: requests in the app, applied by #462's role
+### D5. Section editing: Your sections proposals, decided by the job's manager
 
-**The model.**
+*(11-Nov-2026: trimmed to what is built (owner). The earlier design here, a
+`section_change` request Table, `request_section_change` and `decide_section_change`
+actions, Section Editor and Section Reviewer roles, a reviewer page and a reviewer
+bound to #462's delegated role, was never built and is dropped. This section
+describes what shipped, in `client-apps/jeyarama/dash/src/my-sections.ts` (#975).)*
 
-- **A request Table**, `feather_dash.section_change`. Columns:
-  - store, section;
-  - kind: `confirm_section`, `move_subcategory_in`, `move_subcategory_out`,
-    `add_staff`, `end_staff`, `correct_section_detail`, `note`;
-  - subject, proposed value, reason;
-  - status: `open`, `applied`, `rejected`, `withdrawn`;
-  - decided by, decided at, decision note.
-- **Raising a request.** Action `request_section_change`, policy `person_scope`, for
-  the Section Editor. A section outside the caller's scope is refused (E1). A move
-  between two sections names both. It is accepted if *either* is in scope, and the
-  reviewer sees both. Requesters read their own requests and withdraw only open ones.
-- **Deciding a request.** Action `decide_section_change`, for the Section Reviewer.
-  Applying writes the master rows *as the reviewer*, through the normal save path,
-  so version history and #449's "imported rows remember human edits" keep the change
-  across later imports.
-- **The reviewer is not a System Manager** (owner decision 26-Oct-2026). The reviewer
-  role is bound to #462's delegated role, which may write the roster tables without
-  System Manager's other powers.
-- **Stage D waits for #462** (owner decision 26-Oct-2026). This supersedes the
-  earlier interim of a System Manager applying requests: no request is ever applied
-  by a System Manager.
-- **What the screens show.** "My sections" lists each section in scope with its
-  subcategories, each marked *confirmed* or *assumed*, plus open requests. That
-  status rides on the scope shape (E1), so managers need no read grant on the master
-  Tables. The reviewer page lists every open request, grouped by store.
+- **Your sections.** A person sees each of their current jobs: the store, the
+  manager the job reports to, the job's section with its floor, and the subcategories
+  placed in that section today, by name, with what they have proposed and who each
+  pending proposal waits for. It reads the core Tables (Employee, Job Assignment,
+  Section, Store Floor, Section Subcategory, Subcategory, Site) as declared base
+  Tables, so staff need no grant on them, and Dash keeps no copy. Until an
+  administrator lists those Tables in the `linked_tables` setting, the page says it
+  is not set up.
+- **Three proposals, each about the person's own job.** `propose_move`: a
+  subcategory in my section belongs in another section of this store.
+  `propose_add`: a subcategory is missing from my section; it comes from wherever it
+  sits in this store, or from no section. `propose_section`: my job's section is
+  wrong; it should be another section of the same store. A job, store or section that
+  is not the caller's, a closed section, or a change already planned for later is
+  refused. Each is a platform change proposal (`workflow-and-approvals`); nothing
+  changes until it is approved.
+- **Who decides.** The job's manager (`reports_to`), while that manager is current
+  staff with a sign-in that Dash opens for. Otherwise a **Master Data Editor**
+  (`FALLBACK_ROLE`), shown to the person as "the master data team". The route is
+  read fresh, so a pending proposal follows the job when it changes hands. Nobody
+  decides their own proposal, and a System Manager is not an approver by being one.
+  An approver sees what waits for them (the `approvals` read) and calls `decide`.
+- **Deciding.** A rejection needs a reason and changes nothing. An approval writes the
+  change dated today, through the platform's approval path: the current row (a
+  placement, or the job) ends and a new one starts; a subcategory that had no section
+  just gets its new placement. If the section closed, moved floor, or the row changed
+  since the proposal, the proposal goes to "Needs fresh review" and nothing changes.
 
 **Rejected:** direct writes by managers (a subcategory move changes someone else's
 scope); Admin grants plus Data Scope rows (they cannot express "sections your
@@ -739,8 +749,8 @@ small workspace package extracted from `apps/web`, so the design guards apply to
   "manifestVersion": 1, "platformVersion": "2026-10",
   "name": "feather_dash", "title": "Feather Dash",
   "server": "dist/server.mjs", "client": "dist/client",
-  "entryTable": "feather_dash.section_change",
-  "roles": ["Feather Dash Reader", "Feather Dash Section Editor", "Feather Dash Section Reviewer"],
+  "entryTable": "dash.report",
+  "roles": ["Dash Reader", "Report Access Manager"],
   "roleDefaults": { "Feather Dash Reader": ["Store Manager", "Floor Manager", "Department Manager", "Team Leader"] },
   "settings": [{ "name": "dive_id", "required": false }, { "name": "dive_version", "required": false },
                { "name": "embed_service_account", "required": false }],
@@ -749,22 +759,24 @@ small workspace package extracted from `apps/web`, so the design guards apply to
   "datasets": [{ "name": "…", "source": "…", "query": "…", "columns": ["…named, typed, money or not…"], "keys": ["store", "item"] }],
   "scopeProvider": "…",
   "bar": [{ "picker": "Store", "options": "me", "sets": "store" }],
-  "reads": { "…": "me, report, embed_session (outbound), my_sections — policy person_scope" },
-  "actions": { "…": "request_section_change (person_scope), decide_section_change (table)" },
-  "tables": [{ "name": "feather_dash.section_change", "…": "…" }],
-  "permissions": ["…own-rows create/read for Section Editor; read/write for Section Reviewer; reviewer write on the roster Tables…"]
+  "reads": { "…": "me, report, embed_session (outbound) — policy person_scope; my_sections, approvals" },
+  "actions": { "…": "propose_move, propose_add, propose_section, decide" },
+  "baseTables": { "read": { "…": "Employee, Job Assignment, Section, Store Floor, Section Subcategory, Subcategory, Site" } },
+  "tables": [{ "name": "dash.report", "…": "…" }],
+  "permissions": ["…a read of dash.report for each app role…"]
 }
 ```
 
 The Dive settings are optional: without them, the app serves the generic quick view.
-The entry Table is the request Table, because an app must own at least one Table.
-The Reader gets an own-rows read on it, which shows nothing until the person raises
-a request.
+*(11-Nov-2026: trimmed to what is built (owner). The entry Table is `dash.report`,
+the report definitions; there is no request Table. Your sections writes through
+platform change proposals on the core Tables, D5. Only the section-editing lines of
+this sketch were updated.)*
 
 **Versions.** Code-only changes are patch or minor releases with an empty migration.
 A new optional column is an `addColumn` migration. A new Table or a wider grant is
-refused by the upgrade planner, so **1.0.0 already declares the request Table and
-every grant stage D needs**.
+refused by the upgrade planner, so **1.0.0 already declares every Table and grant a
+later version needs**.
 *(27-Oct-2026, #651: the upgrade planner now accepts a new Table, with the grants
 its version declares, and every other schema change in `app-schema-evolution`;
 only a wider grant on a Table the app already had is still refused. 1.0.0 no
@@ -832,22 +844,25 @@ prod after approval.
 
 **Go-live order (owner decision 27-Oct-2026).** Section editing is part of go-live:
 at go-live, store managers can request corrections to wrong subcategory → section
-mappings, and a steward who is not a System Manager applies them. So stages B, the
+mappings, and someone who is not a System Manager approves them (*11-Nov-2026: trimmed to what is built (owner)*: the
+job's manager, else a Master Data Editor, D5). So stages B, the
 first part of C, and D reach managers **together, in one cut-over**. No 1.0.0 goes
 to the trial first. The order of work:
 
 1. B1–B5: the platform extensions (E9, E1, E2 with D4, E3 with E5, E4 with E7 and E8).
    E1's scope shape already carries each section's mapping status (task 4.1).
-2. The #462 design with the owner, in parallel with B1–B5.
+2. The #462 design with the owner, in parallel with B1–B5. *(11-Nov-2026: section
+   editing does not use it, D5.)*
 3. #246 items 1–2 on the section and mapping Tables, after B2: explicit scope
    columns and `scope_required`, so no scope rows means no rows.
 4. Stage C1: #449's section and mapping Tables, and the scope provider reading them
    (needs the owner's go on #449's design). Only these Tables keep a human edit
    across the next roster import.
-5. The #462 build: the steward role, limited to its stores through #246.
+5. The #462 build: the steward role, limited to its stores through #246. *(11-Nov-2026:
+   section editing does not use it, D5.)*
 6. B6′: the Feather Dash client app in the client's repository (B6 and B7 merged,
    ADR 0013).
-7. Stage D: section editing.
+7. Stage D: section editing (Your sections, D5).
 8. One cut-over: the parity check, install on dev, switch the dev address; then prod
    with the owner's approval. Then the stage B clean-up.
 
@@ -904,21 +919,21 @@ path. C2 (bindings moving to the manager jobs) may follow go-live.
   `Sales Target Assignment` are removed.
 - Feather Dash does not change, which proves the E1 boundary.
 
-**Stage D: section editing** (needs #246 items 1–2, #462, and C1). Part of go-live.
+**Stage D: section editing.** *(11-Nov-2026: trimmed to what is built (owner).)*
 
-- Feather Dash 1.1.0: my-sections page, the request and decide actions, and the
-  reviewer page. The Table and grants were declared in 1.0.0. Since 1.0.0 never
-  reaches managers alone, both versions go out in the go-live cut-over.
-- The Section Reviewer role is bound to #462's delegated role.
-- *Rollback:* do not activate; dev proves it before prod is upgraded.
+- Dash's Your sections page and its `propose_move`, `propose_add`,
+  `propose_section` and `decide` actions (#975, D5), on the core Tables through
+  platform change proposals. No reviewer page, no app role and no #462 role: the
+  job's manager decides, else a Master Data Editor.
 
 ### D9. Fit with the security rules (#437, #441, #443)
 
 - **System-written audit.** Access Log rows and Version history are
   platform-written. The app gets `recordView`, not a write handle on audit Tables.
 - **Security Tables.** `App Setting` and `App Role Binding` join them. The app never
-  writes a security Table on its own authority. The reviewer writes roster Tables
-  only as a person whose own rights (#462) allow it.
+  writes a security Table on its own authority. An approved proposal writes the
+  roster Tables through the platform's approval path, which allows only the
+  proposal's approver (D5).
 - **Release checks** gain: the address list's validity, no app-role binding to
   `All`/`Guest`, E7, and a warning for a missing required secret.
 - **Scope still fails closed**, and a refusal reveals nothing.
@@ -962,6 +977,8 @@ Owner decisions on PR #460, 26-Oct-2026 (in the PR comment, then in review):
    the roster lives. (Revised 27-Oct-2026: an app declares the provider, #559.)
 3. **Section edits** are change requests applied by a reviewer who is not a System
    Manager. The generic role is #462, and stage D waits for it.
+   *(11-Nov-2026: trimmed to what is built (owner): built as proposals decided by the job's manager, else a
+   Master Data Editor; no #462 role, D5.)*
 4. **Emails** link to the address marked for emails (dash). Anyone landing on the
    wrong address is handed to the right one.
 5. **Addresses** are one `INSTANCE_ADDRESSES` list; `SITE_URL` goes.
@@ -980,6 +997,7 @@ Owner decisions, 27-Oct-2026 (relayed through the rollout session):
 12. **Section editing is part of go-live.** Store managers request corrections to
     wrong subcategory → section mappings; a central steward, not a System Manager,
     applies them (D5 unchanged). #462 designs the steward role.
+    *(11-Nov-2026: trimmed to what is built (owner): the job's manager decides, else a Master Data Editor, D5.)*
 13. **One cut-over.** Feather Dash and section editing reach managers together; no
     1.0.0 to the trial first.
 14. **Order:** B1–B5; the #462 design in parallel; #246 items 1–2 after B2; C1
