@@ -144,11 +144,7 @@ async function withScopeReads<T>(binding: ScopeProviderBinding, fn: (documents: 
     // #1247: whether the provider may read a Table now. A Table the instance lacks is not available, and
     // answering so is no failure: it contributes nothing. Reading it anyway is still refused.
     available: (table: string) => guarded(async () => {
-      if (typeof table !== 'string' || !table || !binding.tables.includes(table)) return false
-      // Not defined on this instance (its app not installed, or the Table not created yet): not available.
-      // A defined Table whose app is turned off still fails, as a read of it would.
-      const [defined] = await sql`select 1 from table_def where name = ${table}`
-      if (!defined) return false
+      if (typeof table !== 'string' || !table) return false
       try { return (await refusal(table)) === null } catch (error) {
         if (error instanceof AppError && error.type === 'NotFoundError') return false
         throw error

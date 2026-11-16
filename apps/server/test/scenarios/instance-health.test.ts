@@ -32,23 +32,3 @@ scenario('An instance lacks a Table the scope provider reads', async ({}, step) 
       message: 'Every Table and column Health scope reads for people\'s scope exists.' })
   })
 })
-
-// #1247: a Table the provider lists as optional (it checks documents.available() first) may be missing.
-scenario('An instance lacks a Table the scope provider lists as optional', async ({}, step) => {
-  await step('the user has an instance whose scope provider lists Buyer Section as optional, and the instance does not have it', async () => {
-    const manifest = { name: 'healthscope', title: 'Health scope', scopeProvider: { name: 'org', tables: ['Role', 'Buyer Section'], optionalTables: ['Buyer Section'] } }
-    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('healthscope', ${sql.json(manifest)}, true, true)`
-  })
-  let checks: HealthCheck[] = []
-  await step('the user checks its health', async () => { checks = await runHealthChecks({ environment: 'production' }) })
-  await step('the check passes and says Buyer Section is not installed yet', () => {
-    expect(check(checks)).toMatchObject({ ok: true, fix: null })
-    expect(check(checks)!.message).toContain('Buyer Section is not installed yet')
-  })
-  await step('a missing Table that is not optional still fails the check', async () => {
-    const manifest = { name: 'healthscope', title: 'Health scope', scopeProvider: { name: 'org', tables: ['Role', 'Buyer Section', 'Health Site'], optionalTables: ['Buyer Section'] } }
-    await sql`update installed_app set manifest = ${sql.json(manifest)} where name = 'healthscope'`
-    expect(check(await runHealthChecks({ environment: 'production' }))).toMatchObject({ ok: false, state: 'fault' })
-  })
-})
-

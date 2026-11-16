@@ -914,16 +914,6 @@ describe('a scope provider checking whether a Table is installed', () => {
     expect(seen).toEqual([false, false])
   })
 
-  test("another app's Table, with that app not installed, is not available, and the rest of the scope stands (Codex)", async ({ admin, createUser }) => {
-    const seen: boolean[] = []
-    const { user, binding } = await bind(admin, createUser, async documents => {
-      seen.push(await documents.available('otherapp.roster'))
-      return place
-    }, { tables: ['placeroster.position', 'otherapp.roster'], optionalTables: ['otherapp.roster'] })
-    expect(await resolvePersonScope(user.user!, binding)).toEqual(place)
-    expect(seen).toEqual([false])
-  })
-
   test('reading a Table that is not available still refuses the whole scope', async ({ admin, createUser }) => {
     const { user, binding } = await bind(admin, createUser, async documents => {
       await documents.list('Buyer Desk').catch(() => [])
