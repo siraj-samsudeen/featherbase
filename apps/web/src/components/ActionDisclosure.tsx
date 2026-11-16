@@ -25,9 +25,9 @@ export function ActionDisclosure({ label, children, open: controlledOpen, onOpen
   useLayoutEffect(() => {
     if (!open) return
     const measure = () => {
-      if (!root.current || !menu.current) return
-      const box = root.current.getBoundingClientRect()
-      const side = menuAlign(box, menu.current.getBoundingClientRect().width, visibleSpan(root.current))
+      // Both are there while it is open: the listeners leave with the menu.
+      const box = root.current!.getBoundingClientRect()
+      const side = menuAlign(box, menu.current!.getBoundingClientRect().width, visibleSpan(root.current!))
       setAlign(side)
       const top = box.bottom + 4
       setPlace({ top, maxHeight: Math.max(160, window.innerHeight - top - 8), ...(side === 'end' ? { right: window.innerWidth - box.right } : { left: box.left }) })

@@ -12,6 +12,7 @@ import { config } from 'server/src/config'
 import { parseInstanceAddresses } from 'server/src/instance-addresses'
 import { test, expect, renderApp } from './pg-test'
 import { grantRole } from 'server/test/fixtures'
+import { chooseApp } from './app-switcher'
 
 afterEach(() => {
   config.instanceAddresses = null
@@ -40,6 +41,30 @@ test("Open Admin on an app's address hands the person over to the Admin's addres
   vi.spyOn(console, 'error').mockImplementation(() => {}) // jsdom cannot follow a cross-address navigation
   await renderApp('/featherbase/sales-target', admin)
   await userEvent.click(await within(await screen.findByTestId('top-bar')).findByTestId('open-admin', {}, { timeout: 8000 }))
+  await waitFor(() => expect(answers).toHaveLength(1))
+  expect(answers[0].handoff).toMatch(/^http:\/\/elsewhere\.example\.test\//)
+})
+
+// #1236: choosing Featherbase in the switcher on an app's address is the same
+// hand-over as Open Admin, not a plain navigation that would lose the session.
+test("choosing Featherbase in the switcher on an app's address hands the person over too", async ({ admin }) => {
+  config.instanceAddresses = parseInstanceAddresses(
+    JSON.stringify([
+      { address: 'http://localhost', opens: 'dash', emails: true },
+      { address: 'http://elsewhere.example.test', opens: 'admin' },
+    ]),
+    'test',
+  )
+  const real = globalThis.fetch
+  const answers: Array<{ handoff?: string }> = []
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const res = await real(input, init)
+    if (String(input).includes('/api/open_admin')) answers.push(await res.clone().json())
+    return res
+  })
+  vi.spyOn(console, 'error').mockImplementation(() => {}) // jsdom cannot follow a cross-address navigation
+  await renderApp('/featherbase/sales-target', admin)
+  await chooseApp(screen, 'Featherbase', { timeout: 8000 })
   await waitFor(() => expect(answers).toHaveLength(1))
   expect(answers[0].handoff).toMatch(/^http:\/\/elsewhere\.example\.test\//)
 })

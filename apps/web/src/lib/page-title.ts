@@ -26,5 +26,7 @@ export function usePageTitle(title: string | undefined): void {
 
 /** The title the shown page gave, if any. */
 export function useCurrentPageTitle(): string | undefined {
-  return useSyncExternalStore((listener) => { listeners.add(listener); return () => listeners.delete(listener) }, () => current, () => current)
+  // The same snapshot serves the browser and a server render.
+  const snapshot = () => current
+  return useSyncExternalStore((listener) => { listeners.add(listener); return () => listeners.delete(listener) }, snapshot, snapshot)
 }

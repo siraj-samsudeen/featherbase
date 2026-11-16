@@ -6,7 +6,7 @@ import { Button, Card, EmptyState, Notice, Skeleton, StatusPill, buttonClasses, 
 
 /** "Opens for: Tasker Member", "Opens for everyone", "No role opens it yet", with
  *  the app's own further check when it has one. */
-function opensForWords(title: string, who: { everyone: boolean; roles: string[]; admits?: string[]; gated: boolean }): string {
+export function opensForWords(title: string, who: { everyone: boolean; roles: string[]; admits?: string[]; gated: boolean }): string {
   if (!who.everyone && !who.roles.length) return 'No role opens it yet'
   const words = [who.everyone ? 'Opens for everyone' : `Opens for: ${who.roles.join(', ')}`]
   // A mandatory policy is a second, separate requirement.

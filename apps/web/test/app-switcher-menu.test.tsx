@@ -9,7 +9,7 @@ import { resolve } from 'node:path'
 import { discoverPackages } from 'server/src/runtime-packages'
 import { admitTasker } from 'server/test/tasker-client'
 import { test, expect, renderApp } from './pg-test'
-import { appChoices, openSwitcher, switcherButton } from './app-switcher'
+import { appChoices, chooseApp, openSwitcher, switcherButton } from './app-switcher'
 
 const WAIT = { timeout: 10_000 }
 type Admin = Parameters<typeof renderApp>[1]
@@ -56,6 +56,11 @@ test('the button names the current app, and the menu is worked by keyboard', asy
   expect(within(menu).getAllByRole('menuitemradio')[0]).toHaveFocus()
   await userEvent.keyboard('{ArrowUp}')
   expect(menu.querySelector('[data-app="featherbase-admin"]')).toHaveFocus()
+  // Home and End go to the first and the last choice.
+  await userEvent.keyboard('{Home}')
+  expect(within(menu).getAllByRole('menuitemradio')[0]).toHaveFocus()
+  await userEvent.keyboard('{End}')
+  expect(menu.querySelector('[data-app="featherbase-admin"]')).toHaveFocus()
   await userEvent.keyboard('{Escape}')
   expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   expect(button).toHaveFocus()
@@ -66,4 +71,17 @@ test('a click outside closes the menu', async ({ admin }) => {
   await openSwitcher(screen, WAIT)
   fireEvent.mouseDown(document.body)
   await waitFor(() => expect(screen.queryByTestId('app-switcher-menu')).not.toBeInTheDocument())
+})
+
+test('choosing the app you are in closes the menu and stays', async ({ admin }) => {
+  const r = await renderApp('/featherbase/admin/all-tables', admin)
+  await chooseApp(screen, 'Featherbase', WAIT)
+  await waitFor(() => expect(screen.queryByTestId('app-switcher-menu')).not.toBeInTheDocument())
+  expect((r.router as { state: { location: { pathname: string } } }).state.location.pathname).toBe('/featherbase/admin/all-tables')
+})
+
+test("choosing Featherbase from an app's page on the Admin's own address goes to the Admin", async ({ admin }) => {
+  const r = await renderApp('/featherbase/sales-target', admin)
+  await chooseApp(screen, 'Featherbase', WAIT)
+  await waitFor(() => expect((r.router as { state: { location: { pathname: string } } }).state.location.pathname).toMatch(/^\/featherbase\/admin/), WAIT)
 })
