@@ -364,6 +364,12 @@ describe('the checks (5.1)', () => {
     expect(failing.ok).toBe(false)
     expect(failing.message).toContain('Table Health Missing Site')
     expect(failing.message).not.toContain('Table Health Optional Desk')
+    // An optional Table that is installed is read like any other; two not installed yet are named together.
+    await sql`update installed_app set manifest = ${sql.json({ ...manifest, scopeProvider: { name: 'org', tables: ['Role', 'Health Optional Desk', 'Health Optional Link'], optionalTables: ['Role', 'Health Optional Desk', 'Health Optional Link'] } })} where name = 'healthscopeoptional'`
+    const both = byKey(await runHealthChecks({ environment: 'production' }), 'scope-provider-tables:healthscopeoptional')
+    expect(both).toMatchObject({ ok: true, fix: null })
+    expect(both.message).toContain('Health Optional Desk, Health Optional Link are not installed yet')
+    expect(both.message).not.toMatch(/Role (is|are) not installed/)
   })
 
   test('every check names why it matters, and a failing one says how to fix it', async () => {

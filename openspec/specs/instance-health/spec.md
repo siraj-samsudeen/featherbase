@@ -66,9 +66,7 @@ scope, that every Table it reads for scope and every column it declares reading
 from them exists on the instance. While any is missing the check SHALL fail as
 an operational fault naming each missing Table and column, and nothing else. On
 a developer's own machine, which runs apps before any client's core Tables are
-loaded, the check SHALL name what is missing without counting it as a fault. A
-Table the provider lists as optional, which it checks is installed before it
-reads it, SHALL be named while it is missing without failing the check.
+loaded, the check SHALL name what is missing without counting it as a fault.
 
 #### Scenario: An instance lacks a Table the scope provider reads
 
@@ -78,6 +76,12 @@ When the user checks its health
 Then the missing Table is named as an operational fault, with the warning that no one gets a scope until it exists
 And once the Table and its declared columns exist, the check passes
 ```
+
+### Requirement: A scope provider's optional Table may be missing
+
+A Table the scope provider lists as optional, which it checks is installed
+before it reads it, SHALL be named while it is missing without failing the
+check.
 
 #### Scenario: An instance lacks a Table the scope provider lists as optional
 

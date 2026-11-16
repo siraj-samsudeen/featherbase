@@ -339,9 +339,9 @@ async function scopeProviderTables(environment: string): Promise<HealthCheck[]> 
   const [{ name, manifest }] = providers as unknown as { name: string; manifest: { title?: string; scopeProvider: { tables: string[]; optionalTables?: string[] }; baseTables?: { read?: Record<string, string[]> } } }[]
   const title = manifest.title ?? name
   // #1247: a Table the provider checks with documents.available() before reading may be missing.
-  const optional = new Set(manifest.scopeProvider.optionalTables ?? [])
-  const absentOptional = optional.size ? (await sql`select name from table_def where name in ${sql([...optional])}`).map((r) => String(r.name)) : []
-  const notYet = [...optional].filter((t) => !absentOptional.includes(t))
+  const optional = manifest.scopeProvider.optionalTables ?? []
+  const installed = new Set(optional.length ? (await sql`select name from table_def where name in ${sql(optional)}`).map((r) => String(r.name)) : [])
+  const notYet = optional.filter((t) => !installed.has(t))
   const tables = manifest.scopeProvider.tables.filter((t) => !notYet.includes(t))
   const read = manifest.baseTables?.read ?? {}
   const have = new Set((await sql`select name from table_def where name in ${sql(tables)}`).map((r) => String(r.name)))
