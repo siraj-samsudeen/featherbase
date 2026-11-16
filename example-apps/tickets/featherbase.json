@@ -138,7 +138,8 @@
     {"id": "data_quality_rules", "fromVersion": "0.2.8", "toVersion": "0.2.9", "operations": [{"kind": "addTable", "table": {"name": "tickets.data_quality_rule", "label": "Data quality rule", "module": "Tickets", "id_pattern": "DQR-.#####", "title_column": "title", "columns": [ {"column_name": "ticket", "label": "Ticket", "column_type": "Reference", "reference_table": "tickets.ticket", "reqd": true, "in_list_view": true}, {"column_name": "title", "label": "Title", "column_type": "Data", "reqd": true, "in_list_view": true}, {"column_name": "checked_table", "label": "Table", "column_type": "Data", "reqd": true, "in_list_view": true}, {"column_name": "filters", "label": "Filter (JSON list of [column, operator, value])", "column_type": "Text", "reqd": true}, {"column_name": "severity", "label": "Severity", "column_type": "Choice", "choices": "High\nMedium\nLow", "reqd": true, "in_list_view": true}, {"column_name": "owner", "label": "Owner", "column_type": "Data"}, {"column_name": "how_to_fix", "label": "How to fix", "column_type": "Text"}, {"column_name": "rows_when_raised", "label": "Rows when raised", "column_type": "Int", "in_list_view": true}]}}]}
 ,
     {"id": "covered_rows", "fromVersion": "0.2.9", "toVersion": "0.2.10", "operations": []},
-    {"id": "one_app_chrome", "fromVersion": "0.2.10", "toVersion": "0.2.11", "operations": []}
+    {"id": "one_app_chrome", "fromVersion": "0.2.10", "toVersion": "0.2.11", "operations": []},
+    {"id": "at_a_glance", "fromVersion": "0.2.11", "toVersion": "0.2.12", "operations": []}
   ],
   "baseTables": {"read": {"Data Quality Row": ["ticket", "affected_table", "affected_row", "fixed_on", "note"]}},
   "permissions": [

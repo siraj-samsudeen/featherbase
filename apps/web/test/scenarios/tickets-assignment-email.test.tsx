@@ -28,7 +28,11 @@ async function openOnScreen(x: TicketsAssignmentEmail, actor: string): Promise<{
 async function pick(x: TicketsAssignmentEmail, name: string): Promise<{ session: Session }> {
   const { session } = await openOnScreen(x, 'Support')
   // By the person's id, the option's value: the scenario names people by their part, not the name the picker shows.
-  await session.step(`pick ${name} as the assignee`, ({ user }) => user.selectOptions(picker(), x.t.ids[name]!))
+  // #1233: the assignee reads as a name; Change opens the picker.
+  await session.step(`pick ${name} as the assignee`, async ({ user }) => {
+    await user.click(screen.getByRole('button', { name: 'Change the assignee' }))
+    await user.selectOptions(picker(), x.t.ids[name]!)
+  })
   return { session }
 }
 async function mail(x: TicketsAssignmentEmail) {
@@ -98,9 +102,10 @@ describe('tickets-assignment-email', () => {
         .within(CONFIRM, (confirm) => confirm.clickButton('Cancel'))
         .until('the confirmation has closed', () => !confirmRow()))
     await step('the ticket screen shows the ticket as Unassigned', async () => {
-      await session.assertSelected('Assigned to', 'Unassigned')
+      await session.within('header.ticket-header .ticket-facts', (facts) => facts.assertText('Unassigned'))
+      expect(screen.queryByRole('combobox', { name: 'Assigned to' })).toBeNull()
       const { session: reopened } = await openOnScreen(x, 'Support')
-      await reopened.assertSelected('Assigned to', 'Unassigned')
+      await reopened.within('header.ticket-header .ticket-facts', (facts) => facts.assertText('Unassigned'))
     })
     await step('nobody is emailed about the ticket', async () => expect(await mail(x)).toEqual([]))
   })
