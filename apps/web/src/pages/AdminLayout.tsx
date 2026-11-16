@@ -24,6 +24,7 @@ import { ThemeChoiceProvider, useThemeChoice } from '../lib/theme-choice'
 import { searchHitKind } from '../lib/search-hit'
 import { AppSwitcher } from '../components/AppSwitcher'
 import { PHONE_QUERY, TopBar } from '../components/TopBar'
+import { ViewAsSidebarSection } from '../components/ViewAs'
 import { isOpaqueId } from '../lib/people'
 import { EntryLabel, useLiveDestinations } from '../lib/row-titles'
 import { metaQuery, type TableMeta } from '../lib/meta'
@@ -854,6 +855,8 @@ export function AdminShell({ wide, fullWidth = false }: { wide: boolean; fullWid
               ))}
             </div>
           )}
+          {/* #1222: View as, in the sidebar style. */}
+          <ViewAsSidebarSection />
           {/* Two labelled groups under the Home Pages and the recents, headed
               like "Recently opened". Visibility per item is unchanged; a group
               with nothing visible for this person drops its heading too. */}
