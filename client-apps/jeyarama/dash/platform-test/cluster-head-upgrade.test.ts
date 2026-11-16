@@ -28,7 +28,9 @@ async function previousVersion(): Promise<{ directory: string; version: string }
   await cp(APP_DIR, directory, { recursive: true })
   const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
   // #1227's 0.13.8 changes no Table: the version before named_cluster_head is 0.13.6 with both steps off.
-  expect(manifest.migrations.pop()).toMatchObject({ id: 'one_app_chrome', toVersion: VERSION, operations: [] })
+  // #1243's 0.13.9 changes no Table either; it comes off first.
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'ends_on_inclusive', toVersion: VERSION, operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'one_app_chrome', toVersion: '0.13.8', operations: [] })
   const step = manifest.migrations.pop()
   expect(step).toMatchObject({ id: 'named_cluster_head', toVersion: '0.13.7', operations: [] })
   const notCluster = (tables: string[]) => tables.filter(table => table !== 'Cluster')
@@ -82,7 +84,7 @@ describe("deploying the named cluster head to an instance shaped like production
       expect(await discoverPackages([previous, APP_DIR])).toEqual([])
       await loadInstalledApps()
       const plan = await admin.post<{ planId: string; migrations: { id: string }[] }>('/api/preview_app_upgrade', { name: 'dash', version: VERSION })
-      expect(plan.migrations.map(m => m.id)).toEqual(['named_cluster_head', 'one_app_chrome'])
+      expect(plan.migrations.map(m => m.id)).toEqual(['named_cluster_head', 'one_app_chrome', 'ends_on_inclusive'])
       await admin.post('/api/upgrade_app', { name: 'dash', version: VERSION, planId: plan.planId })
       await discoverPackages([previous, APP_DIR])
       await loadInstalledApps()

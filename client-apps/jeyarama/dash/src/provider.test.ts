@@ -142,7 +142,9 @@ describe('who sees what', () => {
   })
 
   it('a job that has ended or not begun reaches nothing', async () => {
-    expect((await reach({ job: 'Store Manager', site: 'AAA', ends_on: ON })).problems).toEqual(['no_job'])
+    // #1243: ends_on is the job's last day: ended the day before, it reaches nothing; ending today, it still holds.
+    expect((await reach({ job: 'Store Manager', site: 'AAA', ends_on: '2026-11-06' })).problems).toEqual(['no_job'])
+    expect((await reach({ job: 'Store Manager', site: 'AAA', ends_on: ON })).places.length).toBeGreaterThan(0)
     expect((await reach({ job: 'Store Manager', site: 'AAA', starts_on: '2026-12-01' })).problems).toEqual(['no_job'])
   })
 
@@ -211,7 +213,8 @@ describe('merchandise assignments', () => {
   })
 
   it('an assignment that has ended or not begun reaches nothing', async () => {
-    expect(await assigned({ responsibility: 'Buyer', subcategory: '000000004', ends_on: ON })).toEqual({ places: [], problems: ['no_job'] })
+    expect(await assigned({ responsibility: 'Buyer', subcategory: '000000004', ends_on: '2026-11-06' })).toEqual({ places: [], problems: ['no_job'] })
+    expect((await assigned({ responsibility: 'Buyer', subcategory: '000000004', ends_on: ON })).places.length).toBeGreaterThan(0)
     expect(await assigned({ responsibility: 'Buyer', subcategory: '000000004', starts_on: '2026-12-01' })).toEqual({ places: [], problems: ['no_job'] })
   })
 
@@ -383,5 +386,20 @@ describe('the provider', () => {
     it("a store with no sections at all says the store's sections aren't set up", async () => {
       expect(await reachOf(fake([{ job: 'Department Manager', site: 'CCC' }]), 'me', ON)).toEqual({ places: [], problems: ['store_sections_not_set_up'] })
     })
+  })
+})
+
+// #1243 (manager decision, 16-Nov-2026): ends_on is the last day a row holds. A Team Leader moved from
+// Tops to Sarees on 16-Nov has the old job end on 15-Nov and the new one start on 16-Nov, as the
+// platform's change writer dates them: 15-Nov reaches Tops, 16-Nov reaches Sarees, and no day is empty.
+describe('a section change, day by day', () => {
+  const moved = () => fake([
+    { job: 'Team Leader', site: 'AAA', section: 'AAA-GF-Tops', starts_on: '2026-10-01', ends_on: '2026-11-15' },
+    { job: 'Team Leader', site: 'AAA', section: 'AAA-GF-Sarees', starts_on: '2026-11-16', ends_on: null },
+  ])
+  const labels = async (on: string) => (await reachOf(moved(), 'me', on)).places.map(place => place.label)
+  it('reaches the old section through its last day, and the new one from its first', async () => {
+    expect(await labels('2026-11-15')).toEqual(['9901 / Section: Tops'])
+    expect(await labels('2026-11-16')).toEqual(['9901 / Section: Sarees'])
   })
 })
