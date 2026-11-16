@@ -290,6 +290,8 @@ describe('the Report access page', () => {
 describe('the Waiting for access drawer', () => {
   type Details = { id: string; role_hints: Record<string, number>; apps: { app: string; title: string; about: { label: string; value: string }[]; choices: { id: string; label: string; group?: string; given?: boolean }[] }[] }
   const requestOf = async (person: string) => String((await sql`select row_id from access_request where person = ${person} and app_name = 'dash'`)[0].row_id)
+  // Since #1172 any Dash role opens Dash, so nobody holding one waits for it: the person asking holds none.
+  const withoutDashRole = async (person: string) => { await sql`delete from has_role where parent = ${person} and role = 'Dash Reader'` }
 
   test('shows their job, site and section, a hint from people in the same job, and the bundles and reports Dash can give', async ({ admin, createUser }) => {
     const { office, sysman, save, giver } = await setup(admin, createUser)
@@ -300,6 +302,7 @@ describe('the Waiting for access drawer', () => {
     await save('Job Assignment', { assignment_id: 'JA-4', employee: '4', job: 'Head office staff', site: 'HOF', starts_on: '2026-01-01' })
     const bundle = (await giver.post<{ result: { id: string } }>('/api/app_actions/dash/make_bundle', { idempotencyKey: crypto.randomUUID(), payload: { name: 'All reports' } })).result.id
     await give(giver, { report: 'open', person: colleague.user })
+    await withoutDashRole(office.user!)
     await office.fetch('/api/access_request', { method: 'POST', body: JSON.stringify({ app: 'dash' }) })
     const details = await sysman.get<Details>(`/api/access_request/${await requestOf(office.user!)}`)
     const dash = details.apps.find(app => app.app === 'dash')!
@@ -317,22 +320,24 @@ describe('the Waiting for access drawer', () => {
     ]))
   })
 
-  test('approving a report gives it through Dash, records who gave it, and the request goes once Dash opens', async ({ admin, createUser }) => {
+  test('approving Dash Reader and a report gives the report through Dash, records who gave it, and the request goes once Dash opens', async ({ admin, createUser }) => {
     const { office, sysman } = await setup(admin, createUser)
+    await withoutDashRole(office.user!)
     await office.fetch('/api/access_request', { method: 'POST', body: JSON.stringify({ app: 'dash' }) })
     const id = await requestOf(office.user!)
-    const answer = await sysman.post<{ given: string[]; open: boolean }>(`/api/access_request/${id}/approve`, { grants: [{ app: 'dash', choice: 'report:open' }] })
-    expect(answer).toMatchObject({ given: ['Dash reports: Report Company notices'], failed: [], open: true })
+    const answer = await sysman.post<{ given: string[]; open: boolean }>(`/api/access_request/${id}/approve`, { roles: ['Dash Reader'], grants: [{ app: 'dash', choice: 'report:open' }] })
+    expect(answer).toMatchObject({ given: ['Dash Reader', 'Dash reports: Report Company notices'], failed: [], open: true })
     expect(await reports(office)).toEqual(['open'])
     expect(await sql`select 1 from access_request where row_id = ${id}`).toHaveLength(0)
     const [row] = await sql`select person from dash.report_access where report = 'open'`
     expect(row.person).toBe(office.user)
     const [log] = await sql`select "user", operation from activity_log where operation like 'access\\_granted%' order by created_at desc limit 1`
-    expect(log).toMatchObject({ user: sysman.user, operation: `access_granted for ${office.user} in dash: Dash reports: Report Company notices` })
+    expect(log).toMatchObject({ user: sysman.user, operation: `access_granted for ${office.user} in dash: roles Dash Reader; Dash reports: Report Company notices` })
   })
 
-  test('a store report for someone whose job reaches no store is given, but Dash still does not open, so the request stays', async ({ admin, createUser }) => {
+  test('a report given without a Dash role is given, but Dash still does not open (#1172: a Dash role opens it), so the request stays', async ({ admin, createUser }) => {
     const { office, sysman } = await setup(admin, createUser)
+    await withoutDashRole(office.user!)
     await office.fetch('/api/access_request', { method: 'POST', body: JSON.stringify({ app: 'dash' }) })
     const id = await requestOf(office.user!)
     const answer = await sysman.post<{ given: string[]; open: boolean }>(`/api/access_request/${id}/approve`, { grants: [{ app: 'dash', choice: 'report:sales' }] })
@@ -345,11 +350,12 @@ describe('the Waiting for access drawer', () => {
 
   test('a choice Dash does not offer is refused, and a Report Access Manager cannot use the drawer', async ({ admin, createUser }) => {
     const { office, sysman, giver } = await setup(admin, createUser)
+    await withoutDashRole(office.user!)
     await office.fetch('/api/access_request', { method: 'POST', body: JSON.stringify({ app: 'dash' }) })
     const id = await requestOf(office.user!)
     const refused = await sysman.fetch(`/api/access_request/${id}/approve`, { method: 'POST', body: JSON.stringify({ grants: [{ app: 'dash', choice: 'report:nope' }] }) })
     expect(refused.status).toBe(417)
     expect((await giver.fetch(`/api/access_request/${id}`)).status).toBe(403)
-    expect(await reports(office)).toEqual([])
+    expect(await sql`select 1 from dash.report_access where person = ${office.user!}`).toEqual([])
   })
 })
