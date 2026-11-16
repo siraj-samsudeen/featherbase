@@ -21,6 +21,7 @@ import { GoingToApp, ManageOnly } from './pages/RestrictedShell'
 import { EmptyState, Notice, buttonClasses, fmtDate } from '@featherbase/shop-floor'
 import { useCapabilities } from './lib/session'
 import { ApiError, api, getToken, landingPath, loginHref } from './lib/api'
+import { rememberFilters, useRememberedFilters } from './lib/remembered-filters'
 import { useQuery } from '@tanstack/react-query'
 import { crossesFramePolicy } from './lib/document-path'
 import { SalesTargetPage } from './pages/SalesTarget'
@@ -468,6 +469,17 @@ function NavigatedList({ table, filters, path }: { table: string; filters?: stri
     return parsed.length ? { screen: 'list', table, filters: parsed } : { screen: 'list', table }
   }, [table, filters])
   const nav = useAddressNavigation(here, path)
+  // #1228: a bare open (no filters, no walk in the address) brings back the
+  // person's last filters, replacing the address rather than adding a Back step.
+  // The list waits for that answer, so it never shows unfiltered first.
+  const fresh = filters === undefined && path === undefined
+  const remembered = useRememberedFilters(table, fresh)
+  const restoring = fresh && (remembered === undefined || remembered.length > 0)
+  useEffect(() => {
+    if (fresh && remembered?.length) nav.replace({ ...nav.step, filters: remembered })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fresh, remembered])
+  if (restoring) return <div data-testid="table-page" aria-busy="true" />
   return (
     <div data-testid="table-page">
       {/* #772: a table copied from a data source shows where from, and Copy again. */}
@@ -482,6 +494,7 @@ function NavigatedList({ table, filters, path }: { table: string; filters?: stri
             onFiltersChange={(next) => {
               const { filters: _, ...step } = nav.step
               nav.push(next.length ? { ...step, filters: next } : step)
+              rememberFilters(table, next)
             }}
           />
         </PaneSplit>

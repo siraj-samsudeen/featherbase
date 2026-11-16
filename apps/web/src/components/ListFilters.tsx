@@ -317,6 +317,15 @@ export function FilterBar({
               </button>
             </span>
           ))}
+          {/* #1228: filters come back on the next visit, so one control takes them all off. */}
+          <button
+            type="button"
+            onClick={() => onChange([])}
+            data-testid="filter-clear-all"
+            className="text-sm text-action underline-offset-2 hover:underline"
+          >
+            Clear filters
+          </button>
         </div>
       )}
     </div>
