@@ -71,7 +71,7 @@ describe("upgrading production's Dash 0.13.1 to team report giving", () => {
         { ref_table: 'dash.report_access', operation: 'update', scope_mode: 'creator' },
         { ref_table: 'dash.report_bundle', operation: 'read', scope_mode: 'all' },
       ])
-      expect((await sql`select operation from activity_log where operation like ${`app_grant_added dash%${TEAM_MANAGER}%`} order by operation`).map(r => r.operation)).toEqual([
+      expect((await sql`select operation from activity_log where operation like ${`app_grant_added dash%${TEAM_MANAGER}%`} order by operation`).map(r => r.operation).sort()).toEqual([
         `app_grant_added dash@${VERSION}: ${TEAM_MANAGER} read on dash.report`,
         `app_grant_added dash@${VERSION}: ${TEAM_MANAGER} read on dash.report_bundle`,
         `app_grant_added dash@${VERSION}: ${TEAM_MANAGER} read, create, update (own rows only) on dash.report_access`,
