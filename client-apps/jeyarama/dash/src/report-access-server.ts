@@ -43,7 +43,7 @@ export interface AccessContext {
 }
 
 const PAGE = 500
-async function all(documents: Documents, table: string, fields: string[], filters: [string, string, unknown][] = []): Promise<Row[]> {
+export async function all(documents: Documents, table: string, fields: string[], filters: [string, string, unknown][] = []): Promise<Row[]> {
   const rows: Row[] = []
   for (;;) {
     const page = await documents.list(table, { fields: ['row_id', ...fields], filters, order_by: 'row_id asc', limit_start: rows.length, limit_page_length: PAGE })
@@ -127,7 +127,7 @@ async function names(ctx: AccessContext) {
 }
 
 /** A person's name as the caller may read it, falling back to their name on the staff list. */
-async function personNames(ctx: AccessContext, ids: string[]): Promise<Map<string, string>> {
+export async function personNames(ctx: AccessContext, ids: string[]): Promise<Map<string, string>> {
   const found = new Map<string, string>()
   const wanted = [...new Set(ids.filter(Boolean))]
   if (!wanted.length) return found
