@@ -409,3 +409,55 @@ export class TicketRules {
     expect(JSON.stringify(this.t.last.body)).toMatch(pattern)
   }
 }
+
+// ---- the rows a data quality ticket covers (#1230) ----
+
+export type CoveredRow = { table: string; row: string; note: string | null; fixed_on: string | null; link: boolean; record: string | null }
+export type Covered = { rows: CoveredRow[]; total: number; fixed: number }
+
+/** The instance's Data Quality Row Table, as production has it: one line per affected row, linked to its ticket.
+ *  Its rows sit in "Section", which only Tickets support may read. */
+export class TicketCoveredRows {
+  readonly transitions: TicketTransitions
+  readonly table = 'Data Quality Row'
+  readonly affected = 'Section'
+  readonly columns = [
+    { column_name: 'ticket', column_type: 'Reference', reference_table: 'tickets.ticket', reqd: true },
+    { column_name: 'affected_table', column_type: 'Data', reqd: true },
+    { column_name: 'affected_row', column_type: 'Data', reqd: true },
+    { column_name: 'fixed_on', column_type: 'Date' },
+    { column_name: 'fixed_by', column_type: 'Data' },
+    { column_name: 'note', column_type: 'Text' }]
+  sections: Record<string, string> = {}
+  other = ''
+  /** Lets Tickets support open Data Quality Row records themselves (nobody may, until then). */
+  grantRows: () => Promise<unknown> = async () => {}
+  constructor(readonly t: Tickets) { this.transitions = new TicketTransitions(t) }
+
+  private save(table: string, row: object) { return this.t.admin.post<any>('/api/save_row', { table, row }) }
+
+  /** Anjali's Data Quality Issue (assigned to Bala) covers three rows, one fixed; another ticket covers one more. */
+  async world({ link = true }: { link?: boolean } = {}) {
+    await this.transitions.raise()
+    const ticket = this.t.ticket
+    const admin = this.t.admin
+    await makeTable(admin, { name: this.affected, id_pattern: 'field:section', title_column: 'section', columns: [{ column_name: 'section', column_type: 'Data', reqd: true }] })
+    await grantRole(admin, { role: 'Tickets Support', table: this.affected, can_read: true })
+    this.grantRows = () => grantRole(admin, { role: 'Tickets Support', table: this.table, can_read: true })
+    for (const name of ['North Grocery', 'South Fashion']) this.sections[name] = (await this.save(this.affected, { section: name })).row_id
+    await makeTable(admin, { name: this.table, columns: this.columns })
+    await this.save(this.table, { ticket: ticket.row_id, affected_table: this.affected, affected_row: this.sections['South Fashion'],
+      note: 'Mixes grocery with fashion', fixed_on: '2026-11-07', fixed_by: 'FIXER-SECRET-1230' })
+    await this.save(this.table, { ticket: ticket.row_id, affected_table: this.affected, affected_row: this.sections['North Grocery'], note: 'Mixes grocery with home' })
+    await this.save(this.table, { ticket: ticket.row_id, affected_table: 'Merchandise Assignment', affected_row: 'Every buyer row with no person' })
+    // Another ticket, with a row of its own that this ticket must never show.
+    await this.transitions.types.submit({ urgency: 'Later', source_system: this.transitions.types.systems.SAP })
+    this.other = this.t.ticket.row_id
+    await this.save(this.table, { ticket: this.other, affected_table: this.affected, affected_row: 'OTHER-TICKET-ROW-1230', note: 'Belongs elsewhere' })
+    this.t.ticket = ticket
+    const types = this.transitions.types
+    await this.t.configure({ linked_tables: [types.systemsTable, types.ownersTable, ...(link ? [this.table, this.affected] : [])] })
+  }
+
+  async covered(actor: string): Promise<Covered | undefined> { return (await this.t.open(actor)).coveredRows }
+}

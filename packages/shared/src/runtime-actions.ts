@@ -74,6 +74,9 @@ export interface DecisionApproval {
 /** #975: declared base Tables, read as the app: the fields named must be declared. */
 export interface BaseTablesHelper {
   list(table: string, args: ActionListArgs & { fields: string[] }): Promise<ActionRow[]>
+  /** #1230: whether `list` can read this Table now: declared, reachable, and every declared column there.
+   *  False, never a failure, for a Table not linked, deleted, reshaped or unsupported. */
+  available(table: string): Promise<boolean>
 }
 export interface ChangeProposalsReader {
   list(filter?: ProposalFilter): Promise<ChangeProposal[]>
