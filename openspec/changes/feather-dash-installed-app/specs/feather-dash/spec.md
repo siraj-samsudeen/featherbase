@@ -63,44 +63,48 @@ the gap as zero sales.
 - **THEN** the report says the month's data has not arrived yet, instead of showing
   zero
 
-### Requirement: Ask to correct your own section data
+### Requirement: Propose a correction to your own section
 
-A manager SHALL be able to ask for a change to the data of a section they are
-responsible for: confirm the section's list, move a subcategory into or out of it, add
-or end a staff member's placement in it, or correct its details. A request about a
-section outside their responsibility SHALL be refused. A request changes nothing until
-it is reviewed.
+A person SHALL see their jobs' sections and subcategories, and SHALL be able to
+propose, within their own store, a subcategory's move out of their section, a missing
+subcategory joining it, or a different section for their job. A proposal outside
+their own job and store SHALL be refused, and SHALL change nothing until approved.
+
+(11-Nov-2026: trimmed to what is built (owner). No Section Editor or Reviewer role,
+no reviewer page.)
 
 #### Scenario: A Team Leader reports a misplaced subcategory
 
-- **WHEN** a Team Leader asks for a subcategory to be moved out of their section, giving
-  a reason
-- **THEN** the request waits for review and the section is unchanged meanwhile
+- **WHEN** a Team Leader proposes that a subcategory in their section belongs in
+  another section of their store
+- **THEN** the proposal waits for their manager and the placement is unchanged
+  meanwhile
 
-#### Scenario: Another Team Leader's section is out of reach
+#### Scenario: Another store's section is out of reach
 
-- **WHEN** a Team Leader asks for a change to a section someone else leads
-- **THEN** the request is refused
+- **WHEN** a Team Leader proposes a move into a section of another store
+- **THEN** the proposal is refused
 
-### Requirement: A reviewer applies or rejects each request
+### Requirement: The job's manager decides, or else a Master Data Editor
 
-A reviewer SHALL see every open request and apply or reject it. The reviewer SHALL be
-someone given that job, not an instance administrator by default. Applying a request
-SHALL change the section data, keep a record of who changed what and when, and survive
-later imports of the same data.
+A proposal SHALL go to the manager the job reports to, while that manager is current
+staff with a sign-in that Dash opens for; otherwise it SHALL go to a Master Data
+Editor. Nobody SHALL decide their own proposal, and a System Manager SHALL NOT decide
+one by being a System Manager.
 
-#### Scenario: An applied move shows in both sections
+#### Scenario: No manager who can sign in
 
-- **WHEN** a reviewer applies a request to move a subcategory between two sections
-- **THEN** both sections' reports reflect the move on their next opening
-- **AND** the request shows who applied it and when
+- **WHEN** a person's manager has no sign-in
+- **THEN** a Master Data Editor sees the proposal and may decide it
 
-### Requirement: See whether your section data is confirmed
+### Requirement: A decision changes the section data only when approved
 
-Every section and subcategory a manager sees SHALL show whether it is confirmed or still
-assumed, together with any open request about it.
+A rejection SHALL need a reason and change nothing. An approval SHALL write the change
+dated that day and record who decided and when. If what was proposed has changed
+since, the proposal SHALL need a fresh review and change nothing.
 
-#### Scenario: A manager sees what still needs confirming
+#### Scenario: An approved move starts today
 
-- **WHEN** a Store Manager looks at their store's sections
-- **THEN** they can tell which sections are confirmed and which are only assumed
+- **WHEN** the manager approves a proposal to move a subcategory to another section
+- **THEN** the old placement ends and a new one in the other section starts today
+- **AND** the proposal records who decided it and when

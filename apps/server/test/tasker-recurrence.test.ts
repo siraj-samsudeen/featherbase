@@ -1,18 +1,19 @@
-import { expect, vi } from 'vitest'
+import { expect } from 'vitest'
+import { makeQueuedJobsDue } from './jobs-due'
+import { withTime } from './clock'
 import { test as databaseTest } from './pg-test'
 import { resolve } from 'node:path'
 import { discoverPackages } from '../src/runtime-packages'
 import { installApp } from '../src/apps'
 import { taskerClient } from './tasker-client'
 import { enqueue, drainJobs } from '../src/jobs'
-import { sql } from '../src/db'
 import { issueSession } from '../src/auth'
 import type { CreateUserFn } from 'feather-testing-postgres'
 import { expectRefused } from './fixtures'
 
 async function tick() {
   await enqueue('tasker.repeat_tasks', {})
-  await sql`update background_job set run_at = now() - interval '1 second' where job_status = 'queued'`
+  await makeQueuedJobsDue()
   await drainJobs()
 }
 
@@ -48,11 +49,7 @@ databaseTest.for(['daily', 'weekly', 'monthly', 'after_completion'])('a due %s s
   expect(before.active_task).toBe(task.row_id)
   expect(Date.parse(before.next_at)).toBeGreaterThan(Date.now())
   const future = Date.now() + 40 * 86_400_000
-  vi.useFakeTimers({ toFake: ['Date'] })
-  try {
-    vi.setSystemTime(future)
-    await tick()
-  } finally { vi.useRealTimers() }
+  await withTime(future, tick)
   const series = await member.get<{ active_task: string }>(`/api/table/tasker.recurrence/${result.seriesId}`)
   expect(series.active_task).not.toBe(task.row_id)
   expect(await member.get(`/api/table/tasker.task/${series.active_task}`)).toMatchObject({ task_title: 'Monthly review', description: 'Collect current figures', is_done: false, task_state: 'Not started', shared: false })
@@ -86,8 +83,7 @@ async function completedSeries(createUser: CreateUserFn) {
 async function createNextByWorker(createUser: CreateUserFn) {
   const setup = await completedSeries(createUser)
   const future = Date.now() + 40 * 86_400_000
-  vi.useFakeTimers({ toFake: ['Date'] })
-  try { vi.setSystemTime(future); await tick() } finally { vi.useRealTimers() }
+  await withTime(future, tick)
   const series = await setup.member.get<{ active_task: string }>(`/api/table/tasker.recurrence/${setup.series.row_id}`)
   expect(series.active_task).not.toBe(setup.task.row_id)
   return { ...setup, current: series.active_task }
@@ -114,9 +110,7 @@ databaseTest('a direct series edit cannot replace its computed next date', async
 databaseTest('direct saves cannot create a second unfinished occurrence by moving the series date', async ({ createUser }) => {
   const { member, series } = await completedSeries(createUser)
   const future = Date.now() + 40 * 86_400_000
-  vi.useFakeTimers({ toFake: ['Date'] })
-  try {
-    vi.setSystemTime(future)
+  await withTime(future, async () => {
     await member.post('/api/save_row', { table: 'tasker.task', row: {
       task_title: 'First direct occurrence', recurrence: series.row_id,
       occurrence_key: `${series.row_id}:${new Date(series.next_at).toISOString()}`,
@@ -129,7 +123,7 @@ databaseTest('direct saves cannot create a second unfinished occurrence by movin
       task_title: 'Second direct occurrence', recurrence: series.row_id,
       occurrence_key: `${series.row_id}:${new Date(moved.next_at).toISOString()}`,
     } })).rejects.toMatchObject({ status: 417 })
-  } finally { vi.useRealTimers() }
+  })
 })
 
 databaseTest('a member can schedule repeats for shared team work', async ({ createUser }) => {
@@ -159,8 +153,7 @@ databaseTest('sharing an occurrence carries into future copies', async ({ create
   await creator.post('/api/save_row', { table: 'tasker.task', row: { row_id: task.row_id, updated_at: shared.updated_at, is_done: true } })
   await tick()
   const future = Date.now() + 8 * 86_400_000
-  vi.useFakeTimers({ toFake: ['Date'] })
-  try { vi.setSystemTime(future); await tick() } finally { vi.useRealTimers() }
+  await withTime(future, tick)
   const next = await teammate.get<{ active_task: string }>(`/api/table/tasker.recurrence/${result.seriesId}`)
   expect(next.active_task).not.toBe(task.row_id)
   expect(await teammate.get(`/api/table/tasker.task/${next.active_task}`)).toMatchObject({ shared: true, project: project.row_id })
@@ -177,8 +170,7 @@ databaseTest('a recurring task keeps its store in every new occurrence', async (
   await creator.post('/api/save_row', { table: 'tasker.task', row: { row_id: task.row_id, updated_at: current.updated_at, is_done: true } })
   await tick()
   const future = Date.now() + 8 * 86_400_000
-  vi.useFakeTimers({ toFake: ['Date'] })
-  try { vi.setSystemTime(future); await tick() } finally { vi.useRealTimers() }
+  await withTime(future, tick)
   const next = await creator.get<{ active_task: string }>(`/api/table/tasker.recurrence/${result.seriesId}`)
   expect(next.active_task).not.toBe(task.row_id)
   expect(await creator.get(`/api/table/tasker.task/${next.active_task}`)).toMatchObject({ store: store.row_id })

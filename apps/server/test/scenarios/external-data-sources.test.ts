@@ -247,4 +247,20 @@ describe('external-data-sources', () => {
       expect((preview.data ?? preview).first_rows!.find((row) => row.code === 'S001')!.name).toBe('Harbour Road')
     })
   })
+
+  scenario('A MySQL source saved before support ended', async ({ admin }, step) => {
+    let answer!: Response
+    await step('a data source "legacy-shop" was saved with the engine "mysql"', async () => {
+      // Only a row written before MySQL support ended can hold this engine.
+      await sql`insert into data_source (row_id, engine, url_env) values ('legacy-shop', 'mysql', 'LEGACY_SHOP_URL')`
+      invalidateSources('legacy-shop')
+    })
+    await step('the user tests "legacy-shop"', async () => {
+      answer = await admin.fetch('/api/table/Data%20Source/legacy-shop:test_connection', { method: 'POST', body: '{}' })
+    })
+    await step('the test is refused, saying MySQL is no longer a supported data source and to delete "legacy-shop"', async () => {
+      const refused = await expectRefused(answer, 417, 'MySQL is no longer a supported data source: delete legacy-shop')
+      expect(refused.type).toBe('ValidationError')
+    })
+  })
 })

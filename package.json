@@ -19,6 +19,7 @@
     "scenarios:report": "pnpm --filter server exec vitest run $(node tools/scenarios/bindings.cjs server) --reporter=default --reporter=json --outputFile.json=../../scenarios-report/server.json; pnpm --filter web exec vitest run $(node tools/scenarios/bindings.cjs web) --reporter=default --reporter=json --outputFile.json=../../scenarios-report/web.json; node tools/scenarios/check.cjs --results scenarios-report/server.json scenarios-report/web.json",
     "check:e2e-dsl": "node --test tools/check-e2e-dsl.test.mjs && node tools/check-e2e-dsl.mjs",
     "check:sensitive": "node --test tools/check-sensitive.test.mjs && node tools/check-sensitive.mjs",
+    "coverage:ci": "node --test tools/ci-coverage.test.mjs && node tools/ci-coverage.mjs",
     "check:coverage-ignores": "node --test tools/check-coverage-ignores.test.mjs && node tools/check-coverage-ignores.mjs",
     "check:dev": "node --test tools/dev.test.mjs tools/build-instance-apps.test.mjs tools/deliver-changed-apps.test.mjs tools/featherbase.test.mjs",
     "check:ci-scope": "node --test tools/ci-scope.test.mjs",

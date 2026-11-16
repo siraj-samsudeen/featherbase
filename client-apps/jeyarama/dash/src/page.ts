@@ -514,6 +514,8 @@ function knownReasons(reasons: readonly { basis: string; sections: readonly stri
  * (three by name, from four on by count); assigned subcategories name none.
  */
 export function whyLine({ name, reasons }: { name: string | null; reasons: readonly { basis: string; sections: readonly string[] }[] }): string | null {
+  // #1192: the role reaches every store, whatever job sits beside it here.
+  if (reasons.some(r => r.basis === 'all_stores_reader')) return 'You see every store because you hold Dash All-Stores Reader.'
   const known = knownReasons(reasons)
   if (!known.length) return null
   const store = name ?? 'your store'
@@ -551,13 +553,25 @@ export function reportAddress(key: string, search: string): string {
 }
 
 /** What the page says for a job that reaches nothing; null: the no-access page says it. */
-export type ReachProblem = 'no_job' | 'no_section' | 'departments_not_filled' | 'head_office' | 'no_cluster' | 'nothing_placed' | 'nothing_assigned'
-export function reachMessage(problems: readonly string[]): { text: string; sectionsLink: boolean } | null {
+export type ReachProblem = 'no_job' | 'no_section' | 'departments_not_filled' | 'store_sections_not_set_up' | 'head_office' | 'no_cluster' | 'nothing_placed' | 'nothing_assigned'
+export interface ReachMessage { title?: string; text: string; sectionsLink: boolean; departmentLink?: boolean; readerOnly?: true }
+export function reachMessage(problems: readonly string[]): ReachMessage | null {
   if (problems.includes('no_section') || problems.includes('nothing_placed'))
     return { text: "You aren't set against a section yet, so there is no report to show.", sectionsLink: true }
+  // #1195: a Department Manager sets up their own department, which their manager then reviews.
   if (problems.includes('departments_not_filled'))
-    return { text: "Your store's departments aren't filled in yet. Your report will open once they are.", sectionsLink: false }
+    return { title: 'Set up your department to open your report', sectionsLink: false, departmentLink: true,
+      text: "Your report shows your department's sections, and Dash doesn't know them yet. Say which sections are yours and give the department a name. It takes a minute." }
+  if (problems.includes('store_sections_not_set_up'))
+    return { title: "Your store's sections aren't set up yet", sectionsLink: false,
+      text: "A Department Manager's report shows their department's sections, and Dash has none for your store yet. The master data team sets them up; then you can set up your department here." }
   if (problems.includes('no_cluster'))
     return { text: "Your store isn't in a cluster yet, so there is no report to show.", sectionsLink: false }
+  // #1172: Dash opens for any Dash role, so a reader is told these too. Someone who manages the
+  // instance keeps its setup guidance instead (`readerOnly`).
+  if (problems.includes('head_office'))
+    return { text: 'Your job is in head office, so no store report is set against it. Ask the person who gives Dash reports in your company if you need one.', sectionsLink: false, readerOnly: true }
+  if (problems.includes('no_job'))
+    return { text: "You aren't on the staff list yet, so there is no report to show. Ask HR to add you.", sectionsLink: false, readerOnly: true }
   return null
 }

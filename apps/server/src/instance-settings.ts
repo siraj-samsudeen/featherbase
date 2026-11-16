@@ -46,6 +46,9 @@ const SCOPE = [
   // status columns are the server's own, so they stay out. #969: a MotherDuck
   // row names its databases instead; its token is the instance's one token.
   { table: 'Data Source', shape: 'rows', fields: ['engine', 'url_env', 'default_schema', 'access', 'table_allowlist', 'databases'], createRows: true },
+  // #1191: how each declared approval type works. The controller fills what the app declares and
+  // refuses applying at once for a type that grants access, so the file sets the mode alone.
+  { table: 'Approval Type', shape: 'rows', fields: ['mode'], createRows: true },
 ] as const
 
 /** Column types that hold no value, a secret, or a file in one instance's own

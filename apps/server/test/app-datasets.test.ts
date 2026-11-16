@@ -28,7 +28,7 @@ import { withNamedVariable } from '../src/env'
 import { appSetupState } from '../src/app-settings'
 import { drainJobs, enqueue, loadJobs } from '../src/jobs'
 import { datasetsDue } from '../src/jobs/refresh-datasets'
-import { guardRefusal, recordPlaceDrops, shapeRows, storedRowJson, type DatasetDeclaration, type DatasetGuard, type PlaceDrop } from '../src/app-datasets'
+import { datasetWhere, guardRefusal, recordPlaceDrops, shapeRows, storedRowJson, type DatasetDeclaration, type DatasetGuard, type PlaceDrop } from '../src/app-datasets'
 import { _getRootSql, inAppTransaction, sql } from '../src/db'
 import { assertStillServing, servingIdentity } from '../src/app-lifecycle'
 import { runHealthChecks } from '../src/instance-health'
@@ -89,15 +89,15 @@ async function fixtureModule(name: string, directory: string) {
   return import(`${pathToFileURL(resolve(directory, 'server.mjs')).href}?artifact=${digest}`)
 }
 
-async function setup(admin: TestClient, createUser: CreateUserFn, { roles = ['Dataset Reader'], source = true } = {}) {
-  expect(await discoverPackages([fixture, provider])).toEqual([])
+async function setup(admin: TestClient, createUser: CreateUserFn, { roles = ['Dataset Reader'], source = true, directory = fixture } = {}) {
+  expect(await discoverPackages([directory, provider])).toEqual([])
   await admin.post('/api/install_app', { name: 'datasetproof' })
   await admin.post('/api/install_app', { name: 'placeroster' })
   invalidateSources()
   if (source) await admin.post('/api/table/Data%20Source', {
     row_id: 'datasetproof-warehouse', engine: 'postgres', url_env: SOURCE_ENV, access: 'read_only' })
   const reader = await createUser({ email: 'reader@example.test', roles })
-  const app = await fixtureModule('datasetproof', fixture)
+  const app = await fixtureModule('datasetproof', directory)
   app.calls.handler = 0
   return { reader, app }
 }
@@ -555,6 +555,25 @@ describe('a cached dataset read', () => {
     expect(answer.result.rows).toEqual([])
   })
 
+  // #1169: the same read, on a dataset declared unscoped, gets every row though the reader has no place.
+  test('a read whose policy carries no places gets every row of an unscoped dataset', async ({ admin, createUser }) => {
+    const copy = await mkdtemp(resolve('test/.dataset-proof-'))
+    try {
+      await cp(fixture, copy, { recursive: true })
+      const manifest = JSON.parse(await readFile(resolve(copy, 'featherbase.json'), 'utf8'))
+      const { filters: _filters, ...sales } = manifest.datasets[0]
+      manifest.datasets[0] = { ...sales, unscoped: true }
+      await writeFile(resolve(copy, 'featherbase.json'), JSON.stringify(manifest))
+      const { reader, app } = await setup(admin, createUser, { directory: copy })
+      await buildSnapshot('datasetproof.sales')
+      app.hooks.run = (context: Context) => context.datasets.active('sales')
+      const answer = await reader.post<{ result: { rows: unknown[] } }>(read + 'unscoped', { payload: {} })
+      expect(answer.result.rows).toHaveLength(SALES.length)
+    } finally {
+      await rm(copy, { recursive: true, force: true })
+    }
+  })
+
   test('before the dataset has built, answers nothing and records the ask', async ({ admin, createUser }) => {
     const { reader, app } = await setup(admin, createUser)
     await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
@@ -853,6 +872,9 @@ describe('a dataset declaration', () => {
       /sales's guard within column amount must be text, integer or date/],
     ['guard compares a minimum within a period', { guard: [{ kind: 'min_rows', value: 1, within: 'business_day' }] }, /only a drop guard compares within a column/],
     ['guard checks for zeros within a period', { guard: [{ kind: 'not_all_zero', column: 'units', within: 'business_day' }] }, /only a drop guard compares within a column/],
+    // #1169: an unscoped dataset maps no scope filter, and only it may map none.
+    ['is unscoped but maps a scope filter', { unscoped: true }, /sales is unscoped, so it maps no scope filter/],
+    ['maps no scope filter and is not unscoped', { filters: {} }, /A dataset maps at least one scope filter/],
   ] as const)('refuses an app whose dataset %s', async ([, change, message]) => {
     const copy = await mkdtemp(resolve('test/.dataset-proof-'))
     try {
@@ -1454,6 +1476,45 @@ describe('recording a dropped place', () => {
       const results = await both
       expect(results.reduce((a, b) => a + b)).toBe(1)
     } finally { await cleanUp() }
+  })
+})
+
+describe('an unscoped dataset', () => {
+  // #1169 review: turning a scoped dataset unscoped would give every reader every row, unnoticed.
+  test("can't come from an upgrade of a dataset that was scoped", async ({ admin }) => {
+    const copy = await mkdtemp(resolve('test/.dataset-proof-'))
+    try {
+      await cp(fixture, copy, { recursive: true })
+      const manifest = JSON.parse(await readFile(resolve(copy, 'featherbase.json'), 'utf8'))
+      const { filters: _filters, ...sales } = manifest.datasets[0]
+      manifest.datasets[0] = { ...sales, unscoped: true }
+      manifest.migrations = [{ id: 'unscoped_sales', fromVersion: '1.0.0', toVersion: '2.0.0', operations: [] }]
+      await writeFile(resolve(copy, 'featherbase.json'), JSON.stringify(manifest))
+      const pkg = JSON.parse(await readFile(resolve(copy, 'package.json'), 'utf8'))
+      await writeFile(resolve(copy, 'package.json'), JSON.stringify({ ...pkg, version: '2.0.0' }))
+      expect(await discoverPackages([fixture, provider])).toEqual([])
+      await admin.post('/api/install_app', { name: 'datasetproof' })
+      expect(await discoverPackages([fixture, provider, copy])).toEqual([])
+      await expect(admin.post('/api/preview_app_upgrade', { name: 'datasetproof', version: '2.0.0' })).rejects.toMatchObject({ status: 417,
+        message: expect.stringContaining("The dataset sales was limited to each reader's stores; an upgrade can't make it unscoped") })
+    } finally {
+      await rm(copy, { recursive: true, force: true })
+    }
+  })
+
+  // #1169: a catalogue holds nothing about places, so a reader with no place gets every row
+  // (a scoped dataset gives them none), and a read's own filters still narrow it.
+  const catalogue = { name: 'dives', source: 'warehouse', query: 'select 1 as id', columns: [{ name: 'id', type: 'text' }],
+    keys: ['id'], filters: {}, unscoped: true } as unknown as DatasetDeclaration
+  const dialect = { placeholder: (n: number) => `$${n}`, asText: (q: string) => q, asDay: (q: string) => q }
+  test('reaches every row for a reader with no place', () => {
+    expect(datasetQueryText('select 1 as id', catalogue.columns, datasetWhere(catalogue, undefined, undefined), dialect).text)
+      .toBe('select * from (select "id" from (select 1 as id) as source) as dataset where ((true)) and (true)')
+  })
+  test("ignores the places a reader has, and keeps the read's own filters", () => {
+    const where = datasetWhere(catalogue, [{ label: 'North', filters: { store: ['N1'] } }] as never, { id: 'a' })
+    expect(datasetQueryText('select 1 as id', catalogue.columns, where, dialect)).toEqual({
+      text: 'select * from (select "id" from (select 1 as id) as source) as dataset where ((true)) and ("id" in ($1))', values: ['a'] })
   })
 })
 

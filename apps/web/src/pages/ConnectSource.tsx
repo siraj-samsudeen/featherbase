@@ -12,7 +12,6 @@ import { FormView } from '../components/FormView'
 const KINDS = [
   { engine: 'motherduck', label: 'MotherDuck', hint: "Cloud warehouse, read with this server's token" },
   { engine: 'postgres', label: 'Postgres', hint: 'Host, database, user, password' },
-  { engine: 'mysql', label: 'MySQL', hint: 'Host, database, user, password' },
   { engine: 'duckdb', label: 'DuckDB file', hint: 'A .duckdb file on the server' },
   { engine: 'csv-folder', label: 'Folder of CSV files', hint: 'A folder on the server' },
 ] as const
