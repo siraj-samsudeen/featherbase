@@ -380,9 +380,9 @@ function PlaceCard({ place, onMoved, staffOnly = false }: { place: Place; onMove
 
 function Categories({ categories, buys }: { categories: Category[]; buys: Buys[] }) {
   // #1246: a head's Buyer Sections, read beside the page; the categories' buyers re-read after a move.
-  const desks = useAnswer<BuyerSectionsAnswer>('buyer_sections')
-  const mine = Array.isArray(desks.answer?.desks) ? desks.answer : undefined
-  const heads = !!mine?.desks.length
+  const buyerSections = useAnswer<BuyerSectionsAnswer>('buyer_sections')
+  const mine = Array.isArray(buyerSections.answer?.buyerSections) ? buyerSections.answer : undefined
+  const heads = !!mine?.buyerSections.length
   return (
     <>
       {categories.map(c => (
@@ -405,7 +405,7 @@ function Categories({ categories, buys }: { categories: Category[]; buys: Buys[]
           </div>
         </Card>
       ))}
-      {mine && categories.length > 0 && <YourBuyerSections answer={mine} onChanged={desks.load} />}
+      {mine && categories.length > 0 && <YourBuyerSections answer={mine} onChanged={buyerSections.load} />}
       {buys.map(b => (
         <Card key={b.assignment} data-testid="area-buys"
           title={<span className="inline-flex flex-wrap gap-x-1">You buy · {b.buyer_section ? <RecordLink table={RECORD.buyerSection} id={b.buyer_section.id}>{b.buyer_section.name}</RecordLink> : <RecordLink table={RECORD.merchandise} id={b.assignment}>{b.named || 'nothing named'}</RecordLink>}{b.region && <> · <RecordLink table={RECORD.region} id={b.region}>{b.region}</RecordLink></>}</span>}>

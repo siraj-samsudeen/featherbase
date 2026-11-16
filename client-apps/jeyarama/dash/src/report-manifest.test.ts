@@ -266,7 +266,7 @@ describe('the version step for Dash All-Stores Reader', () => {
     // #1245: who runs a store, under the area's title; no Table change.
     expect(manifest.migrations.at(-2)).toMatchObject({ id: 'store_run_by', fromVersion: '0.13.14', toVersion: '0.13.15', operations: [] })
     // #1246: Buyer Sections: who buys a subcategory, and a category head moving subcategories between them; no Table change.
-    expect(manifest.migrations.at(-1)).toMatchObject({ id: 'buyer_section_desks', fromVersion: '0.13.15', toVersion: '0.13.16', operations: [] })
+    expect(manifest.migrations.at(-1)).toMatchObject({ id: 'buyer_section_moves', fromVersion: '0.13.15', toVersion: '0.13.16', operations: [] })
     expect(pkg.version).toBe('0.13.16')
   })
 })

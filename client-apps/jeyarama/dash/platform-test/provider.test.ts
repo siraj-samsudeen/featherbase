@@ -203,7 +203,7 @@ describe('the org_chart scope provider on the platform, per merchandise assignme
 // #1246: report scope follows Buyer Sections where the instance has them (featherbase #1247), else the Buyer rows.
 describe('the org_chart scope provider on the platform, with Buyer Sections', () => {
   const codeOf = async (person: string) => String((await sql`select row_id from featherbase.employee where person = ${person}`)[0].row_id)
-  const desk = async (save: (t: string, r: Record<string, unknown>) => Promise<unknown>, id: string, buyer: string, region: string, codes: string[], ends_on?: string) => {
+  const buyerSection = async (save: (t: string, r: Record<string, unknown>) => Promise<unknown>, id: string, buyer: string, region: string, codes: string[], ends_on?: string) => {
     await save('Buyer Section', { buyer_section_id: id, name: id, operating_region: region, buyer, starts_on: '2026-01-01', ...(ends_on ? { ends_on } : {}) })
     for (const code of codes) await save('Buyer Section Subcategory', { buyer_section_subcategory_id: `${id}-${code}`, buyer_section: id, subcategory: code, starts_on: '2026-01-01' })
   }
@@ -213,21 +213,21 @@ describe('the org_chart scope provider on the platform, with Buyer Sections', ()
     const { buyer, save } = await setup(admin, createUser)
     const person = await buyer([])
     await expect(resolvePersonScope(person, await binding())).rejects.toMatchObject(new NoPersonScope('scope'))
-    // A desk that buys nothing yet gives nothing.
-    await desk(save, 'Empty desk', await codeOf(person), 'East', [])
+    // A Buyer Section that buys nothing yet gives nothing.
+    await buyerSection(save, 'Empty Buyer Section', await codeOf(person), 'East', [])
     await expect(resolvePersonScope(person, await binding())).rejects.toMatchObject(new NoPersonScope('scope'))
-    await desk(save, 'Sari desk', await codeOf(person), 'East', SARI, '2099-12-31')
+    await buyerSection(save, 'Sari Buyer Section', await codeOf(person), 'East', SARI, '2099-12-31')
     const scope = await resolvePersonScope(person, await binding())
     expect(byStore(scope)).toEqual({ '9901': SARI, '9902': SARI })
-    expect(scope[0].reasons).toEqual([{ text: 'Buyer for Sari desk (Buyer Section)', since: '2026-01-01', until: '2099-12-31' }])
+    expect(scope[0].reasons).toEqual([{ text: 'Buyer for Sari Buyer Section (Buyer Section)', since: '2026-01-01', until: '2099-12-31' }])
   })
 
-  test("a subcategory an East desk takes leaves an all-region Buyer row's buyer in the East, and not in the West", async ({ admin, createUser }) => {
+  test("a subcategory an East Buyer Section takes leaves an all-region Buyer row's buyer in the East, and not in the West", async ({ admin, createUser }) => {
     const { buyer, save } = await setup(admin, createUser)
     const old = await buyer([{ responsibility: 'Buyer', division: 'Fashion', subdivision: 'Womenswear', category: 'Sarees' }])
     const before = byStore(await resolvePersonScope(old, await binding()))
     const other = await buyer([])
-    await desk(save, 'East saris', await codeOf(other), 'East', [SARI[0]])
+    await buyerSection(save, 'East saris', await codeOf(other), 'East', [SARI[0]])
     const after = byStore(await resolvePersonScope(old, await binding()))
     expect(after['9903']).toEqual(before['9903'])
     expect(after['9901']).toEqual(before['9901'].filter((code: string) => code !== SARI[0]))

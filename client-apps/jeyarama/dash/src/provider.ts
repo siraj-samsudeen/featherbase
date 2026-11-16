@@ -3,7 +3,7 @@
 // in `unmarkedTables` so role grants decide who edits them (#967). An empty answer is an empty scope, which the platform reads as
 // no access. Who sees what is #967's table; `reachOf` is the one place it is written.
 import { EMPLOYEE_STATUS, checked, day, exact, holdsOn, text } from './values.ts'
-import { NO_BUYER_SECTIONS, desksCovering, type BuyerSections } from './buyers.ts'
+import { NO_BUYER_SECTIONS, buyerSectionsCovering, type BuyerSections } from './buyers.ts'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
@@ -55,14 +55,14 @@ export const PROVIDER_FIELDS: Record<string, string[]> = {
 export const OPTIONAL_PROVIDER_TABLES: string[] = [T.buyerSection, T.buyerLink]
 
 /** The open Buyer Sections and their open links, read only where the instance has both Tables. */
-async function openDesks(documents: Documents, on: string): Promise<BuyerSections> {
+async function openBuyerSectionsOf(documents: Documents, on: string): Promise<BuyerSections> {
   if (!documents.available) return NO_BUYER_SECTIONS
-  const desksReadable = await documents.available(T.buyerSection)
+  const sectionsReadable = await documents.available(T.buyerSection)
   const linksReadable = await documents.available(T.buyerLink)
-  // Neither installed: today's Buyer rows answer. One readable without the other would drop the desks'
+  // Neither installed: today's Buyer rows answer. One readable without the other would drop the Buyer Sections'
   // restriction on those rows and widen scope, so the person gets none (Codex, #1246).
-  if (desksReadable !== linksReadable) throw new Error('Only one of the Buyer Section Tables can be read')
-  if (!desksReadable) return NO_BUYER_SECTIONS
+  if (sectionsReadable !== linksReadable) throw new Error('Only one of the Buyer Section Tables can be read')
+  if (!sectionsReadable) return NO_BUYER_SECTIONS
   const sections = new Map((await all(documents, T.buyerSection)).filter(row => holdsOn(row, on)).map(row => [id(row), row]))
   if (!sections.size) return NO_BUYER_SECTIONS
   const links = (await all(documents, T.buyerLink, [['buyer_section', 'in', [...sections.keys()]]])).filter(row => holdsOn(row, on) && sections.has(exact(row.buyer_section)))
@@ -146,15 +146,15 @@ export async function reachOf(documents: Documents, person: string, on: string, 
   const jobs = employees.length ? (await all(documents, T.job, mine)).filter(row => holdsOn(row, on)) : []
   // rama_dw #4588: buyers, category heads and the heads above them, from their Merchandise Assignments.
   const assignments = employees.length ? (await all(documents, T.merchandise, mine)).filter(row => holdsOn(row, on)) : []
-  // #1246: Buyer Sections first. A desk I buy for gives me its subcategories; a desk taking a subcategory
+  // #1246: Buyer Sections first. A Buyer Section I buy for gives me its subcategories; a Buyer Section taking a subcategory
   // in a region takes it from the Buyer rows there.
-  const desks = employees.length ? await openDesks(documents, on) : NO_BUYER_SECTIONS
-  const myDesks = [...desks.sections.values()].filter(desk => employees.some(employee => id(employee) === exact(desk.buyer)))
+  const buyerSections = employees.length ? await openBuyerSectionsOf(documents, on) : NO_BUYER_SECTIONS
+  const myBuyerSections = [...buyerSections.sections.values()].filter(buyerSection => employees.some(employee => id(employee) === exact(buyerSection.buyer)))
   const everyStore = roles.includes(ALL_STORES_ROLE)
   // rama_dw #4588: a Cluster row names its head in cluster_manager, a text column holding the head's Employee id.
   const ids = employees.map(id)
   const clustersHeaded = employees.length ? (await all(documents, T.cluster, [['cluster_manager', 'in', ids]])).map(id) : []
-  if (!jobs.length && !assignments.length && !myDesks.length && !everyStore && !clustersHeaded.length) return { places: [], problems: ['no_job'] }
+  if (!jobs.length && !assignments.length && !myBuyerSections.length && !everyStore && !clustersHeaded.length) return { places: [], problems: ['no_job'] }
 
   const sites = await all(documents, T.site)
   const stores = sites.filter(site => checked(site.is_store))
@@ -217,15 +217,15 @@ export async function reachOf(documents: Documents, person: string, on: string, 
     }
   }
 
-  if (assignments.length || myDesks.length) {
+  if (assignments.length || myBuyerSections.length) {
     // Buyers buy merchandise only: a consumable or service under the same category stays out.
     const subcategories = await all(documents, T.subcategory, [['subcategory_type', '=', 'Merchandise']])
     const merchandise = new Set(subcategories.map(id))
-    for (const desk of myDesks) {
-      const codes = desks.links.filter(link => exact(link.buyer_section) === id(desk)).map(link => exact(link.subcategory)).filter(code => merchandise.has(code))
-      const plants = stores.filter(site => exact(site.operating_region) === exact(desk.operating_region)).flatMap(site => sellingPlants(site))
+    for (const buyerSection of myBuyerSections) {
+      const codes = buyerSections.links.filter(link => exact(link.buyer_section) === id(buyerSection)).map(link => exact(link.subcategory)).filter(code => merchandise.has(code))
+      const plants = stores.filter(site => exact(site.operating_region) === exact(buyerSection.operating_region)).flatMap(site => sellingPlants(site))
       if (!codes.length || !plants.length) { problems.push('nothing_assigned'); continue }
-      const reason: Reason = { text: `Buyer for ${text(desk.name)} (Buyer Section)`, since: day(desk.starts_on), ...(day(desk.ends_on) ? { until: day(desk.ends_on) } : {}) }
+      const reason: Reason = { text: `Buyer for ${text(buyerSection.name)} (Buyer Section)`, since: day(buyerSection.starts_on), ...(day(buyerSection.ends_on) ? { until: day(buyerSection.ends_on) } : {}) }
       for (const plant of plants) places.add(assignedLabel(plant), plant, codes, 'assignment', reason)
     }
     for (const assignment of assignments) {
@@ -236,10 +236,10 @@ export async function reachOf(documents: Documents, person: string, on: string, 
         : subcategories.filter(row => exact(row[level]) === named).map(id)
       const region = exact(assignment.operating_region)
       const covered = stores.filter(site => !region || exact(site.operating_region) === region)
-      // A Buyer row answers at a store only for what no desk of that store's region has taken (#1246).
+      // A Buyer row answers at a store only for what no Buyer Section of that store's region has taken (#1246).
       const buyer = text(assignment.responsibility) === 'Buyer'
       const reaches = covered.flatMap(site => sellingPlants(site).map(plant => ({ plant,
-        codes: buyer ? codes.filter(code => !desksCovering(desks, code, exact(site.operating_region)).length) : codes }))).filter(r => r.codes.length)
+        codes: buyer ? codes.filter(code => !buyerSectionsCovering(buyerSections, code, exact(site.operating_region)).length) : codes }))).filter(r => r.codes.length)
       if (!reaches.length) { problems.push('nothing_assigned'); continue }
       const reason: Reason = { text: `${exact(assignment.responsibility)} merchandise assignment`, since: day(assignment.starts_on),
         ...(day(assignment.ends_on) ? { until: day(assignment.ends_on) } : {}) }

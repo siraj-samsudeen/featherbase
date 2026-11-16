@@ -1,4 +1,4 @@
-// #1246: who buys a subcategory. A Buyer Section (a buying desk: its buyer, its category head, the
+// #1246: who buys a subcategory. A Buyer Section (a buying Buyer Section: its buyer, its category head, the
 // subcategories it buys) is where buyers are kept. Until every subcategory has one, the transition rule
 // holds: a subcategory a Buyer Section covers takes its buyer from there; only where none covers it does
 // today's Merchandise Assignment Buyer row still answer. With no Buyer Sections (or no such Tables on the
@@ -31,32 +31,32 @@ export async function openBuyerSections(ctx: Ctx, today: string): Promise<BuyerS
   return { sections, links }
 }
 
-/** Every region named on the instance: by its sites, its open desks and its Buyer rows. */
+/** Every region named on the instance: by its sites, its open Buyer Sections and its Buyer rows. */
 export function knownRegions(...lists: unknown[][]): string[] {
   return [...new Set(lists.flat().map(v => exact(v)).filter(Boolean))].sort()
 }
 
-/** The open desks covering `subcategory` in `region`. */
-export function desksCovering(open: BuyerSections, subcategory: string, region: string): Row[] {
+/** The open Buyer Sections covering `subcategory` in `region`. */
+export function buyerSectionsCovering(open: BuyerSections, subcategory: string, region: string): Row[] {
   return open.links.filter(l => exact(l.subcategory) === subcategory).map(l => open.sections.get(exact(l.buyer_section))!)
     .filter(d => d && exact(d.operating_region) === region)
 }
 
 /** Does a Buyer row still answer for `subcategory` in `region` (null: in at least one region it applies to)?
- *  A row applies to its region, or (blank) to every region in `regions`. Where a desk covers the
- *  subcategory, the desk answers there and the row does not. */
+ *  A row applies to its region, or (blank) to every region in `regions`. Where a Buyer Section covers the
+ *  subcategory, the Buyer Section answers there and the row does not. */
 export function rowAnswers(row: Row, subcategory: string, region: string | null, open: BuyerSections, regions: string[]): boolean {
   const own = exact(row.operating_region)
   if (region && own && own !== region) return false
-  return region ? !desksCovering(open, subcategory, region).length : answersWhere(row, subcategory, open, regions).length > 0
+  return region ? !buyerSectionsCovering(open, subcategory, region).length : answersWhere(row, subcategory, open, regions).length > 0
 }
 
 /** The regions where a Buyer row still answers for `subcategory`: its own region, or for a both-regions row
- *  each region in `regions` no desk covers (null standing for "every region" when none is known). */
+ *  each region in `regions` no Buyer Section covers (null standing for "every region" when none is known). */
 export function answersWhere(row: Row, subcategory: string, open: BuyerSections, regions: string[]): (string | null)[] {
   const own = exact(row.operating_region)
   const applies = own ? [own] : regions.length ? regions : [null]
-  return applies.filter(r => r === null || !desksCovering(open, subcategory, r).length)
+  return applies.filter(r => r === null || !buyerSectionsCovering(open, subcategory, r).length)
 }
 
 /** How a both-regions row's remaining scope reads: null when it still answers everywhere it applies. */
@@ -68,7 +68,7 @@ export function onlyIn(row: Row, subcategory: string, open: BuyerSections, regio
 
 /** Where `subcategory`'s buyer comes from, in `region` (null: every region), by the transition rule.
  *  `buyerRows` are the Merchandise Assignment Buyer rows open that day; `covers` says whether one covers
- *  the subcategory. A row answers only where no desk covers the subcategory (rowAnswers). */
+ *  the subcategory. A row answers only where no Buyer Section covers the subcategory (rowAnswers). */
 export function buyerSources(subcategory: string, region: string | null, open: BuyerSections, buyerRows: Row[], covers: (row: Row) => boolean, regions: string[] = []):
   { sections: { section: Row; link: Row }[]; assignments: Row[] } {
   const sections = open.links.filter(l => exact(l.subcategory) === subcategory)

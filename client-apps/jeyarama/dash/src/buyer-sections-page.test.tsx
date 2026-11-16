@@ -35,10 +35,10 @@ beforeAll(() => {
 afterAll(() => teardown())
 
 const ANSWER = {
-  desks: [
+  buyerSections: [
     { id: 'BS-SALWAR', name: 'Salwar', region: 'East', buyer: { code: 'E11', name: 'Sara Buyer' }, subcategories: [] },
     { id: 'BS-KURTI', name: 'Women Kurti', region: 'East', buyer: null, subcategories: [{ code: '010505001', name: 'Churidar', link: 'L2' }, { code: '010505003', name: 'Women Kurti', link: 'L1' }] },
-    { id: 'BS-WEST', name: 'West desk', region: 'West', buyer: { code: 'E12', name: 'West Buyer' }, subcategories: [] },
+    { id: 'BS-WEST', name: 'West Buyer Section', region: 'West', buyer: { code: 'E12', name: 'West Buyer' }, subcategories: [] },
   ],
   unplaced: [{ code: '010505009', name: 'Kurti Sets', region: 'East' }],
   waiting: [{ id: 'P1', subcategory: '010505003', subcategory_name: 'Women Kurti', region: 'East', from: 'Women Kurti', to: 'Salwar', applied: false, waiting_for: 'the master data team' }],
@@ -65,7 +65,7 @@ async function mount(node: () => Promise<ReactElement>) {
 }
 
 describe("a category head's Buyer Sections", () => {
-  it('offers each subcategory only their other desks in the same region; a waiting move shows instead', async () => {
+  it('offers each subcategory only their other Buyer Sections in the same region; a waiting move shows instead', async () => {
     const { YourBuyerSections } = await import('./buyer-sections-page')
     const { container, done } = await mount(async () => <YourBuyerSections answer={ANSWER} onChanged={async () => {}} />)
     const rows = [...container.querySelectorAll('[data-testid="buyer-subcategory"]')]
@@ -101,7 +101,7 @@ describe("a category head's Buyer Sections", () => {
 
   it("a move waiting in the East leaves the same subcategory's West row free to move (Codex)", async () => {
     const { YourBuyerSections } = await import('./buyer-sections-page')
-    const both = { ...ANSWER, desks: [...ANSWER.desks.slice(0, 2), { id: 'BS-WEST', name: 'West desk', region: 'West', buyer: { code: 'E12', name: 'West Buyer' },
+    const both = { ...ANSWER, buyerSections: [...ANSWER.buyerSections.slice(0, 2), { id: 'BS-WEST', name: 'West Buyer Section', region: 'West', buyer: { code: 'E12', name: 'West Buyer' },
       subcategories: [{ code: '010505003', name: 'Women Kurti', link: 'LW' }] }, { id: 'BS-WEST2', name: 'West two', region: 'West', buyer: null, subcategories: [] }],
       waiting: [{ ...ANSWER.waiting[0], region: 'East' }] }
     const { container, done } = await mount(async () => <YourBuyerSections answer={both} onChanged={async () => {}} />)
@@ -110,9 +110,9 @@ describe("a category head's Buyer Sections", () => {
     await done()
   })
 
-  it('shows nothing for someone who heads no desk', async () => {
+  it('shows nothing for someone who heads no Buyer Section', async () => {
     const { YourBuyerSections } = await import('./buyer-sections-page')
-    const { container, done } = await mount(async () => <YourBuyerSections answer={{ desks: [], unplaced: [], waiting: [] }} onChanged={async () => {}} />)
+    const { container, done } = await mount(async () => <YourBuyerSections answer={{ buyerSections: [], unplaced: [], waiting: [] }} onChanged={async () => {}} />)
     expect(container.innerHTML).toBe('')
     await done()
   })
@@ -130,7 +130,7 @@ describe("the master data team's Buyer Section changes", () => {
     await done()
   })
 
-  it('links each record on the card: the subcategory, both desks and the region (verifier B12)', async () => {
+  it('links each record on the card: the subcategory, both Buyer Sections and the region (verifier B12)', async () => {
     const { BuyerSectionApprovals } = await import('./buyer-sections-page')
     const { container, done } = await mount(async () => <BuyerSectionApprovals moves={[{ ...MOVE, who_code: 'E1', from_id: 'BS-KURTI', to_id: 'BS-SALWAR' }]} onDecided={async () => {}} />)
     const links = [...container.querySelectorAll('[data-testid="buyer-move-ask"] [data-record-link="link"]')].map(a => [a.getAttribute('data-table'), a.getAttribute('data-row')])

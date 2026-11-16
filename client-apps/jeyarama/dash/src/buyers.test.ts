@@ -27,7 +27,7 @@ describe('who buys a subcategory, while Buyer Sections are filled in', () => {
     expect(buyerSources('010505003', null, bs, rows, covers('010505003')).assignments).toEqual([rows[1]])
   })
 
-  it('a desk with no buyer yet still covers the subcategory: a vacancy, not a fallback', () => {
+  it('a Buyer Section with no buyer yet still covers the subcategory: a vacancy, not a fallback', () => {
     const bs = open([['BS-EMPTY', 'Kerala', null]], [['BS-EMPTY', '010505003']])
     const result = buyerSources('010505003', 'Kerala', bs, [ma('MA1', '010505003', 'Kerala')], covers('010505003'))
     expect([result.sections.length, result.assignments]).toEqual([1, []])
@@ -39,10 +39,10 @@ describe('who buys a subcategory, while Buyer Sections are filled in', () => {
     expect(buyerSources('010505003', 'Kerala', NO_BUYER_SECTIONS, [both], covers('010505003'), regions).assignments).toEqual([both])
     const bs = open([['BS-KURTI', 'Kerala', 'E-5010']], [['BS-KURTI', '010505003']])
     expect(buyerSources('010505003', 'Kerala', bs, [both], covers('010505003'), regions).assignments).toEqual([])
-    // Tamil Nadu has no desk: the row still answers there, and so for a head of every region.
+    // Tamil Nadu has no Buyer Section: the row still answers there, and so for a head of every region.
     expect(buyerSources('010505003', 'Tamil Nadu', bs, [both], covers('010505003'), regions).assignments).toEqual([both])
     expect(buyerSources('010505003', null, bs, [both], covers('010505003'), regions).assignments).toEqual([both])
-    // With a desk in each region, it answers nowhere.
+    // With a Buyer Section in each region, it answers nowhere.
     const each = open([['BS-K', 'Kerala', 'E1'], ['BS-T', 'Tamil Nadu', 'E2']], [['BS-K', '010505003'], ['BS-T', '010505003']])
     expect(rowAnswers(both, '010505003', null, each, regions)).toBe(false)
   })
@@ -57,7 +57,7 @@ describe('who buys a subcategory, while Buyer Sections are filled in', () => {
     expect(asked).toEqual([])
   })
 
-  it('keeps only the desks and links open on the day (both ends inclusive)', async () => {
+  it('keeps only the Buyer Sections and links open on the day (both ends inclusive)', async () => {
     const tables: Record<string, Record<string, unknown>[]> = {
       'Buyer Section': [{ row_id: 'A', starts_on: '2026-11-01', ends_on: null }, { row_id: 'B', starts_on: '2026-11-01', ends_on: '2026-11-16' }, { row_id: 'C', starts_on: '2026-11-17', ends_on: '2026-11-17' }],
       'Buyer Section Subcategory': [{ row_id: 'L1', buyer_section: 'A', subcategory: 'S1', starts_on: '2026-11-01' }, { row_id: 'L2', buyer_section: 'A', subcategory: 'S2', starts_on: '2026-11-18' },
