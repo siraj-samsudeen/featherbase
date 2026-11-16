@@ -259,8 +259,11 @@ function rowsLine({ limits, ownOnly, places, everyTable, self }: { limits: numbe
     ownOnly && `${plural(ownOnly, 'table')} ${ownOnly === 1 ? 'shows' : 'show'} only rows ${self ? 'you' : 'they'} created`,
     places && `${places.title} gives ${self ? 'you' : 'them'} ${plural(places.count, 'place')} (see below)`,
   ].filter(Boolean) as string[]
-  if (!narrows.length) return everyTable ? `${whose} access covers every row.` : `${whose} access covers every row of these tables: nothing narrows it.`
-  return `${whose} access is narrowed: ${narrows.join('; ')}.`
+  // Never "every row": a table can keep some rows private to the people they
+  // belong to (a mandatory privacy policy), even from a System Manager (Codex round 7).
+  const privacy = 'A table can still keep some rows private to the people they belong to.'
+  if (!narrows.length) return `No limits are set on ${self ? 'your' : 'their'} rows. ${privacy}`
+  return `${whose} access is narrowed: ${narrows.join('; ')}. ${privacy}`
 }
 
 // ── (c) Summary: sentences first, the detail behind one button ──────────────
@@ -297,7 +300,7 @@ export function SummaryLayout({ roles, tables, everyTable, limits, shares, place
       </dl>
       <ul className="space-y-3 text-sm">
         {everyTable && (
-          <li className="text-ink" data-testid="access-summary-line">{you} can read and change every Table — through System Manager.
+          <li className="text-ink" data-testid="access-summary-line">{you} can read and change every Table — through System Manager — apart from rows a table keeps private to the people they belong to.
             <ul className="mt-1 space-y-0.5 text-xs text-ink-muted">
               {roles.map((r) => (
                 <li key={`${r.app ?? ''}/${r.role}/${r.through ?? ''}`} data-testid="access-role">

@@ -160,7 +160,8 @@ test('#1224 the page shows as a summary, by role or by area, and remembers the c
   await renderApp(pageOf(person.user!), admin)
   const summary = await screen.findByTestId('access-summary', {}, WAIT)
   expect(summary).toHaveTextContent('They can read and change Ax Brand in Merchandising.')
-  expect(summary).toHaveTextContent('Their access covers every row of these tables: nothing narrows it.')
+  expect(summary).toHaveTextContent('No limits are set on their rows. A table can still keep some rows private to the people they belong to.')
+  expect(summary).not.toHaveTextContent('every row')
 
   await userEvent.click(screen.getByRole('button', { name: 'By role' }))
   const cards = await screen.findAllByTestId('access-role-card')
@@ -197,7 +198,7 @@ test('#1224 a role card says only what that role gives; own-rows reach is per op
   await renderApp(pageOf(person.user!), admin)
   const summary = await screen.findByTestId('access-summary', {}, WAIT)
   expect(summary).toHaveTextContent('Their access is narrowed: 1 table shows only rows they created.')
-  expect(summary).not.toHaveTextContent('covers every row')
+  expect(summary).not.toHaveTextContent('every row')
 
   await userEvent.click(screen.getByRole('button', { name: 'By role' }))
   const card = (await screen.findAllByTestId('access-role-card')).find((c) => within(c).getByRole('heading').textContent === 'Ax Order Reader')!

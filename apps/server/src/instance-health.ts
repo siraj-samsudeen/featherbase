@@ -6,6 +6,7 @@
 // same writes nothing and the timeline costs almost nothing to keep.
 import { fmtInstantIST } from 'shared'
 import { sql, withTransaction } from './db'
+import { serviceAccountName } from './service-account-name'
 import { config } from './config'
 import { verifyPassword } from './auth'
 import { cadenceSeconds } from './jobs'
@@ -108,9 +109,10 @@ async function recommendedVariables(environment: string): Promise<HealthCheck> {
 
 async function principalName(id: string): Promise<string> {
   const [row] = await sql`
-    select coalesce(
-      (select nullif(trim(full_name), '') from person where row_id = ${id}),
-      (select coalesce(nullif(trim(display_name), ''), nullif(trim(label), '')) from service_account where row_id = ${id})) as name`
+    select (select nullif(trim(full_name), '') from person where row_id = ${id}) as name`
+  // #1224: a service account reads one way everywhere (serviceAccountName).
+  const [account] = row.name ? [] : await sql`select label, display_name from service_account where row_id = ${id}`
+  if (account) return serviceAccountName(account)
   return (row?.name as string | null) ?? 'an unnamed principal'
 }
 

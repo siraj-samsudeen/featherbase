@@ -141,3 +141,11 @@ test('a reader whose Service Account grant covers only rows they made does not l
   const { names } = await restricted.post<{ names: Record<string, string | null> }>('/api/people/names', { ids: [account.row_id] })
   expect(names[account.row_id]).toBe('Automation (installer)')
 })
+
+test('the activity feed names a service account the same way as everywhere else', async ({ admin }) => {
+  const { whoLabels } = await import('../src/events')
+  const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-installer', roles: [] })
+  expect((await whoLabels([account.row_id])).get(account.row_id)).toEqual({ name: 'Automation (installer)', role: 'Service account' })
+  await patch(admin, `/api/service_accounts/${account.row_id}`, { display_name: 'Claude — setup agent' })
+  expect((await whoLabels([account.row_id])).get(account.row_id)?.name).toBe('Claude — setup agent')
+})

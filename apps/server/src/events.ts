@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 import { parseFilters } from 'shared'
 import { sql } from './db'
+import { serviceAccountName } from './service-account-name'
 import { AppError } from './errors'
 
 // #101 Phase 3: the server half of recent actions. The client batches
@@ -111,11 +112,14 @@ export async function whoLabels(ids: string[]): Promise<Map<string, WhoLabel>> {
              order by (r.role = 'System Manager') desc, r.role limit 1) as role
     from person p where p.row_id in ${sql(unique)}
     union all
-    select s.row_id, coalesce(nullif(trim(s.display_name), ''), s.label) as name, 'Service account' as role
+    select s.row_id, null as name, 'Service account' as role
     from service_account s where s.row_id in ${sql(unique)}`
+  // #1224: a service account reads one way everywhere (serviceAccountName).
+  const accounts = new Map((await sql`select row_id, label, display_name from service_account where row_id in ${sql(unique)}`)
+    .map((a) => [String(a.row_id), serviceAccountName(a)]))
   for (const r of rows)
     labels.set(r.row_id as string, {
-      name: (r.name as string | null) ?? (OPAQUE_PRINCIPAL.test(r.row_id as string) ? 'Unnamed person' : (r.row_id as string)),
+      name: accounts.get(r.row_id as string) ?? (r.name as string | null) ?? (OPAQUE_PRINCIPAL.test(r.row_id as string) ? 'Unnamed person' : (r.row_id as string)),
       ...(r.role ? { role: r.role as string } : {}),
     })
   return labels

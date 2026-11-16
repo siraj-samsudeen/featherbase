@@ -19,15 +19,8 @@ export const ACTOR_LABELS: Readonly<Record<string, string>> = {
   Administrator: 'Administrator',
 }
 
-/** A service account as a reader says it: the name an admin gave it, else
- *  "Automation (<its label, without the svc- prefix>)". The label itself is a
- *  slug other code finds the account by, so it is never renamed for display. */
-export function serviceAccountName(account: { label?: unknown; display_name?: unknown }): string {
-  const given = String(account.display_name ?? '').trim()
-  if (given) return given
-  const slug = String(account.label ?? '').trim().replace(/^svc[-_]/, '').replace(/[-_]+/g, ' ').trim()
-  return slug ? `Automation (${slug})` : 'Automation'
-}
+export { serviceAccountName } from './service-account-name'
+import { serviceAccountName } from './service-account-name'
 
 /** Names for actor ids: people (display name), service accounts, system
  *  steps. An id that names nobody is absent from the map; the caller decides
