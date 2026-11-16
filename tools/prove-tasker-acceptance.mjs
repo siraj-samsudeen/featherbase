@@ -5,6 +5,12 @@ import { execFileSync } from 'node:child_process'
 
 export async function proveTaskerAcceptance({ page, api, expect, output, origin }) {
   const evidence = []
+  // #1227: below 48rem the shared sidebar is a drawer, closed until the top bar's menu opens it;
+  // choosing a destination closes it again. Wider, the sidebar is always there.
+  async function goTo(nav) {
+    if ((page.viewportSize()?.width ?? 1440) < 768) await page.getByRole('button', { name: 'Toggle menu' }).click()
+    await page.getByRole('button', { name: nav, exact: typeof nav === 'string' }).click()
+  }
   async function capture(name, expected) {
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name}: horizontal page overflow`)
     await page.screenshot({ path: resolve(output, `${name}.png`), fullPage: true })
@@ -22,7 +28,7 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
     const size = width === 375 ? 'mobile' : 'desktop'
     await page.setViewportSize({ width, height: 900 })
     for (const [nav, slug] of [[/^Inbox/, 'inbox'], [/^My Work/, 'my-work'], ['Together', 'together'], [/^Personal tasks/, 'personal'], ['Projects', 'projects']]) {
-      await page.getByRole('button', { name: nav, exact: typeof nav === 'string' }).click()
+      await goTo(nav)
       await capture(`${size}-${slug}`, `Readable ${slug} navigation surface, closed detail, no horizontal overflow`)
     }
     await page.getByRole('button', { name: 'Open project Tasker Test Drive' }).click()
@@ -31,11 +37,11 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
     await page.getByRole('button', { name: 'Edit description', exact: true }).click()
     await capture(`${size}-project-editor`, 'Explicit Project Markdown editor with Save and Cancel, no clipping')
     await page.getByRole('button', { name: 'Cancel', exact: true }).click()
-    await page.getByRole('button', { name: 'Projects', exact: true }).click()
+    await goTo('Projects')
     await page.getByRole('button', { name: 'Open project Blank context proof' }).click()
     await expect(page.getByRole('button', { name: 'Add description', exact: true })).toBeVisible()
     await capture(`${size}-project-blank`, 'Blank shared description invites Add description and preserves task entry')
-    await page.getByRole('button', { name: /^Inbox/ }).click()
+    await goTo(/^Inbox/)
     for (const [source, content] of [[task, 'empty'], [populated, 'populated']]) {
       await page.getByRole('link', { name: source.task_title, exact: true }).click()
       for (const mode of ['Inspector', 'Focus', 'Compact']) {
@@ -63,12 +69,12 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
   assert.equal(taken.personal_tasks_owner, null)
   await capture('desktop-taken-focus', 'Take persisted as Administrator without starting work or changing Inbox destination')
   await detail.getByRole('link', { name: 'Close' }).click()
-  await page.getByRole('button', { name: /^My Work/ }).click()
+  await goTo(/^My Work/)
   await expect(page.getByRole('link', { name: title, exact: true })).toHaveCount(1)
   await capture('desktop-taken-my-work', 'Taken task appears exactly once in My Work after persisted assignment read-back')
-  await page.getByRole('button', { name: /^Personal tasks/ }).click()
+  await goTo(/^Personal tasks/)
   await expect(page.getByRole('link', { name: title, exact: true })).toHaveCount(0)
-  await page.getByRole('button', { name: /^Inbox/ }).click()
+  await goTo(/^Inbox/)
   await page.getByRole('link', { name: title, exact: true }).click()
   await page.getByRole('button', { name: 'Inspector', exact: true }).click()
   await detail.getByRole('button', { name: 'Edit task' }).click()
@@ -212,9 +218,9 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
   await page.getByRole('link', { name: 'Close', exact: true }).click()
   const accident = await api('/api/save_row', { table: 'tasker.task', row: { task_title: 'Delete accidental proof' } }, 201)
   await page.goto(`${origin}/tasker/`)
-  await page.getByRole('button', { name: /^Inbox/ }).click()
+  await goTo(/^Inbox/)
   await page.getByRole('button', { name: 'Add to My Focus: Delete accidental proof' }).click()
-  await page.getByRole('button', { name: /^My Work/ }).click()
+  await goTo(/^My Work/)
   await page.getByRole('link', { name: 'Delete accidental proof' }).click()
   await page.getByLabel('More task actions').click()
   await page.getByRole('button', { name: 'Delete accidental task', exact: true }).click()
@@ -230,7 +236,7 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
   // Project descriptions save real Markdown and preserve a stale editor's
   // draft instead of overwriting another person's update.
   await page.setViewportSize({ width: 1440, height: 960 })
-  await page.getByRole('button', { name: 'Projects', exact: true }).click()
+  await goTo('Projects')
   await page.getByRole('button', { name: 'Open project Blank context proof' }).click()
   const projectDescription = page.getByRole('region', { name: 'Project description' })
   await projectDescription.getByRole('button', { name: 'Add description', exact: true }).click()
@@ -258,7 +264,7 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
   } }, 201)
   const ordinary = await api('/api/save_row', { table: 'tasker.task', row: { task_title: 'Saved view ordinary work' } }, 201)
   await page.reload()
-  await page.getByRole('button', { name: /^Inbox/ }).click()
+  await goTo(/^Inbox/)
   const search = page.getByRole('searchbox', { name: 'Search task titles and descriptions' })
   await search.fill('Saved view')
   await page.getByRole('button', { name: /^Filter/ }).click()
@@ -358,16 +364,16 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
   // Private focus ordering persists independently of task data.
   const originalFocus = (await api('/api/user_settings/Task%20Management%20Focus')).settings.task_ids.filter(id => id !== accident.row_id)
   await page.goto(`${origin}/tasker/`)
-  await page.getByRole('button', { name: /^My Work/ }).click()
+  await goTo(/^My Work/)
   await expect(page.getByRole('button', { name: /^Remove from My Focus:/ })).toHaveCount(originalFocus.length)
   while (await page.getByRole('button', { name: /^Remove from My Focus:/ }).count()) {
     const count = await page.getByRole('button', { name: /^Remove from My Focus:/ }).count()
     await page.getByRole('button', { name: /^Remove from My Focus:/ }).first().click()
     await expect(page.getByRole('button', { name: /^Remove from My Focus:/ })).toHaveCount(count - 1)
   }
-  await page.getByRole('button', { name: /^Inbox/ }).click()
+  await goTo(/^Inbox/)
   for (const row of [matching, ordinary]) await page.getByRole('button', { name: `Add to My Focus: ${row.task_title}`, exact: true }).click()
-  await page.getByRole('button', { name: /^My Work/ }).click()
+  await goTo(/^My Work/)
   await page.getByRole('button', { name: `Move ${ordinary.task_title} up`, exact: true }).click()
   await expect.poll(async () => (await api('/api/user_settings/Task%20Management%20Focus')).settings.task_ids).toEqual([ordinary.row_id, matching.row_id])
   await page.getByRole('button', { name: `Move ${ordinary.task_title} down`, exact: true }).click()
@@ -453,7 +459,7 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
   // Return the original literal package proof to its known Inbox state.
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto(`${origin}/tasker/`)
-  await page.getByRole('button', { name: /^Inbox/ }).click()
+  await goTo(/^Inbox/)
   await writeFile(resolve(output, 'tasker-acceptance.json'), JSON.stringify({
     commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
     equivalenceClasses: evidence, takeReadBack: taken,

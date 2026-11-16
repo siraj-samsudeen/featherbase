@@ -278,3 +278,14 @@ describe("a store's heading", () => {
       .toEqual(['Lakeside', 'Lakeside Mall', 'Lakeside', null])
   })
 })
+
+// #1240: the server's own day format, so the server bundle carries no page code; the page writes days the same way.
+describe('a day as people read it', () => {
+  it('matches the page\'s DD-Mon-YYYY, across a month and a year boundary', async () => {
+    const { dayLabel } = await import('./report.ts')
+    const { shortDay } = await import('./page.ts')
+    for (const day of ['2026-04-01', '2026-01-31', '2026-02-01', '2025-12-31'])
+      expect(dayLabel(day)).toBe(shortDay(day))
+    expect(dayLabel('2026-04-01')).toBe('01-Apr-2026')
+  })
+})

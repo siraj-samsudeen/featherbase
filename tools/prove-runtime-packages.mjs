@@ -200,6 +200,12 @@ try {
   } }, 417)
   browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {})
   const context = await browser.newContext({ viewport: { width: 1440, height: 960 } })
+  // #1227: below 48rem the shared sidebar is a drawer, closed until the top bar's menu opens it;
+  // choosing a destination closes it again. Wider, the sidebar is always there.
+  const goTo = async (page, nav, exact = typeof nav === 'string') => {
+    if ((page.viewportSize()?.width ?? 1440) < 768) await page.getByRole('button', { name: 'Toggle menu' }).click()
+    await page.getByRole('button', { name: nav, exact }).click()
+  }
   await collectContext(context)
   const page = await context.newPage()
   const selectedTask = seeded.tasks['DEV-TASKER-TASK-INVOICE-MISMATCH']
@@ -242,12 +248,12 @@ try {
   await expect(ordinaryInbox.getByRole('button', { name: /Mark urgent/ })).toHaveText(/Not urgent/)
   await page.screenshot({ path: resolve(output, 'seeded-inbox.png'), fullPage: true })
 
-  await page.getByRole('button', { name: /My Work/ }).click()
+  await goTo(page, /My Work/)
   const workTitles = await page.locator('main article a[href*="#task="]').allTextContents()
   assert.deepEqual(workTitles.slice(0, 3), TASKER_SCENARIOS.focus.map(id => TASKER_SCENARIOS.tasks.find(task => task.row_id === id).task_title))
   await page.screenshot({ path: resolve(output, 'seeded-my-work.png'), fullPage: true })
 
-  await page.getByRole('button', { name: 'Projects' }).click()
+  await goTo(page, 'Projects', false)
   await page.getByRole('navigation', { name: 'Task views' }).getByRole('button', { name: 'September stock review', exact: true }).click()
   await expect(page.getByText('Reconcile the first stock variance')).toBeVisible()
   await expect(page.getByLabel('Starred projects').getByRole('button', { name: 'September stock review' })).toBeVisible()
@@ -259,13 +265,13 @@ try {
   await unassignedProjectTask.getByRole('button', { name: 'Take it' }).click()
   await expect(unassignedProjectTask.getByRole('button', { name: 'Take it' })).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'Together' }).click()
+  await goTo(page, 'Together', false)
   await expect(page.getByRole('heading', { name: /Unassigned/ })).toBeVisible()
   await expect(page.getByRole('heading', { name: /Administrator/ })).toBeVisible()
   await expect(page.getByText('Archive last month’s launch checklist')).toHaveCount(0)
   await page.screenshot({ path: resolve(output, 'together.png'), fullPage: true })
 
-  await page.getByRole('button', { name: /My Work/ }).click()
+  await goTo(page, /My Work/)
   const seededTask = page.locator('article').filter({ hasText: 'Reconcile the first stock variance' })
   const seededDone = seededTask.getByRole('checkbox', { name: 'Mark Reconcile the first stock variance done' })
   await seededDone.click()
@@ -275,7 +281,7 @@ try {
   await expect(seededDone).not.toBeChecked()
   await expect(seededTask.getByRole('combobox', { name: 'State for Reconcile the first stock variance' })).toHaveValue('In progress')
 
-  await page.getByRole('button', { name: /Inbox/ }).click()
+  await goTo(page, /Inbox/)
   const capture = page.getByRole('textbox', { name: 'Quick capture' })
   await capture.fill('Package-delivered stock review')
   await capture.press('Enter')
@@ -502,7 +508,7 @@ try {
   assert.deepEqual(await api('/api/user_settings/tasker.preferences'), preferencesBefore)
   assert.deepEqual(await api('/api/table/Comment?limit_page_length=1000'), commentsBefore)
   await page.reload()
-  await page.getByRole('button', { name: 'Projects', exact: true }).click()
+  await goTo(page, 'Projects', true)
   await page.getByRole('button', { name: 'Open project Preserved upgrade project' }).click()
   await expect(page.getByRole('region', { name: 'Project description' })).toContainText('37 cartons')
   await expect(page.getByRole('link', { name: 'Preserved 37 cartons' })).toBeVisible()
