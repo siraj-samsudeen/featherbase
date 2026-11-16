@@ -8,6 +8,9 @@ create table if not exists featherbase.view_as_session (
   tester text not null,
   person text not null,
   started_at timestamp with time zone default now() not null,
-  expires_at timestamp with time zone not null
+  expires_at timestamp with time zone not null,
+  -- Set when its time ran out and its end was logged; the session's next
+  -- request finds it, says View as has ended, and removes it.
+  ended_at timestamp with time zone
 );
 create index if not exists view_as_session_expiry on featherbase.view_as_session using btree (expires_at);

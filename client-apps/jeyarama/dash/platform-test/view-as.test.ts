@@ -153,7 +153,11 @@ describe('View as: a tester sees what a person sees', () => {
     await sweepExpiredViewAs(true)
     const [ended] = await sql`select "user", reference_name, method, scope from access_log where operation = 'view_as_end'`
     expect([ended?.user, ended?.reference_name, ended?.method, String(ended?.scope).startsWith('ended ')]).toEqual([tester.user, buyer.user, 'expired', true])
+    // The tester's open page is still told, once, then sees their own view; the end is logged once.
+    await refused(call(tester, 'app_reads', 'reports', {}), 'View as has ended')
+    expect(await reports(tester)).toEqual(['open'])
     expect(await sql`select count(*)::int as n from view_as_session`).toEqual([{ n: 0 }])
+    expect(await sql`select count(*)::int as n from access_log where operation = 'view_as_end'`).toEqual([{ n: 1 }])
   })
 
   test('turning Dash off ends it, and nobody can start one', async ({ admin, createUser }) => {

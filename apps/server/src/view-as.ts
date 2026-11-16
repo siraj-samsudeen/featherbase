@@ -85,10 +85,15 @@ async function nameOf(person: string): Promise<string> {
 export async function activeViewAs(user: SessionUser): Promise<{ as: ViewingAs; user: SessionUser } | null> {
   const session = user.sign_in?.session_id
   if (!session || user.kind !== 'person') return null
-  const [row] = await sql`select tester, person, expires_at <= now() as expired from view_as_session where session_id = ${session}`
+  const [row] = await sql`select tester, person, expires_at <= now() as expired, ended_at is not null as ended from view_as_session where session_id = ${session}`
   if (!row) return null
-  if (row.expired) {
-    await sql.begin(endExpired)
+  if (row.expired || row.ended) {
+    // Its end is logged (by the sweep, or here); this session's next request is told, once.
+    await sql.begin(async (tx) => {
+      await lockSession(tx, session)
+      await endExpired(tx)
+      await tx`delete from view_as_session where session_id = ${session} and ended_at is not null`
+    })
     throw new AppError('ConflictError', VIEW_AS_ENDED)
   }
   const person = String(row.person)
@@ -121,10 +126,10 @@ export async function startViewAs(user: SessionUser, person: unknown): Promise<v
     const [revoked] = await tx`select 1 from revoked_session where jti = ${session}`
     if (revoked) throw new AppError('AuthenticationError', 'Invalid or expired session')
     await endExpired(tx)
-    const [before] = await tx`select person from view_as_session where session_id = ${session}`
+    const [before] = await tx`select person from view_as_session where session_id = ${session} and ended_at is null`
     await tx`insert into view_as_session (session_id, tester, person, expires_at)
       values (${session}, ${user.row_id}, ${person}, ${new Date(ends)})
-      on conflict (session_id) do update set tester = excluded.tester, person = excluded.person, started_at = now(), expires_at = excluded.expires_at`
+      on conflict (session_id) do update set tester = excluded.tester, person = excluded.person, started_at = now(), expires_at = excluded.expires_at, ended_at = null`
     await logAccess(user.row_id, before ? 'view_as_switch' : 'view_as_start', { table: 'Person', row_id: person, method: 'view_as', required: true }, tx)
   })
 }
@@ -142,8 +147,9 @@ export async function endViewAs(user: SessionUser, method = 'exit'): Promise<voi
 export async function endViewAsSession(session: string, method: string): Promise<void> {
   await sql.begin(async (tx) => {
     await lockSession(tx, session)
-    const [ended] = await tx`delete from view_as_session where session_id = ${session} returning tester, person`
-    if (ended) await logAccess(String(ended.tester), 'view_as_end', { table: 'Person', row_id: String(ended.person), method, required: true }, tx)
+    const [ended] = await tx`delete from view_as_session where session_id = ${session} returning tester, person, ended_at`
+    // One whose time already ran out had its end logged then.
+    if (ended && ended.ended_at == null) await logAccess(String(ended.tester), 'view_as_end', { table: 'Person', row_id: String(ended.person), method, required: true }, tx)
   })
 }
 
@@ -154,7 +160,9 @@ async function lockSession(tx: TxSql, session: string) {
 
 /** End every View as whose time is up, each logged under its tester with the time it ended. */
 async function endExpired(tx: TxSql) {
-  for (const ended of await tx`delete from view_as_session where expires_at <= now() returning tester, person, expires_at`)
+  // Kept, marked, so its own session is still told it ended; removed once nobody can come back for it.
+  await tx`delete from view_as_session where ended_at < now() - interval '31 days'`
+  for (const ended of await tx`update view_as_session set ended_at = now() where expires_at <= now() and ended_at is null returning tester, person, expires_at`)
     await logAccess(String(ended.tester), 'view_as_end', { table: 'Person', row_id: String(ended.person), method: 'expired',
       scope: `ended ${new Date(ended.expires_at as string).toISOString()}`, required: true }, tx)
 }
@@ -169,7 +177,7 @@ let lastSweep = 0
 export async function sweepExpiredViewAs(now = false): Promise<void> {
   if (!now && Date.now() - lastSweep < SWEEP_MS) return
   lastSweep = Date.now()
-  const [due] = await sql`select 1 from view_as_session where expires_at <= now() limit 1`
+  const [due] = await sql`select 1 from view_as_session where (expires_at <= now() and ended_at is null) or ended_at < now() - interval '31 days' limit 1`
   if (due) await sql.begin(endExpired)
 }
 
@@ -225,7 +233,7 @@ export async function searchViewAs(user: SessionUser, q: unknown): Promise<ViewA
 export async function viewAsState(user: SessionUser) {
   if (!(await mayViewAs(user))) return { may: false as const }
   const tester = user.row_id
-  const [row] = await sql`select person, expires_at from view_as_session where session_id = ${user.sign_in!.session_id} and expires_at > now()`
+  const [row] = await sql`select person, expires_at from view_as_session where session_id = ${user.sign_in!.session_id} and expires_at > now() and ended_at is null`
   const recentIds = (await sql`
     select reference_name as person from access_log
     where "user" = ${tester} and operation in ${sql(STARTED)} and ref_table = 'Person' and reference_name is not null
