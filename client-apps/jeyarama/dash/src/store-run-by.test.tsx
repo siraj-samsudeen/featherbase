@@ -50,7 +50,7 @@ async function render(managers: Managers, store?: { id: string; name: string }) 
 describe('who runs the store', () => {
   it('names its Store Manager and Cluster Managers, each a link to their Dash page', async () => {
     const { line, links, done } = await render({ store: [{ code: 'E1', name: 'Selvi Store' }], cluster: [{ code: 'E7', name: 'Kiran Cluster' }, { code: 'E8', name: 'Lata Cluster' }] })
-    expect(line.textContent).toBe('Store Manager: Selvi Store · Cluster Manager: Kiran Cluster, Lata Cluster')
+    expect(line.textContent!.replace(/\s*·\s*/g, ' · ')).toBe('Store Manager: Selvi Store · Cluster Manager: Kiran Cluster, Lata Cluster')
     expect(links).toEqual([['Selvi Store', '?view=coverage&employee=E1'], ['Kiran Cluster', '?view=coverage&employee=E7'], ['Lata Cluster', '?view=coverage&employee=E8']])
     await done()
   })
@@ -66,7 +66,7 @@ describe('who runs the store', () => {
   it('keeps each label on one line with its first name', async () => {
     const { line, done } = await render({ store: [{ code: 'E1', name: 'Selvi Store' }], cluster: [{ code: 'E7', name: 'Kiran Cluster' }] })
     const nowrap = [...line.querySelectorAll('.whitespace-nowrap')].map(e => e.textContent)
-    expect(nowrap).toEqual(['Store Manager: Selvi Store', 'Cluster Manager: Kiran Cluster'])
+    expect(nowrap).toEqual(['Store Manager: Selvi Store', '· Cluster Manager: Kiran Cluster'])
     await done()
   })
 

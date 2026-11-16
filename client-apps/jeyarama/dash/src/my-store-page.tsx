@@ -355,13 +355,13 @@ function AreaTitle({ place }: { place: Place }) {
 /** #1245: who runs the store, under the area's title: "Store Manager: Selvi · Cluster Manager: Kiran, Lata". */
 export function StoreRunBy({ managers, store }: { managers: Place['managers']; store?: { id: string; name: string } }) {
   // Each label stays on one line with its first name, so a row never ends on "Cluster Manager:".
-  const names = (label: string, people: Ref[]) => people.map((p, i) => (
-    <span key={p.code} className="whitespace-nowrap">{i === 0 && <span className="text-ink-muted">{label}: </span>}<RecordLink table={RECORD.employee} id={p.code}>{p.name}</RecordLink>{i < people.length - 1 ? ', ' : ''}</span>))
+  const names = (label: string, people: Ref[], lead = '') => people.map((p, i) => (
+    <span key={p.code} className="whitespace-nowrap">{i === 0 && <span className="text-ink-muted">{lead}{label}: </span>}<RecordLink table={RECORD.employee} id={p.code}>{p.name}</RecordLink>{i < people.length - 1 ? ', ' : ''}</span>))
   return (
     <span className="inline-flex flex-wrap items-baseline gap-x-1" data-testid="store-run-by">
       {store && <><RecordLink table={RECORD.site} id={store.id}>{store.name}</RecordLink><span aria-hidden="true" className="text-ink-muted"> · </span></>}
       {managers.store.length ? names('Store Manager', managers.store) : <span className="text-ink-muted">No store manager</span>}
-      {managers.cluster.length > 0 && <><span aria-hidden="true" className="text-ink-muted"> · </span>{names('Cluster Manager', managers.cluster)}</>}
+      {managers.cluster.length > 0 && names('Cluster Manager', managers.cluster, '· ')}
     </span>
   )
 }
