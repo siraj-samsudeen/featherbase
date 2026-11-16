@@ -349,7 +349,7 @@ async function principalLabel(id: string): Promise<string> {
     select coalesce(
       (select coalesce(nullif(trim(full_name), ''), '@' || nullif(username, ''), nullif(email, ''))
        from person where row_id = ${id}),
-      (select nullif(trim(label), '') from service_account where row_id = ${id})) as name`
+      (select coalesce(nullif(trim(display_name), ''), nullif(trim(label), '')) from service_account where row_id = ${id})) as name`
   return (row.name as string | null) ?? id
 }
 

@@ -4,7 +4,7 @@ import { AppError } from './errors'
 import { getDoc } from './document'
 import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, renameAccessToken, revokeAccessToken } from './auth'
 import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, identifierPerson, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
-import { createServiceAccount, listServiceAccounts, renameServiceAccount, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
+import { createServiceAccount, listServiceAccounts, renameServiceAccount, setServiceAccountDisplayName, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
 import { principalReach } from './token-reach'
 import { explainAccess } from './access-explanation'
 import { pickPeople, principalNames, tableMembers } from './people-directory'
@@ -284,12 +284,14 @@ peopleRoutes.get('/api/service_accounts', async (c) => {
 
 peopleRoutes.patch('/api/service_accounts/:id', async (c) => {
   await assertSystemManager(who(c))
-  const body = (await c.req.json().catch(() => ({}))) as { enabled?: unknown; label?: unknown }
+  const body = (await c.req.json().catch(() => ({}))) as { enabled?: unknown; label?: unknown; display_name?: unknown }
+  if (typeof body?.display_name === 'string' && body.label === undefined && body.enabled === undefined)
+    return c.json(await setServiceAccountDisplayName(c.req.param('id'), body.display_name, who(c)))
   if (typeof body?.label === 'string' && body.enabled === undefined)
     return c.json(await renameServiceAccount(c.req.param('id'), body.label, who(c)))
   if (typeof body?.enabled === 'boolean' && body.label === undefined)
     return c.json(await setServiceAccountEnabled(c.req.param('id'), body.enabled, who(c)))
-  throw new AppError('ValidationError', 'Expected either { label } or { enabled }')
+  throw new AppError('ValidationError', 'Expected one of { label }, { display_name } or { enabled }')
 })
 
 // person-rename R2: a service account's roles change only here, never

@@ -7,6 +7,7 @@ import { findScopeProvider } from './runtime-packages'
 import { principalReach, type TableReach } from './token-reach'
 import { rowTitles } from './row-titles'
 import { everyoneRoles } from './everyone-roles'
+import { actorNames } from './actor-names'
 
 // #628: "What can this person see, and why". The platform's own reasons for a
 // person's access, as one answer: their roles (who gave each, and when), the
@@ -24,6 +25,8 @@ export interface ExplainedRole {
   /** #923: held because System Settings gives it to everyone who signs in. */
   everyone: boolean
   given_by: string | null
+  /** #1224: who gave it, by name, even when the viewer may not read Person. */
+  given_by_name: string | null
   given_at: string | null
 }
 
@@ -33,8 +36,8 @@ export interface AccessExplanation {
   roles: ExplainedRole[]
   read: TableReach[]
   change: TableReach[]
-  limits: { table: string; value: string; title: string | null; set_by: string; set_at: string }[]
-  shares: { table: string; row_id: string; title: string | null; write: boolean; reshare: boolean; shared_by: string; shared_at: string }[]
+  limits: { table: string; value: string; title: string | null; set_by: string; set_by_name: string | null; set_at: string }[]
+  shares: { table: string; row_id: string; title: string | null; write: boolean; reshare: boolean; shared_by: string; shared_by_name: string | null; shared_at: string }[]
   /** The places the instance's scope-providing app gives the person today,
    *  each with the reasons the app gives (Q1 C). Null when no app provides a
    *  scope. Labels and reasons only, never a filter value. */
@@ -132,12 +135,12 @@ export async function explainAccess(person: string, viewer: string): Promise<Acc
     const role = String(r.role)
     // A role given before history recorded roles falls back to its row.
     const from = given.get(role) ?? { by: String(r.created_by), at: iso(r.created_at) }
-    return { role, app: null, through: null, everyone: false, given_by: from.by, given_at: from.at }
+    return { role, app: null, through: null, everyone: false, given_by: from.by, given_by_name: null, given_at: from.at }
   })
   // #923: a person also holds the roles given to everyone who signs in.
   const [isPerson] = await sql`select 1 from person where row_id = ${person} and row_id <> 'Guest'`
   for (const role of isPerson ? await everyoneRoles(sql) : [])
-    if (!roles.some((r) => r.role === role)) roles.push({ role, app: null, through: null, everyone: true, given_by: null, given_at: null })
+    if (!roles.some((r) => r.role === role)) roles.push({ role, app: null, through: null, everyone: true, given_by: null, given_by_name: null, given_at: null })
   // App roles bound to the person's own roles (#620), from available apps only,
   // the same rule getRoles applies.
   const own = roles.map((r) => r.role)
@@ -151,7 +154,7 @@ export async function explainAccess(person: string, viewer: string): Promise<Acc
         and b.app = any(${[...activeApps]}::text[])
       order by b.app, b.app_role, b.bound_role`
     for (const b of bound)
-      roles.push({ role: String(b.app_role), app: String(b.app), through: String(b.bound_role), everyone: false, given_by: null, given_at: null })
+      roles.push({ role: String(b.app_role), app: String(b.app), through: String(b.bound_role), everyone: false, given_by: null, given_by_name: null, given_at: null })
   }
 
   const reach = await principalReach(person)
@@ -172,6 +175,14 @@ export async function explainAccess(person: string, viewer: string): Promise<Acc
   const titles = new Map((await rowTitles(viewer, refs)).map((t) => [`${t.table}\u0000${t.row_id}`, t.title]))
   const title = (table: string, rowId: string) => titles.get(`${table}\u0000${rowId}`) ?? null
 
+  // #1224: the people (or accounts, or system steps) who gave, set or shared
+  // each of these are named. The viewer may already open this page, so who
+  // acted on it is not hidden from them; only the display name travels.
+  const named = await actorNames([
+    ...roles.map((r) => r.given_by), ...scopeRows.map((r) => r.created_by), ...shareRows.map((r) => r.created_by)])
+  const nameOf = (id: unknown) => (id == null ? null : named.get(String(id)) ?? null)
+  for (const r of roles) r.given_by_name = nameOf(r.given_by)
+
   return {
     person,
     every_table: reach.every_table,
@@ -180,11 +191,11 @@ export async function explainAccess(person: string, viewer: string): Promise<Acc
     change: reach.change,
     limits: scopeRows.map((r) => ({
       table: String(r.allow_table), value: String(r.for_value), title: title(String(r.allow_table), String(r.for_value)),
-      set_by: String(r.created_by), set_at: iso(r.created_at),
+      set_by: String(r.created_by), set_by_name: nameOf(r.created_by), set_at: iso(r.created_at),
     })),
     shares: shareRows.map((r) => ({
       table: String(r.share_table), row_id: String(r.share_name), title: title(String(r.share_table), String(r.share_name)),
-      write: Boolean(r.write), reshare: Boolean(r.share), shared_by: String(r.created_by), shared_at: iso(r.created_at),
+      write: Boolean(r.write), reshare: Boolean(r.share), shared_by: String(r.created_by), shared_by_name: nameOf(r.created_by), shared_at: iso(r.created_at),
     })),
     scope,
   }

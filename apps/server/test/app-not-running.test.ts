@@ -86,7 +86,7 @@ describe('an installed app that is not running here (#912)', () => {
   test("an app's context names its own caller: a person, a service account, or nobody", async ({ admin }) => {
     expect(await ownDisplayName(String(admin.user))).toEqual(expect.any(String))
     await sql`insert into service_account (row_id, label) values ('svc_bbbbbbbbbbbbbbbbbbbb', 'Nightly loader')`
-    expect(await ownDisplayName('svc_bbbbbbbbbbbbbbbbbbbb')).toBe('Nightly loader')
+    expect(await ownDisplayName('svc_bbbbbbbbbbbbbbbbbbbb')).toBe('Automation (Nightly loader)')
     expect(await ownDisplayName('psn_nobody')).toBe('Unnamed person')
   })
 })

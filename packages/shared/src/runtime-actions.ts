@@ -116,6 +116,13 @@ export interface RuntimeActionContext {
    *  person the caller may not read maps to null. Never contact data. */
   readonly people: {
     names(ids: string[]): Promise<Record<string, string | null>>
+    /** #1224: who did something, by name: a person's display name even when
+     *  the caller may not read Person, a service account's readable name
+     *  ("Automation (installer)"), a system step's phrase ("Staff roster sync").
+     *  Only for ids the app read as the actor of a row the caller may see
+     *  (created_by, given by, decided by). An id that names nobody maps to null.
+     *  Never contact data. */
+    actorNames(ids: string[]): Promise<Record<string, string | null>>
     /** #963: which of these ids are enabled people, as the caller may see them:
      *  never a built-in or merged-away account, nor a service account. */
     enabled(ids: string[]): Promise<string[]>

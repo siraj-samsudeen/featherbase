@@ -8,6 +8,7 @@ import { AppError } from './errors'
 import { hideRetired, scopedWhere } from './query'
 import { getMeta } from './meta'
 import { assertPermission, getRoles } from './permissions'
+import { serviceAccountName } from './actor-names'
 
 const MAX_NAMES = 500
 const UNNAMED = 'Unnamed person'
@@ -23,8 +24,8 @@ export function displayName(r: Record<string, unknown>): string {
  *  (whoami), so no Person read permission is involved. */
 export async function ownDisplayName(user: string): Promise<string> {
   const [person] = await sql`select * from person where row_id = ${user}`
-  const [account] = await sql`select label from service_account where row_id = ${user}`
-  return person ? displayName(person) : String(account?.label ?? UNNAMED)
+  const [account] = await sql`select label, display_name from service_account where row_id = ${user}`
+  return person ? displayName(person) : account ? serviceAccountName(account) : UNNAMED
 }
 
 /** Person, read as `viewer` with these filters; null when the viewer may not
@@ -57,8 +58,8 @@ export async function principalNames(ids: unknown, viewer: string): Promise<Reco
       from ${sql(table)} where ${where as ReturnType<typeof sql>}`
     for (const r of rows) out[String(r.row_id)] = displayName(r)
   }
-  for (const r of await sql`select row_id, label from service_account where row_id in ${sql(wanted)}`)
-    out[String(r.row_id)] = String(r.label)
+  for (const r of await sql`select row_id, label, display_name from service_account where row_id in ${sql(wanted)}`)
+    out[String(r.row_id)] = serviceAccountName(r)
   return out
 }
 

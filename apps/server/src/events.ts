@@ -111,7 +111,7 @@ export async function whoLabels(ids: string[]): Promise<Map<string, WhoLabel>> {
              order by (r.role = 'System Manager') desc, r.role limit 1) as role
     from person p where p.row_id in ${sql(unique)}
     union all
-    select s.row_id, s.label as name, 'Service account' as role
+    select s.row_id, coalesce(nullif(trim(s.display_name), ''), s.label) as name, 'Service account' as role
     from service_account s where s.row_id in ${sql(unique)}`
   for (const r of rows)
     labels.set(r.row_id as string, {
