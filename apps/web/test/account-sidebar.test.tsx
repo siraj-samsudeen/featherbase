@@ -17,7 +17,12 @@ test('in the Admin frame the account pages put the Account group at the top of t
   expect(groupLinks(account)).toEqual(['Sign-in methods', 'What you can see'])
   // At the top: nothing of the sidebar's comes before it.
   expect(sidebar.firstElementChild).toBe(account)
-  expect(within(account).getByRole('link', { name: 'Sign-in methods' })).toHaveAttribute('aria-current', 'page')
+  const selected = within(account).getByRole('link', { name: 'Sign-in methods' })
+  expect(selected).toHaveAttribute('aria-current', 'page')
+  // Verifier, round 5: selected reads in the action colour, never also the muted one.
+  expect(selected.className).toMatch(/\btext-action\b/)
+  expect(selected.className).not.toMatch(/\btext-ink-muted\b/)
+  expect(within(account).getByRole('link', { name: 'What you can see' }).className).toMatch(/\btext-ink-muted\b/)
 })
 
 test('the Admin pages that are not account pages have no Account group', async ({ admin }) => {

@@ -325,16 +325,17 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
   // permission-filtering are computed server-side).
   const homePages = useHomePages()
   // #1242 (admin-lists 8): the module of the Table open now is marked in the
-  // sidebar: its module's Home Page, else the page that lists it (System's
-  // Tables carry no module of their own).
+  // sidebar: the Home Page that lists it (every Table is linked from its module's
+  // page when made; System's are listed on System though their module is Core,
+  // the default), else its module's page.
   const openTable = useRouterState({ select: (state) => (state.matches.find((match) => 'table' in match.params)?.params as { table?: string } | undefined)?.table })
   const openMeta = useQuery({ ...metaQuery(openTable ?? ''), enabled: Boolean(openTable) })
   const openModulePage = (() => {
     const meta = openTable ? openMeta.data : undefined
     if (!meta) return undefined
     const pages = homePages.data?.pages ?? []
-    return (pages.find((page) => page.module && page.module === meta.module)
-      ?? pages.find((page) => page.cards.some((card) => card.links.some((link) => link.link_to === meta.name))))?.row_id
+    return (pages.find((page) => page.cards.some((card) => card.links.some((link) => link.link_to === meta.name)))
+      ?? pages.find((page) => page.module && page.module === meta.module))?.row_id
   })()
 
 
@@ -789,8 +790,6 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
               <p className="px-2 py-1 text-xs text-ink-subtle">Loading…</p>
             )}
             {(homePages.data?.pages ?? []).map((p) => {
-              const row = (selected: boolean) => touchRowClasses(`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm ${
-                selected ? 'font-medium text-action bg-action-tint' : 'text-ink-muted hover:bg-subtle hover:text-ink'}`)
               const marked = p.row_id === openModulePage
               return (
                 <Link
@@ -799,8 +798,9 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
                   params={{ name: p.row_id }}
                   data-testid={`home-page-link-${p.row_id}`}
                   aria-current={marked ? 'page' : undefined}
-                  className={row(marked)}
-                  activeProps={{ className: row(true), 'aria-current': 'page' }}
+                  className={`${touchRowClasses('flex items-center gap-2 rounded-md px-2 py-1.5 text-sm')}${marked ? ` ${SIDEBAR_ROW_SELECTED}` : ''}`}
+                  inactiveProps={{ className: marked ? '' : SIDEBAR_ROW_IDLE }}
+                  activeProps={{ className: SIDEBAR_ROW_SELECTED, 'aria-current': 'page' }}
                 >
                   {/* The page's own emoji takes the icon's place, unread. */}
                   {p.icon
@@ -910,6 +910,11 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
   )
 }
 
+/** A sidebar row's colours (UI standard §4): selected is action-tint with action
+ *  text, nothing else coloured; otherwise muted. */
+const SIDEBAR_ROW_IDLE = 'text-ink-muted hover:bg-subtle hover:text-ink'
+const SIDEBAR_ROW_SELECTED = 'font-medium text-action bg-action-tint'
+
 interface SidebarItem {
   to: string
   search?: Record<string, undefined>
@@ -947,8 +952,11 @@ export function SidebarGroup({ heading, icon: HeadingIcon, testid, items, first 
           to={to}
           search={search as never}
           data-testid={id}
-          className={`${base} text-ink-muted hover:bg-subtle hover:text-ink`}
-          activeProps={{ className: `${base} font-medium text-action bg-action-tint`, 'aria-current': 'page' }}
+          // TanStack adds activeProps to className rather than replacing it, so
+          // the unselected colours live in inactiveProps: never both at once.
+          className={base}
+          inactiveProps={{ className: SIDEBAR_ROW_IDLE }}
+          activeProps={{ className: SIDEBAR_ROW_SELECTED, 'aria-current': 'page' }}
         >
           <Icon aria-hidden size={14} className="shrink-0 text-ink-subtle" data-testid="sidebar-item-icon" />
           <span className="min-w-0 flex-1 truncate">{label}</span>

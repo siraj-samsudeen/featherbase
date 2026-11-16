@@ -61,10 +61,13 @@ test("the open module is marked: its Home Page, and any Table of its module", as
   const shop = pages.find((p) => p.module === 'Hpj Shop')!.row_id
   await renderApp(tableHref('Hpj Shelf'), admin)
   await waitFor(() => expect(screen.getByTestId(`home-page-link-${shop}`)).toHaveAttribute('aria-current', 'page'), WAIT)
+  expect(screen.getByTestId(`home-page-link-${shop}`).className).not.toMatch(/\btext-ink-muted\b/)
   expect(screen.getByTestId('home-page-link-system')).not.toHaveAttribute('aria-current')
 })
 
 test('a Table on the System page marks System, which has no module of its own', async ({ admin }) => {
+  // Person's module is Core, the default, and a Core page may exist: where it is listed decides.
+  await admin.post('/api/table_def', { name: 'Hpj Core Note', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
   await renderApp('/featherbase/admin/table/person', admin)
   await waitFor(() => expect(screen.getByTestId('home-page-link-system')).toHaveAttribute('aria-current', 'page'), WAIT)
 })
@@ -74,6 +77,11 @@ test('UI-027: the sidebar opens a Home Page, with its title and shortcuts', asyn
   const r = await renderApp('/featherbase/admin', admin)
   await userEvent.click(await screen.findByTestId('home-page-link-hpj-sales', {}, WAIT))
   await waitFor(() => expect(pathOf(r)).toBe('/featherbase/admin/home/hpj-sales'))
+  // Verifier, round 5: the open module reads selected (action colour), not muted.
+  const opened = screen.getByTestId('home-page-link-hpj-sales')
+  await waitFor(() => expect(opened).toHaveAttribute('aria-current', 'page'))
+  expect(opened.className).toMatch(/\btext-action\b/)
+  expect(opened.className).not.toMatch(/\btext-ink-muted\b/)
   expect(await screen.findByTestId('home-page-title', {}, WAIT)).toHaveTextContent(/^Sales$/)
   expect(await screen.findByTestId('shortcut-Tasks')).toBeInTheDocument()
   expect(screen.getByTestId('shortcut-Board')).toBeInTheDocument()
