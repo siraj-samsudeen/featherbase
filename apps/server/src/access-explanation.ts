@@ -37,6 +37,9 @@ export interface ExplainedTable extends TableReach {
   label: string
   module: string
   app: string | null
+  /** A mandatory privacy policy keeps some of its rows to the people they
+   *  belong to, whatever the grants say. */
+  keeps_private: boolean
 }
 
 export interface AccessExplanation {
@@ -193,11 +196,11 @@ export async function explainAccess(person: string, viewer: string): Promise<Acc
   const reach = await principalReach(person)
   const tableNames = [...new Set([...reach.read, ...reach.change].map((t) => t.table))]
   const defs = new Map((tableNames.length
-    ? await sql`select name, label, module, owner_app from table_def where name in ${sql(tableNames)}` : [])
+    ? await sql`select name, label, module, owner_app, access_policy is not null as keeps_private from table_def where name in ${sql(tableNames)}` : [])
     .map((d) => [String(d.name), d]))
   const described = (t: TableReach): ExplainedTable => {
     const d = defs.get(t.table)
-    return { ...t, label: tableLabel(t.table, d?.label), module: String(d?.module ?? 'Core'), app: (d?.owner_app as string | null) ?? null }
+    return { ...t, label: tableLabel(t.table, d?.label), module: String(d?.module ?? 'Core'), app: (d?.owner_app as string | null) ?? null, keeps_private: Boolean(d?.keeps_private) }
   }
   const scope = await scopeOf(person)
 

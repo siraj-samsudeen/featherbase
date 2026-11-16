@@ -1,4 +1,4 @@
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { useQueries, useQuery, type QueryClient } from '@tanstack/react-query'
 import { SYSTEM_ACTOR_LABELS } from 'shared'
 import { api } from './api'
 
@@ -60,6 +60,15 @@ function loadActorName(table: string, id: string): Promise<string | null> {
     }
     queue.set(id, [...(queue.get(id) ?? []), resolve])
   })
+}
+
+/** After a principal is renamed: drop every cached name for them, the plain
+ *  lookup and each Table's actor lookup (#1224), so every surface reads anew. */
+export function invalidatePrincipalName(client: QueryClient, id: string) {
+  return Promise.all([
+    client.invalidateQueries({ queryKey: ['principal-name', id] }),
+    client.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'actor-name' && q.queryKey[2] === id }),
+  ])
 }
 
 /** A principal id's display name and whether it is still being fetched.

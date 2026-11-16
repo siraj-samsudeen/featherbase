@@ -160,7 +160,8 @@ test('#1224 the page shows as a summary, by role or by area, and remembers the c
   await renderApp(pageOf(person.user!), admin)
   const summary = await screen.findByTestId('access-summary', {}, WAIT)
   expect(summary).toHaveTextContent('They can read and change Ax Brand in Merchandising.')
-  expect(summary).toHaveTextContent('No limits are set on their rows. A table can still keep some rows private to the people they belong to.')
+  expect(summary).toHaveTextContent('No limits are set on their rows.')
+  expect(summary).not.toHaveTextContent('stay private')
   expect(summary).not.toHaveTextContent('every row')
 
   await userEvent.click(screen.getByRole('button', { name: 'By role' }))

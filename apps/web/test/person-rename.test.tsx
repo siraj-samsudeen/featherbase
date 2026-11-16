@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
 import { pickerFor } from '../src/lib/pickers'
-import { isOpaqueId, principalLabel, PrincipalName, usePrincipalLabels } from '../src/lib/people'
+import { invalidatePrincipalName, isOpaqueId, principalLabel, PrincipalName, usePrincipalLabels } from '../src/lib/people'
 import { RowTitle } from '../src/lib/row-titles'
 import { api, getToken, setSession } from '../src/lib/api'
 import { recordAction } from '../src/lib/recents'
@@ -212,4 +212,9 @@ test('who made a row reads by name to a reader without Person read; outside the 
   </QueryClientProvider>)
   await waitFor(() => expect(screen.getByTestId('as-actor')).toHaveTextContent('Actor Writer'))
   await waitFor(() => expect(screen.getByTestId('as-link')).toHaveTextContent('Unnamed person'))
+  // A rename reaches the actor name too, not only the plain lookup (Codex round 12).
+  const doc = await admin.get<{ updated_at: string }>(`/api/table/Person/${writer.user}`)
+  await admin.post('/api/save_row', { table: 'Person', row: { row_id: writer.user, full_name: 'Actor Renamed', updated_at: doc.updated_at } })
+  await invalidatePrincipalName(queryClient, writer.user!)
+  await waitFor(() => expect(screen.getByTestId('as-actor')).toHaveTextContent('Actor Renamed'))
 })

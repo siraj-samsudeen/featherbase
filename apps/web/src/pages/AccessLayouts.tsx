@@ -43,7 +43,7 @@ function RoleRef({ role }: { role: string }) {
 // area groups the Tables by the part of the business they belong to. Each is
 // the same answer, built from the same explanation.
 
-export interface TableReach { table: string; own_rows: boolean; roles: string[]; own_rows_roles?: string[]; label?: string; module?: string; app?: string | null }
+export interface TableReach { table: string; own_rows: boolean; roles: string[]; own_rows_roles?: string[]; label?: string; module?: string; app?: string | null; keeps_private?: boolean }
 export interface RoleRow { role: string; app: string | null; through: string | null; everyone?: boolean; given_by: string | null; given_by_name?: string | null; given_at: string | null
   /** A built-in role every account holds (All): never given, never listed by the server. */
   implicit?: boolean }
@@ -92,6 +92,8 @@ export interface Reached {
   table: string
   label: string
   area: string
+  /** A mandatory privacy policy keeps some rows to the people they belong to. */
+  keepsPrivate: boolean
   read: boolean
   change: boolean
   /** Reading, or changing, reaches only rows the person created. */
@@ -113,7 +115,7 @@ export function reachedTables(read: TableReach[], change: TableReach[]): Reached
   const by = new Map<string, Reached>()
   const entry = (t: TableReach) => {
     let r = by.get(t.table)
-    if (!r) by.set(t.table, r = { table: t.table, label: t.label ?? t.table, area: areaOf(t), read: false, change: false, readOwn: false, changeOwn: false, readRoles: [], changeRoles: [], readOwnRoles: [], changeOwnRoles: [] })
+    if (!r) by.set(t.table, r = { table: t.table, label: t.label ?? t.table, area: areaOf(t), keepsPrivate: Boolean(t.keeps_private), read: false, change: false, readOwn: false, changeOwn: false, readRoles: [], changeRoles: [], readOwnRoles: [], changeOwnRoles: [] })
     return r
   }
   for (const t of read) Object.assign(entry(t), { read: true, readRoles: t.roles, readOwn: t.own_rows, readOwnRoles: t.own_rows_roles ?? [] })
@@ -264,7 +266,7 @@ const tablesOf = (role: string, tables: Reached[]) => tables
     readOwn: t.readOwnRoles.includes(role), changeOwn: t.changeOwnRoles.includes(role) }))
 
 /** Which rows: "every row" only when nothing narrows it (Codex round 3). */
-export function rowsLine({ limits, readOwn, changeOwn, places, self }: { limits: number; readOwn: number; changeOwn: number; places: { title: string; count: number } | null; self: boolean }): string {
+export function rowsLine({ limits, readOwn, changeOwn, places, privateTables = [], self }: { limits: number; readOwn: number; changeOwn: number; places: { title: string; count: number } | null; privateTables?: string[]; self: boolean }): string {
   const whose = self ? 'Your' : 'Their'
   const who = self ? 'you' : 'they'
   // Reading and changing are narrowed on their own (Codex round 9): "read
@@ -275,11 +277,13 @@ export function rowsLine({ limits, readOwn, changeOwn, places, self }: { limits:
     changeOwn && `in ${plural(changeOwn, 'table')} ${who} can change only rows ${who} created`,
     places && `${places.title} gives ${self ? 'you' : 'them'} ${plural(places.count, 'place')} (see below)`,
   ].filter(Boolean) as string[]
-  // Never "every row": a table can keep some rows private to the people they
-  // belong to (a mandatory privacy policy), even from a System Manager (Codex round 7).
-  const privacy = 'A table can still keep some rows private to the people they belong to.'
-  if (!narrows.length) return `No limits are set on ${self ? 'your' : 'their'} rows. ${privacy}`
-  return `${whose} access is narrowed: ${narrows.join('; ')}. ${privacy}`
+  // Never "every row" where a table keeps rows private to the people they
+  // belong to (a mandatory privacy policy), even from a System Manager (Codex
+  // round 7); named only for the tables that have one.
+  const privacy = privateTables.length
+    ? ` Rows of ${privateTables.length > 1 ? `${privateTables.slice(0, -1).join(', ')} and ${privateTables.at(-1)}` : privateTables[0]} stay private to the people they belong to.` : ''
+  if (!narrows.length) return `No limits are set on ${self ? 'your' : 'their'} rows.${privacy}`
+  return `${whose} access is narrowed: ${narrows.join('; ')}.${privacy}`
 }
 
 // ── (c) Summary: sentences first, the detail behind one button ──────────────
@@ -351,7 +355,8 @@ export function SummaryLayout({ roles, tables, everyTable, limits, shares, place
         )}
         <li className="text-ink" data-testid="access-summary-line">
           {rowsLine({ limits, readOwn: tables.filter((t) => t.read && t.readOwn).length,
-            changeOwn: tables.filter((t) => t.change && t.changeOwn).length, places, self })}
+            changeOwn: tables.filter((t) => t.change && t.changeOwn).length, places, self,
+            privateTables: tables.filter((t) => t.keepsPrivate).map((t) => t.label) })}
           {shares > 0 && ` ${plural(shares, 'row is', 'rows are')} also shared with ${self ? 'you' : 'them'} directly.`}
         </li>
       </ul>

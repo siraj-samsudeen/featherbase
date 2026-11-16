@@ -25,3 +25,9 @@ test('own-rows reading and own-rows changing are said separately', () => {
   expect(line(1, 0)).toMatch(/^Your access is narrowed: 1 table shows only rows you created\./)
   expect(line(0, 0)).toMatch(/^No limits are set on your rows\./)
 })
+
+test('only the tables that keep rows private are named', () => {
+  expect(rowsLine({ limits: 0, readOwn: 0, changeOwn: 0, places: null, self: true, privateTables: ['Task', 'Note'] }))
+    .toBe('No limits are set on your rows. Rows of Task and Note stay private to the people they belong to.')
+  expect(rowsLine({ limits: 0, readOwn: 0, changeOwn: 0, places: null, self: true })).toBe('No limits are set on your rows.')
+})
