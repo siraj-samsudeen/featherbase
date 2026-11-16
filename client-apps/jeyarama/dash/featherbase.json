@@ -40,10 +40,6 @@
       "name": "department_setup",
       "title": "Set up my department: its sections and its name",
       "grantsAccess": false
-    },
-    {
-      "name": "buyer_section_move",
-      "title": "Move a subcategory to another Buyer Section"
     }
   ],
   "secrets": [
@@ -618,9 +614,7 @@
       "Subcategory",
       "Department",
       "Department Section",
-      "Cluster",
-      "Buyer Section",
-      "Buyer Section Subcategory"
+      "Cluster"
     ],
     "unmarkedTables": [
       "Employee",
@@ -633,13 +627,7 @@
       "Subcategory",
       "Department",
       "Department Section",
-      "Cluster",
-      "Buyer Section",
-      "Buyer Section Subcategory"
-    ],
-    "optionalTables": [
-      "Buyer Section",
-      "Buyer Section Subcategory"
+      "Cluster"
     ]
   },
   "permissions": [
@@ -999,22 +987,6 @@
         }
       },
       "dash_pages_open": {
-        "policy": {
-          "kind": "table"
-        },
-        "authorization": {
-          "kind": "generic"
-        }
-      },
-      "buyer_sections": {
-        "policy": {
-          "kind": "table"
-        },
-        "authorization": {
-          "kind": "generic"
-        }
-      },
-      "buyer_section_approvals": {
         "policy": {
           "kind": "table"
         },
@@ -2206,12 +2178,6 @@
       "fromVersion": "0.13.14",
       "toVersion": "0.13.15",
       "operations": []
-    },
-    {
-      "id": "buyer_section_desks",
-      "fromVersion": "0.13.15",
-      "toVersion": "0.13.16",
-      "operations": []
     }
   ],
   "baseTables": {
@@ -2241,23 +2207,6 @@
         "category",
         "subcategory",
         "operating_region",
-        "starts_on",
-        "ends_on"
-      ],
-      "Buyer Section": [
-        "buyer_section_id",
-        "name",
-        "operating_region",
-        "buyer",
-        "category_head",
-        "purchasing_group",
-        "starts_on",
-        "ends_on"
-      ],
-      "Buyer Section Subcategory": [
-        "buyer_section_subcategory_id",
-        "buyer_section",
-        "subcategory",
         "starts_on",
         "ends_on"
       ],
@@ -2388,18 +2337,6 @@
         ],
         "stamp": [
           "department_section_id",
-          "source_key"
-        ],
-        "startsOn": "starts_on",
-        "endsOn": "ends_on"
-      },
-      "Buyer Section Subcategory": {
-        "columns": [
-          "buyer_section",
-          "subcategory"
-        ],
-        "stamp": [
-          "buyer_section_subcategory_id",
           "source_key"
         ],
         "startsOn": "starts_on",
@@ -2561,22 +2498,6 @@
         }
       },
       "manage_remove": {
-        "policy": {
-          "kind": "table"
-        },
-        "authorization": {
-          "kind": "generic"
-        }
-      },
-      "move_buyer_subcategory": {
-        "policy": {
-          "kind": "table"
-        },
-        "authorization": {
-          "kind": "generic"
-        }
-      },
-      "decide_buyer_section": {
         "policy": {
           "kind": "table"
         },

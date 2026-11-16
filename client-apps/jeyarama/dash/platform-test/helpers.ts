@@ -31,8 +31,8 @@ const asAdmin = (admin: TestClient) => (path: string, init?: RequestInit) =>
   init?.method === 'PUT' ? admin.fetch(path, init).then(r => r.json()) : admin.get(path)
 
 /** The core Tables created and listed in `dash.linked_tables`. */
-export async function createCoreTables(admin: TestClient, { without = [] as string[] } = {}) {
-  for (const table of BASE_TABLES.filter(t => !without.includes(t.name))) await admin.post('/api/table_def', table)
+export async function createCoreTables(admin: TestClient) {
+  for (const table of BASE_TABLES) await admin.post('/api/table_def', table)
   await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'dash.linked_tables', value: JSON.stringify(LINKED_TABLES) } })
 }
 

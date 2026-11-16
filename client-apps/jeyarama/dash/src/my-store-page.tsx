@@ -6,7 +6,6 @@ import { useEffect, useRef, useState } from 'react'
 import { Button, Card, EmptyState, Field, Notice, SearchInput, Select, StatusPill, TextInput, fmtCount } from '@featherbase/shop-floor'
 import { act, read } from './api'
 import { LoadFailed, Loading, Shell, useAnswer } from './sections-page'
-import { YourBuyerSections, type BuyerSectionsAnswer } from './buyer-sections-page'
 import { RECORD, RecordLink } from './record-link'
 
 interface PersonRef { code: string; name: string }
@@ -16,7 +15,7 @@ export interface Place { kind: 'store' | 'floor' | 'department' | 'section'; pag
   department: { id: string; name: string } | null; managers: { store: Ref[]; cluster: Ref[] }; floors: { floor_id: string | null; floor: string; sections: Section[] }[]; staff: Staff[]; sections: { id: string; name: string }[] }
 interface Ref { code: string; name: string }
 interface Category { category: string; region: string | null; responsibility: string; buyers: { name: string; code: string; assignment: string; buys: string; subcategory: string | null }[]; no_buyer: Ref[] }
-interface Buys { assignment: string; level: string | null; named: string; region: string | null; subcategories: (Ref & { only?: string })[]; buyer_section?: { id: string; name: string } }
+interface Buys { assignment: string; level: string | null; named: string; region: string | null; subcategories: Ref[] }
 type Answer = { state: 'unknown_person' | 'nothing' } | { state: 'ok'; name: string; code: string; places: Place[]; categories: Category[]; buys: Buys[] }
 
 const SUBCATEGORIES = (n: number) => `${n} ${n === 1 ? 'subcategory' : 'subcategories'}`
@@ -379,10 +378,6 @@ function PlaceCard({ place, onMoved, staffOnly = false }: { place: Place; onMove
 }
 
 function Categories({ categories, buys }: { categories: Category[]; buys: Buys[] }) {
-  // #1246: a head's Buyer Sections, read beside the page; the categories' buyers re-read after a move.
-  const desks = useAnswer<BuyerSectionsAnswer>('buyer_sections')
-  const mine = Array.isArray(desks.answer?.desks) ? desks.answer : undefined
-  const heads = !!mine?.desks.length
   return (
     <>
       {categories.map(c => (
@@ -401,17 +396,16 @@ function Categories({ categories, buys }: { categories: Category[]; buys: Buys[]
             {c.no_buyer.length > 0 && (
               <Notice tone="caution" data-testid="no-buyer">No buyer for {SUBCATEGORIES(c.no_buyer.length)}: {c.no_buyer.map((s, i) => <span key={s.code}>{i ? ', ' : ''}<RecordLink table={RECORD.subcategory} id={s.code}>{s.name}</RecordLink></span>)}</Notice>
             )}
-            {!heads && <p className="fd-muted text-sm">Changing who buys what goes to the master data team until Buyer Sections arrives.</p>}
+            <p className="fd-muted text-sm">Changing who buys what goes to the master data team until Buyer Sections arrives.</p>
           </div>
         </Card>
       ))}
-      {mine && categories.length > 0 && <YourBuyerSections answer={mine} onChanged={desks.load} />}
       {buys.map(b => (
         <Card key={b.assignment} data-testid="area-buys"
-          title={<span className="inline-flex flex-wrap gap-x-1">You buy · {b.buyer_section ? <RecordLink table={RECORD.buyerSection} id={b.buyer_section.id}>{b.buyer_section.name}</RecordLink> : <RecordLink table={RECORD.merchandise} id={b.assignment}>{b.named || 'nothing named'}</RecordLink>}{b.region && <> · <RecordLink table={RECORD.region} id={b.region}>{b.region}</RecordLink></>}</span>}>
+          title={<span className="inline-flex flex-wrap gap-x-1">You buy · <RecordLink table={RECORD.merchandise} id={b.assignment}>{b.named || 'nothing named'}</RecordLink>{b.region && <> · <RecordLink table={RECORD.region} id={b.region}>{b.region}</RecordLink></>}</span>}>
           <div className="p-4 text-sm">
             {b.subcategories.length
-              ? <p>{b.subcategories.map((s, i) => <span key={s.code}>{i ? ', ' : ''}<RecordLink table={RECORD.subcategory} id={s.code}>{s.name}</RecordLink>{s.only && <span className="text-ink-muted"> ({s.only} only)</span>}</span>)}</p>
+              ? <p>{b.subcategories.map((s, i) => <span key={s.code}>{i ? ', ' : ''}<RecordLink table={RECORD.subcategory} id={s.code}>{s.name}</RecordLink></span>)}</p>
               : <p className="fd-muted">No subcategories.</p>}
           </div>
         </Card>

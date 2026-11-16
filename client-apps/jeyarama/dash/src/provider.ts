@@ -3,15 +3,12 @@
 // in `unmarkedTables` so role grants decide who edits them (#967). An empty answer is an empty scope, which the platform reads as
 // no access. Who sees what is #967's table; `reachOf` is the one place it is written.
 import { EMPLOYEE_STATUS, checked, day, exact, holdsOn, text } from './values.ts'
-import { NO_BUYER_SECTIONS, desksCovering, type BuyerSections } from './buyers.ts'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
 /** The platform's document reads, and an app's base Table reads, as far as this file uses them. */
 export interface Documents {
   list(table: string, args: { fields: string[]; filters?: Filter[]; order_by?: string; limit_start?: number; limit_page_length?: number }): Promise<Row[]>
-  /** featherbase #1247: whether a Table can be read now; absent on an older platform (then: no). */
-  available?(table: string): Promise<boolean>
 }
 interface ProviderContext {
   /** `roles`: the roles the platform enforces for the person (featherbase #1192). */
@@ -30,7 +27,7 @@ export interface Place {
 
 const T = { employee: 'Employee', job: 'Job Assignment', site: 'Site', plant: 'Plant', section: 'Section', placement: 'Section Subcategory',
   merchandise: 'Merchandise Assignment', subcategory: 'Subcategory', department: 'Department', departmentSection: 'Department Section',
-  cluster: 'Cluster', buyerSection: 'Buyer Section', buyerLink: 'Buyer Section Subcategory' } as const
+  cluster: 'Cluster' } as const
 
 /** Every Table the provider reads: featherbase.json's scopeProvider.tables. */
 export const PROVIDER_TABLES: string[] = Object.values(T)
@@ -48,25 +45,6 @@ export const PROVIDER_FIELDS: Record<string, string[]> = {
   [T.department]: ['store', 'manager', 'starts_on', 'ends_on'],
   [T.departmentSection]: ['store', 'department', 'section', 'starts_on', 'ends_on'],
   [T.cluster]: ['cluster_manager'],
-  [T.buyerSection]: ['name', 'operating_region', 'buyer', 'starts_on', 'ends_on'],
-  [T.buyerLink]: ['buyer_section', 'subcategory', 'starts_on', 'ends_on'],
-}
-/** #1246: Tables an instance may not have yet; read only once documents.available() says so (featherbase #1247). */
-export const OPTIONAL_PROVIDER_TABLES: string[] = [T.buyerSection, T.buyerLink]
-
-/** The open Buyer Sections and their open links, read only where the instance has both Tables. */
-async function openDesks(documents: Documents, on: string): Promise<BuyerSections> {
-  if (!documents.available) return NO_BUYER_SECTIONS
-  const desksReadable = await documents.available(T.buyerSection)
-  const linksReadable = await documents.available(T.buyerLink)
-  // Neither installed: today's Buyer rows answer. One readable without the other would drop the desks'
-  // restriction on those rows and widen scope, so the person gets none (Codex, #1246).
-  if (desksReadable !== linksReadable) throw new Error('Only one of the Buyer Section Tables can be read')
-  if (!desksReadable) return NO_BUYER_SECTIONS
-  const sections = new Map((await all(documents, T.buyerSection)).filter(row => holdsOn(row, on)).map(row => [id(row), row]))
-  if (!sections.size) return NO_BUYER_SECTIONS
-  const links = (await all(documents, T.buyerLink, [['buyer_section', 'in', [...sections.keys()]]])).filter(row => holdsOn(row, on) && sections.has(exact(row.buyer_section)))
-  return { sections, links }
 }
 
 const PAGE = 500
@@ -146,15 +124,11 @@ export async function reachOf(documents: Documents, person: string, on: string, 
   const jobs = employees.length ? (await all(documents, T.job, mine)).filter(row => holdsOn(row, on)) : []
   // rama_dw #4588: buyers, category heads and the heads above them, from their Merchandise Assignments.
   const assignments = employees.length ? (await all(documents, T.merchandise, mine)).filter(row => holdsOn(row, on)) : []
-  // #1246: Buyer Sections first. A desk I buy for gives me its subcategories; a desk taking a subcategory
-  // in a region takes it from the Buyer rows there.
-  const desks = employees.length ? await openDesks(documents, on) : NO_BUYER_SECTIONS
-  const myDesks = [...desks.sections.values()].filter(desk => employees.some(employee => id(employee) === exact(desk.buyer)))
   const everyStore = roles.includes(ALL_STORES_ROLE)
   // rama_dw #4588: a Cluster row names its head in cluster_manager, a text column holding the head's Employee id.
   const ids = employees.map(id)
   const clustersHeaded = employees.length ? (await all(documents, T.cluster, [['cluster_manager', 'in', ids]])).map(id) : []
-  if (!jobs.length && !assignments.length && !myDesks.length && !everyStore && !clustersHeaded.length) return { places: [], problems: ['no_job'] }
+  if (!jobs.length && !assignments.length && !everyStore && !clustersHeaded.length) return { places: [], problems: ['no_job'] }
 
   const sites = await all(documents, T.site)
   const stores = sites.filter(site => checked(site.is_store))
@@ -217,17 +191,9 @@ export async function reachOf(documents: Documents, person: string, on: string, 
     }
   }
 
-  if (assignments.length || myDesks.length) {
+  if (assignments.length) {
     // Buyers buy merchandise only: a consumable or service under the same category stays out.
     const subcategories = await all(documents, T.subcategory, [['subcategory_type', '=', 'Merchandise']])
-    const merchandise = new Set(subcategories.map(id))
-    for (const desk of myDesks) {
-      const codes = desks.links.filter(link => exact(link.buyer_section) === id(desk)).map(link => exact(link.subcategory)).filter(code => merchandise.has(code))
-      const plants = stores.filter(site => exact(site.operating_region) === exact(desk.operating_region)).flatMap(site => sellingPlants(site))
-      if (!codes.length || !plants.length) { problems.push('nothing_assigned'); continue }
-      const reason: Reason = { text: `Buyer for ${text(desk.name)} (Buyer Section)`, since: day(desk.starts_on), ...(day(desk.ends_on) ? { until: day(desk.ends_on) } : {}) }
-      for (const plant of plants) places.add(assignedLabel(plant), plant, codes, 'assignment', reason)
-    }
     for (const assignment of assignments) {
       const level = LEVELS.find(column => exact(assignment[column]))
       const named = level && exact(assignment[level])
@@ -236,14 +202,11 @@ export async function reachOf(documents: Documents, person: string, on: string, 
         : subcategories.filter(row => exact(row[level]) === named).map(id)
       const region = exact(assignment.operating_region)
       const covered = stores.filter(site => !region || exact(site.operating_region) === region)
-      // A Buyer row answers at a store only for what no desk of that store's region has taken (#1246).
-      const buyer = text(assignment.responsibility) === 'Buyer'
-      const reaches = covered.flatMap(site => sellingPlants(site).map(plant => ({ plant,
-        codes: buyer ? codes.filter(code => !desksCovering(desks, code, exact(site.operating_region)).length) : codes }))).filter(r => r.codes.length)
-      if (!reaches.length) { problems.push('nothing_assigned'); continue }
+      const plants = covered.flatMap(site => sellingPlants(site))
+      if (!codes.length || !plants.length) { problems.push('nothing_assigned'); continue }
       const reason: Reason = { text: `${exact(assignment.responsibility)} merchandise assignment`, since: day(assignment.starts_on),
         ...(day(assignment.ends_on) ? { until: day(assignment.ends_on) } : {}) }
-      for (const { plant, codes: here } of reaches) places.add(assignedLabel(plant), plant, here, 'assignment', reason)
+      for (const plant of plants) places.add(assignedLabel(plant), plant, codes, 'assignment', reason)
     }
   }
 

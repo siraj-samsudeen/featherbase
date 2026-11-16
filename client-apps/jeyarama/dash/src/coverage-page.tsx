@@ -13,7 +13,7 @@ interface JobCover { job: string; job_id?: string | null; store: string; store_i
 /** #1223: one section's own page: what it holds and who works in it. */
 interface SectionPage { id: string; name: string; active: boolean; store: string; store_id: string; floor: string | null; floor_id: string | null
   subcategories: { code: string; name: string }[]; staff: { code: string; name: string; job: string }[]; gaps: string[] }
-interface MerchandiseCover { assignment?: string; responsibility: string; level: string; named: string; region: string | null; subcategories: { code: string; name: string; only?: string }[]; more: number; gaps: string[] }
+interface MerchandiseCover { assignment?: string; responsibility: string; level: string; named: string; region: string | null; subcategories: { code: string; name: string }[]; more: number; gaps: string[] }
 type Answer = { state: 'not_found' | 'not_allowed' }
   | { state: 'ok'; kind: 'employee'; own?: boolean; section_ids?: Record<string, string>; employee: { code: string; name: string; status: string }; jobs: JobCover[]; merchandise: MerchandiseCover[]; gaps: string[]; nothing: boolean; area_only?: boolean }
   | { state: 'ok'; kind: 'department'; department: DepartmentCover }
@@ -180,11 +180,10 @@ export function WhatTheyCover() {
             </Card>
           ))}
           {answer.merchandise.map((m, i) => (
-            <Card key={`m${i}`} data-testid="cover-merchandise" title={<span className="inline-flex flex-wrap gap-x-1">{m.level === 'buyer_section' ? <>{m.responsibility} · <RecordLink table={RECORD.buyerSection} id={m.assignment}>{m.named}</RecordLink></>
-              : <><RecordLink table={RECORD.merchandise} id={m.assignment}>{m.responsibility}</RecordLink> · {m.level === 'category' ? <RecordLink table={RECORD.category} id={m.named}>{m.named}</RecordLink> : m.named}</>}{m.region && <> · <RecordLink table={RECORD.region} id={m.region}>{m.region}</RecordLink></>}</span>}>
+            <Card key={`m${i}`} data-testid="cover-merchandise" title={<span className="inline-flex flex-wrap gap-x-1"><RecordLink table={RECORD.merchandise} id={m.assignment}>{m.responsibility}</RecordLink> · {m.level === 'category' ? <RecordLink table={RECORD.category} id={m.named}>{m.named}</RecordLink> : m.named}{m.region && <> · <RecordLink table={RECORD.region} id={m.region}>{m.region}</RecordLink></>}</span>}>
               <div className="p-4 text-sm">
                 {m.subcategories.length
-                  ? <p>{m.subcategories.map((s, k) => <span key={s.code}>{k ? ', ' : ''}<RecordLink table={RECORD.subcategory} id={s.code}>{s.name}</RecordLink>{s.only && <span className="text-ink-muted"> ({s.only} only)</span>}</span>)}{m.more ? `, and ${m.more} more` : ''}</p>
+                  ? <p>{m.subcategories.map((s, k) => <span key={s.code}>{k ? ', ' : ''}<RecordLink table={RECORD.subcategory} id={s.code}>{s.name}</RecordLink></span>)}{m.more ? `, and ${m.more} more` : ''}</p>
                   : <p className="fd-muted">No subcategories.</p>}
               </div>
             </Card>
