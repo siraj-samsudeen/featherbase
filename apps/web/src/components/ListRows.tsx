@@ -18,6 +18,9 @@ import { RetiredBadge } from './RowRetirement'
 import { fmtCount } from '@featherbase/shop-floor'
 import { Indicator } from './Indicator'
 
+/** #1224: the columns that record who acted on a row. */
+const ACTOR_COLUMNS = new Set(['created_by', 'updated_by', 'retired_by'])
+
 // SET-004: cells render through the global display settings (date format,
 // currency/float precision). Non-typed columns fall back to a plain string.
 // person-rename: a Reference to a person or a service account shows the
@@ -227,7 +230,8 @@ function ListCell({
       {col.column_type === 'Choice' && value != null && value !== '' ? (
         <Indicator value={String(value)} label={choiceLabel(String(value), col.choice_labels, t)} />
       ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && value ? (
-        <PrincipalName id={String(value)} />
+        // #1224: who made, changed or retired a row is named to anyone who may read the row.
+        <PrincipalName id={String(value)} actorOf={ACTOR_COLUMNS.has(col.column_name) ? table : undefined} />
       ) : col.column_type === 'Reference' && col.reference_table && !isBlank(value) ? (
         // #792: a link reads as the linked row's title and opens that row;
         // #910 D5: its code follows when people use one.

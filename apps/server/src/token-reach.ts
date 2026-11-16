@@ -19,6 +19,9 @@ export interface TableReach {
   own_rows: boolean
   /** #628: the owner's roles whose grants reach it, by name. */
   roles: string[]
+  /** #1224: of those, the roles that reach it only for rows the owner
+   *  created, so a role is explained by its own scope, not the merged one. */
+  own_rows_roles: string[]
 }
 
 export interface Reach {
@@ -36,7 +39,7 @@ export interface Reach {
 
 const BUILT_IN = new Set(['All', 'Guest'])
 
-type Grant = { all: boolean; own: boolean; roles: Set<string> }
+type Grant = { all: boolean; own: boolean; roles: Set<string>; allRoles: Set<string> }
 
 export async function principalReach(owner: string): Promise<Reach> {
   const roles = await getRoles(owner)
@@ -58,9 +61,9 @@ export async function principalReach(owner: string): Promise<Reach> {
   const read = new Map<string, Grant>()
   const change = new Map<string, Grant>()
   const add = (into: Map<string, Grant>, table: string, ownOnly: boolean, role: string) => {
-    const grant = into.get(table) ?? { all: false, own: false, roles: new Set<string>() }
+    const grant = into.get(table) ?? { all: false, own: false, roles: new Set<string>(), allRoles: new Set<string>() }
     if (ownOnly) grant.own = true
-    else grant.all = true
+    else { grant.all = true; grant.allRoles.add(role) }
     grant.roles.add(role)
     into.set(table, grant)
   }
@@ -73,6 +76,7 @@ export async function principalReach(owner: string): Promise<Reach> {
     if (row.can_change) add(change, table, Boolean(row.own_rows_only), role)
   }
   const list = (grants: Map<string, Grant>): TableReach[] =>
-    [...grants].map(([table, g]) => ({ table, own_rows: !g.all, roles: [...g.roles].sort() }))
+    [...grants].map(([table, g]) => ({ table, own_rows: !g.all, roles: [...g.roles].sort(),
+      own_rows_roles: [...g.roles].filter((role) => !g.allRoles.has(role)).sort() }))
   return { every_table: false, own_roles, own_reach, read: list(read), change: list(change) }
 }

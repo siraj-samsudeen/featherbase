@@ -555,7 +555,7 @@ Then the save is refused with "System Manager cannot be given to everyone"
 Given System Settings gives "Tasker Member" to everyone who signs in
 And a person holds Tasker Member only through the setting
 When a System Manager opens the person's access page
-Then it says "everyone who signs in holds it (System Settings)"
+Then it says "everyone who signs in has it"
 When a System Manager opens the person's Person form
 Then it says "Everyone who signs in also holds Tasker Member, set in System Settings."
 ```
@@ -618,4 +618,3 @@ Given a role's read grant on a table, edited before
 When a System Manager deletes that grant from its own row instead
 Then the delete is refused and the grant stays
 ```
-

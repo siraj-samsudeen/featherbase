@@ -37,12 +37,12 @@ export function RetiredBadge({ className }: { className?: string }) {
 }
 
 /** "Retired <when> by <who> — <why>", under a retired row's heading. */
-export function RetiredNotice({ row }: { row: Row }) {
+export function RetiredNotice({ row, table }: { row: Row; table?: string }) {
   if (row.retired_at == null) return null
   return (
     <p className="mb-3 text-sm text-ink-muted" data-testid="retired-notice">
       Retired {fmtInstant(String(row.retired_at))} by{' '}
-      <span className="font-medium text-ink">{row.retired_by ? <PrincipalName id={String(row.retired_by)} /> : 'someone'}</span>
+      <span className="font-medium text-ink">{row.retired_by ? <PrincipalName id={String(row.retired_by)} actorOf={table} /> : 'someone'}</span>
       {row.retired_reason ? <> — <span className="text-ink" data-testid="retired-reason">{String(row.retired_reason)}</span></> : null}
     </p>
   )

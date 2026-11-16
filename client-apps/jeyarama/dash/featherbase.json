@@ -2078,6 +2078,12 @@
       "fromVersion": "0.13.7",
       "toVersion": "0.13.8",
       "operations": []
+    },
+    {
+      "id": "ends_on_inclusive",
+      "fromVersion": "0.13.8",
+      "toVersion": "0.13.9",
+      "operations": []
     }
   ],
   "baseTables": {

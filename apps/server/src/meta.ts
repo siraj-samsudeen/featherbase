@@ -1,5 +1,6 @@
 import { fmtDayIST, tableSlug } from 'shared'
 import { sql, whenTransactionEnds } from './db'
+import { serviceAccountName } from './service-account-name'
 import { AppError } from './errors'
 import { ENGINE_WRITABLE, type SourceEngine } from './sources/types'
 import { assertAppAvailable } from './app-lifecycle'
@@ -346,10 +347,11 @@ export async function resolveTableName(input: string): Promise<string> {
  *  longer names anybody. */
 async function principalLabel(id: string): Promise<string> {
   const [row] = await sql`
-    select coalesce(
-      (select coalesce(nullif(trim(full_name), ''), '@' || nullif(username, ''), nullif(email, ''))
-       from person where row_id = ${id}),
-      (select nullif(trim(label), '') from service_account where row_id = ${id})) as name`
+    select (select coalesce(nullif(trim(full_name), ''), '@' || nullif(username, ''), nullif(email, ''))
+      from person where row_id = ${id}) as name`
+  // #1224: a service account reads one way everywhere (serviceAccountName).
+  const [account] = row.name ? [] : await sql`select label, display_name from service_account where row_id = ${id}`
+  if (account) return serviceAccountName(account)
   return (row.name as string | null) ?? id
 }
 

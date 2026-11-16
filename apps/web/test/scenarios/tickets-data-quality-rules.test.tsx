@@ -142,7 +142,7 @@ describe('tickets-data-quality-rules: the rows a ticket covers', () => {
       expect(within(covered()).getByText('3 rows · 1 fixed')).toBeInTheDocument()
       const link = within(covered()).getByRole('link', { name: 'North Grocery' })
       expect(link.getAttribute('href')).toBe('/featherbase/admin/table/section/row/North%20Grocery')
-      expect(within(covered()).getByText('Fixed 07-Nov-2026')).toBeInTheDocument()
+      expect(within(covered()).getByText('07-Nov-2026')).toBeInTheDocument()
     })
     await step('when Anjali opens the ticket, "North Grocery" is plain text', async () => {
       await openCovered(x, 'Anjali')

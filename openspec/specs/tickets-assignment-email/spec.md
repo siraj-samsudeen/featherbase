@@ -75,7 +75,7 @@ Then the email to Verifier includes the description
 ```
 
 ### Requirement: Support assigns from the ticket's header, after confirming
-On the ticket screen, Tickets SHALL show support "Assigned to" in the ticket's header as a picker listing Unassigned and the people tickets can be assigned to. Picking SHALL save nothing: a confirm row SHALL ask "Assign to <person> and email them?", "Assign to yourself?" for the person picking, or "Remove the assignee?" for Unassigned, with Assign and Cancel. Cancel SHALL restore the current assignee. Assign SHALL save through the ticket's edit, so the mail rules above apply.
+Support SHALL assign in the ticket's header, from a picker of Unassigned and the people tickets can be assigned to. Picking SHALL save nothing: a confirm row SHALL ask "Assign to <person> and email them?" or "Assign to yourself?" with Assign and Cancel, or "Remove the assignee?" with Remove and Cancel. Cancel SHALL restore the current assignee; Assign and Remove SHALL save through the ticket's edit, so the mail rules above apply.
 
 #### Scenario: Picking a person asks before anything is saved
 
@@ -96,6 +96,15 @@ When support picks Colleague as the assignee on the ticket screen
 And support cancels the assignment
 Then the ticket screen shows the ticket as Unassigned
 And nobody is emailed about the ticket
+```
+
+#### Scenario: Removing the assignee asks with Remove
+
+```gherkin
+Given Anjali has raised a ticket that support has assigned to Colleague
+When support picks Unassigned on the ticket screen
+Then the ticket screen asks "Remove the assignee?" with Remove and Cancel
+And when support removes the assignee, the ticket screen shows the ticket as Unassigned
 ```
 
 ### Requirement: There is one way to assign, and only support has it

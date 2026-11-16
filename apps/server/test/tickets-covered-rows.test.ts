@@ -113,14 +113,13 @@ describe('Tickets declares Data Quality Row as a base Table (#1230)', () => {
     expect(manifest.baseTables).toEqual({ read: { 'Data Quality Row': ['ticket', 'affected_table', 'affected_row', 'fixed_on', 'note'] } })
   })
 
-  test("Tickets upgrades from production's 0.2.9 with no Table and no grant added", async ({ admin }) => {
+  test("Tickets upgrades from production's 0.2.9 to the version shipped now with no Table and no grant added", async ({ admin }) => {
     const manifest = JSON.parse(await readFile(resolve(TICKETS_DIRECTORY, 'featherbase.json'), 'utf8'))
-    // #1227's 0.2.11 (no Table change) follows covered_rows: upgrade from 0.2.9
-    // across this step and every later one, to the version shipped now.
+    // From production's 0.2.9 across this step and any later one (#1233's), to the version shipped now.
     const step = manifest.migrations.find((m: any) => m.id === 'covered_rows')
-    expect(step).toMatchObject({ id: 'covered_rows', toVersion: '0.2.10', operations: [] })
+    expect(step).toMatchObject({ fromVersion: '0.2.9', toVersion: '0.2.10', operations: [] })
     const later = manifest.migrations.slice(manifest.migrations.indexOf(step))
-    expect(later.slice(1).every((m: any) => m.operations.length === 0)).toBe(true)
+    expect(later.every((m: any) => m.operations.length === 0)).toBe(true)
     const prior = await mkdtemp(resolve('test/.upgrade-tickets-1230-'))
     try {
       await cp(TICKETS_DIRECTORY, prior, { recursive: true, filter: source => !source.includes('node_modules') })

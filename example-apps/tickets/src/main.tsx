@@ -18,11 +18,20 @@ import {
   type RecordData,
 } from './api'
 import './style.css'
-import { configuredTypes, connectionNames, kindLabel, kinds, learnNames, learnTypes, short, stateLabel } from './ticket-words'
-import { StatePill, assignee, isDone, tone } from './ticket-state'
+import { configuredTypes, connectionNames, kindLabel, kinds, learnNames, learnTypes, person, short, stateLabel } from './ticket-words'
+import { StatePill, isDone, tone } from './ticket-state'
 import { CreateTicket } from './CreateTicket'
 import { CaseFile, SETTINGS_HREF } from './CaseFile'
 
+/** #1233: a sidebar count; none reads quieter than some. */
+const Count = ({ n }: { n: number }) => <span className={n ? 'count' : 'count zero'}>{n}</span>
+/** #1233: what an empty view says, to the person it belongs to. "Assigned to me" lists open work only
+ *  (its count and its default filter agree), so its empty state speaks of what is still to do. */
+const EMPTY: Record<string, [string, string]> = {
+  all: ['No tickets here yet', 'Create a request when you need a hand.'],
+  mine: ["You haven't raised a ticket yet", 'Create a request when you need a hand.'],
+  assigned: ['Nothing assigned to you right now', 'Tickets assigned to you show here until they are done.'],
+}
 const BUILT_IN_STATES = ['New', 'Needs verification', 'Awaiting approval', 'Approved', 'Rejected', 'Policy review', 'In progress', 'Resolved']
 function App() {
   const [session, setSession] = useState<Session | null>(null),
@@ -42,6 +51,8 @@ function App() {
     [create, setCreate] = useState(false),
     [notice, setNotice] = useState('')
   const [reload, setReload] = useState(0)
+  // #1233: at phone width the list and a ticket show one at a time; an emailed link opens the ticket.
+  const [phone, setPhone] = useState<'list' | 'ticket'>(() => (new URLSearchParams(window.location.search).get('ticket') ? 'ticket' : 'list'))
   const queueSequence = useRef(0),
     detailSequence = useRef(0)
   const userId = session
@@ -150,7 +161,7 @@ function App() {
         row_id: detail.ticket.row_id,
         updated_at: detail.ticket.updated_at,
       })
-      setNotice('Saved. The queue and case are refreshed from the server.')
+      setNotice('Saved.')
       setReload((n) => n + 1)
       return true
     } catch (e) {
@@ -244,9 +255,7 @@ function App() {
               onClick={() => setView(key)}
             >
               <span>{name}</span>
-              <span className="count">
-                {everything.filter((ticket) => inView(ticket, key)).length}
-              </span>
+              <Count n={everything.filter((ticket) => inView(ticket, key)).length} />
             </button>
           ))}
           {typeKeys.length > 0 && (
@@ -263,7 +272,7 @@ function App() {
               onClick={() => setKind((current) => (current === key ? '' : key))}
             >
               <span>{kindLabel(key)}</span>
-              <span className="count">{typeCounts.get(key) ?? 0}</span>
+              <Count n={typeCounts.get(key) ?? 0} />
             </button>
           ))}
           {session && (
@@ -294,8 +303,10 @@ function App() {
       <main className="tickets-main">
         <div className="toolbar">
           <h1>
-            {viewName}
-            {kind && <span className="toolbar-type"> · {kindLabel(kind)}</span>}
+            <span className="toolbar-name">
+              {viewName}
+              {kind && <span className="toolbar-type"> · {kindLabel(kind)}</span>}
+            </span>
             <span className="count">{visible.length}</span>
           </h1>
           <input
@@ -342,7 +353,7 @@ function App() {
             {notice}
           </p>
         )}
-        <section className="split">
+        <section className={`split phone-${phone}`}>
           <div
             className="ticket-list"
             aria-busy={loading}
@@ -355,42 +366,38 @@ function App() {
             )}
             {!loading && !visible.length && (
               <div className="empty">
-                <h3>
-                  {search || kind || state
-                    ? 'No matching tickets'
-                    : 'No tickets here yet'}
-                </h3>
-                <p>
-                  {search || kind || state
-                    ? 'Try another search, state or type.'
-                    : 'Create a request when you need a hand.'}
-                </p>
+                {/* #1233: an empty view speaks to whoever is looking at it. */}
+                <h3>{search || kind || state ? 'No matching tickets' : EMPTY[view]?.[0] ?? EMPTY.all[0]}</h3>
+                <p>{search || kind || state ? 'Try another search, state or type.' : EMPTY[view]?.[1] ?? EMPTY.all[1]}</p>
               </div>
             )}
             {visible.map((ticket) => (
               <button
                 key={ticket.row_id}
-                className={`ticket ${selected === ticket.row_id ? 'selected' : ''}`}
+                className={`ticket${selected === ticket.row_id ? ' selected' : ''}${isDone(ticket) ? ' done' : ''}`}
                 aria-pressed={selected === ticket.row_id}
                 onClick={() => {
                   if (!busy) {
                     setSelected(ticket.row_id)
+                    setPhone('ticket')
                     setNotice('')
                   }
                 }}
               >
+                {/* #1233 (UX spec 1): the summary leads; ID · type · assignee follow; the state at the right. */}
                 <span className="ticket-top">
-                  <span className="ticket-id">
-                    {short(ticket.row_id)} · {kindLabel(ticket.kind)}
-                  </span>
+                  <span className="ticket-title" title={ticket.title}>{ticket.title}</span>
                   <StatePill ticket={ticket} />
                 </span>
-                <span className="ticket-title">{ticket.title}</span>
-                <span className="ticket-meta">{assignee(ticket)}</span>
+                <span className="ticket-meta">
+                  {[short(ticket.row_id), kindLabel(ticket.kind), ticket.assigned_to ? person(ticket.assigned_to) : 'Unassigned']
+                    .map((part, i) => <span key={i}>{i > 0 && ' · '}<span className={i === 2 && !ticket.assigned_to ? 'meta-part unassigned' : 'meta-part'}>{part}</span></span>)}
+                </span>
               </button>
             ))}
           </div>
           <article className="detail" aria-busy={detailLoading || busy}>
+            <button type="button" className="link-button back-to-list" onClick={() => setPhone('list')}>← All tickets</button>
             {detailLoading && !detail ? (
               <div className="empty" role="status">
                 Loading ticket…
@@ -405,8 +412,7 @@ function App() {
               />
             ) : (
               <div className="empty detail-empty">
-                <p>Select a ticket to see it here.</p>
-                {newTicket}
+                <p>Select a ticket</p>
               </div>
             )}
           </article>

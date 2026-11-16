@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { PersonIdentifiers } from '../components/PersonIdentifiers'
+import { RowMenu } from '../components/RowMenu'
 import { ChangePasswordModal } from '../components/ChangePasswordModal'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser } from '../lib/api'
@@ -67,11 +68,17 @@ export function SignInMethods() {
   // #72: changing one's own password. #489 moved it here from the Account
   // menu, which holds only the name, Sign-in methods and Log out.
   const [changingPassword, setChangingPassword] = useState(false)
+  // #1235 item 9: removing a way in is destructive, so it asks first, by name.
+  const removeAfterAsking = (what: string, path: string) => {
+    if (window.confirm(`Remove ${what} as a way to sign in?`)) remove.mutate(path)
+  }
+  const locked = Boolean(data?.test_mode) || remove.isPending
 
   return (
     <div className="space-y-4" data-testid="sign-in-methods">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-lg font-semibold text-ink">{t('Sign-in methods')}</h1>
+      {/* UI standard: 24px from the page header to the first content. */}
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-2">
+        <h1 className="text-2xl font-semibold text-ink">{t('Sign-in methods')}</h1>
         <Button onClick={() => setChangingPassword(true)} data-testid="account-change-password">
           {t('Change password')}
         </Button>
@@ -91,9 +98,10 @@ export function SignInMethods() {
               <p className="text-sm font-medium text-ink">Password</p>
               <p className="text-sm text-ink-muted">Your Featherbase username and password</p>
             </div>
-            <Button disabled={data.test_mode || remove.isPending} onClick={() => remove.mutate('/api/me/password')}>
-              Remove
-            </Button>
+            <RowMenu
+              name="Password"
+              items={[{ label: 'Remove', tone: 'negative', disabled: locked, onSelect: () => removeAfterAsking('Password', '/api/me/password') }]}
+            />
           </div>
         )}
         {data?.identities.map((i) => (
@@ -107,12 +115,18 @@ export function SignInMethods() {
                 {[i.sign_in_name, i.email, i.display_name].filter(Boolean).join(' · ') || '—'} · last used {when(i.last_used_at)}
               </p>
             </div>
-            <Button
-              disabled={data.test_mode || remove.isPending}
-              onClick={() => remove.mutate(`/api/me/identities/${encodeURIComponent(i.id)}`)}
-            >
-              Remove
-            </Button>
+            <RowMenu
+              name={labelOf(i.method)}
+              items={[{
+                label: 'Remove',
+                tone: 'negative',
+                disabled: locked,
+                onSelect: () => removeAfterAsking(
+                  [labelOf(i.method), i.sign_in_name ?? i.email].filter(Boolean).join(' '),
+                  `/api/me/identities/${encodeURIComponent(i.id)}`,
+                ),
+              }]}
+            />
           </div>
         ))}
       </Card>
@@ -123,7 +137,7 @@ export function SignInMethods() {
       )}
       {google && !hasGoogle && !data?.test_mode && (
         // A full-page navigation: the server's OAuth redirects drive the browser.
-        <a href="/api/oauth/google/link" className={buttonClasses({ variant: 'primary' })} data-testid="link-google">
+        <a href="/api/oauth/google/link" className={buttonClasses()} data-testid="link-google">
           Link a Google account
         </a>
       )}
