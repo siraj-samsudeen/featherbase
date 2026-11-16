@@ -8,7 +8,21 @@ import { ActorName } from '../lib/people'
 // the same answer, built from the same explanation.
 
 export interface TableReach { table: string; own_rows: boolean; roles: string[]; label?: string; module?: string; app?: string | null }
-export interface RoleRow { role: string; app: string | null; through: string | null; everyone?: boolean; given_by: string | null; given_by_name?: string | null; given_at: string | null }
+export interface RoleRow { role: string; app: string | null; through: string | null; everyone?: boolean; given_by: string | null; given_by_name?: string | null; given_at: string | null
+  /** A built-in role every account holds (All): never given, never listed by the server. */
+  implicit?: boolean }
+
+/** The roles to explain: the person's own, plus any built-in role (All) that
+ *  reaches a table, so every table reached belongs to a role on the page
+ *  (Codex adversarial round 4). */
+export function withImplicitRoles(roles: RoleRow[], tables: Reached[]): RoleRow[] {
+  const listed = new Set(roles.map((r) => r.role))
+  const implicit = [...new Set(tables.flatMap((t) => [...t.readRoles, ...t.changeRoles]))].filter((role) => !listed.has(role)).sort()
+  return [...roles, ...implicit.map((role) => ({ role, app: null, through: null, implicit: true, given_by: null, given_at: null }))]
+}
+
+/** A role's name as a reader says it. */
+export const roleTitle = (role: string) => (role === 'All' ? 'Every account' : role)
 
 export type AccessLayout = 'summary' | 'roles' | 'areas'
 export const ACCESS_LAYOUTS: { value: AccessLayout; label: string }[] = [
@@ -76,6 +90,14 @@ export function byArea(tables: Reached[]): [string, Reached[]][] {
 
 const roleName = (role: string) => (role === 'All' ? 'every account' : role)
 
+/** "8 tables · change all", "10 tables · change 8", "1 table · read only". */
+function countLine(ts: Reached[]): string {
+  const changes = ts.filter((t) => t.change).length
+  const how = changes === ts.length ? 'change all' : changes ? `change ${changes} of ${ts.length}` : 'read only'
+  return `${plural(ts.length, 'table')} · ${how}`
+}
+const rolesOfTable = (t: Reached) => [...new Set([...t.readRoles, ...t.changeRoles])].sort()
+
 /** "Merchandising, Organisation and 2 more areas". */
 function areaList(areas: string[]): string {
   if (areas.length <= 3) return areas.length > 1 ? `${areas.slice(0, -1).join(', ')} and ${areas.at(-1)}` : (areas[0] ?? '')
@@ -84,11 +106,16 @@ function areaList(areas: string[]): string {
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 const dayOf = (iso: string) => fmtDate(new Date(Date.parse(iso) + 330 * 60_000).toISOString().slice(0, 10))
 
-export function GivenBy({ r }: { r: RoleRow }) {
-  if (r.app) return <span className="text-ink-muted">{` — from app ${r.app}, through ${r.through}`}</span>
-  if (r.everyone) return <span className="text-ink-muted"> — everyone who signs in holds it (System Settings)</span>
+/** Where a role comes from. `lead` starts the line ("Given by …"); otherwise
+ *  it follows the role's name (" — given by …"). */
+export function GivenBy({ r, lead }: { r: RoleRow; lead?: boolean }) {
+  const say = (text: string) => (lead ? text.charAt(0).toUpperCase() + text.slice(1) : ` — ${text}`)
+  if (r.app) return <span className="text-ink-muted">{say(`from app ${r.app}, through ${r.through}`)}</span>
+  if (r.implicit) return <span className="text-ink-muted">{say('every account holds it')}</span>
+  // The words are the permissions-and-roles spec's (#923).
+  if (r.everyone) return <span className="text-ink-muted">{say('everyone who signs in holds it (System Settings)')}</span>
   if (!r.given_by || !r.given_at) return null
-  return <span className="text-ink-muted">{' — given by '}<ActorName id={r.given_by} name={r.given_by_name} />{`, ${dayOf(r.given_at)}`}</span>
+  return <span className="text-ink-muted">{say('given by ')}<ActorName id={r.given_by} name={r.given_by_name} />{`, ${dayOf(r.given_at)}`}</span>
 }
 
 function Chips({ t }: { t: Reached }) {
@@ -113,22 +140,31 @@ function Group({ title, count, testid, children, open }: { title: ReactNode; cou
   )
 }
 
+/** The tables of one group. Which role gives them is said once for the
+ *  group when it is the same for all, and on a row only where it differs. */
 function TableRows({ tables, showRoles }: { tables: Reached[]; showRoles: boolean }) {
+  const shared = tables.length ? rolesOfTable(tables[0]!).join('\u0000') : ''
+  const same = tables.every((t) => rolesOfTable(t).join('\u0000') === shared)
   return (
+    <>
+    {showRoles && same && tables.length > 0 && (
+      <p className="pb-1 text-xs text-ink-muted" data-testid="access-group-roles">All through {rolesOfTable(tables[0]!).map(roleName).join(', ')}</p>
+    )}
     <ul className="divide-y divide-border text-sm">
       {tables.map((t) => {
-        const roles = [...new Set([...t.readRoles, ...t.changeRoles])].map(roleName)
+        const roles = rolesOfTable(t).map(roleName)
         return (
           <li key={t.table} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-1.5" data-testid="access-table-row">
             <span className="min-w-0">
               <span className="text-ink">{t.label}</span>
-              {showRoles && <span className="block text-xs text-ink-muted">through {roles.join(', ')}</span>}
+              {showRoles && !same && <span className="block text-xs text-ink-muted">through {roles.join(', ')}</span>}
             </span>
             <Chips t={t} />
           </li>
         )
       })}
     </ul>
+    </>
   )
 }
 
@@ -195,7 +231,7 @@ export function SummaryLayout({ roles, tables, everyTable, limits, shares, place
           <li key={`${r.app ?? ''}/${r.role}/${r.through ?? ''}`} data-testid="access-summary-line">
             <span className="text-ink">{roleSentence(reach, you)}.</span>
             <span className="block text-xs text-ink-muted" data-testid="access-role">
-              Through <span className="font-medium text-ink">{r.role}</span>
+              Through <span className="font-medium text-ink">{roleTitle(r.role)}</span>
               <GivenBy r={r} />
             </span>
           </li>
@@ -244,13 +280,13 @@ export function RolesLayout({ roles, tables, everyTable, self }: { roles: RoleRo
         const reach = tablesOf(r.role, tables)
         return (
           <Card key={`${r.app ?? ''}/${r.role}/${r.through ?? ''}`} className="p-4" data-testid="access-role-card">
-            <h2 className="text-base font-semibold text-ink">{r.role}</h2>
-            <p className="text-sm"><GivenBy r={r} /></p>
+            <h2 className="text-base font-semibold text-ink">{roleTitle(r.role)}</h2>
+            <p className="text-sm"><GivenBy r={r} lead /></p>
             <p className="mt-1 text-sm text-ink">{reach.length ? `${roleSentence(reach, you)}.` : 'Reaches no tables of its own.'}</p>
             {reach.length > 0 && (
               <div className="mt-2 space-y-2">
                 {byArea(reach).map(([area, ts]) => (
-                  <Group key={area} title={area} count={plural(ts.length, 'table')} testid="access-area-group">
+                  <Group key={area} title={area} count={countLine(ts)} testid="access-area-group">
                     <TableRows tables={ts} showRoles={false} />
                   </Group>
                 ))}
@@ -269,10 +305,8 @@ function AreaGroups({ tables, showRoles }: { tables: Reached[]; showRoles: boole
   return (
     <div className="space-y-2">
       {byArea(tables).map(([area, ts]) => {
-        const changes = ts.filter((t) => t.change).length
         return (
-          <Group key={area} title={area} testid="access-area-group"
-            count={changes === ts.length ? `${ts.length} · change all` : changes ? `${ts.length} · change ${changes}` : `${ts.length} · read only`}>
+          <Group key={area} title={area} testid="access-area-group" count={countLine(ts)}>
             <TableRows tables={ts} showRoles={showRoles} />
           </Group>
         )

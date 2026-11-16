@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import { ActorName, ShownName } from '../lib/people'
 import { Card, Notice, fmtDate, fmtInstantIST } from '@featherbase/shop-floor'
-import { AreasLayout, LayoutToggle, RolesLayout, SummaryLayout, reachedTables, useAccessLayout, type RoleRow, type TableReach } from './AccessLayouts'
+import { AreasLayout, LayoutToggle, RolesLayout, SummaryLayout, reachedTables, useAccessLayout, withImplicitRoles, type RoleRow, type TableReach } from './AccessLayouts'
 
 // #628: "What can this person see, and why". The platform's own reasons, from
 // GET /api/access_explanation/:person: roles, the Tables they reach, the Data
@@ -72,6 +72,7 @@ export function AccessExplanation({ person }: { person: string }) {
   })
 
   const tables = data ? reachedTables(data.read, data.change) : []
+  const roles = data ? withImplicitRoles(data.roles, tables) : []
   const refused = error instanceof ApiError && error.status === 403
   const missing = error instanceof ApiError && error.status === 404
   return (
@@ -96,13 +97,13 @@ export function AccessExplanation({ person }: { person: string }) {
             <p className="text-sm text-ink-muted" data-testid="access-roles-empty">No roles of {self ? 'your' : 'their'} own: only what every account can see{data.roles.length ? ', and the roles below' : ''}.</p>
           )}
           <div data-testid="access-tables">
-            {layout === 'summary' && <SummaryLayout roles={data.roles} tables={tables} everyTable={data.every_table}
+            {layout === 'summary' && <SummaryLayout roles={roles} tables={tables} everyTable={data.every_table}
               limits={data.limits.length} shares={data.shares.length} self={self}
               places={data.scope ? { title: data.scope.title, count: data.scope.places.length } : null} />}
-            {layout === 'roles' && <RolesLayout roles={data.roles} tables={tables} everyTable={data.every_table} self={self} />}
-            {layout === 'areas' && <AreasLayout tables={tables} everyTable={data.every_table} roles={data.roles.length} />}
+            {layout === 'roles' && <RolesLayout roles={roles} tables={tables} everyTable={data.every_table} self={self} />}
+            {layout === 'areas' && <AreasLayout tables={tables} everyTable={data.every_table} roles={roles.length} />}
           </div>
-          <Section title="Limited to" testid="access-limits" empty={data.limits.length ? null : 'No Data Scope rows: no limit to particular rows.'}>
+          <Section title="Limited to" testid="access-limits" empty={data.limits.length ? null : 'No limits to particular rows.'}>
             <ul className="space-y-1 text-sm">
               {data.limits.map((l) => (
                 <li key={`${l.table}/${l.value}`} data-testid="access-limit">

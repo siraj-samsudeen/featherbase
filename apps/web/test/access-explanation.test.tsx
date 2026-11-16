@@ -30,8 +30,7 @@ test('#628 a System Manager sees a person\'s roles, Tables, limits and shares, e
 
   await renderApp(pageOf(person.user!), admin)
   await waitFor(() => expect(screen.getByTestId('access-explanation-heading')).toHaveTextContent('What Ax Person can see'), WAIT)
-  const role = await screen.findByTestId('access-role', {}, WAIT)
-  expect(role).toHaveTextContent(/Ax Site Reader — given by Administrator, /)
+  await waitFor(() => expect(screen.getAllByTestId('access-role').some((r) => /Ax Site Reader — given by Administrator, /.test(r.textContent ?? ''))).toBe(true), WAIT)
   // #1224: the summary says it in a sentence; the tables are one click away, by area.
   expect(screen.getByTestId('access-summary')).toHaveTextContent('They can read Ax Site.')
   await userEvent.click(screen.getByTestId('access-show-all'))
@@ -164,7 +163,7 @@ test('#1224 the page shows as a summary, by role or by area, and remembers the c
   await userEvent.click(screen.getByRole('button', { name: 'By area' }))
   const areas = within(await screen.findByTestId('access-by-area')).getAllByTestId('access-area-group')
   expect(areas.map((a) => a.querySelector('summary')?.textContent)).toEqual([
-    expect.stringMatching(/^General\d+ · read only/), expect.stringMatching(/^Merchandising1 · change all/),
+    expect.stringMatching(/^General\d+ tables? · read only/), expect.stringMatching(/^Merchandising1 table · change all/),
   ])
   localStorage.removeItem('featherbase.access-layout')
 })
@@ -201,5 +200,23 @@ test('#1224 a role card says only what that role gives; own-rows reach is per op
   expect(row).toHaveTextContent('Read')
   expect(row).not.toHaveTextContent('Change')
   expect(row).not.toHaveTextContent('Read own rows')
+  localStorage.removeItem('featherbase.access-layout')
+})
+
+test('#1224 a table reached only through what every account holds is explained in every layout', async ({ admin, createUser }) => {
+  await admin.post('/api/table_def', { name: 'Ax Notice', module: 'Notices', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await grantRole(admin, { table: 'Ax Notice', role: 'All', can_read: true })
+  const person = await createUser({ roles: [] })
+  localStorage.removeItem('featherbase.access-layout')
+
+  await renderApp(pageOf(person.user!), admin)
+  const summary = await screen.findByTestId('access-summary', {}, WAIT)
+  expect(summary).toHaveTextContent('Through Every account — every account holds it')
+  await userEvent.click(screen.getByRole('button', { name: 'By role' }))
+  const card = (await screen.findAllByTestId('access-role-card')).find((c) => within(c).getByRole('heading').textContent === 'Every account')!
+  expect(card).toHaveTextContent('Every account holds it')
+  const notices = within(card).getAllByTestId('access-area-group').find((g) => g.querySelector('summary')?.textContent?.startsWith('Notices'))!
+  await userEvent.click(within(notices).getByText('Notices'))
+  expect(within(notices).getByTestId('access-table-row')).toHaveTextContent('Ax Notice')
   localStorage.removeItem('featherbase.access-layout')
 })
