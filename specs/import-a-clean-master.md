@@ -19,7 +19,7 @@ Taken one at a time with the owner. Only what the journey needs is decided; ever
 | 1 | Database access | Drizzle on Bun's built-in Postgres driver; `postgres.js` if that misbehaves on 18.6, checked at setup | Decided |
 | 2 | How a Table and its rows are stored | A plain Postgres table per Table, one real column per Column, readable names (`employees`, `date_of_joining`), in a schema apart from Featherbase's own tables. Featherbase's own columns start with an underscore (`_id`, `_created_at`). `_id` is a time-ordered unique id made by Postgres. Required and unique are real database rules on the key. Number is one exact decimal type | Decided |
 | 2a | How raw rows are stored | | Open |
-| 2b | How a Choice is stored | | Open |
+| 2b | How a Choice is stored | The row holds the word (`department = 'Sales'`). One shared table holds every list: Column, value, position, retired; a value appears once per Column. The import fills the list from the sheet's distinct values in alphabetical order; the form reads it; a save outside it is refused. A Column is proposed as a Choice only if it is text, is not the key, and its values repeat with at most 10 distinct ones; the person can overrule. Matching is exact; blank is allowed unless the Column is required | Decided |
 | 3 | Migrations for Featherbase's own tables | | Open |
 | 4 | Where the uploaded file is kept | | Open |
 | 5 | Reading the CSV and working out types | | Open |
