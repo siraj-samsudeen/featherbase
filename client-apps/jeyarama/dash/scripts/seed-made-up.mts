@@ -238,6 +238,8 @@ for (const staff of org.sectionPeople as { code: string | null; jobs: [string, s
 // #1217: a grant the company-wide manager gave one of Hema's team, which Hema sees but can't take away.
 const [usha] = await sql`select row_id from person where lower(email) = 'sections-buyerone@example.test'`
 await save('dash.report_access', { report: 'vendor_sales', person: String(usha.row_id) }).catch(() => {})
+// Hema reaches Sarees across the East's stores, so she can give the reports filtered by subcategory, but not the whole-stores one.
+await keep('Merchandise Assignment', 'MA-2020-1', { assignment_id: 'MA-2020-1', employee: '2020', responsibility: 'Category head', category: 'Sarees', operating_region: 'East', starts_on: '2026-01-01', source_key: 'Made-up' })
 
 // #1195: departments already set up, which the made-up Department Manager meets on Your department.
 for (const [department_id, store, name, manager, sections] of org.departments as [string, string, string, string, string[]][]) {

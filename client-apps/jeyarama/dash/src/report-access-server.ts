@@ -36,6 +36,8 @@ export interface AccessContext {
     waitingForAccess?(): Promise<readonly { person: string; name?: string | null; asked_at: string }[]>
   }
   reject?(message: string): never
+  /** What a person reaches today, by their jobs and roles (#1217: a Team Report Manager gives only reports they can open). Missing means nothing. */
+  reach?(person: string, roles: readonly string[]): Promise<Reach>
 }
 
 const PAGE = 500
@@ -100,7 +102,11 @@ async function scopeOf(ctx: AccessContext, on: string): Promise<Scope> {
   if (managesAccess(ctx)) return { kind: 'company' }
   if (!managesTeamAccess(ctx)) ctx.reject!(NOT_A_MANAGER)
   const team = await teamOf(ctx.baseTables!, ctx.user, on)
-  const holds = new Set((await reportsGivenTo(ctx.baseTables!, ctx.user, ctx.roles ?? [], on)).keys())
+  // What they can open themselves: given to them, and not shut by their own reach, as Dash offers it to them.
+  const reports = (await names(ctx)).reports
+  const reach = ctx.reach ? await ctx.reach(ctx.user, ctx.roles ?? []) : { any: false, wholeStore: false }
+  const holds = new Set([...(await reportsGivenTo(ctx.baseTables!, ctx.user, ctx.roles ?? [], on)).keys()]
+    .filter(key => reports.has(key) && closedBecause(reports.get(key), reach) === null))
   return { kind: 'team', team, holds }
 }
 const NOT_IN_TEAM = 'That person is not in your team'

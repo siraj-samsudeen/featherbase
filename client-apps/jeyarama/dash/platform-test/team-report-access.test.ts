@@ -85,6 +85,25 @@ describe('a Team Report Manager gives reports to their own team only', () => {
     expect(await reports(buyer)).toEqual([])
   })
 
+  // Codex adversarial round 1: given is not enough; they must be able to open it, as Dash offers it to them.
+  test('refuses a report given to them that their own reach can’t open, and gives one taking no filter', async ({ admin, createUser }) => {
+    const { head, buyer } = await setup(admin, createUser)
+    const job = await admin.get<{ updated_at: string }>('/api/table/Job%20Assignment/JA-H1')
+    await saveRow(admin, 'Job Assignment', { row_id: 'JA-H1', updated_at: job.updated_at, ends_on: '2026-02-01' })
+    await refused(give(head, { report: 'sales', person: buyer.user }), 'only reports you can open yourself')
+    await ok(give(head, { report: 'open', person: buyer.user }))
+    expect((await page(head)).reports.map(r => r.key)).toEqual(['open'])
+  })
+
+  test('refuses a whole-stores report when their reach is part of a store', async ({ admin, createUser }) => {
+    const { head, buyer, giver } = await setup(admin, createUser)
+    const job = await admin.get<{ updated_at: string }>('/api/table/Job%20Assignment/JA-H1')
+    await saveRow(admin, 'Job Assignment', { row_id: 'JA-H1', updated_at: job.updated_at, job: 'Team Leader', section: 'LKS-S1' })
+    await ok(give(giver, { report: 'store_target', person: head.user }))
+    await refused(give(head, { report: 'store_target', person: buyer.user }), 'only reports you can open yourself')
+    await ok(give(head, { report: 'sales', person: buyer.user }))
+  })
+
   test('refuses giving to themselves', async ({ admin, createUser }) => {
     const { head } = await setup(admin, createUser)
     await refused(await give(head, { report: 'store_target', person: head.user }), 'to yourself')

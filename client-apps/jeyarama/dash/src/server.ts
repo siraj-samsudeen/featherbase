@@ -283,12 +283,22 @@ async function openDive(ctx: ScopedContext, report: ReportRecord | null) {
 }
 
 /** Your sections and its approvals (#975), and giving reports (#1046). */
+/** What a person reaches today, for Report access: any store, and a whole store. Unreadable means nothing. */
+const reachFor = (context: AccessContext) => async (person: string, roles: readonly string[]) => {
+  try {
+    const { places } = await reachOf((context as unknown as ScopedContext).baseTables, person, istToday(), roles)
+    return { any: places.length > 0, wholeStore: places.some(place => !place.filters.subcategory) }
+  } catch { return { any: false, wholeStore: false } }
+}
+/** #1217: a Team Report Manager gives only reports they can open, so the access reads and actions know reach. */
+const withReach = (context: AccessContext): AccessContext => ({ ...context, reach: reachFor(context) })
+
 export const actions = {
   ...sectionActions,
   ...departmentActions,
   ...prefillActions,
-  give_report: (context: AccessContext) => giveReport(context),
-  remove_report_access: (context: AccessContext) => removeAccess(context),
+  give_report: (context: AccessContext) => giveReport(withReach(context)),
+  remove_report_access: (context: AccessContext) => removeAccess(withReach(context)),
   make_bundle: (context: AccessContext) => makeBundle(context),
   add_to_bundle: (context: AccessContext) => addToBundle(context),
   remove_from_bundle: (context: AccessContext) => removeFromBundle(context),
@@ -319,14 +329,9 @@ export const reads = {
   },
 
   /** The Report access page (#1046). Managers only. */
-  access_page: (context: ReadContext) => accessPage(context as AccessContext),
-  person_search: (context: ReadContext) => personSearch(context as AccessContext),
-  person_lookup: (context: ReadContext) => personLookup(context as AccessContext, istToday(), async (person, roles) => {
-    try {
-      const { places } = await reachOf((context as ScopedContext).baseTables, person, istToday(), roles)
-      return { any: places.length > 0, wholeStore: places.some(place => !place.filters.subcategory) }
-    } catch { return { any: false, wholeStore: false } }
-  }),
+  access_page: (context: ReadContext) => accessPage(withReach(context as AccessContext)),
+  person_search: (context: ReadContext) => personSearch(withReach(context as AccessContext)),
+  person_lookup: (context: ReadContext) => personLookup(withReach(context as AccessContext), istToday(), reachFor(context as AccessContext)),
 
   /** The reports this person may open, for the sidebar. */
   async reports(context: ReadContext) {
