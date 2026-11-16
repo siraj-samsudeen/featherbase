@@ -242,3 +242,14 @@ test('a View or a Settings Table answers too: matched actors named, the rest loo
   expect(await actorNamesOn(writer, 'Act Base View', [writer.user!, stranger.user!])).toEqual({ [writer.user!]: 'Base Writer', [stranger.user!]: null })
   expect(await actorNamesOn(admin, 'System Settings', [stranger.user!])).toEqual({ [stranger.user!]: 'Not An Actor' })
 })
+
+test('who archived a View is named to a reader of its rows, though they never touched a row', async ({ admin, createUser }) => {
+  await admin.post('/api/table_def', { name: 'Act Arch Base', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { name: 'Act Arch View', kind: 'view', view_of: 'Act Arch Base', view_filters: [['title', '=', 'x']] })
+  await admin.post('/api/save_row', { table: 'Act Arch Base', row: { title: 'x' } })
+  await grantRole(admin, { role: 'Act Arch Reader', table: 'Act Arch Base', can_read: true })
+  const archiver = await createUser({ roles: ['System Manager'], fullName: 'View Archiver' })
+  await archiver.post('/api/table_def/Act%20Arch%20View/archive', { note: 'old' })
+  const reader = await createUser({ roles: ['Act Arch Reader'] })
+  expect(await actorNamesOn(reader, 'Act Arch View', [archiver.user!])).toEqual({ [archiver.user!]: 'View Archiver' })
+})

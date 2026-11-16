@@ -102,8 +102,10 @@ export async function actorNamesOn(viewer: string, table: unknown, ids: unknown)
       for (const r of await sql`select distinct ${sql(column)} as id from ${relation}
         where ${scoped.where as ReturnType<typeof sql>} and ${sql(column)} = any(${wanted})`)
         acted.add(String(r.id))
-    const [archive] = await sql`select archived_by from table_def where name = ${scoped.meta.name} and archived_by = any(${wanted})`
-    if (archive) acted.add(String(archive.archived_by))
+    // A View is read through its base but archived on its own (Codex round 17):
+    // the requested name and its base both count.
+    for (const r of await sql`select archived_by from table_def where name in ${sql([...new Set([table, scoped.meta.name])])} and archived_by = any(${wanted})`)
+      acted.add(String(r.archived_by))
   }
   // Rows shared directly with the viewer are readable without the Table's
   // grant: each is opened as the viewer (getDoc: mandatory access, parent and
