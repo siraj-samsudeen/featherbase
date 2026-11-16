@@ -26,7 +26,7 @@ Taken one at a time with the owner. Only what the journey needs is decided; ever
 | 6 | The API for the journey | Plain resource addresses with a checked input and output on every route; the typed client and the API document are generated from them. Calls: send a file; get an upload's proposal; import an upload with the confirmed proposal; get a Table's definition; list a Table's rows (a page in key order, plus the total); get one row with the upload and sheet row it came from; update one row; download an upload's file. The proposal is not stored: it is worked out from the raw rows when asked. The import is one transaction and runs while the person waits. Every value travels as text: dates `2015-01-01`, numbers `"37.5"`, yes/no `"true"` / `"false"`; blank is empty. In the database they are typed (date, exact decimal, boolean). The typed client's automatic date conversion is switched off. A Table is named in a call by its `_id`. Every failure has one shape, a status and a readable message; no database text leaks. Not in this build: sign-in checks, filters and sort choices, a guard against two people editing one row | Decided |
 | 7 | The web side | Pages are rendered by the server as HTML, with forms and native controls. htmx updates part of a page without a reload. A small script is allowed for one named interaction HTML cannot do (the file drop zone). React is used only where a screen really requires it, decided and recorded each time. The API (decision 6) is built from the start, not deferred, and an MCP endpoint sits over it as a thin layer, because the owner works with Featherbase through Claude Code. The old `shop-floor` kit is not carried over: the owner judges it unpolished (scrolling bugs in the list, components and layouts that do not fit together) | Decided |
 | 7a | The look and layout of the generic screens | `design/list-and-form.html` is the design. It is a working HTML mock-up with made-up rows, chosen by the owner, and the build uses its markup and styles as they are, replacing the sample rows with real data. No separate specification of tokens or components is written: the owner found that premature specification is what spoiled the old kit. The mock-up is improved by editing the HTML itself. It covers the list and one form for new, edit and delete. How a record opens (side panel or full page) and the row height (comfortable or compact) are each person's preference, switchable at any time; both layouts are kept. With no sign-in in this build the preference is remembered in the browser; it becomes a per-person setting when people sign in. Search, sort and filter come later | Decided |
-| 8 | Tests and coverage | | Open |
+| 8 | Tests and coverage | Agreed in principle. Two kinds of test and no others. **Journeys**: what the owner would show in a demo, as numbered steps in his words; each runs in a real browser with a real file on a fresh install (empty database, migrate, start); few, and only the owner adds one; every run records a video. **Behaviours**: one rule each, in one everyday sentence, tested at the boundary. The owner approves sentences, not tests: a check enforces one test per sentence and no test without one. Examples live in this spec as tables and the tests run them from here, so an expectation cannot change without this file changing. MECE is measured by a tool that breaks the code on purpose: every break must be caught by some test (exhaustive), and every test must catch a break no other test catches (exclusive). Done means a recorded journey passing on a fresh install, not an agent's word; a second agent audits occasionally, not on every change. Still to settle: the tool and its speed on Bun, and where each check runs | Agreed in principle |
 | 9 | Repo layout and tooling | | Open |
 
 The owner's October stack evaluation (`featherbase-stack-evaluation`, phase 4d) built an import feature on
@@ -70,70 +70,89 @@ run through these steps in a real browser, with the sample file.
    shows Billing.
 7. **The original is safe.** She downloads the uploaded file again; it is exactly what she dropped.
 
-## The checks behind the journey
+## A second journey: Claude Code does the same
 
-Each scenario below is one step of the journey, stated exactly so it can be tested.
+1. An agent connects to Featherbase through MCP.
+2. It uploads `employees.csv` and reads the proposal.
+3. It confirms, and reads back the 24 rows.
+4. It moves Asha from Sales to Billing.
 
-### The upload is kept
-- Given the sample file
-- When a person uploads it
-- Then the same bytes can be downloaded again
-- And the upload records the file name, its size and when it was uploaded
+## Behaviours
 
-### The raw rows are kept
-- When the sample file is uploaded
-- Then 24 raw rows are stored, numbered 2 to 25 as in the sheet
-- And every cell is stored as the text that was in the file
+One sentence each, in everyday words. Each sentence has exactly one test, and there is no test without a
+sentence. Where a sentence has a table, the test runs the table's rows as written here.
 
-### A Table is proposed from the file
-- When the sample file is uploaded
-- Then a Table named "Employees" is proposed with seven Columns in the file's order
-- And the proposed types are Text, Text, Choice, Date, Date, Yes/No, Number
-- And Department is proposed as a Choice of Accounts, Billing, Sales, Stores, Tailoring
-- And Employee Code is proposed as the key, being the first Column that is never blank and never repeats
-- And nothing has been created yet
+**Uploading**
 
-### The person corrects the proposal before importing
-- Given the proposal for the sample file
-- When the person renames the Table, changes Department to Text and confirms
-- Then the Table is created as they set it
+1. An uploaded file is kept exactly: downloading it gives back the same file.
+2. An upload remembers its file name, its size and when it arrived.
+3. Every row of the file is kept as it was, with its row number from the sheet.
+4. A file over 50 MB is refused.
 
-### The rows come in with the right types
-- When the person confirms the proposal for the sample file
-- Then the Table holds 24 rows
-- And E0007's Date of Joining is 1 January 2015, its Date of Leaving is empty and Active is yes
-- And E0021's Weekly Hours is 37.5
+**Proposing a Table**
 
-### A row remembers where it came from
-- Given the sample file has been imported
-- Then each row names the upload and the sheet row it came from
+5. The Table's name comes from the file name: `employees.csv` gives "Employees".
+6. Each header becomes a Column, in the file's order.
+7. A Column's type is worked out from its cells.
 
-### People browse the rows
-- Given the sample file has been imported
-- Then the list shows 24 rows in key order with all seven Columns
-- And opening E0007 shows its values in a form
+   | Cells in the Column | Type |
+   |---|---|
+   | `true`, `false`, `true` | Yes/No |
+   | `48`, `37.5`, `-3` | Number |
+   | `1`, `0`, `1` | Number |
+   | `2015-01-01`, `2024-12-31` | Date |
+   | `2015-01-01`, `2021-02-31` | Text |
+   | `48`, `forty` | Text |
+   | `Asha`, `Bala`, `Chitra` | Text |
+   | `Sales`, `Billing`, `Sales`, `Billing` | Choice |
 
-### People edit a row
-- Given the sample file has been imported
-- When a person changes E0007's Department to Billing
-- Then the row shows Billing
-- And changing it to a value outside the Choice is refused
+8. A blank cell doesn't count when working out the type. A Column with only blanks is Text.
+9. Spaces at the ends of a cell are ignored.
+10. The key is proposed as the first Column that is never blank and never repeats.
+11. A text Column whose values mostly repeat is proposed as a Choice, with its values in alphabetical order.
+    "Mostly" means at least 9 rows in 10 share their value with another row. The key is never a Choice.
+12. Nothing is created until the person confirms.
 
-### People add a row
-- Given the sample file has been imported
-- When a person adds an employee with code E0200 and a name
-- Then the list shows 25 rows, with E0200 in key order
-- And adding a second employee with code E0200 is refused
+**Confirming**
 
-### People delete a row
-- Given the sample file has been imported
-- When a person deletes E0007 and confirms
-- Then the list shows 23 rows and E0007 is gone
+13. Before confirming, the person can change the Table's name, any Column's type and the key.
+14. Confirming creates the Table and brings in every row.
+15. Each value is stored as its Column's type.
 
-### A second Table with the same name is refused
-- Given the sample file has been imported as "Employees"
-- When the same file is uploaded and confirmed as "Employees" again
-- Then it is refused, and the first Table is unchanged
+    | Type | In the file | Stored as |
+    |---|---|---|
+    | Number | `37.5` | 37.5, exactly |
+    | Date | `2015-01-01` | 1 January 2015 |
+    | Yes/No | `true` | yes |
+    | Choice | `Sales` | Sales |
+    | any | blank | empty |
+
+16. Each row remembers the upload and the sheet row it came from.
+17. A Table name already in use is refused, and nothing is created.
+
+**Browsing**
+
+18. The list shows the rows in key order, 50 at a time, and says how many there are in all.
+19. Opening a row shows all its values and where it came from.
+20. Dates are shown as 01-Jan-2015.
+
+**Changing**
+
+21. A person can change a row's values and save them.
+22. A value that isn't in a Choice's list is refused.
+23. A value that doesn't fit its Column's type is refused, and the message names the Column.
+24. The key can't be blank, or the same as another row's.
+25. A person can add a row. It says it was added by hand.
+26. A person can delete a row, after confirming.
+
+**Preferences**
+
+27. A person chooses how a record opens, side panel or full page, and the choice is remembered.
+28. A person chooses the row height, comfortable or compact, and the choice is remembered.
+
+**Refusals**
+
+29. Every refusal says what was wrong in words a person can act on.
 
 ## Not in this build
 
