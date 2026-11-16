@@ -194,7 +194,6 @@ export function ReachTable({ tables, through }: { tables: Reached[]; through: bo
         const shared = ts.filter(onlyEveryAccount)
         const own = ts.filter((t) => !onlyEveryAccount(t))
         const open = opened.has(area)
-        const changes = shared.filter((t) => t.change).length
         return (
           <tbody key={area} data-testid="access-area-group">
             <tr className="bg-subtle">
@@ -206,8 +205,7 @@ export function ReachTable({ tables, through }: { tables: Reached[]; through: bo
             {shared.length > 0 && (
               <tr className="border-t border-border" data-testid="access-every-account-line">
                 <td colSpan={cols} className="py-1.5 text-ink-muted">
-                  Every account can read {plural(shared.length, 'table')} here
-                  {changes === shared.length ? ' and change them' : changes ? ` and change ${changes} of them` : ''}{' — '}
+                  Every account can {readChangePhrase(shared, ' here')}{' — '}
                   <button type="button" className="font-medium text-action hover:underline" aria-expanded={open}
                     onClick={() => setOpened((o) => { const n = new Set(o); if (open) n.delete(area); else n.add(area); return n })}>
                     {open ? 'Hide' : 'Show'}
@@ -223,12 +221,23 @@ export function ReachTable({ tables, through }: { tables: Reached[]; through: bo
   )
 }
 
-function doesWhat(tables: Reached[], you: string): string {
+/** What a set of tables allows, counting reading and changing each on its
+ *  own (Codex round 8: a change-only grant is not a read): "read 10 tables
+ *  and change 8 of them", "read and change 4 tables", "change 5 tables",
+ *  "read 3 tables and change 2" (when some changeable ones are not readable). */
+export function readChangePhrase(tables: Pick<Reached, 'read' | 'change'>[], where = ''): string {
+  const reads = tables.filter((t) => t.read).length
   const changes = tables.filter((t) => t.change).length
-  const readsOnly = tables.filter((t) => t.read && !t.change).length
-  if (changes && readsOnly) return `${you} can read ${plural(changes + readsOnly, 'table')} and change ${changes} of them`
-  if (changes) return `${you} can read and change ${plural(changes, 'table')}`
-  return `${you} can read ${plural(readsOnly, 'table')}`
+  const both = tables.filter((t) => t.read && t.change).length
+  if (!changes) return `read ${plural(reads, 'table')}${where}`
+  if (!reads) return `change ${plural(changes, 'table')}${where}`
+  if (reads === changes && both === reads) return `read and change ${plural(reads, 'table')}${where}`
+  if (both === changes) return `read ${plural(reads, 'table')}${where} and change ${changes} of them`
+  return `read ${plural(reads, 'table')} and change ${plural(changes, 'table')}${where}`
+}
+
+function doesWhat(tables: Reached[], you: string): string {
+  return `${you} can ${readChangePhrase(tables)}`
 }
 
 /** What a role reaches: by name when it is a handful, else by count and areas. */
