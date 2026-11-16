@@ -7,11 +7,18 @@ import { ActorName, isOpaqueId } from '../lib/people'
 // link"): each role, table, person and service account links to its record
 // when the viewer may open it (the server's viewer_opens), else plain text.
 // One place, so the shared RecordLink can take over from it.
-export const OpensContext = createContext<ReadonlySet<string>>(new Set())
+/** What the viewer may open: Tables (for a Table's list) and, by
+ *  "table\u0000row_id", single rows (Codex round 6: row rules can refuse a row
+ *  of a Table they otherwise read). */
+export const OpensContext = createContext<{ tables: ReadonlySet<string>; rows: ReadonlySet<string> }>({ tables: new Set(), rows: new Set() })
+export const opensFrom = (data: { viewer_opens?: string[]; viewer_opens_rows?: { table: string; row_id: string }[] }) => ({
+  tables: new Set(data.viewer_opens ?? []),
+  rows: new Set((data.viewer_opens_rows ?? []).map((r) => `${r.table}\u0000${r.row_id}`)),
+})
 
 export function Rec({ table, id, children }: { table: string; id?: string; children: ReactNode }) {
   const opens = useContext(OpensContext)
-  if (!opens.has(table)) return <>{children}</>
+  if (id ? !opens.rows.has(`${table}\u0000${id}`) : !opens.tables.has(table)) return <>{children}</>
   // The UI standard's link: action colour, medium weight, underline only on hover and focus.
   return <a href={id ? rowHref(table, id) : tableHref(table)} className="font-medium text-action hover:underline focus-visible:underline" data-testid="access-record-link">{children}</a>
 }

@@ -54,6 +54,11 @@ export interface AccessExplanation {
    *  Account, each Table reached) the VIEWER may open in the Admin, so the
    *  page links only what will open. Empty when they cannot use the Admin. */
   viewer_opens: string[]
+  /** #1224 (Codex adversarial round 6): the ROWS this page names (the
+   *  person, each giver, role, limited and shared row) that the viewer may
+   *  open, read as the viewer with row rules and Data Scope applied; a link
+   *  to one row is drawn only when it is here. */
+  viewer_opens_rows: { table: string; row_id: string }[]
   limits: { table: string; value: string; title: string | null; set_by: string; set_by_name: string | null; set_at: string }[]
   shares: { table: string; row_id: string; title: string | null; write: boolean; reshare: boolean; shared_by: string; shared_by_name: string | null; shared_at: string }[]
   /** The places the instance's scope-providing app gives the person today,
@@ -222,9 +227,23 @@ export async function explainAccess(person: string, viewer: string): Promise<Acc
   const candidates = [...new Set(['Role', 'Person', 'Service Account', ...tableNames, ...refs.map((r) => r.table)])]
   const viewer_opens: string[] = []
   // One after the other: inside a request they share its transaction.
-  if (await canUseAdmin(viewer))
+  const usesAdmin = await canUseAdmin(viewer)
+  if (usesAdmin)
     for (const table of candidates)
       if (await assertPermission(viewer, table, 'read').then(() => true, () => false)) viewer_opens.push(table)
+  const actorRef = (id: unknown) => {
+    const row_id = String(id ?? '')
+    return row_id.startsWith('svc_') ? { table: 'Service Account', row_id } : { table: 'Person', row_id }
+  }
+  const linkable = [
+    actorRef(person),
+    ...roles.filter((r) => r.given_by).map((r) => actorRef(r.given_by)),
+    ...scopeRows.map((r) => actorRef(r.created_by)), ...shareRows.map((r) => actorRef(r.created_by)),
+    ...roles.map((r) => ({ table: 'Role', row_id: r.role })),
+    ...refs,
+  ].filter((r) => r.row_id && viewer_opens.includes(r.table))
+  const viewer_opens_rows = usesAdmin && linkable.length
+    ? (await rowTitles(viewer, linkable)).map((t) => ({ table: t.table, row_id: t.row_id })) : []
 
   const apps = (await appCatalog(person)).map((a) => ({ name: String(a.name), title: String(a.title ?? a.name), href: String(a.href) }))
 
@@ -234,6 +253,7 @@ export async function explainAccess(person: string, viewer: string): Promise<Acc
     apps,
     every_table: reach.every_table,
     viewer_opens,
+    viewer_opens_rows,
     roles,
     read: reach.read.map(described),
     change: reach.change.map(described),

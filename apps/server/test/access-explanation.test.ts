@@ -248,3 +248,17 @@ test('#1224 the page names the person it is about, even to a viewer who may not 
   expect(own.person_name).toBe('Ae Named Person')
   expect(Array.isArray(own.apps)).toBe(true)
 })
+
+test('#1224 a row is linkable only when the viewer may open that row, not just its Table', async ({ admin, createUser }) => {
+  // Creator-only Person read: the Table is readable, the Administrator's row is not.
+  await grantRole(admin, { role: 'Ae Own People', table: 'Person', can_read: true, own_rows_only: true })
+  const person = await createUser({ roles: ['Ae Own People'] })
+  const page = await person.get<{ viewer_opens: string[]; viewer_opens_rows: { table: string; row_id: string }[]; roles: { role: string; given_by: string }[] }>(pageOf(person.user!))
+  expect(page.viewer_opens).toContain('Person')
+  expect(page.roles.find((r) => r.role === 'Ae Own People')?.given_by).toBe('Administrator')
+  expect(page.viewer_opens_rows).not.toContainEqual({ table: 'Person', row_id: 'Administrator' })
+  // As a System Manager, the same rows are linkable.
+  const asManager = await admin.get<{ viewer_opens_rows: { table: string; row_id: string }[] }>(pageOf(person.user!))
+  expect(asManager.viewer_opens_rows).toEqual(expect.arrayContaining([
+    { table: 'Person', row_id: 'Administrator' }, { table: 'Person', row_id: person.user }, { table: 'Role', row_id: 'Ae Own People' }]))
+})

@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import { ShownName } from '../lib/people'
 import { Card, EmptyState, Notice, ShieldLock, buttonClasses, fmtDate, fmtInstantIST } from '@featherbase/shop-floor'
-import { AreasLayout, LayoutToggle, RolesLayout, SummaryLayout, reachedTables, useAccessLayout, withImplicitRoles, Actor, OpensContext, Rec, type RoleRow, type TableReach } from './AccessLayouts'
+import { AreasLayout, LayoutToggle, RolesLayout, SummaryLayout, reachedTables, useAccessLayout, withImplicitRoles, Actor, OpensContext, Rec, opensFrom, type RoleRow, type TableReach } from './AccessLayouts'
 
 // #628: "What can this person see, and why". The platform's own reasons, from
 // GET /api/access_explanation/:person: roles, the Tables they reach, the Data
@@ -17,6 +17,7 @@ interface Explanation {
   apps?: { name: string; title: string; href: string }[]
   every_table: boolean
   viewer_opens?: string[]
+  viewer_opens_rows?: { table: string; row_id: string }[]
   roles: RoleRow[]
   read: TableReach[]
   change: TableReach[]
@@ -92,7 +93,7 @@ export function AccessExplanation({ person }: { person: string }) {
         <div>
           <h1 className="text-2xl font-semibold text-ink" data-testid="access-explanation-heading">
             {self ? 'What you can see' : <>What {data?.person_name
-              ? <OpensContext.Provider value={new Set(data.viewer_opens ?? [])}><Rec table="Person" id={person}>{data.person_name}</Rec></OpensContext.Provider>
+              ? <OpensContext.Provider value={opensFrom(data)}><Rec table="Person" id={person}>{data.person_name}</Rec></OpensContext.Provider>
               : <ShownName id={person} />} can see</>}
           </h1>
           <p className="text-sm text-ink-muted">As of today: what access exists and why, never the data itself.</p>
@@ -110,7 +111,7 @@ export function AccessExplanation({ person }: { person: string }) {
       {missing && <Notice tone="negative">There is no such person.</Notice>}
       {error && !refused && !missing && <Notice tone="negative">{(error as Error).message}</Notice>}
       {data && (
-        <OpensContext.Provider value={new Set(data.viewer_opens ?? [])}>
+        <OpensContext.Provider value={opensFrom(data)}>
           {data.roles.every((r) => r.app || r.everyone) && (
             <p className="text-sm text-ink-muted" data-testid="access-roles-empty">No roles of {self ? 'your' : 'their'} own: only what every account can see{data.roles.length ? ', and the roles below' : ''}.</p>
           )}
