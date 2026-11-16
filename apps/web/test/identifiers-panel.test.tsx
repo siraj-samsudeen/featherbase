@@ -12,6 +12,7 @@ import { addIdentifier } from 'server/src/person-identifiers'
 import { configureDelegated, linkDelegated } from 'server/test/identity-fixtures'
 import { VIEWER_ROLE } from 'server/src/sales-target'
 import { test, expect, renderApp } from './pg-test'
+import { openListMenu } from './list-menus'
 
 const ROSTER = { internal: { source: 'stylehr-roster-sync', verified: true } }
 
@@ -130,7 +131,7 @@ test('the Person list links to Find by code; an old code finds the person, shown
   const leaver = await createUser({ email: 'leaver.find@example.com', fullName: 'Leaving Latha' })
   await addIdentifier(leaver.user!, { system: 'stylehr-employee-code', value: 'RR-777', valid_from: '2024-01-01', valid_to: '2025-01-01' }, 'sync', ROSTER)
   await renderApp('/featherbase/admin/table/person', admin)
-  await userEvent.click(await screen.findByRole('button', { name: 'List actions' }))
+  await openListMenu('List actions')
   expect(await screen.findByTestId('open-find-person')).toHaveAttribute('href', '/featherbase/admin/find-person')
   await renderApp('/featherbase/admin/find-person', admin)
   const page = await screen.findByTestId('find-person')

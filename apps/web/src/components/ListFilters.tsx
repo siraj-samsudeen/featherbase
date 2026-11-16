@@ -2,10 +2,10 @@ import { useState } from 'react'
 import { choiceLabel } from 'shared'
 import { LinkedTitle } from '../lib/row-name'
 import { LinkControl } from './LinkControl'
-import { NO_COLUMN_TYPES } from '../lib/meta'
+import { NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
 import { NOT_A_LOGIN } from '../lib/not-a-login'
 import { useI18n } from '../lib/i18n'
-import { buttonClasses, inputClasses, pillClasses } from '@featherbase/shop-floor'
+import { SearchInput, buttonClasses, inputClasses, pillClasses } from '@featherbase/shop-floor'
 
 export type Filter = [string, string, unknown]
 
@@ -40,6 +40,54 @@ function filterBoxKind(col: import('../lib/meta').ColumnDef | undefined, op: str
   if (col.column_type === 'Datetime') return 'datetime-local'
   if (NUMBER_TYPES.has(col.column_type)) return 'number'
   return 'text'
+}
+
+/** The column a list's Search looks in: the Table's title column, else its first
+ *  text column. None when the Table has no text to search. */
+export function searchColumn(meta: TableMeta): string | undefined {
+  if (meta.title_column) return meta.title_column
+  return meta.columns.find((c) => c.column_type === 'Data' && !NO_COLUMN_TYPES.has(c.column_type))?.column_name
+}
+
+const SEARCH_OP = 'like'
+const unwrap = (value: unknown) => (typeof value === 'string' ? value.replace(/^%|%$/g, '') : '')
+
+/**
+ * #1242 (admin-lists 3): Search a list by its title. Enter puts it on as an
+ * ordinary filter (a chip), so it is remembered (#1228), shared in the address
+ * and cleared like any other; an empty search takes it off.
+ */
+export function ListSearch({ meta, filters, onChange, label }: {
+  meta: TableMeta
+  filters: Filter[]
+  onChange: (filters: Filter[]) => void
+  label: string
+}) {
+  const column = searchColumn(meta)
+  const on = column ? filters.find((f) => f[0] === column && f[1] === SEARCH_OP) : undefined
+  const [text, setText] = useState(() => unwrap(on?.[2]))
+  if (!column) return null
+  return (
+    <form
+      role="search"
+      aria-label={`Search ${label}`}
+      onSubmit={(e) => {
+        e.preventDefault()
+        const rest = filters.filter((f) => !(f[0] === column && f[1] === SEARCH_OP))
+        const words = text.trim()
+        onChange(words ? [...rest, [column, SEARCH_OP, `%${words}%`]] : rest)
+      }}
+    >
+      <SearchInput
+        aria-label={`Search ${label}`}
+        placeholder="Search"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        data-testid="list-search"
+        className="w-56"
+      />
+    </form>
+  )
 }
 
 export function StandardFilters({

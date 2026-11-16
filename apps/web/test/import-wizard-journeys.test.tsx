@@ -10,6 +10,7 @@ import * as XLSX from 'xlsx'
 import { tableSlug } from 'shared'
 import { test, expect, renderApp } from './pg-test'
 import { clearSession } from '../src/lib/import-session'
+import { openListMenu } from './list-menus'
 
 type Admin = Parameters<typeof renderApp>[1]
 const NEW_DT = 'Wizard Orders'
@@ -209,7 +210,7 @@ test('IMP-010: the list\'s Import button opens the wizard with that Table as the
   await admin.post('/api/save_row', { table: EXISTING_DT, row: { wizard_sku: 'Held', bin_count: 1, restock_level: 1 } })
   clearSession()
   const r = await renderApp(`/featherbase/admin/table/${tableSlug(EXISTING_DT)}`, admin)
-  await userEvent.click(await screen.findByRole('button', { name: 'List actions' }, WAIT))
+  await openListMenu('List actions', screen, WAIT)
   await userEvent.click(await screen.findByTestId('open-import'))
   expect(await screen.findByTestId('import-wizard', {}, WAIT)).toBeInTheDocument()
   fireEvent.change(screen.getByTestId('iw-file-input'), { target: { files: [csv('anything at all.csv', 'Wizard SKU,Bin Count,Restock Level\nCog-1,4,1')] } })

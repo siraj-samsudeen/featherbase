@@ -8,6 +8,7 @@ import userEvent from '@testing-library/user-event'
 import { tableSlug } from 'shared'
 import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
+import { openListMenu } from './list-menus'
 
 type Admin = Parameters<typeof renderApp>[1]
 const DT = 'Tan Plant'
@@ -18,7 +19,7 @@ async function openAdministration(admin: Admin, search = '') {
   await admin.post('/api/save_row', { table: DT, row: { city: 'Chennai' } })
   await renderApp(`/featherbase/admin/table/${tableSlug(DT)}${search}`, admin)
   await screen.findByTestId('list-view', {}, T)
-  await userEvent.click(await screen.findByRole('button', { name: 'Table administration' }))
+  await openListMenu('Table administration')
 }
 
 /** Every POST or DELETE to the Table definitions is lost, as offline. */
@@ -80,7 +81,7 @@ test('a view the network drops says in words that it was not saved', async ({ ad
   await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'city', column_type: 'Data', label: 'City', in_list_view: true }] })
   await renderApp(`/featherbase/admin/table/${tableSlug(DT)}?filters=${filters}`, admin)
   await screen.findByTestId('list-view', {}, T)
-  await userEvent.click(await screen.findByRole('button', { name: 'Table administration' }))
+  await openListMenu('Table administration')
   await userEvent.click(await screen.findByTestId('save-as-view', {}, T))
   await userEvent.type(await screen.findByTestId('save-as-view-name'), 'Tan Chennai')
   dropTableWrites()

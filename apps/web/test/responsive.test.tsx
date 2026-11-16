@@ -94,7 +94,7 @@ test('UI-025: navigating from the open phone drawer closes it, and the list and 
   await user.click(await screen.findByRole('link', { name: DT }))
   expect(await screen.findByTestId('list-view')).toBeInTheDocument()
   expect((app.router as { state: { location: { pathname: string } } }).state.location.pathname).toBe(`/featherbase/admin/table/${tableSlug(DT)}`)
-  await user.click(await screen.findByRole('link', { name: 'New' }))
+  await user.click(await screen.findByTestId('list-new'))
   expect(await screen.findByTestId('form-view')).toBeInTheDocument()
 })
 

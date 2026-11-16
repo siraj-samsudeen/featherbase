@@ -7,6 +7,7 @@ import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
+import { openListMenu } from './list-menus'
 
 type Admin = Parameters<typeof renderApp>[1]
 const T = 'Tnm Store'
@@ -58,7 +59,7 @@ test('the Naming page opens from the Table administration menu of the list', asy
   const user = userEvent.setup()
   await seed(admin)
   await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(T))}`, admin)
-  await user.click(await screen.findByRole('button', { name: 'Table administration' }, { timeout: 8000 }))
+  await openListMenu('Table administration', screen, { timeout: 8000 })
   await user.click(screen.getByTestId('open-naming'))
   expect(await screen.findByTestId('table-naming', {}, { timeout: 8000 })).toBeInTheDocument()
 })
