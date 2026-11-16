@@ -163,7 +163,7 @@ function SectionEditor({ section, onChanged }: { section: { id: string; name: st
 
 const TH = 'px-3 py-2 text-left text-[13px] font-medium text-ink-muted'
 // Cells wrap only where words allow (a space, a hyphen), never mid-word: the shared link breaks anywhere by default.
-const TD = 'px-3 py-2 align-top text-sm [&_*]:wrap-normal'
+const TD = 'px-3 py-2 align-top text-sm [&_*]:wrap-normal [&_[data-table=Employee]]:whitespace-nowrap'
 
 /** "Kavya, Meena +2 more": the first two as links, the rest in a popover, all links. */
 function FewPeople({ people }: { people: PersonRef[] }) {
@@ -174,7 +174,8 @@ function FewPeople({ people }: { people: PersonRef[] }) {
       {/* Each name keeps its comma and never breaks inside itself, so no line starts with ", ". */}
       {people.slice(0, 2).map((p, i, shown) => <span key={p.code} className="whitespace-nowrap"><RecordLink table={RECORD.employee} id={p.code}>{p.name}</RecordLink>{i < shown.length - 1 || rest.length ? ',' : ''}</span>)}
       {rest.length > 0 && (
-        <details className="relative inline-block" data-testid="more-people">
+        // One list open at a time (an exclusive group), so two never cover each other.
+        <details name="more-people" className="relative inline-block" data-testid="more-people">
           <summary className="cursor-pointer list-none text-ink-muted hover:underline">+{rest.length} more</summary>
           <div className="absolute z-10 mt-1 flex min-w-48 flex-col gap-1 rounded-control border border-border bg-surface p-2 shadow-lg">
             {rest.map(p => <RecordLink key={p.code} table={RECORD.employee} id={p.code}>{p.name}</RecordLink>)}
