@@ -168,7 +168,8 @@ export function SavedViewsBar({
                   data-testid="saved-view-chip"
                   title={v.mine ? undefined : `shared by its owner`}
                 >
-                  ★ {v.label}
+                  {/* #1229: no decorative star: ★ now means "in your sidebar" (the toggle). */}
+                  {v.label}
                   {v.shared && <span className="ml-1 opacity-70">{v.mine ? '· shared' : '· 👥'}</span>}
                 </button>
                 {/* #1229: someone else's shared view goes in the sidebar once starred;
