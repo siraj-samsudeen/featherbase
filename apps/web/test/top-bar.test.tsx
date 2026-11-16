@@ -265,8 +265,10 @@ test("on an app's address the account page has the bar and no Admin menus, even 
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
   await settledBar()
   expect(await screen.findByTestId('sign-in-methods')).toBeInTheDocument()
-  for (const id of ['awesomebar', 'admin-sidebar', 'notif-bell', 'sidebar-toggle'])
+  for (const id of ['awesomebar', 'admin-sidebar', 'notif-bell'])
     expect(screen.queryByTestId(id)).not.toBeInTheDocument()
+  // #1235 item 7: the shared sidebar is not the Admin's: only the Account group.
+  expect(screen.getByTestId('account-sidebar')).toBeInTheDocument()
 })
 
 test('the Sales Target page has no Admin menus in its bar', async ({ admin }) => {
@@ -679,9 +681,12 @@ test('someone who belongs to no app sees the switcher on the neutral Featherbase
   expect(within(await settledBar()).getByTestId('top-bar-home')).toHaveAttribute('href', '/')
 })
 
-test('the account pages have no sidebar, so no sidebar controls', async ({ admin }) => {
+// #1235 item 7 (UI standard §4): the account pages have the shared sidebar, with
+// its Account group, so the bar offers its controls, as on every page with one.
+test('the account pages have the shared sidebar, and the bar its controls', async ({ admin }) => {
   onAddressThatOpens('dash')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
   const bar = await settledBar()
-  expect(within(bar).queryByTestId('sidebar-collapse')).not.toBeInTheDocument()
+  expect(await within(bar).findByTestId('sidebar-collapse')).toBeInTheDocument()
+  expect(screen.getByTestId('sidebar-group-account')).toBeInTheDocument()
 })
