@@ -1,7 +1,7 @@
 // tickets-assignment-email (#1001, #1069), the fenced scenarios on Tickets'
 // ticket screen, step by step, rendered in jsdom against the real in-process
 // server; what the Email Queue alone proves is in apps/server/test/scenarios/.
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { describe } from 'vitest'
 import { scenarioFor } from 'server/test/scenario'
 import { settleSandboxRequests } from 'server/test/pg-test-shared'
@@ -108,6 +108,33 @@ describe('tickets-assignment-email', () => {
       await reopened.within('header.ticket-header .ticket-facts', (facts) => facts.assertText('Unassigned'))
     })
     await step('nobody is emailed about the ticket', async () => expect(await mail(x)).toEqual([]))
+  })
+
+  scenario('Removing the assignee asks with Remove', async ({ admin, createUser }, step) => {
+    const x = new TicketsAssignmentEmail(new Tickets(admin, createUser))
+    let session!: Session
+    await step('Anjali has raised a ticket that support has assigned to Colleague', async () => {
+      await x.raise()
+      await x.assignable('Colleague')
+      await x.t.action('edit', { assigned_to: x.t.ids.Colleague }, 'Support')
+    })
+    await step('support picks Unassigned on the ticket screen', async () => {
+      ;({ session } = await openOnScreen(x, 'Support'))
+      await session.step('pick Unassigned', async ({ user }) => {
+        await user.click(screen.getByRole('button', { name: 'Change the assignee' }))
+        await user.selectOptions(picker(), '')
+      })
+    })
+    await step('the ticket screen asks "Remove the assignee?" with Remove and Cancel', () => {
+      const row = confirmRow()!
+      expect(row.textContent).toContain('Remove the assignee?')
+      expect(within(row).getAllByRole('button').map(b => b.textContent)).toEqual(['Remove', 'Cancel'])
+    })
+    await step('when support removes the assignee, the ticket screen shows the ticket as Unassigned', () =>
+      session
+        .within(CONFIRM, (confirm) => confirm.clickButton('Remove'))
+        .until('the confirmation has closed', () => !confirmRow())
+        .within('header.ticket-header .ticket-facts', (facts) => facts.assertText('Unassigned')))
   })
 
   scenario('The requester sees the assignee as text', async ({ admin, createUser }, step) => {

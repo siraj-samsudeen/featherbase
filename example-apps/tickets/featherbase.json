@@ -141,7 +141,8 @@
     {"id": "one_app_chrome", "fromVersion": "0.2.10", "toVersion": "0.2.11", "operations": []},
     {"id": "at_a_glance", "fromVersion": "0.2.11", "toVersion": "0.2.12", "operations": []},
     {"id": "list_and_toolbar", "fromVersion": "0.2.12", "toVersion": "0.2.13", "operations": []},
-    {"id": "assigned_view_words", "fromVersion": "0.2.13", "toVersion": "0.2.14", "operations": []}
+    {"id": "assigned_view_words", "fromVersion": "0.2.13", "toVersion": "0.2.14", "operations": []},
+    {"id": "remove_assignee_words", "fromVersion": "0.2.14", "toVersion": "0.2.15", "operations": []}
   ],
   "baseTables": {"read": {"Data Quality Row": ["ticket", "affected_table", "affected_row", "fixed_on", "note"]}},
   "permissions": [

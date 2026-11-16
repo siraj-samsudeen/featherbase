@@ -506,7 +506,8 @@ export function CaseFile({
                 if (!(await mutate('edit', { assigned_to: picked || null }))) setPicked(current)
               }}
             >
-              Assign
+              {/* The button names the act the row asks about. */}
+              {picked === '' ? 'Remove' : 'Assign'}
             </button>
             <button type="button" className="secondary" disabled={busy} onClick={() => { setPicked(current); setChanging(false) }}>
               Cancel

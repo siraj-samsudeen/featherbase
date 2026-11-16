@@ -58,7 +58,8 @@ describe('the assignee reads as a name (#1233)', () => {
     await t.action('edit', { assigned_to: t.ids.Bala }, 'Support')
     await open(t, 'Support')
     expect(within(header()).queryByRole('combobox', { name: 'Assigned to' })).toBeNull()
-    expect(within(header()).getByText('Bala')).toBeInTheDocument()
+    // Names arrive with the ticket's read; wait for it rather than racing it.
+    await waitFor(() => expect(within(header()).getByText('Bala')).toBeInTheDocument())
     fireEvent.click(within(header()).getByRole('button', { name: 'Change the assignee' }))
     expect(within(header()).getByRole('combobox', { name: 'Assigned to' })).toBeInTheDocument()
     fireEvent.click(within(header()).getByRole('button', { name: 'Cancel' }))
