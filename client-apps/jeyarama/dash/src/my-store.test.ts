@@ -193,6 +193,21 @@ describe('the edges of Your store', () => {
     expect(by['CAT3|null']).toMatchObject({ buyers: [], no_buyer: [{ code: 'C5', name: 'Toys' }] })
   })
 
+  it("#1246: a head of every region whose subcategory a desk buys in each region has no gap; a buyer sees each desk's subcategories by name", async () => {
+    const desk = (row_id: string, operating_region: string | null, buyer = 'E-BUY') => ({ row_id, name: row_id, operating_region, buyer, category_head: 'E-CH', starts_on: '2026-01-01', ends_on: null })
+    const link = (row_id: string, buyer_section: string, subcategory: string) => ({ row_id, buyer_section, subcategory, starts_on: '2026-01-01', ends_on: null })
+    const tables = world({ 'Merchandise Assignment': [assignment('M-CH4', 'E-CH', 'Category head', { subcategory: 'C4' })],
+      'Buyer Section': [desk('BS-E', 'East'), desk('BS-W', 'West', 'E-BUY2'), desk('BS-NONE', null)],
+      'Buyer Section Subcategory': [link('L1', 'BS-E', 'C4'), link('L2', 'BS-W', 'C4'), link('L3', 'BS-E', 'C1')] })
+    const head = await read(storeReads.my_store, 'ch', undefined, {}, tables) as any
+    expect(head.categories).toEqual([expect.objectContaining({ category: 'CAT2', region: null, no_buyer: [] })])
+    expect(head.categories[0].buyers.map((b: any) => b.buys).sort()).toEqual(['Belts, East only', 'Belts, West only'])
+    const buyer = await read(storeReads.my_store, 'buy', undefined, {}, tables) as any
+    expect(buyer.buys.filter((b: any) => b.level === 'buyer_section')).toEqual([
+      expect.objectContaining({ named: 'BS-E', region: 'East', subcategories: [{ code: 'C4', name: 'Belts' }, { code: 'C1', name: 'Sarees' }] }),
+      expect.objectContaining({ named: 'BS-NONE', region: null, subcategories: [] })])
+  })
+
   it("a buyer of a whole category sees its subcategories by name", async () => {
     const answer = await read(storeReads.my_store, 'buy2')
     expect(answer.buys[0].subcategories.map((s: { name: string }) => s.name)).toEqual(['', 'Lehenga', 'Sarees', 'Silk'])
