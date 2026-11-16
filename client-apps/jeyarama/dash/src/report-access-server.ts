@@ -6,6 +6,7 @@
 import { reportsReaching, type AccessRow, type Because, type BundleMember } from './report-access.ts'
 import { EMPLOYEE_STATUS, exact, holdsOn, text } from './values.ts'
 import { diveIdIn, reportKeyFor, type DiveChoice } from './add-dive.ts'
+import { istToday } from './report.ts'
 import type { Documents } from './provider.ts'
 
 type Row = Record<string, unknown>
@@ -118,10 +119,10 @@ export function becauseLine(because: Because, bundleName: (id: string) => string
 }
 
 export type Gives = { kind: 'Report' | 'Bundle'; name: string }
-export type To = { kind: 'Person' | 'Role' | 'Job'; name: string }
+export type To = { kind: 'Person' | 'Role' | 'Job'; name: string; who?: Who }
 
 /** The Report access page: who has what, what can be given, and who is waiting. Managers only. */
-export async function accessPage(ctx: AccessContext) {
+export async function accessPage(ctx: AccessContext, on: string = istToday()) {
   managerOnly(ctx)
   const named = await names(ctx)
   const access = (await all(ctx.baseTables!, ACCESS, ['report', 'report_bundle', 'person', 'role', 'job', 'updated_at', 'created_by', 'given_by_name', 'removed'])).filter(row => !ticked(row.removed))
@@ -129,10 +130,11 @@ export async function accessPage(ctx: AccessContext) {
   const jobs = await all(ctx.baseTables!, 'Job Assignment', ['job'])
   const waiting = (await ctx.people!.waitingForAccess?.()) ?? []
   const people = await personNames(ctx, [...access.map(row => exact(row.person)), ...access.map(row => exact(row.created_by)), ...waiting.map(w => w.person)])
+  const who = await whoIs(ctx.baseTables!, [...access.map(row => exact(row.person)), ...waiting.map(w => w.person)], on)
   const rows = access.map(row => {
     const gives: Gives | null = nullable(row.report) ? { kind: 'Report', name: named.reports.get(exact(row.report))?.name ?? 'A report no longer listed' }
       : nullable(row.report_bundle) ? { kind: 'Bundle', name: named.bundles.get(exact(row.report_bundle)) ?? 'A bundle no longer listed' } : null
-    const to: To | null = nullable(row.person) ? { kind: 'Person', name: people.get(exact(row.person)) ?? 'Someone you can’t see' }
+    const to: To | null = nullable(row.person) ? { kind: 'Person', name: people.get(exact(row.person)) ?? 'Someone you can’t see', who: who.get(exact(row.person)) }
       : nullable(row.role) ? { kind: 'Role', name: exact(row.role) } : nullable(row.job) ? { kind: 'Job', name: exact(row.job) } : null
     return { id: exact(row.row_id), updated_at: exact(row.updated_at), gives, to, given_by: text(row.given_by_name) || people.get(exact(row.created_by)) || (exact(row.created_by) === 'Administrator' ? 'Administrator' : 'Someone'),
       given_on: exact(row.updated_at).slice(0, 10) }
@@ -148,18 +150,62 @@ export async function accessPage(ctx: AccessContext) {
     roles: [...((await ctx.people!.roleNames?.()) ?? [])],
     jobs: [...new Set(jobs.map(row => exact(row.job)).filter(Boolean))].sort(),
     rows,
-    waiting: waiting.map(w => ({ person: w.person, name: w.name || people.get(w.person) || 'Someone', asked_on: w.asked_at.slice(0, 10) })),
+    waiting: waiting.map(w => ({ person: w.person, name: w.name || people.get(w.person) || 'Someone', asked_on: w.asked_at.slice(0, 10), who: who.get(w.person) })),
   }
 }
 
-/** People on the staff list whose name holds the text typed, for the Give bar's person picker. */
-export async function personSearch(ctx: AccessContext) {
+/**
+ * Who a person is on the staff list (#1216), so people with the same name can be told apart:
+ * their employee code, each job they hold today with its site, and whether they are current
+ * staff, have left, or are not on the staff list at all (a service account, an outsider).
+ */
+export type Who = { code: string | null; jobs: string[]; staff: 'current' | 'left' | 'none' }
+
+export async function whoIs(base: Documents, persons: string[], on: string): Promise<Map<string, Who>> {
+  const wanted = [...new Set(persons.filter(Boolean))]
+  const found = new Map<string, Who>(wanted.map(person => [person, { code: null, jobs: [], staff: 'none' }]))
+  if (!wanted.length) return found
+  const employees = (await all(base, 'Employee', ['employee_code', 'person', EMPLOYEE_STATUS], [['person', 'in', wanted]]))
+    .sort((a, b) => exact(a.employee_code).localeCompare(exact(b.employee_code)))
+  const current = employees.filter(row => text(row[EMPLOYEE_STATUS]) === 'Current')
+  const jobs = current.length ? (await all(base, 'Job Assignment', ['employee', 'job', 'site', 'starts_on', 'ends_on'], [['employee', 'in', current.map(row => exact(row.row_id))]])).filter(row => holdsOn(row, on) && exact(row.job)) : []
+  const siteIds = [...new Set(jobs.map(row => exact(row.site)).filter(Boolean))]
+  const sites = new Map(siteIds.length ? (await all(base, 'Site', ['name'], [['row_id', 'in', siteIds]])).map(row => [exact(row.row_id), text(row.name)]) : [])
+  for (const person of wanted) {
+    const mine = current.filter(row => exact(row.person) === person)
+    const left = employees.find(row => exact(row.person) === person && text(row[EMPLOYEE_STATUS]) === 'Left')
+    if (mine.length) {
+      const held = jobs.filter(row => mine.some(employee => exact(employee.row_id) === exact(row.employee)))
+        .map(row => (sites.get(exact(row.site)) ? `${exact(row.job)} · ${sites.get(exact(row.site))}` : exact(row.job)))
+      found.set(person, { code: nullable(mine[0].employee_code), jobs: [...new Set(held)].sort(), staff: 'current' })
+    } else if (left) found.set(person, { code: nullable(left.employee_code), jobs: [], staff: 'left' })
+  }
+  return found
+}
+
+const SEARCH_LIMIT = 20
+
+/** Current staff whose name or employee code holds the text typed, for the person picker, each with who they are. */
+export async function personSearch(ctx: AccessContext, on: string = istToday()) {
   managerOnly(ctx)
   const typed = text((ctx.payload as { q?: unknown } | undefined)?.q)
   if (typed.length < 2) return []
-  const rows = await ctx.baseTables!.list('Employee', { fields: ['name', 'person', EMPLOYEE_STATUS], filters: [['name', 'like', `%${typed}%`], [EMPLOYEE_STATUS, '=', 'Current']], order_by: 'name asc', limit_page_length: 20 })
-  const seen = new Set<string>()
-  return rows.filter(row => exact(row.person) && !seen.has(exact(row.person)) && seen.add(exact(row.person))).map(row => ({ person: exact(row.person), name: text(row.name) }))
+  // The first twenty by name, and everyone sharing the twentieth's name: the platform orders by one
+  // column, so ties at the cut are settled here, by code, rather than by however the database returns them.
+  const matching = async (column: string) => {
+    const filters: [string, string, unknown][] = [[column, 'like', `%${typed}%`], [EMPLOYEE_STATUS, '=', 'Current']]
+    const first = await ctx.baseTables!.list('Employee', { fields: ['name', 'person', EMPLOYEE_STATUS], filters, order_by: 'name asc', limit_page_length: SEARCH_LIMIT })
+    if (first.length < SEARCH_LIMIT) return first
+    const last = exact(first.at(-1)!.name)
+    return [...first.filter(row => exact(row.name) !== last), ...await all(ctx.baseTables!, 'Employee', ['name', 'person', EMPLOYEE_STATUS], [...filters, ['name', '=', last]])]
+  }
+  const names = new Map<string, string>()
+  for (const row of [...await matching('name'), ...await matching('employee_code')])
+    if (exact(row.person) && !names.has(exact(row.person))) names.set(exact(row.person), text(row.name))
+  const who = await whoIs(ctx.baseTables!, [...names.keys()], on)
+  return [...names].map(([person, name]) => ({ person, name, ...who.get(person)! }))
+    .sort((a, b) => a.name.localeCompare(b.name) || (a.code ?? '').localeCompare(b.code ?? ''))
+    .slice(0, SEARCH_LIMIT)
 }
 
 /** What their job reaches today: any store at all, and a whole store. */

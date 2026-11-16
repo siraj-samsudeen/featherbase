@@ -22,6 +22,6 @@ None.
 
 ## Impact
 
-- Platform: the upgrade's access check and the dataset declaration. Production's Dash 0.13.1 upgrades to 0.13.2 on the next deploy, giving Report Access Manager the right to create reports.
-- Dash 0.13.2: one dataset over MotherDuck's Dive list, one outbound read, one action, the Add a Dive card.
+- Platform: the upgrade's access check and the dataset declaration. Production's Dash 0.13.1 upgrades to 0.13.3 (through #1216's 0.13.2) on the next deploy, giving Report Access Manager the right to create reports.
+- Dash 0.13.3: one dataset over MotherDuck's Dive list, one outbound read, one action, the Add a Dive card.
 - Store-filtered Dives still need a System Manager in Admin: they need the Dive's own state keys.

@@ -2002,9 +2002,15 @@
       "operations": []
     },
     {
-      "id": "report_access_managers_add_dives",
+      "id": "person_identity",
       "fromVersion": "0.13.1",
       "toVersion": "0.13.2",
+      "operations": []
+    },
+    {
+      "id": "report_access_managers_add_dives",
+      "fromVersion": "0.13.2",
+      "toVersion": "0.13.3",
       "operations": []
     }
   ],
@@ -2013,7 +2019,8 @@
       "Employee": [
         "name",
         "status",
-        "person"
+        "person",
+        "employee_code"
       ],
       "Job Assignment": [
         "employee",

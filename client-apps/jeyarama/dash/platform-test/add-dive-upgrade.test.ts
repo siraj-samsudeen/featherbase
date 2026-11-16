@@ -1,6 +1,6 @@
 // #1169: production runs Dash 0.13.1. Upgrading it gives Report Access Manager the right to create
 // reports, with nobody's approval, and logs it; a Report Access Manager then adds a Dive and gives
-// it at once. A reader can do neither. The 0.13.1 here is this version with #1169 taken out.
+// it at once. A reader can do neither. The 0.13.1 here is this version with #1169 (0.13.3) and #1216 (0.13.2) taken out.
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
@@ -9,7 +9,7 @@ import { test as pgTest } from '../pg-test'
 import { sql } from '../../src/db'
 import { discoverPackages } from '../../src/runtime-packages'
 import { loadInstalledApps } from '../../src/apps'
-import { APP_DIR, VERSION, createCoreTables, pinned, revertAddDive } from './helpers'
+import { APP_DIR, VERSION, createCoreTables, pinned, revertAddDive, revertPersonIdentity } from './helpers'
 
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(pinned(admin)),
@@ -24,8 +24,10 @@ async function previousVersion(): Promise<string> {
   const directory = await mkdtemp(resolve(APP_DIR, '..', 'dash-0.13.1-'))
   await cp(APP_DIR, directory, { recursive: true })
   const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
-  expect(manifest.migrations.pop()).toMatchObject({ id: 'report_access_managers_add_dives', fromVersion: '0.13.1' })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'report_access_managers_add_dives', fromVersion: '0.13.2' })
   revertAddDive(manifest)
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'person_identity', fromVersion: '0.13.1' })
+  revertPersonIdentity(manifest)
   const pkg = JSON.parse(await readFile(resolve(directory, 'package.json'), 'utf8'))
   await writeFile(resolve(directory, 'featherbase.json'), JSON.stringify(manifest, null, 2))
   await writeFile(resolve(directory, 'package.json'), JSON.stringify({ ...pkg, version: '0.13.1' }))
@@ -49,7 +51,7 @@ describe("upgrading production's Dash 0.13.1", () => {
       expect([plan.permissions, plan.migrations.map(m => m.id)]).toEqual([[
         { withdraw: { table: 'dash.report', role: MANAGER, operations: { read: '@basic' } } },
         { grant: { table: 'dash.report', role: MANAGER, operations: { read: '@basic', create: '@basic' } } }],
-      ['report_access_managers_add_dives']])
+      ['person_identity', 'report_access_managers_add_dives']])
       await admin.post('/api/upgrade_app', { name: 'dash', version: VERSION, planId: plan.planId })
       await discoverPackages([previous, APP_DIR])
       await loadInstalledApps()
