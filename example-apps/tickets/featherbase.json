@@ -5,6 +5,7 @@
   "title": "Tickets",
   "summary": "Ask for help or a change, and follow it to done",
   "icon": "inbox",
+  "recordPages": {"tickets.ticket": "/tickets/?ticket={row}"},
   "accent": "green",
   "server": "dist/server.mjs",
   "client": "dist/client",

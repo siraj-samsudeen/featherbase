@@ -50,3 +50,34 @@ describe('#1236: what an app is for, in the app catalog', () => {
     expect(await findChanged(({ summary: _s, icon: _i, ...manifest }) => manifest)).toBe('[]')
   })
 })
+
+describe("#1237: an app's own page for one of its rows", () => {
+  test('the catalog gives it, for the record page to open', async ({ admin }) => {
+    const copy = await mkdtemp(resolve('test/.catalog-record-pages-'))
+    try {
+      await cp(TASKER, copy, { recursive: true, filter: (source) => !source.includes('node_modules') })
+      const manifest = JSON.parse(await readFile(resolve(copy, 'featherbase.json'), 'utf8'))
+      await writeFile(resolve(copy, 'featherbase.json'), JSON.stringify({ ...manifest, recordPages: { 'tasker.task': '/tasker/?task={row}' } }))
+      expect(await discoverPackages([copy])).toEqual([])
+      await admin.post('/api/install_app', { name: 'tasker' })
+      await admitTasker(admin)
+      const catalog = await admin.get<{ name: string; recordPages?: Record<string, string> }[]>('/api/app_catalog')
+      expect(catalog.find((app) => app.name === 'tasker')?.recordPages).toEqual({ 'tasker.task': '/tasker/?task={row}' })
+    } finally {
+      await rm(copy, { recursive: true, force: true })
+      await discoverPackages([])
+    }
+  })
+
+  test("a page for a Table that is not the app's own is refused", async () => {
+    expect(await findChanged((manifest) => ({ ...manifest, recordPages: { Person: '/tasker/?person={row}' } }))).toMatch(/not one of the app's/)
+  })
+
+  test("a page outside the app's own address is refused", async () => {
+    expect(await findChanged((manifest) => ({ ...manifest, recordPages: { 'tasker.task': '/dash/?task={row}' } }))).toMatch(/not one of the app's own pages/)
+  })
+
+  test('a page with no place for the row is refused', async () => {
+    expect(await findChanged((manifest) => ({ ...manifest, recordPages: { 'tasker.task': '/tasker/' } }))).toMatch(/\{row\}/)
+  })
+})
