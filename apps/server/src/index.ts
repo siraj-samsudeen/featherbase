@@ -10,6 +10,8 @@ import { assertRowsWritable } from './system-written'
 import { assertNotView, storedTable } from './views'
 import { AppError, errorResponse } from './errors'
 import { runInSession } from './session-context'
+import { activeViewAs, endViewAs, searchViewAs, startViewAs, viewAsRoute, viewAsState } from './view-as'
+import { runViewingAs, viewAsRefusal } from './view-as-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { tableStorageIdentity } from './table-engine'
 import { deleteDoc, getDoc, revokeGrant, rowCapabilities, saveDoc } from './document'
@@ -622,10 +624,40 @@ app.post('/deliver/app', async (c) => {
 
 app.use('/api/*', async (c, next) => {
   const user = await resolveToken(authCredential(c))
+  // #1222: a session viewing as someone reads as that person and writes
+  // nothing. Its own View as controls run as the tester.
+  const viewing = await activeViewAs(user)
+  const route = viewing ? viewAsRoute(c.req.method, c.req.path) : 'own'
+  if (viewing && route === 'refuse') throw viewAsRefusal(viewing.as)
+  if (viewing && route === 'drop') return c.body(null, 204)
+  if (viewing && route === 'read') {
+    c.set('user', viewing.user)
+    c.set('viewingAs', viewing.as)
+    return runInSession(user.sign_in, () => runViewingAs(viewing.as, () => next()))
+  }
   c.set('user', user)
   // #473: a test-mode or preview session cannot add a lasting way in, even
   // through the generic save path (document.ts).
   await runInSession(user.sign_in, () => next())
+})
+
+// #1222: View as — the tester's own state, people search, start or switch, and exit.
+app.get('/api/view_as', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await viewAsState(c.get('user')))
+})
+app.get('/api/view_as/people', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await searchViewAs(c.get('user'), c.req.query('q')))
+})
+app.post('/api/view_as/start', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as { person?: unknown } | null
+  await startViewAs(c.get('user'), body?.person)
+  return c.json(await viewAsState(c.get('user')))
+})
+app.post('/api/view_as/exit', async (c) => {
+  await endViewAs(c.get('user'))
+  return c.json(await viewAsState(c.get('user')))
 })
 
 // API-007: throttle authenticated requests per user (runs after auth so it can

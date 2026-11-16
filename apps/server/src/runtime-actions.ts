@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { enabledPeople, namesForApp, ownDisplayName, tableMembers } from './people-directory'
+import { assertNotViewingAs } from './view-as-context'
 import { z } from 'zod'
 import type { ActionRow, AppAuthorizationContext, RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, RuntimeReadHandler } from 'shared'
 import { inAppTransaction, sql } from './db'
@@ -240,6 +241,8 @@ export function callerDocuments(app: string, allowed: string[], user: string, li
 
 export function executeRuntimeAction(app: string, name: string, input: unknown, user: string, declaration: () => DeclaredOperations | undefined) {
   return appOperation(async () => {
+    // #1222: no app action runs while viewing as someone, whatever the app's own rules say.
+    assertNotViewingAs()
     const parsed = requestSchema.safeParse(input)
     if (!parsed.success) reject('Expected { idempotencyKey, payload }')
     if (!user || user === 'Guest') throw new AppError('AuthenticationError', 'Sign in to run an application action')
