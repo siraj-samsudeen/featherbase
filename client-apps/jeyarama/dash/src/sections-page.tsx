@@ -277,12 +277,12 @@ function JobCard({ job, atOnce, onSent }: { job: Job; atOnce: AtOnce; onSent: ()
         {job.section ? (
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="font-semibold" data-testid="section-name">{sectionLabel(job.section)}</p>
-            {job.other_sections.length > 0 && <Button variant="quiet" className="-mx-3 max-sm:-mx-4" onClick={() => start('section')}>My section is wrong</Button>}
+            {job.other_sections.length > 0 && <Button data-action variant="quiet" className="-mx-3 max-sm:-mx-4" onClick={() => start('section')}>My section is wrong</Button>}
           </div>
         ) : job.other_sections.length > 0 ? (
           <div className="flex flex-wrap items-center justify-between gap-2" data-testid="no-section">
             <p>No section is set against your job.</p>
-            <Button variant="quiet" className="-mx-3 max-sm:-mx-4" onClick={() => start('section')}>Say which section is yours</Button>
+            <Button data-action variant="quiet" className="-mx-3 max-sm:-mx-4" onClick={() => start('section')}>Say which section is yours</Button>
           </div>
         ) : (
           <p data-testid="store-no-sections">
@@ -295,7 +295,7 @@ function JobCard({ job, atOnce, onSent }: { job: Job; atOnce: AtOnce; onSent: ()
             <span className="text-sm text-ink-muted">Changed from {job.section_change.from} · {job.section_change.waiting_for} will review it</span>
             <span className="flex flex-wrap items-center gap-2">
               <StatusPill tone="neutral" className="max-w-full whitespace-normal!">Changed · not yet reviewed</StatusPill>
-              <Button variant="quiet" className="-mx-3 max-sm:-mx-4" loading={busy === job.section_change.id} disabled={busy !== null}
+              <Button data-action variant="quiet" className="-mx-3 max-sm:-mx-4" loading={busy === job.section_change.id} disabled={busy !== null}
                 onClick={() => run(job.section_change!.id, 'withdraw', { proposal: job.section_change!.id }, `Undone: your section is ${job.section_change!.from} again.`)}>Undo</Button>
             </span>
           </div>
@@ -321,7 +321,7 @@ function JobCard({ job, atOnce, onSent }: { job: Job; atOnce: AtOnce; onSent: ()
                 )}
               </HierarchyGroups>
             )}
-            <div><Button onClick={() => start('add')}>Add subcategories</Button></div>
+            <div><Button data-action onClick={() => start('add')}>Add subcategories</Button></div>
             {open === 'add' && <AddSubcategories job={job} atOnce={atOnce.add} onCancel={close} onRefused={onSent}
               onSent={count => sent(atOnce.add ? `Added ${count === 1 ? '1 subcategory' : `${count} subcategories`}. ${job.waiting_for} will review ${count === 1 ? 'it' : 'them'}.`
                 : `Asked to add ${count === 1 ? '1 subcategory' : `${count} subcategories`}. Nothing changes until it is approved.`)} />}
@@ -346,9 +346,9 @@ function PlacedRow({ placed, busy, onNotMine, onUndo }: { placed: Placed; busy: 
         <span className="flex flex-wrap items-center gap-2">
           <StatusPill tone={asked.applied ? 'neutral' : 'caution'} className="max-w-full whitespace-normal!">{asked.applied ? 'Taken out · not yet reviewed'
             : asked.kind === 'move' && asked.to ? `Move to ${asked.to} waiting for approval` : 'Removal waiting for approval'}</StatusPill>
-          <Button variant="quiet" className="-mx-3 max-sm:-mx-4" loading={busy === asked.id} disabled={busy !== null} onClick={() => onUndo(asked.id)}>Undo</Button>
+          <Button data-action variant="quiet" className="-mx-3 max-sm:-mx-4" loading={busy === asked.id} disabled={busy !== null} onClick={() => onUndo(asked.id)}>Undo</Button>
         </span>
-      ) : <Button variant="quiet" className="-mx-3 max-sm:-mx-4" loading={busy === placed.id} disabled={busy !== null} onClick={onNotMine}>Not mine</Button>}
+      ) : <Button data-action variant="quiet" className="-mx-3 max-sm:-mx-4" loading={busy === placed.id} disabled={busy !== null} onClick={onNotMine}>Not mine</Button>}
     </li>
   )
 }
@@ -362,7 +362,7 @@ function AddedRow({ added, busy, onUndo }: { added: Addition; busy: string | nul
       </span>
       <span className="flex flex-wrap items-center gap-2">
         <StatusPill tone={added.applied ? 'neutral' : 'caution'} className="max-w-full whitespace-normal!">{added.applied ? 'Added · not yet reviewed' : 'Addition waiting for approval'}</StatusPill>
-        <Button variant="quiet" className="-mx-3 max-sm:-mx-4" loading={busy === added.id} disabled={busy !== null} onClick={() => onUndo(added.id)}>Undo</Button>
+        <Button data-action variant="quiet" className="-mx-3 max-sm:-mx-4" loading={busy === added.id} disabled={busy !== null} onClick={() => onUndo(added.id)}>Undo</Button>
       </span>
     </li>
   )
@@ -619,15 +619,15 @@ function ApprovalCard({ proposal, onDone }: { proposal: Approval; onDone: (note:
         )}
         {mode === 'decide' && applied && (
           <div className="flex flex-wrap gap-2">
-            <Button variant="primary" loading={busy === 'confirm'} onClick={() => decide('confirm')}>Confirm</Button>
-            <Button variant="danger" disabled={busy !== null} onClick={() => setMode('reject')}>Undo…</Button>
+            <Button data-action variant="primary" loading={busy === 'confirm'} onClick={() => decide('confirm')}>Confirm</Button>
+            <Button data-action variant="danger" disabled={busy !== null} onClick={() => setMode('reject')}>Undo…</Button>
           </div>
         )}
         {mode === 'decide' && !applied && (
           <div className="flex flex-wrap gap-2">
-            <Button variant="primary" loading={busy === 'approve'} onClick={() => decide('approve')}>{isMove ? 'Approve move' : 'Approve'}</Button>
-            {isMove && <Button disabled={busy !== null} onClick={() => setMode('elsewhere')}>Move it elsewhere…</Button>}
-            <Button variant="danger" disabled={busy !== null} onClick={() => setMode('reject')}>Reject</Button>
+            <Button data-action variant="primary" loading={busy === 'approve'} onClick={() => decide('approve')}>{isMove ? 'Approve move' : 'Approve'}</Button>
+            {isMove && <Button data-action disabled={busy !== null} onClick={() => setMode('elsewhere')}>Move it elsewhere…</Button>}
+            <Button data-action variant="danger" disabled={busy !== null} onClick={() => setMode('reject')}>Reject</Button>
           </div>
         )}
       </div>

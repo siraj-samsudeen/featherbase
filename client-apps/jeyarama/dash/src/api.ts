@@ -17,9 +17,16 @@ export async function read<T>(name: string, payload: Record<string, unknown> = {
   return body.result as T
 }
 
+/** The platform's bar marks the page while a tester views as someone (#1222). */
+export const VIEWING_AS_ATTRIBUTE = 'data-featherbase-viewing-as'
+export const viewingAs = () => typeof document !== 'undefined' && document.documentElement.hasAttribute(VIEWING_AS_ATTRIBUTE)
+export const VIEWING_ONLY = 'You are viewing as someone else: this is for looking only. Exit View as to make changes.'
+
 /** Runs one of Dash's declared actions. A fresh key per call: a retry after a lost answer is
  *  the caller pressing the button again, and the rules refuse a repeat. */
 export async function act<T>(name: string, payload: Record<string, unknown>): Promise<T> {
+  // #1222: while a tester views as someone, the page is for looking only; its change buttons are hidden.
+  if (viewingAs()) throw new ApiError(VIEWING_ONLY, 403)
   const response = await fetch(`/api/app_actions/dash/${encodeURIComponent(name)}`, {
     method: 'POST', credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': `dash@${version}` },

@@ -1,14 +1,12 @@
 // #1222: View as in the shared top bar. A View As Tester picks a person and
-// every page shows what that person sees, read-only; the server keeps the
-// state and refuses every change. Starting, switching and exiting reload the
-// page, so nothing read as one person is ever shown as another.
+// every page shows what that person sees; the server keeps the state. While
+// viewing, the page is marked (VIEWING_AS_ATTRIBUTE) so an app hides what
+// would change something. Starting, switching and exiting reload the page, so
+// nothing read as one person is ever shown as another.
 //
-// Three ways to pick, behind a toggle while the owner chooses one (each
-// remembered in this browser): from the avatar menu, from a sidebar section
-// like "Recently opened", or from a command-palette window. And two places
-// for the banner: a strip above the bar, or a bar pinned to the foot.
+// Two ways to pick, behind a toggle while the owner chooses one (remembered
+// in this browser): from the avatar menu, or from a command-palette window.
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import { Eye, History, Search, Clock, UserRoundSearch, Segmented, buttonClasses, cardClasses, inputClasses } from '@featherbase/shop-floor'
@@ -27,10 +25,10 @@ export interface ViewAsState {
   minutes?: number
 }
 
-export type PickerStyle = 'menu' | 'sidebar' | 'palette'
-export type BannerPlace = 'top' | 'bottom'
+export type PickerStyle = 'menu' | 'palette'
 const PICKER_KEY = 'featherbase.view-as.picker'
-const BANNER_KEY = 'featherbase.view-as.banner'
+/** On the document's root while viewing, for an app's own page to hide what would change something. */
+export const VIEWING_AS_ATTRIBUTE = 'data-featherbase-viewing-as'
 const CHOICE_EVENT = 'featherbase:view-as-choice'
 
 /** A choice kept in this browser, shared by every part of the bar. */
@@ -55,8 +53,7 @@ function useChoice<T extends string>(key: string, fallback: T, allowed: readonly
     window.dispatchEvent(new Event(CHOICE_EVENT))
   }]
 }
-export const usePickerStyle = () => useChoice<PickerStyle>(PICKER_KEY, 'menu', ['menu', 'sidebar', 'palette'])
-export const useBannerPlace = () => useChoice<BannerPlace>(BANNER_KEY, 'top', ['top', 'bottom'])
+export const usePickerStyle = () => useChoice<PickerStyle>(PICKER_KEY, 'menu', ['menu', 'palette'])
 
 /** Whether this person may view as someone, whom they view now, and their Recent and Frequently used. */
 export function useViewAs() {
@@ -112,12 +109,9 @@ function Section({ title, icon, people, onPick, testid }: { title: string; icon:
 }
 
 /** The picker itself: search by name, employee code, or job and store, then Recent and Frequently used. */
-export function ViewAsPicker({ state, autoFocus = false, compact = false, showChoices = true }: {
+export function ViewAsPicker({ state, autoFocus = false }: {
   state: ViewAsState
   autoFocus?: boolean
-  /** The sidebar's narrower form: fewer people under each heading. */
-  compact?: boolean
-  showChoices?: boolean
 }) {
   const [typed, setTyped] = useState('')
   const [query, setQuery] = useState('')
@@ -134,7 +128,7 @@ export function ViewAsPicker({ state, autoFocus = false, compact = false, showCh
   })
   const pick = (person: ViewAsPerson) => void changeView('/api/view_as/start', { person: person.person }, setError)
   const viewing = state.viewing?.person
-  const cap = compact ? 3 : 5
+  const cap = 5
   const recent = (state.recent ?? []).filter((p) => p.person !== viewing).slice(0, cap)
   const frequent = (state.frequent ?? []).filter((p) => p.person !== viewing && !recent.some((r) => r.person === p.person)).slice(0, cap)
   return (
@@ -155,7 +149,7 @@ export function ViewAsPicker({ state, autoFocus = false, compact = false, showCh
         />
       </div>
       {error && <p role="alert" className="px-2 text-xs text-negative" data-testid="view-as-error">{error}</p>}
-      <div className={compact ? '' : 'max-h-[min(55vh,24rem)] overflow-y-auto'}>
+      <div className="max-h-[min(55vh,24rem)] overflow-y-auto">
         {query.length >= 2 ? (
           found.isPending ? <p className="px-2 py-2 text-xs text-ink-subtle">Looking…</p>
             : found.data && found.data.length > 0 ? (
@@ -173,28 +167,21 @@ export function ViewAsPicker({ state, autoFocus = false, compact = false, showCh
           </>
         )}
       </div>
-      {showChoices && <StyleChoices minutes={state.minutes ?? 60} />}
+      <StyleChoices minutes={state.minutes ?? 60} />
     </div>
   )
 }
 
-/** While the owner chooses: which picker and where the banner sits. */
+/** While the owner chooses: which picker. */
 function StyleChoices({ minutes }: { minutes: number }) {
   const [picker, setPicker] = usePickerStyle()
-  const [banner, setBanner] = useBannerPlace()
   return (
     <div className="mt-1 flex flex-col gap-1.5 border-t border-border px-2 pt-2" data-testid="view-as-choices">
-      <p className="text-xs text-ink-subtle">Read-only: you can look, not change anything. Ends after {minutes} minutes.</p>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-subtle">
-        <span className="flex items-center gap-1.5">Picker
-          <Segmented label="Picker" value={picker} onChange={setPicker}
-            options={[{ value: 'menu', label: 'Menu' }, { value: 'sidebar', label: 'Sidebar' }, { value: 'palette', label: 'Palette' }]} />
-        </span>
-        <span className="flex items-center gap-1.5">Banner
-          <Segmented label="Banner" value={banner} onChange={setBanner}
-            options={[{ value: 'top', label: 'Top' }, { value: 'bottom', label: 'Bottom' }]} />
-        </span>
-      </div>
+      <p className="text-xs text-ink-subtle">For looking only: you see what they see. Ends after {minutes} minutes.</p>
+      <span className="flex items-center gap-1.5 text-xs text-ink-subtle">Picker
+        <Segmented label="Picker" value={picker} onChange={setPicker}
+          options={[{ value: 'menu', label: 'Menu' }, { value: 'palette', label: 'Palette' }]} />
+      </span>
     </div>
   )
 }
@@ -211,34 +198,30 @@ function useDismiss(open: boolean, close: () => void, inside: React.RefObject<HT
   }, [open, close, inside])
 }
 
-/** The banner while viewing: who, read-only, Switch and Exit. Always shown, whichever picker style. */
+/** The banner while viewing: who, for viewing only, Switch and Exit. Always shown, whichever picker style. */
 export function ViewAsBanner() {
   const { data } = useViewAs()
-  const [place] = useBannerPlace()
   const [switching, setSwitching] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const wrapper = useRef<HTMLDivElement>(null)
   useDismiss(switching, () => setSwitching(false), wrapper)
-  const viewing = data?.viewing
-  if (!data?.may || !viewing) return null
+  const viewing = data?.may ? data.viewing : null
+  // The page is marked while viewing, so an app's own page hides what would change something.
+  useEffect(() => {
+    const root = document.documentElement
+    if (viewing) root.setAttribute(VIEWING_AS_ATTRIBUTE, '')
+    else root.removeAttribute(VIEWING_AS_ATTRIBUTE)
+  }, [viewing])
+  if (!data || !viewing) return null
   const line = identityLine(viewing)
-  const bottom = place === 'bottom'
   return (
-    <div
-      ref={wrapper}
-      role="status"
-      data-testid="view-as-banner"
-      data-place={place}
-      className={bottom
-        ? 'fixed inset-x-2 bottom-2 z-40 rounded-card bg-ink px-3 py-2 text-surface shadow-lg sm:inset-x-auto sm:left-1/2 sm:w-[min(48rem,calc(100vw-2rem))] sm:-translate-x-1/2'
-        : 'relative z-30 shrink-0 bg-ink px-3 py-1.5 text-surface'}
-    >
+    <div ref={wrapper} role="status" data-testid="view-as-banner" className="relative z-30 shrink-0 bg-ink px-3 py-1.5 text-surface">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <Eye aria-hidden size={16} className="shrink-0" />
         <p className="min-w-0 flex-1 text-sm">
           Viewing as <strong data-testid="view-as-name">{viewing.name}</strong>
           {line && <span className="opacity-80"> · {line}</span>}
-          <span className="ml-2 inline-block rounded-full bg-caution px-2 py-0.5 align-middle text-[11px] font-semibold uppercase tracking-wide text-surface">Read-only</span>
+          <span className="ml-2 inline-block rounded-full bg-caution px-2 py-0.5 align-middle text-[11px] font-semibold uppercase tracking-wide text-surface">For viewing only</span>
         </p>
         <div className="flex shrink-0 items-center gap-2">
           <button type="button" onClick={() => setSwitching((s) => !s)} aria-expanded={switching} data-testid="view-as-switch"
@@ -249,7 +232,7 @@ export function ViewAsBanner() {
       </div>
       {error && <p role="alert" className="mt-1 text-xs">{error}</p>}
       {switching && (
-        <div className={cardClasses(`absolute z-40 w-[min(26rem,calc(100vw-1rem))] p-2 text-ink ${bottom ? 'bottom-full right-0 mb-2' : 'right-2 top-full mt-1'}`)} data-testid="view-as-switch-panel">
+        <div className={cardClasses('absolute right-2 top-full z-40 mt-1 w-[min(26rem,calc(100vw-1rem))] p-2 text-ink')} data-testid="view-as-switch-panel">
           <ViewAsPicker state={data} autoFocus />
         </div>
       )}
@@ -270,7 +253,7 @@ export function ViewAsMenuEntry({ onOpen }: { onOpen: () => void }) {
   )
 }
 
-/** Style 3: a "View as" button in the bar and Ctrl/⌘+Shift+K open a palette window. */
+/** Style 2: a "View as" button in the bar and Ctrl/⌘+Shift+K open a palette window. */
 export function ViewAsPaletteButton({ compact }: { compact: boolean }) {
   const { data } = useViewAs()
   const [style] = usePickerStyle()
@@ -304,47 +287,4 @@ export function ViewAsPaletteButton({ compact }: { compact: boolean }) {
       )}
     </>
   )
-}
-
-/** Style 2, shared by both sidebars: a "View as" section like "Recently opened". */
-export function ViewAsSidebarSection({ framed = false }: { framed?: boolean }) {
-  const { data } = useViewAs()
-  const [style] = usePickerStyle()
-  if (!data?.may || style !== 'sidebar') return null
-  return (
-    <div className={framed ? 'mt-3 border-t border-border pt-2' : 'border-t border-border px-2 py-2'} data-testid="view-as-sidebar">
-      <h2 className="flex items-center gap-1.5 px-2 pb-1 pt-1 text-xs font-medium text-ink-subtle">
-        <Eye aria-hidden size={12} />View as
-      </h2>
-      <ViewAsPicker state={data} compact />
-    </div>
-  )
-}
-
-/**
- * Style 2 over an app's own page: the section goes in the platform's
- * `<featherbase-sidebar>` frame, after the app's own rows, drawn from the bar
- * so the app's code and document stay its own.
- */
-export function ViewAsAppSidebar() {
-  const [target, setTarget] = useState<HTMLElement | null>(null)
-  useEffect(() => {
-    let container: HTMLElement | null = null
-    const attach = () => {
-      const frame = document.querySelector('featherbase-sidebar')?.shadowRoot?.querySelector<HTMLElement>('.sidebar-frame')
-      if (!frame) return
-      container = frame.querySelector<HTMLElement>('[data-view-as-host]')
-      if (!container) {
-        container = document.createElement('div')
-        container.dataset.viewAsHost = ''
-        frame.append(container)
-      }
-      setTarget((current) => (current === container ? current : container))
-    }
-    attach()
-    const observer = new MutationObserver(attach)
-    observer.observe(document.body, { childList: true, subtree: true })
-    return () => observer.disconnect()
-  }, [])
-  return target ? createPortal(<ViewAsSidebarSection framed />, target) : null
 }

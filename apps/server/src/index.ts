@@ -11,7 +11,7 @@ import { assertNotView, storedTable } from './views'
 import { AppError, errorResponse } from './errors'
 import { runInSession } from './session-context'
 import { activeViewAs, endViewAs, searchViewAs, startViewAs, viewAsRoute, viewAsState } from './view-as'
-import { runViewingAs, viewAsRefusal } from './view-as-context'
+import { runViewingAs } from './view-as-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { tableStorageIdentity } from './table-engine'
 import { deleteDoc, getDoc, revokeGrant, rowCapabilities, saveDoc } from './document'
@@ -624,11 +624,11 @@ app.post('/deliver/app', async (c) => {
 
 app.use('/api/*', async (c, next) => {
   const user = await resolveToken(authCredential(c))
-  // #1222: a session viewing as someone reads as that person and writes
-  // nothing. Its own View as controls run as the tester.
+  // #1222: a session viewing as someone reads as that person. Anything else
+  // (its own View as controls, any change) runs as the tester themself, never
+  // as the person viewed; the pages offer no change while viewing.
   const viewing = await activeViewAs(user)
-  const route = viewing ? viewAsRoute(c.req.method, c.req.path) : 'own'
-  if (viewing && route === 'refuse') throw viewAsRefusal(viewing.as)
+  const route = viewing ? viewAsRoute(c.req.method, c.req.path) : 'tester'
   if (viewing && route === 'drop') return c.body(null, 204)
   if (viewing && route === 'read') {
     c.set('user', viewing.user)

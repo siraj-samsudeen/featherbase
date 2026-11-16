@@ -167,7 +167,7 @@ function GiveBar({ page, onGiven, team }: { page: Page; onGiven: () => Promise<u
               </Select>
             </Field>
           )}
-          <Button variant="primary" loading={busy} onClick={give} data-testid="give-button">Give</Button>
+          <Button data-action variant="primary" loading={busy} onClick={give} data-testid="give-button">Give</Button>
         </div>
         {error && <Notice tone="negative"><span data-testid="give-error">{error}</span></Notice>}
         {done && <Notice tone="positive"><span data-testid="give-done">{done}</span></Notice>}
@@ -248,7 +248,7 @@ function WhoHasWhat({ rows, onRemoved, empty }: { rows: Row[]; onRemoved: () => 
           <Button variant="quiet" disabled={busy} onClick={() => setConfirming(null)}>Cancel</Button>
         </span>
       ) : row.removable === false ? <span className="px-3 text-sm text-ink-muted" data-testid="not-yours">Not given by you</span>
-        : <Button variant="quiet" onClick={() => { setError(null); setConfirming(row) }} data-testid="remove">Remove</Button>
+        : <Button data-action variant="quiet" onClick={() => { setError(null); setConfirming(row) }} data-testid="remove">Remove</Button>
     ) },
   ]
   return (
@@ -344,7 +344,7 @@ function Bundles({ page, onChanged }: { page: Page; onChanged: () => Promise<unk
                         <Button variant="danger" loading={busy} onClick={() => void run('remove_from_bundle', { id: held.member, updated_at: held.updated_at }, () => setConfirming(null))} data-testid="take-out-yes">Take out</Button>
                         <Button variant="quiet" disabled={busy} onClick={() => setConfirming(null)}>Cancel</Button>
                       </span>
-                    ) : <Button variant="quiet" onClick={() => { setError(null); setConfirming(held.member) }} data-testid="take-out">Take out</Button>}
+                    ) : <Button data-action variant="quiet" onClick={() => { setError(null); setConfirming(held.member) }} data-testid="take-out">Take out</Button>}
                   </li>
                 ))}
               </ul>
@@ -356,7 +356,7 @@ function Bundles({ page, onChanged }: { page: Page; onChanged: () => Promise<unk
                       {missing.map(report => <option key={report.key} value={report.key}>{report.name}</option>)}
                     </Select>
                   </Field>
-                  <Button disabled={busy || !adding[bundle.id]} onClick={() => void run('add_to_bundle', { bundle: bundle.id, report: adding[bundle.id] }, () => setAdding({ ...adding, [bundle.id]: '' }))} data-testid="bundle-add">Add</Button>
+                  <Button data-action disabled={busy || !adding[bundle.id]} onClick={() => void run('add_to_bundle', { bundle: bundle.id, report: adding[bundle.id] }, () => setAdding({ ...adding, [bundle.id]: '' }))} data-testid="bundle-add">Add</Button>
                 </div>
               )}
             </div>
@@ -366,7 +366,7 @@ function Bundles({ page, onChanged }: { page: Page; onChanged: () => Promise<unk
           <Field label="New bundle">
             <TextInput value={name} onChange={event => setName(event.target.value)} placeholder="For example, Team leader pack" data-testid="bundle-name" />
           </Field>
-          <Button disabled={busy || !name.trim()} onClick={() => void run('make_bundle', { name: name.trim() }, () => setName(''))} data-testid="bundle-make">Make bundle</Button>
+          <Button data-action disabled={busy || !name.trim()} onClick={() => void run('make_bundle', { name: name.trim() }, () => setName(''))} data-testid="bundle-make">Make bundle</Button>
         </div>
       </div>
     </Card>
@@ -454,7 +454,7 @@ function AddDive({ onAdded }: { onAdded: () => Promise<unknown> }) {
                       <span className="fd-muted text-sm"> · {dive.owner}{dive.saved_on ? ` · saved ${dayOf(dive.saved_on)}` : ''}</span>
                     </span>
                     {dive.in_dash ? <span className="fd-muted text-sm" data-testid="dive-in-dash">In Dash as {dive.in_dash}</span>
-                      : chosen?.dive_id !== dive.dive_id && <Button variant="quiet" onClick={() => choose(dive)} data-testid="dive-choose">Add</Button>}
+                      : chosen?.dive_id !== dive.dive_id && <Button data-action variant="quiet" onClick={() => choose(dive)} data-testid="dive-choose">Add</Button>}
                   </div>
                   {chosen?.dive_id === dive.dive_id && (
                     <div className="flex flex-col gap-2 rounded border border-border p-3" data-testid="dive-adding">

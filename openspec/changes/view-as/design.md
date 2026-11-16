@@ -8,9 +8,10 @@ Dash's reads never look at a session: the platform hands each one the person, th
 Every request already passes one session check. While viewing, that check hands the rest of the request the viewed person, so every read in Dash and Featherbase follows that person's access with no page-by-page code.
 *Rejected:* passing a "view as" person into each Dash read. Featherbase pages would not follow, and each new read would have to remember it.
 
-### D2. Read-only by default-deny, with guards behind it
-While viewing, only reads pass the session check (GET requests and app reads). Every other request is refused before it is routed, so a write endpoint added later is covered too. Behind that, permission checks answer "no" to every change and app actions refuse, so a write reached from inside a read is still stopped.
-*Rejected:* an allow-list of write endpoints to block. It fails open for any endpoint added later.
+### D2. Only reads are swapped; a change is always the tester's own
+While viewing, only reads (GET requests and app reads) run as the person viewed. Anything else runs as the tester themself, so nothing is ever changed in the viewed person's name. The pages hide what would change something: Featherbase's permission checks offer no change while viewing, and the bar marks the page so an app (Dash) hides its change buttons.
+*Rejected (owner, 16-Nov-2026, "dont make it complicated"):* a server-enforced read-only mode that refuses every change with its own message.
+*Rejected:* swapping every request. A change would then be made as the person viewed.
 
 ### D3. The state is kept on the server, per session
 One row per signed-in session (the token's id), with an end time. Exit, sign-out, session end, expiry or losing the role end it; nothing travels in a link or another browser.
@@ -22,7 +23,7 @@ Dash declares View As Tester and the read that finds people (`viewAs`). The plat
 
 ### D5. Who can't be viewed
 Yourself, a built-in account, someone turned off, and anyone who holds System Manager or Administrator. Read-only as a System Manager would still read the whole instance.
-*Rejected:* allowing it read-only. It turns a tester role into a read-everything role.
+*Rejected:* allowing it. Viewing as them would turn a tester role into a read-everything role.
 
 ### D6. "A job at a store" finds a real person
 Typing a job and a store finds the people holding that job there today. Their view is real: reach comes from their jobs, sections, buyer assignments and grants.
@@ -36,7 +37,7 @@ flowchart LR
   T[Tester's browser] -->|session| C{Session check}
   C -->|View as controls| S[(view_as_session)]
   C -->|read| R[Reads run as the person viewed]
-  C -->|anything else| X[Refused: read-only]
-  R --> G[Permissions and app actions refuse changes]
+  C -->|anything else| X[Runs as the tester]
+  R --> G[Pages offer no change]
   S --> L[(Access Log: start, switch, end)]
 ```

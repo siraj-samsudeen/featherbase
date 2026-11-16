@@ -1,5 +1,5 @@
 // View as (#1222) by real reads and writes on the platform: a View As Tester sees Dash as another
-// person does, read-only, and every write is refused by the server. Made-up people and stores.
+// person does; anything they change is their own, never the person's. Made-up people and stores.
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { makeClient } from 'feather-testing-postgres'
 import { describe, expect } from 'vitest'
@@ -8,9 +8,6 @@ import { sandboxRequest } from '../pg-test-shared'
 import { tableRelation } from '../../src/table-engine'
 import { sql } from '../../src/db'
 import { issueSession } from '../../src/auth'
-import { assertPermission } from '../../src/permissions'
-import { runPackageAction } from '../../src/runtime-packages'
-import { runViewingAs } from '../../src/view-as-context'
 import { APP_DIR, REPORT_ROWS, createCoreTables, installApp, pinned, saveRow } from './helpers'
 
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
@@ -21,7 +18,6 @@ process.env.MOTHERDUCK_TOKEN = 'made-up-token'
 void APP_DIR
 
 const TESTER = 'View As Tester'
-const READ_ONLY = 'read-only. Exit View as to make changes'
 const json = { 'content-type': 'application/json' }
 const call = (client: TestClient, kind: 'app_actions' | 'app_reads', name: string, payload: Record<string, unknown>) =>
   client.fetch(`/api/${kind}/dash/${name}`, { method: 'POST', headers: json, body: JSON.stringify(kind === 'app_actions' ? { idempotencyKey: crypto.randomUUID(), payload } : { payload }) })
@@ -61,7 +57,7 @@ async function setup(admin: TestClient, createUser: CreateUserFn) {
   await save('dash.report', { report_key: 'open', report_name: 'Company notices', dive_id: 'made-up-open-dive', filter_shape: 'No filter' })
   const person = (name: string, roles = ['Dash Reader']) => createUser({ email: `${name}@example.test`, roles })
   const people = {
-    // The tester also manages report access, so a refused give is View as refusing, not a missing right.
+    // The tester also manages report access, so a change they make while viewing would show.
     tester: await person('va-tester', [TESTER, 'Report Access Manager']),
     buyer: await person('va-buyer'), other: await person('va-other'), plain: await person('va-plain'),
     boss: await person('va-boss', ['Dash Reader', 'System Manager']),
@@ -80,7 +76,7 @@ async function setup(admin: TestClient, createUser: CreateUserFn) {
   return people
 }
 
-describe('View as: a tester sees what a person sees, read-only', () => {
+describe('View as: a tester sees what a person sees', () => {
   test('someone without View As Tester is offered nothing and refused', async ({ admin, createUser }) => {
     const { plain, buyer, boss } = await setup(admin, createUser)
     expect(await state(plain)).toEqual({ may: false })
@@ -110,30 +106,14 @@ describe('View as: a tester sees what a person sees, read-only', () => {
     expect(await reports(tester)).toEqual(['open'])
   })
 
-  test('refuses every write while viewing, a forged one included, and nothing is written', async ({ admin, createUser }) => {
+  test('a change made while viewing is the tester\'s own, never the person\'s', async ({ admin, createUser }) => {
     const { tester, buyer, other } = await setup(admin, createUser)
     await ok(start(tester, buyer.user))
+    // The tester also manages report access: the give goes through as the tester, not as Meena.
+    await ok(call(tester, 'app_actions', 'give_report', { report: 'vendor_sales', person: other.user }))
     const access = sql(await tableRelation('dash.report_access'))
-    const before = await sql`select count(*)::int as n from ${access}`
-    await refused(call(tester, 'app_actions', 'give_report', { report: 'sales', person: other.user }), READ_ONLY)
-    await refused(call(tester, 'app_actions', 'propose_removal', { placement: 'P1' }), READ_ONLY)
-    await refused(saveRow(tester, 'dash.report_access', { report: 'sales', person: other.user }).then(() => new Response('saved', { status: 200 }), (error: Error) => new Response(error.message, { status: 403 })), READ_ONLY)
-    await refused(tester.fetch('/api/save_row', { method: 'POST', headers: json, body: JSON.stringify({ table: 'dash.report', row: { report_key: 'x', report_name: 'X', filter_shape: 'No filter' } }) }), READ_ONLY)
-    // Default-deny: any other change is refused before it is routed, whatever it is.
-    await refused(tester.fetch('/api/anything_that_changes', { method: 'POST', headers: json, body: '{}' }), READ_ONLY)
-    expect(await sql`select count(*)::int as n from ${access}`).toEqual(before)
-    // Still viewing: the refusals did not end it, and Exit still works.
+    expect(await sql`select created_by from ${access} where report = 'vendor_sales' and person = ${other.user}`).toEqual([{ created_by: tester.user }])
     expect((await state(tester)).viewing?.person).toBe(buyer.user)
-    await exit(tester)
-  })
-
-  test('the write paths refuse on their own, behind the request check', async ({ admin, createUser }) => {
-    const { tester, buyer, other } = await setup(admin, createUser)
-    const as = { tester: tester.user!, person: buyer.user!, name: 'Meena Example' }
-    await expect(runViewingAs(as, () => assertPermission(buyer.user!, 'dash.report_access', 'create'))).rejects.toThrow(READ_ONLY)
-    await expect(runViewingAs(as, () => runPackageAction('dash', 'give_report', { idempotencyKey: crypto.randomUUID(), payload: { report: 'sales', person: other.user } }, tester.user!))).rejects.toThrow(READ_ONLY)
-    // Reading is still allowed.
-    await expect(runViewingAs(as, () => assertPermission(buyer.user!, 'dash.report', 'read'))).resolves.toBeUndefined()
   })
 
   test('cannot view yourself, a System Manager, or someone turned off', async ({ admin, createUser }) => {

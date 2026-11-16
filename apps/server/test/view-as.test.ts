@@ -1,6 +1,6 @@
 // #1222: View as, on the platform. An app names a role that may view as someone (`viewAs.role`)
-// and a read that finds people (`viewAs.people`); the platform swaps who a read runs as and
-// refuses every write. Fixture: a copy of test-apps/fixtures/bar-proof with `viewAs` declared.
+// and a read that finds people (`viewAs.people`); the platform swaps who a read runs as, and any
+// change runs as the tester themself. Fixture: a copy of test-apps/fixtures/bar-proof with `viewAs` declared.
 // Dash's own platform test (client-apps/jeyarama/dash/platform-test/view-as.test.ts) shows it with
 // real reach.
 import { afterEach, describe, expect } from 'vitest'
@@ -17,7 +17,6 @@ import { sql } from '../src/db'
 
 const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
 const TESTER = 'Bar Tester'
-const READ_ONLY = 'read-only. Exit View as to make changes'
 const tableRead = { policy: { kind: 'table' }, authorization: { kind: 'generic' } }
 
 const directories: string[] = []
@@ -76,14 +75,16 @@ describe('View as: what an app declares', () => {
 })
 
 describe('View as on the platform', () => {
-  test('reads run as the person, and Featherbase writes of any kind are refused', async ({ admin, createUser }) => {
-    const { tester, person } = await install(admin, createUser)
+  test('reads run as the person; a change runs as the tester, never as the person', async ({ admin, createUser }) => {
+    const { person } = await install(admin, createUser)
+    // This tester can also save rows themself, so a change that went through as the person would show.
+    const tester = await createUser({ email: 'tester-manager@example.test', roles: [TESTER, 'System Manager'] })
     expect((await tester.get<{ row_id: string }>('/api/whoami')).row_id).toBe(tester.user)
     expect((await status(start(tester, person.user)))[0]).toBe(200)
     expect((await tester.get<{ row_id: string }>('/api/whoami')).row_id).toBe(person.user)
-    for (const [method, path] of [['POST', '/api/save_row'], ['PUT', '/api/table/ToDo/x'], ['PATCH', '/api/table/ToDo/x'], ['DELETE', '/api/table/ToDo/x'], ['POST', '/api/app_actions/barproof/anything']])
-      expect(await status(tester.fetch(path, { method, headers: json, body: JSON.stringify({ table: 'ToDo', row: { description: 'x' } }) })))
-        .toEqual([403, expect.stringContaining(READ_ONLY)])
+    const saved = await tester.fetch('/api/save_row', { method: 'POST', headers: json, body: JSON.stringify({ table: 'ToDo', row: { description: 'made while viewing', allocated_to: tester.user } }) })
+    expect([saved.status, saved.status === 201 ? '' : await saved.text()]).toEqual([201, ''])
+    expect(await sql`select created_by from todo where description = 'made while viewing'`).toEqual([{ created_by: tester.user }])
     // The browser's recent-pages trail is accepted and not recorded.
     const events = await sql`select count(*)::int as n from user_event`
     expect((await tester.fetch('/api/events', { method: 'POST', headers: json, body: JSON.stringify({ events: [{ kind: 'page', key: 'x' }] }) })).status).toBe(204)

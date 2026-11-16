@@ -15,13 +15,13 @@ A person holding a View as role SHALL be able to choose another person and then 
 - **WHEN** Priya stops viewing as Meena
 - **THEN** she sees her own reports again
 
-### Requirement: Nothing can be changed while viewing
-While viewing as someone, the system SHALL refuse every change, whatever the page offers or the request asks, and say that the view is read-only.
+### Requirement: Viewing is for looking
+While viewing as someone, the pages SHALL offer nothing that changes data, and say the view is for looking only. Anything the tester does change is recorded as the tester's own, never as the person viewed.
 
-#### Scenario: Giving a report is refused
+#### Scenario: No give button while viewing
 
-- **WHEN** Priya, viewing as Meena, tries to give a report to someone
-- **THEN** it is refused as read-only, and nothing is given
+- **WHEN** Priya views as Meena and opens a page where Meena could give a report
+- **THEN** no give button is offered
 
 ### Requirement: Finding a person to view
 The tester SHALL be able to find a person by name, by employee code, or by a job and a store, and see each person's code, job and store beside their name. People they viewed lately and most often are offered without searching.

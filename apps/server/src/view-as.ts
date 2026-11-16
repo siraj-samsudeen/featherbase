@@ -1,8 +1,9 @@
 // #1222: View as. A tester sees what another person sees, read-only, without
 // their password. An app declares who may (`viewAs.role`, one of its own
 // roles) and how its people are found and described (`viewAs.people`, one of
-// its reads). The platform keeps the state, swaps the person for reads, and
-// refuses every write (index.ts, permissions.ts, runtime-actions.ts).
+// its reads). The platform keeps the state and swaps the person for reads
+// (index.ts); any other request runs as the tester themself, and screens offer
+// no change while viewing (permissions.ts).
 //
 // The state is one view_as_session row per signed-in session, keyed by the
 // token's jti: it ends with the session, at Exit, after VIEW_AS_MINUTES, or
@@ -197,15 +198,14 @@ export async function viewAsState(user: SessionUser) {
 
 /**
  * How the middleware treats a request while viewing:
- * - `own`: the tester's own View as controls, run as the tester;
  * - `read`: a read, run as the person viewed;
  * - `drop`: the browser's recent-pages trail, accepted and not recorded;
- * - `refuse`: everything else.
+ * - `tester`: everything else (the View as controls, any change), run as the tester themself.
  */
-export function viewAsRoute(method: string, path: string): 'own' | 'read' | 'drop' | 'refuse' {
-  if (path === '/api/view_as' || path.startsWith('/api/view_as/')) return 'own'
+export function viewAsRoute(method: string, path: string): 'read' | 'drop' | 'tester' {
+  if (path === '/api/view_as' || path.startsWith('/api/view_as/')) return 'tester'
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return 'read'
   if (method === 'POST' && /^\/api\/app_reads\/[^/]+\/[^/]+$/.test(path)) return 'read'
   if (method === 'POST' && path === '/api/events') return 'drop'
-  return 'refuse'
+  return 'tester'
 }

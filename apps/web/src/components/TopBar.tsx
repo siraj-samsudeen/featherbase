@@ -12,7 +12,7 @@ import { useI18n } from '../lib/i18n'
 import { BarControls, useBarControls } from './BarControls'
 import { AppSwitcher, useOpenAdmin } from './AppSwitcher'
 import { Logo } from './Logo'
-import { ViewAsAppSidebar, ViewAsBanner, ViewAsMenuEntry, ViewAsPaletteButton, ViewAsPicker, useViewAs } from './ViewAs'
+import { ViewAsBanner, ViewAsMenuEntry, ViewAsPaletteButton, ViewAsPicker, useViewAs } from './ViewAs'
 import { TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, useMediaQuery } from '@featherbase/shop-floor'
 import { CalendarDays, ChartColumn, House, Inbox, List, ListChecks, Monitor, Moon, Sun, Target, UserRound, type LucideIcon } from '@featherbase/shop-floor'
 
@@ -225,7 +225,6 @@ export function TopBar({
       <PreviewBanner />
       {/* #1222: who is being viewed, on every page, while a tester views as someone. */}
       <ViewAsBanner />
-      {app && <ViewAsAppSidebar />}
       <header
         // Where the bar draws an app's controls (on the app's address, or over
         // the app's own page) it frames the phone list of a declared control.

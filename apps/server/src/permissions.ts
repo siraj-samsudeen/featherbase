@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from 'node:util'
 import { sql } from './db'
-import { assertNotViewingAs, viewingAs } from './view-as-context'
+import { viewingAs } from './view-as-context'
 import { AppError } from './errors'
 import { activeApps } from './app-lifecycle'
 import { isActingSystemActor } from './system-actor'
@@ -128,7 +128,7 @@ export async function permissionScope(
   table: string,
   action: PermAction,
 ): Promise<PermScope> {
-  // #1222: while viewing as someone, only reading is possible, so screens offer no change.
+  // #1222: while viewing as someone, the screens offer no change.
   if (viewingAs() && action !== 'read' && action !== 'read_identifiers') return 'none'
   if (!(await admittedToTable(user, table))) return 'none'
   if (await isPrivileged(user)) return 'all'
@@ -169,7 +169,6 @@ export async function assertDocPermission(
   action: PermAction,
   createdBy: string,
 ) {
-  if (action !== 'read' && action !== 'read_identifiers') assertNotViewingAs()
   const scope = await permissionScope(user, table, action)
   if (scope === 'all') return
   if (scope === 'own_rows' && createdBy === user) return
@@ -181,7 +180,6 @@ export async function assertPermission(
   table: string,
   action: PermAction,
 ) {
-  if (action !== 'read' && action !== 'read_identifiers') assertNotViewingAs()
   if (!(await hasPermission(user, table, action)))
     throw await permissionRefusal(user, table, action)
 }
