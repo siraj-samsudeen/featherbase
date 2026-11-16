@@ -26,10 +26,6 @@ export function useOpenAdmin() {
   return { open, busy }
 }
 
-/** #1008: why a System Manager can't open an installed app. */
-const closedReason = (roles: string[]) =>
-  roles.length ? `you need the ${roles.join(' or ')} role` : 'no role opens it yet'
-
 interface CatalogApp {
   name: string
   title: string
@@ -58,8 +54,8 @@ function AppMark({ icon, accent, admin = false }: { icon?: AppTabIcon; accent?: 
  * #1236: the application switcher, one menu on platform and app pages. The
  * button shows the current app; its menu lists every app the person can open,
  * each with its icon and what it is for, the current one ticked, and ends with
- * Featherbase Admin for those who can open it. A System Manager also sees the
- * apps they can't open, greyed, with the roles that would open them (#1008).
+ * Featherbase Admin for those who can open it. Only apps the person can open
+ * are listed, for everyone (#1236 option A); who opens an app is on Admin → Apps.
  *
  * `compact`: on a phone, beside an app's pickers, the button shows only the
  * chevron (#983); the menu still opens and switches.
@@ -70,11 +66,6 @@ export function AppSwitcher({ app, compact = false }: { app?: { name: string; ti
     queryKey: ['app-catalog'],
     queryFn: () => api.get<CatalogApp[]>('/api/app_catalog'),
     enabled: Boolean(whoami),
-  })
-  const closed = useQuery({
-    queryKey: ['app-catalog', 'closed'],
-    queryFn: () => api.get<{ name: string; title: string; roles: string[] }[]>('/api/app_catalog/closed'),
-    enabled: Boolean(whoami?.capabilities.manage),
   })
   const { open: openAdmin, busy } = useOpenAdmin()
   const [open, setOpen] = useState(false)
@@ -190,18 +181,9 @@ export function AppSwitcher({ app, compact = false }: { app?: { name: string; ti
               </button>
             )
           })}
-          {(closed.data ?? []).map((item) => (
-            <div key={item.name} role="menuitem" aria-disabled="true" data-testid="app-switcher-closed" data-title={item.title} className={cx(row, 'cursor-not-allowed opacity-60 hover:bg-transparent')}>
-              <AppMark />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-ink-muted">{item.title}</span>
-                <span className="block text-[13px] text-ink-subtle">{closedReason(item.roles)}</span>
-              </span>
-            </div>
-          ))}
           {offersAdmin && (
             <>
-              {choices.length + (closed.data?.length ?? 0) > 0 && <div role="separator" className="my-1 border-t border-border" />}
+              {choices.length > 0 && <div role="separator" className="my-1 border-t border-border" />}
               <button
                 type="button"
                 role="menuitemradio"

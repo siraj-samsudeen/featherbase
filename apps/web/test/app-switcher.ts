@@ -29,12 +29,6 @@ export async function appChoices(scope: Scope, wait?: Wait): Promise<string[]> {
   return [...menu.querySelectorAll<HTMLElement>('[data-testid="app-switcher-item"]')].map((item) => item.dataset.title ?? '')
 }
 
-/** The apps a System Manager sees greyed, by title. */
-export async function closedChoices(scope: Scope, wait?: Wait): Promise<string[]> {
-  const { menu } = await openSwitcher(scope, wait)
-  return [...menu.querySelectorAll<HTMLElement>('[data-testid="app-switcher-closed"]')].map((item) => item.dataset.title ?? '')
-}
-
 /** Chooses the app titled `title` from the menu, once the menu offers it
  *  (the list fills in when the app catalog answers). */
 export async function chooseApp(scope: Scope, title: string, wait?: Wait) {

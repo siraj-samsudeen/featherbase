@@ -81,3 +81,38 @@ describe("#1237: an app's own page for one of its rows", () => {
     expect(await findChanged((manifest) => ({ ...manifest, recordPages: { 'tasker.task': '/tasker/' } }))).toMatch(/\{row\}/)
   })
 })
+
+describe('#1236 (option A): who an installed app opens for, on the Apps page', () => {
+  test("an installed app's entry names the roles that open it; an app not installed names none", async ({ admin }) => {
+    expect(await discoverPackages([TASKER])).toEqual([])
+    await admin.post('/api/install_app', { name: 'tasker' })
+    const { catalog } = await admin.get<{ catalog: { name: string; installed: boolean; opensFor?: unknown }[] }>('/api/apps')
+    expect(catalog.find((app) => app.name === 'tasker')).toMatchObject({ installed: true, opensFor: { everyone: false, roles: ['Tasker Member'], gated: false } })
+    for (const app of catalog.filter((entry) => !entry.installed)) expect(app.opensFor).toBeUndefined()
+    await discoverPackages([])
+  })
+})
+
+describe('#1236, Codex review round 11: no mandatory policy is no ceiling, not no access', () => {
+  test('an app whose entry Table every role reads opens for everyone', async ({ admin }) => {
+    const TICKETS = resolve('../..', 'example-apps/tickets')
+    expect(await discoverPackages([TICKETS])).toEqual([])
+    await admin.post('/api/install_app', { name: 'tickets' })
+    const { catalog } = await admin.get<{ catalog: { name: string; opensFor?: unknown }[] }>('/api/apps')
+    expect(catalog.find((app) => app.name === 'tickets')?.opensFor).toMatchObject({ everyone: true, roles: [], gated: false })
+    await discoverPackages([])
+  })
+})
+
+describe('#1236, Codex review round 12: a grant and a mandatory policy are separate requirements', () => {
+  test('the summary keeps the roles granted read apart from the roles the policy admits', async ({ admin }) => {
+    expect(await discoverPackages([TASKER])).toEqual([])
+    await admin.post('/api/install_app', { name: 'tasker' })
+    const { catalog } = await admin.get<{ catalog: { name: string; opensFor?: { roles: string[]; admits?: string[] } }[] }>('/api/apps')
+    const opensFor = catalog.find((app) => app.name === 'tasker')?.opensFor
+    // Never an intersection: the granted roles are listed whatever the policy admits.
+    expect(opensFor?.roles).toEqual(['Tasker Member'])
+    if (opensFor?.admits) expect(Array.isArray(opensFor.admits)).toBe(true)
+    await discoverPackages([])
+  })
+})
