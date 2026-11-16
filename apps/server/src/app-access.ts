@@ -50,6 +50,9 @@ export const scopeProviderDeclaration = z.object({ name, tables: z.array(text).m
   /** #967: of `tables`, the instance's own Tables it reads without their carrying `decides_scope`,
    *  so role grants decide who edits them. The app names each one; a Table it owns stays marked. */
   unmarkedTables: z.array(text).refine(distinct).optional(),
+  /** #1247: of `tables`, those an instance may not have yet: the provider checks documents.available()
+   *  before reading one, and the health check names a missing one without failing. */
+  optionalTables: z.array(text).refine(distinct).optional(),
   identifiers: z.array(z.string().regex(IDENTIFIER_SYSTEM_KEY)).refine(distinct).optional() }).strict()
 export const readDeclaration = z.object({ version: z.literal(1), tables: z.array(text).refine(distinct),
   operations: z.record(name, operationSchema).refine(o => Object.keys(o).length > 0),
