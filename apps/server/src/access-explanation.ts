@@ -49,6 +49,10 @@ export interface AccessExplanation {
   person_name: string | null
   /** #1224: the apps the person can open, by title, for the summary. */
   apps: { name: string; title: string; href: string }[]
+  /** #1224: the Tables, by label, whose mandatory privacy policy keeps some
+   *  rows to the people they belong to — of those reached, or every one for
+   *  someone who reaches every Table (Codex round 15). */
+  private_tables: string[]
   every_table: boolean
   roles: ExplainedRole[]
   read: ExplainedTable[]
@@ -250,8 +254,14 @@ export async function explainAccess(person: string, viewer: string): Promise<Acc
 
   const apps = (await appCatalog(person)).map((a) => ({ name: String(a.name), title: String(a.title ?? a.name), href: String(a.href) }))
 
+  const privateDefs = reach.every_table
+    ? await sql`select name, label from table_def where access_policy is not null and kind <> 'sub_table' order by coalesce(label, name)`
+    : [...defs.values()].filter((d) => d.keeps_private)
+  const private_tables = privateDefs.map((d) => tableLabel(String(d.name), d.label))
+
   return {
     person,
+    private_tables,
     person_name: (await actorNames([person])).get(person) ?? null,
     apps,
     every_table: reach.every_table,

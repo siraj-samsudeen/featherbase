@@ -112,7 +112,10 @@ export async function actorNamesOn(viewer: string, table: unknown, ids: unknown)
   // candidates, so no share is skipped by a cap (Codex round 14).
   const pending = () => wanted.filter((id) => !acted.has(id))
   const meta = await getMeta(table).catch(() => null)
-  const relation = meta && !isBound(meta) ? await tableRelation(table).catch(() => null) : null
+  // Only a stored Table has rows of its own to share (Codex round 15: a View or
+  // Settings Table has no relation; a sub-table's rows are its parent's).
+  const stored = meta && meta.kind === 'table' && !isBound(meta)
+  const relation = stored ? await tableRelation(table).catch(() => null) : null
   if (relation && pending().length) {
     const stamps = ['created_by', 'updated_by', ...(canRetire(meta!) ? ['retired_by'] : [])]
     const rows = await sql`select distinct s.share_name from share s

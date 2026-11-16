@@ -262,3 +262,13 @@ test('#1224 a row is linkable only when the viewer may open that row, not just i
   expect(asManager.viewer_opens_rows).toEqual(expect.arrayContaining([
     { table: 'Person', row_id: 'Administrator' }, { table: 'Person', row_id: person.user }, { table: 'Role', row_id: 'Ae Own People' }]))
 })
+
+test('#1224 the page names the Tables that keep rows private, for someone who reaches every Table too', async ({ admin, createUser }) => {
+  const { sql } = await import('../src/db')
+  await admin.post('/api/table_def', { name: 'Ae Private', label: 'Ae Private', columns: [{ column_name: 'body', column_type: 'Data' }] })
+  await sql`update table_def set access_policy = ${sql.json({ roles: ['All'], shared_column: null, inherit_column: null })} where name = 'Ae Private'`
+  const manager = await createUser({ roles: ['System Manager'] })
+  const page = await admin.get<{ every_table: boolean; private_tables: string[] }>(pageOf(manager.user!))
+  expect(page.every_table).toBe(true)
+  expect(page.private_tables).toContain('Ae Private')
+})

@@ -288,12 +288,14 @@ export function rowsLine({ limits, readOwn, changeOwn, places, privateTables = [
 
 // ── (c) Summary: sentences first, the detail behind one button ──────────────
 
-export function SummaryLayout({ roles, tables, everyTable, limits, shares, places, apps, notes, self }: {
+export function SummaryLayout({ roles, tables, everyTable, limits, shares, places, apps, privateTables, notes, self }: {
   roles: RoleRow[]; tables: Reached[]; everyTable: boolean; limits: number; shares: number
   /** The app that limits the person to places, and how many it gives; null when none does. */
   places: { title: string; count: number } | null
   /** The apps the person can open, and the places an app gives them (spec item 3). */
   apps: { name: string; title: string; href: string }[]
+  /** Tables whose privacy policy keeps some rows to the people they belong to (from the server). */
+  privateTables: string[]
   /** Muted lines for sections that are empty, so they need no card of their own (spec item 8). */
   notes: ReactNode
   self: boolean
@@ -320,7 +322,7 @@ export function SummaryLayout({ roles, tables, everyTable, limits, shares, place
       </dl>
       <ul className="space-y-3 text-sm">
         {everyTable && (
-          <li className="text-ink" data-testid="access-summary-line">{you} can read and change every Table — through System Manager — apart from rows a table keeps private to the people they belong to.
+          <li className="text-ink" data-testid="access-summary-line">{you} can read and change every Table — through System Manager.
             <ul className="mt-1 space-y-0.5 text-xs text-ink-muted">
               {roles.map((r) => (
                 <li key={`${r.app ?? ''}/${r.role}/${r.through ?? ''}`} data-testid="access-role">
@@ -356,7 +358,7 @@ export function SummaryLayout({ roles, tables, everyTable, limits, shares, place
         <li className="text-ink" data-testid="access-summary-line">
           {rowsLine({ limits, readOwn: tables.filter((t) => t.read && t.readOwn).length,
             changeOwn: tables.filter((t) => t.change && t.changeOwn).length, places, self,
-            privateTables: tables.filter((t) => t.keepsPrivate).map((t) => t.label) })}
+            privateTables })}
           {shares > 0 && ` ${plural(shares, 'row is', 'rows are')} also shared with ${self ? 'you' : 'them'} directly.`}
         </li>
       </ul>

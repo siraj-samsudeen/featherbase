@@ -231,3 +231,14 @@ test('more than a hundred shared rows: an actor on the last one is still named',
   expect(Number((await sql`select count(*) as n from share where share_table = 'Act Many' and person = ${recipient.user!}`)[0]!.n)).toBe(102)
   expect(await actorNamesOn(recipient, 'Act Many', [late.user!, busy.user!])).toEqual({ [late.user!]: 'Late Writer', [busy.user!]: 'Busy Writer' })
 }, 120_000)
+
+test('a View or a Settings Table answers too: matched actors named, the rest looked up as before', async ({ admin, createUser }) => {
+  await admin.post('/api/table_def', { name: 'Act Base', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table_def', { name: 'Act Base View', kind: 'view', view_of: 'Act Base', view_filters: [['title', '=', 'x']] })
+  await grantRole(admin, { role: 'Act Base Writer', table: 'Act Base', can_read: true, can_create: true })
+  const writer = await createUser({ roles: ['Act Base Writer'], fullName: 'Base Writer' })
+  await writer.post('/api/save_row', { table: 'Act Base', row: { title: 'x' } })
+  const stranger = await createUser({ roles: [], fullName: 'Not An Actor' })
+  expect(await actorNamesOn(writer, 'Act Base View', [writer.user!, stranger.user!])).toEqual({ [writer.user!]: 'Base Writer', [stranger.user!]: null })
+  expect(await actorNamesOn(admin, 'System Settings', [stranger.user!])).toEqual({ [stranger.user!]: 'Not An Actor' })
+})

@@ -15,6 +15,7 @@ interface Explanation {
   person: string
   person_name?: string | null
   apps?: { name: string; title: string; href: string }[]
+  private_tables?: string[]
   every_table: boolean
   viewer_opens?: string[]
   viewer_opens_rows?: { table: string; row_id: string }[]
@@ -118,7 +119,7 @@ export function AccessExplanation({ person }: { person: string }) {
           <div data-testid="access-tables">
             {layout === 'summary' && <SummaryLayout roles={roles} tables={tables} everyTable={data.every_table}
               limits={data.limits.length} shares={data.shares.length} self={self} notes={notes}
-              apps={data.apps ?? []}
+              apps={data.apps ?? []} privateTables={data.private_tables ?? []}
               places={data.scope ? { title: data.scope.title, count: data.scope.places.length } : null} />}
             {layout === 'roles' && <RolesLayout roles={roles} tables={tables} everyTable={data.every_table} self={self} />}
             {layout === 'areas' && <AreasLayout tables={tables} everyTable={data.every_table} />}
