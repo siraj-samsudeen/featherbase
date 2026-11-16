@@ -123,10 +123,14 @@ export async function activeViewAs(user: SessionUser, { told = true }: { told?: 
   }
 }
 
-/** Whether this session still views as `person`: live, not ended, not expired. */
-export async function viewAsStillHolds(session: string, person: string): Promise<boolean> {
-  const [row] = await sql`select 1 from view_as_session where session_id = ${session} and person = ${person} and ended_at is null and expires_at > now()`
-  return Boolean(row)
+/**
+ * Whether the signed-in tester still views as `person`, checked in full (live, the tester still
+ * holds the role, the person still viewable), before a viewed read's answer is released. Anything
+ * else ends it, logged, as any request would.
+ */
+export async function viewAsStillHolds(signedIn: SessionUser, person: string): Promise<boolean> {
+  const still = await activeViewAs(signedIn).catch(() => null)
+  return still?.as.person === person
 }
 
 /** Start viewing as `person`, or switch to them. */

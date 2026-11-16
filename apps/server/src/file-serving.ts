@@ -16,6 +16,7 @@ import { authCredential } from './session-cookies'
 // and download links work — #173), or a signed URL.
 export async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
   let viewedBy: Awaited<ReturnType<typeof activeViewAs>> = null
+  let signedInFor: Awaited<ReturnType<typeof resolveToken>> | undefined
   const [row] = await sql`
     select row_id, file_name, mime_type, ref_table, ref_name
     from file where file_url = ${fileUrl}`
@@ -35,6 +36,7 @@ export async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boo
       // as it is of an access token. A caller that can set no header at all
       // mints a short-lived signed URL from /api/signed_url instead.
       const signedIn = await resolveToken(authCredential(c))
+      signedInFor = signedIn
       // #1222: while viewing as someone, an attachment opens as it does for them.
       const viewing = await activeViewAs(signedIn)
       const user = viewing?.user ?? signedIn
@@ -48,7 +50,7 @@ export async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boo
 
   const content = await readStored(fileUrl)
   // #1222: released only if the View as that allowed it still holds.
-  if (viewedBy && !(await viewAsStillHolds(viewedBy.user.sign_in!.session_id, viewedBy.as.person)))
+  if (viewedBy && !(await viewAsStillHolds(signedInFor!, viewedBy.as.person)))
     throw new AppError('ConflictError', VIEW_AS_ENDED)
   // #506: the type is whatever the uploader declared, and the file is served
   // from this app's own address. Only types a browser shows without running

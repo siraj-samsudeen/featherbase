@@ -206,6 +206,25 @@ describe('View as on the platform', () => {
     } finally { hooks.wait = async () => {} }
   })
 
+  committedTest('a slow read admitted while viewing is not released once the tester loses the role', async ({ admin, createUser }) => {
+    const { tester, person, directory } = await install(admin, createUser)
+    const digest = availableRuntimeVersions().find((p) => p.name === 'barproof')!.digest
+    const { hooks } = await import(`${pathToFileURL(resolve(directory, 'server.mjs')).href}?artifact=${digest}`) as { hooks: { wait: () => Promise<void> } }
+    let release!: () => void
+    let entered!: () => void
+    const inside = new Promise<void>((resolve) => { entered = resolve })
+    hooks.wait = () => { entered(); return new Promise<void>((resolve) => { release = resolve }) }
+    try {
+      expect((await status(start(tester, person.user)))[0]).toBe(200)
+      const read = tester.fetch('/api/app_reads/barproof/waiting', { method: 'POST', headers: { ...json, 'X-Featherbase-App-Version': 'barproof@1.0.0' }, body: JSON.stringify({ payload: {} }) })
+      await inside
+      await sql`delete from has_role where parent = ${tester.user} and role = ${TESTER}`
+      release()
+      expect(await status(read)).toEqual([409, expect.stringContaining('View as has ended')])
+      expect(await sql`select method from access_log where operation = 'view_as_end'`).toEqual([{ method: 'no_longer_allowed' }])
+    } finally { hooks.wait = async () => {} }
+  })
+
   test('no signed file link is made while viewing', async ({ admin, createUser }) => {
     const { tester, person } = await install(admin, createUser)
     expect((await status(start(tester, person.user)))[0]).toBe(200)

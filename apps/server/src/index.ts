@@ -654,7 +654,7 @@ app.use('/api/*', async (c, next) => {
     await runInSession(user.sign_in, () => runViewingAs(viewing.as, () => next()))
     // A slow read admitted while viewing is released only if that View as still holds,
     // so an Exit or Switch made meanwhile never lets the person's data through after it.
-    if (!(await viewAsStillHolds(user.sign_in!.session_id, viewing.as.person)))
+    if (!(await viewAsStillHolds(user, viewing.as.person)))
       c.res = c.json({ error: { type: 'ConflictError', message: VIEW_AS_ENDED } }, 409)
     return
   }
