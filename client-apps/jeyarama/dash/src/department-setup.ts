@@ -253,6 +253,7 @@ async function currentOf(ctx: Ctx, job: Row, shop: Awaited<ReturnType<typeof sto
     const a = about(prefill)
     const named = a.sections.map((id, i) => ({ id, name: a.section_names[i] }))
     return { state: 'set_up' as const, name: text(own.name), sections: [...a.section_names].sort((x, y) => x.localeCompare(y)),
+      section_refs: [...named].sort((x, y) => x.name.localeCompare(y.name)),
       reviewing: { bundle: a.bundle, waiting_for: await waitingName(ctx, prefill.route.people.filter(p => p !== ctx.user)) },
       prefilled: { bundle: a.bundle, sections: named, flagged: named.filter(s => (a.flagged ?? []).includes(s.id)).map(s => s.name) } }
   }
@@ -260,7 +261,9 @@ async function currentOf(ctx: Ctx, job: Row, shop: Awaited<ReturnType<typeof sto
     const ids = new Set(shop.links.filter(l => exact(l.department) === exact(own.row_id)).map(l => exact(l.section)))
     // #1191: applied at once, the report is open while the reviewer has yet to look.
     const reviewing = latest?.state === APPLIED_UNREVIEWED ? { bundle: about(latest).bundle, waiting_for: await waitingName(ctx, latest.route.people) } : null
-    return { state: 'set_up' as const, name: text(own.name), sections: shop.sections.filter(s => ids.has(exact(s.row_id))).map(s => text(s.name)).sort((a, b) => a.localeCompare(b)), reviewing }
+    const held = shop.sections.filter(s => ids.has(exact(s.row_id))).map(s => ({ id: exact(s.row_id), name: text(s.name) })).sort((a, b) => a.name.localeCompare(b.name))
+    // #1223: ids beside the names, so the page links each section.
+    return { state: 'set_up' as const, name: text(own.name), sections: held.map(s => s.name), section_refs: held, reviewing }
   }
   if (!latest) return null
   const a = about(latest)

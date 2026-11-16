@@ -929,6 +929,54 @@
           "kind": "generic"
         },
         "outbound": true
+      },
+      "manages_area": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "my_store": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "coverage": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "section_subcategories": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "find_subcategories": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "coverage_people": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
       }
     }
   },
@@ -2084,6 +2132,12 @@
       "fromVersion": "0.13.8",
       "toVersion": "0.13.9",
       "operations": []
+    },
+    {
+      "id": "manager_area",
+      "fromVersion": "0.13.9",
+      "toVersion": "0.13.10",
+      "operations": []
     }
   ],
   "baseTables": {
@@ -2380,6 +2434,30 @@
         }
       },
       "add_report": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "move_staff": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "manage_add": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "manage_remove": {
         "policy": {
           "kind": "table"
         },
