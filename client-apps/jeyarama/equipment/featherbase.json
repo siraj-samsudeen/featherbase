@@ -3,6 +3,8 @@
   "platformVersion": "2026-10",
   "name": "equipment",
   "title": "Assets",
+  "summary": "Assets, counts, transfers and repairs",
+  "icon": "list",
   "server": "dist/server.mjs",
   "client": "dist/client",
   "entryTable": "equipment.asset",

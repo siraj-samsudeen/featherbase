@@ -7,6 +7,7 @@ import { vi } from 'vitest'
 import { grantRole, makePerson } from 'server/test/fixtures'
 import { recordAction } from '../src/lib/recents'
 import { test, expect, renderApp } from './pg-test'
+import { currentApp } from './app-switcher'
 
 type Client = Parameters<typeof renderApp>[1]
 const MERCH = 'Home Merch Map'
@@ -208,14 +209,12 @@ test('the app selector reads Featherbase, on a phone as on a wide screen', async
     }) as MediaQueryList)
   phone(true)
   const first = await renderApp('/featherbase/admin', admin)
-  const select = (await screen.findByRole('combobox', { name: 'Switch application' })) as HTMLSelectElement
-  expect(select.selectedOptions[0].textContent).toBe('Featherbase')
+  expect(await currentApp(screen)).toBe('Featherbase')
   first.unmount()
   vi.restoreAllMocks()
   phone(false)
   await renderApp('/featherbase/admin', admin)
-  const wide = (await screen.findByRole('combobox', { name: 'Switch application' })) as HTMLSelectElement
-  expect(wide.selectedOptions[0].textContent).toBe('Featherbase')
+  expect(await currentApp(screen)).toBe('Featherbase')
   vi.restoreAllMocks()
 })
 

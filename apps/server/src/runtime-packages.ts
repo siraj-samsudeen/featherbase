@@ -117,6 +117,10 @@ const manifestSchema = z.object({
   platformVersion: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'platformVersion must be a month, like 2026-10'),
   name: z.string().regex(/^[a-z][a-z0-9_]{0,30}$/),
   title: z.string().min(1),
+  // #1236: what the app is for, in one line, and its icon (from the tab icon
+  // set), for the app switcher's menu.
+  summary: z.string().min(1).max(80).optional(),
+  icon: z.enum(APP_TAB_ICONS).optional(),
   tables: z.array(tableDefSchema).min(1),
   roles: z.array(z.string().min(1)).optional(),
   permissions: z.array(appPermissionSchema).default([]),
@@ -938,6 +942,10 @@ export async function appCatalog(user: string) {
     if (item.active && item.ownPages && pkg?.clientRoot && await hasPermission(user, pkg.entryTable, 'read') && await passesGate(pkg, user))
       result.push({
         name: pkg.name, title: pkg.title, href: appHref(pkg.name),
+        // #1236: the switcher's menu draws each app's icon and one line, in its accent.
+        ...(pkg.manifest.summary && { summary: pkg.manifest.summary }),
+        ...(pkg.manifest.icon && { icon: pkg.manifest.icon }),
+        ...(pkg.manifest.accent && { accent: pkg.manifest.accent }),
         ...(pkg.manifest.tabs && { tabs: appTabLinks(appHref(pkg.name), pkg.manifest.tabs.items) }),
       })
   }

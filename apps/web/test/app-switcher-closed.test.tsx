@@ -4,6 +4,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import { resolve } from 'node:path'
 import { discoverPackages } from 'server/src/runtime-packages'
 import { test, expect, renderApp } from './pg-test'
+import { appChoices, closedChoices, openSwitcher } from './app-switcher'
 
 const WAIT = { timeout: 10_000 }
 type Admin = Parameters<typeof renderApp>[1]
@@ -13,22 +14,24 @@ async function installTasker(admin: Admin) {
   await admin.post('/api/install_app', { name: 'tasker' })
 }
 
-const switcher = () => screen.findByRole('combobox', { name: 'Switch application' }, WAIT)
 
 test('a System Manager without the role sees the app greyed out, with the reason', async ({ admin, createUser }) => {
   await installTasker(admin)
   const manager = await createUser({ roles: ['System Manager'] })
   await renderApp('/featherbase/admin', manager)
-  const option = await within(await switcher()).findByRole('option', { name: 'Tasker: you need the Tasker Member role' }, WAIT)
-  expect(option).toBeDisabled()
+  await waitFor(async () => expect(await closedChoices(screen, WAIT)).toEqual(['Tasker']), WAIT)
+  const { menu } = await openSwitcher(screen, WAIT)
+  const closed = menu.querySelector('[data-testid="app-switcher-closed"]')!
+  expect(closed).toHaveAttribute('aria-disabled', 'true')
+  expect(closed).toHaveTextContent('you need the Tasker Member role')
 })
 
 test('a System Manager holding the role sees the app as usual', async ({ admin, createUser }) => {
   await installTasker(admin)
   const manager = await createUser({ roles: ['System Manager', 'Tasker Member'] })
   await renderApp('/featherbase/admin', manager)
-  const option = await within(await switcher()).findByRole('option', { name: 'Tasker' }, WAIT)
-  expect(option).toBeEnabled()
+  await waitFor(async () => expect(await appChoices(screen, WAIT)).toContain('Tasker'), WAIT)
+  expect(await closedChoices(screen, WAIT)).toEqual([])
 })
 
 test("someone who isn't a System Manager keeps the shorter list and never asks for the closed one", async ({ admin, createUser }) => {
@@ -38,7 +41,7 @@ test("someone who isn't a System Manager keeps the shorter list and never asks f
   await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Sw Note', role: 'Sw Reader', operation: 'read', scope_mode: 'all' } })
   const reader = await createUser({ roles: ['Sw Reader'] })
   await renderApp('/featherbase/admin', reader)
-  const list = await switcher()
-  await waitFor(() => expect(within(list).getAllByRole('option').length).toBeGreaterThan(0), WAIT)
-  expect(within(list).queryByRole('option', { name: /Tasker/ })).not.toBeInTheDocument()
+  await waitFor(async () => expect((await appChoices(screen, WAIT)).length).toBeGreaterThan(0), WAIT)
+  expect(await appChoices(screen, WAIT)).not.toContain('Tasker')
+  expect(await closedChoices(screen, WAIT)).toEqual([])
 })

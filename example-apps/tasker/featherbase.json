@@ -3,6 +3,8 @@
   "platformVersion": "2026-10",
   "name": "tasker",
   "title": "Tasker",
+  "summary": "Tasks and store work, with what is due",
+  "icon": "checklist",
   "server": "dist/server.mjs",
   "client": "dist/client",
   "entryTable": "tasker.task",

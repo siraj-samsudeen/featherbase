@@ -3,6 +3,8 @@
   "platformVersion": "2026-10",
   "name": "tickets",
   "title": "Tickets",
+  "summary": "Ask for help or a change, and follow it to done",
+  "icon": "inbox",
   "accent": "green",
   "server": "dist/server.mjs",
   "client": "dist/client",

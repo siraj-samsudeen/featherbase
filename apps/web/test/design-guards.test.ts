@@ -438,12 +438,13 @@ describe('the Admin shell', () => {
     expect(shell).toMatch(/data-testid="admin-sidebar"[\s\S]{0,600}\boverflow-y-auto\b/)
   })
 
-  test('the shell draws no native select arrow: it uses the design-system Select', () => {
+  // #1236: the switcher is a menu button with each app's icon and purpose, not a select.
+  test('the shell draws no native select arrow: the switcher is a menu button', () => {
     const switcher = source('src/components/AppSwitcher.tsx')
     expect(shell).not.toMatch(/<select\b/)
     expect(shell).toMatch(/<AppSwitcher\s*\/>/)
     expect(switcher).not.toMatch(/<select\b/)
-    expect(switcher).toMatch(/<Select\s[^>]*aria-label="Switch application"/)
+    expect(switcher).toMatch(/aria-label=\{`Switch application: \$\{name\}`\}[\s\S]{0,40}aria-haspopup="menu"/)
   })
 
   test('the sidebar group headings look exactly like "Recently opened": muted, sentence case, small icon', () => {

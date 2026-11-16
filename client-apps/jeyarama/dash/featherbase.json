@@ -3,6 +3,8 @@
   "platformVersion": "2026-10",
   "name": "dash",
   "title": "Dash",
+  "summary": "Sales and targets for the stores you look after",
+  "icon": "report",
   "server": "dist/server.mjs",
   "client": "dist/client",
   "entryTable": "dash.report",
