@@ -1,4 +1,4 @@
-<title>Featherbase List and Form</title>
+<title>Featherbase Screens</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
@@ -128,6 +128,36 @@ tbody tr[aria-selected="true"] td:first-child { box-shadow: inset 3px 0 0 var(--
 .app[data-open="page"] .fields .wide { grid-column: 1 / -1; }
 .app[data-open="page"] .x { display: none; }
 
+.view { flex: 1; min-height: 0; display: flex; flex-direction: column; min-width: 0; }
+.page { flex: 1; min-height: 0; overflow: auto; padding: 22px 24px 28px; display: grid; gap: 26px; align-content: start; }
+.page > * { width: 100%; max-width: 780px; }
+.hello h2 { margin: 0 0 6px; font-size: 22px; font-weight: 600; letter-spacing: -.02em; text-wrap: balance; }
+.hello p { margin: 0; color: var(--muted); max-width: 60ch; }
+.sect h3 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--faint); font-weight: 600; }
+.acts { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.act { text-align: left; border: 1px solid var(--line-strong); background: var(--surface); border-radius: 10px; padding: 14px; cursor: pointer; display: grid; gap: 4px; }
+.act:hover { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
+.act b { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.act b::before { content: ""; width: 22px; height: 22px; border-radius: 6px; background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.act span { color: var(--muted); font-size: 13px; }
+.items { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.item { display: flex; gap: 12px; align-items: center; width: 100%; padding: 11px 14px; border: 0; border-bottom: 1px solid var(--line); background: var(--surface); cursor: pointer; text-align: left; min-width: 0; }
+.item:last-child { border-bottom: 0; }
+.item:hover { background: var(--sunken); }
+.item b { font-weight: 500; }
+.item .mono { font-family: var(--mono); font-size: 12.5px; }
+.item .dim { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.item .tag { font-family: var(--mono); font-size: 11.5px; color: var(--faint); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; }
+.none { border: 1px dashed var(--line-strong); border-radius: 10px; padding: 18px; color: var(--muted); }
+.drop { border: 1.5px dashed var(--line-strong); border-radius: 14px; padding: 44px 20px; display: grid; gap: 10px; justify-items: center; text-align: center; background: var(--sunken); }
+.drop strong { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+.drop p { margin: 0; color: var(--muted); }
+.drop .btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
+.hint { color: var(--muted); font-size: 13px; }
+.nav button { display: flex; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: 7px; color: var(--muted); border: 0; background: none; cursor: pointer; text-align: left; width: 100%; }
+.nav button[aria-current] { background: var(--surface); color: var(--fg); font-weight: 500; box-shadow: 0 0 0 1px var(--line); }
+.nav button span { font-variant-numeric: tabular-nums; color: var(--faint); font-size: 12px; }
+
 .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--surface); padding: 9px 14px; border-radius: 9px; font-size: 13px; box-shadow: var(--shadow); }
 
 @media (max-width: 760px) {
@@ -135,6 +165,7 @@ tbody tr[aria-selected="true"] td:first-child { box-shadow: inset 3px 0 0 var(--
   .side { display: none; }
   .bar { padding: 10px 12px; }
   .bar .imp { display: none; }
+  .page { padding: 18px 14px 24px; }
   .app[data-open="panel"] .gridbox { display: none; }
   .rec { width: auto; flex: 1; border-left: 0; }
   .app[data-open="page"] .fields { grid-template-columns: minmax(0, 1fr); }
@@ -143,26 +174,51 @@ tbody tr[aria-selected="true"] td:first-child { box-shadow: inset 3px 0 0 var(--
 </style>
 
 <div class="meta">
-  <span><b>Mock-up.</b> Made-up data; nothing is saved. Click a row.</span>
-  <span class="opt">A record opens as
+  <span><b>Mock-up.</b> Made-up data; nothing is saved.</span>
+  <span class="opt">Show
+    <span class="seg" id="state"><button type="button" data-v="fresh" aria-pressed="true">Fresh install</button><button type="button" data-v="data" aria-pressed="false">With data</button></span></span>
+  <span class="opt tblopt" hidden>A record opens as
     <span class="seg" id="mode"><button type="button" data-v="panel" aria-pressed="true">Side panel</button><button type="button" data-v="page" aria-pressed="false">Full page</button></span></span>
-  <span class="opt">Rows
+  <span class="opt tblopt" hidden>Rows
     <span class="seg" id="density"><button type="button" data-v="comfortable" aria-pressed="true">Comfortable</button><button type="button" data-v="compact" aria-pressed="false">Compact</button></span></span>
 </div>
 
 <div class="app" id="app" data-open="">
   <nav class="side" aria-label="Tables">
     <div class="brand"><i></i>Featherbase</div>
-    <div>
-      <div class="group">main</div>
-      <div class="nav"><a href="#" aria-current="page">Employees <span id="navcount">24</span></a><a href="#">Stores <span>12</span></a><a href="#">Items <span>3,480</span></a></div>
+    <div class="nav"><button type="button" id="n-home" aria-current="page">Home</button></div>
+    <div id="n-tables" hidden>
+      <div class="group">Tables · main</div>
+      <div class="nav"><button type="button" id="n-emp">Employees <span id="navcount">24</span></button></div>
     </div>
-    <div>
+    <div id="n-uploads" hidden>
       <div class="group">Uploads</div>
-      <div class="nav"><a href="#">employees.csv <span>24</span></a></div>
+      <div class="nav"><button type="button" id="n-up">employees.csv <span>24</span></button></div>
     </div>
   </nav>
   <div class="main">
+   <section class="view" id="v-home">
+    <div class="bar"><h1>Home</h1></div>
+    <div class="page">
+      <div class="hello" id="hello"><h2>Welcome to Featherbase</h2><p>There is nothing here yet. Bring in a spreadsheet and it becomes a Table you can browse and edit.</p></div>
+      <div class="sect"><h3>Start</h3>
+        <div class="acts"><button type="button" class="act" id="go-import"><b>Import data</b><span>Turn a CSV file into a Table.</span></button></div></div>
+      <div class="sect"><h3>Your Tables</h3>
+        <div class="none" id="t-none">No Tables yet. Your first one will appear here.</div>
+        <div class="items" id="t-list" hidden><button type="button" class="item" id="t-emp"><b>Employees</b><span class="tag">main</span><span class="grow"></span><span class="dim" id="t-count">24 rows</span><span class="dim">changed today</span></button></div></div>
+      <div class="sect" id="u-sect" hidden><h3>Recent uploads</h3>
+        <div class="items"><button type="button" class="item" id="u-emp"><span class="mono">employees.csv</span><span class="grow"></span><span class="dim">24 rows</span><span class="dim">16-Nov-2026</span></button></div></div>
+    </div>
+   </section>
+   <section class="view" id="v-import" hidden>
+    <div class="bar"><button type="button" class="crumb" id="imp-back">Home /</button><h1>Import data</h1></div>
+    <div class="page">
+      <div class="drop"><strong>Drop a CSV file here</strong><p>The first row must hold the column names.</p>
+        <div class="btns"><button type="button" class="btn primary" id="pick">Choose a file</button><button type="button" class="btn" id="sample">Try the sample: employees.csv</button></div></div>
+      <p class="hint">Featherbase keeps the file as you gave it, works out a Table from it, and shows you the result before anything is created.</p>
+    </div>
+   </section>
+   <section class="view" id="v-table" hidden>
     <div class="bar">
       <button type="button" class="crumb" id="back" hidden>Employees /</button>
       <h1 id="title">Employees</h1><span class="count" id="count"></span>
@@ -192,6 +248,7 @@ tbody tr[aria-selected="true"] td:first-child { box-shadow: inset 3px 0 0 var(--
         <footer id="foot"></footer>
       </form>
     </div>
+   </section>
   </div>
 </div>
 <div class="toast" id="toast" hidden role="status"></div>
@@ -238,7 +295,27 @@ $('rows').addEventListener('click',e=>{const tr=e.target.closest('tr'); if(tr) o
 $('rows').addEventListener('keydown',e=>{ if(e.key==='Enter'){const tr=e.target.closest('tr'); if(tr) open(+tr.dataset.i);} });
 $('new').addEventListener('click',()=>open(null));
 $('close').addEventListener('click',shut); $('back').addEventListener('click',shut);
-$('imp').addEventListener('click',()=>say('Import is the upload screen, not in this mock-up'));
+$('imp').addEventListener('click',()=>show('import'));
+let state='fresh';
+function show(v){
+  ['home','import','table'].forEach(x=>$('v-'+x).hidden=x!==v);
+  if(v!=='table'&&!$('rec').hidden) shut();
+  document.querySelectorAll('.tblopt').forEach(x=>x.hidden=v!=='table');
+  $('n-home').toggleAttribute('aria-current',v!=='table'); $('n-emp').toggleAttribute('aria-current',v==='table');
+  const has=state==='data';
+  $('n-tables').hidden=!has; $('n-uploads').hidden=!has; $('hello').hidden=has; $('t-none').hidden=has; $('t-list').hidden=!has; $('u-sect').hidden=!has;
+  $('t-count').textContent=data.length+' rows';
+}
+function setState(v){ state=v; $('state').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.v===v)); }
+$('go-import').addEventListener('click',()=>show('import'));
+$('imp-back').addEventListener('click',()=>show('home'));
+$('n-home').addEventListener('click',()=>show('home'));
+$('n-emp').addEventListener('click',()=>show('table'));
+$('t-emp').addEventListener('click',()=>show('table'));
+$('n-up').addEventListener('click',()=>say("The upload's page is the next mock-up"));
+$('u-emp').addEventListener('click',()=>say("The upload's page is the next mock-up"));
+$('pick').addEventListener('click',()=>say('The proposal screen is the next mock-up'));
+$('sample').addEventListener('click',()=>{ setState('data'); show('table'); say('Skipped the proposal: that screen is the next mock-up'); });
 $('f-active').addEventListener('change',e=>$('activeword').textContent=e.target.checked?'Yes':'No');
 $('foot').addEventListener('click',e=>{
   if(e.target.id==='cancel') shut();
@@ -263,5 +340,6 @@ function seg(id,fn){ $(id).addEventListener('click',e=>{const b=e.target.closest
   $(id).querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b)); fn(b.dataset.v);}); }
 seg('mode',v=>{ mode=v; if(!$('rec').hidden) open(current); });
 seg('density',v=>{ document.documentElement.dataset.density=v; });
-draw();
+seg('state',v=>{ state=v; show('home'); });
+draw(); show('home');
 </script>
