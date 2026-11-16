@@ -44,9 +44,13 @@ test("the built bar bundle draws the shared bar over an app's page, and the page
     expect([script.status(), script.headers()['content-type']]).toEqual([200, expect.stringMatching(/javascript/)])
   })
   await test.step('the bar is drawn, as the signed-in person, with the client version header on its requests', async () => {
-    const switcher = page.getByRole('combobox', { name: 'Switch application' })
-    await expect(switcher).toHaveValue('/barproof/')
-    await expect(switcher.locator('option:checked')).toHaveText('Bar proof')
+    // #1236: the switcher is a menu button named for the current app, and its
+    // menu ticks that app.
+    const switcher = page.getByRole('button', { name: /^Switch application: / })
+    await expect(switcher).toHaveAccessibleName('Switch application: Bar proof')
+    await switcher.click()
+    await expect(page.getByRole('menuitemradio', { checked: true })).toHaveAttribute('data-app', 'barproof')
+    await page.keyboard.press('Escape')
     await page.getByTestId('session-user').click()
     await expect(page.getByTestId('account-identity')).toContainText('Administrator')
     expect((await versioned).headers()['x-featherbase-app-version']).toMatch(/barproof@/)
@@ -66,9 +70,13 @@ test.describe('in the dark', () => {
     await page.click('button[type=submit]')
     await expect(page.getByTestId('session-user')).toBeVisible()
     await page.goto(PAGE)
-    const switcher = page.getByRole('combobox', { name: 'Switch application' })
-    await expect(switcher).toHaveValue('/barproof/')
-    await expect(switcher.locator('option:checked')).toHaveText('Bar proof')
+    // #1236: the switcher is a menu button named for the current app, and its
+    // menu ticks that app.
+    const switcher = page.getByRole('button', { name: /^Switch application: / })
+    await expect(switcher).toHaveAccessibleName('Switch application: Bar proof')
+    await switcher.click()
+    await expect(page.getByRole('menuitemradio', { checked: true })).toHaveAttribute('data-app', 'barproof')
+    await page.keyboard.press('Escape')
     expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('app-owned')
     await expect(page.getByTestId('bar-theme-root')).toHaveAttribute('data-theme', 'dark')
   })

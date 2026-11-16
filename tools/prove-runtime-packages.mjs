@@ -231,11 +231,14 @@ try {
   } finally { await flushContext(slashlessContext); await slashlessContext.close() }
   await page.goto(`${origin}/admin/Person?proof=compatibility#deep-link`)
   await expect(page).toHaveURL(`${origin}/featherbase/admin/Person?proof=compatibility#deep-link`)
-  // The app name is the same native dropdown as on platform pages.
+  // The app switcher is the same menu as on platform pages (#1236): named for
+  // the app, and Featherbase is one of its choices.
   await page.goto(`${origin}/tasker/`)
   await expect(page).toHaveURL(`${origin}/tasker/`)
-  await expect(page.getByRole('combobox', { name: 'Switch application' })).toHaveValue('/tasker/')
-  await page.getByRole('combobox', { name: 'Switch application' }).selectOption('/featherbase/admin')
+  const switcher = page.getByRole('button', { name: /^Switch application: / })
+  await expect(switcher).toHaveAccessibleName('Switch application: Tasker')
+  await switcher.click()
+  await page.locator('[data-testid="app-switcher-item"][data-app="featherbase-admin"]').click()
   await expect(page).toHaveURL(/\/featherbase\/admin(?:\/|$)/)
   await page.goto(`${origin}/tasker/`)
   await proveTaskerAcceptance({ page, api, expect, output, origin })
