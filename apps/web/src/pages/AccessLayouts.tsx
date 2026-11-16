@@ -44,7 +44,9 @@ export interface Reached {
   area: string
   read: boolean
   change: boolean
-  own_rows: boolean
+  /** Reading, or changing, reaches only rows the person created. */
+  readOwn: boolean
+  changeOwn: boolean
   readRoles: string[]
   changeRoles: string[]
 }
@@ -58,11 +60,11 @@ export function reachedTables(read: TableReach[], change: TableReach[]): Reached
   const by = new Map<string, Reached>()
   const entry = (t: TableReach) => {
     let r = by.get(t.table)
-    if (!r) by.set(t.table, r = { table: t.table, label: t.label ?? t.table, area: areaOf(t), read: false, change: false, own_rows: false, readRoles: [], changeRoles: [] })
+    if (!r) by.set(t.table, r = { table: t.table, label: t.label ?? t.table, area: areaOf(t), read: false, change: false, readOwn: false, changeOwn: false, readRoles: [], changeRoles: [] })
     return r
   }
-  for (const t of read) Object.assign(entry(t), { read: true, readRoles: t.roles, own_rows: entry(t).own_rows || t.own_rows })
-  for (const t of change) Object.assign(entry(t), { change: true, changeRoles: t.roles, own_rows: entry(t).own_rows || t.own_rows })
+  for (const t of read) Object.assign(entry(t), { read: true, readRoles: t.roles, readOwn: t.own_rows })
+  for (const t of change) Object.assign(entry(t), { change: true, changeRoles: t.roles, changeOwn: t.own_rows })
   return [...by.values()].sort((a, b) => a.area.localeCompare(b.area) || a.label.localeCompare(b.label))
 }
 
@@ -92,9 +94,8 @@ export function GivenBy({ r }: { r: RoleRow }) {
 function Chips({ t }: { t: Reached }) {
   return (
     <span className="flex shrink-0 gap-1">
-      {t.read && <StatusPill tone="neutral">Read</StatusPill>}
-      {t.change && <StatusPill tone="positive">Change</StatusPill>}
-      {t.own_rows && <StatusPill tone="caution">Own rows</StatusPill>}
+      {t.read && <StatusPill tone="neutral">{t.readOwn ? 'Read own rows' : 'Read'}</StatusPill>}
+      {t.change && <StatusPill tone="positive">{t.changeOwn ? 'Change own rows' : 'Change'}</StatusPill>}
     </span>
   )
 }
@@ -143,7 +144,7 @@ function doesWhat(tables: Reached[], you: string): string {
 function roleSentence(tables: Reached[], you: string): string {
   const areas = [...new Set(tables.map((t) => t.area))]
   if (tables.length <= 4) {
-    const verb = tables.every((t) => t.change) ? 'read and change' : tables.some((t) => t.change) ? 'see' : 'read'
+    const verb = tables.every((t) => t.read && t.change) ? 'read and change' : tables.every((t) => t.change && !t.read) ? 'change' : tables.some((t) => t.change) ? 'read or change' : 'read'
     const names = tables.map((t) => t.label)
     const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]
     return `${you} can ${verb} ${list}${areas.length === 1 && areas[0] !== 'General' ? ` in ${areas[0]}` : ''}`
@@ -151,12 +152,32 @@ function roleSentence(tables: Reached[], you: string): string {
   return `${doesWhat(tables, you)}, in ${areaList(areas)}`
 }
 
-const tablesOf = (role: string, tables: Reached[]) => tables.filter((t) => t.readRoles.includes(role) || t.changeRoles.includes(role))
+/** What ONE role gives, not what the person has from all their roles
+ *  together (Codex round 3): Reader's card never says Change because Writer
+ *  gives it. The own-rows mark is the merged one: the reach answer is per
+ *  operation, not per role. */
+const tablesOf = (role: string, tables: Reached[]) => tables
+  .filter((t) => t.readRoles.includes(role) || t.changeRoles.includes(role))
+  .map((t) => ({ ...t, read: t.readRoles.includes(role), change: t.changeRoles.includes(role) }))
+
+/** Which rows: "every row" only when nothing narrows it (Codex round 3). */
+function rowsLine({ limits, ownOnly, places, everyTable, self }: { limits: number; ownOnly: number; places: { title: string; count: number } | null; everyTable: boolean; self: boolean }): string {
+  const whose = self ? 'Your' : 'Their'
+  const narrows = [
+    limits && `limited to ${plural(limits, 'set of rows', 'sets of rows')} (see “Limited to” below)`,
+    ownOnly && `${plural(ownOnly, 'table')} ${ownOnly === 1 ? 'shows' : 'show'} only rows ${self ? 'you' : 'they'} created`,
+    places && `${places.title} gives ${self ? 'you' : 'them'} ${plural(places.count, 'place')} (see below)`,
+  ].filter(Boolean) as string[]
+  if (!narrows.length) return everyTable ? `${whose} access covers every row.` : `${whose} access covers every row of these tables: nothing narrows it.`
+  return `${whose} access is narrowed: ${narrows.join('; ')}.`
+}
 
 // ── (c) Summary: sentences first, the detail behind one button ──────────────
 
-export function SummaryLayout({ roles, tables, everyTable, limits, shares, self }: {
-  roles: RoleRow[]; tables: Reached[]; everyTable: boolean; limits: number; shares: number; self: boolean
+export function SummaryLayout({ roles, tables, everyTable, limits, shares, places, self }: {
+  roles: RoleRow[]; tables: Reached[]; everyTable: boolean; limits: number; shares: number
+  /** The app that limits the person to places, and how many it gives; null when none does. */
+  places: { title: string; count: number } | null; self: boolean
 }) {
   const [all, setAll] = useState(false)
   const you = self ? 'You' : 'They'
@@ -195,8 +216,7 @@ export function SummaryLayout({ roles, tables, everyTable, limits, shares, self 
           <li className="text-ink-muted" data-testid="access-summary-line">{you} only see what every account can see.</li>
         )}
         <li className="text-ink" data-testid="access-summary-line">
-          {limits ? `${self ? 'Your' : 'Their'} access is limited to ${plural(limits, 'set of rows', 'sets of rows')} — see “Limited to” below.`
-            : `${self ? 'Your' : 'Their'} access covers every row: no limits are set.`}
+          {rowsLine({ limits, ownOnly: tables.filter((t) => t.readOwn || t.changeOwn).length, places, everyTable, self })}
           {shares > 0 && ` ${plural(shares, 'row is', 'rows are')} also shared with ${self ? 'you' : 'them'} directly.`}
         </li>
       </ul>

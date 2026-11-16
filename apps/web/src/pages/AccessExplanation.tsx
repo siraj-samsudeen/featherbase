@@ -97,7 +97,8 @@ export function AccessExplanation({ person }: { person: string }) {
           )}
           <div data-testid="access-tables">
             {layout === 'summary' && <SummaryLayout roles={data.roles} tables={tables} everyTable={data.every_table}
-              limits={data.limits.length} shares={data.shares.length} self={self} />}
+              limits={data.limits.length} shares={data.shares.length} self={self}
+              places={data.scope ? { title: data.scope.title, count: data.scope.places.length } : null} />}
             {layout === 'roles' && <RolesLayout roles={data.roles} tables={tables} everyTable={data.every_table} self={self} />}
             {layout === 'areas' && <AreasLayout tables={tables} everyTable={data.every_table} roles={data.roles.length} />}
           </div>

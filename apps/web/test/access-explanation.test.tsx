@@ -154,7 +154,7 @@ test('#1224 the page shows as a summary, by role or by area, and remembers the c
   await renderApp(pageOf(person.user!), admin)
   const summary = await screen.findByTestId('access-summary', {}, WAIT)
   expect(summary).toHaveTextContent('They can read and change Ax Brand in Merchandising.')
-  expect(summary).toHaveTextContent('Their access covers every row: no limits are set.')
+  expect(summary).toHaveTextContent('Their access covers every row of these tables: nothing narrows it.')
 
   await userEvent.click(screen.getByRole('button', { name: 'By role' }))
   const cards = await screen.findAllByTestId('access-role-card')
@@ -179,4 +179,27 @@ test('#1224 who gave a role is named even when the viewer may not read Person', 
   await renderApp(pageOf(viewer.user!), viewer)
   await waitFor(() => expect(screen.getAllByTestId('access-role').some((r) => /Ax Given Role — given by Ax Giver Name, /.test(r.textContent ?? ''))).toBe(true), WAIT)
   expect(screen.getByTestId('access-explanation')).not.toHaveTextContent('Unnamed person')
+})
+
+test('#1224 a role card says only what that role gives; own-rows reach is per operation and narrows the summary', async ({ admin, createUser }) => {
+  await admin.post('/api/table_def', { name: 'Ax Order', module: 'Sales', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await grantRole(admin, { table: 'Ax Order', role: 'Ax Order Reader', can_read: true })
+  await grantRole(admin, { table: 'Ax Order', role: 'Ax Order Writer', can_write: true, own_rows_only: true })
+  const person = await createUser({ roles: ['Ax Order Reader', 'Ax Order Writer'] })
+  localStorage.removeItem('featherbase.access-layout')
+
+  await renderApp(pageOf(person.user!), admin)
+  const summary = await screen.findByTestId('access-summary', {}, WAIT)
+  expect(summary).toHaveTextContent('Their access is narrowed: 1 table shows only rows they created.')
+  expect(summary).not.toHaveTextContent('covers every row')
+
+  await userEvent.click(screen.getByRole('button', { name: 'By role' }))
+  const card = (await screen.findAllByTestId('access-role-card')).find((c) => within(c).getByRole('heading').textContent === 'Ax Order Reader')!
+  expect(card).toHaveTextContent('They can read Ax Order in Sales.')
+  await userEvent.click(within(card).getByText('Sales'))
+  const row = within(card).getByTestId('access-table-row')
+  expect(row).toHaveTextContent('Read')
+  expect(row).not.toHaveTextContent('Change')
+  expect(row).not.toHaveTextContent('Read own rows')
+  localStorage.removeItem('featherbase.access-layout')
 })
