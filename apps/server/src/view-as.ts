@@ -13,7 +13,7 @@
 import { sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { logAccess } from './audit'
-import { getRoles, isPrivileged } from './permissions'
+import { getRoles, hasPermission, isPrivileged } from './permissions'
 // runtime-packages is loaded when first needed: realtime and file serving import this module, and
 // a static import here closes a cycle that breaks module start-up (migrate.ts, #1222).
 const packages = () => import('./runtime-packages')
@@ -288,6 +288,8 @@ export async function viewAsState(user: SessionUser) {
     recent: await usable(recentIds, RECENT),
     frequent: await usable(frequentIds, FREQUENT),
     minutes: VIEW_AS_MINUTES,
+    // Whether the tester (not the person viewed) may open a person's record, for the picker's links.
+    person_link: await hasPermission(tester, 'Person', 'read'),
   }
 }
 

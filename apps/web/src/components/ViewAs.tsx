@@ -8,6 +8,7 @@
 // in this browser): from the avatar menu, or from a command-palette window.
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { rowHref } from 'shared'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import { Eye, History, Search, Clock, UserRoundSearch, Segmented, buttonClasses, cardClasses, inputClasses } from '@featherbase/shop-floor'
 
@@ -23,6 +24,8 @@ export interface ViewAsState {
   recent?: ViewAsPerson[]
   frequent?: ViewAsPerson[]
   minutes?: number
+  /** Whether the tester may open a person's record: the names link to it, else stay plain text. */
+  person_link?: boolean
 }
 
 export type PickerStyle = 'menu' | 'palette'
@@ -102,30 +105,41 @@ async function changeView(path: string, body: unknown, onError: (message: string
   }
 }
 
-function PersonRow({ person, onPick, icon }: { person: ViewAsPerson; onPick: (person: ViewAsPerson) => void; icon?: ReactNode }) {
+/** A person's record, as a link when the tester may open it, else plain text (every record shown is a link). */
+function PersonName({ person, linked, className }: { person: ViewAsPerson; linked: boolean; className?: string }) {
+  return linked
+    ? <a href={rowHref('Person', person.person)} className={`${className ?? ''} underline-offset-2 hover:underline`} data-testid="view-as-person-link">{person.name}</a>
+    : <span className={className}>{person.name}</span>
+}
+
+function PersonRow({ person, onPick, linked }: { person: ViewAsPerson; onPick: (person: ViewAsPerson) => void; linked: boolean }) {
   const line = identityLine(person)
   return (
-    <button
-      type="button"
-      onClick={() => onPick(person)}
-      data-testid="view-as-person"
-      className="flex w-full items-start gap-2 rounded-control px-2 py-1.5 text-left hover:bg-action-tint focus-visible:outline-2 focus-visible:outline-focus max-sm:min-h-11"
-    >
-      {icon && <span className="mt-0.5 shrink-0 text-ink-subtle" aria-hidden="true">{icon}</span>}
-      <span className="min-w-0 flex-1">
+    <div className="flex items-start gap-1 rounded-control hover:bg-action-tint" data-testid="view-as-person">
+      <button
+        type="button"
+        onClick={() => onPick(person)}
+        aria-label={`View as ${person.name}`}
+        className="min-w-0 flex-1 rounded-control px-2 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-focus max-sm:min-h-11"
+      >
         <span className="block truncate text-sm font-medium text-ink">{person.name}</span>
-        {line && <span className="block truncate text-xs text-ink-subtle">{line}</span>}
-      </span>
-    </button>
+        <span className="block truncate text-xs text-ink-subtle">{line}</span>
+      </button>
+      {/* Its record, beside the choice: a link can't sit inside the button that chooses them. */}
+      {linked && (
+        <a href={rowHref('Person', person.person)} title={`Open ${person.name}'s record`} aria-label={`Open ${person.name}'s record`} data-testid="view-as-person-record"
+          className="mt-1.5 mr-1 shrink-0 rounded-control px-1.5 py-1 text-xs text-action hover:underline">Record</a>
+      )}
+    </div>
   )
 }
 
-function Section({ title, icon, people, onPick, testid }: { title: string; icon: ReactNode; people: ViewAsPerson[]; onPick: (p: ViewAsPerson) => void; testid: string }) {
+function Section({ title, icon, people, onPick, testid, linked }: { title: string; icon: ReactNode; people: ViewAsPerson[]; onPick: (p: ViewAsPerson) => void; testid: string; linked: boolean }) {
   if (!people.length) return null
   return (
     <div data-testid={testid}>
       <h3 className="flex items-center gap-1.5 px-2 pb-0.5 pt-2 text-xs font-medium text-ink-subtle">{icon}{title}</h3>
-      {people.map((person) => <PersonRow key={person.person} person={person} onPick={onPick} />)}
+      {people.map((person) => <PersonRow key={person.person} person={person} onPick={onPick} linked={linked} />)}
     </div>
   )
 }
@@ -177,13 +191,13 @@ export function ViewAsPicker({ state, autoFocus = false }: {
           found.isPending ? <p className="px-2 py-2 text-xs text-ink-subtle">Looking…</p>
             : found.data && found.data.length > 0 ? (
               <div data-testid="view-as-results">
-                {found.data.map((person) => <PersonRow key={person.person} person={person} onPick={pick} />)}
+                {found.data.map((person) => <PersonRow key={person.person} person={person} onPick={pick} linked={Boolean(state.person_link)} />)}
               </div>
             ) : <p className="px-2 py-2 text-xs text-ink-subtle" data-testid="view-as-none">No one found. Try a name, an employee code, or a job and a store, like “Team Leader Lakeside”.</p>
         ) : (
           <>
-            <Section title="Recent" icon={<History aria-hidden size={12} />} people={recent} onPick={pick} testid="view-as-recent" />
-            <Section title="Frequently used" icon={<Clock aria-hidden size={12} />} people={frequent} onPick={pick} testid="view-as-frequent" />
+            <Section title="Recent" icon={<History aria-hidden size={12} />} people={recent} onPick={pick} testid="view-as-recent" linked={Boolean(state.person_link)} />
+            <Section title="Frequently used" icon={<Clock aria-hidden size={12} />} people={frequent} onPick={pick} testid="view-as-frequent" linked={Boolean(state.person_link)} />
             {!recent.length && !frequent.length && (
               <p className="px-2 py-2 text-xs text-ink-subtle">You haven’t viewed as anyone yet. Search by name, employee code, or job and store.</p>
             )}
@@ -250,7 +264,7 @@ export function ViewAsBanner() {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <Eye aria-hidden size={16} className="shrink-0" />
         <p className="min-w-0 flex-1 text-sm">
-          Viewing as <strong data-testid="view-as-name">{viewing.name}</strong>
+          Viewing as <strong data-testid="view-as-name"><PersonName person={viewing} linked={Boolean(data.person_link)} className="text-surface" /></strong>
           {line && <span className="opacity-80"> · {line}</span>}
           <span className="ml-2 inline-block rounded-full bg-caution px-2 py-0.5 align-middle text-[11px] font-semibold uppercase tracking-wide text-surface">For viewing only</span>
         </p>

@@ -235,6 +235,14 @@ describe('View as on the platform', () => {
     expect(await status(tester.fetch('/api/signed_url?file_url=/private/files/anything'))).toEqual([403, expect.stringContaining('not made while viewing')])
   })
 
+  test("names link to a person's record only when the tester may open it, whoever is viewed", async ({ admin, createUser }) => {
+    const { tester, person } = await install(admin, createUser)
+    expect((await tester.get<{ person_link: boolean }>('/api/view_as')).person_link).toBe(false)
+    const manager = await createUser({ email: 'tester-links@example.test', roles: [TESTER, 'System Manager'] })
+    expect((await status(start(manager, person.user)))[0]).toBe(200)
+    expect((await manager.get<{ person_link: boolean }>('/api/view_as')).person_link).toBe(true)
+  })
+
   test('an access token never views as anyone', async ({ admin, createUser }) => {
     const { tester, person } = await install(admin, createUser)
     const { token } = await issueAccessToken(tester.user!, 'view as 1222', null)
