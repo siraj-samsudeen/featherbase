@@ -341,7 +341,7 @@ test('the right side reads Open Admin, the theme toggle, then the Account menu',
 
 // ---- 5. the Account menu --------------------------------------------------------
 
-test('the Account menu holds the name, Sign-in methods, What can I see? (#628), then Log out', async ({ admin }) => {
+test('the Account menu holds the name, Sign-in methods, What you can see (#628), then Log out', async ({ admin }) => {
   await renderApp('/featherbase/sales-target', admin)
   const menu = await openAccountMenu()
   const order = [...menu.querySelectorAll('[data-testid="account-identity"], [role="menuitem"]')].map((el) => el.getAttribute('data-testid'))

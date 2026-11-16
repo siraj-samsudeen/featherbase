@@ -547,7 +547,8 @@ function AccountMenu({ inMenu }: { inMenu?: { offerAdmin: boolean } }) {
               data-testid="account-access-explanation"
               className={MENU_ITEM}
             >
-              {t('What can I see?')}
+              {/* #1224's verifier: the menu uses the page's own words. */}
+              {t('What you can see')}
             </Link>
           )}
           <button role="menuitem" type="button" onClick={() => void signOutNow()} data-testid="logout" className={MENU_ITEM}>
