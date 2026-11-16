@@ -216,7 +216,7 @@ describe('Tickets independently installed product contract (#810)', () => {
     try { await create(owner, 'generic', {}) } catch (error) { failure = error }
     expect(failure?.status).toBe(403)
     expect(failure.message).not.toContain('Application access refused')
-    expect(failure.message).toMatch(/tickets 0\.2\.8.*files changed.*same version/i)
+    expect(failure.message).toMatch(/tickets 0\.2\.9.*files changed.*same version/i)
     expect(failure.message).toMatch(/new version|install-app tickets/)
     const listed = (await listInstalledApps()).find(app => app.name === 'tickets')
     expect(listed).toMatchObject({ active: false })
