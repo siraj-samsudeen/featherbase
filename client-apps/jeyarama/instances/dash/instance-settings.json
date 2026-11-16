@@ -3,6 +3,7 @@
     "System Settings": {
       "app_name": "Dash",
       "time_zone": "Asia/Kolkata",
+      "session_hours": 720,
       "privacy_notice": {
         "file": "privacy-notice.md"
       }
