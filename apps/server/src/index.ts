@@ -650,6 +650,8 @@ app.use('/api/*', async (c, next) => {
   await runInSession(user.sign_in, () => next())
 })
 
+app.use('/api/*', rateLimit)
+
 // #1222: View as — the tester's own state, people search, start or switch, and exit.
 app.get('/api/view_as', async (c) => {
   c.header('Cache-Control', 'no-store')
@@ -671,7 +673,6 @@ app.post('/api/view_as/exit', async (c) => {
 
 // API-007: throttle authenticated requests per user (runs after auth so it can
 // key by the resolved user and read their budget).
-app.use('/api/*', rateLimit)
 
 /** A request that reaches only the copy actions, whichever way its path is
  *  encoded (a colon may arrive as %3A): any other suffix or verb takes the lock. */
