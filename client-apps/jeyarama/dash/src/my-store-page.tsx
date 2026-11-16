@@ -353,12 +353,15 @@ function AreaTitle({ place }: { place: Place }) {
 }
 
 /** #1245: who runs the store, under the area's title: "Store Manager: Selvi · Cluster Manager: Kiran, Lata". */
-export function StoreRunBy({ managers }: { managers: Place['managers'] }) {
-  const names = (people: Ref[]) => people.map((p, i) => <span key={p.code} className="whitespace-nowrap"><RecordLink table={RECORD.employee} id={p.code}>{p.name}</RecordLink>{i < people.length - 1 ? ', ' : ''}</span>)
+export function StoreRunBy({ managers, store }: { managers: Place['managers']; store?: { id: string; name: string } }) {
+  // Each label stays on one line with its first name, so a row never ends on "Cluster Manager:".
+  const names = (label: string, people: Ref[]) => people.map((p, i) => (
+    <span key={p.code} className="whitespace-nowrap">{i === 0 && <span className="text-ink-muted">{label}: </span>}<RecordLink table={RECORD.employee} id={p.code}>{p.name}</RecordLink>{i < people.length - 1 ? ', ' : ''}</span>))
   return (
     <span className="inline-flex flex-wrap items-baseline gap-x-1" data-testid="store-run-by">
-      {managers.store.length ? <><span className="text-ink-muted">Store Manager:</span> {names(managers.store)}</> : <span className="text-ink-muted">No store manager</span>}
-      {managers.cluster.length > 0 && <><span aria-hidden="true" className="text-ink-muted"> · </span><span className="text-ink-muted">Cluster Manager:</span> {names(managers.cluster)}</>}
+      {store && <><RecordLink table={RECORD.site} id={store.id}>{store.name}</RecordLink><span aria-hidden="true" className="text-ink-muted"> · </span></>}
+      {managers.store.length ? names('Store Manager', managers.store) : <span className="text-ink-muted">No store manager</span>}
+      {managers.cluster.length > 0 && <><span aria-hidden="true" className="text-ink-muted"> · </span>{names('Cluster Manager', managers.cluster)}</>}
     </span>
   )
 }
@@ -366,7 +369,7 @@ export function StoreRunBy({ managers }: { managers: Place['managers'] }) {
 function PlaceCard({ place, onMoved, staffOnly = false }: { place: Place; onMoved: (message: string) => void; staffOnly?: boolean }) {
   return (
     <div className="flex flex-col gap-4" data-testid="area-place">
-      <div className="flex flex-col gap-1 text-sm">{!staffOnly && <AreaTitle place={place} />}<StoreRunBy managers={place.managers} /></div>
+      <div className="flex flex-col gap-1 text-sm">{!staffOnly && <AreaTitle place={place} />}<StoreRunBy managers={place.managers} store={staffOnly ? { id: place.store_id, name: place.store } : undefined} /></div>
       {!staffOnly && <SummaryStrip place={place} />}
       {!staffOnly && <SectionsTable place={place} onChanged={onMoved} />}
       <StaffTable place={place} onMoved={onMoved} title={staffOnly ? 'Your team' : 'Staff'} />

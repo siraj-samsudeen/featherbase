@@ -30,7 +30,7 @@ afterAll(() => teardown())
 
 type Managers = { store: { code: string; name: string }[]; cluster: { code: string; name: string }[] }
 
-async function render(managers: Managers) {
+async function render(managers: Managers, store?: { id: string; name: string }) {
   const { act } = await import('react')
   const { createRoot } = await import('react-dom/client')
   const { StoreRunBy } = await import('./my-store-page')
@@ -40,7 +40,7 @@ async function render(managers: Managers) {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
-  await act(async () => { root.render(<RecordPagesProvider pageFor={dashPageFor}><StoreRunBy managers={managers} /></RecordPagesProvider>) })
+  await act(async () => { root.render(<RecordPagesProvider pageFor={dashPageFor}><StoreRunBy managers={managers} store={store} /></RecordPagesProvider>) })
   await act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve() })
   const line = container.querySelector('[data-testid="store-run-by"]')!
   const links = [...line.querySelectorAll('a')].map(a => [a.textContent, a.getAttribute('href')])
@@ -60,6 +60,19 @@ describe('who runs the store', () => {
     expect(line.textContent).toBe('No store manager')
     expect(line.querySelector('.text-ink-muted')?.textContent).toBe('No store manager')
     expect(links).toEqual([])
+    await done()
+  })
+
+  it('keeps each label on one line with its first name', async () => {
+    const { line, done } = await render({ store: [{ code: 'E1', name: 'Selvi Store' }], cluster: [{ code: 'E7', name: 'Kiran Cluster' }] })
+    const nowrap = [...line.querySelectorAll('.whitespace-nowrap')].map(e => e.textContent)
+    expect(nowrap).toEqual(['Store Manager: Selvi Store', 'Cluster Manager: Kiran Cluster'])
+    await done()
+  })
+
+  it('names the store first where the page has no title naming it (Your sections)', async () => {
+    const { line, done } = await render({ store: [{ code: 'E1', name: 'Selvi Store' }], cluster: [] }, { id: 'LKS', name: 'Lakeside' })
+    expect(line.textContent).toBe('Lakeside · Store Manager: Selvi Store')
     await done()
   })
 
