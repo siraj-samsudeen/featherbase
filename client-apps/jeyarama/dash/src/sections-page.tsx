@@ -1,5 +1,6 @@
 // Your sections and Waiting for your approval (#975), in Shop Floor's components. Each page says
 // what to do next when it has nothing to show. The rules are the server's: my-sections.ts.
+import { BuyerSectionApprovals, type BuyerMoveToDecide } from './buyer-sections-page'
 import { createElement, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Button, Card, EmptyState, Field, fmtDate, Notice, Select, Skeleton, StatusPill, TextInput, touchLinkClasses, type StatusTone, buttonClasses } from '@featherbase/shop-floor'
 import { HierarchyGroups, HierarchyPath, HierarchyPicker, type HierarchyLeaf, type HierarchyNode } from '@featherbase/shop-floor/hierarchy'
@@ -519,19 +520,23 @@ export function Approvals() {
   const { answer, failed, load } = useAnswer<Waiting>('approvals')
   // #1195: Department Managers' set-ups wait here too, one card each.
   const setups = useAnswer<WaitingSetup[]>('department_approvals')
-  const reload = () => Promise.all([load(), setups.load()])
+  // #1246: category heads' Buyer Section changes wait here too, for the master data team.
+  const buyerMoves = useAnswer<BuyerMoveToDecide[]>('buyer_section_approvals')
+  const reload = () => Promise.all([load(), setups.load(), buyerMoves.load()])
   const waitingSetups = setups.answer ?? []
+  const waitingMoves = Array.isArray(buyerMoves.answer) ? buyerMoves.answer : []
   // What just happened stays said after the card has gone from the list.
   const [note, setNote] = useState<{ tone: 'positive' | 'negative' | 'caution'; text: string } | null>(null)
   const after = (next: NonNullable<typeof note>) => { setNote(next); return reload() }
   return (
-    <Shell current="approvals" count={answer?.state === 'ok' ? answer.proposals.length + waitingSetups.length : undefined} title="Waiting for you" testid="approvals">
+    <Shell current="approvals" count={answer?.state === 'ok' ? answer.proposals.length + waitingSetups.length + waitingMoves.length : undefined} title="Waiting for you" testid="approvals">
       {note && <Notice tone={note.tone}><span data-testid="decision-note">{note.text}</span></Notice>}
       {!answer && !failed && <Loading />}
       {failed && <LoadFailed onRetry={load} />}
       {answer?.state === 'not_set_up' && <NotSetUp />}
       {answer?.state === 'ok' && <DepartmentApprovals setups={waitingSetups} onDecided={text => after({ tone: 'positive', text })} />}
-      {answer?.state === 'ok' && answer.proposals.length === 0 && waitingSetups.length === 0 && (
+      {answer?.state === 'ok' && <BuyerSectionApprovals moves={waitingMoves} onDecided={text => after({ tone: 'positive', text })} />}
+      {answer?.state === 'ok' && answer.proposals.length === 0 && waitingSetups.length === 0 && waitingMoves.length === 0 && (
         <Card data-testid="nothing-waiting">
           <EmptyState title="Nothing is waiting for you" body="When someone changes their sections, or asks to, or sets up their department, and it needs you, it shows here." />
         </Card>

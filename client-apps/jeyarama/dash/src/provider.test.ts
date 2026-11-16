@@ -1,6 +1,7 @@
 // Who sees what (#967's table), from the core Tables. Made-up stores and people.
 import { describe, expect, it } from 'vitest'
 import { PROVIDER_TABLES, orgChartProvider, reachOf, type Documents } from './provider'
+import { planBuyerSections } from './buyer-sections-plan'
 
 type Row = Record<string, unknown>
 const ON = '2026-11-07'
@@ -39,7 +40,7 @@ const SUBCATEGORIES: Row[] = [
 ]
 
 function fake(jobs: Row[], { employee = { row_id: 'E1', person: 'me', status: 'Current' } as Row, plants = PLANTS, assignments = [] as Row[], departments = [] as Row[], departmentSections = [] as Row[],
-  clusterHeads = {} as Record<string, string> } = {}): Documents {
+  clusterHeads = {} as Record<string, string>, desks = null as Row[] | null, links = [] as Row[] } = {}): Documents {
   const tables: Record<string, Row[]> = {
     Employee: [employee], 'Job Assignment': jobs.map((job, i) => ({ row_id: `J${i}`, employee: 'E1', starts_on: '2026-01-01', ends_on: null, ...job })),
     'Merchandise Assignment': assignments.map((row, i) => ({ row_id: `M${i}`, employee: 'E1', division: null, subdivision: null, category: null, subcategory: null,
@@ -48,8 +49,12 @@ function fake(jobs: Row[], { employee = { row_id: 'E1', person: 'me', status: 'C
     Department: departments.map((row, i) => ({ row_id: `D${i}`, store: 'AAA', manager: 'E1', starts_on: '2026-01-01', ends_on: null, ...row })),
     'Department Section': departmentSections.map((row, i) => ({ row_id: `DS${i}`, store: 'AAA', starts_on: '2026-01-01', ends_on: null, ...row })),
     Cluster: ['North', 'South'].map(row_id => ({ row_id, cluster_manager: clusterHeads[row_id] ?? null })),
+    // #1246: the Buyer Section Tables exist only when a test gives desks.
+    ...(desks ? { 'Buyer Section': desks.map(row => ({ starts_on: '2026-01-01', ends_on: null, buyer: 'E1', ...row })),
+      'Buyer Section Subcategory': links.map((row, i) => ({ row_id: `L${i}`, starts_on: '2026-01-01', ends_on: null, ...row })) } : {}),
   }
   return {
+    async available(table: string) { return table in tables },
     async list(table, { filters = [], limit_start = 0, limit_page_length = 500 }) {
       const rows = tables[table].filter(row => filters.every(([column, op, value]) =>
         op === 'in' ? (value as unknown[]).includes(row[column]) : row[column] === value))
@@ -331,7 +336,8 @@ describe('the provider', () => {
   })
 
   it('reads only the Tables it declares', () => {
-    expect(PROVIDER_TABLES).toEqual(['Employee', 'Job Assignment', 'Site', 'Plant', 'Section', 'Section Subcategory', 'Merchandise Assignment', 'Subcategory', 'Department', 'Department Section', 'Cluster'])
+    expect(PROVIDER_TABLES).toEqual(['Employee', 'Job Assignment', 'Site', 'Plant', 'Section', 'Section Subcategory', 'Merchandise Assignment', 'Subcategory', 'Department', 'Department Section', 'Cluster',
+      'Buyer Section', 'Buyer Section Subcategory'])
   })
 
   // #1195: a Department Manager reaches the sections of the department they manage at their job's store.
@@ -403,3 +409,80 @@ describe('a section change, day by day', () => {
     expect(await labels('2026-11-16')).toEqual(['9901 / Section: Sarees'])
   })
 })
+
+// #1246: report scope follows Buyer Sections where the instance has them (#1247's available()), and
+// Merchandise Assignment Buyer rows only where no desk covers a subcategory in a store's region.
+describe('buyers, while Buyer Sections are filled in', () => {
+  const codesBy = (r: { places: { filters: Record<string, string[]> }[] }) =>
+    Object.fromEntries(r.places.map(p => [p.filters.store[0], p.filters.subcategory]))
+  const TOPS_BUYER = { responsibility: 'Buyer', category: 'Tops' }
+
+  it('with no Buyer Section Tables, reaches exactly what the Buyer rows give, and never reads them', async () => {
+    const docs = fake([], { assignments: [TOPS_BUYER] })
+    const listed: string[] = []
+    const watched: Documents = { ...docs, list: (table, args) => { listed.push(table); return docs.list(table, args) } }
+    const reach = await reachOf(watched, 'me', ON)
+    expect(codesBy(reach)).toEqual({ '9901': ['000000001', '000000002'], '9902': ['000000001', '000000002'], '9903': ['000000001', '000000002'], '9904': ['000000001', '000000002'] })
+    expect(listed.filter(t => t.startsWith('Buyer Section'))).toEqual([])
+  })
+
+  it('with the Tables present and empty, reaches the same', async () => {
+    expect(codesBy(await reachOf(fake([], { assignments: [TOPS_BUYER], desks: [] }), 'me', ON)))
+      .toEqual(codesBy(await reachOf(fake([], { assignments: [TOPS_BUYER] }), 'me', ON)))
+  })
+
+  it('a buyer with only a Buyer Section reaches its subcategories at the stores of its region', async () => {
+    const reach = await reachOf(fake([], { desks: [{ row_id: 'BS1', name: 'Sarees desk', operating_region: 'East' }], links: [{ buyer_section: 'BS1', subcategory: '000000003' }] }), 'me', ON)
+    expect(reach.problems).toEqual([])
+    expect(codesBy(reach)).toEqual({ '9901': ['000000003'], '9902': ['000000003'] })
+  })
+
+  it("a subcategory an East desk took from a both-regions Buyer row leaves that row's buyer in the East, and keeps them in the West", async () => {
+    const reach = await reachOf(fake([], { assignments: [TOPS_BUYER], desks: [{ row_id: 'BS9', name: 'Tops desk', operating_region: 'East', buyer: 'E9' }],
+      links: [{ buyer_section: 'BS9', subcategory: '000000001' }] }), 'me', ON)
+    expect(codesBy(reach)).toEqual({ '9901': ['000000002'], '9902': ['000000002'], '9903': ['000000001', '000000002'], '9904': ['000000001', '000000002'] })
+  })
+
+  it('adopting the seed plan keeps every buyer\'s reach: desks from the plan, the Buyer rows ended (Codex)', async () => {
+    const rows = [{ responsibility: 'Buyer', subcategory: '000000001' }, { responsibility: 'Buyer', subcategory: '000000003', operating_region: 'West' }]
+    const before = await reachOf(fake([], { assignments: rows }), 'me', ON)
+    const { lines } = planBuyerSections({ regions: ['East', 'West'], employees: [{ row_id: 'E1', name: 'Me' }], subcategories: SUBCATEGORIES,
+      assignments: rows.map((r, i) => ({ row_id: `M${i}`, employee: 'E1', operating_region: null, starts_on: '2026-01-01', ...r })) }, ON)
+    const desks = [...new Map(lines.map(l => [l.buyer_section_id, { row_id: l.buyer_section_id, name: l.buyer_section, operating_region: l.region, buyer: l.buyer_code }])).values()]
+    const after = await reachOf(fake([], { assignments: rows.map(r => ({ ...r, ends_on: '2026-11-06' })), desks,
+      links: lines.map(l => ({ buyer_section: l.buyer_section_id, subcategory: l.subcategory_code })) }), 'me', ON)
+    expect(codesBy(after)).toEqual(codesBy(before))
+  })
+
+  it('adopting a plan where two buyers share a name keeps each one\'s reach (Codex)', async () => {
+    const rows = [{ responsibility: 'Buyer', subcategory: '000000001', employee: 'E3', operating_region: 'East' },
+      { responsibility: 'Buyer', subcategory: '000000002', employee: 'E1', operating_region: 'East' },
+      { responsibility: 'Buyer', subcategory: '000000003', employee: 'E2', operating_region: 'East' }]
+    const before = await reachOf(fake([], { assignments: rows }), 'me', ON)
+    const { lines } = planBuyerSections({ regions: ['East'], subcategories: SUBCATEGORIES, assignments: rows.map((r, i) => ({ row_id: `M${i}`, starts_on: '2026-01-01', ...r })),
+      employees: [{ row_id: 'E3', name: 'Anu' }, { row_id: 'E1', name: 'Ravi' }, { row_id: 'E2', name: 'Ravi' }] }, ON)
+    const desks = [...new Map(lines.map(l => [l.buyer_section_id, { row_id: l.buyer_section_id, name: l.buyer_section, operating_region: l.region, buyer: l.buyer_code }])).values()]
+    expect(desks).toHaveLength(3)
+    const after = await reachOf(fake([], { assignments: rows.map(r => ({ ...r, ends_on: '2026-11-06' })), desks,
+      links: lines.map(l => ({ buyer_section: l.buyer_section_id, subcategory: l.subcategory_code })) }), 'me', ON)
+    expect(codesBy(after)).toEqual(codesBy(before))
+  })
+
+  it('refuses the scope when only one Buyer Section Table can be read, so a desk restriction is never lost (Codex)', async () => {
+    const docs = fake([], { assignments: [TOPS_BUYER], desks: [{ row_id: 'BS9', name: 'Tops desk', operating_region: 'East', buyer: 'E9' }],
+      links: [{ buyer_section: 'BS9', subcategory: '000000001' }] })
+    for (const missing of ['Buyer Section', 'Buyer Section Subcategory']) {
+      const partial: Documents = { ...docs, available: async table => table !== missing && (await docs.available!(table)) }
+      await expect(reachOf(partial, 'me', ON)).rejects.toThrow(/Buyer Section/)
+    }
+  })
+
+  it('an ended desk, or a desk naming someone else, gives nothing; a vacant desk still takes the subcategory', async () => {
+    const reach = await reachOf(fake([], { assignments: [TOPS_BUYER], desks: [
+      { row_id: 'OLD', name: 'Old', operating_region: 'East', ends_on: '2026-11-06' },
+      { row_id: 'VAC', name: 'Vacant', operating_region: 'West', buyer: null }],
+      links: [{ buyer_section: 'OLD', subcategory: '000000002' }, { buyer_section: 'VAC', subcategory: '000000002' }] }), 'me', ON)
+    expect(codesBy(reach)).toEqual({ '9901': ['000000001', '000000002'], '9902': ['000000001', '000000002'], '9903': ['000000001'], '9904': ['000000001'] })
+  })
+})
+
