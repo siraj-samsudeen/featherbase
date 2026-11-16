@@ -68,6 +68,8 @@ async function setup(admin: TestClient, createUser: CreateUserFn) {
   await save('Employee', { employee_code: 'S1', name: 'Boss Example', person: people.boss.user, status: 'Current' })
   await save('Job Assignment', { assignment_id: 'JA-B1', employee: 'B1', job: 'Team Leader', site: 'LKS', section: 'LKS-S1', starts_on: '2026-01-01' })
   await save('Job Assignment', { assignment_id: 'JA-O1', employee: 'O1', job: 'Team Leader', site: 'HLV', section: 'HLV-S1', starts_on: '2026-01-01' })
+  // Kavya also manages Lakeside: Team Leader at one store and Store Manager at another.
+  await save('Job Assignment', { assignment_id: 'JA-O2', employee: 'O1', job: 'Store Manager', site: 'LKS', starts_on: '2026-01-01' })
   await save('Job Assignment', { assignment_id: 'JA-S1', employee: 'S1', job: 'Store Manager', site: 'LKS', starts_on: '2026-01-01' })
   const give = (report: string, to: TestClient) => ok(call(people.tester, 'app_actions', 'give_report', { report, person: to.user }))
   // The tester's own Dash: Company notices. Meena's: Sales versus target, for her section at Lakeside.

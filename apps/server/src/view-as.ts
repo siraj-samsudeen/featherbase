@@ -130,7 +130,15 @@ export async function activeViewAs(user: SessionUser, { told = true }: { told?: 
  */
 export async function viewAsStillHolds(signedIn: SessionUser, person: string): Promise<boolean> {
   const still = await activeViewAs(signedIn).catch(() => null)
-  return still?.as.person === person
+  if (still?.as.person !== person) return false
+  // Last, under the lock Exit and Switch take: either they finished first and the row says so,
+  // or they wait for this check, and the answer was released before they changed anything.
+  const session = signedIn.sign_in!.session_id
+  return sql.begin(async (tx) => {
+    await lockSession(tx, session)
+    const [row] = await tx`select 1 from view_as_session where session_id = ${session} and person = ${person} and ended_at is null and expires_at > now()`
+    return Boolean(row)
+  })
 }
 
 /** Start viewing as `person`, or switch to them. */

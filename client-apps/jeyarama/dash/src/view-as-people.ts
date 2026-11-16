@@ -45,7 +45,12 @@ export async function viewAsPeople(ctx: AccessContext, on: string = istToday()):
   for (const row of employees.values()) if (!names.has(exact(row.person))) names.set(exact(row.person), text(row.name))
   const who = await whoIs(base, [...names.keys()], on)
   return [...names].map(([person, name]) => ({ person, name, code: who.get(person)?.code ?? null, jobs: who.get(person)?.jobs ?? [] }))
-    .filter(entry => { const hay = [entry.name, entry.code ?? '', ...entry.jobs].join(' ').toLowerCase(); return words.every(word => hay.includes(word)) })
+    // Every word must be found in the name, the code, and one job line: a job at one store and
+    // another at a second never add up to "that job at that store".
+    .filter(entry => (entry.jobs.length ? entry.jobs : ['']).some(job => {
+      const hay = [entry.name, entry.code ?? '', job].join(' ').toLowerCase()
+      return words.every(word => hay.includes(word))
+    }))
     .sort((a, b) => a.name.localeCompare(b.name) || (a.code ?? '').localeCompare(b.code ?? ''))
     .slice(0, LIMIT)
 }
