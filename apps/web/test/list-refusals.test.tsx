@@ -59,6 +59,8 @@ test('the Delete Table dialog closes on a click outside it and on Escape, deleti
   fireEvent.click(screen.getByTestId('delete-table-dialog').parentElement!)
   expect(screen.queryByTestId('delete-table-dialog')).not.toBeInTheDocument()
 
+  // The menu closed when its dialog took the focus, as it does in a browser.
+  await openListMenu('Table administration')
   fireEvent.click(screen.getByTestId('delete-table'))
   fireEvent.keyDown(screen.getByTestId('delete-table-dialog'), { key: 'Escape' })
   expect(screen.queryByTestId('delete-table-dialog')).not.toBeInTheDocument()

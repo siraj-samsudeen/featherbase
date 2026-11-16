@@ -14,7 +14,7 @@ import { useSettings } from '../lib/settings'
 import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { ChecklistSwitch } from './ChecklistView'
 import { MoreColumnsHint, OneLine, useMoreToTheRight } from './list-one-line'
-import { Button, NARROW_QUERY, ViewToggle, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { Button, EmptyState, NARROW_QUERY, ViewToggle, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
 import { ChevronDown } from '@featherbase/shop-floor'
 import { tableCanRetire } from './RowRetirement'
 import { PurgeDialog, tableCanPurge } from './PurgeDialog'
@@ -106,6 +106,8 @@ export function ListView({
   extraColumns?: string[]
 }) {
   const meta = useMeta(table)
+  // #1237, #1242: the Table as people read it.
+  const label = tableLabel(table, meta.data)
   const settings = useSettings()
   // #910: on a list page, selecting a row shows it in the drill pane.
   const navigation = useNavigation()
@@ -399,29 +401,30 @@ export function ListView({
     // Table holds data (#871, a list reopened after its rename).
     'Loading…'
   ) : empty ?? (
-    <>
-      No rows
-      {/* TLC-J1.2: an empty table is the moment the user most
-          needs the way forward, so the empty state carries it
-          too — the toolbar action is not the only door. */}
-      {canAddRows &&
-        !isRowsReadOnly(meta.data) &&
-        meta.data?.kind !== 'settings' &&
-        meta.data?.kind !== 'sub_table' && (
-        <>
-          {' — '}
+    // #1242 (admin-lists 9): an empty Table shows the way forward (TLC-J1.2):
+    // New, and Import data for those who may import.
+    <EmptyState
+      title="No rows"
+      body={canAddRows && !isRowsReadOnly(meta.data) ? `Add the first ${thingWords(label)}, or bring them in from a file.` : undefined}
+      action={canAddRows && !isRowsReadOnly(meta.data) && meta.data?.kind !== 'settings' && meta.data?.kind !== 'sub_table' ? (
+        <span className="flex flex-wrap justify-center gap-2">
           <Link
             to="/featherbase/admin/table/$table/new"
             params={{ table }}
             search={{ prefill: newRowPrefill ? JSON.stringify(newRowPrefill) : undefined }}
-            className="text-action underline"
+            className={buttonClasses({ variant: 'primary' })}
             data-testid="list-empty-new"
           >
-            add the first one
+            New {thingWords(label)}
           </Link>
-        </>
-      )}
-    </>
+          {caps?.manage && (
+            <Link to="/featherbase/admin/import" search={{ table }} className={buttonClasses()} data-testid="list-empty-import">
+              Import data
+            </Link>
+          )}
+        </span>
+      ) : undefined}
+    />
   )
 
   function toggleSort(field: string) {
@@ -570,7 +573,6 @@ export function ListView({
 
   // #1242: what the header's ⋯ More holds, under the same conditions the two
   // menus it replaces had.
-  const label = tableLabel(table, meta.data)
   const hasListActions = table === 'Person' || Boolean(!isRowsReadOnly(meta.data) && caps?.manage)
     || Boolean(meta.data?.kind === 'table' && !meta.data.data_source && !isSystemWritten(meta.data))
   const hasTableAdministration = Boolean(canShapeColumns || caps?.manage || isSystemManager)
@@ -1153,7 +1155,12 @@ export function ListView({
       {moreToTheRight && <MoreColumnsHint box={tableScroll} />}
       </div>
       )}
+      {/* #1242 (admin-lists 6): "1–4 of 4" on the left; Prev and Next only when there is another page. */}
       <div className="mt-3 flex items-center gap-3 text-sm">
+        <span className="text-xs text-ink-muted" data-testid="page-info">
+          {pageRange(start, PAGE, total)}
+        </span>
+        {total > PAGE && <>
         <button
           disabled={start === 0}
           onClick={() => setStart((s) => Math.max(0, s - PAGE))}
@@ -1162,9 +1169,6 @@ export function ListView({
         >
           Prev
         </button>
-        <span className="text-xs text-ink-muted" data-testid="page-info">
-          {pageRange(start, PAGE, total)}
-        </span>
         <button
           disabled={start + PAGE >= total}
           onClick={() => setStart((s) => s + PAGE)}
@@ -1173,6 +1177,7 @@ export function ListView({
         >
           Next
         </button>
+        </>}
       </div>
     </div>
   )

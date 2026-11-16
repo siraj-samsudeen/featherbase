@@ -126,8 +126,10 @@ describe('permissions-and-roles', () => {
         expect(screen.queryByTestId(id), id).not.toBeInTheDocument()
     })
     await step('no administration request is made', () => {
-      // /api/brand is the shared top bar asking what this address opens (#489).
-      const adminCalls = urls.filter((u) => !/^\/api\/(whoami|brand|runtime_app_versions|sales_target\/)/.test(u))
+      // /api/brand is the shared top bar asking what this address opens (#489);
+      // /api/app_catalog is its switcher listing the apps this person can open
+      // (#1227). The closed-app list stays a System Manager's.
+      const adminCalls = urls.filter((u) => !/^\/api\/(whoami|brand|runtime_app_versions|sales_target\/|app_catalog$)/.test(u))
       expect(adminCalls).toEqual([])
     })
   })

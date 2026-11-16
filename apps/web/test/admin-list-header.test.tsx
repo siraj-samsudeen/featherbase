@@ -70,3 +70,22 @@ test('Show retired is a toggle chip in the toolbar', async ({ admin }) => {
   await userEvent.click(chip)
   expect(chip).toHaveAttribute('aria-pressed', 'true')
 })
+
+// #1242 (admin-lists 6, 9).
+test('one page of rows reads "1–3 of 3" with no Prev or Next', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(tableHref(DEPT), admin)
+  await waitFor(() => expect(rows()).toHaveLength(3), T)
+  expect(screen.getByTestId('page-info')).toHaveTextContent('1–3 of 3')
+  expect(screen.queryByTestId('prev-page')).toBeNull()
+  expect(screen.queryByTestId('next-page')).toBeNull()
+})
+
+test('an empty Table shows the way forward: New and Import data', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'alh empty raw', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
+  await renderApp(tableHref('alh empty raw'), admin)
+  expect(await screen.findByRole('heading', { level: 3, name: 'No rows' }, T)).toBeInTheDocument()
+  expect(screen.getByTestId('list-empty-new')).toHaveTextContent(/^New alh empty raw$/)
+  expect(screen.getByTestId('list-empty-import')).toHaveTextContent('Import data')
+})
+// A linked cell's code, muted inside the link: drill-pane.test.tsx ("Kerala · KL").
