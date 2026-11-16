@@ -16,7 +16,7 @@ const CONTEXT = { state: 'ok', report: { key: 'sales', name: 'Sales versus targe
 let byKey: Map<string, { row_id: string; problem: string; about: string }>
 /** What happens to the next create: answered, held until released, or committed with its answer lost. */
 let nextCreate: 'answer' | 'hold' | 'lose'
-let release: () => void = () => {}
+let release: (lose?: boolean) => void = () => {}
 let teardown: () => void = () => {}
 
 function create(body: { idempotencyKey: string; payload: { details: { problem: string; about?: string } } }) {
@@ -27,7 +27,7 @@ function create(body: { idempotencyKey: string; payload: { details: { problem: s
   const mode = nextCreate
   nextCreate = 'answer'
   if (mode === 'lose') return Promise.reject(new TypeError('Failed to fetch'))
-  if (mode === 'hold') return new Promise<Response>(done => { release = () => done(answer()) })
+  if (mode === 'hold') return new Promise<Response>((done, fail) => { release = lose => lose ? fail(new TypeError('Failed to fetch')) : done(answer()) })
   return Promise.resolve(answer())
 }
 
@@ -165,6 +165,27 @@ describe('Report an issue, closed mid-Send', () => {
     await page.send()
     expect(page.one('issue-sent')?.textContent).toContain('FT-00001')
     expect(byKey.size).toBe(1)
+    await page.done()
+  })
+
+  it('left for another store while going, is not resent for the new store, whose Send is its own ticket', async () => {
+    const page = await render({ store: '9901', chosen: '9901|this' })
+    await page.open()
+    await page.pick('Stock missing')
+    nextCreate = 'hold'
+    await page.send()
+    await page.rerender({ store: '9902', chosen: '9902|this' })
+    await page.settle()
+    // The first store's request is committed but its answer lost after the reader left it: nothing of it is shown or resent here.
+    await page.act(async () => { release(true) })
+    await page.settle()
+    expect(page.one('issue-sent')).toBeNull()
+    expect(page.one('issue-error')).toBeNull()
+    expect((page.one('issue-send') as HTMLButtonElement).disabled).toBe(false)
+    await page.send()
+    expect(byKey.size).toBe(2)
+    const [, second] = [...byKey.values()]
+    expect(page.one('issue-sent')?.textContent).toContain(second.row_id)
     await page.done()
   })
 

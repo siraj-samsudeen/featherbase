@@ -29,26 +29,35 @@ export function ReportIssue({ reportKey, reportName, store, month, diveFilters, 
   // submission still going, its answer, or its failure, and a retry resends that submission itself.
   const pending = useRef<Submission | null>(null)
   const [sending, setSending] = useState<Sending>({ busy: false, sent: null, error: null })
-  // The reader choosing another store or month in the bar is a new view to report on: an unanswered
-  // submission of the old one is not resent for it. Only the reader's own choice (`chosen`) drops it;
-  // the page moving from its cached view to the Dive, or a Dive's message, never does.
-  useEffect(() => { if (!sending.busy) { pending.current = null; setSending(now => now.busy ? now : { busy: false, sent: null, error: null }) } },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [reportKey, chosen])
+  // The reader choosing another store or month in the bar is a new view to report on: the old view's
+  // submission is dropped, and its request, if still going, no longer speaks for this view (`view` is
+  // the generation each request belongs to). Only the reader's own choice (`chosen`) does this; the
+  // page moving from its cached view to the Dive, or a Dive's message, never does.
+  const view = useRef(0)
+  useEffect(() => {
+    view.current += 1
+    pending.current = null
+    setSending({ busy: false, sent: null, error: null })
+  }, [reportKey, chosen])
   useEffect(() => { let live = true; ticketsRunning().then(yes => { if (live) setRunning(yes) }, () => {}); return () => { live = false } }, [])
   const refresh = useCallback(() => openFeedback(reportKey).then(answer => setMine(answer.tickets), () => setMine(null)), [reportKey])
   useEffect(() => { if (running) void refresh() }, [running, refresh])
   const send = useCallback(async (submission: Submission) => {
+    const mine = view.current
     pending.current = submission
     setSending({ busy: true, sent: null, error: null })
+    let outcome: Sending
     try {
       const { ticket } = await raiseTicket(submission)
-      pending.current = null
-      setSending({ busy: false, sent: { row_id: ticket.row_id }, error: null })
-      await refresh()
+      outcome = { busy: false, sent: { row_id: ticket.row_id }, error: null }
     } catch (failure) {
-      setSending({ busy: false, sent: null, error: failure instanceof Error ? failure.message : 'That did not go through. Try again.' })
+      outcome = { busy: false, sent: null, error: failure instanceof Error ? failure.message : 'That did not go through. Try again.' }
     }
+    // An answer for a view the reader has left is not shown on the new one; a raised ticket still counts.
+    if (view.current !== mine) { void refresh(); return }
+    if (outcome.sent) pending.current = null
+    setSending(outcome)
+    if (outcome.sent) await refresh()
   }, [refresh])
   const another = useCallback(() => { pending.current = null; setSending({ busy: false, sent: null, error: null }) }, [])
   if (!running || hidden) return null
