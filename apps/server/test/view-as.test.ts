@@ -130,6 +130,10 @@ describe('View as on the platform', () => {
     expect((await status(start(tester, outsider.user)))[0]).toBe(200)
     const page = await tester.fetch('/barproof/', { headers: { accept: 'text/html' } })
     expect([page.status, await page.text()]).toEqual([403, expect.stringContaining("can't open this application")])
+    // The page's own Exit button works without any app: a plain form, sent home.
+    const left = await tester.fetch('/api/view_as/exit', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: '', redirect: 'manual' })
+    expect([left.status, left.headers.get('location')]).toEqual([303, '/'])
+    expect(await sql`select count(*)::int as n from view_as_session`).toEqual([{ n: 0 }])
     expect(await sql`select count(*)::int as n from access_request`).toEqual([{ n: 0 }])
   })
 

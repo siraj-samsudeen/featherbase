@@ -634,7 +634,7 @@ function viewingNoAccessPage(name: string): string {
   return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not open to ${who}</title></head>
     <body style="font:16px system-ui;background:#f4f5f6;color:#1c2126;margin:0;padding:8vw"><main style="max-width:36rem;margin:auto;background:white;border:1px solid #ebeef0;border-radius:8px;padding:2rem">
     <h1>${who} can't open this application</h1><p>You are viewing as ${who}, for viewing only. They have no access to it, so there is nothing of theirs to see here.</p>
-    <p><a href="/dash/">Back to Dash</a>, where the View as banner has Switch and Exit.</p></main></body></html>`
+    <form method="post" action="/api/view_as/exit"><button type="submit" style="font:inherit;padding:.5rem 1rem;border-radius:6px;border:0;background:#1c2126;color:white;cursor:pointer">Exit View as</button></form></main></body></html>`
 }
 
 // ---- API-004: everything below requires a valid session --------------------
@@ -682,6 +682,8 @@ app.post('/api/view_as/start', async (c) => {
 })
 app.post('/api/view_as/exit', async (c) => {
   await endViewAs(c.get('user'))
+  // A plain form (the page shown when the person viewed can't open an app) goes home.
+  if (c.req.header('content-type')?.includes('application/x-www-form-urlencoded')) return c.redirect('/', 303)
   return c.json(await viewAsState(c.get('user')))
 })
 
