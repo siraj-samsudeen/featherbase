@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, type CommandDestinations, type CommandPageDestination } from 'shared'
+import { FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, tableHref, type CommandDestinations, type CommandPageDestination } from 'shared'
+import { SIDEBAR_VIEWS_KEY } from '../lib/nav-settings'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import {
   actionForLocation,
@@ -37,7 +38,7 @@ import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PA
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
 import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
-import { Bell, BookOpen, CalendarClock, Clock, Compass, Database, History, Key, ListChecks, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
+import { Bell, BookOpen, Bookmark, CalendarClock, Clock, Compass, Database, History, Key, ListChecks, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 
 interface SearchHit {
@@ -825,6 +826,8 @@ export function AdminShell({ wide, fullWidth = false }: { wide: boolean; fullWid
               ))}
             </div>
           )}
+          {/* #1229: the person's saved views, own and starred, one click each. */}
+          <SidebarSavedViews onOpen={(href) => { setSidebarOpen(false); router.history.push(href) }} />
           {/* Two labelled groups under the Home Pages and the recents, headed
               like "Recently opened". Visibility per item is unchanged; a group
               with nothing visible for this person drops its heading too. */}
@@ -958,6 +961,54 @@ export function SidebarGroup({ heading, icon: HeadingIcon, testid, items }: {
 // collided with the import wizard's Check button and broke an unrelated
 // journey depending only on which spec had run before it. A link cannot
 // collide with a button however the trail is worded.
+interface SidebarView {
+  row_id: string
+  table: string
+  label: string
+  filters: unknown
+  mine: boolean
+}
+
+/** #1229: "Saved views" — the person's own views on every Table and the shared
+ *  ones they starred, each opening its Table's list with the view's filters. A
+ *  person with none sees no group. */
+function SidebarSavedViews({ onOpen }: { onOpen: (href: string) => void }) {
+  const views = useQuery({
+    queryKey: SIDEBAR_VIEWS_KEY,
+    queryFn: () => api.get<{ views: SidebarView[] }>('/api/saved_views/sidebar'),
+  })
+  const list = views.data?.views ?? []
+  if (list.length === 0) return null
+  return (
+    <div className="border-t border-border px-2 py-2" data-testid="sidebar-saved-views">
+      <h2 className="flex items-center gap-1.5 px-2 pb-0.5 pt-1 text-xs font-medium text-ink-subtle">
+        <Bookmark aria-hidden size={12} />
+        Saved views
+      </h2>
+      {list.map((view) => {
+        const href = `${tableHref(view.table)}?filters=${encodeURIComponent(JSON.stringify(view.filters))}`
+        return (
+          <a
+            key={view.row_id}
+            href={href}
+            onClick={(e) => {
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+              e.preventDefault()
+              onOpen(href)
+            }}
+            data-testid="sidebar-saved-view"
+            title={`${view.label} — ${view.table}${view.mine ? '' : ' (shared with you)'}`}
+            className={touchRowClasses('flex w-full flex-col justify-center rounded-md px-2 py-1 text-left hover:bg-subtle')}
+          >
+            <span className="truncate text-sm text-ink">{view.label}</span>
+            <span className="truncate text-xs text-ink-subtle">{view.table}{view.mine ? '' : ' · shared'}</span>
+          </a>
+        )
+      })}
+    </div>
+  )
+}
+
 function SidebarRecentRow({
   entry,
   frequent,

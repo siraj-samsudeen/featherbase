@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, getSessionUser } from '../lib/api'
+import { useNavigationSettings } from '../lib/nav-settings'
 import { buttonClasses, inputClasses } from '@featherbase/shop-floor'
 import type { Filter } from './ListFilters'
 
@@ -37,6 +38,7 @@ export function SavedViewsBar({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
+  const navigation = useNavigationSettings()
   const views = useQuery({
     queryKey: ['saved-views', table],
     enabled: Boolean(user),
@@ -120,7 +122,7 @@ export function SavedViewsBar({
       // Invalidation reuses a pending initial read with no cached data. Cancel
       // it first so its pre-save result cannot hide the newly saved view.
       await queryClient.cancelQueries({ queryKey: ['saved-views', table] })
-      void queryClient.invalidateQueries({ queryKey: ['saved-views', table] })
+      void queryClient.invalidateQueries({ queryKey: ['saved-views'] })
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "Couldn't save this view. Try again.")
     } finally {
@@ -169,6 +171,24 @@ export function SavedViewsBar({
                   ★ {v.label}
                   {v.shared && <span className="ml-1 opacity-70">{v.mine ? '· shared' : '· 👥'}</span>}
                 </button>
+                {/* #1229: someone else's shared view goes in the sidebar once starred;
+                    the person's own views are always there. */}
+                {!v.mine && v.shared && (() => {
+                  const starred = navigation.starredViews.includes(v.row_id)
+                  return (
+                    <button
+                      type="button"
+                      aria-pressed={starred}
+                      aria-label={starred ? `Remove ${v.label} from the sidebar` : `Add ${v.label} to the sidebar`}
+                      title={starred ? 'Remove from the sidebar' : 'Add to the sidebar'}
+                      data-testid="saved-view-star"
+                      onClick={() => navigation.toggleStar(v.row_id)}
+                      className="rounded-full px-1 hover:bg-surface/20"
+                    >
+                      {starred ? '★' : '☆'}
+                    </button>
+                  )
+                })()}
                 {v.mine && active && (
                   <button
                     type="button"
@@ -178,7 +198,7 @@ export function SavedViewsBar({
                       await api.post(`/api/saved_views/${encodeURIComponent(v.row_id)}/share`, {
                         shared: !v.shared,
                       })
-                      void queryClient.invalidateQueries({ queryKey: ['saved-views', table] })
+                      void queryClient.invalidateQueries({ queryKey: ['saved-views'] })
                     }}
                     className="rounded-full px-1 hover:bg-surface/20"
                   >
@@ -192,7 +212,7 @@ export function SavedViewsBar({
                     data-testid="saved-view-delete"
                     onClick={async () => {
                       await api.delete(`/api/saved_views/${encodeURIComponent(v.row_id)}`)
-                      void queryClient.invalidateQueries({ queryKey: ['saved-views', table] })
+                      void queryClient.invalidateQueries({ queryKey: ['saved-views'] })
                     }}
                     className="rounded-full px-1 hover:bg-surface/20"
                   >

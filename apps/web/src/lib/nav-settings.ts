@@ -14,7 +14,13 @@ export const NAVIGATION_SETTINGS = '__navigation'
 interface Stored {
   panePlace?: PanePlaceValue
   recentPaths?: unknown[]
+  /** #1229: others' shared saved views this person put in their sidebar. */
+  starredViews?: string[]
 }
+
+/** The Admin sidebar's saved views (GET /api/saved_views/sidebar), under the
+ *  saved-views prefix every view change invalidates. */
+export const SIDEBAR_VIEWS_KEY = ['saved-views', '__sidebar'] as const
 
 const KEY = ['user-settings', NAVIGATION_SETTINGS]
 
@@ -48,7 +54,16 @@ export function useNavigationSettings() {
       .catch(() => {})
   }
   const recent = decodeRecent(settings.recentPaths)
+  const starredViews = Array.isArray(settings.starredViews) ? settings.starredViews.filter((id) => typeof id === 'string') : []
   return {
+    starredViews,
+    /** #1229: puts another person's shared view in the sidebar, or takes it out. */
+    toggleStar: (view: string) => {
+      const next = starredViews.includes(view) ? starredViews.filter((id) => id !== view) : [...starredViews, view]
+      save({ starredViews: next })
+      // The sidebar's list reads the stars on the server: ask again once saved.
+      void settingsWrite.then(() => queryClient.invalidateQueries({ queryKey: SIDEBAR_VIEWS_KEY }))
+    },
     ready: !stored.isPending,
     panePlace: PLACES.includes(settings.panePlace as PanePlaceValue) ? settings.panePlace! : 'auto',
     setPanePlace: (panePlace: PanePlaceValue) => save({ panePlace }),

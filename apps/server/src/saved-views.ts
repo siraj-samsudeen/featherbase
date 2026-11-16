@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 import { sql } from './db'
 import { AppError } from './errors'
-import { assertPermission } from './permissions'
+import { assertPermission, hasPermission } from './permissions'
 
 // #101 Phase 6: saved views — a filter habit with a name. Owned by
 // created_by; `shared` opens a view to every user (read-only for them).
@@ -48,6 +48,33 @@ export async function listSavedViews(user: string, table: string): Promise<Saved
     where ref_table = ${table} and (created_by = ${user} or shared = true)
     order by created_by = ${user} desc, label`
   return rows.map((r) => toView(r, user))
+}
+
+/** The settings record (user_settings) that holds a person's navigation
+ *  choices, the stars on shared views among them (web lib/nav-settings). */
+const NAVIGATION_SETTINGS = '__navigation'
+/** More than a sidebar group can usefully show. */
+const SIDEBAR_LIMIT = 50
+
+/** #1229: the Admin sidebar's "Saved views": the person's own views on every
+ *  Table, and others' shared views they starred. Only views on Tables they can
+ *  read now; a starred view since deleted or made private simply drops out. */
+export async function listSidebarViews(user: string): Promise<SavedView[]> {
+  const [settings] = await sql`
+    select settings from user_settings where "user" = ${user} and table_name = ${NAVIGATION_SETTINGS}`
+  const raw = (settings?.settings as { starredViews?: unknown } | undefined)?.starredViews
+  const starred = Array.isArray(raw) ? raw.filter((id): id is string => typeof id === 'string').slice(0, SIDEBAR_LIMIT) : []
+  const rows = await sql`
+    select row_id, ref_table, label, filters, shared, created_by
+    from saved_view
+    where created_by = ${user} or (shared = true and row_id in ${sql(starred.length ? starred : [''])})
+    order by lower(label), ref_table
+    limit ${SIDEBAR_LIMIT * 2}`
+  // One permission check per Table, not per view.
+  const readable = new Map<string, boolean>()
+  for (const table of new Set(rows.map((r) => r.ref_table as string)))
+    readable.set(table, await hasPermission(user, table, 'read'))
+  return rows.filter((r) => readable.get(r.ref_table as string)).slice(0, SIDEBAR_LIMIT).map((r) => toView(r, user))
 }
 
 export async function createSavedView(user: string, body: unknown): Promise<SavedView> {
