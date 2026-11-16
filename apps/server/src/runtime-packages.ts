@@ -405,6 +405,11 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     // Table's mark is checked on every read.
     const notDeclared = provider.unmarkedTables?.find(table => !provider.tables.includes(table))
     if (notDeclared) throw new Error(`A scope provider's unmarked Table ${notDeclared} is not one of the Tables it reads`)
+    const notListed = provider.optionalTables?.find(table => !provider.tables.includes(table))
+    if (notListed) throw new Error(`A scope provider's optional Table ${notListed} is not one of the Tables it reads`)
+    // An app's own Table is installed with the app, so it is never optional.
+    const ownOptional = provider.optionalTables?.find(table => manifest.tables.some(t => t.name === table))
+    if (ownOptional) throw new Error(`A scope provider's own Table ${ownOptional} is installed with the app; it cannot be optional`)
     const ownUnmarked = provider.unmarkedTables?.find(table => manifest.tables.some(t => t.name === table))
     if (ownUnmarked) throw new Error(`A scope provider's own Table ${ownUnmarked} must be marked decides_scope`)
     for (const table of provider.tables) {
@@ -495,7 +500,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     runtime_manifest: { ...manifest, packageName: pkg.name, packageVersion: pkg.version } }
   return { name: manifest.name, title: manifest.title,
     entryTable: manifest.entryTable, clientRoot, root, version: pkg.version, digest, manifest, app,
-    scopeProvider: provider ? { app: manifest.name, title: manifest.title, version: pkg.version, tables: provider.tables, unmarkedTables: provider.unmarkedTables ?? [], identifiers: provider.identifiers ?? [], provide: providers.get(provider.name)! } : undefined,
+    scopeProvider: provider ? { app: manifest.name, title: manifest.title, version: pkg.version, tables: provider.tables, unmarkedTables: provider.unmarkedTables ?? [], optionalTables: provider.optionalTables ?? [], identifiers: provider.identifiers ?? [], provide: providers.get(provider.name)! } : undefined,
     // V1 stays recognizable as an exact upgrade predecessor, never gets a default policy.
     actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations), setup, baseTables: manifest.baseTables } : undefined,
     reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations), setup, datasets: manifest.datasets, baseTables: manifest.baseTables } : undefined }

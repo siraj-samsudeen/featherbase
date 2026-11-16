@@ -352,6 +352,20 @@ describe('the checks (5.1)', () => {
     expect(byKey(await runHealthChecks({ environment: 'production' }), 'scope-provider-tables:healthscopelocal')).toMatchObject({ ok: false, state: 'fault' })
   })
 
+  // #1247: a Table the provider marks optional and checks with documents.available() may be missing: named, not a fault.
+  test("a scope provider's missing optional Table is named but passes; a missing required one still fails", async () => {
+    const manifest = { name: 'healthscopeoptional', title: 'Health scope optional', scopeProvider: { name: 'org', tables: ['Role', 'Health Optional Desk'], optionalTables: ['Health Optional Desk'] } }
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('healthscopeoptional', ${sql.json(manifest)}, true, true)`
+    const check = byKey(await runHealthChecks({ environment: 'production' }), 'scope-provider-tables:healthscopeoptional')
+    expect(check).toMatchObject({ ok: true, fix: null })
+    expect(check.message).toMatch(/Health Optional Desk/)
+    await sql`update installed_app set manifest = ${sql.json({ ...manifest, scopeProvider: { ...manifest.scopeProvider, tables: ['Role', 'Health Optional Desk', 'Health Missing Site'] } })} where name = 'healthscopeoptional'`
+    const failing = byKey(await runHealthChecks({ environment: 'production' }), 'scope-provider-tables:healthscopeoptional')
+    expect(failing.ok).toBe(false)
+    expect(failing.message).toContain('Table Health Missing Site')
+    expect(failing.message).not.toContain('Table Health Optional Desk')
+  })
+
   test('every check names why it matters, and a failing one says how to fix it', async () => {
     await sql`delete from instance_settings_apply`
     for (const check of await runHealthChecks()) {

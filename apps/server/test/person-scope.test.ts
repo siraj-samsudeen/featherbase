@@ -729,6 +729,13 @@ describe('declaring a scope provider', () => {
     ['naming one of its own Tables as unmarked', (m: Record<string, any>, s: string) =>
       [{ ...m, scopeProvider: { ...m.scopeProvider, unmarkedTables: [m.scopeProvider.tables[0]] } }, s],
       "A scope provider's own Table placeroster.position must be marked decides_scope"],
+    // #1247: an optional Table is one the provider reads, and never one of the app's own (installed with it).
+    ['naming an optional Table it does not read', (m: Record<string, any>, s: string) =>
+      [{ ...m, scopeProvider: { ...m.scopeProvider, optionalTables: ['Somewhere Else'] } }, s],
+      "A scope provider's optional Table Somewhere Else is not one of the Tables it reads"],
+    ['naming one of its own Tables as optional', (m: Record<string, any>, s: string) =>
+      [{ ...m, scopeProvider: { ...m.scopeProvider, optionalTables: [m.scopeProvider.tables[0]] } }, s],
+      "A scope provider's own Table placeroster.position is installed with the app; it cannot be optional"],
   ] as const)('an app declaring a provider %s is not loaded', async ([, change, error]) => {
     const copy = await variant(change as never)
     try {
@@ -861,5 +868,68 @@ describe('what a scope provider may ask of its Tables', () => {
   test('a list with a related filter fails the whole scope', async ({ admin }) => {
     await expect(providerReading(admin, (documents, table) => documents.list(table, { filters: [['store', 'related', 'x']] } as never)))
       .rejects.toMatchObject({ reason: 'provider' })
+  })
+})
+
+// #1247: a provider asks whether a Table is installed before reading it. A missing Table contributes
+// nothing: `available` is false, and a read of it still refuses the person's scope (never full access).
+describe('a scope provider checking whether a Table is installed', () => {
+  type Docs = { available(table: string): Promise<boolean>; list(table: string, args?: object): Promise<Record<string, unknown>[]> }
+  async function bind(admin: TestClient, createUser: CreateUserFn, provide: (documents: Docs) => Promise<unknown>, more: Partial<ScopeProviderBinding> = {}) {
+    const { user } = await setup(admin, createUser)
+    const binding = (await findScopeProvider())!
+    return { user, binding: { ...binding, ...more, provide: (async ({ documents }: { documents: Docs }) => provide(documents)) as never } }
+  }
+  const place = [{ label: 'North / Kids', filters: { store: ['N1'] } }]
+
+  test('a declared Table the instance lacks is not available, and the rest of the scope stands', async ({ admin, createUser }) => {
+    const seen: boolean[] = []
+    const { user, binding } = await bind(admin, createUser, async documents => {
+      seen.push(await documents.available('Buyer Desk'))
+      return place
+    }, { tables: ['placeroster.position', 'Buyer Desk'], unmarkedTables: ['Buyer Desk'] })
+    expect(await resolvePersonScope(user.user!, binding)).toEqual(place)
+    expect(seen).toEqual([false])
+  })
+
+  test('an installed Table it may read is available, and reads as before', async ({ admin, createUser }) => {
+    await admin.post('/api/table_def', { name: 'Buyer Desk', columns: [{ column_name: 'store', column_type: 'Data' }] })
+    await admin.post('/api/save_row', { table: 'Buyer Desk', row: { store: 'N2' } })
+    const { user, binding } = await bind(admin, createUser, async documents => {
+      if (!(await documents.available('Buyer Desk'))) return []
+      const rows = await documents.list('Buyer Desk', { fields: ['store'] })
+      return [{ label: 'Desk', filters: { store: rows.map(r => String(r.store)) } }]
+    }, { tables: ['placeroster.position', 'Buyer Desk'], unmarkedTables: ['Buyer Desk'] })
+    expect(await resolvePersonScope(user.user!, binding)).toEqual([{ label: 'Desk', filters: { store: ['N2'] } }])
+  })
+
+  test('a Table the provider did not declare, or may not read unmarked, is not available', async ({ admin, createUser }) => {
+    await admin.post('/api/table_def', { name: 'Buyer Desk', columns: [{ column_name: 'store', column_type: 'Data' }] })
+    const seen: boolean[] = []
+    const { user, binding } = await bind(admin, createUser, async documents => {
+      seen.push(await documents.available('Buyer Desk'), await documents.available('scopeproof.object'))
+      return place
+    }, { tables: ['placeroster.position', 'Buyer Desk'], unmarkedTables: [] })
+    expect(await resolvePersonScope(user.user!, binding)).toEqual(place)
+    expect(seen).toEqual([false, false])
+  })
+
+  test('reading a Table that is not available still refuses the whole scope', async ({ admin, createUser }) => {
+    const { user, binding } = await bind(admin, createUser, async documents => {
+      await documents.list('Buyer Desk').catch(() => [])
+      return place
+    }, { tables: ['placeroster.position', 'Buyer Desk'], unmarkedTables: ['Buyer Desk'] })
+    await expect(resolvePersonScope(user.user!, binding)).rejects.toMatchObject({ reason: 'provider' })
+  })
+
+  test('available is a read like any other: one at a time, and only while the provider runs', async ({ admin, createUser }) => {
+    let later: Docs | undefined
+    const { user, binding } = await bind(admin, createUser, async documents => {
+      later = documents
+      await Promise.all([documents.available('placeroster.position'), documents.available('placeroster.position')])
+      return place
+    })
+    await expect(resolvePersonScope(user.user!, binding)).rejects.toMatchObject({ reason: 'provider' })
+    await expect(later!.available('placeroster.position')).rejects.toThrow()
   })
 })

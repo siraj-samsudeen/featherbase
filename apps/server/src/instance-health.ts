@@ -336,9 +336,13 @@ async function scopeProviderTables(environment: string): Promise<HealthCheck[]> 
   const providers = await sql`select name, manifest from installed_app
     where runtime_package and enabled and not activation_pending and manifest ? 'scopeProvider' order by name`
   if (providers.length !== 1) return []
-  const [{ name, manifest }] = providers as unknown as { name: string; manifest: { title?: string; scopeProvider: { tables: string[] }; baseTables?: { read?: Record<string, string[]> } } }[]
+  const [{ name, manifest }] = providers as unknown as { name: string; manifest: { title?: string; scopeProvider: { tables: string[]; optionalTables?: string[] }; baseTables?: { read?: Record<string, string[]> } } }[]
   const title = manifest.title ?? name
-  const tables = manifest.scopeProvider.tables
+  // #1247: a Table the provider checks with documents.available() before reading may be missing.
+  const optional = new Set(manifest.scopeProvider.optionalTables ?? [])
+  const absentOptional = optional.size ? (await sql`select name from table_def where name in ${sql([...optional])}`).map((r) => String(r.name)) : []
+  const notYet = [...optional].filter((t) => !absentOptional.includes(t))
+  const tables = manifest.scopeProvider.tables.filter((t) => !notYet.includes(t))
   const read = manifest.baseTables?.read ?? {}
   const have = new Set((await sql`select name from table_def where name in ${sql(tables)}`).map((r) => String(r.name)))
   const wanted = tables.filter((t) => have.has(t)).flatMap((t) => (read[t] ?? []).map((column) => [t, column] as const))
@@ -355,7 +359,8 @@ async function scopeProviderTables(environment: string): Promise<HealthCheck[]> 
     severity: 'error' as const,
     why: 'The scope provider reads these on every request for someone\'s scope; a Table or column the instance lacks makes that read fail, and then no one gets a scope.',
   }
-  if (!missing.length) return [{ ...base, ok: true, message: `Every Table and column ${title} reads for people's scope exists.`, fix: null }]
+  const later = notYet.length ? ` ${notYet.join(', ')} ${notYet.length === 1 ? 'is' : 'are'} not installed yet; ${title} reads ${notYet.length === 1 ? 'it' : 'them'} only once ${notYet.length === 1 ? 'it exists' : 'they exist'}.` : ''
+  if (!missing.length) return [{ ...base, ok: true, message: `Every Table and column ${title} needs for people's scope exists.${later}`, fix: null }]
   // A developer's machine runs the app before any of a client's core Tables are loaded: named, not a fault.
   if (environment === LOCAL) return [{ ...base, ok: true, missing, fix: null,
     message: `${title} reads for people's scope what this development instance lacks: ${missing.join(', ')}. No one gets a scope from it here until they exist.` }]
