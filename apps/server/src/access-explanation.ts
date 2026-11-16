@@ -38,7 +38,8 @@ export interface ExplainedTable extends TableReach {
   module: string
   app: string | null
   /** A mandatory privacy policy keeps some of its rows to the people they
-   *  belong to, whatever the grants say. */
+   *  belong to (a shared or inherited policy; a roles-only one admits roles
+   *  and keeps no row private, Codex round 16), whatever the grants say. */
   keeps_private: boolean
 }
 
@@ -200,7 +201,8 @@ export async function explainAccess(person: string, viewer: string): Promise<Acc
   const reach = await principalReach(person)
   const tableNames = [...new Set([...reach.read, ...reach.change].map((t) => t.table))]
   const defs = new Map((tableNames.length
-    ? await sql`select name, label, module, owner_app, access_policy is not null as keeps_private from table_def where name in ${sql(tableNames)}` : [])
+    ? await sql`select name, label, module, owner_app,
+      (coalesce(to_jsonb(access_policy), '{}'::jsonb)->>'shared_column' is not null or coalesce(to_jsonb(access_policy), '{}'::jsonb)->>'inherit_column' is not null) as keeps_private from table_def where name in ${sql(tableNames)}` : [])
     .map((d) => [String(d.name), d]))
   const described = (t: TableReach): ExplainedTable => {
     const d = defs.get(t.table)
@@ -255,7 +257,8 @@ export async function explainAccess(person: string, viewer: string): Promise<Acc
   const apps = (await appCatalog(person)).map((a) => ({ name: String(a.name), title: String(a.title ?? a.name), href: String(a.href) }))
 
   const privateDefs = reach.every_table
-    ? await sql`select name, label from table_def where access_policy is not null and kind <> 'sub_table' order by coalesce(label, name)`
+    ? await sql`select name, label from table_def where kind <> 'sub_table'
+        and (coalesce(to_jsonb(access_policy), '{}'::jsonb)->>'shared_column' is not null or coalesce(to_jsonb(access_policy), '{}'::jsonb)->>'inherit_column' is not null) order by coalesce(label, name)`
     : [...defs.values()].filter((d) => d.keeps_private)
   const private_tables = privateDefs.map((d) => tableLabel(String(d.name), d.label))
 

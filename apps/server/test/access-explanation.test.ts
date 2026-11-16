@@ -266,9 +266,13 @@ test('#1224 a row is linkable only when the viewer may open that row, not just i
 test('#1224 the page names the Tables that keep rows private, for someone who reaches every Table too', async ({ admin, createUser }) => {
   const { sql } = await import('../src/db')
   await admin.post('/api/table_def', { name: 'Ae Private', label: 'Ae Private', columns: [{ column_name: 'body', column_type: 'Data' }] })
-  await sql`update table_def set access_policy = ${sql.json({ roles: ['All'], shared_column: null, inherit_column: null })} where name = 'Ae Private'`
+  await sql`update table_def set access_policy = ${sql.json({ roles: ['All'], shared_column: 'body', inherit_column: null })} where name = 'Ae Private'`
+  // A roles-only policy admits roles; it keeps no row private.
+  await admin.post('/api/table_def', { name: 'Ae Roles Only', label: 'Ae Roles Only', columns: [{ column_name: 'body', column_type: 'Data' }] })
+  await sql`update table_def set access_policy = ${sql.json({ roles: ['All'], shared_column: null, inherit_column: null })} where name = 'Ae Roles Only'`
   const manager = await createUser({ roles: ['System Manager'] })
   const page = await admin.get<{ every_table: boolean; private_tables: string[] }>(pageOf(manager.user!))
   expect(page.every_table).toBe(true)
   expect(page.private_tables).toContain('Ae Private')
+  expect(page.private_tables).not.toContain('Ae Roles Only')
 })
