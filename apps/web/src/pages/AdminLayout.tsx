@@ -24,6 +24,7 @@ import { useRealtime } from '../lib/realtime'
 import { ThemeChoiceProvider, useThemeChoice } from '../lib/theme-choice'
 import { searchHitKind } from '../lib/search-hit'
 import { AppSwitcher } from '../components/AppSwitcher'
+import { ActionDisclosure } from '../components/ActionDisclosure'
 import { PHONE_QUERY, TopBar } from '../components/TopBar'
 import { isOpaqueId } from '../lib/people'
 import { EntryLabel, useLiveDestinations } from '../lib/row-titles'
@@ -760,23 +761,27 @@ export function AdminShell({ wide, fullWidth = false }: { wide: boolean; fullWid
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           }${sidebarCollapsed ? ' md:hidden' : ''}`}
         >
+          {/* #1242 (admin-lists 7): one quiet "+ New" menu, so the sidebar does not
+              compete with the page's own New. */}
           {canManage && (
-          <div className="px-3 pt-4">
-            <Link
-              to="/featherbase/admin/new-table"
-              data-testid="new-table-link"
-              className={buttonClasses({ variant: 'primary', className: 'w-full justify-center' })}
-            >
-              + New Table
-            </Link>
-            <Link
-              to="/featherbase/admin/import"
-              search={{ table: undefined }}
-              data-testid="import-data-link"
-              className={buttonClasses({ className: 'mt-2 w-full justify-center' })}
-            >
-              Import Data
-            </Link>
+          <div className="px-3 pt-4 [&>div>button]:w-full [&>div>button]:justify-between" data-testid="sidebar-new">
+            <ActionDisclosure label="+ New">
+              <Link
+                to="/featherbase/admin/new-table"
+                data-testid="new-table-link"
+                className={buttonClasses({ variant: 'quiet', className: 'justify-start' })}
+              >
+                New table
+              </Link>
+              <Link
+                to="/featherbase/admin/import"
+                search={{ table: undefined }}
+                data-testid="import-data-link"
+                className={buttonClasses({ variant: 'quiet', className: 'justify-start' })}
+              >
+                Import data
+              </Link>
+            </ActionDisclosure>
           </div>
           )}
           {/* #80: the sidebar is Home Pages only. Every

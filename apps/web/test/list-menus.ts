@@ -25,3 +25,10 @@ export async function hasListMenu(menu: ListMenu, scope: Scope = screen): Promis
   if (button.getAttribute('aria-expanded') !== 'true') await userEvent.click(button)
   return scope.queryByRole('group', { name: menu }) !== null
 }
+
+/** #1242 (admin-lists 7): the sidebar's "+ New" menu (New table, Import data), opened. */
+export async function openSidebarNew(wait?: Wait) {
+  const holder = await screen.findByTestId('sidebar-new', {}, wait)
+  const button = within(holder).getByRole('button', { name: /New/ })
+  if (button.getAttribute('aria-expanded') !== 'true') await userEvent.click(button)
+}

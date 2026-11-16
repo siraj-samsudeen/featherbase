@@ -8,6 +8,7 @@ import userEvent from '@testing-library/user-event'
 import { sql } from 'server/src/db'
 import { setUserPassword } from 'server/src/auth'
 import { test, expect, renderApp } from './pg-test'
+import { openSidebarNew } from './list-menus'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -79,6 +80,7 @@ test('once a System Manager has an address, signing in goes straight to the Admi
   })
   await renderApp('/featherbase/login', anonymous)
   await signInAsAdministrator()
+  await openSidebarNew({ timeout: 8000 })
   expect(await screen.findByTestId('import-data-link', {}, { timeout: 8000 })).toBeInTheDocument()
   await waitFor(() => expect(answered).toBeGreaterThan(0))
   await waitFor(() => expect(screen.getByTestId('welcome-link')).toBeInTheDocument())

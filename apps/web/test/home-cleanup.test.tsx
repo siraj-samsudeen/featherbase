@@ -158,7 +158,7 @@ test('a System Manager sees Data and People and access, each link with a grey ic
     expect(within(link).getByTestId('sidebar-item-icon')).toHaveClass('text-ink-subtle')
   // Past imports is a normal nav link now; Import data stays the plain button.
   expect(screen.getByTestId('past-imports-link')).not.toHaveClass('underline')
-  expect(screen.getByTestId('import-data-link').parentElement).not.toContainElement(screen.getByTestId('past-imports-link'))
+  expect(screen.getByTestId('sidebar-new')).not.toContainElement(screen.getByTestId('past-imports-link'))
 })
 
 test('a person with only a Table grant keeps today’s links, and no management ones', async ({ admin, createUser }) => {

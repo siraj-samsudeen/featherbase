@@ -15,7 +15,7 @@ import { setSession } from '../src/lib/api'
 import { ManageOnly } from '../src/pages/RestrictedShell'
 import { test, expect, renderApp } from './pg-test'
 import { grantRole } from 'server/test/fixtures'
-import { openListMenu, hasListMenu } from './list-menus'
+import { hasListMenu, openListMenu, openSidebarNew } from './list-menus'
 
 type Admin = Parameters<typeof renderApp>[1]
 
@@ -41,7 +41,7 @@ async function seed(admin: Admin) {
 }
 
 // Management tools are System Manager only. Access tokens are self-service (#131), so they stay.
-const ADMIN_ONLY_TESTIDS = ['new-table-link', 'import-data-link', 'past-imports-link']
+const ADMIN_ONLY_TESTIDS = ['sidebar-new', 'new-table-link', 'import-data-link', 'past-imports-link']
 
 test('management content stays hidden until the server confirms the current person can manage', async ({ admin }) => {
   setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
@@ -54,6 +54,7 @@ test('management content stays hidden until the server confirms the current pers
 test('a System Manager keeps the whole Admin shell', async ({ admin }) => {
   await seed(admin)
   await renderApp('/featherbase/admin/all-tables', admin)
+  await openSidebarNew({ timeout: 8000 })
   for (const id of ADMIN_ONLY_TESTIDS) expect(await screen.findByTestId(id)).toBeInTheDocument()
   expect(screen.getByTestId('all-tables-link')).toBeInTheDocument()
   expect(screen.getByTestId('access-tokens-link')).toBeInTheDocument()

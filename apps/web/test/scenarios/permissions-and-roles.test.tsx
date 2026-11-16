@@ -122,7 +122,7 @@ describe('permissions-and-roles', () => {
       expect(screen.getByTestId('identity')).toBeInTheDocument()
     })
     await step('no administration menu appears', () => {
-      for (const id of ['new-table-link', 'import-data-link', 'past-imports-link', 'all-tables-link', 'admin-sidebar'])
+      for (const id of ['sidebar-new', 'new-table-link', 'import-data-link', 'past-imports-link', 'all-tables-link', 'admin-sidebar'])
         expect(screen.queryByTestId(id), id).not.toBeInTheDocument()
     })
     await step('no administration request is made', () => {

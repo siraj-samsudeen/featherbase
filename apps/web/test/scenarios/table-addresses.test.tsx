@@ -15,6 +15,7 @@ import { scenarioFor } from 'server/test/scenario'
 import { clearSession } from '../../src/lib/import-session'
 import { test, expect, renderApp, onScreen, byTestId } from '../pg-test'
 import { openListMenu } from '../list-menus'
+import { openSidebarNew } from '../list-menus'
 
 const scenario = scenarioFor(test, 'table-addresses')
 const WAIT = { timeout: 8000 }
@@ -128,6 +129,7 @@ async function upload(csv: string, name: string) {
 async function importAsNewTable(admin: TestClient, csv: string, file: string, name: string) {
   clearSession()
   await visit('/featherbase/admin', admin)
+  await openSidebarNew({ timeout: 8000 })
   await userEvent.click(await screen.findByTestId('import-data-link', {}, WAIT))
   await screen.findByTestId('import-wizard', {}, WAIT)
   await upload(csv, file)
