@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
-import { rowHref, tableHref } from 'shared'
-import { Card, Segmented, fmtInstantIST } from '@featherbase/shop-floor'
+import { tableHref } from 'shared'
+import { Card, RecordLink, Segmented, fmtInstantIST } from '@featherbase/shop-floor'
 import { ActorName, isOpaqueId } from '../lib/people'
 
 // #1224 (Siraj: "everything that is a record in FB has to be presented as a
@@ -16,23 +16,26 @@ export const opensFrom = (data: { viewer_opens?: string[]; viewer_opens_rows?: {
   rows: new Set((data.viewer_opens_rows ?? []).map((r) => `${r.table}\u0000${r.row_id}`)),
 })
 
-export function Rec({ table, id, children }: { table: string; id?: string; children: ReactNode }) {
+/** One record, as the shared RecordLink (#1227): a link when the viewer may
+ *  open it, else the same words as plain text. Without `id` it is a Table,
+ *  linked to its list. */
+export function Rec({ table, id, name }: { table: string; id?: string; name: string }) {
   const opens = useContext(OpensContext)
-  if (id ? !opens.rows.has(`${table}\u0000${id}`) : !opens.tables.has(table)) return <>{children}</>
-  // The UI standard's link: action colour, medium weight, underline only on hover and focus.
-  return <a href={id ? rowHref(table, id) : tableHref(table)} className="font-medium text-action hover:underline focus-visible:underline" data-testid="access-record-link">{children}</a>
+  if (!id) return <RecordLink table="Table" rowId={table} name={name} href={tableHref(table)} canOpen={opens.tables.has(table)} />
+  return <RecordLink table={table} rowId={id} name={name} canOpen={opens.rows.has(`${table}\u0000${id}`)} />
 }
 
 /** The Table an actor id is a row of, when it is one. */
 const actorTable = (id: string) => (id.startsWith('svc_') ? 'Service Account' : isOpaqueId(id) || id === 'Administrator' ? 'Person' : null)
 export function Actor({ id, name }: { id: string; name?: string | null }) {
   const table = actorTable(id)
-  const shown = <ActorName id={id} name={name} />
-  return table ? <Rec table={table} id={id}>{shown}</Rec> : shown
+  // A name the server could not give (no record behind the id) stays the
+  // viewer's own lookup, as plain text.
+  return table && name ? <Rec table={table} id={id} name={name} /> : <ActorName id={id} name={name} />
 }
 /** A role, linked to its Role row; the built-in All is not one to open. */
 function RoleRef({ role }: { role: string }) {
-  return role === 'All' ? <>{roleTitle(role)}</> : <Rec table="Role" id={role}>{roleTitle(role)}</Rec>
+  return role === 'All' ? <>{roleTitle(role)}</> : <Rec table="Role" id={role} name={roleTitle(role)} />
 }
 
 // #1224: "What you can see", three ways, for a reader who is not technical.
@@ -174,7 +177,7 @@ export function ReachTable({ tables, through }: { tables: Reached[]; through: bo
   const cols = through ? 4 : 3
   const row = (t: Reached) => (
     <tr key={t.table} className="border-t border-border" data-testid="access-table-row">
-      <td className="py-1.5 pr-3"><Rec table={t.table}>{t.label}</Rec></td>
+      <td className="py-1.5 pr-3"><Rec table={t.table} name={t.label} /></td>
       <td className="py-1.5 pr-3"><Can on={t.read} own={t.readOwn} /></td>
       <td className="py-1.5 pr-3"><Can on={t.change} own={t.changeOwn} /></td>
       {through && <td className="py-1.5 text-ink-muted"><Through t={t} /></td>}

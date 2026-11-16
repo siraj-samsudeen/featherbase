@@ -93,7 +93,7 @@ export function AccessExplanation({ person }: { person: string }) {
         <div>
           <h1 className="text-2xl font-semibold text-ink" data-testid="access-explanation-heading">
             {self ? 'What you can see' : refused ? 'Someone else\'s access' : <>What {data?.person_name
-              ? <OpensContext.Provider value={opensFrom(data)}><Rec table="Person" id={person}>{data.person_name}</Rec></OpensContext.Provider>
+              ? <OpensContext.Provider value={opensFrom(data)}><Rec table="Person" id={person} name={data.person_name} /></OpensContext.Provider>
               : <ShownName id={person} />} can see</>}
           </h1>
           <p className="text-sm text-ink-muted">As of today: what access exists and why, never the data itself.</p>
@@ -128,7 +128,7 @@ export function AccessExplanation({ person }: { person: string }) {
             <ul className="space-y-1 text-sm">
               {data.limits.map((l) => (
                 <li key={`${l.table}/${l.value}`} data-testid="access-limit">
-                  <span className="font-medium text-ink">{l.table}: <Rec table={l.table} id={l.value}>{l.title ?? l.value}</Rec></span>
+                  <span className="font-medium text-ink">{l.table}: <Rec table={l.table} id={l.value} name={l.title ?? l.value} /></span>
                   <By who={l.set_by} name={l.set_by_name} when={l.set_at} verb="set" />
                 </li>
               ))}
@@ -154,7 +154,7 @@ export function AccessExplanation({ person }: { person: string }) {
             <ul className="space-y-1 text-sm">
               {data.shares.map((s) => (
                 <li key={`${s.table}/${s.row_id}`} data-testid="access-share">
-                  <span className="font-medium text-ink">{s.table}: <Rec table={s.table} id={s.row_id}>{s.title ?? s.row_id}</Rec></span>
+                  <span className="font-medium text-ink">{s.table}: <Rec table={s.table} id={s.row_id} name={s.title ?? s.row_id} /></span>
                   <span className="text-ink"> ({s.write ? 'can change' : 'read only'}{s.reshare ? ', can share on' : ''})</span>
                   <By who={s.shared_by} name={s.shared_by_name} when={s.shared_at} verb="shared" />
                 </li>
