@@ -58,8 +58,13 @@ export async function principalNames(ids: unknown, viewer: string): Promise<Reco
       from ${sql(table)} where ${where as ReturnType<typeof sql>}`
     for (const r of rows) out[String(r.row_id)] = displayName(r)
   }
-  for (const r of await sql`select row_id, label, display_name from service_account where row_id in ${sql(wanted)}`)
-    out[String(r.row_id)] = serviceAccountName(r)
+  // #1224: the name an admin gave an account shows to those who may read
+  // Service Account; anyone else gets "Automation (<label>)", no more than the
+  // label this lookup has always returned.
+  const accounts = await sql`select row_id, label, display_name from service_account where row_id in ${sql(wanted)}`
+  const mayReadAccounts = accounts.length > 0 && await assertPermission(viewer, 'Service Account', 'read').then(() => true, () => false)
+  for (const r of accounts)
+    out[String(r.row_id)] = serviceAccountName(mayReadAccounts ? r : { label: r.label })
   return out
 }
 

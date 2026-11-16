@@ -82,7 +82,7 @@ test('system steps read as plain phrases; an unknown opaque id names nobody', as
 const directories: string[] = []
 afterEach(async () => { for (const d of directories.splice(0)) await rm(d, { recursive: true, force: true }) })
 
-test('an app names who did something through people.actorNames, for a caller who may not read Person', async ({ admin, createUser }) => {
+test('an app names only who acted on its own data; any other id is null (no name lookup)', async ({ admin, createUser }) => {
   const directory = await mkdtemp(resolve('test/.b5-1224-actors-'))
   directories.push(directory)
   await cp(resolve('../..', 'test-apps/fixtures/bar-proof'), directory, { recursive: true })
@@ -95,21 +95,40 @@ test('an app names who did something through people.actorNames, for a caller who
   expect(await discoverPackages([directory])).toEqual([])
   await admin.post('/api/install_app', { name: 'barproof' })
 
-  const actor = await createUser({ roles: [] })
-  const doc = await admin.get<{ updated_at: string }>(`/api/table/Person/${actor.user}`)
-  await admin.post('/api/save_row', { table: 'Person', row: { row_id: actor.user, full_name: 'Acting Person', updated_at: doc.updated_at } })
+  const named = async (id: string, fullName: string) => {
+    const doc = await admin.get<{ updated_at: string }>(`/api/table/Person/${id}`)
+    await admin.post('/api/save_row', { table: 'Person', row: { row_id: id, full_name: fullName, updated_at: doc.updated_at } })
+  }
+  // The actor wrote one of the app's own rows.
+  const actor = await createUser({ roles: ['System Manager'] })
+  await named(actor.user!, 'Acting Person')
+  await actor.post('/api/save_row', { table: 'barproof.note', row: { row_id: 'n-1224', body: 'by the actor' } })
+  // These two never touched the app's data.
+  const stranger = await createUser({ roles: [] })
+  await named(stranger.user!, 'Unrelated Person')
   const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-dash-review', roles: [] })
   const caller = await createUser({ roles: ['Bar Reader'] })
 
   const res = await caller.fetch('/api/app_reads/barproof/actor_names', {
     method: 'POST', headers: { 'content-type': 'application/json', 'X-Featherbase-App-Version': 'barproof@1.0.0' },
-    body: JSON.stringify({ payload: { ids: [actor.user, account.row_id, 'roster-link', 'psn_aaaaaaaaaaaaaaaaaaaa'] } }),
+    body: JSON.stringify({ payload: { ids: [actor.user, stranger.user, account.row_id, 'roster-link', 'psn_aaaaaaaaaaaaaaaaaaaa'] } }),
   })
   await expectStatus(res, 200)
   expect(((await res.json()) as { result: unknown }).result).toEqual({
     [actor.user!]: 'Acting Person',
-    [account.row_id]: 'Automation (dash review)',
+    [stranger.user!]: null,
+    [account.row_id]: null,
     'roster-link': 'Staff roster sync',
     psn_aaaaaaaaaaaaaaaaaaaa: null,
   })
+})
+
+test('the name an admin gives a service account shows only to those who may read Service Account', async ({ admin, createUser }) => {
+  const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-installer', roles: [] })
+  await patch(admin, `/api/service_accounts/${account.row_id}`, { display_name: 'Claude — setup agent' })
+  const someone = await createUser({ roles: [] })
+  const lookup = async (client: typeof admin) =>
+    (await client.post<{ names: Record<string, string | null> }>('/api/people/names', { ids: [account.row_id] })).names[account.row_id]
+  expect(await lookup(admin)).toBe('Claude — setup agent')
+  expect(await lookup(someone)).toBe('Automation (installer)')
 })

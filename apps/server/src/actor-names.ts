@@ -47,8 +47,33 @@ export async function actorNames(ids: Iterable<unknown>): Promise<Map<string, st
   return out
 }
 
-/** One actor's name, or a neutral word when it names nobody. */
-export async function actorName(id: string | null | undefined, fallback = 'Someone no longer on record'): Promise<string> {
-  if (!id) return fallback
-  return (await actorNames([id])).get(id) ?? fallback
+/** #1224 (Codex adversarial round 1): an app names only ids that ACTED on its
+ *  own data — who created or last changed one of its Tables' rows, or made,
+ *  changed or decided one of its change proposals. Any other id maps to null,
+ *  so an app forwarding arbitrary ids is not a name lookup. System steps are
+ *  names, not people, and always read as their phrase. */
+export async function appActorNames(app: string, ids: unknown): Promise<Record<string, string | null>> {
+  const wanted = Array.isArray(ids)
+    ? [...new Set(ids.filter((id): id is string => typeof id === 'string' && id !== ''))].slice(0, 500) : []
+  const out: Record<string, string | null> = Object.fromEntries(wanted.map((id) => [id, null]))
+  if (!wanted.length) return out
+  const acted = new Set(wanted.filter((id) => ACTOR_LABELS[id]))
+  const tables = await sql`
+    select physical_schema, physical_relation from table_def
+    where owner_app = ${app} and physical_schema is not null and physical_relation is not null`
+  // Its change proposals, then each of its own Tables: who made, changed or decided them.
+  const sources = [
+    sql`select unnest(array[created_by, updated_by, maker, decided_by]) as id from change_proposal where app = ${app}
+        and (created_by = any(${wanted}) or updated_by = any(${wanted}) or maker = any(${wanted}) or decided_by = any(${wanted}))`,
+    ...tables.map((t) => {
+      const relation = sql`${sql(String(t.physical_schema))}.${sql(String(t.physical_relation))}`
+      return sql`select created_by as id from ${relation} where created_by = any(${wanted})
+        union select updated_by from ${relation} where updated_by = any(${wanted})`
+    }),
+  ]
+  // One after the other: inside a request they share its transaction.
+  for (const query of sources) for (const r of await query) acted.add(String(r.id))
+  const named = await actorNames(wanted.filter((id) => acted.has(id)))
+  for (const id of wanted) if (acted.has(id)) out[id] = named.get(id) ?? null
+  return out
 }

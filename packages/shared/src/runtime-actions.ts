@@ -119,8 +119,9 @@ export interface RuntimeActionContext {
     /** #1224: who did something, by name: a person's display name even when
      *  the caller may not read Person, a service account's readable name
      *  ("Automation (installer)"), a system step's phrase ("Staff roster sync").
-     *  Only for ids the app read as the actor of a row the caller may see
-     *  (created_by, given by, decided by). An id that names nobody maps to null.
+     *  Only an id that acted on this app's own data — created or last changed
+     *  one of its rows, or made or decided one of its change proposals — is
+     *  named; any other id maps to null.
      *  Never contact data. */
     actorNames(ids: string[]): Promise<Record<string, string | null>>
     /** #963: which of these ids are enabled people, as the caller may see them:
