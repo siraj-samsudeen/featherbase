@@ -13,12 +13,14 @@ type Sent = { row_id: string }
 type Sending = { busy: boolean; sent: Sent | null; error: string | null }
 
 /** The header button and its panel, for the report on show. Nothing is drawn until Tickets is known to run here. */
-export function ReportIssue({ reportKey, reportName, store, month, diveFilters, pickersInDive = false, chosen = '' }: {
+export function ReportIssue({ reportKey, reportName, store, month, diveFilters, pickersInDive = false, chosen = '', hidden = false }: {
   reportKey: string; reportName: string; store?: string; month?: 'this' | 'last'; diveFilters?: Readonly<Record<string, string>>
   /** A Dive on show picks its own store and month: what it reports is the view, never the address's. */
   pickersInDive?: boolean
   /** The store and month the reader chose in the bar or the address; it changes only when they choose. */
   chosen?: string
+  /** The page shows no report just now (opening, failed): nothing is drawn, but the submission is kept. */
+  hidden?: boolean
 }) {
   const [running, setRunning] = useState(false)
   const [open, setOpen] = useState(false)
@@ -49,7 +51,7 @@ export function ReportIssue({ reportKey, reportName, store, month, diveFilters, 
     }
   }, [refresh])
   const another = useCallback(() => { pending.current = null; setSending({ busy: false, sent: null, error: null }) }, [])
-  if (!running) return null
+  if (!running || hidden) return null
   const count = mine?.length ?? 0
   return (
     <>

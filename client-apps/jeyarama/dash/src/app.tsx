@@ -156,13 +156,14 @@ export function Dash() {
       {showsReport && !(view.kind === 'dive' && report?.ok && report.value.pickers_in_dive) && report?.ok && report.value.heading && (report.value.heading.name || report.value.heading.reasons.length > 0) && (
         <ReportHeading heading={report.value.heading} period={report.value} wide={view.kind === 'dive'} />
       )}
-      {showsReport && current && (
+      {/* Mounted whenever a report is chosen, even while the page is opening or failed, so an unanswered submission survives; hidden then. */}
+      {current && (
         // The cached view, and its empty states, say which store and month they show; a Dive with its own pickers says so itself.
         <ReportIssue reportKey={current.key} reportName={current.name}
           store={cachedView?.store ?? store?.value}
           month={cachedView?.month ?? (current.takes_month ? month : undefined)}
           diveFilters={view.kind === 'dive' ? diveFilters : undefined} pickersInDive={!!current.pickers_in_dive && view.kind === 'dive'}
-          chosen={`${store?.value ?? ''}|${month}`} />
+          chosen={`${store?.value ?? ''}|${month}`} hidden={!showsReport} />
       )}
       </div>
       {view.kind === 'opening' && <p className="fd-opening">Opening your report…</p>}

@@ -62,7 +62,7 @@ beforeAll(() => {
 afterAll(() => teardown())
 beforeEach(() => { byKey = new Map(); nextCreate = 'answer'; document.body.innerHTML = '' })
 
-async function render(props: { store?: string; chosen?: string } = {}) {
+async function render(props: { store?: string; chosen?: string; hidden?: boolean } = {}) {
   const { act } = await import('react')
   const { createRoot } = await import('react-dom/client')
   const { ReportIssue } = await import('./report-issue-panel')
@@ -90,8 +90,8 @@ async function render(props: { store?: string; chosen?: string } = {}) {
   const close = () => click(container.querySelector('button[aria-label="Close"]'))
   const send = () => click(one('issue-send'))
   const pick = (label: string) => click(all('issue-pick').find(b => b.textContent === label)!)
-  const rerender = (next: { store?: string; chosen?: string }) => act(async () => {
-    root.render(<ReportIssue reportKey="sales" reportName="Sales versus target" store={next.store} month="this" chosen={next.chosen ?? '9901|this'} />)
+  const rerender = (next: { store?: string; chosen?: string; hidden?: boolean }) => act(async () => {
+    root.render(<ReportIssue reportKey="sales" reportName="Sales versus target" store={next.store} month="this" chosen={next.chosen ?? '9901|this'} hidden={next.hidden} />)
   })
   return { rerender, container, one, all, open, close, send, pick, type, settle, act, done: () => act(async () => root.unmount()) }
 }
@@ -144,6 +144,24 @@ describe('Report an issue, closed mid-Send', () => {
     // The Dive takes over from the cached view: the store on show is now the Dive's, not the page's.
     await page.rerender({ store: undefined, chosen: '|this' })
     await page.settle()
+    await page.send()
+    expect(page.one('issue-sent')?.textContent).toContain('FT-00001')
+    expect(byKey.size).toBe(1)
+    await page.done()
+  })
+
+  it('kept while the page shows no report for a moment (the Dive late, then ready), so a retry is still the same ticket', async () => {
+    const page = await render()
+    await page.open()
+    await page.pick('Stock missing')
+    nextCreate = 'lose'
+    await page.send()
+    await page.rerender({ store: '9901', hidden: true })
+    await page.settle()
+    expect(page.one('report-issue')).toBeNull()
+    await page.rerender({ store: '9901' })
+    await page.settle()
+    await page.open()
     await page.send()
     expect(page.one('issue-sent')?.textContent).toContain('FT-00001')
     expect(byKey.size).toBe(1)
