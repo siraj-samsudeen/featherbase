@@ -123,7 +123,9 @@ test('the Person list shows each person’s name in its first column', async ({ 
   expect(within(table).queryByText(ravi.user!)).toBeNull()
 })
 
-test('a name the viewer may not read is "Unnamed person", never a stuck "…" or the id', async ({ admin, createUser }) => {
+// #1224: who wrote a comment is not hidden from someone who may read the row
+// it is on — only their display name travels, never their address or id.
+test('a comment\'s author is named even to a viewer who may not read Person, never the id', async ({ admin, createUser }) => {
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Hidden Row Reader' } })
   // The author may open the row (commenting needs that, #507); the reader may
   // open it too, but may not read the author's Person row.
@@ -138,8 +140,9 @@ test('a name the viewer may not read is "Unnamed person", never a stuck "…" or
   await renderApp(`/featherbase/admin/table/hidden-row/row/${doc.row_id}`, reader)
   await userEvent.click(await screen.findByRole('tab', { name: 'Activity' }))
   const name = await screen.findByTestId('comment-author')
-  await waitFor(() => expect(name).toHaveTextContent('Unnamed person'))
+  await waitFor(() => expect(name).toHaveTextContent('Hidden Author'))
   expect(name.textContent).not.toContain(author.user!)
+  expect(screen.getByTestId('activity-timeline')).not.toHaveTextContent('hidden.author@example.com')
 })
 
 // #414: the Person form, its breadcrumb and the sidebar's Recent list name the

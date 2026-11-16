@@ -70,7 +70,7 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
         )}
         {entries.map((e, i) => (
           <li key={i} className="flex gap-2 text-sm" data-testid={`activity-${e.kind}`}>
-            {e.kind === 'comment' ? <AuthorInitials id={e.who} /> : <span
+            {e.kind === 'comment' ? <AuthorInitials id={e.who} name={e.whoName} /> : <span
               className="mt-1 h-2 w-2 shrink-0 rounded-full bg-ink-subtle"
             />}
             <div className="min-w-0 flex-1">

@@ -132,3 +132,12 @@ test('the name an admin gives a service account shows only to those who may read
   expect(await lookup(admin)).toBe('Claude — setup agent')
   expect(await lookup(someone)).toBe('Automation (installer)')
 })
+
+test('a reader whose Service Account grant covers only rows they made does not learn other accounts\' given names', async ({ admin, createUser }) => {
+  const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-installer', roles: [] })
+  await patch(admin, `/api/service_accounts/${account.row_id}`, { display_name: 'Claude — setup agent' })
+  await grantRole(admin, { role: 'Own Accounts Reader', table: 'Service Account', can_read: true, own_rows_only: true })
+  const restricted = await createUser({ roles: ['Own Accounts Reader'] })
+  const { names } = await restricted.post<{ names: Record<string, string | null> }>('/api/people/names', { ids: [account.row_id] })
+  expect(names[account.row_id]).toBe('Automation (installer)')
+})

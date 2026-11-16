@@ -31,8 +31,13 @@ export async function ownDisplayName(user: string): Promise<string> {
 /** Person, read as `viewer` with these filters; null when the viewer may not
  *  read Person at all. Any other failure is the caller's. */
 async function readablePeople(viewer: string, filters: Parameters<typeof scopedWhere>[2]) {
+  return readableTable('Person', viewer, filters)
+}
+
+/** A Table read as `viewer`; null when they may not read it at all. */
+async function readableTable(table: string, viewer: string, filters: Parameters<typeof scopedWhere>[2]) {
   try {
-    return await scopedWhere('Person', viewer, filters)
+    return await scopedWhere(table, viewer, filters)
   } catch (error) {
     if (error instanceof AppError && error.type === 'PermissionError') return null
     throw error
@@ -61,10 +66,17 @@ export async function principalNames(ids: unknown, viewer: string): Promise<Reco
   // #1224: the name an admin gave an account shows to those who may read
   // Service Account; anyone else gets "Automation (<label>)", no more than the
   // label this lookup has always returned.
-  const accounts = await sql`select row_id, label, display_name from service_account where row_id in ${sql(wanted)}`
-  const mayReadAccounts = accounts.length > 0 && await assertPermission(viewer, 'Service Account', 'read').then(() => true, () => false)
+  // Read as the viewer, rows and columns alike (Codex adversarial round 2):
+  // only a display name they could read through the Table counts.
+  const accounts = await sql`select row_id, label from service_account where row_id in ${sql(wanted)}`
+  const given = new Map<string, unknown>()
+  const scoped = accounts.length ? await readableTable('Service Account', viewer, [['row_id', 'in', accounts.map((a) => String(a.row_id))]]) : null
+  if (scoped?.cols.has('display_name'))
+    for (const r of await sql`select row_id, ${scoped.readExpression('display_name')} as display_name
+      from ${sql(scoped.table)} where ${scoped.where as ReturnType<typeof sql>}`)
+      given.set(String(r.row_id), r.display_name)
   for (const r of accounts)
-    out[String(r.row_id)] = serviceAccountName(mayReadAccounts ? r : { label: r.label })
+    out[String(r.row_id)] = serviceAccountName({ label: r.label, display_name: given.get(String(r.row_id)) })
   return out
 }
 

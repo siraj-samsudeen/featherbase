@@ -32,12 +32,17 @@ test('#628 a System Manager sees a person\'s roles, Tables, limits and shares, e
   await waitFor(() => expect(screen.getByTestId('access-explanation-heading')).toHaveTextContent('What Ax Person can see'), WAIT)
   const role = await screen.findByTestId('access-role', {}, WAIT)
   expect(role).toHaveTextContent(/Ax Site Reader — given by Administrator, /)
-  expect(within(screen.getByTestId('access-read')).getAllByTestId('access-read-item').map((li) => li.textContent))
-    .toContainEqual('Ax Site — through Ax Site Reader')
+  // #1224: the summary says it in a sentence; the tables are one click away, by area.
+  expect(screen.getByTestId('access-summary')).toHaveTextContent('They can read Ax Site.')
+  await userEvent.click(screen.getByTestId('access-show-all'))
+  await userEvent.click(within(screen.getByTestId('access-area-group')).getByText('General'))
+  const row = within(screen.getByTestId('access-area-group')).getAllByTestId('access-table-row').find((r) => r.textContent?.includes('Ax Site'))!
+  expect(row).toHaveTextContent(/Ax Site.*Read/)
+  expect(row).not.toHaveTextContent('Change')
   expect(screen.getByTestId('access-limit')).toHaveTextContent(/Ax Site: North — set by Administrator, /)
   expect(screen.getByTestId('access-share')).toHaveTextContent(/Ax Site: North \(can change\) — shared by Administrator, /)
   // #1006: someone else's page still speaks of them.
-  expect(within(screen.getByTestId('access-tables')).getByRole('heading', { level: 2 })).toHaveTextContent('Tables they reach')
+  expect(within(screen.getByTestId('access-tables')).getByRole('heading', { level: 2 })).toHaveTextContent('What they can do, in short')
   expect(within(screen.getByTestId('access-shares')).getByRole('heading', { level: 2 })).toHaveTextContent('Shared with them')
 })
 
@@ -66,7 +71,7 @@ test('#628 the account menu opens your own page; an empty section says so', asyn
   await waitFor(() => expect(screen.getByTestId('access-explanation-heading')).toHaveTextContent('What you can see'), WAIT)
   expect(await screen.findByTestId('access-shares-empty', {}, WAIT)).toHaveTextContent('No rows are shared directly with you.')
   expect(screen.getByTestId('access-roles-empty')).toHaveTextContent('No roles of your own')
-  expect(within(screen.getByTestId('access-tables')).getByRole('heading', { level: 2 })).toHaveTextContent('Tables you reach')
+  expect(within(screen.getByTestId('access-tables')).getByRole('heading', { level: 2 })).toHaveTextContent('What you can do, in short')
   expect(within(screen.getByTestId('access-shares')).getByRole('heading', { level: 2 })).toHaveTextContent('Shared with you')
 })
 
@@ -137,4 +142,41 @@ test('#628 a share that is read only, and may be shared on, says so', async ({ a
 test('#628 the page for someone who is not a person says there is no such person', async ({ admin }) => {
   await renderApp(pageOf('psn_nobodyhereatallnobodyx'), admin)
   expect(await screen.findByText('There is no such person.', {}, WAIT)).toBeInTheDocument()
+})
+
+test('#1224 the page shows as a summary, by role or by area, and remembers the choice', async ({ admin, createUser }) => {
+  await seed(admin)
+  await admin.post('/api/table_def', { name: 'Ax Brand', module: 'Merchandising', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await grantRole(admin, { table: 'Ax Brand', role: 'Ax Brand Editor', can_read: true, can_write: true })
+  const person = await createUser({ roles: ['Ax Site Reader', 'Ax Brand Editor'], fullName: 'Ax Layouts' })
+  localStorage.removeItem('featherbase.access-layout')
+
+  await renderApp(pageOf(person.user!), admin)
+  const summary = await screen.findByTestId('access-summary', {}, WAIT)
+  expect(summary).toHaveTextContent('They can read and change Ax Brand in Merchandising.')
+  expect(summary).toHaveTextContent('Their access covers every row: no limits are set.')
+
+  await userEvent.click(screen.getByRole('button', { name: 'By role' }))
+  const cards = await screen.findAllByTestId('access-role-card')
+  expect(cards.map((c) => within(c).getByRole('heading', { level: 2 }).textContent)).toEqual(expect.arrayContaining(['Ax Site Reader', 'Ax Brand Editor']))
+  expect(localStorage.getItem('featherbase.access-layout')).toBe('roles')
+
+  await userEvent.click(screen.getByRole('button', { name: 'By area' }))
+  const areas = within(await screen.findByTestId('access-by-area')).getAllByTestId('access-area-group')
+  expect(areas.map((a) => a.querySelector('summary')?.textContent)).toEqual([
+    expect.stringMatching(/^General\d+ · read only/), expect.stringMatching(/^Merchandising1 · change all/),
+  ])
+  localStorage.removeItem('featherbase.access-layout')
+})
+
+test('#1224 who gave a role is named even when the viewer may not read Person', async ({ admin, createUser }) => {
+  await grantRole(admin, { table: [], role: 'Ax Given Role' })
+  const giver = await createUser({ roles: ['System Manager'], fullName: 'Ax Giver Name' })
+  const viewer = await createUser({ roles: [] })
+  const doc = await admin.get<{ updated_at: string; roles: { role: string }[] }>(`/api/table/Person/${viewer.user}`)
+  await giver.post('/api/save_row', { table: 'Person', row: { row_id: viewer.user, updated_at: doc.updated_at, roles: [...doc.roles, { role: 'Ax Given Role' }] } })
+
+  await renderApp(pageOf(viewer.user!), viewer)
+  await waitFor(() => expect(screen.getAllByTestId('access-role').some((r) => /Ax Given Role — given by Ax Giver Name, /.test(r.textContent ?? ''))).toBe(true), WAIT)
+  expect(screen.getByTestId('access-explanation')).not.toHaveTextContent('Unnamed person')
 })

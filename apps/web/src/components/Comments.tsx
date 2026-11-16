@@ -200,8 +200,11 @@ const initialsOf = (name: string) =>
   name.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('')
 
 /** The author's initials — from their name, never from an opaque id. */
-export function AuthorInitials({ id }: { id: string }) {
-  const name = usePrincipalName(id)
+export function AuthorInitials({ id, name: given }: { id: string; name?: string }) {
+  // #1224: the server's name for the author first; the viewer's lookup only without it.
+  const looked = usePrincipalName(given ? null : id)
+  // A placeholder for someone with no name makes no initials.
+  const name = given === 'Unnamed person' ? null : (given ?? looked)
   return (
     <span
       className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-action text-xs font-semibold text-action-ink"
