@@ -323,9 +323,14 @@ describe('a newer version in the image', () => {
       permissions: [...(manifest.permissions ?? []), { table: `${name}.task`, role: 'Task Auditor', operations: { read: '*' } }],
       migrations: [...(manifest.migrations ?? []), { id: 'to_next', fromVersion: version, toVersion: nextVersion, operations: [] }],
     }))
-    const said = await deploy()
-    expect(said).toContain(`upgraded ${name} from ${version} to ${nextVersion}`)
-    expect(said).toContain(`  ${name} gives Task Auditor read on ${name}.task`)
+    try {
+      const said = await deploy()
+      expect(said).toContain(`upgraded ${name} from ${version} to ${nextVersion}`)
+      expect(said).toContain(`  ${name} gives Task Auditor read on ${name}.task`)
+    } finally {
+      // The deploy commits its activity rows; take this upgrade's out so later files start clean.
+      await sql`delete from activity_log where operation like ${`app_%_added ${name}@${nextVersion}:%`}`
+    }
   })
 
   // #1178 (D4): the image ships only the new version; the upgrade moves from

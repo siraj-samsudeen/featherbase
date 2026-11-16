@@ -555,7 +555,8 @@ describe('an upgrade that declares a new role', () => {
       expect(app.roles).toEqual(['Task Auditor'])
       expect(await sql`select role, operation, owner_app from permission where role = 'Task Auditor'`)
         .toEqual([{ role: 'Task Auditor', operation: 'read', owner_app: 'other' }])
-      expect((await sql`select operation from activity_log where operation like 'app_role_added%'`).map(row => row.operation))
+      // Only this upgrade's rows: other test files may leave their own app's activity behind.
+      expect((await sql`select operation from activity_log where operation like 'app_role_added other@2.0.0:%'`).map(row => row.operation))
         .toEqual(['app_role_added other@2.0.0: Task Auditor'])
       const holder = await createUser({ email: 'auditor@example.test', roles: ['Task Auditor'] })
       expect(await sql`select role from has_role where parent = ${holder.user!}`).toEqual([{ role: 'Task Auditor' }])
@@ -614,7 +615,7 @@ describe('an upgrade that declares a new role', () => {
       await loadInstalledApps()
       await admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })
       expect((await sql`select operation from permission where role = 'Task Auditor' order by operation`).map(row => row.operation)).toEqual(['read', 'update'])
-      expect((await sql`select operation from activity_log where operation like 'app_grant_added%'`).map(row => row.operation))
+      expect((await sql`select operation from activity_log where operation like 'app_grant_added other@2.0.0:%'`).map(row => row.operation))
         .toEqual(['app_grant_added other@2.0.0: Task Auditor read, update on other.task'])
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
