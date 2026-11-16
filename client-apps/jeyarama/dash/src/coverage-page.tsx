@@ -10,14 +10,19 @@ import { RECORD, RecordLink } from './record-link'
 interface SectionCover { id: string; name: string; floor: string | null; floor_id?: string | null; active: boolean; subcategories: number }
 interface DepartmentCover { id: string; name: string; store: string; store_id?: string; manager: string | null; manager_code?: string | null; sections: SectionCover[]; gaps: string[]; ended?: boolean }
 interface JobCover { job: string; job_id?: string | null; store: string; store_id?: string | null; floor: string | null; floor_id?: string | null; reports_to: string | null; reports_to_code?: string | null; sections: SectionCover[]; departments: DepartmentCover[]; whole_store: boolean; gaps: string[] }
+/** #1223: one section's own page: what it holds and who works in it. */
+interface SectionPage { id: string; name: string; active: boolean; store: string; store_id: string; floor: string | null; floor_id: string | null
+  subcategories: { code: string; name: string }[]; staff: { code: string; name: string; job: string }[]; gaps: string[] }
 interface MerchandiseCover { assignment?: string; responsibility: string; level: string; named: string; region: string | null; subcategories: { code: string; name: string }[]; more: number; gaps: string[] }
 type Answer = { state: 'not_found' | 'not_allowed' }
   | { state: 'ok'; kind: 'employee'; own?: boolean; section_ids?: Record<string, string>; employee: { code: string; name: string; status: string }; jobs: JobCover[]; merchandise: MerchandiseCover[]; gaps: string[]; nothing: boolean; area_only?: boolean }
   | { state: 'ok'; kind: 'department'; department: DepartmentCover }
+  | { state: 'ok'; kind: 'section'; section: SectionPage }
 
 /** The address of one person's, or one department's, coverage. */
-export const coverageAddress = (at: { employee?: string; department?: string }) =>
-  at.department ? `?view=coverage&department=${encodeURIComponent(at.department)}` : `?view=coverage&employee=${encodeURIComponent(at.employee ?? '')}`
+export const coverageAddress = (at: { employee?: string; department?: string; section?: string }) =>
+  at.section ? `?view=coverage&section=${encodeURIComponent(at.section)}`
+    : at.department ? `?view=coverage&department=${encodeURIComponent(at.department)}` : `?view=coverage&employee=${encodeURIComponent(at.employee ?? '')}`
 
 /** "4 subcategories", or the gap in words. */
 export function coverLine(section: Pick<SectionCover, 'subcategories' | 'active'>): string {
@@ -46,8 +51,7 @@ function DepartmentBlock({ department, linked }: { department: DepartmentCover; 
   return (
     <div className={linked ? 'rounded-md border border-border p-3' : ''} data-testid="cover-department">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        {linked ? <span className="font-medium">Department: <RecordLink table={RECORD.department} id={department.id}>{department.name}</RecordLink>{' '}
-          <a href={coverageAddress({ department: department.id })} className="text-sm font-normal text-ink-muted underline-offset-2 hover:underline">covers</a></span> : <span />}
+        {linked ? <span className="font-medium">Department: <RecordLink table={RECORD.department} id={department.id}>{department.name}</RecordLink></span> : <span />}
         <span className="text-sm text-ink-muted"><RecordLink table={RECORD.department} id={department.id}>{`${department.sections.length} ${department.sections.length === 1 ? 'section' : 'sections'}`}</RecordLink> · <RecordLink table={RECORD.department} id={department.id}>{`${total} ${total === 1 ? 'subcategory' : 'subcategories'}`}</RecordLink></span>
       </div>
       <Sections sections={department.sections} />
@@ -96,12 +100,35 @@ function GapLine({ gap, ids, departments = {} }: { gap: string; ids: Record<stri
 export function titleOf(answer: Answer | undefined): string {
   if (answer?.state !== 'ok') return 'What they cover'
   if (answer.kind === 'department') return `${answer.department.name} · ${answer.department.store}`
+  if (answer.kind === 'section') return answer.section.name
   return answer.own ? 'What you cover' : `What ${answer.employee.name} covers`
+}
+
+function SectionView({ section }: { section: SectionPage }) {
+  return (
+    <div className="flex flex-col gap-4" data-testid="cover-section-page">
+      <p className="text-sm">{section.floor && <><RecordLink table={RECORD.floor} id={section.floor_id}>{section.floor}</RecordLink> · </>}<RecordLink table={RECORD.site} id={section.store_id}>{section.store}</RecordLink></p>
+      {section.gaps.length > 0 && <Notice tone="caution" data-testid="cover-gaps">{section.gaps.join(' · ')}</Notice>}
+      <Card title={`Subcategories · ${section.subcategories.length}`}>
+        <div className="p-4 text-sm">
+          {section.subcategories.length
+            ? <p>{section.subcategories.map((s, i) => <span key={s.code}>{i ? ', ' : ''}<RecordLink table={RECORD.subcategory} id={s.code}>{s.name}</RecordLink></span>)}</p>
+            : <p className="fd-muted">No subcategories in this section yet.</p>}
+        </div>
+      </Card>
+      <Card title={`Team · ${section.staff.length}`}>
+        <ul className="flex flex-col divide-y divide-border p-4">
+          {section.staff.map(p => <li key={`${p.code}-${p.job}`} className="flex justify-between gap-2 py-2 text-sm"><RecordLink table={RECORD.employee} id={p.code}>{p.name}</RecordLink><span className="text-ink-muted">{p.job}</span></li>)}
+          {section.staff.length === 0 && <li className="fd-muted text-sm">No one works in this section yet.</li>}
+        </ul>
+      </Card>
+    </div>
+  )
 }
 
 export function WhatTheyCover() {
   const params = new URLSearchParams(window.location.search)
-  const at = { employee: params.get('employee') ?? undefined, department: params.get('department') ?? undefined }
+  const at = { employee: params.get('employee') ?? undefined, department: params.get('department') ?? undefined, section: params.get('section') ?? undefined }
   const [answer, setAnswer] = useState<Answer | undefined>()
   const [failed, setFailed] = useState(false)
   const load = () => { setFailed(false); read<Answer>('coverage', at).then(setAnswer, () => setFailed(true)) }
@@ -113,17 +140,18 @@ export function WhatTheyCover() {
       : answer?.state === 'ok' && answer.kind === 'department'
         ? <><RecordLink table={RECORD.department} id={answer.department.id}>{answer.department.name}</RecordLink> · <RecordLink table={RECORD.site} id={answer.department.store_id}>{answer.department.store}</RecordLink></>
         : titleOf(answer)}>
-      {!at.department && <Lookup initial={at.employee ?? (answer?.state === 'ok' && answer.kind === 'employee' ? answer.employee.code : '')} key={answer ? 'answered' : 'waiting'} />}
+      {!at.department && !at.section && <Lookup initial={at.employee ?? (answer?.state === 'ok' && answer.kind === 'employee' ? answer.employee.code : '')} key={answer ? 'answered' : 'waiting'} />}
       {!answer && !failed && <Loading />}
       {failed && <LoadFailed onRetry={load} />}
       {answer?.state === 'not_found' && <Card><EmptyState title="Nobody by that code" body="Check the employee code, or open someone from Your store." /></Card>}
       {answer?.state === 'not_allowed' && <Card data-testid="cover-not-allowed"><EmptyState title="You can see your own area only" body="Everyone sees what they cover themselves; Store and Floor Managers also see their own staff; the master data team sees everyone." /></Card>}
+      {answer?.state === 'ok' && answer.kind === 'section' && <SectionView section={answer.section} />}
       {answer?.state === 'ok' && answer.kind === 'department' && (
         <Card title="Sections" data-testid="cover-department-page">
           <div className="flex flex-col gap-3 p-4">
             <p className="text-sm text-ink-muted">Department <RecordLink table={RECORD.department} id={answer.department.id}>{answer.department.name}</RecordLink> at <RecordLink table={RECORD.site} id={answer.department.store_id}>{answer.department.store}</RecordLink></p>
             <p className="text-sm text-ink-muted">Manager: {answer.department.manager && answer.department.manager_code
-              ? <><RecordLink table={RECORD.employee} id={answer.department.manager_code}>{answer.department.manager}</RecordLink>{' '}<a href={coverageAddress({ employee: answer.department.manager_code })} className="underline-offset-2 hover:underline">covers</a></>
+              ? <><RecordLink table={RECORD.employee} id={answer.department.manager_code}>{answer.department.manager}</RecordLink></>
               : answer.department.manager ?? 'none named'}{answer.department.ended ? ' · this department has ended' : ''}</p>
             {answer.department.gaps.length > 0 && <Notice tone="caution" data-testid="cover-gaps">{answer.department.gaps.map((g, i) => <span key={g}>{i ? ' · ' : ''}<GapLine gap={g} ids={Object.fromEntries(answer.department.sections.map(s => [s.name, s.id]))} /></span>)}</Notice>}
             <DepartmentBlock department={answer.department} linked={false} />

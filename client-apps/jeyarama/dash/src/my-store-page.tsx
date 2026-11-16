@@ -6,7 +6,6 @@ import { useEffect, useRef, useState } from 'react'
 import { Button, Card, EmptyState, Field, Notice, SearchInput, Select, StatusPill, TextInput, fmtCount } from '@featherbase/shop-floor'
 import { act, read } from './api'
 import { LoadFailed, Loading, Shell, useAnswer } from './sections-page'
-import { coverageAddress } from './coverage-page'
 import { RECORD, RecordLink } from './record-link'
 
 interface PersonRef { code: string; name: string }
@@ -26,7 +25,6 @@ function PersonLink({ person }: { person: PersonRef }) {
   return (
     <span className="whitespace-nowrap">
       <RecordLink table={RECORD.employee} id={person.code} className="font-medium">{person.name}</RecordLink>
-      {' '}<a href={coverageAddress({ employee: person.code })} className="text-sm text-ink-muted underline-offset-2 hover:underline" data-testid="person-covers">covers</a>
     </span>
   )
 }
@@ -291,7 +289,7 @@ function StaffTable({ place, onMoved, title }: { place: Place; onMoved: (message
                     <tr key={p.code} className="group border-t border-border hover:bg-subtle" data-testid="area-person">
                       <td className={TD}>
                         <RecordLink table={RECORD.employee} id={p.code}>{p.name}</RecordLink>
-                        <span className="block text-[13px] text-ink-muted">{p.code} · {p.jobs[0].job} · <a href={coverageAddress({ employee: p.code })} className="hover:underline" data-testid="person-covers">what they cover</a></span>
+                        <span className="block text-[13px] text-ink-muted">{p.code} · {p.jobs[0].job}</span>
                         {waiting && <StatusPill tone="caution" className="mt-1" data-testid="waiting-pill">Waiting for {waiting}</StatusPill>}
                       </td>
                       <td className={TD}>

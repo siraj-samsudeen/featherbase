@@ -25,10 +25,20 @@ export function canOpenTable(table: string): Promise<boolean> {
 }
 
 function useCanOpen(table: string): boolean {
-  const [can, setCan] = useState(false)
-  useEffect(() => { let live = true; void canOpenTable(table).then(ok => { if (live) setCan(ok) }); return () => { live = false } }, [table])
+  const own = table in DASH_PAGES
+  const [can, setCan] = useState(own)
+  useEffect(() => { if (own) return; let live = true; void canOpenTable(table).then(ok => { if (live) setCan(ok) }); return () => { live = false } }, [table, own])
   return can
 }
+
+/** #1223: the records Dash has a page of its own for, which it opens for anyone (each page refuses who it must). */
+export const DASH_PAGES: Readonly<Record<string, (id: string) => string>> = {
+  Employee: id => `?view=coverage&employee=${encodeURIComponent(id)}`,
+  Department: id => `?view=coverage&department=${encodeURIComponent(id)}`,
+  Section: id => `?view=coverage&section=${encodeURIComponent(id)}`,
+}
+/** For RecordPagesProvider: a Dash page for the record, else undefined (its Featherbase record). */
+export const dashPageFor = (table: string, id: string) => DASH_PAGES[table]?.(id)
 
 /** A record as a link to it; plain text when there is no record, or the viewer may not open it. A text
  *  label goes to the shared RecordLink as its name; richer content (a count with its words) keeps the

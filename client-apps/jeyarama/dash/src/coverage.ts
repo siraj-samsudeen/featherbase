@@ -133,6 +133,28 @@ export const coverageReads = {
       return nameCache.get(key)!
     }
 
+    // #1223: one section, for anyone whose area holds it (Team Leaders included) and the master data team.
+    if (typeof payload.section === 'string' && payload.section) {
+      const [section] = await list(ctx, T.section, SECTION_FIELDS, [['row_id', '=', payload.section]])
+      if (!section) return { state: 'not_found' as const }
+      if (!ctx.roles?.includes(FALLBACK_ROLE) && !(await areasOf(ctx, today)).areas.some(a => inArea(a, section))) return { state: 'not_allowed' as const }
+      const site = exact(section.site)
+      const placed = (await all(ctx, T.placement, ['store', 'section', 'subcategory', 'starts_on', 'ends_on'], [['section', '=', exact(section.row_id)], ['store', '=', site]])).filter(p => holdsOn(p, today))
+      const subs = placed.length ? byId(await all(ctx, T.subcategory, ['subcategory'], [['row_id', 'in', unique(placed.map(p => exact(p.subcategory)))]])) : new Map<string, Row>()
+      const jobs = (await all(ctx, T.job, JOB_FIELDS, [['section', '=', exact(section.row_id)], ['site', '=', site]])).filter(j => holdsOn(j, today))
+      const people = jobs.length ? byId(await all(ctx, T.employee, ['name', 'status'], [['row_id', 'in', unique(jobs.map(j => exact(j.employee)))]])) : new Map<string, Row>()
+      const staff = jobs.filter(j => text(people.get(exact(j.employee))?.status) === 'Current')
+        .map(j => ({ code: exact(j.employee), name: text(people.get(exact(j.employee))?.name) || 'Unnamed', job: text(j.job) }))
+        .sort((a, b) => a.job.localeCompare(b.job) || a.name.localeCompare(b.name))
+      const [store] = await list(ctx, T.site, ['name'], [['row_id', '=', site]])
+      const [floor] = exact(section.floor) ? await list(ctx, T.floor, ['name'], [['row_id', '=', exact(section.floor)]]) : []
+      const subcategories = placed.map(p => ({ code: exact(p.subcategory), name: text(subs.get(exact(p.subcategory))?.subcategory) || 'Unnamed subcategory' })).sort((a, b) => a.name.localeCompare(b.name))
+      const leaders = staff.filter(s => s.job === 'Team Leader')
+      return { state: 'ok' as const, kind: 'section' as const, section: { id: exact(section.row_id), name: text(section.name), active: isActive(section),
+        store: text(store?.name), store_id: site, floor: text(floor?.name) || null, floor_id: exact(section.floor) || null, subcategories, staff,
+        gaps: [...(!isActive(section) ? ['Closed'] : []), ...(isActive(section) && !leaders.length ? ['No Team Leader'] : []), ...(!subcategories.length ? ['No subcategories'] : [])] } }
+    }
+
     if (typeof payload.department === 'string' && payload.department) {
       const [department] = await list(ctx, DEPARTMENT, ['department_id', 'store', 'name', 'manager', 'starts_on', 'ends_on'], [['row_id', '=', payload.department]])
       if (!department) return { state: 'not_found' as const }

@@ -17,6 +17,8 @@ const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
 const read = async (client: TestClient, name: string, payload: object = {}) =>
   (await client.post<any>(`/api/app_reads/dash/${name}`, { payload })).result
 const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)
+// #1243: ends_on is a row's last day; a row has ended once its ends_on is before today.
+const yesterday = new Date(Date.parse(`${today}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10)
 const act = (client: TestClient, name: string, payload: object) =>
   client.post<any>(`/api/app_actions/dash/${name}`, { idempotencyKey: randomUUID(), payload }).then(r => r.result)
 
@@ -90,9 +92,9 @@ describe('#1223 Your store and Your floor', () => {
     expect(rows[1].ends_on).toBeNull()
   })
 
-  test('a manager whose job ends today has no area today (ends_on is the first day it no longer holds)', async ({ admin, createUser }) => {
+  test('a manager whose job ended yesterday has no area today', async ({ admin, createUser }) => {
     const { floor } = await world(admin, createUser)
-    await sql`update featherbase.job_assignment set ends_on = ${today}::date where row_id = 'JA-FM'`
+    await sql`update featherbase.job_assignment set ends_on = ${yesterday}::date where row_id = 'JA-FM'`
     expect(await read(floor, 'manages_area')).toBeNull()
     await expect(act(floor, 'move_staff', { job: 'JA-TL', to_section: 'LKS-S2' })).rejects.toThrow(/own staff, within your own area/)
   })
@@ -134,10 +136,10 @@ describe('#1223 Your store and Your floor', () => {
     await expect(act(store, 'move_staff', { job: 'JA-TL', to_section: 'LKS-S2' })).rejects.toThrow(/no longer on the staff list/)
   })
 
-  test('approve-first: a move goes stale when the moved job ends on the day it is approved', async ({ admin, createUser }) => {
+  test('approve-first: a move goes stale when the moved job has ended by the day it is approved', async ({ admin, createUser }) => {
     const { store, floor } = await world(admin, createUser)
     const asked = await act(floor, 'move_staff', { job: 'JA-TL', to_section: 'LKS-S2' })
-    await sql`update featherbase.job_assignment set ends_on = ${today}::date where row_id = 'JA-TL'`
+    await sql`update featherbase.job_assignment set ends_on = ${yesterday}::date where row_id = 'JA-TL'`
     expect(await act(store, 'decide', { proposal: asked.id, decision: 'approve' })).toMatchObject({ state: 'Needs fresh review' })
     expect((await sql`select section from featherbase.job_assignment where employee = '2004'`).map(r => r.section)).toEqual(['LKS-S1'])
   })
@@ -390,9 +392,9 @@ describe('#1223 Your store and Your floor', () => {
       expect(await act(store, 'decide', { proposal: asked.id, decision: 'approve' })).toMatchObject({ state: 'Needs fresh review' })
     })
 
-    test('a placement ending today is out of the section on every manager path, as on the counts', async ({ admin, createUser }) => {
+    test('a placement that ended yesterday is out of the section on every manager path, as on the counts', async ({ admin, createUser }) => {
       const { store } = await withTeams(admin, createUser)
-      await sql`update featherbase.section_subcategory set ends_on = ${today}::date where row_id = 'P-1'`
+      await sql`update featherbase.section_subcategory set ends_on = ${yesterday}::date where row_id = 'P-1'`
       expect((await read(store, 'section_subcategories', { section: 'LKS-S3' })).placed).toEqual([])
       await expect(act(store, 'manage_remove', { placement: 'P-1' })).rejects.toThrow(/not in this section/)
     })
@@ -402,15 +404,15 @@ describe('#1223 Your store and Your floor', () => {
       const tomorrow = new Date(Date.parse(`${today}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10)
       await sql`update featherbase.section_subcategory set ends_on = ${tomorrow}::date where row_id = 'P-1'`
       const asked = await act(store, 'manage_add', { section: 'LKS-S4', subcategory: '020101001' })
-      // A day passes: the source placement's end date is now today.
-      await sql`update featherbase.section_subcategory set ends_on = ${today}::date where row_id = 'P-1'`
+      // Days pass: by approval the source placement has ended.
+      await sql`update featherbase.section_subcategory set ends_on = ${yesterday}::date where row_id = 'P-1'`
       expect(await act(editor, 'decide', { proposal: asked.id, decision: 'approve' })).toMatchObject({ state: 'Needs fresh review' })
       expect((await read(store, 'section_subcategories', { section: 'LKS-S4' })).placed).toEqual([])
     })
 
-    test('a manager adds a subcategory whose placement ends today, and it is approved today', async ({ admin, createUser }) => {
+    test('a manager adds a subcategory whose placement ended yesterday, and it is approved today', async ({ admin, createUser }) => {
       const { store, editor } = await withTeams(admin, createUser)
-      await sql`update featherbase.section_subcategory set ends_on = ${today}::date where row_id = 'P-1'`
+      await sql`update featherbase.section_subcategory set ends_on = ${yesterday}::date where row_id = 'P-1'`
       const asked = await act(store, 'manage_add', { section: 'LKS-S4', subcategory: '020101001' })
       expect(asked.state).toBe('Pending')
       expect(await act(editor, 'decide', { proposal: asked.id, decision: 'approve' })).toMatchObject({ state: 'Applied' })
@@ -455,6 +457,16 @@ describe('#1223 Your store and Your floor', () => {
       await sql`update featherbase.job_assignment set reports_to = '2001' where row_id = 'JA-SS'`
       const after = (await read(store, 'my_store')).places[0].staff
       expect(after.find((s: any) => s.job_id === 'JA-SS').waiting_for).toBe('Selvi Store')
+    })
+
+    test("a section's page opens for whoever's area holds it, and the master data team", async ({ admin, createUser }) => {
+      const { leader, floor, editor } = await withTeams(admin, createUser)
+      const own = await read(leader, 'coverage', { section: 'LKS-S1' })
+      expect(own).toMatchObject({ state: 'ok', kind: 'section', section: { name: 'Sarees', staff: expect.arrayContaining([expect.objectContaining({ code: '2004', job: 'Team Leader' })]) } })
+      expect(await read(leader, 'coverage', { section: 'LKS-S2' })).toEqual({ state: 'not_allowed' })
+      expect(await read(floor, 'coverage', { section: 'LKS-S2' })).toMatchObject({ state: 'ok' })
+      expect(await read(floor, 'coverage', { section: 'LKS-S3' })).toEqual({ state: 'not_allowed' })
+      expect(await read(editor, 'coverage', { section: 'LKS-S4' })).toMatchObject({ state: 'ok', section: { gaps: ['No Team Leader', 'No subcategories'] } })
     })
 
     test('a leaver covers nothing, though their rows are still open', async ({ admin, createUser }) => {
