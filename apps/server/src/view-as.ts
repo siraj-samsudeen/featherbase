@@ -14,7 +14,9 @@ import { sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { logAccess } from './audit'
 import { getRoles, isPrivileged } from './permissions'
-import { runGrant, viewAsApps } from './runtime-packages'
+// runtime-packages is loaded when first needed: realtime and file serving import this module, and
+// a static import here closes a cycle that breaks module start-up (migrate.ts, #1222).
+const packages = () => import('./runtime-packages')
 import { activeApps } from './app-lifecycle'
 import type { SessionUser } from './auth'
 import type { ViewingAs } from './view-as-context'
@@ -41,7 +43,7 @@ export interface ViewAsPerson {
 
 /** The View as app this tester may use: the first, by app name, that is switched on and whose role they hold. */
 async function testerApp(tester: string) {
-  const declared = viewAsApps()
+  const declared = (await packages()).viewAsApps()
   if (!declared.length) return null
   // An app turned off (or not yet activated) gives no one View as.
   const on = new Set((await sql`select name from installed_app where enabled and not activation_pending and name in ${sql(declared.map((d) => d.app))}`)
@@ -187,7 +189,7 @@ async function describe(tester: string, persons: string[]): Promise<ViewAsPerson
   const app = await testerApp(tester)
   const described = new Map<string, ViewAsPerson>()
   if (app) {
-    const answer = await runGrant(app.app, 'read', app.people, { payload: { persons } }, tester).catch(() => null)
+    const answer = await (await packages()).runGrant(app.app, 'read', app.people, { payload: { persons } }, tester).catch(() => null)
     for (const entry of peopleOf(answer)) described.set(entry.person, entry)
   }
   const out: ViewAsPerson[] = []
@@ -222,7 +224,7 @@ export async function searchViewAs(user: SessionUser, q: unknown): Promise<ViewA
   const typed = typeof q === 'string' ? q.trim() : ''
   if (typed.length < 2) return []
   const app = (await testerApp(user.row_id))!
-  const answer = peopleOf(await runGrant(app.app, 'read', app.people, { payload: { q: typed } }, user.row_id))
+  const answer = peopleOf(await (await packages()).runGrant(app.app, 'read', app.people, { payload: { q: typed } }, user.row_id))
   // Someone the app doesn't list (not on its staff list, say) is still found by their name.
   const listed = new Set(answer.map((entry) => entry.person))
   const named = (await sql`select row_id from person
@@ -260,7 +262,7 @@ export async function viewAsState(user: SessionUser) {
 }
 
 /** Featherbase's reads that are sent as POST (a body too large for an address), and the record of an export, which is a read's own audit row. */
-const READ_POSTS = new Set(['/api/access_log', '/api/dashboard/count', '/api/dashboard/chart', '/api/report_chart', '/api/run_script_report', '/api/row_titles', '/api/people/names', '/api/sales_target/embed_session'])
+const READ_POSTS = new Set(['/api/access_request', '/api/access_log', '/api/dashboard/count', '/api/dashboard/chart', '/api/report_chart', '/api/run_script_report', '/api/row_titles', '/api/people/names', '/api/sales_target/embed_session'])
 
 /**
  * How the middleware treats a request while viewing:

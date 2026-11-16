@@ -13,8 +13,14 @@ export async function read<T>(name: string, payload: Record<string, unknown> = {
     body: JSON.stringify({ payload }),
   })
   const body = await response.json().catch(() => ({}))
+  reloadIfViewAsEnded(response.status, body)
   if (!response.ok) throw new ApiError(body.error?.message ?? 'Request failed', response.status)
   return body.result as T
+}
+
+/** #1222: the platform says a View as just ended; reload, so the page never shows two people at once. */
+function reloadIfViewAsEnded(status: number, body: { error?: { message?: string } }) {
+  if (status === 409 && body.error?.message?.startsWith('View as has ended') && typeof window !== 'undefined') window.location.reload()
 }
 
 /** The platform's bar marks the page while a tester views as someone (#1222). */
@@ -33,6 +39,7 @@ export async function act<T>(name: string, payload: Record<string, unknown>): Pr
     body: JSON.stringify({ idempotencyKey: crypto.randomUUID(), payload }),
   })
   const body = await response.json().catch(() => ({}))
+  reloadIfViewAsEnded(response.status, body)
   if (!response.ok) throw new ApiError(body.error?.message ?? 'That did not go through. Try again.', response.status)
   return body.result as T
 }

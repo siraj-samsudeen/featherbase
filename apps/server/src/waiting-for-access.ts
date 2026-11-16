@@ -107,6 +107,21 @@ export interface AccessAnswer {
  *  their request and, the first time, tell the System Managers. Null when
  *  `app` names nothing a person can ask for, or `person` is a built-in
  *  account. Never throws for mail. */
+/**
+ * #1222: what a person's access to `app` is, asking nothing: while a tester
+ * views as them, nothing is filed in their name (or the tester's). Null when
+ * they can't open it and have never asked.
+ */
+export async function peekAccess(person: string, app: string): Promise<AccessAnswer | null> {
+  const target = await accessTarget(app)
+  if (!target) return null
+  const answer = await notWaiting(person, target)
+  if (answer) return answer
+  const [held] = await sql`select declined_at from access_request where person = ${person} and app_name = ${target.name}`
+  if (!held) return null
+  return { state: held.declined_at ? 'declined' : 'waiting', title: target.title }
+}
+
 export async function requestAccess(person: string, app: string): Promise<AccessAnswer | null> {
   const target = await accessTarget(app)
   if (!target) return null

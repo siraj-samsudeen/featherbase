@@ -166,6 +166,14 @@ describe('View as on the platform', () => {
     }
   })
 
+  test("Featherbase's no-access check only looks while viewing: nothing is asked in either name", async ({ admin, createUser }) => {
+    const { tester } = await install(admin, createUser)
+    const outsider = await createUser({ email: 'outsider2@example.test', roles: [] })
+    expect((await status(start(tester, outsider.user)))[0]).toBe(200)
+    expect((await tester.fetch('/api/access_request', { method: 'POST', headers: json, body: JSON.stringify({ app: 'barproof' }) })).status).toBe(403)
+    expect(await sql`select count(*)::int as n from access_request`).toEqual([{ n: 0 }])
+  })
+
   test('an access token never views as anyone', async ({ admin, createUser }) => {
     const { tester, person } = await install(admin, createUser)
     const { token } = await issueAccessToken(tester.user!, 'view as 1222', null)

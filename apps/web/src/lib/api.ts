@@ -113,6 +113,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   )) as {
     error?: { type: string; message: string; fields?: Record<string, string> }
   }
+  // #1222: View as just ended on the server; reload so the page never shows two people at once.
+  if (res.status === 409 && body.error?.message?.startsWith('View as has ended')) window.location.reload()
   if (!res.ok)
     throw new ApiError(
       res.status,

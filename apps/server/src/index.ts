@@ -24,7 +24,7 @@ import { GOOGLE_OFF, LINK_DOMAIN_NOT_ALLOWED, completeSignIn, linkVerifiedToSelf
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
 import { personByEmail } from './people-directory'
-import { countWaitingForAccess, noAccessYetPage, requestAccess } from './waiting-for-access'
+import { countWaitingForAccess, noAccessYetPage, peekAccess, requestAccess } from './waiting-for-access'
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser, noLinkCarries, recordToName } from './delegated-login'
 import { hold, rosterFirstSignIn } from './roster-first-sign-in'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
@@ -1225,6 +1225,12 @@ app.get('/api/people/waiting_for_access/count', async (c) => {
 // no-access page, Dash's) says so here; opening it is the request.
 app.post('/api/access_request', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { app?: unknown }
+  // #1222: while viewing as someone, only look; the page then shows its plain no-access message.
+  if (c.get('viewingAs')) {
+    const seen = typeof body.app === 'string' ? await peekAccess(who(c), body.app) : null
+    if (!seen) throw new AppError('PermissionError', 'They have no access to this, and nothing is asked while viewing as them')
+    return c.json(seen)
+  }
   const answer = typeof body.app === 'string' ? await requestAccess(who(c), body.app) : null
   if (!answer) throw new AppError('ValidationError', 'No such app to ask for')
   return c.json(answer)

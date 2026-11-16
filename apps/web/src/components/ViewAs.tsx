@@ -83,7 +83,8 @@ function useReloadOnChange(state: ViewAsState | undefined, error: unknown) {
 /** "KL-1234 · Team Leader · Lakeside", and how many more jobs. */
 export function identityLine(person: ViewAsPerson): string {
   const jobs = person.jobs ?? []
-  return [person.code, jobs[0], jobs.length > 1 ? `+${jobs.length - 1} more` : null].filter(Boolean).join(' · ')
+  // #1216's words for someone with no staff record.
+  return [person.code, jobs[0], jobs.length > 1 ? `+${jobs.length - 1} more` : null].filter(Boolean).join(' · ') || 'Not on the staff list'
 }
 
 /** Other tabs on this sign-in are told, and reload too, so no page mixes two people. */
