@@ -76,7 +76,8 @@ export function SignInMethods() {
 
   return (
     <div className="space-y-4" data-testid="sign-in-methods">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      {/* UI standard: 24px from the page header to the first content. */}
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-2">
         <h1 className="text-2xl font-semibold text-ink">{t('Sign-in methods')}</h1>
         <Button onClick={() => setChangingPassword(true)} data-testid="account-change-password">
           {t('Change password')}
@@ -136,7 +137,7 @@ export function SignInMethods() {
       )}
       {google && !hasGoogle && !data?.test_mode && (
         // A full-page navigation: the server's OAuth redirects drive the browser.
-        <a href="/api/oauth/google/link" className={buttonClasses({ variant: 'primary' })} data-testid="link-google">
+        <a href="/api/oauth/google/link" className={buttonClasses()} data-testid="link-google">
           Link a Google account
         </a>
       )}

@@ -110,11 +110,12 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
   }
 
   return (
-    <Card className="p-3" data-testid="person-identifiers">
+    <Card className="p-4" data-testid="person-identifiers">
       <div className="mb-2 flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-ink">Identifiers</h3>
-        {!replacedBy && addable.length > 0 && !adding && (
-          <Button variant="quiet" icon={<Plus aria-hidden size={16} />} aria-label="Add an identifier" onClick={() => setAdding(true)}>
+        {/* Stays while the form is open, so the header never changes height. */}
+        {!replacedBy && addable.length > 0 && (
+          <Button variant="quiet" icon={<Plus aria-hidden size={16} />} aria-label="Add an identifier" aria-expanded={adding} onClick={() => setAdding(true)}>
             Add
           </Button>
         )}
