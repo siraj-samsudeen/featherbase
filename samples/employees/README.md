@@ -2,14 +2,14 @@
 
 Made-up data for building and testing the spreadsheet import. No real person or code appears here.
 
-The first round uses only `employees-clean.csv`. It is written in the easiest form to read: dates as
+The first round uses only `employees.csv`. It is written in the easiest form to read: dates as
 `2015-01-01`, yes/no as `true` / `false`, numbers as plain digits, a code that is plainly text.
 Harder formats are added later, one at a time.
 
 | File | Rows | Use |
 |---|---|---|
-| `employees-clean.csv` | 24 | First round: import a clean master |
-| `employees-clean-v2.csv` | 24 | Later: re-import of a newer version |
+| `employees.csv` | 24 | First round: import a clean master |
+| `employees-v2.csv` | 24 | Later: re-import of a newer version |
 | `employees-messy.csv` | 25 | Later: import and clean up |
 
 ## Why each Column is there
@@ -26,7 +26,7 @@ Harder formats are added later, one at a time.
 
 Row numbers below are sheet rows; the header is row 1.
 
-## What changed in `employees-clean-v2.csv`
+## What changed in `employees-v2.csv`
 
 | Row | Change |
 |---|---|
