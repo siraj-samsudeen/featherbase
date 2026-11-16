@@ -1,13 +1,13 @@
 // The Report access page's team parts (#1217): what a Team Report Manager sees instead of the
 // company-wide tools. Their picker has two layouts behind a toggle, so the owner can compare them
-// in the real app: a list of the team (the default) or type a name.
+// in the real app: a list of the team (the default) or a search by name or employee code.
 import { Field, Segmented, Select } from '@featherbase/shop-floor'
 import { personDetail, type Who } from './person-identity'
 
 /** Someone in the team, with who they are (#1216): two people in one team can share a name. */
 export interface TeamMember extends Who { person: string; name: string }
 export type PickerLayout = 'list' | 'search'
-const LAYOUTS: { value: PickerLayout; label: string }[] = [{ value: 'list', label: 'Team list' }, { value: 'search', label: 'Type a name' }]
+const LAYOUTS: { value: PickerLayout; label: string }[] = [{ value: 'list', label: 'Team list' }, { value: 'search', label: 'Name or code' }]
 const LAYOUT_KEY = 'dash.team-picker-layout'
 
 /** The picker layout: the address's `picker`, else the one last chosen here, else the team list. */
