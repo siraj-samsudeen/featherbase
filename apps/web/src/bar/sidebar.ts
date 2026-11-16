@@ -58,9 +58,9 @@ export class FeatherbaseSidebar extends HTMLElement {
         .sidebar-frame { position:fixed; z-index:40; top:var(--featherbase-bar-height, 48px); bottom:0; left:0;
           box-sizing:border-box; width:${DRAWER_WIDTH}px; min-height:0; overflow-y:auto;
           transform:translateX(-100%); transition:transform 150ms ease-out; }
-        :host([data-open]) .sidebar-frame { transform:none; box-shadow:0 8px 24px rgb(0 0 0 / .18); }
+        :host([data-open]) .sidebar-frame { transform:none; }
         :host([data-open]) .sidebar-backdrop { display:block; position:fixed; z-index:39; inset:var(--featherbase-bar-height, 48px) 0 0 0;
-          background:var(--color-scrim, #000); opacity:.3; }
+          background:var(--color-scrim); opacity:.3; }
         ::slotted(button), ::slotted(a) { min-height:44px !important; }
       }`
     this.setAttribute('role', 'navigation')
