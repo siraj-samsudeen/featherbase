@@ -10,7 +10,7 @@
 // themselves are the server's (runtime-shell tests) and a real browser's.
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, describe } from 'vitest'
@@ -252,6 +252,74 @@ describe('app-navigation', () => {
       expect(screen.getByTestId('dash').getAttribute('data-view')).not.toBe('no_access')
       await waitFor(async () => expect(await storePicker()).toHaveTextContent('Lakeside'), WAIT)
       expect(new URLSearchParams(window.location.search).get('store')).toBe('9902')
+    })
+  })
+
+  // #1227: one top bar and sidebar on every page.
+  const hidden = () => sidebar().hasAttribute('data-collapsed') && sidebar().inert
+  const appSidebar = () => waitFor(() => expect(sidebar()).not.toBeNull(), WAIT)
+
+  scenario('The sidebar collapses the same way in every application', async ({ admin, createUser, seed }, step) => {
+    let reader: TestClient
+    let barView: ReturnType<typeof within>
+    await step('the user can open Tasker and Dash but cannot open Featherbase', async () => { reader = await tlWithoutFeatherbase(admin, seed, createUser) })
+    await step('the user presses Ctrl+B in Tasker', async () => {
+      barView = await openAppPage(reader, 'tasker', '/tasker/')
+      await appSidebar()
+      await barView.findByTestId('sidebar-collapse', {}, WAIT)
+      // false: the page took the key, so the browser's own use of it does not happen.
+      expect(fireEvent.keyDown(document.body, { key: 'b', ctrlKey: true })).toBe(false)
+    })
+    await step("Tasker's navigation is hidden", () => expect(hidden()).toBe(true))
+    await step('the user opens Dash', async () => {
+      barView = await openAppPage(reader, 'dash', '/dash/')
+      await appSidebar()
+    })
+    await step("Dash's navigation is hidden too", () => expect(hidden()).toBe(true))
+    await step('the user expands the sidebar from the top bar', async () => {
+      const control = await barView.findByRole('button', { name: 'Expand sidebar' }, WAIT)
+      await userEvent.click(control)
+    })
+    await step("Dash's navigation is shown", () => {
+      expect(sidebar().hasAttribute('data-collapsed')).toBe(false)
+      expect(sidebar().inert).toBe(false)
+    })
+  })
+
+  scenario('Typing keeps the shortcut for the field', async ({ admin, createUser, seed }, step) => {
+    let reader: TestClient
+    await step('the user can open Tasker and Dash but cannot open Featherbase', async () => { reader = await tlWithoutFeatherbase(admin, seed, createUser) })
+    await step("the user presses Ctrl+B while typing in Tasker's search", async () => {
+      const barView = await openAppPage(reader, 'tasker', '/tasker/')
+      await appSidebar()
+      await barView.findByTestId('sidebar-collapse', {}, WAIT)
+      const search = await screen.findByPlaceholderText('Search tasks', {}, WAIT)
+      await userEvent.type(search, 'shirts{Control>}b{/Control}')
+      // true: nothing took the key from the field.
+      expect(fireEvent.keyDown(search, { key: 'b', metaKey: true })).toBe(true)
+    })
+    await step("Tasker's navigation stays shown", () => expect(sidebar().hasAttribute('data-collapsed')).toBe(false))
+  })
+
+  scenario('The account pages carry the application switcher', async ({ admin, createUser, seed }, step) => {
+    let reader: TestClient
+    await step('the user can open Tasker and Dash but cannot open Featherbase', async () => { reader = await tlWithoutFeatherbase(admin, seed, createUser) })
+    await step("the user opens Sign-in methods from Dash's account menu", async () => {
+      const barView = await openAppPage(reader, 'dash', '/dash/')
+      await userEvent.click(await barView.findByTestId('session-user', {}, WAIT))
+      await userEvent.click(await barView.findByTestId('account-sign-in-methods', {}, WAIT))
+      await waitFor(() => expect(left).toEqual(['/featherbase/account/sign-in-methods']), WAIT)
+      closePage()
+      await renderApp(left[0]!, reader)
+      expect(await screen.findByTestId('account-layout', {}, WAIT)).toBeInTheDocument()
+    })
+    await step('the application name shows Dash', async () => {
+      const choices = (await screen.findByRole('combobox', { name: 'Switch application' }, WAIT)) as HTMLSelectElement
+      await waitFor(() => expect(choices.selectedOptions[0]).toHaveTextContent(/^Dash$/), WAIT)
+    })
+    await step('Tasker is offered beside it', async () => {
+      const choices = (await screen.findByRole('combobox', { name: 'Switch application' }, WAIT)) as HTMLSelectElement
+      await waitFor(() => expect([...choices.options].map((o) => o.textContent)).toContain('Tasker'), WAIT)
     })
   })
 })

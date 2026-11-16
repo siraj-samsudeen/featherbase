@@ -96,7 +96,7 @@ test('with exactly one option the bar shows it as plain text, with no picker', a
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
   const bar = await screen.findByTestId('top-bar')
   expect(await within(bar).findByText('Riverside')).toBeInTheDocument()
-  expect(within(bar).queryByRole('combobox')).not.toBeInTheDocument()
+  expect(within(bar).queryByRole('combobox', { name: 'Store' })).not.toBeInTheDocument()
 })
 
 /** Long enough for the bar's own request to have answered. */

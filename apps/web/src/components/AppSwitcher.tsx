@@ -31,7 +31,9 @@ const closedReason = (roles: string[]) =>
 /** The same native application-name dropdown on platform and app pages. */
 /** `compact`: on a phone, only the logo and the list's chevron (#983), for an
  *  app whose pickers share the bar. The list still opens and switches. */
-export function AppSwitcher({ app, compact = false }: { app?: { name: string; title: string }; compact?: boolean }) {
+/** `app.href`: where the current entry leads when the catalog does not list
+ *  it (#1227: an interim page, a disabled app, the neutral "Featherbase"). */
+export function AppSwitcher({ app, compact = false }: { app?: { name: string; title: string; href?: string }; compact?: boolean }) {
   const whoami = useWhoAmI().data
   const catalog = useQuery({
     queryKey: ['app-catalog'],
@@ -44,10 +46,16 @@ export function AppSwitcher({ app, compact = false }: { app?: { name: string; ti
     enabled: Boolean(whoami?.capabilities.manage),
   })
   const { open, busy } = useOpenAdmin()
-  const current = app ? catalog.data?.find((entry) => entry.name === app.name)?.href ?? appHref(app.name) : FEATHERBASE_ADMIN_DESTINATION.href
+  // The catalog's address first (it may be another address's); else where the
+  // page says the app lives (an interim page, a disabled app, the neutral name).
+  const current = app ? (app.name && catalog.data?.find((entry) => entry.name === app.name)?.href) || app.href || appHref(app.name) : FEATHERBASE_ADMIN_DESTINATION.href
   const name = app?.title ?? FEATHERBASE_ADMIN_DESTINATION.label
+  const offersAdmin = !app || Boolean(whoami?.capabilities.admin)
+  // The current entry is always one of the choices, listed or not (an interim
+  // page, an app the list has not answered for yet, the neutral name).
+  const listed = (offersAdmin && current === FEATHERBASE_ADMIN_DESTINATION.href) || Boolean(catalog.data?.some((entry) => entry.href === current))
   return <>
-    <a href={current} aria-label={name} title={name} className={iconButtonClasses('shrink-0 max-sm:min-h-11 max-sm:min-w-11')}>
+    <a href={current} aria-label={name} title={name} data-testid="top-bar-home" className={iconButtonClasses('shrink-0 max-sm:min-h-11 max-sm:min-w-11')}>
       <Logo className="h-7 w-7" />
     </a>
     <Select
@@ -63,8 +71,8 @@ export function AppSwitcher({ app, compact = false }: { app?: { name: string; ti
       className={`truncate pl-2.5 pr-8 font-semibold max-sm:min-h-11 ${compact ? 'max-sm:pl-0 max-sm:pr-0 max-sm:text-transparent' : ''}`}
       data-testid="top-bar-name"
     >
-      {(!app || whoami?.capabilities.admin) && <option className="text-ink" value={FEATHERBASE_ADMIN_DESTINATION.href}>{FEATHERBASE_ADMIN_DESTINATION.label}</option>}
-      {app && !catalog.data && <option className="text-ink" value={current}>{app.title}</option>}
+      {!listed && <option className="text-ink" value={current}>{name}</option>}
+      {offersAdmin && <option className="text-ink" value={FEATHERBASE_ADMIN_DESTINATION.href}>{FEATHERBASE_ADMIN_DESTINATION.label}</option>}
       {(catalog.data ?? []).map((entry) => <option className="text-ink" key={entry.name} value={entry.href}>{entry.title}</option>)}
       {(closed.data ?? []).map((entry) => <option className="text-ink-subtle" key={entry.name} value="" disabled>{entry.title}: {closedReason(entry.roles)}</option>)}
     </Select>
