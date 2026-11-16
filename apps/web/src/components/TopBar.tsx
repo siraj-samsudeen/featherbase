@@ -12,7 +12,7 @@ import { useI18n } from '../lib/i18n'
 import { BarControls, useBarControls } from './BarControls'
 import { AppSwitcher, useOpenAdmin } from './AppSwitcher'
 import { Logo } from './Logo'
-import { TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { RecordLink, TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, useMediaQuery } from '@featherbase/shop-floor'
 import { CalendarDays, ChartColumn, House, Inbox, List, ListChecks, Menu, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Sun, Target, UserRound, type LucideIcon } from '@featherbase/shop-floor'
 import { SIDEBAR_SHORTCUT, listenForSidebarKeys, useSidebar } from '../lib/sidebar-collapsed'
 
@@ -450,6 +450,8 @@ function AccountMenu({ inMenu }: { inMenu?: { offerAdmin: boolean } }) {
   const user = getSessionUser()
   const { t } = useI18n()
   const signOutNow = useSignOut()
+  const navigate = useNavigate()
+  const caps = useWhoAmI().data?.capabilities
   const [open, setOpen] = useState(false)
   const wrapper = useRef<HTMLDivElement>(null)
   const avatar = useRef<HTMLButtonElement>(null)
@@ -504,9 +506,21 @@ function AccountMenu({ inMenu }: { inMenu?: { offerAdmin: boolean } }) {
       </button>
       {open && (
         <div id={menuId} className={cardClasses('absolute right-0 top-full z-30 mt-1 w-64 overflow-hidden py-1')} data-testid="account-menu" role="menu" aria-label={t('Account')}>
-          <div className="border-b border-border px-3 py-2" data-testid="account-identity">
-            <p className="truncate text-sm font-medium text-ink">{user?.full_name || user?.email || user?.row_id}</p>
-            {user?.email && user.full_name && <p className="truncate text-xs text-ink-subtle">{user.email}</p>}
+          <div className="border-b border-border px-3 py-2 text-sm" data-testid="account-identity">
+            {/* #1227: a record shown is a RecordLink — the person's own Person record, for
+                someone who may open it (a System Manager, or a reader of Person). */}
+            {user && (
+              <RecordLink
+                table="Person"
+                rowId={user.row_id}
+                name={user.full_name || user.email}
+                detail={user.full_name ? user.email : undefined}
+                layout="two-lines"
+                canOpen={Boolean(caps && (caps.manage || caps.tables.includes('Person')))}
+                onNavigate={(href) => { setOpen(false); void navigate({ href }) }}
+                className="max-w-full"
+              />
+            )}
           </div>
           {inMenu && (
             <>

@@ -9,7 +9,7 @@ import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { resolve } from 'node:path'
 import { afterEach, vi } from 'vitest'
-import { ACCOUNT_SIGN_IN_METHODS_PATH } from 'shared'
+import { ACCOUNT_SIGN_IN_METHODS_PATH, rowHref } from 'shared'
 import { config } from 'server/src/config'
 import { parseInstanceAddresses } from 'server/src/instance-addresses'
 import { discoverPackages } from 'server/src/runtime-packages'
@@ -356,12 +356,28 @@ test("the Account menu's Sign-in methods opens the account page", async ({ admin
   expect(screen.getByTestId('account-sign-in-methods')).toHaveAttribute('href', ACCOUNT_SIGN_IN_METHODS_PATH)
 })
 
-test("the person's name in the Account menu is not a control", async ({ admin }) => {
+// #1227: was "the person's name in the Account menu is not a control" (#489). The
+// owner's navigation rule (16-Nov-2026) supersedes it: a record shown is a link,
+// plain text only where the viewer may not open it.
+test("the person's name in the Account menu links to their Person record for someone who may open it", async ({ admin }) => {
   await renderApp('/featherbase/admin', admin)
   await openAccountMenu()
   const identity = screen.getByTestId('account-identity')
   expect(identity).toHaveTextContent('Administrator')
   expect(within(identity).queryByRole('button')).toBeNull()
+  await waitFor(() => expect(within(identity).getByRole('link')).toHaveAttribute("href", rowHref("Person", admin.user!)))
+})
+
+test("for someone who may not open Person records, the name in the Account menu is plain text", async ({ createUser }) => {
+  const reader = await createUser({ email: 'menu.reader@example.com', roles: [] })
+  onAddressThatOpens('dash')
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
+  await openAccountMenu()
+  const identity = screen.getByTestId('account-identity')
+  // Plain text, the same words, once the server has said what they can open.
+  await screen.findByTestId('session-user')
+  await new Promise((r) => setTimeout(r, 100))
+  expect(identity.querySelector('[data-record-link]')).toHaveAttribute('data-record-link', 'text')
   expect(within(identity).queryByRole('link')).toBeNull()
 })
 
