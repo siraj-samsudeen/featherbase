@@ -5,6 +5,7 @@ import { StatusPill, buttonClasses, cardClasses, fmtInstant, inputClasses, label
 import { ApiError, api } from '../lib/api'
 import { PrincipalName } from '../lib/people'
 import { RowTitle } from '../lib/row-titles'
+import { useTableLabel } from '../lib/meta'
 
 // #859 (ADR 0019): retiring takes a row out of use without deleting it. The
 // server owns every rule (the delete right to retire, the write right to
@@ -50,6 +51,7 @@ export function RetiredNotice({ row, table }: { row: Row; table?: string }) {
 
 /** Asks for the reason, then retires the row. */
 export function RetireDialog({ table, name, onClose, onSubmit }: { table: string; name: string; onClose: () => void; onSubmit?: () => void }) {
+  const label = useTableLabel(table)
   const queryClient = useQueryClient()
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
@@ -84,7 +86,7 @@ export function RetireDialog({ table, name, onClose, onSubmit }: { table: string
         data-testid="retire-row-dialog"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="retire-row-title" className="mb-2 text-base font-semibold text-ink">Retire {table}: <RowTitle table={table} rowId={name} />?</h2>
+        <h2 id="retire-row-title" className="mb-2 text-base font-semibold text-ink">Retire {label}: <RowTitle table={table} rowId={name} />?</h2>
         <p className="mb-3 text-sm text-ink-muted">
           It stays, with its history, but lists and pickers stop offering it. You can reactivate it later.
         </p>

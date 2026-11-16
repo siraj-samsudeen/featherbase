@@ -207,8 +207,15 @@ test("Tab from the app's name reaches the picker", async ({ admin, createUser })
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
   const store = await picker()
   screen.getByTestId('top-bar-name').focus()
-  await userEvent.tab()
+  // #1235: the account page has the shared sidebar, so its controls come first,
+  // right after the switcher (#1227); then the app's picker.
+  const passed: (string | null)[] = []
+  for (let step = 0; step < 4 && document.activeElement !== store; step++) {
+    await userEvent.tab()
+    if (document.activeElement !== store) passed.push((document.activeElement as HTMLElement).getAttribute('data-testid'))
+  }
   expect(store).toHaveFocus()
+  expect(passed.every((id) => id === 'sidebar-toggle' || id === 'sidebar-collapse')).toBe(true)
 })
 
 test('Home, End, PageUp, PageDown and the arrows move within the list, stopping at each end, and change no choice', async ({ admin, createUser }) => {

@@ -62,7 +62,7 @@ export function RecordLink({
       <span className={cx('min-w-0 wrap-anywhere', canOpen && 'font-medium')}>{label}</span>
       {detail && (layout === 'two-lines'
         ? <span className="block text-xs text-ink-muted" data-testid="record-detail">{detail}</span>
-        : <span className="text-ink-muted" data-testid="record-detail"> · {detail}</span>)}
+        : <>{' '}<span className="text-ink-muted" data-testid="record-detail">· {detail}</span></>)}
     </>
   )
   const shape = layout === 'two-lines' ? 'inline-flex min-w-0 flex-col' : 'min-w-0'

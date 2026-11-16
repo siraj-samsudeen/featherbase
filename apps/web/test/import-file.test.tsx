@@ -5,6 +5,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import * as XLSX from 'xlsx'
 import { test, expect, renderApp } from './pg-test'
+import { openSidebarNew } from './list-menus'
 
 type Admin = Parameters<typeof renderApp>[1]
 const rows = () => [...document.querySelectorAll<HTMLElement>('[data-testid=dt-fields] tbody tr[data-columnrow]')]
@@ -32,6 +33,7 @@ async function count(admin: Admin, table: string) {
 test('IMP-006: drop a CSV; inferred schema prefills the builder; create imports the rows', async ({ admin }) => {
   const user = userEvent.setup()
   const app = await renderApp('/featherbase/admin', admin)
+  await openSidebarNew({ timeout: 8000 })
   await user.click(await screen.findByTestId('new-table-link', {}, { timeout: 8000 }))
   const zone = await screen.findByTestId('dt-dropzone', {}, { timeout: 8000 })
   const csv = fileOf(new TextEncoder().encode(CSV).buffer as ArrayBuffer, 'import sales.csv', 'text/csv')

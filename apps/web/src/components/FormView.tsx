@@ -9,7 +9,7 @@ import { RowTitle } from '../lib/row-titles'
 import { useRowCapabilities } from '../lib/row-capabilities'
 import { useWhoAmI } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
-import { isRowsReadOnly, isSourceReadOnly, useMeta, type ColumnDef } from '../lib/meta'
+import { isRowsReadOnly, isSourceReadOnly, tableLabel, useMeta, type ColumnDef } from '../lib/meta'
 import { useSettings } from '../lib/settings'
 import { useClientScripts, type Frm } from '../lib/client-scripts'
 import { useI18n } from '../lib/i18n'
@@ -35,6 +35,7 @@ import { RetireDialog, RetiredBadge, RetiredNotice, reactivateRow } from './RowR
 import { PurgeDialog } from './PurgeDialog'
 import { WorkflowActions } from './WorkflowActions'
 import { RowConnections } from './RowPane'
+import { OpenInApp } from './OpenInApp'
 import { RecordNav } from './RecordNav'
 import { RowMap } from './RowMap'
 import { RowTree } from './RowTree'
@@ -48,6 +49,7 @@ import { ArchivedBanner } from './ArchiveTable'
 import { ContentTabs, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
 import type { Row } from './form-row'
 import { FieldControl } from './FieldControl'
+import { usePageTitle } from '../lib/page-title'
 
 // #545: a JSON column's box holds text while the person types. On save, text
 // typed into it becomes the value it describes; text that isn't JSON is
@@ -92,6 +94,7 @@ export function FormView({
   isNew?: boolean
 }) {
   const meta = useMeta(table)
+  usePageTitle(tableLabel(table, meta.data))
   const describedTable = useMeta(name, table === 'Table' && !isNew)
   const storage = table === 'Table' && !isNew ? describedTable.data?.storage_identity : null
   const [storageCopy, setStorageCopy] = useState('')
@@ -573,7 +576,7 @@ export function FormView({
           search={{ filters: undefined }}
           className={touchLinkClasses('hover:underline')}
         >
-          {table}
+          {tableLabel(table, meta.data)}
         </RouterLink>
         <span aria-hidden="true">/</span>
         <span className="min-w-0 text-ink">{isNew ? 'New' : <RowTitle table={table} rowId={name} />}</span>
@@ -584,7 +587,7 @@ export function FormView({
           <h1 className="text-xl font-semibold text-ink">
             {/* The row's title (title column, or a readable stand-in from its
                 values) — the same one Home and the activity feed show. */}
-            {table}: {isNew ? 'New' : <RowTitle table={table} rowId={name} />}
+            {tableLabel(table, meta.data)}: {isNew ? 'New' : <RowTitle table={table} rowId={name} />}
             <GlossaryHelp table={table} className="ml-1" />
           </h1>
           <span className="text-xs text-ink-muted" data-testid="form-status">
@@ -602,6 +605,7 @@ export function FormView({
         </div>
         <div className="flex max-w-full flex-wrap items-center gap-2">
           {!isNew && <RecordNav table={table} name={name} />}
+          {!isNew && <OpenInApp table={table} row={name} />}
           {table === 'Data Source' && !isNew && (
             <RouterLink
               to="/featherbase/admin/source/$name"
@@ -830,7 +834,7 @@ export function FormView({
               className="mb-2 text-base font-semibold text-ink"
             >
               {/* #959: the row as its heading names it. */}
-              Delete {table}: <RowTitle table={table} rowId={name} />?
+              Delete {tableLabel(table, meta.data)}: <RowTitle table={table} rowId={name} />?
             </h2>
             <p className="mb-3 text-sm text-ink-muted">
               This cannot be undone.

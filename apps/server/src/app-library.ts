@@ -6,6 +6,8 @@ import { readPackageDeclaration, runtimePackageDeclarations, installedPackageDec
 import { installApp, isInstalled, listInstalledApps } from './apps'
 import { childEnvironment, currentEnvironment, readNamedVariable } from './env'
 import { AppError } from './errors'
+import { sql } from './db'
+import { tableAccessPolicy } from './mandatory-access'
 import { appOperation } from './app-lifecycle'
 import { storedEnvironment } from './db-environment'
 import { canonical } from './runtime-migrations'
@@ -74,13 +76,24 @@ export async function discoverAppLibrary(paths: string[], repository: string | n
   }
 }
 
+/** #1236: who an installed app opens for: the roles granted read on its entry
+ *  Table (`everyone` for a grant to All), and, separately, the roles its
+ *  mandatory access policy admits, when it has one: a person needs a grant and
+ *  an admitted role, which may be different roles (Codex reviews, rounds 11-12).
+ *  `gated` notes the app's own further check. */
+async function whoOpens(entryTable: string, gated: boolean): Promise<{ everyone: boolean; roles: string[]; admits?: string[]; gated: boolean }> {
+  const grants = (await sql`select distinct role from permission where ref_table = ${entryTable} and operation = 'read' order by role`).map((r) => r.role as string)
+  const admits = (await tableAccessPolicy(entryTable))?.roles
+  return { everyone: grants.includes('All'), roles: grants.filter((role) => role !== 'All'), ...(admits ? { admits: [...admits] } : {}), gated }
+}
+
 export async function appLibraryCatalog() {
   const installed = await listInstalledApps()
   const entries = new Map([...(sources ?? [])].map(([name, source]) => [name, { manifest: source.manifest, version: source.pkg.version }]))
   const ready = runtimePackageDeclarations()
   for (const entry of ready) entries.set(entry.manifest.name, entry)
   for (const entry of await installedPackageDeclarations()) entries.set(entry.manifest.name, entry)
-  return [...entries.values()].map(({ manifest, version }) => {
+  return (await Promise.all([...entries.values()].map(async ({ manifest, version }) => {
     const row = installed.find(app => app.name === manifest.name)
     const { tables, roles, permissions, entryTable, settings, roleDefaults, datasets, actions, reads, jobs, scopeProvider, frameOrigins, glossary, tabs, bar } = manifest
     return {
@@ -91,9 +104,12 @@ export async function appLibraryCatalog() {
         return { name, optional: typeof secret !== 'string' && secret.optional, present: !!readNamedVariable(name)?.trim() }
       }),
       installed: !!row, enabled: row?.enabled ?? false, active: row?.active ?? false,
+      // #1236 (option A): who an installed app opens for, shown on this page now
+      // that the switcher lists only the apps a person can open (was #1008's).
+      ...(row ? { opensFor: await whoOpens(manifest.entryTable, Boolean(manifest.access?.gate)) } : {}),
       preparation: preparations.get(manifest.name) ?? { state: ready.some(entry => entry.manifest.name === manifest.name) ? 'ready' as const : row ? 'unavailable' as const : 'needed' as const },
     }
-  }).sort((a, b) => a.title.localeCompare(b.title))
+  }))).sort((a, b) => a.title.localeCompare(b.title))
 }
 
 export async function prepareAndInstallApp(name: string) {
