@@ -127,6 +127,14 @@ describe('View as on the platform', () => {
     expect(await sql`select count(*)::int as n from access_request`).toEqual([{ n: 0 }])
   })
 
+  test('opening an app page just after View as ends sends the tester back to the same page, as themself', async ({ admin, createUser }) => {
+    const { tester, person } = await install(admin, createUser)
+    expect((await status(start(tester, person.user)))[0]).toBe(200)
+    await sql`update view_as_session set expires_at = now() - interval '1 second'`
+    const page = await tester.fetch('/barproof/?x=1', { headers: { accept: 'text/html' }, redirect: 'manual' })
+    expect([page.status, page.headers.get('location')]).toEqual([302, '/barproof/?x=1'])
+  })
+
   test('an access token never views as anyone', async ({ admin, createUser }) => {
     const { tester, person } = await install(admin, createUser)
     const { token } = await issueAccessToken(tester.user!, 'view as 1222', null)

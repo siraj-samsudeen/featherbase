@@ -10,7 +10,7 @@ import { assertRowsWritable } from './system-written'
 import { assertNotView, storedTable } from './views'
 import { AppError, errorResponse } from './errors'
 import { runInSession } from './session-context'
-import { activeViewAs, endViewAs, endViewAsSession, searchViewAs, sweepExpiredViewAs, startViewAs, viewAsRoute, viewAsState } from './view-as'
+import { VIEW_AS_ENDED, activeViewAs, endViewAs, endViewAsSession, searchViewAs, sweepExpiredViewAs, startViewAs, viewAsRoute, viewAsState } from './view-as'
 import { runViewingAs } from './view-as-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { tableStorageIdentity } from './table-engine'
@@ -781,6 +781,8 @@ app.get('*', async (c, next) => {
       resource = as ? await runViewingAs(as.as, () => open(as.user.row_id)) : await open(signedIn.row_id)
     } catch (error) {
       if (!(error instanceof AppError)) throw error
+      // #1222: View as ended on this very request; the same address now opens as the tester.
+      if (error.message === VIEW_AS_ENDED) return c.redirect(`${url.pathname}${url.search}`, 302)
       const navigation = !asset || c.req.header('accept')?.includes('text/html')
       if (navigation && error.type === 'AuthenticationError')
         return c.redirect(

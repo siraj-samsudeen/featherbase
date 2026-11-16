@@ -4,6 +4,7 @@ import { credentialFromCookieHeader, endedSessionIds, resolveToken, type Session
 import { getRoles, getScopeMap, hasPermission, isPrivileged, requiresScope, tableScope } from './permissions'
 import { REALTIME_MAX_FRAME_BYTES } from 'shared'
 import { needsMandatoryRowRead } from './mandatory-access'
+import { activeViewAs } from './view-as'
 
 // RT-001/002/003: server-side realtime over WebSockets (the local equivalent
 // of Supabase Realtime per the architecture invariants).
@@ -272,7 +273,11 @@ async function authenticate(socket: WebSocket, cookie: string | undefined): Prom
     // so the HttpOnly `sid` cookie is already on it — and a `?token=` in the
     // socket URL lands in proxy logs like any other. A cross-site handshake
     // carries no SameSite=Lax cookie, so this closes that door too.
-    const user = await resolveToken(credentialFromCookieHeader(cookie))
+    const signedIn = await resolveToken(credentialFromCookieHeader(cookie))
+    // #1222: while viewing as someone, live updates follow what that person may read. Starting,
+    // switching and leaving View as reload the page, so each socket serves one identity. The
+    // session (and so sign-out) stays the tester's.
+    const user = (await activeViewAs(signedIn).catch(() => null))?.user ?? signedIn
     // Closed while the token was being checked: never register it.
     if (socket.readyState !== socket.OPEN) return null
     const client: Client = { socket, user, channels: new Set() }
