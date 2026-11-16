@@ -4,7 +4,7 @@
 import { describe, expect } from 'vitest'
 import { test as pgTest } from '../pg-test'
 import { scenarioFor } from '../scenario'
-import { BUYER_BLANK, pinning, TicketRules, Tickets } from '../tickets-world'
+import { BUYER_BLANK, type Covered, pinning, TicketCoveredRows, TicketRules, Tickets } from '../tickets-world'
 
 const test = pgTest.extend(pinning)
 const scenario = scenarioFor(test, 'tickets-data-quality-rules')
@@ -108,6 +108,42 @@ describe('tickets-data-quality-rules', () => {
       const removed = events.find(e => e.operation === 'remove_rule')
       expect(removed, JSON.stringify(events)).toBeDefined()
       expect(JSON.parse(removed!.text)).toMatchObject({ title: 'Buyer is blank', reason: 'Raised on the wrong ticket' })
+    })
+  })
+})
+
+// #1230: the rows a ticket covers, from the instance's Data Quality Row Table.
+describe('tickets-data-quality-rules: the rows a ticket covers', () => {
+  scenario('Everyone who can see the ticket sees the rows it covers', async ({ admin, createUser }, step) => {
+    const x = new TicketCoveredRows(new Tickets(admin, createUser))
+    await step("Anjali's Data Quality Issue covers 3 rows, one fixed on 07-Nov-2026", () => x.world())
+    const seen: Record<string, Covered | undefined> = {}
+    await step('Anjali, Bala or Colleague opens the ticket', async () => {
+      for (const actor of ['Anjali', 'Bala', 'Colleague']) seen[actor] = await x.covered(actor)
+    })
+    await step('each sees the same 3 rows, the open ones first', () => {
+      for (const covered of Object.values(seen)) {
+        expect(covered!.rows.map(r => [r.row, r.fixed_on])).toEqual([
+          ['Every buyer row with no person', null], ['North Grocery', null], ['South Fashion', '2026-11-07']])
+      }
+    })
+    await step('the list reads "3 rows · 1 fixed"', () => {
+      for (const covered of Object.values(seen)) expect(covered).toMatchObject({ total: 3, fixed: 1 })
+    })
+  })
+
+  scenario('Until Data Quality Row is a linked Table the page opens without the list', async ({ admin, createUser }, step) => {
+    const x = new TicketCoveredRows(new Tickets(admin, createUser))
+    await step("Data Quality Row is not among Tickets' linked Tables", () => x.world({ link: false }))
+    let opened: any
+    await step('Anjali opens her Data Quality Issue', async () => { opened = await x.t.open('Anjali') })
+    await step('the page opens without the rows it covers', () => {
+      expect(opened.ticket.row_id).toBe(x.t.ticket.row_id)
+      expect(opened.coveredRows).toBeUndefined()
+      expect(opened.coveredRowsSetup).toBeUndefined()
+    })
+    await step('Bala, of Tickets support, is told to list Data Quality Row in linked_tables', async () => {
+      expect((await x.t.open('Bala')).coveredRowsSetup).toMatch(/Data Quality Row in Tickets' linked_tables/)
     })
   })
 })

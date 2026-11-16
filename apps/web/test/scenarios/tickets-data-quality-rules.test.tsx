@@ -4,7 +4,7 @@
 import { screen, within } from '@testing-library/react'
 import { describe } from 'vitest'
 import { scenarioFor } from 'server/test/scenario'
-import { BUYER_BLANK, pinning, TicketRules, Tickets } from 'server/test/tickets-world'
+import { BUYER_BLANK, pinning, TicketCoveredRows, TicketRules, Tickets } from 'server/test/tickets-world'
 import { test as base, expect, type Session } from '../pg-test'
 import { openTickets, selectTicket, ticketOpens } from '../tickets-page'
 
@@ -120,6 +120,34 @@ describe('tickets-data-quality-rules', () => {
       await session.clickButton('Workflow').within('.ticket-actions', (next) => next.assertText('1 rule still has rows to fix'))
       // A warning, never a block: the move is still offered.
       expect(within(screen.getByRole('group', { name: 'Actions on this ticket' })).getByRole('button', { name: 'Confirm' })).toBeEnabled()
+    })
+  })
+})
+
+// #1230: the rows a ticket covers, as each viewer sees them on the Request tab.
+describe('tickets-data-quality-rules: the rows a ticket covers', () => {
+  const covered = () => screen.getByRole('region', { name: 'Rows this ticket covers' })
+  async function openCovered(x: TicketCoveredRows, name: string) {
+    const { session } = await openTickets(x.t.people[name]!)
+    await ticketOpens(selectTicket(session, x.t.ticket.row_id))
+    await session.until('the covered rows show', () => screen.queryByRole('region', { name: 'Rows this ticket covers' }))
+    return { session }
+  }
+
+  scenario('A row links to its record only for someone who may read it', async ({ admin, createUser }, step) => {
+    const x = new TicketCoveredRows(new Tickets(admin, createUser))
+    await step('Anjali\'s Data Quality Issue covers the Section "North Grocery", which only Tickets support may read', () => x.world())
+    await step('Bala opens the ticket', () => openCovered(x, 'Bala'))
+    await step('"North Grocery" links to its Section record', () => {
+      expect(within(covered()).getByText('3 rows · 1 fixed')).toBeInTheDocument()
+      const link = within(covered()).getByRole('link', { name: 'North Grocery' })
+      expect(link.getAttribute('href')).toBe('/featherbase/admin/table/section/row/North%20Grocery')
+      expect(within(covered()).getByText('Fixed 07-Nov-2026')).toBeInTheDocument()
+    })
+    await step('when Anjali opens the ticket, "North Grocery" is plain text', async () => {
+      await openCovered(x, 'Anjali')
+      expect(within(covered()).queryByRole('link', { name: 'North Grocery' })).toBeNull()
+      expect(within(covered()).getByText('North Grocery')).toBeInTheDocument()
     })
   })
 })

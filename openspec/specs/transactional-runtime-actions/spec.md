@@ -192,6 +192,14 @@ An app MAY declare base Tables of the instance, with the columns it reads and th
 - **WHEN** an app asks for a column it didn't declare, or proposes on one
 - **THEN** it is refused
 
+### Requirement: An app can ask whether a base Table can be read now
+An app SHALL be able to ask whether a declared base Table can be read now, and be told no, without failing its read, for one not listed, deleted, unsupported or missing a declared column.
+
+#### Scenario: A base Table that no longer fits
+
+- **WHEN** an app asks whether a declared Table can be read, and it was deleted or has lost a declared column since
+- **THEN** it is told no, and the rest of its read goes on
+
 ### Requirement: An action can email a person after it commits
 A runtime action SHALL be able to queue an email to a person by Person ID, and to ask whether that person may read one row of the app's own Tables. The platform SHALL resolve the address, never handing it to the app, and SHALL queue the email only after the action's transaction commits. A failure to queue SHALL NOT undo the action.
 
