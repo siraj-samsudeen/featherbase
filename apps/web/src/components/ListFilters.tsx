@@ -42,11 +42,16 @@ function filterBoxKind(col: import('../lib/meta').ColumnDef | undefined, op: str
   return 'text'
 }
 
-/** The column a list's Search looks in: the Table's title column, else its first
- *  text column. None when the Table has no text to search. */
+const TEXT_TYPES = new Set(['Data', 'Text', 'Small Text', 'Long Text'])
+
+/** The column a list's Search looks in: the Table's title column when it holds
+ *  text, else its first text column; none when it has no text to search. A
+ *  title that is a link (a Reference) holds an id, not the name people read,
+ *  so Search never looks there (Codex review, round 12). */
 export function searchColumn(meta: TableMeta): string | undefined {
-  if (meta.title_column) return meta.title_column
-  return meta.columns.find((c) => c.column_type === 'Data' && !NO_COLUMN_TYPES.has(c.column_type))?.column_name
+  const title = meta.title_column ? meta.columns.find((c) => c.column_name === meta.title_column) : undefined
+  if (title && TEXT_TYPES.has(title.column_type)) return title.column_name
+  return meta.columns.find((c) => TEXT_TYPES.has(c.column_type) && !NO_COLUMN_TYPES.has(c.column_type) && !c.hidden)?.column_name
 }
 
 const SEARCH_OP = 'like'
