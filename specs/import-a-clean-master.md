@@ -42,8 +42,13 @@ its recorded lessons are the starting point for each open row.
   `hr.employees`). It travels to MotherDuck through the change-data-capture package so the pipeline can follow
   a Table across a rename and rewrite itself. Old addresses are answered from it.
 - **A preview before a move**, and a refusal when the new name is already taken.
-- **Archiving uploads.** When files pile up, old ones are archived: moved out of Postgres into object storage,
-  still retrievable. Not pruned.
+- **The uploaded file is a safety net for a while, not a permanent record.** Its purpose is protection during
+  clean-up: people come back with an older version of a sheet and overwrite the right one (the owner has seen
+  this with budgets). After some time the file is not worth carrying. So later: a keep-for period, after which
+  the bytes and the raw rows are archived to object storage or removed, while the upload record (name,
+  checksum, date) stays. What that safety net needs while the file is kept: undo of an import; recognising a
+  file that was uploaded before, by its checksum; and a warning when a re-import would put values back to
+  what an earlier upload held.
 
 ## The journey
 
