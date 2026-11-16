@@ -782,6 +782,14 @@ refused, naming it, and change nothing.
 - **WHEN** an upgrade's version declares a new Auditor role that may edit the app's existing Tasks table
 - **THEN** after the upgrade the Auditor role exists and anyone given it can edit tasks
 
+### Requirement: A save rule knows the writer's roles
+An app's save rule (validator) SHALL be told the roles the writer holds, read fresh for that save, so the rule can treat writers differently.
+
+#### Scenario: The save rule sees the roles
+
+- **WHEN** someone holding Team Report Manager saves a row of a Dash Table
+- **THEN** Dash's save rule is told they hold Team Report Manager
+
 ## Deferred
 
 Marketplace discovery, code signing, isolating untrusted code, running more

@@ -2,8 +2,8 @@
 
 ## ADDED Requirements
 
-### Requirement: A Team Report Manager gives reports to their own team only
-A person holding the role Team Report Manager, and neither Report Access Manager nor System Manager, SHALL be able to give a report, or a bundle, only to a person whose current Job Assignment reports to them, by their job assignment or their employee record. They SHALL give only a report they can open themselves, or a bundle whose every report they can open. They SHALL NOT give to themselves, to a role or to a job, and SHALL NOT make or change a bundle. They SHALL take away only a grant they gave to someone in their team. A Report Access Manager SHALL keep giving and taking away as before.
+### Requirement: A Team Report Manager gives only to their own team
+A person holding Team Report Manager, and neither Report Access Manager nor System Manager, SHALL give a report or a bundle only to a person whose current Job Assignment reports to them, by their job assignment or their employee record. They SHALL NOT give to themselves, to a role or to a job.
 
 #### Scenario: Giving a report she holds to her team
 
@@ -15,11 +15,6 @@ A person holding the role Team Report Manager, and neither Report Access Manager
 - **WHEN** Asha gives "Sales to date" to Meena, who reports to someone else
 - **THEN** it is refused, and Meena is given nothing
 
-#### Scenario: A report she can't open is refused
-
-- **WHEN** Asha gives "Stock ageing", which she can't open, to Ravi
-- **THEN** it is refused, and Ravi is given nothing
-
 #### Scenario: Giving to herself is refused
 
 - **WHEN** Asha gives "Sales to date" to herself
@@ -29,6 +24,17 @@ A person holding the role Team Report Manager, and neither Report Access Manager
 
 - **WHEN** Asha gives "Sales to date" to the job Team Leader
 - **THEN** it is refused
+
+### Requirement: A Team Report Manager gives only what they can open
+A Team Report Manager SHALL give only a report Dash would open for them: given to them, with a Dash reader role, and opened by their own reach. A bundle SHALL be given only when every report in it is such a report.
+
+#### Scenario: A report she can't open is refused
+
+- **WHEN** Asha gives "Stock ageing", which she can't open, to Ravi
+- **THEN** it is refused, and Ravi is given nothing
+
+### Requirement: A Team Report Manager's writes come only through Dash
+A Team Report Manager SHALL NOT make or change a bundle, and SHALL take away only a grant they gave to someone in their team. Their saves to the access Table SHALL be accepted only from Dash's own give and remove actions. A Report Access Manager SHALL keep giving and taking away as before.
 
 #### Scenario: Writing the row directly is refused
 
