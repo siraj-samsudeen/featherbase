@@ -25,6 +25,13 @@ import { CaseFile, SETTINGS_HREF } from './CaseFile'
 
 /** #1233: a sidebar count; none reads quieter than some. */
 const Count = ({ n }: { n: number }) => <span className={n ? 'count' : 'count zero'}>{n}</span>
+/** #1233: what an empty view says, to the person it belongs to. "Assigned to me" lists open work only
+ *  (its count and its default filter agree), so its empty state speaks of what is still to do. */
+const EMPTY: Record<string, [string, string]> = {
+  all: ['No tickets here yet', 'Create a request when you need a hand.'],
+  mine: ["You haven't raised a ticket yet", 'Create a request when you need a hand.'],
+  assigned: ['Nothing assigned to you right now', 'Tickets assigned to you show here until they are done.'],
+}
 const BUILT_IN_STATES = ['New', 'Needs verification', 'Awaiting approval', 'Approved', 'Rejected', 'Policy review', 'In progress', 'Resolved']
 function App() {
   const [session, setSession] = useState<Session | null>(null),
@@ -154,7 +161,7 @@ function App() {
         row_id: detail.ticket.row_id,
         updated_at: detail.ticket.updated_at,
       })
-      setNotice('Saved. The queue and case are refreshed from the server.')
+      setNotice('Saved.')
       setReload((n) => n + 1)
       return true
     } catch (e) {
@@ -359,16 +366,9 @@ function App() {
             )}
             {!loading && !visible.length && (
               <div className="empty">
-                <h3>
-                  {search || kind || state
-                    ? 'No matching tickets'
-                    : 'No tickets here yet'}
-                </h3>
-                <p>
-                  {search || kind || state
-                    ? 'Try another search, state or type.'
-                    : 'Create a request when you need a hand.'}
-                </p>
+                {/* #1233: an empty view speaks to whoever is looking at it. */}
+                <h3>{search || kind || state ? 'No matching tickets' : EMPTY[view]?.[0] ?? EMPTY.all[0]}</h3>
+                <p>{search || kind || state ? 'Try another search, state or type.' : EMPTY[view]?.[1] ?? EMPTY.all[1]}</p>
               </div>
             )}
             {visible.map((ticket) => (

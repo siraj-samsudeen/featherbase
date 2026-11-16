@@ -110,3 +110,26 @@ describe('Edit request sits in its own form with Cancel beside Save (#1233)', ()
     expect((within(again).getByLabelText('Public subject') as HTMLInputElement).value).not.toBe('Typed then abandoned')
   })
 })
+
+describe('Assigned to me speaks to support (#1233)', () => {
+  test('an empty "Assigned to me" says nothing is assigned, and its filter starts on open work', async ({ admin, createUser }) => {
+    const t = new Tickets(admin, createUser)
+    await t.complaint()
+    const { session } = await openTickets(t.people.Support!)
+    void session
+    fireEvent.click([...document.querySelectorAll('featherbase-sidebar > button')].find(b => /Assigned to me/.test(b.textContent ?? ''))!)
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Nothing assigned to you right now' })).toBeInTheDocument())
+    expect(screen.getByText('Tickets assigned to you show here until they are done.')).toBeInTheDocument()
+    expect(screen.queryByText('Create a request when you need a hand.')).toBeNull()
+    expect((screen.getByRole('combobox', { name: 'Filter by state' }) as HTMLSelectElement).selectedOptions[0].textContent).toBe('Open work')
+  })
+
+  test('an empty "My requests" speaks to the person who raises them', async ({ admin, createUser }) => {
+    const t = new Tickets(admin, createUser)
+    await t.complaint()
+    await openTickets(t.people.Support!)
+    fireEvent.click([...document.querySelectorAll('featherbase-sidebar > button')].find(b => /My requests/.test(b.textContent ?? ''))!)
+    await waitFor(() => expect(screen.getByRole('heading', { name: "You haven't raised a ticket yet" })).toBeInTheDocument())
+    expect(screen.getByText('Create a request when you need a hand.')).toBeInTheDocument()
+  })
+})
