@@ -21,7 +21,7 @@ Taken one at a time with the owner. Only what the journey needs is decided; ever
 | 2a | How raw rows are stored | One shared table for every upload: `_id`, upload, sheet row number (header is 1), cells, and the pair "written to" (the Table and the row's `_id`), empty until imported. Cells are one JSON column: the values only, as text, in sheet order. Header names are stored once on the upload. A database view pairs each value with its header name by position, so a raw row reads as a list of `{name, value}`. One raw row per upload and row number, enforced by the database. Cells are never edited. Blank rows are stored. Rows are loaded in bulk. Measured on 16-Nov-2026 (Bun 1.4.4, local Postgres 16), 100,000 rows of 30 columns: values only takes 39 MB and loads in 2.6 s; name and value in every cell takes 158 MB and loads in 5.0 s; the CSV itself is 22 MB. Postgres compression gave no saving. Later levers, not in this build: drop raw rows of superseded uploads (they can be re-read from the kept file); a size limit per upload | Decided |
 | 2b | How a Choice is stored | The row holds the word (`department = 'Sales'`). One shared table holds every list: Column, value, position, retired; a value appears once per Column. The import fills the list from the sheet's distinct values in alphabetical order; the form reads it; a save outside it is refused. A Column is proposed as a Choice only if it is text, is not the key, and its values repeat with at most 10 distinct ones; the person can overrule. Matching is exact; blank is allowed unless the Column is required | Decided |
 | 3 | Migrations for Featherbase's own tables | Drizzle's migration tool: tables described in code, one generated SQL file per change, file names by timestamp (to confirm at setup), pointed at schema `featherbase` only. Tables people make are created by the app, not by migrations | Decided |
-| 4 | Where the uploaded file is kept | | Open |
+| 4 | Where the uploaded file is kept | In Postgres. The bytes sit in their own table, apart from the upload record, so listing uploads never reads them and the change-data-capture package can skip that table. The record holds a checksum and the size. Limit 50 MB per file to start. Storing and fetching go through one small place in the code | Decided |
 | 5 | Reading the CSV and working out types | | Open |
 | 6 | The API for the journey | | Open |
 | 7 | The web side | | Open |
@@ -42,6 +42,8 @@ its recorded lessons are the starting point for each open row.
   `hr.employees`). It travels to MotherDuck through the change-data-capture package so the pipeline can follow
   a Table across a rename and rewrite itself. Old addresses are answered from it.
 - **A preview before a move**, and a refusal when the new name is already taken.
+- **Archiving uploads.** When files pile up, old ones are archived: moved out of Postgres into object storage,
+  still retrievable. Not pruned.
 
 ## The journey
 
