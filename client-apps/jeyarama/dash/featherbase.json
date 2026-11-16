@@ -2160,6 +2160,12 @@
       "fromVersion": "0.13.10",
       "toVersion": "0.13.12",
       "operations": []
+    },
+    {
+      "id": "report_access_redesign",
+      "fromVersion": "0.13.12",
+      "toVersion": "0.13.13",
+      "operations": []
     }
   ],
   "baseTables": {
