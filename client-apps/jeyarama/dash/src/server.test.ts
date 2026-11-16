@@ -898,3 +898,34 @@ describe('the Report access reads (#1046)', () => {
     expect((await lookup(['Site'])).reports.map(r => [r.key, r.closed])).toEqual([['sales', 'Given, but their job reaches no store']])
   })
 })
+
+// #1240: what "Report an issue" sends with the reader's words, read as the reader.
+describe('the context of a report issue', () => {
+  const lead = (label: string, store: string, subcategory?: string[]): Place => ({ ...place(label, store, subcategory),
+    reasons: [{ text: 'Team Leader job assignment', since: '2026-04-01' }] })
+
+  it('names the report, the reader and their job, and each store they reach, whole or by section', async () => {
+    const { ctx } = context({ payload: { report: 'sales' }, places: [
+      lead('9901 / Section: Sarees', '9901', ['010101002', '010101001']), lead('9901 / Section: Silk', '9901', ['010101003']),
+      { label: '9902', filters: { store: ['9902'] }, reasons: [{ text: 'Store Manager job assignment' }] }] })
+    expect(await reads.feedback_context({ ...ctx, userName: 'Asha Leader' })).toEqual({
+      state: 'ok', report: { key: 'sales', name: 'Sales versus target' }, person: 'Asha Leader',
+      jobs: ['Store Manager job assignment', 'Team Leader job assignment, since 01-Apr-2026'],
+      reach: [
+        { store: '9901', name: 'Lakeside', whole: false, sections: ['Sarees', 'Silk'], subcategories: ['010101001', '010101002', '010101003'] },
+        { store: '9902', name: 'Hillview', whole: true, sections: [], subcategories: [] },
+      ],
+    })
+  })
+
+  it('says nothing about a report that isn\'t the reader\'s', async () => {
+    const { ctx } = context({ payload: { report: 'not-given' } })
+    expect(await reads.feedback_context(ctx)).toEqual({ state: 'no_access' })
+  })
+
+  it('still answers, with store codes, when the store names can\'t be read', async () => {
+    const { ctx } = context({ payload: { report: 'sales' }, coreThrows: ['Plant'] })
+    const answer = await reads.feedback_context(ctx) as { reach: { store: string; name: string | null }[] }
+    expect(answer.reach).toEqual([{ store: '9901', name: null, whole: false, sections: ['Sarees'], subcategories: ['010101001'] }])
+  })
+})

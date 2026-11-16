@@ -821,6 +821,14 @@
           "kind": "generic"
         }
       },
+      "feedback_context": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
       "reach_problem": {
         "policy": {
           "kind": "table"
@@ -2145,6 +2153,12 @@
       "id": "manager_area",
       "fromVersion": "0.13.9",
       "toVersion": "0.13.10",
+      "operations": []
+    },
+    {
+      "id": "report_an_issue",
+      "fromVersion": "0.13.10",
+      "toVersion": "0.13.12",
       "operations": []
     }
   ],

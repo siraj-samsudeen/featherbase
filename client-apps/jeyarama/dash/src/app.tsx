@@ -6,6 +6,9 @@ import type { Heading, Report, ReportRow, Totals } from './report'
 import { DashSidebar, DEPARTMENT_ADDRESS, SECTIONS_ADDRESS, readReports, type ReportLink } from './sections-page'
 import { PrefillBanner, awayLine, capital, sentence, type Setup } from './department-page'
 import { buttonClasses, fmtDate } from '@featherbase/shop-floor'
+import { DIVE_ORIGIN } from './page'
+import { ReportIssue } from './report-issue-panel'
+import { filtersFromMessage } from './report-issue'
 
 /** The store the bar's picker keeps in the address (`?store=`). */
 const storeInAddress = () => new URLSearchParams(window.location.search).get('store') ?? undefined
@@ -117,6 +120,17 @@ export function Dash() {
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
   }, [loader])
+  // #1240: the filters the Dive reports about itself, from its own frame only; a new frame starts with none.
+  const [diveFilters, setDiveFilters] = useState<Record<string, string> | undefined>(undefined)
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== DIVE_ORIGIN || !frame.current?.contentWindow || event.source !== frame.current.contentWindow) return
+      const filters = filtersFromMessage(event.data)
+      if (filters) setDiveFilters(filters)
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [])
   const tryAgain = useCallback(() => (checkFailed ? setCheckAttempt : setAttempt)((n) => n + 1), [checkFailed])
   // Only a state of the store now chosen is drawn, whatever reached it (round 8).
   const shown = visibleState(state, store?.value, month)
@@ -124,6 +138,8 @@ export function Dash() {
   const view = checkFailed && !store ? { kind: 'failed' as const } : pageView(shown)
   const frameAttempt = loader.current()
   const frameSrc = liveFrame(shown)
+  useEffect(() => setDiveFilters(undefined), [frameSrc])
+  const showsReport = view.kind === 'dive' || view.kind === 'quick' || view.kind === 'empty'
 
   return (
     <div className="fd-shell">
@@ -132,9 +148,19 @@ export function Dash() {
       <ReportPrefill />
       {/* The header, in every state with a store on show (#4486): the Dive, the quick view, and each empty state. */}
       {/* #1159: over a Dive with its own pickers the Dive names the store itself; the heading stays for its cached view. */}
-      {(view.kind === 'dive' || view.kind === 'quick' || view.kind === 'empty') && !(view.kind === 'dive' && report?.ok && report.value.pickers_in_dive) && report?.ok && report.value.heading && (report.value.heading.name || report.value.heading.reasons.length > 0) && (
+      {/* #1240: "Report an issue" sits on the header's line, right; over a Dive with its own pickers, alone on that line. */}
+      <div className="fd-head-row">
+      {showsReport && !(view.kind === 'dive' && report?.ok && report.value.pickers_in_dive) && report?.ok && report.value.heading && (report.value.heading.name || report.value.heading.reasons.length > 0) && (
         <ReportHeading heading={report.value.heading} period={report.value} wide={view.kind === 'dive'} />
       )}
+      {showsReport && current && (
+        // The cached view says which store and month it shows; a Dive with its own pickers says so itself.
+        <ReportIssue reportKey={current.key} reportName={current.name}
+          store={view.kind === 'quick' && report?.ok ? report.value.store : store?.value}
+          month={view.kind === 'quick' && report?.ok ? report.value.month : current.takes_month ? month : undefined}
+          diveFilters={view.kind === 'dive' ? diveFilters : undefined} pickersInDive={!!current.pickers_in_dive && view.kind === 'dive'} />
+      )}
+      </div>
       {view.kind === 'opening' && <p className="fd-opening">Opening your report…</p>}
       {/* #1143: one place for the frame, on show or out of sight behind the quick view, so the Dive
           that says it is ready after the deadline takes over in the same frame, never reloaded. */}

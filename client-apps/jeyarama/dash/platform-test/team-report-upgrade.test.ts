@@ -1,7 +1,7 @@
 // #1217: production runs Dash 0.13.1. Upgrading it to this version creates Team Report Manager
 // with its grants, the write on the access Table to its own rows only, with nobody's approval
 // (#1169's upgrade rule), and logs each grant. A holder then gives a report to their team, and
-// their Table grant alone still saves nothing. The 0.13.1 here is this version with #1223 (0.13.10), #1243 (0.13.9), #1227 (0.13.8), #4588 (0.13.7), #1209 (0.13.6), #1173 (0.13.5), #1217 (0.13.4),
+// their Table grant alone still saves nothing. The 0.13.1 here is this version with #1240 (0.13.12), #1223 (0.13.10), #1243 (0.13.9), #1227 (0.13.8), #4588 (0.13.7), #1209 (0.13.6), #1173 (0.13.5), #1217 (0.13.4),
 // #1169 (0.13.3) and #1216 (0.13.2) taken out.
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
@@ -24,6 +24,7 @@ async function previousVersion(): Promise<string> {
   const directory = await mkdtemp(resolve(APP_DIR, '..', 'dash-0.13.1-team-'))
   await cp(APP_DIR, directory, { recursive: true })
   const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'report_an_issue', fromVersion: '0.13.10', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'manager_area', fromVersion: '0.13.9', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'ends_on_inclusive', fromVersion: '0.13.8', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'one_app_chrome', fromVersion: '0.13.7', operations: [] })
@@ -61,7 +62,7 @@ describe("upgrading production's Dash 0.13.1 to team report giving", () => {
 
       const plan = await admin.post<{ planId: string; roles: { create?: string }[]; permissions: { grant?: { role: string } }[]; migrations: { id: string }[] }>('/api/preview_app_upgrade', { name: 'dash', version: VERSION })
       expect([plan.roles, plan.permissions.filter(p => p.grant?.role === TEAM_MANAGER), plan.migrations.map(m => m.id)])
-        .toEqual([[{ create: TEAM_MANAGER }], TEAM_GRANTS, ['person_identity', 'report_access_managers_add_dives', 'team_report_giving', 'waiting_for_access_grant', 'department_name_follows_sections', 'named_cluster_head', 'one_app_chrome', 'ends_on_inclusive', 'manager_area']])
+        .toEqual([[{ create: TEAM_MANAGER }], TEAM_GRANTS, ['person_identity', 'report_access_managers_add_dives', 'team_report_giving', 'waiting_for_access_grant', 'department_name_follows_sections', 'named_cluster_head', 'one_app_chrome', 'ends_on_inclusive', 'manager_area', 'report_an_issue']])
       await admin.post('/api/upgrade_app', { name: 'dash', version: VERSION, planId: plan.planId })
       await discoverPackages([previous, APP_DIR])
       await loadInstalledApps()
