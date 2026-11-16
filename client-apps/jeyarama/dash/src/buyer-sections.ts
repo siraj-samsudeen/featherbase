@@ -27,7 +27,7 @@ type Ctx = ReadContext | ActionContext
 /** The caller's employee ids, and whether they head `subcategory` in `region` today: an open head row
  *  (category head or above) whose deepest level covers it, in that region or in every region. */
 async function headsIt(ctx: Ctx, employees: string[], sub: Row, region: string, today: string): Promise<boolean> {
-  if (!employees.length) return false
+  // Never empty: each caller has already found the desk's category head among them.
   const rows = (await all(ctx, MERCHANDISE, HEAD_FIELDS, [['employee', 'in', employees]]))
     .filter(r => holdsOn(r, today) && text(r.responsibility) !== 'Buyer' && (!exact(r.operating_region) || exact(r.operating_region) === region))
   return rows.some(r => {

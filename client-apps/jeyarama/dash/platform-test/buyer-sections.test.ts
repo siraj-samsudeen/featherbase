@@ -53,7 +53,7 @@ async function world(admin: TestClient, createUser: CreateUserFn) {
   await link('BSS-1', 'BS-KURTI', '010505003')
   await link('BSS-2', 'BS-KURTI', '010505001')
   await link('BSS-3', 'BS-SILK', '010101001')
-  return { hema, omar, editor, nobody }
+  return { hema, omar, editor, nobody, login, save }
 }
 
 const desksOf = async (client: TestClient) => (await read(client, 'buyer_sections')).desks
@@ -174,5 +174,46 @@ describe('#1246 a category head and their Buyer Sections', () => {
     const undone = await act(hema, 'move_buyer_subcategory', { subcategory: '010505003', to_section: 'BS-SALWAR' })
     expect(await act(editor, 'decide_buyer_section', { proposal: undone.id, decision: 'reject', reason: 'Kavin keeps Kurti' })).toMatchObject({ state: 'Undone' })
     expect(await desksOf(hema)).toEqual([['BS-SALWAR', 'Sara Buyer', ['010505001']], ['BS-KURTI', 'Kavin Buyer', ['010505003']]])
+  })
+  test('a reader with no staff record, and a Merchandising head over every category (Codex coverage)', async ({ admin, createUser }) => {
+    const { hema, editor, login, save } = await world(admin, createUser)
+    // No Employee row: no desks.
+    expect(await read(editor, 'buyer_sections')).toEqual({ desks: [], unplaced: [], waiting: [], decided: [] })
+    // A Merchandising head names no category: they head everything in East, and list nothing as unplaced.
+    const mira = await login('mira')
+    await save('Employee', { employee_code: '2004', name: 'Mira Head', status: 'Current', person: mira.user })
+    await save('Merchandise Assignment', { assignment_id: 'MA-MIRA', employee: '2004', responsibility: 'Merchandising head', operating_region: 'East', starts_on: '2026-10-01' })
+    await save('Buyer Section', { buyer_section_id: 'BS-MIRA', name: 'Mira desk', operating_region: 'East', buyer: null, category_head: '2004', starts_on: '2026-11-01' })
+    expect((await read(mira, 'buyer_sections')).unplaced).toEqual([])
+    // Silk sarees is in Omar's desk: heading it is not enough to take it from another head's desk.
+    await expect(act(mira, 'move_buyer_subcategory', { subcategory: '010101001', to_section: 'BS-MIRA' })).rejects.toThrow(/another head's Buyer Section buys it/)
+    // A desk in another region buying the same subcategory leaves East free to take it.
+    await save('Operating Region', { region: 'West' })
+    await save('Buyer Section', { buyer_section_id: 'BS-WEST', name: 'West kurtis', operating_region: 'West', buyer: null, category_head: '2001', starts_on: '2026-11-01' })
+    await save('Buyer Section Subcategory', { buyer_section_subcategory_id: 'BSS-W', buyer_section: 'BS-WEST', subcategory: '010505009', starts_on: '2026-11-01' })
+    expect(await act(mira, 'move_buyer_subcategory', { subcategory: '010505009', to_section: 'BS-MIRA' })).toMatchObject({ state: 'Pending' })
+    await expect(act(hema, 'move_buyer_subcategory', { subcategory: 'NOPE', to_section: 'BS-SALWAR' })).rejects.toThrow(/subcategory from the list/)
+  })
+
+  test('the approvals list every waiting change; a decision names a waiting change and keeps or turns it down', async ({ admin, createUser }) => {
+    const { hema, editor } = await world(admin, createUser)
+    const first = await act(hema, 'move_buyer_subcategory', { subcategory: '010505001', to_section: 'BS-SALWAR' })
+    const second = await act(hema, 'move_buyer_subcategory', { subcategory: '010505009', to_section: 'BS-KURTI' })
+    expect((await read(editor, 'buyer_section_approvals')).map((p: any) => p.id).sort()).toEqual([first.id, second.id].sort())
+    await expect(act(editor, 'decide_buyer_section', { proposal: 'no-such-change', decision: 'approve' })).rejects.toThrow(/no longer waiting/)
+    await expect(act(editor, 'decide_buyer_section', { proposal: first.id, decision: 'maybe' })).rejects.toThrow(/Keep it or turn it down/)
+  })
+
+  test('a move goes stale when the desk it goes to closes, or the desk it comes from passes to another head', async ({ admin, createUser }) => {
+    const { hema, editor } = await world(admin, createUser)
+    const closed = await act(hema, 'move_buyer_subcategory', { subcategory: '010505001', to_section: 'BS-SALWAR' })
+    const handed = await act(hema, 'move_buyer_subcategory', { subcategory: '010505003', to_section: 'BS-SALWAR' })
+    await sql`update featherbase.buyer_section set category_head = '2002' where row_id = 'BS-KURTI'`
+    expect(await act(editor, 'decide_buyer_section', { proposal: handed.id, decision: 'approve' })).toMatchObject({ state: 'Needs fresh review' })
+    expect((await read(hema, 'buyer_sections')).decided.map((d: any) => [d.subcategory_name, d.reason]))
+      .toEqual([['Women Kurti', 'The Buyer Section it comes from is no longer theirs.']])
+    await sql`update featherbase.buyer_section set ends_on = ${yesterday}::date where row_id = 'BS-SALWAR'`
+    expect(await act(editor, 'decide_buyer_section', { proposal: closed.id, decision: 'approve' })).toMatchObject({ state: 'Needs fresh review' })
+    expect((await sql`select decision_reason from featherbase.change_proposal where row_id = ${closed.id}`)[0]?.decision_reason).toBe('The Buyer Section it would go to has closed.')
   })
 })
