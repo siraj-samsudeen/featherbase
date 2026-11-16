@@ -1,6 +1,6 @@
 // #1169: production runs Dash 0.13.1. Upgrading it gives Report Access Manager the right to create
 // reports, with nobody's approval, and logs it; a Report Access Manager then adds a Dive and gives
-// it at once. A reader can do neither. The 0.13.1 here is this version with #1209 (0.13.6), #1173 (0.13.5), #1169 (0.13.3) and #1216 (0.13.2) taken out.
+// it at once. A reader can do neither. The 0.13.1 here is this version with #4588 (0.13.7), #1209 (0.13.6), #1173 (0.13.5), #1169 (0.13.3) and #1216 (0.13.2) taken out.
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
@@ -24,6 +24,7 @@ async function previousVersion(): Promise<string> {
   const directory = await mkdtemp(resolve(APP_DIR, '..', 'dash-0.13.1-'))
   await cp(APP_DIR, directory, { recursive: true })
   const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'named_cluster_head', fromVersion: '0.13.6' })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'department_name_follows_sections', fromVersion: '0.13.5' })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'waiting_for_access_grant', fromVersion: '0.13.4' })
   revertTeamReportGiving(manifest)
@@ -55,7 +56,7 @@ describe("upgrading production's Dash 0.13.1", () => {
       expect([withoutTeamManager(plan.permissions as never[]), plan.migrations.map(m => m.id)]).toEqual([[
         { withdraw: { table: 'dash.report', role: MANAGER, operations: { read: '@basic' } } },
         { grant: { table: 'dash.report', role: MANAGER, operations: { read: '@basic', create: '@basic' } } }],
-      ['person_identity', 'report_access_managers_add_dives', 'team_report_giving', 'waiting_for_access_grant', 'department_name_follows_sections']])
+      ['person_identity', 'report_access_managers_add_dives', 'team_report_giving', 'waiting_for_access_grant', 'department_name_follows_sections', 'named_cluster_head']])
       await admin.post('/api/upgrade_app', { name: 'dash', version: VERSION, planId: plan.planId })
       await discoverPackages([previous, APP_DIR])
       await loadInstalledApps()

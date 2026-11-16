@@ -2066,6 +2066,12 @@
       "fromVersion": "0.13.5",
       "toVersion": "0.13.6",
       "operations": []
+    },
+    {
+      "id": "named_cluster_head",
+      "fromVersion": "0.13.6",
+      "toVersion": "0.13.7",
+      "operations": []
     }
   ],
   "baseTables": {
