@@ -5,6 +5,7 @@
 // hold no grant on the Featherbase Tables behind it, so a link would only lead to a refusal.
 import { useEffect, useState, type ReactNode } from 'react'
 import { RecordLink as SharedRecordLink, useRecordHref } from '@featherbase/shop-floor'
+import { read } from './api'
 
 /** The Table names Dash links to, as Featherbase knows them. */
 export const RECORD = {
@@ -24,14 +25,40 @@ export function canOpenTable(table: string): Promise<boolean> {
   return answer
 }
 
-function useCanOpen(table: string): boolean {
-  const own = table in DASH_PAGES
-  const [can, setCan] = useState(own)
-  useEffect(() => { if (own) return; let live = true; void canOpenTable(table).then(ok => { if (live) setCan(ok) }); return () => { live = false } }, [table, own])
+/** Whether the viewer may open one record on Dash's own page, asked of the server by the destination's own
+ *  rules (dash_pages_open): a page's questions are gathered for one turn and asked together, once each. */
+const pageAnswers = new Map<string, Promise<boolean>>()
+let pending: { table: string; id: string; settle: (ok: boolean) => void }[] = []
+function flush() {
+  const batch = pending; pending = []
+  for (let i = 0; i < batch.length; i += 200) {
+    const part = batch.slice(i, i + 200)
+    read<boolean[]>('dash_pages_open', { refs: part.map(({ table, id }) => ({ table, id })) })
+      .then(answers => part.forEach((p, k) => p.settle(answers[k] === true)), () => part.forEach(p => p.settle(false)))
+  }
+}
+export function canOpenPage(table: string, id: string): Promise<boolean> {
+  const key = `${table}|${id}`
+  let answer = pageAnswers.get(key)
+  if (!answer) {
+    answer = new Promise<boolean>(settle => { if (!pending.length) queueMicrotask(flush); pending.push({ table, id, settle }) })
+    pageAnswers.set(key, answer)
+  }
+  return answer
+}
+
+function useCanOpen(table: string, id: string | null | undefined): boolean {
+  const [can, setCan] = useState(false)
+  useEffect(() => {
+    if (!id) return
+    let live = true
+    void (table in DASH_PAGES ? canOpenPage(table, id) : canOpenTable(table)).then(ok => { if (live) setCan(ok) })
+    return () => { live = false }
+  }, [table, id])
   return can
 }
 
-/** #1223: the records Dash has a page of its own for, which it opens for anyone (each page refuses who it must). */
+/** #1223: the records Dash has a page of its own for; each link asks whether this viewer may open it there. */
 export const DASH_PAGES: Readonly<Record<string, (id: string) => string>> = {
   Employee: id => `?view=coverage&employee=${encodeURIComponent(id)}`,
   Department: id => `?view=coverage&department=${encodeURIComponent(id)}`,
@@ -44,7 +71,7 @@ export const dashPageFor = (table: string, id: string) => DASH_PAGES[table]?.(id
  *  label goes to the shared RecordLink as its name; richer content (a count with its words) keeps the
  *  shared destination and the same rule. */
 export function RecordLink({ table, id, children, className = '' }: { table: string; id: string | null | undefined; children: ReactNode; className?: string }) {
-  const canOpen = useCanOpen(table)
+  const canOpen = useCanOpen(table, id)
   if (!id) return <span className={className}>{children}</span>
   if (typeof children === 'string' || typeof children === 'number')
     return <SharedRecordLink table={table} rowId={id} name={String(children)} canOpen={canOpen} className={className} />

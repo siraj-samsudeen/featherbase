@@ -469,6 +469,15 @@ describe('#1223 Your store and Your floor', () => {
       expect(await read(editor, 'coverage', { section: 'LKS-S4' })).toMatchObject({ state: 'ok', section: { gaps: ['No Team Leader', 'No subcategories'] } })
     })
 
+    test('a record links on Dash only when the viewer may open its page there', async ({ admin, createUser }) => {
+      const { floor, editor } = await withTeams(admin, createUser)
+      const refs = [{ table: 'Employee', id: '2004' }, { table: 'Employee', id: '2001' }, { table: 'Employee', id: '2030' }, { table: 'Employee', id: '2002' },
+        { table: 'Section', id: 'LKS-S1' }, { table: 'Section', id: 'LKS-S3' }, { table: 'Department', id: 'LKS-KIDS' }]
+      // Farah (first floor): her Team Leader yes; her Store Manager, the second floor's staff and section, and the department no; herself yes.
+      expect(await read(floor, 'dash_pages_open', { refs })).toEqual([true, false, false, true, true, false, false])
+      expect(await read(editor, 'dash_pages_open', { refs })).toEqual(refs.map(() => true))
+    })
+
     test('a leaver covers nothing, though their rows are still open', async ({ admin, createUser }) => {
       const { store, editor } = await withDepartment(admin, createUser)
       await sql`update featherbase.employee set status = 'Left' where row_id = '2020'`

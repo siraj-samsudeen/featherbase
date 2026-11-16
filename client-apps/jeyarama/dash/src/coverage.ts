@@ -95,6 +95,36 @@ async function identities(ctx: ReadContext, employees: Row[], today: string, see
 
 export const coverageReads = {
   /** #1223 spec item 15: people to look up by name or code, only those the viewer may see (at most 12). */
+  /** #1223: which of a page's people, departments and sections the viewer may open on Dash's own pages,
+   *  by the very rules those pages use (at most 200 a call). One answer per ref, in order. */
+  async dash_pages_open(ctx: ReadContext) {
+    const refs = ((ctx.payload as { refs?: unknown } | undefined)?.refs ?? []) as { table?: unknown; id?: unknown }[]
+    if (!Array.isArray(refs) || refs.length > 200) return []
+    const today = istToday()
+    if (ctx.roles?.includes(FALLBACK_ROLE)) return refs.map(() => true)
+    const { employees, areas } = await areasOf(ctx, today)
+    const mine = new Set(employees.map(e => exact(e.row_id)))
+    const ids = (table: string) => unique(refs.filter(r => r.table === table).map(r => exact(r.id)))
+    const people = ids('Employee')
+    const jobs = people.length ? (await all(ctx, T.job, JOB_FIELDS, [['employee', 'in', people]])).filter(j => holdsOn(j, today)) : []
+    const sectionIds = unique([...ids('Section'), ...jobs.map(j => exact(j.section))])
+    const sections = byId(sectionIds.length ? await all(ctx, T.section, SECTION_FIELDS, [['row_id', 'in', sectionIds]]) : [])
+    const current = byId(people.length ? (await all(ctx, T.employee, ['status'], [['row_id', 'in', people]])) : [])
+    const openPeople = new Set(people.filter(code => mine.has(code) || (text(current.get(code)?.status) === 'Current'
+      && jobs.some(j => exact(j.employee) === code && areas.some(a => jobInArea(a, j, sections.get(exact(j.section))))))))
+    const departments = ids('Department')
+    const deptRows = byId(departments.length ? await all(ctx, DEPARTMENT, ['department_id', 'store', 'name', 'manager', 'starts_on', 'ends_on'], [['row_id', 'in', departments]]) : [])
+    const openDepartments = new Set<string>()
+    for (const id of departments) { const d = deptRows.get(id); if (d && (await viewOf(ctx, today, { department: d })).kind !== 'none') openDepartments.add(id) }
+    return refs.map(r => {
+      const id = exact(r.id)
+      if (r.table === 'Employee') return openPeople.has(id)
+      if (r.table === 'Department') return openDepartments.has(id)
+      if (r.table === 'Section') return areas.some(a => inArea(a, sections.get(id)))
+      return false
+    })
+  },
+
   async coverage_people(ctx: ReadContext) {
     const q = String((ctx.payload as { q?: unknown } | undefined)?.q ?? '').trim().toLowerCase()
     if (q.length < 2) return []

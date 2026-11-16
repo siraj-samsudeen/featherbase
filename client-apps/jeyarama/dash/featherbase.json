@@ -977,6 +977,14 @@
         "authorization": {
           "kind": "generic"
         }
+      },
+      "dash_pages_open": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
       }
     }
   },

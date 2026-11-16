@@ -87,14 +87,25 @@ describe('record links follow what the viewer may open (#1223, Codex)', () => {
     expect(html).toContain('Lakeside')
   })
 
-  it('links people, departments and sections to Dash\'s own pages from the start', async () => {
-    const { renderToStaticMarkup } = await import('react-dom/server')
-    const { createElement } = await import('react')
-    const { RecordPagesProvider } = await import('@featherbase/shop-floor')
-    const { RecordLink, dashPageFor } = await import('./record-link')
-    const draw = (table: string, id: string, name: string) => renderToStaticMarkup(createElement(RecordPagesProvider, { pageFor: dashPageFor, children: createElement(RecordLink, { table, id, children: name }) }))
-    expect(draw('Employee', '2001', 'Asha Leader')).toContain('href="?view=coverage&amp;employee=2001"')
-    expect(draw('Department', 'LKS-Kids', 'Kids')).toContain('href="?view=coverage&amp;department=LKS-Kids"')
-    expect(draw('Section', 'LKS-S1', 'Sarees')).toContain('href="?view=coverage&amp;section=LKS-S1"')
+  it('asks the server, in one batch, which people, departments and sections the viewer may open on Dash', async () => {
+    const { canOpenPage, dashPageFor } = await import('./record-link')
+    const asked: unknown[] = []
+    const real = globalThis.fetch
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      const { payload } = JSON.parse(String(init.body)) as { payload: { refs: { table: string; id: string }[] } }
+      asked.push(payload.refs)
+      return new Response(JSON.stringify({ result: payload.refs.map(r => r.id !== 'MANI') }), { status: 200 })
+    }) as typeof fetch
+    try {
+      const answers = await Promise.all([canOpenPage('Employee', '2001'), canOpenPage('Employee', 'MANI'), canOpenPage('Section', 'LKS-S1')])
+      expect(answers).toEqual([true, false, true])
+      expect(asked).toHaveLength(1)
+      await canOpenPage('Employee', '2001')
+      expect(asked).toHaveLength(1)
+    } finally { globalThis.fetch = real }
+    expect(dashPageFor('Employee', '2001')).toBe('?view=coverage&employee=2001')
+    expect(dashPageFor('Department', 'LKS-Kids')).toBe('?view=coverage&department=LKS-Kids')
+    expect(dashPageFor('Section', 'LKS-S1')).toBe('?view=coverage&section=LKS-S1')
+    expect(dashPageFor('Site', 'LKS')).toBeUndefined()
   })
 })
