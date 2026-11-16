@@ -40,11 +40,11 @@ test('roles say who gave them, and the Tables they reach name the roles that gra
   // The built-in All role is every account's, not this person's: it is not listed.
   expect(page.roles.map((r) => r.role)).not.toContain('All')
 
-  expect(page.read.find((t) => t.table === 'Ae Plant')).toEqual({
+  expect(page.read.find((t) => t.table === 'Ae Plant')).toMatchObject({
     table: 'Ae Plant', own_rows: false, roles: ['Ae Plant Reader', 'Ae Plant Writer'],
   })
   // Only the own-rows grant changes it, so the change is own rows only.
-  expect(page.change.find((t) => t.table === 'Ae Plant')).toEqual({ table: 'Ae Plant', own_rows: true, roles: ['Ae Plant Writer'] })
+  expect(page.change.find((t) => t.table === 'Ae Plant')).toMatchObject({ table: 'Ae Plant', own_rows: true, roles: ['Ae Plant Writer'] })
 })
 
 test('a role given later says who gave it then; the roles held before keep theirs', async ({ admin, createUser }) => {
@@ -216,4 +216,15 @@ test('a scope provider that is not set up yet says so, and the rest of the page 
     expect(page.scope).toEqual({ app: 'placeroster', title: 'Place roster proof', problem: 'configuration', places: [] })
     expect(page.person).toBe(person.user)
   } finally { await rm(copy, { recursive: true, force: true }) }
+})
+
+test('#1224: each Table reached says its label and module, and an app Table with no label reads in words', async ({ admin, createUser }) => {
+  await admin.post('/api/table_def', { name: 'Ae Brand', module: 'Merchandising', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await grantRole(admin, { role: 'Ae Brand Editor', table: 'Ae Brand', can_read: true, can_write: true })
+  const person = await createUser({ roles: ['Ae Brand Editor'] })
+  const page = await admin.get<{ read: { table: string; label: string; module: string; app: string | null }[] }>(pageOf(person.user!))
+  expect(page.read.find((t) => t.table === 'Ae Brand')).toMatchObject({ label: 'Ae Brand', module: 'Merchandising', app: null })
+  const { tableLabel } = await import('../src/access-explanation')
+  expect(tableLabel('dash.report_access', null)).toBe('Report access')
+  expect(tableLabel('Glossary Term', '')).toBe('Glossary Term')
 })

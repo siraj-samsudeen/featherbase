@@ -9,11 +9,14 @@ interface CommentRow {
   row_id: string
   content: string
   created_by: string
+  /** #1224: who wrote it, named by the server even without Person read. */
+  author_name?: string
   created_at: string
 }
 
 export interface VersionRow {
   created_by: string
+  author_name?: string
   created_at: string
   data: {
     changed?: [string, unknown, unknown][]
@@ -35,7 +38,7 @@ export function activityQuery(table: string, name: string) {
   return queryOptions({
     queryKey: ['activity', table, name],
     queryFn: () =>
-      api.get<{ created?: { created_by?: string; created_at?: string }; comments: CommentRow[]; versions: VersionRow[] }>(
+      api.get<{ created?: { created_by?: string; author_name?: string; created_at?: string }; comments: CommentRow[]; versions: VersionRow[] }>(
         `/api/activity/${encodeURIComponent(table)}/${encodeURIComponent(name)}`,
       ),
   })

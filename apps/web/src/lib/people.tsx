@@ -89,6 +89,15 @@ export function PrincipalName({ id }: { id: string }) {
   return <span data-testid="principal-name" title={name ?? undefined}>{principalLabel(id, name, loading)}</span>
 }
 
+/** #1224: who did something. The server names the actor with the payload
+ *  (a person's display name even when this viewer may not read Person, a
+ *  service account as "Automation (…)", a system step as a phrase); without
+ *  that name it falls back to the viewer's own lookup. */
+export function ActorName({ id, name }: { id: string; name?: string | null }) {
+  if (name) return <span data-testid="principal-name" title={name}>{name}</span>
+  return <ShownName id={id} />
+}
+
 /** A record name as a person would read it: a principal's name for an opaque
  *  id (#414), the text itself for anything else. */
 export function ShownName({ id }: { id: string }) {

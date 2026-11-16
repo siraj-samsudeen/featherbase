@@ -30,12 +30,20 @@ export interface ExplainedRole {
   given_at: string | null
 }
 
+/** #1224: a Table as a reader says it, so the page can group by module and
+ *  say "Reports (Dash)" instead of dash.report_access. */
+export interface ExplainedTable extends TableReach {
+  label: string
+  module: string
+  app: string | null
+}
+
 export interface AccessExplanation {
   person: string
   every_table: boolean
   roles: ExplainedRole[]
-  read: TableReach[]
-  change: TableReach[]
+  read: ExplainedTable[]
+  change: ExplainedTable[]
   limits: { table: string; value: string; title: string | null; set_by: string; set_by_name: string | null; set_at: string }[]
   shares: { table: string; row_id: string; title: string | null; write: boolean; reshare: boolean; shared_by: string; shared_by_name: string | null; shared_at: string }[]
   /** The places the instance's scope-providing app gives the person today,
@@ -48,6 +56,16 @@ export interface AccessExplanation {
     problem: NoPersonScope['reason'] | null
     places: { label: string; reasons: { text: string; since: string | null; until: string | null }[] }[]
   } | null
+}
+
+/** A Table's label, else its name in words: "dash.report_access" reads
+ *  "Report access". */
+export function tableLabel(name: string, label: unknown): string {
+  const given = String(label ?? '').trim()
+  if (given) return given
+  const bare = name.includes('.') ? name.slice(name.indexOf('.') + 1) : name
+  const words = bare.replace(/[_-]+/g, ' ').trim()
+  return words ? words[0]!.toUpperCase() + words.slice(1) : name
 }
 
 const iso = (value: unknown) => (value as Date).toISOString()
@@ -158,6 +176,14 @@ export async function explainAccess(person: string, viewer: string): Promise<Acc
   }
 
   const reach = await principalReach(person)
+  const tableNames = [...new Set([...reach.read, ...reach.change].map((t) => t.table))]
+  const defs = new Map((tableNames.length
+    ? await sql`select name, label, module, owner_app from table_def where name in ${sql(tableNames)}` : [])
+    .map((d) => [String(d.name), d]))
+  const described = (t: TableReach): ExplainedTable => {
+    const d = defs.get(t.table)
+    return { ...t, label: tableLabel(t.table, d?.label), module: String(d?.module ?? 'Core'), app: (d?.owner_app as string | null) ?? null }
+  }
   const scope = await scopeOf(person)
 
   const scopeRows = await sql`
@@ -187,8 +213,8 @@ export async function explainAccess(person: string, viewer: string): Promise<Acc
     person,
     every_table: reach.every_table,
     roles,
-    read: reach.read,
-    change: reach.change,
+    read: reach.read.map(described),
+    change: reach.change.map(described),
     limits: scopeRows.map((r) => ({
       table: String(r.allow_table), value: String(r.for_value), title: title(String(r.allow_table), String(r.for_value)),
       set_by: String(r.created_by), set_by_name: nameOf(r.created_by), set_at: iso(r.created_at),
