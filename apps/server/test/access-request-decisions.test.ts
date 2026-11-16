@@ -10,7 +10,7 @@ import { expectStatus } from './fixtures'
 import { saveDoc } from '../src/document'
 import { _setAlertSender, DECLINED_LINE, noAccessYetPage, requestAccess } from '../src/waiting-for-access'
 import { resolve } from 'node:path'
-import { discoverPackages } from '../src/runtime-packages'
+import { discoverPackages, runGrant } from '../src/runtime-packages'
 
 afterEach(() => _setAlertSender(null))
 
@@ -270,6 +270,16 @@ describe("an app's own access in the drawer (#1173)", () => {
     await refused(decide(admin, id, 'approve', { grants: [{ app: 'grantproof', choice: 'gift:zzz' }] }), 'Gifts offers no such choice')
     await refused(decide(admin, id, 'approve', { grants: [{ app: 'nothing-here', choice: 'x' }] }), 'nothing-here gives no access from here')
     await refused(decide(admin, id, 'approve', { grants: [{ app: 'grantproof', choice: 'gift:a' }] }), 'Pick a role or something else')
+  })
+
+  test('a decision sent with a body that is not JSON is read as an empty one', async ({ admin, createUser }) => {
+    const { id } = await setup(admin, createUser)
+    const response = await admin.fetch(`/api/access_request/${id}/dismiss`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: 'not json' })
+    expect(await response.json()).toEqual({ dismissed: id })
+  })
+
+  test("an app's grant read or action is refused when the app isn't loaded here", async () => {
+    await expect(runGrant('no-such-app', 'read', 'anything', {}, 'Administrator')).rejects.toMatchObject({ type: 'NotFoundError', message: 'App is unavailable' })
   })
 
   test('an unknown decision is not found', async ({ admin, createUser }) => {
