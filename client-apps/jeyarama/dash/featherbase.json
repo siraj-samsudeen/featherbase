@@ -10,7 +10,8 @@
     "Dash All-Stores Reader",
     "Dash Reader",
     "Report Access Manager",
-    "Team Report Manager"
+    "Team Report Manager",
+    "View As Tester"
   ],
   "roleDefaults": {},
   "settings": [
@@ -83,6 +84,10 @@
       "read": "grant_options",
       "action": "give_report"
     }
+  },
+  "viewAs": {
+    "role": "View As Tester",
+    "people": "view_as_people"
   },
   "datasets": [
     {
@@ -655,6 +660,11 @@
       "can_read": true
     },
     {
+      "table": "dash.report",
+      "role": "View As Tester",
+      "can_read": true
+    },
+    {
       "table": "dash.report_bundle",
       "role": "Report Access Manager",
       "operations": {
@@ -874,6 +884,14 @@
         }
       },
       "person_search": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "view_as_people": {
         "policy": {
           "kind": "table"
         },
@@ -2071,6 +2089,12 @@
       "id": "named_cluster_head",
       "fromVersion": "0.13.6",
       "toVersion": "0.13.7",
+      "operations": []
+    },
+    {
+      "id": "view_as",
+      "fromVersion": "0.13.7",
+      "toVersion": "0.13.8",
       "operations": []
     }
   ],

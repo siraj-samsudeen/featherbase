@@ -12,7 +12,7 @@ import { test as pgTest } from '../pg-test'
 import { discoverPackages } from '../../src/runtime-packages'
 import { loadInstalledApps } from '../../src/apps'
 import { runHealthChecks } from '../../src/instance-health'
-import { APP_DIR, VERSION, pinned, saveRow } from './helpers'
+import { APP_DIR, VERSION, pinned, saveRow, VIEW_AS_TESTER, revertViewAs } from './helpers'
 // @ts-expect-error a plain .mjs module, copied in beside this file by the runner
 import { BASE_TABLES, LINKED_TABLES } from './base-tables.mjs'
 
@@ -27,8 +27,9 @@ async function previousVersion(): Promise<{ directory: string; version: string }
   const directory = await mkdtemp(resolve(APP_DIR, '..', 'dash-before-cluster-head-'))
   await cp(APP_DIR, directory, { recursive: true })
   const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
+  revertViewAs(manifest)
   const step = manifest.migrations.pop()
-  expect(step).toMatchObject({ id: 'named_cluster_head', toVersion: VERSION, operations: [] })
+  expect(step).toMatchObject({ id: 'named_cluster_head', toVersion: '0.13.7', operations: [] })
   const notCluster = (tables: string[]) => tables.filter(table => table !== 'Cluster')
   manifest.scopeProvider.tables = notCluster(manifest.scopeProvider.tables)
   manifest.scopeProvider.unmarkedTables = notCluster(manifest.scopeProvider.unmarkedTables)
@@ -79,8 +80,11 @@ describe("deploying the named cluster head to an instance shaped like production
       // The deploy: the app upgrades to this version.
       expect(await discoverPackages([previous, APP_DIR])).toEqual([])
       await loadInstalledApps()
-      const plan = await admin.post<{ planId: string; migrations: { id: string }[] }>('/api/preview_app_upgrade', { name: 'dash', version: VERSION })
-      expect(plan.migrations.map(m => m.id)).toEqual(['named_cluster_head'])
+      const plan = await admin.post<{ planId: string; roles: unknown[]; permissions: { grant?: { role: string } }[]; migrations: { id: string }[] }>('/api/preview_app_upgrade', { name: 'dash', version: VERSION })
+      expect(plan.migrations.map(m => m.id)).toEqual(['named_cluster_head', 'view_as'])
+      // #1222: the upgrade creates View As Tester with one grant, the read of the reports list.
+      expect([plan.roles, plan.permissions.filter(p => p.grant?.role === VIEW_AS_TESTER)]).toEqual([[{ create: VIEW_AS_TESTER }],
+        [{ grant: { table: 'dash.report', role: VIEW_AS_TESTER, operations: { read: '@basic' } } }]])
       await admin.post('/api/upgrade_app', { name: 'dash', version: VERSION, planId: plan.planId })
       await discoverPackages([previous, APP_DIR])
       await loadInstalledApps()

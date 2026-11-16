@@ -62,6 +62,22 @@ export function revertTeamReportGiving(manifest: { roles: string[]; permissions:
   manifest.permissions = manifest.permissions.filter(p => p.role !== TEAM_MANAGER)
 }
 
+/** #1222's role, which a later step brings: the upgrade tests of earlier steps compare without it. */
+export const VIEW_AS_TESTER = 'View As Tester'
+export const withoutViewAsTester = <T extends Grant | { create?: string }>(list: T[]) =>
+  list.filter(entry => ('create' in entry ? entry.create : ((entry as Grant).grant ?? (entry as Grant).withdraw)?.role) !== VIEW_AS_TESTER)
+
+/**
+ * #1222's 0.13.8 taken out of a manifest: no View As Tester, nor its grant, nor View as. Its read
+ * stays declared, since the earlier version shares this build's server module.
+ */
+export function revertViewAs(manifest: { roles: string[]; permissions: { role: string }[]; migrations: { id: string }[]; viewAs?: unknown }) {
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'view_as', fromVersion: '0.13.7' })
+  manifest.roles = manifest.roles.filter(role => role !== VIEW_AS_TESTER)
+  manifest.permissions = manifest.permissions.filter(p => p.role !== VIEW_AS_TESTER)
+  delete manifest.viewAs
+}
+
 /** #1216's 0.13.2 taken out of a manifest: Dash reads no employee code. */
 export function revertPersonIdentity(manifest: { baseTables: { read: { Employee: string[] } } }) {
   manifest.baseTables.read.Employee = manifest.baseTables.read.Employee.filter(column => column !== 'employee_code')
