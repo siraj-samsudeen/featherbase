@@ -296,8 +296,10 @@ function App() {
       <main className="tickets-main">
         <div className="toolbar">
           <h1>
-            {viewName}
-            {kind && <span className="toolbar-type"> · {kindLabel(kind)}</span>}
+            <span className="toolbar-name">
+              {viewName}
+              {kind && <span className="toolbar-type"> · {kindLabel(kind)}</span>}
+            </span>
             <span className="count">{visible.length}</span>
           </h1>
           <input
@@ -384,7 +386,7 @@ function App() {
               >
                 {/* #1233 (UX spec 1): the summary leads; ID · type · assignee follow; the state at the right. */}
                 <span className="ticket-top">
-                  <span className="ticket-title">{ticket.title}</span>
+                  <span className="ticket-title" title={ticket.title}>{ticket.title}</span>
                   <StatePill ticket={ticket} />
                 </span>
                 <span className="ticket-meta">
