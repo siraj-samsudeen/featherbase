@@ -2,7 +2,7 @@
 // columns (UI-013), in their server-side settings. A bare open brings them back;
 // an address that names filters shows exactly those; Clear filters takes them
 // all off, and the list then opens unfiltered.
-import { cleanup, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { tableHref } from 'shared'
 import { test, expect, renderApp } from './pg-test'
@@ -100,4 +100,26 @@ test('a remembered value that is not a list of filters opens the list unfiltered
   await renderApp(tableHref(DEPT), admin)
   expect(await rows()).toHaveLength(3)
   expect(chips()).toHaveLength(0)
+})
+
+// Codex review, round 1: the list stays mounted when the same Table is opened
+// again, so every arrival at a bare open must ask afresh.
+test('a bare open of the same Table, without leaving the list, brings back the remembered filters', async ({ admin }) => {
+  await seed(admin)
+  await admin.put(`/api/user_settings/${encodeURIComponent(DEPT)}`, { filters: [KIDS] })
+  const { router } = await renderApp(withFilters([['store', '=', 'Lakeside']]), admin)
+  await waitFor(() => expect(chips()).toHaveLength(1), T)
+  expect(chipWords()[0]).toContain('Lakeside')
+
+  await act(async () => { await router.navigate({ href: tableHref(DEPT) }) })
+  await waitFor(() => expect(chipWords()).toEqual([expect.stringContaining('Kids')]), T)
+
+  // A change made now, then another bare open: the newer filters, not the earlier visit's.
+  await userEvent.click(screen.getByTestId('filter-clear-all'))
+  await waitFor(() => expect(chips()).toHaveLength(0), T)
+  await act(async () => { await router.navigate({ href: withFilters([ATK]) }) })
+  await waitFor(() => expect(chips()).toHaveLength(1), T)
+  await act(async () => { await router.navigate({ href: tableHref(DEPT) }) })
+  await waitFor(() => expect(chips()).toHaveLength(0), T)
+  expect(await rows()).toHaveLength(3)
 })

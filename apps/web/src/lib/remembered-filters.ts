@@ -29,26 +29,36 @@ export function rememberFilters(table: string, filters: Filter[]): void {
 
 /** On a fresh open (no filters and no walk in the address), the remembered
  *  filters, once known: `undefined` while asking, `[]` for none. Any other open
- *  shows what its address says, so the answer is `[]` at once. */
+ *  shows what its address says, so the answer is `[]` at once.
+ *
+ *  Each arrival at a bare open is its own visit with its own read, including on
+ *  the same Table without the list unmounting (a filtered link, then the
+ *  sidebar's bare one): an earlier visit's answer is never reused. A read waits
+ *  for any save still queued, so it never brings back older filters. */
 export function useRememberedFilters(table: string, fresh: boolean): Filter[] | undefined {
-  const [answer, setAnswer] = useState<{ table: string; filters: Filter[] } | undefined>(
-    fresh ? undefined : { table, filters: [] },
-  )
+  // The visit: counted up each time the address becomes a bare open (derived
+  // during render, so no frame ever sees the previous visit's answer).
+  const [seen, setSeen] = useState({ table, fresh, visit: 0 })
+  let visit = seen.visit
+  if (seen.table !== table || seen.fresh !== fresh) {
+    visit = fresh ? seen.visit + 1 : seen.visit
+    setSeen({ table, fresh, visit })
+  }
+  const [answer, setAnswer] = useState<{ table: string; visit: number; filters: Filter[] } | undefined>()
   useEffect(() => {
     if (!fresh) return
     let live = true
-    api
-      .get<{ settings: { filters?: unknown } | null }>(settingsPath(table))
+    filtersWrite
+      .then(() => api.get<{ settings: { filters?: unknown } | null }>(settingsPath(table)))
       .then((res) => {
         // Read back through the address's own parser, so a stored value that is
         // not a list of filters reads as none.
         const stored = res.settings?.filters
-        if (live) setAnswer({ table, filters: Array.isArray(stored) ? (parseFilters(JSON.stringify(stored)) as Filter[]) : [] })
+        if (live) setAnswer({ table, visit, filters: Array.isArray(stored) ? (parseFilters(JSON.stringify(stored)) as Filter[]) : [] })
       })
-      .catch(() => { if (live) setAnswer({ table, filters: [] }) })
+      .catch(() => { if (live) setAnswer({ table, visit, filters: [] }) })
     return () => { live = false }
-    // Asked once per Table and open: later changes are the person's own.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [table])
-  return answer?.table === table ? answer.filters : fresh ? undefined : []
+  }, [table, fresh, visit])
+  if (!fresh) return []
+  return answer && answer.table === table && answer.visit === visit ? answer.filters : undefined
 }
