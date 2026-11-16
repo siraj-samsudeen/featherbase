@@ -21,7 +21,7 @@ a { color: var(--color-action); }
 a:focus-visible, button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 
 /* The shared sidebar beside the page, together filling the window under the shared top bar. */
-.fd-shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: calc(100vh - var(--featherbase-bar-height, 48px)); }
+.fd-shell { display: grid; grid-template-columns: auto minmax(0, 1fr); min-height: calc(100vh - var(--featherbase-bar-height, 48px)); }
 .fd-page { width: 100%; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; }
 .fd-card { padding: 20px; border: 1px solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); }
 .fd-notice { max-width: 36rem; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }

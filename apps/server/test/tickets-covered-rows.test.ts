@@ -115,16 +115,18 @@ describe('Tickets declares Data Quality Row as a base Table (#1230)', () => {
 
   test("Tickets upgrades from production's 0.2.9 with no Table and no grant added", async ({ admin }) => {
     const manifest = JSON.parse(await readFile(resolve(TICKETS_DIRECTORY, 'featherbase.json'), 'utf8'))
-    const step = manifest.migrations.find((m: any) => m.toVersion === TICKETS_VERSION)
-    expect(step).toMatchObject({ id: 'covered_rows', operations: [] })
-    // Main's ledger is untouched: 0.2.9 is the step before this one.
-    expect(manifest.migrations.findIndex((m: any) => m === step)).toBe(manifest.migrations.length - 1)
+    // #1227's 0.2.11 (no Table change) follows covered_rows: upgrade from 0.2.9
+    // across this step and every later one, to the version shipped now.
+    const step = manifest.migrations.find((m: any) => m.id === 'covered_rows')
+    expect(step).toMatchObject({ id: 'covered_rows', toVersion: '0.2.10', operations: [] })
+    const later = manifest.migrations.slice(manifest.migrations.indexOf(step))
+    expect(later.slice(1).every((m: any) => m.operations.length === 0)).toBe(true)
     const prior = await mkdtemp(resolve('test/.upgrade-tickets-1230-'))
     try {
       await cp(TICKETS_DIRECTORY, prior, { recursive: true, filter: source => !source.includes('node_modules') })
       // 0.2.9 as production runs it: no base Table read and no step past it.
       const { baseTables: _, ...rest } = manifest
-      await writeFile(resolve(prior, 'featherbase.json'), JSON.stringify({ ...rest, migrations: manifest.migrations.filter((m: any) => m !== step) }))
+      await writeFile(resolve(prior, 'featherbase.json'), JSON.stringify({ ...rest, migrations: manifest.migrations.filter((m: any) => !later.includes(m)) }))
       await writeFile(resolve(prior, 'package.json'), JSON.stringify({ ...JSON.parse(await readFile(resolve(TICKETS_DIRECTORY, 'package.json'), 'utf8')), version: step.fromVersion }))
       expect(step.fromVersion).toBe('0.2.9')
       await discoverPackages([prior])

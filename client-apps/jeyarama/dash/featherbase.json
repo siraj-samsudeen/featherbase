@@ -2072,6 +2072,12 @@
       "fromVersion": "0.13.6",
       "toVersion": "0.13.7",
       "operations": []
+    },
+    {
+      "id": "one_app_chrome",
+      "fromVersion": "0.13.7",
+      "toVersion": "0.13.8",
+      "operations": []
     }
   ],
   "baseTables": {

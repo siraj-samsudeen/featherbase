@@ -381,9 +381,21 @@
           "to": { "choices": "Full\nSample\nTargeted\nCustodian self-check\nFresh inventory" }
         }
       ]
+    },
+    {
+      "id": "one_app_chrome",
+      "fromVersion": "0.2.0",
+      "toVersion": "0.2.1",
+      "operations": []
     }
   ],
   "releaseNotes": [
+    {
+      "version": "0.2.1",
+      "changes": [
+        "The sidebar is the same width as every app's, collapses with the top bar's control or Ctrl/Cmd+B, and is a drawer on a phone"
+      ]
+    },
     {
       "version": "0.2.0",
       "changes": ["Tags are JRA- and six digits from one group series; labels print by roll, with a roll log of used, returned, spoiled and reprinted numbers", "Fresh, blind counts by area with two initials per line, daily area close by the site manager, a movement freeze and an independent recount", "Asset classes with SAP codes, types with stickers, control category and ownership; SAP matching, exceptions and reconciliation for Finance"]

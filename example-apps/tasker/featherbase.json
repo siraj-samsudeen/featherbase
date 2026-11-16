@@ -1074,9 +1074,21 @@
       "fromVersion": "3.3.1",
       "toVersion": "3.3.2",
       "operations": []
+    },
+    {
+      "id": "one_app_chrome",
+      "fromVersion": "3.3.2",
+      "toVersion": "3.3.3",
+      "operations": []
     }
   ],
   "releaseNotes": [
+    {
+      "version": "3.3.3",
+      "changes": [
+        "The sidebar collapses with the top bar's control or Ctrl/Cmd+B, as in every app, and is a drawer on a phone"
+      ]
+    },
     {
       "version": "3.3.2",
       "changes": [

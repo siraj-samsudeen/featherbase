@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, type CommandDestinations, type CommandPageDestination } from 'shared'
+import { FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, tableHref, type CommandDestinations, type CommandPageDestination } from 'shared'
+import { SIDEBAR_VIEWS_KEY } from '../lib/nav-settings'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import {
   actionForLocation,
@@ -28,7 +29,7 @@ import { isOpaqueId } from '../lib/people'
 import { EntryLabel, useLiveDestinations } from '../lib/row-titles'
 import { metaQuery, type TableMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
-import { SIDEBAR_SHORTCUT, isEditingText, useSidebarCollapsed } from '../lib/sidebar-collapsed'
+import { SIDEBAR_DRAWER_QUERY, useRegisterSidebar, useSidebar } from '../lib/sidebar-collapsed'
 import { KindIcon } from '../lib/kind-icons'
 import { DataSourcesSidebar } from '../components/DataSourcesSidebar'
 import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
@@ -37,7 +38,7 @@ import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PA
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
 import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
-import { Bell, BookOpen, CalendarClock, Clock, Compass, Database, History, Key, ListChecks, Menu, PanelLeftClose, PanelLeftOpen, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
+import { Bell, BookOpen, Bookmark, CalendarClock, Clock, Compass, Database, History, Key, ListChecks, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 
 interface SearchHit {
@@ -47,7 +48,6 @@ interface SearchHit {
   kind_label?: string
 }
 
-const MOBILE_SIDEBAR_QUERY = '(width < 48rem)'
 
 // #101 Phase 3: recorded actions also stream to the server's user_event log
 // (batched; a beacon carries the final batch through unload). The sink is
@@ -192,12 +192,13 @@ export function AdminShell({ wide, fullWidth = false }: { wide: boolean; fullWid
   }, [user?.row_id]) // eslint-disable-line react-hooks/exhaustive-deps
   const historyReady = Boolean(user && historyReadyFor === user.row_id)
   // UI-025: on narrow (mobile) widths the sidebar collapses into a drawer
-  // toggled from the navbar; on md+ it is always shown.
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const isMobileSidebar = useMediaQuery(MOBILE_SIDEBAR_QUERY)
-  // #1018: on md+ the sidebar can be collapsed to give the page its width. A
-  // phone keeps its drawer, whatever was chosen on a wider window.
-  const [collapsedChoice, toggleSidebarCollapsed] = useSidebarCollapsed(user?.row_id)
+  // toggled from the navbar; on md+ it is always shown. #1018: on md+ it can
+  // be collapsed to give the page its width; a phone keeps its drawer,
+  // whatever was chosen on a wider window. #1227: the state, the controls and
+  // Ctrl/Cmd+B are the shared ones every app's sidebar uses (TopBar).
+  useRegisterSidebar(user?.row_id)
+  const { collapsed: collapsedChoice, drawerOpen: sidebarOpen, setDrawerOpen: setSidebarOpen } = useSidebar(user?.row_id)
+  const isMobileSidebar = useMediaQuery(SIDEBAR_DRAWER_QUERY)
   const sidebarCollapsed = collapsedChoice && !isMobileSidebar
   // #489: on a phone the command bar takes its own row under the bar, so Tab
   // still follows what the eye reads: the bar's row first, then the search.
@@ -253,7 +254,7 @@ export function AdminShell({ wide, fullWidth = false }: { wide: boolean; fullWid
   // UI-015: global keyboard shortcuts.
   //   Ctrl/Cmd+K  focus the command bar (command palette)
   //   Ctrl/Cmd+S  save the current form
-  //   Ctrl/Cmd+B  collapse or reopen the sidebar (#1018)
+  //   Ctrl/Cmd+B  collapse or reopen the sidebar (#1018; lib/sidebar-collapsed)
   //   g then d    go to the Admin home
   //   g then n    new row of the current Table
   useEffect(() => {
@@ -287,14 +288,6 @@ export function AdminShell({ wide, fullWidth = false }: { wide: boolean; fullWid
         document.querySelector<HTMLButtonElement>('[data-testid=form-save]')?.click()
         return
       }
-      // With Shift it is the browser's bookmarks bar; in a field it is bold or
-      // the browser's own; a phone has its drawer instead.
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'b') {
-        if (isEditingText(e.target) || isMobileSidebar) return
-        e.preventDefault()
-        if (!e.repeat) toggleSidebarCollapsed()
-        return
-      }
       // Leader-key navigation only when not typing into a field.
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return
       const now = Date.now()
@@ -313,7 +306,7 @@ export function AdminShell({ wide, fullWidth = false }: { wide: boolean; fullWid
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [navigate, router, queryClient, isMobileSidebar, toggleSidebarCollapsed])
+  }, [navigate, router, queryClient])
 
   // #101 Phase 5: the "Last search" resume tile hands its query to the
   // command bar — prefilled and focused, ready to re-run.
@@ -741,27 +734,6 @@ export function AdminShell({ wide, fullWidth = false }: { wide: boolean; fullWid
         }
         below={isPhone && <div className="shrink-0 border-b border-border bg-surface px-2 pb-1 pt-1" data-testid="awesomebar-row">{commandBar}</div>}
       >
-        <button
-          onClick={() => setSidebarOpen((o) => !o)}
-          data-testid="sidebar-toggle"
-          aria-label="Toggle menu"
-          aria-expanded={sidebarOpen}
-          className={iconButtonClasses('md:hidden')}
-        >
-          <Menu aria-hidden size={20} />
-        </button>
-        {/* #1018: stays put in the bar, so the way back is where the way out was. */}
-        <button
-          type="button"
-          onClick={toggleSidebarCollapsed}
-          data-testid="sidebar-collapse"
-          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          aria-keyshortcuts="Meta+B Control+B"
-          title={`${sidebarCollapsed ? 'Expand' : 'Collapse'} sidebar (${SIDEBAR_SHORTCUT})`}
-          className={iconButtonClasses('hidden md:inline-flex')}
-        >
-          {sidebarCollapsed ? <PanelLeftOpen aria-hidden size={20} /> : <PanelLeftClose aria-hidden size={20} />}
-        </button>
         {!isPhone && commandBar}
       </TopBar>
 
@@ -854,6 +826,8 @@ export function AdminShell({ wide, fullWidth = false }: { wide: boolean; fullWid
               ))}
             </div>
           )}
+          {/* #1229: the person's saved views, own and starred, one click each. */}
+          <SidebarSavedViews onOpen={(href) => { setSidebarOpen(false); router.history.push(href) }} />
           {/* Two labelled groups under the Home Pages and the recents, headed
               like "Recently opened". Visibility per item is unchanged; a group
               with nothing visible for this person drops its heading too. */}
@@ -987,6 +961,54 @@ export function SidebarGroup({ heading, icon: HeadingIcon, testid, items }: {
 // collided with the import wizard's Check button and broke an unrelated
 // journey depending only on which spec had run before it. A link cannot
 // collide with a button however the trail is worded.
+interface SidebarView {
+  row_id: string
+  table: string
+  label: string
+  filters: unknown
+  mine: boolean
+}
+
+/** #1229: "Saved views" — the person's own views on every Table and the shared
+ *  ones they starred, each opening its Table's list with the view's filters. A
+ *  person with none sees no group. */
+function SidebarSavedViews({ onOpen }: { onOpen: (href: string) => void }) {
+  const views = useQuery({
+    queryKey: SIDEBAR_VIEWS_KEY,
+    queryFn: () => api.get<{ views: SidebarView[] }>('/api/saved_views/sidebar'),
+  })
+  const list = views.data?.views ?? []
+  if (list.length === 0) return null
+  return (
+    <div className="border-t border-border px-2 py-2" data-testid="sidebar-saved-views">
+      <h2 className="flex items-center gap-1.5 px-2 pb-0.5 pt-1 text-xs font-medium text-ink-subtle">
+        <Bookmark aria-hidden size={12} />
+        Saved views
+      </h2>
+      {list.map((view) => {
+        const href = `${tableHref(view.table)}?filters=${encodeURIComponent(JSON.stringify(view.filters))}`
+        return (
+          <a
+            key={view.row_id}
+            href={href}
+            onClick={(e) => {
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+              e.preventDefault()
+              onOpen(href)
+            }}
+            data-testid="sidebar-saved-view"
+            title={`${view.label} — ${view.table}${view.mine ? '' : ' (shared with you)'}`}
+            className={touchRowClasses('flex w-full flex-col justify-center rounded-md px-2 py-1 text-left hover:bg-subtle')}
+          >
+            <span className="truncate text-sm text-ink">{view.label}</span>
+            <span className="truncate text-xs text-ink-subtle">{view.table}{view.mine ? '' : ' · shared'}</span>
+          </a>
+        )
+      })}
+    </div>
+  )
+}
+
 function SidebarRecentRow({
   entry,
   frequent,

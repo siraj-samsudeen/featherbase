@@ -12,8 +12,9 @@ import { useI18n } from '../lib/i18n'
 import { BarControls, useBarControls } from './BarControls'
 import { AppSwitcher, useOpenAdmin } from './AppSwitcher'
 import { Logo } from './Logo'
-import { TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, useMediaQuery } from '@featherbase/shop-floor'
-import { CalendarDays, ChartColumn, House, Inbox, List, ListChecks, Monitor, Moon, Sun, Target, UserRound, type LucideIcon } from '@featherbase/shop-floor'
+import { RecordLink, TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { CalendarDays, ChartColumn, House, Inbox, List, ListChecks, Menu, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Sun, Target, UserRound, type LucideIcon } from '@featherbase/shop-floor'
+import { SIDEBAR_SHORTCUT, listenForSidebarKeys, useSidebar } from '../lib/sidebar-collapsed'
 
 // #489 (design D3, "One top bar on every address"): one bar, drawn by the
 // platform, on every address and every shell — the Admin screens, an app's
@@ -213,6 +214,15 @@ export function TopBar({
   const hasControls = useBarControls(caps && controlsOf ? controlsOf : undefined).length > 0
   const compactSwitcher = Boolean(app) && hasControls
   const tabs = useAppTabs(context, installed, isPhone && Boolean(caps))
+  // #1227: the page's sidebar, wherever it is drawn (the Admin's own, or an
+  // app's <featherbase-sidebar>), is worked from here, the same on every page.
+  const sidebar = useSidebar(getSessionUser()?.row_id)
+  useEffect(() => listenForSidebarKeys(() => getSessionUser()?.row_id), [])
+  // #1227: the switcher on every signed-in page, named for the page's app; a
+  // page of the person's own is named for where they belong (#501).
+  const switcherApp = app ?? (context && name
+    ? switcherAppFor(context, name, Boolean(forPerson || !caps?.admin), (of) => homeHref(of, of === context ? installed : Boolean(whoami?.installed_apps?.includes(of))))
+    : undefined)
   // Over an app's own page the bar's router is a private one, so the open tab
   // follows the document's own address (#650).
   const barAddress = useBarAddress()
@@ -234,8 +244,11 @@ export function TopBar({
           className={`flex min-w-0 items-center gap-1 md:px-3 ${controlsOf && !app ? 'md:shrink-0' : compactSwitcher ? 'max-sm:shrink-0 sm:flex-none md:w-60 md:shrink-0' : 'flex-1 sm:flex-none md:w-60 md:shrink-0'}`}
           data-testid="top-bar-left"
         >
-          {left ?? (app ? <AppSwitcher app={app} compact={compactSwitcher} /> : context && name && <BarName href={homeHref(context, installed)} name={name} />)}
+          {left ?? (caps && context && name
+            ? <AppSwitcher app={switcherApp} compact={compactSwitcher} />
+            : context && name && <BarName href={homeHref(context, installed)} name={name} />)}
         </div>
+        {sidebar.present > 0 && <SidebarControls sidebar={sidebar} />}
         {caps && controlsOf && <BarControls app={controlsOf} />}
         {children ?? <div className="hidden flex-1 sm:block" aria-hidden="true" />}
         <div className="ml-auto flex shrink-0 items-center gap-1 sm:ml-0 sm:gap-2" data-testid="top-bar-right">
@@ -256,6 +269,50 @@ export function TopBar({
           tabs={tabs.map((tab) => ({ label: tab.label, icon: TAB_ICON[tab.icon] ?? List, href: tab.href, current: tab.href === open }))}
         />
       )}
+    </>
+  )
+}
+
+/** The app the switcher shows as current. Admin's own screens show the Admin
+ *  (none); a page of someone who cannot use the Admin names where they belong,
+ *  or the platform's neutral name when that is nowhere. */
+function switcherAppFor(
+  context: string, name: string, personal: boolean, home: (app: string) => string,
+): { name: string; title: string; href: string } | undefined {
+  // The entry leads where the bar's name always has (homeHref): an interim
+  // page while no app of that name is installed (#671).
+  if (context !== ADMIN) return { name: context, title: name, href: home(context) }
+  if (!personal) return undefined
+  return name === PLATFORM_NAME ? { name: '', title: PLATFORM_NAME, href: '/' } : { name: DASH, title: name, href: home(DASH) }
+}
+
+/** #1018 / #1227: the sidebar's controls, right after the switcher on every
+ *  page with a sidebar, so the way back is where the way out was. Narrower
+ *  than md the sidebar is a drawer, opened from the menu button. */
+function SidebarControls({ sidebar }: { sidebar: ReturnType<typeof useSidebar> }) {
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => sidebar.setDrawerOpen(!sidebar.drawerOpen)}
+        data-testid="sidebar-toggle"
+        aria-label="Toggle menu"
+        aria-expanded={sidebar.drawerOpen}
+        className={iconButtonClasses('shrink-0 md:hidden')}
+      >
+        <Menu aria-hidden size={20} />
+      </button>
+      <button
+        type="button"
+        onClick={sidebar.toggleCollapsed}
+        data-testid="sidebar-collapse"
+        aria-label={sidebar.collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        aria-keyshortcuts="Meta+B Control+B"
+        title={`${sidebar.collapsed ? 'Expand' : 'Collapse'} sidebar (${SIDEBAR_SHORTCUT})`}
+        className={iconButtonClasses('hidden shrink-0 md:inline-flex')}
+      >
+        {sidebar.collapsed ? <PanelLeftOpen aria-hidden size={20} /> : <PanelLeftClose aria-hidden size={20} />}
+      </button>
     </>
   )
 }
@@ -393,6 +450,8 @@ function AccountMenu({ inMenu }: { inMenu?: { offerAdmin: boolean } }) {
   const user = getSessionUser()
   const { t } = useI18n()
   const signOutNow = useSignOut()
+  const navigate = useNavigate()
+  const caps = useWhoAmI().data?.capabilities
   const [open, setOpen] = useState(false)
   const wrapper = useRef<HTMLDivElement>(null)
   const avatar = useRef<HTMLButtonElement>(null)
@@ -447,9 +506,21 @@ function AccountMenu({ inMenu }: { inMenu?: { offerAdmin: boolean } }) {
       </button>
       {open && (
         <div id={menuId} className={cardClasses('absolute right-0 top-full z-30 mt-1 w-64 overflow-hidden py-1')} data-testid="account-menu" role="menu" aria-label={t('Account')}>
-          <div className="border-b border-border px-3 py-2" data-testid="account-identity">
-            <p className="truncate text-sm font-medium text-ink">{user?.full_name || user?.email || user?.row_id}</p>
-            {user?.email && user.full_name && <p className="truncate text-xs text-ink-subtle">{user.email}</p>}
+          <div className="border-b border-border px-3 py-2 text-sm" data-testid="account-identity">
+            {/* #1227: a record shown is a RecordLink — the person's own Person record, for
+                someone who may open it (a System Manager, or a reader of Person). */}
+            {user && (
+              <RecordLink
+                table="Person"
+                rowId={user.row_id}
+                name={user.full_name || user.email}
+                detail={user.full_name ? user.email : undefined}
+                layout="two-lines"
+                canOpen={Boolean(caps && (caps.manage || caps.tables.includes('Person')))}
+                onNavigate={(href) => { setOpen(false); void navigate({ href }) }}
+                className="max-w-full"
+              />
+            )}
           </div>
           {inMenu && (
             <>
