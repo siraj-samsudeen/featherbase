@@ -228,3 +228,23 @@ test('#1224: each Table reached says its label and module, and an app Table with
   expect(tableLabel('dash.report_access', null)).toBe('Report access')
   expect(tableLabel('Glossary Term', '')).toBe('Glossary Term')
 })
+
+test('#1224 the page says which of the records it names the viewer may open', async ({ admin, createUser }) => {
+  await admin.post('/api/table_def', { name: 'Ae Depot', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await grantRole(admin, { role: 'Ae Depot Reader', table: 'Ae Depot', can_read: true })
+  const person = await createUser({ roles: ['Ae Depot Reader'] })
+  const asManager = await admin.get<{ viewer_opens: string[] }>(pageOf(person.user!))
+  expect(asManager.viewer_opens).toEqual(expect.arrayContaining(['Role', 'Person', 'Service Account', 'Ae Depot']))
+  // Their own page: they may open the Table they read, never Person or Role.
+  const own = await person.get<{ viewer_opens: string[] }>(pageOf(person.user!))
+  expect(own.viewer_opens).toContain('Ae Depot')
+  expect(own.viewer_opens).not.toContain('Person')
+  expect(own.viewer_opens).not.toContain('Role')
+})
+
+test('#1224 the page names the person it is about, even to a viewer who may not read Person, and lists the apps they can open', async ({ admin, createUser }) => {
+  const person = await createUser({ roles: [], fullName: 'Ae Named Person' })
+  const own = await person.get<{ person_name: string; apps: { name: string; title: string }[] }>(pageOf(person.user!))
+  expect(own.person_name).toBe('Ae Named Person')
+  expect(Array.isArray(own.apps)).toBe(true)
+})

@@ -366,7 +366,7 @@ describe('Tickets: raising a ticket on someone\'s behalf (#1193)', () => {
     const shown = detail.privateEvents.find((e: any) => e.operation === 'raise_on_behalf')
     expect(shown.by).toBe(agent.user)
     expect(JSON.parse(shown.text)).toEqual({ raiser: w.next.user })
-    expect(detail.names).toMatchObject({ [agent.user]: 'dq-agent', [w.next.user]: 'Next Raiser' })
+    expect(detail.names).toMatchObject({ [agent.user]: 'Automation (dq agent)', [w.next.user]: 'Next Raiser' })
     expect((await read(w.next, 'queue')).tickets.map((t: any) => t.row_id)).toContain(ticket.row_id)
   })
 

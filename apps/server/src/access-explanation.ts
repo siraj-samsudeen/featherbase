@@ -1,9 +1,10 @@
 import { sql } from './db'
 import { AppError } from './errors'
 import { activeApps } from './app-lifecycle'
-import { OPEN_ROLES, PLATFORM_ROLES, getRoles } from './permissions'
+import { OPEN_ROLES, PLATFORM_ROLES, assertPermission, getRoles } from './permissions'
+import { canUseAdmin } from './landing'
 import { NoPersonScope, coversPersonScope, resolvePersonScope } from './person-scope'
-import { findScopeProvider } from './runtime-packages'
+import { appCatalog, findScopeProvider } from './runtime-packages'
 import { principalReach, type TableReach } from './token-reach'
 import { rowTitles } from './row-titles'
 import { everyoneRoles } from './everyone-roles'
@@ -40,10 +41,19 @@ export interface ExplainedTable extends TableReach {
 
 export interface AccessExplanation {
   person: string
+  /** #1224: the person's display name, for the page title; the viewer may
+   *  open this page, so who it is about is not hidden from them. */
+  person_name: string | null
+  /** #1224: the apps the person can open, by title, for the summary. */
+  apps: { name: string; title: string; href: string }[]
   every_table: boolean
   roles: ExplainedRole[]
   read: ExplainedTable[]
   change: ExplainedTable[]
+  /** #1224: which of the Tables this page names (Role, Person, Service
+   *  Account, each Table reached) the VIEWER may open in the Admin, so the
+   *  page links only what will open. Empty when they cannot use the Admin. */
+  viewer_opens: string[]
   limits: { table: string; value: string; title: string | null; set_by: string; set_by_name: string | null; set_at: string }[]
   shares: { table: string; row_id: string; title: string | null; write: boolean; reshare: boolean; shared_by: string; shared_by_name: string | null; shared_at: string }[]
   /** The places the instance's scope-providing app gives the person today,
@@ -209,9 +219,21 @@ export async function explainAccess(person: string, viewer: string): Promise<Acc
   const nameOf = (id: unknown) => (id == null ? null : named.get(String(id)) ?? null)
   for (const r of roles) r.given_by_name = nameOf(r.given_by)
 
+  const candidates = [...new Set(['Role', 'Person', 'Service Account', ...tableNames, ...refs.map((r) => r.table)])]
+  const viewer_opens: string[] = []
+  // One after the other: inside a request they share its transaction.
+  if (await canUseAdmin(viewer))
+    for (const table of candidates)
+      if (await assertPermission(viewer, table, 'read').then(() => true, () => false)) viewer_opens.push(table)
+
+  const apps = (await appCatalog(person)).map((a) => ({ name: String(a.name), title: String(a.title ?? a.name), href: String(a.href) }))
+
   return {
     person,
+    person_name: (await actorNames([person])).get(person) ?? null,
+    apps,
     every_table: reach.every_table,
+    viewer_opens,
     roles,
     read: reach.read.map(described),
     change: reach.change.map(described),

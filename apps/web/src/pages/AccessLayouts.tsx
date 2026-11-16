@@ -1,13 +1,39 @@
-import { useState, type ReactNode } from 'react'
-import { Card, Segmented, StatusPill, fmtDate } from '@featherbase/shop-floor'
-import { ActorName } from '../lib/people'
+import { createContext, useContext, useState, type ReactNode } from 'react'
+import { rowHref, tableHref } from 'shared'
+import { Card, Segmented, fmtInstantIST } from '@featherbase/shop-floor'
+import { ActorName, isOpaqueId } from '../lib/people'
+
+// #1224 (Siraj: "everything that is a record in FB has to be presented as a
+// link"): each role, table, person and service account links to its record
+// when the viewer may open it (the server's viewer_opens), else plain text.
+// One place, so the shared RecordLink can take over from it.
+export const OpensContext = createContext<ReadonlySet<string>>(new Set())
+
+export function Rec({ table, id, children }: { table: string; id?: string; children: ReactNode }) {
+  const opens = useContext(OpensContext)
+  if (!opens.has(table)) return <>{children}</>
+  // The UI standard's link: action colour, medium weight, underline only on hover and focus.
+  return <a href={id ? rowHref(table, id) : tableHref(table)} className="font-medium text-action hover:underline focus-visible:underline" data-testid="access-record-link">{children}</a>
+}
+
+/** The Table an actor id is a row of, when it is one. */
+const actorTable = (id: string) => (id.startsWith('svc_') ? 'Service Account' : isOpaqueId(id) || id === 'Administrator' ? 'Person' : null)
+export function Actor({ id, name }: { id: string; name?: string | null }) {
+  const table = actorTable(id)
+  const shown = <ActorName id={id} name={name} />
+  return table ? <Rec table={table} id={id}>{shown}</Rec> : shown
+}
+/** A role, linked to its Role row; the built-in All is not one to open. */
+function RoleRef({ role }: { role: string }) {
+  return role === 'All' ? <>{roleTitle(role)}</> : <Rec table="Role" id={role}>{roleTitle(role)}</Rec>
+}
 
 // #1224: "What you can see", three ways, for a reader who is not technical.
 // Summary says it in sentences first; By role shows each role as a card; By
 // area groups the Tables by the part of the business they belong to. Each is
 // the same answer, built from the same explanation.
 
-export interface TableReach { table: string; own_rows: boolean; roles: string[]; label?: string; module?: string; app?: string | null }
+export interface TableReach { table: string; own_rows: boolean; roles: string[]; own_rows_roles?: string[]; label?: string; module?: string; app?: string | null }
 export interface RoleRow { role: string; app: string | null; through: string | null; everyone?: boolean; given_by: string | null; given_by_name?: string | null; given_at: string | null
   /** A built-in role every account holds (All): never given, never listed by the server. */
   implicit?: boolean }
@@ -45,7 +71,7 @@ export function useAccessLayout(): [AccessLayout, (l: AccessLayout) => void] {
 export function LayoutToggle({ value, onChange }: { value: AccessLayout; onChange: (l: AccessLayout) => void }) {
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid="access-layout">
-      <span className="text-sm text-ink-muted">Show as</span>
+      <span className="text-[13px] text-ink-muted">Show as</span>
       <Segmented label="Show as" options={ACCESS_LAYOUTS} value={value} onChange={onChange} />
     </div>
   )
@@ -62,6 +88,9 @@ export interface Reached {
   readOwn: boolean
   changeOwn: boolean
   readRoles: string[]
+  /** Roles that give reading, or changing, only for own rows. */
+  readOwnRoles: string[]
+  changeOwnRoles: string[]
   changeRoles: string[]
 }
 
@@ -74,11 +103,11 @@ export function reachedTables(read: TableReach[], change: TableReach[]): Reached
   const by = new Map<string, Reached>()
   const entry = (t: TableReach) => {
     let r = by.get(t.table)
-    if (!r) by.set(t.table, r = { table: t.table, label: t.label ?? t.table, area: areaOf(t), read: false, change: false, readOwn: false, changeOwn: false, readRoles: [], changeRoles: [] })
+    if (!r) by.set(t.table, r = { table: t.table, label: t.label ?? t.table, area: areaOf(t), read: false, change: false, readOwn: false, changeOwn: false, readRoles: [], changeRoles: [], readOwnRoles: [], changeOwnRoles: [] })
     return r
   }
-  for (const t of read) Object.assign(entry(t), { read: true, readRoles: t.roles, readOwn: t.own_rows })
-  for (const t of change) Object.assign(entry(t), { change: true, changeRoles: t.roles, changeOwn: t.own_rows })
+  for (const t of read) Object.assign(entry(t), { read: true, readRoles: t.roles, readOwn: t.own_rows, readOwnRoles: t.own_rows_roles ?? [] })
+  for (const t of change) Object.assign(entry(t), { change: true, changeRoles: t.roles, changeOwn: t.own_rows, changeOwnRoles: t.own_rows_roles ?? [] })
   return [...by.values()].sort((a, b) => a.area.localeCompare(b.area) || a.label.localeCompare(b.label))
 }
 
@@ -88,7 +117,6 @@ export function byArea(tables: Reached[]): [string, Reached[]][] {
   return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))
 }
 
-const roleName = (role: string) => (role === 'All' ? 'every account' : role)
 
 /** "8 tables · change all", "10 tables · change 8", "1 table · read only". */
 function countLine(ts: Reached[]): string {
@@ -104,74 +132,94 @@ function areaList(areas: string[]): string {
   return `${areas.slice(0, 3).join(', ')} and ${areas.length - 3} more areas`
 }
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
-const dayOf = (iso: string) => fmtDate(new Date(Date.parse(iso) + 330 * 60_000).toISOString().slice(0, 10))
 
 /** Where a role comes from. `lead` starts the line ("Given by …"); otherwise
  *  it follows the role's name (" — given by …"). */
 export function GivenBy({ r, lead }: { r: RoleRow; lead?: boolean }) {
   const say = (text: string) => (lead ? text.charAt(0).toUpperCase() + text.slice(1) : ` — ${text}`)
   if (r.app) return <span className="text-ink-muted">{say(`from app ${r.app}, through ${r.through}`)}</span>
-  if (r.implicit) return <span className="text-ink-muted">{say('every account holds it')}</span>
+  if (r.implicit) return <span className="text-ink-muted">{say('every signed-in account has these')}</span>
   // The words are the permissions-and-roles spec's (#923).
   if (r.everyone) return <span className="text-ink-muted">{say('everyone who signs in holds it (System Settings)')}</span>
   if (!r.given_by || !r.given_at) return null
-  return <span className="text-ink-muted">{say('given by ')}<ActorName id={r.given_by} name={r.given_by_name} />{`, ${dayOf(r.given_at)}`}</span>
+  return <span className="text-ink-muted">{say('given by ')}<Actor id={r.given_by} name={r.given_by_name} />{`, ${fmtInstantIST(r.given_at)}`}</span>
 }
 
-function Chips({ t }: { t: Reached }) {
-  return (
-    <span className="flex shrink-0 gap-1">
-      {t.read && <StatusPill tone="neutral">{t.readOwn ? 'Read own rows' : 'Read'}</StatusPill>}
-      {t.change && <StatusPill tone="positive">{t.changeOwn ? 'Change own rows' : 'Change'}</StatusPill>}
-    </span>
+/** What one operation reaches: ✓, "own rows only", or nothing. */
+function Can({ on, own }: { on: boolean; own: boolean }) {
+  if (!on) return <span className="text-ink-subtle" aria-label="No">—</span>
+  return own ? <span className="text-ink">own rows only</span> : <span className="text-positive" aria-label="Yes">✓</span>
+}
+
+const onlyEveryAccount = (t: Reached) => rolesOfTable(t).every((role) => role === 'All')
+
+/** Who gives a Table: role links, or "every account". */
+function Through({ t }: { t: Reached }) {
+  const roles = rolesOfTable(t)
+  return <>{roles.map((role, i) => <span key={role}>{i > 0 && ', '}{role === 'All' ? 'every account' : <RoleRef role={role} />}</span>)}</>
+}
+
+/** The tables reached, as one table with a header row per area (UI
+ *  standard §5). Within an area, the tables every account reaches fold into
+ *  one line ("Every account can read 8 tables — Show"), spec item 7. */
+export function ReachTable({ tables, through }: { tables: Reached[]; through: boolean }) {
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set())
+  const cols = through ? 4 : 3
+  const row = (t: Reached) => (
+    <tr key={t.table} className="border-t border-border" data-testid="access-table-row">
+      <td className="py-1.5 pr-3"><Rec table={t.table}>{t.label}</Rec></td>
+      <td className="py-1.5 pr-3"><Can on={t.read} own={t.readOwn} /></td>
+      <td className="py-1.5 pr-3"><Can on={t.change} own={t.changeOwn} /></td>
+      {through && <td className="py-1.5 text-ink-muted"><Through t={t} /></td>}
+    </tr>
   )
-}
-
-/** A collapsed group of Tables, opened by its heading. */
-function Group({ title, count, testid, children, open }: { title: ReactNode; count: string; testid: string; children: ReactNode; open?: boolean }) {
   return (
-    <details className="group rounded-control border border-border" data-testid={testid} open={open}>
-      <summary className="flex min-h-control cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm">
-        <span className="font-medium text-ink">{title}</span>
-        <span className="flex items-center gap-2 text-ink-muted">{count}<span aria-hidden className="transition-transform group-open:rotate-90">›</span></span>
-      </summary>
-      <div className="border-t border-border px-3 py-2">{children}</div>
-    </details>
-  )
-}
-
-/** The tables of one group. Which role gives them is said once for the
- *  group when it is the same for all, and on a row only where it differs. */
-function TableRows({ tables, showRoles }: { tables: Reached[]; showRoles: boolean }) {
-  const shared = tables.length ? rolesOfTable(tables[0]!).join('\u0000') : ''
-  const same = tables.every((t) => rolesOfTable(t).join('\u0000') === shared)
-  return (
-    <>
-    {showRoles && same && tables.length > 0 && (
-      <p className="pb-1 text-xs text-ink-muted" data-testid="access-group-roles">All through {rolesOfTable(tables[0]!).map(roleName).join(', ')}</p>
-    )}
-    <ul className="divide-y divide-border text-sm">
-      {tables.map((t) => {
-        const roles = rolesOfTable(t).map(roleName)
+    <table className="w-full text-left text-sm" data-testid="access-reach-table">
+      <thead>
+        <tr className="text-[13px] font-medium text-ink-muted">
+          <th className="pb-2 pr-3 font-medium">Table</th>
+          <th className="w-28 pb-2 pr-3 font-medium">Read</th>
+          <th className="w-32 pb-2 pr-3 font-medium">Change</th>
+          {through && <th className="pb-2 font-medium">Through</th>}
+        </tr>
+      </thead>
+      {byArea(tables).map(([area, ts]) => {
+        const shared = ts.filter(onlyEveryAccount)
+        const own = ts.filter((t) => !onlyEveryAccount(t))
+        const open = opened.has(area)
+        const changes = shared.filter((t) => t.change).length
         return (
-          <li key={t.table} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-1.5" data-testid="access-table-row">
-            <span className="min-w-0">
-              <span className="text-ink">{t.label}</span>
-              {showRoles && !same && <span className="block text-xs text-ink-muted">through {roles.join(', ')}</span>}
-            </span>
-            <Chips t={t} />
-          </li>
+          <tbody key={area} data-testid="access-area-group">
+            <tr className="bg-subtle">
+              <th colSpan={cols} scope="rowgroup" className="px-2 py-1.5 text-[13px] font-semibold text-ink">
+                {area} <span className="font-normal text-ink-muted">· {countLine(ts)}</span>
+              </th>
+            </tr>
+            {own.map(row)}
+            {shared.length > 0 && (
+              <tr className="border-t border-border" data-testid="access-every-account-line">
+                <td colSpan={cols} className="py-1.5 text-ink-muted">
+                  Every account can {changes ? 'read and change' : 'read'} {plural(shared.length, 'table')} here
+                  {changes && changes < shared.length ? ` (change ${changes})` : ''}{' — '}
+                  <button type="button" className="font-medium text-action hover:underline" aria-expanded={open}
+                    onClick={() => setOpened((o) => { const n = new Set(o); if (open) n.delete(area); else n.add(area); return n })}>
+                    {open ? 'Hide' : 'Show'}
+                  </button>
+                </td>
+              </tr>
+            )}
+            {open && shared.map(row)}
+          </tbody>
         )
       })}
-    </ul>
-    </>
+    </table>
   )
 }
 
 function doesWhat(tables: Reached[], you: string): string {
   const changes = tables.filter((t) => t.change).length
   const readsOnly = tables.filter((t) => t.read && !t.change).length
-  if (changes && readsOnly) return `${you} can change ${plural(changes, 'table')} and read ${readsOnly} more`
+  if (changes && readsOnly) return `${you} can read ${plural(changes + readsOnly, 'table')} and change ${changes} of them`
   if (changes) return `${you} can read and change ${plural(changes, 'table')}`
   return `${you} can read ${plural(readsOnly, 'table')}`
 }
@@ -189,12 +237,12 @@ function roleSentence(tables: Reached[], you: string): string {
 }
 
 /** What ONE role gives, not what the person has from all their roles
- *  together (Codex round 3): Reader's card never says Change because Writer
- *  gives it. The own-rows mark is the merged one: the reach answer is per
- *  operation, not per role. */
+ *  together (Codex rounds 3 and 5): Reader's card never says Change because
+ *  Writer gives it, nor Read (all rows) because another role does. */
 const tablesOf = (role: string, tables: Reached[]) => tables
   .filter((t) => t.readRoles.includes(role) || t.changeRoles.includes(role))
-  .map((t) => ({ ...t, read: t.readRoles.includes(role), change: t.changeRoles.includes(role) }))
+  .map((t) => ({ ...t, read: t.readRoles.includes(role), change: t.changeRoles.includes(role),
+    readOwn: t.readOwnRoles.includes(role), changeOwn: t.changeOwnRoles.includes(role) }))
 
 /** Which rows: "every row" only when nothing narrows it (Codex round 3). */
 function rowsLine({ limits, ownOnly, places, everyTable, self }: { limits: number; ownOnly: number; places: { title: string; count: number } | null; everyTable: boolean; self: boolean }): string {
@@ -210,10 +258,15 @@ function rowsLine({ limits, ownOnly, places, everyTable, self }: { limits: numbe
 
 // ── (c) Summary: sentences first, the detail behind one button ──────────────
 
-export function SummaryLayout({ roles, tables, everyTable, limits, shares, places, self }: {
+export function SummaryLayout({ roles, tables, everyTable, limits, shares, places, apps, placeLabels, notes, self }: {
   roles: RoleRow[]; tables: Reached[]; everyTable: boolean; limits: number; shares: number
   /** The app that limits the person to places, and how many it gives; null when none does. */
-  places: { title: string; count: number } | null; self: boolean
+  places: { title: string; count: number } | null
+  /** The apps the person can open, and the places an app gives them (spec item 3). */
+  apps: { name: string; title: string; href: string }[]; placeLabels: string[]
+  /** Muted lines for sections that are empty, so they need no card of their own (spec item 8). */
+  notes: ReactNode
+  self: boolean
 }) {
   const [all, setAll] = useState(false)
   const you = self ? 'You' : 'They'
@@ -222,21 +275,38 @@ export function SummaryLayout({ roles, tables, everyTable, limits, shares, place
   const others = lines.filter(({ reach }) => reach.length === 0)
   return (
     <Card className="p-4" data-testid="access-summary">
-      <h2 className="mb-2 text-sm font-semibold text-ink">What {self ? 'you' : 'they'} can do, in short</h2>
+      <h2 className="mb-3 text-base font-semibold text-ink">What {self ? 'you' : 'they'} can do, in short</h2>
+      <dl className="mb-3 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm" data-testid="access-at-a-glance">
+        <dt className="text-ink-muted">{self ? 'You can open' : 'They can open'}</dt>
+        <dd className="text-ink" data-testid="access-apps">{apps.length
+          ? apps.map((a, i) => <span key={a.name}>{i > 0 && ', '}<a href={a.href} className="font-medium text-action hover:underline">{a.title}</a></span>)
+          : 'No apps yet'}</dd>
+        {placeLabels.length > 0 && <>
+          <dt className="text-ink-muted">{self ? 'Your places' : 'Their places'}</dt>
+          <dd className="text-ink" data-testid="access-places-line">{placeLabels.join(', ')}</dd>
+        </>}
+      </dl>
       <ul className="space-y-3 text-sm">
         {everyTable && (
-          <li className="text-ink" data-testid="access-summary-line">{you} can read and change every Table — through System Manager.</li>
+          <li className="text-ink" data-testid="access-summary-line">{you} can read and change every Table — through System Manager.
+            <ul className="mt-1 space-y-0.5 text-xs text-ink-muted">
+              {roles.map((r) => (
+                <li key={`${r.app ?? ''}/${r.role}/${r.through ?? ''}`} data-testid="access-role">
+                  <span className="font-medium text-ink"><RoleRef role={r.role} /></span><GivenBy r={r} />
+                </li>
+              ))}
+            </ul>
+          </li>
         )}
         {reaching.map(({ r, reach }) => (
           <li key={`${r.app ?? ''}/${r.role}/${r.through ?? ''}`} data-testid="access-summary-line">
             <span className="text-ink">{roleSentence(reach, you)}.</span>
             <span className="block text-xs text-ink-muted" data-testid="access-role">
-              Through <span className="font-medium text-ink">{roleTitle(r.role)}</span>
-              <GivenBy r={r} />
+              {r.implicit ? 'Open to every signed-in account' : <>Through <span className="font-medium text-ink"><RoleRef role={r.role} /></span><GivenBy r={r} /></>}
             </span>
           </li>
         ))}
-        {others.length > 0 && (
+        {!everyTable && others.length > 0 && (
           <li data-testid="access-summary-line">
             <span className="text-ink">{self ? 'You also hold' : 'They also hold'} {plural(others.length, 'role')} that {others.length === 1 ? 'reaches' : 'reach'} no tables of {others.length === 1 ? 'its' : 'their'} own:</span>
             <ul className="mt-1 space-y-0.5 text-xs text-ink-muted">
@@ -256,13 +326,14 @@ export function SummaryLayout({ roles, tables, everyTable, limits, shares, place
           {shares > 0 && ` ${plural(shares, 'row is', 'rows are')} also shared with ${self ? 'you' : 'them'} directly.`}
         </li>
       </ul>
+      {notes}
       {!everyTable && tables.length > 0 && (
         <div className="mt-3">
           <button type="button" className="text-sm font-medium text-action hover:underline" aria-expanded={all}
             onClick={() => setAll(!all)} data-testid="access-show-all">
             {all ? 'Hide the tables' : `Show all ${plural(tables.length, 'table')}`}
           </button>
-          {all && <div className="mt-2"><AreaGroups tables={tables} showRoles={roles.length > 1} /></div>}
+          {all && <div className="mt-2"><ReachTable tables={tables} through /></div>}
         </div>
       )}
     </Card>
@@ -273,25 +344,19 @@ export function SummaryLayout({ roles, tables, everyTable, limits, shares, place
 
 export function RolesLayout({ roles, tables, everyTable, self }: { roles: RoleRow[]; tables: Reached[]; everyTable: boolean; self: boolean }) {
   const you = self ? 'You' : 'They'
-  if (everyTable) return <Card className="p-4"><p className="text-sm text-ink" data-testid="access-every-table">Every Table, to read and to change — through System Manager.</p></Card>
   return (
     <div className="space-y-3" data-testid="access-by-role">
+      {everyTable && <p className="text-sm text-ink" data-testid="access-every-table">Every Table, to read and to change — through System Manager.</p>}
       {roles.map((r) => {
         const reach = tablesOf(r.role, tables)
         return (
           <Card key={`${r.app ?? ''}/${r.role}/${r.through ?? ''}`} className="p-4" data-testid="access-role-card">
-            <h2 className="text-base font-semibold text-ink">{roleTitle(r.role)}</h2>
+            <h2 className="text-base font-semibold text-ink"><RoleRef role={r.role} /></h2>
             <p className="text-sm"><GivenBy r={r} lead /></p>
-            <p className="mt-1 text-sm text-ink">{reach.length ? `${roleSentence(reach, you)}.` : 'Reaches no tables of its own.'}</p>
-            {reach.length > 0 && (
-              <div className="mt-2 space-y-2">
-                {byArea(reach).map(([area, ts]) => (
-                  <Group key={area} title={area} count={countLine(ts)} testid="access-area-group">
-                    <TableRows tables={ts} showRoles={false} />
-                  </Group>
-                ))}
-              </div>
-            )}
+            <p className="mt-1 text-sm text-ink">{
+              everyTable ? (r.role === 'System Manager' ? `${you} can read and change every table.` : 'Every table is already open through System Manager.')
+                : reach.length ? `${roleSentence(reach, you)}.` : 'Reaches no tables of its own.'}</p>
+            {reach.length > 0 && <div className="mt-3"><ReachTable tables={reach} through={false} /></div>}
           </Card>
         )
       })}
@@ -299,29 +364,15 @@ export function RolesLayout({ roles, tables, everyTable, self }: { roles: RoleRo
   )
 }
 
-// ── (b) By area: each area lists its Tables with chips ──────────────────────
+// ── (b) By area: one table, a header row per area ───────────────────────────
 
-function AreaGroups({ tables, showRoles }: { tables: Reached[]; showRoles: boolean }) {
-  return (
-    <div className="space-y-2">
-      {byArea(tables).map(([area, ts]) => {
-        return (
-          <Group key={area} title={area} testid="access-area-group" count={countLine(ts)}>
-            <TableRows tables={ts} showRoles={showRoles} />
-          </Group>
-        )
-      })}
-    </div>
-  )
-}
-
-export function AreasLayout({ tables, everyTable, roles }: { tables: Reached[]; everyTable: boolean; roles: number }) {
+export function AreasLayout({ tables, everyTable }: { tables: Reached[]; everyTable: boolean }) {
   return (
     <Card className="p-4" data-testid="access-by-area">
       {everyTable
         ? <p className="text-sm text-ink" data-testid="access-every-table">Every Table, to read and to change — through System Manager.</p>
         : tables.length === 0 ? <p className="text-sm text-ink-muted">No Tables.</p>
-        : <AreaGroups tables={tables} showRoles={roles > 1} />}
+        : <ReachTable tables={tables} through />}
     </Card>
   )
 }
