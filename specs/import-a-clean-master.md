@@ -17,7 +17,9 @@ Taken one at a time with the owner. Only what the journey needs is decided; ever
 | — | Scope | No sign-in and no record of who changed a row. CSV only, clean files only | Decided |
 | — | Types and formats | Text, Number, Date, Yes/No, Choice; dates `2015-01-01`, yes/no `true`/`false` | Decided |
 | 1 | Database access | Drizzle on Bun's built-in Postgres driver; `postgres.js` if that misbehaves on 18.6, checked at setup | Decided |
-| 2 | How a Table and its rows are stored | | Open |
+| 2 | How a Table and its rows are stored | A plain Postgres table per Table, one real column per Column, readable names (`employees`, `date_of_joining`), in a schema apart from Featherbase's own tables. Featherbase's own columns start with an underscore (`_id`, `_created_at`). `_id` is a time-ordered unique id made by Postgres. Required and unique are real database rules on the key. Number is one exact decimal type | Decided |
+| 2a | How raw rows are stored | | Open |
+| 2b | How a Choice is stored | | Open |
 | 3 | Migrations for Featherbase's own tables | | Open |
 | 4 | Where the uploaded file is kept | | Open |
 | 5 | Reading the CSV and working out types | | Open |
