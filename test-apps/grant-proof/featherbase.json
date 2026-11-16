@@ -1,0 +1,83 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "grantproof",
+  "title": "Grant proof",
+  "entryTable": "grantproof.gift",
+  "server": "server.mjs",
+  "client": "client",
+  "roles": [
+    "Gift Reader"
+  ],
+  "access": {
+    "grant": {
+      "title": "Gifts",
+      "read": "gift_options",
+      "action": "give_gift"
+    }
+  },
+  "reads": {
+    "version": 1,
+    "tables": [
+      "grantproof.gift"
+    ],
+    "operations": {
+      "gift_options": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      }
+    }
+  },
+  "actions": {
+    "version": 2,
+    "tables": [
+      "grantproof.gift"
+    ],
+    "operations": {
+      "give_gift": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      }
+    }
+  },
+  "tables": [
+    {
+      "name": "grantproof.gift",
+      "label": "Gift",
+      "id_pattern": "hash",
+      "columns": [
+        {
+          "column_name": "person",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "gift",
+          "column_type": "Data",
+          "reqd": true
+        }
+      ]
+    }
+  ],
+  "permissions": [
+    {
+      "table": "grantproof.gift",
+      "role": "Gift Reader",
+      "can_read": true
+    },
+    {
+      "table": "grantproof.gift",
+      "role": "System Manager",
+      "can_read": true,
+      "can_create": true
+    }
+  ]
+}

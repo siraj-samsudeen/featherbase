@@ -3,7 +3,7 @@
 // are platform-test/report-access.test.ts.
 import { describe, expect, it } from 'vitest'
 import {
-  accessKey, accessPage, addReport, addToBundle, becauseLine, diveChoices, diveChoicesPrepared, giveReport, makeBundle, personLookup, personSearch,
+  accessKey, accessPage, addReport, addToBundle, becauseLine, diveChoices, diveChoicesPrepared, giveReport, grantOptions, makeBundle, personLookup, personSearch,
   removeAccess, removeFromBundle, validators, type AccessContext,
 } from './report-access-server'
 import { checkedSave } from './team-access'
@@ -437,5 +437,95 @@ describe('the edges of adding a Dive (#1169)', () => {
     } finally { console.error = original }
     expect(logged.join()).toContain('dash_dive_list_failed')
     expect(logged.join()).not.toContain('secret-value')
+  })
+})
+
+// Main's CI after the 16-Nov train: the cases #1216, #1217 and #1173 left untested.
+const TEAM = {
+  Employee: [
+    { row_id: 'EM', employee_code: 'M001', person: 'meera', name: 'Meera', status: 'Current' },
+    { row_id: 'T1', employee_code: null, person: 'r1', name: 'Ravi', status: 'Current' },
+    { row_id: 'T2', employee_code: 'R002', person: 'r2', name: 'Ravi', status: 'Current' },
+    { row_id: 'T3', employee_code: null, person: 'r3', name: 'Ravi', status: 'Current' },
+  ],
+  'Job Assignment': [
+    { row_id: 'JA-M', employee: 'EM', job: 'Store Manager', site: 'S1', starts_on: '2026-01-01' },
+    { row_id: 'JA-1', employee: 'T1', job: 'Staff', site: 'S9', reports_to: 'EM', starts_on: '2026-01-01' },
+    { row_id: 'JA-2', employee: 'T2', job: 'Staff', site: 'S1', reports_to: 'JA-M', starts_on: '2026-01-01' },
+    { row_id: 'JA-3', employee: 'T3', job: 'Staff', site: null, reports_to: 'EM', starts_on: '2026-01-01' },
+  ],
+  Site: [{ row_id: 'S1', name: 'Lakeside' }],
+}
+
+describe("a Team Report Manager's picker (#1217, #1216)", () => {
+  const manager = (over: Partial<AccessContext> = {}, data: Record<string, Row[]> = TEAM) => context({ roles: ['Team Report Manager'], ...over }, data)
+
+  it('lists the team by name, and by code among people of one name, those with no code first', async () => {
+    const found = await personSearch(manager({ payload: { q: 'ravi' } }))
+    expect(found.map(f => [f.person, f.code, f.jobs])).toEqual([
+      ['r1', null, ['Staff']], ['r3', null, ['Staff']], ['r2', 'R002', ['Staff · Lakeside']]])
+  })
+
+  it('finds a team member by code, passing over those who have none', async () => {
+    expect((await personSearch(manager({ payload: { q: 'r00' } }))).map(f => f.person)).toEqual(['r2'])
+  })
+
+  it('refuses giving what the team member already has', async () => {
+    const data = { ...TEAM, 'dash.report_access': [
+      { row_id: 'g1', report: 'open', person: 'meera' }, { row_id: 'g2', report: 'open', person: 'r2' }] }
+    const ctx = manager({ roles: ['Dash Reader', 'Team Report Manager'], reach: async () => ({ any: true, wholeStore: true }), payload: { report: 'open', person: 'r2' } }, data)
+    await expect(giveReport(ctx)).rejects.toThrow('That is already given')
+  })
+})
+
+describe('the company picker among people of one name (#1216)', () => {
+  it('puts those with no code first', async () => {
+    const data = { Employee: [
+      { row_id: 'K1', employee_code: null, person: 'k1', name: 'Kiran', status: 'Current' },
+      { row_id: 'K2', employee_code: 'K002', person: 'k2', name: 'Kiran', status: 'Current' },
+      { row_id: 'K3', employee_code: null, person: 'k3', name: 'Kiran', status: 'Current' },
+    ] }
+    expect((await personSearch(context({ payload: { q: 'kiran' } }, data))).map(f => f.code)).toEqual([null, null, 'K002'])
+  })
+})
+
+describe('a save of a given row with no roles told (#1217)', () => {
+  it('is not a company save, so only the checked give may make it', () => {
+    const reject = (message: string): never => { throw new Error(message) }
+    expect(() => validators['dash.report_access']({ user: 'someone', isNew: true, row: { report: 'open', person: 'p' }, reject } as Parameters<typeof validators['dash.report_access']>[0]))
+      .toThrow('Give and take away reports on the Report access page')
+  })
+})
+
+describe("the Waiting for access drawer's options (#1173)", () => {
+  const WAITING = {
+    Employee: [
+      { row_id: 'EW', employee_code: 'W001', person: 'w', name: 'Wasim', status: 'Current' },
+      { row_id: 'EP', employee_code: 'P001', person: 'peer', name: 'Priya', status: 'Current' },
+    ],
+    'Job Assignment': [
+      { row_id: 'JW', employee: 'EW', job: 'Staff', site: 'S9', section: 'SEC1', starts_on: '2026-01-01' },
+      { row_id: 'JP', employee: 'EP', job: 'Staff', site: 'S1', starts_on: '2026-01-01' },
+    ],
+    Section: [{ row_id: 'SEC1', name: 'Sarees' }],
+    'dash.report_bundle': [{ row_id: 'b1', bundle_name: 'Team leader pack' }, { row_id: 'b2', bundle_name: 'Area pack' }, { row_id: 'b3', bundle_name: 'Zone pack' }],
+    'dash.report_access': [
+      { row_id: 'a1', report_bundle: 'b1', person: 'w' },
+      { row_id: 'a2', report_bundle: 'b2', role: 'Area Lead' },
+      { row_id: 'a3', report_bundle: 'b2', job: 'Staff' },
+      { row_id: 'a4', report_bundle: 'b3', job: 'Cashier' },
+    ],
+  }
+
+  it('asks for a person', async () => {
+    await expect(grantOptions(context({ payload: {} }, WAITING), '2026-11-16')).rejects.toThrow('Choose a person')
+  })
+
+  it("names their job, site (by its id when the site isn't found) and section, their peers, and marks each bundle reaching them by person, role or job", async () => {
+    const options = await grantOptions(context({ payload: { person: 'w' } }, WAITING), '2026-11-16')
+    expect([options.about, options.peers]).toEqual([
+      [{ label: 'Job', value: 'Staff' }, { label: 'Site', value: 'S9' }, { label: 'Section', value: 'Sarees' }], ['peer']])
+    expect(options.choices.filter(c => c.group === 'Bundle').map(c => [c.label, c.given])).toEqual([
+      ['Area pack', true], ['Team leader pack', true], ['Zone pack', false]])
   })
 })
