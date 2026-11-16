@@ -137,6 +137,21 @@ describe('PERM-005: Data Scopes', () => {
     expect(after.company).toBe('Company B')
   })
 
+  // #1244: a child row is only as visible as its parent, the parent's Data Scope included. A list (and a
+  // count) of an unscoped child Table showed the lines of parents outside the viewer's scope.
+  test("a Sub-table's rows are listed only under parents inside the viewer's Data Scope", async ({ admin, createUser }) => {
+    const { user } = await setup(admin, createUser)
+    await makeTable(admin, { name: 'Up Note', kind: 'sub_table', columns: ['note'] })
+    await makeTable(admin, { name: 'Up Board', columns: ['title', { column_name: 'company', column_type: 'Reference', reference_table: COMPANY }, { column_name: 'notes', column_type: 'Sub-table', row_table: 'Up Note' }] })
+    await grantRole(admin, { role: ROLE, table: ['Up Board', 'Up Note'], can_read: true })
+    await admin.post('/api/save_row', { table: 'Up Board', row: { title: 'north', company: 'Company A', notes: [{ note: 'north line' }] } })
+    await admin.post('/api/save_row', { table: 'Up Board', row: { title: 'south', company: 'Company B', notes: [{ note: 'south line' }] } })
+    const listed = await user.get<{ data: { note: string }[] }>('/api/table/Up%20Note?fields=%5B%22note%22%5D')
+    expect(listed.data.map((r) => r.note)).toEqual(['north line'])
+    const [south] = await sql.unsafe(`select row_id from featherbase.up_note where note = 'south line'`)
+    await expectRefused(user.get(`/api/table/Up%20Note/${String(south.row_id)}`), 403)
+  })
+
   test('admins are unaffected', async ({ admin, createUser }) => {
     const { project } = await setup(admin, createUser)
     const res = await admin.get<{ total: number }>(project.url)
