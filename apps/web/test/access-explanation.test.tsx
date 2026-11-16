@@ -90,6 +90,8 @@ test('#628 a colleague\'s page is refused', async ({ createUser }) => {
   await renderApp(pageOf(person.user!), colleague)
   const refused = await screen.findByTestId('access-explanation-refused', {}, WAIT)
   expect(refused).toHaveTextContent("You can't open this page")
+  expect(screen.getByTestId('access-explanation-heading')).toHaveTextContent("Someone else's access")
+  expect(screen.getByTestId('access-explanation')).not.toHaveTextContent('Unnamed person')
   // #1224 spec item 9: not a red error, and a way to their own page.
   expect(within(refused).getByRole('link', { name: 'See your own' }).getAttribute('href')).toBe(pageOf(colleague.user!))
   expect(refused.querySelector('[role="alert"]')).toBeNull()
@@ -221,7 +223,7 @@ test('#1224 a table reached only through what every account holds is explained i
   expect(card).toHaveTextContent('Every signed-in account has these')
   // Spec item 7: what every account reaches folds into one line per area, opened on demand.
   const notices = within(card).getAllByTestId('access-area-group').find((g) => g.querySelector('th')?.textContent?.startsWith('Notices'))!
-  expect(within(notices).getByTestId('access-every-account-line')).toHaveTextContent('Every account can read 1 table here')
+  expect(within(notices).getByTestId('access-every-account-line')).toHaveTextContent('Every account can read 1 table here —')
   expect(within(notices).queryAllByTestId('access-table-row')).toEqual([])
   await userEvent.click(within(notices).getByRole('button', { name: 'Show' }))
   expect(cells(rowFor(notices, 'Ax Notice'))).toEqual(['Ax Notice', '✓', '—'])

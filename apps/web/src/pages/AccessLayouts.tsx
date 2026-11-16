@@ -206,8 +206,8 @@ export function ReachTable({ tables, through }: { tables: Reached[]; through: bo
             {shared.length > 0 && (
               <tr className="border-t border-border" data-testid="access-every-account-line">
                 <td colSpan={cols} className="py-1.5 text-ink-muted">
-                  Every account can {changes ? 'read and change' : 'read'} {plural(shared.length, 'table')} here
-                  {changes && changes < shared.length ? ` (change ${changes})` : ''}{' — '}
+                  Every account can read {plural(shared.length, 'table')} here
+                  {changes === shared.length ? ' and change them' : changes ? ` and change ${changes} of them` : ''}{' — '}
                   <button type="button" className="font-medium text-action hover:underline" aria-expanded={open}
                     onClick={() => setOpened((o) => { const n = new Set(o); if (open) n.delete(area); else n.add(area); return n })}>
                     {open ? 'Hide' : 'Show'}
@@ -265,12 +265,12 @@ function rowsLine({ limits, ownOnly, places, everyTable, self }: { limits: numbe
 
 // ── (c) Summary: sentences first, the detail behind one button ──────────────
 
-export function SummaryLayout({ roles, tables, everyTable, limits, shares, places, apps, placeLabels, notes, self }: {
+export function SummaryLayout({ roles, tables, everyTable, limits, shares, places, apps, notes, self }: {
   roles: RoleRow[]; tables: Reached[]; everyTable: boolean; limits: number; shares: number
   /** The app that limits the person to places, and how many it gives; null when none does. */
   places: { title: string; count: number } | null
   /** The apps the person can open, and the places an app gives them (spec item 3). */
-  apps: { name: string; title: string; href: string }[]; placeLabels: string[]
+  apps: { name: string; title: string; href: string }[]
   /** Muted lines for sections that are empty, so they need no card of their own (spec item 8). */
   notes: ReactNode
   self: boolean
@@ -288,9 +288,11 @@ export function SummaryLayout({ roles, tables, everyTable, limits, shares, place
         <dd className="text-ink" data-testid="access-apps">{apps.length
           ? apps.map((a, i) => <span key={a.name}>{i > 0 && ', '}<a href={a.href} className="font-medium text-action hover:underline">{a.title}</a></span>)
           : 'No apps yet'}</dd>
-        {placeLabels.length > 0 && <>
+        {places && places.count > 0 && <>
+          {/* The places' own labels are the app's, often codes: they are listed in
+              the places card below, not shown bare here (UI standard §1.5). */}
           <dt className="text-ink-muted">{self ? 'Your places' : 'Their places'}</dt>
-          <dd className="text-ink" data-testid="access-places-line">{placeLabels.join(', ')}</dd>
+          <dd className="text-ink" data-testid="access-places-line">{plural(places.count, 'place')}, from {places.title} (listed below)</dd>
         </>}
       </dl>
       <ul className="space-y-3 text-sm">

@@ -92,7 +92,7 @@ export function AccessExplanation({ person }: { person: string }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-ink" data-testid="access-explanation-heading">
-            {self ? 'What you can see' : <>What {data?.person_name
+            {self ? 'What you can see' : refused ? 'Someone else\'s access' : <>What {data?.person_name
               ? <OpensContext.Provider value={opensFrom(data)}><Rec table="Person" id={person}>{data.person_name}</Rec></OpensContext.Provider>
               : <ShownName id={person} />} can see</>}
           </h1>
@@ -118,7 +118,7 @@ export function AccessExplanation({ person }: { person: string }) {
           <div data-testid="access-tables">
             {layout === 'summary' && <SummaryLayout roles={roles} tables={tables} everyTable={data.every_table}
               limits={data.limits.length} shares={data.shares.length} self={self} notes={notes}
-              apps={data.apps ?? []} placeLabels={(data.scope?.places ?? []).map((p) => p.label)}
+              apps={data.apps ?? []}
               places={data.scope ? { title: data.scope.title, count: data.scope.places.length } : null} />}
             {layout === 'roles' && <RolesLayout roles={roles} tables={tables} everyTable={data.every_table} self={self} />}
             {layout === 'areas' && <AreasLayout tables={tables} everyTable={data.every_table} />}
