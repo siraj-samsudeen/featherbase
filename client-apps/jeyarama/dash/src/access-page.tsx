@@ -124,7 +124,7 @@ function GiveBar({ page, onGiven, team }: { page: Page; onGiven: () => Promise<u
         <div className="flex flex-wrap items-end gap-3">
           <Field label="Give" className="min-w-64 flex-1">
             <Select value={gives} onChange={event => setGives(event.target.value)} data-testid="give-what">
-              <option value="">Choose a report or a bundle</option>
+              <option value="">{page.bundles.length ? 'Choose a report or a bundle' : 'Choose a report'}</option>
               <optgroup label="Reports">
                 {page.reports.map(report => <option key={report.key} value={`report:${report.key}`}>{report.name} · Report</option>)}
               </optgroup>
