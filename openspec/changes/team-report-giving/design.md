@@ -29,6 +29,14 @@ The role holds read, create and update on `dash.report_access`, own rows only. O
 
 One page, narrowed by the read: `access_page` returns `scope: 'team'`, the team list, and only what may be given. The person picker has two layouts behind a toggle: a list of the team to choose from, or the existing type-a-name search limited to the team.
 
+### Shipping the write grant: ADR 0026, after #1169
+
+An upgrade may not add a write on a Table the app already had (#437, #1192), so production's Dash could not take this version as first built. The owner settled that case as ADR 0026 ("a wider grant waits for a System Manager's approval"), built in #1169. With it, the upgrade creates Team Report Manager with its two reads at once, and the `dash.report_access` grant (read, create, update; `scope_mode: creator`) waits in Apps until a System Manager approves it. Approval applies the declared permission object as it is, through the same `provisionGrants` an install uses, so "own rows only" survives. Not loosened here: the #1192 rule.
+
+While the grant waits, Dash must say so plainly (ADR 0026's consequence): give and remove check the caller's real permission with #1169's `documents.can`, and the page tells a Team Report Manager their access to give reports is waiting for approval. The save-rule guard stays either way.
+
+**#1217 depends on #1169 landing first**, and is rebased onto it then.
+
 ## Risks
 
 - `reports_to` holding either id: both are matched; a value matching neither is no one.

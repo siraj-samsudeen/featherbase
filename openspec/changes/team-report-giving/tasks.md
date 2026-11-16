@@ -13,6 +13,11 @@
 - [ ] 3.2 Team scope on access_page, person_search, person_lookup, give_report, remove_report_access; save-rule guard
 - [ ] 3.3 Page: team note, Person-only give, hidden bundle tools and waiting list; picker layouts behind a toggle
 
+## 3b. After #1169 lands (ADR 0026)
+
+- [ ] 3b.1 Rebase onto #1169; the upgrade test expects the access grant to wait, the two reads to be applied
+- [ ] 3b.2 Give and remove check `documents.can`; the page says when the grant waits for approval
+
 ## 4. Checks
 
 - [ ] 4.1 Verifier: spec vs built with screenshots against #1217's checklist
