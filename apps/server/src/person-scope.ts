@@ -149,7 +149,10 @@ async function withScopeReads<T>(binding: ScopeProviderBinding, fn: (documents: 
       // A defined Table whose app is turned off still fails, as a read of it would.
       const [defined] = await sql`select 1 from table_def where name = ${table}`
       if (!defined) return false
-      return (await refusal(table)) === null
+      try { return (await refusal(table)) === null } catch (error) {
+        if (error instanceof AppError && error.type === 'NotFoundError') return false
+        throw error
+      }
     }),
     get: (table, rowId) => read(table, () => {
       if (typeof rowId !== 'string' || !rowId) throw new Error('A row ID is required')
