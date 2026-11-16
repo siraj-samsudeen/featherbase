@@ -144,7 +144,7 @@ describe('JSON command validation at the HTTP boundary', () => {
     ['POST', '/api/people/Administrator/identities', 'Expected { method }'],
     ['POST', '/api/access_tokens', 'Expected { label }'],
     ['POST', '/api/service_accounts', 'Expected { label }'],
-    ['PATCH', '/api/service_accounts/missing', 'Expected either { label } or { enabled }'],
+    ['PATCH', '/api/service_accounts/missing', 'Expected one of { label }, { display_name } or { enabled }'],
     ['POST', '/api/service_accounts/missing/roles', 'Expected { roles: [...] }'],
     ['POST', '/api/access_log', 'Expected { table }'],
     ['POST', '/api/dashboard/count', 'Expected { table }'],
