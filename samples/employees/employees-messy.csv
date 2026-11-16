@@ -1,0 +1,26 @@
+Employee Code,Name,Department,Date of Joining,Date of Leaving,Active,Weekly Hours
+E0007,Asha Raman,Sales,2015-01-01,,true,48
+,Bala Krishnan,Billing,2016-06-04,,true,40
+E0021,Chitra Mohan,Stores,2017-11-07,,true,37.5
+E0021,Dinesh Kumar,Accounts,2018-04-10,,true,36
+E0035,Esther Paul,Tailoring,2019-09-13,2025-05-09,false,48
+E0042,Farid Khan,Sales,2020-02-16,,true,40
+E0049,Gita Nair,Billing,2021-02-31,,true,37.5
+E0056,Hari Prasad,Stores,15/07/2019,,true,36
+E0063,Indira Das,Accounts,2023-05-25,,true,8901234567890
+E0070,Jacob Thomas,Tailoring,2024-10-01,,true,forty
+E0077,Kavya Iyer,sales ,2015-03-04,,true,37.5
+E0084,Lokesh Rao,SALES,2016-08-07,,true,36
+E0091,Meena Pillai,Slaes,2017-01-10,,true,48
+E0098,Naveen Shetty,Accounts,2018-06-13,2010-01-01,false,40
+E0105,  Oviya Selvam ,Tailoring,2019-11-16,,true,37.5
+E0112,Prakash Menon,Sales,2020-04-19,,yse,36
+E0119,Qadir Ali,Billing,2021-09-22,,true,48
+,,,,,,
+E0126,Revathi Suresh,Stores,2022-02-25,,true,40
+E0133,Sanjay Gupta,Accounts,2023-07-01,,true,37.5
+E0140,Tara Joseph,Tailoring,2024-12-04,,true,36
+E0147,Uma Shankar,Sales,2015-05-07,2025-09-14,false,48
+E0154,Vikram Bose,Billing,2016-10-10,,true,40
+E0161,Waseem Sheikh,Stores,2017-03-13,,true,37.5
+E0168,Yamini Reddy,Accounts,2018-08-16,,true,36

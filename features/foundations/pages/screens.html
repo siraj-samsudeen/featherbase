@@ -1,0 +1,413 @@
+<title>Featherbase Screens</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one fixed app window. Sidebar | (bar, grid). Only the grid body scrolls, in both directions.
+   A record opens beside the grid (panel) or in place of it (page). */
+:root {
+  --bg: #eef1f3; --surface: #ffffff; --sunken: #f6f8f9; --line: #e2e7ea; --line-strong: #cfd6da;
+  --fg: #16212a; --muted: #5d6b76; --faint: #8a97a1;
+  --accent: #0b6b80; --accent-fg: #ffffff; --accent-soft: #e2f1f4; --focus: #0b6b8055;
+  --danger: #b3261e; --danger-soft: #fbeae8; --ok: #1f7a4d;
+  --c1-bg:#e3effb; --c1-fg:#1c4f86; --c2-bg:#f6ebd9; --c2-fg:#7a4c0b; --c3-bg:#e4f2e6; --c3-fg:#23633a;
+  --c4-bg:#efe6f7; --c4-fg:#5b3688; --c5-bg:#fbe6ec; --c5-fg:#8c2749;
+  --shadow: 0 1px 2px #16212a14, 0 8px 28px #16212a14;
+  --row: 40px; --pad: 12px;
+  --ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#0e1418; --surface:#161e24; --sunken:#1b252c; --line:#27333b; --line-strong:#34424b;
+  --fg:#e6edf1; --muted:#9aa8b2; --faint:#6f7e89;
+  --accent:#5cc1d6; --accent-fg:#06222a; --accent-soft:#12343d; --focus:#5cc1d655;
+  --danger:#f08a82; --danger-soft:#3a1d1b; --ok:#6fd3a0;
+  --c1-bg:#17304b; --c1-fg:#a9cdf5; --c2-bg:#3d2f17; --c2-fg:#efcf96; --c3-bg:#183624; --c3-fg:#a5dcb4;
+  --c4-bg:#2e2242; --c4-fg:#d1b8ee; --c5-bg:#41202c; --c5-fg:#f3b3c6;
+  --shadow: 0 1px 2px #0008, 0 8px 28px #0008; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg:#0e1418; --surface:#161e24; --sunken:#1b252c; --line:#27333b; --line-strong:#34424b;
+  --fg:#e6edf1; --muted:#9aa8b2; --faint:#6f7e89;
+  --accent:#5cc1d6; --accent-fg:#06222a; --accent-soft:#12343d; --focus:#5cc1d655;
+  --danger:#f08a82; --danger-soft:#3a1d1b; --ok:#6fd3a0;
+  --c1-bg:#17304b; --c1-fg:#a9cdf5; --c2-bg:#3d2f17; --c2-fg:#efcf96; --c3-bg:#183624; --c3-fg:#a5dcb4;
+  --c4-bg:#2e2242; --c4-fg:#d1b8ee; --c5-bg:#41202c; --c5-fg:#f3b3c6;
+  --shadow: 0 1px 2px #0008, 0 8px 28px #0008; color-scheme: dark; }
+:root[data-density="compact"] { --row: 32px; --pad: 10px; }
+
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.4 var(--ui); display: flex; flex-direction: column; gap: 10px;
+  padding-block: 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); box-sizing: border-box; }
+* { box-sizing: border-box; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* the strip above the window: what this is, and the two things to choose */
+.meta { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font-size: 12.5px; color: var(--muted); }
+.meta b { color: var(--fg); font-weight: 600; }
+.seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 7px; overflow: hidden; background: var(--surface); }
+.seg button { border: 0; background: none; padding: 5px 10px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.opt { display: inline-flex; gap: 6px; align-items: center; }
+
+.app { flex: 1; min-height: 0; display: grid; grid-template-columns: 212px minmax(0, 1fr); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+.side { background: var(--sunken); border-right: 1px solid var(--line); padding: 14px 10px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 600; padding: 0 6px; letter-spacing: -.01em; }
+.brand i { width: 20px; height: 20px; border-radius: 6px; background: var(--accent); display: block; position: relative; }
+.brand i::after { content: ""; position: absolute; inset: 5px 9px 5px 5px; border-left: 2px solid var(--accent-fg); border-radius: 60% 0 0 60%; transform: rotate(18deg); }
+.group { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--faint); padding: 0 8px; font-weight: 600; }
+.nav { display: flex; flex-direction: column; gap: 1px; }
+.nav a { display: flex; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: 7px; color: var(--muted); text-decoration: none; }
+.nav a[aria-current] { background: var(--surface); color: var(--fg); font-weight: 500; box-shadow: 0 0 0 1px var(--line); }
+.nav a span { font-variant-numeric: tabular-nums; color: var(--faint); font-size: 12px; }
+
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.bar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); min-width: 0; }
+.bar h1 { font-size: 17px; font-weight: 600; margin: 0; letter-spacing: -.015em; white-space: nowrap; }
+.count { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.grow { flex: 1; min-width: 0; }
+.btn { border: 1px solid var(--line-strong); background: var(--surface); padding: 7px 12px; border-radius: 8px; cursor: pointer; font-weight: 500; white-space: nowrap; }
+.btn:hover { background: var(--sunken); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.danger { color: var(--danger); border-color: transparent; background: none; }
+.btn.danger:hover { background: var(--danger-soft); }
+.crumb { color: var(--muted); background: none; border: 0; padding: 0; cursor: pointer; font-size: 17px; }
+.crumb:hover { color: var(--fg); }
+
+.work { flex: 1; min-height: 0; display: flex; }
+/* the one scrolling box: header stays, first column stays */
+.gridbox { flex: 1; min-width: 0; overflow: auto; overscroll-behavior: contain; }
+table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 860px; }
+th, td { height: var(--row); padding: 0 var(--pad); border-bottom: 1px solid var(--line); white-space: nowrap; text-align: left; }
+th { position: sticky; top: 0; z-index: 2; background: var(--sunken); color: var(--muted); font-weight: 500; font-size: 12.5px; border-bottom-color: var(--line-strong); }
+th:first-child, td:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface); border-right: 1px solid var(--line); }
+th:first-child { z-index: 3; background: var(--sunken); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.code { font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+td.name { font-weight: 500; }
+td.date { font-variant-numeric: tabular-nums; }
+.empty { color: var(--faint); }
+tbody tr { cursor: pointer; }
+tbody tr:hover td { background: var(--sunken); }
+tbody tr[aria-selected="true"] td { background: var(--accent-soft); }
+tbody tr[aria-selected="true"] td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.chip { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12.5px; font-weight: 500; }
+.c1{background:var(--c1-bg);color:var(--c1-fg)} .c2{background:var(--c2-bg);color:var(--c2-fg)} .c3{background:var(--c3-bg);color:var(--c3-fg)}
+.c4{background:var(--c4-bg);color:var(--c4-fg)} .c5{background:var(--c5-bg);color:var(--c5-fg)}
+.yes, .no { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.yes::before, .no::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+.no::before { background: none; box-shadow: inset 0 0 0 1.5px var(--faint); }
+
+/* the record: a panel beside the grid, or a page in its place */
+.rec { width: 372px; max-width: 100%; border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; background: var(--surface); }
+.rec header { padding: 14px 16px 10px; display: flex; gap: 10px; align-items: flex-start; }
+.rec h2 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.rec .sub { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.x { margin-left: auto; border: 0; background: none; font-size: 20px; line-height: 1; color: var(--muted); cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+.x:hover { background: var(--sunken); }
+.fields { flex: 1; min-height: 0; overflow: auto; padding: 4px 16px 16px; display: grid; gap: 12px; align-content: start; }
+.f { display: grid; gap: 4px; min-width: 0; }
+.f label { font-size: 12.5px; color: var(--muted); font-weight: 500; }
+.f label em { font-style: normal; color: var(--faint); font-weight: 400; }
+.f input[type=text], .f input[type=date], .f select { height: 36px; border: 1px solid var(--line-strong); border-radius: 8px; padding: 0 10px; background: var(--surface); width: 100%; min-width: 0; }
+.f input:focus, .f select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
+.f input[aria-invalid="true"] { border-color: var(--danger); }
+.err { color: var(--danger); font-size: 12.5px; }
+.check { display: flex; align-items: center; gap: 8px; height: 36px; }
+.check input { width: 18px; height: 18px; accent-color: var(--accent); }
+.from { font-size: 12px; color: var(--faint); border-top: 1px dashed var(--line); padding-top: 10px; }
+.from span { font-family: var(--mono); }
+.rec footer { border-top: 1px solid var(--line); padding: 10px 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; color: var(--danger); width: 100%; }
+
+.app[data-open="page"] .gridbox { display: none; }
+.app[data-open="page"] .rec { width: auto; flex: 1; border-left: 0; }
+.app[data-open="page"] .rec header, .app[data-open="page"] .rec footer, .app[data-open="page"] .fields { width: 100%; max-width: 760px; margin-inline: auto; }
+.app[data-open="page"] .fields { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 20px; }
+.app[data-open="page"] .fields .wide { grid-column: 1 / -1; }
+.app[data-open="page"] .x { display: none; }
+
+.view { flex: 1; min-height: 0; display: flex; flex-direction: column; min-width: 0; }
+.page { flex: 1; min-height: 0; overflow: auto; padding: 22px 24px 28px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 26px; align-content: start; }
+.page > * { width: 100%; max-width: 780px; min-width: 0; }
+.hello h2 { margin: 0 0 6px; font-size: 22px; font-weight: 600; letter-spacing: -.02em; text-wrap: balance; }
+.hello p { margin: 0; color: var(--muted); max-width: 60ch; }
+.sect h3 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--faint); font-weight: 600; }
+.acts { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.act { text-align: left; border: 1px solid var(--line-strong); background: var(--surface); border-radius: 10px; padding: 14px; cursor: pointer; display: grid; gap: 4px; }
+.act:hover { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
+.act b { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.act b::before { content: ""; width: 22px; height: 22px; border-radius: 6px; background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.act span { color: var(--muted); font-size: 13px; }
+.items { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.item { display: flex; gap: 12px; align-items: center; width: 100%; padding: 11px 14px; border: 0; border-bottom: 1px solid var(--line); background: var(--surface); cursor: pointer; text-align: left; min-width: 0; }
+.item:last-child { border-bottom: 0; }
+.item:hover { background: var(--sunken); }
+.item b { font-weight: 500; }
+.item .mono { font-family: var(--mono); font-size: 12.5px; }
+.item .dim { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.item .tag { font-family: var(--mono); font-size: 11.5px; color: var(--faint); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; }
+.none { border: 1px dashed var(--line-strong); border-radius: 10px; padding: 18px; color: var(--muted); }
+.drop { border: 1.5px dashed var(--line-strong); border-radius: 14px; padding: 44px 20px; display: grid; gap: 10px; justify-items: center; text-align: center; background: var(--sunken); }
+.drop strong { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+.drop p { margin: 0; color: var(--muted); }
+.drop .btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
+.hint { color: var(--muted); font-size: 13px; }
+.nav button { display: flex; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: 7px; color: var(--muted); border: 0; background: none; cursor: pointer; text-align: left; width: 100%; }
+.nav button[aria-current] { background: var(--surface); color: var(--fg); font-weight: 500; box-shadow: 0 0 0 1px var(--line); }
+.nav button span { font-variant-numeric: tabular-nums; color: var(--faint); font-size: 12px; }
+
+.tbox { border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+.tbox table { min-width: 720px; }
+.tbox tr:last-child td { border-bottom: 0; }
+.plain tbody tr { cursor: default; }
+.plain tbody tr:hover td { background: var(--surface); }
+.plain td { white-space: normal; padding-block: 7px; height: auto; vertical-align: middle; }
+.plain td:first-child { font-weight: 500; white-space: nowrap; }
+.plain select { height: 32px; border: 1px solid var(--line-strong); border-radius: 7px; padding: 0 8px; background: var(--surface); }
+.plain select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
+.saw { color: var(--muted); font-size: 13px; }
+.saw code { font-family: var(--mono); font-size: 12px; color: var(--fg); }
+.keyc { text-align: center; }
+.keyc input { width: 17px; height: 17px; accent-color: var(--accent); }
+.lead { display: grid; gap: 4px; }
+.lead p { margin: 0; color: var(--muted); }
+.lead p b { color: var(--fg); font-weight: 600; }
+.namerow { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+.namerow .f { width: 300px; max-width: 100%; }
+.namerow .tag { font-family: var(--mono); font-size: 12px; color: var(--faint); border: 1px solid var(--line); border-radius: 6px; padding: 8px 9px; }
+.footbar { border-top: 1px solid var(--line); padding: 10px 24px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.footbar .hint { margin-left: auto; }
+#v-proposal .page > * { max-width: 980px; }
+
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--surface); padding: 9px 14px; border-radius: 9px; font-size: 13px; box-shadow: var(--shadow); }
+
+@media (max-width: 760px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .side { display: none; }
+  .bar { padding: 10px 12px; }
+  .bar .imp { display: none; }
+  .page { padding: 18px 14px 24px; }
+  .footbar { padding: 10px 14px; }
+  .footbar .hint { margin-left: 0; width: 100%; }
+  .app[data-open="panel"] .gridbox { display: none; }
+  .rec { width: auto; flex: 1; border-left: 0; }
+  .app[data-open="page"] .fields { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: no-preference) { tbody tr td, .btn { transition: background-color .08s; } }
+</style>
+
+<div class="meta">
+  <span><b>Mock-up.</b> Made-up data; nothing is saved.</span>
+  <span class="opt">Show
+    <span class="seg" id="state"><button type="button" data-v="fresh" aria-pressed="true">Fresh install</button><button type="button" data-v="data" aria-pressed="false">With data</button></span></span>
+  <span class="opt tblopt" hidden>A record opens as
+    <span class="seg" id="mode"><button type="button" data-v="panel" aria-pressed="true">Side panel</button><button type="button" data-v="page" aria-pressed="false">Full page</button></span></span>
+  <span class="opt tblopt" hidden>Rows
+    <span class="seg" id="density"><button type="button" data-v="comfortable" aria-pressed="true">Comfortable</button><button type="button" data-v="compact" aria-pressed="false">Compact</button></span></span>
+</div>
+
+<div class="app" id="app" data-open="">
+  <nav class="side" aria-label="Tables">
+    <div class="brand"><i></i>Featherbase</div>
+    <div class="nav"><button type="button" id="n-home" aria-current="page">Home</button></div>
+    <div id="n-tables" hidden>
+      <div class="group">Tables · main</div>
+      <div class="nav"><button type="button" id="n-emp">Employees <span id="navcount">24</span></button></div>
+    </div>
+    <div id="n-uploads" hidden>
+      <div class="group">Uploads</div>
+      <div class="nav"><button type="button" id="n-up">employees.csv <span>24</span></button></div>
+    </div>
+  </nav>
+  <div class="main">
+   <section class="view" id="v-home">
+    <div class="bar"><h1>Home</h1></div>
+    <div class="page">
+      <div class="hello" id="hello"><h2>Welcome to Featherbase</h2><p>There is nothing here yet. Bring in a spreadsheet and it becomes a Table you can browse and edit.</p></div>
+      <div class="sect"><h3>Start</h3>
+        <div class="acts"><button type="button" class="act" id="go-import"><b>Import data</b><span>Turn a CSV file into a Table.</span></button></div></div>
+      <div class="sect"><h3>Your Tables</h3>
+        <div class="none" id="t-none">No Tables yet. Your first one will appear here.</div>
+        <div class="items" id="t-list" hidden><button type="button" class="item" id="t-emp"><b>Employees</b><span class="tag">main</span><span class="grow"></span><span class="dim" id="t-count">24 rows</span><span class="dim">changed today</span></button></div></div>
+      <div class="sect" id="u-sect" hidden><h3>Recent uploads</h3>
+        <div class="items"><button type="button" class="item" id="u-emp"><span class="mono">employees.csv</span><span class="grow"></span><span class="dim">24 rows</span><span class="dim">16-Nov-2026</span></button></div></div>
+    </div>
+   </section>
+   <section class="view" id="v-import" hidden>
+    <div class="bar"><button type="button" class="crumb" id="imp-back">Home /</button><h1>Import data</h1></div>
+    <div class="page">
+      <div class="drop"><strong>Drop a CSV file here</strong><p>The first row must hold the column names.</p>
+        <div class="btns"><button type="button" class="btn primary" id="pick">Choose a file</button><button type="button" class="btn" id="sample">Try the sample: employees.csv</button></div></div>
+      <p class="hint">Featherbase keeps the file as you gave it, works out a Table from it, and shows you the result before anything is created.</p>
+    </div>
+   </section>
+   <section class="view" id="v-proposal" hidden>
+    <div class="bar"><button type="button" class="crumb" id="prop-back">Import data /</button><h1>employees.csv</h1></div>
+    <div class="page">
+      <div class="lead"><p>Featherbase read <b>24 rows</b> and <b>7 columns</b>. This is the Table it would make. Change anything that looks wrong.</p></div>
+      <div class="namerow"><div class="f"><label for="p-name">Table name</label><input type="text" id="p-name" value="Employees" autocomplete="off"></div><span class="tag">main</span></div>
+      <div class="sect"><h3>Columns</h3>
+        <div class="tbox"><table class="plain"><thead><tr><th>Column</th><th>Type</th><th>What Featherbase saw</th><th class="keyc">Key</th></tr></thead><tbody id="p-cols"></tbody></table></div></div>
+      <div class="sect"><h3>How the first rows will look</h3>
+        <div class="tbox"><table class="plain"><thead id="p-head"></thead><tbody id="p-rows"></tbody></table></div></div>
+    </div>
+    <div class="footbar"><button type="button" class="btn primary" id="p-create">Create Table</button><button type="button" class="btn" id="p-cancel">Cancel</button><span class="hint">Nothing is created until you press Create.</span></div>
+   </section>
+   <section class="view" id="v-table" hidden>
+    <div class="bar">
+      <button type="button" class="crumb" id="back" hidden>Employees /</button>
+      <h1 id="title">Employees</h1><span class="count" id="count"></span>
+      <span class="grow"></span>
+      <button type="button" class="btn imp" id="imp">Import</button>
+      <button type="button" class="btn primary" id="new">New employee</button>
+    </div>
+    <div class="work">
+      <div class="gridbox" id="gridbox" tabindex="0" aria-label="Employees">
+        <table>
+          <thead><tr><th>Employee Code</th><th>Name</th><th>Department</th><th>Date of Joining</th><th>Date of Leaving</th><th>Active</th><th class="num">Weekly Hours</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <form class="rec" id="rec" hidden novalidate>
+        <header><div><h2 id="rtitle"></h2><div class="sub" id="rsub"></div></div><button type="button" class="x" id="close" aria-label="Close">×</button></header>
+        <div class="fields">
+          <div class="f"><label for="f-code">Employee Code <em>· key</em></label><input type="text" id="f-code" autocomplete="off"><div class="err" id="e-code" hidden></div></div>
+          <div class="f"><label for="f-name">Name</label><input type="text" id="f-name" autocomplete="off"><div class="err" id="e-name" hidden></div></div>
+          <div class="f"><label for="f-dept">Department</label><select id="f-dept"></select></div>
+          <div class="f"><label for="f-hours">Weekly Hours</label><input type="text" id="f-hours" inputmode="decimal" autocomplete="off"><div class="err" id="e-hours" hidden></div></div>
+          <div class="f"><label for="f-doj">Date of Joining</label><input type="date" id="f-doj"></div>
+          <div class="f"><label for="f-dol">Date of Leaving</label><input type="date" id="f-dol"></div>
+          <div class="f wide"><label for="f-active">Active</label><div class="check"><input type="checkbox" id="f-active"><span id="activeword"></span></div></div>
+          <div class="from wide" id="from"></div>
+        </div>
+        <footer id="foot"></footer>
+      </form>
+    </div>
+   </section>
+  </div>
+</div>
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script>
+const names=['Asha Raman','Bala Krishnan','Chitra Mohan','Dinesh Kumar','Esther Paul','Farid Khan','Gita Nair','Hari Prasad','Indira Das','Jacob Thomas','Kavya Iyer','Lokesh Rao','Meena Pillai','Naveen Shetty','Oviya Selvam','Prakash Menon','Qadir Ali','Revathi Suresh','Sanjay Gupta','Tara Joseph','Uma Shankar','Vikram Bose','Waseem Sheikh','Yamini Reddy'];
+const depts=['Sales','Billing','Stores','Accounts','Tailoring'], sorted=[...depts].sort();
+const p2=n=>String(n).padStart(2,'0');
+let data=names.map((name,i)=>{const left=[4,13,20].includes(i);return{code:'E'+String((i+1)*7).padStart(4,'0'),name,dept:depts[i%5],
+  doj:`${2015+i%10}-${p2((i*5)%12+1)}-${p2((i*3)%27+1)}`,dol:left?`2025-${p2((i*7)%12+1)}-${p2((i*2)%27+1)}`:'',active:!left,hours:String([48,40,37.5,36][i%4]),row:i+2};});
+const $=id=>document.getElementById(id), app=$('app'), mon=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const fmt=d=>d?`${d.slice(8)}-${mon[+d.slice(5,7)-1]}-${d.slice(0,4)}`:'';
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let mode='panel', current=null, isNew=false, confirming=false;
+
+function draw(){
+  $('rows').innerHTML=data.map((r,i)=>`<tr data-i="${i}" tabindex="0" aria-selected="${current===i}"><td class="code">${esc(r.code)}</td><td class="name">${esc(r.name)}</td>
+   <td>${r.dept?`<span class="chip c${sorted.indexOf(r.dept)+1}">${esc(r.dept)}</span>`:''}</td><td class="date">${fmt(r.doj)}</td>
+   <td class="date">${r.dol?fmt(r.dol):'<span class="empty">–</span>'}</td><td><span class="${r.active?'yes':'no'}">${r.active?'Yes':'No'}</span></td><td class="num">${esc(r.hours)}</td></tr>`).join('');
+  const t=`${data.length} rows`; $('count').textContent=app.dataset.open==='page'?'':t; $('navcount').textContent=data.length;
+}
+function foot(){
+  $('foot').innerHTML=confirming
+   ?`<div class="confirm">Delete ${esc(data[current].name)}? This can't be undone.<span class="grow"></span><button type="button" class="btn" id="no">Keep</button><button type="button" class="btn danger" id="yes" style="border-color:currentColor">Delete</button></div>`
+   :`<button type="submit" class="btn primary">${isNew?'Create':'Save'}</button><button type="button" class="btn" id="cancel">Cancel</button><span class="grow"></span>${isNew?'':'<button type="button" class="btn danger" id="del">Delete</button>'}`;
+}
+function open(i){
+  isNew=i===null; current=i; confirming=false;
+  const r=isNew?{code:'',name:'',dept:'',doj:'',dol:'',active:true,hours:''}:data[i];
+  $('f-dept').innerHTML='<option value=""></option>'+sorted.map(d=>`<option${d===r.dept?' selected':''}>${d}</option>`).join('');
+  $('f-code').value=r.code; $('f-name').value=r.name; $('f-doj').value=r.doj; $('f-dol').value=r.dol; $('f-hours').value=r.hours; $('f-active').checked=r.active;
+  $('activeword').textContent=r.active?'Yes':'No';
+  ['code','name','hours'].forEach(k=>{$('e-'+k).hidden=true;$('f-'+k).removeAttribute('aria-invalid');});
+  $('rtitle').textContent=isNew?'New employee':r.name; $('rsub').textContent=isNew?'':r.code;
+  $('from').innerHTML=isNew?'Added by hand, not from an upload.':`Came from <span>employees.csv</span>, row ${r.row}.`;
+  $('rec').hidden=false; app.dataset.open=mode; $('back').hidden=mode!=='page'; $('title').textContent=mode==='page'?(isNew?'New employee':r.name):'Employees';
+  foot(); draw(); if(isNew) $('f-code').focus();
+}
+function shut(){ current=null; $('rec').hidden=true; app.dataset.open=''; $('back').hidden=true; $('title').textContent='Employees'; draw(); }
+function say(t){ const el=$('toast'); el.textContent=t; el.hidden=false; clearTimeout(say.t); say.t=setTimeout(()=>el.hidden=true,1800); }
+function bad(k,msg){ $('e-'+k).textContent=msg; $('e-'+k).hidden=false; $('f-'+k).setAttribute('aria-invalid','true'); return true; }
+
+$('rows').addEventListener('click',e=>{const tr=e.target.closest('tr'); if(tr) open(+tr.dataset.i);});
+$('rows').addEventListener('keydown',e=>{ if(e.key==='Enter'){const tr=e.target.closest('tr'); if(tr) open(+tr.dataset.i);} });
+$('new').addEventListener('click',()=>open(null));
+$('close').addEventListener('click',shut); $('back').addEventListener('click',shut);
+$('imp').addEventListener('click',()=>show('import'));
+let state='fresh';
+function show(v){
+  ['home','import','proposal','table'].forEach(x=>$('v-'+x).hidden=x!==v);
+  if(v!=='table'&&!$('rec').hidden) shut();
+  document.querySelectorAll('.tblopt').forEach(x=>x.hidden=v!=='table');
+  $('n-home').toggleAttribute('aria-current',v!=='table'); $('n-emp').toggleAttribute('aria-current',v==='table');
+  const has=state==='data';
+  $('n-tables').hidden=!has; $('n-uploads').hidden=!has; $('hello').hidden=has; $('t-none').hidden=has; $('t-list').hidden=!has; $('u-sect').hidden=!has;
+  $('t-count').textContent=data.length+' rows';
+}
+function setState(v){ state=v; $('state').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.v===v)); }
+$('go-import').addEventListener('click',()=>show('import'));
+$('imp-back').addEventListener('click',()=>show('home'));
+$('n-home').addEventListener('click',()=>show('home'));
+$('n-emp').addEventListener('click',()=>show('table'));
+$('t-emp').addEventListener('click',()=>show('table'));
+$('n-up').addEventListener('click',()=>say("The upload's page is the next mock-up"));
+$('u-emp').addEventListener('click',()=>say("The upload's page is the next mock-up"));
+const TYPES=['Text','Number','Date','Yes/No','Choice'];
+const cols=[
+ {k:'code', label:'Employee Code', type:'Text', fits:['Text'], canKey:true, saw:'Never blank, never repeats. <code>E0007</code>, <code>E0014</code>, <code>E0021</code>'},
+ {k:'name', label:'Name', type:'Text', fits:['Text'], canKey:true, saw:'24 different values. <code>Asha Raman</code>, <code>Bala Krishnan</code>'},
+ {k:'dept', label:'Department', type:'Choice', fits:['Text','Choice'], saw:'5 values, each used several times: '+sorted.map(d=>`<span class="chip c${sorted.indexOf(d)+1}">${d}</span>`).join(' ')},
+ {k:'doj', label:'Date of Joining', type:'Date', fits:['Text','Date'], saw:'Every cell is a date. <code>2015-01-01</code>, <code>2016-06-04</code>'},
+ {k:'dol', label:'Date of Leaving', type:'Date', fits:['Text','Date'], saw:'3 dates, 21 blank. <code>2025-05-09</code>'},
+ {k:'active', label:'Active', type:'Yes/No', fits:['Text','Yes/No','Choice'], saw:'Every cell is <code>true</code> or <code>false</code>'},
+ {k:'hours', label:'Weekly Hours', type:'Number', fits:['Text','Number','Choice'], saw:'Every cell is a number. <code>48</code>, <code>40</code>, <code>37.5</code>'}];
+let pkey='code';
+function cell(c,r){ const v=r[c.k];
+  if(c.k==='active') return c.type==='Yes/No'?`<span class="${v?'yes':'no'}">${v?'Yes':'No'}</span>`:(c.type==='Choice'?`<span class="chip c${v?3:5}">${v}</span>`:String(v));
+  if(v==='') return '<span class="empty">–</span>';
+  if(c.type==='Date') return fmt(v);
+  if(c.type==='Choice') return c.k==='dept'?`<span class="chip c${sorted.indexOf(v)+1}">${esc(v)}</span>`:`<span class="chip c1">${esc(v)}</span>`;
+  return esc(v); }
+function drawProposal(){
+  $('p-cols').innerHTML=cols.map((c,i)=>`<tr><td>${c.label}</td>
+   <td><select id="p-type-${i}" data-i="${i}" aria-label="Type of ${c.label}">${TYPES.map(t=>`<option${t===c.type?' selected':''}${c.fits.includes(t)?'':' disabled'}>${t}</option>`).join('')}</select></td>
+   <td class="saw">${c.saw}</td>
+   <td class="keyc"><input type="radio" name="p-key" id="p-key-${i}" value="${c.k}" aria-label="${c.label} is the key"${pkey===c.k?' checked':''}${c.canKey&&c.type!=='Choice'?'':' disabled'}></td></tr>`).join('');
+  $('p-head').innerHTML='<tr>'+cols.map(c=>`<th${c.type==='Number'?' class="num"':''}>${c.label}</th>`).join('')+'</tr>';
+  $('p-rows').innerHTML=data.slice(0,5).map(r=>'<tr>'+cols.map(c=>`<td class="${c.type==='Number'?'num':''}${c.k==='code'?' code':''}">${cell(c,r)}</td>`).join('')+'</tr>').join('');
+}
+$('p-cols').addEventListener('change',e=>{
+  if(e.target.matches('select')){ cols[+e.target.dataset.i].type=e.target.value; drawProposal(); $(e.target.id).focus(); }
+  if(e.target.name==='p-key') pkey=e.target.value; });
+const toProposal=()=>{ drawProposal(); show('proposal'); };
+$('pick').addEventListener('click',toProposal);
+$('sample').addEventListener('click',toProposal);
+$('prop-back').addEventListener('click',()=>show('import'));
+$('p-cancel').addEventListener('click',()=>show('import'));
+$('p-create').addEventListener('click',()=>{ const n=$('p-name').value.trim()||'Employees'; setState('data'); show('table'); say(`Created ${n} with 24 rows`); });
+$('f-active').addEventListener('change',e=>$('activeword').textContent=e.target.checked?'Yes':'No');
+$('foot').addEventListener('click',e=>{
+  if(e.target.id==='cancel') shut();
+  if(e.target.id==='del'){confirming=true;foot();}
+  if(e.target.id==='no'){confirming=false;foot();}
+  if(e.target.id==='yes'){const n=data[current].name; data.splice(current,1); shut(); say(`Deleted ${n}`);}
+});
+$('rec').addEventListener('submit',e=>{
+  e.preventDefault(); let stop=false;
+  ['code','name','hours'].forEach(k=>{$('e-'+k).hidden=true;$('f-'+k).removeAttribute('aria-invalid');});
+  const code=$('f-code').value.trim(), name=$('f-name').value.trim(), hours=$('f-hours').value.trim();
+  if(!code) stop=bad('code','Employee Code is required.');
+  else if(data.some((r,i)=>r.code===code&&i!==current)) stop=bad('code',`${code} is already used.`);
+  if(!name) stop=bad('name','Name is required.');
+  if(hours&&!/^-?\d+(\.\d+)?$/.test(hours)) stop=bad('hours','Enter a number, such as 40 or 37.5.');
+  if(stop) return;
+  const v={code,name,dept:$('f-dept').value,doj:$('f-doj').value,dol:$('f-dol').value,active:$('f-active').checked,hours};
+  if(isNew){ data.push({...v,row:null}); data.sort((a,b)=>a.code.localeCompare(b.code)); shut(); say(`Created ${name}`); }
+  else { Object.assign(data[current],v); const keep=mode==='panel'; say('Saved'); keep?open(current):shut(); }
+});
+function seg(id,fn){ $(id).addEventListener('click',e=>{const b=e.target.closest('button'); if(!b) return;
+  $(id).querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b)); fn(b.dataset.v);}); }
+seg('mode',v=>{ mode=v; if(!$('rec').hidden) open(current); });
+seg('density',v=>{ document.documentElement.dataset.density=v; });
+seg('state',v=>{ state=v; show('home'); });
+draw(); show('home');
+</script>
