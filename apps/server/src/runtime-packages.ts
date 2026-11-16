@@ -653,11 +653,15 @@ async function upgradePlan(name: string, version: string, preview = true) {
   if (!sameDeclaration(replayForward(name, prior.manifest.tables, operations), target.manifest.tables))
     refuse('Unsupported destructive or undeclared schema change')
   // #437: an upgrade may withdraw grants (narrowing access is always safe to
-  // apply) but never add or widen one on a Table the app already had; those
-  // still need a reviewed install. #651: a renamed Table's grants follow it,
+  // apply); since #1169 it may also add or widen them for its own roles (see
+  // ownRole below). #651: a renamed Table's grants follow it,
   // a dropped Table's grants end with it (a Table later given its name does
   // not inherit them), and a Table the upgrade adds arrives with exactly the
   // grants this version declares for it, listed in the preview.
+  // #1169: a dataset that was scoped staying scoped; becoming unscoped would give every reader
+  // every row with nothing in the preview. A new dataset may start unscoped.
+  const widened = (target.manifest.datasets ?? []).filter(d => d.unscoped && (prior.manifest.datasets ?? []).some(p => p.name === d.name && !p.unscoped))
+  if (widened.length) refuse(`The dataset ${widened.map(d => d.name).join(', ')} was limited to each reader's stores; an upgrade can't make it unscoped. Declare a new dataset instead`)
   const { added, follow } = tableFates(prior.manifest.tables.map(t => t.name), operations)
   const priorGrants = prior.manifest.permissions.map(p => ({ prior: p, now: follow(p.table) === undefined ? null : { ...p, table: follow(p.table)! } }))
   const held = new Set(priorGrants.flatMap(g => g.now ? [canonical(g.now)] : []))
@@ -673,10 +677,9 @@ async function upgradePlan(name: string, version: string, preview = true) {
     })
   }
   // #1192: a role this version declares and the installed one did not is
-  // created by the upgrade, with its declared grants: any on a Table the
-  // upgrade adds, reads only on one the app already had (an upgrade never
-  // brings writes there). Only a role the instance does not have yet: it
-  // starts with no holders, so the upgrade widens nobody's access. A
+  // created by the upgrade, with its declared grants (#1169: writes too, on
+  // any of the app's Tables). Only a role the instance does not have yet: it
+  // starts with no holders. A
   // same-named role already there is refused rather than merged, and checked
   // again when the upgrade is applied. A platform role is never new.
   const priorRoles = new Set(prior.manifest.roles ?? [])
@@ -684,14 +687,21 @@ async function upgradePlan(name: string, version: string, preview = true) {
   const taken = newRoles.length ? await sql`select row_id from role where row_id in ${sql(newRoles)} order by row_id` : []
   if (taken.length)
     refuse(`The role ${taken.map(row => String(row.row_id)).join(', ')} already exists on this instance; this version declares it as new. Rename or remove that role, then upgrade`)
-  const forNewRole = (permission: typeof target.manifest.permissions[number]) =>
-    newRoles.includes(permission.role) && Object.keys(permission.operations).every(operation => operation === 'read')
-  if (!target.manifest.permissions.every((p) => added.has(p.table) || held.has(canonical(p)) || narrowsAudience(p) || forNewRole(p)) || prior.app.runtime_manifest == null ||
+  // #1169 (owner, 14-Nov-2026): an upgrade applies the access its version
+  // declares, new or wider, so a fix reaches production without the owner
+  // present. Only to a role the version itself declares (never All or Guest,
+  // never a platform role, never another app's or the instance's own), and
+  // only on the app's own Tables, never a platform or another app's Table. Each
+  // grant is in the preview, and the activity log names it once applied.
+  const ownRole = (permission: typeof target.manifest.permissions[number]) =>
+    (target.manifest.roles ?? []).includes(permission.role) && !PLATFORM_ROLES.includes(permission.role) &&
+    permission.table.startsWith(`${name}.`)
+  if (!target.manifest.permissions.every((p) => added.has(p.table) || held.has(canonical(p)) || narrowsAudience(p) || ownRole(p)) || prior.app.runtime_manifest == null ||
       (prior.app.runtime_manifest as { packageName: string }).packageName !== (target.app.runtime_manifest as { packageName: string }).packageName)
     refuse('Permission or package identity changes are unsupported')
   const kept = new Set(target.manifest.permissions.map(canonical))
   const withdrawn = priorGrants.filter(g => !g.now || !kept.has(canonical(g.now))).map(g => g.prior)
-  const granted = target.manifest.permissions.filter(p => added.has(p.table) || forNewRole(p) || (!held.has(canonical(p)) && narrowsAudience(p)))
+  const granted = target.manifest.permissions.filter(p => added.has(p.table) || (!held.has(canonical(p)) && (narrowsAudience(p) || ownRole(p))))
   const destructive = operations.some(op => 'destructive' in op && op.destructive === true)
   // #700: what the upgrade does to the app's scheduled jobs.
   const jobs = planJobChanges(name, prior.manifest.jobs ?? [], target.manifest.jobs ?? [])
@@ -793,7 +803,7 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
           for (const role of created.roles)
             await logActivity(actor, `app_role_added ${name}@${version}: ${role}`.slice(0, 140))
           for (const p of prepared.granted)
-            await logActivity(actor, `app_grant_added ${name}@${version}: ${p.role} on ${p.table}`.slice(0, 140))
+            await logActivity(actor, `app_grant_added ${name}@${version}: ${p.role} ${Object.keys(p.operations).join(', ')} on ${p.table}`.slice(0, 140))
         }
         await sql`update installed_app set package_version = ${version}, artifact_digest = ${prepared.target.digest},
           manifest = ${sql.json(prepared.target.app.runtime_manifest as never)},

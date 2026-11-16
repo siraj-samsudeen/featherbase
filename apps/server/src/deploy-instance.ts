@@ -108,6 +108,9 @@ async function installOrUpgradeApps(io: CommandIO) {
     await upgradeApp(name, newest.version, plan.planId)
     await activateAppUpgrade(name, newest.version)
     io.out(`upgraded ${name} from ${installed} to ${newest.version}`)
+    // #1169: access an upgrade gives is applied without review, so the deploy says what it gave.
+    for (const change of plan.permissions)
+      if ('grant' in change) io.out(`  ${name} gives ${change.grant.role} ${Object.keys(change.grant.operations).join(', ')} on ${change.grant.table}`)
   }
 }
 

@@ -3,7 +3,7 @@
 // are platform-test/report-access.test.ts.
 import { describe, expect, it } from 'vitest'
 import {
-  accessKey, accessPage, addToBundle, becauseLine, giveReport, makeBundle, personLookup, personSearch,
+  accessKey, accessPage, addReport, addToBundle, becauseLine, diveChoices, diveChoicesPrepared, giveReport, makeBundle, personLookup, personSearch,
   removeAccess, removeFromBundle, validators, type AccessContext,
 } from './report-access-server'
 import { checkedSave } from './team-access'
@@ -332,5 +332,110 @@ describe('the save rules', () => {
       becauseLine({ kind: 'job', receiver: 'Team Leader', bundle: 'b1' }, () => 'Team leader pack'),
       accessKey({ report: 'sales', report_bundle: 'b1', person: 'asha' }),
     ]).toEqual(['Role Dash Reader', 'Job Team Leader, through Team leader pack', { problem: 'Give exactly one report or one bundle' }])
+  })
+})
+
+// #1169: a Report Access Manager adds a MotherDuck Dive as a report taking no filter.
+describe('adding a Dive', () => {
+  const FLOOR = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const reports = { 'dash.report': [...REPORTS.map((r, i) => ({ ...r, dive_id: `0000000${i}-0000-4000-8000-000000000000` })),
+    { report_key: 'kurti', report_name: 'Kurti tower', filter_shape: 'No filter', dive_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' }] }
+
+  it('creates a report taking no filter, named as asked, keyed from its name', async () => {
+    const ctx = context({ payload: { dive_id: FLOOR, name: '  Floor   stock ' } }, reports)
+    await expect(addReport(ctx)).resolves.toEqual({ key: 'floor-stock', name: 'Floor stock' })
+    expect(ctx.written).toEqual([['dash.report', { report_key: 'floor-stock', report_name: 'Floor stock', dive_id: FLOOR, filter_shape: 'No filter' }]])
+  })
+
+  it.each([
+    ['a Dive already in Dash, naming its report', { dive_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', name: 'Kurti again' }, 'That Dive is already in Dash as Kurti tower'],
+    ['a name another report has, whatever its case', { dive_id: FLOOR, name: 'kurti TOWER' }, 'Another report is called Kurti tower'],
+    ['an empty name', { dive_id: FLOOR, name: '   ' }, 'Name the report'],
+    ['a link instead of an id', { dive_id: `https://app.motherduck.com/dives/x-${FLOOR}`, name: 'Floor stock' }, 'Choose a Dive'],
+    ['no Dive', { name: 'Floor stock' }, 'Choose a Dive'],
+  ])('refuses %s, writing nothing', async (_what, payload, message) => {
+    const ctx = context({ payload }, reports)
+    await expect(addReport(ctx)).rejects.toThrow(message)
+    expect(ctx.written).toEqual([])
+  })
+
+  it('is refused to anyone who does not manage report access', async () => {
+    const ctx = context({ roles: ['Dash Reader'], payload: { dive_id: FLOOR, name: 'Floor stock' } }, reports)
+    await expect(addReport(ctx)).rejects.toThrow('Only a Report Access Manager or a System Manager')
+    expect(ctx.written).toEqual([])
+  })
+})
+
+describe('the Dives to choose from', () => {
+  const live = (rows: unknown[] | Error) => ({ datasets: { async live() { if (rows instanceof Error) throw rows; return { rows } } } })
+  const reports = { 'dash.report': [{ report_key: 'kurti', report_name: 'Kurti tower', filter_shape: 'No filter', dive_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' }] }
+
+  it('lists every Dive MotherDuck gives, marking the one already in Dash', async () => {
+    const ctx = context({}, reports)
+    const answer = await diveChoices({ ...ctx, ...live([
+      { dive_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', title: 'Kurti tower', owner_name: 'asha', saved_on: '2026-11-12' },
+      { dive_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', title: '', owner_name: 'ben', saved_on: null },
+    ]) }, await diveChoicesPrepared(ctx))
+    expect(answer).toEqual({ dives: [
+      { dive_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', title: 'Kurti tower', owner: 'asha', saved_on: '2026-11-12', in_dash: 'Kurti tower' },
+      { dive_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', title: 'Untitled Dive', owner: 'ben', saved_on: null, in_dash: null },
+    ] })
+  })
+
+  it('says MotherDuck is out of reach rather than listing nothing', async () => {
+    const ctx = context({}, reports)
+    expect(await diveChoices({ ...ctx, ...live(new Error('timeout')) }, await diveChoicesPrepared(ctx))).toEqual({ unreachable: true })
+  })
+
+  it('is refused to anyone who does not manage report access, before MotherDuck is asked', async () => {
+    const ctx = context({ roles: ['Dash Reader'] }, reports)
+    let asked = false
+    const datasets = { async live() { asked = true; return { rows: [] } } }
+    await expect(diveChoices({ ...ctx, datasets }, await diveChoicesPrepared(ctx))).rejects.toThrow('Only a Report Access Manager or a System Manager can add reports')
+    expect(asked).toBe(false)
+  })
+})
+
+describe('a report saved by any route', () => {
+  const reports = tables({ 'dash.report': [{ report_key: 'sales', report_name: 'Sales versus target', dive_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' }] })
+  const reject = (message: string): never => { throw new Error(message) }
+
+  it("is refused on a Dive another report already opens, whatever its case or spaces, naming that report (#1169)", async () => {
+    await expect(validators['dash.report']({ row: { report_key: 'open-sales', dive_id: ' CCCCCCCC-cccc-4ccc-8ccc-cccccccccccc ', filter_shape: 'No filter' }, documents: reports, reject }))
+      .rejects.toThrow('That Dive is already in Dash as Sales versus target')
+  })
+
+  it('is saved on its own Dive, and on a Dive no report opens, with the id trimmed', async () => {
+    await expect(validators['dash.report']({ row: { report_key: 'sales', dive_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' }, documents: reports, reject })).resolves.toBeUndefined()
+    const row: Record<string, unknown> = { report_key: 'floor', dive_id: ' aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa ' }
+    await validators['dash.report']({ row, documents: reports, reject })
+    expect(row.dive_id).toBe('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+  })
+})
+
+describe('the edges of adding a Dive (#1169)', () => {
+  const reject = (message: string): never => { throw new Error(message) }
+
+  it('saves a report with no Dive yet, or with nothing to compare it to, leaving the required-field rule to say so', async () => {
+    const reports = tables({ 'dash.report': [{ report_key: 'sales', report_name: 'Sales', dive_id: '' }] })
+    await expect(validators['dash.report']({ row: { report_key: 'new', dive_id: '  ' }, documents: reports, reject })).resolves.toBeUndefined()
+    await expect(validators['dash.report']({ row: { report_key: 'new', dive_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }, reject })).resolves.toBeUndefined()
+  })
+
+  it('asks for a Dive when nothing was sent', async () => {
+    await expect(addReport(context({ payload: undefined }))).rejects.toThrow('Choose a Dive')
+  })
+
+  it('says MotherDuck is out of reach whatever was thrown, logging the cause without anything token-shaped', async () => {
+    const logged: string[] = []
+    const original = console.error
+    console.error = (line: string) => { logged.push(line) }
+    try {
+      const ctx = context()
+      const datasets = { async live(): Promise<{ rows: unknown[] }> { throw 'md: token=secret-value refused' } }
+      expect(await diveChoices({ ...ctx, datasets }, await diveChoicesPrepared(ctx))).toEqual({ unreachable: true })
+    } finally { console.error = original }
+    expect(logged.join()).toContain('dash_dive_list_failed')
+    expect(logged.join()).not.toContain('secret-value')
   })
 })
