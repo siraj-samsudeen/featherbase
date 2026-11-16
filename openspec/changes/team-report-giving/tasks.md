@@ -18,6 +18,11 @@
 - [ ] 3b.1 Rebase onto #1169; the upgrade test expects the access grant to wait, the two reads to be applied
 - [ ] 3b.2 Give and remove check `documents.can`; the page says when the grant waits for approval
 
+## 3c. After #1216 lands (who a person is)
+
+- [ ] 3c.1 Rebase onto #1216; the team list, Type a name search (name or employee code) and Who has what show the same identity lines (code · job · site)
+- [ ] 3c.2 Dash version past whatever main holds; version-step tests follow
+
 ## 4. Checks
 
 - [ ] 4.1 Verifier: spec vs built with screenshots against #1217's checklist
