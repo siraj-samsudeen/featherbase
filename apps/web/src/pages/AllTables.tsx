@@ -13,6 +13,9 @@ import { SearchInput, cardClasses, touchRowClasses } from '@featherbase/shop-flo
 // Grouping, never hiding. #1242 (admin-lists 10-14): each Table by its label
 // with its one line, a "Find a table" search, sentence-case groups in a grid.
 
+/** A group heading in sentence case ("Store layout"), its acronyms kept ("SAP masters"). */
+const sentence = (words: string) => words.split(/\s+/).map((w, i) => (/^[A-Z0-9]{2,}$/.test(w) ? w : i === 0 ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w.toLowerCase())).join(' ')
+
 /** The Tables whose label can differ from their name: an app's ("tickets.ticket"
  *  reads "Ticket") and a view. Every other Table is named by its name. */
 const mayHaveLabel = (t: TableSummary) => t.row_id.includes('.') || t.kind === 'view'
@@ -116,10 +119,10 @@ export function AllTablesPage() {
         {tables !== undefined && words && !appModules.length && !systemTables.length && !archivedTables.length && (
           <p className="px-2 py-1 text-sm text-ink-muted" data-testid="all-tables-none">No table matches "{find.trim()}".</p>
         )}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {appModules.map((mod) => (
             <section key={mod} aria-label={mod} className={cardClasses('px-2 py-3')}>
-              <h2 className={heading}>{mod}</h2>
+              <h2 className={heading}>{sentence(mod)}</h2>
               {(byModule.get(mod) ?? []).map(tableLink)}
             </section>
           ))}

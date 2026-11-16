@@ -843,18 +843,20 @@ export function ListView({
         )}
         {/* #859, #1242 (admin-lists 3): retired rows, as a chip in the toolbar. */}
         {retirable && (
-          <button
-            type="button"
-            aria-pressed={showRetired}
-            onClick={() => {
-              setShowRetired(!showRetired)
-              setStart(0)
-            }}
-            data-testid="list-show-retired-toggle"
-            className={pillClasses(`min-h-control cursor-pointer border px-3 text-sm ${showRetired ? 'border-action bg-action-tint text-action' : 'border-border-control bg-surface text-ink-muted hover:bg-subtle'}`)}
-          >
+          // A real checkbox, drawn as a chip: what it is stays plain to everyone.
+          <label className={pillClasses(`min-h-control cursor-pointer gap-1.5 border px-3 text-sm has-focus-visible:outline-2 has-focus-visible:outline-focus ${showRetired ? 'border-action bg-action-tint text-action' : 'border-border-control bg-surface text-ink-muted hover:bg-subtle'}`)}>
+            <input
+              type="checkbox"
+              checked={showRetired}
+              onChange={(e) => {
+                setShowRetired(e.target.checked)
+                setStart(0)
+              }}
+              data-testid="list-show-retired-toggle"
+              className="size-3.5 accent-action"
+            />
             Show retired
-          </button>
+          </label>
         )}
         <div className="ml-auto flex flex-wrap items-end gap-2" data-testid="list-view-tools">
           {/* #1242 (admin-lists 2-3): the other ways to see this Table, Explore among them. */}

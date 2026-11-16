@@ -23,7 +23,7 @@ test('each Table is a link by its label, with its one line; groups are sentence 
   // A view reads by its label, never its internal name.
   expect(await within(nav).findByRole('link', { name: /^Stores only/ }, T)).toBeInTheDocument()
   expect(within(nav).queryByText('atp stores raw')).toBeNull()
-  expect(within(nav).getByRole('heading', { name: 'Store Layout' })).not.toHaveClass('uppercase')
+  expect(within(nav).getByRole('heading', { name: 'Store layout' })).not.toHaveClass('uppercase')
 })
 
 test('Find a table has the focus on open and narrows by what people read', async ({ admin }) => {

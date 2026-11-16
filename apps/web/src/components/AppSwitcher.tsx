@@ -164,7 +164,7 @@ export function AppSwitcher({ app, compact = false }: { app?: { name: string; ti
           aria-label="Applications"
           data-testid="app-switcher-menu"
           onKeyDown={onMenuKey}
-          className={cardClasses('absolute left-0 top-full z-40 mt-1 w-80 max-w-[calc(100vw-1rem)] p-1 shadow-lg')}
+          className={cardClasses('absolute left-0 top-full z-40 mt-1 w-96 max-w-[calc(100vw-1rem)] p-1 shadow-lg')}
         >
           {choices.map((item) => {
             const isCurrent = item.href === current
@@ -184,7 +184,7 @@ export function AppSwitcher({ app, compact = false }: { app?: { name: string; ti
                 <AppMark icon={item.icon} accent={item.accent} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium text-ink">{item.title}</span>
-                  {item.summary && <span className="block truncate text-[13px] text-ink-muted">{item.summary}</span>}
+                  {item.summary && <span className="line-clamp-2 block text-[13px] text-ink-muted" title={item.summary}>{item.summary}</span>}
                 </span>
                 {isCurrent && <Check aria-hidden size={16} className="shrink-0 text-action" />}
               </button>

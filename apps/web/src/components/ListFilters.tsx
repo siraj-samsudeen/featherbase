@@ -88,7 +88,7 @@ export function ListSearch({ meta, filters, onChange, label }: {
     >
       <SearchInput
         aria-label={`Search ${label}`}
-        placeholder="Search"
+        placeholder={`Search ${label}`}
         value={text}
         onChange={(e) => setText(e.target.value)}
         data-testid="list-search"
@@ -236,6 +236,10 @@ export function FilterWords({ meta, filter }: { meta: import('../lib/meta').Tabl
   const linked =
     col?.column_type === 'Reference' && col.reference_table && (op === '=' || op === '!=') &&
     (typeof value === 'string' || typeof value === 'number') && String(value) !== ''
+  // #1242 (verifier, round 3): a "%words%" pattern, as Search writes, reads
+  // "contains words" rather than its wildcards; other patterns stay as written.
+  const contains = (op === 'like' || op === 'not like') && typeof value === 'string' && /^%[^%_]+%$/.test(value)
+  if (contains) return <>{label} {op === 'like' ? 'contains' : 'does not contain'} {(value as string).slice(1, -1)}</>
   return (
     <>
       {label} {op}{isBlankOp(op) ? null : ' '}

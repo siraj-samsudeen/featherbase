@@ -63,12 +63,12 @@ test('Show retired is a toggle chip in the toolbar', async ({ admin }) => {
   await seed(admin)
   await admin.post('/api/retire_row', { table: DEPT, name: 'D2', reason: 'Merged into Silk' }).catch(() => undefined)
   await renderApp(tableHref(DEPT), admin)
-  const chip = await screen.findByTestId('list-show-retired-toggle', {}, T)
-  expect(chip.tagName).toBe('BUTTON')
-  expect(chip).toHaveAttribute('aria-pressed', 'false')
+  const chip = await screen.findByRole('checkbox', { name: 'Show retired' }, T)
+  expect(chip).not.toBeChecked()
+  // In the toolbar, not on the title's line.
   expect(within(screen.getByTestId('list-toolbar')).queryByTestId('list-show-retired-toggle')).toBeNull()
   await userEvent.click(chip)
-  expect(chip).toHaveAttribute('aria-pressed', 'true')
+  expect(chip).toBeChecked()
 })
 
 // #1242 (admin-lists 6, 9).

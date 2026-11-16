@@ -276,7 +276,8 @@ function AdminRouteLayout() {
     match.routeId === sourceBrowserRoute.id || match.routeId === copySetupRoute.id,
   ) })
   // #1018: a Table's list has no reading width to keep, so a wide one gets the whole page.
-  const fullWidth = useRouterState({ select: (state) => state.matches.some((match) => match.routeId === tableRoute.id) })
+  // Lists (a Table's, All tables) take the width, up to the standard's 1280.
+  const fullWidth = useRouterState({ select: (state) => state.matches.some((match) => match.routeId === tableRoute.id || match.routeId === allTablesRoute.id) })
   return <AdminLayout wide={wide} fullWidth={fullWidth} />
 }
 
