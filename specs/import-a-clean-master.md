@@ -63,7 +63,7 @@ run through these steps in a real browser, with the sample file.
    Featherbase has worked out that joining and leaving dates are Dates, Active is Yes/No, Weekly Hours is a
    Number, and Department is a Choice of five values. It suggests Employee Code as the key.
 3. **Confirm.** She changes nothing and presses Create.
-4. **Browse.** The Employees list opens with all 24 people.
+4. **Browse.** The Employees list opens: the first 10 of 24 people, with the next page a click away.
 5. **Open one.** She clicks Asha Raman. A form shows her seven values, and where the row came from:
    `employees.csv`, row 2.
 6. **Change one.** She moves Asha from Sales to Billing, choosing from the five departments, and saves. The list
