@@ -5,11 +5,12 @@
 // real reach.
 import { afterEach, describe, expect } from 'vitest'
 import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { appendFile, cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { makeClient, type CreateUserFn, type TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
-import { sandboxRequest } from './pg-test-shared'
-import { discoverPackages } from '../src/runtime-packages'
+import { committedTest, sandboxRequest } from './pg-test-shared'
+import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packages'
 import { issueAccessToken } from '../src/auth'
 import { logAccess, logActivity } from '../src/audit'
 import { runViewingAs } from '../src/view-as-context'
@@ -58,12 +59,13 @@ const start = (client: TestClient, person: unknown) => client.fetch('/api/view_a
 const status = async (sent: Promise<Response>) => { const r = await sent; return [r.status, await r.text()] as const }
 
 async function install(admin: TestClient, createUser: CreateUserFn) {
-  expect(await discoverPackages([await viewable()])).toEqual([])
+  const directory = await viewable()
+  expect(await discoverPackages([directory])).toEqual([])
   await admin.post('/api/install_app', { name: 'barproof' })
   const tester = await createUser({ email: 'tester@example.test', roles: [TESTER] })
   const person = await createUser({ email: 'person@example.test', roles: ['Bar Reader'] })
   const manager = await createUser({ email: 'manager@example.test', roles: ['System Manager'] })
-  return { tester, person, manager }
+  return { tester, person, manager, directory }
 }
 
 describe('View as: what an app declares', () => {
@@ -168,6 +170,9 @@ describe('View as on the platform', () => {
       publishUserEvent(person.user!, 'notification', { subject: 'private to them' })
       expect(await second.closed).toBe(4009)
       expect(second.frames.some((f) => f.event === 'notification')).toBe(false)
+      // The socket check ended it; the page's next request is still told, so it reloads.
+      expect(await status(tester.fetch('/api/whoami'))).toEqual([409, expect.stringContaining('View as has ended')])
+      expect((await tester.get<{ row_id: string }>('/api/whoami')).row_id).toBe(tester.user)
     } finally {
       server.closeAllConnections()
       await new Promise<void>((resolve) => server.close(() => resolve()))
@@ -180,6 +185,31 @@ describe('View as on the platform', () => {
     expect((await status(start(tester, outsider.user)))[0]).toBe(200)
     expect((await tester.fetch('/api/access_request', { method: 'POST', headers: json, body: JSON.stringify({ app: 'barproof' }) })).status).toBe(403)
     expect(await sql`select count(*)::int as n from access_request`).toEqual([{ n: 0 }])
+  })
+
+  // Overlapping requests: the read is held open while Exit completes.
+  committedTest('a slow read admitted while viewing is not released after Exit', async ({ admin, createUser }) => {
+    const { tester, person, directory } = await install(admin, createUser)
+    const digest = availableRuntimeVersions().find((p) => p.name === 'barproof')!.digest
+    const { hooks } = await import(`${pathToFileURL(resolve(directory, 'server.mjs')).href}?artifact=${digest}`) as { hooks: { wait: () => Promise<void> } }
+    let release!: () => void
+    let entered!: () => void
+    const inside = new Promise<void>((resolve) => { entered = resolve })
+    hooks.wait = () => { entered(); return new Promise<void>((resolve) => { release = resolve }) }
+    try {
+      expect((await status(start(tester, person.user)))[0]).toBe(200)
+      const read = tester.fetch('/api/app_reads/barproof/waiting', { method: 'POST', headers: { ...json, 'X-Featherbase-App-Version': 'barproof@1.0.0' }, body: JSON.stringify({ payload: {} }) })
+      await inside
+      await tester.fetch('/api/view_as/exit', { method: 'POST', headers: json, body: '{}' })
+      release()
+      expect(await status(read)).toEqual([409, expect.stringContaining('View as has ended')])
+    } finally { hooks.wait = async () => {} }
+  })
+
+  test('no signed file link is made while viewing', async ({ admin, createUser }) => {
+    const { tester, person } = await install(admin, createUser)
+    expect((await status(start(tester, person.user)))[0]).toBe(200)
+    expect(await status(tester.fetch('/api/signed_url?file_url=/private/files/anything'))).toEqual([403, expect.stringContaining('not made while viewing')])
   })
 
   test('an access token never views as anyone', async ({ admin, createUser }) => {

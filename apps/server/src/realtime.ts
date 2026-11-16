@@ -161,7 +161,7 @@ function publish(channel: string, event: string, payload?: unknown): void {
 
 /** #1222: checked afresh before each event: still viewing the same person, still allowed. */
 async function deliverViewing(client: Client, msg: RealtimeEvent, data: string): Promise<void> {
-  const still = await activeViewAs(client.owner).catch(() => null)
+  const still = await activeViewAs(client.owner, { told: false }).catch(() => null)
   if (still?.as.person !== client.viewing) { closeViewAsClient(client); return }
   if (msg.channel.startsWith('list:') || msg.channel.startsWith('row:')) await deliverChecked(client, msg, data)
   else if (client.socket.readyState === client.socket.OPEN) client.socket.send(data)
@@ -253,7 +253,7 @@ async function recheckViewAsSockets(open: Client[]): Promise<void> {
     .map((r) => [String(r.session_id), String(r.person)]))
   for (const client of open) {
     const now = live.get(client.owner.sign_in!.session_id)
-    const stillAllowed = !client.viewing || (now === client.viewing && (await activeViewAs(client.owner).catch(() => null))?.as.person === client.viewing)
+    const stillAllowed = !client.viewing || (now === client.viewing && (await activeViewAs(client.owner, { told: false }).catch(() => null))?.as.person === client.viewing)
     if (now !== client.viewing || !stillAllowed) closeViewAsClient(client)
   }
 }
@@ -321,7 +321,7 @@ async function authenticate(socket: WebSocket, cookie: string | undefined): Prom
     // #1222: while viewing as someone, live updates follow what that person may read. Starting,
     // switching and leaving View as reload the page, so each socket serves one identity. The
     // session (and so sign-out) stays the tester's.
-    const viewing = await activeViewAs(signedIn).catch(() => null)
+    const viewing = await activeViewAs(signedIn, { told: false }).catch(() => null)
     const user = viewing?.user ?? signedIn
     // Closed while the token was being checked: never register it.
     if (socket.readyState !== socket.OPEN) return null

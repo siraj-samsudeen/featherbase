@@ -86,7 +86,7 @@ async function nameOf(person: string): Promise<string> {
  * session, a tester who still holds the role, a person who can still be
  * viewed. Anything else ends it, and the request runs as the tester.
  */
-export async function activeViewAs(user: SessionUser): Promise<{ as: ViewingAs; user: SessionUser } | null> {
+export async function activeViewAs(user: SessionUser, { told = true }: { told?: boolean } = {}): Promise<{ as: ViewingAs; user: SessionUser } | null> {
   const session = user.sign_in?.session_id
   if (!session || user.kind !== 'person') return null
   const [row] = await sql`select tester, person, expires_at <= now() as expired, ended_at is not null as ended from view_as_session where session_id = ${session}`
@@ -96,14 +96,22 @@ export async function activeViewAs(user: SessionUser): Promise<{ as: ViewingAs; 
     await sql.begin(async (tx) => {
       await lockSession(tx, session)
       await endExpired(tx)
-      await tx`delete from view_as_session where session_id = ${session} and ended_at is not null`
+      // A request answers 409 itself, so the marker goes; a socket check leaves it for the page's next request.
+      if (told) await tx`delete from view_as_session where session_id = ${session} and ended_at is not null`
     })
     throw new AppError('ConflictError', VIEW_AS_ENDED)
   }
   const person = String(row.person)
   if (String(row.tester) !== user.row_id || !(await testerApp(user.row_id)) || (await unviewable(user.row_id, person))) {
-    await endViewAs(user, 'no_longer_allowed')
-    // This request was made for the person viewed: it fails, so an open page reloads rather than mixing two people.
+    // Marked ended (and logged), not removed: whichever request or socket check finds it first,
+    // the page's next request is still told, and reloads rather than mixing two people.
+    await sql.begin(async (tx) => {
+      await lockSession(tx, session)
+      const [ended] = await tx`update view_as_session set ended_at = now() where session_id = ${session} and ended_at is null returning tester, person`
+      if (ended) await logAccess(String(ended.tester), 'view_as_end', { table: 'Person', row_id: String(ended.person), method: 'no_longer_allowed', required: true }, tx)
+      if (told) await tx`delete from view_as_session where session_id = ${session} and ended_at is not null`
+    })
+    await closeSockets(session)
     throw new AppError('ConflictError', VIEW_AS_ENDED)
   }
   const [viewed] = await sql`select row_id, email, full_name from person where row_id = ${person}`
@@ -113,6 +121,12 @@ export async function activeViewAs(user: SessionUser): Promise<{ as: ViewingAs; 
     // The tester's sign-in claims stay: they are this session's, and sign-out ends it.
     user: { row_id: person, kind: 'person', email: (viewed.email as string | null) ?? null, full_name: (viewed.full_name as string | null) ?? null, sign_in: user.sign_in },
   }
+}
+
+/** Whether this session still views as `person`: live, not ended, not expired. */
+export async function viewAsStillHolds(session: string, person: string): Promise<boolean> {
+  const [row] = await sql`select 1 from view_as_session where session_id = ${session} and person = ${person} and ended_at is null and expires_at > now()`
+  return Boolean(row)
 }
 
 /** Start viewing as `person`, or switch to them. */

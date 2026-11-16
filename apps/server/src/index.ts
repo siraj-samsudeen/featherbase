@@ -10,7 +10,7 @@ import { assertRowsWritable } from './system-written'
 import { assertNotView, storedTable } from './views'
 import { AppError, errorResponse } from './errors'
 import { runInSession } from './session-context'
-import { VIEW_AS_ENDED, activeViewAs, endViewAs, endViewAsSession, searchViewAs, sweepExpiredViewAs, startViewAs, viewAsRoute, viewAsState } from './view-as'
+import { VIEW_AS_ENDED, viewAsStillHolds, activeViewAs, endViewAs, endViewAsSession, searchViewAs, sweepExpiredViewAs, startViewAs, viewAsRoute, viewAsState } from './view-as'
 import { runViewingAs } from './view-as-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { tableStorageIdentity } from './table-engine'
@@ -651,7 +651,12 @@ app.use('/api/*', async (c, next) => {
   if (viewing && route === 'read') {
     c.set('user', viewing.user)
     c.set('viewingAs', viewing.as)
-    return runInSession(user.sign_in, () => runViewingAs(viewing.as, () => next()))
+    await runInSession(user.sign_in, () => runViewingAs(viewing.as, () => next()))
+    // A slow read admitted while viewing is released only if that View as still holds,
+    // so an Exit or Switch made meanwhile never lets the person's data through after it.
+    if (!(await viewAsStillHolds(user.sign_in!.session_id, viewing.as.person)))
+      c.res = c.json({ error: { type: 'ConflictError', message: VIEW_AS_ENDED } }, 409)
+    return
   }
   c.set('user', user)
   // #473: a test-mode or preview session cannot add a lasting way in, even
@@ -1367,6 +1372,8 @@ app.post('/api/upload_file', async (c) => {
 app.get('/api/signed_url', async (c) => {
   const fileUrl = c.req.query('file_url')
   if (!fileUrl) throw new AppError('ValidationError', 'Expected file_url')
+  // #1222: a signed link outlives the View as that would have allowed it; none is made while viewing.
+  if (c.get('viewingAs')) throw new AppError('PermissionError', 'Signed links are not made while viewing as someone')
   const [row] = await sql`
     select row_id, ref_table, ref_name from file where file_url = ${fileUrl}`
   if (!row) throw new AppError('NotFoundError', `File not found: ${fileUrl}`)

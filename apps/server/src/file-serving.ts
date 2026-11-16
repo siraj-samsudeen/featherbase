@@ -4,7 +4,7 @@ import { AppError } from './errors'
 import { getDoc } from './document'
 import { hasMandatoryRowAccess } from './mandatory-access'
 import { resolveToken } from './auth'
-import { activeViewAs } from './view-as'
+import { VIEW_AS_ENDED, activeViewAs, viewAsStillHolds } from './view-as'
 import { runViewingAs } from './view-as-context'
 import { readStored, verifyFileSignature } from './storage'
 import type { Env } from './route-context'
@@ -15,6 +15,7 @@ import { authCredential } from './session-cookies'
 // bearer header, the `sid` cookie a browser sends on its own (so <img src>
 // and download links work — #173), or a signed URL.
 export async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
+  let viewedBy: Awaited<ReturnType<typeof activeViewAs>> = null
   const [row] = await sql`
     select row_id, file_name, mime_type, ref_table, ref_name
     from file where file_url = ${fileUrl}`
@@ -41,10 +42,14 @@ export async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boo
         ? getDoc(row.ref_table as string, row.ref_name as string, user.row_id)
         : getDoc('File', row.row_id as string, user.row_id)
       await (viewing ? runViewingAs(viewing.as, read) : read())
+      if (viewing) viewedBy = viewing
     }
   }
 
   const content = await readStored(fileUrl)
+  // #1222: released only if the View as that allowed it still holds.
+  if (viewedBy && !(await viewAsStillHolds(viewedBy.user.sign_in!.session_id, viewedBy.as.person)))
+    throw new AppError('ConflictError', VIEW_AS_ENDED)
   // #506: the type is whatever the uploader declared, and the file is served
   // from this app's own address. Only types a browser shows without running
   // script open in place; anything else (HTML, SVG, scripts) downloads, so an
