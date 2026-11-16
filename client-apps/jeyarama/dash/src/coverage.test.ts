@@ -17,10 +17,10 @@ function wide(): Record<string, Row[]> {
   return {
     ...base,
     Site: [{ row_id: 'LKS', name: 'Lakeside', cluster: null }, { row_id: 'HIL', name: 'Hilltop', cluster: 'K1' }, { row_id: 'HOF', name: 'Head office', cluster: null }],
-    Section: [...base.Section, { row_id: 'S5', name: 'Annex', site: 'LKS', floor: null, status: 'Active' }, { row_id: 'H1', name: 'Hill', site: 'HIL', floor: null, status: 'Active' }],
+    Section: [...base.Section, { row_id: 'S5', name: 'Annex', site: 'LKS', floor: null, status: 'Active' }, { row_id: 'H1', name: 'Hill', site: 'HIL', floor: null, status: 'Active' }, { row_id: 'H2', name: 'Hill top', site: 'HIL', floor: null, status: 'Active' }],
     Cluster: [{ row_id: 'K2', cluster_manager: 'E-CL2' }],
     Department: [...base.Department,
-      { row_id: 'D2', department_id: 'D2', store: 'LKS', name: '', manager: null, starts_on: '2026-01-01', ends_on: null },
+      { row_id: 'D2', department_id: 'D2', store: 'LKS', name: '', manager: 'E-ST2', starts_on: '2026-01-01', ends_on: null },
       { row_id: 'D3', department_id: 'D3', store: 'LKS', name: 'Mixed', manager: 'E-DM2', starts_on: '2026-01-01', ends_on: null },
       { row_id: 'D4', department_id: 'D4', store: 'GONE', name: 'Gone', manager: null, starts_on: '2020-01-01', ends_on: '2020-12-31' }],
     'Department Section': [...base['Department Section'],
@@ -28,7 +28,8 @@ function wide(): Record<string, Row[]> {
       { row_id: 'L4', store: 'LKS', department: 'D3', section: 'S5', starts_on: '2026-01-01', ends_on: null },
       { row_id: 'L5', store: 'LKS', department: 'D3', section: 'S4', starts_on: '2026-01-01', ends_on: null },
       { row_id: 'L6', store: 'LKS', department: 'D3', section: 'H1', starts_on: '2026-01-01', ends_on: null },
-      { row_id: 'L7', store: 'LKS', department: 'D2', section: 'H1', starts_on: '2026-01-01', ends_on: null }],
+      { row_id: 'L7', store: 'LKS', department: 'D2', section: 'H1', starts_on: '2026-01-01', ends_on: null },
+      { row_id: 'L8', store: 'LKS', department: 'D2', section: 'H2', starts_on: '2026-01-01', ends_on: null }],
     Employee: [...base.Employee, ...['CL', 'CL2', 'CL3', 'DIR', 'HO', 'FM2', 'DM2', 'DM3'].map(code => ({ row_id: `E-${code}`, name: code === 'HO' ? '' : code, status: 'Current', person: code.toLowerCase() })),
       { row_id: 'E-NOSTAT', name: 'Nostat', status: '', person: 'nostat' }],
     'Job Assignment': [...base['Job Assignment'],
@@ -44,7 +45,7 @@ function wide(): Record<string, Row[]> {
     Subcategory: [...base.Subcategory, ...Array.from({ length: 14 }, (_, n) => sub(`X${n}`, `Extra ${String(n).padStart(2, '0')}`, { category: 'CAT9' }))],
     'Merchandise Assignment': [...base['Merchandise Assignment'],
       assignment('M-X1', 'E-DIR', 'Category head', { category: 'CAT9' }), assignment('M-X2', 'E-DIR', 'Buyer'),
-      assignment('M-X3', 'E-DIR', 'Buyer', { category: 'EMPTY' }), assignment('M-X4', 'E-DIR', 'Buyer', { subcategory: 'C1' })],
+      assignment('M-X3', 'E-DIR', 'Buyer', { category: 'EMPTY' }), assignment('M-X4', 'E-DIR', 'Buyer', { subcategory: 'C1' }), assignment('M-X5', 'E-DIR', 'Buyer', { subcategory: 'C-GONE' })],
   }
 }
 
@@ -71,9 +72,10 @@ describe('one department', () => {
     expect(await cover('st', { department: 'D1' })).toEqual({ state: 'not_allowed' })
     const own = await cover('dm', { department: 'D1' })
     expect(own.department).toMatchObject({ name: 'Womens', manager: 'Devi', ended: false, gaps: [] })
+    expect((await cover('x', { department: 'D1' }, MDE)).department.gaps).toEqual([])
     const t = wide()
     const unnamed = await cover('sm', { department: 'D2' }, [], t)
-    expect(JSON.parse(JSON.stringify(unnamed.department))).toMatchObject({ name: 'Unnamed department', manager: null, manager_code: null, sections: [], gaps: ['1 linked section belongs to another store'] })
+    expect(JSON.parse(JSON.stringify(unnamed.department))).toMatchObject({ name: 'Unnamed department', manager: null, manager_code: 'E-ST2', sections: [], gaps: ['2 linked sections belong to another store'] })
     const mixed = await cover('sm', { department: 'D3' }, [], t)
     expect(mixed.department.sections.map((s: { name: string }) => s.name)).toEqual(['Annex', 'Counter', 'Closed'])
     expect(mixed.department.gaps).toEqual(['Counter · no subcategories', 'Closed is closed', 'Closed · no subcategories', '1 linked section belongs to another store'])
@@ -123,6 +125,7 @@ describe("one person's coverage", () => {
     expect(lines['M-X2']).toMatchObject({ level: 'nothing', named: '', gaps: ['Names no division, category or subcategory'] })
     expect(lines['M-X3']).toMatchObject({ gaps: ['EMPTY · no subcategories'] })
     expect(lines['M-X4']).toMatchObject({ level: 'subcategory', named: 'Sarees' })
+    expect(lines['M-X5']).toMatchObject({ level: 'subcategory', named: 'C-GONE', subcategories: [] })
     expect(director.gaps).toContain('Names no division, category or subcategory')
   })
 

@@ -3,7 +3,8 @@
 // Made-up stores and people only.
 import { describe, expect, it } from 'vitest'
 import { storeActions, storeReads } from './my-store.ts'
-import { assignment, context, job, later, sub, world, type Row } from './fake-context.test-support.ts'
+import { actions } from './my-sections.ts'
+import { assignment, context, job, later, sub, today, world, type Row } from './fake-context.test-support.ts'
 
 type Read = (ctx: Parameters<typeof storeReads.my_store>[0]) => Promise<unknown>
 const as = (user: string, payload?: unknown, over: Parameters<typeof context>[1] = {}, tables = world()) => context(tables, { user, payload, ...over }).ctx
@@ -221,5 +222,48 @@ describe('the edges of the changes', () => {
 
   it('a move with no section to go to is refused', async () => {
     await expect(storeActions.move_staff(context(world(), { user: 'sm', payload: { job: 'J-ST' } }).ctx)).rejects.toThrow('You can move only your own staff, within your own area')
+  })
+})
+
+// #1223: a manager's change reaching the approver. What reach no longer allows is sent back for a fresh review.
+describe("deciding a manager's change", () => {
+  const P1 = world()['Section Subcategory'].find(row => row.row_id === 'P1')!
+  const proposal = (about: Row, over: Row = {}) => ({ row_id: 'PR', maker: 'sm', state: 'Pending', decision_reason: null, changes: [], created_at: `${today}T00:00:00Z`,
+    decided_at: null, route: { people: ['mgr'], roles: [] }, target_row: null, result_row: null, ...over,
+    about: { what: 'Sarees', from: 'Ladies', to: 'Counter', store: 'Lakeside', site: 'LKS', subcategory: 'C1', from_section: 'S1', to_section: 'S3', job_assignment: 'J-SM', by_manager: true, ...about } })
+  const decide = async (about: Row, over: Row = {}, tables = world(), payload: Row = { decision: 'approve' }) => {
+    const c = context(tables, { user: 'mgr', payload: { proposal: 'PR', ...payload }, proposals: [proposal(about, over)] })
+    await actions.decide(c.ctx)
+    return { call: c.sent[0].call, reason: (c.sent[0].request as { reason?: string }).reason, locked: c.locked }
+  }
+  const staffMove = { kind: 'section', what: 'Staff at Lakeside', subcategory: undefined, to_section: 'S2', job_assignment: 'J-ST' }
+
+  it('a move of someone whose job has no start day (reach reads it as not held), or who has left, goes back for review', async () => {
+    const ending = world({ 'Job Assignment': world()['Job Assignment'].map(j => (j.row_id === 'J-ST' ? { ...j, starts_on: null } : j)) })
+    expect(await decide(staffMove, {}, ending)).toMatchObject({ call: 'needsFreshReview', reason: 'The job behind this has ended.' })
+    const left = world({ Employee: world().Employee.map(e => (e.row_id === 'E-ST' ? { ...e, status: 'Left' } : e)) })
+    expect(await decide(staffMove, {}, left)).toMatchObject({ call: 'needsFreshReview', reason: 'The person being moved has left.' })
+  })
+
+  it("an applied move is confirmed holding its replacement job still", async () => {
+    const answer = await decide(staffMove, { state: 'Not yet reviewed', result_row: 'J-NEW' }, world(), { decision: 'confirm' })
+    expect(answer.call).toBe('confirm')
+    expect(answer.locked).toContainEqual(['Job Assignment', 'J-NEW'])
+  })
+
+  it('an addition or a removal by a manager who no longer holds the job, or the section, goes back for review', async () => {
+    expect(await decide({ kind: 'removal' }, { maker: 'fm' })).toMatchObject({ call: 'needsFreshReview', reason: 'The person who asked no longer holds this job.' })
+    expect(await decide({ kind: 'add', from_section: 'S9' })).toMatchObject({ call: 'needsFreshReview', reason: 'The manager who asked no longer manages that section.' })
+  })
+
+  it('an addition moved from a section whose placement is gone goes back for review', async () => {
+    expect(await decide({ kind: 'add' })).toMatchObject({ call: 'needsFreshReview', reason: 'Where that subcategory was has since changed.' })
+    expect((await decide({ kind: 'add' }, { target_row: 'P1' })).call).toBe('approve')
+  })
+
+  it('putting one in that moved after the page was read is refused', async () => {
+    const moved = (table: string, n: number) => (table === 'Section Subcategory' && n >= 2 ? [{ ...P1, section: 'S2' }] : undefined)
+    await expect(storeActions.manage_add(context(world(), { user: 'sm', payload: { section: 'S3', subcategory: 'C1' }, reads: moved }).ctx))
+      .rejects.toThrow('Sarees has just moved. Open the page again')
   })
 })

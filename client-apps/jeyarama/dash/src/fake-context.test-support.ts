@@ -44,8 +44,8 @@ export function context(tables: Record<string, Row[]>, { user = 'sm', payload, r
       },
     },
     changeProposals: {
-      async list(filter: { states?: string[]; start?: number; limit?: number } = {}) {
-        const rows = proposals.filter(p => !filter.states || filter.states.includes(String(p.state)))
+      async list(filter: { ids?: string[]; states?: string[]; start?: number; limit?: number } = {}) {
+        const rows = proposals.filter(p => (!filter.ids || filter.ids.includes(String(p.row_id))) && (!filter.states || filter.states.includes(String(p.state))))
         const start = filter.start ?? 0
         return rows.slice(start, start + (filter.limit ?? 200))
       },
