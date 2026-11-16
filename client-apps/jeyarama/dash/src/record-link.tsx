@@ -10,7 +10,7 @@ import { read } from './api'
 /** The Table names Dash links to, as Featherbase knows them. */
 export const RECORD = {
   site: 'Site', floor: 'Store Floor', section: 'Section', employee: 'Employee', department: 'Department',
-  subcategory: 'Subcategory', category: 'Category', region: 'Operating Region', merchandise: 'Merchandise Assignment',
+  subcategory: 'Subcategory', category: 'Category', region: 'Operating Region', merchandise: 'Merchandise Assignment', buyerSection: 'Buyer Section',
   // #1225: what Report access shows.
   report: 'dash.report', bundle: 'dash.report_bundle', role: 'Role', job: 'Job',
 } as const

@@ -17,7 +17,11 @@ export interface ChangeProposal {
   created_at: string; decided_at: string | null; route: { people: string[]; roles: string[] }
 }
 interface ProposalList { ids?: string[]; states?: string[]; makers?: string[]; limit?: number; start?: number }
-interface BaseTablesHelper { list(table: string, args: { fields: string[]; filters?: Filter[]; order_by?: string; limit_start?: number; limit_page_length?: number }): Promise<Row[]> }
+interface BaseTablesHelper {
+  list(table: string, args: { fields: string[]; filters?: Filter[]; order_by?: string; limit_start?: number; limit_page_length?: number }): Promise<Row[]>
+  /** Whether the instance has the Table with every column the app declares reading (#1246: Buyer Section may not exist yet). */
+  available?(table: string): Promise<boolean>
+}
 interface ChangeProposalsReader {
   list(filter?: ProposalList): Promise<ChangeProposal[]>
   mayDecide(maker: string, approvers: ApproverRequest): Promise<boolean>
@@ -153,7 +157,8 @@ export const SCHEDULED = 'A change to that subcategory is already planned here. 
 
 export const about = (proposal: ChangeProposal) => (proposal.about ?? {}) as unknown as About
 /** A Department Manager's set-up (#1195): department-setup.ts shows and decides those. */
-const isSetUp = (proposal: ChangeProposal) => ['department', 'department_section'].includes(String((proposal.about as Record<string, unknown> | null)?.kind))
+// Proposals of other flows, decided on their own screens: department set-ups (#1195) and Buyer Section moves (#1246).
+const isSetUp = (proposal: ChangeProposal) => ['department', 'department_section', 'buyer_section'].includes(String((proposal.about as Record<string, unknown> | null)?.kind))
 const VIEW_LIMIT = 50
 const SUB_FIELDS = ['subcategory', 'division', 'subdivision', 'category', 'subcategory_type']
 /** A subcategory's place in the merchandise hierarchy, as its row holds it. */
@@ -565,6 +570,12 @@ export const actions = {
     const payload = payloadOf(ctx)
     const [proposal] = typeof payload.proposal === 'string' && payload.proposal ? await ctx.changeProposals.list({ ids: [payload.proposal] }) : []
     if (!proposal) ctx.reject('That proposal no longer exists')
+    // #1246: a Buyer Section move is taken back as it waits; once made, only the master data team undoes it.
+    if (about(proposal).kind as string === 'buyer_section') {
+      if (isApplied(proposal)) ctx.reject('It has already been made. Ask the master data team to turn it down')
+      const taken = await ctx.changeProposals.withdraw(proposal.row_id)
+      return { id: taken.row_id, state: taken.state }
+    }
     if (!isApplied(proposal)) return view(await ctx.changeProposals.withdraw(proposal.row_id))
     if (proposal.maker !== ctx.user) ctx.reject('Only the person who asked can undo this')
     await refuseUndoIfMovedOn(ctx, proposal)
@@ -576,6 +587,8 @@ export const actions = {
     const payload = payloadOf(ctx)
     const [proposal] = typeof payload.proposal === 'string' && payload.proposal ? await ctx.changeProposals.list({ ids: [payload.proposal] }) : []
     if (!proposal) ctx.reject('That proposal no longer exists')
+    // #1246: a Buyer Section move is decided by decide_buyer_section, never here.
+    if (about(proposal).kind as string === 'buyer_section') ctx.reject('Decide this from the Buyer Section list')
     const a = about(proposal)
     const today = istToday()
     // Authority holds still until this commits: the jobs, then their people, then the reads.

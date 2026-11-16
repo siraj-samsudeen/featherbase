@@ -9,6 +9,7 @@ import { describe, expect } from 'vitest'
 import { test as pgTest } from '../pg-test'
 import { availableRuntimeVersions } from '../../src/runtime-packages'
 import { NoPersonScope, resolvePersonScope } from '../../src/person-scope'
+import { sql } from '../../src/db'
 import { APP_DIR, VERSION, createCoreTables, installApp, pinned, saveRow } from './helpers'
 // @ts-expect-error a plain .mjs module, copied in beside this file by the runner
 
@@ -19,6 +20,7 @@ async function binding() {
   const digest = availableRuntimeVersions().find(p => p.name === 'dash')!.digest
   const module = await import(`${pathToFileURL(resolve(APP_DIR, 'dist/server.mjs')).href}?artifact=${digest}`)
   return { app: 'dash', title: manifest.title, version: VERSION, tables: manifest.scopeProvider.tables, unmarkedTables: manifest.scopeProvider.unmarkedTables,
+    optionalTables: manifest.scopeProvider.optionalTables ?? [],
     identifiers: manifest.scopeProvider.identifiers ?? [], provide: module.scopeProviders.org_chart }
 }
 
@@ -27,9 +29,9 @@ const LEHENGA = ['010101003']
 const BELTS = ['010404001']
 
 /** The app installed, the core Tables created, and a made-up org chart. */
-async function setup(admin: TestClient, createUser: (o: { email: string }) => Promise<TestClient>) {
+async function setup(admin: TestClient, createUser: (o: { email: string }) => Promise<TestClient>, { without = [] as string[] } = {}) {
   await installApp(admin)
-  await createCoreTables(admin)
+  await createCoreTables(admin, { without })
   const save = (table: string, row: Record<string, unknown>) => saveRow(admin, table, row)
   for (const [code, name] of [['NORTH', 'North'], ['SOUTH', 'South']]) await save('Cluster', { code, name })
   for (const region of ['East', 'West']) await save('Operating Region', { region })
@@ -198,6 +200,44 @@ describe('the org_chart scope provider on the platform, per merchandise assignme
   })
 })
 
+// #1246: report scope follows Buyer Sections where the instance has them (featherbase #1247), else the Buyer rows.
+describe('the org_chart scope provider on the platform, with Buyer Sections', () => {
+  const codeOf = async (person: string) => String((await sql`select row_id from featherbase.employee where person = ${person}`)[0].row_id)
+  const desk = async (save: (t: string, r: Record<string, unknown>) => Promise<unknown>, id: string, buyer: string, region: string, codes: string[]) => {
+    await save('Buyer Section', { buyer_section_id: id, name: id, operating_region: region, buyer, starts_on: '2026-01-01' })
+    for (const code of codes) await save('Buyer Section Subcategory', { buyer_section_subcategory_id: `${id}-${code}`, buyer_section: id, subcategory: code, starts_on: '2026-01-01' })
+  }
+  const byStore = (scope: { filters: Record<string, string[]> }[]) => Object.fromEntries(scope.map(p => [p.filters.store[0], p.filters.subcategory]))
+
+  test('a buyer with only a Buyer Section gets its subcategories in the stores of its region', async ({ admin, createUser }) => {
+    const { buyer, save } = await setup(admin, createUser)
+    const person = await buyer([])
+    await expect(resolvePersonScope(person, await binding())).rejects.toMatchObject(new NoPersonScope('scope'))
+    await desk(save, 'Sari desk', await codeOf(person), 'East', SARI)
+    const scope = await resolvePersonScope(person, await binding())
+    expect(byStore(scope)).toEqual({ '9901': SARI, '9902': SARI })
+    expect(scope[0].reasons).toEqual([{ text: 'Buyer for Sari desk (Buyer Section)', since: '2026-01-01' }])
+  })
+
+  test("a subcategory an East desk takes leaves an all-region Buyer row's buyer in the East, and not in the West", async ({ admin, createUser }) => {
+    const { buyer, save } = await setup(admin, createUser)
+    const old = await buyer([{ responsibility: 'Buyer', division: 'Fashion', subdivision: 'Womenswear', category: 'Sarees' }])
+    const before = byStore(await resolvePersonScope(old, await binding()))
+    const other = await buyer([])
+    await desk(save, 'East saris', await codeOf(other), 'East', [SARI[0]])
+    const after = byStore(await resolvePersonScope(old, await binding()))
+    expect(after['9903']).toEqual(before['9903'])
+    expect(after['9901']).toEqual(before['9901'].filter((code: string) => code !== SARI[0]))
+    expect(after['9902']).toEqual(before['9902'].filter((code: string) => code !== SARI[0]))
+  })
+
+  test('on an instance without the Buyer Section Tables, a buyer reaches exactly what their Buyer rows give', async ({ admin, createUser }) => {
+    const { buyer } = await setup(admin, createUser, { without: ['Buyer Section Subcategory', 'Buyer Section'] })
+    const person = await buyer([{ responsibility: 'Buyer', division: 'Fashion', subdivision: 'Womenswear', category: 'Accessories', subcategory: BELTS[0], operating_region: 'East' }])
+    expect(byStore(await resolvePersonScope(person, await binding()))).toEqual({ '9901': BELTS, '9902': BELTS })
+  })
+})
+
 // rama_dw #4588: the Cluster row names its head in cluster_manager, a text column holding their Employee id.
 describe('the org_chart scope provider on the platform, per named head', () => {
   test('the head a cluster names gets its stores whole, and says why', async ({ admin, createUser }) => {
@@ -231,7 +271,8 @@ describe('what never widens a scope', () => {
 })
 
 describe('the core Tables the provider reads stay ordinary Tables', () => {
-  const SCOPE_TABLES = ['Employee', 'Job Assignment', 'Site', 'Plant', 'Section', 'Section Subcategory', 'Merchandise Assignment', 'Subcategory', 'Department', 'Department Section', 'Cluster']
+  const SCOPE_TABLES = ['Employee', 'Job Assignment', 'Site', 'Plant', 'Section', 'Section Subcategory', 'Merchandise Assignment', 'Subcategory', 'Department', 'Department Section', 'Cluster',
+    'Buyer Section', 'Buyer Section Subcategory']
 
   test('the provider reads them with none of them marked', async ({ admin, createUser }) => {
     const { reader } = await setup(admin, createUser)

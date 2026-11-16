@@ -8,6 +8,7 @@ import { MONTH_CHOICES, buildReport, dayLabel, monthLabel, headingOf, istToday, 
 import { actions as sectionActions, reads as sectionReads } from './my-sections.ts'
 import { departmentActions, departmentReads } from './department-setup.ts'
 import { storeActions, storeReads } from './my-store.ts'
+import { buyerSectionActions, buyerSectionReads } from './buyer-sections.ts'
 import { coverageReads } from './coverage.ts'
 import { prefillActions } from './department-prefill.ts'
 import { accessPage, addReport, addToBundle, diveChoices, diveChoicesPrepared, giveReport, grantOptions, makeBundle, managesAccess, managesTeamAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
@@ -317,6 +318,7 @@ export const actions = {
   ...sectionActions,
   ...departmentActions,
   ...storeActions,
+  ...buyerSectionActions,
   ...prefillActions,
   give_report: (context: AccessContext) => giveReport(withReach(context)),
   remove_report_access: (context: AccessContext) => removeAccess(withReach(context)),
@@ -330,6 +332,7 @@ export const reads = {
   ...sectionReads,
   ...departmentReads,
   ...storeReads,
+  ...buyerSectionReads,
   ...coverageReads,
 
   /** The signed-in person, as the platform knows them. */
