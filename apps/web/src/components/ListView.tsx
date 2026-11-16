@@ -359,6 +359,14 @@ export function ListView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list.data, list.isError, table])
 
+  // Codex review, round 8: rows deleted from the last page leave the offset past
+  // the end; the list goes back to its last page rather than show none. (Above
+  // the early returns: a hook runs on every render.)
+  const knownTotal = list.data?.total
+  useEffect(() => {
+    if (knownTotal !== undefined && knownTotal > 0 && start >= knownTotal) setStart(Math.floor((knownTotal - 1) / PAGE) * PAGE)
+  }, [knownTotal, start])
+
   if (meta.isLoading) return <p className="text-sm text-ink-subtle">Loading…</p>
   // DEL-R9: the server's not-found can carry a tombstone ("X was deleted by
   // … on …") — show its words, not a generic shrug.
@@ -1155,12 +1163,13 @@ export function ListView({
       {moreToTheRight && <MoreColumnsHint box={tableScroll} />}
       </div>
       )}
-      {/* #1242 (admin-lists 6): "1–4 of 4" on the left; Prev and Next only when there is another page. */}
+      {/* #1242 (admin-lists 6): "1–4 of 4" on the left; Prev and Next only when there is
+          another page, or this one is not the first (Codex review, round 8). */}
       <div className="mt-3 flex items-center gap-3 text-sm">
         <span className="text-xs text-ink-muted" data-testid="page-info">
           {pageRange(start, PAGE, total)}
         </span>
-        {total > PAGE && <>
+        {(total > PAGE || start > 0) && <>
         <button
           disabled={start === 0}
           onClick={() => setStart((s) => Math.max(0, s - PAGE))}
