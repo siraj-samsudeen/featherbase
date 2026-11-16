@@ -1,6 +1,6 @@
 ---
 name: connect-an-outside-database
-description: Connect a client's existing database (Postgres, MySQL, a DuckDB warehouse, a CSV folder) to Featherbase as a read-only Data Source and make its tables pleasant to browse — the password kept out of Featherbase, a table allowlist, readable Table names, personal columns left out, lookup tables connected so links appear, and multi-table questions answered with a client-app dataset. Use when asked to connect, browse, explore or report on an outside database in Featherbase, or when connected Tables show ids, generated names or refuse to connect.
+description: Connect a client's existing database (Postgres, a DuckDB warehouse, a CSV folder) to Featherbase as a read-only Data Source and make its tables pleasant to browse — the password kept out of Featherbase, a table allowlist, readable Table names, personal columns left out, lookup tables connected so links appear, and multi-table questions answered with a client-app dataset. Use when asked to connect, browse, explore or report on an outside database in Featherbase, or when connected Tables show ids, generated names or refuse to connect.
 ---
 
 # Connect an outside database
@@ -29,7 +29,7 @@ Only a System Manager can. In the Admin UI: **Data Source → New**; or
 
 | Field | Set it to | Why |
 |---|---|---|
-| `engine` | `postgres`, `mysql`, `duckdb` or `csv-folder` | |
+| `engine` | `postgres`, `duckdb` or `csv-folder` | MySQL is not supported (ADR 0025) |
 | `url_env` | the **name** of an environment variable holding the connection URL, e.g. `CLIENT_HR_URL` | The password is never stored, shown or logged. Each environment sets its own value. |
 | `access` | `read_only` | Unless the owner asked for writes |
 | `default_schema` | e.g. `public` | |

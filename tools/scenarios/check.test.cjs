@@ -100,3 +100,15 @@ test('Vitest outcomes mark each bound scenario, and a failed one is a problem', 
   const { rows } = check({ scenarios: [s('naming', 'One')], bound: { bindings: [b('naming', 'One')], problems: [] }, outcomes });
   assert.equal(rows[0].outcome, 'passed');
 });
+
+test('the report runs every file that binds a scenario, wherever it lives under the app', () => {
+  const { boundFiles } = require('./bindings.cjs');
+  const bindings = [
+    b('naming', 'One', 'apps/server/test/scenarios/naming.test.ts'),
+    b('naming', 'Two', 'apps/server/test/scenarios/naming.test.ts'),
+    b('roles', 'Three', 'apps/server/test/permissions.test.ts'),
+    b('roles', 'Four', 'apps/web/test/admin/roles.test.tsx'),
+  ];
+  assert.deepEqual(boundFiles(bindings, 'server'), ['test/permissions.test.ts', 'test/scenarios/naming.test.ts']);
+  assert.deepEqual(boundFiles(bindings, 'web'), ['test/admin/roles.test.tsx']);
+});

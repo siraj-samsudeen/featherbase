@@ -7,13 +7,13 @@ import { z } from 'zod'
 import { appPermissionSchema, registerApp, forgetRuntimePackages, listInstalledApps, suspendRuntimeApp, loadInstalledApps, provisionGrants, syncAppJobs, type AppManifest } from './apps'
 import { applyJobPlan, bindAppJobs, jobsDeclaration, planJobChanges, validateAppJobs } from './app-jobs'
 import { tableDefSchema } from './table-engine'
-import { hasPermission } from './permissions'
+import { PLATFORM_ROLES, hasPermission } from './permissions'
 import { tableAccessPolicy } from './mandatory-access'
 import { AppError, errorMessage } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
 import { APP_ACCENTS, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
 import { callerDocuments, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
-import { baseTablesDeclaration } from './change-proposals'
+import { approvalTypesDeclaration, baseTablesDeclaration } from './change-proposals'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import type { ScopeProviderBinding } from './person-scope'
 import { loadAppSetup, secretEntries, secretsDeclaration, settingsDeclaration } from './app-settings'
@@ -117,6 +117,8 @@ const manifestSchema = z.object({
   scopeProvider: scopeProviderDeclaration.optional(),
   // #975: the instance Tables the app reads and proposes changes on.
   baseTables: baseTablesDeclaration.optional(),
+  // #1191: the kinds of approval its proposals come as; an Approval Type row sets each one's mode.
+  approvalTypes: approvalTypesDeclaration.optional(),
   // #620 (E2): what the app reads per instance, and the deployment variables
   // it reads. D4: which of the instance's roles should carry each app role,
   // written as App Role Binding rows once, at install.
@@ -649,11 +651,15 @@ async function upgradePlan(name: string, version: string, preview = true) {
   if (!sameDeclaration(replayForward(name, prior.manifest.tables, operations), target.manifest.tables))
     refuse('Unsupported destructive or undeclared schema change')
   // #437: an upgrade may withdraw grants (narrowing access is always safe to
-  // apply) but never add or widen one on a Table the app already had; those
-  // still need a reviewed install. #651: a renamed Table's grants follow it,
+  // apply); since #1169 it may also add or widen them for its own roles (see
+  // ownRole below). #651: a renamed Table's grants follow it,
   // a dropped Table's grants end with it (a Table later given its name does
   // not inherit them), and a Table the upgrade adds arrives with exactly the
   // grants this version declares for it, listed in the preview.
+  // #1169: a dataset that was scoped staying scoped; becoming unscoped would give every reader
+  // every row with nothing in the preview. A new dataset may start unscoped.
+  const widened = (target.manifest.datasets ?? []).filter(d => d.unscoped && (prior.manifest.datasets ?? []).some(p => p.name === d.name && !p.unscoped))
+  if (widened.length) refuse(`The dataset ${widened.map(d => d.name).join(', ')} was limited to each reader's stores; an upgrade can't make it unscoped. Declare a new dataset instead`)
   const { added, follow } = tableFates(prior.manifest.tables.map(t => t.name), operations)
   const priorGrants = prior.manifest.permissions.map(p => ({ prior: p, now: follow(p.table) === undefined ? null : { ...p, table: follow(p.table)! } }))
   const held = new Set(priorGrants.flatMap(g => g.now ? [canonical(g.now)] : []))
@@ -668,12 +674,32 @@ async function upgradePlan(name: string, version: string, preview = true) {
       return canonical(scope) === canonical(priorScope)
     })
   }
-  if (!target.manifest.permissions.every((p) => added.has(p.table) || held.has(canonical(p)) || narrowsAudience(p)) || prior.app.runtime_manifest == null ||
+  // #1192: a role this version declares and the installed one did not is
+  // created by the upgrade, with its declared grants (#1169: writes too, on
+  // any of the app's Tables). Only a role the instance does not have yet: it
+  // starts with no holders. A
+  // same-named role already there is refused rather than merged, and checked
+  // again when the upgrade is applied. A platform role is never new.
+  const priorRoles = new Set(prior.manifest.roles ?? [])
+  const newRoles = (target.manifest.roles ?? []).filter(role => !priorRoles.has(role) && !PLATFORM_ROLES.includes(role))
+  const taken = newRoles.length ? await sql`select row_id from role where row_id in ${sql(newRoles)} order by row_id` : []
+  if (taken.length)
+    refuse(`The role ${taken.map(row => String(row.row_id)).join(', ')} already exists on this instance; this version declares it as new. Rename or remove that role, then upgrade`)
+  // #1169 (owner, 14-Nov-2026): an upgrade applies the access its version
+  // declares, new or wider, so a fix reaches production without the owner
+  // present. Only to a role the version itself declares (never All or Guest,
+  // never a platform role, never another app's or the instance's own), and
+  // only on the app's own Tables, never a platform or another app's Table. Each
+  // grant is in the preview, and the activity log names it once applied.
+  const ownRole = (permission: typeof target.manifest.permissions[number]) =>
+    (target.manifest.roles ?? []).includes(permission.role) && !PLATFORM_ROLES.includes(permission.role) &&
+    permission.table.startsWith(`${name}.`)
+  if (!target.manifest.permissions.every((p) => added.has(p.table) || held.has(canonical(p)) || narrowsAudience(p) || ownRole(p)) || prior.app.runtime_manifest == null ||
       (prior.app.runtime_manifest as { packageName: string }).packageName !== (target.app.runtime_manifest as { packageName: string }).packageName)
     refuse('Permission or package identity changes are unsupported')
   const kept = new Set(target.manifest.permissions.map(canonical))
   const withdrawn = priorGrants.filter(g => !g.now || !kept.has(canonical(g.now))).map(g => g.prior)
-  const granted = target.manifest.permissions.filter(p => added.has(p.table) || (!held.has(canonical(p)) && narrowsAudience(p)))
+  const granted = target.manifest.permissions.filter(p => added.has(p.table) || (!held.has(canonical(p)) && (narrowsAudience(p) || ownRole(p))))
   const destructive = operations.some(op => 'destructive' in op && op.destructive === true)
   // #700: what the upgrade does to the app's scheduled jobs.
   const jobs = planJobChanges(name, prior.manifest.jobs ?? [], target.manifest.jobs ?? [])
@@ -681,6 +707,7 @@ async function upgradePlan(name: string, version: string, preview = true) {
     currentArtifact: prior.digest, targetArtifact: target.digest, enabled: row.enabled,
     migrations: pending.map(m => ({ id: m.id, checksum: checksum(m), operations: m.operations })),
     tables: [...new Set(operations.flatMap(op => op.kind === 'renameTable' ? [op.from, op.to] : [typeof op.table === 'string' ? op.table : op.table.name]))],
+    roles: newRoles.map(role => ({ create: role })),
     permissions: [...withdrawn.map((p) => ({ withdraw: p })), ...granted.map((p) => ({ grant: p }))], jobs, indexes: [], destructive,
     dataEffects: destructive ? 'Destructive: the steps under losses remove data; every other row is unchanged' : 'Existing rows unchanged; added columns are NULL unless backfilled',
     codeOnly: operations.length === 0 }
@@ -691,7 +718,7 @@ async function upgradePlan(name: string, version: string, preview = true) {
   // apply must not make the review stale. Applying runs the steps for real
   // in its own transaction, so it does not count them first.
   const losses = preview ? await countLosses(name, pending, { ownsClient: typeof target.manifest.client === 'string' }) : []
-  return { row, target, prior, pending, ledger, withdrawn, granted, jobs,
+  return { row, target, prior, pending, ledger, withdrawn, granted, newRoles, jobs,
     plan: { ...plan, planId: checksum(plan), losses: losses.map(describeLoss) } }
 }
 
@@ -768,11 +795,13 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
         // Counts only, never values: what each destructive step removed.
         for (const loss of losses)
           await logActivity(actor, `app_data_removed ${name}@${version}: ${describeLoss(loss)}`.slice(0, 140))
-        if (prepared.granted.length) {
+        if (prepared.granted.length || prepared.newRoles.length) {
           const created = await provisionGrants({ name, roles: prepared.target.manifest.roles, runtime_package: true }, prepared.granted)
           await sql`update installed_app set roles = roles || ${sql.json(created.roles)}, perms = perms || ${sql.json(created.perms)} where name = ${name}`
+          for (const role of created.roles)
+            await logActivity(actor, `app_role_added ${name}@${version}: ${role}`.slice(0, 140))
           for (const p of prepared.granted)
-            await logActivity(actor, `app_grant_added ${name}@${version}: ${p.role} on ${p.table}`.slice(0, 140))
+            await logActivity(actor, `app_grant_added ${name}@${version}: ${p.role} ${Object.keys(p.operations).join(', ')} on ${p.table}`.slice(0, 140))
         }
         await sql`update installed_app set package_version = ${version}, artifact_digest = ${prepared.target.digest},
           manifest = ${sql.json(prepared.target.app.runtime_manifest as never)},

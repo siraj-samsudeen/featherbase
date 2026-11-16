@@ -3,7 +3,7 @@
 ## Purpose
 
 A builder can point a table at data that already lives somewhere else — a
-Postgres or MySQL database, a DuckDB warehouse, or a folder of CSV files —
+Postgres database, a DuckDB warehouse, or a folder of CSV files —
 and use it the way any other table is used, without copying the data in or
 changing anything at the other end.
 
@@ -12,7 +12,7 @@ changing anything at the other end.
 ### Requirement: Connect a data source
 
 A builder with System Manager authority SHALL be able to register a data
-source — a Postgres or MySQL database, a DuckDB file, or a folder of CSV
+source — a Postgres database, a DuckDB file, or a folder of CSV
 files — naming where its connection details are kept rather than typing them
 in. A MotherDuck warehouse uses the instance's one MotherDuck token. Those
 details are never stored in the open, shown back, or written to a log. Only a
@@ -55,7 +55,7 @@ is connected.
 
 ### Requirement: Incomplete table restrictions explain how to qualify a name
 
-Saving a data source SHALL refuse an SQL table restriction that lacks its namespace, giving correction guidance on the restriction field: schema and table for Postgres, database and table for MySQL, catalog, schema and table for DuckDB warehouses. CSV folders SHALL continue to accept exact relative filenames without a namespace; a default namespace SHALL NOT fill in an incomplete restriction.
+Saving a data source SHALL refuse an SQL table restriction that lacks its namespace, giving correction guidance on the restriction field: schema and table for Postgres, catalog, schema and table for DuckDB warehouses. CSV folders SHALL continue to accept exact relative filenames without a namespace; a default namespace SHALL NOT fill in an incomplete restriction.
 
 #### Scenario Outline: An incomplete restriction is refused before it is saved
 
@@ -69,7 +69,6 @@ Examples:
   | engine   | default   | entry             | format               |
   | postgres | public    | stores            | schema.table         |
   | postgres |           | stores            | schema.table         |
-  | mysql    | shop      | stores            | database.table       |
   | duckdb   | gold.main | stores            | catalog.schema.table |
   | duckdb   | gold      | main.stores       | catalog.schema.table |
   | postgres | public    | public.ok,stores  | schema.table         |
@@ -85,7 +84,6 @@ Then the source is registered with exactly that restriction
 Examples:
   | engine     | entry                 |
   | postgres   | public.stores         |
-  | mysql      | shop.stores           |
   | duckdb     | gold.main.stores      |
   | csv-folder | stores.csv            |
   | csv-folder | finance/stores.csv    |
@@ -954,3 +952,15 @@ While a Table is copied from a data source, the system SHALL refuse to rename or
 
 - **WHEN** a System Manager renames or removes the deleted-at-source column of a copied Table
 - **THEN** the change is refused with a message that the column marks rows deleted at the source, and Copy again still works
+
+### Requirement: A source on an engine Featherbase no longer supports says so
+
+A data source saved on an engine Featherbase no longer supports SHALL be refused wherever it is used, naming the engine and saying to delete the source, rather than failing as an unknown engine. MySQL is such an engine.
+
+#### Scenario: A MySQL source saved before support ended
+
+```gherkin
+Given a data source "legacy-shop" was saved with the engine "mysql"
+When the user tests "legacy-shop"
+Then the test is refused, saying MySQL is no longer a supported data source and to delete "legacy-shop"
+```

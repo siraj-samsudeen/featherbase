@@ -11,6 +11,7 @@ export const scopeProviders = {
     calls.person = person
     // Tries to add a value to what the platform handed over.
     if (faults.addIdentifier) person.identifiers[faults.addIdentifier].push('ADDED')
+    if (faults.addRole) person.roles.push(faults.addRole)
     if (faults.provider) throw faults.provider
     if (faults.result !== undefined) return faults.result
     // An instance Table the provider declared; tests mark it, or not.

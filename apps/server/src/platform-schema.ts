@@ -4,7 +4,7 @@ export const PLATFORM_SCHEMA = 'featherbase'
 // Metadata-backed user Tables are resolved separately by tableRelation().
 const PLATFORM_RELATIONS = new Set([
   'access_log', 'access_request', 'access_token', 'activity_log', 'app_dataset_row', 'app_role_binding', 'app_setting', 'assignment_rule',
-  'assignment_rule_user', 'auto_email_report', 'background_job', 'change_proposal', 'change_proposal_approver', 'change_proposal_column', 'client_script',
+  'approval_type', 'assignment_rule_user', 'auto_email_report', 'background_job', 'change_proposal', 'change_proposal_approver', 'change_proposal_column', 'client_script',
   'column_def', 'comment', 'custom_field', 'dashboard', 'data_scope', 'data_source',
   'dataset_miss', 'dataset_place_drop', 'dataset_snapshot', 'email_account', 'email_queue', 'email_rule',
   'email_sink', 'file', 'glossary_avoid_word', 'glossary_link', 'glossary_term', 'has_role', 'health_check_event', 'home_page', 'home_page_link', 'home_page_role',
