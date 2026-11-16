@@ -2,8 +2,10 @@
 // company-wide tools. Their picker has two layouts behind a toggle, so the owner can compare them
 // in the real app: a list of the team (the default) or type a name.
 import { Field, Segmented, Select } from '@featherbase/shop-floor'
+import { personDetail, type Who } from './person-identity'
 
-export interface TeamMember { person: string; name: string }
+/** Someone in the team, with who they are (#1216): two people in one team can share a name. */
+export interface TeamMember extends Who { person: string; name: string }
 export type PickerLayout = 'list' | 'search'
 const LAYOUTS: { value: PickerLayout; label: string }[] = [{ value: 'list', label: 'Team list' }, { value: 'search', label: 'Type a name' }]
 const LAYOUT_KEY = 'dash.team-picker-layout'
@@ -46,7 +48,8 @@ export function TeamSelect({ team, chosen, onChoose, label }: { team: TeamMember
     <Field label={label} className="min-w-56 flex-1">
       <Select value={chosen?.person ?? ''} onChange={event => onChoose(team.find(member => member.person === event.target.value) ?? null)} data-testid="team-select">
         <option value="">{team.length ? 'Choose someone in your team' : 'Nobody reports to you'}</option>
-        {team.map(member => <option key={member.person} value={member.person}>{member.name}</option>)}
+        {/* A list option is plain text: the name, then who they are, as one line. */}
+        {team.map(member => <option key={member.person} value={member.person}>{[member.name, personDetail(member)].filter(Boolean).join(' · ')}</option>)}
       </Select>
     </Field>
   )

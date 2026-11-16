@@ -87,9 +87,9 @@ describe('the page', () => {
     })
     const page = await accessPage(ctx)
     expect(page.rows.map(row => [row.gives, row.to, row.given_by])).toEqual([
-      [{ kind: 'Bundle', name: 'A bundle no longer listed' }, { kind: 'Person', name: 'Someone you can’t see' }, 'Someone'],
-      [{ kind: 'Report', name: 'A report no longer listed' }, { kind: 'Person', name: 'Asha' }, 'Administrator'],
-      [{ kind: 'Report', name: 'Company notices' }, { kind: 'Person', name: 'Ravi' }, 'Ravi'],
+      [{ kind: 'Bundle', name: 'A bundle no longer listed' }, { kind: 'Person', name: 'Someone you can’t see', who: { code: null, jobs: [], staff: 'none' } }, 'Someone'],
+      [{ kind: 'Report', name: 'A report no longer listed' }, { kind: 'Person', name: 'Asha', who: { code: null, jobs: [], staff: 'none' } }, 'Administrator'],
+      [{ kind: 'Report', name: 'Company notices' }, { kind: 'Person', name: 'Ravi', who: { code: null, jobs: [], staff: 'none' } }, 'Ravi'],
       [{ kind: 'Bundle', name: 'Team leader pack' }, { kind: 'Job', name: 'Team Leader' }, 'Meera'],
     ])
     expect(page.bundles).toEqual([{ id: 'b1', name: 'Team leader pack', reports: [
@@ -107,9 +107,9 @@ describe('the page', () => {
     } }, { Employee: [{ row_id: 'E1', person: 'ravi', name: 'Ravi' }] })
     const page = await accessPage(ctx)
     expect([page.roles, page.waiting]).toEqual([['Dash Reader'], [
-      { person: 'p1', name: 'Priya', asked_on: '2026-11-06' },
-      { person: 'ravi', name: 'Ravi', asked_on: '2026-11-07' },
-      { person: 'p3', name: 'Someone', asked_on: '2026-11-07' },
+      { person: 'p1', name: 'Priya', asked_on: '2026-11-06', who: { code: null, jobs: [], staff: 'none' } },
+      { person: 'ravi', name: 'Ravi', asked_on: '2026-11-07', who: { code: null, jobs: [], staff: 'none' } },
+      { person: 'p3', name: 'Someone', asked_on: '2026-11-07', who: { code: null, jobs: [], staff: 'none' } },
     ]])
   })
 })
@@ -134,7 +134,82 @@ describe('the person picker', () => {
     ] }
     expect(await personSearch(context({ payload: { q: 'a' } }, data))).toEqual([])
     expect(await personSearch(context({ payload: undefined }, data))).toEqual([])
-    expect(await personSearch(context({ payload: { q: 'asha' } }, data))).toEqual([{ person: 'asha', name: 'Asha One' }])
+    expect(await personSearch(context({ payload: { q: 'asha' } }, data))).toEqual([{ person: 'asha', name: 'Asha One', code: null, jobs: [], staff: 'current' }])
+  })
+})
+
+// #1216: people with the same name are told apart by their code, and the jobs they hold today with the site.
+const SAME_NAMES = {
+  Employee: [
+    { row_id: 'E1', employee_code: 'E1001', person: 'k1', name: 'Kumar', status: 'Current' },
+    { row_id: 'E2', employee_code: 'E1002', person: 'k2', name: 'Kumar', status: 'Current' },
+    { row_id: 'E3', employee_code: 'E1003', person: 'k3', name: 'Kumar', status: 'Current' },
+    { row_id: 'E4', employee_code: 'E0900', person: 'gone', name: 'Kumar Old', status: 'Left' },
+    { row_id: 'E5', employee_code: 'E2001', person: 'two', name: 'Tara', status: 'Current' },
+  ],
+  'Job Assignment': [
+    { row_id: 'J1', employee: 'E1', job: 'Team Leader', site: 'S1', starts_on: '2026-01-01' },
+    { row_id: 'J2', employee: 'E2', job: 'Head office staff', site: 'HO', starts_on: '2026-01-01' },
+    { row_id: 'J3', employee: 'E2', job: 'Staff', site: 'S1', starts_on: '2025-01-01', ends_on: '2026-01-01' },
+    { row_id: 'J4', employee: 'E5', job: 'Store Manager', site: 'S2', starts_on: '2026-01-01' },
+    { row_id: 'J5', employee: 'E5', job: 'Floor Manager', site: 'S1', starts_on: '2026-01-01' },
+    { row_id: 'J6', employee: 'E4', job: 'Staff', site: 'S1', starts_on: '2020-01-01' },
+  ],
+  Site: [{ row_id: 'S1', name: 'Lakeside' }, { row_id: 'S2', name: 'Hilltop' }, { row_id: 'HO', name: 'Head office' }],
+}
+
+describe('telling people with the same name apart (#1216)', () => {
+  it('shows each one\'s code and the jobs they hold today, with the site', async () => {
+    expect(await personSearch(context({ payload: { q: 'kumar' } }, SAME_NAMES))).toEqual([
+      { person: 'k1', name: 'Kumar', code: 'E1001', jobs: ['Team Leader · Lakeside'], staff: 'current' },
+      { person: 'k2', name: 'Kumar', code: 'E1002', jobs: ['Head office staff · Head office'], staff: 'current' },
+      { person: 'k3', name: 'Kumar', code: 'E1003', jobs: [], staff: 'current' },
+    ])
+  })
+
+  it('finds a person by part of their code, in any letter case, and lists everyone once in name order', async () => {
+    expect((await personSearch(context({ payload: { q: 'e100' } }, SAME_NAMES))).map(found => found.code)).toEqual(['E1001', 'E1002', 'E1003'])
+    expect(await personSearch(context({ payload: { q: 'E2001' } }, SAME_NAMES))).toEqual([
+      { person: 'two', name: 'Tara', code: 'E2001', jobs: ['Floor Manager · Lakeside', 'Store Manager · Hilltop'], staff: 'current' },
+    ])
+    // A name and a code can both match the same person: still once.
+    const both = { Employee: [{ row_id: 'E1', employee_code: 'AB12', person: 'ab', name: 'Abby', status: 'Current' }] }
+    expect((await personSearch(context({ payload: { q: 'ab' } }, both))).map(found => found.person)).toEqual(['ab'])
+  })
+
+  it('keeps the picker to twenty', async () => {
+    const many = { Employee: Array.from({ length: 30 }, (_, i) => ({ row_id: `E${i}`, employee_code: `Z${String(i).padStart(3, '0')}`, person: `p${i}`, name: `Zed ${String(i).padStart(2, '0')}`, status: 'Current' })) }
+    const found = await personSearch(context({ payload: { q: 'zed' } }, many))
+    expect([found.length, found[0].name, found[19].name]).toEqual([20, 'Zed 00', 'Zed 19'])
+  })
+
+  it('keeps the first twenty by code when more than twenty share a name, whatever order the rows come in', async () => {
+    const codes = Array.from({ length: 25 }, (_, i) => `K${String(i + 1).padStart(3, '0')}`)
+    const shuffled = [...codes.slice(12), ...codes.slice(0, 12)].reverse()
+    const many = { Employee: shuffled.map(code => ({ row_id: code, employee_code: code, person: `p-${code}`, name: 'Kumar', status: 'Current' })) }
+    expect((await personSearch(context({ payload: { q: 'kumar' } }, many))).map(found => found.code)).toEqual(codes.slice(0, 20))
+    // A code that also matches the name text is still listed once, in its place.
+    expect((await personSearch(context({ payload: { q: 'k0' } }, many))).map(found => found.code)).toEqual(codes.slice(0, 20))
+  })
+
+  it('says who a person is in who has what and who is waiting: on the staff list, left, or not on it', async () => {
+    const ctx = context({ people: {
+      async names(ids) { return Object.fromEntries(ids.map(id => [id, { k1: 'Kumar', k2: 'Kumar', gone: 'Kumar Old', svc: 'Report robot' }[id] ?? null])) },
+      async waitingForAccess() { return [{ person: 'k2', name: 'Kumar', asked_at: '2026-11-07T08:00:00Z' }] },
+    } }, { ...SAME_NAMES, 'dash.report_access': [
+      { row_id: 'a1', report: 'sales', person: 'k1', updated_at: '' },
+      { row_id: 'a2', report: 'sales', person: 'gone', updated_at: '' },
+      { row_id: 'a3', report: 'sales', person: 'svc', updated_at: '' },
+      { row_id: 'a4', report: 'sales', job: 'Team Leader', updated_at: '' },
+    ] })
+    const page = await accessPage(ctx)
+    expect(page.rows.map(row => row.to)).toEqual([
+      { kind: 'Person', name: 'Kumar', who: { code: 'E1001', jobs: ['Team Leader · Lakeside'], staff: 'current' } },
+      { kind: 'Person', name: 'Kumar Old', who: { code: 'E0900', jobs: [], staff: 'left' } },
+      { kind: 'Person', name: 'Report robot', who: { code: null, jobs: [], staff: 'none' } },
+      { kind: 'Job', name: 'Team Leader' },
+    ])
+    expect(page.waiting).toEqual([{ person: 'k2', name: 'Kumar', asked_on: '2026-11-07', who: { code: 'E1002', jobs: ['Head office staff · Head office'], staff: 'current' } }])
   })
 })
 

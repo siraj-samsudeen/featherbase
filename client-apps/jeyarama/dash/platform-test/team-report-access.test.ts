@@ -15,6 +15,8 @@ process.env.MOTHERDUCK_TOKEN = 'made-up-token'
 void APP_DIR
 
 const json = { 'content-type': 'application/json' }
+/** Who the made-up buyer is (#1216), as the team list and search show them. */
+const BUYER = { code: 'B1', jobs: ['Team Leader · Lakeside'], staff: 'current' }
 const call = (client: TestClient, kind: 'app_actions' | 'app_reads', name: string, payload: Record<string, unknown>) =>
   client.fetch(`/api/${kind}/dash/${name}`, { method: 'POST', headers: json, body: JSON.stringify(kind === 'app_actions' ? { idempotencyKey: crypto.randomUUID(), payload } : { payload }) })
 async function ok<T>(sent: Response | Promise<Response>): Promise<T> {
@@ -181,12 +183,15 @@ describe('the Report access page, for a Team Report Manager', () => {
     const seen = await page(head)
     expect({ scope: seen.scope, team: seen.team, reports: seen.reports.map(r => r.key), roles: seen.roles, jobs: seen.jobs, waiting: seen.waiting,
       rows: seen.rows.map(r => [r.to.name, r.removable]) }).toEqual({
-      scope: 'team', team: [{ person: buyer.user, name: 'Made-up Buyer' }], reports: ['open', 'sales'], roles: [], jobs: [], waiting: [],
+      scope: 'team', team: [{ person: buyer.user, name: 'Made-up Buyer', ...BUYER }], reports: ['open', 'sales'], roles: [], jobs: [], waiting: [],
       rows: [['Made-up Buyer', false]],
     })
     // A grant of a report they can't give still shows its name (Codex standard round 1).
     expect(seen.rows.map(r => (r as unknown as { gives: { name: string } }).gives.name)).toEqual(['Store target month to date'])
-    expect(await ok<{ person: string }[]>(call(head, 'app_reads', 'person_search', { q: 'Made-up' }))).toEqual([{ person: buyer.user, name: 'Made-up Buyer' }])
+    expect(await ok<{ person: string }[]>(call(head, 'app_reads', 'person_search', { q: 'Made-up' }))).toEqual([{ person: buyer.user, name: 'Made-up Buyer', ...BUYER }])
+    // #1216: by employee code too, within the team only.
+    expect(await ok<{ person: string }[]>(call(head, 'app_reads', 'person_search', { q: 'b1' }))).toEqual([{ person: buyer.user, name: 'Made-up Buyer', ...BUYER }])
+    expect(await ok<{ person: string }[]>(call(head, 'app_reads', 'person_search', { q: 'O1' }))).toEqual([])
     await refused(await call(head, 'app_reads', 'person_lookup', { person: other.user }), 'is not in your team')
     expect(await ok<boolean>(call(head, 'app_reads', 'manages_access', {}))).toBe(true)
   })

@@ -7,9 +7,10 @@ import { Button, Card, DataList, EmptyState, Field, KindTag, Notice, SearchInput
 import { act, read } from './api'
 import { DashSidebar } from './sections-page'
 import { PickerToggle, TeamNote, TeamSelect, startPickerLayout, type PickerLayout, type TeamMember } from './team-access-page'
+import { PeopleLayoutProvider, PeopleLayoutToggle, PersonName, personWithCode, type Who } from './person-identity'
 
 type Kind = 'Person' | 'Role' | 'Job'
-interface Row { id: string; updated_at: string; gives: { kind: 'Report' | 'Bundle'; name: string }; to: { kind: Kind; name: string }; given_by: string; given_on: string; removable?: boolean }
+interface Row { id: string; updated_at: string; gives: { kind: 'Report' | 'Bundle'; name: string }; to: { kind: Kind; name: string; who?: Who }; given_by: string; given_on: string; removable?: boolean }
 interface Page {
   /** #1217: 'team' for a Team Report Manager, who gives only to `team`. */
   scope?: 'company' | 'team'
@@ -19,9 +20,9 @@ interface Page {
   roles: string[]
   jobs: string[]
   rows: Row[]
-  waiting: { person: string; name: string; asked_on: string }[]
+  waiting: { person: string; name: string; asked_on: string; who?: Who }[]
 }
-interface Found { person: string; name: string }
+interface Found extends Who { person: string; name: string }
 interface Lookup { name: string; reports: { key: string; name: string; because: string[]; closed: string | null }[] }
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : 'That did not go through. Try again.')
@@ -39,29 +40,32 @@ export function ReportAccess() {
   const load = useCallback(() => read<Page>('access_page').then(answer => { setPage(answer); setFailed(null) }, error => setFailed(messageOf(error))), [])
   useEffect(() => { void load() }, [load])
   return (
-    <div className="fd-shell">
-      <DashSidebar current="access" />
-      <main className="fd-page" data-testid="report-access">
-        <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
-          <h1 className="fd-title">Report access</h1>
-          {!page && !failed && <Skeleton label="Opening report access" lines={6} />}
-          {failed && !page && (
-            <Card data-testid="access-refused"><EmptyState title="This page couldn't open" body={failed} action={failed.startsWith('Only a Report Access Manager') ? undefined : <Button onClick={() => void load()}>Try again</Button>} /></Card>
-          )}
-          {page && page.scope === 'team' && <TeamAccess page={page} onChanged={load} />}
-          {page && page.scope !== 'team' && (
-            <>
-              <p className="fd-muted">A person sees every report given to them, through a role they hold, or through their current job. What a report shows them still follows their job.</p>
-              <GiveBar key={removals} page={page} onGiven={load} />
-              <WhoHasWhat rows={page.rows} onRemoved={() => { setRemovals(n => n + 1); return load() }} />
-              <PersonLookup />
-              <Bundles page={page} onChanged={load} />
-              {page.waiting.length > 0 && <Waiting waiting={page.waiting} />}
-            </>
-          )}
-        </div>
-      </main>
-    </div>
+    <PeopleLayoutProvider>
+      <div className="fd-shell">
+        <DashSidebar current="access" />
+        <main className="fd-page" data-testid="report-access">
+          <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
+            <h1 className="fd-title">Report access</h1>
+            {!page && !failed && <Skeleton label="Opening report access" lines={6} />}
+            {failed && !page && (
+              <Card data-testid="access-refused"><EmptyState title="This page couldn't open" body={failed} action={failed.startsWith('Only a Report Access Manager') ? undefined : <Button onClick={() => void load()}>Try again</Button>} /></Card>
+            )}
+            {page && page.scope === 'team' && <TeamAccess page={page} onChanged={load} />}
+            {page && page.scope !== 'team' && (
+              <>
+                <p className="fd-muted">A person sees every report given to them, through a role they hold, or through their current job. What a report shows them still follows their job.</p>
+                <PeopleLayoutToggle />
+                <GiveBar key={removals} page={page} onGiven={load} />
+                <WhoHasWhat rows={page.rows} onRemoved={() => { setRemovals(n => n + 1); return load() }} />
+                <PersonLookup />
+                <Bundles page={page} onChanged={load} />
+                {page.waiting.length > 0 && <Waiting waiting={page.waiting} />}
+              </>
+            )}
+          </div>
+        </main>
+      </div>
+    </PeopleLayoutProvider>
   )
 }
 
@@ -108,7 +112,7 @@ function GiveBar({ page, onGiven, team }: { page: Page; onGiven: () => Promise<u
     setDone(null)
     try {
       await act('give_report', { [what === 'report' ? 'report' : 'report_bundle']: id, [kind.toLowerCase()]: to })
-      setDone(`${chosenName()} is given to ${kind === 'Person' ? person?.name : receiver}.`)
+      setDone(`${chosenName()} is given to ${kind === 'Person' && person ? personWithCode(person.name, person) : receiver}.`)
       setReceiver('')
       setPerson(null)
       await onGiven()
@@ -144,7 +148,7 @@ function GiveBar({ page, onGiven, team }: { page: Page; onGiven: () => Promise<u
           </Field>}
           {kind === 'Person' && (team?.layout === 'list'
             ? <TeamSelect team={team.members} chosen={person} onChoose={setPerson} label="To someone in your team" />
-            : <PersonPicker chosen={person} onChoose={setPerson} label={team ? 'To someone in your team' : 'Person'} nobody={team ? 'No one in your team by that name' : undefined} />)}
+            : <PersonPicker chosen={person} onChoose={setPerson} label={team ? 'To someone in your team' : 'Person'} nobody={team ? 'No one in your team matches that' : undefined} />)}
           {kind === 'Role' && (
             <Field label="Role" className="min-w-56 flex-1">
               <Select value={receiver} onChange={event => setReceiver(event.target.value)} data-testid="give-role">
@@ -171,7 +175,7 @@ function GiveBar({ page, onGiven, team }: { page: Page; onGiven: () => Promise<u
 }
 
 /** Finds a person on the staff list by name. */
-function PersonPicker({ chosen, onChoose, label, nobody = 'No one on the staff list by that name' }: { chosen: Found | null; onChoose: (found: Found | null) => void; label: string; nobody?: string }) {
+function PersonPicker({ chosen, onChoose, label, nobody = 'No one on the staff list matches that' }: { chosen: Found | null; onChoose: (found: Found | null) => void; label: string; nobody?: string }) {
   const [typed, setTyped] = useState('')
   const [found, setFound] = useState<Found[] | null>(null)
   useEffect(() => {
@@ -186,7 +190,7 @@ function PersonPicker({ chosen, onChoose, label, nobody = 'No one on the staff l
       <div className="flex min-w-56 flex-1 flex-col">
         <span className="mb-1.5 block text-sm font-semibold text-ink">{label}</span>
         <div className="flex min-h-control items-center gap-2" data-testid="person-chosen">
-          <span className="font-semibold">{chosen.name}</span><KindTag>Person</KindTag>
+          <PersonName name={chosen.name} who={chosen} strong /><KindTag>Person</KindTag>
           <Button variant="quiet" onClick={() => { onChoose(null); setTyped('') }}>Change</Button>
         </div>
       </div>
@@ -194,7 +198,7 @@ function PersonPicker({ chosen, onChoose, label, nobody = 'No one on the staff l
   return (
     <div className="relative min-w-56 flex-1">
       <Field label={label}>
-        <SearchInput value={typed} onChange={event => setTyped(event.target.value)} placeholder="Type a name" data-testid="person-search" />
+        <SearchInput value={typed} onChange={event => setTyped(event.target.value)} placeholder="Type a name or employee code" data-testid="person-search" />
       </Field>
       {found && (
         <ul className="absolute z-10 mt-1 w-full rounded-control border border-border bg-surface shadow-sm" data-testid="person-results">
@@ -202,7 +206,7 @@ function PersonPicker({ chosen, onChoose, label, nobody = 'No one on the staff l
           {found.map(person => (
             <li key={person.person}>
               <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-start hover:bg-subtle" onClick={() => { onChoose(person); setTyped('') }} data-testid="person-result">
-                <span>{person.name}</span><KindTag>Person</KindTag>
+                <span className="min-w-0 flex-1"><PersonName name={person.name} who={person} /></span><KindTag>Person</KindTag>
               </button>
             </li>
           ))}
@@ -232,12 +236,12 @@ function WhoHasWhat({ rows, onRemoved, empty }: { rows: Row[]; onRemoved: () => 
   }
   const columns: DataColumn<Row>[] = [
     { key: 'gives', header: 'Gives', phone: 'title', cell: row => <span className="inline-flex items-center gap-2">{row.gives.name}<KindTag>{row.gives.kind}</KindTag></span> },
-    { key: 'to', header: 'To', cell: row => <span className="inline-flex items-center gap-2">{row.to.name}<KindTag>{row.to.kind}</KindTag></span> },
+    { key: 'to', header: 'To', cell: row => <span className="inline-flex items-center gap-2"><PersonName name={row.to.name} who={row.to.who} /><KindTag>{row.to.kind}</KindTag></span> },
     { key: 'by', header: 'Given by', cell: row => <span>{row.given_by}{row.given_on ? ` · ${dayOf(row.given_on)}` : ''}</span> },
     { key: 'remove', header: <span className="sr-only">Remove</span>, align: 'end', cell: row => (
       confirming?.id === row.id ? (
         <span className="inline-flex flex-wrap items-center justify-end gap-2" data-testid="remove-confirm">
-          <span className="text-sm">Remove {row.gives.name} from {row.to.name}?</span>
+          <span className="text-sm">Remove {row.gives.name} from {personWithCode(row.to.name, row.to.who)}?</span>
           <Button variant="danger" loading={busy} onClick={() => void remove(row)} data-testid="remove-yes">Remove</Button>
           <Button variant="quiet" disabled={busy} onClick={() => setConfirming(null)}>Cancel</Button>
         </span>
@@ -247,7 +251,8 @@ function WhoHasWhat({ rows, onRemoved, empty }: { rows: Row[]; onRemoved: () => 
   ]
   return (
     <Card title="Who has what" data-testid="who-has-what">
-      <div className="flex flex-col gap-3 p-4">
+      {/* relative + clip: the hidden "Remove" header is absolutely placed, and must not widen the page on a phone. */}
+      <div className="relative flex flex-col gap-3 overflow-x-clip p-4">
         {error && <Notice tone="negative">{error}</Notice>}
         <DataList caption="Who has what" rows={rows} columns={columns} rowKey={row => row.id} rowTestId={() => 'access-row'} layout="table"
           empty={{ title: "Nobody has a report yet", body: empty ?? "Give one above. Until then nobody sees any report." }} />
@@ -274,7 +279,7 @@ function PersonLookup({ team }: { team?: TeamPicking } = {}) {
       <div className="flex flex-col gap-3 p-4">
         <div className="flex flex-wrap items-end gap-3">{team?.layout === 'list'
           ? <TeamSelect team={team.members} chosen={person} onChoose={setPerson} label="Look up someone in your team" />
-          : <PersonPicker chosen={person} onChoose={setPerson} label={team ? 'Look up someone in your team' : 'Look up a person'} nobody={team ? 'No one in your team by that name' : undefined} />}</div>
+          : <PersonPicker chosen={person} onChoose={setPerson} label={team ? 'Look up someone in your team' : 'Look up a person'} nobody={team ? 'No one in your team matches that' : undefined} />}</div>
         {error && <Notice tone="negative">{error}</Notice>}
         {answer && answer.reports.length === 0 && <p data-testid="lookup-none">{answer.name} sees no report. Nothing has been given to them, their roles or their job.</p>}
         {answer && answer.reports.length > 0 && (
@@ -371,7 +376,7 @@ function Waiting({ waiting }: { waiting: Page['waiting'] }) {
   return (
     <Card title="Waiting for a report" data-testid="waiting">
       <ul className="flex flex-col divide-y divide-border p-4">
-        {waiting.map(w => <li key={w.person} className="py-1" data-testid="waiting-person">{w.name} · asked on {dayOf(w.asked_on)}</li>)}
+        {waiting.map(w => <li key={w.person} className="py-1" data-testid="waiting-person"><span className="flex flex-wrap items-baseline justify-between gap-x-3"><PersonName name={w.name} who={w.who} /><span className="text-sm text-ink-muted">asked on {dayOf(w.asked_on)}</span></span></li>)}
       </ul>
     </Card>
   )

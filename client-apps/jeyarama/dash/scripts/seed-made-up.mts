@@ -224,6 +224,13 @@ await seed('sales_last_month_meta', [...new Set(month.map(m => `${m.store_code} 
 
 // #1046: someone who gives reports, and nothing else: the Report access page (/dash/?view=access).
 await person('access-manager@example.test', 'Made-up Access Manager', ['Report Access Manager'], false)
+// #1216: same-named people on that page. Four current Kumars are among the readers above; here a
+// Kumar who has left and someone not on the staff list, each given a report directly with one current Kumar.
+const leftKumar = await person('reader-same-left@example.test', 'Kumar')
+await keep('Employee', '3990', { employee_code: '3990', name: 'Kumar', person: leftKumar, status: 'Left' })
+const outsider = await person('outsider@example.test', 'Made-up Outsider')
+for (const receiver of [leftKumar, outsider, await person('reader-same-leader@example.test', 'Kumar')])
+  await save('dash.report_access', { report: 'sales', person: receiver }).catch(() => {})
 
 // Each person is a Reader and shows one state of Your sections.
 for (const staff of org.sectionPeople as { key: string; name: string; code: string | null; roles: string[]; jobs: [string, string, string, string | null, string | null][] }[]) {
