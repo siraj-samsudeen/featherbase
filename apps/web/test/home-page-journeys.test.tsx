@@ -36,8 +36,37 @@ test('the sidebar shows a Home Page with its icon, and one stored with no label 
   await admin.post('/api/save_row', { table: 'Home Page', row: { row_id: 'hpj-unnamed', label: 'Unnamed' } })
   await (db as Sql)`update home_page set label = '' where row_id = 'hpj-unnamed'`
   await renderApp('/featherbase/admin', admin)
-  expect(await screen.findByTestId('home-page-link-hpj-iconed', {}, WAIT)).toHaveTextContent(/^🏬 Stores$/)
-  expect(screen.getByTestId('home-page-link-hpj-unnamed')).toHaveTextContent(/^hpj-unnamed$/)
+  // #1242 (admin-lists 8): icon + label, as in the other sidebar groups; the
+  // page's emoji sits in the icon's place and is not read out.
+  const iconed = await screen.findByTestId('home-page-link-hpj-iconed', {}, WAIT)
+  expect(iconed).toHaveAccessibleName('Stores')
+  expect(within(iconed).getByTestId('sidebar-item-icon')).toHaveTextContent('🏬')
+  const unnamed = screen.getByTestId('home-page-link-hpj-unnamed')
+  expect(unnamed).toHaveAccessibleName('hpj-unnamed')
+  // With no emoji of its own, the row still has the icon every row has.
+  expect(within(unnamed).getByTestId('sidebar-item-icon').tagName.toLowerCase()).toBe('svg')
+})
+
+// #1242 (admin-lists 8): the modules are a sidebar group like the others.
+test('the Home Pages are headed like every other sidebar group', async ({ admin }) => {
+  await renderApp('/featherbase/admin/home/system', admin)
+  const nav = await screen.findByTestId('home-page-nav', {}, WAIT)
+  expect(within(nav).getByTestId('sidebar-group-heading')).toHaveTextContent(/^Modules$/)
+  expect(within(nav).getByTestId('sidebar-group-heading').tagName).toBe('H2')
+})
+
+test("the open module is marked: its Home Page, and any Table of its module", async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Hpj Shelf', module: 'Hpj Shop', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
+  const { pages } = await admin.get<{ pages: { row_id: string; module: string | null }[] }>('/api/home_pages')
+  const shop = pages.find((p) => p.module === 'Hpj Shop')!.row_id
+  await renderApp(tableHref('Hpj Shelf'), admin)
+  await waitFor(() => expect(screen.getByTestId(`home-page-link-${shop}`)).toHaveAttribute('aria-current', 'page'), WAIT)
+  expect(screen.getByTestId('home-page-link-system')).not.toHaveAttribute('aria-current')
+})
+
+test('a Table on the System page marks System, which has no module of its own', async ({ admin }) => {
+  await renderApp('/featherbase/admin/table/person', admin)
+  await waitFor(() => expect(screen.getByTestId('home-page-link-system')).toHaveAttribute('aria-current', 'page'), WAIT)
 })
 
 test('UI-027: the sidebar opens a Home Page, with its title and shortcuts', async ({ admin }) => {
