@@ -83,3 +83,12 @@ test('a sign-out the server could not complete says so and keeps the person sign
   expect(pathOf(r)).toBe('/featherbase/admin/home/system')
   expect(errors).toHaveBeenCalledWith('sign-out: revoking a session failed', expect.anything())
 })
+
+test("the account menu's own name opens the person's record and closes the menu", async ({ admin }) => {
+  const r = await renderApp('/featherbase/admin', admin)
+  await userEvent.click(await screen.findByTestId('session-user', {}, { timeout: 8000 }))
+  const menu = await screen.findByTestId('account-menu')
+  await userEvent.click(within(menu).getAllByRole('link')[0])
+  await waitFor(() => expect(pathOf(r)).toMatch(/\/featherbase\/admin\/table\/person\//))
+  expect(screen.queryByTestId('account-menu')).not.toBeInTheDocument()
+})

@@ -41,6 +41,18 @@ test("a person's own saved view is in the sidebar and opens its list with the vi
   expect(chip).toHaveTextContent('Attakulangara')
 })
 
+test('a saved view clicked with a modifier key is left to the browser', async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/saved_views', { table: DEPT, label: 'ATK Departments', filters: [ATK], shared: true })
+  const r = await renderApp('/featherbase/admin', admin)
+  const row = await within(await group()).findByRole('link', { name: /ATK Departments/ }, T)
+  const user = userEvent.setup()
+  await user.keyboard('{Control>}')
+  await user.click(row)
+  await user.keyboard('{/Control}')
+  expect((r.router.state as { location: { pathname: string } }).location.pathname).toBe('/featherbase/admin')
+})
+
 test('with no saved views the group is not shown', async ({ admin }) => {
   await seed(admin)
   await renderApp('/featherbase/admin', admin)
