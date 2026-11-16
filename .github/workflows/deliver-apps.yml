@@ -1,0 +1,51 @@
+# #1178 (D8): the fast lane. On a push to main that changes an app's code but
+# not its featherbase.json, build that app and deliver it to the running
+# instance, which serves it at once (docs/DEPLOY.md, "Delivering an app fix").
+# The ordinary Railway deploy of the same commit follows a couple of minutes
+# later and re-pins to the image's files; the full test workflow runs as usual.
+#
+# Off until both secrets exist: FEATHERBASE_DELIVERY_URL (the instance's
+# address) and APP_DELIVERY_TOKEN (the same key the instance holds).
+name: deliver-apps
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'client-apps/*/*/**'
+      - 'example-apps/**'
+
+concurrency:
+  group: deliver-apps
+  cancel-in-progress: false
+
+jobs:
+  deliver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FEATHERBASE_DELIVERY_URL: ${{ secrets.FEATHERBASE_DELIVERY_URL }}
+      APP_DELIVERY_TOKEN: ${{ secrets.APP_DELIVERY_TOKEN }}
+    steps:
+      - name: Delivery is on
+        id: on
+        run: |
+          if [ -n "$FEATHERBASE_DELIVERY_URL" ] && [ -n "$APP_DELIVERY_TOKEN" ]; then echo "on=true" >> "$GITHUB_OUTPUT"
+          else echo "Delivery is off: set FEATHERBASE_DELIVERY_URL and APP_DELIVERY_TOKEN to turn it on."; fi
+      - uses: actions/checkout@v4
+        if: steps.on.outputs.on == 'true'
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        if: steps.on.outputs.on == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.on.outputs.on == 'true'
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install the shared packages apps build against
+        if: steps.on.outputs.on == 'true'
+        run: pnpm install --frozen-lockfile --filter "./packages/**"
+      - name: Deliver each app whose code changed
+        if: steps.on.outputs.on == 'true'
+        run: node tools/deliver-changed-apps.mjs "${{ github.event.before }}" "${{ github.sha }}"

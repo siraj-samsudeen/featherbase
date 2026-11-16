@@ -3,7 +3,6 @@ import { readNamedVariable } from '../env'
 import { AppError, errorMessage } from '../errors'
 import type { SourceConfig, SourceDriver, SourceEngine } from './types'
 import { postgresDriver } from './postgres-driver'
-import { mysqlDriver } from './mysql-driver'
 import { duckdbDriver } from './duckdb-driver'
 import { csvFolderDriver } from './csv-driver'
 
@@ -17,11 +16,13 @@ const cache = new Map<string, SourceConfig>()
 
 const DRIVERS: Record<SourceEngine, SourceDriver> = {
   postgres: postgresDriver,
-  mysql: mysqlDriver,
   duckdb: duckdbDriver,
   motherduck: duckdbDriver,
   'csv-folder': csvFolderDriver,
 }
+
+/** Engines Featherbase once supported; a source saved on one is refused by name (ADR 0025). */
+const RETIRED_ENGINES: Record<string, string> = { mysql: 'MySQL' }
 
 export function invalidateSources(name?: string) {
   const names = name ? [name] : [...cache.keys()]
@@ -47,7 +48,6 @@ function parseAllowlist(raw: unknown): string[] | null {
 
 export function allowlistQualificationGuidance(engine: string, raw: unknown): string | null {
   const format = engine === 'postgres' ? 'schema.table'
-    : engine === 'mysql' ? 'database.table'
     : engine === 'duckdb' || engine === 'motherduck' ? 'catalog.schema.table'
     : null
   if (!format) return null
@@ -64,6 +64,8 @@ export async function getSource(name: string): Promise<SourceConfig> {
   const [row] = await sql`select * from data_source where row_id = ${name}`
   if (!row) throw new AppError('NotFoundError', `Data Source ${name} not found`)
   const engine = String(row.engine) as SourceEngine
+  const retired = RETIRED_ENGINES[engine]
+  if (retired) throw new AppError('ValidationError', `${retired} is no longer a supported data source: delete ${name}`)
   if (!(engine in DRIVERS))
     throw new AppError('ValidationError', `Unknown data source engine ${engine}`)
   const cfg: SourceConfig = {

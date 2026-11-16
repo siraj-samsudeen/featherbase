@@ -416,6 +416,40 @@ describe('the reminder a day later', () => {
     expect(mail.body).not.toContain('Sam Late')
   })
 
+  // #1204: production, 11-Nov-2026. Featherbase requests raised on a first sign-in before #1165
+  // never cleared once their people had an app, so the reminder kept naming them. A Featherbase
+  // request settles the way requestAccess answers: a home app, or any app at all, is not waiting.
+  test('a Featherbase request settles once its person has a home app; one with no app is still reminded', async ({ admin, createUser }) => {
+    await managers()
+    await installOther(admin)
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Other Reader' } })
+    await grantRole(admin, { table: 'other.task', role: 'Other Reader', can_read: true })
+    const homed = await createUser({ email: 'homed.late@example.com', fullName: 'Homed Late', roles: [] })
+    const nowhere = await createUser({ email: 'nowhere.late@example.com', fullName: 'Nowhere Late', roles: [] })
+    await ask(homed, 'featherbase')
+    await ask(nowhere, 'featherbase')
+    await ageRequests('2 days')
+    await giveRole(homed.user!, 'Other Reader')
+    expect(await remindAccessRequests()).toBe(1)
+    const [mail] = await mailsTo('manager.one@example.com', REMINDER_SUBJECT)
+    expect(mail.body).toContain('- Nowhere Late, Featherbase')
+    expect(mail.body).not.toContain('Homed Late')
+    expect((await list(admin)).rows).toMatchObject([{ person: nowhere.user, app_name: 'featherbase' }])
+  })
+
+  test('a Featherbase request settles once its person can open an app open to everyone', async ({ admin, createUser }) => {
+    await managers()
+    const anyone = await createUser({ email: 'anyone.late@example.com', fullName: 'Anyone Late', roles: [] })
+    await ask(anyone, 'featherbase')
+    await ageRequests('2 days')
+    const { discoverPackages } = await import('../src/runtime-packages')
+    await discoverPackages([resolve('../..', 'test-apps/other')])
+    await admin.post('/api/install_app', { name: 'other' })
+    expect(await remindAccessRequests()).toBe(0)
+    expect(await mailsTo('manager.one@example.com', REMINDER_SUBJECT)).toHaveLength(0)
+    expect((await list(admin)).total).toBe(0)
+  })
+
   test('with no System Manager to mail, the reminder is recorded as undelivered', async () => {
     await noManagerMail()
     vi.spyOn(console, 'warn').mockImplementation(() => {})

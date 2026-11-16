@@ -83,6 +83,10 @@ export interface AppScopeProviderContext {
      *  #662: each says whether another person holds it today too, and
      *  nothing about who. */
     readonly identifiers: Readonly<Record<string, readonly Readonly<{ value: string; shared: boolean }>[]>>
+    /** #1192: the roles the person holds as the platform enforces them
+     *  (held directly, given to everyone who signs in, or bound to an app
+     *  role), sorted, read fresh on every call. */
+    readonly roles: readonly string[]
   }
   readonly documents: {
     get(table: string, rowId: string): Promise<ActionRow>

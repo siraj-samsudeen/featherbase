@@ -83,9 +83,11 @@ import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, isInstalled, installedAppNames } from './apps'
 import { packageTitle, appCatalog, appAsset } from './runtime-packages'
 import { discoverAppLibrary } from './app-library'
+import { appPathsFromEnvironment, deliverApp, deliveryKeyMatches } from './app-delivery'
 import { documentActivity } from './document-activity'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage, rowHref } from 'shared'
-import { appOperation, withAppClientVersion } from './app-lifecycle'
+import { appOperation, withAppClientVersion, withInstalledAppVersions } from './app-lifecycle'
+import { agentMark } from './agent-context'
 import { composeRuntimeShell } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
 import { assertServerStart, readVariable } from './env'
@@ -114,7 +116,7 @@ registerApp(helpdesk)
 // Same discipline: checklist tables exist only after
 // POST /api/install_app { name: 'checklists' }.
 registerApp(checklists)
-await discoverAppLibrary(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
+await discoverAppLibrary(appPathsFromEnvironment())
 await loadInstalledApps()
 // Custom fields may target app-owned Tables, so activation precedes replay.
 await reapplyCustomFields()
@@ -606,6 +608,16 @@ app.get('/preview', async (c) => {
   return c.redirect(`/featherbase/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
 })
 
+// #1178 (D8): the deploy pipeline delivers an app's code fix. Its key is the
+// credential, so like /preview it sits before the session check, and answers
+// 404 when delivery is off or the key is wrong.
+app.post('/deliver/app', async (c) => {
+  if (!deliveryKeyMatches(c.req.header('authorization'))) return c.notFound()
+  // 50 MB of files is about 67 MB as base64 JSON; refuse more before reading it.
+  if (Number(c.req.header('content-length') ?? 0) > 72 * 1024 * 1024) throw new AppError('ValidationError', 'A delivery is at most 50 MB')
+  return c.json(await deliverApp(await c.req.json().catch(() => null)))
+})
+
 // ---- API-004: everything below requires a valid session --------------------
 
 app.use('/api/*', async (c, next) => {
@@ -643,7 +655,10 @@ app.use('/api/*', async (c, next) => {
     // #642: the top bar's options are app reads too (Codex round 1 on #643).
     const appRead = c.req.path.startsWith('/api/app_reads/') || c.req.path.startsWith('/api/app_bar/')
     // #971: a copy reads its source with no lifecycle lock and takes it to apply.
-    return withAppClientVersion(c.req.header('X-Featherbase-App-Version') ?? '', () => appRead || isCopyRequest(c.req.method, c.req.path) ? next() : appOperation(next))
+    const run = () => appRead || isCopyRequest(c.req.method, c.req.path) ? next() : appOperation(next)
+    // #1211: /mcp's own inner request (marked in-process, never by a header)
+    // has no client to go stale; a browser's must name the version it loaded.
+    return agentMark() ? withInstalledAppVersions(run) : withAppClientVersion(c.req.header('X-Featherbase-App-Version') ?? '', run)
   } catch (error) {
     const protectedOperation = /^\/api\/app_(?:reads|actions)\/([^/]+)\/([^/]+)(?:\/access)?$/.exec(c.req.path)
     if (protectedOperation) return recordAppAccessRefusal(who(c), protectedOperation[1], protectedOperation[2], 'identity')

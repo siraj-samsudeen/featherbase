@@ -3,6 +3,7 @@
 // disposable database of its own (scratch-database.ts), installed fresh, so
 // its committed rows never touch the shared test database; the database is
 // dropped afterwards, forcibly.
+import { makeJobDue } from './jobs-due'
 import { randomUUID } from 'node:crypto'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
@@ -36,14 +37,14 @@ export const jobs = { async tidy(ctx) { ctx.setResult('tidied') } }
     // A real database read failure, isolated from every other test database.
     // Unlike a missing setting, it must be an error eligible for retry.
     await sql`alter table app_setting rename column value to unavailable_value`
-    await sql`update background_job set run_at = now() - interval '1 second' where row_id = ${job.row_id}`
+    await makeJobDue(job.row_id as string)
     expect(await runOneJob()).toBe(true)
     expect(await sql`select job_status, attempts from background_job where row_id = ${job.row_id}`)
       .toEqual([{ job_status: 'queued', attempts: 1 }])
     expect(await sql`select outcome, error from job_execution where job = ${job.row_id}`)
       .toEqual([{ outcome: 'error', error: expect.stringContaining('column "value" does not exist') }])
     await sql`alter table app_setting rename column unavailable_value to value`
-    await sql`update background_job set run_at = now() - interval '1 second' where row_id = ${job.row_id}`
+    await makeJobDue(job.row_id as string)
     expect(await runOneJob()).toBe(true)
     expect(await sql`select job_status, attempts from background_job where row_id = ${job.row_id}`)
       .toEqual([{ job_status: 'done', attempts: 2 }])

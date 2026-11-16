@@ -54,17 +54,35 @@ export async function canOpen(person: string, app: string): Promise<boolean> {
   return (await canUseAdmin(person)) || (await getRoles(person)).includes(VIEWER_ROLE)
 }
 
-/** Removes every request whose person can now open its app, or who can no
- *  longer sign in. Run before the list is counted, so the count, the list and
- *  the reminder agree with what each person can open right now. */
+/** What `person` is told instead of waiting for `target`, or null when they
+ *  are waiting for it. One rule for asking and for settling (#1204): a request
+ *  goes once this answers. */
+async function notWaiting(person: string, target: AccessTarget): Promise<AccessAnswer | null> {
+  if (await canOpen(person, target.name)) return { state: 'open', title: target.title }
+  // Found on staging (10-Nov-2026): someone who belongs in an app, sent to the Admin, isn't waiting
+  // for it. Their app is named so the page sends them there; nothing is recorded or mailed.
+  if (target.name === FEATHERBASE_APP.name) {
+    const home = await homeApp(person)
+    if (home) return { state: 'elsewhere', title: target.title, home }
+    // Only apps open to everyone: shown them, and nobody is told.
+    const apps = (await appCatalog(person)).map(({ name, title, href }) => ({ name, title, href }))
+    if (apps.length) return { state: 'apps', title: target.title, apps }
+  }
+  return null
+}
+
+/** Removes every request whose person is no longer waiting for its app, or
+ *  who can no longer sign in. Run before the list is counted, so the count,
+ *  the list and the reminder agree with what each person can open right now. */
 export async function settleAccessRequests(): Promise<void> {
   const rows = await sql`
-    select r.row_id, r.person, r.app_name,
+    select r.row_id, r.person, r.app, r.app_name,
       coalesce(p.enabled and p.replaced_by is null, false) as live
     from access_request r left join person p on p.row_id = r.person`
   const settled: string[] = []
   for (const row of rows)
-    if (!row.live || (await canOpen(String(row.person), String(row.app_name)))) settled.push(String(row.row_id))
+    if (!row.live || (await notWaiting(String(row.person), { name: String(row.app_name), title: String(row.app) })))
+      settled.push(String(row.row_id))
   if (settled.length) await sql`delete from access_request where row_id in ${sql(settled)}`
 }
 
@@ -92,16 +110,8 @@ export interface AccessAnswer {
 export async function requestAccess(person: string, app: string): Promise<AccessAnswer | null> {
   const target = await accessTarget(app)
   if (!target) return null
-  if (await canOpen(person, target.name)) return { state: 'open', title: target.title }
-  // Found on staging (10-Nov-2026): someone who belongs in an app, sent to the Admin, isn't waiting
-  // for it. Their app is named so the page sends them there; nothing is recorded or mailed.
-  if (target.name === 'featherbase') {
-    const home = await homeApp(person)
-    if (home) return { state: 'elsewhere', title: target.title, home }
-    // Only apps open to everyone: shown them, and nobody is told.
-    const apps = (await appCatalog(person)).map(({ name, title, href }) => ({ name, title, href }))
-    if (apps.length) return { state: 'apps', title: target.title, apps }
-  }
+  const answer = await notWaiting(person, target)
+  if (answer) return answer
   // A built-in account (Administrator, Guest) is nobody to give a role to:
   // it asks for nothing, and an app's address shows it as unavailable.
   const [{ built_in: builtIn }] = await sql`select coalesce(built_in, false) as built_in from person where row_id = ${person}`

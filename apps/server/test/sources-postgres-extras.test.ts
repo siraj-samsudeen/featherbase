@@ -9,7 +9,6 @@ import { test } from './pg-test'
 import { EXTERNAL_DATABASE_URL } from './external-database'
 import { allowlistQualificationGuidance, assertAllowed, getSource, invalidateSources, resolveUrl } from '../src/sources/registry'
 import { postgresDriver } from '../src/sources/postgres-driver'
-import { fkKey, singleColumnFks } from '../src/sources/fk'
 import { sql } from '../src/db'
 import type { Binding, SourceConfig } from '../src/sources/types'
 import { expectRefused, expectStatus } from './fixtures'
@@ -493,46 +492,6 @@ describe('Connection variables and the table allowlist', () => {
     await sql`insert into data_source ${sql({ row_id: 'ext-zeroes', engine: 'postgres', url_env: URL_ENV, pool_max: 0, statement_timeout_ms: 0 })}`
     invalidateSources()
     expect(await getSource('ext-zeroes')).toMatchObject({ pool_max: 5, statement_timeout_ms: 10000 })
-  })
-})
-
-describe('Foreign keys read from information_schema', () => {
-  const row = (constraint: string, table: string, column: string, refTable: string, refColumn: string) => ({
-    constraint_schema: 's',
-    constraint_name: constraint,
-    table_schema: 's',
-    table_name: table,
-    column_name: column,
-    referenced_table_schema: 's',
-    referenced_table_name: refTable,
-    referenced_column_name: refColumn,
-  })
-
-  test('a single-column key becomes an edge; a composite key is dropped', () => {
-    const edges = singleColumnFks([
-      row('fk_a', 'child', 'parent_id', 'parent', 'id'),
-      row('fk_c', 'pair', 'x', 'target', 'x'),
-      row('fk_c', 'pair', 'y', 'target', 'y'),
-    ])
-    expect([...edges.keys()]).toEqual([fkKey('s', 'child', 'parent_id')])
-    expect(edges.get(fkKey('s', 'child', 'parent_id'))).toEqual({ schema: 's', table: 'parent', column: 'id' })
-  })
-
-  test('a column under two constraints keeps the first one', () => {
-    const edges = singleColumnFks([
-      row('fk_1', 'child', 'owner_id', 'people', 'id'),
-      row('fk_2', 'child', 'owner_id', 'companies', 'id'),
-    ])
-    expect(edges.size).toBe(1)
-    expect(edges.get(fkKey('s', 'child', 'owner_id'))!.table).toBe('people')
-  })
-
-  test('the same constraint name on two tables stays two separate keys', () => {
-    const edges = singleColumnFks([
-      row('fk_ref', 'claim', 'vehicle_id', 'vehicle', 'id'),
-      row('fk_ref', 'inspection', 'vehicle_id', 'vehicle', 'id'),
-    ])
-    expect(edges.size).toBe(2)
   })
 })
 

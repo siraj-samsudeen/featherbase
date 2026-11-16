@@ -63,28 +63,14 @@ export default defineConfig({
       // the whole jsdom suite; none is left uncovered. The Admin index's early
       // return when the address has already moved on (router.tsx
       // AdminIndexPage) is staged with a module mock in its own test file.
-      // Stage 3 (branches), first pass: 618 uncovered of 10,322, measured on
-      // a fresh database, the four shards merged as CI does. All are reachable
-      // and simply untested yet; the largest are ImportWizard, SalesTarget,
-      // ChecklistView and AccessTokens. The count moves by a few between runs
-      // (component tests take different render branches run to run): 618 on
-      // the PR, 620 on main for the same code. The cap leaves that margin.
-      // Second pass: 505 uncovered of 10,256. Third pass: 400 of 10,239,
-      // measured the same way; the cap is that plus 5. Most of those left are
-      // reachable and untested: ImportWizard, FormView, LinkControl, ListView,
-      // AdminLayout and ListRows lead. The spots not reached yet are written
-      // up with what was tried and what might work (pass 3 report): PathBar's
-      // measured widths and ResizeObserver absence, and LinkControl's choice
-      // of opening above or below, need layout jsdom does not do, which a
-      // stub of getBoundingClientRect may supply.
-      // The cap comes from CI's count, not a local one: CI's merged shards
-      // count about 6 more uncovered branches than a local run of the same
-      // commit (505 here was 511 there; 400 here was 406 there).
+      // Branches are reported, not gated (ADR 0024): CI's merged shards count
+      // a few more uncovered branches than a local run of the same commit,
+      // and the count moves between CI runs. Most uncovered branches are
+      // reachable and still untested; the text report still lists them.
       thresholds: {
         lines: 100,
         statements: 100,
         functions: 100,
-        branches: -411,
       },
     },
   },

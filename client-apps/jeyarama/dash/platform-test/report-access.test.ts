@@ -56,9 +56,10 @@ const remove = async (admin: TestClient, table: string, id: string) => {
 }
 
 describe('who sees which report, read fresh', () => {
-  test('nobody sees a report, and Dash stays shut, until one is given; a System Manager included', async ({ admin, createUser }) => {
+  // #1172 (owner, 10-Nov-2026, "Open for any Dash role"): Dash opens for its readers; reports still need giving.
+  test('nobody sees a report until one is given, a System Manager included, though Dash opens for its readers', async ({ admin, createUser }) => {
     const { leader, sysman } = await setup(admin, createUser)
-    expect([await reports(leader), await gate(leader), (await catalog(leader)).includes('dash')]).toEqual([[], false, false])
+    expect([await reports(leader), await gate(leader), (await catalog(leader)).includes('dash')]).toEqual([[], true, true])
     expect([await reports(sysman), await gate(sysman)]).toEqual([[], true])
   })
 
@@ -70,7 +71,7 @@ describe('who sees which report, read fresh', () => {
     const page = await giver.post<{ result: { rows: { id: string; updated_at: string }[] } }>('/api/app_reads/dash/access_page', { payload: {} })
     const [row] = page.result.rows
     await giver.post('/api/app_actions/dash/remove_report_access', { idempotencyKey: crypto.randomUUID(), payload: { id: row.id, updated_at: row.updated_at } })
-    expect([await reports(leader), await gate(leader)]).toEqual([[], false])
+    expect([await reports(leader), await gate(leader)]).toEqual([[], true])
   })
 
   test('a report given to a role is gone once the person loses the role', async ({ admin, createUser }) => {
@@ -106,7 +107,8 @@ describe('who sees which report, read fresh', () => {
   test('a store-filtered report given to someone whose job reaches no store stays shut; one taking no filter opens', async ({ admin, createUser }) => {
     const { office, giver } = await setup(admin, createUser)
     await give(giver, { report: 'sales', person: office.user })
-    expect([await reports(office), await gate(office)]).toEqual([[], false])
+    // #1172: Dash itself opens for them (its reader role), and the store-filtered report still doesn't.
+    expect([await reports(office), await gate(office)]).toEqual([[], true])
     await give(giver, { report: 'open', person: office.user })
     expect([await reports(office), await gate(office)]).toEqual([['open'], true])
     const lookup = await giver.post<{ result: { reports: { key: string; closed: string | null; because: string[] }[] } }>('/api/app_reads/dash/person_lookup', { payload: { person: office.user } })
@@ -167,7 +169,7 @@ describe('removals and bundles keep their history', () => {
     await give(giver, { report: 'store_target', person: leader.user })
     const lookup = await giver.post<{ result: { reports: { key: string; closed: string | null }[] } }>('/api/app_reads/dash/person_lookup', { payload: { person: leader.user } })
     expect(lookup.result.reports.map(r => [r.key, r.closed])).toEqual([['store_target', 'Given, but it covers whole stores and their job reaches part of a store']])
-    expect([await reports(leader), await gate(leader)]).toEqual([[], false])
+    expect([await reports(leader), await gate(leader)]).toEqual([[], true])
   })
 
   test('someone holding no role opens Dash once Dash Reader goes to everyone and a report reaches their job', async ({ admin, createUser }) => {
@@ -237,25 +239,50 @@ describe('the Report access page', () => {
     await give(giver, { report: 'open', person: leader.user })
     const page = await giver.post<{ result: { rows: { gives: unknown; to: unknown; given_by: string }[] } }>('/api/app_reads/dash/access_page', { payload: {} })
     expect(page.result.rows.map(({ gives, to }) => [gives, to])).toEqual([
-      [{ kind: 'Report', name: 'Company notices' }, { kind: 'Person', name: 'Made-up Leader' }],
+      [{ kind: 'Report', name: 'Company notices' }, { kind: 'Person', name: 'Made-up Leader', who: { code: '1', jobs: ['Team Leader · Lakeside'], staff: 'current' } }],
       [{ kind: 'Report', name: 'Sales versus target' }, { kind: 'Job', name: 'Team Leader' }],
     ])
     expect((await leader.fetch('/api/app_reads/dash/access_page', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ payload: {} }) })).status).toBeGreaterThanOrEqual(400)
   })
 
-  test('opening Dash with no report records a request, mailed to Report Access Managers, which clears once a report is given', async ({ admin, createUser }) => {
+  // #1216: people with the same name are told apart by code, job and site, read by a manager who can't read Employee.
+  test('tells two people with the same name apart, and finds one by employee code', async ({ admin, createUser }) => {
+    const { giver, save } = await setup(admin, createUser)
+    const twin = await createUser({ email: 'ra-twin@example.test', roles: ['Dash Reader'] })
+    await save('Employee', { employee_code: 'TN0042', name: 'Made-up Leader', person: twin.user, status: 'Current' })
+    await save('Job Assignment', { assignment_id: 'JA-42', employee: 'TN0042', job: 'Head office staff', site: 'HOF', starts_on: '2026-01-01' })
+    const search = (q: string) => giver.post<{ result: { name: string; code: string | null; jobs: string[]; staff: string }[] }>('/api/app_reads/dash/person_search', { payload: { q } })
+      .then(a => a.result.map(({ name, code, jobs, staff }) => ({ name, code, jobs, staff })))
+    expect(await search('made-up leader')).toEqual([
+      { name: 'Made-up Leader', code: '1', jobs: ['Team Leader · Lakeside'], staff: 'current' },
+      { name: 'Made-up Leader', code: 'TN0042', jobs: ['Head office staff · Head Office'], staff: 'current' },
+    ])
+    expect((await search('tn004')).map(found => found.code)).toEqual(['TN0042'])
+    // More than twenty with one name, saved in reverse: the first twenty by code, not the database's pick.
+    const codes = Array.from({ length: 22 }, (_, i) => `TW${String(i + 1).padStart(2, '0')}`)
+    for (const code of [...codes].reverse()) {
+      const twin = await createUser({ email: `ra-${code.toLowerCase()}@example.test`, roles: ['Dash Reader'] })
+      await save('Employee', { employee_code: code, name: 'Made-up Twin', person: twin.user, status: 'Current' })
+    }
+    expect((await search('made-up twin')).map(found => found.code)).toEqual(codes.slice(0, 20))
+    const reader = await createUser({ email: 'ra-reader@example.test', roles: ['Dash Reader'] })
+    expect((await reader.fetch('/api/app_reads/dash/person_search', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ payload: { q: 'tn004' } }) })).status).toBeGreaterThanOrEqual(400)
+  })
+
+  // #1172: a Dash reader with no report opens Dash and asks for nothing; only someone holding no Dash
+  // role is refused, and their request is mailed to the Report Access Managers.
+  test('a Dash reader with no report opens Dash and asks for nothing; someone with no Dash role is refused and their request mailed', async ({ admin, createUser }) => {
     const { leader, giver } = await setup(admin, createUser)
     await sql`update person set email = 'ra-giver@example.test' where row_id = ${giver.user!}`
     const mailed: string[] = []
     _setAlertSender(async message => { mailed.push(message.to) })
-    const page = await leader.fetch('/dash/', { headers: { accept: 'text/html' } })
-    expect(page.status).toBe(403)
-    expect(mailed).toContain('ra-giver@example.test')
+    const opened = await leader.fetch('/dash/', { headers: { accept: 'text/html' } })
+    const asked = { status: opened.status, mailed: [...mailed] }
+    const stranger = await createUser({ email: 'no-dash-role@example.test', roles: [] })
+    const refused = await stranger.fetch('/dash/', { headers: { accept: 'text/html' } })
     const waiting = await giver.post<{ result: { waiting: { person: string }[] } }>('/api/app_reads/dash/access_page', { payload: {} })
-    expect(waiting.result.waiting.map(w => w.person)).toEqual([leader.user])
-    await give(giver, { report: 'sales', person: leader.user })
-    const after = await giver.post<{ result: { waiting: unknown[] } }>('/api/app_reads/dash/access_page', { payload: {} })
-    expect(after.result.waiting).toEqual([])
+    expect([asked, refused.status, mailed.includes('ra-giver@example.test'), waiting.result.waiting.map(w => w.person)])
+      .toEqual([{ status: 200, mailed: [] }, 403, true, [stranger.user]])
   })
 })
 

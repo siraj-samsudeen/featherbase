@@ -56,13 +56,18 @@ the owner reviews. Server, security and data logic gets a Codex review.
 - [ ] 3.2 Bindings move to the manager jobs; delete `Sales Target Viewer` and its binding.
 - [ ] 3.3 Confirm Feather Dash needed no change.
 
-## 4. Stage D — section editing (Feather Dash 1.1.0, part of go-live; after #246 items 1–2, #462 and C1)
+## 4. Stage D — section editing (Your sections, #975)
+
+*11-Nov-2026: trimmed to what is built (owner). The request Table, the
+`request_section_change` and `decide_section_change` actions, the reviewer page, the
+Section Editor and Section Reviewer roles and the binding to #462's role were never
+built and are dropped. What shipped is Your sections in Dash (design D5).*
 
 - [ ] 4.0 #246 items 1–2 for the section and mapping Tables: explicit scope columns and `scope_required` (no scope rows means no rows), with an empty-scope test. Built after B2.
 - [ ] 4.1 Scope entries carry section and mapping confirmation status. Built in B2 (2.1), so D needs no shape change.
-- [ ] 4.2 Action `request_section_change` (scope-checked, either side of a move) and withdraw; my-sections page.
-- [ ] 4.3 Action `decide_section_change` applying through the normal save path as the reviewer; reviewer page; the Section Reviewer role bound to #462's role.
-- [ ] 4.4 Tests: Team Leader refused outside their section; a reviewer without #462's role cannot apply; a System Manager is not the reviewer by default; applied edit survives a re-import.
+- [x] 4.2 Your sections: a person sees their jobs' sections and subcategories and proposes a move, an addition or a different section for their job (`propose_move`, `propose_add`, `propose_section`), refused outside their own job and store.
+- [x] 4.3 The job's manager, or else a Master Data Editor (`FALLBACK_ROLE`), sees what waits for them and approves or rejects it (`decide`); an approval writes dated rows through the platform's approval path; nobody decides their own, a System Manager included.
+- [x] 4.4 Tests: refused outside one's own job and store; the maker and a System Manager cannot decide; a Master Data Editor decides when the manager has no sign-in; a changed row goes to Needs fresh review (`client-apps/jeyarama/dash/platform-test/my-sections.test.ts`).
 - [ ] 4.5 Upgrade dev, then prod with approval, in the go-live cut-over (5.1).
 
 ## 5. Go-live cut-over (owner decision 27-Oct-2026)

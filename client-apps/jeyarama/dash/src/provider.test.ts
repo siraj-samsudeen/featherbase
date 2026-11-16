@@ -38,12 +38,14 @@ const SUBCATEGORIES: Row[] = [
   { row_id: '000000009', category: 'Tops', subdivision: 'Womenswear', division: 'Fashion', subcategory_type: 'Consumable' },
 ]
 
-function fake(jobs: Row[], { employee = { row_id: 'E1', person: 'me', status: 'Current' } as Row, plants = PLANTS, assignments = [] as Row[] } = {}): Documents {
+function fake(jobs: Row[], { employee = { row_id: 'E1', person: 'me', status: 'Current' } as Row, plants = PLANTS, assignments = [] as Row[], departments = [] as Row[], departmentSections = [] as Row[] } = {}): Documents {
   const tables: Record<string, Row[]> = {
     Employee: [employee], 'Job Assignment': jobs.map((job, i) => ({ row_id: `J${i}`, employee: 'E1', starts_on: '2026-01-01', ends_on: null, ...job })),
     'Merchandise Assignment': assignments.map((row, i) => ({ row_id: `M${i}`, employee: 'E1', division: null, subdivision: null, category: null, subcategory: null,
       operating_region: null, starts_on: '2026-01-01', ends_on: null, ...row })),
     Site: SITES, Plant: plants, Section: SECTIONS, 'Section Subcategory': PLACEMENTS, Subcategory: SUBCATEGORIES,
+    Department: departments.map((row, i) => ({ row_id: `D${i}`, store: 'AAA', manager: 'E1', starts_on: '2026-01-01', ends_on: null, ...row })),
+    'Department Section': departmentSections.map((row, i) => ({ row_id: `DS${i}`, store: 'AAA', starts_on: '2026-01-01', ends_on: null, ...row })),
   }
   return {
     async list(table, { filters = [], limit_start = 0, limit_page_length = 500 }) {
@@ -68,6 +70,14 @@ describe('who sees what', () => {
 
     it('gives a Store Manager each Store, Shop-in-shop and E-commerce plant whole, and no warehouse', async () => {
       expect(await reachOn({ job: 'Store Manager', site: 'AAA' })).toEqual(['8191', '9291', '9901', '9911'].map(store => ({ store: [store] })))
+    })
+
+    // A store site whose plants are all gone (or only a warehouse) has nothing to reach.
+    it('reaches nothing on a store site with no selling plant, whole or by section', async () => {
+      const onlyWarehouse = PLANTS.filter(plant => plant.site !== 'AAA').concat({ row_id: '9151', site: 'AAA', plant_type: 'Warehouse' })
+      const whole = await reachOf(fake([{ job: 'Store Manager', site: 'AAA' }], { plants: onlyWarehouse }), 'me', ON)
+      const bySection = await reachOf(fake([{ job: 'Team Leader', site: 'AAA', section: 'AAA-GF-Tops' }], { plants: onlyWarehouse }), 'me', ON)
+      expect([whole.places, bySection]).toEqual([[], { places: [], problems: ['nothing_placed'] }])
     })
 
     it("gives a section's reader that section in each of them", async () => {
@@ -95,7 +105,7 @@ describe('who sees what', () => {
       ['9901 / Section: Sarees', ['000000003']], ['9901 / Section: Tops', ['000000001']]])
   })
 
-  it('a Department Manager has a clear reason until departments are filled', async () => {
+  it('a Department Manager has a clear reason until their department is set up', async () => {
     expect(await reach({ job: 'Department Manager', site: 'AAA' })).toEqual({ places: [], problems: ['departments_not_filled'] })
   })
 
@@ -230,7 +240,52 @@ describe('merchandise assignments', () => {
   })
 })
 
+// #1192 (owner, 11-Nov-2026): a holder of Dash All-Stores Reader reaches every store, as a
+// Director's job does, on top of whatever their jobs reach.
+describe('the Dash All-Stores Reader role', () => {
+  const ROLE = ['All', 'Dash All-Stores Reader']
+  const EVERY = ['9901', '9902', '9903', '9904']
+  const whole = (store: string, basis = 'all_stores_reader') => ({ label: store, filters: { store: [store] }, basis, reasons: [{ text: 'Dash All-Stores Reader role' }] })
+
+  it('gives a head office person every store whole, with the role as the reason, and no head-office message', async () => {
+    expect(await reachOf(fake([{ job: 'Head office staff', site: 'HOF' }]), 'me', ON, ROLE)).toEqual({ places: EVERY.map(store => whole(store)), problems: [] })
+  })
+
+  it('gives someone not on the staff list every store, and no no-job message', async () => {
+    expect(await reachOf(fake([]), 'someone else', ON, ROLE)).toEqual({ places: EVERY.map(store => whole(store)), problems: [] })
+  })
+
+  it('adds to a job: a Team Leader keeps their section and gains every store', async () => {
+    const both = await reachOf(fake([{ job: 'Team Leader', site: 'AAA', section: 'AAA-GF-Tops' }]), 'me', ON, ROLE)
+    expect(both.places.map(place => [place.label, place.basis])).toEqual([
+      ['9901', 'all_stores_reader'], ['9901 / Section: Tops', 'team_leader'], ['9902', 'all_stores_reader'], ['9903', 'all_stores_reader'], ['9904', 'all_stores_reader']])
+    expect(both.problems).toEqual([])
+  })
+
+  it("names both the role and a Store Manager's job on the store they manage", async () => {
+    const [mine] = (await reachOf(fake([{ job: 'Store Manager', site: 'AAA' }]), 'me', ON, ROLE)).places
+    expect([mine.basis, mine.reasons]).toEqual(['all_stores_reader, store_manager',
+      [{ text: 'Dash All-Stores Reader role' }, { text: 'Store Manager job assignment', since: '2026-01-01' }]])
+  })
+
+  it('adds nothing for a store that sells through no plant', async () => {
+    const onlyWarehouse = PLANTS.filter(plant => plant.site !== 'DDD').concat({ row_id: '9154', site: 'DDD', plant_type: 'Warehouse' })
+    expect((await reachOf(fake([], { plants: onlyWarehouse }), 'me', ON, ROLE)).places.map(place => place.label)).toEqual(['9901', '9902', '9903'])
+  })
+
+  it('gives nothing to someone holding only other roles', async () => {
+    expect(await reachOf(fake([{ job: 'Head office staff', site: 'HOF' }]), 'me', ON, ['All', 'Dash Reader', 'Report Access Manager']))
+      .toEqual({ places: [], problems: ['head_office'] })
+  })
+})
+
 describe('the provider', () => {
+  it("reaches every store for a holder of Dash All-Stores Reader, from the roles the platform hands it", async () => {
+    const provide = orgChartProvider({ today: () => ON })
+    const places = await provide({ person: { id: 'me', email: null, roles: ['All', 'Dash All-Stores Reader'] }, documents: fake([]) })
+    expect(places.map(place => place.filters)).toEqual(['9901', '9902', '9903', '9904'].map(store => ({ store: [store] })))
+  })
+
   it('answers the person\'s places on today\'s date', async () => {
     const provide = orgChartProvider({ today: () => ON })
     const places = await provide({ person: { id: 'me', email: null }, documents: fake([{ job: 'Store Manager', site: 'AAA' }]) })
@@ -238,6 +293,60 @@ describe('the provider', () => {
   })
 
   it('reads only the Tables it declares', () => {
-    expect(PROVIDER_TABLES).toEqual(['Employee', 'Job Assignment', 'Site', 'Plant', 'Section', 'Section Subcategory', 'Merchandise Assignment', 'Subcategory'])
+    expect(PROVIDER_TABLES).toEqual(['Employee', 'Job Assignment', 'Site', 'Plant', 'Section', 'Section Subcategory', 'Merchandise Assignment', 'Subcategory', 'Department', 'Department Section'])
+  })
+
+  // #1195: a Department Manager reaches the sections of the department they manage at their job's store.
+  describe('Department Manager (#1195)', () => {
+    const dm = { job: 'Department Manager', site: 'AAA' }
+    const ladies = { row_id: 'D-L', name: 'Ladies' }
+    const linked = [{ department: 'D-L', section: 'AAA-GF-Tops' }, { department: 'D-L', section: 'AAA-GF-Sarees' }]
+    const dmReach = (departments: Row[], departmentSections: Row[], job: Row = dm) => reachOf(fake([job], { departments, departmentSections }), 'me', ON)
+
+    it("reaches each of their department's sections, by section", async () => {
+      const { places, problems } = await dmReach([ladies], linked)
+      expect(problems).toEqual([])
+      expect(places.map(p => [p.label, p.filters, p.basis])).toEqual([
+        ['9901 / Section: Sarees', { store: ['9901'], subcategory: ['000000003'] }, 'department_manager'],
+        ['9901 / Section: Tops', { store: ['9901'], subcategory: ['000000001'] }, 'department_manager'],
+      ])
+      expect(places[0].reasons).toEqual([{ text: 'Department Manager job assignment', since: '2026-01-01' }])
+    })
+    it('an acting Department Manager reaches them too, as acting', async () => {
+      const { places } = await dmReach([ladies], linked, { ...dm, acting: true })
+      expect(places.map(p => p.basis)).toEqual(['acting_department_manager', 'acting_department_manager'])
+    })
+    it("someone else's department, or one at another store, reaches nothing", async () => {
+      expect((await dmReach([{ ...ladies, manager: 'E2' }], linked)).problems).toEqual(['departments_not_filled'])
+      expect((await dmReach([{ ...ladies, store: 'BBB' }], linked)).problems).toEqual(['departments_not_filled'])
+    })
+    it('a department that has ended, or not begun, reaches nothing', async () => {
+      expect((await dmReach([{ ...ladies, ends_on: '2026-11-06' }], linked)).problems).toEqual(['departments_not_filled'])
+      expect((await dmReach([{ ...ladies, starts_on: '2026-11-08' }], linked)).problems).toEqual(['departments_not_filled'])
+    })
+    it('a link that has ended, or names a section of another store, adds nothing', async () => {
+      const { places } = await dmReach([ladies], [{ department: 'D-L', section: 'AAA-GF-Tops', ends_on: '2026-11-06' },
+        { department: 'D-L', section: 'BBB-GF-Tops', store: 'BBB' }, { department: 'D-L', section: 'AAA-GF-Sarees' }])
+      expect(places.map(p => p.label)).toEqual(['9901 / Section: Sarees'])
+    })
+    // Manager's decision, 11-Nov-2026: a department reaches only sections of the person's own store.
+    it("never reaches outside the job's store, whatever a link or a department says", async () => {
+      // A link filed under this store that names another store's section.
+      expect((await dmReach([ladies], [{ department: 'D-L', section: 'BBB-GF-Tops' }])).problems).toEqual(['nothing_placed'])
+      // Their department at another store, linked to that store's section: not this job's store.
+      expect((await dmReach([{ ...ladies, store: 'BBB' }], [{ department: 'D-L', section: 'BBB-GF-Tops', store: 'BBB' }])).places).toEqual([])
+      // Another store's sections never join this store's.
+      const { places } = await dmReach([ladies], [...linked, { department: 'D-L', section: 'BBB-GF-Tops' }])
+      expect(places.flatMap(p => p.filters.store)).toEqual(['9901', '9901'])
+    })
+    it('a department whose sections hold no subcategories says nothing is placed', async () => {
+      expect((await dmReach([ladies], [{ department: 'D-L', section: 'AAA-FF-Empty' }])).problems).toEqual(['nothing_placed'])
+    })
+    it('a department with no sections yet still asks for its sections', async () => {
+      expect((await dmReach([ladies], [])).problems).toEqual(['departments_not_filled'])
+    })
+    it("a store with no sections at all says the store's sections aren't set up", async () => {
+      expect(await reachOf(fake([{ job: 'Department Manager', site: 'CCC' }]), 'me', ON)).toEqual({ places: [], problems: ['store_sections_not_set_up'] })
+    })
   })
 })
