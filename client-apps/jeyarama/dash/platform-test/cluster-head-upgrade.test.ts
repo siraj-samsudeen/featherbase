@@ -34,8 +34,9 @@ async function previousVersion(): Promise<{ directory: string; version: string }
   // #1225's 0.13.13 changes no Table either; it comes off first.
   // #1223's 0.13.14 changes no Table either; it comes off first.
   // #1245's 0.13.15 changes no Table either; it comes off first.
-  // #1246's 0.13.16 changes no Table either; it comes off first.
+  // #1246's 0.13.16 and 0.13.17 change no Table either; they come off first.
   expect(manifest.migrations.pop()).toMatchObject({ id: 'buyer_section_moves', toVersion: VERSION, operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'buyer_section_desks', toVersion: '0.13.16', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'store_run_by', toVersion: '0.13.15', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'more_list_closes', toVersion: '0.13.14', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'report_access_redesign', toVersion: '0.13.13', operations: [] })
@@ -96,7 +97,7 @@ describe("deploying the named cluster head to an instance shaped like production
       expect(await discoverPackages([previous, APP_DIR])).toEqual([])
       await loadInstalledApps()
       const plan = await admin.post<{ planId: string; migrations: { id: string }[] }>('/api/preview_app_upgrade', { name: 'dash', version: VERSION })
-      expect(plan.migrations.map(m => m.id)).toEqual(['named_cluster_head', 'one_app_chrome', 'ends_on_inclusive', 'manager_area', 'report_an_issue', 'report_access_redesign', 'more_list_closes', 'store_run_by', 'buyer_section_moves'])
+      expect(plan.migrations.map(m => m.id)).toEqual(['named_cluster_head', 'one_app_chrome', 'ends_on_inclusive', 'manager_area', 'report_an_issue', 'report_access_redesign', 'more_list_closes', 'store_run_by', 'buyer_section_desks', 'buyer_section_moves'])
       await admin.post('/api/upgrade_app', { name: 'dash', version: VERSION, planId: plan.planId })
       await discoverPackages([previous, APP_DIR])
       await loadInstalledApps()
