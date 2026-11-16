@@ -78,6 +78,9 @@ export const storeReads = {
       const jobRows = open.length ? byId(await all(ctx, T.job, JOB_FIELDS, [['row_id', 'in', unique(open.map(rowOf))]])) : new Map<string, Row>()
       for (const p of open) waiting[rowOf(p)] = await waitingOnNow(ctx, jobRows.get(rowOf(p)), p.maker, aboutOf(p))
     }
+    // #1245: who runs a store is its open Store Manager and Cluster Manager jobs (the job, never a designation).
+    const runBy = (site: string, title: string) => staffJobs.filter(j => exact(j.site) === site && text(j.job) === title && current(j.employee))
+      .map(j => person(j.employee)!).filter((p, i, list) => list.findIndex(q => q.code === p.code) === i).sort((a, b) => a.name.localeCompare(b.name))
     const places = areas.map(area => {
       const held = sections.filter(s => inArea(area, s))
       const floorKey = (s: Row) => exact(s.floor)
@@ -97,6 +100,7 @@ export const storeReads = {
         .sort((a, b) => a.job.localeCompare(b.job) || a.name.localeCompare(b.name))
       return { kind: area.kind, page: PAGE[area.kind], store: text(siteRows.get(area.site)?.name), store_id: area.site,
         floor: area.floor ? text(floors.get(area.floor)?.name) : null, floor_id: area.floor, department: area.department,
+        managers: { store: runBy(area.site, 'Store Manager'), cluster: runBy(area.site, 'Cluster Manager') },
         floors: groups, staff, sections: held.filter(isActive).map(s => ({ id: exact(s.row_id), name: text(s.name) })).sort((a, b) => a.name.localeCompare(b.name)) }
     })
 

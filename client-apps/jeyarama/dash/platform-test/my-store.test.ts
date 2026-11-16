@@ -54,6 +54,33 @@ async function world(admin: TestClient, createUser: CreateUserFn) {
 }
 
 describe('#1223 Your store and Your floor', () => {
+  test('#1245: each area names the open Store Manager and Cluster Managers of its store, by job', async ({ admin, createUser }) => {
+    const { store, floor } = await world(admin, createUser)
+    const save = (table: string, values: Record<string, unknown>) => saveRow(admin, table, values)
+    for (const [code, name, status] of [['3001', 'Kiran Cluster', 'Current'], ['3002', 'Lata Cluster', 'Current'], ['3003', 'Moni Gone', 'Current'], ['3004', 'Nila Ending', 'Current'], ['3005', 'Oviya Left', 'Left']])
+      await save('Employee', { employee_code: code, name, status })
+    const job = (assignment_id: string, employee: string, job: string, more: object = {}) =>
+      save('Job Assignment', { assignment_id, employee, job, site: 'LKS', starts_on: '2026-10-01', ...more })
+    await job('JA-CM1', '3002', 'Cluster Manager')
+    await job('JA-CM2', '3001', 'Cluster Manager')
+    await job('JA-SM-OLD', '3003', 'Store Manager', { ends_on: yesterday })
+    await job('JA-SM-LAST', '3004', 'Store Manager', { ends_on: today })
+    await job('JA-SM-LEFT', '3005', 'Store Manager')
+    const managers = (answer: any) => answer.places.map((p: any) => [p.kind, p.managers])
+    const lakeside = { store: [{ code: '3004', name: 'Nila Ending' }, { code: '2001', name: 'Selvi Store' }], cluster: [{ code: '3001', name: 'Kiran Cluster' }, { code: '3002', name: 'Lata Cluster' }] }
+    expect(managers(await read(store, 'my_store'))).toEqual([['store', lakeside]])
+    expect(managers(await read(floor, 'my_store'))).toEqual([['floor', lakeside]])
+  })
+
+  test('#1245: a store with no open Store Manager names none', async ({ admin, createUser }) => {
+    const { otherFloor } = await world(admin, createUser)
+    await saveRow(admin, 'Store Floor', { row_id: 'HIL-F1', name: 'Ground floor', site: 'HIL' })
+    await saveRow(admin, 'Section', { row_id: 'HIL-S2', name: 'Hillview Sarees', site: 'HIL', floor: 'HIL-F1', status: 'Active' })
+    await saveRow(admin, 'Job Assignment', { assignment_id: 'JA-HIL-FM', employee: '2003', job: 'Floor Manager', site: 'HIL', floor: 'HIL-F1', starts_on: '2026-10-01' })
+    const hillview = (await read(otherFloor, 'my_store')).places.find((p: any) => p.store_id === 'HIL')
+    expect(hillview.managers).toEqual({ store: [], cluster: [] })
+  })
+
   test('each manager sees their own area only, named for it', async ({ admin, createUser }) => {
     const { store, floor, leader } = await world(admin, createUser)
     expect(await read(store, 'manages_area')).toBe('Your store')

@@ -12,7 +12,7 @@ interface PersonRef { code: string; name: string }
 interface Section { id: string; name: string; active: boolean; team_leaders: PersonRef[]; subcategories: number }
 interface Staff extends PersonRef { job_id: string; job: string; section: string | null; section_id: string | null; reports_to: PersonRef | null; movable: boolean; waiting_for?: string | null }
 export interface Place { kind: 'store' | 'floor' | 'department' | 'section'; page: string; store: string; store_id: string; floor: string | null; floor_id: string | null
-  department: { id: string; name: string } | null; floors: { floor_id: string | null; floor: string; sections: Section[] }[]; staff: Staff[]; sections: { id: string; name: string }[] }
+  department: { id: string; name: string } | null; managers: { store: Ref[]; cluster: Ref[] }; floors: { floor_id: string | null; floor: string; sections: Section[] }[]; staff: Staff[]; sections: { id: string; name: string }[] }
 interface Ref { code: string; name: string }
 interface Category { category: string; region: string | null; responsibility: string; buyers: { name: string; code: string; assignment: string; buys: string; subcategory: string | null }[]; no_buyer: Ref[] }
 interface Buys { assignment: string; level: string | null; named: string; region: string | null; subcategories: Ref[] }
@@ -352,10 +352,21 @@ function AreaTitle({ place }: { place: Place }) {
   )
 }
 
+/** #1245: who runs the store, under the area's title: "Store Manager: Selvi · Cluster Manager: Kiran, Lata". */
+export function StoreRunBy({ managers }: { managers: Place['managers'] }) {
+  const names = (people: Ref[]) => people.map((p, i) => <span key={p.code} className="whitespace-nowrap"><RecordLink table={RECORD.employee} id={p.code}>{p.name}</RecordLink>{i < people.length - 1 ? ', ' : ''}</span>)
+  return (
+    <span className="inline-flex flex-wrap items-baseline gap-x-1" data-testid="store-run-by">
+      {managers.store.length ? <><span className="text-ink-muted">Store Manager:</span> {names(managers.store)}</> : <span className="text-ink-muted">No store manager</span>}
+      {managers.cluster.length > 0 && <><span aria-hidden="true" className="text-ink-muted"> · </span><span className="text-ink-muted">Cluster Manager:</span> {names(managers.cluster)}</>}
+    </span>
+  )
+}
+
 function PlaceCard({ place, onMoved, staffOnly = false }: { place: Place; onMoved: (message: string) => void; staffOnly?: boolean }) {
   return (
     <div className="flex flex-col gap-4" data-testid="area-place">
-      {!staffOnly && <p className="text-sm"><AreaTitle place={place} /></p>}
+      <div className="flex flex-col gap-1 text-sm">{!staffOnly && <AreaTitle place={place} />}<StoreRunBy managers={place.managers} /></div>
       {!staffOnly && <SummaryStrip place={place} />}
       {!staffOnly && <SectionsTable place={place} onChanged={onMoved} />}
       <StaffTable place={place} onMoved={onMoved} title={staffOnly ? 'Your team' : 'Staff'} />

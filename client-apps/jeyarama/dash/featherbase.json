@@ -2172,6 +2172,12 @@
       "fromVersion": "0.13.13",
       "toVersion": "0.13.14",
       "operations": []
+    },
+    {
+      "id": "store_run_by",
+      "fromVersion": "0.13.14",
+      "toVersion": "0.13.15",
+      "operations": []
     }
   ],
   "baseTables": {
