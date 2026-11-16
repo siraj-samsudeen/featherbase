@@ -148,6 +148,8 @@ export interface RuntimeActionContext {
     get(table: string, rowId: string): Promise<ActionRow>
     members(table: string): Promise<{ row_id: string; full_name: string }[]>
     list(table: string, args?: ActionListArgs): Promise<ActionRow[]>
+    /** #1196: how many rows match, as the caller; null for a linked Table the caller may not read. */
+    count(table: string, filters?: ActionListArgs['filters']): Promise<number | null>
     create(table: string, values: ActionRow): Promise<ActionRow>
     update(table: string, values: ActionRow): Promise<ActionRow>
     delete(table: string, rowId: string, updatedAt: string): Promise<void>
@@ -183,7 +185,7 @@ export interface DatasetAnswer {
 }
 
 export interface RuntimeReadContext extends Omit<RuntimeActionContext, 'documents' | 'mail' | 'changeProposals'> {
-  readonly documents: Pick<RuntimeActionContext['documents'], 'get' | 'list' | 'activity' | 'isReader'>
+  readonly documents: Pick<RuntimeActionContext['documents'], 'get' | 'list' | 'count' | 'activity' | 'isReader'>
   /** #967: what this outbound read's `prepare` answered; undefined everywhere else. */
   readonly prepared?: unknown
   /** #975: a read can list proposals, never make or decide one. */

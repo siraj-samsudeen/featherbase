@@ -17,7 +17,7 @@
     {"name": "restricted_resources", "required": false},
     {"name": "linked_tables", "required": false}
   ],
-  "actions": {"version": 2, "tables": ["tickets.ticket", "tickets.request", "tickets.event", "tickets.open_request", "tickets.open_event", "tickets.progress", "tickets.member", "tickets.ticket_type", "tickets.type_field"], "operations": {
+  "actions": {"version": 2, "tables": ["tickets.ticket", "tickets.request", "tickets.event", "tickets.open_request", "tickets.open_event", "tickets.progress", "tickets.member", "tickets.ticket_type", "tickets.type_field", "tickets.data_quality_rule"], "operations": {
     "create": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "edit": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "verify": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
@@ -30,13 +30,16 @@
     "reopen": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "change_raiser": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "transition": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
-    "open_details": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
+    "open_details": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "add_rule": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "remove_rule": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
   }},
-  "reads": {"version": 1, "tables": ["tickets.ticket", "tickets.request", "tickets.event", "tickets.open_request", "tickets.open_event", "tickets.progress", "tickets.member", "tickets.ticket_type", "tickets.type_field"], "operations": {
+  "reads": {"version": 1, "tables": ["tickets.ticket", "tickets.request", "tickets.event", "tickets.open_request", "tickets.open_event", "tickets.progress", "tickets.member", "tickets.ticket_type", "tickets.type_field", "tickets.data_quality_rule"], "operations": {
     "session": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "form": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "queue": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
-    "detail": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
+    "detail": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "rule_preview": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
   }},
   "tables": [
     {"name": "tickets.ticket", "label": "Ticket", "module": "Tickets", "id_pattern": "FT-.#####", "title_column": "title", "columns": [
@@ -104,6 +107,16 @@
       {"column_name": "text", "label": "Update", "column_type": "Text"},
       {"column_name": "by", "label": "Actor", "column_type": "Data"},
       {"column_name": "at", "label": "Time", "column_type": "Data"}
+    ]},
+    {"name": "tickets.data_quality_rule", "label": "Data quality rule", "module": "Tickets", "id_pattern": "DQR-.#####", "title_column": "title", "columns": [
+      {"column_name": "ticket", "label": "Ticket", "column_type": "Reference", "reference_table": "tickets.ticket", "reqd": true, "in_list_view": true},
+      {"column_name": "title", "label": "Title", "column_type": "Data", "reqd": true, "in_list_view": true},
+      {"column_name": "checked_table", "label": "Table", "column_type": "Data", "reqd": true, "in_list_view": true},
+      {"column_name": "filters", "label": "Filter (JSON list of [column, operator, value])", "column_type": "Text", "reqd": true},
+      {"column_name": "severity", "label": "Severity", "column_type": "Choice", "choices": "High\nMedium\nLow", "reqd": true, "in_list_view": true},
+      {"column_name": "owner", "label": "Owner", "column_type": "Data"},
+      {"column_name": "how_to_fix", "label": "How to fix", "column_type": "Text"},
+      {"column_name": "rows_when_raised", "label": "Rows when raised", "column_type": "Int", "in_list_view": true}
     ]}
   ],
   "migrations": [
@@ -120,7 +133,9 @@
     {"id": "assignment_email", "fromVersion": "0.2.3", "toVersion": "0.2.4", "operations": []},
     {"id": "assign_from_ticket", "fromVersion": "0.2.4", "toVersion": "0.2.5", "operations": []},
     {"id": "row_readers", "fromVersion": "0.2.5", "toVersion": "0.2.6", "operations": []},
-    {"id": "split_screens", "fromVersion": "0.2.6", "toVersion": "0.2.7", "operations": []}
+    {"id": "split_screens", "fromVersion": "0.2.6", "toVersion": "0.2.7", "operations": []},
+    {"id": "raiser_on_create", "fromVersion": "0.2.7", "toVersion": "0.2.8", "operations": []},
+    {"id": "data_quality_rules", "fromVersion": "0.2.8", "toVersion": "0.2.9", "operations": [{"kind": "addTable", "table": {"name": "tickets.data_quality_rule", "label": "Data quality rule", "module": "Tickets", "id_pattern": "DQR-.#####", "title_column": "title", "columns": [ {"column_name": "ticket", "label": "Ticket", "column_type": "Reference", "reference_table": "tickets.ticket", "reqd": true, "in_list_view": true}, {"column_name": "title", "label": "Title", "column_type": "Data", "reqd": true, "in_list_view": true}, {"column_name": "checked_table", "label": "Table", "column_type": "Data", "reqd": true, "in_list_view": true}, {"column_name": "filters", "label": "Filter (JSON list of [column, operator, value])", "column_type": "Text", "reqd": true}, {"column_name": "severity", "label": "Severity", "column_type": "Choice", "choices": "High\nMedium\nLow", "reqd": true, "in_list_view": true}, {"column_name": "owner", "label": "Owner", "column_type": "Data"}, {"column_name": "how_to_fix", "label": "How to fix", "column_type": "Text"}, {"column_name": "rows_when_raised", "label": "Rows when raised", "column_type": "Int", "in_list_view": true}]}}]}
   ],
   "permissions": [
     {"table": "tickets.ticket", "role": "All", "can_read": true, "can_write": true, "can_create": true},
@@ -135,6 +150,7 @@
     {"table": "tickets.ticket_type", "role": "All", "can_read": true},
     {"table": "tickets.ticket_type", "role": "System Manager", "can_read": true, "can_write": true, "can_create": true},
     {"table": "tickets.type_field", "role": "All", "can_read": true},
-    {"table": "tickets.type_field", "role": "System Manager", "can_read": true, "can_write": true, "can_create": true, "can_delete": true}
+    {"table": "tickets.type_field", "role": "System Manager", "can_read": true, "can_write": true, "can_create": true, "can_delete": true},
+    {"table": "tickets.data_quality_rule", "role": "All", "can_read": true, "can_create": true, "can_delete": true}
   ]
 }

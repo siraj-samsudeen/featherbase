@@ -14,6 +14,10 @@ export type Filter = [string, string, unknown]
 // could only produce malformed filters. Related filters arrive via links
 // (Connections, Explore) and render as chips like any other filter.
 const OPS = ['=', '!=', 'like', '>', '<', '>=', '<='] as const
+// #1196: no value or empty text; they take no value. Only the platform's own
+// database answers them, so a connected Table's list does not offer them.
+const BLANK_OPS = ['is blank', 'is not blank'] as const
+const isBlankOp = (op: string) => (BLANK_OPS as readonly string[]).includes(op)
 
 // Standard filters (adopted from PR 2's Admin screen): typed per-column
 // inputs for the list's visible columns — Choices become dropdowns, text-ish
@@ -178,8 +182,8 @@ export function FilterWords({ meta, filter }: { meta: import('../lib/meta').Tabl
     (typeof value === 'string' || typeof value === 'number') && String(value) !== ''
   return (
     <>
-      {label} {op}{' '}
-      {linked ? <LinkedTitle table={col.reference_base ?? col.reference_table!} rowId={String(value)} />
+      {label} {op}{isBlankOp(op) ? null : ' '}
+      {isBlankOp(op) ? null : linked ? <LinkedTitle table={col.reference_base ?? col.reference_table!} rowId={String(value)} />
         : (op === '=' || op === '!=') && col?.column_type === 'Choice' ? choiceLabel(String(value), col.choice_labels, t)
         : filterValueLabel(op, value)}
     </>
@@ -211,7 +215,9 @@ export function FilterBar({
   const column = meta.columns.find((c) => c.column_name === field)
   const kind = filterBoxKind(column, op)
 
+  const ops: readonly string[] = meta.data_source ? OPS : [...OPS, ...BLANK_OPS]
   function add() {
+    if (isBlankOp(op)) return onChange([...filters, [field, op, null]])
     if (!value.trim()) return
     const v = op === 'like' ? `%${value.trim()}%` : value.trim()
     onChange([...filters, [field, op, v]])
@@ -244,13 +250,13 @@ export function FilterBar({
           data-testid="filter-op"
           className={inputClasses('max-w-[10rem]')}
         >
-          {OPS.map((o) => (
+          {ops.map((o) => (
             <option key={o} value={o}>
               {o}
             </option>
           ))}
         </select>
-        {kind === 'link' ? (
+        {isBlankOp(op) ? null : kind === 'link' ? (
           <LinkControl
             key={field}
             field={column!}

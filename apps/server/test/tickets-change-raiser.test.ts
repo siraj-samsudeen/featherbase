@@ -264,26 +264,46 @@ describe('Tickets: changing who raised a ticket (#963)', () => {
       .toThrow('Use an authorized Tickets action')
   })
 
-  test('Tickets upgrades from the version before this one with no schema or grant change', async ({ admin }) => {
+  // #1196: 0.2.9 adds the data quality rule Table, with exactly its own grant (after #1193's 0.2.8).
+  test('Tickets upgrades from the version before this one, adding only the data quality rule Table and its grant', async ({ admin }) => {
     const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
     const step = manifest.migrations.find((m: any) => m.toVersion === version)
-    expect(step).toMatchObject({ id: 'split_screens', operations: [] })
+    expect(step).toMatchObject({ id: 'data_quality_rules', operations: [{ kind: 'addTable', table: { name: 'tickets.data_quality_rule' } }] })
     const prior = await mkdtemp(resolve('test/.upgrade-tickets-'))
     try {
       await cp(directory, prior, { recursive: true, filter: source => !source.includes('node_modules') })
       // The same files at the earlier version: what this checks is the migration chain and the plan.
-      await writeFile(resolve(prior, 'featherbase.json'), JSON.stringify({ ...manifest, migrations: manifest.migrations.filter((m: any) => m !== step) }))
+      // The earlier version has no rule Table: not listed, read, granted or migrated to.
+      const RULES = 'tickets.data_quality_rule'
+      const earlier = { ...manifest, migrations: manifest.migrations.filter((m: any) => m !== step),
+        tables: manifest.tables.filter((t: any) => t.name !== RULES), permissions: manifest.permissions.filter((p: any) => p.table !== RULES),
+        actions: { ...manifest.actions, tables: manifest.actions.tables.filter((t: string) => t !== RULES) },
+        reads: { ...manifest.reads, tables: manifest.reads.tables.filter((t: string) => t !== RULES) } }
+      await writeFile(resolve(prior, 'featherbase.json'), JSON.stringify(earlier))
+      // Its code knows no rule Table either: today's handlers, without the rule Table's guards.
+      await writeFile(resolve(prior, 'dist/server.mjs'), [
+        `import * as current from ${JSON.stringify(resolve(directory, 'dist/server.mjs'))}`,
+        `const without = (all) => Object.fromEntries(Object.entries(all).filter(([table]) => table !== ${JSON.stringify(RULES)}))`,
+        'export const { platformVersion, actions, reads } = current',
+        'export const validators = without(current.validators)',
+        'export const destructiveGuards = without(current.destructiveGuards)',
+      ].join('\n'))
       await writeFile(resolve(prior, 'package.json'), JSON.stringify({ ...JSON.parse(await readFile(resolve(directory, 'package.json'), 'utf8')), version: step.fromVersion }))
       await discoverPackages([prior])
       await admin.post('/api/install_app', { name: 'tickets' })
       await discoverPackages([prior, directory])
       await loadInstalledApps()
       const plan = await admin.post<any>('/api/preview_app_upgrade', { name: 'tickets', version })
-      expect(plan).toMatchObject({ currentVersion: step.fromVersion, targetVersion: version, codeOnly: true, permissions: [] })
+      expect(plan).toMatchObject({ currentVersion: step.fromVersion, targetVersion: version, codeOnly: false, destructive: false,
+        tables: ['tickets.data_quality_rule'],
+        permissions: [{ grant: { table: RULES, role: 'All' } }] })
       await admin.post('/api/upgrade_app', { name: 'tickets', version, planId: plan.planId })
       await admin.post('/api/activate_app_upgrade', { name: 'tickets', version })
       const [installed] = await sql`select package_version, activation_pending from installed_app where name = 'tickets'`
       expect(installed).toMatchObject({ package_version: version, activation_pending: false })
+      // The added Table is there, and its declared grant lets everyone read it.
+      expect((await admin.get<{ data: unknown[] }>(`/api/table/${RULES}`)).data).toEqual([])
+      expect((await sql`select count(*)::int as n from permission where ref_table = ${RULES} and role = 'All'`)[0].n).toBeGreaterThan(0)
     } finally { await rm(prior, { recursive: true, force: true }) }
   })
 
@@ -311,6 +331,159 @@ describe('Tickets: changing who raised a ticket (#963)', () => {
     await expect(manager().handOver('Example Elsewhere', other.row_id, w.next.user)).rejects.toThrow(/own/)
     await manager().handOver('tickets.request', ticket.row_id, w.next.user)
     expect(await creator()).toBe(w.next.user)
+  })
+})
+
+// #1193: an API caller names the raiser when it raises the ticket.
+const raiseFor = (client: TestClient, raiser: unknown, key?: string) => act(client, 'create', { title: 'Plant address is wrong',
+  original: 'Two plants carry both door numbers', kind: 'data_quality_issue', details: { current_value: '78/499/1' }, raiser }, key)
+const onBehalf = async (id: string, table = 'tickets.open_event') =>
+  sql`select operation, text, by from ${sql(table)} where ticket = ${id} and operation = 'raise_on_behalf'`
+const ticketCount = async () => Number((await sql`select count(*) as n from tickets.ticket`)[0]!.n)
+async function agentOf(admin: TestClient, label = 'dq-agent') {
+  const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label, roles: ['System Manager'] })
+  const { token } = await admin.post<{ token: string }>('/api/access_tokens', { label, owner: account.row_id })
+  return makeClient({ request: (path, init) => admin.fetch(String(path), init) }, token, account.row_id) as Person
+}
+
+describe('Tickets: raising a ticket on someone\'s behalf (#1193)', () => {
+  test('an agent names the raiser: the raiser is theirs, the history and the platform record say who acted', async ({ admin, createUser }) => {
+    const w = await world(admin, createUser)
+    const agent = await agentOf(admin)
+    const { ticket } = await raiseFor(agent, w.next.user)
+    expect(ticket.owner).toBe(w.next.user)
+    const [row] = await sql`select owner, created_by from tickets.ticket where row_id = ${ticket.row_id}`
+    expect(row).toEqual({ owner: w.next.user, created_by: agent.user })
+    const [event, ...rest] = await onBehalf(ticket.row_id)
+    expect(rest).toEqual([])
+    expect(event.by).toBe(agent.user)
+    expect(JSON.parse(String(event.text))).toEqual({ raiser: w.next.user })
+    // On a type open to everyone, everyone reads the event and both names; the raiser lists the ticket as theirs.
+    const detail = await read(w.colleague, 'detail', { row_id: ticket.row_id })
+    const shown = detail.privateEvents.find((e: any) => e.operation === 'raise_on_behalf')
+    expect(shown.by).toBe(agent.user)
+    expect(JSON.parse(shown.text)).toEqual({ raiser: w.next.user })
+    expect(detail.names).toMatchObject({ [agent.user]: 'dq-agent', [w.next.user]: 'Next Raiser' })
+    expect((await read(w.next, 'queue')).tickets.map((t: any) => t.row_id)).toContain(ticket.row_id)
+  })
+
+  test('a private ticket: the request is the raiser\'s from the start, through the app and the generic API alike', async ({ admin, createUser }) => {
+    const w = await world(admin, createUser, 'private')
+    let ticket = (await raiseFor(w.manager, w.next.user)).ticket as Ticket
+    const [request] = await sql`select created_by from tickets.request where row_id = ${ticket.row_id}`
+    expect(request.created_by).toBe(w.next.user)
+    expect(await onBehalf(ticket.row_id)).toEqual([])
+    expect(await onBehalf(ticket.row_id, 'tickets.event')).toHaveLength(1)
+    expect((await read(w.next, 'detail', { row_id: ticket.row_id })).details).toMatchObject({ current_value: '78/499/1' })
+    expect((await w.next.get<any>(`/api/table/tickets.request/${ticket.row_id}`)).row_id).toBe(ticket.row_id)
+    ticket = (await act(w.next, 'edit', { ...revision(ticket), original: 'Corrected wording' })).ticket
+    // Someone else, not support, still reads nothing private; the history stays with support, as on any private ticket.
+    expect((await read(w.colleague, 'detail', { row_id: ticket.row_id })).details).toBeUndefined()
+    expect((await read(w.next, 'detail', { row_id: ticket.row_id })).privateEvents).toBeUndefined()
+    expect((await read(w.support, 'detail', { row_id: ticket.row_id })).privateEvents.some((e: any) => e.operation === 'raise_on_behalf')).toBe(true)
+  })
+
+  test('a private ticket raised for someone: the raised-for person reads it too, and the raiser needs no share', async ({ admin, createUser }) => {
+    const w = await world(admin, createUser, 'private')
+    const [type] = await sql`select row_id from tickets.ticket_type where type_key = 'data_quality_issue'`
+    await save(admin, 'tickets.type_field', { ticket_type: type.row_id, field_name: 'raised_for', label: 'Raised for', field_type: 'person' })
+    const create = (raised_for: string) => act(w.manager, 'create', { title: 'Plant address is wrong', original: 'Two plants carry both door numbers',
+      kind: 'data_quality_issue', details: { current_value: '78/499/1', raised_for }, raiser: w.next.user })
+    const shares = async (id: string) => (await sql`select person from share where share_table = 'tickets.request' and share_name = ${id}`).map(r => r.person)
+    const forColleague = (await create(w.colleague.user)).ticket
+    expect((await read(w.colleague, 'detail', { row_id: forColleague.row_id })).details).toMatchObject({ raised_for: w.colleague.user })
+    expect(await shares(forColleague.row_id)).toEqual([w.colleague.user])
+    const forRaiser = (await create(w.next.user)).ticket
+    expect(await shares(forRaiser.row_id)).toEqual([])
+    expect((await read(w.next, 'detail', { row_id: forRaiser.row_id })).details).toMatchObject({ current_value: '78/499/1' })
+  })
+
+  test('a create refused after the raiser was accepted leaves nothing behind', async ({ admin, createUser }) => {
+    const w = await world(admin, createUser)
+    const counts = async () => (await sql`select (select count(*) from tickets.ticket) as tickets, (select count(*) from tickets.open_request) as requests,
+      (select count(*) from tickets.request) as private_requests, (select count(*) from tickets.open_event) as events,
+      (select count(*) from tickets.member where row_id = ${w.next.user}) as named`)[0]
+    const before = await counts()
+    expect(Number(before.named)).toBe(0)
+    await refused(act(w.manager, 'create', { title: 'Plant address is wrong', original: 'x', kind: 'no_such_type', raiser: w.next.user }))
+    await refused(act(w.manager, 'create', { title: '', original: 'x', kind: 'data_quality_issue', raiser: w.next.user }), /Public summary is required/)
+    expect(await counts()).toEqual(before)
+  })
+
+  test('only a System Manager names someone else; nothing is created when refused', async ({ admin, createUser }) => {
+    const w = await world(admin, createUser)
+    const before = await ticketCount()
+    for (const client of [w.support, w.raiser, w.colleague])
+      await refused(raiseFor(client, w.next.user), /Only a System Manager may raise a ticket for someone else/)
+    expect(await ticketCount()).toBe(before)
+  })
+
+  test('an unknown, disabled, merged-away, built-in or service account raiser, or an empty one, is refused', async ({ admin, createUser }) => {
+    const w = await world(admin, createUser)
+    const left = await createUser({ email: 'left3@tickets.example.test', fullName: 'Has Left' }) as Person
+    await sql`update person set enabled = false where row_id = ${left.user}`
+    const merged = await createUser({ email: 'merged3@tickets.example.test', fullName: 'Merged Away' }) as Person
+    await sql`update person set enabled = false, replaced_by = ${w.next.user} where row_id = ${merged.user}`
+    const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'other-loader' })
+    const before = await ticketCount()
+    for (const id of ['psn_doesnotexist', left.user, merged.user, 'Administrator', account.row_id])
+      await refused(raiseFor(w.manager, id), /enabled person/)
+    for (const empty of ['', '  ', 42]) await refused(raiseFor(w.manager, empty), /Raiser is required/)
+    expect(await ticketCount()).toBe(before)
+  })
+
+  test('naming yourself is an ordinary ticket, with no event', async ({ admin, createUser }) => {
+    const w = await world(admin, createUser)
+    for (const client of [w.raiser, w.manager]) {
+      const { ticket } = await raiseFor(client, client.user)
+      expect(ticket.owner).toBe(client.user)
+      expect(await onBehalf(ticket.row_id)).toEqual([])
+    }
+  })
+
+  test('a raiser Tickets already knows keeps their one name row', async ({ admin, createUser }) => {
+    const w = await world(admin, createUser)
+    await w.raise()
+    await raiseFor(w.manager, w.raiser.user)
+    expect(await sql`select full_name from tickets.member where row_id = ${w.raiser.user}`).toEqual([{ full_name: 'Raiser' }])
+  })
+
+  test('only a new name, written while raising or changing the raiser, may name someone else; an unnamed raiser gets no name row', async () => {
+    const app = await import(resolve(directory, 'dist/server.mjs'))
+    const rejectWith = (message: string): never => { throw new Error(message) }
+    const created: [string, Record<string, unknown>][] = []
+    // Forged saves of another person's name: an existing row in create, any row in note.
+    const forging = (isNew: boolean) => ({
+      get: async () => ({ row_id: 'FT-1', owner: 'psn_actor', updated_at: 'r1', kind: 'generic', ticket_state: 'New', title: 't' }),
+      list: async () => [],
+      create: async (table: string, row: Record<string, unknown>) => {
+        if (table === 'tickets.member') app.validators[table]({ row: { ...row, row_id: 'psn_other' }, user: 'psn_actor', isNew, reject: rejectWith })
+        return { row_id: 'x' }
+      },
+    })
+    const context = (documents: object, payload: object, extra: object = {}) => ({ user: 'psn_actor', userName: 'Actor', roles: ['All', 'System Manager'],
+      settings: { support_users: JSON.stringify(['psn_actor']) }, people: { names: async () => ({}), enabled: async (ids: string[]) => ids },
+      reject: rejectWith, documents, payload, ...extra })
+    await expect(app.actions.note(context(forging(true), { row_id: 'FT-1', updated_at: 'r1', text: 'hello' }))).rejects.toThrow('A person may record only their own name')
+    await expect(app.actions.create(context(forging(false), { title: 't', original: 'o' }))).rejects.toThrow('A person may record only their own name')
+    // A raiser whose name the platform does not give is still the raiser; no name row is invented.
+    const documents = { list: async () => [], create: async (table: string, row: Record<string, unknown>) => { created.push([table, row]); return { row_id: 'FT-2', ...row } },
+      handOver: async () => {}, setReaders: async () => {} }
+    const answer = await app.actions.create(context(documents, { title: 't', original: 'o', raiser: 'psn_unnamed' }))
+    expect(answer.ticket.owner).toBe('psn_unnamed')
+    expect(created.filter(([table, row]) => table === 'tickets.member' && row.row_id === 'psn_unnamed')).toEqual([])
+    // A caller whose roles are not given holds none, so may not name someone else.
+    await expect(app.actions.create(context(documents, { title: 't', original: 'o', raiser: 'psn_unnamed' }, { roles: undefined })))
+      .rejects.toThrow('Only a System Manager may raise a ticket for someone else')
+  })
+
+  test('an idempotency key replays the first answer and writes one ticket', async ({ admin, createUser }) => {
+    const w = await world(admin, createUser)
+    const key = randomUUID()
+    const first = await raiseFor(w.manager, w.next.user, key)
+    const before = await ticketCount()
+    expect(await raiseFor(w.manager, w.next.user, key)).toEqual(first)
+    expect(await ticketCount()).toBe(before)
   })
 })
 

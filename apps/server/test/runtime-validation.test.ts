@@ -27,3 +27,20 @@ test('runtime validators inspect owned rows through caller permissions and abort
     expect(await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'second', quantity: 19 } })).toMatchObject({ validation_runs: 2 })
   } finally { await rm(directory, { recursive: true, force: true }) }
 })
+
+// #1217: a save rule is told the writer's roles, so it can treat writers differently.
+test('runtime validators are told the writer\'s roles', async ({ admin }) => {
+  const directory = await mkdtemp(resolve('test/.validation-'))
+  try {
+    await cp(resolve('../..', 'test-apps/other'), directory, { recursive: true })
+    await writeFile(resolve(directory, 'server.mjs'), `
+      export const platformVersion = '2026-10'
+      export const validators = {
+        'other.task': ctx => { if (!ctx.roles.includes('System Manager')) ctx.reject('Writer roles were ' + JSON.stringify(ctx.roles)) }
+      }
+    `)
+    expect(await discoverPackages([directory])).toEqual([])
+    await admin.post('/api/install_app', { name: 'other' })
+    expect(await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'first', quantity: 37 } })).toMatchObject({ row_id: 'first' })
+  } finally { await rm(directory, { recursive: true, force: true }) }
+})

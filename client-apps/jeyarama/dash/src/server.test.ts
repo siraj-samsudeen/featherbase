@@ -889,7 +889,7 @@ describe('the Report access reads (#1046)', () => {
     const ctx = manager({ 'dash.report_bundle': [{ row_id: 'b2', bundle_name: 'Store pack' }, { row_id: 'b1', bundle_name: 'Leader pack' }],
       Employee: [{ row_id: 'E1', person: 'psn_103', name: 'Made-up Manager', status: 'Current' }] }, false, { q: 'Made' })
     expect((await reads.access_page(ctx)).bundles.map(b => b.name)).toEqual(['Leader pack', 'Store pack'])
-    expect(await reads.person_search({ ...ctx, payload: { q: 'Made-up Manager' } })).toEqual([{ person: 'psn_103', name: 'Made-up Manager' }])
+    expect(await reads.person_search({ ...ctx, payload: { q: 'Made-up Manager' } })).toEqual([{ person: 'psn_103', name: 'Made-up Manager', code: null, jobs: ['Store Manager · Lakeside'], staff: 'current' }])
   })
 
   it('looks a person up by what their job reaches, and as reaching nothing when that can\'t be read', async () => {
