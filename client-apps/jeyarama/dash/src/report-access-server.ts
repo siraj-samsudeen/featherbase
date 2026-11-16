@@ -7,7 +7,7 @@ import { reportsReaching, type AccessRow, type Because, type BundleMember } from
 import { EMPLOYEE_STATUS, exact, holdsOn, text } from './values.ts'
 import { istToday } from './report.ts'
 import { TEAM_MANAGER, checkedFor, checkedSave, givableBundles, teamOf } from './team-access.ts'
-import type { Documents } from './provider.ts'
+import { ALL_STORES_ROLE, type Documents } from './provider.ts'
 
 type Row = Record<string, unknown>
 
@@ -103,9 +103,11 @@ async function scopeOf(ctx: AccessContext, on: string): Promise<Scope> {
   if (!managesTeamAccess(ctx)) ctx.reject!(NOT_A_MANAGER)
   const team = await teamOf(ctx.baseTables!, ctx.user, on)
   // What they can open themselves: given to them, and not shut by their own reach, as Dash offers it to them.
+  // Opening a report takes a Dash reader role too (the manifest's report and embed_session readRoles; Codex adversarial round 2).
+  const opensReports = (ctx.roles ?? []).some(role => role === 'Dash Reader' || role === ALL_STORES_ROLE)
   const reports = (await names(ctx)).reports
   const reach = ctx.reach ? await ctx.reach(ctx.user, ctx.roles ?? []) : { any: false, wholeStore: false }
-  const holds = new Set([...(await reportsGivenTo(ctx.baseTables!, ctx.user, ctx.roles ?? [], on)).keys()]
+  const holds = new Set(!opensReports ? [] : [...(await reportsGivenTo(ctx.baseTables!, ctx.user, ctx.roles ?? [], on)).keys()]
     .filter(key => reports.has(key) && closedBecause(reports.get(key), reach) === null))
   return { kind: 'team', team, holds }
 }

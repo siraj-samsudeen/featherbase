@@ -95,6 +95,14 @@ describe('a Team Report Manager gives reports to their own team only', () => {
     expect((await page(head)).reports.map(r => r.key)).toEqual(['open'])
   })
 
+  // Codex adversarial round 2: opening a report also takes a Dash reader role.
+  test('a Team Report Manager without a Dash reader role can give nothing, even a report taking no filter', async ({ admin, createUser, }) => {
+    const { head, buyer } = await setup(admin, createUser)
+    await sql`delete from has_role where parent = ${head.user!} and role = 'Dash Reader'`
+    await refused(give(head, { report: 'open', person: buyer.user }), 'only reports you can open yourself')
+    expect((await page(head)).reports).toEqual([])
+  })
+
   test('refuses a whole-stores report when their reach is part of a store', async ({ admin, createUser }) => {
     const { head, buyer, giver } = await setup(admin, createUser)
     const job = await admin.get<{ updated_at: string }>('/api/table/Job%20Assignment/JA-H1')
