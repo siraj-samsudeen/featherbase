@@ -160,6 +160,11 @@ export function periodOf(today: string, month: MonthChoice = 'this') {
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
+/** An ISO day as people read it, DD-Mon-YYYY ("01-Apr-2026"); the server's own, so it carries no page code. */
+export function dayLabel(day: string): string {
+  return `${day.slice(8, 10)}-${MONTH_NAMES[Number(day.slice(5, 7)) - 1]}-${day.slice(0, 4)}`
+}
+
 /** A month as people read it, Mon'YY ("Nov'26"), from any ISO day in it. */
 export function monthLabel(day: string): string {
   return `${MONTH_NAMES[Number(day.slice(5, 7)) - 1]}'${day.slice(2, 4)}`

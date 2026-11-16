@@ -4,7 +4,7 @@
 import { checked } from './values.ts'
 import { ALL_STORES_ROLE, orgChartProvider, reachOf, type Documents, type Place } from './provider.ts'
 import { diveFilters, storesOfReport, storesReached, type ReportRecord } from './dive-filters.ts'
-import { MONTH_CHOICES, buildReport, monthLabel, headingOf, istToday, periodOf, storeLabels, storeShortName, type CachedAnswer, type Heading, type Month, type MonthChoice, type SalesRow } from './report.ts'
+import { MONTH_CHOICES, buildReport, dayLabel, monthLabel, headingOf, istToday, periodOf, storeLabels, storeShortName, type CachedAnswer, type Heading, type Month, type MonthChoice, type SalesRow } from './report.ts'
 import { actions as sectionActions, reads as sectionReads } from './my-sections.ts'
 import { departmentActions, departmentReads } from './department-setup.ts'
 import { storeActions, storeReads } from './my-store.ts'
@@ -12,7 +12,6 @@ import { coverageReads } from './coverage.ts'
 import { prefillActions } from './department-prefill.ts'
 import { accessPage, addReport, addToBundle, diveChoices, diveChoicesPrepared, giveReport, grantOptions, makeBundle, managesAccess, managesTeamAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
 import { TEAM_MANAGER } from './team-access.ts'
-import { shortDay } from './page.ts'
 
 /** The save rules of Dash's own Tables. */
 export const validators = accessValidators
@@ -247,7 +246,7 @@ async function reachInWords(ctx: ScopedContext) {
   const places = await placesHeld(ctx)
   const stores = storesReached(places)
   const names = await storeNames(ctx, stores).catch(() => new Map<string, string>())
-  const jobs = [...new Set(places.flatMap(place => (place.reasons ?? []).map(reason => reason.since ? `${reason.text}, since ${shortDay(reason.since)}` : reason.text)))].sort()
+  const jobs = [...new Set(places.flatMap(place => (place.reasons ?? []).map(reason => reason.since ? `${reason.text}, since ${dayLabel(reason.since)}` : reason.text)))].sort()
   const reach = stores.map(store => {
     const here = places.filter(place => (place.filters.store ?? []).includes(store))
     const whole = here.some(place => !place.filters.subcategory)
