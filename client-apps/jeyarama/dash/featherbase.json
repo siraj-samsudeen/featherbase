@@ -9,7 +9,8 @@
   "roles": [
     "Dash All-Stores Reader",
     "Dash Reader",
-    "Report Access Manager"
+    "Report Access Manager",
+    "Team Report Manager"
   ],
   "roleDefaults": {},
   "settings": [
@@ -76,7 +77,12 @@
     "approvers": [
       "Report Access Manager"
     ],
-    "page": "?view=access"
+    "page": "?view=access",
+    "grant": {
+      "title": "Dash reports",
+      "read": "grant_options",
+      "action": "give_report"
+    }
   },
   "datasets": [
     {
@@ -352,6 +358,33 @@
         "store": "store_code",
         "subcategory": "subcategory_code"
       }
+    },
+    {
+      "name": "organisation_dives",
+      "source": "motherduck",
+      "unscoped": true,
+      "query": "select cast(id as varchar) as dive_id, title, owner_name, cast(updated_at as date) as saved_on from MD_LIST_DIVES(include_org_shares => true) where coalesce(status, '') <> 'archived'",
+      "columns": [
+        {
+          "name": "dive_id",
+          "type": "text"
+        },
+        {
+          "name": "title",
+          "type": "text"
+        },
+        {
+          "name": "owner_name",
+          "type": "text"
+        },
+        {
+          "name": "saved_on",
+          "type": "date"
+        }
+      ],
+      "keys": [
+        "dive_id"
+      ]
     }
   ],
   "tables": [
@@ -609,6 +642,14 @@
     {
       "table": "dash.report",
       "role": "Report Access Manager",
+      "operations": {
+        "read": "@basic",
+        "create": "@basic"
+      }
+    },
+    {
+      "table": "dash.report",
+      "role": "Team Report Manager",
       "can_read": true
     },
     {
@@ -620,6 +661,11 @@
         "update": "@basic",
         "delete": true
       }
+    },
+    {
+      "table": "dash.report_bundle",
+      "role": "Team Report Manager",
+      "can_read": true
     },
     {
       "table": "dash.report_bundle_member",
@@ -639,6 +685,16 @@
         "create": "@basic",
         "update": "@basic",
         "delete": true
+      }
+    },
+    {
+      "table": "dash.report_access",
+      "role": "Team Report Manager",
+      "scope_mode": "creator",
+      "operations": {
+        "read": "@basic",
+        "create": "@basic",
+        "update": "@basic"
       }
     }
   ],
@@ -807,6 +863,14 @@
           "kind": "generic"
         }
       },
+      "grant_options": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
       "person_search": {
         "policy": {
           "kind": "table"
@@ -854,6 +918,15 @@
         "authorization": {
           "kind": "generic"
         }
+      },
+      "dive_choices": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        },
+        "outbound": true
       }
     }
   },
@@ -1961,6 +2034,36 @@
       "fromVersion": "0.13.0",
       "toVersion": "0.13.1",
       "operations": []
+    },
+    {
+      "id": "person_identity",
+      "fromVersion": "0.13.1",
+      "toVersion": "0.13.2",
+      "operations": []
+    },
+    {
+      "id": "report_access_managers_add_dives",
+      "fromVersion": "0.13.2",
+      "toVersion": "0.13.3",
+      "operations": []
+    },
+    {
+      "id": "team_report_giving",
+      "fromVersion": "0.13.3",
+      "toVersion": "0.13.4",
+      "operations": []
+    },
+    {
+      "id": "waiting_for_access_grant",
+      "fromVersion": "0.13.4",
+      "toVersion": "0.13.5",
+      "operations": []
+    },
+    {
+      "id": "department_name_follows_sections",
+      "fromVersion": "0.13.5",
+      "toVersion": "0.13.6",
+      "operations": []
     }
   ],
   "baseTables": {
@@ -1968,7 +2071,8 @@
       "Employee": [
         "name",
         "status",
-        "person"
+        "person",
+        "employee_code"
       ],
       "Job Assignment": [
         "employee",
@@ -2245,6 +2349,14 @@
         }
       },
       "undo_prefill": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "add_report": {
         "policy": {
           "kind": "table"
         },

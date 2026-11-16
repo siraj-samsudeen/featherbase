@@ -158,6 +158,20 @@ export class Tickets {
     return this.action('change_raiser', { new_raiser: this.ids[person], reason }, actor, true)
   }
 
+  /** An agent (#1193): a service account holding System Manager that calls with its access token, as automation does. */
+  async agent(name = 'Agent') {
+    if (this.people[name]) return this.people[name]
+    const account = await this.admin.post<{ row_id: string }>('/api/service_accounts', { label: `svc-${name.toLowerCase()}`, roles: ['System Manager'] })
+    const { token } = await this.admin.post<{ token: string }>('/api/access_tokens', { label: name, owner: account.row_id })
+    // The admin client carries the pinned Tickets version; the token's header replaces the admin's.
+    this.people[name] = makeClient({ request: (path, init) => this.admin.fetch(String(path), init) }, token, account.row_id)
+    this.ids[name] = account.row_id
+    this.roles[name] = ['System Manager']
+    return this.people[name]
+  }
+  /** How many tickets exist: a refused create leaves it as it was. */
+  async ticketCount() { return Number((await sql`select count(*) as n from tickets.ticket`)[0]!.n) }
+
   /** What Tickets queued about the current ticket (#1001): nothing here sends. */
   async mail(): Promise<{ recipient: string; body: string }[]> {
     return [...await sql<{ recipient: string; body: string }[]>`select recipient, body from email_queue
@@ -294,6 +308,13 @@ export class TicketTransitions {
     await this.types.submit({ urgency: 'Now', source_system: this.types.systems.SAP, current_value: '78/499/1' })
     expect(this.t.ticket.assigned_to).toBe(this.t.ids.Bala)
   }
+  /** #1193: `actor` raises the Data Quality Issue for SAP naming `person` as its raiser; refused or not when `attempt`. */
+  async raiseFor(actor: string, person: string, attempt = false) {
+    await this.configure()
+    if (actor === 'Agent') await this.t.agent()
+    return this.t.action('create', { title: 'Plant address is wrong', original: 'Two plants carry both door numbers', kind: this.types.key,
+      details: { urgency: 'Now', source_system: this.types.systems.SAP, current_value: '78/499/1' }, raiser: this.t.ids[person] }, actor, attempt)
+  }
   take(actor: string, action: string, values?: Record<string, unknown>, attempt = false) {
     return this.t.action('transition', { action, ...(values ? { values } : {}) }, actor, attempt)
   }
@@ -327,5 +348,64 @@ export class TicketsAssignmentEmail {
     const raised = this.t.ticket
     await this.t.action('create', { title: `${name} files one`, original: `${name} files one`, kind: 'generic', details: {} }, name)
     this.t.ticket = raised
+  }
+}
+
+// ---- data quality rules (#1196) ----
+
+export type Rule = { row_id: string; title: string; table: string; filters: [string, string, unknown][]; severity: string
+  owner?: string | null; how_to_fix?: string | null; rows_when_raised: number; rows_left: number | null }
+export const BUYER_BLANK = { title: 'Buyer is blank', table: 'Buyer Assignment', severity: 'Medium',
+  filters: [['role', '=', 'Buyer'], ['person', 'is blank', null]] as [string, string, unknown][],
+  how_to_fix: 'Pick the buyer from the category\'s purchasing group' }
+
+/** A Data Quality Issue raised to Bala, and a linked Table "Buyer Assignment" whose rows a rule counts. */
+export class TicketRules {
+  readonly transitions: TicketTransitions
+  readonly table = 'Buyer Assignment'
+  rows: { row_id: string; updated_at: string }[] = []
+  rule?: Rule
+  constructor(readonly t: Tickets) { this.transitions = new TicketTransitions(t) }
+
+  private save(table: string, row: object) { return this.t.admin.post<any>('/api/save_row', { table, row }) }
+
+  /** The linked Table, read by Tickets support only; Colleague may not read it. */
+  async desk() {
+    await this.transitions.configure()
+    if (this.rows.length) return
+    await makeTable(this.t.admin, { name: this.table, columns: ['role', 'person', 'store'] })
+    await grantRole(this.t.admin, { role: 'Tickets Support', table: this.table, can_read: true })
+    await this.t.configure({ linked_tables: [this.transitions.types.systemsTable, this.transitions.types.ownersTable, this.table] })
+    for (const store of ['North', 'South', 'East']) this.rows.push(await this.save(this.table, { role: 'Buyer', store }))
+    await this.save(this.table, { role: 'Buyer', store: 'West', person: 'Asha' })
+    await this.save(this.table, { role: 'Category head', store: 'West', person: 'Ravi' })
+  }
+  async raised() { await this.desk(); await this.transitions.raise() }
+
+  add(rule: Record<string, unknown> = BUYER_BLANK, actor = 'Bala', attempt = false) {
+    return this.t.action('add_rule', { ...rule }, actor, attempt)
+  }
+  /** A ticket with the rule "Buyer is blank" and 3 of 3 rows left. */
+  async withRule() {
+    await this.raised()
+    await this.add()
+    this.rule = (await this.rules())[0]
+  }
+  async rules(actor = 'Bala'): Promise<Rule[]> { return (await this.t.open(actor)).rules ?? [] }
+  async ruleNamed(title: string, actor = 'Bala') { const rule = (await this.rules(actor)).find(r => r.title === title); expect(rule, `rule ${title}`).toBeDefined(); return rule! }
+
+  /** Fills in a person on that many of the blank buyer rows. */
+  async fill(count: number) {
+    for (const row of this.rows.splice(0, count)) {
+      const current = await this.t.admin.get<{ updated_at: string }>(`/api/table/${encodeURIComponent(this.table)}/${row.row_id}`)
+      await this.save(this.table, { row_id: row.row_id, updated_at: current.updated_at, person: 'Filled In' })
+    }
+  }
+  async newBlankBuyer() { this.rows.push(await this.save(this.table, { role: 'Buyer', store: 'Central' })) }
+  remove(reason: string, actor = 'Bala', attempt = false) { return this.t.action('remove_rule', { rule: this.rule!.row_id, reason }, actor, attempt) }
+  preview(table: string, filters: unknown, actor = 'Bala') { return this.t.read('rule_preview', { table, filters }, actor) }
+  refusedWith(pattern: RegExp) {
+    expect(this.t.last.status, JSON.stringify(this.t.last.body)).not.toBe(200)
+    expect(JSON.stringify(this.t.last.body)).toMatch(pattern)
   }
 }

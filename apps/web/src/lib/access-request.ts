@@ -2,9 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
 
 /** The server's answer: `waiting` once an admin has been told (#955); `elsewhere` when the person
- *  belongs in the app at `home`, and nobody was told. */
+ *  belongs in the app at `home`, and nobody was told; `declined` once an admin declined it (#1173). */
 export interface AccessAnswer {
-  state: 'open' | 'waiting' | 'elsewhere' | 'apps'
+  state: 'open' | 'waiting' | 'elsewhere' | 'apps' | 'declined'
   title: string
   home?: string
   /** `apps`: the apps they can open, each open to everyone; nobody was told. */

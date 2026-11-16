@@ -6,6 +6,7 @@
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { compareVersions } from './runtime-migrations'
+import { grantWords } from './app-permission-format'
 import type { CommandIO } from './command-io'
 import { sql, withTransaction } from './db'
 import { DEPLOY_LOCK_WAIT, instanceDeployOperation, type DeployLockWait } from './app-lifecycle'
@@ -108,6 +109,9 @@ async function installOrUpgradeApps(io: CommandIO) {
     await upgradeApp(name, newest.version, plan.planId)
     await activateAppUpgrade(name, newest.version)
     io.out(`upgraded ${name} from ${installed} to ${newest.version}`)
+    // #1169: access an upgrade gives is applied without review, so the deploy says what it gave.
+    for (const change of plan.permissions)
+      if ('grant' in change) io.out(`  ${name} gives ${grantWords(change.grant)}`)
   }
 }
 
