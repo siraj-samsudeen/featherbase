@@ -195,3 +195,21 @@ test('a Recent row for a person with no caption shows the name and no id tooltip
   expect(row.textContent).not.toContain(p.user!)
   expect(row.getAttribute('title') ?? '').not.toContain(p.user!)
 })
+
+// #1224: who made a row is named to anyone who may read the row, even without
+// Person read; the same id without that context stays unnamed.
+test('who made a row reads by name to a reader without Person read; outside the Table it stays unnamed', async ({ admin, createUser }) => {
+  await admin.post('/api/table_def', { name: 'Actor Row', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await grantRole(admin, { table: 'Actor Row', role: 'Actor Row Writer', can_read: true, can_create: true })
+  await grantRole(admin, { table: 'Actor Row', role: 'Actor Row Reader', can_read: true })
+  const writer = await createUser({ email: 'actor.writer@example.com', fullName: 'Actor Writer', roles: ['Actor Row Writer'] })
+  await writer.post('/api/save_row', { table: 'Actor Row', row: { title: 'x' } })
+  const reader = await createUser({ email: 'actor.reader@example.com', roles: ['Actor Row Reader'] })
+  const { queryClient } = await renderApp('/featherbase/account/sign-in-methods', reader)
+  render(<QueryClientProvider client={queryClient}>
+    <span data-testid="as-actor"><PrincipalName id={writer.user!} actorOf="Actor Row" /></span>
+    <span data-testid="as-link"><PrincipalName id={writer.user!} /></span>
+  </QueryClientProvider>)
+  await waitFor(() => expect(screen.getByTestId('as-actor')).toHaveTextContent('Actor Writer'))
+  await waitFor(() => expect(screen.getByTestId('as-link')).toHaveTextContent('Unnamed person'))
+})

@@ -149,3 +149,40 @@ test('the activity feed names a service account the same way as everywhere else'
   await patch(admin, `/api/service_accounts/${account.row_id}`, { display_name: 'Claude — setup agent' })
   expect((await whoLabels([account.row_id])).get(account.row_id)?.name).toBe('Claude — setup agent')
 })
+
+const actorNamesOn = (client: { post: <T>(path: string, body: unknown) => Promise<T> }, table: string, ids: string[]) =>
+  client.post<{ names: Record<string, string | null> }>('/api/people/actor_names', { table, ids }).then((r) => r.names)
+
+test('a list names who made or changed the rows a viewer may read, without Person read; anyone else stays unnamed', async ({ admin, createUser }) => {
+  await admin.post('/api/table_def', { name: 'Act Note', columns: [{ column_name: 'body', column_type: 'Data' }] })
+  await grantRole(admin, { role: 'Act Note Reader', table: 'Act Note', can_read: true })
+  await grantRole(admin, { role: 'Act Note Writer', table: 'Act Note', can_read: true, can_create: true, can_write: true })
+  const writer = await createUser({ roles: ['Act Note Writer'], fullName: 'Act Writer' })
+  const stranger = await createUser({ roles: [], fullName: 'Act Stranger' })
+  await writer.post('/api/save_row', { table: 'Act Note', row: { body: 'hello' } })
+  const reader = await createUser({ roles: ['Act Note Reader'] })
+
+  expect(await actorNamesOn(reader, 'Act Note', [writer.user!, stranger.user!, 'roster-link'])).toEqual({
+    [writer.user!]: 'Act Writer', [stranger.user!]: null, 'roster-link': 'Staff roster sync',
+  })
+  // The generic lookup still says nothing to this reader.
+  expect((await reader.post<{ names: Record<string, string | null> }>('/api/people/names', { ids: [writer.user] })).names[writer.user!]).toBeNull()
+
+  // Who archived the Table is named to someone who may read it.
+  await admin.post('/api/table_def/Act%20Note/archive', { note: 'done' })
+  expect((await actorNamesOn(reader, 'Act Note', ['Administrator']))['Administrator']).toBe('Administrator')
+})
+
+test('rows the viewer may not read name nobody: creator-only reach, and a Table they cannot read', async ({ admin, createUser }) => {
+  await admin.post('/api/table_def', { name: 'Act Private', columns: [{ column_name: 'body', column_type: 'Data' }] })
+  await grantRole(admin, { role: 'Act Private Writer', table: 'Act Private', can_read: true, can_create: true })
+  await grantRole(admin, { role: 'Act Private Own', table: 'Act Private', can_read: true, own_rows_only: true })
+  const writer = await createUser({ roles: ['Act Private Writer'], fullName: 'Private Writer' })
+  await writer.post('/api/save_row', { table: 'Act Private', row: { body: 'secret' } })
+  const ownOnly = await createUser({ roles: ['Act Private Own'] })
+  const nobody = await createUser({ roles: [] })
+  expect(await actorNamesOn(ownOnly, 'Act Private', [writer.user!])).toEqual({ [writer.user!]: null })
+  expect(await actorNamesOn(nobody, 'Act Private', [writer.user!])).toEqual({ [writer.user!]: null })
+  const bad = await nobody.fetch('/api/people/actor_names', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids: 'x' }) })
+  expect(bad.status).toBe(417)
+})

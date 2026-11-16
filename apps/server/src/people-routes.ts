@@ -8,6 +8,7 @@ import { createServiceAccount, listServiceAccounts, renameServiceAccount, setSer
 import { principalReach } from './token-reach'
 import { explainAccess } from './access-explanation'
 import { pickPeople, principalNames, tableMembers } from './people-directory'
+import { actorNamesOn } from './actor-names'
 import { googleAuthorizeUrl, googleAvailable, newLoginChallenge, codeChallengeFor } from './oauth'
 import { sendInvitation } from './invitation-email'
 import { requestHost } from './instance-addresses'
@@ -55,6 +56,13 @@ peopleRoutes.get('/api/people/:id/scope', async (c) => {
 peopleRoutes.post('/api/people/names', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { ids?: unknown }
   return c.json({ names: await principalNames(body.ids, who(c)) })
+})
+
+// #1224: who made, changed, retired or archived rows of a Table the caller
+// may read, by name, even without Person read; any other id names nobody.
+peopleRoutes.post('/api/people/actor_names', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { table?: unknown; ids?: unknown }
+  return c.json({ names: await actorNamesOn(who(c), body.table, body.ids) })
 })
 
 peopleRoutes.get('/api/table_members/:table', async (c) => c.json({ data: await tableMembers(c.req.param('table'), who(c)) }))

@@ -39,15 +39,39 @@ function loadName(id: string): Promise<string | null> {
   })
 }
 
+// #1224: who made, changed, retired or archived rows of a Table, named by the
+// server when the viewer may read those rows (POST /api/people/actor_names),
+// even without Person read. Batched per Table like the names above.
+const actorQueues = new Map<string, Map<string, ((name: string | null) => void)[]>>()
+
+function loadActorName(table: string, id: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    let queue = actorQueues.get(table)
+    if (!queue) {
+      queue = new Map()
+      actorQueues.set(table, queue)
+      setTimeout(() => {
+        const batch = actorQueues.get(table)!
+        actorQueues.delete(table)
+        api.post<{ names: Record<string, string | null> }>('/api/people/actor_names', { table, ids: [...batch.keys()] })
+          .then(({ names }) => { for (const [i, rs] of batch) for (const r of rs) r(names[i] ?? null) })
+          .catch(() => { for (const rs of batch.values()) for (const r of rs) r(null) })
+      }, 0)
+    }
+    queue.set(id, [...(queue.get(id) ?? []), resolve])
+  })
+}
+
 /** A principal id's display name and whether it is still being fetched.
+ *  With `actorOf`, the id is who acted on rows of that Table (#1224).
  *  Ids that are not opaque (Administrator, Guest) are their own name. */
-export function usePrincipalNameState(id: string | null | undefined): { name: string | null; loading: boolean } {
+export function usePrincipalNameState(id: string | null | undefined, actorOf?: string): { name: string | null; loading: boolean } {
   const opaque = Boolean(id && isOpaqueId(id))
   const q = useQuery({
-    queryKey: ['principal-name', id],
+    queryKey: actorOf ? ['actor-name', actorOf, id] : ['principal-name', id],
     enabled: opaque,
     staleTime: 5 * 60_000,
-    queryFn: () => loadName(id!),
+    queryFn: () => (actorOf ? loadActorName(actorOf, id!) : loadName(id!)),
   })
   if (!id) return { name: null, loading: false }
   if (!opaque) return { name: SYSTEM_ACTOR_LABELS[id] ?? id, loading: false }
@@ -82,10 +106,12 @@ export function usePrincipalLabels(ids: readonly string[]): (id: string) => stri
   }
 }
 
-export function PrincipalName({ id }: { id: string }) {
+export function PrincipalName({ id, actorOf }: { id: string; actorOf?: string }) {
   // "…" only while the name is actually being fetched; a person with no
-  // name, or one this viewer may not read, is "Unnamed person".
-  const { name, loading } = usePrincipalNameState(id)
+  // name, or one this viewer may not read, is "Unnamed person". With
+  // `actorOf`, who acted on that Table's rows is named to anyone who may
+  // read those rows (#1224).
+  const { name, loading } = usePrincipalNameState(id, actorOf)
   return <span data-testid="principal-name" title={name ?? undefined}>{principalLabel(id, name, loading)}</span>
 }
 
@@ -100,6 +126,6 @@ export function ActorName({ id, name }: { id: string; name?: string | null }) {
 
 /** A record name as a person would read it: a principal's name for an opaque
  *  id (#414), the text itself for anything else. */
-export function ShownName({ id }: { id: string }) {
-  return isOpaqueId(id) ? <PrincipalName id={id} /> : <>{id}</>
+export function ShownName({ id, actorOf }: { id: string; actorOf?: string }) {
+  return isOpaqueId(id) ? <PrincipalName id={id} actorOf={actorOf} /> : <>{id}</>
 }

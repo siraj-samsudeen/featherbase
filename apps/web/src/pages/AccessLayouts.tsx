@@ -149,8 +149,8 @@ export function GivenBy({ r, lead }: { r: RoleRow; lead?: boolean }) {
   const say = (text: string) => (lead ? text.charAt(0).toUpperCase() + text.slice(1) : ` — ${text}`)
   if (r.app) return <span className="text-ink-muted">{say(`from app ${r.app}, through ${r.through}`)}</span>
   if (r.implicit) return <span className="text-ink-muted">{say('every signed-in account has these')}</span>
-  // The words are the permissions-and-roles spec's (#923).
-  if (r.everyone) return <span className="text-ink-muted">{say('everyone who signs in holds it (System Settings)')}</span>
+  // The words are the permissions-and-roles spec's (#923, #1224).
+  if (r.everyone) return <span className="text-ink-muted">{say('everyone who signs in has it')}</span>
   if (!r.given_by || !r.given_at) return null
   return <span className="text-ink-muted">{say('given by ')}<Actor id={r.given_by} name={r.given_by_name} />{`, ${fmtInstantIST(r.given_at)}`}</span>
 }

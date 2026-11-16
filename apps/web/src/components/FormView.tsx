@@ -518,7 +518,7 @@ export function FormView({
             {!rowsReadOnly && (
               <FieldGroupView group={{ key: 'bookkeeping', fields: bookkeeping }} columns={arrangement.columns}>{control}</FieldGroupView>
             )}
-            <BookkeepingLine fields={rowsReadOnly ? bookkeeping : []} values={baseline as Row} settings={formSettings} />
+            <BookkeepingLine table={table} fields={rowsReadOnly ? bookkeeping : []} values={baseline as Row} settings={formSettings} />
           </div>
         )
       })() : (
@@ -911,7 +911,7 @@ export function FormView({
           onClose={() => setRetiring(false)}
         />
       )}
-      {!isNew && <RetiredNotice row={baseline} />}
+      {!isNew && <RetiredNotice row={baseline} table={table} />}
       {banner && (
         <p
           className={`mb-3 text-sm ${banner === 'Saved' || banner === 'Done' ? 'text-positive' : 'text-negative'}`}

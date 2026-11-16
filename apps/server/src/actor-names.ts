@@ -9,6 +9,9 @@
 // the viewer, people-directory.ts).
 import { SYSTEM_ACTOR_LABELS } from 'shared'
 import { sql } from './db'
+import { AppError } from './errors'
+import { scopedWhere } from './query'
+import { canRetire } from './table-engine'
 import { displayName } from './people-directory'
 import { ROSTER_LINK_ACTOR } from './roster-link-actor'
 
@@ -68,5 +71,35 @@ export async function appActorNames(app: string, ids: unknown): Promise<Record<s
   for (const query of sources) for (const r of await query) acted.add(String(r.id))
   const named = await actorNames(wanted.filter((id) => acted.has(id)))
   for (const id of wanted) if (acted.has(id)) out[id] = named.get(id) ?? null
+  return out
+}
+
+/** #1224: names for the people who acted on rows of `table` that the viewer
+ *  may read — who made, last changed or retired one of those rows, or
+ *  archived the Table — even when the viewer may not read Person ("you can
+ *  see who did what you can see"). The rows are read AS THE VIEWER (row rules,
+ *  Data Scope, mandatory privacy); any other id maps to null, so this is no
+ *  name lookup. */
+export async function actorNamesOn(viewer: string, table: unknown, ids: unknown): Promise<Record<string, string | null>> {
+  if (typeof table !== 'string' || !table || !Array.isArray(ids) || ids.some((id) => typeof id !== 'string'))
+    throw new AppError('ValidationError', 'Expected { table, ids: [...] }', { table: 'a Table name', ids: 'a list of ids' })
+  const wanted = [...new Set(ids as string[])].filter(Boolean).slice(0, 500)
+  const out: Record<string, string | null> = Object.fromEntries(wanted.map((id) => [id, null]))
+  if (!wanted.length) return out
+  // A Table the viewer may not read here, or one that cannot be read this way
+  // (source-bound, a settings Table), names nobody.
+  const scoped = await scopedWhere(table, viewer, []).catch((error: unknown) => (error instanceof AppError ? null : Promise.reject(error)))
+  if (!scoped) return out
+  const acted = new Set(wanted.filter((id) => ACTOR_LABELS[id]))
+  const relation = sql(scoped.table)
+  const columns = ['created_by', 'updated_by', ...(canRetire(scoped.meta) ? ['retired_by'] : [])]
+  for (const column of columns)
+    for (const r of await sql`select distinct ${sql(column)} as id from ${relation}
+      where ${scoped.where as ReturnType<typeof sql>} and ${sql(column)} = any(${wanted})`)
+      acted.add(String(r.id))
+  const [archive] = await sql`select archived_by from table_def where name = ${scoped.meta.name} and archived_by = any(${wanted})`
+  if (archive) acted.add(String(archive.archived_by))
+  const named = await actorNames([...acted])
+  for (const id of acted) out[id] = named.get(id) ?? null
   return out
 }

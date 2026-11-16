@@ -76,7 +76,7 @@ export function ImportConflicts({ table, meta }: { table: string; meta: TableMet
             <dl className="grid min-w-0 gap-3 text-sm sm:grid-cols-2">
               <div className="min-w-0"><dt className="text-ink-muted">Kept value</dt><dd className="whitespace-pre-wrap break-words text-ink">{display(conflict.field, conflict.kept)}</dd></div>
               <div className="min-w-0"><dt className="text-ink-muted">Incoming value</dt><dd className="whitespace-pre-wrap break-words text-ink">{display(conflict.field, conflict.incoming)}</dd></div>
-              <div className="min-w-0"><dt className="text-ink-muted">Last edited by</dt><dd className="break-words text-ink"><PrincipalName id={conflict.editor} /></dd><dd className="text-ink-muted">{formatDateTime(conflict.edited_at)}</dd></div>
+              <div className="min-w-0"><dt className="text-ink-muted">Last edited by</dt><dd className="break-words text-ink"><PrincipalName id={conflict.editor} actorOf={table} /></dd><dd className="text-ink-muted">{formatDateTime(conflict.edited_at)}</dd></div>
               <div className="min-w-0"><dt className="text-ink-muted">Import</dt><dd className="break-all text-ink">{conflict.run_id}</dd></div>
             </dl>
             {conflict.can_resolve ? (

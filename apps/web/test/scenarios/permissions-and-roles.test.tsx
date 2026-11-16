@@ -281,10 +281,10 @@ describe('permissions-and-roles', () => {
     await step("a System Manager opens the person's access page", async () => {
       await renderApp(`/featherbase/account/access/${encodeURIComponent(person.user!)}`, manager)
     })
-    await step('it says "everyone who signs in holds it (System Settings)"', async () => {
+    await step('it says "everyone who signs in has it"', async () => {
       // #1224: the page also explains what every account holds, so find this role's line.
       await waitFor(() => expect(screen.getAllByTestId('access-role').map((r) => r.textContent))
-        .toContainEqual(expect.stringContaining('Tasker Member — everyone who signs in holds it (System Settings)')), { timeout: 10_000 })
+        .toContainEqual(expect.stringContaining('Tasker Member — everyone who signs in has it')), { timeout: 10_000 })
     })
     await step("a System Manager opens the person's Person form", async () => {
       cleanup()
