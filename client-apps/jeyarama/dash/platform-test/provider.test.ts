@@ -203,8 +203,8 @@ describe('the org_chart scope provider on the platform, per merchandise assignme
 // #1246: report scope follows Buyer Sections where the instance has them (featherbase #1247), else the Buyer rows.
 describe('the org_chart scope provider on the platform, with Buyer Sections', () => {
   const codeOf = async (person: string) => String((await sql`select row_id from featherbase.employee where person = ${person}`)[0].row_id)
-  const desk = async (save: (t: string, r: Record<string, unknown>) => Promise<unknown>, id: string, buyer: string, region: string, codes: string[], ends_on?: string) => {
-    await save('Buyer Section', { buyer_section_id: id, name: id, operating_region: region, buyer, starts_on: '2026-01-01', ...(ends_on ? { ends_on } : {}) })
+  const desk = async (save: (t: string, r: Record<string, unknown>) => Promise<unknown>, id: string, buyer: string, region: string, codes: string[]) => {
+    await save('Buyer Section', { buyer_section_id: id, name: id, operating_region: region, buyer, starts_on: '2026-01-01' })
     for (const code of codes) await save('Buyer Section Subcategory', { buyer_section_subcategory_id: `${id}-${code}`, buyer_section: id, subcategory: code, starts_on: '2026-01-01' })
   }
   const byStore = (scope: { filters: Record<string, string[]> }[]) => Object.fromEntries(scope.map(p => [p.filters.store[0], p.filters.subcategory]))
@@ -216,10 +216,10 @@ describe('the org_chart scope provider on the platform, with Buyer Sections', ()
     // A desk that buys nothing yet gives nothing.
     await desk(save, 'Empty desk', await codeOf(person), 'East', [])
     await expect(resolvePersonScope(person, await binding())).rejects.toMatchObject(new NoPersonScope('scope'))
-    await desk(save, 'Sari desk', await codeOf(person), 'East', SARI, '2099-12-31')
+    await desk(save, 'Sari desk', await codeOf(person), 'East', SARI)
     const scope = await resolvePersonScope(person, await binding())
     expect(byStore(scope)).toEqual({ '9901': SARI, '9902': SARI })
-    expect(scope[0].reasons).toEqual([{ text: 'Buyer for Sari desk (Buyer Section)', since: '2026-01-01', until: '2099-12-31' }])
+    expect(scope[0].reasons).toEqual([{ text: 'Buyer for Sari desk (Buyer Section)', since: '2026-01-01' }])
   })
 
   test("a subcategory an East desk takes leaves an all-region Buyer row's buyer in the East, and not in the West", async ({ admin, createUser }) => {

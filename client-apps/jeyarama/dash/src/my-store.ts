@@ -149,6 +149,7 @@ export const storeReads = {
         : exact(row.category) ? exact(row.category) === category
         : exact(row.subdivision) ? levelOf(s).subdivision === exact(row.subdivision)
         : exact(row.division) ? levelOf(s).division === exact(row.division) : false
+      const covers = (row: Row) => subs.some(s => coversSub(row, s))
       // Per subcategory, by the transition rule (#1246): the desks covering it, else the Buyer rows that still
       // answer for it. A row is kept with exactly the subcategories it answers for, never re-expanded.
       const fromDesks: { link: Row; section: Row; sub: Row }[] = []
