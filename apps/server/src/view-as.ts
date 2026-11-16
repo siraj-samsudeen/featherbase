@@ -17,6 +17,8 @@ import { getRoles, isPrivileged } from './permissions'
 // runtime-packages is loaded when first needed: realtime and file serving import this module, and
 // a static import here closes a cycle that breaks module start-up (migrate.ts, #1222).
 const packages = () => import('./runtime-packages')
+/** Live-update sockets: loaded when needed, for the same reason. */
+const closeSockets = async (session: string) => (await import('./realtime')).closeViewAsSockets(session)
 import { activeApps } from './app-lifecycle'
 import type { SessionUser } from './auth'
 import type { ViewingAs } from './view-as-context'
@@ -134,6 +136,7 @@ export async function startViewAs(user: SessionUser, person: unknown): Promise<v
       on conflict (session_id) do update set tester = excluded.tester, person = excluded.person, started_at = now(), expires_at = excluded.expires_at, ended_at = null`
     await logAccess(user.row_id, before ? 'view_as_switch' : 'view_as_start', { table: 'Person', row_id: person, method: 'view_as', required: true }, tx)
   })
+  await closeSockets(session)
 }
 
 /** Stop viewing as anyone; a no-op when not viewing. */
@@ -153,6 +156,7 @@ export async function endViewAsSession(session: string, method: string): Promise
     // One whose time already ran out had its end logged then.
     if (ended && ended.ended_at == null) await logAccess(String(ended.tester), 'view_as_end', { table: 'Person', row_id: String(ended.person), method, required: true }, tx)
   })
+  await closeSockets(session)
 }
 
 /** Start, switch and every ending of one session's View as happen one at a time, row or no row. */

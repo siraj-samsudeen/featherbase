@@ -19,7 +19,7 @@ import { sql } from '../src/db'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import WebSocket from 'ws'
-import { attachRealtime, recheckSessionSockets } from '../src/realtime'
+import { attachRealtime, publishUserEvent } from '../src/realtime'
 
 const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
 const TESTER = 'Bar Tester'
@@ -139,28 +139,36 @@ describe('View as on the platform', () => {
     expect([page.status, page.headers.get('location')]).toEqual([302, '/barproof/?x=1'])
   })
 
-  test('a live-update socket opened while viewing closes once the view changes', async ({ admin, createUser }) => {
+  test('a live-update socket opened while viewing closes at once when the view ends, and gets nothing after', async ({ admin, createUser }) => {
     const { tester, person } = await install(admin, createUser)
-    expect((await status(start(tester, person.user)))[0]).toBe(200)
     const server = createServer()
     attachRealtime(server)
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
     const { port } = server.address() as AddressInfo
-    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { cookie: `sid=${tester.token}` } })
-    const closed = new Promise<number>((resolve) => socket.on('close', (code) => resolve(code)))
-    try {
+    const open = async () => {
+      const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { cookie: `sid=${tester.token}` } })
+      const frames: { event?: string }[] = []
+      const closed = new Promise<number>((resolve) => socket.on('close', (code) => resolve(code)))
       await new Promise<void>((resolve, reject) => {
-        socket.on('message', (raw) => { if ((JSON.parse(String(raw)) as { event?: string }).event === 'ready') resolve() })
+        socket.on('message', (raw) => { const frame = JSON.parse(String(raw)) as { event?: string }; frames.push(frame); if (frame.event === 'ready') resolve() })
         setTimeout(() => reject(new Error('no ready frame')), 5_000)
       })
-      // Still the same view: the check leaves it open.
-      await recheckSessionSockets()
-      expect(socket.readyState).toBe(WebSocket.OPEN)
+      return { socket, frames, closed }
+    }
+    try {
+      // Exit closes the socket straight away; no periodic check is needed.
+      expect((await status(start(tester, person.user)))[0]).toBe(200)
+      const first = await open()
       await tester.fetch('/api/view_as/exit', { method: 'POST', headers: json, body: '{}' })
-      await recheckSessionSockets()
-      expect(await closed).toBe(4009)
+      expect(await first.closed).toBe(4009)
+      // Losing the role: the next event for the person viewed is not delivered, and the socket closes.
+      expect((await status(start(tester, person.user)))[0]).toBe(200)
+      const second = await open()
+      await sql`delete from has_role where parent = ${tester.user} and role = ${TESTER}`
+      publishUserEvent(person.user!, 'notification', { subject: 'private to them' })
+      expect(await second.closed).toBe(4009)
+      expect(second.frames.some((f) => f.event === 'notification')).toBe(false)
     } finally {
-      socket.terminate()
       server.closeAllConnections()
       await new Promise<void>((resolve) => server.close(() => resolve()))
     }

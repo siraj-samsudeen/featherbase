@@ -150,11 +150,31 @@ function publish(channel: string, event: string, payload?: unknown): void {
   const data = JSON.stringify(msg)
   for (const c of clients) {
     if (!c.channels.has(channel) || c.socket.readyState !== c.socket.OPEN) continue
+    // #1222: a socket opened while viewing gets nothing once that View as no longer holds.
+    if (c.viewing) { void deliverViewing(c, msg, data).catch(() => {}); continue }
     // person-rename R2: a list or row event reaches a subscriber only for a
     // row it can read now (own-Table and Reference scopes alike).
     if (channel.startsWith('list:') || channel.startsWith('row:')) void deliverChecked(c, msg, data).catch(() => {})
     else c.socket.send(data)
   }
+}
+
+/** #1222: checked afresh before each event: still viewing the same person, still allowed. */
+async function deliverViewing(client: Client, msg: RealtimeEvent, data: string): Promise<void> {
+  const still = await activeViewAs(client.owner).catch(() => null)
+  if (still?.as.person !== client.viewing) { closeViewAsClient(client); return }
+  if (msg.channel.startsWith('list:') || msg.channel.startsWith('row:')) await deliverChecked(client, msg, data)
+  else if (client.socket.readyState === client.socket.OPEN) client.socket.send(data)
+}
+
+function closeViewAsClient(client: Client): void {
+  clients.delete(client)
+  client.socket.close(4009, 'view as changed')
+}
+
+/** #1222: a session's View as changed: its sockets close now, and its pages reconnect as whom they show. */
+export function closeViewAsSockets(sessionId: string): void {
+  for (const client of clients) if (client.owner.sign_in?.session_id === sessionId) closeViewAsClient(client)
 }
 
 // Convenience emitters for the row lifecycle.
@@ -234,10 +254,7 @@ async function recheckViewAsSockets(open: Client[]): Promise<void> {
   for (const client of open) {
     const now = live.get(client.owner.sign_in!.session_id)
     const stillAllowed = !client.viewing || (now === client.viewing && (await activeViewAs(client.owner).catch(() => null))?.as.person === client.viewing)
-    if (now !== client.viewing || !stillAllowed) {
-      clients.delete(client)
-      client.socket.close(4009, 'view as changed')
-    }
+    if (now !== client.viewing || !stillAllowed) closeViewAsClient(client)
   }
 }
 
