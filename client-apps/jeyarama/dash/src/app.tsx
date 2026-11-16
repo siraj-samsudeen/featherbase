@@ -161,7 +161,8 @@ export function Dash() {
         <ReportIssue reportKey={current.key} reportName={current.name}
           store={cachedView?.store ?? store?.value}
           month={cachedView?.month ?? (current.takes_month ? month : undefined)}
-          diveFilters={view.kind === 'dive' ? diveFilters : undefined} pickersInDive={!!current.pickers_in_dive && view.kind === 'dive'} />
+          diveFilters={view.kind === 'dive' ? diveFilters : undefined} pickersInDive={!!current.pickers_in_dive && view.kind === 'dive'}
+          chosen={`${store?.value ?? ''}|${month}`} />
       )}
       </div>
       {view.kind === 'opening' && <p className="fd-opening">Opening your report…</p>}

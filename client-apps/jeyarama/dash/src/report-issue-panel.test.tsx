@@ -62,7 +62,7 @@ beforeAll(() => {
 afterAll(() => teardown())
 beforeEach(() => { byKey = new Map(); nextCreate = 'answer'; document.body.innerHTML = '' })
 
-async function render() {
+async function render(props: { store?: string; chosen?: string } = {}) {
   const { act } = await import('react')
   const { createRoot } = await import('react-dom/client')
   const { ReportIssue } = await import('./report-issue-panel')
@@ -70,7 +70,7 @@ async function render() {
   document.body.appendChild(container)
   const root = createRoot(container)
   const settle = () => act(async () => { for (let i = 0; i < 20; i++) await Promise.resolve() })
-  await act(async () => { root.render(<ReportIssue reportKey="sales" reportName="Sales versus target" store="9901" month="this" />) })
+  await act(async () => { root.render(<ReportIssue reportKey="sales" reportName="Sales versus target" store={props.store ?? '9901'} month="this" chosen={props.chosen ?? '9901|this'} />) })
   await settle()
   const one = (testid: string) => container.querySelector(`[data-testid="${testid}"]`)
   const all = (testid: string) => [...container.querySelectorAll(`[data-testid="${testid}"]`)]
@@ -90,7 +90,10 @@ async function render() {
   const close = () => click(container.querySelector('button[aria-label="Close"]'))
   const send = () => click(one('issue-send'))
   const pick = (label: string) => click(all('issue-pick').find(b => b.textContent === label)!)
-  return { container, one, all, open, close, send, pick, type, settle, act, done: () => act(async () => root.unmount()) }
+  const rerender = (next: { store?: string; chosen?: string }) => act(async () => {
+    root.render(<ReportIssue reportKey="sales" reportName="Sales versus target" store={next.store} month="this" chosen={next.chosen ?? '9901|this'} />)
+  })
+  return { rerender, container, one, all, open, close, send, pick, type, settle, act, done: () => act(async () => root.unmount()) }
 }
 
 describe('Report an issue, closed mid-Send', () => {
@@ -127,6 +130,21 @@ describe('Report an issue, closed mid-Send', () => {
     await page.send()
     await page.act(async () => { release() })
     await page.settle()
+    expect(page.one('issue-sent')?.textContent).toContain('FT-00001')
+    expect(byKey.size).toBe(1)
+    await page.done()
+  })
+
+  it('kept when the page moves from its cached view to the Dive under it, so a retry is still the same ticket', async () => {
+    const page = await render({ store: '9901', chosen: '|this' })
+    await page.open()
+    await page.pick('Data looks wrong')
+    nextCreate = 'lose'
+    await page.send()
+    // The Dive takes over from the cached view: the store on show is now the Dive's, not the page's.
+    await page.rerender({ store: undefined, chosen: '|this' })
+    await page.settle()
+    await page.send()
     expect(page.one('issue-sent')?.textContent).toContain('FT-00001')
     expect(byKey.size).toBe(1)
     await page.done()

@@ -13,10 +13,12 @@ type Sent = { row_id: string }
 type Sending = { busy: boolean; sent: Sent | null; error: string | null }
 
 /** The header button and its panel, for the report on show. Nothing is drawn until Tickets is known to run here. */
-export function ReportIssue({ reportKey, reportName, store, month, diveFilters, pickersInDive = false }: {
+export function ReportIssue({ reportKey, reportName, store, month, diveFilters, pickersInDive = false, chosen = '' }: {
   reportKey: string; reportName: string; store?: string; month?: 'this' | 'last'; diveFilters?: Readonly<Record<string, string>>
   /** A Dive on show picks its own store and month: what it reports is the view, never the address's. */
   pickersInDive?: boolean
+  /** The store and month the reader chose in the bar or the address; it changes only when they choose. */
+  chosen?: string
 }) {
   const [running, setRunning] = useState(false)
   const [open, setOpen] = useState(false)
@@ -25,11 +27,12 @@ export function ReportIssue({ reportKey, reportName, store, month, diveFilters, 
   // submission still going, its answer, or its failure, and a retry resends that submission itself.
   const pending = useRef<Submission | null>(null)
   const [sending, setSending] = useState<Sending>({ busy: false, sent: null, error: null })
-  // The reader moving to another store or month is a new view to report on: an unanswered submission
-  // of the old one is not resent for it. (A Dive's own messages change no store here, so they never drop it.)
+  // The reader choosing another store or month in the bar is a new view to report on: an unanswered
+  // submission of the old one is not resent for it. Only the reader's own choice (`chosen`) drops it;
+  // the page moving from its cached view to the Dive, or a Dive's message, never does.
   useEffect(() => { if (!sending.busy) { pending.current = null; setSending(now => now.busy ? now : { busy: false, sent: null, error: null }) } },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [reportKey, store, month])
+    [reportKey, chosen])
   useEffect(() => { let live = true; ticketsRunning().then(yes => { if (live) setRunning(yes) }, () => {}); return () => { live = false } }, [])
   const refresh = useCallback(() => openFeedback(reportKey).then(answer => setMine(answer.tickets), () => setMine(null)), [reportKey])
   useEffect(() => { if (running) void refresh() }, [running, refresh])
