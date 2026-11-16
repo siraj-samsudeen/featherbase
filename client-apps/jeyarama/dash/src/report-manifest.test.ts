@@ -236,32 +236,40 @@ describe('the read grants, declared before the first install', () => {
 // #1192: production runs 0.12.10; this version's ledger extends it with one step that changes no Table.
 describe('the version step for Dash All-Stores Reader', () => {
   it('follows production\'s 0.12.10 history exactly, then adds the role, then Your sections (#1175, #1191), then Your department (#1195), then who a person is (#1216), then managers add Dives (#1169), then team report giving (#1217), then grant from Waiting for access (#1173), then the department name follows its sections (#1209), then a named cluster head (#4588), then one top bar and sidebar (#1227), with no Table change', () => {
-    const tail = manifest.migrations.slice(-17, -12).map(m => [m.id, m.fromVersion, m.toVersion, m.operations.length])
-    expect(tail).toEqual([['pickers_in_dive', '0.12.5', '0.12.6', tail[0][3]], ['merchandise_reach', '0.12.6', '0.12.9', 0],
-      ['opens_for_dash_roles', '0.12.9', '0.12.10', 0], ['all_stores_reader', '0.12.10', '0.12.11', 0], ['sections_not_mine', '0.12.11', '0.13.0', 0]])
-    expect(manifest.migrations.at(-12)).toMatchObject({ id: 'department_self_setup', fromVersion: '0.13.0', toVersion: '0.13.1', operations: [] })
-    expect(manifest.migrations.at(-11)).toMatchObject({ id: 'person_identity', fromVersion: '0.13.1', toVersion: '0.13.2', operations: [] })
-    // #1169: after #1216's 0.13.2, one more step that changes no Table, only access and reads.
-    expect(manifest.migrations.at(-10)).toMatchObject({ id: 'report_access_managers_add_dives', fromVersion: '0.13.2', toVersion: '0.13.3', operations: [] })
-    expect(manifest.migrations.at(-9)).toMatchObject({ id: 'team_report_giving', fromVersion: '0.13.3', toVersion: '0.13.4', operations: [] })
-    // #1173: the Waiting for access drawer gives Dash reports; no Table change.
-    expect(manifest.migrations.at(-8)).toMatchObject({ id: 'waiting_for_access_grant', fromVersion: '0.13.4', toVersion: '0.13.5', operations: [] })
-    // #1209: the department name follows its sections; no Table change.
-    expect(manifest.migrations.at(-7)).toMatchObject({ id: 'department_name_follows_sections', fromVersion: '0.13.5', toVersion: '0.13.6', operations: [] })
-    // #4588: a Cluster row names its head; no Table change.
-    expect(manifest.migrations.at(-6)).toMatchObject({ id: 'named_cluster_head', fromVersion: '0.13.6', toVersion: '0.13.7', operations: [] })
-    // #1227: one top bar and sidebar for every app; no Table change.
-    expect(manifest.migrations.at(-5)).toMatchObject({ id: 'one_app_chrome', fromVersion: '0.13.7', toVersion: '0.13.8', operations: [] })
-    // #1243: ends_on is a row's last day; no Table change.
-    expect(manifest.migrations.at(-4)).toMatchObject({ id: 'ends_on_inclusive', fromVersion: '0.13.8', toVersion: '0.13.9', operations: [] })
-    // #1223: Your store, floor, department and sections, and What they cover; no Table change.
-    expect(manifest.migrations.at(-4)).toMatchObject({ id: 'manager_area', fromVersion: '0.13.9', toVersion: '0.13.10', operations: [] })
-    // #1240: "Report an issue" reads the report's context; no Table change.
-    expect(manifest.migrations.at(-3)).toMatchObject({ id: 'report_an_issue', fromVersion: '0.13.10', toVersion: '0.13.12', operations: [] })
-    // #1225: the Report access redesign; no Table change.
-    expect(manifest.migrations.at(-2)).toMatchObject({ id: 'report_access_redesign', fromVersion: '0.13.12', toVersion: '0.13.13', operations: [] })
-    // #1236: the switcher says what Dash is for; no Table change.
-    expect(manifest.migrations.at(-1)).toMatchObject({ id: 'switcher_summary', fromVersion: '0.13.13', toVersion: '0.13.17', operations: [] })
+    // From 0.12.5 on, every step in order, each named with its versions: read
+    // by position from that step, so a step added at the end moves nothing here.
+    const from = manifest.migrations.findIndex(m => m.id === 'pickers_in_dive')
+    const steps = manifest.migrations.slice(from).map(m => [m.id, m.fromVersion, m.toVersion, m.operations.length])
+    expect(steps).toEqual([
+      ['pickers_in_dive', '0.12.5', '0.12.6', steps[0][3]],
+      ['merchandise_reach', '0.12.6', '0.12.9', 0],
+      ['opens_for_dash_roles', '0.12.9', '0.12.10', 0],
+      ['all_stores_reader', '0.12.10', '0.12.11', 0],
+      ['sections_not_mine', '0.12.11', '0.13.0', 0],
+      ['department_self_setup', '0.13.0', '0.13.1', 0],
+      ['person_identity', '0.13.1', '0.13.2', 0],
+      // #1169: managers add Dives; only access and reads change.
+      ['report_access_managers_add_dives', '0.13.2', '0.13.3', 0],
+      ['team_report_giving', '0.13.3', '0.13.4', 0],
+      // #1173: the Waiting for access drawer gives Dash reports.
+      ['waiting_for_access_grant', '0.13.4', '0.13.5', 0],
+      // #1209: the department name follows its sections.
+      ['department_name_follows_sections', '0.13.5', '0.13.6', 0],
+      // #4588: a Cluster row names its head.
+      ['named_cluster_head', '0.13.6', '0.13.7', 0],
+      // #1227: one top bar and sidebar for every app.
+      ['one_app_chrome', '0.13.7', '0.13.8', 0],
+      // #1243: ends_on is a row's last day.
+      ['ends_on_inclusive', '0.13.8', '0.13.9', 0],
+      // #1223: Your store, floor, department and sections, and What they cover.
+      ['manager_area', '0.13.9', '0.13.10', 0],
+      // #1240: "Report an issue" reads the report's context.
+      ['report_an_issue', '0.13.10', '0.13.12', 0],
+      // #1225: the Report access redesign.
+      ['report_access_redesign', '0.13.12', '0.13.13', 0],
+      // #1236: the switcher says what Dash is for.
+      ['switcher_summary', '0.13.13', '0.13.17', 0],
+    ])
     expect(pkg.version).toBe('0.13.17')
   })
 })
