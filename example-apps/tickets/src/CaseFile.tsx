@@ -13,6 +13,8 @@ import {
 } from './api'
 import { configuredTypes, display, fields, kindLabel, person, short, stateLabel, time, type TicketAction } from './ticket-words'
 import { Label, Structured, TypeSelect } from './ticket-fields'
+import { REPORT_FEEDBACK } from './report-feedback'
+import { ReportFeedbackFacts } from './report-feedback-facts'
 import { StatePill } from './ticket-state'
 import { RulesCard, type Rule } from './rules'
 import { CoveredRowsCard, coveredSummary, type Covered } from './covered-rows'
@@ -576,7 +578,7 @@ export function CaseFile({
                     ))}
                   </details>
                 )}
-                <Facts
+                {ticket.kind === REPORT_FEEDBACK && structured ? <ReportFeedbackFacts values={structured} /> : <Facts
                   title="Request details"
                   values={
                     configured
@@ -595,7 +597,7 @@ export function CaseFile({
                           ),
                         )
                   }
-                />
+                />}
                 {support && (
                   <>
                     {editing && (

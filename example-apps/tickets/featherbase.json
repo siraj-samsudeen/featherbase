@@ -39,7 +39,8 @@
     "form": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "queue": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "detail": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
-    "rule_preview": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
+    "rule_preview": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "about_report": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
   }},
   "tables": [
     {"name": "tickets.ticket", "label": "Ticket", "module": "Tickets", "id_pattern": "FT-.#####", "title_column": "title", "columns": [
@@ -142,7 +143,8 @@
     {"id": "at_a_glance", "fromVersion": "0.2.11", "toVersion": "0.2.12", "operations": []},
     {"id": "list_and_toolbar", "fromVersion": "0.2.12", "toVersion": "0.2.13", "operations": []},
     {"id": "assigned_view_words", "fromVersion": "0.2.13", "toVersion": "0.2.14", "operations": []},
-    {"id": "remove_assignee_words", "fromVersion": "0.2.14", "toVersion": "0.2.15", "operations": []}
+    {"id": "remove_assignee_words", "fromVersion": "0.2.14", "toVersion": "0.2.15", "operations": []},
+    {"id": "report_feedback", "fromVersion": "0.2.15", "toVersion": "0.2.17", "operations": []}
   ],
   "baseTables": {"read": {"Data Quality Row": ["ticket", "affected_table", "affected_row", "fixed_on", "note"]}},
   "permissions": [
