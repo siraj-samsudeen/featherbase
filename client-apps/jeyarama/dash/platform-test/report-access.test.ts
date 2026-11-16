@@ -239,10 +239,27 @@ describe('the Report access page', () => {
     await give(giver, { report: 'open', person: leader.user })
     const page = await giver.post<{ result: { rows: { gives: unknown; to: unknown; given_by: string }[] } }>('/api/app_reads/dash/access_page', { payload: {} })
     expect(page.result.rows.map(({ gives, to }) => [gives, to])).toEqual([
-      [{ kind: 'Report', name: 'Company notices' }, { kind: 'Person', name: 'Made-up Leader' }],
+      [{ kind: 'Report', name: 'Company notices' }, { kind: 'Person', name: 'Made-up Leader', who: { code: '1', jobs: ['Team Leader · Lakeside'], staff: 'current' } }],
       [{ kind: 'Report', name: 'Sales versus target' }, { kind: 'Job', name: 'Team Leader' }],
     ])
     expect((await leader.fetch('/api/app_reads/dash/access_page', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ payload: {} }) })).status).toBeGreaterThanOrEqual(400)
+  })
+
+  // #1216: people with the same name are told apart by code, job and site, read by a manager who can't read Employee.
+  test('tells two people with the same name apart, and finds one by employee code', async ({ admin, createUser }) => {
+    const { giver, save } = await setup(admin, createUser)
+    const twin = await createUser({ email: 'ra-twin@example.test', roles: ['Dash Reader'] })
+    await save('Employee', { employee_code: 'TN0042', name: 'Made-up Leader', person: twin.user, status: 'Current' })
+    await save('Job Assignment', { assignment_id: 'JA-42', employee: 'TN0042', job: 'Head office staff', site: 'HOF', starts_on: '2026-01-01' })
+    const search = (q: string) => giver.post<{ result: { name: string; code: string | null; jobs: string[]; staff: string }[] }>('/api/app_reads/dash/person_search', { payload: { q } })
+      .then(a => a.result.map(({ name, code, jobs, staff }) => ({ name, code, jobs, staff })))
+    expect(await search('made-up leader')).toEqual([
+      { name: 'Made-up Leader', code: '1', jobs: ['Team Leader · Lakeside'], staff: 'current' },
+      { name: 'Made-up Leader', code: 'TN0042', jobs: ['Head office staff · Head Office'], staff: 'current' },
+    ])
+    expect((await search('tn004')).map(found => found.code)).toEqual(['TN0042'])
+    const reader = await createUser({ email: 'ra-reader@example.test', roles: ['Dash Reader'] })
+    expect((await reader.fetch('/api/app_reads/dash/person_search', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ payload: { q: 'tn004' } }) })).status).toBeGreaterThanOrEqual(400)
   })
 
   // #1172: a Dash reader with no report opens Dash and asks for nothing; only someone holding no Dash

@@ -1961,6 +1961,12 @@
       "fromVersion": "0.13.0",
       "toVersion": "0.13.1",
       "operations": []
+    },
+    {
+      "id": "person_identity",
+      "fromVersion": "0.13.1",
+      "toVersion": "0.13.2",
+      "operations": []
     }
   ],
   "baseTables": {
@@ -1968,7 +1974,8 @@
       "Employee": [
         "name",
         "status",
-        "person"
+        "person",
+        "employee_code"
       ],
       "Job Assignment": [
         "employee",
