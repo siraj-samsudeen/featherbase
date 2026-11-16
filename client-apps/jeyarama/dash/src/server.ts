@@ -12,6 +12,7 @@ import { coverageReads } from './coverage.ts'
 import { prefillActions } from './department-prefill.ts'
 import { accessPage, addReport, addToBundle, diveChoices, diveChoicesPrepared, giveReport, grantOptions, makeBundle, managesAccess, managesTeamAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
 import { TEAM_MANAGER } from './team-access.ts'
+import { shortDay } from './page.ts'
 
 /** The save rules of Dash's own Tables. */
 export const validators = accessValidators
@@ -45,6 +46,8 @@ export const EMBED_API_TIMEOUT_MS = 10_000
 /** What the platform hands a read handler (the part this module uses). */
 interface ReadContext {
   user: string
+  /** The signed-in person's name, as the platform knows it. */
+  userName?: string
   roles?: readonly string[]
   people?: AccessContext['people']
   payload?: unknown
@@ -239,6 +242,21 @@ async function storeNames(ctx: ScopedContext, stores: readonly string[]): Promis
   return names
 }
 
+/** #1240: the reader's jobs (why they see what they see) and each store they reach, by name, whole or by section and subcategory. */
+async function reachInWords(ctx: ScopedContext) {
+  const places = await placesHeld(ctx)
+  const stores = storesReached(places)
+  const names = await storeNames(ctx, stores).catch(() => new Map<string, string>())
+  const jobs = [...new Set(places.flatMap(place => (place.reasons ?? []).map(reason => reason.since ? `${reason.text}, since ${shortDay(reason.since)}` : reason.text)))].sort()
+  const reach = stores.map(store => {
+    const here = places.filter(place => (place.filters.store ?? []).includes(store))
+    const whole = here.some(place => !place.filters.subcategory)
+    return { store, name: names.get(store) ?? null, whole, sections: whole ? [] : headingOf(places, store, null).sections,
+      subcategories: whole ? [] : [...new Set(here.flatMap(place => place.filters.subcategory ?? []))].sort() }
+  })
+  return { jobs, reach }
+}
+
 /** What a report's first answer says, for a report with no quick view: whether it can open, and its header. */
 type Plain = { state: 'ready'; no_quick_view: true; heading: Heading; period_start?: string; period_end?: string }
 
@@ -383,6 +401,19 @@ export const reads = {
     const today = istToday()
     return MONTH_CHOICES.map(choice => ({ value: choice,
       label: `${choice === 'this' ? 'This month' : 'Last month'} · ${monthLabel(periodOf(today, choice).period_start)}` }))
+  },
+
+  /**
+   * #1240: what "Report an issue" sends with the reader's words: the report, who they are, their
+   * jobs and what they reach, store by store. Read as the reader, for a report that is theirs; the
+   * ticket is raised in Tickets by the reader themselves, so nothing here writes.
+   */
+  async feedback_context(context: ReadContext) {
+    const ctx = context as ScopedContext
+    const report = await chosenReport(ctx)
+    if (!report) return { state: 'no_access' }
+    return { state: 'ok', report: { key: report.report_key, name: report.report_name }, person: ctx.userName ?? null,
+      ...await reachInWords(ctx) }
   },
 
   /** Whether the chosen report can open for this reader, its header, and its quick view's figures if it has one. */

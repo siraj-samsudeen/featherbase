@@ -256,8 +256,9 @@ describe('the version step for Dash All-Stores Reader', () => {
     expect(manifest.migrations.at(-3)).toMatchObject({ id: 'ends_on_inclusive', fromVersion: '0.13.8', toVersion: '0.13.9', operations: [] })
     // #1223: Your store, floor, department and sections, and What they cover; no Table change.
     expect(manifest.migrations.at(-2)).toMatchObject({ id: 'manager_area', fromVersion: '0.13.9', toVersion: '0.13.10', operations: [] })
-    // #1236: the switcher says what Dash is for; no Table change.
-    expect(manifest.migrations.at(-1)).toMatchObject({ id: 'switcher_summary', fromVersion: '0.13.10', toVersion: '0.13.11', operations: [] })
-    expect(pkg.version).toBe('0.13.11')
+    // #1236: the switcher says what Dash is for; no Table change. #1240's step comes before it.
+    expect(manifest.migrations.at(-1)).toMatchObject({ id: 'switcher_summary', fromVersion: '0.13.12', toVersion: '0.13.13', operations: [] })
+    expect(manifest.migrations.at(-2)).toMatchObject({ id: 'report_an_issue', fromVersion: '0.13.10', toVersion: '0.13.12', operations: [] })
+    expect(pkg.version).toBe('0.13.13')
   })
 })

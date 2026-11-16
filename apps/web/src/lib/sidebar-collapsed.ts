@@ -96,7 +96,9 @@ export function registerSidebar(user: string | undefined): () => void {
 
 /** The sidebar state, for React. */
 export function useSidebar(user: string | undefined) {
-  const current = useSyncExternalStore(subscribeSidebar, () => stateFor(user), () => stateFor(user))
+  // The same snapshot serves the browser and a server render.
+  const snapshot = () => stateFor(user)
+  const current = useSyncExternalStore(subscribeSidebar, snapshot, snapshot)
   const toggle = useCallback(() => toggleSidebarCollapsed(user), [user])
   return { ...current, toggleCollapsed: toggle, setDrawerOpen: setSidebarDrawerOpen }
 }

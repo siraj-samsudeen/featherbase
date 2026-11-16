@@ -823,6 +823,14 @@
           "kind": "generic"
         }
       },
+      "feedback_context": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
       "reach_problem": {
         "policy": {
           "kind": "table"
@@ -2149,7 +2157,13 @@
       "toVersion": "0.13.10",
       "operations": []
     },
-    {"id": "switcher_summary", "fromVersion": "0.13.10", "toVersion": "0.13.11", "operations": []}
+    {
+      "id": "report_an_issue",
+      "fromVersion": "0.13.10",
+      "toVersion": "0.13.12",
+      "operations": []
+    },
+    {"id": "switcher_summary", "fromVersion": "0.13.12", "toVersion": "0.13.13", "operations": []}
   ],
   "baseTables": {
     "read": {
