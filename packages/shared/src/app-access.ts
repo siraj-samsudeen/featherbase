@@ -91,9 +91,6 @@ export interface AppScopeProviderContext {
   readonly documents: {
     get(table: string, rowId: string): Promise<ActionRow>
     list(table: string, args?: ActionListArgs): Promise<ActionRow[]>
-    /** #1247: whether this provider may read `table` now (declared, installed, and readable as `list`
-     *  would read it). False for a Table the instance lacks: it contributes nothing. */
-    available(table: string): Promise<boolean>
   }
 }
 export type AppScopeProvider = (context: AppScopeProviderContext) => PersonScope | Promise<PersonScope>

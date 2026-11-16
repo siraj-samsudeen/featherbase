@@ -18,8 +18,6 @@ export interface ScopeProviderBinding {
   tables: readonly string[]
   /** #967: of `tables`, those read without the `decides_scope` mark. */
   unmarkedTables?: readonly string[]
-  /** #1247: of `tables`, those the instance may not have yet (checked with documents.available()). */
-  optionalTables?: readonly string[]
   /** #660: the identifier systems whose current values the provider gets. */
   identifiers: readonly string[]
   provide: AppScopeProvider
@@ -117,39 +115,22 @@ async function withScopeReads<T>(binding: ScopeProviderBinding, fn: (documents: 
   let open = true
   let pending: Promise<unknown> | undefined
   let failed = false
-  /** Why the provider may not read `table`, or null when it may. */
-  async function refusal(table: string): Promise<string | null> {
-    if (!binding.tables.includes(table)) return 'Scope provider read an undeclared Table'
-    const meta = await getMeta(table)
-    const allowedUnmarked = binding.unmarkedTables?.includes(table) && !meta.owner_app
-    if ((!meta.decides_scope && !allowedUnmarked) || meta.system || meta.data_source || meta.kind !== 'table') return 'Scope provider read a Table not marked as deciding scope'
-    // A row read loads its Sub-table rows, from a Table never declared or
-    // marked; refused, as action documents refuse them.
-    if (meta.columns.some((column) => column.column_type === 'Sub-table')) return 'Scope provider read a Table with Sub-tables'
-    return null
-  }
-  /** One read at a time, only while the provider runs; any failure refuses the person's scope. */
-  async function guarded<R>(work: () => Promise<R>): Promise<R> {
+  async function read<R>(table: string, work: () => Promise<R>): Promise<R> {
     if (!open || pending) { failed = true; throw new Error('Scope provider reads must be awaited one at a time') }
-    const run = work()
+    const run = (async () => {
+      if (!binding.tables.includes(table)) throw new Error('Scope provider read an undeclared Table')
+      const meta = await getMeta(table)
+      const allowedUnmarked = binding.unmarkedTables?.includes(table) && !meta.owner_app
+      if ((!meta.decides_scope && !allowedUnmarked) || meta.system || meta.data_source || meta.kind !== 'table') throw new Error('Scope provider read a Table not marked as deciding scope')
+      // A row read loads its Sub-table rows, from a Table never declared or
+      // marked; refused, as action documents refuse them.
+      if (meta.columns.some((column) => column.column_type === 'Sub-table')) throw new Error('Scope provider read a Table with Sub-tables')
+      return JSON.parse(JSON.stringify(await work())) as R
+    })()
     pending = run
     try { return await run } catch (error) { failed = true; throw error } finally { pending = undefined }
   }
-  const read = <R>(table: string, work: () => Promise<R>) => guarded(async () => {
-    const refused = await refusal(table)
-    if (refused) throw new Error(refused)
-    return JSON.parse(JSON.stringify(await work())) as R
-  })
   const documents: AppScopeProviderContext['documents'] = Object.freeze({
-    // #1247: whether the provider may read a Table now. A Table the instance lacks is not available, and
-    // answering so is no failure: it contributes nothing. Reading it anyway is still refused.
-    available: (table: string) => guarded(async () => {
-      if (typeof table !== 'string' || !table) return false
-      try { return (await refusal(table)) === null } catch (error) {
-        if (error instanceof AppError && error.type === 'NotFoundError') return false
-        throw error
-      }
-    }),
     get: (table, rowId) => read(table, () => {
       if (typeof rowId !== 'string' || !rowId) throw new Error('A row ID is required')
       return getDoc(table, rowId)
