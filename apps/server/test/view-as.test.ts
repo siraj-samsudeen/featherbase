@@ -91,6 +91,11 @@ describe('View as: which requests run as the person viewed', () => {
     })
 })
 
+test('the tester\'s own person record is read as the tester, anyone else\'s as the person viewed', () => {
+  expect(viewAsRoute('GET', '/api/people/psn_tester/identifiers', 'psn_tester')).toBe('tester')
+  expect(viewAsRoute('GET', '/api/people/psn_other/identifiers', 'psn_tester')).toBe('read')
+})
+
 describe('View as on the platform', () => {
   test('reads run as the person; a change runs as the tester, never as the person', async ({ admin, createUser }) => {
     const { person } = await install(admin, createUser)

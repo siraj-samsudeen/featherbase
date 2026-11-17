@@ -646,7 +646,7 @@ app.use('/api/*', async (c, next) => {
   // as the person viewed; the pages offer no change while viewing.
   await sweepExpiredViewAs()
   const viewing = await activeViewAs(user)
-  const route = viewing ? viewAsRoute(c.req.method, c.req.path) : 'tester'
+  const route = viewing ? viewAsRoute(c.req.method, c.req.path, user.row_id) : 'tester'
   if (viewing && route === 'drop') return c.body(null, 204)
   if (viewing && route === 'read') {
     c.set('user', viewing.user)
