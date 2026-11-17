@@ -96,7 +96,7 @@ describe('#1255: the sign-in page lists the accounts on this browser', () => {
     const row = await screen.findByTestId('account-choice')
     expect(row).toHaveTextContent('Signed out: the account was turned off')
     await userEvent.click(within(row).getByRole('button', { name: /Sign in/ }))
-    expect(await screen.findByTestId('login-email')).toHaveValue('siraj.made-up@example.test')
+    expect(await screen.findByLabelText('Email or username')).toHaveValue('siraj.made-up@example.test')
   })
 
   test('Remove an account from this list ends its session and drops it', async ({ db }) => {
@@ -137,7 +137,7 @@ describe('#1255: the Account menu switches between them', () => {
     await renderApp('/featherbase/admin', admin)
     await userEvent.click(await screen.findByTestId('session-user'))
     const section = await screen.findByTestId('account-switcher')
-    expect(section).toHaveTextContent('Switch to')
+    await waitFor(() => expect(section).toHaveTextContent('Switch to'))
     await userEvent.click(within(section).getByRole('menuitem', { name: /RB Made-up/ }))
     await waitFor(() => expect(load).toHaveBeenCalled())
     expect(getToken()).toBe(rbToken)

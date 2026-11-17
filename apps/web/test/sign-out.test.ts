@@ -11,15 +11,15 @@ describe('signOut', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(body), { status })))
 
   test('is complete when the server ends the session', async () => {
-    answer(200, { ok: true })
-    expect(await signOut()).toBe(true)
+    answer(200, { signed_out: true })
+    expect(await signOut()).toEqual({ ok: true, next: null })
   })
 
   test('is incomplete when the server could not end it, or did not answer', async () => {
     answer(503, { error: { type: 'ServiceUnavailableError', message: 'Sign-out did not complete. Try again.' } })
-    expect(await signOut()).toBe(false)
+    expect(await signOut()).toEqual({ ok: false })
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('network down') }))
-    expect(await signOut()).toBe(false)
+    expect(await signOut()).toEqual({ ok: false })
   })
 
   test('keeps unconfirmed visits when sign-out fails', async () => {
@@ -30,7 +30,7 @@ describe('signOut', () => {
     recordAction(owner, visit, 1_800_000_000_000)
     flushPendingEvents()
     answer(503, { error: { type: 'ServiceUnavailableError', message: 'Try again' } })
-    if (await signOut()) clearSession()
+    if ((await signOut()).ok) clearSession()
     replaceServerEntries(owner, [])
     expect(recentActions(owner, 10)).toEqual([{ ...visit, visits: [1_800_000_000_000] }])
     clearSession()

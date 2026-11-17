@@ -5,6 +5,9 @@ import { markSetupOffer } from './FirstRunSetup'
 import { ApiError, api, landingPath, login, loginDelegated, signUp, type BrandSignInMethod, type SessionUser, type SignedIn } from '../lib/api'
 import { Button, Field, Notice, TextInput, buttonClasses, cardClasses, inputClasses, labelClasses } from '@featherbase/shop-floor'
 import { Logo } from '../components/Logo'
+import { AccountChooser, useBrowserAccounts } from '../components/AccountChooser'
+import { pageLoad } from '../lib/page-load'
+import type { BrowserAccount } from '../lib/api'
 
 export function safeLoginNext(
   next: string | undefined,
@@ -213,6 +216,11 @@ export function LoginPage() {
   // and no inputs, until the person picks one.
   const [refusalAnswered, setRefusalAnswered] = useState(false)
   const [resetSent, setResetSent] = useState(false)
+  // #1255: the accounts signed in on this browser. "Add another account"
+  // (?add=1) and "Use another account" go straight to the form.
+  const [accountList, setAccountList] = useBrowserAccounts()
+  const [useAnother, setUseAnother] = useState(urlParams.get('add') === '1')
+  const [prefillId, setPrefillId] = useState('')
 
   async function onForgot(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -317,6 +325,30 @@ export function LoginPage() {
     setRefusalAnswered(true)
   }
 
+  // #1255: continuing as a held account loads the page afresh, so nothing of
+  // another account's page survives; otherwise as any sign-in.
+  function continued(user: SignedIn) {
+    const returnTo = safeLoginNext(next)
+    takeLoginNext()
+    if (user.handoff) return pageLoad.assign(user.handoff)
+    if (returnTo) return openReturnPath(returnOrLanding(returnTo, user), pageLoad.assign, pageLoad.assign)
+    openLanding(user, pageLoad.assign, pageLoad.assign)
+  }
+
+  // #1255: an account whose session ended opens the form it signed in with,
+  // its ID filled in.
+  function signInAgain(account: BrowserAccount) {
+    setUseAnother(true)
+    if (account.method_kind === 'delegated_password' && account.method) {
+      setRememberedDelegatedId(account.method, account.sign_in_id)
+      refreshRemembered()
+      switchMode('delegated', account.method)
+    } else if (account.method_kind !== 'google') {
+      setPrefillId(account.sign_in_id ?? '')
+      switchMode('password')
+    }
+  }
+
   // person-rename: after an upgrade every session ends once; say so plainly
   // instead of showing an unexplained sign-in page.
   const sessionEnded = new URLSearchParams(searchStr).get('ended') === '1'
@@ -380,7 +412,17 @@ export function LoginPage() {
           </div>
         )}
         <div className={cardClasses('p-6')}>
-          {panelShowing ? (
+          {!panelShowing && !useAnother && accountList === null ? (
+            <p className="text-sm text-ink-muted" data-testid="accounts-loading">Loading…</p>
+          ) : !panelShowing && !useAnother && accountList?.accounts.length ? (
+            <AccountChooser
+              list={accountList}
+              onList={setAccountList}
+              onSignedIn={continued}
+              onSignInAgain={signInAgain}
+              onUseAnother={() => setUseAnother(true)}
+            />
+          ) : panelShowing ? (
             <div className="space-y-5" data-testid="sign-in-refused-panel">
               <div className="space-y-2">
                 <h2 className="text-base font-semibold text-ink">We couldn't sign you in</h2>
@@ -548,6 +590,8 @@ export function LoginPage() {
               <label className={labelClasses()} htmlFor="login-email">Email or username</label>
               <input
                 id="login-email"
+                key={prefillId}
+                defaultValue={prefillId}
                 type="text"
                 name="email"
                 autoComplete="username"
