@@ -131,4 +131,5 @@ code {
 .fd-issue-mine-what { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
 /* #1222: while a tester views as someone (the platform's bar marks the page), nothing offers a change. */
-html[data-featherbase-viewing-as] [data-action] { display: none !important; }
+html[data-featherbase-viewing-as] [data-action],
+html[data-featherbase-viewing-as] [data-action-hint] { display: none !important; }

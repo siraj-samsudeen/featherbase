@@ -257,9 +257,9 @@ export function YourSections() {
       )}
       {answer?.state === 'ok' && (
         <>
-          <p className="fd-muted" data-testid="person-name">{answer.name}. {Object.values(answer.applies_at_once ?? NOT_AT_ONCE).every(Boolean)
+          <p className="fd-muted" data-testid="person-name">{answer.name}. <span data-action-hint>{Object.values(answer.applies_at_once ?? NOT_AT_ONCE).every(Boolean)
             ? 'If something here is wrong, change it. It changes at once, and your manager reviews it afterwards.'
-            : 'If something here is wrong, say so. Nothing changes until it is approved.'}</p>
+            : 'If something here is wrong, say so. Nothing changes until it is approved.'}</span></p>
           {answer.waiting_for_me > 0 && (
             <Notice tone="caution">
               {/* UX standard §8: waiting work is a caution notice with a Review button, not a link sentence. */}
