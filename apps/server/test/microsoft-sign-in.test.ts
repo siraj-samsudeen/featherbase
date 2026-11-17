@@ -202,3 +202,40 @@ describe('the tenant setting', () => {
     await expectStatus(good, 200)
   })
 })
+
+describe('the tenant is part of who may still sign in (Codex adversarial round 1)', () => {
+  const OTHER_TENANT = '44444444-4444-4444-8444-444444444444'
+  const tenantPatch = async (admin: { fetch: (u: string, i?: RequestInit) => Promise<Response> }, tenant: string) => {
+    const [m] = await sql`select updated_at from sign_in_method where row_id = 'microsoft'`
+    return admin.fetch('/api/table/Sign%20In%20Method/microsoft', { method: 'PATCH', body: JSON.stringify({ settings: { tenant }, updated_at: m.updated_at }) })
+  }
+
+  test('narrowing to one tenant is refused when it strands a System Manager linked through another', async ({ admin }) => {
+    await configureMicrosoft({ allowed_email_domains: DOMAIN })
+    const manager = await makePerson({ email: `boss@${DOMAIN}`, roles: [{ role: 'System Manager' }] })
+    await linkIdentity(manager, { method: 'microsoft', subject: `${TENANT}/${OID}` }, 'Administrator')
+    expect(await canSignInNow(manager)).toBe(true)
+    const res = await tenantPatch(admin, OTHER_TENANT)
+    await expectStatus(res, 417)
+    expect(await res.text()).toContain(manager)
+    // Their own tenant is fine.
+    await expectStatus(await tenantPatch(admin, TENANT), 200)
+  })
+
+  test('a link outside the method\'s tenant is not a way in', async () => {
+    await configureMicrosoft({ allowed_email_domains: DOMAIN, tenant: OTHER_TENANT })
+    const person = await makePerson({ email: `asha@${DOMAIN}` })
+    await linkIdentity(person, { method: 'microsoft', subject: `${TENANT}/${OID}` }, 'Administrator')
+    expect(await canSignInNow(person)).toBe(false)
+  })
+
+  test('narrowing the tenant ends sessions opened through a link it no longer admits', async ({ admin, api }) => {
+    await configureMicrosoft({ allowed_email_domains: DOMAIN })
+    const person = await makePerson({ email: `asha@${DOMAIN}` })
+    await linkIdentity(person, { method: 'microsoft', subject: `${TENANT}/${OID}` }, 'Administrator')
+    const session = await redeemSession(api, await microsoftSignIn(api, `asha@${DOMAIN}`, { oid: OID }))
+    await expectStatus(await api.fetch('/api/whoami', { headers: { authorization: `Bearer ${session.token}` } }), 200)
+    await expectStatus(await tenantPatch(admin, OTHER_TENANT), 200)
+    await expectStatus(await api.fetch('/api/whoami', { headers: { authorization: `Bearer ${session.token}` } }), 401)
+  })
+})

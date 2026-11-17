@@ -54,7 +54,7 @@ export async function configureMicrosoft(o: { client_id?: string; allowed_email_
     new_person = ${o.new_person ?? row.new_person},
     enabled = ${o.enabled ?? true},
     self_link = ${o.self_link ?? row.self_link},
-    settings = ${JSON.stringify(settings)}
+    settings = ${JSON.stringify(settings)}::text::jsonb
     where row_id = 'microsoft'`
 }
 
