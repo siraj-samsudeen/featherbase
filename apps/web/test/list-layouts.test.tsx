@@ -103,3 +103,35 @@ test('a choice the server fails to keep still shows, for now', async ({ admin })
   expect(pressed()).toEqual(['Table'])
   vi.restoreAllMocks()
 })
+
+test("a saved view's view lasts while the person opens its cards", async ({ admin }) => {
+  await seed(admin)
+  await openList(admin, DT, '?layout=split')
+  expect(pressed()).toEqual(['List And Record'])
+  const card = (await screen.findAllByTestId('record-card'))[0]
+  await userEvent.click(within(card).getAllByRole('button')[0])
+  await screen.findByTestId('record-panel')
+  expect(pressed()).toEqual(['List And Record'])
+  expect(screen.getByTestId('list-split')).toBeInTheDocument()
+})
+
+test('a link that opens a record shows it over the table even for someone who reads the list as Table', async ({ admin }) => {
+  await seed(admin)
+  await admin.put(`/api/user_settings/${encodeURIComponent(DT)}`, { layout: 'table' })
+  const view = await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`, admin)
+  await screen.findByTestId('list-view')
+  await waitFor(() => expect(pressed()).toEqual(['Table']))
+  const row = await waitFor(() => {
+    const found = document.querySelector<HTMLElement>('[data-row-id]')
+    expect(found).not.toBeNull()
+    return found!
+  })
+  // The address a colleague pasted: this list, with that row open.
+  const id = row.getAttribute('data-row-id')!
+  const path = { steps: [{ screen: 'list', table: DT, pane: { table: DT, row: id } }], at: 0 }
+  cleanup()
+  void view
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}?path=${encodeURIComponent(JSON.stringify(path))}`, admin)
+  expect(await screen.findByTestId('record-panel')).toBeInTheDocument()
+  expect(within(screen.getByTestId('record-panel-over')).getByTestId('record-panel')).toBeInTheDocument()
+})

@@ -4,7 +4,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { choiceLabel, rowHref, tableHref, type ListFilter } from 'shared'
 import {
   FieldGrid, GroupChip, LinkChip, PaneSection, Plus, SplitWithPane, ViewToggle, X,
-  buttonClasses, cx, fmtCount, iconButtonClasses, pillClasses, resolvePanePlace, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
+  buttonClasses, cx, fmtCount, iconButtonClasses, resolvePanePlace, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
   type FieldGridGroup, type ViewMode,
 } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
@@ -131,7 +131,7 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
           {open && <GroupRows key={open.key} group={open} nav={nav} onOpen={drill} />}
         </PaneSection>
         {/* The timeline heads itself "Activity". */}
-        <ActivityTimeline table={table} name={row} />
+        <ActivityTimeline table={table} name={row} bare />
       </>}
     </RecordFrame>
   )
@@ -245,7 +245,7 @@ function PointsAt({ links, nav, onOpen, status, editHref }: {
           </span>
         )
       })}
-      {status && <span className={pillClasses('text-xs')} data-testid="record-status">{status}</span>}
+      {status && <span className="rounded-full bg-action-tint px-2.5 py-0.5 text-xs font-medium text-action" data-testid="record-status">{status}</span>}
       <HrefLink href={editHref} className={iconButtonClasses('size-7 bg-canvas text-ink-muted hover:text-ink')}>
         <Plus aria-hidden size={14} />
         <span className="sr-only">Add a field</span>
@@ -388,7 +388,8 @@ function PaneFields({ meta, row, onOpen }: { meta: TableMeta; row: Row; onOpen: 
       value: <FieldValue col={c} value={row[c.column_name]} settings={settings} onOpen={onOpen} />,
     })),
   }))
-  return <FieldGrid groups={groups} />
+  // #1259: two columns, each label over its value, as the record panel is drawn.
+  return <FieldGrid groups={groups} stacked />
 }
 
 function FieldValue({ col, value, settings, onOpen }: { col: ColumnDef; value: unknown; settings: Settings; onOpen: (pane: NavPane) => void }) {

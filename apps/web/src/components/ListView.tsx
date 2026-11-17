@@ -1140,7 +1140,7 @@ export function ListView({
       ) : layout === 'split' ? (
         // #1259: List And Record: the cards on the left, the open record beside them.
         <div className="flex min-h-0 items-stretch gap-3" data-testid="list-split">
-          <div className="flex w-[330px] shrink-0 flex-col rounded-xl bg-canvas/60 p-1.5" ref={setTableScroll}>
+          <div className="flex w-[330px] shrink-0 flex-col rounded-xl bg-surface p-1.5 shadow-sm" ref={setTableScroll}>
             {rows.length ? (
               <RecordCards table={table} titleColumn={meta.data?.title_column} rows={rows} columns={columns} settings={settings}
                 open={paneRow} onOpen={(row) => openPane?.({ table, row })} />
@@ -1157,7 +1157,8 @@ export function ListView({
       ) : (
       <div className="relative">
       {/* #1259: Table With Panel: the record slides over the table's right side, under its header. */}
-      {layout === 'panel' && recordPanel && (
+      {/* A record the address opens shows here in the Table view too (a pasted link). */}
+      {(layout === 'panel' || layout === 'table') && recordPanel && (
         <div className="absolute inset-y-0 right-0 z-[3] w-[min(430px,100%)]" data-testid="record-panel-over">{recordPanel}</div>
       )}
       <div className={cardClasses('featherbase-scroll overflow-auto')} ref={setTableScroll} data-testid="list-table-scroll">

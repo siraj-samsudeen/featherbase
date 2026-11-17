@@ -26,7 +26,10 @@ export function RecordCards({ table, titleColumn, rows, columns, settings, open,
   const titleCol =
     columns.find((c) => c.column_name === titleColumn) ??
     (isPrincipalTable(table) ? columns[0] : (columns[1] ?? columns[0]))
-  const detail = columns.filter((c) => c !== titleCol && c.column_name !== 'row_id').slice(0, 3)
+  // The card's date sits on the title's line, on the right; a Choice reads as a chip.
+  const dateCol = columns.find((c) => c !== titleCol && (c.column_type === 'Date' || c.column_type === 'Datetime'))
+  const detail = columns.filter((c) => c !== titleCol && c !== dateCol && c.column_name !== 'row_id').slice(0, 3)
+  const filled = (row: Row, col: ListColumn) => row[col.column_name] !== null && row[col.column_name] !== undefined && row[col.column_name] !== ''
   const titleValue = (row: Row) => (titleCol ? cell(row[titleCol.column_name], titleCol.column_type, settings) : String(row.row_id))
   const shown = usePrincipalLabels(rows.map(titleValue))
   const list = useRef<HTMLUListElement>(null)
@@ -44,15 +47,22 @@ export function RecordCards({ table, titleColumn, rows, columns, settings, open,
           <li key={id} data-row-id={id} data-testid="record-card"
             className={cx('relative flex flex-col gap-0.5 rounded-lg px-3 py-2', on ? 'bg-action-tint' : 'hover:bg-subtle')}>
             {/* The title opens the record; the card around it answers to the click too. */}
-            <button type="button" aria-current={on ? 'true' : undefined} onClick={() => onOpen(id)}
-              className="truncate text-left text-sm font-semibold text-ink after:absolute after:inset-0 after:rounded-lg focus-visible:outline-2 focus-visible:outline-focus">
-              {shown(titleValue(row)) || id}
-            </button>
-            {detail.length > 0 && (
-              <span className="relative z-[1] flex min-w-0 flex-wrap items-center gap-x-1.5 text-sm text-ink-muted">
-                {detail.map((col, i) => (
-                  <span key={col.column_name} className="min-w-0 truncate">
-                    {i > 0 && <span aria-hidden> · </span>}
+            <span className="flex min-w-0 items-baseline gap-2">
+              <button type="button" aria-current={on ? 'true' : undefined} onClick={() => onOpen(id)}
+                className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-ink after:absolute after:inset-0 after:rounded-lg focus-visible:outline-2 focus-visible:outline-focus">
+                {shown(titleValue(row)) || id}
+              </button>
+              {dateCol && filled(row, dateCol) && (
+                <span className="shrink-0 text-xs text-ink-muted"><ListCell row={row} col={dateCol} table={table} settings={settings} first={false} /></span>
+              )}
+            </span>
+            {detail.some((col) => filled(row, col)) && (
+              <span className="relative z-[1] flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-ink-muted">
+                {detail.filter((col) => filled(row, col)).map((col, i) => (
+                  <span key={col.column_name} className={col.column_type === 'Choice'
+                    ? 'rounded-md bg-action-tint px-1.5 text-xs font-medium text-action'
+                    : 'min-w-0 truncate'}>
+                    {i > 0 && col.column_type !== 'Choice' && <span aria-hidden>· </span>}
                     <ListCell row={row} col={col} table={table} settings={settings} first={false} />
                   </span>
                 ))}

@@ -482,7 +482,10 @@ function TableListPage() {
 function NavigatedList({ table, filters, path, layout: asked }: { table: string; filters?: string; path?: unknown; layout?: ListLayout }) {
   // #1259: the view this list shows: a saved view's (from the address, or applied
   // here), the person's own, or the Table's default.
-  const [viewLayout, setViewLayout] = useState<ListLayout>()
+  // A saved view's view lasts while the person walks on from it (opening a card
+  // drops the address's ?layout=), until they choose one of their own.
+  const [viewLayout, setViewLayout] = useState<ListLayout | undefined>(asked)
+  useEffect(() => { if (asked) setViewLayout(asked) }, [asked])
   const views = useListLayout(table, viewLayout ?? asked)
   /** A view chosen here is the person's from now on, so no saved view's view overrides it. */
   function chooseLayout(next: ListLayout) {
@@ -545,7 +548,7 @@ function NavigatedList({ table, filters, path, layout: asked }: { table: string;
               // A saved view shows in its own view, without changing the person's choice.
               setViewLayout(layout)
             }}
-            recordPanel={views.layout !== 'table' && nav.step.pane
+            recordPanel={nav.step.pane
               ? <RecordPanel key={`${nav.step.pane.table}\u0000${nav.step.pane.row}`} nav={nav} pane={nav.step.pane} framed />
               : undefined}
           />
