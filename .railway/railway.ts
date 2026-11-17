@@ -58,7 +58,11 @@ export default defineRailway((ctx) => {
     // On Failure is Railway's default restart policy, and Railway stores a
     // default as empty, so naming it made every plan show a change no apply
     // could settle. Only the retry count differs from the default (10).
-    deploy: { restartPolicyMaxRetries: 5 },
+    // #1260: after SIGTERM the old server gets 30 s before SIGKILL, longer
+    // than its own 25 s drain (graceful-shutdown.ts), so requests in flight
+    // finish. Overlap is not set: with a volume Railway never runs two
+    // deployments at once, so there is nothing to overlap.
+    deploy: { restartPolicyMaxRetries: 5, drainingSeconds: 30 },
     volumeMounts: { '/data': data },
   })
 
