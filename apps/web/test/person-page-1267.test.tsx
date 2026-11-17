@@ -178,7 +178,7 @@ test('a linked Google account is turned off from its line, and the link moves un
   expect(within(panel).getByTestId(`user-method-ended-${linked}`)).toHaveTextContent('gita.1267@gmail.com')
 })
 
-test('a pending Google invite is cancelled from its Change dialog', async ({ admin, createUser }) => {
+test('a pending Google invite is withdrawn from its Change dialog', async ({ admin, createUser }) => {
   const hari = await createUser({ email: 'hari.1267@example.com' })
   const { id } = await admin.post<{ id: string }>(`/api/people/${encodeURIComponent(hari.user!)}/identities`, {
     method: 'google', email: 'hari.1267@gmail.com', send_invitation_email: false,
@@ -188,7 +188,7 @@ test('a pending Google invite is cancelled from its Change dialog', async ({ adm
   expect(await within(panel).findByTestId(`user-method-${id}`)).toHaveTextContent('Invited · hari.1267@gmail.com')
   const change = await openLine(panel, `user-method-${id}`)
   expect(within(change).getByRole('button', { name: 'Resend Invitation' })).toHaveFocus()
-  await userEvent.click(within(change).getByRole('button', { name: 'Cancel Invite' }))
+  await userEvent.click(within(change).getByRole('button', { name: 'Withdraw Invite' }))
   expect(await within(panel).findByTestId('sign-in-line-google')).toHaveTextContent('Not set up')
 })
 
@@ -241,4 +241,27 @@ test("a Person's own links lead its linked records, with empty groups a click aw
   fireEvent.click(toggle)
   expect(within(kims).getAllByTestId('connection-group').length).toBeGreaterThan(before)
   expect(within(kims).queryByText('Nothing links here yet.')).not.toBeInTheDocument()
+})
+
+test("Google's Set Up dialog can expect the person's own address instead of inviting it", async ({ admin, createUser }) => {
+  const uma = await createUser({ email: 'uma.1267@gmail.com' })
+  await renderApp(rowHref('Person', uma.user!), admin)
+  const panel = await screen.findByTestId('user-sign-in-methods')
+  const setUp = await openLine(panel, 'sign-in-line-google')
+  expect(setUp).toHaveTextContent('Expecting uma.1267@gmail.com instead lets it in only when its domain is allowed')
+  await userEvent.click(within(setUp).getByRole('button', { name: 'Expect Sign-In Instead' }))
+  expect(await within(panel).findByTestId('user-method-expected-google')).toHaveTextContent('Expected as uma.1267@gmail.com')
+  expect((await sql`select expects_google_sign_in from person where row_id = ${uma.user!}`)[0].expects_google_sign_in).toBe(true)
+})
+
+test('after a link redraws its line, focus goes to the Sign-In heading, not the page', async ({ admin, createUser }) => {
+  await configureDelegated()
+  const val = await createUser({ email: 'val.1267@example.com' })
+  await renderApp(rowHref('Person', val.user!), admin)
+  const panel = await screen.findByTestId('user-sign-in-methods')
+  const link = await openLine(panel, 'sign-in-line-stylehr')
+  await userEvent.type(within(link).getByLabelText('Record number at the service'), 'RR-7777')
+  await userEvent.click(within(link).getByRole('button', { name: 'Link' }))
+  await waitFor(() => expect(screen.queryByTestId('sign-in-dialog')).not.toBeInTheDocument())
+  await waitFor(() => expect(within(panel).getByRole('heading', { name: 'Sign-In' })).toHaveFocus())
 })

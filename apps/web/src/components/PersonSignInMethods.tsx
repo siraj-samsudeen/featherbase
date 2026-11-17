@@ -111,6 +111,16 @@ export function PersonSignInMethods({ user, rowUpdatedAt }: {
   const [notice, setNotice] = useState<ReactNode>(null)
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [showEnded, setShowEnded] = useState(false)
+  const heading = useRef<HTMLHeadingElement>(null)
+  // The button to return to after an action, placed once the redrawn lines are on the page.
+  const refocus = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    const opener = refocus.current
+    if (!opener) return
+    refocus.current = null
+    if (opener.isConnected) opener.focus()
+    else heading.current?.focus()
+  }, [data])
   // #1257: a notice names an address; once the Person's email changes (their
   // invites are then cancelled) it no longer describes anything live.
   const shownEmail = data?.email
@@ -122,16 +132,21 @@ export function PersonSignInMethods({ user, rowUpdatedAt }: {
     setError(null)
     setDialog({ what, opener, identity, method })
   }
-  // Escape, Cancel or a finished action: focus goes back to the line's button.
+  // Escape or Cancel: focus goes back to the line's button.
   const close = () => {
     const opener = dialog?.opener
     setDialog(null)
     setError(null)
-    if (opener?.isConnected) opener.focus()
+    opener?.focus()
   }
+  // A finished action redraws the lines; once they are read again, focus goes
+  // to the same button if it is still there, otherwise to the Sign-In heading.
   const done = () => {
-    close()
+    const opener = dialog?.opener
+    setDialog(null)
+    setError(null)
     setNotice(null)
+    refocus.current = opener ?? null
     void qc.invalidateQueries({ queryKey: key })
   }
   const fail = (err: unknown) => {
@@ -324,7 +339,7 @@ export function PersonSignInMethods({ user, rowUpdatedAt }: {
               The invitation lets this address sign in with {labelOf(i!.method)} as {who}.
             </p>
             <DialogButtons onClose={close}>
-              <Button variant="danger" disabled={unlink.isPending} onClick={() => unlink.mutate(i!.id)}>Cancel Invite</Button>
+              <Button variant="danger" disabled={unlink.isPending} onClick={() => unlink.mutate(i!.id)}>Withdraw Invite</Button>
               <Button variant="primary" data-autofocus disabled={resend.isPending} onClick={() => resend.mutate(i!)}>Resend Invitation</Button>
             </DialogButtons>
           </MethodDialog>
@@ -338,12 +353,11 @@ export function PersonSignInMethods({ user, rowUpdatedAt }: {
                 const f = new FormData(e.currentTarget)
                 add.mutate({ method: google!.key, email: String(f.get('invite_address')).trim(), send_invitation_email: f.get('send_invitation_email') === 'on' })
               }}>
-              {expectsGoogle && (
-                <p className="text-sm text-ink-muted">
-                  {data!.email} is expected to sign in with {google!.label}, which lets it in only when its domain is allowed. An
-                  invite lets it in from any domain.
-                </p>
-              )}
+              <p className="text-sm text-ink-muted">
+                {expectsGoogle
+                  ? `${data!.email} is expected to sign in with ${google!.label}, which lets it in only when its domain is allowed. An invite lets it in from any domain.`
+                  : `An invite lets this address in from any domain.${data?.email ? ` Expecting ${data.email} instead lets it in only when its domain is allowed for ${google!.label} sign-in.` : ''}`}
+              </p>
               <TextInput name="invite_address" type="text" inputMode="email" {...NO_AUTOFILL_FIELD}
                 aria-label="Google address to invite" placeholder="Google address to invite" defaultValue={ownAddress} required />
               <label className="flex items-center gap-2 text-sm text-ink">
@@ -354,6 +368,12 @@ export function PersonSignInMethods({ user, rowUpdatedAt }: {
                 {expectsGoogle && (
                   <Button variant="danger" type="button" disabled={expect.isPending} onClick={() => expect.mutate({ expects_google_sign_in: false })}>
                     Stop Expecting
+                  </Button>
+                )}
+                {/* #833: without an invite, the person's own address may still be let in by its domain. */}
+                {!expectsGoogle && data?.email && (
+                  <Button variant="secondary" type="button" disabled={expect.isPending} onClick={() => expect.mutate({ expects_google_sign_in: true })}>
+                    Expect Sign-In Instead
                   </Button>
                 )}
                 <Button variant="primary" type="submit" disabled={add.isPending}>Invite</Button>
@@ -450,7 +470,7 @@ export function PersonSignInMethods({ user, rowUpdatedAt }: {
 
   return (
     <section aria-labelledby="sign-in-heading" className="flex flex-col gap-2" data-testid="user-sign-in-methods">
-      <h2 id="sign-in-heading" className="text-sm font-medium text-ink-muted">Sign-In</h2>
+      <h2 id="sign-in-heading" ref={heading} tabIndex={-1} className="text-sm font-medium text-ink-muted focus-visible:outline-none">Sign-In</h2>
       {noWayIn && <p className="text-sm text-ink-muted">No way to sign in yet.</p>}
       {data && google && (liveOf(google).length ? liveOf(google).map((i) => identityLine(i, google.label)) : (
         <MethodLine name={google.label} testid={expectsGoogle ? 'user-method-expected-google' : 'sign-in-line-google'}
