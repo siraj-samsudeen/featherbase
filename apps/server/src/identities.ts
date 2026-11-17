@@ -272,6 +272,18 @@ function keepsDomain(lists: string, proof: WayInProof) {
   )`
 }
 
+/** microsoft-sign-in (Codex round 1): a Microsoft link is a way in only
+ *  while its method admits its tenant: `organizations` (or unset) admits any,
+ *  a tenant ID only links whose subject (`tid/oid`) starts with it. `tenant`
+ *  is the method's tenant as SQL (the stored setting, or a proposed one). */
+function tenantKept(tenant: ReturnType<typeof sql>) {
+  return sql`(
+    m.kind <> 'microsoft'
+    or coalesce(nullif(lower(trim(${tenant})), ''), 'organizations') = 'organizations'
+    or lower(split_part(coalesce(i.subject, ''), '/', 1)) = lower(trim(${tenant}))
+  )`
+}
+
 // ------------------------------------------------------------- identities
 
 interface Identity {
@@ -530,7 +542,8 @@ async function waysIn(user: string, db: Sql | TxSql, excluding?: string, proof: 
       + (select count(*) from sign_in_identity i join sign_in_method m on m.row_id = i.method and ${usableWhere(mock)}
         where i.person_id = ${user} and i.subject is not null and i.ended_at is null and i.id <> ${excluding ?? ''}::text
           and not (m.kind = 'delegated_password' and (select privileged from p))
-          and ${keepsDomain(lists, proof)})::int as n`
+          and ${keepsDomain(lists, proof)}
+          and ${tenantKept(sql`m.settings->>'tenant'`)})::int as n`
   return Number(row.n)
 }
 
@@ -682,6 +695,23 @@ export async function endSessionsNoLongerAdmitted(methodKey: string, nextDomains
   return people
 }
 
+/** microsoft-sign-in (Codex round 1): when a Microsoft method narrows to one
+ *  tenant, sessions opened through its links from any other tenant end now,
+ *  as narrowing the domain list does. The links are kept. */
+export async function endSessionsOutsideTenant(methodKey: string, tenant: string | null, db: Sql | TxSql = sql): Promise<string[]> {
+  const t = String(tenant ?? '').trim().toLowerCase()
+  if (!t || t === 'organizations') return []
+  await lockWaysIn(db)
+  const ended = await db`
+    update sign_in_identity i set sessions_ended_at = clock_timestamp()
+    where i.method = ${methodKey} and i.subject is not null and i.ended_at is null
+      and lower(split_part(i.subject, '/', 1)) <> ${t}
+    returning i.person_id`
+  const people = [...new Set(ended.map((r) => String(r.person_id)))].sort()
+  for (const person of people) await logActivity(person, `${methodKey}_sessions_ended_tenant_not_allowed ${methodKey}`)
+  return people
+}
+
 // --------------------------------------------------------- lockout guard
 
 /** Refuse a method change that would leave an enabled Administrator or System
@@ -689,13 +719,15 @@ export async function endSessionsNoLongerAdmitted(methodKey: string, nextDomains
  *  `next` is the method's state after the change; null = deleted. */
 export async function assertNoAdminLockout(
   methodKey: string,
-  next: { enabled: boolean; client_id: string; allowed_email_domains?: string } | null,
+  next: { enabled: boolean; client_id: string; allowed_email_domains?: string; tenant?: string | null } | null,
   db: Sql | TxSql = sql,
 ) {
   await lockWaysIn(db)
   const mock = mockOAuthEnabled()
   const nextEnabled = next?.enabled === true
   const nextClient = next?.client_id ?? ''
+  // undefined = the tenant is not changing.
+  const nextTenant = next?.tenant
   // #693: narrowing the domain list can end a link's sign-ins too.
   const before = await domainListsJson(db)
   const after =
@@ -707,24 +739,26 @@ export async function assertNoAdminLockout(
         and (u.row_id = 'Administrator' or exists (
           select 1 from has_role r where r.parent = u.row_id and r.role in ('System Manager', 'Administrator')))
     ), m0 as (
-      select row_id, kind, enabled, client_id from sign_in_method
+      select row_id, kind, enabled, client_id, settings->>'tenant' as tenant from sign_in_method
     ), m1 as (
       select row_id, kind,
         case when row_id = ${methodKey}::text then ${nextEnabled}::boolean else enabled end as enabled,
-        case when row_id = ${methodKey}::text then ${nextClient}::text else client_id end as client_id
+        case when row_id = ${methodKey}::text then ${nextClient}::text else client_id end as client_id,
+        case when row_id = ${methodKey}::text and ${nextTenant !== undefined}::boolean then ${nextTenant ?? null}::text
+          else settings->>'tenant' end as tenant
       from sign_in_method
     ), links as (
       -- Each live link, judged before and after: possible (may work) and
       -- proven (known to work), per keepsDomain.
       select i.person_id,
         exists (select 1 from m0 m where m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
-          and ${keepsDomain(before, 'possible')}) as possible_before,
+          and ${keepsDomain(before, 'possible')} and ${tenantKept(sql`m.tenant`)}) as possible_before,
         exists (select 1 from m0 m where m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
-          and ${keepsDomain(before, 'proven')}) as proven_before,
+          and ${keepsDomain(before, 'proven')} and ${tenantKept(sql`m.tenant`)}) as proven_before,
         exists (select 1 from m1 m where m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
-          and ${keepsDomain(after, 'possible')}) as possible_after,
+          and ${keepsDomain(after, 'possible')} and ${tenantKept(sql`m.tenant`)}) as possible_after,
         exists (select 1 from m1 m where m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
-          and ${keepsDomain(after, 'proven')}) as proven_after
+          and ${keepsDomain(after, 'proven')} and ${tenantKept(sql`m.tenant`)}) as proven_after
       from sign_in_identity i join privileged p on p.row_id = i.person_id
       where i.subject is not null and i.ended_at is null
     ), passwords as (

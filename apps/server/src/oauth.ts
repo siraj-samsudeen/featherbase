@@ -46,9 +46,9 @@ export function assertMockProviderAllowed(clientId: string): void {
 // Guards the real sign-in routes (login + callback). A configured client id
 // means real Google. Without one the mock would have to serve — so sign-in is
 // refused outright unless the mock was explicitly opted into.
-export function assertSignInAvailable(clientId: string): void {
+export function assertSignInAvailable(clientId: string, off: string = GOOGLE_OFF): void {
   if (!clientId && !mockOAuthEnabled())
-    throw new AppError('AuthenticationError', GOOGLE_OFF)
+    throw new AppError('AuthenticationError', off)
 }
 
 // --- signed, stateless tokens (state + mock code) ---------------------------

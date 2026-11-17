@@ -1,6 +1,6 @@
 import type { TableController } from '../controllers'
 import { AppError } from '../errors'
-import { KINDS, METHOD_TABLE, assertNoAdminLockout, domainListProblem, endSessionsNoLongerAdmitted, isRedirectKind, lockWaysIn, methodUsable, type MethodKind } from '../identities'
+import { KINDS, METHOD_TABLE, assertNoAdminLockout, domainListProblem, endSessionsNoLongerAdmitted, endSessionsOutsideTenant, isRedirectKind, lockWaysIn, methodUsable, type MethodKind } from '../identities'
 import { tenantProblem } from '../microsoft'
 import { recordKeyFrom, rosterFrom, usableServiceUrl, wireFrom } from '../delegated-login'
 
@@ -113,13 +113,21 @@ const controller: TableController = {
       const clientChanged = String(row.client_id ?? '') !== String(old.client_id ?? '')
       // #693: links ruled by the domain list stop signing in when it narrows.
       const domainsChanged = String(row.allowed_email_domains ?? '') !== String(old.allowed_email_domains ?? '')
-      if (!enabledChanged && !clientChanged && !domainsChanged) return usableCheck()
+      // microsoft-sign-in (Codex round 1): a Microsoft method's tenant decides
+      // which links still sign in, so changing it is checked like the domains.
+      const tenantOf = (v: unknown) => {
+        const t = parseSettings(v)?.tenant
+        return t == null ? null : String(t).trim().toLowerCase() || null
+      }
+      const tenantChanged = String(merged.kind) === 'microsoft' && tenantOf(row.settings) !== tenantOf(old.settings)
+      if (!enabledChanged && !clientChanged && !domainsChanged && !tenantChanged) return usableCheck()
       await assertNoAdminLockout(
         String(old.row_id),
         {
           enabled: truthy(row.enabled),
           client_id: String(row.client_id ?? ''),
           allowed_email_domains: String(row.allowed_email_domains ?? ''),
+          ...(tenantChanged ? { tenant: tenantOf(row.settings) } : {}),
         },
         tx,
       )
@@ -128,6 +136,7 @@ const controller: TableController = {
       // longer admits end now, in this transaction, after the guard allowed it.
       if (domainsChanged && isRedirectKind(String(merged.kind)))
         await endSessionsNoLongerAdmitted(String(old.row_id), String(row.allowed_email_domains ?? ''), tx)
+      if (tenantChanged) await endSessionsOutsideTenant(String(old.row_id), tenantOf(row.settings), tx)
     },
     on_trash: async ({ row, tx }) => {
       await lockWaysIn(tx)

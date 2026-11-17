@@ -28,9 +28,9 @@ import { personByEmail } from './people-directory'
 import { countWaitingForAccess, noAccessYetPage, peekAccess, requestAccess } from './waiting-for-access'
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser, noLinkCarries, recordToName } from './delegated-login'
 import { hold, rosterFirstSignIn } from './roster-first-sign-in'
-import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertMockProviderAllowed, OAUTH_CALLBACK_PATH, mintHandoffCode, redeemHandoffCode, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
+import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, OAUTH_CALLBACK_PATH, mintHandoffCode, redeemHandoffCode, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
 import { ADMIN, addressRedirect, interimApp, linkAddress, matchAddress, requestHost } from './instance-addresses'
-import { USERNAME_RE, methodOfKind, mockOAuthEnabled, type SignInMethod } from './identities'
+import { USERNAME_RE, methodOfKind, type SignInMethod } from './identities'
 import { assertPermission, assertSystemManager, getRoles, includesColumn, permissionScope, permittedColumns, tableAccessFor } from './permissions'
 import { getVisibleHomePages } from './home-pages'
 import { EMBED_ORIGIN, VIEWER_ROLE, salesTargetRoutes } from './sales-target'
@@ -465,7 +465,7 @@ async function startRedirectSignIn(c: Context, provider: RedirectProvider) {
     if (isPageNavigation(c)) return refusedToLoginPage(c, off, provider)
     throw off
   }
-  if (!method.client_id && !mockOAuthEnabled()) throw new AppError('AuthenticationError', provider.off)
+  assertSignInAvailable(method.client_id, provider.off)
   const redirectUri = oauthRedirectUri(c, method.client_id, provider.callbackPath)
   const { state, verifier } = newLoginChallenge(requestHost(c.req.url), provider.mark ? { provider: provider.mark } : {})
   setLoginChallengeCookies(c, state, verifier)
@@ -544,7 +544,7 @@ async function redirectCallback(c: Context, provider: RedirectProvider) {
   const method = await provider.available()
   if (!method) throw new AppError('AuthenticationError', provider.off)
   const clientId = method.client_id
-  if (!clientId && !mockOAuthEnabled()) throw new AppError('AuthenticationError', provider.off)
+  assertSignInAvailable(clientId, provider.off)
   // The state must match the cookie this browser got at login. Without that
   // binding an attacker could complete consent with their own account and
   // hand the victim the callback URL, planting the attacker's session.
