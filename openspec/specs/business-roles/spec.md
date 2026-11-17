@@ -6,7 +6,7 @@ What the business calls each position, the apps and permissions it brings, and w
 ## Requirements
 
 ### Requirement: Business roles are rows an admin edits
-A business role SHALL be a named row with its permissions, each permission an app and level, a verb, a thing and a reach (Own, Team, Area or All). Each permission reads as one sentence.
+A business role SHALL be a named row with its permissions, each permission an app and level, a verb, a thing and a reach (Own, Team, Area or All). Each permission reads as one sentence. How far the role reaches (their section, floor, department, store or cluster, their merchandise, the whole company, or a place it is given at) is set on the role itself, so renaming a role changes nobody's area.
 
 #### Scenario: A permission read as a sentence
 
