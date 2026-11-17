@@ -128,6 +128,12 @@ Three fixed levels: business role → app access → permission. Normally a pers
 ### D2 — Reach (owner, 17-Nov-2026: "q2 yes")
 Every permission is a thing, a verb and a reach: **Own, Team, Area or All**. The area is read from where the person's assignment sits on the axes: location (company › region › cluster › store › floor › section) and merchandise (division › subdivision › category › subcategory). Team is read from the reporting line. No permission is named after a place. Dash All-Stores Reader goes away, because a head-office assignment's area is "whole company".
 
+### D3 — Basic (owner, 17-Nov-2026: "yes option B")
+Basic, for everyone with a current HR record: Tasker and Tickets, working on their own things. Dash is not in Basic. It comes with a business role from Team Leader up (Team Leader, Floor, Department, Store and Cluster Manager, Buyer, Category Head, Head Office, leadership). Floor staff can be given Dash later by changing the Staff role once.
+
+### D3a — End dates (owner, 17-Nov-2026)
+An end date is **optional** on every role assignment, including "Also give" and External people. Without one, access lasts until someone removes it, or for employees until they leave.
+
 ## Owner's steer, 17-Nov-2026: fine-grained by area, and fewer words
 
 - Master data needs fine-grained rights: a category manager manages their category, and a store manager manages the sections in their store.
