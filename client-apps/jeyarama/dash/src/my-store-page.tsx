@@ -57,7 +57,7 @@ function MoveStaff({ person, sections, onMoved }: { person: Person; sections: Pl
   const job = movable.find(j => j.job_id === from) ?? movable[0]
   const choices = sections.filter(s => s.id !== job?.section_id)
   if (!job || !choices.length) return null
-  if (!open) return <Button variant="quiet" onClick={() => setOpen(true)} data-testid="move-staff">Move</Button>
+  if (!open) return <Button data-action variant="quiet" onClick={() => setOpen(true)} data-testid="move-staff">Move</Button>
   return (
     <div className="flex w-full min-w-64 flex-col gap-2 rounded-control border border-border bg-surface p-3" data-testid="move-form">
       {movable.length > 1 && (
@@ -75,7 +75,7 @@ function MoveStaff({ person, sections, onMoved }: { person: Person; sections: Pl
       </Field>
       {error && <Notice tone="negative">{error}</Notice>}
       <div className="flex flex-wrap gap-2">
-        <Button disabled={!to || busy} onClick={() => {
+        <Button data-action disabled={!to || busy} onClick={() => {
           setBusy(true); setError(null)
           const name = choices.find(s => s.id === to)?.name ?? ''
           act<{ state: string; reviewer: string | null }>('move_staff', { job: job.job_id, to_section: to })
@@ -127,7 +127,7 @@ function SectionEditor({ section, onChanged }: { section: { id: string; name: st
       .then(r => { onChanged(changedLine(name === 'manage_add' ? 'add' : 'removal', what, section.name, r.state, r.waiting_for)); setQ(''); void load() }, (e: Error) => setError(e.message))
       .finally(() => setBusy(false))
   }
-  if (!open) return <Button variant="quiet" onClick={() => setOpen(true)} data-testid="edit-subcategories">Edit subcategories</Button>
+  if (!open) return <Button data-action variant="quiet" onClick={() => setOpen(true)} data-testid="edit-subcategories">Edit subcategories</Button>
   const here = new Set(placed?.state === 'ok' ? placed.placed.map(p => p.code) : [])
   return (
     <div className="mt-2 flex w-full flex-col gap-3 rounded-md border border-border p-3" data-testid="section-editor">
@@ -138,7 +138,7 @@ function SectionEditor({ section, onChanged }: { section: { id: string; name: st
           {placed.placed.map(p => (
             <li key={p.placement} className="flex items-center justify-between gap-2 py-1" data-testid="placed-row">
               <RecordLink table={RECORD.subcategory} id={p.code} className="text-sm">{p.name}</RecordLink>
-              <Button variant="quiet" disabled={busy} onClick={() => change('manage_remove', { placement: p.placement }, p.name)} data-testid="remove-subcategory">Remove</Button>
+              <Button data-action variant="quiet" disabled={busy} onClick={() => change('manage_remove', { placement: p.placement }, p.name)} data-testid="remove-subcategory">Remove</Button>
             </li>
           ))}
         </ul>
@@ -151,7 +151,7 @@ function SectionEditor({ section, onChanged }: { section: { id: string; name: st
           {found.filter(f => !here.has(f.code)).map(f => (
             <li key={f.code} className="flex items-center justify-between gap-2 py-1" data-testid="found-row">
               <span className="text-sm"><RecordLink table={RECORD.subcategory} id={f.code}>{f.name}</RecordLink> <span className="text-ink-muted">({f.code})</span></span>
-              <Button variant="secondary" disabled={busy} onClick={() => change('manage_add', { section: section.id, subcategory: f.code }, f.name)} data-testid="add-subcategory">Add</Button>
+              <Button data-action variant="secondary" disabled={busy} onClick={() => change('manage_add', { section: section.id, subcategory: f.code }, f.name)} data-testid="add-subcategory">Add</Button>
             </li>
           ))}
         </ul>

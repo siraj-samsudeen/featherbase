@@ -16,7 +16,7 @@ type Dataset = { name: string; source: string; query: string; columns: { name: s
 const datasets = (manifest as unknown as { datasets: Dataset[] }).datasets
 const sales = () => datasets.find(d => d.name === SALES_DATASET)!
 const operations = manifest.reads.operations as Record<string, { policy: { kind: string; readRoles?: string[] }; outbound?: boolean; needs?: string[] }>
-const ROLES = ['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager', 'Team Report Manager']
+const ROLES = ['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager', 'Team Report Manager', 'View As Tester']
 
 describe("the app's name in the manifest", () => {
   it('is Dash everywhere: title, identifier, roles and Table group', () => {
@@ -77,7 +77,7 @@ describe('the report in the manifest', () => {
 
   it("scopes the report's reads by the reader's places", () => {
     expect(['stores', 'report', 'embed_session'].map(name => [name, operations[name].policy.kind, operations[name].policy.readRoles]))
-      .toEqual(['stores', 'report', 'embed_session'].map(name => [name, 'person_scope', ROLES.filter(role => role !== 'Report Access Manager' && role !== 'Team Report Manager')]))
+      .toEqual(['stores', 'report', 'embed_session'].map(name => [name, 'person_scope', ROLES.filter(role => role !== 'Report Access Manager' && role !== 'Team Report Manager' && role !== 'View As Tester')]))
   })
 
   it('declares only the two Dive openers and the Dive list for Add a Dive (#1169) as calling out', () => {
@@ -204,7 +204,7 @@ describe('the read grants, declared before the first install', () => {
   // Siraj, 11-Nov-2026 ("Drop whatever is not implemented"): no section editor or reviewer role.
   // #1192 (same day): Dash All-Stores Reader reaches every store. #1217: Team Report Manager gives reports to their team.
   it('declares only the roles Dash uses', () => {
-    expect(manifest.roles).toEqual(['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager', 'Team Report Manager'])
+    expect(manifest.roles).toEqual(['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager', 'Team Report Manager', 'View As Tester'])
   })
 
   it('give the All-Stores Reader only the read of the entry Table, and every read the Reader has', () => {
@@ -279,7 +279,9 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['switcher_summary', '0.13.17', '0.13.19', 0],
       // #1248: the sidebar's rail shows each report's initials.
       ['sidebar_icon_rail', '0.13.19', '0.13.21', 0],
+      // #1222: View As Tester and its people read
+      ['view_as', '0.13.21', '0.13.22', 0],
     ])
-    expect(pkg.version).toBe('0.13.21')
+    expect(pkg.version).toBe('0.13.22')
   })
 })

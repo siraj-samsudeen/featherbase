@@ -4,6 +4,8 @@ import { credentialFromCookieHeader, endedSessionIds, resolveToken, type Session
 import { getRoles, getScopeMap, hasPermission, isPrivileged, requiresScope, tableScope } from './permissions'
 import { REALTIME_MAX_FRAME_BYTES } from 'shared'
 import { needsMandatoryRowRead } from './mandatory-access'
+import { activeViewAs, whileViewAsHolds } from './view-as'
+import { sql } from './db'
 
 // RT-001/002/003: server-side realtime over WebSockets (the local equivalent
 // of Supabase Realtime per the architecture invariants).
@@ -35,7 +37,12 @@ export function onEvent(fn: Listener): () => void {
 
 interface Client {
   socket: WebSocket
+  /** Whose reads the socket follows: the signed-in person, or whom they view as (#1222). */
   user: SessionUser
+  /** #1222: who signed in, whose session ends it. */
+  owner: SessionUser
+  /** #1222: the person it was opened viewing as, if any. */
+  viewing?: string
   channels: Set<string>
 }
 
@@ -143,11 +150,35 @@ function publish(channel: string, event: string, payload?: unknown): void {
   const data = JSON.stringify(msg)
   for (const c of clients) {
     if (!c.channels.has(channel) || c.socket.readyState !== c.socket.OPEN) continue
+    // #1222: a socket opened while viewing gets nothing once that View as no longer holds.
+    if (c.viewing) { void deliverViewing(c, msg, data).catch(() => {}); continue }
     // person-rename R2: a list or row event reaches a subscriber only for a
     // row it can read now (own-Table and Reference scopes alike).
     if (channel.startsWith('list:') || channel.startsWith('row:')) void deliverChecked(c, msg, data).catch(() => {})
     else c.socket.send(data)
   }
+}
+
+/** #1222: checked afresh before each event: still viewing the same person, still allowed. */
+async function deliverViewing(client: Client, msg: RealtimeEvent, data: string): Promise<void> {
+  const still = await activeViewAs(client.owner, { told: false }).catch(() => null)
+  if (still?.as.person !== client.viewing) { closeViewAsClient(client); return }
+  if ((msg.channel.startsWith('list:') || msg.channel.startsWith('row:')) && !(await eventVisibleTo(client.user.row_id, msg))) return
+  // Sent under the session's lock, after a last look: an Exit that finished first, on any server, stops it.
+  const sent = await whileViewAsHolds(client.owner.sign_in!.session_id, client.viewing!, () => {
+    if (client.socket.readyState === client.socket.OPEN) client.socket.send(data)
+  }).catch(() => false)
+  if (!sent) closeViewAsClient(client)
+}
+
+function closeViewAsClient(client: Client): void {
+  clients.delete(client)
+  client.socket.close(4009, 'view as changed')
+}
+
+/** #1222: a session's View as changed: its sockets close now, and its pages reconnect as whom they show. */
+export function closeViewAsSockets(sessionId: string): void {
+  for (const client of clients) if (client.owner.sign_in?.session_id === sessionId) closeViewAsClient(client)
 }
 
 // Convenience emitters for the row lifecycle.
@@ -201,16 +232,34 @@ export function closeSessionSockets(sessionId: string): void {
   const now = Date.now()
   for (const [id, at] of recentlyRevoked) if (now - at >= RECENTLY_REVOKED_MS) recentlyRevoked.delete(id)
   recentlyRevoked.set(sessionId, now)
-  for (const client of clients) if (client.user.sign_in?.session_id === sessionId) closeSignedOut(client)
+  for (const client of clients) if (client.owner.sign_in?.session_id === sessionId) closeSignedOut(client)
 }
 
 export async function recheckSessionSockets(): Promise<void> {
-  const open = [...clients].filter((c) => c.user.sign_in?.session_id)
-  const sessions = new Map(open.map((c) => [c.user.sign_in!.session_id, {
-    jti: c.user.sign_in!.session_id, person: c.user.row_id, issuedAt: c.user.sign_in!.authenticated_at, expiresAt: c.user.sign_in!.expires_at,
+  const open = [...clients].filter((c) => c.owner.sign_in?.session_id)
+  const sessions = new Map(open.map((c) => [c.owner.sign_in!.session_id, {
+    jti: c.owner.sign_in!.session_id, person: c.owner.row_id, issuedAt: c.owner.sign_in!.authenticated_at, expiresAt: c.owner.sign_in!.expires_at,
   }]))
   const ended = await endedSessionIds([...sessions.values()])
-  for (const client of open) if (ended.has(client.user.sign_in!.session_id)) closeSignedOut(client)
+  for (const client of open) if (ended.has(client.owner.sign_in!.session_id)) closeSignedOut(client)
+  await recheckViewAsSockets(open.filter((c) => !ended.has(c.owner.sign_in!.session_id)))
+}
+
+/**
+ * #1222: a socket serves the identity it was opened with. Once its session
+ * views as someone else, or stops viewing, or may no longer view that person,
+ * it is closed, and the page's reconnect opens one for whom it shows now.
+ */
+async function recheckViewAsSockets(open: Client[]): Promise<void> {
+  if (!open.length) return
+  const live = new Map((await sql`select session_id, person from view_as_session
+    where session_id in ${sql(open.map((c) => c.owner.sign_in!.session_id))} and ended_at is null and expires_at > now()`)
+    .map((r) => [String(r.session_id), String(r.person)]))
+  for (const client of open) {
+    const now = live.get(client.owner.sign_in!.session_id)
+    const stillAllowed = !client.viewing || (now === client.viewing && (await activeViewAs(client.owner, { told: false }).catch(() => null))?.as.person === client.viewing)
+    if (now !== client.viewing || !stillAllowed) closeViewAsClient(client)
+  }
 }
 
 // Attach a WebSocket server to the shared HTTP server. Clients connect to
@@ -272,14 +321,19 @@ async function authenticate(socket: WebSocket, cookie: string | undefined): Prom
     // so the HttpOnly `sid` cookie is already on it — and a `?token=` in the
     // socket URL lands in proxy logs like any other. A cross-site handshake
     // carries no SameSite=Lax cookie, so this closes that door too.
-    const user = await resolveToken(credentialFromCookieHeader(cookie))
+    const signedIn = await resolveToken(credentialFromCookieHeader(cookie))
+    // #1222: while viewing as someone, live updates follow what that person may read. Starting,
+    // switching and leaving View as reload the page, so each socket serves one identity. The
+    // session (and so sign-out) stays the tester's.
+    const viewing = await activeViewAs(signedIn, { told: false }).catch(() => null)
+    const user = viewing?.user ?? signedIn
     // Closed while the token was being checked: never register it.
     if (socket.readyState !== socket.OPEN) return null
-    const client: Client = { socket, user, channels: new Set() }
+    const client: Client = { socket, user, owner: signedIn, ...(viewing ? { viewing: viewing.as.person } : {}), channels: new Set() }
     clients.add(client)
     // #411: signed out while this upgrade was between its token check and
     // here — the sign-out's own sweep could not see it yet.
-    if (revokedHere(user.sign_in?.session_id)) {
+    if (revokedHere(signedIn.sign_in?.session_id)) {
       closeSignedOut(client)
       return null
     }

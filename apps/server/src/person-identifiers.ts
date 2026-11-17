@@ -4,6 +4,7 @@
 // came from and whether it is verified. `person_identifier` is written only
 // here — never through the generic row API.
 import { sql, type Sql, type TxSql } from './db'
+import { viewingAs } from './view-as-context'
 import { AppError } from './errors'
 import { logActivity } from './audit'
 import { getRoles, hasPermission, isPrivileged, permissionScope } from './permissions'
@@ -116,6 +117,8 @@ async function sourceFrozen(system: IdentifierSystemRow, db: Db = sql): Promise<
  *  System Manager's hand entry in a source-fed system while its source is
  *  frozen: unverified, with the reason written down). Never echoes a value. */
 async function assertMayEdit(actor: string, system: IdentifierSystemRow, person: string): Promise<{ verified: boolean; noteRequired?: boolean }> {
+  // #1222: while viewing as someone, identifiers offer no change.
+  if (viewingAs()) throw new AppError('PermissionError', 'Nothing is changed while viewing as someone')
   const roles = await getRoles(actor)
   const manager = actor === 'Administrator' || roles.includes('System Manager')
   switch (system.edited_by) {

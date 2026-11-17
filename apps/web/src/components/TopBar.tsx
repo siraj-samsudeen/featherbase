@@ -13,6 +13,7 @@ import { useI18n } from '../lib/i18n'
 import { BarControls, useBarControls } from './BarControls'
 import { AppSwitcher, useOpenAdmin } from './AppSwitcher'
 import { Logo } from './Logo'
+import { ViewAsBanner, ViewAsButton } from './ViewAs'
 import { RecordLink, TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
 import { CircleHelp, List, Menu, Monitor, Moon, Sun, type LucideIcon } from '@featherbase/shop-floor'
 import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, listenForSidebarKeys, useSidebar, useSidebarSlots } from '../lib/sidebar-collapsed'
@@ -250,6 +251,8 @@ export function TopBar({
     return (
       <>
         <PreviewBanner />
+        {/* #1222: who is being viewed, on every page, while a tester views as someone. */}
+        <ViewAsBanner />
         {/* The menu button is for the phone drawer only (md:hidden); with no
             pickers the whole strip is gone from a wide window. */}
         <header
@@ -263,6 +266,8 @@ export function TopBar({
           <div className={rail ? 'flex flex-col items-center gap-1 px-2 pb-2 pt-3' : 'flex flex-col gap-2 px-2 pb-2 pt-3'} data-testid="sidebar-top">
             <div className={rail ? 'contents' : 'flex min-w-0 items-center gap-1'}>
               <div className={rail ? 'contents' : 'min-w-0 flex-1'}>{switcher}</div>
+              {/* #1222: View as, an action, at the top beside the bell (Ctrl+Shift+K everywhere). */}
+              {caps && <ViewAsButton compact place={rail ? 'rail' : 'sidebar'} />}
               {!rail && caps && beforeRight}
             </div>
             {caps && command}
@@ -285,6 +290,8 @@ export function TopBar({
   return (
     <>
       <PreviewBanner />
+      {/* #1222: who is being viewed, on every page, while a tester views as someone. */}
+      <ViewAsBanner />
       <header
         // Where the bar draws an app's controls (on the app's address, or over
         // the app's own page) it frames the phone list of a declared control.
@@ -309,6 +316,7 @@ export function TopBar({
             <>
               {beforeRight}
               {offerAdmin && !isPhone && <OpenAdminButton />}
+              <ViewAsButton compact={isPhone} />
               {!isPhone && <ThemeToggle />}
               <AccountMenu inMenu={isPhone ? { offerAdmin } : undefined} />
             </>

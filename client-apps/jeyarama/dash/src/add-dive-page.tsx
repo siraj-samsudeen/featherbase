@@ -124,7 +124,7 @@ function DiveTable({ dives, failed, unreachable, onRetry, search, onSearch, onCh
                               : <ReachPill dive={dive} onRetry={onRetry} />}
                           </td>
                           <td className="py-2 pe-1 text-end">
-                            {addable && <Button variant="quiet" className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={event => { event.stopPropagation(); onChoose(dive) }} data-testid="dive-choose">Add</Button>}
+                            {addable && <Button data-action variant="quiet" className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={event => { event.stopPropagation(); onChoose(dive) }} data-testid="dive-choose">Add</Button>}
                           </td>
                         </tr>
                         )
@@ -170,7 +170,7 @@ function Confirm({ dive, onAdded, onRemoved, onCancel }: { dive: DiveChoice; onA
     try { await navigator.clipboard.writeText(note) } catch { /* the note stays on screen to copy by hand */ }
     setCopied(true)
   }
-  const addButton = <Button variant="primary" loading={busy} disabled={!ready} onClick={() => void add()} data-testid="dive-add">Add report</Button>
+  const addButton = <Button data-action variant="primary" loading={busy} disabled={!ready} onClick={() => void add()} data-testid="dive-add">Add report</Button>
   if (dive.in_dash) return (
     <div className="flex max-w-[880px] flex-col gap-4">
       <h1 className="fd-title">{dive.title}</h1>
@@ -298,10 +298,10 @@ function InDash({ dive, onRemoved }: { dive: DiveChoice; onRemoved: (name: strin
         {confirming ? (
           <div className="flex flex-wrap items-center gap-2 rounded-control border border-negative p-3" data-testid="remove-report-confirm">
             <span className="text-sm">Remove {dive.in_dash} from Dash? Everyone given it stops seeing it, and it leaves any bundle. Its history is kept, and the Dive stays in MotherDuck.</span>
-            <Button variant="danger" loading={busy} onClick={() => void remove()} data-testid="remove-report-yes">Remove the report</Button>
+            <Button data-action variant="danger" loading={busy} onClick={() => void remove()} data-testid="remove-report-yes">Remove the report</Button>
             <Button variant="quiet" disabled={busy} onClick={() => setConfirming(false)}>Cancel</Button>
           </div>
-        ) : <div><Button variant="quiet" onClick={() => setConfirming(true)} data-testid="remove-report">Remove this report</Button></div>}
+        ) : <div><Button data-action variant="quiet" onClick={() => setConfirming(true)} data-testid="remove-report">Remove this report</Button></div>}
       </div>
     </Card>
   )

@@ -43,7 +43,7 @@ function MoveRow({ sub, region, here, buyerSections, waiting, onDone }: { sub: R
                 <option value="">{here ? 'Move to…' : 'Put in…'}</option>
                 {choices.map(d => <option key={d.id} value={d.id}>{d.name}{d.buyer ? ` (${d.buyer.name})` : ' (no buyer yet)'}</option>)}
               </Select>
-              <Button disabled={!to || busy} onClick={() => void move()} data-testid="move-buyer-subcategory">{here ? 'Move' : 'Put in'}</Button>
+              <Button data-action disabled={!to || busy} onClick={() => void move()} data-testid="move-buyer-subcategory">{here ? 'Move' : 'Put in'}</Button>
             </span>
           )}
       </td>
@@ -120,15 +120,15 @@ function DecideCard({ move, onDecided }: { move: BuyerMoveToDecide; onDecided: (
           {move.from && <> from <RecordLink table={RECORD.buyerSection} id={move.from_id}>{move.from}</RecordLink></>}
           {move.from ? ' to ' : ' into '}<RecordLink table={RECORD.buyerSection} id={move.to_id}>{move.to}</RecordLink>
           {' '}<span className="fd-muted font-normal">· <RecordLink table={RECORD.region} id={move.region}>{move.region}</RecordLink></span></p>
-        <p className="fd-muted text-sm">{move.applied ? `Already in use. Keep it, or undo it.` : `Asked on ${fmtDate(move.asked_on)}. Keeping it changes who buys ${move.subcategory_name} from today.`}</p>
+        <p className="fd-muted text-sm">{move.applied ? <>Already in use.<span data-action-hint> Keep it, or undo it.</span></> : `Asked on ${fmtDate(move.asked_on)}. Keeping it changes who buys ${move.subcategory_name} from today.`}</p>
         {rejecting && <Field label={move.applied ? 'Reason' : 'Why not?'}><TextInput value={reason} onChange={event => setReason(event.target.value)} data-testid="buyer-reject-reason" /></Field>}
         {error && <Notice tone="negative"><span data-testid="buyer-decide-refused">{error}</span></Notice>}
         <div className="flex flex-wrap gap-2">
           {!rejecting ? <>
-            <Button variant="primary" disabled={busy} onClick={() => void decide({ decision: 'approve' })} data-testid="buyer-keep">Keep it</Button>
-            <Button variant="quiet" disabled={busy} onClick={() => setRejecting(true)}>{move.applied ? 'Undo it' : 'Turn down'}</Button>
+            <Button data-action variant="primary" disabled={busy} onClick={() => void decide({ decision: 'approve' })} data-testid="buyer-keep">Keep it</Button>
+            <Button data-action variant="quiet" disabled={busy} onClick={() => setRejecting(true)}>{move.applied ? 'Undo it' : 'Turn down'}</Button>
           </> : <>
-            <Button variant="danger" disabled={busy || !reason.trim()} onClick={() => void decide({ decision: 'reject', reason: reason.trim() })} data-testid="buyer-confirm-reject">{move.applied ? 'Undo it' : 'Turn it down'}</Button>
+            <Button data-action variant="danger" disabled={busy || !reason.trim()} onClick={() => void decide({ decision: 'reject', reason: reason.trim() })} data-testid="buyer-confirm-reject">{move.applied ? 'Undo it' : 'Turn it down'}</Button>
             <Button variant="quiet" disabled={busy} onClick={() => setRejecting(false)}>Cancel</Button>
           </>}
         </div>

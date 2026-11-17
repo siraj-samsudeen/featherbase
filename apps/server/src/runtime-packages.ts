@@ -153,6 +153,13 @@ const manifestSchema = z.object({
   bar: z.array(barControl).optional(),
   // #1046: the app's own gate check and who approves access to it.
   access: accessDeclaration.optional(),
+  // #1222: View as. `role` is the app's own role whose holders may view as
+  // another person, read-only; `people` is the read that finds and describes
+  // people for the picker (payload { q } or { persons }), run as the tester.
+  viewAs: z.object({
+    role: z.string().min(1),
+    people: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/),
+  }).strict().optional(),
   tabs: tabsDeclaration.optional(),
   // #941 (ADR 0019): the app's accent, one of the platform's named set. Any
   // text is accepted here so the app is still found; installing (or upgrading
@@ -447,6 +454,10 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     throw new Error(`The app's gate is its read ${manifest.access.gate}, which is not one of the app's reads`)
   const strangers = (manifest.access?.approvers ?? []).filter(role => !(manifest.roles ?? []).includes(role))
   if (strangers.length) throw new Error(`The app's access approvers must be its own roles: ${strangers.join(', ')}`)
+  if (manifest.viewAs && !(manifest.roles ?? []).includes(manifest.viewAs.role))
+    throw new Error(`The app's View as role must be one of its own roles: ${manifest.viewAs.role}`)
+  if (manifest.viewAs && !Object.hasOwn(readOperations, manifest.viewAs.people))
+    throw new Error(`The app's View as people are found by its read ${manifest.viewAs.people}, which is not one of the app's reads`)
   // #666: an operation needs only secrets the app declares.
   const declaredSecrets = new Set(secretEntries(manifest.secrets).map(entry => entry.name))
   for (const [kind, operations] of [['read', readOperations], ['action', actionOperations]] as const)
@@ -996,6 +1007,12 @@ export function accessGrantApps(): { app: string; title: string; read: string; a
     const grant = pkg.manifest.access?.grant
     return grant ? [{ app: pkg.name, ...grant }] : []
   })
+}
+
+/** #1222: the apps loaded here that let a role view as another person, and
+ *  the read each finds people with. */
+export function viewAsApps(): { app: string; role: string; people: string }[] {
+  return [...packages.values()].flatMap((pkg) => pkg.manifest.viewAs ? [{ app: pkg.name, ...pkg.manifest.viewAs }] : [])
 }
 
 /** #1173: run an app's declared grant read or action as `user`, as the app's

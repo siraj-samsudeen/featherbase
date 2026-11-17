@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { sql, type Sql, type TxSql } from './db'
+import { viewingAs } from './view-as-context'
 import { PLATFORM_SCHEMA } from './platform-schema'
 
 // PLAT-007: append-only audit logs. Written with direct inserts (not saveDoc)
@@ -26,6 +27,12 @@ export async function logActivity(
   operation: string,
   extra: { full_name?: string | null; ip_address?: string | null; sign_in_method?: string | null; test_mode?: boolean } = {},
 ): Promise<void> {
+  // #1222: what is done while viewing as someone is the tester's doing, marked with whom.
+  const as = viewingAs()
+  if (as && user === as.person) {
+    user = as.tester
+    operation = `${operation} (viewing as ${as.person})`.slice(0, 140)
+  }
   if (!(await tableExists('activity_log'))) return
   const now = new Date()
   await sql`insert into activity_log ${sql({
@@ -49,6 +56,12 @@ export async function logAccess(
   ref: { table?: string; row_id?: string; method?: string; scope?: string; required?: boolean } = {},
   db: Sql | TxSql = sql,
 ): Promise<void> {
+  // #1222: whatever is read while viewing as someone is the tester's doing.
+  const as = viewingAs()
+  if (as && user === as.person) {
+    user = as.tester
+    ref = { ...ref, scope: `viewing as ${as.person}${ref.scope ? `; ${ref.scope}` : ''}`.slice(0, 140) }
+  }
   if (!(await tableExists('access_log', db))) {
     if (ref.required) throw new Error('Required access audit is unavailable')
     return
