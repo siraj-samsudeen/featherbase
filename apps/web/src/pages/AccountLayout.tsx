@@ -23,7 +23,7 @@ export function AccountLayout() {
 function AccountFrame() {
   const kind = useShellKind()
   const onAppAddress = useOnAppAddress()
-  if (kind === 'admin' && onAppAddress === false) return <AdminShell wide={false} account />
+  if (kind === 'admin' && onAppAddress === false) return <AdminShell fillHeight={false} account />
   // The page waits for the frame: swapping frames under it would remount it.
   const deciding = kind === 'loading' || onAppAddress === undefined
   return (

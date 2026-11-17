@@ -124,7 +124,7 @@ export function AllTablesPage() {
         {tables !== undefined && words && !appModules.length && !systemTables.length && !archivedTables.length && (
           <p className="px-2 py-1 text-sm text-ink-muted" data-testid="all-tables-none">No table matches "{find.trim()}".</p>
         )}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(18rem,1fr))] gap-4">
           {appModules.map((mod) => (
             <section key={mod} aria-label={mod} className={MODULE_CARD}>
               <h2 className={heading}>{sentence(mod)}</h2>

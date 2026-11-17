@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { GROUP_TONE, RAIL_ROW, ROW_IDLE, ROW_SELECTED, RailFold, RailMenuItem, RailRule, SIDEBAR_HEADING, SidebarRailContext, useSidebarRail, type GroupTone } from '../components/SidebarRail'
+import { GROUP_TONE, RAIL_ROW, ROW_IDLE, ROW_SELECTED, RailFold, RailMenuItem, RailRule, SIDEBAR_HEADING, SidebarRailContext, TableTile, useSidebarRail, type GroupTone } from '../components/SidebarRail'
 import { attachRailTips, railMark, sidebarWords } from '../lib/sidebar-rail'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -27,7 +27,6 @@ import { ThemeChoiceProvider, useThemeChoice } from '../lib/theme-choice'
 import { searchHitKind } from '../lib/search-hit'
 import { ActionDisclosure } from '../components/ActionDisclosure'
 import { TopBar } from '../components/TopBar'
-import { isOpaqueId } from '../lib/people'
 import { EntryLabel, useLiveDestinations } from '../lib/row-titles'
 import { metaQuery, type TableMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
@@ -83,16 +82,16 @@ connectEventSink({
 // home page sidebar. All Tables render inside <Outlet/>.
 // #410: pick the layout from the server-computed capabilities BEFORE mounting
 // the Admin shell, so a person who cannot use it never fires its API calls.
-export function AdminLayout({ wide, fullWidth = false }: { wide: boolean; fullWidth?: boolean }) {
+export function AdminLayout({ fillHeight }: { fillHeight: boolean }) {
   // #489: the signed-in person's theme choice outlives every toggle on the page.
   return (
     <ThemeChoiceProvider>
-      <AdminLayoutForKind wide={wide} fullWidth={fullWidth} />
+      <AdminLayoutForKind fillHeight={fillHeight} />
     </ThemeChoiceProvider>
   )
 }
 
-function AdminLayoutForKind({ wide, fullWidth }: { wide: boolean; fullWidth: boolean }) {
+function AdminLayoutForKind({ fillHeight }: { fillHeight: boolean }) {
   const kind = useShellKind()
   // #489 item 10: while whoami loads, the bar's frame and name are drawn and
   // its right side stays empty — no flash of the wrong items.
@@ -113,10 +112,10 @@ function AdminLayoutForKind({ wide, fullWidth }: { wide: boolean; fullWidth: boo
   // A report reader has no Admin page left: their sign-in methods are an
   // account page now (#489), so every Admin address sends them to the report.
   if (kind === 'report-only') return <Navigate to={REPORT_PATH} replace />
-  return <AdminShell wide={wide} fullWidth={fullWidth} />
+  return <AdminShell fillHeight={fillHeight} />
 }
 
-export function AdminShell({ wide, fullWidth = false, account = false }: { wide: boolean; fullWidth?: boolean; account?: boolean }) {
+export function AdminShell({ fillHeight, account = false }: { fillHeight: boolean; account?: boolean }) {
   const navigate = useNavigate()
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -911,10 +910,10 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
         </SidebarAside>
 
         {/* Page canvas */}
-        {/* UX standard §3.1 (#1242): content starts 32px from the sidebar, left-aligned,
-            so every page's title sits at the same x; lists up to 1280, reading pages 880. */}
-        <main className={`${PAGE_PANEL}${wide ? ' flex flex-col' : ''}`} data-testid="page-panel">
-          <div className={wide ? 'flex min-h-0 w-full flex-1 flex-col' : fullWidth ? 'w-full' : 'max-w-[880px] has-data-[pane=right]:max-w-none'}>
+        {/* #1253 (Siraj, 17-Nov): the shell sets the page's width, and every page fills
+            the white panel; no page caps itself. Running text keeps its own measure. */}
+        <main className={`${PAGE_PANEL}${fillHeight ? ' flex flex-col' : ''}`} data-testid="page-panel">
+          <div className={fillHeight ? 'flex min-h-0 w-full flex-1 flex-col' : 'w-full'} data-testid="page-content">
             <Outlet />
           </div>
         </main>
@@ -944,6 +943,9 @@ interface SidebarItem {
 /** A labelled group of sidebar links: a muted sentence-case heading with a
  *  small icon (a heading, not a link), then each link with its grey icon.
  *  Renders nothing — heading included — when no item is visible. */
+/** #1253 (style A): a one-line sidebar item: its tile, its name, its detail on the right. */
+const SIDEBAR_LINE = 'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm'
+
 /** Recently opened holds at most this many items, Frequent included. */
 const SIDEBAR_RECENT_CAP = 5
 
@@ -1180,11 +1182,12 @@ function SidebarSavedViews({ onOpen }: { onOpen: (href: string) => void }) {
               onOpen(href)
             }}
             data-testid="sidebar-saved-view"
-            title={`${view.label} — ${view.table}${view.mine ? '' : ' (shared with you)'}`}
-            className={touchRowClasses('flex w-full flex-col justify-center rounded-md px-2 py-1 text-left hover:bg-border/50')}
+            // #1253 (style A): one line; the table and who it is shared with live in the tooltip.
+            title={`${view.table} table${view.mine ? '' : ' · Shared with you'}`}
+            className={touchRowClasses(`${SIDEBAR_LINE} text-ink hover:bg-border/50`)}
           >
-            <span className="truncate text-sm text-ink">{view.label}</span>
-            <span className="truncate text-xs text-ink-subtle">{view.table}{view.mine ? '' : ' · shared'}</span>
+            <TableTile name={view.table} />
+            <span className="min-w-0 flex-1 truncate">{view.label}</span>
           </a>
         )
       })}
@@ -1202,6 +1205,18 @@ function SidebarRecentRow({
   onOpen: (entry: RecentEntry) => void
 }) {
   const shown = displayEntry(entry)
+  // #1253 (Siraj's style A): one line. The table's tile and the row's name; the
+  // time (Recently Opened) or the count (Frequent) on the right; the table in the tooltip.
+  // A row's Table comes from its key (row:<Table>/<id>); a list or a page is its own name.
+  const table = shown.row?.table ?? (entry.key.startsWith('row:') ? entry.key.slice(4, entry.key.indexOf('/')) : shown.label)
+  // A filtered list says its filter in the tooltip (the second line it had before).
+  const what = !shown.row && shown.sub ? `${table} (${shown.sub})` : table
+  const last = entry.visits[entry.visits.length - 1] ?? 0
+  const when = ago(last)
+  const meta = frequent ? `${entry.visits.length}×` : when
+  const title = frequent
+    ? `${what} · opened ${entry.visits.length} times`
+    : `${what} · opened ${when === 'now' ? 'just now' : `${when} ago`}`
   return (
     <a
       href={entry.path}
@@ -1212,19 +1227,13 @@ function SidebarRecentRow({
         onOpen(entry)
       }}
       data-testid={frequent ? 'sidebar-frequent' : 'sidebar-recent'}
-      title={shown.row || isOpaqueId(shown.label) ? shown.sub : shown.sub ? `${shown.label} — ${shown.sub}` : shown.label}
-      className={touchRowClasses('flex w-full flex-col justify-center rounded-md px-2 py-1 text-left hover:bg-border/50')}
+      title={title}
+      className={touchRowClasses(`${SIDEBAR_LINE} text-ink hover:bg-border/50`)}
     >
-      <span className="flex min-w-0 items-center gap-1.5 text-sm text-ink">
-        <KindIcon kind={shown.kind} tone="grey" />
-        {frequent && <span className="text-caution">★</span>}
-        <span className="truncate">
-          <EntryLabel entry={entry} />
-        </span>
-      </span>
-      {shown.sub && (
-        <span className="block truncate pl-5 text-xs text-ink-subtle">{shown.sub}</span>
-      )}
+      <TableTile name={table} />
+      <span className="min-w-0 flex-1 truncate"><EntryLabel entry={entry} /></span>
+      {frequent && <span aria-hidden className={`text-xs ${GROUP_TONE.amber}`}>★</span>}
+      <span className="shrink-0 text-xs tabular-nums text-ink-subtle">{meta}</span>
     </a>
   )
 }

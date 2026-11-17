@@ -127,7 +127,7 @@ test('Home headings are sentence case, not capitals', async ({ admin }) => {
   expect(within(strip).getByText('Last view')).not.toHaveClass('uppercase')
 })
 
-test('the sidebar heads its list "Recently opened", and each item leads with a grey kind icon', async ({ admin }) => {
+test('the sidebar heads its list "Recently opened", and each item leads with its table\'s coloured tile', async ({ admin }) => {
   rememberOldExplore('Administrator', Date.now() - 1000)
   await renderApp('/featherbase/admin', admin)
   const recent = await screen.findByTestId('sidebar-recent', {}, SIDEBAR_WAIT)
@@ -135,8 +135,10 @@ test('the sidebar heads its list "Recently opened", and each item leads with a g
   expect(heading.tagName).toBe('H2')
   expect(heading).toHaveTextContent(/^Recently Opened$/)
   expect(heading.closest('a')).toBeNull()
-  const icon = within(recent).getByRole('img', { name: 'Page' })
-  expect(icon).toHaveClass('text-ink-subtle')
+  // #1253 (Siraj's style A): a tile with the initials, in the table's own colour; the table in the tooltip.
+  const tile = within(recent).getByTestId('table-tile')
+  expect(tile.className).toMatch(/\btext-group-(blue|teal|rose|amber|violet|green|indigo)\b/)
+  expect(recent.getAttribute('title')).toMatch(/ · opened /)
 })
 
 // The sidebar's lower half: two labelled groups, headed like "Recently opened".
