@@ -66,9 +66,18 @@ test("the sidebar's top and foot hold the switcher, the command field and the ac
   expect(helpMenu.className).not.toMatch(/\bright-0\b/)
   expect(helpMenu.parentElement!.className).not.toMatch(/\brelative\b/)
   expect(foot.className).toMatch(/\brelative\b/)
+  // Another key leaves it open; Escape closes it and gives the focus back.
+  fireEvent.keyDown(document, { key: 'a' })
+  expect(screen.getByTestId('help-button-menu')).toBeInTheDocument()
   await userEvent.keyboard('{Escape}')
   expect(screen.queryByTestId('help-button-menu')).not.toBeInTheDocument()
   expect(help).toHaveFocus()
+  // A press outside the menu closes it too; a press inside does not.
+  await userEvent.click(within(foot).getByTestId('theme-button'))
+  fireEvent.mouseDown(screen.getByTestId('theme-button-menu'))
+  expect(screen.getByTestId('theme-button-menu')).toBeInTheDocument()
+  fireEvent.mouseDown(document.body)
+  await waitFor(() => expect(screen.queryByTestId('theme-button-menu')).not.toBeInTheDocument())
 
   // The field opens the command bar, its input focused.
   await userEvent.click(field)
