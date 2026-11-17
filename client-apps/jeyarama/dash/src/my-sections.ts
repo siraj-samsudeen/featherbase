@@ -155,8 +155,8 @@ function approversFrom(manager: Row | undefined) {
  *  from-section's Team Leaders and theirs, are read once, and the platform is asked once per distinct
  *  maker and approvers. Reading them per proposal cost about 14 queries each: 5 s on production. */
 export async function approverLookup(ctx: ReadContext, jobs: (Row | undefined)[], fromSections: string[], today: string) {
-  const sections = unique(fromSections.filter(Boolean))
-  const holders = sections.length ? (await all(ctx, T.job, JOB_FIELDS, [['section', 'in', sections]])).filter(job => inForce(job, today) && text(job.job) === 'Team Leader') : []
+  // The same holders a decision reads under its locks.
+  const holders = await holdersOf(ctx, unique(fromSections.filter(Boolean)), today)
   const ids = unique([...jobs, ...holders].map(job => exact(job?.reports_to)).filter(Boolean))
   const managers = ids.length ? byId(await all(ctx, T.employee, ['name', EMPLOYEE_STATUS, 'person'], [['row_id', 'in', ids]])) : new Map<string, Row>()
   const of = (job: Row | undefined) => approversFrom(managers.get(exact(job?.reports_to))).approvers
@@ -206,7 +206,8 @@ export function fewNames(names: (string | undefined)[]): string | null {
 
 async function holdersOf(ctx: BaseContext, sections: string[], today: string): Promise<Row[]> {
   if (!sections.length) return []
-  return (await list(ctx, T.job, JOB_FIELDS, [['section', 'in', sections]])).filter(job => inForce(job, today) && text(job.job) === 'Team Leader')
+  // Every page (#1254, Codex): a section's past and Staff jobs must never push its Team Leader past the first 500.
+  return (await all(ctx, T.job, JOB_FIELDS, [['section', 'in', sections]])).filter(job => inForce(job, today) && text(job.job) === 'Team Leader')
 }
 export async function employeeNames(ctx: BaseContext, ids: string[]): Promise<Map<string, string>> {
   const wanted = unique(ids)
