@@ -263,7 +263,31 @@ async function reachInWords(ctx: ScopedContext) {
 type Plain = { state: 'ready'; no_quick_view: true; heading: Heading; period_start?: string; period_end?: string }
 
 /** A fresh MotherDuck embed session for a report's Dive, opening its latest saved version, with only filters in its state. */
-async function openDive(ctx: ScopedContext, report: ReportRecord | null) {
+/** What `embed_session` reads in the transaction: the report, and every Subcategory code when its Dive reads `reach`. */
+interface PreparedDive { report: ReportRecord; everyCode?: string[] }
+
+/** The report's Dive reads `reach`: each store's subcategories, which #1269 collapses to code prefixes. */
+const readsReach = (report: ReportRecord) => report.pickers_in_dive || report.filter_shape === 'Stores and subcategories'
+
+/**
+ * #1269: every Subcategory code, of any type, or none at all. A list cut short would make a prefix look
+ * wholly held and widen the reach, so a failed page drops the whole read and nothing collapses.
+ */
+async function everySubcategoryCode(ctx: ScopedContext): Promise<string[] | undefined> {
+  const codes: string[] = []
+  try {
+    for (;;) {
+      const page = await ctx.baseTables.list('Subcategory', { fields: ['row_id'], order_by: 'row_id asc', limit_start: codes.length, limit_page_length: 500 })
+      codes.push(...page.map(row => String(row.row_id)))
+      if (page.length < 500) return codes
+    }
+  } catch { return undefined }
+}
+
+/** MotherDuck's answer to an embed request too large to take: the page says so, not "couldn't open". */
+const TOO_LARGE = 413
+
+async function openDive(ctx: ScopedContext, report: ReportRecord | null, everyCode?: readonly string[]) {
   if (!report) return { refused: 'no_access' }
   const { embed_service_account: account } = ctx.settings
   // #1139: its own token. The warehouse token (MOTHERDUCK_TOKEN) is a read-only account's, which
@@ -274,10 +298,13 @@ async function openDive(ctx: ScopedContext, report: ReportRecord | null) {
   const month = chosenMonth(ctx)
   const period = periodOf(istToday(), month)
   const origin = appOrigin((ctx.payload as { app_origin?: unknown } | undefined)?.app_origin)
-  const filters = diveFilters(report, placesOf(ctx), { store, month, periodEnd: period.period_end, appOrigin: origin })
+  const filters = diveFilters(report, placesOf(ctx), { store, month, periodEnd: period.period_end, appOrigin: origin, everyCode })
   if ('refused' in filters) return { refused: filters.refused }
   const body = JSON.stringify({ username: account, initial_state: filters.state })
+  // #1269: the request's size, for whoever runs the instance: the reach is what grows.
+  const bytes = Buffer.byteLength(body)
   let failure: string
+  let tooLarge = false
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), EMBED_API_TIMEOUT_MS)
   try {
@@ -289,10 +316,12 @@ async function openDive(ctx: ScopedContext, report: ReportRecord | null) {
     if (response.ok && typeof answered?.session === 'string') {
       // `ready_signal`: the Dive posts { type: 'dash:dive-ready' } once it has drawn, and the
       // page waits for it rather than trusting the frame's load event.
+      console.info(JSON.stringify({ event: 'dash_embed_session_opened', person: ctx.user, bytes }))
       return { frame: `${EMBED_ORIGIN}/sandbox/#session=${encodeURIComponent(answered.session)}`,
         ...(report.ready_signal ? { ready_signal: true } : {}) }
     }
     failure = `embed API answered HTTP ${response.status}`
+    tooLarge = response.status === TOO_LARGE
   } catch (error) {
     failure = abort.signal.aborted ? `embed API gave no answer in ${EMBED_API_TIMEOUT_MS} ms`
       : `embed API unreachable: ${(error as Error)?.constructor?.name ?? 'error'}`
@@ -300,8 +329,8 @@ async function openDive(ctx: ScopedContext, report: ReportRecord | null) {
     clearTimeout(timer)
   }
   // For whoever runs the instance: the person's opaque id and the status, never the token or the upstream text.
-  console.error(JSON.stringify({ event: 'dash_embed_session_failed', person: ctx.user, message: failure }))
-  return { unreachable: true }
+  console.error(JSON.stringify({ event: 'dash_embed_session_failed', person: ctx.user, message: failure, bytes }))
+  return tooLarge ? { too_large: true } : { unreachable: true }
 }
 
 /** Your sections and its approvals (#975), and giving reports (#1046). */
@@ -450,9 +479,16 @@ export const reads = {
    * (outbound: it runs after the platform's transaction has closed, so `prepare` reads the row). The
    * Dive's state carries only filters.
    */
-  embed_session: Object.assign(async (context: ReadContext) => openDive(context as ScopedContext, (context as ScopedContext).prepared as ReportRecord | null), {
-    /** In the transaction: the report's row, which the handler can no longer read. */
-    prepare: async (context: ReadContext) => (await chosenReport(context as ScopedContext)) ?? null,
+  embed_session: Object.assign(async (context: ReadContext) => {
+    const prepared = (context as ScopedContext).prepared as PreparedDive | null
+    return openDive(context as ScopedContext, prepared?.report ?? null, prepared?.everyCode)
+  }, {
+    /** In the transaction: the report's row, and the codes its reach collapses against, which the handler can no longer read. */
+    prepare: async (context: ReadContext): Promise<PreparedDive | null> => {
+      const report = await chosenReport(context as ScopedContext)
+      if (!report) return null
+      return readsReach(report) ? { report, everyCode: await everySubcategoryCode(context as ScopedContext) } : { report }
+    },
   }),
 
   /**
