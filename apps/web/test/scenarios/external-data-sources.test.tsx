@@ -22,6 +22,7 @@ import { addStandinTable, buildStandin, changeStandin, STANDIN_TOKENS } from 'se
 import { EXPLORE_FLOOR, EXPLORE_STORE, dropExploreSource, exploreSource } from 'server/test/explore-source'
 import { scenarioFor } from 'server/test/scenario'
 import { test, expect, renderApp, onScreen, byTestId } from '../pg-test'
+import { sourceWords } from '../../src/lib/sidebar-rail'
 
 const scenario = scenarioFor(test, 'external-data-sources')
 const WAIT = { timeout: 15_000 }
@@ -212,8 +213,9 @@ async function openConnect(admin: TestClient) {
   await waitFor(() => expect(screen.getByTestId('connect-result').textContent).toMatch(/Connected|refused|cannot|could not|not set/), WAIT)
 }
 const connectResult = () => screen.getByTestId('connect-result').textContent ?? ''
+// #1248: the sidebar shows a source's and a database's stored name in words ("sales" reads "Sales").
 const sourceBlock = (source: string) => within(screen.getByTestId('sidebar-group-sources')).getAllByTestId('sidebar-source')
-  .find((block) => within(block).queryAllByTestId('sidebar-source-link').some((link) => link.textContent === source))
+  .find((block) => within(block).queryAllByTestId('sidebar-source-link').some((link) => link.textContent === sourceWords(source)))
 async function openAdmin(as: TestClient) {
   await visit('/featherbase/admin', as)
   await screen.findByTestId('sidebar-group-data', {}, WAIT)
@@ -374,7 +376,7 @@ describe('external-data-sources', () => {
       await openAdmin(admin)
       await databasesUnder(source)
       const block = sourceBlock(source)!
-      await userEvent.click(within(block).getAllByTestId('sidebar-source-database').find((d) => d.textContent === 'sales')!)
+      await userEvent.click(within(block).getAllByTestId('sidebar-source-database').find((d) => d.textContent === sourceWords('sales'))!)
       await screen.findByTestId('warehouse-browser', {}, WAIT)
       await pickSchema('main')
       await pickTable('stores')
@@ -637,7 +639,7 @@ describe('external-data-sources', () => {
     await step('a MotherDuck source reading the databases "sales" and "stock"', async () => { source = await givenSource(admin, ['sales', 'stock']) })
     await step('the user looks at the sidebar', () => openAdmin(admin))
     await step('it shows the source with "sales" and "stock" under it', async () => {
-      await waitFor(async () => expect(await databasesUnder(source)).toEqual(['sales', 'stock']), WAIT)
+      await waitFor(async () => expect(await databasesUnder(source)).toEqual(['Sales', 'Stock']), WAIT)
     })
   })
 
