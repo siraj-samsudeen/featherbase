@@ -392,18 +392,31 @@ async function clash(method: SignInMethod, what: { subject?: string | null; sign
  *  (a password manager filled in the manager's own address on someone's page).
  *  The refusal says whose it is, by name. Anything that is not an address
  *  (a StyleHR login id) passes: that clash stays per method (clash()). */
-export async function assertAddressFree(user: string, method: string, value: string | null | undefined): Promise<void> {
+export async function assertAddressFree(
+  user: string,
+  method: string,
+  value: string | null | undefined,
+  // Which column the address goes into: a same-method hit on that same column
+  // is a unique-index clash, answered by clash() with the identity it hits.
+  as: 'sign_in_name' | 'pending_email' | 'email',
+  // An edit: the identity being edited, which is never its own clash.
+  edit: { identity?: string } = {},
+  db: Sql = sql,
+): Promise<void> {
   if (!value || !looksLikeEmail(value)) return
   const folded = foldName(value)
-  // A clash within the same method is clash()'s, with the identity it hits.
-  const [held] = await sql`
+  // Every live identity's addresses count, in every column; only a hit on the
+  // same column of the same method is left to its unique index and clash().
+  const [held] = await db`
     select p.row_id, p.full_name, p.username from person p
     where p.row_id <> ${user} and (
       lower(p.email) = ${folded}
       or exists (
         select 1 from sign_in_identity i
-        where i.person_id = p.row_id and i.ended_at is null and i.method <> ${method}
-          and (lower(i.sign_in_name) = ${folded} or lower(i.email) = ${folded} or i.pending_email = ${folded})))
+        where i.person_id = p.row_id and i.ended_at is null and i.id <> ${edit.identity ?? ''}
+          and (lower(i.email) = ${folded}
+            or (lower(i.sign_in_name) = ${folded} and not (i.method = ${method} and ${as} = 'sign_in_name'))
+            or (i.pending_email = ${folded} and not (i.method = ${method} and ${as} = 'pending_email')))))
     limit 1`
   if (!held) return
   throw new AppError(
@@ -439,8 +452,8 @@ export async function linkIdentity(
   if (!subject) throw new AppError('ValidationError', 'Expected { subject }', { subject: 'required' })
   const signInName = input.sign_in_name == null ? null : String(input.sign_in_name).trim() || null
   await assertHumanUser(user)
-  await assertAddressFree(user, method.key, signInName)
-  await assertAddressFree(user, method.key, input.email)
+  await assertAddressFree(user, method.key, signInName, 'sign_in_name')
+  await assertAddressFree(user, method.key, input.email, 'email')
   const [same] = await sql`
     select ${identityFields()} from sign_in_identity where method = ${method.key} and subject = ${subject} and person_id = ${user} and ended_at is null`
   if (same && (same.sign_in_name ?? null) === signInName) return { ...(same as unknown as Identity), created: false }
@@ -476,7 +489,7 @@ export async function inviteGoogle(user: string, email: string, actor: string): 
   const address = normaliseEmail(email)
   if (!address || !looksLikeEmail(address)) throw new AppError('ValidationError', 'Expected { email }', { email: 'a real address' })
   await assertHumanUser(user)
-  await assertAddressFree(user, method.key, address)
+  await assertAddressFree(user, method.key, address, 'pending_email')
   const pending = foldName(address)
   const [same] = await sql`
     select ${identityFields()} from sign_in_identity
@@ -515,6 +528,15 @@ export async function updateIdentity(
       const signInName =
         change.sign_in_name !== undefined ? (change.sign_in_name == null ? null : String(change.sign_in_name).trim() || null) : (locked.sign_in_name as string | null)
       const moving = change.person_id !== undefined && change.person_id !== locked.person_id
+      // #1266: a rename or a move may not hand this person an address that is someone else's.
+      if (moving || signInName !== (locked.sign_in_name ?? null)) {
+        const holder = moving ? change.person_id! : String(locked.person_id)
+        const addresses: [string | null, 'sign_in_name' | 'email' | 'pending_email'][] = moving
+          ? [[signInName, 'sign_in_name'], [locked.email as string | null, 'email'], [locked.pending_email as string | null, 'pending_email']]
+          : [[signInName, 'sign_in_name']]
+        for (const [address, as] of addresses)
+          await assertAddressFree(holder, String(locked.method), address, as, { identity: id }, t)
+      }
       if (moving) {
         // person-resolution D4/D5: a move keeps who held it until when — the
         // old link ends (`moved`) and a new one starts for the new holder;

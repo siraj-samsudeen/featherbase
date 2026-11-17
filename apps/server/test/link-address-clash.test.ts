@@ -4,7 +4,12 @@
 import { expect } from 'vitest'
 import { test } from './pg-test'
 import { expectRefused, makePerson } from './fixtures'
+import { sql } from '../src/db'
+import { getIdentity } from '../src/identities'
 import { configureDelegated, configureGoogle, inviteGoogleRaw } from './identity-fixtures'
+
+const patch = (as: { fetch: (url: string, init: RequestInit) => Promise<Response> }, id: string, body: unknown) =>
+  as.fetch(`/api/identities/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
 
 async function people() {
   const manager = await makePerson({ full_name: 'Meena Manager', email: 'meena@jeyarama.test' })
@@ -47,4 +52,29 @@ test("a person's own address and a plain login id still link", async ({ admin })
   await admin.post(`/api/people/${staff}/identities`, { method: 'google', email: 'mohammad@jeyarama.test', send_invitation_email: false })
   const other = await makePerson({ full_name: 'Plain Login' })
   await admin.post(`/api/people/${other}/identities`, { method: 'stylehr', subject: 'E9004', sign_in_name: 'plainlogin' })
+})
+
+// Codex review: a claimed identity's email is covered by no unique index.
+test("an address held only in another person's live Google sign-in is theirs", async ({ admin }) => {
+  await configureGoogle()
+  const { manager, staff } = await people()
+  await sql`insert into sign_in_identity ${sql({ id: 'uid_1266claimed', person_id: manager, method: 'google', subject: 'g-1266', email: 'meena.google@jeyarama.test', linked_by: 'test' })}`
+  await expectRefused(admin.post(`/api/people/${staff}/identities`, { method: 'google', email: 'Meena.Google@jeyarama.test', send_invitation_email: false }), 409)
+})
+
+// Codex review: a rename or a move goes through the same guard.
+test("renaming a login to another person's address is refused and changes nothing", async ({ admin }) => {
+  await configureDelegated()
+  const { staff } = await people()
+  const link = await admin.post<{ id: string }>(`/api/people/${staff}/identities`, { method: 'stylehr', subject: 'E9010', sign_in_name: 'plain.login' })
+  expect((await patch(admin, link.id, { sign_in_name: 'meena@jeyarama.test' })).status).toBe(409)
+  expect((await getIdentity(link.id)).sign_in_name).toBe('plain.login')
+})
+
+test("moving a person's own invite to someone else is refused and leaves it with them", async ({ admin }) => {
+  await configureGoogle()
+  const { manager, staff } = await people()
+  const invite = await admin.post<{ id: string }>(`/api/people/${manager}/identities`, { method: 'google', email: 'meena@jeyarama.test', send_invitation_email: false })
+  expect((await patch(admin, invite.id, { person_id: staff })).status).toBe(409)
+  expect((await getIdentity(invite.id)).person_id).toBe(manager)
 })
