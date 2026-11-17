@@ -41,6 +41,18 @@ test('signed out, the connect page sends the person to sign in with the whole re
   expect(requestIn(next)).toEqual(request)
 })
 
+test('the request reaches sign-in exactly as the agent sent it, even values that read as numbers', async () => {
+  const { path } = await connectAddress()
+  const url = new URL(path, 'http://localhost')
+  url.searchParams.set('state', '12345678901234567890123')
+  url.searchParams.set('scope', 'true')
+  const sent = `${url.pathname}${url.search}`
+  const { router } = await renderApp(sent, anonymous)
+  await waitFor(() => expect(where(router).pathname).toBe('/featherbase/login'), WAIT)
+  const next = new URLSearchParams(where(router).searchStr).get('next')!
+  expect(requestIn(next)).toEqual(requestIn(sent))
+})
+
 test('a password sign-in comes back to the connect page with the request', async ({ admin, createUser }) => {
   const person = await createUser({ email: 'connect.password@example.com', fullName: 'Password Person' })
   await admin.post('/api/set_password', { user: person.user, password: 'connect-pw-1' })
