@@ -3,8 +3,10 @@ import { createPortal } from 'react-dom'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ACCOUNT_CONNECTED_APPS_PATH, ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, appHref, appTabLinks, type AppTabLink } from 'shared'
-import { SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, signOut } from '../lib/api'
+import { SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, landingPath, signOut } from '../lib/api'
 import { flushPendingEvents } from '../lib/recents'
+import { pageLoad } from '../lib/page-load'
+import { AccountSwitcherSection } from './AccountSwitcherSection'
 import { useBarAddress } from '../lib/bar-address'
 import { useIsPreview, useWhoAmI, type Capabilities, type OpenableApp } from '../lib/session'
 import { THEMES, THEME_LABEL, type Theme } from '../lib/theme'
@@ -482,8 +484,14 @@ function useSignOut() {
     // departing user and re-poisons the cache for the next account in this
     // tab (#101 review). #411: if the server could not end the session, say
     // so and stay signed in rather than pretend it ended.
-    if (!(await signOut())) {
+    const out = await signOut()
+    if (!out.ok) {
       window.alert(SIGN_OUT_INCOMPLETE)
+      return
+    }
+    // #1255 D6: another account is held on this browser; the page continues as it.
+    if (out.next) {
+      pageLoad.assign(out.next.handoff ?? landingPath(out.next))
       return
     }
     clearSession()
@@ -609,6 +617,7 @@ function AccountMenu({ inMenu, inSidebar }: {
               />
             )}
           </div>
+          <AccountSwitcherSection onDone={() => setOpen(false)} />
           {extras && (
             <>
               {extras.offerAdmin && (

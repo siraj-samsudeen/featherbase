@@ -2,6 +2,7 @@ import type { SignInMethodKind } from 'shared'
 import { setViewedPerson, viewedPerson } from './viewing-as'
 import { followDevice } from '@featherbase/shop-floor/theme'
 import { clearVisitJournal } from './recents'
+import { pageLoad } from './page-load'
 // Thin authenticated client for the Featherbase server API.
 
 const TOKEN_KEY = 'fc_token'
@@ -12,6 +13,8 @@ let runtimeSnapshot: { token: string; versions: Promise<string[]> } | undefined
 const PUBLIC_API_PATHS = new Set([
   '/api/login', '/api/login/delegated', '/api/signup', '/api/logout', '/api/oauth/session',
   '/api/reset_password_request', '/api/reset_password', '/api/brand', '/api/ping',
+  // #1255: the browser's accounts read only the browser's own cookies.
+  '/api/accounts', '/api/accounts/switch', '/api/accounts/remove', '/api/accounts/sign_out', '/api/accounts/sign_out_all',
 ])
 
 export interface SessionUser {
@@ -68,6 +71,14 @@ export function setSession(token: string, user: SessionUser) {
   localStorage.setItem(USER_KEY, JSON.stringify(user))
 }
 
+// #1255 D9: tabs share localStorage. When another tab changes the signed-in
+// account in any way (a switch, a sign-out, a sign-in), this tab loads
+// afresh, so no page shows one account while acting as another.
+if (typeof window !== 'undefined')
+  window.addEventListener('storage', (e) => {
+    if (e.key === TOKEN_KEY && e.oldValue !== e.newValue) pageLoad.reload()
+  })
+
 export class ApiError extends Error {
   status: number
   type: string
@@ -105,7 +116,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       ...(versions.length ? { 'X-Featherbase-App-Version': versions.join(', ') } : {}),
     },
   })
-  if (res.status === 401) {
+  // #1255: a 401 ends only the session it was sent with. When the account
+  // changed meanwhile (a switch, or sign-out continuing as another), the
+  // answer is about the departed one and must not end the new one.
+  if (res.status === 401 && getToken() === token) {
     clearSession()
     // Already on the login screen there is nothing to redirect to — a hard
     // reload here just destroys in-flight state (a stale query 401ing during
@@ -139,12 +153,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 // confirm it (a 5xx or no answer), the session may still work: the caller
 // says so and keeps the user signed in so they can try again.
 export const SIGN_OUT_INCOMPLETE = 'Sign-out did not complete. Check your connection and try again.'
-export async function signOut(): Promise<boolean> {
+// #1255 D6: signing out goes through the browser's accounts. When another
+// account is held, the server continues as it and answers with its session.
+export type SignOutResult = { ok: false } | { ok: true; next: SignedIn | null }
+export async function signOut(): Promise<SignOutResult> {
   try {
-    await api.post('/api/logout', {})
-    return true
+    const res = await api.post<LoginResponse | { signed_out: true }>('/api/accounts/sign_out', {})
+    return { ok: true, next: 'token' in res ? rememberLogin(res) : null }
   } catch {
-    return false
+    return { ok: false }
   }
 }
 
@@ -171,6 +188,9 @@ type LoginResponse = { token: string; user: SessionUser; landing?: string; hando
 export function rememberLogin(res: LoginResponse): SignedIn {
   const user = { ...res.user, ...(res.landing ? { landing: res.landing } : {}), apps: res.apps }
   setSession(res.token, user)
+  // #1255 D2: every sign-in tells the switcher, so the account joins this
+  // browser's list. keepalive: the page may be leaving for the landing.
+  void fetch('/api/accounts', { method: 'POST', keepalive: true }).catch(() => {})
   return res.handoff ? { ...user, handoff: res.handoff } : user
 }
 
@@ -238,4 +258,30 @@ export function listResource<T = Record<string, unknown>>(
     qs.set('limit_page_length', String(params.limit_page_length))
   const suffix = qs.size ? `?${qs}` : ''
   return api.get<ListResult<T>>(`/api/table/${encodeURIComponent(table)}${suffix}`)
+}
+
+/** #1255: an account signed in on this browser, as the switcher lists it. Never a token. */
+export interface BrowserAccount {
+  session: string
+  person: string
+  name: string | null
+  method: string | null
+  method_kind: SignInMethodKind | null
+  method_label: string | null
+  /** What they would type to sign in again: a connected service's ID, else the email or username. */
+  sign_in_id: string | null
+  /** Seconds since the epoch. */
+  last_used: number
+  active: boolean
+  state: 'live' | 'ended'
+  reason_text?: string
+}
+export interface BrowserAccounts { accounts: BrowserAccount[]; full: boolean }
+
+export const browserAccounts = {
+  list: () => api.post<BrowserAccounts>('/api/accounts'),
+  /** Continue as a held account; its session is stored as a sign-in's is. */
+  switchTo: async (session: string) => rememberLogin(await api.post<LoginResponse>('/api/accounts/switch', { session })),
+  remove: (session: string) => api.post<BrowserAccounts>('/api/accounts/remove', { session }),
+  signOutAll: () => api.post<{ signed_out: true }>('/api/accounts/sign_out_all'),
 }
