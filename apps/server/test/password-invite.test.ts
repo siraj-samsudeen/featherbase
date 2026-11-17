@@ -32,10 +32,16 @@ async function send(admin: TestClient, person: string) {
 }
 
 async function linkFromMail(email: string): Promise<{ url: URL; key: string }> {
-  const [mail] = await sql`select body, subject from email_sink where mail_to = ${email} order by created_at desc, row_id desc limit 1`
-  const match = /Set your password here: (\S+)/.exec(String(mail?.body ?? ''))
-  if (!match) throw new Error(`no invite mail for ${email}`)
-  const url = new URL(match[1])
+  // Every link mailed to the address; the one for the newest invite.
+  const mails = await sql`select body from email_sink where mail_to = ${email}`
+  const links = mails.flatMap((m) => {
+    const match = /Set your password here: (\S+)/.exec(String(m.body))
+    return match ? [new URL(match[1])] : []
+  })
+  const [newest] = await sql`select i.token_hash from password_invite i join person p on p.row_id = i.person
+    where lower(p.email) = ${email} order by i.created_at desc, i.id desc limit 1`
+  const url = links.find((u) => createHash('sha256').update(u.searchParams.get('key') ?? '').digest('hex') === newest?.token_hash)
+  if (!url) throw new Error(`no invite mail for ${email}`)
   return { url, key: url.searchParams.get('key') ?? '' }
 }
 

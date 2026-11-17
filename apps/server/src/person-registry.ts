@@ -141,6 +141,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   metadata_override: { '*': code },
   migration: { '*': code },
   notification_log: { for_user: id, subject: text, ref_table: code, ref_name: on('ref_table') },
+  password_invite: { id: code, person: id, token_hash: code, invited_by: id },
   password_reset: { token: code, user: id },
   permission: { '*': code },
   pre_auth_bucket: { '*': code },
