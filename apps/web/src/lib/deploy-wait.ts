@@ -6,6 +6,8 @@
 // platform's (main.tsx) and the shared bar every app page loads (bar/main.tsx).
 
 export const NOTICE_TEXT = 'Updating to the latest version. Back in a few seconds.'
+/** What a write the edge answered fails with, once the server is back. */
+export const INTERRUPTED_WRITE = 'The app was updating when this change was sent, so it may not have been saved. Check, then try again.'
 
 const EDGE_STATUSES = new Set([502, 503, 504])
 const READS = new Set(['GET', 'HEAD'])
@@ -26,7 +28,11 @@ const abortError = () => new DOMException('The operation was aborted.', 'AbortEr
 
 /** `base`, except that a same-site `/api/...` request answered by Railway's
  *  edge (or, for a read, failing on the network) is held until the server
- *  answers its ping, then sent again; after `giveUpMs` it fails as before. */
+ *  answers its ping. A read is then sent again; after `giveUpMs` it fails as
+ *  before. A write is never sent twice (Codex, #1260): the edge's mark says
+ *  who answered, not that Featherbase never ran it, since Railway answers 502
+ *  for a slow app too. It waits out the gap, then fails with INTERRUPTED_WRITE
+ *  in Featherbase's own error shape, which every page already shows. */
 export function waitThroughDeploys(base: Fetch, options: Options): Fetch {
   const { onWaiting, pingPath = '/api/ping', firstPollMs = 250, pollMs = 1000, noticeAfterMs = 1000, giveUpMs = 90_000 } = options
   // Every held request waits on the same ping, so a gap is asked about once a
@@ -100,7 +106,7 @@ export function waitThroughDeploys(base: Fetch, options: Options): Fetch {
         const fromEdge = answer !== null && EDGE_STATUSES.has(answer.status) && answer.headers.get('x-railway-fallback') === 'true'
         if (answer && !fromEdge) return answer
         if (Date.now() >= deadline) {
-          if (answer) return answer
+          if (answer) return read ? answer : interruptedWrite()
           throw lastError
         }
         if (!entry) {
@@ -122,14 +128,21 @@ export function waitThroughDeploys(base: Fetch, options: Options): Fetch {
         })
         if (outcome === 'aborted') throw abortError()
         if (outcome === 'late') {
-          if (answer) return answer
+          if (answer) return read ? answer : interruptedWrite()
           throw lastError
         }
+        if (!read) return interruptedWrite()
       }
     } finally {
       release()
     }
   }
+}
+
+function interruptedWrite(): Response {
+  return new Response(JSON.stringify({ error: { type: 'ServiceUnavailableError', message: INTERRUPTED_WRITE } }), {
+    status: 503, headers: { 'content-type': 'application/json' },
+  })
 }
 
 const INSTALLED = Symbol.for('featherbase.deploy-wait')

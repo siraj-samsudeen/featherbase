@@ -3,7 +3,7 @@
 // ~11 s its edge answers 502 itself (x-railway-fallback: true). These tests
 // drive the wrapper with a scripted fetch and fake timers.
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { installDeployWait, waitThroughDeploys, NOTICE_TEXT } from '../src/lib/deploy-wait'
+import { installDeployWait, waitThroughDeploys, NOTICE_TEXT, INTERRUPTED_WRITE } from '../src/lib/deploy-wait'
 
 const EDGE_502 = () => new Response('{"status":"error","code":502,"message":"Application failed to respond"}', {
   status: 502, headers: { 'content-type': 'application/json', 'x-railway-fallback': 'true' },
@@ -73,25 +73,34 @@ describe('a read during a deploy', () => {
 })
 
 describe('a write during a deploy', () => {
-  test('an answer from Railway\'s edge is held and the write sent again with the same body', async () => {
-    const { fetch, calls } = scripted((_call, n) => (n === 1 ? EDGE_502() : OK()))
+  // Codex (#1260): x-railway-fallback says the edge wrote the answer, not that
+  // Featherbase never ran the request (Railway answers 502 for a slow app
+  // too). A write is never sent twice: it waits out the gap, then fails clearly.
+  test('a write answered by the edge is never sent again: it waits out the gap with the notice, then fails with a clear message', async () => {
+    let up = false
+    const { fetch, calls } = scripted(() => (up ? OK() : EDGE_502()), () => up)
+    let settled = false
     const answer = waitThroughDeploys(fetch, { onWaiting })('/api/app_actions/dash/decide', {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"decision":"approve"}',
-    })
-    await vi.advanceTimersByTimeAsync(2000)
-    expect((await answer).status).toBe(200)
-    expect(calls).toEqual([
-      { url: '/api/app_actions/dash/decide', method: 'POST', body: '{"decision":"approve"}' },
-      { url: '/api/app_actions/dash/decide', method: 'POST', body: '{"decision":"approve"}' },
-    ])
+    }).finally(() => { settled = true })
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(settled).toBe(false)
+    expect(notices).toEqual([true])
+    up = true
+    await vi.advanceTimersByTimeAsync(1100)
+    const res = await answer
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: { type: 'ServiceUnavailableError', message: INTERRUPTED_WRITE } })
+    expect(calls).toHaveLength(1)
+    expect(notices).toEqual([true, false])
   })
 
-  test('a write given as a Request is sent again with its body', async () => {
+  test('a read given as a Request is sent again', async () => {
     const { fetch, calls } = scripted((_call, n) => (n === 1 ? EDGE_502() : OK()))
-    const answer = waitThroughDeploys(fetch, { onWaiting })(new Request(here('/api/save'), { method: 'PATCH', body: 'x=1' }))
+    const answer = waitThroughDeploys(fetch, { onWaiting })(new Request(here('/api/rows')))
     await vi.advanceTimersByTimeAsync(2000)
     expect((await answer).status).toBe(200)
-    expect(calls.map((c) => c.body)).toEqual(['x=1', 'x=1'])
+    expect(calls).toHaveLength(2)
   })
 
   test('a network error on a write is passed on at once: the write may have reached the server, so it is never sent twice', async () => {
@@ -194,6 +203,18 @@ describe('giving up', () => {
     const res = await answer
     expect(res.status).toBe(502)
     expect(notices).toEqual([true, false])
+  })
+})
+
+describe('a write that waits the full 90 seconds', () => {
+  test('fails with the clear message, not the edge\'s 502, and was sent once', async () => {
+    const { fetch, calls } = scripted(() => EDGE_502(), () => false)
+    const answer = waitThroughDeploys(fetch, { onWaiting })('/api/save', { method: 'POST', body: '{}' })
+    await vi.advanceTimersByTimeAsync(91_000)
+    const res = await answer
+    expect(res.status).toBe(503)
+    expect((await res.json()).error.message).toBe(INTERRUPTED_WRITE)
+    expect(calls).toHaveLength(1)
   })
 })
 
