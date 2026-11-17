@@ -1069,7 +1069,7 @@ export function SidebarAside({ testid, user, children }: { testid: string; user:
             data-shortcut-key={SIDEBAR_SHORTCUT}
             aria-label={words}
             aria-keyshortcuts="Meta+B Control+B"
-            title={`${words} (${SIDEBAR_SHORTCUT})`}
+            title={`${words.replace('sidebar', 'Sidebar')} · ${SIDEBAR_SHORTCUT}`}
             className={`max-md:hidden ${collapsed ? `${RAIL_ROW} ${ROW_IDLE}` : touchRowClasses(`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm ${ROW_IDLE}`)}`}
           >
             {collapsed ? <ChevronsRight aria-hidden size={18} className="text-ink-muted" /> : <ChevronsLeft aria-hidden size={16} className="shrink-0 text-ink-muted" />}

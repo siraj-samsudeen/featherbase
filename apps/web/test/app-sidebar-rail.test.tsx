@@ -58,7 +58,7 @@ test('the control is on the sidebar, not in the bar, and collapses it to a rail 
 
   const control = shadow(sidebar).getByTestId('sidebar-collapse')
   expect(control).toHaveAccessibleName('Collapse sidebar')
-  expect(control.title).toMatch(/^Collapse sidebar \((⌘B|Ctrl\+B)\)$/)
+  expect(control.title).toMatch(/^Collapse Sidebar · (⌘B|Ctrl\+B)$/)
   // #1251's keyboard-shortcut list finds it by these.
   expect(control).toHaveAttribute('data-shortcut-id', 'sidebar')
   expect(control.getAttribute('data-shortcut-key')).toMatch(/^(⌘B|Ctrl\+B)$/)

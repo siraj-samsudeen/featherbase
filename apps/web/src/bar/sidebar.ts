@@ -330,7 +330,8 @@ export class FeatherbaseSidebar extends HTMLElement {
     if (this.control) {
       const words = collapsed ? 'Expand sidebar' : 'Collapse sidebar'
       this.control.setAttribute('aria-label', words)
-      this.control.title = `${words} (${SIDEBAR_SHORTCUT})`
+      // #1251: hover text in Title Case, the key after " · ".
+      this.control.title = `${collapsed ? 'Expand Sidebar' : 'Collapse Sidebar'} · ${SIDEBAR_SHORTCUT}`
       this.control.innerHTML = collapsed ? EXPAND_ICON : `${COLLAPSE_ICON}<span class="words">Collapse</span><kbd>${SIDEBAR_SHORTCUT}</kbd>`
     }
     if (this.rail !== collapsed) {
