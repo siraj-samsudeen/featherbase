@@ -302,14 +302,16 @@ export class FeatherbaseSidebar extends HTMLElement {
 
   /** Keeps the pickers host first in the app's page column (the sidebar's next sibling). */
   private placePickers() {
+    // Called only once the host exists (connectedCallback makes it first).
+    const host = this.pickers!
     const panel = this.nextElementSibling as HTMLElement | null
-    if (!this.pickers) return
-    if (!this.pickersRoot?.firstChild) { this.pickers.remove(); return }
-    if (!panel || panel.firstChild === this.pickers) return
-    this.panelObserver?.disconnect()
-    panel.prepend(this.pickers)
-    this.panelObserver?.observe(this.parentElement!, { childList: true, subtree: false })
-    this.panelObserver?.observe(panel, { childList: true, subtree: false })
+    if (!this.pickersRoot?.firstChild) host.remove()
+    else if (panel && panel.firstChild !== host) {
+      this.panelObserver?.disconnect()
+      panel.prepend(host)
+      this.panelObserver?.observe(this.parentElement!, { childList: true, subtree: false })
+      this.panelObserver?.observe(panel, { childList: true, subtree: false })
+    }
   }
 
   /** Draws the shared state: collapsed (md+) is the rail; at phone width the

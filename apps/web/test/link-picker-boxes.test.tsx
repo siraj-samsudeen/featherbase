@@ -8,6 +8,9 @@ import userEvent from '@testing-library/user-event'
 import { tableHref } from 'shared'
 import { test, expect, renderApp } from './pg-test'
 
+/** How long the list's names may take to replace its ids. */
+const NAMES = { timeout: 8000 }
+
 configure({ asyncUtilTimeout: 10_000 })
 
 type Admin = Parameters<typeof renderApp>[1]
@@ -93,7 +96,8 @@ test('a link filter lists values by name, and the search box in the list narrows
   expect(screen.getByTestId('link-chevron-region')).toBeInTheDocument()
   fireEvent.focus(box)
   const list = await screen.findByTestId('link-options-region')
-  await waitFor(() => expect(options(list)).toEqual(['Andhra', 'Kerala', 'Tamil Nadu']))
+  // The names arrive after the ids (a second read): a slow CI machine needs more than the default second.
+  await waitFor(() => expect(options(list)).toEqual(['Andhra', 'Kerala', 'Tamil Nadu']), NAMES)
   fireEvent.change(within(list).getByRole('searchbox'), { target: { value: 'tamil' } })
   await waitFor(() => expect(options(list)).toEqual(['Tamil Nadu']))
   fireEvent.mouseDown(within(list).getByTestId('link-option'))
@@ -109,7 +113,7 @@ test('a link filter opened by a click takes what is typed into its search box', 
   await renderApp(tableHref(SHOP), admin)
   await user.click(await screen.findByTestId('std-filter-region'))
   const list = await screen.findByTestId('link-options-region')
-  await waitFor(() => expect(options(list)).toEqual(['Andhra', 'Kerala', 'Tamil Nadu']))
+  await waitFor(() => expect(options(list)).toEqual(['Andhra', 'Kerala', 'Tamil Nadu']), NAMES)
   const search = within(list).getByRole('searchbox')
   expect(search).toHaveFocus()
   await user.keyboard('ker')
@@ -181,7 +185,7 @@ test("the Add filter row's Value is the same picker as the quick filter for a li
   expect(value()).toHaveAttribute('role', 'combobox')
   fireEvent.focus(value())
   const list = await screen.findByTestId('link-options-region')
-  await waitFor(() => expect(options(list)).toEqual(['Andhra', 'Kerala', 'Tamil Nadu']))
+  await waitFor(() => expect(options(list)).toEqual(['Andhra', 'Kerala', 'Tamil Nadu']), NAMES)
   expect(within(list).queryByTestId('link-create-new')).not.toBeInTheDocument()
   fireEvent.mouseDown(within(list).getAllByTestId('link-option')[1])
   await waitFor(() => expect(value()).toHaveValue('Kerala'))
@@ -237,7 +241,7 @@ test('Down on the last option of a link list stays on it', async ({ admin }) => 
   fireEvent.focus(box)
   const list = await screen.findByTestId('link-options-region')
   const all = await within(list).findAllByTestId('link-option')
-  await waitFor(() => expect(options(list)).toEqual(['Andhra', 'Kerala', 'Tamil Nadu']))
+  await waitFor(() => expect(options(list)).toEqual(['Andhra', 'Kerala', 'Tamil Nadu']), NAMES)
   all.at(-1)!.focus()
   fireEvent.keyDown(all.at(-1)!, { key: 'ArrowDown' })
   expect(within(list).getAllByTestId('link-option').at(-1)).toHaveFocus()

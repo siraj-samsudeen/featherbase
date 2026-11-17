@@ -1,12 +1,17 @@
 // #1248: the rail's words: a row's initials, name and count (lib/sidebar-rail.ts).
 import { expect, test } from 'vitest'
-import { attachRailTips, railMark, railTip, rowLabel } from '../src/lib/sidebar-rail'
+import { attachRailTips, railMark, railTip, rowLabel, sourceWords } from '../src/lib/sidebar-rail'
 
 test('initials: two words give two letters, one word its first two, nothing gives nothing', () => {
   expect(railMark('Repair jobs')).toBe('RJ')
   expect(railMark('System')).toBe('Sy')
   expect(railMark('  ')).toBe('')
   expect(railMark('— / —')).toBe('')
+})
+
+test('a source spells a brand the brand\'s way, and other stored names in words', () => {
+  expect(sourceWords('motherduck')).toBe('MotherDuck')
+  expect(sourceWords('sales_daily')).toBe('Sales Daily')
 })
 
 test("a row's name leaves out its count and icon, or is its own aria-label", () => {

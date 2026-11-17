@@ -55,6 +55,14 @@ test("the sidebar's top and foot hold the switcher, the command field and the ac
   // The foot comes before the Collapse row.
   expect(foot.compareDocumentPosition(screen.getByTestId('sidebar-collapse')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
+  // The foot's menus close on Escape and give the focus back to their button.
+  const help = within(foot).getByTestId('help-button')
+  await userEvent.click(help)
+  expect(screen.getByTestId('help-button-menu')).toHaveTextContent('Keyboard Shortcuts')
+  await userEvent.keyboard('{Escape}')
+  expect(screen.queryByTestId('help-button-menu')).not.toBeInTheDocument()
+  expect(help).toHaveFocus()
+
   // The field opens the command bar, its input focused.
   await userEvent.click(field)
   expect(screen.getByRole('textbox', { name: 'Search or type a command' })).toHaveFocus()
