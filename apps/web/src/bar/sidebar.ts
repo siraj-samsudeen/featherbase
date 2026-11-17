@@ -81,6 +81,7 @@ export class FeatherbaseSidebar extends HTMLElement {
   private pickers?: HTMLElement
   private pickersRoot?: HTMLElement
   private panelObserver?: MutationObserver
+  private pickersObserver?: MutationObserver
   private drawerWidth?: MediaQueryList
   private control?: HTMLButtonElement
   private layer?: HTMLElement
@@ -246,6 +247,10 @@ export class FeatherbaseSidebar extends HTMLElement {
       pickerShadow.append(pickerStyle, root)
       this.pickers = host
       this.pickersRoot = root
+      // Only an app that declares pickers gets the host in its page column; an
+      // app's own React tree is left untouched otherwise (Tasker's tour, #1253).
+      this.pickersObserver = new MutationObserver(() => this.placePickers())
+      this.pickersObserver.observe(root, { childList: true })
     }
     this.unpickers?.()
     this.unpickers = offerPickerSlot(this.pickersRoot!)
@@ -298,7 +303,9 @@ export class FeatherbaseSidebar extends HTMLElement {
   /** Keeps the pickers host first in the app's page column (the sidebar's next sibling). */
   private placePickers() {
     const panel = this.nextElementSibling as HTMLElement | null
-    if (!this.pickers || !panel || panel.firstChild === this.pickers) return
+    if (!this.pickers) return
+    if (!this.pickersRoot?.firstChild) { this.pickers.remove(); return }
+    if (!panel || panel.firstChild === this.pickers) return
     this.panelObserver?.disconnect()
     panel.prepend(this.pickers)
     this.panelObserver?.observe(this.parentElement!, { childList: true, subtree: false })
@@ -450,7 +457,10 @@ export class FeatherbaseSidebar extends HTMLElement {
     this.unpickers?.()
     this.unpickers = undefined
     this.panelObserver?.disconnect()
+    this.pickersObserver?.disconnect()
+    this.pickersObserver = undefined
     this.pickers?.remove()
+    this.pickers = undefined
     this.drawerWidth?.removeEventListener?.('change', this.onWidth)
     this.removeEventListener('click', this.onClick)
     this.removeEventListener('keydown', this.onKey)
