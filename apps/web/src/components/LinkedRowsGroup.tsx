@@ -78,7 +78,7 @@ export function LinkedRowsGroup({ table, record, group, maxRows = GROUP_ROWS, sh
       {/* More than shown: Show all N. Otherwise a quieter way to the group as a
           list, where a new row starts linked to the record. */}
       {total > data.length && data.length > 0 ? <ListLink href={href} quiet={false}>Show all {fmtCount(total)}</ListLink>
-        : total > 0 && <ListLink href={href} quiet>Open as list</ListLink>}
+        : <ListLink href={href} quiet>Open as list</ListLink>}
     </section>
   )
 }
