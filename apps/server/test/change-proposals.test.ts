@@ -378,6 +378,11 @@ describe('what the helpers refuse', () => {
     expect(await probe(manager, { op: 'authority', ...asks({ people: [], fallbackRoles: [] }) })).toEqual({ may: false, route: null })
     const { result } = await other.post<any>('/api/app_reads/proposalproof/look', { payload: { authority: asks({ people: [], fallbackRoles: ['Proof Editor'] }) } })
     expect(result).toEqual({ may: true, route: { people: [], roles: ['Proof Editor'] } })
+    // #1254: a read asks both questions of the same approvers; the second is answered from what the first read.
+    const named = await manager.post<any>('/api/app_reads/proposalproof/look', { payload: { authority: asks({ people: [manager.user], fallbackRoles: ['Proof Editor'] }) } })
+    expect(named.result).toEqual({ may: true, route: { people: [manager.user], roles: [] } })
+    const byRole = await other.post<any>('/api/app_reads/proposalproof/look', { payload: { authority: asks({ people: [manager.user], fallbackRoles: ['Proof Editor'] }) } })
+    expect(byRole.result).toEqual({ may: false, route: { people: [manager.user], roles: [] } })
   })
 })
 
