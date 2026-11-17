@@ -128,7 +128,7 @@ async function register(c: Context): Promise<{ accounts: Held[]; active: Held | 
           Number(states.get(y.jti)?.live) - Number(states.get(x.jti)?.live) || y.usedAt - x.usedAt)
         accounts = [active, ...room.slice(0, MAX_ACCOUNTS - 1)]
         for (const other of alongside)
-          await logAccess(named_.person, 'account_added', { table: 'Person', row_id: other.person, method: 'same_browser', required: true })
+          await sql.begin((tx) => logAccess(named_.person, 'account_added', { table: 'Person', row_id: other.person, method: 'same_browser', required: true }, tx))
         write(c, accounts)
       }
     }
@@ -213,12 +213,15 @@ export function accountRoutes(withLanding: Landing) {
     // 409, not 401: the page treats a 401 as its own session ending.
     if (!state.live) throw new AppError('ConflictError', REASON_TEXT[state.reason])
     if (active && active.jti !== target.jti) await endViewAsSession(active.jti, 'account_switch')
+    // The record and the answer first: a failure before the cookies change
+    // leaves the browser where it was, so no switch takes effect unrecorded.
+    if (active?.jti !== target.jti)
+      await sql.begin((tx) => logAccess(target.person, 'account_switch', { table: 'Person', row_id: active?.person, method: 'account_switch', required: true }, tx))
+    const answer = await withLanding(c, { token: target.token, user: state.user })
     target.usedAt = now()
     write(c, accounts)
     setSidCookie(c, target.token, Math.max(1, target.exp - now()))
-    if (active?.jti !== target.jti)
-      await logAccess(target.person, 'account_switch', { table: 'Person', row_id: active?.person, method: 'account_switch', required: true })
-    return c.json(await withLanding(c, { token: target.token, user: state.user }))
+    return c.json(answer)
   })
 
   // D6: sign out of this account; continue as the most recently used live one.
@@ -234,21 +237,28 @@ export function accountRoutes(withLanding: Landing) {
     if (fromHeader) ends.set(fromHeader.jti, fromHeader)
     let complete = true
     for (const n of ends.values()) complete = (await endSession(n, 'sign_out')) && complete
+    // Not recorded: the cookies stay as they were, so a retry still holds every
+    // session it must end (revoking one twice is harmless).
+    if (!complete)
+      return c.json({ error: { type: 'ServiceUnavailableError', message: 'Sign-out did not complete. Try again.' } }, 503)
     const rest = accounts.filter((a) => !ends.has(a.jti)).sort((x, y) => y.usedAt - x.usedAt)
-    clearSid(c)
     let next: { held: Held; user: SessionUser } | null = null
     for (const a of rest) {
       const s = await stateOf(a.token)
       if (s.live) { next = { held: a, user: s.user }; break }
     }
-    if (next) next.held.usedAt = now()
+    if (!next) {
+      clearSid(c)
+      write(c, rest)
+      return c.json({ signed_out: true })
+    }
+    // As a switch: recorded and answered before the cookies change.
+    await sql.begin((tx) => logAccess(next.held.person, 'account_switch', { table: 'Person', row_id: leaving?.person, method: 'sign_out', required: true }, tx))
+    const answer = await withLanding(c, { token: next.held.token, user: next.user })
+    next.held.usedAt = now()
     write(c, rest)
-    if (!complete)
-      return c.json({ error: { type: 'ServiceUnavailableError', message: 'Sign-out did not complete. Try again.' } }, 503)
-    if (!next) return c.json({ signed_out: true })
     setSidCookie(c, next.held.token, Math.max(1, next.held.exp - now()))
-    await logAccess(next.held.person, 'account_switch', { table: 'Person', row_id: leaving?.person, method: 'sign_out', required: true })
-    return c.json(await withLanding(c, { token: next.held.token, user: next.user }))
+    return c.json(answer)
   })
 
   // D6: sign out of every account this browser holds.
@@ -261,10 +271,11 @@ export function accountRoutes(withLanding: Landing) {
     }
     let complete = true
     for (const n of ends.values()) complete = (await endSession(n, 'sign_out')) && complete
-    clearSid(c)
-    write(c, [])
+    // As sign_out: on failure the cookies stay, so the retry can end them all.
     if (!complete)
       return c.json({ error: { type: 'ServiceUnavailableError', message: 'Sign-out did not complete. Try again.' } }, 503)
+    clearSid(c)
+    write(c, [])
     return c.json({ signed_out: true })
   })
 

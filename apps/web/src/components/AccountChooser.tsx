@@ -106,7 +106,7 @@ export function AccountChooser({ list, onList, onSignedIn, onSignInAgain, onUseA
                 <span className="flex flex-wrap items-center gap-x-2 text-sm font-semibold text-ink">
                   <span className="truncate">{account.name ?? account.sign_in_id}</span>
                   {account.session === lastUsed && (
-                    <span className="rounded-full bg-positive-tint px-2 text-[11px] font-semibold text-positive">Last used</span>
+                    <span className="rounded-full bg-positive-tint px-2 text-xs font-semibold text-positive">Last used</span>
                   )}
                 </span>
                 <span className="block truncate text-xs text-ink-muted">

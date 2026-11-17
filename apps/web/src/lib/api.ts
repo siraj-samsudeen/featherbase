@@ -62,11 +62,11 @@ export function setSession(token: string, user: SessionUser) {
 }
 
 // #1255 D9: tabs share localStorage. When another tab changes the signed-in
-// account, this tab loads afresh, so no page shows one account while acting
-// as another. A sign-out (no new token) is left to the next request's 401.
+// account in any way (a switch, a sign-out, a sign-in), this tab loads
+// afresh, so no page shows one account while acting as another.
 if (typeof window !== 'undefined')
   window.addEventListener('storage', (e) => {
-    if (e.key === TOKEN_KEY && e.oldValue && e.newValue && e.oldValue !== e.newValue) pageLoad.reload()
+    if (e.key === TOKEN_KEY && e.oldValue !== e.newValue) pageLoad.reload()
   })
 
 export class ApiError extends Error {

@@ -61,7 +61,7 @@ export function AccountSwitcherSection({ onDone }: { onDone: () => void }) {
     <div className="py-1.5" data-testid="account-switcher">
       {others.length > 0 && (
         <>
-          <p className="px-3 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wide text-ink-subtle">{t('Switch to')}</p>
+          <p className="px-3 pb-1 pt-1 text-xs font-semibold uppercase tracking-wide text-ink-subtle">{t('Switch to')}</p>
           {/* #1253: the menu opens near the window's foot; a long list scrolls on its own. */}
           <div className="max-h-56 overflow-y-auto">
           {others.map((account) => {

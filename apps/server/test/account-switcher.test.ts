@@ -1,5 +1,5 @@
 import { sign } from 'hono/jwt'
-import { describe, expect } from 'vitest'
+import { describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { issueSession, revokeSession } from '../src/auth'
@@ -204,6 +204,20 @@ describe('#1255: switching', () => {
     expect(list.accounts).toHaveLength(2)
   })
 
+  test('a switch whose record cannot be written does not take effect; the retry records it', async ({ api }) => {
+    const { b, siraj, first, second } = await twoAccounts(api)
+    await b.list()
+    await sql.unsafe(`create function featherbase.t1255_no_log() returns trigger language plpgsql as $$ begin if new.operation = 'account_switch' then raise exception 'down'; end if; return new; end $$`)
+    await sql`create trigger t1255_no_log before insert on featherbase.access_log for each row execute function featherbase.t1255_no_log()`
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect((await b.post('/api/accounts/switch', { session: await sessionOf(first) })).status).toBe(500)
+    expect(b.sid()).toBe(second)
+    await sql`drop trigger t1255_no_log on featherbase.access_log`
+    await expectStatus(await b.post('/api/accounts/switch', { session: await sessionOf(first) }), 200)
+    expect(b.sid()).toBe(first)
+    expect((await log('account_switch')).map((r) => r.user)).toEqual([siraj])
+  })
+
   test('a session the browser does not hold cannot be chosen', async ({ api }) => {
     const { b, second } = await twoAccounts(api)
     await b.list()
@@ -258,6 +272,24 @@ describe('#1255: signing out and removing', () => {
     expect(await whoami(api, second)).toBe(401)
     expect(b.sid()).toBeUndefined()
     expect(b.jar.has('sid_accounts')).toBe(false)
+  })
+
+  test('a sign-out of all that could not be recorded keeps every account, so the retry ends them all', async ({ api }) => {
+    const { b, first, second } = await twoAccounts(api)
+    await b.list()
+    const firstJti = await sessionOf(first)
+    // The sign-out list refuses the first account's row, as a failing write would.
+    await sql.unsafe(`create function featherbase.t1255_refuse() returns trigger language plpgsql as $$ begin if new.jti = '${firstJti}' then raise exception 'down'; end if; return new; end $$`)
+    await sql`create trigger t1255_refuse before insert on featherbase.revoked_session for each row execute function featherbase.t1255_refuse()`
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect((await b.post('/api/accounts/sign_out_all')).status).toBe(503)
+    expect(b.sid()).toBe(second)
+    expect(b.jar.has('sid_accounts')).toBe(true)
+    expect(await whoami(api, first)).toBe(200)
+    await sql`drop trigger t1255_refuse on featherbase.revoked_session`
+    await expectStatus(await b.post('/api/accounts/sign_out_all'), 200)
+    expect(await whoami(api, first)).toBe(401)
+    expect(await whoami(api, second)).toBe(401)
   })
 
   test('removing an account ends its session and drops it from the list', async ({ api }) => {

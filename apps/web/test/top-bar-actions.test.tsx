@@ -106,7 +106,7 @@ test('a sign-out the server could not complete says so and keeps the person sign
   await waitFor(() => expect(told).toHaveBeenCalledWith(SIGN_OUT_INCOMPLETE))
   expect(getToken()).toBe(admin.token)
   expect(pathOf(r)).toBe('/featherbase/admin/home/system')
-  expect(errors).toHaveBeenCalledWith('sign-out: revoking a session failed', expect.anything())
+  expect(errors).toHaveBeenCalledWith('account switcher: revoking a session failed', expect.anything())
 })
 
 test("the account menu's own name opens the person's record and closes the menu", async ({ admin }) => {

@@ -186,7 +186,11 @@ describe('#1255: every tab follows the account', () => {
     const reload = vi.spyOn(pageLoad, 'reload').mockImplementation(() => {})
     window.dispatchEvent(new StorageEvent('storage', { key: 'fc_token', oldValue: 'a', newValue: 'b' }))
     expect(reload).toHaveBeenCalledTimes(1)
+    // A sign-out in another tab, and a sign-in after it, reload this one too.
+    window.dispatchEvent(new StorageEvent('storage', { key: 'fc_token', oldValue: 'b', newValue: null }))
+    window.dispatchEvent(new StorageEvent('storage', { key: 'fc_token', oldValue: null, newValue: 'c' }))
+    expect(reload).toHaveBeenCalledTimes(3)
     window.dispatchEvent(new StorageEvent('storage', { key: 'fc_theme', oldValue: 'a', newValue: 'b' }))
-    expect(reload).toHaveBeenCalledTimes(1)
+    expect(reload).toHaveBeenCalledTimes(3)
   })
 })
