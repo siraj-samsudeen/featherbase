@@ -68,12 +68,14 @@ disconnects people for a client bug; reusable renewal keys, which a thief could 
 ### D5. How long a connection lasts
 
 Question: what lifetimes?
-Choice: short key 1 hour, renewed by the client without the person noticing. The connection
-itself never expires: it lasts until the person disconnects it or is disabled.
-Why: the owner's rule (17-Nov-2026): connect once and forget, as hosted MCP servers do; nothing
-may bother the person again. The short key keeps a leaked key's damage to the hour, invisibly.
-Rejected: ending an unused connection after 30 days, or tying it to the instance's session
-length (8 hours by default); both make people sign in again.
+Choice: short key 1 hour, renewed by the client without the person noticing. A connection ends
+after 30 days without use; while it is used it has no limit.
+Why: the owner's rule (17-Nov-2026): connect once and forget, as hosted MCP servers do. A client
+in use never asks again; one left unused for a month retires itself (owner's decision), so
+forgotten connections do not hold access forever. The short key keeps a leaked key's damage to
+the hour, invisibly. Rejected: tying it to the instance's session length (8 hours by default),
+which would make people sign in again daily; no expiry at all, which leaves forgotten
+connections live.
 
 ### D6. Which clients may register
 
@@ -121,13 +123,13 @@ which would have to repeat each method.
 ### D10. When a connection ends besides Disconnect
 
 Question: should password resets and "end all sessions" end connections too?
-Choice: no. A connection ends only when the person disconnects it or is disabled. Hand-made
-access tokens follow the same rule today.
-Why: the owner's rule: connect once and forget. A routine password change, or signing out
-everywhere, must not silently break every agent the person uses. A person who suspects a
-takeover uses Connected apps, which lists every connection with when it was last used, and
-disconnects what they do not recognise; an administrator disables the person. Rejected: ending
-connections on a reset, which costs every reset a round of reconnecting.
+Choice: yes (owner's decision, 17-Nov-2026). A connection made before the person's sessions
+were last ended stops working, as do connections of a disabled person.
+Why: a person who suspects their account was taken over resets the password and expects that to
+lock everyone else out. Resets are rare, so the reconnect they cost is rare too. Hand-made access
+tokens keep their current rule (revoked separately), because they are deliberate, named
+credentials. Rejected: leaving connections alive across a reset, which would leave a thief's
+connection running.
 
 ### D11. Where Connected apps lives
 
