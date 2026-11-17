@@ -852,7 +852,7 @@ app.get('/api/whoami', async (c) => {
     ? { readable: [] as string[], creatable: [] as string[], ownGrant: true, admin: true }
     : await tableAccessFor(user.row_id, roles)
   // #1222: while viewing as someone, the shell offers no new rows.
-  if (c.get('viewingAs')) { access.creatable = []; access.ownGrant = false }
+  if (c.get('viewingAs')) access.creatable = []
   // #905: archived Tables the person can read, so the shell lists them apart
   // and keeps them out of the pickers.
   const archived = (await sql`select name from table_def where archived_at is not null order by name`)
