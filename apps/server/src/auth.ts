@@ -5,6 +5,7 @@ import { AppError } from './errors'
 import { getSystemSettings } from './settings'
 import { logActivity } from './audit'
 import { readVariable } from './env'
+import { endConnections, liveConnection } from './agent-connections'
 
 // API-004: email/password login issuing a JWT; every API call (except
 // /api/ping and /api/login) must carry it. Passwords are scrypt-hashed.
@@ -43,6 +44,10 @@ export async function setUserPassword(name: string, password: string, db: Sql | 
   await db`
     update person set password_hash = ${hashPassword(password)}
     where row_id = ${name}`
+  // #1207 (D10): every password change (an emailed reset, an admin's, the
+  // shell's) ends the person's agent connections; access tokens made by hand
+  // are left as they are.
+  await endConnections(name, 'password changed', undefined, db)
 }
 
 /** #391: the break-glass reset from an operator shell. The same write as
@@ -218,7 +223,7 @@ export async function issueSession(userName: string, opts: SessionOptions = {}):
 
 const TOKEN_PREFIX = 'fbt_'
 
-function hashToken(token: string): string {
+export function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex')
 }
 
@@ -263,6 +268,8 @@ export async function issueAccessToken(
   owner: string,
   label: string,
   expiresAt?: Date | null,
+  /** #1207: the agent connection this short key belongs to; none for a hand-made token. */
+  agentConnection?: string,
 ): Promise<{ token: string } & AccessTokenRow> {
   const name = cleanAccessTokenLabel(label)
   if (expiresAt && !(expiresAt.getTime() > Date.now()))
@@ -272,10 +279,10 @@ export async function issueAccessToken(
   if (!principal.enabled) throw new AppError('ValidationError', `${owner} is disabled`)
   const token = TOKEN_PREFIX + randomBytes(32).toString('base64url')
   const [row] = await sql`
-    insert into access_token (id, label, person, service_account, token_hash, expires_at)
+    insert into access_token (id, label, person, service_account, token_hash, expires_at, agent_connection)
     values (${'tok_' + randomBytes(6).toString('hex')}, ${name},
             ${principal.kind === 'person' ? owner : null}, ${principal.kind === 'service_account' ? owner : null},
-            ${hashToken(token)}, ${expiresAt ?? null})
+            ${hashToken(token)}, ${expiresAt ?? null}, ${agentConnection ?? null})
     returning ${tokenFields()}`
   return { token, ...(row as unknown as AccessTokenRow) }
 }
@@ -300,7 +307,10 @@ export async function listAccessTokens(owner?: string): Promise<AccessTokenRow[]
     from access_token t
     left join person p on p.row_id = t.person
     left join service_account s on s.row_id = t.service_account
-    ${owner ? sql`where t.person = ${owner} or t.service_account = ${owner}` : sql``}
+    -- #1207 (D11): an agent connection's short keys rotate hourly; they are
+    -- listed as the connection (Connected apps), not here.
+    where t.agent_connection is null
+    ${owner ? sql`and (t.person = ${owner} or t.service_account = ${owner})` : sql``}
     order by t.created_at desc`
   return rows as unknown as AccessTokenRow[]
 }
@@ -349,13 +359,18 @@ async function resolveAccessToken(token: string): Promise<SessionUser> {
 async function lookupAccessToken(token: string): Promise<AccessTokenCaller> {
   // The update doubles as the lookup: a live token gets its last_used_at
   // stamped in the same round-trip.
+  // #1207: a connection's short key works only while its connection is live.
   const [hit] = await sql`
-    update access_token set last_used_at = now()
+    update access_token t set last_used_at = now()
     where token_hash = ${hashToken(token)}
       and revoked_at is null
       and (expires_at is null or expires_at > now())
-    returning id, label, person, service_account`
+      and (agent_connection is null or exists (
+        select 1 from agent_connection ac join person p on p.row_id = ac.person
+        where ac.id = t.agent_connection and ${liveConnection()}))
+    returning id, label, person, service_account, agent_connection`
   if (!hit) throw new AppError('AuthenticationError', 'Invalid or expired access token')
+  if (hit.agent_connection) await sql`update agent_connection set last_used_at = now() where id = ${hit.agent_connection as string}`
   // Whichever column is set (person-rename R2); a disabled owner of either
   // kind is refused.
   const [owner] = hit.person

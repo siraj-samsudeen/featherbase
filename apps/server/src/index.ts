@@ -77,7 +77,7 @@ import { exportCustomizations, importCustomizations } from './customizations'
 import { getCatalog } from './i18n'
 import { rateLimit } from './rate-limit'
 import { mcpHandler, mcpMethodNotAllowed } from './mcp'
-import { agentAuthPublicRoutes } from './agent-auth-routes'
+import { agentAuthPublicRoutes, agentAuthRoutes } from './agent-auth-routes'
 import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
@@ -1194,6 +1194,8 @@ app.post('/api/access_request/:id/:decision', async (c) => {
 })
 
 app.route('/', peopleRoutes)
+// #1207: the browser's part of an agent's sign-in, and Connected apps.
+app.route('/', agentAuthRoutes)
 
 app.route('/', tableDefRoutes)
 
