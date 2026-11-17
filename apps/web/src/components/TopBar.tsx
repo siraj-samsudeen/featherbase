@@ -334,6 +334,8 @@ export function TopBar({
           )}
         </div>
       </header>
+      {/* #1251: ? and the shortcut teaching on pages without a sidebar too. */}
+      {caps && <ShortcutTeachingHost />}
       {phoneTabs}
     </>
   )

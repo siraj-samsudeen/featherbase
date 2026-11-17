@@ -124,9 +124,10 @@ export function addShortcut(shortcut: Shortcut): () => void {
   }
 }
 
-/** The shortcut is on the list while the calling component is mounted. */
-export function useShortcut(shortcut: Shortcut): void {
-  useEffect(() => addShortcut(shortcut), [shortcut])
+/** The shortcut is on the list while the calling component is mounted and
+ *  `active` (a key that only works on some pages: G then N needs a Table). */
+export function useShortcut(shortcut: Shortcut, active = true): void {
+  useEffect(() => (active ? addShortcut(shortcut) : undefined), [shortcut, active])
 }
 
 /** The attributes that give a control its key: hover text, badge, and the
@@ -191,7 +192,7 @@ export function noteShortcutUse(id: string, via: 'key' | 'mouse', control?: Elem
 
 interface PendingUse {
   id: string
-  via: 'key' | 'mouse'
+  via: 'key' | 'mouse' | 'change'
   run: (learning: ShortcutLearning) => { learning: ShortcutLearning; tip: ShownTip | null }
 }
 
@@ -213,23 +214,33 @@ function showNotice(notice: string) {
 
 export const quietUntilText = (learning: ShortcutLearning) => fmtDay(new Date(learning.quietUntil))
 
-export function quietTips(): void {
-  const learning = quietRule(state.learning, Date.now())
-  showTip(null)
+/** A change the person makes to their learning (quiet, turn on, reset). Made
+ *  before their learning has arrived, it waits and is replayed on it, so the
+ *  answer can never undo it. */
+function change(next: (learning: ShortcutLearning) => ShortcutLearning): ShortcutLearning {
+  if (!loaded) {
+    pending.push({ id: '', via: 'change', run: (learning) => ({ learning: next(learning), tip: null }) })
+    return next(state.learning)
+  }
+  const learning = next(state.learning)
   set({ learning })
   scheduleSave()
+  return learning
+}
+
+export function quietTips(): void {
+  showTip(null)
+  const learning = change((l) => quietRule(l, Date.now()))
   showNotice(`Tips are quiet until ${quietUntilText(learning)}. They come back after that.`)
 }
 
 export function turnTipsOn(): void {
-  set({ learning: turnOnRule(state.learning) })
-  scheduleSave()
+  change(turnOnRule)
 }
 
 export function resetTips(): void {
   showTip(null)
-  set({ learning: EMPTY_LEARNING })
-  scheduleSave()
+  change(() => EMPTY_LEARNING)
 }
 
 // ---- keeping it ------------------------------------------------------------
@@ -238,6 +249,9 @@ const signedIn = () => Boolean(getToken() && getSessionUser())
 let loaded = false
 let pending: PendingUse[] = []
 let mounted = 0
+/** Which mounting a read belongs to: a read that answers after its teaching
+ *  unmounted (the Admin's loading screen giving way to the page) is dropped. */
+let generation = 0
 let dirty = false
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 // One chain, so a slower earlier save never lands after a newer one, and a
@@ -266,10 +280,11 @@ export function flushShortcutLearning(): Promise<unknown> {
 function load() {
   const token = getToken()
   if (!token || !getSessionUser()) return
+  const mine = generation
   chain = chain
     .then(() => api.get<{ settings: unknown }>(`/api/user_settings/${SHORTCUT_SETTINGS}`))
     .then((stored) => {
-      if (getToken() !== token) return
+      if (getToken() !== token || mine !== generation) return
       let learning = readLearning(stored.settings)
       let tip: ShownTip | null = null
       for (const use of pending) {
@@ -286,11 +301,27 @@ function load() {
       if (tip) showTip(tip)
     })
     .catch(() => {
+      if (mine !== generation) return
       // Unread: teaching starts from nothing for this visit, and never
       // overwrites what the server holds.
       pending = []
       loaded = true
     })
+}
+
+/** Reads what is stored, applies the waiting uses and changes, and saves: on
+ *  the one chain, so it lands after any save before it. */
+function saveWaiting(waiting: PendingUse[]) {
+  const token = getToken()
+  if (!token) return
+  chain = chain
+    .then(() => api.get<{ settings: unknown }>(`/api/user_settings/${SHORTCUT_SETTINGS}`))
+    .then((stored) => {
+      if (getToken() !== token) return
+      const learning = waiting.reduce((l, use) => use.run(l).learning, readLearning(stored.settings))
+      return api.put(`/api/user_settings/${SHORTCUT_SETTINGS}`, learning)
+    })
+    .catch(() => {})
 }
 
 function onLeave() {
@@ -303,7 +334,9 @@ export function useShortcutTeaching(): void {
   useEffect(() => {
     mounted += 1
     if (mounted === 1) {
+      generation += 1
       loaded = false
+      pending = []
       load()
       window.addEventListener('pagehide', onLeave)
     }
@@ -312,9 +345,13 @@ export function useShortcutTeaching(): void {
       if (mounted === 0) {
         window.removeEventListener('pagehide', onLeave)
         void flushShortcutLearning()
+        // Uses made before the learning arrived are not lost when the page
+        // closes first: they are applied to what is stored, then saved.
+        if (!loaded && pending.length > 0) saveWaiting(pending)
         showTip(null)
         set({ panelOpen: false, notice: null, learning: EMPTY_LEARNING })
         loaded = false
+        generation += 1
       }
     }
   }, [])

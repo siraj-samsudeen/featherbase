@@ -2,16 +2,23 @@
 // the real Admin in jsdom against the in-process server. The scenarios
 // (scenarios/keyboard-shortcuts.test.tsx) cover the promises; these cover the
 // ways in and out of each state.
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach } from 'vitest'
 import { DAY_MS, SHORTCUT_SETTINGS } from 'shared'
+import { flushShortcutLearning } from '../src/lib/shortcuts'
 import { test, expect, renderApp } from './pg-test'
 
 type Admin = Parameters<typeof renderApp>[1]
 const WAIT = { timeout: 8000 }
 
-beforeEach(() => localStorage.clear())
+// The page a test closes sends its learning a moment later; wait for that, so
+// it can never land on the next test's freshly seeded record.
+beforeEach(async () => {
+  cleanup()
+  await flushShortcutLearning()
+  localStorage.clear()
+})
 
 async function openAdmin(admin: Admin) {
   await renderApp('/featherbase/admin/all-tables', admin)
@@ -42,15 +49,21 @@ test("Help's Keyboard Shortcuts item opens the panel and closes the menu; Close,
   expect(panel()).toBeNull()
 })
 
-test("the panel lists the Admin's leader keys, and using one counts", async ({ admin }) => {
+test("the panel lists the Admin's leader keys: G then N only where there is a Table", async ({ admin }) => {
   await openAdmin(admin)
   fireEvent.keyDown(document.body, { key: 'g' })
   fireEvent.keyDown(document.body, { key: 'd' })
   await openFromHelp()
   const row = (label: string) => (within(panel()!).getByText(label).closest('[data-shortcut-row]') as HTMLElement).textContent
   expect(row('Go To The Admin Home')).toContain('G then D')
-  expect(row('New Row Of This Table')).toContain('G then N')
   await waitFor(() => expect(row('Go To The Admin Home')).toContain('In Use · 1×'))
+  expect(within(panel()!).queryByText('New Row Of This Table')).toBeNull()
+
+  cleanup()
+  await renderApp('/featherbase/admin/table/Person', admin)
+  await screen.findByTestId('shortcut-teaching', {}, WAIT)
+  await openFromHelp()
+  await waitFor(() => expect(row('New Row Of This Table')).toContain('G then N'))
 })
 
 test('the command search carries its key in its hover text', async ({ admin }) => {
@@ -65,6 +78,9 @@ test('Got It dismisses the tip', async ({ admin }) => {
   const control = await screen.findByTestId('sidebar-collapse', {}, WAIT)
   for (let i = 0; i < 3; i++) await userEvent.click(control)
   const tip = await screen.findByRole('status', { name: 'Tip' }, WAIT)
+  // Placed again when the page moves; still there.
+  fireEvent(window, new Event('resize'))
+  expect(screen.getByRole('status', { name: 'Tip' })).toBe(tip)
   await userEvent.click(within(tip).getByRole('button', { name: 'Got It' }))
   expect(screen.queryByRole('status', { name: 'Tip' })).toBeNull()
 })
@@ -75,7 +91,7 @@ test('while tips are quiet the panel says until when, and Turn Tips On Now ends 
   await openFromHelp()
   await waitFor(() => expect(within(panel()!).getByText(/^Tips are quiet until \d\d-[A-Z][a-z]{2}-\d{4}\.$/)).toBeInTheDocument(), WAIT)
   await userEvent.click(within(panel()!).getByRole('button', { name: 'Turn Tips On Now' }))
-  expect(within(panel()!).queryByText(/Tips are quiet until/)).toBeNull()
+  await waitFor(() => expect(within(panel()!).queryByText(/Tips are quiet until/)).toBeNull())
   // The next quiet is the longer one: the ladder is kept.
   expect(within(panel()!).getByRole('button', { name: 'Quiet Tips For A Month' })).toBeInTheDocument()
 })
@@ -86,7 +102,7 @@ test('Reset Tips forgets what was learnt', async ({ admin }) => {
   await openFromHelp()
   await waitFor(() => expect(sidebarStatus()).toContain('In Use · 2×'), WAIT)
   await userEvent.click(within(panel()!).getByRole('button', { name: 'Reset Tips' }))
-  expect(sidebarStatus()).toContain('Not Tried Yet')
+  await waitFor(() => expect(sidebarStatus()).toContain('Not Tried Yet'))
 })
 
 test('? opens the panel from the page, but not while typing in a text box', async ({ admin }) => {
@@ -103,9 +119,10 @@ test('? opens the panel from the page, but not while typing in a text box', asyn
 test('the key badges follow the controls when the window changes size', async ({ admin }) => {
   await openAdmin(admin)
   await openFromHelp()
-  const before = screen.getAllByTestId(/^shortcut-badge-/).length
+  expect(screen.getByTestId('shortcut-badge-sidebar')).toBeInTheDocument()
   fireEvent(window, new Event('resize'))
-  expect(screen.getAllByTestId(/^shortcut-badge-/)).toHaveLength(before)
+  // Redrawn from the controls as they are now: the sidebar's badge is still there.
+  expect(screen.getByTestId('shortcut-badge-sidebar')).toHaveTextContent(/^(⌘B|Ctrl\+B)$/)
 })
 
 test('clicking into the command search three times brings its tip', async ({ admin }) => {
@@ -118,4 +135,11 @@ test('clicking into the command search three times brings its tip', async ({ adm
   }
   const tip = await screen.findByRole('status', { name: 'Tip' }, WAIT)
   expect(tip).toHaveTextContent(/Press (⌘K|Ctrl\+K) to search or type a command from anywhere\./)
+})
+
+test('? opens the panel on a page without a sidebar too (Sales Target)', async ({ admin }) => {
+  await renderApp('/featherbase/sales-target', admin)
+  await screen.findByTestId('shortcut-teaching', {}, WAIT)
+  fireEvent.keyDown(document.body, { key: '?', shiftKey: true })
+  expect(panel()).toBeInTheDocument()
 })

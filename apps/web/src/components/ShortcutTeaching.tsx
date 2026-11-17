@@ -208,15 +208,26 @@ function Tip({ tip }: { tip: ShownTip }) {
   const [at, setAt] = useState<{ left: number; top: number } | null>(null)
   useLayoutEffect(() => {
     const el = ref.current! // rendered: the effect runs after the tip is in the page
-    const size = { width: el.offsetWidth, height: el.offsetHeight }
-    const area = contentArea()
-    const top = area.top + 16
-    const avoid: Box[] = [...document.querySelectorAll<HTMLElement>(INTERACTIVE)]
-      .filter((c) => !el.contains(c))
-      .map((c) => c.getBoundingClientRect())
-      .filter((r) => r.width > 0 && r.bottom > top && r.top < top + 4 * (size.height + 8))
-    if (tip.near) avoid.push(tip.near)
-    setAt(placeTip(size, avoid, { left: area.left + 16, right: area.right - 16, top }))
+    function place() {
+      const size = { width: el.offsetWidth, height: el.offsetHeight }
+      const area = contentArea()
+      const top = area.top + 16
+      const avoid: Box[] = [...document.querySelectorAll<HTMLElement>(INTERACTIVE)]
+        .filter((c) => !el.contains(c))
+        .map((c) => c.getBoundingClientRect())
+        .filter((r) => r.width > 0 && r.bottom > top && r.top < top + 4 * (size.height + 8))
+      if (tip.near) avoid.push(tip.near)
+      setAt(placeTip(size, avoid, { left: area.left + 16, right: area.right - 16, top }))
+    }
+    place()
+    // A tip shown while the page is still moving (the sidebar animating to its
+    // rail, verifier round 2) is placed again once it settles.
+    window.addEventListener('resize', place)
+    document.addEventListener('transitionend', place, true)
+    return () => {
+      window.removeEventListener('resize', place)
+      document.removeEventListener('transitionend', place, true)
+    }
   }, [tip])
   const text = tip.reminder
     ? `You've done this by mouse ${tip.mouseUses} times since you last used ${tip.shortcut.keys}. ${tip.shortcut.tip}`

@@ -239,7 +239,9 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
   const searchRef = useRef<HTMLInputElement>(null)
   useShortcut(COMMAND_SHORTCUT_DEF) // #1251
   useShortcut(ADMIN_HOME_SHORTCUT_DEF)
-  useShortcut(NEW_ROW_SHORTCUT_DEF)
+  // G then N makes a row of the Table on screen: listed only where there is one.
+  const onTable = useRouterState({ select: (s) => s.matches.some((m) => 'table' in m.params) })
+  useShortcut(NEW_ROW_SHORTCUT_DEF, onTable)
   const commandFormRef = useRef<HTMLFormElement>(null)
   // #1253: the command bar is a box in the middle of the screen, drawn while
   // open; its input takes the focus once it is drawn.
