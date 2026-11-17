@@ -70,7 +70,7 @@ import type { BrowseContext } from './lib/warehouse'
 import { ExploreView } from './pages/Explore'
 import { parseChain, parseSelect } from './lib/explore-steps'
 import { NavPathBar } from './components/NavPathBar'
-import { PaneSplit } from './components/RowPane'
+import { PaneSplit, RecordPanel } from './components/RowPane'
 import { NavigationProvider, useAddressNavigation, useLocalNavigation } from './lib/navigation'
 import type { NavStep } from './lib/nav-path'
 
@@ -526,7 +526,7 @@ function NavigatedList({ table, filters, path, layout: asked }: { table: string;
       <CopyBar key={`copy-${table}`} table={table} />
       <NavigationProvider value={nav}>
         <NavPathBar />
-        <PaneSplit>
+        {/* #1259: the open record is placed by the list's view, not beside the page. */}
           <ListView
             key={table}
             table={table}
@@ -545,8 +545,10 @@ function NavigatedList({ table, filters, path, layout: asked }: { table: string;
               // A saved view shows in its own view, without changing the person's choice.
               setViewLayout(layout)
             }}
+            recordPanel={views.layout !== 'table' && nav.step.pane
+              ? <RecordPanel key={`${nav.step.pane.table}\u0000${nav.step.pane.row}`} nav={nav} pane={nav.step.pane} framed />
+              : undefined}
           />
-        </PaneSplit>
       </NavigationProvider>
     </div>
   )

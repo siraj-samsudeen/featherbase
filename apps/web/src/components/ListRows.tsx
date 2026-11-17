@@ -25,7 +25,7 @@ const ACTOR_COLUMNS = new Set(['created_by', 'updated_by', 'retired_by'])
 // currency/float precision). Non-typed columns fall back to a plain string.
 // person-rename: a Reference to a person or a service account shows the
 // name, never the opaque id.
-function isPrincipalTable(table: string | null | undefined): boolean {
+export function isPrincipalTable(table: string | null | undefined): boolean {
   return table === 'Person' || table === 'Service Account'
 }
 
@@ -98,7 +98,7 @@ export function ListRow({
   } : undefined
   return (
     <>
-      <tr onClick={select || undefined} onClickCapture={titleClick} aria-selected={onOpenPane ? inPane : undefined}
+      <tr onClick={select || undefined} onClickCapture={titleClick} aria-selected={onOpenPane ? inPane : undefined} data-row-id={rowId}
         // #910 checklist 21: a line goes to the pane from the keyboard too;
         // Enter on a link or control inside it keeps doing its own thing.
         tabIndex={onOpenPane ? 0 : undefined}
@@ -165,7 +165,7 @@ export function ListRow({
 /** A number column: right-aligned in the table and on a card, so figures line up. */
 export const isFigure = (col: ListColumn) => ['Int', 'Float', 'Currency', 'Percent'].includes(col.column_type)
 
-function ListCell({
+export function ListCell({
   row,
   col: shownCol,
   table,
