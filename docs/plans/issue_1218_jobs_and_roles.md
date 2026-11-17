@@ -125,6 +125,9 @@ Open: may an app and level be given straight to one person (for example a consul
 ### D1 — Shape (owner, 17-Nov-2026: "Yes, agree")
 Three fixed levels: business role → app access → permission. Normally a person gets apps through their business role. As an exception, one person can be given an app directly, with a reason and an end date (consultants, guests). No roles inside roles. No "X Member" roles.
 
+### D2 — Reach (owner, 17-Nov-2026: "q2 yes")
+Every permission is a thing, a verb and a reach: **Own, Team, Area or All**. The area is read from where the person's assignment sits on the axes: location (company › region › cluster › store › floor › section) and merchandise (division › subdivision › category › subcategory). Team is read from the reporting line. No permission is named after a place. Dash All-Stores Reader goes away, because a head-office assignment's area is "whole company".
+
 ## Owner's steer, 17-Nov-2026: fine-grained by area, and fewer words
 
 - Master data needs fine-grained rights: a category manager manages their category, and a store manager manages the sections in their store.
