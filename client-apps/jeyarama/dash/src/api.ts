@@ -1,5 +1,9 @@
 import { version } from '../package.json'
 
+/** Every call into the platform for one of Dash's own Tables names the version this page was built at,
+ *  or the platform answers 409 once the app has been upgraded at least once. */
+export const APP_VERSION_HEADERS = { 'X-Featherbase-App-Version': `dash@${version}` } as const
+
 export class ApiError extends Error {
   constructor(message: string, readonly status?: number) { super(message) }
 }

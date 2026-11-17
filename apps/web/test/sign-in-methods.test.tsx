@@ -8,6 +8,7 @@ import { VIEWER_ROLE } from 'server/src/sales-target'
 import { test, expect, renderApp } from './pg-test'
 import { rowHref } from 'shared'
 import { grantRole } from 'server/test/fixtures'
+import { openLine, showEnded } from './sign-in-lines'
 
 // A Team Leader holds the Sales Target Viewer role (#410): their sign-in
 // methods are an account page outside the Admin screens (#489).
@@ -53,25 +54,25 @@ test('on a Person form a System Manager links a service, invites Google and unli
   const tl = await createUser({ email: 'tl.panel@example.com' })
   await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(tl.user!)}`, admin)
   const panel = await screen.findByTestId('user-sign-in-methods')
-  const link = await within(panel).findByTestId('link-delegated-form')
+  const link = within(await openLine(panel, 'sign-in-line-stylehr')).getByTestId('link-delegated-form')
   await userEvent.type(within(link).getByLabelText('Record number at the service'), 'RR-4242')
   await userEvent.type(within(link).getByLabelText('Login ID at the service'), 'tl_panel')
   await userEvent.click(within(link).getByRole('button', { name: 'Link' }))
   await waitFor(() => expect(panel).toHaveTextContent('RR-4242'))
 
-  const invite = within(panel).getByTestId('invite-google-form')
+  const invite = within(await openLine(panel, 'sign-in-line-google')).getByTestId('invite-google-form')
   await userEvent.clear(within(invite).getByLabelText('Google address to invite'))
   await userEvent.type(within(invite).getByLabelText('Google address to invite'), 'tl.panel@gmail.com')
-  await userEvent.click(within(invite).getByRole('button'))
-  await waitFor(() => expect(panel).toHaveTextContent('invited: tl.panel@gmail.com'))
+  await userEvent.click(within(invite).getByRole('button', { name: 'Invite' }))
+  await waitFor(() => expect(panel).toHaveTextContent('Invited · tl.panel@gmail.com'))
 
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
-  const row = within(panel).getByText(/RR-4242/).closest('li') as HTMLElement
-  await userEvent.click(within(row).getByRole('button', { name: 'Unlink' }))
+  // #1267: a StyleHR link's Change dialog holds its Unlink.
+  const row = within(panel).getByText(/RR-4242/).closest('[data-testid^="user-method-"]') as HTMLElement
+  await userEvent.click(within(row).getByRole('button', { name: 'Change' }))
+  await userEvent.click(within(await within(panel).findByTestId('sign-in-dialog')).getByRole('button', { name: 'Unlink' }))
   // person-resolution D5: the link ends and stays on record as history.
+  await showEnded(panel)
   await waitFor(() => expect(panel).toHaveTextContent(/RR-4242.*ended.*\(unlinked\)/))
-  expect(confirm).toHaveBeenCalled()
-  confirm.mockRestore()
 })
 
 test('a person without the System Manager role sees no admin panel on a Person form', async ({ admin, createUser }) => {
@@ -99,7 +100,7 @@ test('a refused link keeps the form; a link on a turned-off method is labelled',
   const tl = await createUser({ email: 'tl.form@example.com' })
   await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(tl.user!)}`, admin)
   const panel = await screen.findByTestId('user-sign-in-methods')
-  const link = await within(panel).findByTestId('link-delegated-form')
+  const link = within(await openLine(panel, 'sign-in-line-stylehr')).getByTestId('link-delegated-form')
   await userEvent.type(within(link).getByLabelText('Record number at the service'), 'RR-5000')
   await userEvent.click(within(link).getByRole('button', { name: 'Link' }))
   expect(await within(panel).findByTestId('user-method-error')).toHaveTextContent('already linked')
@@ -120,33 +121,40 @@ test('a link on a turned-off method is still named on the Person form', async ({
 
 // #430: inviting emails the address by default; the inviter can skip it, sees
 // a failed send, and can resend a pending invite (not twice in ten minutes).
-test('inviting emails the address unless the box is cleared', async ({ admin, createUser }) => {
+test('inviting with the box cleared sends no email, and the box is ticked again next time', async ({ admin, createUser }) => {
+  const { sql } = await import('server/src/db')
+  // The box clears for one invite only: closing the dialog and opening it again ticks it.
+  const quiet = await createUser({ email: 'tl.quiet@example.com' })
+  await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(quiet.user!)}`, admin)
+  const panel = await screen.findByTestId('user-sign-in-methods')
+  let invite = within(await openLine(panel, 'sign-in-line-google')).getByTestId('invite-google-form')
+  await userEvent.click(within(invite).getByLabelText('Email an invitation to this address'))
+  expect(within(invite).getByLabelText('Email an invitation to this address')).not.toBeChecked()
+  await userEvent.click(within(panel).getByRole('button', { name: 'Cancel' }))
+  invite = within(await openLine(panel, 'sign-in-line-google')).getByTestId('invite-google-form')
+  expect(within(invite).getByLabelText('Email an invitation to this address')).toBeChecked()
+  await userEvent.click(within(invite).getByLabelText('Email an invitation to this address'))
+  await userEvent.clear(within(invite).getByLabelText('Google address to invite'))
+  await userEvent.type(within(invite).getByLabelText('Google address to invite'), 'tl.quiet@gmail.com')
+  await userEvent.click(within(invite).getByRole('button', { name: 'Invite' }))
+  await waitFor(() => expect(panel).toHaveTextContent('Invited · tl.quiet@gmail.com'))
+  expect(await sql`select 1 from email_sink where mail_to = 'tl.quiet@gmail.com'`).toHaveLength(0)
+})
+
+test('inviting with the box ticked emails the address', async ({ admin, createUser }) => {
   const { sql } = await import('server/src/db')
   const tl = await createUser({ email: 'tl.mail@example.com' })
   await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(tl.user!)}`, admin)
-  // The panel re-renders after each invite, so the form is found afresh.
-  const panel = () => screen.getByTestId('user-sign-in-methods')
-  const form = () => within(panel()).getByTestId('invite-google-form')
-  await screen.findByTestId('invite-google-form')
-  let invite = form()
+  const panel = await screen.findByTestId('user-sign-in-methods')
+  const invite = within(await openLine(panel, 'sign-in-line-google')).getByTestId('invite-google-form')
   expect(within(invite).getByLabelText('Email an invitation to this address')).toBeChecked()
   // #833: the field starts with the Person's own address; this invite is another.
   await userEvent.clear(within(invite).getByLabelText('Google address to invite'))
   await userEvent.type(within(invite).getByLabelText('Google address to invite'), 'tl.mail@gmail.com')
-  await userEvent.click(within(invite).getByRole('button'))
-  expect(await within(panel()).findByTestId('user-method-notice')).toHaveTextContent('Invitation saved to the Email Sink for tl.mail@gmail.com')
+  await userEvent.click(within(invite).getByRole('button', { name: 'Invite' }))
+  expect(await within(panel).findByTestId('user-method-notice')).toHaveTextContent('Invitation saved to the Email Sink for tl.mail@gmail.com')
   expect(await sql`select 1 from email_sink where mail_to = 'tl.mail@gmail.com'`).toHaveLength(1)
-
-  await waitFor(() => expect(panel()).toHaveTextContent('invited: tl.mail@gmail.com'))
-  invite = form()
-  await userEvent.clear(within(invite).getByLabelText('Google address to invite'))
-  await userEvent.type(within(invite).getByLabelText('Google address to invite'), 'tl.quiet@gmail.com')
-  await userEvent.click(within(invite).getByLabelText('Email an invitation to this address'))
-  await userEvent.click(within(invite).getByRole('button'))
-  await waitFor(() => expect(panel()).toHaveTextContent('invited: tl.quiet@gmail.com'))
-  expect(await sql`select 1 from email_sink where mail_to = 'tl.quiet@gmail.com'`).toHaveLength(0)
-  // The box is ticked again for the next invite.
-  expect(within(form()).getByLabelText('Email an invitation to this address')).toBeChecked()
+  await waitFor(() => expect(panel).toHaveTextContent('Invited · tl.mail@gmail.com'))
 })
 
 test('a failed invitation email is shown, and the invite is still made', async ({ admin, createUser }) => {
@@ -159,14 +167,14 @@ test('a failed invitation email is shown, and the invite is still made', async (
     const tl = await createUser({ email: 'tl.fail@example.com' })
     await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(tl.user!)}`, admin)
     const panel = await screen.findByTestId('user-sign-in-methods')
-    const invite = await within(panel).findByTestId('invite-google-form')
+    const invite = within(await openLine(panel, 'sign-in-line-google')).getByTestId('invite-google-form')
     await userEvent.clear(within(invite).getByLabelText('Google address to invite'))
     await userEvent.type(within(invite).getByLabelText('Google address to invite'), 'tl.fail@gmail.com')
-    await userEvent.click(within(invite).getByRole('button'))
+    await userEvent.click(within(invite).getByRole('button', { name: 'Invite' }))
     expect(await within(panel).findByTestId('user-method-error')).toHaveTextContent(
       'Invited tl.fail@gmail.com, but the invitation email was not sent (ECONNECTION)',
     )
-    await waitFor(() => expect(panel).toHaveTextContent('invited: tl.fail@gmail.com'))
+    await waitFor(() => expect(panel).toHaveTextContent('Invited · tl.fail@gmail.com'))
   } finally {
     _setInvitationDeliveryForTests(null)
     quiet.mockRestore()
@@ -181,11 +189,13 @@ test('a pending invite can be resent, but not again within ten minutes', async (
   })
   await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(tl.user!)}`, admin)
   const panel = await screen.findByTestId('user-sign-in-methods')
-  const row = (await within(panel).findByText(/invited: tl.resend@gmail.com/)).closest('li') as HTMLElement
-  await userEvent.click(within(row).getByRole('button', { name: 'Resend invitation' }))
+  const row = (await within(panel).findByText('tl.resend@gmail.com')).closest('[data-testid^="user-method-"]') as HTMLElement
+  await userEvent.click(within(row).getByRole('button', { name: 'Change' }))
+  await userEvent.click(within(await within(panel).findByTestId('sign-in-dialog')).getByRole('button', { name: 'Resend Invitation' }))
   expect(await within(panel).findByTestId('user-method-notice')).toHaveTextContent('Invitation saved to the Email Sink for tl.resend@gmail.com')
-  await waitFor(() => expect(row).toHaveTextContent('invitation saved to the Email Sink'))
-  await userEvent.click(within(row).getByRole('button', { name: 'Resend invitation' }))
+  await waitFor(() => expect(within(panel).getByTestId(row.dataset.testid!)).toHaveTextContent('invitation saved to the Email Sink'))
+  await userEvent.click(within(within(panel).getByTestId(row.dataset.testid!)).getByRole('button', { name: 'Change' }))
+  await userEvent.click(within(await within(panel).findByTestId('sign-in-dialog')).getByRole('button', { name: 'Resend Invitation' }))
   expect(await within(panel).findByTestId('user-method-error')).toHaveTextContent('10 minutes')
   expect(await sql`select 1 from email_sink where mail_to = 'tl.resend@gmail.com'`).toHaveLength(1)
 })
@@ -200,7 +210,9 @@ test('a linked Google account reads as its address, when and how it was linked, 
     linked_by = 'first-sign-in', linked_at = '2026-11-03T06:41:00Z', last_used_at = '2026-11-03T07:05:00Z' where id = ${claimed}`
   await renderApp(rowHref('Person', tl.user!), admin)
   const row = await screen.findByTestId(`user-method-${claimed}`)
-  await waitFor(() => expect(within(row).getByTestId('identity-head')).toHaveTextContent(/^Google · tl\.google@gmail\.com$/))
+  // #1267: the line names the method; its status reads the account by its address.
+  expect(row).toHaveTextContent(/^Google/)
+  await waitFor(() => expect(within(row).getByTestId('identity-head')).toHaveTextContent(/^On · signs in as tl\.google@gmail\.com$/))
   expect(within(row).getByTestId('identity-linked')).toHaveTextContent(
     'linked 03-Nov-2026 12:11 IST at first sign-in · last signed in 03-Nov-2026 12:35 IST',
   )
@@ -208,10 +220,12 @@ test('a linked Google account reads as its address, when and how it was linked, 
   expect(details).not.toHaveAttribute('open')
   expect(details).toHaveTextContent('Google account number: 104116711844961612173')
 
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
-  await userEvent.click(within(row).getByRole('button', { name: 'Unlink' }))
-  expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/^Unlink tl\.google@gmail\.com\? This Google account will no longer sign in as .+\.$/))
-  confirm.mockRestore()
+  await userEvent.click(within(row).getByRole('button', { name: 'Turn Off' }))
+  const dialog = await screen.findByTestId('sign-in-dialog')
+  expect(dialog).toHaveTextContent(/Unlink tl\.google@gmail\.com\? This Google account will no longer sign in as .+\./)
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+  expect(screen.queryByTestId('sign-in-dialog')).not.toBeInTheDocument()
+  expect(screen.getByTestId(`user-method-${claimed}`)).toBeInTheDocument()
 })
 
 test('a link the person made themselves names them', async ({ admin, createUser }) => {
@@ -245,8 +259,9 @@ test("a Person page's link fields give browsers and password managers nothing to
   const tl = await createUser({ email: 'tl.1266@example.com' })
   await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(tl.user!)}`, admin)
   const panel = await screen.findByTestId('user-sign-in-methods')
-  const link = await within(panel).findByTestId('link-delegated-form')
-  const invite = within(panel).getByTestId('invite-google-form')
+  const invite = within(await openLine(panel, 'sign-in-line-google')).getByTestId('invite-google-form').cloneNode(true) as HTMLElement
+  await userEvent.click(within(panel).getByRole('button', { name: 'Cancel' }))
+  const link = within(await openLine(panel, 'sign-in-line-stylehr')).getByTestId('link-delegated-form')
   for (const form of [link, invite]) {
     expect(form).toHaveAttribute('autocomplete', 'off')
     for (const input of form.querySelectorAll('input:not([type=checkbox])')) {

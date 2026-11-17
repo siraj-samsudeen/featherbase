@@ -160,6 +160,12 @@ const manifestSchema = z.object({
     role: z.string().min(1),
     people: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/),
   }).strict().optional(),
+  // #1267: who people are to the organisation. `describe` is the read that
+  // says, for { persons }, each one's standing (current | left | none), code
+  // and jobs; the platform runs it as the app's own actor (person-standing.ts).
+  people: z.object({
+    describe: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/),
+  }).strict().optional(),
   tabs: tabsDeclaration.optional(),
   // #941 (ADR 0019): the app's accent, one of the platform's named set. Any
   // text is accepted here so the app is still found; installing (or upgrading
@@ -456,6 +462,8 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
   if (strangers.length) throw new Error(`The app's access approvers must be its own roles: ${strangers.join(', ')}`)
   if (manifest.viewAs && !(manifest.roles ?? []).includes(manifest.viewAs.role))
     throw new Error(`The app's View as role must be one of its own roles: ${manifest.viewAs.role}`)
+  if (manifest.people && !Object.hasOwn(readOperations, manifest.people.describe))
+    throw new Error(`The app's people are described by its read ${manifest.people.describe}, which is not one of the app's reads`)
   if (manifest.viewAs && !Object.hasOwn(readOperations, manifest.viewAs.people))
     throw new Error(`The app's View as people are found by its read ${manifest.viewAs.people}, which is not one of the app's reads`)
   // #666: an operation needs only secrets the app declares.
@@ -1011,6 +1019,11 @@ export function accessGrantApps(): { app: string; title: string; read: string; a
 
 /** #1222: the apps loaded here that let a role view as another person, and
  *  the read each finds people with. */
+/** #1267: the apps that describe people, each with the read that does it. */
+export function peopleDescribers(): { app: string; describe: string }[] {
+  return [...packages.values()].flatMap((pkg) => pkg.manifest.people ? [{ app: pkg.name, describe: pkg.manifest.people.describe }] : [])
+}
+
 export function viewAsApps(): { app: string; role: string; people: string }[] {
   return [...packages.values()].flatMap((pkg) => pkg.manifest.viewAs ? [{ app: pkg.name, ...pkg.manifest.viewAs }] : [])
 }

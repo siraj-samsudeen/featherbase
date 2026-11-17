@@ -95,6 +95,9 @@
     "role": "View As Tester",
     "people": "view_as_people"
   },
+  "people": {
+    "describe": "describe_people"
+  },
   "datasets": [
     {
       "name": "sales_to_date",
@@ -610,6 +613,189 @@
           "description": "Set when given on the Report access page: the name of the person who gave it, as the page shows it."
         }
       ]
+    },
+    {
+      "name": "dash.business_role",
+      "label": "Business role",
+      "module": "Dash",
+      "title_column": "role_name",
+      "description": "#1218, in shadow: what the business calls a position, such as Store Manager or Buyer. Its permissions are its Business role permission rows. Worked out beside today's roles; it decides no one's access yet.",
+      "columns": [
+        {
+          "column_name": "role_name",
+          "label": "Role name",
+          "column_type": "Data",
+          "reqd": true,
+          "unique": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "description",
+          "label": "Description",
+          "column_type": "Text",
+          "in_list_view": true
+        },
+        {
+          "column_name": "by_hand_only",
+          "label": "Given by hand only",
+          "column_type": "Check",
+          "in_list_view": true,
+          "description": "No HR title maps to it: someone gives it to a person by hand, such as Master Data Steward or Vendor."
+        },
+        {
+          "column_name": "reaches",
+          "label": "Reaches",
+          "column_type": "Choice",
+          "choices": "Section\nFloor\nDepartment\nStore\nCluster\nMerchandise\nWhole company\nGiven place",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "How far the role reaches, wherever its holder's assignment sits: their section, floor, department, store or cluster, their merchandise, the whole company, or the place it is given at. Decides each holder's area; the role's name never does."
+        }
+      ]
+    },
+    {
+      "name": "dash.business_role_permission",
+      "label": "Business role permission",
+      "module": "Dash",
+      "description": "One thing a business role may do: in an app at a level, a verb on a thing, with a reach. Read as a sentence: Store Managers can Edit Sections in their Area.",
+      "columns": [
+        {
+          "column_name": "business_role",
+          "label": "Business role",
+          "column_type": "Reference",
+          "reference_table": "dash.business_role",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "app",
+          "label": "App",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The app, such as Dash, Tasker or Tickets. Holding any level of an app opens it."
+        },
+        {
+          "column_name": "level",
+          "label": "Level",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The level in that app, such as Reader or Manager."
+        },
+        {
+          "column_name": "verb",
+          "label": "Verb",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "What they may do, such as View, Add, Edit or Give."
+        },
+        {
+          "column_name": "thing",
+          "label": "Thing",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "What it is done to, such as Reports or Sections."
+        },
+        {
+          "column_name": "reach",
+          "label": "Reach",
+          "column_type": "Choice",
+          "choices": "Own\nTeam\nArea\nAll",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "Own: their own things. Team: their reporting line. Area: where their assignment sits. All: the whole company."
+        }
+      ]
+    },
+    {
+      "name": "dash.title_map",
+      "label": "Title map",
+      "module": "Dash",
+      "title_column": "title",
+      "description": "Which business role an HR title holds: a designation, a job or a merchandise responsibility. A person's designation is looked up first, then their job. A title with no row waits on the list as not mapped yet.",
+      "columns": [
+        {
+          "column_name": "title",
+          "label": "Title",
+          "column_type": "Data",
+          "reqd": true,
+          "unique": true,
+          "in_list_view": true,
+          "description": "The title exactly as HR or the merchandise assignment spells it, matched in any case."
+        },
+        {
+          "column_name": "business_role",
+          "label": "Business role",
+          "column_type": "Reference",
+          "reference_table": "dash.business_role",
+          "in_list_view": true
+        }
+      ]
+    },
+    {
+      "name": "dash.role_assignment",
+      "label": "Role assignment",
+      "module": "Dash",
+      "description": "A business role changed by hand for one person. Correct replaces the role their HR title gives; Also give adds one. Optional end date; it survives HR reloads until removed.",
+      "columns": [
+        {
+          "column_name": "person",
+          "label": "Person",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "Their Featherbase id, which the pages show by name."
+        },
+        {
+          "column_name": "change",
+          "label": "Change",
+          "column_type": "Choice",
+          "choices": "Correct\nAlso give",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "business_role",
+          "label": "Business role",
+          "column_type": "Reference",
+          "reference_table": "dash.business_role",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "site",
+          "label": "Site",
+          "column_type": "Data",
+          "in_list_view": true,
+          "description": "The place it applies at, as a Site id (\"treat as Store Manager at Lakeside\"). Blank: the place of their job."
+        },
+        {
+          "column_name": "ends_on",
+          "label": "Ends on",
+          "column_type": "Date",
+          "in_list_view": true,
+          "description": "The last day it holds. Blank: until someone removes it."
+        },
+        {
+          "column_name": "reason",
+          "label": "Reason",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "removed",
+          "label": "Removed",
+          "column_type": "Check",
+          "description": "Taken away: the row stays so its history says who removed it and when."
+        },
+        {
+          "column_name": "given_by_name",
+          "label": "Given by",
+          "column_type": "Data"
+        }
+      ]
     }
   ],
   "scopeProvider": {
@@ -722,6 +908,42 @@
         "create": "@basic",
         "update": "@basic"
       }
+    },
+    {
+      "table": "dash.business_role",
+      "role": "Report Access Manager",
+      "operations": {
+        "read": "@basic",
+        "create": "@basic",
+        "update": "@basic"
+      }
+    },
+    {
+      "table": "dash.business_role_permission",
+      "role": "Report Access Manager",
+      "operations": {
+        "read": "@basic",
+        "create": "@basic",
+        "update": "@basic"
+      }
+    },
+    {
+      "table": "dash.title_map",
+      "role": "Report Access Manager",
+      "operations": {
+        "read": "@basic",
+        "create": "@basic",
+        "update": "@basic"
+      }
+    },
+    {
+      "table": "dash.role_assignment",
+      "role": "Report Access Manager",
+      "operations": {
+        "read": "@basic",
+        "create": "@basic",
+        "update": "@basic"
+      }
     }
   ],
   "reads": {
@@ -730,6 +952,10 @@
       "dash.report"
     ],
     "operations": {
+      "manages_roles": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+      "business_roles": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+      "explain_person": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+      "access_changes": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
       "me": {
         "policy": {
           "kind": "table"
@@ -914,6 +1140,14 @@
         }
       },
       "view_as_people": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "describe_people": {
         "policy": {
           "kind": "table"
         },
@@ -2245,7 +2479,9 @@
     {"id": "waiting_reads_fast", "fromVersion": "0.13.22", "toVersion": "0.13.23", "operations": []},
     {"id": "holders_read_whole", "fromVersion": "0.13.23", "toVersion": "0.13.24", "operations": []},
     {"id": "deciders_read_together", "fromVersion": "0.13.24", "toVersion": "0.13.25", "operations": []},
-    {"id": "mde_review", "fromVersion": "0.13.25", "toVersion": "0.13.26", "operations": []}
+    {"id": "mde_review", "fromVersion": "0.13.25", "toVersion": "0.13.26", "operations": []},
+    {"id": "people_describe", "fromVersion": "0.13.26", "toVersion": "0.13.27", "operations": []},
+    {"id": "business_roles_shadow", "fromVersion": "0.13.27", "toVersion": "0.13.28", "operations": [{"kind": "addTable", "table": {"name": "dash.business_role", "label": "Business role", "module": "Dash", "title_column": "role_name", "description": "#1218, in shadow: what the business calls a position, such as Store Manager or Buyer. Its permissions are its Business role permission rows. Worked out beside today's roles; it decides no one's access yet.", "columns": [{"column_name": "role_name", "label": "Role name", "column_type": "Data", "reqd": true, "unique": true, "in_list_view": true}, {"column_name": "description", "label": "Description", "column_type": "Text", "in_list_view": true}, {"column_name": "by_hand_only", "label": "Given by hand only", "column_type": "Check", "in_list_view": true, "description": "No HR title maps to it: someone gives it to a person by hand, such as Master Data Steward or Vendor."}, {"column_name": "reaches", "label": "Reaches", "column_type": "Choice", "choices": "Section\nFloor\nDepartment\nStore\nCluster\nMerchandise\nWhole company\nGiven place", "reqd": true, "in_list_view": true, "description": "How far the role reaches, wherever its holder's assignment sits: their section, floor, department, store or cluster, their merchandise, the whole company, or the place it is given at. Decides each holder's area; the role's name never does."}]}}, {"kind": "addTable", "table": {"name": "dash.business_role_permission", "label": "Business role permission", "module": "Dash", "description": "One thing a business role may do: in an app at a level, a verb on a thing, with a reach. Read as a sentence: Store Managers can Edit Sections in their Area.", "columns": [{"column_name": "business_role", "label": "Business role", "column_type": "Reference", "reference_table": "dash.business_role", "reqd": true, "in_list_view": true}, {"column_name": "app", "label": "App", "column_type": "Data", "reqd": true, "in_list_view": true, "description": "The app, such as Dash, Tasker or Tickets. Holding any level of an app opens it."}, {"column_name": "level", "label": "Level", "column_type": "Data", "reqd": true, "in_list_view": true, "description": "The level in that app, such as Reader or Manager."}, {"column_name": "verb", "label": "Verb", "column_type": "Data", "reqd": true, "in_list_view": true, "description": "What they may do, such as View, Add, Edit or Give."}, {"column_name": "thing", "label": "Thing", "column_type": "Data", "reqd": true, "in_list_view": true, "description": "What it is done to, such as Reports or Sections."}, {"column_name": "reach", "label": "Reach", "column_type": "Choice", "choices": "Own\nTeam\nArea\nAll", "reqd": true, "in_list_view": true, "description": "Own: their own things. Team: their reporting line. Area: where their assignment sits. All: the whole company."}]}}, {"kind": "addTable", "table": {"name": "dash.title_map", "label": "Title map", "module": "Dash", "title_column": "title", "description": "Which business role an HR title holds: a designation, a job or a merchandise responsibility. A person's designation is looked up first, then their job. A title with no row waits on the list as not mapped yet.", "columns": [{"column_name": "title", "label": "Title", "column_type": "Data", "reqd": true, "unique": true, "in_list_view": true, "description": "The title exactly as HR or the merchandise assignment spells it, matched in any case."}, {"column_name": "business_role", "label": "Business role", "column_type": "Reference", "reference_table": "dash.business_role", "in_list_view": true}]}}, {"kind": "addTable", "table": {"name": "dash.role_assignment", "label": "Role assignment", "module": "Dash", "description": "A business role changed by hand for one person. Correct replaces the role their HR title gives; Also give adds one. Optional end date; it survives HR reloads until removed.", "columns": [{"column_name": "person", "label": "Person", "column_type": "Data", "reqd": true, "in_list_view": true, "description": "Their Featherbase id, which the pages show by name."}, {"column_name": "change", "label": "Change", "column_type": "Choice", "choices": "Correct\nAlso give", "reqd": true, "in_list_view": true}, {"column_name": "business_role", "label": "Business role", "column_type": "Reference", "reference_table": "dash.business_role", "reqd": true, "in_list_view": true}, {"column_name": "site", "label": "Site", "column_type": "Data", "in_list_view": true, "description": "The place it applies at, as a Site id (\"treat as Store Manager at Lakeside\"). Blank: the place of their job."}, {"column_name": "ends_on", "label": "Ends on", "column_type": "Date", "in_list_view": true, "description": "The last day it holds. Blank: until someone removes it."}, {"column_name": "reason", "label": "Reason", "column_type": "Text"}, {"column_name": "removed", "label": "Removed", "column_type": "Check", "description": "Taken away: the row stays so its history says who removed it and when."}, {"column_name": "given_by_name", "label": "Given by", "column_type": "Data"}]}}]}
   ],
   "baseTables": {
     "read": {
@@ -2264,7 +2500,8 @@
         "reports_to",
         "acting",
         "starts_on",
-        "ends_on"
+        "ends_on",
+        "designation"
       ],
       "Merchandise Assignment": [
         "employee",
@@ -2368,7 +2605,42 @@
         "ends_on"
       ],
       "Cluster": [
-        "cluster_manager"
+        "cluster_manager",
+        "name"
+      ],
+      "Designation": [
+        "designation"
+      ],
+      "dash.business_role": [
+        "role_name",
+        "description",
+        "by_hand_only",
+        "reaches"
+      ],
+      "dash.business_role_permission": [
+        "business_role",
+        "app",
+        "level",
+        "verb",
+        "thing",
+        "reach"
+      ],
+      "dash.title_map": [
+        "title",
+        "business_role",
+        "updated_at"
+      ],
+      "dash.role_assignment": [
+        "person",
+        "change",
+        "business_role",
+        "site",
+        "ends_on",
+        "reason",
+        "removed",
+        "given_by_name",
+        "updated_at",
+        "created_by"
       ]
     },
     "propose": {
@@ -2446,9 +2718,17 @@
       "dash.report",
       "dash.report_access",
       "dash.report_bundle",
-      "dash.report_bundle_member"
+      "dash.report_bundle_member",
+      "dash.business_role",
+      "dash.business_role_permission",
+      "dash.title_map",
+      "dash.role_assignment"
     ],
     "operations": {
+      "give_role": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+      "remove_role": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+      "map_title": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+      "add_starting_roles": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
       "propose_section": {
         "policy": {
           "kind": "table"

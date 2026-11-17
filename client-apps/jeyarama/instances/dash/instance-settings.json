@@ -43,6 +43,7 @@
         "kind": "delegated_password",
         "label": "StyleHR",
         "enabled": true,
+        "employees_only": true,
         "service_url": "https://stylehr.in/api/login/",
         "new_person": "create_if_on_roster",
         "self_link": false,
@@ -167,7 +168,7 @@
           },
           {
             "row_id": "dash.linked_tables",
-            "value": "[\"Employee\", \"Job Assignment\", \"Merchandise Assignment\", \"Buyer Section\", \"Buyer Section Subcategory\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Site\", \"Plant\", \"Department\", \"Department Section\", \"Cluster\"]"
+            "value": "[\"Employee\", \"Job Assignment\", \"Merchandise Assignment\", \"Buyer Section\", \"Buyer Section Subcategory\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Site\", \"Plant\", \"Department\", \"Department Section\", \"Cluster\", \"Designation\"]"
           }
         ]
       }
@@ -193,7 +194,7 @@
           },
           {
             "row_id": "dash.linked_tables",
-            "value": "[\"Employee\", \"Job Assignment\", \"Merchandise Assignment\", \"Buyer Section\", \"Buyer Section Subcategory\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Site\", \"Plant\", \"Department\", \"Department Section\", \"Cluster\"]"
+            "value": "[\"Employee\", \"Job Assignment\", \"Merchandise Assignment\", \"Buyer Section\", \"Buyer Section Subcategory\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Site\", \"Plant\", \"Department\", \"Department Section\", \"Cluster\", \"Designation\"]"
           }
         ]
       }

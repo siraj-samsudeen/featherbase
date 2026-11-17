@@ -85,7 +85,7 @@ test('the administrator\'s panel shows an expected Microsoft sign-in, and a link
   const first = await renderApp(rowHref('Person', guest.user!), admin)
   const panel = await screen.findByTestId('user-sign-in-methods')
   const expected = await within(panel).findByTestId('user-method-expected-microsoft')
-  expect(expected).toHaveTextContent('Expects Microsoft sign-in as expects.ms@bisquared.example')
+  expect(expected).toHaveTextContent('Expected as expects.ms@bisquared.example')
   expect(panel).not.toHaveTextContent('No way to sign in yet')
   first.unmount()
 
@@ -105,8 +105,8 @@ test('the administrator\'s panel shows an expected Microsoft sign-in, and a link
   await configureGoogle({ enabled: true, client_id: '' })
   await renderApp(rowHref('Person', guest.user!), admin)
   const again = await screen.findByTestId('user-sign-in-methods')
-  // The methods have loaded (the Google invite needs them), so the panel has
+  // The methods have loaded (the Google line needs them), so the panel has
   // judged the Microsoft link it holds.
-  await within(again).findByTestId('invite-google-form')
+  await within(again).findByTestId('sign-in-line-google')
   expect(within(again).queryByTestId('user-method-expected-microsoft')).not.toBeInTheDocument()
 })

@@ -196,6 +196,21 @@ test('the tab row holds one save state and the View menu; Escape or a click outs
   fireEvent.pointerDown(tab)
   expect(screen.queryByTestId('view-menu')).not.toBeInTheDocument()
   expect(button).not.toHaveFocus()
+  // The arrow keys move through the choices, round from the last to the first; other keys leave focus be.
+  button.click()
+  const choices = await screen.findByTestId('view-menu')
+  await waitFor(() => expect(within(choices).getByTestId('arrange-importance')).toHaveFocus())
+  await userEvent.keyboard('{ArrowDown}')
+  expect(within(choices).getByTestId('arrange-type')).toHaveFocus()
+  await userEvent.keyboard('{ArrowUp}{ArrowUp}')
+  expect(within(choices).getByTestId('arrange-columns-2')).toHaveFocus()
+  await userEvent.keyboard('{ArrowDown}')
+  expect(within(choices).getByTestId('arrange-importance')).toHaveFocus()
+  await userEvent.keyboard('a')
+  expect(within(choices).getByTestId('arrange-importance')).toHaveFocus()
+  // The menu sits fixed to its button: the page scrolling closes it rather than leave it behind.
+  fireEvent.scroll(document)
+  expect(screen.queryByTestId('view-menu')).not.toBeInTheDocument()
   // On the Map, the fields' View has nothing to arrange.
   await userEvent.click(screen.getByRole('tab', { name: 'Map' }))
   expect(within(actions).queryByTestId('view-menu-button')).not.toBeInTheDocument()
