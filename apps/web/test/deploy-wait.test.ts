@@ -240,6 +240,46 @@ describe('the notice', () => {
   })
 })
 
+describe('a request the edge holds before answering', () => {
+  // Measured on dev (17-Nov-2026): during the gap Railway's edge holds each
+  // request 15 s before its 502, and the server is usually back by then, so
+  // the notice must come from the hold itself, not only from the 502.
+  test('while it hangs and the ping cannot get through either, the notice shows; it goes when the answer comes', async () => {
+    let up = false
+    const base = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), window.location.href).pathname
+      if (path === '/api/ping') {
+        if (up) return Promise.resolve(OK())
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+        })
+      }
+      if (up) return Promise.resolve(OK())
+      return new Promise<Response>((resolve) => setTimeout(() => { up = true; resolve(EDGE_502()) }, 15_000))
+    }) as unknown as typeof globalThis.fetch
+    const answer = waitThroughDeploys(base, { onWaiting })('/api/rows')
+    await vi.advanceTimersByTimeAsync(2900)
+    expect(notices).toEqual([])
+    await vi.advanceTimersByTimeAsync(2500)
+    expect(notices).toEqual([true])
+    await vi.advanceTimersByTimeAsync(11_000)
+    expect(notices).toEqual([true, false])
+    expect((await answer).status).toBe(200)
+  })
+
+  test('a slow answer while the server answers its ping shows nothing: a long report is not an update', async () => {
+    const base = vi.fn((input: RequestInfo | URL) => {
+      const path = new URL(String(input), window.location.href).pathname
+      if (path === '/api/ping') return Promise.resolve(OK())
+      return new Promise<Response>((resolve) => setTimeout(() => resolve(OK()), 8000))
+    }) as unknown as typeof globalThis.fetch
+    const answer = waitThroughDeploys(base, { onWaiting })('/api/app_reads/dash/big_report', { method: 'POST', body: '{}' })
+    await vi.advanceTimersByTimeAsync(9000)
+    expect((await answer).status).toBe(200)
+    expect(notices).toEqual([])
+  })
+})
+
 describe('giving up', () => {
   test('after 90 seconds the request fails as it would have, and the notice goes', async () => {
     const { fetch } = scripted(() => EDGE_502(), () => false)

@@ -24,6 +24,10 @@ interface Options {
   pollMs?: number
   /** A ping not answered by then is dropped and asked again. */
   pingTimeoutMs?: number
+  /** A request pending this long makes the page check the server is reachable. */
+  suspectAfterMs?: number
+  /** A reachability ping not answered by then means the server is not reachable. */
+  reachTimeoutMs?: number
   noticeAfterMs?: number
   giveUpMs?: number
 }
@@ -40,26 +44,70 @@ const abortError = () => new DOMException('The operation was aborted.', 'AbortEr
  *  for a slow app too. It waits out the gap, then fails with INTERRUPTED_WRITE
  *  in Featherbase's own error shape, which every page already shows. */
 export function waitThroughDeploys(base: Fetch, options: Options): Fetch {
-  const { onWaiting, pingPath = '/api/ping', firstPollMs = 250, pollMs = 1000, pingTimeoutMs = 5000, noticeAfterMs = 1000, giveUpMs = 90_000 } = options
+  const { onWaiting, pingPath = '/api/ping', firstPollMs = 250, pollMs = 1000, pingTimeoutMs = 5000, suspectAfterMs = 3000, reachTimeoutMs = 2000, noticeAfterMs = 1000, giveUpMs = 90_000 } = options
   // Every held request waits on the same ping, so a gap is asked about once a
   // second, not once per request.
   const held = new Set<{ since: number }>()
   let back: Promise<void> | null = null
   let noticeShown = false
   let noticeTimer: ReturnType<typeof setTimeout> | null = null
+  // During the gap Railway's edge holds a request ~15 s before its 502 (dev,
+  // 17-Nov-2026), so a hang must show the notice too. A request pending
+  // `suspectAfterMs` makes the page ping; a ping (normally well under a
+  // second) that gets no answer from Featherbase in `reachTimeoutMs` means the
+  // server is not reachable. A long report with a quick ping shows nothing.
+  let inFlight = 0
+  let unreachable = false
+  let checking = false
 
   const refreshNotice = () => {
     if (noticeTimer) clearTimeout(noticeTimer)
     noticeTimer = null
-    if (!held.size) {
+    if (!held.size && !unreachable) {
       if (noticeShown) onWaiting((noticeShown = false))
       return
     }
     if (noticeShown) return
+    if (unreachable) return onWaiting((noticeShown = true))
     const oldest = Math.min(...[...held].map((h) => h.since))
     const due = oldest + noticeAfterMs - Date.now()
     if (due <= 0) onWaiting((noticeShown = true))
     else noticeTimer = setTimeout(refreshNotice, due)
+  }
+
+  /** One ping, its own timer (not AbortSignal.timeout, so one clock drives
+   *  it in tests): true when Featherbase itself answered it. */
+  const ping = async (timeoutMs: number): Promise<boolean> => {
+    const stalled = new AbortController()
+    const timer = setTimeout(() => stalled.abort(), timeoutMs)
+    const answer = await base(pingPath, { cache: 'no-store', signal: stalled.signal }).catch(() => null)
+    clearTimeout(timer)
+    return Boolean(answer?.ok && answer.headers.get('x-railway-fallback') !== 'true')
+  }
+
+  const reachable = () => {
+    if (!unreachable) return
+    unreachable = false
+    refreshNotice()
+  }
+
+  const checkReachable = async () => {
+    if (checking) return
+    checking = true
+    try {
+      for (;;) {
+        if (await ping(reachTimeoutMs)) return reachable()
+        if (!inFlight && !held.size) return reachable()
+        if (!unreachable) {
+          unreachable = true
+          refreshNotice()
+        }
+        await new Promise((r) => setTimeout(r, pollMs))
+        if (!inFlight && !held.size) return reachable()
+      }
+    } finally {
+      checking = false
+    }
   }
 
   const serverBack = (): Promise<void> => {
@@ -67,12 +115,7 @@ export function waitThroughDeploys(base: Fetch, options: Options): Fetch {
       // The first ask is soon, so a brief blip ends before the notice shows.
       const ask = (delay: number) => {
         setTimeout(async () => {
-          // Its own timer, not AbortSignal.timeout, so one clock drives it in tests.
-          const stalled = new AbortController()
-          const timer = setTimeout(() => stalled.abort(), pingTimeoutMs)
-          const answer = await base(pingPath, { cache: 'no-store', signal: stalled.signal }).catch(() => null)
-          clearTimeout(timer)
-          if (answer?.ok && answer.headers.get('x-railway-fallback') !== 'true') {
+          if (await ping(pingTimeoutMs)) {
             back = null
             resolve()
           } else if (held.size) ask(pollMs)
@@ -105,6 +148,8 @@ export function waitThroughDeploys(base: Fetch, options: Options): Fetch {
     try {
       for (;;) {
         let answer: Response | null = null
+        inFlight++
+        const watch = setTimeout(() => void checkReachable(), suspectAfterMs)
         try {
           answer = await base(template ? template.clone() : input, init)
         } catch (error) {
@@ -112,9 +157,16 @@ export function waitThroughDeploys(base: Fetch, options: Options): Fetch {
           // it is passed on, never sent twice.
           if (!read || signal?.aborted || Date.now() >= deadline) throw error
           lastError = error
+        } finally {
+          clearTimeout(watch)
+          inFlight--
         }
         const fromEdge = answer !== null && EDGE_STATUSES.has(answer.status) && answer.headers.get('x-railway-fallback') === 'true'
-        if (answer && !fromEdge) return answer
+        if (answer && !fromEdge) {
+          // Featherbase itself answered: it is reachable.
+          reachable()
+          return answer
+        }
         if (Date.now() >= deadline) {
           if (answer) return read ? answer : interruptedWrite()
           throw lastError
