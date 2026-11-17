@@ -55,8 +55,9 @@ test('the first tip covers no control and stays on screen', async ({ session, re
     })
 })
 
-// 1180px here is how 1280px lays out under CI's Linux fonts (a little wider):
-// the reminder wraps to three lines and must still fit above the filters.
+// Two widths, two layouts of the header: the reminder must cover no control
+// and sit above the table either way (CI's Linux fonts are wider than a
+// Mac's; the placement measures the real controls, not a fixed width).
 for (const width of [1280, 1180]) test.describe(`at ${width}px`, () => {
 test.use({ viewport: { width, height: 800 } })
 test('a reminder with the sidebar expanded still fits near the top, covering no control', async ({ session, request }) => {
@@ -80,9 +81,12 @@ test('a reminder with the sidebar expanded still fits near the top, covering no 
       const reminder = page.getByRole('status', { name: 'Reminder' })
       await expect(reminder).toContainText(/You've done this by mouse 3 times since you last used (⌘B|Ctrl\+B)\./)
       await expect.poll(() => coverage(page, 'shortcut-tip')).toEqual({ covered: [], inside: true })
-      const main = await page.locator('main').boundingBox()
+      // Near the top whatever the fonts: above the table's first row, in the
+      // page's header (CI's wider fonts leave no room beside the title, so
+      // there it sits under the toolbar).
       const box = await reminder.boundingBox()
-      expect(box!.y - main!.y).toBeLessThan(80)
+      const firstRow = await page.locator('tbody tr').first().boundingBox()
+      expect(box!.y).toBeLessThan(firstRow!.y)
     })
 })
 })
