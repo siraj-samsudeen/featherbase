@@ -91,7 +91,10 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+/** One request with this session's headers (its token, the app versions it
+ *  pinned), and the 401 rule; the answer's body is the caller's to read.
+ *  #1265: the search streams its answer, so it reads the body itself. */
+export async function send(path: string, init: RequestInit = {}): Promise<Response> {
   const token = getToken()
   // Pin before metadata/data reads. Refetch and 409 must never relabel an old
   // form as new code; only a new login or page reload obtains another snapshot.
@@ -131,6 +134,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       window.location.href = `${loginHref(next)}${token ? '&ended=1' : ''}`
     }
   }
+  return res
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await send(path, init)
   const body = (await res.json().catch(
     /* istanbul ignore next -- a body that is not JSON comes only from something between the browser and the server (a proxy's error page); the server answers JSON on every path, errors and not-found included */
     () => ({}),
