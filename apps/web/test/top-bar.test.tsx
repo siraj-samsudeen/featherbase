@@ -49,7 +49,11 @@ async function viewerOnly(admin: Client, createUser: (o: { email?: string; roles
   return createUser({ email, roles: [VIEWER_ROLE] })
 }
 
-const bar = () => screen.findByTestId('top-bar')
+/** #1253: the platform's chrome. A page with a sidebar has no top bar: the
+ *  switcher is at the sidebar's top and the account at its foot. A page
+ *  without one (the Sales Target page, the Portal, no access) keeps the bar. */
+const bar = () => waitFor(() =>
+  document.querySelector<HTMLElement>('[data-testid="admin-sidebar"], [data-testid="account-sidebar"]') ?? screen.getByTestId('top-bar'))
 const nameElement = async () => within(await bar()).findByTestId('top-bar-name')
 /** The bar's name as shown: the switcher's button (#1227, #1236) or the plain name. */
 const barName = nameElement
@@ -696,9 +700,9 @@ test('someone who belongs to no app sees the switcher on the neutral Featherbase
 test('the account pages have the shared sidebar, with its own collapse control', async ({ admin }) => {
   onAddressThatOpens('dash')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
-  const bar = await settledBar()
-  // #1248: the sidebar's own footer carries its collapse control, not the bar.
+  await settledBar()
+  // #1248: the sidebar's own footer carries its collapse control; #1253: no top bar.
   expect(within(screen.getByTestId('account-sidebar')).getByTestId('sidebar-collapse')).toBeInTheDocument()
-  expect(within(bar).queryByTestId('sidebar-collapse')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('top-bar')).not.toBeInTheDocument()
   expect(screen.getByTestId('sidebar-group-account')).toBeInTheDocument()
 })

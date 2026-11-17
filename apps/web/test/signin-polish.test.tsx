@@ -41,7 +41,7 @@ test('3: the "same ID and password" line is help text under the ID box, tied to 
   expect(screen.getAllByText(/Use the same ID and password/)).toHaveLength(1)
 })
 
-test('4, 5: an "or" divider sits between StyleHR and Google; email-and-password is a centred quiet link under them', async () => {
+test('4, 5: an "or" divider sits between StyleHR and Google; email-and-password is a full button under them (#1258)', async () => {
   vi.stubEnv('ALLOW_MOCK_OAUTH', '1')
   await configureDelegated()
   await renderApp('/featherbase/login', anonymous)
@@ -54,7 +54,8 @@ test('4, 5: an "or" divider sits between StyleHR and Google; email-and-password 
   expect(before(divider, google)).toBe(true)
   const other = screen.getByTestId('password-login-toggle')
   expect(before(google, other)).toBe(true)
-  expect(other.parentElement).toHaveClass('justify-center')
+  expect(other).toHaveClass('w-full')
+  expect(other.className).not.toMatch(/hover:underline/)
 })
 
 test('6: a wrong password shows an alert inside the card, above the fields, and keeps the typed ID', async ({ createUser }) => {

@@ -5,7 +5,7 @@ import { AppError } from './errors'
 import { activeApps } from './app-lifecycle'
 import { isActingSystemActor } from './system-actor'
 import { asNameList, declaresOwnPages } from './installed-app-ledger'
-import { admittedToTable } from './mandatory-access'
+import { admittedHolding } from './mandatory-access'
 import { readOnce } from './permission-reads'
 import { permissionRefusal } from './refusals'
 
@@ -18,31 +18,55 @@ export async function getRoles(principal: string): Promise<string[]> {
   if (principal === 'Guest') return ['Guest']
   // The server's own actor (system-actor.ts), only inside its operation.
   if (isActingSystemActor(principal)) return ['All', 'System Manager']
-  // One round trip: the roles held directly (app null), then the app roles
-  // bound to them (#620, D4). getRoles runs on nearly every permission check.
-  const rows = await readOnce(JSON.stringify(['roles', principal]), () => sql`
-    with held as (
-      select role from has_role
-      where parent = ${principal} and parenttype in ('Person', 'Service Account')
+  // One round trip (#620, D4); getRoles runs on nearly every permission check.
+  const rows = await readOnce(JSON.stringify(['roles', principal]), () => heldRoleRows([principal]))
+  return rolesFrom(rows)
+}
+
+/** #1254: getRoles for many principals at once, in one round trip: each one's roles, exactly as getRoles gives them. */
+export async function getRolesMany(principals: string[]): Promise<Map<string, string[]>> {
+  const roles = new Map<string, string[]>()
+  const asked: string[] = []
+  for (const principal of new Set(principals)) {
+    if (principal === 'Guest' || isActingSystemActor(principal)) roles.set(principal, await getRoles(principal))
+    else asked.push(principal)
+  }
+  const rows = asked.length ? await heldRoleRows(asked) : []
+  for (const principal of asked) roles.set(principal, rolesFrom(rows.filter((r) => r.principal === principal)))
+  return roles
+}
+
+/** The roles held directly (app null), then the app roles bound to them (#620, D4), per principal. */
+function heldRoleRows(principals: string[]) {
+  return sql`
+    with wanted as (select unnest(${principals}::text[]) as principal),
+    held as (
+      select w.principal, h.role from wanted w
+      join has_role h on h.parent = w.principal and h.parenttype in ('Person', 'Service Account')
       -- #923: a person (never a service account) also holds the roles
       -- System Settings gives everyone who signs in, one per line.
       union
       -- Only a role that still exists, and never a platform role, whatever
       -- the stored text says.
-      select ro.row_id from single_value s, regexp_split_to_table(s.value, E'\n') r
+      select w.principal, ro.row_id from wanted w
+      join person pe on pe.row_id = w.principal
+      cross join single_value s
+      cross join regexp_split_to_table(s.value, E'\n') r
       join role ro on ro.row_id = btrim(r)
       where s.table_name = 'System Settings' and s.field = 'everyone_roles'
-        and ro.row_id not in ${sql(PLATFORM_ROLES)}
-        and exists (select 1 from person where row_id = ${principal}))
-    select role, null as app from held
+        and ro.row_id not in ${sql(PLATFORM_ROLES)})
+    select principal, role, null as app from held
     union all
-    select distinct b.app_role as role, b.app from app_role_binding b
+    select distinct h.principal, b.app_role as role, b.app from app_role_binding b
     join installed_app a on a.name = b.app and a.enabled and not a.activation_pending
-    where b.bound_role in (select role from held)
-      and b.bound_role not in ${sql(OPEN_ROLES)}
+    join held h on h.role = b.bound_role
+    where b.bound_role not in ${sql(OPEN_ROLES)}
       and b.app_role not in ${sql(PLATFORM_ROLES)}
       and jsonb_typeof(a.manifest->'roles') = 'array' and a.manifest->'roles' ? b.app_role
-    order by app nulls first, role`)
+    order by principal, app nulls first, role`
+}
+
+function rolesFrom(rows: readonly Record<string, unknown>[]): string[] {
   const held = ['All', ...rows.filter((r) => r.app === null).map((r) => r.role as string)]
   // The same availability assertAppAvailable requires: enabled, not pending
   // activation, and its exact files loaded (activeApps).
@@ -96,7 +120,10 @@ function columnsOf(rule: string, listed: string[]): string[] {
 /** Resolve whole contributions, including their prerequisites. A missing or
  * cyclic prerequisite contributes nothing; it never becomes an open grant. */
 export async function permissionGrants(user: string, table: string, action: PermAction, parentPermission?: string, parentColumn?: string): Promise<PermissionGrant[]> {
-  const roles = await getRoles(user)
+  return permissionGrantsHolding(await getRoles(user), table, action, parentPermission, parentColumn)
+}
+
+async function permissionGrantsHolding(roles: string[], table: string, action: PermAction, parentPermission?: string, parentColumn?: string): Promise<PermissionGrant[]> {
   const rows = await readOnce(JSON.stringify(['grants', roles, table, action]), () => sql`
     select p.row_id, p.scope_mode, p.column_rule, p.owner_app, p.requires_permission, p.parent_permission, p.parent_column,
       coalesce(array_agg(c.target_column) filter (where c.target_column is not null), '{}') as columns
@@ -128,11 +155,16 @@ export async function permissionScope(
   table: string,
   action: PermAction,
 ): Promise<PermScope> {
+  return permissionScopeHolding(user, await getRoles(user), table, action)
+}
+
+/** permissionScope for a principal whose roles were read already (#1254: once for many people). */
+export async function permissionScopeHolding(principal: string, roles: string[], table: string, action: PermAction): Promise<PermScope> {
   // #1222: while viewing as someone, the screens offer no change.
   if (viewingAs() && action !== 'read' && action !== 'read_identifiers') return 'none'
-  if (!(await admittedToTable(user, table))) return 'none'
-  if (await isPrivileged(user)) return 'all'
-  const active = await permissionGrants(user, table, action)
+  if (!(await admittedHolding(roles, table))) return 'none'
+  if (privilegedHolding(principal, roles)) return 'all'
+  const active = await permissionGrantsHolding(roles, table, action)
   if (active.some((grant) => grant.scope === 'all')) return 'all'
   if (active.length) return 'own_rows'
   return 'none'
@@ -253,8 +285,9 @@ async function appsWithOwnPages(): Promise<{ names: Set<string>; tables: Set<str
 /** Administrator, or a principal of either kind holding System Manager. */
 export async function isPrivileged(principal: string): Promise<boolean> {
   if (principal === 'Administrator') return true
-  return (await getRoles(principal)).includes('System Manager')
+  return privilegedHolding(principal, await getRoles(principal))
 }
+const privilegedHolding = (principal: string, roles: string[]) => principal === 'Administrator' || roles.includes('System Manager')
 
 // PERM-005: map of restricted Table -> allowed row names for a principal.
 // The ONLY reader of data_scope (person-rename R2): list, get, reports,

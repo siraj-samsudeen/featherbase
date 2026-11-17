@@ -151,7 +151,11 @@ function publish(channel: string, event: string, payload?: unknown): void {
   for (const c of clients) {
     if (!c.channels.has(channel) || c.socket.readyState !== c.socket.OPEN) continue
     // #1222: a socket opened while viewing gets nothing once that View as no longer holds.
-    if (c.viewing) { void deliverViewing(c, msg, data).catch(() => {}); continue }
+    if (c.viewing) {
+      // A failed check must never stop the broadcast to the other sockets.
+      void deliverViewing(c, msg, data).catch(/* v8 ignore next -- only a database failure inside eventVisibleTo or closeViewAsClient rejects here; no test can make the database fail mid-delivery */ () => {})
+      continue
+    }
     // person-rename R2: a list or row event reaches a subscriber only for a
     // row it can read now (own-Table and Reference scopes alike).
     if (channel.startsWith('list:') || channel.startsWith('row:')) void deliverChecked(c, msg, data).catch(() => {})
@@ -167,7 +171,8 @@ async function deliverViewing(client: Client, msg: RealtimeEvent, data: string):
   // Sent under the session's lock, after a last look: an Exit that finished first, on any server, stops it.
   const sent = await whileViewAsHolds(client.owner.sign_in!.session_id, client.viewing!, () => {
     if (client.socket.readyState === client.socket.OPEN) client.socket.send(data)
-  }).catch(() => false)
+  }).catch(/* v8 ignore next -- only a database failure inside the lock rejects; it counts as no longer holding */ () => false)
+  /* v8 ignore next -- a race: only an Exit or expiry landing between this delivery's first check and its lock reaches it; the same final check on an API read is tested by holding a read open across Exit (test/view-as.test.ts) */
   if (!sent) closeViewAsClient(client)
 }
 

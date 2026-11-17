@@ -66,7 +66,7 @@ export function HomePageView({ name }: { name: string }) {
       )}
 
       {page.cards.length > 0 && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="home-page-cards">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-3" data-testid="home-page-cards">
           {page.cards.map((card, i) => (
             <div key={card.label ?? i} className={cardClasses('p-4')} data-testid={`home-card-${card.label ?? 'links'}`}>
               {/* Links curated before the first card break form a card with no
@@ -95,7 +95,7 @@ export function HomePageView({ name }: { name: string }) {
 
       {/* Legacy UI-027 shortcuts, still rendered as navigable cards. */}
       {page.shortcuts.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3" data-testid="home-page-shortcuts">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-3" data-testid="home-page-shortcuts">
           {page.shortcuts.map((s) => (
             <button
               key={s.label}

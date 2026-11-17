@@ -255,8 +255,9 @@ function BarPicker({ control }: { control: BarControl }) {
         onBlur={onBlur}
         data-testid={`bar-picker-${control.sets}`}
         className={cx(
-          'inline-flex min-h-control min-w-0 max-w-64 items-center gap-2 rounded-control border border-border-control bg-surface px-3',
-          'text-sm text-ink hover:bg-subtle max-sm:max-w-44',
+          // #1253 (Quiet Canvas): a soft fill, no border.
+          'inline-flex min-h-control min-w-0 max-w-64 items-center gap-2 rounded-control bg-canvas px-3 font-medium',
+          'text-sm text-ink hover:bg-border/60 max-sm:max-w-44',
           'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
         )}
       >
@@ -268,7 +269,7 @@ function BarPicker({ control }: { control: BarControl }) {
         style={{ maxHeight }}
         // On a phone the list spans the bar (the header is its frame), so a long
         // option is never cut at either edge of the screen.
-        className="absolute top-full z-30 mt-1 flex flex-col rounded-card border border-border bg-surface p-1 shadow-lg max-sm:inset-x-2 sm:left-0 sm:min-w-60 sm:max-w-[calc(100vw-2rem)]"
+        className="absolute top-full z-30 mt-1 flex flex-col rounded-card border border-border bg-surface p-1 shadow-lg max-sm:inset-x-2 sm:right-0 sm:min-w-60 sm:max-w-[calc(100vw-2rem)]"
       >
         {filterable && (
           <input

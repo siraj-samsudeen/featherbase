@@ -270,6 +270,19 @@ describe('reloads that keep one page to one person', () => {
     await waitFor(() => expect(reload).toHaveBeenCalled())
   })
 
+  test('another tab switched and already set the marker: whom the page shows still changed, so it reloads', async () => {
+    viewingMarker()
+    state = viewingAsha()
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}><ViewAsBanner /></QueryClientProvider>)
+    await screen.findByTestId('view-as-banner')
+    viewingMarker('P-2', 'Mohan Manager')
+    state = viewingAsha({ viewing: { ...mohan, expires_at: new Date(Date.now() + 60_000).toISOString() } })
+    await act(() => client.invalidateQueries({ queryKey: ['view-as'] }))
+    await waitFor(() => expect(reload).toHaveBeenCalled())
+    expect(viewedPerson()).toEqual({ row_id: 'P-2', full_name: 'Mohan Manager' })
+  })
+
   test('another tab starting or ending View as reloads this one; other keys do not', () => {
     window.dispatchEvent(new StorageEvent('storage', { key: 'something-else' }))
     expect(reload).not.toHaveBeenCalled()

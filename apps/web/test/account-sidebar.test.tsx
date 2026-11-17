@@ -15,14 +15,13 @@ test('in the Admin frame the account pages put the Account group at the top of t
   const account = await within(sidebar).findByTestId('sidebar-group-account', {}, WAIT)
   expect(within(account).getByTestId('sidebar-group-heading')).toHaveTextContent(/^Account$/)
   expect(groupLinks(account)).toEqual(['Sign-in Methods', 'Connected Apps', 'What You Can See'])
-  // At the top: nothing of the sidebar's comes before it.
-  expect(sidebar.firstElementChild).toBe(account)
+  // At the top of the links: only the switcher and the command field (#1253) come before it.
+  expect(within(sidebar).getByTestId('sidebar-links').firstElementChild).toBe(account)
   const selected = within(account).getByRole('link', { name: 'Sign-in Methods' })
   expect(selected).toHaveAttribute('aria-current', 'page')
-  // Verifier, round 5: selected reads in the action colour, never also the muted one.
-  expect(selected.className).toMatch(/\btext-action\b/)
-  expect(selected.className).not.toMatch(/\btext-ink-muted\b/)
-  expect(within(account).getByRole('link', { name: 'What You Can See' }).className).toMatch(/\btext-ink-muted\b/)
+  // #1253 (Quiet Canvas): the open page is a white tile with a soft shadow; the others are plain.
+  expect(selected.className).toMatch(/\bbg-surface\b.*\bshadow-sm\b/)
+  expect(within(account).getByRole('link', { name: 'What You Can See' }).className).not.toMatch(/\bbg-surface\b/)
 })
 
 test('the Admin pages that are not account pages have no Account group', async ({ admin }) => {

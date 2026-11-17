@@ -506,18 +506,16 @@ export function LoginPage() {
                   Sign in with {m.label}
                 </button>
               ))}
-              {/* #1235 item 5: a quiet link, centred under the buttons. */}
+              {/* #1258: a full button like the other ways in, under them (was a quiet link, #1235 item 5). */}
               {passwordOn && (
-                <div className="mt-4 flex justify-center">
-                  <button
-                    type="button"
-                    data-testid="password-login-toggle"
-                    className="inline-flex min-h-control items-center text-sm text-action hover:underline"
-                    onClick={() => switchMode('password')}
-                  >
-                    Use email and password instead
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  data-testid="password-login-toggle"
+                  className={buttonClasses({ className: 'mt-3 flex w-full justify-center py-2' })}
+                  onClick={() => switchMode('password')}
+                >
+                  Use email and password instead
+                </button>
               )}
             </>
           ) : mode === 'signup' && signUpOpen ? (

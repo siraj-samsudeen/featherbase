@@ -66,6 +66,8 @@ const sidebar = () => document.querySelector('featherbase-sidebar') as HTMLEleme
 /** The sidebar's own collapse control (#1248: its footer row, in its shadow). */
 const control = () => sidebar().shadowRoot!.querySelector<HTMLElement>('[data-testid=sidebar-collapse]')!
 const collapsed = () => sidebar().hasAttribute('data-collapsed')
+/** #1253: the account sits at the sidebar's foot, in its shadow, once whoami answers. */
+const signedIn = () => within(sidebar().shadowRoot as unknown as HTMLElement).findByTestId('session-user')
 
 function atPhoneWidth() {
   vi.spyOn(window, 'matchMedia').mockImplementation((q: string) => ({
@@ -77,7 +79,7 @@ function atPhoneWidth() {
 describe.each(APPS)("$title's sidebar", (page) => {
   test("the sidebar's own control collapses it to a rail and reopens it, and says what it will do", async ({ admin }) => {
     const { bar } = openAppPage(admin, page)
-    await bar.findByTestId('session-user')
+    await signedIn()
     // #1248: the bar has no control for it on a wide window.
     expect(bar.queryByTestId('sidebar-collapse')).not.toBeInTheDocument()
     expect(control()).toHaveAccessibleName('Collapse sidebar')
@@ -95,8 +97,8 @@ describe.each(APPS)("$title's sidebar", (page) => {
   })
 
   test('Ctrl+B and Cmd+B collapse and reopen it from the page', async ({ admin }) => {
-    const { bar } = openAppPage(admin, page)
-    await bar.findByTestId('session-user')
+    openAppPage(admin, page)
+    await signedIn()
     expect(fireEvent.keyDown(document.body, { key: 'b', ctrlKey: true })).toBe(false)
     expect(collapsed()).toBe(true)
     expect(fireEvent.keyDown(sidebar().querySelector('a')!, { key: 'b', metaKey: true })).toBe(false)
@@ -104,8 +106,8 @@ describe.each(APPS)("$title's sidebar", (page) => {
   })
 
   test("typing in the app's own field leaves Ctrl/Cmd+B to the field", async ({ admin }) => {
-    const { bar, search } = openAppPage(admin, page)
-    await bar.findByTestId('session-user')
+    const { search } = openAppPage(admin, page)
+    await signedIn()
     const editor = document.createElement('div')
     editor.setAttribute('contenteditable', 'true')
     const textarea = document.createElement('textarea')
@@ -120,16 +122,16 @@ describe.each(APPS)("$title's sidebar", (page) => {
 })
 
 test("the choice is the person's own and carries from one app to the next", async ({ admin }) => {
-  const first = openAppPage(admin, APPS[0])
-  await first.bar.findByTestId('session-user')
+  openAppPage(admin, APPS[0])
+  await signedIn()
   await userEvent.click(control())
   expect(collapsed()).toBe(true)
   act(() => mounted?.unmount())
   document.body.replaceChildren()
 
   // A reload into another app: the same person, the same choice.
-  const second = openAppPage(admin, APPS[1])
-  await second.bar.findByTestId('session-user')
+  openAppPage(admin, APPS[1])
+  await signedIn()
   expect(collapsed()).toBe(true)
   expect(Object.keys(localStorage).filter((key) => key === `fc-sidebar-collapsed:${admin.user}`)).toHaveLength(1)
 })
