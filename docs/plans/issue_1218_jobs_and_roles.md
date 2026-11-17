@@ -143,6 +143,9 @@ Follows from D2, so it is stated here rather than asked: who may give is the per
 
 Neither stays a separate role.
 
+### D5 — No overlays, no starter set (owner left it to the agent, 17-Nov-2026; decided by "simplest that stays flexible")
+Business roles are designed for Jeyarama alone, and kept as **data in the instance** (rows an instance admin edits), never in app code. Each app ships only its own permissions. Nothing is copied in from a starter set and nothing inherits from a layer. If a second retailer comes, Jeyarama's roles can be exported as the first starter set, because they are already data. There is no store or department layer: a store's differences are its area (D2).
+
 ## Owner's steer, 17-Nov-2026: fine-grained by area, and fewer words
 
 - Master data needs fine-grained rights: a category manager manages their category, and a store manager manages the sections in their store.
