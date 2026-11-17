@@ -5,3 +5,7 @@
  *  walks (#910) and the shared saved views they starred into the sidebar (#1229).
  *  The web writes it and the server reads the stars from it, so both use this. */
 export const NAVIGATION_SETTINGS = '__navigation'
+
+/** #1251: what the person has learnt of the keyboard shortcuts, and whether
+ *  they quieted the tips. The web writes and reads it; the server only stores it. */
+export const SHORTCUT_SETTINGS = '__shortcuts'
