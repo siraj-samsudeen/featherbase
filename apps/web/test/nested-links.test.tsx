@@ -114,14 +114,31 @@ test('a floating link list that scrolls itself stays open', async ({ admin }) =>
   expect(screen.getByTestId('link-options-role')).toBeInTheDocument()
 })
 
-test('a floating link list closes when the page scrolls away from it', async ({ admin }) => {
+test('a floating link list closes when the page scrolls its field out of the window', async ({ admin }) => {
   const person = await admin.post<Saved>('/api/save_row', { table: 'Person', row: { email: 'nested-role-page-scroll@example.test', enabled: true } })
   await renderApp(rowHref('Person', person.row_id), admin)
   fireEvent.click(await screen.findByTestId('add-row-roles', {}, { timeout: 8000 }))
   fireEvent.change(await screen.findByRole('combobox', { name: /Role, row 1$/ }), { target: { value: 'Sys' } })
   await within(await screen.findByTestId('link-options-role')).findAllByTestId('link-option')
+  // jsdom has no layout: the page has scrolled the field below the window.
+  const below = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({ top: 5000, bottom: 5036, left: 0, right: 200, width: 200, height: 36, x: 0, y: 5000, toJSON: () => ({}) } as DOMRect)
   fireEvent.scroll(document)
   await waitFor(() => expect(screen.queryByTestId('link-options-role')).not.toBeInTheDocument())
+  below.mockRestore()
+})
+
+// CI's Tasker tour (17-Nov): a field at the window's bottom edge is nudged into
+// view as it takes focus; that small scroll closed the list it had just opened.
+test('a floating link list stays open, beside its field, when a scroll leaves the field in view', async ({ admin }) => {
+  const person = await admin.post<Saved>('/api/save_row', { table: 'Person', row: { email: 'nested-role-nudge@example.test', enabled: true } })
+  await renderApp(rowHref('Person', person.row_id), admin)
+  fireEvent.click(await screen.findByTestId('add-row-roles', {}, { timeout: 8000 }))
+  fireEvent.change(await screen.findByRole('combobox', { name: /Role, row 1$/ }), { target: { value: 'Sys' } })
+  await within(await screen.findByTestId('link-options-role')).findAllByTestId('link-option')
+  fireEvent.scroll(document)
+  window.dispatchEvent(new Event('resize'))
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  expect(screen.getByTestId('link-options-role')).toBeInTheDocument()
 })
 
 test("a cell's error goes once the grid changes, and unpicked text leaves the cell when it is left", async ({ admin }) => {
