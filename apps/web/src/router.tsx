@@ -41,6 +41,7 @@ import { SignInMethods } from './pages/SignInMethods'
 import { AccessExplanation } from './pages/AccessExplanation'
 import { AccountLayout } from './pages/AccountLayout'
 import { AgentConnectPage } from './pages/AgentConnect'
+import { ConnectedApps } from './pages/ConnectedApps'
 import { FindPerson } from './pages/FindPerson'
 import { WaitingForAccess } from './pages/WaitingForAccess'
 import { InstanceHealth } from './pages/InstanceHealth'
@@ -699,6 +700,13 @@ const signInMethodsRoute = createRoute({
   component: SignInMethods,
 })
 
+// mcp-oauth-connect (#1207): the agents the signed-in person connected.
+const connectedAppsRoute = createRoute({
+  getParentRoute: () => accountRoute,
+  path: 'connected-apps',
+  component: ConnectedApps,
+})
+
 // #628: what a person can see, and why. An account page, so a person without
 // Admin access opens their own; the server refuses anyone else's to all but a
 // System Manager.
@@ -1102,7 +1110,7 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   salesTargetRoute,
-  accountRoute.addChildren([signInMethodsRoute, accessExplanationRoute]),
+  accountRoute.addChildren([signInMethodsRoute, connectedAppsRoute, accessExplanationRoute]),
   printRoute,
   adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
 ])
