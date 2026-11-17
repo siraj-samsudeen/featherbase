@@ -13,6 +13,7 @@ import {
 import { parseFilters, tableSlug, type ListLayout } from 'shared'
 import { LoginPage } from './pages/Login'
 import { ResetPasswordPage } from './pages/ResetPassword'
+import { SetPasswordPage } from './pages/SetPassword'
 import { WebFormPage } from './pages/WebForm'
 import { PortalListPage, PortalRowPage } from './pages/Portal'
 import { OAuthCallbackPage } from './pages/OAuthCallback'
@@ -272,6 +273,16 @@ const resetPasswordRoute = createRoute({
     key: searchString(search.key),
   }),
   component: ResetPasswordPage,
+})
+
+// #1257: public "Set your password" page (target of a password invite).
+const setPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/featherbase/set-password',
+  validateSearch: (search: Record<string, unknown>) => ({
+    key: searchString(search.key),
+  }),
+  component: SetPasswordPage,
 })
 
 const adminRoute = createRoute({
@@ -1133,6 +1144,7 @@ export const routeTree = rootRoute.addChildren([
   loginRoute,
   agentConnectRoute,
   resetPasswordRoute,
+  setPasswordRoute,
   webFormRoute,
   oauthCallbackRoute,
   portalListRoute,

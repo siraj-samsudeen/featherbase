@@ -39,7 +39,7 @@ const laterMain = ['0012_table_settings_storage_identity.sql', '0013_reading_pre
   '0153_table_views.sql', '0154_table_scope.sql', '0155_glossary_picture.sql', '0156_permission_not_retired.sql', '0157_link_roster_job.sql', '0158_job_hand_back.sql',
   '0159_access_request_declined.sql',
   '0160_change_proposal_withdraw_and_end.sql', '0161_data_source_without_mysql.sql', '0162_approval_modes.sql', '0163_service_account_display_name.sql',
-  '0164_view_as_session.sql', '0165_agent_sign_in.sql', '0166_microsoft_sign_in.sql', '0167_list_views.sql']
+  '0164_view_as_session.sql', '0165_agent_sign_in.sql', '0166_microsoft_sign_in.sql', '0167_password_invite.sql', '0168_list_views.sql']
 const pendingAfterLabels = [...additions, '0010_copy_refresh_schedule.sql', ...laterMain]
 const allMigrations = [...Object.keys(mainHistory), ...pendingAfterLabels]
 const oldLabels = { postgres: 'PostgreSQL', mysql: 'MySQL', duckdb: 'DuckDB', 'csv-folder': 'CSV folder' }

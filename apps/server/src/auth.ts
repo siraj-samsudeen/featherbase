@@ -70,6 +70,8 @@ export async function setPasswordFromShell(person: string, password: string) {
     // already consumed but not yet written cannot land after it either.
     await t`update person set sessions_ended_at = now() where row_id = ${person}`
     await t`delete from password_reset where "user" = ${person}`
+    // #1257: and every password invite not yet used.
+    await t`update password_invite set voided_at = now() where person = ${person} and accepted_at is null and voided_at is null`
   })
   await logActivity('cli', `password_set for ${person}`)
 }

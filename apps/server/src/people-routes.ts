@@ -12,6 +12,7 @@ import { actorNamesOn } from './actor-names'
 import { googleAuthorizeUrl, googleAvailable, newLoginChallenge, codeChallengeFor } from './oauth'
 import { MICROSOFT_CALLBACK_PATH, microsoftAuthorizeUrl, microsoftAvailable } from './microsoft'
 import { sendInvitation } from './invitation-email'
+import { passwordInviteState, sendPasswordInvite } from './password-invite'
 import { requestHost } from './instance-addresses'
 import { getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { assertSystemManager, getRoles } from './permissions'
@@ -41,7 +42,18 @@ peopleRoutes.get('/api/people/:id/identities', async (c) => {
     expects_google_sign_in: row.expects_google_sign_in === true,
     expects_microsoft_sign_in: row.expects_microsoft_sign_in === true,
     mail_transport: mailTransport(),
+    // #1257: whether a password invite can be sent, why not, and the latest.
+    password_invite: await passwordInviteState(user),
   })
+})
+
+// #1257: send (or send again) a password invite to a person with no way in.
+// A new link voids the earlier ones; a failed send is the answer (503).
+peopleRoutes.post('/api/people/:id/password_invite', async (c) => {
+  await assertSystemManager(who(c))
+  assertCanChangeAccess(c.get('user'))
+  const invite = await sendPasswordInvite(c.req.param('id'), who(c), externalOrigin(c).origin)
+  return c.json({ password_invite: invite, invitation_email: { status: 'sent' } }, 201)
 })
 
 // #667: why a person sees nothing from an app's datasets: the provider's

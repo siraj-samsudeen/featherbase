@@ -151,6 +151,11 @@ describe('on an address that opens an app', () => {
     expect((await get(api, `${DASH}/featherbase/reset-password?key=k`)).status).not.toBe(302)
   })
 
+  // #1257: so is the page a password invite links to (Codex round 2).
+  test('the set-password page is served', async ({ api }) => {
+    expect((await get(api, `${DASH}/featherbase/set-password?key=k`)).status).not.toBe(302)
+  })
+
   // #501 item 4: a public web form link opens on an app's address too.
   test('a public web form is served', async ({ api }) => {
     for (const path of ['/featherbase/form/Feedback', '/featherbase/form/Feedback/new?x=1'])

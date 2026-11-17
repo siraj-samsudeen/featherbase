@@ -68,6 +68,7 @@ import { createAssignment } from './assign'
 import { queueEmail, sendTestEmail } from './email'
 import { getSystemSettings } from './settings'
 import { MIN_PASSWORD_LENGTH, requestPasswordReset, resetPassword } from './password-reset'
+import { checkPasswordInvite, signInWithPasswordInvite } from './password-invite'
 import { renderWebPage } from './website'
 import { getWebFormConfig, submitWebForm } from './webform'
 import { logAccess } from './audit'
@@ -363,6 +364,24 @@ app.post('/api/reset_password', async (c) => {
   }
   await resetPassword(key ?? '', new_password ?? '')
   return c.json({ ok: true })
+})
+
+// #1257: the "Set your password" page behind a password invite (public: the
+// person has no way in yet). The key travels in the body, never the URL.
+app.post('/api/password_invite/check', async (c) => {
+  const { key } = (await c.req.json().catch(() => ({}))) as { key?: unknown }
+  return c.json(await checkPasswordInvite(typeof key === 'string' ? key : ''))
+})
+
+// Setting the first password signs the person in, through the same tail as
+// every other sign-in (sign-in.ts); password-invite.ts says why it re-checks.
+app.post('/api/password_invite/accept', publicLimit('LOGIN'), async (c) => {
+  const { key, new_password } = (await c.req.json().catch(() => ({}))) as { key?: unknown; new_password?: unknown }
+  const issued = await signInWithPasswordInvite(
+    typeof key === 'string' ? key : '', typeof new_password === 'string' ? new_password : '', clientAddress(c))
+  const session = { token: issued.token, user: issued.user }
+  setSidCookie(c, session.token, issued.maxAgeSeconds)
+  return c.json(await withLanding(c, session))
 })
 
 app.get('/files/:stored', (c) => serveFile(c, `/files/${c.req.param('stored')}`, false))
