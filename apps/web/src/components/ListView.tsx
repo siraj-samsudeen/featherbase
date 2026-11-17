@@ -389,19 +389,6 @@ export function ListView({
     if (knownTotal !== undefined && knownTotal > 0 && start >= knownTotal) setStart(Math.floor((knownTotal - 1) / PAGE) * PAGE)
   }, [knownTotal, start])
 
-  if (meta.isLoading) return <p className="text-sm text-ink-subtle">Loading…</p>
-  // DEL-R9: the server's not-found can carry a tombstone ("X was deleted by
-  // … on …") — show its words, not a generic shrug.
-  if (meta.isError)
-    return (
-      <p className="text-sm text-negative" data-testid="list-error">
-        {meta.error instanceof ApiError ? meta.error.message : `Cannot load ${table}`}
-      </p>
-    )
-
-  const total = list.data?.total ?? 0
-  // A refetch refusal must replace cached rows with the error, not silently
-  // keep showing a successful list after its Table/access disappeared.
   const rows = list.isError ? [] : list.data?.data ?? []
 
   // #1259: with a record open beside or over the list, the arrow keys move to
@@ -436,6 +423,20 @@ export function ListView({
       ? line.querySelector<HTMLElement>('button')
       : line)?.focus({ preventScroll: true })
   }, [panelled, paneRow, layout])
+
+  if (meta.isLoading) return <p className="text-sm text-ink-subtle">Loading…</p>
+  // DEL-R9: the server's not-found can carry a tombstone ("X was deleted by
+  // … on …") — show its words, not a generic shrug.
+  if (meta.isError)
+    return (
+      <p className="text-sm text-negative" data-testid="list-error">
+        {meta.error instanceof ApiError ? meta.error.message : `Cannot load ${table}`}
+      </p>
+    )
+
+  const total = list.data?.total ?? 0
+  // A refetch refusal must replace cached rows with the error, not silently
+  // keep showing a successful list after its Table/access disappeared.
   const childFields = (meta.data?.columns ?? []).filter(
     (f) => f.column_type === 'Sub-table' && !f.hidden,
   )

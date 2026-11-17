@@ -201,7 +201,8 @@ test('on a wide screen the pane sits on the right by default', async ({ admin })
   })) as unknown as typeof window.matchMedia
   try {
     const bin = await openNorthBay(admin)
-    expect(await within(bin).findByRole('button', { name: 'Auto (right)' }, T)).toHaveAttribute('aria-pressed', 'true')
+    // #1259: no place to choose any more; over a list the panel is on the right.
+    expect(bin).toHaveAttribute('data-place', 'right')
   } finally {
     window.matchMedia = real
   }

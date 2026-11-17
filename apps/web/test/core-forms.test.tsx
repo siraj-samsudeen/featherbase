@@ -195,7 +195,7 @@ test('a linked row in the drill pane: Open row page goes to that row\'s own form
 
   fireEvent.mouseDown(await screen.findByTestId('link-pane-mother'))
   const pane = await screen.findByRole('complementary', { name: 'Mother' })
-  fireEvent.click(await within(pane).findByRole('link', { name: 'Open row page' }))
+  fireEvent.click(await within(pane).findByRole('link', { name: 'Open Full Page' }))
 
   await waitFor(() => expect(field('label')).toHaveValue('Mother'))
   expect(screen.getByTestId('breadcrumbs')).toHaveTextContent('Peek Parent')

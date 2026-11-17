@@ -130,9 +130,8 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
           </div>
           {open && <GroupRows key={open.key} group={open} nav={nav} onOpen={drill} />}
         </PaneSection>
-        <PaneSection title="Activity">
-          <ActivityTimeline table={table} name={row} />
-        </PaneSection>
+        {/* The timeline heads itself "Activity". */}
+        <ActivityTimeline table={table} name={row} />
       </>}
     </RecordFrame>
   )
@@ -219,6 +218,9 @@ function PointsAt({ links, nav, onOpen, status, editHref }: {
   // Soft fills, no lines.
   return (
     <section aria-label="Points at" data-testid="record-chips" className="flex min-w-0 flex-wrap items-center gap-2">
+      {/* Named for screen readers; the chips speak for themselves on screen. */}
+      <h3 className="sr-only">Points at</h3>
+      {!links.length && <span className="text-sm text-ink-muted">No links to other rows</span>}
       {links.map((link) => {
         const column = overList ? filterColumn(listMeta.data, link) : undefined
         // The filter goes on the path before the row it was read from:
@@ -233,7 +235,9 @@ function PointsAt({ links, nav, onOpen, status, editHref }: {
           nav.advanceTo(push(push(before, listOnly), filtered))
         })
         return (
-          <span key={link.column} data-testid="record-chip" className="inline-flex min-w-0 items-center gap-2 rounded-md bg-canvas px-2 py-1 text-sm">
+          // Go there and Filter show on hover or keyboard focus, so a chip reads as one line.
+          <span key={link.column} data-testid="record-chip"
+            className="group inline-flex min-w-0 items-center gap-2 rounded-md bg-canvas px-2 py-1 text-sm [&_button:not(:first-of-type)]:hidden group-hover:[&_button:not(:first-of-type)]:inline-flex group-focus-within:[&_button:not(:first-of-type)]:inline-flex">
             <span className="text-ink-muted">{link.label}</span>
             <PaneLink table={link.table} rowId={link.row_id} onOpen={onOpen} goThere
               onFilter={filter || undefined}

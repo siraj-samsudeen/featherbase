@@ -23,7 +23,8 @@ async function seed(admin: Admin, name = DT, queue = false) {
 async function openList(as: Admin, name = DT, query = '') {
   await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(name))}${query}`, as)
   await screen.findByTestId('list-view')
-  await waitFor(() => expect(within(screen.getByTestId('list-rows')).getByText('Anitha')).toBeInTheDocument())
+  // A queue, or a saved view's link, may open on the cards rather than the table.
+  await waitFor(() => expect(screen.getByTestId('list-view')).toHaveTextContent('Anitha'))
 }
 
 const view = () => within(screen.getByTestId('layout-switch'))
@@ -33,7 +34,7 @@ const pressed = () => within(screen.getByTestId('layout-switch')).getAllByRole('
 test('three buttons beside the title, named; a data table opens on Table With Panel', async ({ admin }) => {
   await seed(admin)
   await openList(admin)
-  const group = screen.getByRole('group', { name: 'View' })
+  const group = screen.getByRole('group', { name: 'Views' })
   expect(within(group).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Table', 'List And Record', 'Table With Panel'])
   expect(within(group).getByRole('button', { name: 'Table' })).toHaveAttribute('title', 'Table')
   await waitFor(() => expect(pressed()).toEqual(['Table With Panel']))
