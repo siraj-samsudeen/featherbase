@@ -7,7 +7,7 @@ import { ApiError } from '../lib/api'
 import { BarAddressContext, useDocumentAddress } from '../lib/bar-address'
 import { paintSavedTheme } from '../lib/theme'
 import { ThemeChoiceProvider } from '../lib/theme-choice'
-import { APP_ACCENT_ATTRIBUTE, paintOnto } from '@featherbase/shop-floor/theme'
+import { APP_ACCENT_ATTRIBUTE, APP_THEME_ATTRIBUTE, THEME_CHANGE_EVENT, paintOnto } from '@featherbase/shop-floor/theme'
 import platformCss from '../index.css?inline'
 import { shadowCss } from './style'
 
@@ -53,6 +53,16 @@ export function mountBar(host: HTMLElement, { leave = (href) => window.location.
   shadow.replaceChildren(style, root)
   paintOnto(root)
   paintSavedTheme()
+  // #1260: the bar is first in the app's <head>, so while the document is
+  // still loading it runs before the app's own module scripts, and the first
+  // announcement above comes before the app listens. Say the painted theme
+  // again once they have run: DOMContentLoaded fires after every module script.
+  const repeatTheme = () => {
+    const theme = document.documentElement.getAttribute(APP_THEME_ATTRIBUTE)
+    if (theme === 'light' || theme === 'dark')
+      window.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT, { detail: { theme } }))
+  }
+  if (document.readyState !== 'complete') document.addEventListener('DOMContentLoaded', repeatTheme, { once: true })
 
   const history = createMemoryHistory({ initialEntries: ['/'] })
   history.push = (href) => leave(href)
@@ -80,6 +90,7 @@ export function mountBar(host: HTMLElement, { leave = (href) => window.location.
 
   return {
     unmount() {
+      document.removeEventListener('DOMContentLoaded', repeatTheme)
       observer?.disconnect()
       reactRoot.unmount()
     },
