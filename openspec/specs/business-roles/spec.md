@@ -30,7 +30,7 @@ A person's business roles SHALL be worked out from their HR title, their merchan
 - **THEN** she holds Category Head, with the area Sarees · East, from her merchandise assignment
 
 ### Requirement: Hand changes correct or add a role
-A Report Access Manager or System Manager SHALL be able to Correct a person's role (replacing the one from their title) or Also give one (adding it), each with an optional end date and a reason. A hand change past its end date gives nothing.
+A Report Access Manager or System Manager SHALL be able to Correct a person's role (replacing the one from their title) or Also give one (adding it), each with an optional store it applies at, an optional end date and a reason. A hand change past its end date gives nothing.
 
 #### Scenario: Correcting a store manager's title
 
@@ -46,7 +46,7 @@ For one person, the page SHALL show each business role with its area and source,
 - **THEN** Vendor Sales is listed, given to Store Manager, for Lakeside
 
 ### Requirement: Who would gain or lose access
-The comparison SHALL list only people whose Dash would change under the new model: who would lose Dash, gain Dash, reach different stores or subcategories, or get different reports, with a count for each. A report reaching someone only through a role such as Dash Reader is shown as needing a decision, not as a loss.
+The comparison SHALL list only people whose Dash would change under the new model: who would lose Dash, gain Dash, reach different stores or subcategories, or get different reports, with a count for each, and each person under every change that applies. Both pages judge a person by the same comparison. A report reaching someone only through a role such as Dash Reader is shown as needing a decision, not as a loss.
 
 #### Scenario: A person whose access stays the same
 
