@@ -8,7 +8,8 @@ import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/re
 import { vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
-import { api } from '../src/lib/api'
+import { act } from '@testing-library/react'
+import { api, setSession } from '../src/lib/api'
 
 const DT = 'Lv Desk'
 const QUEUE = 'Lv Requests'
@@ -215,5 +216,74 @@ test("a choice made while the person's settings are still on their way is not un
     expect(pressed()).toEqual(['Table'])
   } finally {
     spy.mockRestore()
+  }
+})
+
+/** Holds each layout save's answer (sent at once) or the save itself (sent on release). */
+function holdSaves(when: 'answer' | 'send') {
+  let release!: () => void
+  const held = new Promise<void>((done) => { release = done })
+  const put = api.put.bind(api)
+  const sent: unknown[] = []
+  const spy = vi.spyOn(api, 'put').mockImplementation(async (path: string, body?: unknown) => {
+    if (!path.startsWith('/api/user_settings/')) return put(path, body)
+    sent.push(body)
+    if (when === 'send') { await held; return put(path, body) }
+    const answer = put(path, body)
+    await held
+    return answer
+  })
+  return { release, sent, restore: () => spy.mockRestore() }
+}
+
+test('a read that starts while a choice is still being saved does not undo it', async ({ admin }) => {
+  await seed(admin)
+  await admin.put(`/api/user_settings/${encodeURIComponent(DT)}`, { layout: 'split' })
+  await openList(admin)
+  await waitFor(() => expect(pressed()).toEqual(['List And Record']))
+  const saves = holdSaves('send')
+  const get = vi.spyOn(api, 'get')
+  try {
+    fireEvent.click(view().getByRole('button', { name: 'Table' }))
+    await waitFor(() => expect(pressed()).toEqual(['Table']))
+    // Back to the tab: the settings are read again while the save waits.
+    const reads = get.mock.calls.length
+    const settingsRead = () => get.mock.results.slice(reads).filter((_, i) => String(get.mock.calls[reads + i][0]).startsWith('/api/user_settings/'))
+    act(() => { window.dispatchEvent(new Event('visibilitychange')) })
+    await new Promise((done) => setTimeout(done, 300))
+    expect(pressed()).toEqual(['Table'])
+    saves.release()
+    // The read goes to the server once the save has landed, and finds the choice there.
+    await waitFor(() => expect(settingsRead().length).toBeGreaterThan(0))
+    await Promise.all(settingsRead().map((r) => r.value))
+    await settled(admin, 'table')
+    await new Promise((done) => setTimeout(done, 300))
+    expect(pressed()).toEqual(['Table'])
+  } finally {
+    get.mockRestore()
+    saves.restore()
+  }
+})
+
+test("a choice still waiting to be saved when the person signs out is never saved as the next person's", async ({ admin, createUser }) => {
+  await seed(admin)
+  const next = await (createUser as (o: { email: string }) => Promise<Admin>)({ email: 'next@example.com' })
+  await openList(admin)
+  const saves = holdSaves('answer')
+  try {
+    fireEvent.click(view().getByRole('button', { name: 'Table' }))
+    await waitFor(() => expect(pressed()).toEqual(['Table']))
+    fireEvent.click(view().getByRole('button', { name: 'List And Record' }))
+    await waitFor(() => expect(pressed()).toEqual(['List And Record']))
+    // The first save is on its way, the second waits behind it; someone else signs in.
+    setSession(next.token!, { row_id: next.user } as Parameters<typeof setSession>[1])
+    saves.release()
+    await settled(admin, 'table')
+    await new Promise((done) => setTimeout(done, 300))
+    expect(saves.sent).toEqual([{ layout: 'table' }])
+    const theirs = (await next.get(`/api/user_settings/${encodeURIComponent(DT)}`)) as { settings: { layout?: string } | null }
+    expect(theirs.settings?.layout).toBeUndefined()
+  } finally {
+    saves.restore()
   }
 })

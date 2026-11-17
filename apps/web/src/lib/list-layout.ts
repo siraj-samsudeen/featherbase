@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { LIST_LAYOUTS, type ListLayout } from 'shared'
 import { useMediaQuery } from '@featherbase/shop-floor'
-import { api } from './api'
+import { api, getToken } from './api'
 import { useMeta } from './meta'
 import { SIDEBAR_DRAWER_QUERY } from './sidebar-collapsed'
 
@@ -19,9 +19,11 @@ const layoutKey = (table: string) => ['list-layout', table]
 /** Each Table's layout saves, in the order the person chose (Codex review):
  *  a slower earlier save never lands over a later choice. */
 const saves = new Map<string, Promise<unknown>>()
-/** How many choices each Table has had here: a read that began before the
- *  latest one answers with that choice, never the server's older word. */
+/** How many choices each Table has had here: a read waits for the saves
+ *  already queued, and one made while it is on its way wins over its answer. */
 const choices = new Map<string, number>()
+/** The keys above: one per sign-in per Table (remembered-filters.ts does the same). */
+const savesKey = (table: string) => `${getToken() ?? ''}\u0000${table}`
 
 export function useListLayout(table: string, asked?: ListLayout) {
   const queryClient = useQueryClient()
@@ -30,9 +32,13 @@ export function useListLayout(table: string, asked?: ListLayout) {
   const stored = useQuery({
     queryKey: layoutKey(table),
     queryFn: async () => {
-      const before = choices.get(table)
+      const key = savesKey(table)
+      const before = choices.get(key)
+      // The server is read only once every save queued so far has landed.
+      let landed: Promise<unknown> | undefined
+      while (saves.get(key) !== landed) { landed = saves.get(key); await landed }
       const res = await api.get<{ settings: { layout?: unknown } | null }>(`/api/user_settings/${encodeURIComponent(table)}`)
-      if (choices.get(table) !== before) return queryClient.getQueryData<ListLayout>(layoutKey(table)) ?? null
+      if (choices.get(key) !== before) return queryClient.getQueryData<ListLayout>(layoutKey(table)) ?? null
       return isListLayout(res.settings?.layout) ? res.settings.layout : null
     },
   })
@@ -40,12 +46,16 @@ export function useListLayout(table: string, asked?: ListLayout) {
   /** The person chooses: remembered for them on this Table (the server merges it
    *  beside their sort and columns, never over them). */
   const choose = (next: ListLayout) => {
-    choices.set(table, (choices.get(table) ?? 0) + 1)
+    const key = savesKey(table)
+    choices.set(key, (choices.get(key) ?? 0) + 1)
     queryClient.setQueryData(layoutKey(table), next)
-    const saved = (saves.get(table) ?? Promise.resolve())
-      .then(() => api.put(`/api/user_settings/${encodeURIComponent(table)}`, { layout: next }))
+    // A queued choice belongs to the sign-in that made it; api.put sends the
+    // token of the moment, so it is dropped if that sign-in has ended.
+    const token = getToken()
+    const saved = (saves.get(key) ?? Promise.resolve())
+      .then(() => getToken() === token ? api.put(`/api/user_settings/${encodeURIComponent(table)}`, { layout: next }) : undefined)
       .catch(() => {})
-    saves.set(table, saved)
+    saves.set(key, saved)
   }
   return { layout, choose, phone, ready: !stored.isPending && Boolean(meta.data) }
 }
