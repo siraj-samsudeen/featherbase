@@ -141,6 +141,39 @@ test('a floating link list stays open, beside its field, when a scroll leaves th
   expect(screen.getByTestId('link-options-role')).toBeInTheDocument()
 })
 
+// CI's Tasker tour (17-Nov): the page moved the field with no scroll (something drawn above it), and the
+// list stayed where the field had been, out of the window. Each frame, a field that moved takes its list along.
+test('a floating link list follows its field when the page moves it without a scroll', async ({ admin }) => {
+  const person = await admin.post<Saved>('/api/save_row', { table: 'Person', row: { email: 'nested-role-shift@example.test', enabled: true } })
+  await renderApp(rowHref('Person', person.row_id), admin)
+  fireEvent.click(await screen.findByTestId('add-row-roles', {}, { timeout: 8000 }))
+  fireEvent.change(await screen.findByRole('combobox', { name: /Role, row 1$/ }), { target: { value: 'Sys' } })
+  const list = await screen.findByTestId('link-options-role')
+  const moved = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({ top: 300, bottom: 336, left: 40, right: 340, width: 300, height: 36, x: 40, y: 300, toJSON: () => ({}) } as DOMRect)
+  await waitFor(() => expect(list.style.top).toBe('340px'))
+  expect(list.style.left).toBe('40px')
+  moved.mockRestore()
+})
+
+test('a floating link list opened for a field partly below the window brings the field into view first', async ({ admin }) => {
+  const person = await admin.post<Saved>('/api/save_row', { table: 'Person', row: { email: 'nested-role-edge@example.test', enabled: true } })
+  await renderApp(rowHref('Person', person.row_id), admin)
+  fireEvent.click(await screen.findByTestId('add-row-roles', {}, { timeout: 8000 }))
+  const field = await screen.findByRole('combobox', { name: /Role, row 1$/ })
+  const edge = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({ top: window.innerHeight - 10, bottom: window.innerHeight + 26, left: 0, right: 200, width: 200, height: 36, x: 0, y: window.innerHeight - 10, toJSON: () => ({}) } as DOMRect)
+  const brought = vi.fn()
+  const original = Element.prototype.scrollIntoView
+  Element.prototype.scrollIntoView = brought
+  try {
+    fireEvent.change(field, { target: { value: 'Sys' } })
+    await screen.findByTestId('link-options-role')
+    expect(brought).toHaveBeenCalledWith({ block: 'nearest' })
+  } finally {
+    edge.mockRestore()
+    Element.prototype.scrollIntoView = original
+  }
+})
+
 test("a cell's error goes once the grid changes, and unpicked text leaves the cell when it is left", async ({ admin }) => {
   const order = await seedOrders(admin)
   await renderApp(rowHref('Nest Order', order.row_id), admin)
