@@ -141,6 +141,19 @@ export async function viewAsStillHolds(signedIn: SessionUser, person: string): P
   })
 }
 
+/**
+ * Run `send` only while this session still views as `person`, holding the lock Exit and Switch
+ * take, so nothing is delivered after an Exit finished on any server. True when it ran.
+ */
+export async function whileViewAsHolds(session: string, person: string, send: () => void): Promise<boolean> {
+  return sql.begin(async (tx) => {
+    await lockSession(tx, session)
+    const [row] = await tx`select 1 from view_as_session where session_id = ${session} and person = ${person} and ended_at is null and expires_at > now()`
+    if (row) send()
+    return Boolean(row)
+  })
+}
+
 /** Start viewing as `person`, or switch to them. */
 export async function startViewAs(user: SessionUser, person: unknown): Promise<void> {
   await assertMayViewAs(user)

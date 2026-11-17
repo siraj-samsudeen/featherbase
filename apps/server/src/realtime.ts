@@ -4,7 +4,7 @@ import { credentialFromCookieHeader, endedSessionIds, resolveToken, type Session
 import { getRoles, getScopeMap, hasPermission, isPrivileged, requiresScope, tableScope } from './permissions'
 import { REALTIME_MAX_FRAME_BYTES } from 'shared'
 import { needsMandatoryRowRead } from './mandatory-access'
-import { activeViewAs } from './view-as'
+import { activeViewAs, whileViewAsHolds } from './view-as'
 import { sql } from './db'
 
 // RT-001/002/003: server-side realtime over WebSockets (the local equivalent
@@ -163,8 +163,12 @@ function publish(channel: string, event: string, payload?: unknown): void {
 async function deliverViewing(client: Client, msg: RealtimeEvent, data: string): Promise<void> {
   const still = await activeViewAs(client.owner, { told: false }).catch(() => null)
   if (still?.as.person !== client.viewing) { closeViewAsClient(client); return }
-  if (msg.channel.startsWith('list:') || msg.channel.startsWith('row:')) await deliverChecked(client, msg, data)
-  else if (client.socket.readyState === client.socket.OPEN) client.socket.send(data)
+  if ((msg.channel.startsWith('list:') || msg.channel.startsWith('row:')) && !(await eventVisibleTo(client.user.row_id, msg))) return
+  // Sent under the session's lock, after a last look: an Exit that finished first, on any server, stops it.
+  const sent = await whileViewAsHolds(client.owner.sign_in!.session_id, client.viewing!, () => {
+    if (client.socket.readyState === client.socket.OPEN) client.socket.send(data)
+  }).catch(() => false)
+  if (!sent) closeViewAsClient(client)
 }
 
 function closeViewAsClient(client: Client): void {
