@@ -251,3 +251,25 @@ test('a System Manager is never refused a link by an employees-only method, even
   })
   expect(linked.status).toBe(201)
 })
+
+// Codex round 3: Google, Microsoft and a password make links and people at sign-in on their own,
+// where employees_only is not asked; only a connected service may carry the mark.
+test.for(['google', 'password'] as const)('the %s method cannot be marked only for employees', async (key, { admin }) => {
+  if (key === 'google') await configureGoogle({ enabled: true, client_id: 'made-up-client' })
+  const row = await admin.get<{ updated_at: string }>(`/api/table/Sign In Method/${key}`)
+  const saved = await admin.fetch(`/api/table/Sign%20In%20Method/${key}`, {
+    method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ employees_only: true, updated_at: row.updated_at }),
+  })
+  expect(saved.status).toBe(417)
+  expect(await saved.text()).toContain('Only a connected service sign-in can be only for employees')
+})
+
+test('a connected service can be marked only for employees', async ({ admin }) => {
+  await configureDelegated()
+  const row = await admin.get<{ updated_at: string }>('/api/table/Sign In Method/stylehr')
+  const saved = await admin.fetch('/api/table/Sign%20In%20Method/stylehr', {
+    method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ employees_only: true, updated_at: row.updated_at }),
+  })
+  expect(saved.status).toBe(200)
+  expect((await sql`select employees_only from sign_in_method where row_id = 'stylehr'`)[0].employees_only).toBe(true)
+})
