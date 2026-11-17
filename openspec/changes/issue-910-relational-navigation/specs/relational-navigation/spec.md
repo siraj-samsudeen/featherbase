@@ -85,9 +85,10 @@ And a group of 0 cost centres by billing plant shows, quieter than the other
 ### Requirement: A group lists its rows by what they point to
 
 A group in the drill pane and on the tree SHALL list its rows one per line. A row of a link table
-(its title is its own id) reads by its far side: its first readable link that is neither the link
-back nor one holding a value of the row's own links. Any other row reads by its own name. At most
-two of its dates and statuses show under it. The first 10 rows show, then "Show all N".
+(its title is its own id) reads by its far sides: its readable links, other than the link back and
+those to the row's own linked records, one per Table. Two or more read as the first two, joined by
+" › ". Any other row reads by its own name. Up to two dates and statuses show beneath. The first
+10 rows show, then "Show all N".
 
 #### Scenario: Enchakkal's plants by their names
 
