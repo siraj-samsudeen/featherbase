@@ -40,6 +40,7 @@ import { AccessTokens } from './pages/AccessTokens'
 import { SignInMethods } from './pages/SignInMethods'
 import { AccessExplanation } from './pages/AccessExplanation'
 import { AccountLayout } from './pages/AccountLayout'
+import { AgentConnectPage } from './pages/AgentConnect'
 import { FindPerson } from './pages/FindPerson'
 import { WaitingForAccess } from './pages/WaitingForAccess'
 import { InstanceHealth } from './pages/InstanceHealth'
@@ -188,6 +189,18 @@ const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/featherbase/login',
   component: LoginPage,
+})
+
+// mcp-oauth-connect (#1207): where an agent sends the person's browser to
+// connect it (the authorization endpoint). Signed out, the usual sign-in first,
+// with the agent's whole request as the way back.
+const agentConnectRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/featherbase/connect',
+  beforeLoad: ({ location }) => {
+    if (!getToken()) throw redirect({ href: loginHref(location.href) })
+  },
+  component: AgentConnectPage,
 })
 
 // WEB-002: public web form (no session required).
@@ -1082,6 +1095,7 @@ export const routeTree = rootRoute.addChildren([
   indexRoute,
   featherbaseIndexRoute,
   loginRoute,
+  agentConnectRoute,
   resetPasswordRoute,
   webFormRoute,
   oauthCallbackRoute,
