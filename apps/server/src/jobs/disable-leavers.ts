@@ -1,4 +1,5 @@
-import { registerJob } from '../jobs'
+import { enqueue, registerJob } from '../jobs'
+import { LEAVER_SIGN_IN_JOB } from '../leaver-sign-in'
 import { LEAVER_CHECK_JOB, formatLeaverPlan, formatSummaryDelivery, runLeaverCheck } from '../leaver-check'
 
 // The daily warehouse exit-date check (leaver-check.ts). Its cadence and its
@@ -9,6 +10,8 @@ import { LEAVER_CHECK_JOB, formatLeaverPlan, formatSummaryDelivery, runLeaverChe
 // alerted to the System Managers (#464). Its own summary still goes out too.
 registerJob(LEAVER_CHECK_JOB, async (_payload, ctx) => {
   const run = await runLeaverCheck()
+  // #1271: the report follows the leaver check, whatever it decided.
+  await enqueue(LEAVER_SIGN_IN_JOB, {}, { maxAttempts: 1 })
   const delivery = formatSummaryDelivery(run)
   console.log(formatLeaverPlan(run.plan, { applied: run.disabled }))
   console.log(delivery)

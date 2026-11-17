@@ -25,6 +25,8 @@ export interface Standing {
   code: string | null
   /** Each job held today, with its store where the viewer may open it. */
   jobs: { job: string; site?: { table: string; id: string; name: string } }[]
+  /** #1271: for someone who has left, the day they left, when the app knows it. */
+  left_on?: string | null
 }
 
 /** How long the app has to answer before the person reads as 'unknown'. */
@@ -37,6 +39,7 @@ const answerSchema = z.array(z.object({
   person: z.string(),
   status: z.enum(['current', 'left', 'none']),
   code: z.string().nullable().optional(),
+  left_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   jobs: z.array(z.object({
     job: z.string(),
     site: z.object({ table: z.string(), id: z.string(), name: z.string() }).optional(),
@@ -85,7 +88,7 @@ export async function describePeople(persons: string[]): Promise<Map<string, Sta
   for (const person of wanted) {
     const entry = said.get(person)
     // A person the app answered for; a person it left out, while it answered at all, is unknown too.
-    out.set(person, entry ? { status: entry.status, code: entry.code ?? null, jobs: entry.jobs ?? [] } : UNKNOWN)
+    out.set(person, entry ? { status: entry.status, code: entry.code ?? null, jobs: entry.jobs ?? [], ...(entry.left_on ? { left_on: entry.left_on } : {}) } : UNKNOWN)
   }
   return out
 }
