@@ -360,7 +360,7 @@ function AdminIndexPage() {
     <p className="text-sm text-ink-muted" data-testid="admin-index-empty">
       No Home Pages are visible to you. Browse{' '}
       <Link to="/featherbase/admin/all-tables" className="text-action underline">
-        All tables
+        All Tables
       </Link>{' '}
       instead.
     </p>
