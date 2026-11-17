@@ -13,6 +13,8 @@
   border-radius: 6px;
   white-space: nowrap;
   box-shadow: 0 2px 8px color-mix(in srgb, var(--color-scrim) 15%, transparent);
+}
+
 /* #1249: a scroll bar that is always drawn, so a wide table never looks cut
    off. Styling the WebKit parts turns off macOS's hide-until-you-scroll bars in
    Chromium and Safari; Firefox takes the standard properties. */
