@@ -105,7 +105,7 @@ function Failed({ message, onRetry }: { message: string; onRetry: () => void }) 
 
 interface Permission { app: string; level: string; verb: string; thing: string; reach: string; sentence: string }
 interface RolesAnswer {
-  roles: { id: string; name: string; description: string | null; by_hand_only: boolean; permissions: Permission[] }[]
+  roles: { id: string; name: string; description: string | null; by_hand_only: boolean; reaches: string; permissions: Permission[] }[]
   titles: { title: string; role: string | null; role_name: string | null; people: number; falls_back_to?: string; holders: { person: string; name: string }[] }[]
 }
 
@@ -136,7 +136,7 @@ export function BusinessRolesPage() {
             {answer.roles.map(role => (
               <Line key={role.id} testid="role-line"
                 name={<RecordLink table={ROLE_TABLE} id={role.id}>{role.name}</RecordLink>}
-                meta={role.description}
+                meta={<><span data-testid="role-reaches">Reaches: {role.reaches}</span>{role.description ? ` · ${role.description}` : ''}</>}
                 side={<>
                   {role.by_hand_only && <Chip tone="hand">Given by hand only</Chip>}
                   <button type="button" className={linkClasses} aria-expanded={open === role.id}
@@ -288,9 +288,11 @@ export function ExplainPersonPage() {
   const person = new URLSearchParams(window.location.search).get('person')
   const { answer, failed, load } = useRead<Explained>('explain_person', person ? { person } : null)
   const choose = (found: Found | null) => { if (found) window.location.search = explainAddress(found.person).slice(1) }
+  // Someone who may not see the page gets the refusal alone, with no search above it.
+  const refused = failed?.startsWith('Only a Report Access Manager')
   return (
     <Shell current="explain" testid="explain-person" title={answer ? answer.name : 'Explain A Person'} wide>
-      <div className="max-w-xl"><PersonPicker chosen={null} onChoose={choose} label="Find a person" /></div>
+      {!refused && <div className="max-w-xl"><PersonPicker chosen={null} onChoose={choose} label="Find a person" /></div>}
       {!person && <p className="fd-muted">Choose someone to see their business roles, the apps they would open and the reports they would get. {SHADOW_NOTE}</p>}
       {person && !answer && !failed && <Loading />}
       {failed && <Failed message={failed} onRetry={load} />}
@@ -310,9 +312,11 @@ function HeaderChips({ header }: { header: Explained['header'] }) {
 function Explanation({ answer, onChanged }: { answer: Explained; onChanged: () => Promise<unknown> }) {
   const [form, setForm] = useState<'Correct' | 'Also give' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Removing a hand change asks first, on its own line: no browser dialog.
+  const [confirming, setConfirming] = useState<string | null>(null)
   const remove = async (role: Explained['roles'][number]) => {
     setError(null)
-    try { await act('remove_role', { id: role.hand, updated_at: role.hand_updated_at }); await onChanged() } catch (e) { setError(messageOf(e)) }
+    try { await act('remove_role', { id: role.hand, updated_at: role.hand_updated_at }); setConfirming(null); await onChanged() } catch (e) { setError(messageOf(e)) }
   }
   const field = 'text-[13px] text-ink-muted'
   return (
@@ -320,7 +324,7 @@ function Explanation({ answer, onChanged }: { answer: Explained; onChanged: () =
       <HeaderChips header={answer.header} />
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]">
         <dl className="grid h-fit grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm" data-testid="explain-fields">
-          <dt className={field}>HR title</dt><dd data-testid="hr-title">{answer.hr_titles.join(', ') || 'None'}</dd>
+          <dt className={field}>HR title</dt><dd data-testid="hr-title">{answer.hr_titles.join(', ') || 'No current job'}</dd>
           <dt className={field}>Status</dt><dd><StaffBadge who={answer.who} /></dd>
           <dt className={field}>Today</dt><dd data-testid="explain-today">{accessWords(answer.today)}</dd>
           <dt className={field}>New model</dt><dd data-testid="explain-next">{accessWords(answer.next)}</dd>
@@ -335,7 +339,13 @@ function Explanation({ answer, onChanged }: { answer: Explained; onChanged: () =
                 meta={[reachWords(role.area), role.until ? `until ${fmtDate(role.until)}` : null, role.reason].filter(Boolean).join(' · ')}
                 side={<>
                   <Chip tone={role.hand ? 'hand' : 'source'} testid="source-chip">{role.source}</Chip>
-                  {role.hand && <button type="button" className={linkClasses} onClick={() => remove(role)} data-testid="remove-role">Remove</button>}
+                  {role.hand && confirming !== role.hand && <button type="button" className={linkClasses} onClick={() => setConfirming(role.hand)} data-testid="remove-role">Remove</button>}
+                  {role.hand && confirming === role.hand && (
+                    <span className="inline-flex items-center gap-2 text-[13px]" data-testid="remove-confirm">Remove this?
+                      <button type="button" className="font-medium text-negative hover:underline" onClick={() => remove(role)} data-testid="remove-yes">Yes</button>
+                      <button type="button" className={linkClasses} onClick={() => setConfirming(null)} data-testid="remove-keep">Keep</button>
+                    </span>
+                  )}
                 </>} />
             ))}
             {answer.unmapped.map(t => (

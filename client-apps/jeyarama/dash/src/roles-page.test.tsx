@@ -131,10 +131,36 @@ describe('Explain A Person', () => {
     expect(all('explain-decision').map(l => l.textContent)).toEqual(['Sales'])
   })
 
-  it('says plainly that only a manager may see it', async () => {
+  it('says plainly that only a manager may see it, with no search above', async () => {
     answers = { explain_person: { __error: 'Only a Report Access Manager or a System Manager can see business roles' } }
     const { all } = await render('explain')
-    expect(all('refused')[0].textContent).toContain('Only a Report Access Manager or System Manager can see this')
+    expect([all('refused')[0].textContent!.includes('Only a Report Access Manager or System Manager can see this'), all('person-search').length]).toEqual([true, 0])
+  })
+
+  it('reads No current job as the HR title of someone with none', async () => {
+    answers.explain_person = { ...SELVI, hr_titles: [] }
+    const { all } = await render('explain')
+    expect(all('hr-title')[0].textContent).toBe('No current job')
+  })
+
+  it('asks on the line before removing a hand change, and keeps it on Keep', async () => {
+    const given = { ...SELVI.roles[0], source: 'Also given by hand', hand: 'h1', hand_updated_at: 'u' }
+    answers.explain_person = { ...SELVI, roles: [given] }
+    const { all, click } = await render('explain')
+    await click(all('remove-role')[0])
+    const asked = all('remove-confirm')[0].textContent
+    await click(all('remove-keep')[0])
+    expect([asked, calls.some(c => c.name === 'remove_role'), all('remove-role').length]).toEqual(['Remove this?YesKeep', false, 1])
+  })
+
+  it('removes a hand change on Yes', async () => {
+    const given = { ...SELVI.roles[0], source: 'Also given by hand', hand: 'h1', hand_updated_at: 'u' }
+    answers.explain_person = { ...SELVI, roles: [given] }
+    answers.remove_role = { removed: 'h1' }
+    const { all, click } = await render('explain')
+    await click(all('remove-role')[0])
+    await click(all('remove-yes')[0])
+    expect(calls.find(c => c.name === 'remove_role')?.payload).toEqual({ id: 'h1', updated_at: 'u' })
   })
 
   it('says whether they are an Employee, a Former Employee or External', async () => {
@@ -145,7 +171,7 @@ describe('Explain A Person', () => {
 
 describe('Business Roles', () => {
   const ROLES = { business_roles: {
-    roles: [{ id: 'r-sm', name: 'Store Manager', description: 'Runs a store.', by_hand_only: false, permissions: [
+    roles: [{ id: 'r-sm', name: 'Store Manager', description: 'Runs a store.', by_hand_only: false, reaches: 'their store', permissions: [
       { app: 'Dash', level: 'Manager', verb: 'Edit', thing: 'Sections', reach: 'Area', sentence: 'Store Managers can Edit Sections in their Area' },
       { app: 'Dash', level: 'Manager', verb: 'Give', thing: 'Reports', reach: 'Team', sentence: 'Store Managers can Give Reports for their Team' }] }],
     titles: [{ title: 'Operations Executive', role: null, role_name: null, people: 3, falls_back_to: 'Store Manager', holders: [{ person: 'p1', name: 'Sundar' }] },
@@ -158,6 +184,12 @@ describe('Business Roles', () => {
     await click(all('role-open')[0])
     expect(all('grid-row').map(row => [row.querySelector('[data-testid="cell-Edit"]')!.textContent, row.textContent!.includes('Give')]))
       .toEqual([['Area', false], ['—', true]])
+  })
+
+  it('says how far a role reaches in plain words', async () => {
+    answers = ROLES
+    const { all } = await render('roles')
+    expect(all('role-reaches')[0].textContent).toBe('Reaches: their store')
   })
 
   it('colours each reach by its word', async () => {
