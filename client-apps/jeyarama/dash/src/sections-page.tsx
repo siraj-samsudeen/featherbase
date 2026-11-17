@@ -220,7 +220,7 @@ export function DashSidebar({ current, count, refresh = 0 }: { current: DashView
         <span>Report access</span>
       </a>
     ),
-    ...(managesRoles || ['roles', 'explain', 'changes'].includes(current) ? [
+    ...(managesRoles ? [
       <a key="roles" href="?view=roles" {...here('roles')} data-testid="roles-link">
         <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z" /></svg>
         <span>Business Roles</span>
@@ -236,12 +236,13 @@ export function DashSidebar({ current, count, refresh = 0 }: { current: DashView
 }
 
 /** `refresh`: a page that changes what waits elsewhere bumps it, so the sidebar's count is read again (#1219). */
-export function Shell({ current, count, refresh, title, testid, children }: { current: DashView; count?: number | null; refresh?: number; title: ReactNode; testid: string; children: ReactNode }) {
+/** `wide`: the content fills the space after the sidebar (the owner's rule for new pages, #1218). */
+export function Shell({ current, count, refresh, title, testid, wide = false, children }: { current: DashView; count?: number | null; refresh?: number; title: ReactNode; testid: string; wide?: boolean; children: ReactNode }) {
   return (
     <div className="fd-shell">
       <DashSidebar current={current} count={count} refresh={refresh} />
       <main className="fd-page" data-testid={testid}>
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+        <div className={`flex w-full flex-col gap-4 ${wide ? '' : 'mx-auto max-w-3xl'}`}>
           <h1 className="fd-title">{title}</h1>
           {children}
         </div>

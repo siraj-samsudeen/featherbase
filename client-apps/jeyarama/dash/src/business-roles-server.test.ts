@@ -508,3 +508,12 @@ describe('Codex adversarial round 2 and standard review on 296fa29fc', () => {
       .toEqual([[['Buyer', 'Buyer on a Buyer Section', ['Silk desk'], 1]], ['decision']])
   })
 })
+
+describe('the places a hand change may name', () => {
+  it('lists every store by name, with someone outside the staff list given no default', async () => {
+    const tables = await seeded()
+    tables.Site.push({ row_id: 'HIL', name: 'Hillview', is_store: true })
+    const explained = await explainPerson(context(tables, { payload: { person: 'nobody' } }) as never)
+    expect(explained.places).toEqual({ stores: [{ id: 'HIL', name: 'Hillview' }, { id: 'LKS', name: 'Lakeside' }], default: null })
+  })
+})

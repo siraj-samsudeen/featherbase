@@ -32,19 +32,26 @@ beforeAll(() => {
     const match = /app_(reads|actions)\/dash\/(.+)$/.exec(String(url))
     if (!match) return new Response('{}', { status: 404 })
     calls.push({ kind: match[1], name: match[2], payload: JSON.parse(String(init.body)).payload })
+    const answer = answers[match[2]] as { __error?: string } | undefined
+    if (answer?.__error) return new Response(JSON.stringify({ error: { message: answer.__error } }), { status: 417 })
     return new Response(JSON.stringify({ result: answers[match[2]] ?? (/^(manages|holds)_/.test(match[2]) ? false : []) }), { status: 200 })
   }
   teardown = () => { for (const key of added) delete (globalThis as Record<string, unknown>)[key]; dom.window.close() }
 })
 afterAll(() => teardown())
 
+const NONE = { kinds: [], stores_gained: [], stores_lost: [], stores_changed: [], gained: [], lost: [], decisions: [] }
 const SELVI = {
   person: 'sm', name: 'Selvi', who: { code: '3005', jobs: ['Store Manager · Lakeside'], staff: 'current' }, employee: '3005',
+  header: { employee: [{ name: 'Selvi', table: 'Employee', id: '3005', code: '3005' }], sites: [{ name: 'Lakeside', table: 'Site', id: 'LKS' }], reports_to: [] },
+  hr_titles: ['Operations Executive'],
   roles: [{ role: 'r-sm', name: 'Store Manager', source: 'From HR title', from: 'Store Manager', area: { parts: [{ name: 'Lakeside', table: 'Site', id: 'LKS' }], stores: 1, subcategories: null },
     until: null, reason: null, hand: null, hand_updated_at: null }],
   unmapped: [], apps: [{ app: 'Dash', level: 'Reader', via: ['Store Manager'] }, { app: 'Tasker', level: 'Manager', via: ['Store Manager'] }],
   reports: [{ key: 'vs', name: 'Vendor Sales', why: ['Given to Store Manager, for Lakeside'] }],
-  today: { opens: true, reports: 1, stores: 1 }, next: { opens: true }, decisions: [], choices: [{ id: 'r-sm', name: 'Store Manager' }, { id: 'r-tl', name: 'Team Leader' }],
+  today: { opens: true, reports: 1, stores: 1 }, next: { opens: true, reports: 1, stores: 1 }, change: NONE,
+  choices: [{ id: 'r-sm', name: 'Store Manager' }, { id: 'r-tl', name: 'Team Leader' }],
+  places: { stores: [{ id: 'HIL', name: 'Hillview' }, { id: 'LKS', name: 'Lakeside' }], default: 'LKS' },
 }
 beforeEach(() => { calls.length = 0; document.body.innerHTML = ''; answers = { explain_person: SELVI, give_role: { id: 'h1' } } })
 
@@ -78,9 +85,27 @@ describe('Explain A Person', () => {
       .toEqual([['Lakeside', 'From HR title']])
   })
 
-  it('shows each report with a why line', async () => {
+  it('opens a report\'s Why? only when asked', async () => {
+    const { all, click } = await render('explain')
+    const report = all('explain-report')[0]
+    const before = report.querySelectorAll('[data-testid="why-line"]').length
+    await click(report.querySelector('[data-testid="why-toggle"]')!)
+    expect([before, all('explain-report')[0].querySelector('[data-testid="why-line"]')!.textContent]).toEqual([0, 'Given to Store Manager, for Lakeside'])
+  })
+
+  it('reads the designation as the HR title, with Employee and Site chips in the header', async () => {
     const { all } = await render('explain')
-    expect(all('why-line').map(line => line.textContent)).toEqual(['Why: Given to Store Manager, for Lakeside'])
+    expect([all('hr-title')[0].textContent, all('header-chip').map(c => c.textContent)]).toEqual(['Operations Executive', ['Employee Selvi 3005', 'Site Lakeside']])
+  })
+
+  it('draws the source chip in the action tint', async () => {
+    const { all } = await render('explain')
+    expect(all('source-chip')[0].getAttribute('data-tone')).toBe('source')
+  })
+
+  it('says the new model gives the same when nothing changes', async () => {
+    const { all } = await render('explain')
+    expect(all('explain-change')[0].textContent).toBe('Nothing: the new model gives the same.')
   })
 
   it('also gives a role with an end date, then reads the person again', async () => {
@@ -90,7 +115,26 @@ describe('Explain A Person', () => {
     await set(all('hand-ends')[0] as HTMLInputElement, '2027-03-31')
     await click(all('hand-save')[0])
     expect([calls.find(c => c.name === 'give_role')?.payload, calls.filter(c => c.name === 'explain_person').length])
-      .toEqual([{ person: 'sm', change: 'Also give', role: 'r-tl', ends_on: '2027-03-31', reason: '' }, 2])
+      .toEqual([{ person: 'sm', change: 'Also give', role: 'r-tl', site: 'LKS', ends_on: '2027-03-31', reason: '' }, 2])
+  })
+
+  it('offers the job\'s place by default in a Correct, said as a sentence', async () => {
+    const { all, click, set } = await render('explain')
+    await click(all('correct-button')[0])
+    await set(all('hand-role')[0] as HTMLSelectElement, 'r-sm')
+    expect([(all('hand-site')[0] as HTMLSelectElement).value, all('hand-sentence')[0].textContent]).toEqual(['LKS', 'Correct: treat as Store Manager at Lakeside.'])
+  })
+
+  it('lists only the decisions the comparison makes', async () => {
+    answers.explain_person = { ...SELVI, change: { ...NONE, kinds: ['decision'], decisions: [{ name: 'Sales', table: 'dash.report', id: 'sales' }] } }
+    const { all } = await render('explain')
+    expect(all('explain-decision').map(l => l.textContent)).toEqual(['Sales'])
+  })
+
+  it('says plainly that only a manager may see it', async () => {
+    answers = { explain_person: { __error: 'Only a Report Access Manager or a System Manager can see business roles' } }
+    const { all } = await render('explain')
+    expect(all('refused')[0].textContent).toContain('Only a Report Access Manager or System Manager can see this')
   })
 
   it('says whether they are an Employee, a Former Employee or External', async () => {
@@ -100,22 +144,42 @@ describe('Explain A Person', () => {
 })
 
 describe('Business Roles', () => {
-  it('reads a permission as a sentence with its reach, and lists titles not mapped yet first', async () => {
-    answers = { business_roles: {
-      roles: [{ id: 'r-sm', name: 'Store Manager', description: 'Runs a store.', by_hand_only: false, permissions: [{ app: 'Dash', level: 'Manager', reach: 'Area', sentence: 'Store Managers can Edit Sections in their Area' }] }],
-      titles: [{ title: 'Operations Executive', role: null, role_name: null, people: 3, falls_back_to: 'Store Manager' }, { title: 'Store Manager', role: 'r-sm', role_name: 'Store Manager', people: 4 }],
-    } }
+  const ROLES = { business_roles: {
+    roles: [{ id: 'r-sm', name: 'Store Manager', description: 'Runs a store.', by_hand_only: false, permissions: [
+      { app: 'Dash', level: 'Manager', verb: 'Edit', thing: 'Sections', reach: 'Area', sentence: 'Store Managers can Edit Sections in their Area' },
+      { app: 'Dash', level: 'Manager', verb: 'Give', thing: 'Reports', reach: 'Team', sentence: 'Store Managers can Give Reports for their Team' }] }],
+    titles: [{ title: 'Operations Executive', role: null, role_name: null, people: 3, falls_back_to: 'Store Manager', holders: [{ person: 'p1', name: 'Sundar' }] },
+      { title: 'Store Manager', role: 'r-sm', role_name: 'Store Manager', people: 4, holders: [] }],
+  } }
+
+  it('opens a role as a grid: things as rows, a reach chip under its verb, other verbs on the row', async () => {
+    answers = ROLES
     const { all, click } = await render('roles')
     await click(all('role-open')[0])
-    expect([all('permission-line').map(l => l.textContent), all('unmapped-line').map(l => l.querySelector('.font-medium')!.textContent)])
-      .toEqual([['Dash · ManagerStore Managers can Edit Sections in their AreaArea'], ['Operations Executive']])
+    expect(all('grid-row').map(row => [row.querySelector('[data-testid="cell-Edit"]')!.textContent, row.textContent!.includes('Give')]))
+      .toEqual([['Area', false], ['—', true]])
+  })
+
+  it('colours each reach by its word', async () => {
+    answers = ROLES
+    const { all, click } = await render('roles')
+    await click(all('role-open')[0])
+    expect(all('reach-chip').map(c => [c.textContent, c.className.includes('positive') || c.className.includes('action')])).toEqual([['Area', true], ['Team', true]])
+  })
+
+  it('lists titles not mapped yet first, and opens who holds one', async () => {
+    answers = ROLES
+    const { all, click } = await render('roles')
+    await click(all('unmapped-line')[0].querySelector('[data-testid="holders-toggle"]')!)
+    expect([all('unmapped-line').map(l => l.querySelector('.font-medium')!.textContent), all('holders')[0].querySelector('a')!.getAttribute('href')])
+      .toEqual([['Operations Executive'], '?view=explain&person=p1'])
   })
 })
 
 describe('Who Would Gain Or Lose Access', () => {
   it('lists only people with a difference, with a count per kind', async () => {
-    answers = { access_changes: { people: 3, groups: [
-      { kind: 'loses_dash', people: [{ person: 'st', name: 'Siva', who: null, kind: 'loses_dash', roles: ['Staff'], stores_gained: [], stores_lost: [], stores_changed: [], gained: [], lost: [], decisions: [] }] },
+    answers = { access_changes: { people: 3, changed: 1, groups: [
+      { kind: 'loses_dash', people: [{ person: 'st', name: 'Siva', who: null, kinds: ['loses_dash'], roles: ['Staff'], stores_gained: [], stores_lost: [], stores_changed: [], gained: [], lost: [], decisions: [] }] },
       { kind: 'gains_dash', people: [] }, { kind: 'stores', people: [] }, { kind: 'reports', people: [] }, { kind: 'decision', people: [] }] } }
     const { all } = await render('changes')
     expect([all('changed-name').map(a => [a.textContent, a.getAttribute('href')]), all('group-loses_dash-count')[0].textContent])
