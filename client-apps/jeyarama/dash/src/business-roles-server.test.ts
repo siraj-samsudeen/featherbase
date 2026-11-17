@@ -617,3 +617,32 @@ describe('reach as data on the role (Codex standard review round 4 on 1233e3d8c)
       .toEqual(['their store', 'their merchandise', 'the whole company', 'the place it is given at', 'Not set'])
   })
 })
+
+describe('every source asks the role\'s Reaches, with stores outside the first area (Codex adversarial round 5)', () => {
+  async function twoStores() {
+    const tables = await seeded()
+    tables.Site.push({ row_id: 'HIL', name: 'Hillview', is_store: true, cluster: 'SOUTH', operating_region: 'West' })
+    tables.Plant.push({ row_id: '9902', site: 'HIL', plant_type: 'Store' })
+    tables.Cluster.push({ row_id: 'SOUTH', name: 'South', cluster_manager: null })
+    tables.Employee.push({ row_id: 'E-X', name: 'Xavier', employee_code: 'E-X', status: 'Current', person: 'x' })
+    return tables
+  }
+  const remap = (tables: Record<string, Row[]>, title: string) => { tables['dash.title_map'].find(r => r.title === title)!.business_role = roleId(tables, 'Leadership') }
+
+  it('gives a named head of North every store, Hillview in the South too, when Cluster Manager maps to Leadership', async () => {
+    const tables = await twoStores()
+    tables.Cluster[0].cluster_manager = 'E-X'
+    remap(tables, 'Cluster Manager')
+    const role = (await explainPerson(context(tables, { payload: { person: 'x' } }) as never)).roles[0]
+    expect([role.name, role.area.parts.map(p => p.name), role.area.stores]).toEqual(['Leadership', ['Whole company'], 2])
+  })
+
+  it('gives a Buyer Section\'s buyer in the East every store, Hillview in the West too, when Buyer maps to Leadership', async () => {
+    const tables = await twoStores()
+    tables['Buyer Section'] = [{ row_id: 'BS-1', name: 'Silk desk', operating_region: 'East', buyer: 'E-X', starts_on: '2026-01-01' }]
+    tables['Buyer Section Subcategory'] = [{ row_id: 'BL-1', buyer_section: 'BS-1', subcategory: '010101001', starts_on: '2026-01-01' }]
+    remap(tables, 'Buyer')
+    const role = (await explainPerson(context(tables, { payload: { person: 'x' } }) as never)).roles[0]
+    expect([role.name, role.area.parts.map(p => p.name), role.area.stores]).toEqual(['Leadership', ['Whole company'], 2])
+  })
+})

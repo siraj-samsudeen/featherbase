@@ -89,10 +89,12 @@ export function rolesOf(facts: PersonFacts, model: Model): { held: HeldRole[]; u
   // A buyer named only on Buyer Sections holds the Buyer role there; with Buyer rows too, their merchandise run covers both.
   const buyerRole = map.get(key(BUYER_TITLE))
   if (facts.buyerSections?.length && buyerRole && !byRole.has(buyerRole))
-    held.push({ role: buyerRole, source: 'buyer_section', title: null, spot: { kind: 'buyer_sections', sections: facts.buyerSections } })
+    held.push({ role: buyerRole, source: 'buyer_section', title: null, spot: company(buyerRole) ? { kind: 'company' } : { kind: 'buyer_sections', sections: facts.buyerSections } })
   // A named cluster head holds whatever role the title Cluster Manager maps to; none while it maps to nothing.
   const clusterRole = map.get(key(CLUSTER_TITLE))
-  for (const cluster of clusterRole ? facts.clustersHeaded : []) held.push({ role: clusterRole!, source: 'cluster_head', title: null, spot: { kind: 'cluster', cluster } })
+  // Every source asks the role's Reaches first: a role reaching the whole company does so from any of them.
+  for (const cluster of clusterRole ? facts.clustersHeaded : [])
+    held.push({ role: clusterRole!, source: 'cluster_head', title: null, spot: company(clusterRole!) ? { kind: 'company' } : { kind: 'cluster', cluster } })
   for (const given of hand.filter(h => h.change === 'Also give')) {
     const jobs = given.site ? facts.jobs.slice(0, 1) : facts.jobs
     const spots: Spot[] = company(given.role) || given.site && !jobs.length ? [placed(given)]

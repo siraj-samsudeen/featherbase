@@ -134,6 +134,18 @@ describe('reach as data on the role (Codex standard review round 4)', () => {
   })
 })
 
+describe('every source asks the role\'s Reaches (Codex adversarial round 5)', () => {
+  it('gives a named cluster head the whole company when Cluster Manager maps to a whole-company role', () => {
+    const mapped = { ...model, rules: [...RULES.filter(r => r.title !== 'Cluster Manager'), { title: 'Cluster Manager', role: 'r-lead' }] }
+    expect(rolesOf({ ...none, clustersHeaded: ['NORTH'] }, mapped).held.map(r => r.spot)).toEqual([{ kind: 'company' }])
+  })
+
+  it('gives a Buyer Section\'s buyer the whole company when Buyer maps to a whole-company role', () => {
+    const mapped = { ...model, rules: [...RULES.filter(r => r.title !== 'Buyer'), { title: 'Buyer', role: 'r-lead' }] }
+    expect(rolesOf({ ...none, buyerSections: ['BS-1'] }, mapped).held.map(r => r.spot)).toEqual([{ kind: 'company' }])
+  })
+})
+
 describe('Buyer Sections and places named by hand', () => {
   it('gives a buyer named only on Buyer Sections the Buyer role there', () => {
     expect(rolesOf({ ...none, buyerSections: ['BS-1'] }, model).held).toEqual([{ role: 'r-buyer', source: 'buyer_section', title: null, spot: { kind: 'buyer_sections', sections: ['BS-1'] } }])
