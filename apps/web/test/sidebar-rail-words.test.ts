@@ -34,3 +34,21 @@ test('a row with no words gets no tooltip', () => {
   detach()
   root.remove()
 })
+
+// #1255 verifier (17-Nov): the avatar's tooltip sat over its own open menu's last item.
+test("a click hides a row's tooltip, and a row whose menu is open gets none", () => {
+  const root = document.createElement('div')
+  const row = Object.assign(document.createElement('button'), { textContent: 'Account' })
+  root.append(row)
+  document.body.append(root)
+  const detach = attachRailTips({ root, layer: document.body, active: () => true, rowOf: () => row })
+  row.dispatchEvent(new Event('pointerover', { bubbles: true }))
+  expect(document.querySelector('[role=tooltip]')).toHaveTextContent('Account')
+  row.dispatchEvent(new Event('click', { bubbles: true }))
+  expect(document.querySelector('[role=tooltip]')).toBeNull()
+  row.setAttribute('aria-expanded', 'true')
+  row.dispatchEvent(new Event('focusin', { bubbles: true }))
+  expect(document.querySelector('[role=tooltip]')).toBeNull()
+  detach()
+  root.remove()
+})
