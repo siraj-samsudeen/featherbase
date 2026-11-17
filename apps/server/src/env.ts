@@ -28,10 +28,11 @@ export type Requirement =
 
 /** Facts about stored settings that make a variable required. The release
  *  preflight works them out from the database (release-preflight.ts). */
-export type SettingsCondition = 'google-sign-in-enabled'
+export type SettingsCondition = 'google-sign-in-enabled' | 'microsoft-sign-in-enabled'
 
 export const SETTINGS_CONDITIONS: Record<SettingsCondition, string> = {
   'google-sign-in-enabled': 'a Google sign-in method is enabled with a client id',
+  'microsoft-sign-in-enabled': 'a Microsoft sign-in method is enabled with a client id',
 }
 
 export interface Variable {
@@ -97,6 +98,9 @@ export const VARIABLES = [
   { name: 'GOOGLE_CLIENT_SECRET', secret: true, required: { when: 'google-sign-in-enabled' }, crossEnvironment: 'must-match',
     purpose: 'the Google OAuth client secret; the client id and allowed domains live on the Google sign-in method',
     fix: 'Set it, or disable the Google sign-in method (docs/DEPLOY.md, "Sign-in methods and linked identities").' },
+  { name: 'MICROSOFT_CLIENT_SECRET', secret: true, required: { when: 'microsoft-sign-in-enabled' }, crossEnvironment: 'must-match',
+    purpose: 'the Microsoft Entra app\'s client secret; the client id, tenant and allowed domains live on the Microsoft sign-in method',
+    fix: 'Set it, or disable the Microsoft sign-in method (docs/MICROSOFT-SIGN-IN.md).' },
   // ---- Files and printing
   { name: 'FILE_STORAGE_DIR', secret: false, required: 'recommended', default: '`apps/server/storage`',
     purpose: 'uploaded-file directory; it must persist across deploys (on Railway, a Volume)',

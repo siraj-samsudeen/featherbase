@@ -50,9 +50,9 @@ export async function isSecurityTable(table: string): Promise<boolean> {
 }
 
 /** Person columns that change what a person may do: only a System Manager
- *  sets them on an existing person (roles, and expecting Google sign-in, also
- *  on a new one: #473 — it lets a Google account link by address alone). */
-const PERSON_ACCESS_COLUMNS = ['roles', 'enabled', 'expects_google_sign_in'] as const
+ *  sets them on an existing person (roles, and expecting Google or Microsoft
+ *  sign-in, also on a new one: #473 — it lets an account link by address alone). */
+const PERSON_ACCESS_COLUMNS = ['roles', 'enabled', 'expects_google_sign_in', 'expects_microsoft_sign_in'] as const
 
 /** Workflows and Assignment Rules write directly, outside the save path.
  *  They may target neither access data nor an upload-managed storage path. */

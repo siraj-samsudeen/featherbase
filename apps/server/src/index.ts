@@ -21,16 +21,17 @@ import { countDocs, getList, groupCount } from './query'
 import { hasMandatoryRowAccess, mandatoryReferencesWhere } from './mandatory-access'
 import { loadControllers } from './controllers'
 import { assertCanChangeAccess, assertFreshForLinking, resolveToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionOptions, type SessionUser } from './auth'
-import { GOOGLE_OFF, LINK_DOMAIN_NOT_ALLOWED, completeSignIn, linkVerifiedToSelf, passwordSignIn, signInRefusal } from './sign-in'
+import { GOOGLE_OFF, LINK_DOMAIN_NOT_ALLOWED, MICROSOFT_OFF, completeSignIn, linkVerifiedToSelf, passwordSignIn, signInRefusal, type VerifiedIdentity } from './sign-in'
+import { MICROSOFT_CALLBACK_PATH, assertTenantAdmits, exchangeMicrosoftCode, microsoftAuthorizeUrl, microsoftAvailable, mockMicrosoftApproveRedirect, mockMicrosoftConsentHtml } from './microsoft'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
 import { personByEmail } from './people-directory'
 import { countWaitingForAccess, noAccessYetPage, peekAccess, requestAccess } from './waiting-for-access'
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser, noLinkCarries, recordToName } from './delegated-login'
 import { hold, rosterFirstSignIn } from './roster-first-sign-in'
-import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
+import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, OAUTH_CALLBACK_PATH, mintHandoffCode, redeemHandoffCode, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
 import { ADMIN, addressRedirect, interimApp, linkAddress, matchAddress, requestHost } from './instance-addresses'
-import { USERNAME_RE, methodOfKind } from './identities'
+import { USERNAME_RE, methodOfKind, type SignInMethod } from './identities'
 import { assertPermission, assertSystemManager, getRoles, includesColumn, permissionScope, permittedColumns, tableAccessFor } from './permissions'
 import { getVisibleHomePages } from './home-pages'
 import { EMBED_ORIGIN, VIEWER_ROLE, salesTargetRoutes } from './sales-target'
@@ -68,6 +69,7 @@ import { createAssignment } from './assign'
 import { queueEmail, sendTestEmail } from './email'
 import { getSystemSettings } from './settings'
 import { MIN_PASSWORD_LENGTH, requestPasswordReset, resetPassword } from './password-reset'
+import { checkPasswordInvite, signInWithPasswordInvite } from './password-invite'
 import { renderWebPage } from './website'
 import { getWebFormConfig, submitWebForm } from './webform'
 import { logAccess } from './audit'
@@ -188,11 +190,13 @@ app.get('/api/brand', async (c) => {
   // person-identities: the login page renders the enabled sign-in methods.
   const delegated = await delegatedMethods()
   const google = await googleAvailable()
+  const microsoft = await microsoftAvailable()
   const password = await methodOfKind('password')
   const testMode = delegatedTestMode()
   const methods = [
     ...(password?.enabled ? [{ key: password.key, kind: password.kind, label: password.label || 'Password', test_mode: false }] : []),
     ...(google ? [{ key: google.key, kind: google.kind, label: google.label || 'Google', test_mode: false }] : []),
+    ...(microsoft ? [{ key: microsoft.key, kind: microsoft.kind, label: microsoft.label || 'Microsoft', test_mode: false }] : []),
     ...delegated.map((d) => ({ key: d.key, kind: 'delegated_password', label: d.label, test_mode: testMode })),
   ]
   // #488: on an address that opens an app, the sign-in page and the document
@@ -363,6 +367,24 @@ app.post('/api/reset_password', async (c) => {
   return c.json({ ok: true })
 })
 
+// #1257: the "Set your password" page behind a password invite (public: the
+// person has no way in yet). The key travels in the body, never the URL.
+app.post('/api/password_invite/check', async (c) => {
+  const { key } = (await c.req.json().catch(() => ({}))) as { key?: unknown }
+  return c.json(await checkPasswordInvite(typeof key === 'string' ? key : ''))
+})
+
+// Setting the first password signs the person in, through the same tail as
+// every other sign-in (sign-in.ts); password-invite.ts says why it re-checks.
+app.post('/api/password_invite/accept', publicLimit('LOGIN'), async (c) => {
+  const { key, new_password } = (await c.req.json().catch(() => ({}))) as { key?: unknown; new_password?: unknown }
+  const issued = await signInWithPasswordInvite(
+    typeof key === 'string' ? key : '', typeof new_password === 'string' ? new_password : '', clientAddress(c))
+  const session = { token: issued.token, user: issued.user }
+  setSidCookie(c, session.token, issued.maxAgeSeconds)
+  return c.json(await withLanding(c, session))
+})
+
 app.get('/files/:stored', (c) => serveFile(c, `/files/${c.req.param('stored')}`, false))
 app.get('/private/files/:stored', (c) =>
   serveFile(c, `/private/files/${c.req.param('stored')}`, true),
@@ -401,11 +423,53 @@ function isPageNavigation(c: Context): boolean {
   return c.req.header('sec-fetch-mode') === 'navigate' || (c.req.header('accept') ?? '').includes('text/html')
 }
 
-function refusedToLoginPage(c: Context, err: unknown) {
+function refusedToLoginPage(c: Context, err: unknown, provider: RedirectProvider = GOOGLE) {
   // Unexpected faults are still worth a server-side line; refusals are not.
-  if (!(err instanceof AppError)) console.error('[sign-in] google callback failed', err)
-  return c.redirect(`/featherbase/login?error=${signInRefusal(err)}`)
+  if (!(err instanceof AppError)) console.error(`[sign-in] ${provider.kind} callback failed`, err)
+  // The sign-in page names the method that refused; Google's needs no mark.
+  const via = provider.mark ? `&via=${provider.mark}` : ''
+  return c.redirect(`/featherbase/login?error=${signInRefusal(err, provider.kind)}${via}`)
 }
+
+// The two redirect sign-ins, Google and Microsoft (microsoft-sign-in). Each
+// supplies only how it is found, where it sends the browser and how it turns
+// a code into a VerifiedIdentity; the routes below are shared.
+interface RedirectProvider {
+  kind: 'google' | 'microsoft'
+  /** After the exchange: may the method as it is NOW admit this identity?
+   *  (Codex round 2: the method may have changed while the provider answered.) */
+  stillAdmits?: (method: SignInMethod, v: VerifiedIdentity) => void
+  /** The state's `provider` mark: absent for Google, as before. */
+  mark?: 'microsoft'
+  callbackPath: string
+  off: string
+  available: () => Promise<SignInMethod | null>
+  authorizeUrl: (method: SignInMethod, state: string, redirectUri: string, challenge: string, c: Context) => string
+  exchange: (c: Context, method: SignInMethod, redirectUri: string, verifier: string | undefined, state: string) => Promise<VerifiedIdentity>
+}
+
+const GOOGLE: RedirectProvider = {
+  kind: 'google',
+  callbackPath: OAUTH_CALLBACK_PATH,
+  off: GOOGLE_OFF,
+  available: googleAvailable,
+  authorizeUrl: (m, state, redirectUri, challenge, c) =>
+    googleAuthorizeUrl(m.client_id, state, redirectUri, challenge, { email: c.req.query('email'), name: c.req.query('name'), subject: c.req.query('subject') }),
+  exchange: (c, m, redirectUri, verifier) => exchangeCode(c.req.query('code'), redirectUri, m.client_id, verifier),
+}
+
+const MICROSOFT: RedirectProvider = {
+  kind: 'microsoft',
+  mark: 'microsoft',
+  callbackPath: MICROSOFT_CALLBACK_PATH,
+  off: MICROSOFT_OFF,
+  available: microsoftAvailable,
+  authorizeUrl: (m, state, redirectUri, challenge) => microsoftAuthorizeUrl(m, state, redirectUri, challenge),
+  exchange: (c, m, redirectUri, verifier, state) => exchangeMicrosoftCode(c.req.query('code'), redirectUri, m, verifier, state),
+  stillAdmits: (m, v) => assertTenantAdmits(m, v.subject),
+}
+
+export const REDIRECT_PROVIDERS = { google: GOOGLE, microsoft: MICROSOFT } as const
 
 // #488: with a list set, a host it does not name gets the admin address's
 // redirect_uri, so the callback would land on another host than the state
@@ -418,20 +482,22 @@ function startGoogleOnAdmin(c: Context, next: () => Promise<void>) {
   return c.redirect(`${linkAddress(list, url.hostname.toLowerCase()).address}${url.pathname}${url.search}`)
 }
 
-app.get('/api/oauth/google/login', startGoogleOnAdmin, publicLimit('OAUTH_LOGIN'), async (c) => {
-  if (!(await googleAvailable())) {
-    const off = new AppError('AuthenticationError', GOOGLE_OFF)
-    if (isPageNavigation(c)) return refusedToLoginPage(c, off)
+async function startRedirectSignIn(c: Context, provider: RedirectProvider) {
+  const method = await provider.available()
+  if (!method) {
+    const off = new AppError('AuthenticationError', provider.off)
+    if (isPageNavigation(c)) return refusedToLoginPage(c, off, provider)
     throw off
   }
-  const clientId = await oauthClientId()
-  assertSignInAvailable(clientId)
-  const redirectUri = oauthRedirectUri(c, clientId)
-  const { state, verifier } = newLoginChallenge(requestHost(c.req.url))
+  assertSignInAvailable(method.client_id, provider.off)
+  const redirectUri = oauthRedirectUri(c, method.client_id, provider.callbackPath)
+  const { state, verifier } = newLoginChallenge(requestHost(c.req.url), provider.mark ? { provider: provider.mark } : {})
   setLoginChallengeCookies(c, state, verifier)
-  const hint = { email: c.req.query('email'), name: c.req.query('name') }
-  return c.redirect(googleAuthorizeUrl(clientId, state, redirectUri, codeChallengeFor(verifier), hint))
-})
+  return c.redirect(provider.authorizeUrl(method, state, redirectUri, codeChallengeFor(verifier), c))
+}
+
+app.get('/api/oauth/google/login', startGoogleOnAdmin, publicLimit('OAUTH_LOGIN'), (c) => startRedirectSignIn(c, GOOGLE))
+app.get('/api/oauth/microsoft/login', startGoogleOnAdmin, publicLimit('OAUTH_LOGIN'), (c) => startRedirectSignIn(c, MICROSOFT))
 
 app.get('/api/oauth/mock/consent', async (c) => {
   assertMockProviderAllowed(await oauthClientId())
@@ -452,59 +518,100 @@ app.get('/api/oauth/mock/approve', async (c) => {
   return c.redirect(mockApproveRedirect(state, redirectUri, email, name, c.req.query('subject') ?? '', c.req.query('hd')))
 })
 
-app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) => {
-  try {
-    return await googleCallback(c)
-  } catch (err) {
-    // A link attempt that fails before its state is verified (expired, another
-    // browser, Google turned off) still lands on a page that explains it,
-    // never raw JSON. A refused sign-in does the same for a browser, on the
-    // sign-in page; an API caller keeps the JSON error and its status.
-    if (claimedPurpose(c.req.query('state')) !== 'link') {
-      if (!isPageNavigation(c)) throw err
-      clearLoginChallengeCookies(c)
-      return refusedToLoginPage(c, err)
-    }
-    clearLoginChallengeCookies(c)
-    const code = err instanceof AppError && /state|token|expired|signature/i.test(err.message) ? 'expired' : 'google_failed'
-    return c.redirect(`${ACCOUNT_SIGN_IN_METHODS_PATH}?link=${code}`)
-  }
+// The stand-in for Microsoft (ALLOW_MOCK_OAUTH=1, and only while the method
+// has no client id): the same guard as Google's stand-in.
+const microsoftClientId = async () => (await methodOfKind('microsoft'))?.client_id ?? ''
+
+app.get('/api/oauth/mock/microsoft/consent', async (c) => {
+  assertMockProviderAllowed(await microsoftClientId())
+  return c.html(mockMicrosoftConsentHtml(c.req.query('state') ?? '', c.req.query('redirect_uri') ?? ''))
 })
 
-async function googleCallback(c: Context) {
-  const google = await googleAvailable()
-  if (!google) throw new AppError('AuthenticationError', GOOGLE_OFF)
-  const clientId = google.client_id
-  assertSignInAvailable(clientId)
+app.get('/api/oauth/mock/microsoft/approve', async (c) => {
+  assertMockProviderAllowed(await microsoftClientId())
+  const state = c.req.query('state') ?? ''
+  verifyState(state, getCookie(c, OAUTH_STATE_COOKIE), requestHost(c.req.url))
+  return c.redirect(mockMicrosoftApproveRedirect(state, c.req.query('redirect_uri') ?? '', {
+    email: c.req.query('email') ?? '',
+    name: c.req.query('name') ?? '',
+    tid: c.req.query('tid') ?? '',
+    oid: c.req.query('oid') ?? '',
+    edov: c.req.query('edov') === '1',
+  }))
+})
+
+function redirectCallbackRoute(provider: RedirectProvider) {
+  return async (c: Context) => {
+    try {
+      return await redirectCallback(c, provider)
+    } catch (err) {
+      // A link attempt that fails before its state is verified (expired, another
+      // browser, the method turned off) still lands on a page that explains it,
+      // never raw JSON. A refused sign-in does the same for a browser, on the
+      // sign-in page; an API caller keeps the JSON error and its status.
+      if (claimedPurpose(c.req.query('state')) !== 'link') {
+        if (!isPageNavigation(c)) throw err
+        clearLoginChallengeCookies(c)
+        return refusedToLoginPage(c, err, provider)
+      }
+      clearLoginChallengeCookies(c)
+      const code = err instanceof AppError && /state|token|expired|signature/i.test(err.message) ? 'expired' : `${provider.kind}_failed`
+      return c.redirect(`${ACCOUNT_SIGN_IN_METHODS_PATH}?link=${code}${provider.mark ? `&via=${provider.mark}` : ''}`)
+    }
+  }
+}
+
+app.get(OAUTH_CALLBACK_PATH, publicLimit('OAUTH_CALLBACK'), redirectCallbackRoute(GOOGLE))
+app.get(MICROSOFT_CALLBACK_PATH, publicLimit('OAUTH_CALLBACK'), redirectCallbackRoute(MICROSOFT))
+
+/** The method as it is after the exchange, which this sign-in is judged by. */
+async function currentMethod(provider: RedirectProvider, v: VerifiedIdentity): Promise<SignInMethod> {
+  const now = await provider.available()
+  if (!now) throw new AppError('AuthenticationError', provider.off)
+  provider.stillAdmits?.(now, v)
+  return now
+}
+
+async function redirectCallback(c: Context, provider: RedirectProvider) {
+  const method = await provider.available()
+  if (!method) throw new AppError('AuthenticationError', provider.off)
+  const clientId = method.client_id
+  assertSignInAvailable(clientId, provider.off)
   // The state must match the cookie this browser got at login. Without that
   // binding an attacker could complete consent with their own account and
   // hand the victim the callback URL, planting the attacker's session.
-  const state = verifyState(c.req.query('state'), getCookie(c, OAUTH_STATE_COOKIE), requestHost(c.req.url))
+  const rawState = c.req.query('state')
+  const state = verifyState(rawState, getCookie(c, OAUTH_STATE_COOKIE), requestHost(c.req.url))
   const verifier = getCookie(c, OAUTH_VERIFIER_COOKIE)
   // One challenge, one use — clear it whether or not the exchange succeeds.
   clearLoginChallengeCookies(c)
+  // A sign-in started for one provider finishes only at that provider's callback.
+  if (state.provider !== provider.mark) throw new AppError('AuthenticationError', 'OAuth state is for another sign-in method')
+  const redirectUri = oauthRedirectUri(c, clientId, provider.callbackPath)
   if (state.purpose === 'link') {
     // person-identities D6: the signed-in person who started this flow links
-    // the Google account they just proved. Every outcome, including a failed
+    // the account they just proved. Every outcome, including a failed
     // exchange, travels back to the methods page as a code it can explain.
-    const back = (result: string) => c.redirect(`${ACCOUNT_SIGN_IN_METHODS_PATH}?link=${encodeURIComponent(result)}`)
+    const back = (result: string) =>
+      c.redirect(`${ACCOUNT_SIGN_IN_METHODS_PATH}?link=${encodeURIComponent(result)}${provider.mark ? `&via=${provider.mark}` : ''}`)
     try {
-      const verified = await exchangeCode(c.req.query('code'), oauthRedirectUri(c, clientId), clientId, verifier)
+      const verified = await provider.exchange(c, method, redirectUri, verifier, rawState!)
+      const current = await currentMethod(provider, verified)
       const me = await resolveToken(authCredential(c))
       if (me.row_id !== state.uid) return back('wrong_session')
       assertFreshForLinking(me)
-      if (!google.self_link) return back('not_allowed')
-      await linkVerifiedToSelf(google, me.row_id, verified)
+      if (!current.self_link) return back('not_allowed')
+      await linkVerifiedToSelf(current, me.row_id, verified)
       return back('linked')
     } catch (err) {
       if (!(err instanceof AppError)) return back('failed')
       if (err.type === 'ConflictError') return back(err.message.includes('reserved') ? 'reserved' : 'taken')
       if (err.type === 'PermissionError') return back(err.message === LINK_DOMAIN_NOT_ALLOWED ? 'domain_not_allowed' : 'not_allowed')
-      return back(err.message.startsWith('Sign in again') || err.message.includes('session') ? 'sign_in_again' : 'google_failed')
+      return back(err.message.startsWith('Sign in again') || err.message.includes('session') ? 'sign_in_again' : `${provider.kind}_failed`)
     }
   }
-  const verified = await exchangeCode(c.req.query('code'), oauthRedirectUri(c, clientId), clientId, verifier)
-  const issued = await completeSignIn(google, verified, null, { ipAddress: clientAddress(c) })
+  const verified = await provider.exchange(c, method, redirectUri, verifier, rawState!)
+  const issued = await completeSignIn(await currentMethod(provider, verified), verified, null, { ipAddress: clientAddress(c) })
   const session = { token: issued.token, user: issued.user }
   // The cookie matters here too: beacons (e.g. the unload-time event batch,
   // #101) cannot carry a bearer token, so an OAuth session without the sid

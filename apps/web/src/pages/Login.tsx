@@ -26,22 +26,27 @@ export function safeLoginNext(
   }
 }
 
-// A refused browser sign-in (the Google callback) comes back as
-// `?error=<code>`. Only these codes are explained; anything else reads as the
-// generic failure, and the query text itself is never shown.
-const REFUSALS: Record<string, (p: { appName: string; google: string; service: string | null }) => string> = {
-  not_provisioned: ({ appName, google, service }) =>
-    `This ${google} account isn't set up for ${appName}. Ask your manager or IT to invite you${service ? `, or sign in with ${service}.` : '.'}`,
-  not_allowed: ({ google }) => `This account can't sign in with ${google}. Ask your manager or IT for help.`,
-  address_in_use: ({ google }) => `Another account already uses this ${google} account's email address. Ask your manager or IT to link it for you.`,
-  google_off: ({ google }) => `${google} sign-in isn't available right now. Use another way to sign in.`,
+// A refused browser sign-in (the Google or Microsoft callback) comes back as
+// `?error=<code>`, with `&via=microsoft` when Microsoft's. Only these codes
+// are explained; anything else reads as the generic failure, and the query
+// text itself is never shown. `provider` is the refusing method's label.
+const REFUSALS: Record<string, (p: { appName: string; provider: string; service: string | null }) => string> = {
+  not_provisioned: ({ appName, provider, service }) =>
+    `This ${provider} account isn't set up for ${appName}. Ask your manager or IT to invite you${service ? `, or sign in with ${service}.` : '.'}`,
+  not_allowed: ({ provider }) => `This account can't sign in with ${provider}. Ask your manager or IT for help.`,
+  address_in_use: ({ provider }) => `Another account already uses this ${provider} account's email address. Ask your manager or IT to link it for you.`,
+  google_off: ({ provider }) => `${provider} sign-in isn't available right now. Use another way to sign in.`,
+  microsoft_off: ({ provider }) => `${provider} sign-in isn't available right now. Use another way to sign in.`,
   expired: () => 'The sign-in took too long or was started in another window. Please try again.',
-  google_failed: ({ google }) => `${google} sign-in didn't finish. Please try again.`,
+  google_failed: ({ provider }) => `${provider} sign-in didn't finish. Please try again.`,
+  microsoft_failed: ({ provider }) => `${provider} sign-in didn't finish. Please try again.`,
 }
 
 // #474: "Try another Google account" restarts Google sign-in with the account
-// picker forced, so the account just refused is never silently reused.
+// picker forced, so the account just refused is never silently reused. Each
+// redirect sign-in already asks Microsoft to show its account picker too.
 const GOOGLE_RETRY_HREF = '/api/oauth/google/login?prompt=select_account'
+const MICROSOFT_LOGIN_HREF = '/api/oauth/microsoft/login'
 
 const SIGN_IN_FAILED = 'Sign-in failed. Please try again.'
 // Server messages a person may read as they are: refusals the server already
@@ -204,6 +209,9 @@ export function LoginPage() {
   const rememberedId = delegated ? rememberedDelegatedId(delegated.key) : ''
   // If the brand cannot be read, offer Google as before; the server decides.
   const google = methods === null ? { key: 'google', label: 'Google' } : methods.find((m) => m.kind === 'google')
+  // Microsoft only when the brand names it: it is offered once it is set up.
+  const microsoft = methods?.find((m) => m.kind === 'microsoft')
+  const redirectMethods = Boolean(google || microsoft)
   // Until the brand answers, and if it cannot, the password form stays.
   const passwordOn = methods === null || methods.some((m) => m.kind === 'password')
   const [error, setError] = useState<string | null>(null)
@@ -321,11 +329,13 @@ export function LoginPage() {
   // instead of showing an unexplained sign-in page.
   const sessionEnded = new URLSearchParams(searchStr).get('ended') === '1'
   const refusalCode = useRouterState({ select: (s) => new URLSearchParams(s.location.searchStr).get('error') })
+  // Which redirect sign-in refused: Microsoft's says so; anything else is Google's, as before.
+  const refusedByMicrosoft = useRouterState({ select: (s) => new URLSearchParams(s.location.searchStr).get('via') === 'microsoft' })
   const refusalText = (service: string | null) =>
     refusalCode
-      ? (Object.hasOwn(REFUSALS, refusalCode) ? REFUSALS[refusalCode] : REFUSALS.google_failed)({
+      ? (Object.hasOwn(REFUSALS, refusalCode) ? REFUSALS[refusalCode] : REFUSALS[refusedByMicrosoft ? 'microsoft_failed' : 'google_failed'])({
           appName,
-          google: google?.label ?? 'Google',
+          provider: refusedByMicrosoft ? (microsoft?.label ?? 'Microsoft') : (google?.label ?? 'Google'),
           service,
         })
       : null
@@ -398,7 +408,16 @@ export function LoginPage() {
                   </button>
                 )}
                 {/* A full-page navigation, as the ordinary Google button is. */}
-                {google && (
+                {refusedByMicrosoft && microsoft && (
+                  <a
+                    href={MICROSOFT_LOGIN_HREF}
+                    data-testid="refused-microsoft-retry"
+                    className={buttonClasses({ variant: delegatedMethods[0] ? 'secondary' : 'primary', className: 'w-full justify-center py-2' })}
+                  >
+                    Try another {microsoft.label} account
+                  </a>
+                )}
+                {!refusedByMicrosoft && google && (
                   <a
                     href={GOOGLE_RETRY_HREF}
                     data-testid="refused-google-retry"
@@ -483,7 +502,7 @@ export function LoginPage() {
                   {busy ? 'Signing in…' : `Sign in with ${delegatedLabel}`}
                 </button>
               </form>
-              {(google || delegatedMethods.length > 1) && orDivider}
+              {(redirectMethods || delegatedMethods.length > 1) && orDivider}
               {/* The other ways in, one tap away under the service's form. */}
               {google && (
                 <a
@@ -495,12 +514,22 @@ export function LoginPage() {
                   Sign in with {google.label}
                 </a>
               )}
+              {microsoft && (
+                <a
+                  href={MICROSOFT_LOGIN_HREF}
+                  onClick={() => rememberLoginNext(next)}
+                  data-testid="microsoft-login"
+                  className={buttonClasses({ className: `${google ? 'mt-3 ' : ''}flex w-full justify-center py-2` })}
+                >
+                  Sign in with {microsoft.label}
+                </a>
+              )}
               {delegatedMethods.filter((m) => m.key !== delegated?.key).map((m) => (
                 <button
                   key={m.key}
                   type="button"
                   data-testid={`delegated-login-toggle-${m.key}`}
-                  className={buttonClasses({ className: `${google ? 'mt-3 ' : ''}flex w-full justify-center py-2` })}
+                  className={buttonClasses({ className: `${redirectMethods ? 'mt-3 ' : ''}flex w-full justify-center py-2` })}
                   onClick={() => switchMode('delegated', m.key)}
                 >
                   Sign in with {m.label}
@@ -570,7 +599,7 @@ export function LoginPage() {
             </button>
           </form>
           )}
-          {passwordOn && (google || delegatedMethods.length > 0) && orDivider}
+          {passwordOn && (redirectMethods || delegatedMethods.length > 0) && orDivider}
           {/* PLAT-006: social login. A full-page navigation (not fetch) so the
               server's OAuth redirects drive the browser. Offered only when
               the Google sign-in method is on. */}
@@ -582,6 +611,17 @@ export function LoginPage() {
               className={buttonClasses({ className: 'flex w-full justify-center py-2' })}
             >
               Sign in with {google.label}
+            </a>
+          )}
+          {/* microsoft-sign-in: the same kind of button, offered once it is set up. */}
+          {microsoft && (
+            <a
+              href={MICROSOFT_LOGIN_HREF}
+              onClick={() => rememberLoginNext(next)}
+              data-testid="microsoft-login"
+              className={buttonClasses({ className: `${google ? 'mt-3 ' : ''}flex w-full justify-center py-2` })}
+            >
+              Sign in with {microsoft.label}
             </a>
           )}
           {/* Delegated sign-in: one button per connected service (a Sign In

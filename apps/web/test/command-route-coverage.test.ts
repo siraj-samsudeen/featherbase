@@ -11,6 +11,7 @@ const COVERAGE: Record<string, string> = {
   '/featherbase/login': 'authentication entry flow',
   '/featherbase/connect': 'an agent\'s sign-in request: opened by the agent with its own query (#1207)',
   '/featherbase/reset-password': 'credential recovery entry flow',
+  '/featherbase/set-password': 'password invite entry flow (#1257)',
   '/featherbase/oauth-callback': 'one-time authentication callback',
   '/featherbase/form/$route': 'published readable Web Forms',
   '/featherbase/portal/$table': 'alternate rendering of a readable Table',
