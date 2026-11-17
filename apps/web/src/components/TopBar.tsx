@@ -282,7 +282,8 @@ export function TopBar({
           slots.top,
         )}
         {caps && createPortal(
-          <div className={rail ? 'flex flex-col items-center gap-1' : 'flex min-w-0 items-center gap-0.5'} data-testid="sidebar-account">
+          // The foot's menus (Help, Theme) anchor to this row's left edge, so they open upward and stay on screen.
+          <div className={rail ? 'relative flex flex-col items-center gap-1' : 'relative flex min-w-0 items-center gap-0.5'} data-testid="sidebar-account">
             <AccountMenu inSidebar={{ rail, offerAdmin }} />
             {!rail && <HelpMenu commands={Boolean(command)} />}
             {!rail && <ThemeMenu />}
@@ -665,7 +666,8 @@ function FootMenu({ label, icon: Icon, testid, children }: {
     }
   }, [open])
   return (
-    <div className="relative shrink-0" ref={wrapper}>
+    // Not positioned itself: the card anchors to the foot row (sidebar-account), from its left edge.
+    <div className="shrink-0" ref={wrapper}>
       <button
         ref={button}
         type="button"
@@ -680,7 +682,7 @@ function FootMenu({ label, icon: Icon, testid, children }: {
         <Icon aria-hidden size={16} />
       </button>
       {open && (
-        <div id={menuId} className={cardClasses('absolute bottom-full right-0 z-40 mb-1 w-60 overflow-hidden py-1')} data-testid={`${testid}-menu`}>
+        <div id={menuId} className={cardClasses('absolute bottom-full left-0 z-40 mb-1 w-60 overflow-hidden py-1')} data-testid={`${testid}-menu`}>
           {children}
         </div>
       )}

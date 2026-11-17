@@ -58,7 +58,14 @@ test("the sidebar's top and foot hold the switcher, the command field and the ac
   // The foot's menus close on Escape and give the focus back to their button.
   const help = within(foot).getByTestId('help-button')
   await userEvent.click(help)
-  expect(screen.getByTestId('help-button-menu')).toHaveTextContent('Keyboard Shortcuts')
+  const helpMenu = screen.getByTestId('help-button-menu')
+  expect(helpMenu).toHaveTextContent('Keyboard Shortcuts')
+  // It opens upward from the foot row's left edge, never off the window's left (#1251's verifier).
+  expect(helpMenu.className).toMatch(/\bbottom-full\b/)
+  expect(helpMenu.className).toMatch(/\bleft-0\b/)
+  expect(helpMenu.className).not.toMatch(/\bright-0\b/)
+  expect(helpMenu.parentElement!.className).not.toMatch(/\brelative\b/)
+  expect(foot.className).toMatch(/\brelative\b/)
   await userEvent.keyboard('{Escape}')
   expect(screen.queryByTestId('help-button-menu')).not.toBeInTheDocument()
   expect(help).toHaveFocus()
