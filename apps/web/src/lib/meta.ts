@@ -192,7 +192,17 @@ export function useMeta(table: string, enabled = true) {
 /** #1237: a Table as people read it, its label ("Ticket"), never its internal
  *  name ("tickets.ticket") unless it has no label. The name while the label loads. */
 export function tableLabel(table: string, meta: Pick<TableMeta, 'label'> | undefined): string {
-  return meta?.label?.trim() || table
+  return meta?.label?.trim() || unlabelledWords(table)
+}
+
+/** admin-lists 10: an app's Table stored with no label (installed before
+ *  labels were kept) reads as its own part in words, "tasker.discussion" as
+ *  "Discussion", never the internal name; any other Table is its name. */
+function unlabelledWords(table: string): string {
+  const dot = table.indexOf('.')
+  if (dot < 0) return table
+  const words = table.slice(dot + 1).replace(/_/g, ' ').trim()
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : table
 }
 
 export function useTableLabel(table: string): string {

@@ -68,3 +68,11 @@ test('Recently Opened names a list by its label', async ({ admin, db }) => {
   expect(row).not.toHaveTextContent('Tl Customer')
   expect(row.getAttribute('title')).toContain('Client')
 })
+
+test("admin-lists 10: an app's Table with no label reads as its own part in words; any other Table as its name", async () => {
+  const { tableLabel } = await import('../src/lib/meta')
+  expect(tableLabel('tasker.discussion', { label: null })).toBe('Discussion')
+  expect(tableLabel('tasker.task_list', undefined)).toBe('Task list')
+  expect(tableLabel('tickets.ticket', { label: 'Ticket' })).toBe('Ticket')
+  expect(tableLabel('Job Assignment', undefined)).toBe('Job Assignment')
+})
