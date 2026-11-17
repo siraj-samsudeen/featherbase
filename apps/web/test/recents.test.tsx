@@ -12,13 +12,13 @@ import {
   frecency,
   frequentActions,
   historyPaused,
-  pauseHistory,
   replaceServerEntries,
   recentActions,
   recentSearches,
   recordAction,
   renameTableInRecents,
 } from '../src/lib/recents'
+import { setViewedPerson } from '../src/lib/viewing-as'
 
 // #101 Phase 1: the client-side recents buffer behind the command bar.
 
@@ -42,20 +42,20 @@ describe('while viewing as someone (#1222)', () => {
     const TESTER = 'View As Tester'
     recordAction(TESTER, row('MINE'), NOW)
     recordAction(TESTER, row('MINE'), NOW + 1)
-    pauseHistory(true)
+    setViewedPerson({ row_id: 'P-1', full_name: 'Asha Leader' })
     expect(historyPaused()).toBe(true)
     recordAction(TESTER, row('THEIRS'), NOW + 2)
     expect(recentActions(TESTER, 10)).toEqual([])
     expect(frequentActions(TESTER, 10, NOW + 3)).toEqual([])
     expect(recentSearches(TESTER, '', 10)).toEqual([])
-    pauseHistory(false)
+    setViewedPerson(null)
     expect(recentActions(TESTER, 10).map((e) => e.label)).toEqual(['MINE'])
   })
 
   it('a browser that refuses storage keeps nothing and hides nothing', () => {
     const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked') })
     const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked') })
-    expect(() => pauseHistory(true)).not.toThrow()
+    expect(() => setViewedPerson({ row_id: 'P-1', full_name: null })).not.toThrow()
     expect(historyPaused()).toBe(false)
     get.mockRestore(); set.mockRestore()
   })

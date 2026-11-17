@@ -7,6 +7,8 @@ import { ApiError, api, getSessionUser } from '../lib/api'
 import { fmtInstantIST } from '@featherbase/shop-floor'
 import { useI18n } from '../lib/i18n'
 import { Button, Card, Notice, buttonClasses } from '@featherbase/shop-floor'
+import { NotWhileViewing } from '../components/ViewAs'
+import { viewedPerson } from '../lib/viewing-as'
 import { usePageTitle } from '../lib/page-title'
 
 // person-identities (#275): the ways the signed-in person can get in — their
@@ -52,6 +54,11 @@ const when = (iso: string | null) => (iso ? fmtInstantIST(iso) : 'never')
 
 export function SignInMethods() {
   usePageTitle('Sign-in methods')
+  // #1222: these are the signed-in account's own; never the tester's while the page is someone else's.
+  return viewedPerson() ? <NotWhileViewing what="Sign-in methods" /> : <OwnSignInMethods />
+}
+
+function OwnSignInMethods() {
   const qc = useQueryClient()
   const me = getSessionUser()?.row_id
   const { data, error } = useQuery({
