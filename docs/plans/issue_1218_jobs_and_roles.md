@@ -146,6 +146,13 @@ Neither stays a separate role.
 ### D5 — No overlays, no starter set (owner left it to the agent, 17-Nov-2026; decided by "simplest that stays flexible")
 Business roles are designed for Jeyarama alone, and kept as **data in the instance** (rows an instance admin edits), never in app code. Each app ships only its own permissions. Nothing is copied in from a starter set and nothing inherits from a layer. If a second retailer comes, Jeyarama's roles can be exported as the first starter set, because they are already data. There is no store or department layer: a store's differences are its area (D2).
 
+### D6 — Hand changes (owner, 17-Nov-2026: "option A")
+Two actions on a person, with an optional end date on both:
+- **Correct** replaces the role the HR title gave, and survives StyleHR reloads until someone removes it.
+- **Also give** adds a second role, each with its own area.
+
+HR-derived roles are never edited directly. Explain-a-person shows the source of every role: HR title, merchandise assignment, corrected by hand, or also given by hand.
+
 ## Owner's steer, 17-Nov-2026: fine-grained by area, and fewer words
 
 - Master data needs fine-grained rights: a category manager manages their category, and a store manager manages the sections in their store.
