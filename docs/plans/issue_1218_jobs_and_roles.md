@@ -246,3 +246,13 @@ The structure: one walk in the path bar, and each place does one job.
 A view appears only where it makes sense. The app admin sets each table's default view, and each person's last choice is remembered.
 
 **Slice 1, being built overnight** on local branch `relational-nav-slice1-far-side` (worktree featherbase-wt-links): links read by what they point to, in the record panel, the Tree and the Map. Its spec is `docs/plans/relational_navigation_slice1.md`. Filing its GitHub issue was blocked by a permission check; the owner files it.
+
+## Owner, 17-Nov-2026: what is built must match what is shown, and simplicity comes first
+
+- **The main disappointment last time was the gap between the design pages and what got built.** Every slice is therefore checked by an independent verifier, who puts the built screen beside the mockup and lists each difference. The build must be close to the mockup, not just pass a checklist.
+- **Reusable components, used the same way everywhere.** One far-side rule, one "linked rows" group component, one tick list and one grid. The record panel, record page, Person page and app pages all use the same ones.
+- **Tableau or Apple simplicity, not Power BI or Excel.** The screen stays simple: smart defaults suited to the task do the work for most people, and power users can change things. Concretely:
+  1. One obvious default per place. Each option is offered only where it applies (Grid only for small pairs, Why only where a path is declared).
+  2. Options are found where you look, not on settings tabs. Each control sits beside what it changes, and a "View ▾" menu holds the rest.
+  3. Every change a person makes is remembered: per view where a saved view is open, otherwise per person per Table. The app admin sets each Table's default.
+  4. No dialogs full of tabs. If an option needs explaining, it isn't a default-level option.
