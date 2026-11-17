@@ -271,10 +271,12 @@ export const MAX_PENDING_FRAMES = 32
 
 /** What a stopping server does with its realtime sockets. */
 export interface RealtimeServer {
-  /** #1260: tell every page the server is restarting (close code 1012), so
-   *  each reconnects to the new server, and resolve once the sockets are gone
-   *  (one that does not finish its close within a second is dropped). */
+  /** #1260: refuse new sockets, tell every open page the server is restarting
+   *  (close code 1012) so it reconnects to the new server, and resolve once
+   *  they are gone; one that does not finish its close in a second is dropped. */
   closeAll(): Promise<void>
+  /** Drop every socket now (the shutdown deadline has passed). */
+  terminateAll(): void
 }
 
 export function attachRealtime(server: Server): RealtimeServer {
@@ -321,18 +323,17 @@ export function attachRealtime(server: Server): RealtimeServer {
     socket.on('error', forget)
   })
   return {
-    closeAll: async () => {
-      const sockets = [...wss.clients]
-      await Promise.all(sockets.map((socket) => new Promise<void>((resolve) => {
-        if (socket.readyState === socket.CLOSED) return resolve()
-        const drop = setTimeout(() => socket.terminate(), 1000)
-        socket.once('close', () => {
-          clearTimeout(drop)
-          resolve()
-        })
+    closeAll: () => new Promise<void>((resolve) => {
+      // First, so an upgrade arriving from now on is refused rather than
+      // joining after the others were told (Codex, #1260).
+      wss.close(() => resolve())
+      for (const socket of wss.clients) {
+        setTimeout(() => socket.terminate(), 1000).unref()
         socket.close(1012, 'Server restarting')
-      })))
-      await new Promise<void>((resolve) => wss.close(() => resolve()))
+      }
+    }),
+    terminateAll: () => {
+      for (const socket of wss.clients) socket.terminate()
     },
   }
 }

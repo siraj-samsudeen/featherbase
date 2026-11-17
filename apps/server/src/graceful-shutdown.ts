@@ -9,12 +9,26 @@ import type { Server } from 'node:http'
 /** How long requests in flight get to finish before they are cut. */
 export const SHUTDOWN_DEADLINE_MS = 25_000
 
+/** Sockets that outlive HTTP (realtime): told to go, or dropped at the deadline. */
+export interface ClosableSockets {
+  closeAll(): Promise<void>
+  terminateAll(): void
+}
+
 /** Stop taking connections, let the requests in flight finish, then resolve:
- *  'drained' when they all did, 'cut' when some were still running at the
- *  deadline. `beforeClose` runs first (realtime sockets are told to go). */
-export async function drainServer(server: Server, deadlineMs: number, beforeClose?: () => Promise<void>): Promise<'drained' | 'cut'> {
-  if (beforeClose) await beforeClose()
+ *  'drained' when they all did, 'cut' when something was still open at the
+ *  deadline. One deadline covers every phase. The listener stops taking
+ *  connections first, then `sockets` are told to go (Codex, #1260: a socket
+ *  that opened while others closed was never told, and held the stop open). */
+export async function drainServer(server: Server, deadlineMs: number, sockets?: ClosableSockets): Promise<'drained' | 'cut'> {
   let deadline: ReturnType<typeof setTimeout> | undefined
+  const cut = new Promise<'cut'>((resolve) => {
+    deadline = setTimeout(() => {
+      sockets?.terminateAll()
+      server.closeAllConnections()
+      resolve('cut')
+    }, deadlineMs)
+  })
   const closed = new Promise<'drained'>((resolve) => server.close(() => resolve('drained')))
   // A keep-alive connection with no request on it holds close() open until
   // its own timeout, and Node does not close one whose request finishes
@@ -22,14 +36,9 @@ export async function drainServer(server: Server, deadlineMs: number, beforeClos
   // again every 100 ms, as requests finish.
   server.closeIdleConnections()
   const sweep = setInterval(() => server.closeIdleConnections(), 100)
-  const cut = new Promise<'cut'>((resolve) => {
-    deadline = setTimeout(() => {
-      server.closeAllConnections()
-      resolve('cut')
-    }, deadlineMs)
-  })
   try {
-    return await Promise.race([closed, cut])
+    const told = sockets ? sockets.closeAll() : Promise.resolve()
+    return await Promise.race([told.then(() => closed), cut])
   } finally {
     clearTimeout(deadline)
     clearInterval(sweep)

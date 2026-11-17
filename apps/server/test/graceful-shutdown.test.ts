@@ -79,12 +79,27 @@ describe('draining the server on shutdown', () => {
     expect(await answer).toBeInstanceOf(Error)
   })
 
-  test('the hook before the close runs first, so realtime sockets are told before the listener goes', async () => {
+  test('the listener stops taking connections before the realtime sockets are told to go', async () => {
+    const { server, port } = await listen((_req, res) => res.end('ok'))
+    let refusedDuringHook = false
+    await drainServer(server, 1000, {
+      closeAll: async () => { refusedDuringHook = await get(port).then(() => false, () => true) },
+      terminateAll: () => {},
+    })
+    expect(refusedDuringHook).toBe(true)
+  })
+
+  test('one deadline covers every phase: sockets that never finish closing are dropped then, and the drain ends', async () => {
     const { server } = await listen((_req, res) => res.end('ok'))
-    const order: string[] = []
-    server.on('close', () => order.push('closed'))
-    await drainServer(server, 1000, async () => { order.push('hook') })
-    expect(order).toEqual(['hook', 'closed'])
+    let terminated = false
+    const started = Date.now()
+    const outcome = await drainServer(server, 300, {
+      closeAll: () => new Promise<void>(() => { /* a socket that never finishes its close */ }),
+      terminateAll: () => { terminated = true },
+    })
+    expect(outcome).toBe('cut')
+    expect(terminated).toBe(true)
+    expect(Date.now() - started).toBeLessThan(1500)
   })
 })
 

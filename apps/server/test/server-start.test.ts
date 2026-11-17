@@ -70,6 +70,42 @@ describe('stopping the server', () => {
   })
 })
 
+describe('stopping the server while sockets misbehave', () => {
+  test('a socket that never answers the close is dropped, a socket opening during the stop is refused, and the stop ends quickly', async ({ admin }) => {
+    vi.stubEnv('JOB_POLL_MS', '600000')
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const { port, stop } = await startServer(0)
+      const net = await import('node:net')
+      // A raw upgrade that never answers the server's close frame.
+      const raw = net.connect(port, '127.0.0.1')
+      const upgraded = new Promise<void>((resolve) => raw.on('data', (chunk) => { if (String(chunk).startsWith('HTTP/1.1 101')) resolve() }))
+      raw.write(['GET /ws HTTP/1.1', `Host: 127.0.0.1:${port}`, 'Upgrade: websocket', 'Connection: Upgrade',
+        'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==', 'Sec-WebSocket-Version: 13', `Cookie: sid=${admin.token}`, '', ''].join('\r\n'))
+      await upgraded
+      const rawClosed = new Promise<void>((resolve) => raw.on('close', () => resolve()))
+      const started = Date.now()
+      const stopping = stop(5000)
+      const { default: WebSocket } = await import('ws')
+      const late = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { cookie: `sid=${admin.token}` } })
+      const lateOutcome = await new Promise<string>((resolve) => {
+        late.on('open', () => resolve('opened'))
+        late.on('error', () => resolve('refused'))
+        late.on('unexpected-response', () => resolve('refused'))
+      })
+      expect(lateOutcome).toBe('refused')
+      expect(await stopping).toBe('drained')
+      await rawClosed
+      expect(Date.now() - started).toBeLessThan(3000)
+    } finally {
+      log.mockRestore()
+      warn.mockRestore()
+      vi.unstubAllEnvs()
+    }
+  })
+})
+
 describe('booting with a Data Source whose variable is unset', () => {
   test('the server starts and warns, naming the variable', async () => {
     vi.stubEnv('JOB_POLL_MS', '600000')

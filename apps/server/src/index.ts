@@ -2035,7 +2035,7 @@ export async function startServer(port: number = config.port): Promise<{ port: n
     stop: async (deadlineMs: number = SHUTDOWN_DEADLINE_MS) => {
       const started = Date.now()
       const worker = stopWorker()
-      const outcome = await drainServer(httpServer, deadlineMs, () => realtime.closeAll())
+      const outcome = await drainServer(httpServer, deadlineMs, realtime)
       let left: ReturnType<typeof setTimeout> | undefined
       await Promise.race([worker, new Promise<void>((resolve) => { left = setTimeout(resolve, Math.max(0, deadlineMs - (Date.now() - started))) })])
       clearTimeout(left)
