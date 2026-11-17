@@ -133,9 +133,9 @@ td.verbs{font-size:13px}
     <div class="lvl"><div><span class="chip c-acc">level 1</span><div class="name" style="margin-top:6px">Business role</div></div>
       <div class="eg">Store Manager · Floor Manager · Team Leader · Staff · Cluster Manager · Buyer · Category Head · Head Office · Master Data Steward
       <div class="why">What people are called at work. These are given to people, and nothing else is. One business role never contains another.</div></div></div>
-    <div class="lvl indent1"><div><span class="chip c-acc">level 2</span><div class="name" style="margin-top:6px">Bundle</div></div>
-      <div class="eg">Dash – Reader · Dash – Team sharing · Dash – Report admin · Tasker – User · Tasker – Manager · Master data – Editor
-      <div class="why">Named app plus level, as Odoo does it. A business role ticks the bundles it needs. "Use Tasker" lives here, so no "Tasker Member" role is needed.</div></div></div>
+    <div class="lvl indent1"><div><span class="chip c-acc">level 2</span><div class="name" style="margin-top:6px">App and level</div></div>
+      <div class="eg">Dash · Reader · Dash · Team sharing · Dash · Report admin · Tasker · User · Tasker · Manager · Master data · Editor
+      <div class="why">This is the "give these apps to these people" step. Each app offers a few levels, and having any level means you can open the app, so no "Tasker Member" role is needed. A business role picks its apps and levels. Odoo works this way.</div></div></div>
     <div class="lvl indent2"><div><span class="chip c-acc">level 3</span><div class="name" style="margin-top:6px">Permission</div></div>
       <div class="eg">Reports: View · Reports: Give to my team · Sections: Edit · Section changes: Approve
       <div class="why">Ships with the app, because only the app's code can carry it out. Never names a place: "all stores" is a place, not a permission.</div></div></div>
@@ -281,7 +281,7 @@ function show(id){
    `<div class="assign">${p.rows.map(r=>`<div class="arow">
       <div><div class="lab">Business role</div><div class="v">${esc(r.role)}</div><div class="src">${chip(r.src)}</div>${r.until?`<div class="note" style="margin-top:4px">Until ${esc(r.until)}</div>`:''}</div>
       <div><div class="lab">Where</div><div class="v">${esc(r.place)}</div></div>
-      <div><div class="lab">Includes</div><ul>${r.bundles.map(b=>`<li>${esc(b)}</li>`).join('')}</ul></div></div>`).join('')}</div>`+
+      <div><div class="lab">Apps it opens, and at what level</div><ul>${r.bundles.map(b=>`<li>${esc(b.replace(' – ',' · '))}</li>`).join('')}</ul></div></div>`).join('')}</div>`+
    `<div class="because">${p.because.map(([a,b])=>`<div><b>${esc(a)}</b>, because ${esc(b)}.</div>`).join('')}</div>`;
   try{localStorage.setItem('person',id)}catch(e){}
 }
@@ -289,7 +289,7 @@ function grid(role){
   document.getElementById('rolepick').innerHTML=Object.keys(BUNDLES).map(r=>`<button type="button" data-r="${esc(r)}" aria-pressed="${r===role}">${esc(r)}</button>`).join('');
   document.querySelectorAll('#rolepick button').forEach(b=>b.onclick=()=>grid(b.dataset.r));
   const has=new Set(BUNDLES[role]);
-  document.getElementById('bundles').innerHTML=`<b>${esc(role)}</b> includes: ${BUNDLES[role].map(b=>`<span class="verb">${esc(b)}</span>`).join('')}`;
+  document.getElementById('bundles').innerHTML=`<b>${esc(role)}</b> opens these apps, each at a level: ${BUNDLES[role].map(b=>{const [a,l]=b.split(' – ');return `<span class="verb">${esc(a)} · ${esc(l)}</span>`}).join('')}`;
   const tick=b=>b?(has.has(b)?'<span class="y" aria-label="yes">✓</span>':'<span class="dash" aria-label="no">·</span>'):'';
   let h='<thead><tr><th>Thing</th><th class="c">View</th><th class="c">Add</th><th class="c">Edit</th><th class="c">Delete</th><th>Other actions</th></tr></thead><tbody>';
   let last='';

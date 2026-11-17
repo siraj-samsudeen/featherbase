@@ -112,3 +112,10 @@ The owner asked for:
 ## Decisions
 
 _(one per question, in order; each with the options shown, the owner's answer and the date)_
+
+## Owner's steer, 17-Nov-2026: app access is the first thing people think of
+
+Clients think "give these apps to these people or roles". The finer detail comes after that, inside each app.
+So level 2 is renamed **"App and level"** (Dash · Reader, Tasker · Manager). Holding any level of an app means the person can open that app.
+A business role reads as a list of apps, each at a level. Explain-a-person shows "Apps it opens, and at what level".
+Open: may an app and level be given straight to one person (for example a consultant given Tasker · User), or only through a business role? This is folded into Q1.
