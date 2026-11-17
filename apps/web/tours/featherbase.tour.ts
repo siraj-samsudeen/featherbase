@@ -55,7 +55,9 @@ const openTree = (page: Page) =>
 /** Open a Table from All tables, as someone who doesn't know its address would. */
 async function openTable(page: Page, label: string): Promise<void> {
   await page.getByRole('link', { name: 'All Tables' }).first().click()
-  await page.getByRole('link', { name: label, exact: true }).first().click()
+  // admin-lists 11: each item's name runs on into its description and row count ("Assets 3,000").
+  const named = new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|$)`)
+  await page.getByRole('navigation', { name: 'All tables' }).getByRole('link', { name: named }).first().click()
   await expect(page.getByTestId('list-view')).toBeVisible()
 }
 
