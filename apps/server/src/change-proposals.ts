@@ -171,18 +171,57 @@ async function canAct(person: string, entryTable: string): Promise<boolean> {
   return await canSignInNow(person) && await permissionScope(person, entryTable, 'read') !== 'none'
 }
 
+/** What resolving a route reads: fresh each time, or remembered across one read's many questions (#1254). */
+interface RouteFacts {
+  enabled: (people: string[]) => Promise<string[]>
+  canAct: (person: string) => Promise<boolean>
+  holders: (roles: string[]) => Promise<string[]>
+  rolesOf: (person: string) => Promise<string[]>
+}
+const enabledPeople = async (people: string[]) => people.length
+  ? (await sql`select row_id from person where enabled and row_id in ${sql(people)} order by row_id`).map(row => String(row.row_id)) : []
+const roleHolders = async (roles: string[]) => (await sql`select distinct p.row_id from has_role r join person p on p.row_id = r.parent
+    where r.parenttype = 'Person' and r.role in ${sql(roles)} and p.enabled order by p.row_id`).map(row => String(row.row_id))
+const freshFacts = (entryTable: string): RouteFacts => ({ enabled: enabledPeople, canAct: person => canAct(person, entryTable), holders: roleHolders, rolesOf: getRoles })
+
+/** #1254: one read asks about many proposals, and who can sign in, who may read the entry Table and who holds
+ *  a role cannot change within it, so each is read once per read, not once per proposal (5 s on production).
+ *  Only reads use this: a decision resolves its route fresh, under its locks. */
+function rememberedFacts(entryTable: string): RouteFacts {
+  const fresh = freshFacts(entryTable)
+  const enabled = new Map<string, boolean>()
+  const acts = new Map<string, Promise<boolean>>()
+  const holders = new Map<string, Promise<string[]>>()
+  const roles = new Map<string, Promise<string[]>>()
+  const once = <T>(memo: Map<string, Promise<T>>, key: string, work: () => Promise<T>) => {
+    if (!memo.has(key)) memo.set(key, work())
+    return memo.get(key)!
+  }
+  return {
+    async enabled(people) {
+      const unknown = people.filter(person => !enabled.has(person))
+      if (unknown.length) {
+        const found = new Set(await fresh.enabled(unknown))
+        for (const person of unknown) enabled.set(person, found.has(person))
+      }
+      return people.filter(person => enabled.get(person)).sort()
+    },
+    canAct: person => once(acts, person, () => fresh.canAct(person)),
+    holders: wanted => once(holders, JSON.stringify([...wanted].sort()), () => fresh.holders(wanted)),
+    rolesOf: person => once(roles, person, () => fresh.rolesOf(person)),
+  }
+}
+
 /** Who may approve now: the named people who can act, else the holders of the roles. Never the maker. */
-async function resolveRoute(request: ApproverRequest, maker: string, entryTable: string): Promise<{ people: string[]; roles: string[] } | null> {
-  const named = request.people.filter(person => person !== maker)
-  const enabled = named.length ? (await sql`select row_id from person where enabled and row_id in ${sql(named)} order by row_id`).map(row => String(row.row_id)) : []
+async function resolveRoute(request: ApproverRequest, maker: string, entryTable: string, facts: RouteFacts = freshFacts(entryTable)): Promise<{ people: string[]; roles: string[] } | null> {
+  const enabled = await facts.enabled(request.people.filter(person => person !== maker))
   const people: string[] = []
   // A proposal must never wait for someone who could not reach it.
-  for (const person of enabled) if (await canAct(person, entryTable)) people.push(person)
+  for (const person of enabled) if (await facts.canAct(person)) people.push(person)
   if (people.length) return { people, roles: [] }
   if (!request.fallbackRoles.length) return null
-  const holders = await sql`select distinct p.row_id from has_role r join person p on p.row_id = r.parent
-    where r.parenttype = 'Person' and r.role in ${sql(request.fallbackRoles)} and p.enabled and p.row_id <> ${maker} order by p.row_id`
-  for (const holder of holders) if (await canAct(String(holder.row_id), entryTable)) return { people: [], roles: [...request.fallbackRoles] }
+  const holders = (await facts.holders(request.fallbackRoles)).filter(holder => holder !== maker)
+  for (const holder of holders) if (await facts.canAct(holder)) return { people: [], roles: [...request.fallbackRoles] }
   return null
 }
 
@@ -222,24 +261,25 @@ async function writeRoute(id: string, route: { people: string[]; roles: string[]
 }
 
 /** The decision rule, on its own: not the maker, and among those who may approve now. */
-async function mayDecide(user: string, maker: string, approvers: unknown, entryTable: string): Promise<boolean> {
+async function mayDecide(user: string, maker: string, approvers: unknown, entryTable: string, facts: RouteFacts = freshFacts(entryTable)): Promise<boolean> {
   if (maker === user) return false
-  const route = await resolveRoute(checkedApprovers(approvers), maker, entryTable)
-  return !!route && inRoute(user, route)
+  const route = await resolveRoute(checkedApprovers(approvers), maker, entryTable, facts)
+  return !!route && inRoute(user, route, facts)
 }
 
-async function inRoute(user: string, route: { people: string[]; roles: string[] }): Promise<boolean> {
+async function inRoute(user: string, route: { people: string[]; roles: string[] }, facts: Pick<RouteFacts, 'rolesOf'> = { rolesOf: getRoles }): Promise<boolean> {
   if (route.people.includes(user)) return true
-  const roles = route.roles.length ? await getRoles(user) : []
+  const roles = route.roles.length ? await facts.rolesOf(user) : []
   return route.roles.some(role => roles.includes(role))
 }
 
 export function proposalsReader(app: string, user: string, entryTable: string) {
   const guard = sequential()
+  const facts = rememberedFacts(entryTable)
   const helper: ChangeProposalsReader = Object.freeze({
     list: (filter: ProposalFilter = {}) => guard.run(() => proposalsWhere(app, filter)),
-    mayDecide: (maker: string, approvers: ApproverRequest) => guard.run(() => mayDecide(user, maker, approvers, entryTable)),
-    routeFor: (maker: string, approvers: ApproverRequest) => guard.run(() => resolveRoute(checkedApprovers(approvers), maker, entryTable)),
+    mayDecide: (maker: string, approvers: ApproverRequest) => guard.run(() => mayDecide(user, maker, approvers, entryTable, facts)),
+    routeFor: (maker: string, approvers: ApproverRequest) => guard.run(() => resolveRoute(checkedApprovers(approvers), maker, entryTable, facts)),
     modeOf: (type: string) => guard.run(() => modeOf(app, type)),
   })
   return { helper, close: guard.close }

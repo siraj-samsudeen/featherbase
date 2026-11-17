@@ -577,3 +577,27 @@ describe('apply now, review after (#1191)', () => {
   })
 })
 
+
+// #1254: Waiting for you read the asker's manager, and asked the platform who may decide, once per waiting change:
+// 14 queries each, 5 s on production. What it reads must not grow with how many changes wait.
+describe('what reading Waiting for you costs', () => {
+  const scans = async () => Object.fromEntries((await sql`select relname, (coalesce(seq_scan, 0) + coalesce(idx_scan, 0))::int as n
+    from pg_stat_xact_user_tables where schemaname = 'featherbase' and relname in ('employee', 'job_assignment', 'sign_in_method')`).map(r => [r.relname, r.n]))
+  const cost = async (client: TestClient, name: string) => {
+    const before = await scans()
+    await read(client, name)
+    const after = await scans()
+    return Object.fromEntries(Object.keys(after).map(table => [table, after[table] - (before[table] ?? 0)]))
+  }
+
+  test('is the same for three waiting changes as for one', async ({ admin, createUser }) => {
+    const { maker, manager } = await world(admin, createUser)
+    await act(maker, 'propose_removal', removal())
+    expect((await read(manager, 'approvals')).proposals).toHaveLength(1)
+    const one = await cost(manager, 'approvals')
+    await oldStyleMove(maker, manager, 'LKS-2', 'LKS-S2')
+    await oldStyleMove(maker, manager, 'LKS-3', 'LKS-S1')
+    expect((await read(manager, 'approvals')).proposals).toHaveLength(3)
+    expect(await cost(manager, 'approvals')).toEqual(one)
+  })
+})
