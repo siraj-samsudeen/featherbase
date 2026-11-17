@@ -49,6 +49,14 @@ export async function microsoftAvailable(): Promise<SignInMethod | null> {
   return method && methodUsable(method) ? method : null
 }
 
+/** Codex round 2: does the method, as it is now, admit this account's
+ *  tenant? Re-checked after the token exchange, so a tenant narrowed while
+ *  Microsoft was answering still refuses. `subject` is `tid/oid`. */
+export function assertTenantAdmits(method: Pick<SignInMethod, 'settings'>, subject: string | undefined): void {
+  const tenant = microsoftTenant(method)
+  if (tenant !== 'organizations' && String(subject ?? '').split('/')[0] !== tenant) throw failed('another tenant')
+}
+
 /** The ID token's nonce, bound to the sign-in's state (which is itself bound
  *  to this browser's cookie), so nothing extra needs storing. */
 export function microsoftNonce(state: string): string {
@@ -159,7 +167,8 @@ export async function exchangeMicrosoftCode(
         xms_edov: obj.edov === true,
         name: obj.name,
       },
-      { clientId: 'mock', tenant: 'organizations', nonce },
+      // The stand-in honours the configured tenant exactly as Microsoft does.
+      { clientId: 'mock', tenant: microsoftTenant(method), nonce },
     )
   }
   const tenant = microsoftTenant(method)

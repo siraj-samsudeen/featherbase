@@ -21,7 +21,7 @@ import { hasMandatoryRowAccess, mandatoryReferencesWhere } from './mandatory-acc
 import { loadControllers } from './controllers'
 import { assertCanChangeAccess, assertFreshForLinking, resolveToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionOptions, type SessionUser } from './auth'
 import { GOOGLE_OFF, LINK_DOMAIN_NOT_ALLOWED, MICROSOFT_OFF, completeSignIn, linkVerifiedToSelf, passwordSignIn, signInRefusal, type VerifiedIdentity } from './sign-in'
-import { MICROSOFT_CALLBACK_PATH, exchangeMicrosoftCode, microsoftAuthorizeUrl, microsoftAvailable, mockMicrosoftApproveRedirect, mockMicrosoftConsentHtml } from './microsoft'
+import { MICROSOFT_CALLBACK_PATH, assertTenantAdmits, exchangeMicrosoftCode, microsoftAuthorizeUrl, microsoftAvailable, mockMicrosoftApproveRedirect, mockMicrosoftConsentHtml } from './microsoft'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
 import { personByEmail } from './people-directory'
@@ -416,6 +416,9 @@ function refusedToLoginPage(c: Context, err: unknown, provider: RedirectProvider
 // a code into a VerifiedIdentity; the routes below are shared.
 interface RedirectProvider {
   kind: 'google' | 'microsoft'
+  /** After the exchange: may the method as it is NOW admit this identity?
+   *  (Codex round 2: the method may have changed while the provider answered.) */
+  stillAdmits?: (method: SignInMethod, v: VerifiedIdentity) => void
   /** The state's `provider` mark: absent for Google, as before. */
   mark?: 'microsoft'
   callbackPath: string
@@ -443,6 +446,7 @@ const MICROSOFT: RedirectProvider = {
   available: microsoftAvailable,
   authorizeUrl: (m, state, redirectUri, challenge) => microsoftAuthorizeUrl(m, state, redirectUri, challenge),
   exchange: (c, m, redirectUri, verifier, state) => exchangeMicrosoftCode(c.req.query('code'), redirectUri, m, verifier, state),
+  stillAdmits: (m, v) => assertTenantAdmits(m, v.subject),
 }
 
 export const REDIRECT_PROVIDERS = { google: GOOGLE, microsoft: MICROSOFT } as const
@@ -540,6 +544,14 @@ function redirectCallbackRoute(provider: RedirectProvider) {
 app.get(OAUTH_CALLBACK_PATH, publicLimit('OAUTH_CALLBACK'), redirectCallbackRoute(GOOGLE))
 app.get(MICROSOFT_CALLBACK_PATH, publicLimit('OAUTH_CALLBACK'), redirectCallbackRoute(MICROSOFT))
 
+/** The method as it is after the exchange, which this sign-in is judged by. */
+async function currentMethod(provider: RedirectProvider, v: VerifiedIdentity): Promise<SignInMethod> {
+  const now = await provider.available()
+  if (!now) throw new AppError('AuthenticationError', provider.off)
+  provider.stillAdmits?.(now, v)
+  return now
+}
+
 async function redirectCallback(c: Context, provider: RedirectProvider) {
   const method = await provider.available()
   if (!method) throw new AppError('AuthenticationError', provider.off)
@@ -564,11 +576,12 @@ async function redirectCallback(c: Context, provider: RedirectProvider) {
       c.redirect(`${ACCOUNT_SIGN_IN_METHODS_PATH}?link=${encodeURIComponent(result)}${provider.mark ? `&via=${provider.mark}` : ''}`)
     try {
       const verified = await provider.exchange(c, method, redirectUri, verifier, rawState!)
+      const current = await currentMethod(provider, verified)
       const me = await resolveToken(authCredential(c))
       if (me.row_id !== state.uid) return back('wrong_session')
       assertFreshForLinking(me)
-      if (!method.self_link) return back('not_allowed')
-      await linkVerifiedToSelf(method, me.row_id, verified)
+      if (!current.self_link) return back('not_allowed')
+      await linkVerifiedToSelf(current, me.row_id, verified)
       return back('linked')
     } catch (err) {
       if (!(err instanceof AppError)) return back('failed')
@@ -578,7 +591,7 @@ async function redirectCallback(c: Context, provider: RedirectProvider) {
     }
   }
   const verified = await provider.exchange(c, method, redirectUri, verifier, rawState!)
-  const issued = await completeSignIn(method, verified, null, { ipAddress: clientAddress(c) })
+  const issued = await completeSignIn(await currentMethod(provider, verified), verified, null, { ipAddress: clientAddress(c) })
   const session = { token: issued.token, user: issued.user }
   // The cookie matters here too: beacons (e.g. the unload-time event batch,
   // #101) cannot carry a bearer token, so an OAuth session without the sid
