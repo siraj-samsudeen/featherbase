@@ -7,7 +7,7 @@ import { ChevronDown, Plus, UserRound, X } from '@featherbase/shop-floor'
 import { iconButtonClasses, ToastProvider, useToast } from '@featherbase/shop-floor'
 import { SameForEveryone } from './pills'
 import { Button, Card, DataList, EmptyState, Field, KindTag, Notice, SearchInput, Segmented, Select, Skeleton, StatusPill, TextInput, type DataColumn } from '@featherbase/shop-floor'
-import { act, read } from './api'
+import { act, mayViewAs, read, startViewAs } from './api'
 import { DashSidebar } from './sections-page'
 import { PickerToggle, TeamNote, TeamSelect, keepPickerLayout, startPickerLayout, type PickerLayout, type TeamMember } from './team-access-page'
 import { diveIdIn, matchingDives, type DiveChoice } from './add-dive'
@@ -151,7 +151,7 @@ function CompanyAccess({ page, onChanged }: { page: Page; onChanged: () => Promi
     toast({ tone: 'positive', message: (
       <span className="flex flex-wrap items-center gap-2" data-testid="dive-added">
         {added.name} is added{added.eachStore ? '. Each person sees only their stores' : ''}. Give it to people?
-        <Button variant="quiet" onClick={() => give(added.key)} data-testid="toast-give">Give</Button>
+        <Button data-action variant="quiet" onClick={() => give(added.key)} data-testid="toast-give">Give</Button>
       </span>
     ) })
   }
@@ -193,7 +193,7 @@ function CompanyAccess({ page, onChanged }: { page: Page; onChanged: () => Promi
     bundles: <BundleCards page={page} rows={page.rows} onChanged={onChanged} onNew={newBundle} area={area} onArea={chooseArea} onGiveBundle={id => give(`bundle:${id}`)} />,
     lookup: <PersonLookup />,
     waiting: page.waiting.length ? <Waiting waiting={page.waiting} onGive={found => open({ kind: 'give', person: found, n: Date.now() })} onChanged={onChanged} />
-      : <Card><EmptyState title="Nobody is waiting for a report" body="When someone opens Dash with no report, they show here so you can give them one." action={<Button onClick={() => give()}>Give a report</Button>} /></Card>,
+      : <Card><EmptyState title="Nobody is waiting for a report" body="When someone opens Dash with no report, they show here so you can give them one." action={<Button data-action onClick={() => give()}>Give a report</Button>} /></Card>,
   }
   const header = (
     <div className="flex flex-col gap-1">
@@ -412,8 +412,8 @@ function ReportsCatalogue({ page, onGive, onChanged, onTouched = () => {}, area,
         </td>
         <td className="py-1.5 pe-1">
           <div className="flex items-center justify-end gap-1">
-            {waitingOrClosed && <Button variant="quiet" loading={busy === report.key} onClick={() => void checkNow(report)} data-testid="catalogue-recheck">Check the Dive now</Button>}
-            <Button variant="quiet" onClick={() => onGive(report.key)} disabled={Boolean(report.closed)} title={report.closed ? "A closed report can't be given until its Dive shows each person only their stores again" : undefined} data-testid="catalogue-give">Give</Button>
+            {waitingOrClosed && <Button data-action variant="quiet" loading={busy === report.key} onClick={() => void checkNow(report)} data-testid="catalogue-recheck">Check the Dive now</Button>}
+            <Button data-action variant="quiet" onClick={() => onGive(report.key)} disabled={Boolean(report.closed)} title={report.closed ? "A closed report can't be given until its Dive shows each person only their stores again" : undefined} data-testid="catalogue-give">Give</Button>
             <Menu label={`More for ${report.name}`} testid="catalogue-more" trigger={<span aria-hidden className="px-1 text-lg leading-none">⋯</span>}
               triggerClassName={iconButtonClasses()} items={actions} />
           </div>
@@ -426,7 +426,7 @@ function ReportsCatalogue({ page, onGive, onChanged, onTouched = () => {}, area,
               {removing === report.key && (
                 <div className="flex flex-wrap items-center gap-2 rounded-control border border-negative p-3" data-testid="remove-report-confirm">
                   <span className="min-w-0 text-sm [overflow-wrap:anywhere]">Remove {report.name} from Dash? {held.rows.length ? `${plural(held.rows.length, 'person, role or job', 'people, roles or jobs')} lose${held.rows.length === 1 ? 's' : ''} it` : 'Nobody has it'}{held.bundles.length ? `, and it leaves ${held.bundles.map(bundle => bundle.name).join(', ')}` : ''}. Its history is kept, and the Dive stays in MotherDuck.</span>
-                  <Button variant="danger" loading={busy === report.key} onClick={() => void remove(report)} data-testid="remove-report-yes">Remove the report</Button>
+                  <Button data-action variant="danger" loading={busy === report.key} onClick={() => void remove(report)} data-testid="remove-report-yes">Remove the report</Button>
                   <Button variant="quiet" onClick={() => setRemoving(null)}>Cancel</Button>
                 </div>
               )}
@@ -434,9 +434,9 @@ function ReportsCatalogue({ page, onGive, onChanged, onTouched = () => {}, area,
               {trial && report.dive_owner && (
                 <div className="flex flex-wrap items-center gap-2 rounded-control border border-dashed border-border p-2 text-xs [&_button]:h-auto [&_button]:min-h-0 [&_button]:whitespace-normal [&_button]:py-1 [&_button]:text-start" data-testid="prototype-events">
                   <span className="text-ink-muted">Prototype, pretend that:</span>
-                  <Button variant="quiet" onClick={() => void run(report, async () => { await act('prototype_owner_saves', { report: report.key, reach: true }); return { tone: 'info', text: `${report.dive_owner} saved a new version that takes each person's stores. Nobody has told Dash.` } })} data-testid="pretend-owner-fixes">the owner saves a version that takes each person's stores</Button>
-                  <Button variant="quiet" onClick={() => void run(report, async () => { await act('prototype_owner_saves', { report: report.key, reach: false }); return { tone: 'info', text: `${report.dive_owner} saved a new version that shows every store again. Nobody has told Dash.` } })} data-testid="pretend-owner-breaks">the owner saves a version that shows every store</Button>
-                  <Button variant="quiet" onClick={() => void run(report, async () => {
+                  <Button data-action variant="quiet" onClick={() => void run(report, async () => { await act('prototype_owner_saves', { report: report.key, reach: true }); return { tone: 'info', text: `${report.dive_owner} saved a new version that takes each person's stores. Nobody has told Dash.` } })} data-testid="pretend-owner-fixes">the owner saves a version that takes each person's stores</Button>
+                  <Button data-action variant="quiet" onClick={() => void run(report, async () => { await act('prototype_owner_saves', { report: report.key, reach: false }); return { tone: 'info', text: `${report.dive_owner} saved a new version that shows every store again. Nobody has told Dash.` } })} data-testid="pretend-owner-breaks">the owner saves a version that shows every store</Button>
+                  <Button data-action variant="quiet" onClick={() => void run(report, async () => {
                     const answer = await act<CheckAnswer & { checked: boolean }>('prototype_reader_opens', { report: report.key })
                     return { tone: answer.closed ? 'negative' : answer.switched ? 'positive' : 'info', text: !answer.checked ? 'A reader opened it. The Dive has not changed since Dash last read it, so Dash did not read it again.'
                       : answer.closed ? 'A reader opened it. Dash read the new version, found it shows every store, and refused to open it.'
@@ -474,13 +474,13 @@ function ReportsCatalogue({ page, onGive, onChanged, onTouched = () => {}, area,
           <AreaBar counts={areaCounts(page.reports)} total={page.reports.length} area={area} onChange={onArea} label="Reports by area" />
         </div>
         {page.reports.length === 0
-          ? <EmptyState title="No report yet" body="Every report in Dash is a MotherDuck Dive. Add one to give it to people." action={<Button variant="primary" onClick={onAddDive}>Add a Dive</Button>} />
+          ? <EmptyState title="No report yet" body="Every report in Dash is a MotherDuck Dive. Add one to give it to people." action={<Button data-action variant="primary" onClick={onAddDive}>Add a Dive</Button>} />
           : shown.length === 0 && (
             <div data-testid="catalogue-none">
               <EmptyState title={area ? `No ${area} report matches that` : 'No report matches that'} body="Try fewer words, another area, or add the Dive it should come from."
                 action={<span className="flex flex-wrap justify-center gap-2">
                   <Button onClick={() => { setSearch(''); onArea(null) }} data-testid="catalogue-clear">Clear search and area</Button>
-                  <Button variant="primary" onClick={onAddDive}>Add a Dive</Button>
+                  <Button data-action variant="primary" onClick={onAddDive}>Add a Dive</Button>
                 </span>} />
             </div>
           )}
@@ -640,7 +640,7 @@ function GiveBar({ page, onGiven, team, start = '', startPerson = null, onClose 
               </Select>
             </Field>
           )}
-          <Button variant="primary" loading={busy} onClick={give} data-testid="give-button">Give</Button>
+          <Button data-action variant="primary" loading={busy} onClick={give} data-testid="give-button">Give</Button>
         </div>
         {error && <Notice tone="negative"><span data-testid="give-error">{error}</span></Notice>}
         {done && <Notice tone="positive"><span data-testid="give-done">{done}</span></Notice>}
@@ -730,7 +730,7 @@ function WhoHasWhat({ rows, onRemoved, empty, onGive, only, onClearOnly }: { row
         )}
         {error && <Notice tone="negative">{error}</Notice>}
         {shown.length === 0
-          ? <EmptyState title={only ? `Nobody has ${only.name} yet` : 'Nobody has a report yet'} body={empty ?? 'Give one, and it shows here with who gave it.'} action={onGive && <Button variant="primary" onClick={onGive}>Give a report</Button>} />
+          ? <EmptyState title={only ? `Nobody has ${only.name} yet` : 'Nobody has a report yet'} body={empty ?? 'Give one, and it shows here with who gave it.'} action={onGive && <Button data-action variant="primary" onClick={onGive}>Give a report</Button>} />
           : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[44rem] text-control">
@@ -747,12 +747,12 @@ function WhoHasWhat({ rows, onRemoved, empty, onGive, only, onClearOnly }: { row
                         {confirming?.id === row.id ? (
                           <span className="inline-flex flex-wrap items-center justify-end gap-2" data-testid="remove-confirm">
                             <span className="text-sm">Take {row.gives.name} away from {personWithCode(row.to.name, row.to.who)}?</span>
-                            <Button variant="danger" loading={busy} onClick={() => void remove(row)} data-testid="remove-yes">Take away</Button>
+                            <Button data-action variant="danger" loading={busy} onClick={() => void remove(row)} data-testid="remove-yes">Take away</Button>
                             <Button variant="quiet" disabled={busy} onClick={() => setConfirming(null)}>Cancel</Button>
                           </span>
                         ) : row.removable === false ? <span className="text-sm text-ink-muted" data-testid="not-yours">Not given by you</span>
                           // One action on the row: a quiet icon that turns negative on hover (UI standard §5).
-                          : <button type="button" className={iconButtonClasses('hover:text-negative')} aria-label={`Take ${row.gives.name} away from ${personWithCode(row.to.name, row.to.who)}`} title="Take it away" onClick={() => { setError(null); setConfirming(row) }} data-testid="remove"><X aria-hidden size={18} /></button>}
+                          : <button data-action type="button" className={iconButtonClasses('hover:text-negative')} aria-label={`Take ${row.gives.name} away from ${personWithCode(row.to.name, row.to.who)}`} title="Take it away" onClick={() => { setError(null); setConfirming(row) }} data-testid="remove"><X aria-hidden size={18} /></button>}
                       </td>
                     </tr>
                   ))}
@@ -770,6 +770,9 @@ function PersonLookup({ team }: { team?: TeamPicking } = {}) {
   const [person, setPerson] = useState<Found | null>(null)
   const [answer, setAnswer] = useState<Lookup | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // #1222: a View As Tester can go straight to what this person sees.
+  const [canViewAs, setCanViewAs] = useState(false)
+  useEffect(() => { let live = true; void mayViewAs().then(may => { if (live) setCanViewAs(may) }); return () => { live = false } }, [])
   useEffect(() => {
     setAnswer(null)
     setError(null)
@@ -788,6 +791,9 @@ function PersonLookup({ team }: { team?: TeamPicking } = {}) {
         {error && <Notice tone="negative">{error}</Notice>}
         {answer && answer.reports.length === 0 && <p data-testid="lookup-none">{answer.name} sees no report. Nothing has been given to them, their roles or their job.</p>}
         {answer && answer.reports.length > 0 && <p className="font-semibold" data-testid="lookup-count">{answer.name} can open {answer.reports.length} report{answer.reports.length === 1 ? '' : 's'}</p>}
+        {answer && person && canViewAs && (
+          <div><Button variant="secondary" data-testid="lookup-view-as" onClick={() => void startViewAs(person.person).catch(failure => setError(messageOf(failure)))}>View as {answer.name}</Button></div>
+        )}
         {answer && answer.reports.length > 0 && (
           <ul className="flex flex-col divide-y divide-border" data-testid="lookup-reports">
             {answer.reports.map(report => (
@@ -832,7 +838,7 @@ function Bundles({ page, onChanged, onNew, area, onArea }: { page: Page; onChang
     }
   }
   return (
-    <Card title="Bundles" data-testid="bundles" actions={onNew && <Button onClick={onNew} data-testid="bundles-new">New bundle</Button>}>
+    <Card title="Bundles" data-testid="bundles" actions={onNew && <Button data-action onClick={onNew} data-testid="bundles-new">New bundle</Button>}>
       <div className="flex flex-col gap-3 p-4">
         {error && <Notice tone="negative">{error}</Notice>}
         {page.bundles.length === 0 && <p className="fd-muted">No bundles yet. A bundle gives several reports at once.</p>}
@@ -856,7 +862,7 @@ function Bundles({ page, onChanged, onNew, area, onArea }: { page: Page; onChang
                       {missing.map(report => <option key={report.key} value={report.key}>{report.name}</option>)}
                     </Select>
                   </Field>
-                  <Button disabled={busy || !adding[bundle.id]} onClick={() => void run('add_to_bundle', { bundle: bundle.id, report: adding[bundle.id] }, () => setAdding({ ...adding, [bundle.id]: '' }))} data-testid="bundle-add">Add</Button>
+                  <Button data-action disabled={busy || !adding[bundle.id]} onClick={() => void run('add_to_bundle', { bundle: bundle.id, report: adding[bundle.id] }, () => setAdding({ ...adding, [bundle.id]: '' }))} data-testid="bundle-add">Add</Button>
                 </div>
               )}
               </div>
@@ -868,10 +874,10 @@ function Bundles({ page, onChanged, onNew, area, onArea }: { page: Page; onChang
                     {confirming === held.member ? (
                       <span className="inline-flex flex-wrap items-center gap-2" data-testid="take-out-confirm">
                         <span className="text-sm">Take {held.name} out of {bundle.name}?</span>
-                        <Button variant="danger" loading={busy} onClick={() => void run('remove_from_bundle', { id: held.member, updated_at: held.updated_at }, () => setConfirming(null))} data-testid="take-out-yes">Take out</Button>
+                        <Button data-action variant="danger" loading={busy} onClick={() => void run('remove_from_bundle', { id: held.member, updated_at: held.updated_at }, () => setConfirming(null))} data-testid="take-out-yes">Take out</Button>
                         <Button variant="quiet" disabled={busy} onClick={() => setConfirming(null)}>Cancel</Button>
                       </span>
-                    ) : <button type="button" className={iconButtonClasses('hover:text-negative')} aria-label={`Take ${held.name} out of ${bundle.name}`} title="Take it out of the bundle" onClick={() => { setError(null); setConfirming(held.member) }} data-testid="take-out"><X aria-hidden size={16} /></button>}
+                    ) : <button data-action type="button" className={iconButtonClasses('hover:text-negative')} aria-label={`Take ${held.name} out of ${bundle.name}`} title="Take it out of the bundle" onClick={() => { setError(null); setConfirming(held.member) }} data-testid="take-out"><X aria-hidden size={16} /></button>}
                   </li>
                 ))}
               </ul>
@@ -882,7 +888,7 @@ function Bundles({ page, onChanged, onNew, area, onArea }: { page: Page; onChang
           <Field label="New bundle">
             <TextInput value={name} onChange={event => setName(event.target.value)} placeholder="For example, Team leader pack" data-testid="bundle-name" />
           </Field>
-          <Button disabled={busy || !name.trim()} onClick={() => void run('make_bundle', { name: name.trim() }, () => setName(''))} data-testid="bundle-make">Make bundle</Button>
+          <Button data-action disabled={busy || !name.trim()} onClick={() => void run('make_bundle', { name: name.trim() }, () => setName(''))} data-testid="bundle-make">Make bundle</Button>
         </div>}
       </div>
     </Card>
@@ -913,7 +919,7 @@ function BundleCards({ page, rows, onChanged, onNew, area, onArea, onGiveBundle 
     toast({ tone: 'positive', message: (
       <span className="flex flex-wrap items-center gap-2" data-testid="took-out">
         {held.name} is out of {bundle.name}.
-        <Button variant="quiet" onClick={() => void run('add_to_bundle', { bundle: bundle.id, report: held.key })} data-testid="undo-take-out">Undo</Button>
+        <Button data-action variant="quiet" onClick={() => void run('add_to_bundle', { bundle: bundle.id, report: held.key })} data-testid="undo-take-out">Undo</Button>
       </span>
     ) })
   }
@@ -926,7 +932,7 @@ function BundleCards({ page, rows, onChanged, onNew, area, onArea, onGiveBundle 
       <div className="flex flex-col gap-3 p-4">
         {error && <Notice tone="negative">{error}</Notice>}
         {page.bundles.length === 0
-          ? <EmptyState title="No bundles yet" body="A bundle gives several reports at once, for example everything a team leader needs." action={<Button variant="primary" onClick={onNew}>New bundle</Button>} />
+          ? <EmptyState title="No bundles yet" body="A bundle gives several reports at once, for example everything a team leader needs." action={<Button data-action variant="primary" onClick={onNew}>New bundle</Button>} />
           : <AreaBar counts={counts} total={page.bundles.length} area={area} onChange={onArea} label="Bundles by area" />}
         {shown.map(bundle => {
           const missing = page.reports.filter(report => !bundle.reports.some(held => held.key === report.key))
@@ -954,7 +960,7 @@ function BundleCards({ page, rows, onChanged, onNew, area, onArea, onGiveBundle 
                     {bundle.reports.map(held => (
                       <li key={held.member} className="inline-flex items-center gap-1 rounded-full border border-border bg-surface ps-3 pe-1 text-sm" data-testid="bundle-report">
                         <RecordLink table={RECORD.report} id={held.key}>{held.name}</RecordLink>
-                        <button type="button" className="inline-flex size-6 items-center justify-center rounded-full text-ink-muted hover:bg-subtle hover:text-negative" aria-label={`Take ${held.name} out of ${bundle.name}`} title="Take it out (you can undo)" onClick={() => void takeOut(bundle, held)} data-testid="take-out"><X aria-hidden size={14} /></button>
+                        <button data-action type="button" className="inline-flex size-6 items-center justify-center rounded-full text-ink-muted hover:bg-subtle hover:text-negative" aria-label={`Take ${held.name} out of ${bundle.name}`} title="Take it out (you can undo)" onClick={() => void takeOut(bundle, held)} data-testid="take-out"><X aria-hidden size={14} /></button>
                       </li>
                     ))}
                   </ul>
@@ -1012,7 +1018,7 @@ function NewBundle({ page, onClose, onMade }: { page: Page; onClose: () => void;
           </div>
         </fieldset>
         {error && <Notice tone="negative">{error}</Notice>}
-        <div><Button variant="primary" loading={busy} disabled={!name.trim()} onClick={() => void make()} data-testid="new-bundle-make">Make the bundle</Button></div>
+        <div><Button data-action variant="primary" loading={busy} disabled={!name.trim()} onClick={() => void make()} data-testid="new-bundle-make">Make the bundle</Button></div>
       </div>
     </Card>
   )
@@ -1099,7 +1105,7 @@ function AddDive({ onAdded }: { onAdded: () => Promise<unknown> }) {
                       <span className="fd-muted text-sm"> · {dive.owner}{dive.saved_on ? ` · saved ${dayOf(dive.saved_on)}` : ''}</span>
                     </span>
                     {dive.in_dash ? <span className="fd-muted text-sm" data-testid="dive-in-dash">In Dash as {dive.in_dash}</span>
-                      : chosen?.dive_id !== dive.dive_id && <Button variant="quiet" onClick={() => choose(dive)} data-testid="dive-choose">Add</Button>}
+                      : chosen?.dive_id !== dive.dive_id && <Button data-action variant="quiet" onClick={() => choose(dive)} data-testid="dive-choose">Add</Button>}
                   </div>
                   {chosen?.dive_id === dive.dive_id && (
                     <div className="flex flex-col gap-2 rounded border border-border p-3" data-testid="dive-adding">
@@ -1109,7 +1115,7 @@ function AddDive({ onAdded }: { onAdded: () => Promise<unknown> }) {
                       <p className="text-sm">Everyone you give it to sees everything the Dive shows, whatever their store.</p>
                       {error && <Notice tone="negative">{error}</Notice>}
                       <div className="flex flex-wrap gap-2">
-                        <Button loading={busy} disabled={!name.trim()} onClick={() => void add()} data-testid="dive-add">Add to Dash</Button>
+                        <Button data-action loading={busy} disabled={!name.trim()} onClick={() => void add()} data-testid="dive-add">Add to Dash</Button>
                         <Button variant="quiet" disabled={busy} onClick={() => setChosen(null)}>Cancel</Button>
                       </div>
                     </div>
@@ -1143,8 +1149,8 @@ function Waiting({ waiting, onGive, onChanged }: { waiting: Page['waiting']
       <ul className="flex flex-col divide-y divide-border p-4">
         {waiting.map(w => <li key={w.person} className="py-2" data-testid="waiting-person"><span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1"><PersonName name={w.name} who={w.who} id={w.person} />
           <span className="flex items-center gap-3"><span className="text-sm text-ink-muted">asked on {dayOf(w.asked_on)}</span>
-            {canDecline && <Button variant="quiet" onClick={() => void decline(w)} data-testid="waiting-decline">Decline</Button>}
-            {onGive && <Button variant="primary" onClick={() => onGive({ person: w.person, name: w.name, code: w.who?.code ?? null, jobs: w.who?.jobs ?? [], staff: w.who?.staff ?? 'current' })} data-testid="waiting-give">Give a report</Button>}</span></span></li>)}
+            {canDecline && <Button data-action variant="quiet" onClick={() => void decline(w)} data-testid="waiting-decline">Decline</Button>}
+            {onGive && <Button data-action variant="primary" onClick={() => onGive({ person: w.person, name: w.name, code: w.who?.code ?? null, jobs: w.who?.jobs ?? [], staff: w.who?.staff ?? 'current' })} data-testid="waiting-give">Give a report</Button>}</span></span></li>)}
       </ul>
     </Card>
   )

@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from 'node:util'
 import { sql } from './db'
+import { viewingAs } from './view-as-context'
 import { AppError } from './errors'
 import { activeApps } from './app-lifecycle'
 import { isActingSystemActor } from './system-actor'
@@ -127,6 +128,8 @@ export async function permissionScope(
   table: string,
   action: PermAction,
 ): Promise<PermScope> {
+  // #1222: while viewing as someone, the screens offer no change.
+  if (viewingAs() && action !== 'read' && action !== 'read_identifiers') return 'none'
   if (!(await admittedToTable(user, table))) return 'none'
   if (await isPrivileged(user)) return 'all'
   const active = await permissionGrants(user, table, action)

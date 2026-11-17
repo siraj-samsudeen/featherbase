@@ -43,7 +43,7 @@ function MoveRow({ sub, region, here, buyerSections, waiting, onDone }: { sub: R
                 <option value="">{here ? 'Move to…' : 'Put in…'}</option>
                 {choices.map(d => <option key={d.id} value={d.id}>{d.name}{d.buyer ? ` (${d.buyer.name})` : ' (no buyer yet)'}</option>)}
               </Select>
-              <Button disabled={!to || busy} onClick={() => void move()} data-testid="move-buyer-subcategory">{here ? 'Move' : 'Put in'}</Button>
+              <Button data-action disabled={!to || busy} onClick={() => void move()} data-testid="move-buyer-subcategory">{here ? 'Move' : 'Put in'}</Button>
             </span>
           )}
       </td>
@@ -125,10 +125,10 @@ function DecideCard({ move, onDecided }: { move: BuyerMoveToDecide; onDecided: (
         {error && <Notice tone="negative"><span data-testid="buyer-decide-refused">{error}</span></Notice>}
         <div className="flex flex-wrap gap-2">
           {!rejecting ? <>
-            <Button variant="primary" disabled={busy} onClick={() => void decide({ decision: 'approve' })} data-testid="buyer-keep">Keep it</Button>
-            <Button variant="quiet" disabled={busy} onClick={() => setRejecting(true)}>{move.applied ? 'Undo it' : 'Turn down'}</Button>
+            <Button data-action variant="primary" disabled={busy} onClick={() => void decide({ decision: 'approve' })} data-testid="buyer-keep">Keep it</Button>
+            <Button data-action variant="quiet" disabled={busy} onClick={() => setRejecting(true)}>{move.applied ? 'Undo it' : 'Turn down'}</Button>
           </> : <>
-            <Button variant="danger" disabled={busy || !reason.trim()} onClick={() => void decide({ decision: 'reject', reason: reason.trim() })} data-testid="buyer-confirm-reject">{move.applied ? 'Undo it' : 'Turn it down'}</Button>
+            <Button data-action variant="danger" disabled={busy || !reason.trim()} onClick={() => void decide({ decision: 'reject', reason: reason.trim() })} data-testid="buyer-confirm-reject">{move.applied ? 'Undo it' : 'Turn it down'}</Button>
             <Button variant="quiet" disabled={busy} onClick={() => setRejecting(false)}>Cancel</Button>
           </>}
         </div>

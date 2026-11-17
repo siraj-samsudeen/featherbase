@@ -138,8 +138,8 @@ function Ready({ setup, onChanged }: { setup: Ok; onChanged: () => Promise<unkno
               : <p className="fd-muted text-sm">Your report shows these sections. To change them, ask {setup.reviewer}.</p>}
             {current.reviewing && !current.prefilled && (
               <div className="flex flex-wrap gap-2 pt-1">
-                <Button variant="quiet" className="-mx-3 max-sm:-mx-4" disabled={busy} onClick={startEditing}>Change it</Button>
-                <Button variant="quiet" disabled={busy} onClick={() => undoInUse(current.reviewing!.bundle)}>Undo</Button>
+                <Button data-action variant="quiet" className="-mx-3 max-sm:-mx-4" disabled={busy} onClick={startEditing}>Change it</Button>
+                <Button data-action variant="quiet" disabled={busy} onClick={() => undoInUse(current.reviewing!.bundle)}>Undo</Button>
               </div>
             )}
           </div>
@@ -158,8 +158,8 @@ function Ready({ setup, onChanged }: { setup: Ok; onChanged: () => Promise<unkno
             <p data-testid="sent-note">Sent to {current.waiting_for}. Your report opens as soon as it is kept.</p>
             <p className="fd-muted text-sm">Sent on {fmtDate(current.asked_on)}.{awayLine(current.waiting_for, setup.reviewer_is_team)}</p>
             <div className="flex flex-wrap gap-2 pt-1">
-              <Button variant="quiet" className="-mx-3 max-sm:-mx-4" disabled={busy} onClick={startEditing}>Change it</Button>
-              <Button variant="quiet" disabled={busy} onClick={() => withdraw(current.bundle)}>Withdraw</Button>
+              <Button data-action variant="quiet" className="-mx-3 max-sm:-mx-4" disabled={busy} onClick={startEditing}>Change it</Button>
+              <Button data-action variant="quiet" disabled={busy} onClick={() => withdraw(current.bundle)}>Withdraw</Button>
             </div>
           </div>
         </Card>
@@ -272,7 +272,7 @@ function SetupForm({ setup, before, replaces, inUse = false, onCancel, onTouched
     <div className="flex flex-col gap-2">
       {error && <Notice tone="negative"><span data-testid="refused">{error}</span></Notice>}
       <div className="flex flex-wrap items-center gap-3">
-        <Button variant="primary" disabled={busy || !chosen.length || !trimmed} onClick={send} data-testid="send">{atOnce ? 'Set it up' : `Send to ${setup.reviewer}`}</Button>
+        <Button data-action variant="primary" disabled={busy || !chosen.length || !trimmed} onClick={send} data-testid="send">{atOnce ? 'Set it up' : `Send to ${setup.reviewer}`}</Button>
         {cancel}
         <span className="fd-muted text-sm" data-testid="summary">{summary}</span>
       </div>
@@ -382,14 +382,14 @@ export function PrefillBanner({ jobId, name, prefilled, reviewer, onAnswered, on
     finally { setBusy(false) }
   }
   const change = onChange
-    ? <Button variant={style === 'line' ? 'quiet' : 'secondary'} disabled={busy} onClick={onChange}>Change it</Button>
+    ? <Button data-action variant={style === 'line' ? 'quiet' : 'secondary'} disabled={busy} onClick={onChange}>Change it</Button>
     : <a className={style === 'line' ? 'fd-link font-semibold' : 'fd-link font-semibold self-center'} href="?view=department">Change it</a>
   const refused = error && <Notice tone="negative"><span data-testid="prefill-refused">{error}</span></Notice>
   if (style === 'line')
     return (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-control border border-border bg-surface px-3 py-2 text-sm" data-testid="prefill-line">
         <span>Set up from your team: <SectionLinks sections={prefilled.sections} />. Is this right?</span>
-        <Button variant="quiet" disabled={busy} onClick={yes}>Yes</Button>
+        <Button data-action variant="quiet" disabled={busy} onClick={yes}>Yes</Button>
         {change}
         <ViewMenu label="Show more" onChoose={() => choose('card')} />
         {refused}
@@ -403,7 +403,7 @@ export function PrefillBanner({ jobId, name, prefilled, reviewer, onAnswered, on
         {prefilled.flagged.length > 0 && <p className="text-sm" data-testid="prefill-flagged">{listed(prefilled.flagged)} {prefilled.flagged.length === 1 ? 'is' : 'are'} shared with another department's team.</p>}
         <p className="fd-muted text-sm" data-testid="prefill-reviewer">{capital(reviewer)} reviews it.</p>
         <div className="flex flex-wrap gap-2">
-          <Button variant="primary" disabled={busy} onClick={yes}>Yes, that's right</Button>
+          <Button data-action variant="primary" disabled={busy} onClick={yes}>Yes, that's right</Button>
           {change}
           <ViewMenu label="Show as one line" onChoose={() => choose('line')} />
         </div>
@@ -469,16 +469,16 @@ function SetupCard({ setup, onDecided }: { setup: WaitingSetup; onDecided: (said
         {error && <Notice tone="negative"><span data-testid="decide-refused">{error}</span></Notice>}
         <div className="flex flex-wrap gap-2">
           {mode === 'view' && <>
-            <Button variant="primary" disabled={busy} onClick={() => decide({ decision: 'approve' })} data-testid="keep">Keep it</Button>
-            <Button disabled={busy} onClick={() => setMode('change')}>Change, then keep</Button>
-            <Button variant="quiet" disabled={busy} onClick={() => setMode('reject')}>{setup.applied ? 'Undo it' : 'Turn down'}</Button>
+            <Button data-action variant="primary" disabled={busy} onClick={() => decide({ decision: 'approve' })} data-testid="keep">Keep it</Button>
+            <Button data-action disabled={busy} onClick={() => setMode('change')}>Change, then keep</Button>
+            <Button data-action variant="quiet" disabled={busy} onClick={() => setMode('reject')}>{setup.applied ? 'Undo it' : 'Turn down'}</Button>
           </>}
           {mode === 'change' && <>
-            <Button variant="primary" disabled={busy || !keep.length || !name.trim()} onClick={() => decide({ decision: 'approve', name: name.trim(), sections: keep })} data-testid="keep-changed">Keep with changes</Button>
+            <Button data-action variant="primary" disabled={busy || !keep.length || !name.trim()} onClick={() => decide({ decision: 'approve', name: name.trim(), sections: keep })} data-testid="keep-changed">Keep with changes</Button>
             <Button variant="quiet" disabled={busy} onClick={() => setMode('view')}>Cancel</Button>
           </>}
           {mode === 'reject' && <>
-            <Button variant="danger" disabled={busy || !reason.trim()} onClick={() => decide({ decision: 'reject', reason: reason.trim() })} data-testid="confirm-reject">{setup.applied ? 'Undo it' : 'Turn it down'}</Button>
+            <Button data-action variant="danger" disabled={busy || !reason.trim()} onClick={() => decide({ decision: 'reject', reason: reason.trim() })} data-testid="confirm-reject">{setup.applied ? 'Undo it' : 'Turn it down'}</Button>
             <Button variant="quiet" disabled={busy} onClick={() => setMode('view')}>Cancel</Button>
           </>}
         </div>

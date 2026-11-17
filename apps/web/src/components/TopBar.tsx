@@ -12,6 +12,7 @@ import { useI18n } from '../lib/i18n'
 import { BarControls, useBarControls } from './BarControls'
 import { AppSwitcher, useOpenAdmin } from './AppSwitcher'
 import { Logo } from './Logo'
+import { ViewAsBanner, ViewAsButton } from './ViewAs'
 import { RecordLink, TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, useMediaQuery } from '@featherbase/shop-floor'
 import { List, Menu, Monitor, Moon, Sun, type LucideIcon } from '@featherbase/shop-floor'
 import { listenForSidebarKeys, useSidebar } from '../lib/sidebar-collapsed'
@@ -231,6 +232,8 @@ export function TopBar({
   return (
     <>
       <PreviewBanner />
+      {/* #1222: who is being viewed, on every page, while a tester views as someone. */}
+      <ViewAsBanner />
       <header
         // Where the bar draws an app's controls (on the app's address, or over
         // the app's own page) it frames the phone list of a declared control.
@@ -255,6 +258,7 @@ export function TopBar({
             <>
               {beforeRight}
               {offerAdmin && !isPhone && <OpenAdminButton />}
+              <ViewAsButton compact={isPhone} />
               {!isPhone && <ThemeToggle />}
               <AccountMenu inMenu={isPhone ? { offerAdmin } : undefined} />
             </>
