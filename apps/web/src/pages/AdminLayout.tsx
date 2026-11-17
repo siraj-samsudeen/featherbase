@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, tableHref, type CommandDestinations, type CommandPageDestination } from 'shared'
+import { ACCOUNT_CONNECTED_APPS_PATH, ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, tableHref, type CommandDestinations, type CommandPageDestination } from 'shared'
 import { SIDEBAR_VIEWS_KEY } from '../lib/nav-settings'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import {
@@ -39,7 +39,7 @@ import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PA
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
 import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
-import { Bell, BookOpen, Bookmark, CalendarClock, Clock, Compass, Database, Eye, History, Key, LayoutDashboard, ListChecks, LogIn, ShieldLock, Table, UserRound, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
+import { Bell, BookOpen, Bookmark, Cable, CalendarClock, Clock, Compass, Database, Eye, History, Key, LayoutDashboard, ListChecks, LogIn, ShieldLock, Table, UserRound, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 
 interface SearchHit {
@@ -1018,6 +1018,7 @@ export function AccountSidebarGroup() {
       testid="sidebar-group-account"
       items={[
         { to: ACCOUNT_SIGN_IN_METHODS_PATH, label: 'Sign-in methods', icon: LogIn, testid: 'sidebar-sign-in-methods' },
+        { to: ACCOUNT_CONNECTED_APPS_PATH, label: 'Connected apps', icon: Cable, testid: 'sidebar-connected-apps' },
         ...(user ? [{ to: `/featherbase/account/access/${encodeURIComponent(user.row_id)}`, label: 'What you can see', icon: Eye, testid: 'sidebar-access-explanation' }] : []),
       ]}
     />

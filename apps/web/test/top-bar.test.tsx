@@ -356,10 +356,14 @@ test("the Account menu's Sign-in methods opens the account page", async ({ admin
   expect(screen.getByTestId('account-sign-in-methods')).toHaveAttribute('href', ACCOUNT_SIGN_IN_METHODS_PATH)
 })
 
-test("the Account menu's Connected apps opens the account page", async ({ admin }) => {
+test("the Account menu's Connected apps opens the account page and closes the menu", async ({ admin }) => {
   await renderApp('/featherbase/admin', admin)
   await openAccountMenu()
-  expect(screen.getByTestId('account-connected-apps')).toHaveAttribute('href', ACCOUNT_CONNECTED_APPS_PATH)
+  const link = screen.getByTestId('account-connected-apps')
+  expect(link).toHaveAttribute('href', ACCOUNT_CONNECTED_APPS_PATH)
+  await userEvent.click(link)
+  expect(await screen.findByRole('heading', { name: 'Connected apps' })).toBeInTheDocument()
+  expect(screen.queryByTestId('account-menu')).not.toBeInTheDocument()
 })
 
 // #1227: was "the person's name in the Account menu is not a control" (#489). The
