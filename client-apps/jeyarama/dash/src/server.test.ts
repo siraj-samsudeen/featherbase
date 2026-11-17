@@ -26,11 +26,16 @@ const VENDORS = { report_key: 'vendors', report_name: 'Vendor sales by city', di
 /** The platform's table reads: the filters and paging `list` is given, over in-memory rows. */
 function reader(tables: Record<string, Row[]>, throws: boolean | string[] = false) {
   return {
-    async list(table: string, args: { filters?: [string, string, unknown][]; order_by?: string; limit_start?: number; limit_page_length?: number }) {
+    async list(table: string, args: { filters?: [string, string, unknown][]; order_by?: string; limit_start?: number; limit_page_length?: number; with_retired?: boolean }) {
       if (throws === true || (Array.isArray(throws) && throws.includes(table))) throw new Error('not set up')
-      const found = (tables[table] ?? []).filter(r => (args.filters ?? []).every(([column, op, value]) => (op === 'in' ? (value as unknown[]).includes(r[column]) : op === 'like' ? String(r[column]).includes(String(value).replaceAll('%', '')) : r[column] === value)))
+      // As the platform: a retired row only when asked for.
+      const found = (tables[table] ?? []).filter(r => args.with_retired || !r.retired_at).filter(r => (args.filters ?? []).every(([column, op, value]) => (op === 'in' ? (value as unknown[]).includes(r[column]) : op === 'like' ? String(r[column]).includes(String(value).replaceAll('%', '')) : r[column] === value)))
       const start = args.limit_start ?? 0
       return found.slice(start, start + (args.limit_page_length ?? 500))
+    },
+    /** As the platform's: whether the Table can be read, never a failure. */
+    async available(table: string) {
+      return table in tables && throws !== true && !(Array.isArray(throws) && throws.includes(table))
     },
   }
 }
@@ -871,12 +876,18 @@ describe('the embed_session read', () => {
       expect(await reach({ core: { ...STORES, Subcategory: [...SUBCATEGORIES, service] } })).toEqual({ 9901: ['920101', '9202'], 9902: ['920101', '9202', '930101001'] })
     })
 
+    it('never sends a prefix over a retired code the reader does not hold', async () => {
+      const retired = { row_id: '920201009', retired_at: '2026-01-01T00:00:00Z' }
+      expect(await reach({ core: { ...STORES, Subcategory: [...SUBCATEGORIES, retired] } })).toEqual({ 9901: ['9201', '920201001'], 9902: ['9201', '920201001', '930101001'] })
+    })
+
     it('sends the codes themselves when the hierarchy cannot be read', async () => {
       expect(await reach({ core: { ...STORES, Subcategory: SUBCATEGORIES }, coreThrows: ['Subcategory'] }))
         .toEqual({ 9901: LINE, 9902: [...LINE, OTHER[0]] })
+      expect(await reach({ core: STORES })).toEqual({ 9901: LINE, 9902: [...LINE, OTHER[0]] })
     })
 
-    it('reads the hierarchy page by page, and collapses nothing when a later page fails', async () => {
+    it('reads the hierarchy page by page, and fails the read rather than collapse on a list cut short', async () => {
       const many = Array.from({ length: 600 }, (_, i) => ({ row_id: `94${String(i).padStart(7, '0')}` }))
       const held = [place('9901 / Assigned subcategories', '9901', many.map(r => r.row_id))]
       expect(await reach({ places: held, core: { ...STORES, Subcategory: many } })).toEqual({ 9901: ['94'] })
@@ -887,8 +898,8 @@ describe('the embed_session read', () => {
         return list(table, args)
       }
       const calls = upstream(ok)
-      await embedSession(ctx)
-      expect(sentBody(calls).initial_state.reach['9901']).toHaveLength(600)
+      await expect(embedSession(ctx)).rejects.toThrow('connection lost')
+      expect(calls).toEqual([])
     })
 
     it('logs the size of every request it sends', async () => {

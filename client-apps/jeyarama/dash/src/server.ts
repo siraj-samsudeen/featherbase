@@ -270,18 +270,18 @@ interface PreparedDive { report: ReportRecord; everyCode?: string[] }
 const readsReach = (report: ReportRecord) => report.pickers_in_dive || report.filter_shape === 'Stores and subcategories'
 
 /**
- * #1269: every Subcategory code, of any type, or none at all. A list cut short would make a prefix look
- * wholly held and widen the reach, so a failed page drops the whole read and nothing collapses.
+ * #1269: every Subcategory code, of any type and retired ones too: a retired code still has sales a
+ * prefix would match. Without the Table nothing collapses. A page that fails fails the whole read
+ * (the platform rethrows it when the read ends), so a list cut short never makes a prefix look held.
  */
 async function everySubcategoryCode(ctx: ScopedContext): Promise<string[] | undefined> {
+  if (!await ctx.baseTables.available?.('Subcategory')) return undefined
   const codes: string[] = []
-  try {
-    for (;;) {
-      const page = await ctx.baseTables.list('Subcategory', { fields: ['row_id'], order_by: 'row_id asc', limit_start: codes.length, limit_page_length: 500 })
-      codes.push(...page.map(row => String(row.row_id)))
-      if (page.length < 500) return codes
-    }
-  } catch { return undefined }
+  for (;;) {
+    const page = await ctx.baseTables.list('Subcategory', { fields: ['row_id'], order_by: 'row_id asc', limit_start: codes.length, limit_page_length: 500, with_retired: true })
+    codes.push(...page.map(row => String(row.row_id)))
+    if (page.length < 500) return codes
+  }
 }
 
 /** MotherDuck's answer to an embed request too large to take: the page says so, not "couldn't open". */
