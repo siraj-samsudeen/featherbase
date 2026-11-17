@@ -21,6 +21,8 @@ const ENVIRONMENTS: Record<string, {
   service: string
   volume: { name: string, region: string, sizeMB: number }
   watchPatterns?: string[]
+  /** #1260: seconds between SIGTERM and SIGKILL. Absent means Railway's default. */
+  drainingSeconds?: number
 }> = {
   production: {
     service: 'jeyarama-featherbase',
@@ -29,6 +31,9 @@ const ENVIRONMENTS: Record<string, {
   staging: {
     service: 'featherbase',
     volume: { name: 'featherbase-staging-data', region: 'sfo', sizeMB: 50000 },
+    // #1260: longer than the server's 25 s drain (graceful-shutdown.ts).
+    // Production stays on Railway's default until Siraj says yes.
+    drainingSeconds: 30,
     watchPatterns: [
       'apps/**', 'packages/**', 'pnpm-lock.yaml', 'tools/dev.mjs', 'tools/build-instance-apps.mjs',
       'client-apps/jeyarama/instances/dash/**', 'client-apps/jeyarama/dash/**', 'example-apps/tasker/**',
@@ -58,11 +63,9 @@ export default defineRailway((ctx) => {
     // On Failure is Railway's default restart policy, and Railway stores a
     // default as empty, so naming it made every plan show a change no apply
     // could settle. Only the retry count differs from the default (10).
-    // #1260: after SIGTERM the old server gets 30 s before SIGKILL, longer
-    // than its own 25 s drain (graceful-shutdown.ts), so requests in flight
-    // finish. Overlap is not set: with a volume Railway never runs two
-    // deployments at once, so there is nothing to overlap.
-    deploy: { restartPolicyMaxRetries: 5, drainingSeconds: 30 },
+    // Overlap is not set: with a volume Railway never runs two deployments at
+    // once, so there is nothing to overlap (#1260).
+    deploy: { restartPolicyMaxRetries: 5, ...(env.drainingSeconds ? { drainingSeconds: env.drainingSeconds } : {}) },
     volumeMounts: { '/data': data },
   })
 
