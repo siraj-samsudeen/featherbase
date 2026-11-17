@@ -2,7 +2,7 @@ import { APP_ACCENT_ATTRIBUTE } from '@featherbase/shop-floor/theme'
 import platformCss from '../index.css?inline'
 import { shadowCss } from './style'
 import { getSignedInUser } from '../lib/api'
-import { SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, offerSidebarSlots, readSidebar, registerSidebar, setSidebarDrawerOpen, subscribeSidebar, toggleSidebarCollapsed } from '../lib/sidebar-collapsed'
+import { SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, offerPickerSlot, offerSidebarSlots, readSidebar, registerSidebar, setSidebarDrawerOpen, subscribeSidebar, toggleSidebarCollapsed } from '../lib/sidebar-collapsed'
 import { attachRailTips, railMark, railMenuPlace, rowCount, rowLabel } from '../lib/sidebar-rail'
 
 /** Admin's sidebar widths (AdminLayout: md:w-60, the rail md:w-14, a w-64 drawer), for every app (#1227, #1248). */
@@ -34,7 +34,7 @@ featherbase-sidebar[data-collapsed] > :is(button, a) [data-sidebar-count][data-r
 featherbase-sidebar[data-collapsed] > [data-depth="1"] { display:none !important; }
 featherbase-sidebar[data-collapsed] > :not(button):not(a):not([data-rail-fold]) {
   font-size:0 !important; line-height:0 !important; height:1px !important; min-height:0 !important; padding:0 !important;
-  margin:8px 12px !important; background:color-mix(in srgb, var(--color-border) 70%, transparent) !important; overflow:hidden !important; border:0 !important; }
+  margin:8px 12px !important; background:transparent !important; overflow:hidden !important; border:0 !important; }
 featherbase-sidebar[data-collapsed] > [data-rail-fold] {
   display:flex !important; align-items:center; justify-content:center; width:40px; height:40px; margin:4px auto !important; padding:0 !important;
   border-radius:var(--radius-control, 10px); color:var(--color-ink-muted); cursor:pointer; position:relative; }
@@ -77,6 +77,10 @@ export class FeatherbaseSidebar extends HTMLElement {
   private unsubscribe?: () => void
   private untips?: () => void
   private unslot?: () => void
+  private unpickers?: () => void
+  private pickers?: HTMLElement
+  private pickersRoot?: HTMLElement
+  private panelObserver?: MutationObserver
   private drawerWidth?: MediaQueryList
   private control?: HTMLButtonElement
   private layer?: HTMLElement
@@ -128,7 +132,9 @@ export class FeatherbaseSidebar extends HTMLElement {
         text-align:left !important; text-decoration:none !important; cursor:pointer;
       }
       /* A group's title (#1253): small, grey, regular weight. */
-      ::slotted(:not(button):not(a):not([data-rail-fold])), :host(:not([data-collapsed])) ::slotted([data-rail-fold]) { font-size:12px !important; font-weight:400 !important;
+      /* Open only: in the rail a heading is a gap (the document's rail rules), and a
+         shadow's !important would win over them. */
+      :host(:not([data-collapsed])) ::slotted(:not(button):not(a)) { font-size:12px !important; font-weight:400 !important;
         color:var(--color-ink-muted) !important; text-transform:none !important; letter-spacing:normal !important; }
       :host([data-collapsed]) ::slotted(button), :host([data-collapsed]) ::slotted(a) {
         position:relative !important; justify-content:center !important; width:40px !important; height:40px !important;
@@ -221,6 +227,32 @@ export class FeatherbaseSidebar extends HTMLElement {
     this.unsubscribe?.()
     this.unslot?.()
     this.unslot = offerSidebarSlots({ top, foot: account })
+    // #1253 (Siraj, 17-Nov): the app's declared pickers sit inside its white
+    // panel, at the top and right-aligned: a host the platform keeps as the
+    // first child of the app's page column, styled in its own shadow.
+    if (!this.pickers) {
+      const host = document.createElement('div')
+      host.dataset.featherbasePickers = ''
+      const pickerShadow = host.attachShadow({ mode: 'open' })
+      const pickerStyle = document.createElement('style')
+      pickerStyle.textContent = `${shadowCss(platformCss)}
+        :host { display:block; }
+        .pickers-root { color:var(--color-ink); font:14px/1.45 var(--font-sans); }
+        .pickers-root:empty { display:none; }
+        .pickers-root:not(:empty) { padding:12px 16px 0; }`
+      const root = document.createElement('div')
+      root.className = 'pickers-root'
+      root.dataset.testid = 'page-picker-slot'
+      pickerShadow.append(pickerStyle, root)
+      this.pickers = host
+      this.pickersRoot = root
+    }
+    this.unpickers?.()
+    this.unpickers = offerPickerSlot(this.pickersRoot!)
+    this.placePickers()
+    this.panelObserver?.disconnect()
+    this.panelObserver = new MutationObserver(() => this.placePickers())
+    if (this.parentElement) this.panelObserver.observe(this.parentElement, { childList: true, subtree: false })
     this.leave = registerSidebar(getSignedInUser()?.row_id)
     this.unsubscribe = subscribeSidebar(this.onWidth)
     this.drawerWidth = typeof window.matchMedia === 'function' ? window.matchMedia(SIDEBAR_DRAWER_QUERY) : undefined
@@ -250,15 +282,27 @@ export class FeatherbaseSidebar extends HTMLElement {
     // painted theme, so the accent's dark block matches after a switch.
     const accent = host?.dataset.accent ?? document.documentElement.getAttribute(APP_ACCENT_ATTRIBUTE)
     if (accent) nav.setAttribute(APP_ACCENT_ATTRIBUTE, accent)
+    if (accent) this.pickersRoot?.setAttribute(APP_ACCENT_ATTRIBUTE, accent)
     const syncTheme = () => {
       const theme = bar?.querySelector<HTMLElement>('[data-testid=bar-theme-root]')?.dataset.theme
       if (theme) nav.dataset.theme = theme
+      if (theme && this.pickersRoot) this.pickersRoot.dataset.theme = theme
     }
     syncTheme()
     if (bar) {
       this.themeObserver = new MutationObserver(syncTheme)
       this.themeObserver.observe(bar, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-theme'] })
     }
+  }
+
+  /** Keeps the pickers host first in the app's page column (the sidebar's next sibling). */
+  private placePickers() {
+    const panel = this.nextElementSibling as HTMLElement | null
+    if (!this.pickers || !panel || panel.firstChild === this.pickers) return
+    this.panelObserver?.disconnect()
+    panel.prepend(this.pickers)
+    this.panelObserver?.observe(this.parentElement!, { childList: true, subtree: false })
+    this.panelObserver?.observe(panel, { childList: true, subtree: false })
   }
 
   /** Draws the shared state: collapsed (md+) is the rail; at phone width the
@@ -403,6 +447,10 @@ export class FeatherbaseSidebar extends HTMLElement {
     this.untips = undefined
     this.unslot?.()
     this.unslot = undefined
+    this.unpickers?.()
+    this.unpickers = undefined
+    this.panelObserver?.disconnect()
+    this.pickers?.remove()
     this.drawerWidth?.removeEventListener?.('change', this.onWidth)
     this.removeEventListener('click', this.onClick)
     this.removeEventListener('keydown', this.onKey)

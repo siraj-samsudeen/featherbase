@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -16,7 +16,7 @@ import { Logo } from './Logo'
 import { ViewAsBanner, ViewAsButton } from './ViewAs'
 import { RecordLink, TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
 import { CircleHelp, List, Menu, Monitor, Moon, Sun, type LucideIcon } from '@featherbase/shop-floor'
-import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, listenForSidebarKeys, useSidebar, useSidebarSlots } from '../lib/sidebar-collapsed'
+import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, listenForSidebarKeys, offerPickerSlot, usePickerSlot, useSidebar, useSidebarSlots } from '../lib/sidebar-collapsed'
 import { APP_ICON } from '../lib/app-icons'
 import { useCurrentPageTitle } from '../lib/page-title'
 
@@ -233,6 +233,7 @@ export function TopBar({
   // the bell and the command field at its top, and the account, help and theme
   // at its foot; on a phone a slim header keeps only the menu button.
   const slots = useSidebarSlots()
+  const pickerSlot = usePickerSlot()
   const drawer = useMediaQuery(SIDEBAR_DRAWER_QUERY)
   const rail = sidebar.collapsed && !drawer
   const switcher = left ?? (caps && context && name
@@ -246,8 +247,10 @@ export function TopBar({
   )
 
   if (slots) {
-    // An app's declared pickers (#642) keep a slim strip of their own above the page.
+    // An app's declared pickers (#642) sit inside the white panel, at its top
+    // and right-aligned (Siraj, 17-Nov); with no slot, in the strip above it.
     const pickers = Boolean(caps && controlsOf && hasControls)
+    const inPanel = pickers && pickerSlot
     return (
       <>
         <PreviewBanner />
@@ -256,12 +259,16 @@ export function TopBar({
         {/* The menu button is for the phone drawer only (md:hidden); with no
             pickers the whole strip is gone from a wide window. */}
         <header
-          className={`${pickers ? 'relative ' : 'md:hidden '}flex shrink-0 items-center gap-x-1 px-2 py-1 sm:gap-4 md:px-3`}
+          className={`${pickers && !inPanel ? 'relative ' : 'md:hidden '}flex shrink-0 items-center gap-x-1 px-2 py-1 sm:gap-4 md:px-3`}
           data-testid="page-header"
         >
           <SidebarControls sidebar={sidebar} />
-          {pickers && <BarControls app={controlsOf!} />}
+          {pickers && !inPanel && <BarControls app={controlsOf!} />}
         </header>
+        {inPanel && createPortal(
+          <div className="relative flex justify-end" data-testid="page-pickers"><BarControls app={controlsOf!} /></div>,
+          pickerSlot,
+        )}
         {createPortal(
           <div className={rail ? 'flex flex-col items-center gap-1 px-2 pb-2 pt-3' : 'flex flex-col gap-2 px-2 pb-2 pt-3'} data-testid="sidebar-top">
             <div className={rail ? 'contents' : 'flex min-w-0 items-center gap-1'}>
@@ -712,4 +719,12 @@ function HelpMenu({ commands }: { commands: boolean }) {
       </dl>
     </FootMenu>
   )
+}
+
+/** #1253: the top of a platform page's white panel, where an app's declared
+ *  pickers sit (an account page on an app's address). Empty, it takes no room. */
+export function PagePickerSlot() {
+  const slot = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => offerPickerSlot(slot.current!), [])
+  return <div ref={slot} className="empty:hidden mb-3" data-testid="page-picker-slot" />
 }
