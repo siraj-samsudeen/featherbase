@@ -44,3 +44,26 @@ test('a reader who may not read Person sees the same name, not a link', async ({
   await waitFor(() => expect(created).toHaveTextContent('Administrator'), WAIT)
   expect(created.querySelector('a')).toBeNull()
 })
+
+// #1264: a person in a list cell opens their record, not the row's panel.
+test("clicking a person in a list cell doesn't also open the row in the panel", async ({ admin }) => {
+  await admin.post('/api/table_def', {
+    name: 'Actor Links Owners', columns: [
+      { column_name: 'note', column_type: 'Data', in_list_view: true },
+      { column_name: 'owner', column_type: 'Reference', reference_table: 'Person', in_list_view: true },
+    ],
+  })
+  await admin.post('/api/save_row', { table: 'Actor Links Owners', row: { note: 'first', owner: 'Administrator' } })
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug('Actor Links Owners'))}`, admin)
+  const cell = await screen.findByTestId('cell-owner', {}, WAIT)
+  const link = await waitFor(() => {
+    const found = cell.querySelector<HTMLAnchorElement>('a[data-record-link="link"]')
+    expect(found).not.toBeNull()
+    return found!
+  }, WAIT)
+  // The link itself is followed by the browser; here only the row's own click must not fire.
+  link.addEventListener('click', (e) => e.preventDefault())
+  link.click()
+  await new Promise((done) => setTimeout(done, 300))
+  expect(screen.queryByTestId('record-panel')).not.toBeInTheDocument()
+})
