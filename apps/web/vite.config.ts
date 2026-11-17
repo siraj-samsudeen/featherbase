@@ -73,7 +73,12 @@ function barBundle(): Plugin {
       server.middlewares.use(`/${BAR_SCRIPT}`, (_req, res) => {
         res.setHeader('content-type', 'text/javascript')
         res.setHeader('cache-control', 'no-store')
+        // #1260: the deploy wait is installed here, synchronously, before the
+        // entry's dynamic import yields: an app's own module runs as soon as
+        // this one's synchronous part has (Codex round 5, the verifier's timings).
         res.end(`import RefreshRuntime from '/@react-refresh'
+import { installDeployWait } from '/src/lib/deploy-wait.ts'
+installDeployWait(window, document)
 RefreshRuntime.injectIntoGlobalHook(window)
 window.$RefreshReg$ = () => {}
 window.$RefreshSig$ = () => (type) => type
